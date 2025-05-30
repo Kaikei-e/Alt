@@ -2,22 +2,22 @@ package job
 
 import (
 	"context"
-	"net/url"
 	"time"
 
 	"alt/utils/logger"
 )
 
 func HourlyJobRunner(ctx context.Context) {
-	feedStaticURL := url.URL{
-		Scheme: "https",
-		Host:   "example.com",
-		Path:   "/feed.xml",
+	csvPath := PathCleaner(CSVPath)
+	feedStaticURLs, err := CSVToURLList(csvPath)
+	if err != nil {
+		logger.Logger.Error("Error loading feed static URLs", "error", err)
+		return
 	}
 
 	go func() {
 		for {
-			feed, err := CollectSingleFeed(ctx, feedStaticURL)
+			feeds, err := CollectMultipleFeeds(ctx, feedStaticURLs)
 			if err != nil {
 				logger.Logger.Error("Error collecting feed", "error", err)
 				retryCount, err := exponentialBackoffAndRetry(ctx, 5)
@@ -25,9 +25,9 @@ func HourlyJobRunner(ctx context.Context) {
 					logger.Logger.Error("Error collecting feed", "error", err)
 					continue
 				}
-				logger.Logger.Info("Feed collected", "feed title", feed.Title, "retry count", retryCount)
+				logger.Logger.Info("Feed collected", "feed length", len(feeds), "retry count", retryCount)
 			}
-			logger.Logger.Info("Feed collected", "feed title", feed.Title)
+			logger.Logger.Info("Feed collected", "feed length", len(feeds))
 			time.Sleep(1 * time.Hour)
 		}
 	}()
