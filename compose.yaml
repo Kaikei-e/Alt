@@ -1,0 +1,47 @@
+services:
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80" # ホストの80番ポートをコンテナの80番ポートにマッピング
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro # Nginxの設定ファイル
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro       # Nginxの追加設定ファイル（サイト固有など）
+      - ./alt-frontend/out:/usr/share/nginx/html:ro  # Next.jsのビルド済みファイルをNginxがホスト
+    depends_on:
+      - alt-frontend
+    networks:
+      - alt-network
+
+  alt-frontend:
+    build:
+      context: ./alt-frontend # alt-frontendディレクトリをビルドコンテキストとする
+      dockerfile: Dockerfile.frontend # frontendサービス用のDockerfile
+    ports:
+      - "3000:3000" # 開発時にNext.jsのポートをホストに公開する場合（本番ではNginxが処理）
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:9000 # Next.jsからGo APIへのURL (開発用)
+      - API_URL=http://alt-backend:9000 # Next.jsのSSG/SSRからGo APIへのURL (コンテナ間通信用)
+    # 本番ビルドの場合は、volumesの代わりにビルド時にコピーする
+    # volumes:
+    #   - ./frontend:/app # 開発時はソースコードをマウント
+    #   - /app/node_modules # node_modulesをホストから隠蔽 (開発時)
+    depends_on:
+      - alt-backend # alt-backendサービスが起動してからfrontendを起動
+    networks:
+      - alt-network
+
+  alt-backend:
+    build:
+      context: ./alt-backend # backendディレクトリをビルドコンテキストとする
+      dockerfile: Dockerfile.backend # backendサービス用のDockerfile
+    ports:
+      - "9000:9000" # Go APIのポートをホストに公開
+    networks:
+      - alt-network
+    # 開発時はソースコードをマウントすることでホットリロードが可能
+    # volumes:
+    #   - ./backend:/app
+
+networks:
+  alt-network:
+    # driver: bridge # デフォルトはbridgeなので省略可能
