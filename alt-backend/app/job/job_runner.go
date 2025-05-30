@@ -28,6 +28,10 @@ func HourlyJobRunner(ctx context.Context) {
 				logger.Logger.Info("Feed collected", "feed length", len(feeds), "retry count", retryCount)
 			}
 			logger.Logger.Info("Feed collected", "feed length", len(feeds))
+			err = WriteFeedsToFile(feeds)
+			if err != nil {
+				logger.Logger.Error("Error writing feeds to file", "error", err)
+			}
 			time.Sleep(1 * time.Hour)
 		}
 	}()
