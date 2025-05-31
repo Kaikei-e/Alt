@@ -38,10 +38,49 @@ services:
       - "9000:9000" # Go APIのポートをホストに公開
     networks:
       - alt-network
-    # 開発時はソースコードをマウントすることでホットリロードが可能
-    # volumes:
-    #   - ./backend:/app
+    environment:
+      # GoアプリケーションからPostgreSQLへの接続情報
+      # 環境変数で渡すのがベストプラクティス
+      - DB_HOST=db # データベースサービスのコンテナ名は "db"
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER} # .envファイルから読み込む
+      - DB_PASSWORD=${POSTGRES_PASSWORD} # .envファイルから読み込む
+      - DB_NAME=${POSTGRES_DB} # .envファイルから読み込む
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/v1/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
+  db:
+      image: postgres:16-alpine # PostgreSQLの最新LTS (16系) を使用し、軽量なalpine版を選択
+      restart: always # コンテナが停止した場合に自動的に再起動
+      environment:
+        # PostgreSQLの環境変数 (重要: 本番では.envやシークレット管理ツールを使用)
+        POSTGRES_DB: ${POSTGRES_DB}
+        POSTGRES_USER: ${POSTGRES_USER}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      volumes:
+        - db_data:/var/lib/postgresql/data # データベースのデータを永続化するための名前付きボリューム
+        # 初期化スクリプトをマウント (オプション)
+        # コンテナの初回起動時に /docker-entrypoint-initdb.d/ 配下の .sql または .sh が実行される
+        - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro # 読み取り専用でマウント
+      ports:
+        - "5432:5432" # ホストの5432番ポートをコンテナの5432番ポートにマッピング (開発用、不要なら削除可)
+      healthcheck: # DBが完全に起動して接続可能かを確認
+        test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+        interval: 5s     # 5秒ごとにチェック
+        timeout: 5s      # 5秒以内に応答がない場合はタイムアウト
+        retries: 5       # 5回失敗したらunhealthyと判断
+        start_period: 10s # 起動後10秒間は失敗してもunhealthyと判断しない (PostgreSQLの起動に時間がかかるため)
+      networks:
+        - alt-network # alt-networkに接続
+        
 networks:
   alt-network:
-    # driver: bridge # デフォルトはbridgeなので省略可能
+
+volumes:
+  db_data: 
