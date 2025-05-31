@@ -1,0 +1,16 @@
+FROM golang:1.24-alpine AS builder
+
+RUN apk add --no-cache git
+RUN go install -tags 'pgx5' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
+
+
+FROM alpine:latest
+
+COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+WORKDIR /app
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
