@@ -1,30 +1,25 @@
 package alt_db
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"alt/utils/logger"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
 )
 
-func InitDBConnection() (*sql.DB, error) {
+func InitDBConnection(ctx context.Context) (*pgx.Conn, error) {
 
-	db, err := sql.Open("postgres", getDBConnectionString())
+	db, err := pgx.Connect(ctx, getDBConnectionString())
 	if err != nil {
 		logger.Logger.Error("Failed to connect to database", "error", err)
 		return nil, err
 	}
 
-	db.SetMaxOpenConns(100)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxLifetime(time.Hour)
-
-	err = db.Ping()
+	err = db.Ping(ctx)
 	if err != nil {
 		logger.Logger.Error("Failed to ping database", "error", err)
 		return nil, err

@@ -7,3 +7,7 @@ import (
 type AltDBRepository struct {
 	db *sql.DB
 }
+
+func NewAltDBRepository(db *sql.DB) *AltDBRepository {
+	return &AltDBRepository{db: db}
+}

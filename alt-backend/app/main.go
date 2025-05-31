@@ -12,19 +12,20 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
+
 	log := logger.InitLogger()
 	log.Info("Starting server")
 
-	db, err := alt_db.InitDBConnection()
+	db, err := alt_db.InitDBConnection(ctx)
 	if err != nil {
 		logger.Logger.Error("Failed to connect to database", "error", err)
 		panic(err)
 	}
-	defer db.Close()
+	defer db.Close(context.Background())
 
 	container := di.NewApplicationComponents(db)
 
-	ctx := context.Background()
 	job.HourlyJobRunner(ctx)
 
 	e := echo.New()
