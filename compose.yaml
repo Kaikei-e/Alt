@@ -2,11 +2,11 @@ services:
   nginx:
     image: nginx:latest
     ports:
-      - "80:80" # ホストの80番ポートをコンテナの80番ポートにマッピング
+      - "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro # Nginxの設定ファイル
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro       # Nginxの追加設定ファイル（サイト固有など）
-      - ./alt-frontend/out:/usr/share/nginx/html:ro  # Next.jsのビルド済みファイルをNginxがホスト
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./alt-frontend/out:/usr/share/nginx/html:ro
     depends_on:
       - alt-frontend
     networks:
@@ -14,38 +14,32 @@ services:
 
   alt-frontend:
     build:
-      context: ./alt-frontend # alt-frontendディレクトリをビルドコンテキストとする
-      dockerfile: Dockerfile.frontend # frontendサービス用のDockerfile
+      context: ./alt-frontend
+      dockerfile: Dockerfile.frontend
     ports:
-      - "3000:3000" # 開発時にNext.jsのポートをホストに公開する場合（本番ではNginxが処理）
+      - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:9000 # Next.jsからGo APIへのURL (開発用)
-      - API_URL=http://alt-backend:9000 # Next.jsのSSG/SSRからGo APIへのURL (コンテナ間通信用)
-    # 本番ビルドの場合は、volumesの代わりにビルド時にコピーする
-    # volumes:
-    #   - ./frontend:/app # 開発時はソースコードをマウント
-    #   - /app/node_modules # node_modulesをホストから隠蔽 (開発時)
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:9000
+      - API_URL=http://alt-backend:9000
     depends_on:
-      - alt-backend # alt-backendサービスが起動してからfrontendを起動
+      - alt-backend
     networks:
       - alt-network
 
   alt-backend:
     build:
-      context: ./alt-backend # backendディレクトリをビルドコンテキストとする
-      dockerfile: Dockerfile.backend # backendサービス用のDockerfile
+      context: ./alt-backend
+      dockerfile: Dockerfile.backend
     ports:
-      - "9000:9000" # Go APIのポートをホストに公開
+      - "9000:9000"
     networks:
       - alt-network
     environment:
-      # GoアプリケーションからPostgreSQLへの接続情報
-      # 環境変数で渡すのがベストプラクティス
-      - DB_HOST=db # データベースサービスのコンテナ名は "db"
+      - DB_HOST=db
       - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER} # .envファイルから読み込む
-      - DB_PASSWORD=${POSTGRES_PASSWORD} # .envファイルから読み込む
-      - DB_NAME=${POSTGRES_DB} # .envファイルから読み込む
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB}
     depends_on:
       - db
     healthcheck:
@@ -56,31 +50,28 @@ services:
       start_period: 10s
 
   db:
-      image: postgres:16-alpine # PostgreSQLの最新LTS (16系) を使用し、軽量なalpine版を選択
-      restart: always # コンテナが停止した場合に自動的に再起動
+      image: postgres:16-alpine
+      restart: always
       environment:
-        # PostgreSQLの環境変数 (重要: 本番では.envやシークレット管理ツールを使用)
         POSTGRES_DB: ${POSTGRES_DB}
         POSTGRES_USER: ${POSTGRES_USER}
         POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       volumes:
-        - db_data:/var/lib/postgresql/data # データベースのデータを永続化するための名前付きボリューム
-        # 初期化スクリプトをマウント (オプション)
-        # コンテナの初回起動時に /docker-entrypoint-initdb.d/ 配下の .sql または .sh が実行される
-        - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro # 読み取り専用でマウント
+        - db_data:/var/lib/postgresql/data
+        - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       ports:
-        - "5432:5432" # ホストの5432番ポートをコンテナの5432番ポートにマッピング (開発用、不要なら削除可)
-      healthcheck: # DBが完全に起動して接続可能かを確認
+        - "5432:5432"
+      healthcheck:
         test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-        interval: 5s     # 5秒ごとにチェック
-        timeout: 5s      # 5秒以内に応答がない場合はタイムアウト
-        retries: 5       # 5回失敗したらunhealthyと判断
-        start_period: 10s # 起動後10秒間は失敗してもunhealthyと判断しない (PostgreSQLの起動に時間がかかるため)
+        interval: 5s
+        timeout: 5s
+        retries: 5
+        start_period: 10s
       networks:
-        - alt-network # alt-networkに接続
+        - alt-network
         
 networks:
   alt-network:
 
 volumes:
-  db_data: 
+  db_data:
