@@ -13,5 +13,9 @@ func RegisterRoutes(e *echo.Echo) {
 		}
 		return c.JSON(http.StatusOK, response)
 	})
+	
+	v1.GET("/collectedFeeds", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, "Hello, World!")
+	})
 }
 
