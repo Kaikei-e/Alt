@@ -1,8 +1,7 @@
-// alt/usecase/fetch_feed_usecase/fetch_feed_usecase_test.go (修正後)
 package fetch_feed_usecase
 
 import (
-	"alt/domain" // 生成されたモックパッケージをインポート
+	"alt/domain"
 	"alt/mocks"
 	"reflect"
 	"testing"

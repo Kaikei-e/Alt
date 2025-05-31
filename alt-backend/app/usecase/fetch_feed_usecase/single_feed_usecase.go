@@ -14,5 +14,6 @@ func NewFetchSingleFeedUsecase(fetchSingleFeedPort fetch_feed_port.FetchSingleFe
 }
 
 func (u *FetchSingleFeedUsecase) Execute() (*domain.RSSFeed, error) {
+	// ビジネスロジック：フィードを取得
 	return u.fetchSingleFeedPort.FetchSingleFeed()
 }
