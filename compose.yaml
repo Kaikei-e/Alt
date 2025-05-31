@@ -1,6 +1,7 @@
 services:
   nginx:
     image: nginx:latest
+    restart: unless-stopped
     ports:
       - "80:80"
     volumes:
@@ -8,9 +9,13 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./alt-frontend/out:/usr/share/nginx/html:ro
     depends_on:
-      - alt-frontend
+      alt-frontend:
+        condition: service_healthy
+      alt-backend:
+        condition: service_healthy
     networks:
       - alt-network
+    tty: true
 
   alt-frontend:
     build:
@@ -25,7 +30,8 @@ services:
       - alt-backend
     networks:
       - alt-network
-
+    tty: true
+    
   alt-backend:
     build:
       context: ./alt-backend
@@ -34,6 +40,8 @@ services:
       - "9000:9000"
     networks:
       - alt-network
+    volumes:
+      - .env:/app/.env
     environment:
       - DB_HOST=db
       - DB_PORT=5432
@@ -41,35 +49,54 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_NAME=${POSTGRES_DB}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9000/v1/health || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 5
       start_period: 10s
-
+    tty: true
+    
   db:
-      image: postgres:16-alpine
-      restart: always
-      environment:
-        POSTGRES_DB: ${POSTGRES_DB}
-        POSTGRES_USER: ${POSTGRES_USER}
-        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      volumes:
-        - db_data:/var/lib/postgresql/data
-        - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      ports:
-        - "5432:5432"
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-        interval: 5s
-        timeout: 5s
-        retries: 5
-        start_period: 10s
-      networks:
-        - alt-network
-        
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d/init.sql:rw
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    tty: true
+  
+  migrate:
+    build:
+      context: ./migrate
+      dockerfile: Dockerfile.migrate
+    container_name: db_migrator
+    volumes:
+      - ./db/migrations:/migrations
+    environment:
+      DB_URL: "pgx5://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=disable&search_path=public"
+      MIGRATE_MAX_RETRIES: "12"
+      MIGRATE_RETRY_INTERVAL: "5"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - alt-network
 networks:
   alt-network:
 
