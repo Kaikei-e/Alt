@@ -53,4 +53,26 @@ clean-env:
 	@echo "Removing $(ENV_FILE)..."
 	@rm -f $(ENV_FILE)
 
-.PHONY: all up build down down-volumes clean clean-env
+PORT_BASE_DIR := ./alt-backend/app/port
+MOCKS_DIR := ./alt-backend/app/mocks
+
+generate-mocks:
+	@echo "Generating GoMock mocks for all interfaces in $(PORT_BASE_DIR)..."
+	@mkdir -p $(MOCKS_DIR)
+	@find $(PORT_BASE_DIR) -name "*.go" | while read -r file; do \
+		package_name=$$(basename $$(dirname $$file)); \
+		interface_name=$$(grep -Eo "type [[:alpha:]]+ interface" $$file | awk '{print $$2}' | head -n 1); \
+		if [ -n "$$interface_name" ]; then \
+			echo "  - Generating mock for interface '$$interface_name' from '$$file'"; \
+			mockgen -source=$$file \
+				-destination=$(MOCKS_DIR)/mock_$$package_name.go \
+				-package=mocks \
+				$$interface_name; \
+		else \
+			echo "  - No interface found in '$$file', skipping."; \
+		fi; \
+	done
+	@echo "GoMock mocks generated successfully in ./$(MOCKS_DIR)/"
+
+
+.PHONY: all up build down down-volumes clean clean-env generate-mocks
