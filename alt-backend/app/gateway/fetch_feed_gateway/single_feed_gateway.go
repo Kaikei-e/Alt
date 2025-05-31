@@ -3,15 +3,16 @@ package fetch_feed_gateway
 import (
 	"alt/domain"
 	"alt/port/fetch_feed_port"
-	"database/sql"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type FetchSingleFeedGateway struct {
 	fetchSingleFeedPort fetch_feed_port.FetchSingleFeedPort
-	db                  *sql.DB
+	db                  *pgx.Conn
 }
 
-func NewFetchSingleFeedGateway(fetchSingleFeedPort fetch_feed_port.FetchSingleFeedPort, db *sql.DB) *FetchSingleFeedGateway {
+func NewFetchSingleFeedGateway(fetchSingleFeedPort fetch_feed_port.FetchSingleFeedPort, db *pgx.Conn) *FetchSingleFeedGateway {
 	return &FetchSingleFeedGateway{
 		fetchSingleFeedPort: fetchSingleFeedPort,
 		db:                  db,

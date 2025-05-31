@@ -4,14 +4,15 @@ import (
 	"alt/gateway/fetch_feed_gateway"
 	"alt/port/fetch_feed_port"
 	"alt/usecase/fetch_feed_usecase"
-	"database/sql"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type ApplicationComponents struct {
 	FetchSingleFeedUsecase fetch_feed_usecase.FetchSingleFeedUsecase
 }
 
-func NewApplicationComponents(db *sql.DB) *ApplicationComponents {
+func NewApplicationComponents(db *pgx.Conn) *ApplicationComponents {
 	var feedFetcherGateway fetch_feed_port.FetchSingleFeedPort
 
 	feedFetcherGateway = fetch_feed_gateway.NewFetchSingleFeedGateway(feedFetcherGateway, db)
