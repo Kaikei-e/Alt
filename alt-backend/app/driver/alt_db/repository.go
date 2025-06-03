@@ -1,13 +1,13 @@
 package alt_db
 
 import (
-	"database/sql"
+	"github.com/jackc/pgx/v5"
 )
 
 type AltDBRepository struct {
-	db *sql.DB
+	db *pgx.Conn
 }
 
-func NewAltDBRepository(db *sql.DB) *AltDBRepository {
+func NewAltDBRepository(db *pgx.Conn) *AltDBRepository {
 	return &AltDBRepository{db: db}
 }
