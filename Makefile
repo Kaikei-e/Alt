@@ -72,7 +72,7 @@ generate-mocks:
 			echo "  - No interface found in '$$file', skipping."; \
 		fi; \
 	done
-	@echo "GoMock mocks generated successfully in ./$(MOCKS_DIR)/"
+	@echo "GoMock mocks generated successfully in $(MOCKS_DIR)/"
 
 
 .PHONY: all up build down down-volumes clean clean-env generate-mocks
