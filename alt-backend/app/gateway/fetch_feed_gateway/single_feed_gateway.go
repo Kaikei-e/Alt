@@ -2,6 +2,7 @@ package fetch_feed_gateway
 
 import (
 	"alt/domain"
+	"alt/driver/alt_db"
 	"alt/port/fetch_feed_port"
 
 	"github.com/jackc/pgx/v5"
@@ -9,13 +10,13 @@ import (
 
 type FetchSingleFeedGateway struct {
 	fetchSingleFeedPort fetch_feed_port.FetchSingleFeedPort
-	db                  *pgx.Conn
+	alt_db              *alt_db.AltDBRepository
 }
 
 func NewFetchSingleFeedGateway(fetchSingleFeedPort fetch_feed_port.FetchSingleFeedPort, db *pgx.Conn) *FetchSingleFeedGateway {
 	return &FetchSingleFeedGateway{
 		fetchSingleFeedPort: fetchSingleFeedPort,
-		db:                  db,
+		alt_db:              alt_db.NewAltDBRepository(db),
 	}
 }
 
