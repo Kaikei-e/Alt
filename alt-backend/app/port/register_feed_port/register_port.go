@@ -1,7 +1,14 @@
 package register_feed_port
 
-import "context"
+import (
+	"alt/domain"
+	"context"
+)
 
-type RegisterFeedPort interface {
+type RegisterFeedLinkPort interface {
 	RegisterRSSFeedLink(ctx context.Context, link string) error
+}
+
+type RegisterFeedsPort interface {
+	RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) error
 }
