@@ -24,14 +24,15 @@ func CollectSingleFeed(ctx context.Context, feedURL url.URL) (*rssFeed.Feed, err
 
 func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL) ([]*rssFeed.Feed, error) {
 	fp := rssFeed.NewParser()
-	feeds := make([]*rssFeed.Feed, len(feedURLs))
-	for i, feedURL := range feedURLs {
+	var feeds []*rssFeed.Feed
+	for _, feedURL := range feedURLs {
 		feed, err := fp.ParseURL(feedURL.String())
 		if err != nil {
 			logger.Logger.Error("Error parsing feed", "error", err)
 			return nil, err
 		}
-		feeds[i] = feed
+
+		feeds = append(feeds, feed)
 	}
 	return feeds, nil
 }

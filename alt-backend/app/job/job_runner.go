@@ -29,6 +29,7 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 				}
 				logger.Logger.Info("Feed collected", "feed length", len(feeds), "retry count", retryCount)
 			}
+
 			logger.Logger.Info("Feed collected", "feed length", len(feeds))
 			// err = WriteFeedsToFile(feeds)
 			// if err != nil {
