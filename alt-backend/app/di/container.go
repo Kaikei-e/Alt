@@ -4,8 +4,6 @@ import (
 	"alt/driver/alt_db"
 	"alt/gateway/fetch_feed_gateway"
 	"alt/gateway/register_feed_gateway"
-	"alt/port/fetch_feed_port"
-	"alt/port/register_feed_port"
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/register_feed_usecase.go"
 
@@ -19,13 +17,11 @@ type ApplicationComponents struct {
 }
 
 func NewApplicationComponents(db *pgx.Conn) *ApplicationComponents {
-	var feedFetcherGateway fetch_feed_port.FetchSingleFeedPort
-	var registerFeedGateway register_feed_port.RegisterFeedPort
-
-	feedFetcherGatewayImpl := fetch_feed_gateway.NewFetchSingleFeedGateway(feedFetcherGateway, db)
+	// Create the concrete gateway implementations
+	feedFetcherGatewayImpl := fetch_feed_gateway.NewFetchSingleFeedGateway(db)
 	fetchSingleFeedUsecase := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGatewayImpl)
 
-	registerFeedGatewayImpl := register_feed_gateway.NewRegisterFeedGateway(registerFeedGateway, db)
+	registerFeedGatewayImpl := register_feed_gateway.NewRegisterFeedGateway(db)
 	registerFeedUsecase := register_feed_usecase.NewRegisterFeedUsecase(registerFeedGatewayImpl)
 
 	return &ApplicationComponents{

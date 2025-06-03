@@ -3,6 +3,7 @@ package fetch_feed_usecase
 import (
 	"alt/domain"
 	"alt/port/fetch_feed_port"
+	"context"
 )
 
 type FetchSingleFeedUsecase struct {
@@ -13,7 +14,11 @@ func NewFetchSingleFeedUsecase(fetchSingleFeedPort fetch_feed_port.FetchSingleFe
 	return &FetchSingleFeedUsecase{fetchSingleFeedPort: fetchSingleFeedPort}
 }
 
-func (u *FetchSingleFeedUsecase) Execute() (*domain.RSSFeed, error) {
-	// ビジネスロジック：フィードを取得
-	return u.fetchSingleFeedPort.FetchSingleFeed()
+func (u *FetchSingleFeedUsecase) Execute(ctx context.Context) (*domain.RSSFeed, error) {
+	gateway := u.fetchSingleFeedPort
+	feed, err := gateway.FetchSingleFeed(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return feed, nil
 }

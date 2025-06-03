@@ -21,8 +21,8 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		return c.JSON(http.StatusOK, response)
 	})
 
-	v1.GET("/feeds/collect", func(c echo.Context) error {
-		feed, err := container.FetchSingleFeedUsecase.Execute()
+	v1.GET("/feeds/fetch/single", func(c echo.Context) error {
+		feed, err := container.FetchSingleFeedUsecase.Execute(c.Request().Context())
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}

@@ -3,6 +3,7 @@ package fetch_feed_usecase
 import (
 	"alt/domain"
 	"alt/mocks"
+	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 	// このコントローラは、テスト終了時にMockオブジェクトの期待値を検証する
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish() // テスト終了時にVerify()を呼び出すことを保証
+	ctx := context.Background()
 
 	// 成功時の期待されるRSSFeedデータ
 	mockSuccessFeed := &domain.RSSFeed{
@@ -42,7 +44,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 		{
 			name: "success",
 			mockSetup: func(mockPort *mocks.MockFetchSingleFeedPort) {
-				mockPort.EXPECT().FetchSingleFeed().Return(mockSuccessFeed, nil).Times(1)
+				mockPort.EXPECT().FetchSingleFeed(ctx).Return(mockSuccessFeed, nil).Times(1)
 			},
 			want:    mockSuccessFeed,
 			wantErr: false,
@@ -54,7 +56,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 			tt.mockSetup(mockPort)
 
 			usecase := NewFetchSingleFeedUsecase(mockPort)
-			got, err := usecase.Execute()
+			got, err := usecase.Execute(ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FetchSingleFeedUsecase.Execute() error = %v, wantErr %v", err, tt.wantErr)
 			}

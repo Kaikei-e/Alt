@@ -11,6 +11,7 @@ package mocks
 
 import (
 	domain "alt/domain"
+	context "context"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -41,16 +42,16 @@ func (m *MockFetchSingleFeedPort) EXPECT() *MockFetchSingleFeedPortMockRecorder 
 }
 
 // FetchSingleFeed mocks base method.
-func (m *MockFetchSingleFeedPort) FetchSingleFeed() (*domain.RSSFeed, error) {
+func (m *MockFetchSingleFeedPort) FetchSingleFeed(ctx context.Context) (*domain.RSSFeed, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FetchSingleFeed")
+	ret := m.ctrl.Call(m, "FetchSingleFeed", ctx)
 	ret0, _ := ret[0].(*domain.RSSFeed)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FetchSingleFeed indicates an expected call of FetchSingleFeed.
-func (mr *MockFetchSingleFeedPortMockRecorder) FetchSingleFeed() *gomock.Call {
+func (mr *MockFetchSingleFeedPortMockRecorder) FetchSingleFeed(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchSingleFeed", reflect.TypeOf((*MockFetchSingleFeedPort)(nil).FetchSingleFeed))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchSingleFeed", reflect.TypeOf((*MockFetchSingleFeedPort)(nil).FetchSingleFeed), ctx)
 }
