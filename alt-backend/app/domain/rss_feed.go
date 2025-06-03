@@ -14,7 +14,7 @@ type RSSFeed struct {
 	Image         RSSFeedImage      `json:"image"`
 	Generator     string            `json:"generator"`
 	Extensions    RSSFeedExtensions `json:"extensions"`
-	Items         []Item            `json:"items"`
+	Items         []FeedItem        `json:"items"`
 	FeedType      string            `json:"feedType"`
 	FeedVersion   string            `json:"feedVersion"`
 }
@@ -48,20 +48,15 @@ type RSSFeedImage struct {
 	Title string `json:"title"`
 }
 
-type Item struct {
-	Title           string         `json:"title"`
-	Description     string         `json:"description"`
-	Link            string         `json:"link"`
-	Links           []string       `json:"links"`
-	Published       string         `json:"published"`
-	PublishedParsed time.Time      `json:"publishedParsed"`
-	Author          Author         `json:"author"`
-	Authors         []Author       `json:"authors"`
-	GUID            string         `json:"guid"`
-	Image           ItemImage      `json:"image"`
-	Enclosures      []Enclosure    `json:"enclosures"`
-	DcEXT           DcEXT          `json:"dcExt"`
-	Extensions      ItemExtensions `json:"extensions"`
+type FeedItem struct {
+	Title           string    `json:"title"`
+	Description     string    `json:"description"`
+	Link            string    `json:"link"`
+	Links           []string  `json:"links"`
+	Published       string    `json:"published"`
+	PublishedParsed time.Time `json:"publishedParsed"`
+	Author          Author    `json:"author"`
+	Authors         []Author  `json:"authors"`
 }
 
 type Author struct {
