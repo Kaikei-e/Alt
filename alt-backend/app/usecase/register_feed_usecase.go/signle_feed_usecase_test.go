@@ -3,6 +3,7 @@ package register_feed_usecase
 import (
 	"alt/mocks"
 	"alt/port/register_feed_port"
+	"alt/utils/logger"
 	"context"
 	"testing"
 
@@ -10,8 +11,11 @@ import (
 )
 
 func TestRegisterFeedUsecase_Execute(t *testing.T) {
+	logger.InitLogger()
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
+	ctx := context.Background()
 
 	mockRegisterFeedPort := mocks.NewMockRegisterFeedPort(ctrl)
 
@@ -34,8 +38,8 @@ func TestRegisterFeedUsecase_Execute(t *testing.T) {
 				registerFeedGateway: mockRegisterFeedPort,
 			},
 			args: args{
-				ctx:  context.Background(),
-				link: "https://example.com/rss",
+				ctx:  ctx,
+				link: "https://www.usnews.com/rss/news",
 			},
 			wantErr: false,
 		},

@@ -2,7 +2,6 @@ package register_feed_gateway
 
 import (
 	"alt/driver/alt_db"
-	"alt/port/register_feed_port"
 	"alt/utils/logger"
 	"context"
 
@@ -10,12 +9,11 @@ import (
 )
 
 type RegisterFeedGateway struct {
-	registerFeedPort register_feed_port.RegisterFeedPort
-	alt_db           *alt_db.AltDBRepository
+	alt_db *alt_db.AltDBRepository
 }
 
-func NewRegisterFeedGateway(registerFeedPort register_feed_port.RegisterFeedPort, db *pgx.Conn) *RegisterFeedGateway {
-	return &RegisterFeedGateway{registerFeedPort: registerFeedPort, alt_db: alt_db.NewAltDBRepository(db)}
+func NewRegisterFeedGateway(db *pgx.Conn) *RegisterFeedGateway {
+	return &RegisterFeedGateway{alt_db: alt_db.NewAltDBRepository(db)}
 }
 
 func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link string) error {
