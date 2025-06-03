@@ -26,7 +26,7 @@ func main() {
 
 	container := di.NewApplicationComponents(db)
 
-	job.HourlyJobRunner(ctx)
+	job.HourlyJobRunner(ctx, container.AltDBRepository)
 
 	e := echo.New()
 	rest.RegisterRoutes(e, container)
