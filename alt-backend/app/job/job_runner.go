@@ -4,20 +4,22 @@ import (
 	"context"
 	"time"
 
+	"alt/driver/alt_db"
 	"alt/utils/logger"
 )
 
-func HourlyJobRunner(ctx context.Context) {
-	csvPath := PathCleaner(CSVPath)
-	feedStaticURLs, err := CSVToURLList(csvPath)
+func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
+	feedURLs, err := r.FetchRSSFeedURLs(ctx)
 	if err != nil {
-		logger.Logger.Error("Error loading feed static URLs", "error", err)
+		logger.Logger.Error("Error fetching RSS feed URLs", "error", err)
 		return
 	}
 
+	logger.Logger.Info("Found RSS feed URLs", "count", len(feedURLs))
+
 	go func() {
 		for {
-			feeds, err := CollectMultipleFeeds(ctx, feedStaticURLs)
+			feeds, err := CollectMultipleFeeds(ctx, feedURLs)
 			if err != nil {
 				logger.Logger.Error("Error collecting feed", "error", err)
 				retryCount, err := exponentialBackoffAndRetry(ctx, 5)
@@ -28,10 +30,10 @@ func HourlyJobRunner(ctx context.Context) {
 				logger.Logger.Info("Feed collected", "feed length", len(feeds), "retry count", retryCount)
 			}
 			logger.Logger.Info("Feed collected", "feed length", len(feeds))
-			err = WriteFeedsToFile(feeds)
-			if err != nil {
-				logger.Logger.Error("Error writing feeds to file", "error", err)
-			}
+			// err = WriteFeedsToFile(feeds)
+			// if err != nil {
+			// 	logger.Logger.Error("Error writing feeds to file", "error", err)
+			// }
 			time.Sleep(1 * time.Hour)
 		}
 	}()
