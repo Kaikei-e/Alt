@@ -34,7 +34,7 @@ func (g *FetchSingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.R
 		return &domain.RSSFeed{
 			Title:       "No feeds available",
 			Description: "No RSS feed URLs have been registered",
-			Items:       []domain.Item{},
+			Items:       []domain.FeedItem{},
 		}, nil
 	}
 
@@ -70,7 +70,7 @@ func convertGofeedToDomain(feed *gofeed.Feed) *domain.RSSFeed {
 		Generator:   feed.Generator,
 		FeedType:    feed.FeedType,
 		FeedVersion: feed.FeedVersion,
-		Items:       make([]domain.Item, 0, len(feed.Items)),
+		Items:       make([]domain.FeedItem, 0, len(feed.Items)),
 	}
 
 	// Handle updated time parsing
@@ -96,12 +96,20 @@ func convertGofeedToDomain(feed *gofeed.Feed) *domain.RSSFeed {
 
 	// Convert feed items
 	for _, item := range feed.Items {
-		domainItem := domain.Item{
+		domainItem := domain.FeedItem{
 			Title:       item.Title,
 			Description: item.Description,
 			Link:        item.Link,
 			Published:   item.Published,
-			GUID:        item.GUID,
+			Authors: []domain.Author{
+				{
+					Name: item.Author.Name,
+				},
+			},
+			Links: item.Links,
+			Author: domain.Author{
+				Name: item.Author.Name,
+			},
 		}
 
 		// Handle published time parsing
@@ -127,25 +135,6 @@ func convertGofeedToDomain(feed *gofeed.Feed) *domain.RSSFeed {
 			}
 			// Set the first author as the main author
 			domainItem.Author = domainItem.Authors[0]
-		}
-
-		// Handle item image
-		if item.Image != nil {
-			domainItem.Image = domain.ItemImage{
-				URL: item.Image.URL,
-			}
-		}
-
-		// Handle enclosures
-		if len(item.Enclosures) > 0 {
-			domainItem.Enclosures = make([]domain.Enclosure, len(item.Enclosures))
-			for i, enc := range item.Enclosures {
-				domainItem.Enclosures[i] = domain.Enclosure{
-					URL:    enc.URL,
-					Length: enc.Length,
-					Type:   domain.Type(enc.Type),
-				}
-			}
 		}
 
 		domainFeed.Items = append(domainFeed.Items, domainItem)

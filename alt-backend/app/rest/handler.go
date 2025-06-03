@@ -36,17 +36,15 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 
-		// Validate URL is not empty
 		if strings.TrimSpace(rssFeedLink.URL) == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "URL is required and cannot be empty"})
 		}
 
-		// Validate URL has proper protocol scheme
 		if !strings.HasPrefix(rssFeedLink.URL, "https://") {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "URL must start with https://"})
 		}
 
-		err = container.RegisterFeedUsecase.Execute(c.Request().Context(), rssFeedLink.URL)
+		err = container.RegisterFeedsUsecase.Execute(c.Request().Context(), rssFeedLink.URL)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
