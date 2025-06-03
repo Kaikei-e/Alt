@@ -55,3 +55,42 @@ func (mr *MockFetchSingleFeedPortMockRecorder) FetchSingleFeed(ctx any) *gomock.
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchSingleFeed", reflect.TypeOf((*MockFetchSingleFeedPort)(nil).FetchSingleFeed), ctx)
 }
+
+// MockFetchFeedsPort is a mock of FetchFeedsPort interface.
+type MockFetchFeedsPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockFetchFeedsPortMockRecorder
+	isgomock struct{}
+}
+
+// MockFetchFeedsPortMockRecorder is the mock recorder for MockFetchFeedsPort.
+type MockFetchFeedsPortMockRecorder struct {
+	mock *MockFetchFeedsPort
+}
+
+// NewMockFetchFeedsPort creates a new mock instance.
+func NewMockFetchFeedsPort(ctrl *gomock.Controller) *MockFetchFeedsPort {
+	mock := &MockFetchFeedsPort{ctrl: ctrl}
+	mock.recorder = &MockFetchFeedsPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFetchFeedsPort) EXPECT() *MockFetchFeedsPortMockRecorder {
+	return m.recorder
+}
+
+// FetchFeeds mocks base method.
+func (m *MockFetchFeedsPort) FetchFeeds(ctx context.Context, link string) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeeds", ctx, link)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeeds indicates an expected call of FetchFeeds.
+func (mr *MockFetchFeedsPortMockRecorder) FetchFeeds(ctx, link any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeeds", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchFeeds), ctx, link)
+}
