@@ -1,13 +1,18 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Provider } from "@/components/ui/provider"
+
+// Chakra UI 関連 import
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+
+// カスタム Provider をインポート
+import { Provider as CustomColorModeProvider } from "@/components/ui/provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
-
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
@@ -18,15 +23,13 @@ export const metadata: Metadata = {
   description: "Alt: A simple RSS reader",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <Provider>{children}</Provider>
+        <ChakraProvider value={defaultSystem}>
+          <CustomColorModeProvider>{children}</CustomColorModeProvider>
+        </ChakraProvider>
       </body>
     </html>
   );

@@ -42,7 +42,7 @@ a {
 }
 
 /* Screen Styles */
-@media (min-width: 768px) { 
+@media (min-width: 768px) {
   .desktop {
     display: block;
   }
