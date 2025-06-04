@@ -13,14 +13,13 @@ export function useInfiniteScroll(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            console.log("Reached bottom of the page");
             stableCallback();
           }
         });
       },
       {
-        rootMargin: '20px', // Trigger slightly before the element is fully visible
-      }
+        rootMargin: "10px",
+      },
     );
 
     observer.observe(ref.current);

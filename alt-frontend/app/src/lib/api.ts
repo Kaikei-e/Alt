@@ -7,7 +7,6 @@ export type ApiResponse<T> = {
   data: T;
 };
 
-
 class ApiClient {
   private baseUrl: string;
 
@@ -16,17 +15,13 @@ class ApiClient {
   }
 
   async get<T>(endpoint: string): Promise<T> {
-    console.log(`Making GET request to: ${this.baseUrl}${endpoint}`);
-    
     try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       });
-
-      console.log(`Response status: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         throw new Error(
@@ -35,10 +30,8 @@ class ApiClient {
       }
 
       const data = await response.json();
-      console.log("Response data:", data);
       return data;
     } catch (error) {
-      console.error(`API request failed for ${endpoint}:`, error);
       throw error;
     }
   }
@@ -61,7 +54,6 @@ class ApiClient {
 
       return response.json();
     } catch (error) {
-      console.error(`API POST request failed for ${endpoint}:`, error);
       throw error;
     }
   }
