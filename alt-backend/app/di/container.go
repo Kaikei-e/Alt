@@ -12,6 +12,7 @@ import (
 
 type ApplicationComponents struct {
 	FetchSingleFeedUsecase *fetch_feed_usecase.FetchSingleFeedUsecase
+	FetchFeedsListUsecase  *fetch_feed_usecase.FetchFeedsListUsecase
 	RegisterFeedsUsecase   *register_feed_usecase.RegisterFeedsUsecase
 	AltDBRepository        *alt_db.AltDBRepository
 }
@@ -19,7 +20,9 @@ type ApplicationComponents struct {
 func NewApplicationComponents(db *pgx.Conn) *ApplicationComponents {
 	// Create the concrete gateway implementations
 	feedFetcherGatewayImpl := fetch_feed_gateway.NewFetchSingleFeedGateway(db)
+	fetchFeedsListGatewayImpl := fetch_feed_gateway.NewFetchFeedsGateway(db)
 	fetchSingleFeedUsecase := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGatewayImpl)
+	fetchFeedsListUsecase := fetch_feed_usecase.NewFetchFeedsListUsecase(fetchFeedsListGatewayImpl)
 
 	registerFeedLinkGatewayImpl := register_feed_gateway.NewRegisterFeedLinkGateway(db)
 	registerFeedsGatewayImpl := register_feed_gateway.NewRegisterFeedsGateway(db)
@@ -28,6 +31,7 @@ func NewApplicationComponents(db *pgx.Conn) *ApplicationComponents {
 
 	return &ApplicationComponents{
 		FetchSingleFeedUsecase: fetchSingleFeedUsecase,
+		FetchFeedsListUsecase:  fetchFeedsListUsecase,
 		RegisterFeedsUsecase:   registerFeedsUsecase,
 		AltDBRepository:        alt_db.NewAltDBRepository(db),
 	}
