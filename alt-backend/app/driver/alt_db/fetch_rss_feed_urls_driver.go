@@ -25,13 +25,20 @@ func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, erro
 
 		linkURL, err := url.Parse(link)
 		if err != nil {
-			logger.Logger.Error("Error parsing RSS link", "error", err)
-			return nil, err
+			logger.Logger.Error("Error parsing RSS link - invalid URL format", "url", link, "error", err)
+			continue // Skip invalid URLs instead of failing entirely
 		}
 
-		logger.Logger.Info("Found RSS link", "link", linkURL.String())
+		// Log detailed information about each URL for debugging
+		logger.Logger.Info("Found RSS link in database",
+			"url", linkURL.String(),
+			"scheme", linkURL.Scheme,
+			"host", linkURL.Host,
+			"path", linkURL.Path)
+
 		links = append(links, *linkURL)
 	}
 
+	logger.Logger.Info("RSS feed URL fetch summary", "total_found", len(links))
 	return links, nil
 }
