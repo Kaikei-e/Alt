@@ -27,7 +27,6 @@ func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.F
 		}
 		logger.Logger.Info("Existing feed updated", "link", feed.Link)
 	} else {
-		// Feed doesn't exist, insert new one
 		_, err = tx.Exec(ctx, "INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
 			feed.Title, feed.Description, feed.Link, feed.PubDate, feed.CreatedAt, feed.UpdatedAt)
 		if err != nil {
