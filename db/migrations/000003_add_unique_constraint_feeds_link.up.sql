@@ -1,0 +1,1 @@
+ALTER TABLE feeds ADD CONSTRAINT unique_feeds_link UNIQUE (link); 

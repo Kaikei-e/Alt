@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"alt/driver/alt_db"
+	"alt/driver/models"
 	"alt/utils/logger"
 )
 
@@ -22,15 +23,21 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 			feeds, err := CollectMultipleFeeds(ctx, feedURLs)
 			if err != nil {
 				logger.Logger.Error("Error collecting feeds", "error", err)
-				// Log but don't retry - wait for next cycle
 			} else {
 				logger.Logger.Info("Feed collection completed", "feed count", len(feeds))
 
-				// Uncomment when ready to write feeds to file
-				// err = WriteFeedsToFile(feeds)
-				// if err != nil {
-				// 	logger.Logger.Error("Error writing feeds to file", "error", err)
-				// }
+				feedModels := make([]models.Feed, len(feeds))
+				for i, feed := range feeds {
+					feedModels[i] = models.Feed{
+						Title:       feed.Title,
+						Description: feed.Description,
+						Link:        feed.Link,
+						CreatedAt:   time.Now().UTC(),
+						UpdatedAt:   time.Now().UTC(),
+					}
+				}
+
+				r.RegisterMultipleFeeds(ctx, feedModels)
 			}
 
 			logger.Logger.Info("Sleeping for 1 hour until next feed collection cycle")
