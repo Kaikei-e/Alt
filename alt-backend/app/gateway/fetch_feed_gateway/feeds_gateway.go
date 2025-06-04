@@ -100,3 +100,23 @@ func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int)
 
 	return feedItems, nil
 }
+
+func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
+	feeds, err := g.alt_db.FetchFeedsListPage(ctx, page)
+	if err != nil {
+		logger.Logger.Error("Error fetching feeds list page", "error", err)
+		return nil, errors.New("error fetching feeds list page")
+	}
+
+	var feedItems []*domain.FeedItem
+	for _, feed := range feeds {
+		feedItems = append(feedItems, &domain.FeedItem{
+			Title:           feed.Title,
+			Description:     feed.Description,
+			Link:            feed.Link,
+			PublishedParsed: feed.PubDate,
+		})
+	}
+
+	return feedItems, nil
+}

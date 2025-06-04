@@ -124,3 +124,18 @@ func (mr *MockFetchFeedsPortMockRecorder) FetchFeedsListLimit(ctx, offset any) *
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsListLimit", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchFeedsListLimit), ctx, offset)
 }
+
+// FetchFeedsListPage mocks base method.
+func (m *MockFetchFeedsPort) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeedsListPage", ctx, page)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeedsListPage indicates an expected call of FetchFeedsListPage.
+func (mr *MockFetchFeedsPortMockRecorder) FetchFeedsListPage(ctx, page any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsListPage", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchFeedsListPage), ctx, page)
+}

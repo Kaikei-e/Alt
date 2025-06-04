@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 type rssFeedLink struct {
@@ -15,6 +16,13 @@ type rssFeedLink struct {
 }
 
 func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
+	// Add CORS middleware
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "*"},
+		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
+	}))
+
 	v1 := e.Group("/v1")
 	v1.GET("/health", func(c echo.Context) error {
 		response := map[string]string{
@@ -46,6 +54,18 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 		feeds, err := container.FetchFeedsListUsecase.ExecuteLimit(c.Request().Context(), limit)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, feeds)
+	})
+
+	v1.GET("/feeds/fetch/page/:page", func(c echo.Context) error {
+		page, err := strconv.Atoi(c.Param("page"))
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		feeds, err := container.FetchFeedsListUsecase.ExecutePage(c.Request().Context(), page)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
