@@ -3,6 +3,7 @@ package alt_db
 import (
 	"alt/utils/logger"
 	"context"
+	"errors"
 	"net/url"
 )
 
@@ -10,7 +11,7 @@ func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, erro
 	rows, err := r.db.Query(ctx, "SELECT url FROM feed_links")
 	if err != nil {
 		logger.Logger.Error("Error fetching RSS links", "error", err)
-		return nil, err
+		return nil, errors.New("error fetching RSS links")
 	}
 	defer rows.Close()
 
@@ -20,7 +21,7 @@ func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, erro
 		err := rows.Scan(&link)
 		if err != nil {
 			logger.Logger.Error("Error scanning RSS link", "error", err)
-			return nil, err
+			return nil, errors.New("error scanning RSS link")
 		}
 
 		linkURL, err := url.Parse(link)
