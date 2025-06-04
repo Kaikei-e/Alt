@@ -2,7 +2,9 @@ package rest
 
 import (
 	"alt/di"
+	"alt/utils/logger"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -27,6 +29,27 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, feed)
+	})
+
+	v1.GET("/feeds/fetch/list", func(c echo.Context) error {
+		feeds, err := container.FetchFeedsListUsecase.Execute(c.Request().Context())
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, feeds)
+	})
+
+	v1.GET("/feeds/fetch/limit/:limit", func(c echo.Context) error {
+		limit, err := strconv.Atoi(c.Param("limit"))
+		if err != nil {
+			logger.Logger.Error("Error parsing limit", "error", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		feeds, err := container.FetchFeedsListUsecase.ExecuteLimit(c.Request().Context(), limit)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, feeds)
 	})
 
 	v1.POST("/rss-feed-link/register", func(c echo.Context) error {

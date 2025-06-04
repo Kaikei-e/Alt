@@ -5,7 +5,7 @@ import (
 	"alt/driver/alt_db"
 	"alt/utils/logger"
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mmcdole/gofeed"
@@ -26,7 +26,7 @@ func (g *FetchSingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.R
 	feedURLs, err := g.alt_db.FetchRSSFeedURLs(ctx)
 	if err != nil {
 		logger.Logger.Error("Error fetching RSS feed URLs", "error", err)
-		return nil, fmt.Errorf("failed to fetch RSS feed URLs: %w", err)
+		return nil, errors.New("error fetching RSS feed URLs")
 	}
 
 	if len(feedURLs) == 0 {
@@ -47,7 +47,7 @@ func (g *FetchSingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.R
 	feed, err := fp.ParseURL(feedURL.String())
 	if err != nil {
 		logger.Logger.Error("Error parsing feed", "error", err)
-		return nil, fmt.Errorf("failed to parse RSS feed from %s: %w", feedURL.String(), err)
+		return nil, errors.New("error parsing feed")
 	}
 
 	// Convert the gofeed.Feed to domain.RSSFeed

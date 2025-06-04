@@ -11,4 +11,6 @@ type FetchSingleFeedPort interface {
 
 type FetchFeedsPort interface {
 	FetchFeeds(ctx context.Context, link string) ([]*domain.FeedItem, error)
+	FetchFeedsList(ctx context.Context) ([]*domain.FeedItem, error)
+	FetchFeedsListLimit(ctx context.Context, offset int) ([]*domain.FeedItem, error)
 }
