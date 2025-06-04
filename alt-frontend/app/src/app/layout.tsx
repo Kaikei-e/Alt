@@ -3,9 +3,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// Chakra UI 関連 import
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-
 // カスタム Provider をインポート
 import { Provider as CustomColorModeProvider } from "@/components/ui/provider";
 
@@ -27,9 +24,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <ChakraProvider value={defaultSystem}>
-          <CustomColorModeProvider>{children}</CustomColorModeProvider>
-        </ChakraProvider>
+        <CustomColorModeProvider>{children}</CustomColorModeProvider>
       </body>
     </html>
   );

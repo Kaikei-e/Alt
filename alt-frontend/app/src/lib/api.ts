@@ -1,7 +1,7 @@
 import { Feed } from "@/schema/feed";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost/api";
 
 export type ApiResponse<T> = {
   data: T;
