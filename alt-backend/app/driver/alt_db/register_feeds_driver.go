@@ -7,7 +7,7 @@ import (
 )
 
 func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.Feed) error {
-	_, err := r.db.Exec(ctx, "INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)", feed.Title, feed.Description, feed.Link, feed.PubDate, feed.CreatedAt, feed.UpdatedAt)
+	_, err := r.db.Exec(ctx, "INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (link) DO NOTHING", feed.Title, feed.Description, feed.Link, feed.PubDate, feed.CreatedAt, feed.UpdatedAt)
 	if err != nil {
 		logger.Logger.Error("Error registering single feed link", "error", err)
 		return err
