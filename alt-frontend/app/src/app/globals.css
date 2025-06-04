@@ -40,3 +40,14 @@ a {
     color-scheme: dark;
   }
 }
+
+/* Screen Styles */
+@media (min-width: 768px) { 
+  .desktop {
+    display: block;
+  }
+
+  .mobile {
+    display: none;
+  }
+}
