@@ -57,39 +57,31 @@ export default function Feeds() {
   };
 
   const loadMore = useCallback(async () => {
-    console.log('loadMore called', { isLoading, hasMore, error, currentPage });
-    
+      
     if (isLoading || !hasMore || error) {
-      console.log('loadMore early return:', { isLoading, hasMore, error });
       return;
     }
 
-    console.log('Starting to load more feeds for page:', currentPage + 1);
     setIsLoading(true);
 
     try {
       const nextPage = currentPage + 1;
       const newFeeds = await feedsApi.getFeedsPage(nextPage);
 
-      console.log('Loaded feeds for page', nextPage, ':', newFeeds.length);
 
       if (newFeeds.length === 0) {
-        console.log('No more feeds available');
         setHasMore(false);
       } else {
         setFeeds((prevFeeds) => {
-          console.log('Adding', newFeeds.length, 'new feeds to', prevFeeds.length, 'existing feeds');
           return [...prevFeeds, ...newFeeds];
         });
         setCurrentPage(nextPage);
 
         if (newFeeds.length < PAGE_SIZE) {
-          console.log('Received less than PAGE_SIZE, setting hasMore to false');
           setHasMore(false);
         }
       }
     } catch (error) {
-      console.error("Error loading more feeds:", error);
       setHasMore(false);
     }
 
