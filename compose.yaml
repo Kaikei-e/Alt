@@ -35,6 +35,7 @@ services:
     build:
       context: ./alt-backend
       dockerfile: Dockerfile.backend
+    restart: always
     ports:
       - "9000:9000"
     networks:
