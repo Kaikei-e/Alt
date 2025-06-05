@@ -18,7 +18,6 @@ func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.F
 	var existingID string
 	err = tx.QueryRow(ctx, "SELECT id FROM feeds WHERE link = $1", feed.Link).Scan(&existingID)
 	if err == nil {
-		// Feed already exists, update it
 		_, err = tx.Exec(ctx, "UPDATE feeds SET title = $1, description = $2, pub_date = $3, updated_at = $4 WHERE link = $5",
 			feed.Title, feed.Description, feed.PubDate, feed.UpdatedAt, feed.Link)
 		if err != nil {

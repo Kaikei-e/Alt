@@ -2,6 +2,7 @@ package rest
 
 import (
 	"alt/di"
+	"alt/domain"
 	"alt/utils/logger"
 	"net/http"
 	"strconv"
@@ -69,6 +70,9 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
+
+		feeds = removeEscapedString(feeds)
+
 		return c.JSON(http.StatusOK, feeds)
 	})
 
@@ -93,4 +97,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		}
 		return c.JSON(http.StatusOK, map[string]string{"message": "RSS feed link registered"})
 	})
+}
+
+func removeEscapedString(feeds []*domain.FeedItem) []*domain.FeedItem {
+	for _, feed := range feeds {
+		feed.Description = strings.ReplaceAll(feed.Description, "\n", "")
+	}
+	return feeds
 }
