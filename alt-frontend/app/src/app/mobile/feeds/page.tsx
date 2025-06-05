@@ -94,8 +94,7 @@ export default function Feeds() {
         height="100vh"
         width="100%"
       >
-        <CircularProgress isIndeterminate color="indigo.500" size="lg" />
-        <Text mt={4}>Loading feeds...</Text>
+        <CircularProgress isIndeterminate color="indigo.500" size="md" />
       </Flex>
     );
   }
@@ -134,22 +133,22 @@ export default function Feeds() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", width: "100%" }}>
+    <Flex
+      flexDirection="column"
+      alignItems="center"
+      width="100%"
+      bg="indigo.400"
+      minHeight="100vh"
+    >
       {feeds.length > 0 ? (
-        <Flex
-          flexDirection="column"
-          alignItems="center"
-          width="100%"
-          gap={4}
-          p={4}
-        >
+        <Flex flexDirection="column" alignItems="center" width="100%">
           {feeds.map((feed: Feed) => (
             <Flex
               key={feed.link}
               flexDirection="column"
               justifyContent="center"
               alignItems="center"
-              width="90%"
+              width="100%"
               p={4}
             >
               <FeedCard feed={feed} />
@@ -186,6 +185,6 @@ export default function Feeds() {
           <Text>No feeds available</Text>
         </Flex>
       )}
-    </div>
+    </Flex>
   );
 }

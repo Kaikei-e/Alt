@@ -9,20 +9,21 @@ export default function FeedCard({ feed }: { feed: Feed }) {
       flexDirection="column"
       justifyContent="center"
       alignItems="center"
-      height="1/12"
-      width="90%"
-      bg="gray.100"
-      borderRadius="md"
+      height="3/12"
+      width="100%"
+      bg="blue.100"
+      borderRadius="2xl"
+      p={4}
     >
-      <Text fontSize="lg" fontWeight="bold">
-        <Link href={feed.link} color="gray.500" target="_blank">
+      <Text fontSize="md" fontWeight="bold" color="gray.500">
+        <Link href={feed.link} target="_blank">
           {feed.title}
         </Link>
       </Text>
-      <Text fontSize="sm" color="gray.500">
-        {feed.description}
+      <Text fontSize="xs" color="gray.500">
+        {feed.description.slice(0, 200)}...
       </Text>
-      <Text fontSize="sm" color="gray.500">
+      <Text fontSize="xs" color="gray.500">
         {feed.pubDate}
       </Text>
     </Flex>
