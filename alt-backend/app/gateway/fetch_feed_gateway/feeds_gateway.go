@@ -6,6 +6,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mmcdole/gofeed"
@@ -72,10 +73,10 @@ func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedI
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:           feed.Title,
-			Description:     feed.Description,
-			Link:            feed.Link,
-			PublishedParsed: feed.PubDate,
+			Title:       feed.Title,
+			Description: feed.Description,
+			Link:        feed.Link,
+			Published:   feed.CreatedAt.Format(time.RFC3339),
 		})
 	}
 	return feedItems, nil
@@ -91,10 +92,10 @@ func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int)
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:           feed.Title,
-			Description:     feed.Description,
-			Link:            feed.Link,
-			PublishedParsed: feed.PubDate,
+			Title:       feed.Title,
+			Description: feed.Description,
+			Link:        feed.Link,
+			Published:   feed.CreatedAt.Format(time.RFC3339),
 		})
 	}
 
@@ -111,10 +112,10 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
 		feedItems = append(feedItems, &domain.FeedItem{
-			Title:           feed.Title,
-			Description:     feed.Description,
-			Link:            feed.Link,
-			PublishedParsed: feed.PubDate,
+			Title:       feed.Title,
+			Description: feed.Description,
+			Link:        feed.Link,
+			Published:   feed.CreatedAt.Format(time.RFC3339),
 		})
 	}
 
