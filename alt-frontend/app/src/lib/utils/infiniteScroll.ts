@@ -5,7 +5,7 @@ export function useInfiniteScroll(
   ref: React.RefObject<HTMLDivElement | null>,
 ) {
   const callbackRef = useRef(callback);
-  
+
   // Keep the callback ref updated
   useEffect(() => {
     callbackRef.current = callback;
@@ -22,7 +22,7 @@ export function useInfiniteScroll(
 
     const setupObserver = () => {
       const element = ref.current;
-      
+
       if (!element) {
         timeoutId = setTimeout(setupObserver, 100);
         return;

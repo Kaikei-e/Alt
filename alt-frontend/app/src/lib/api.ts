@@ -14,7 +14,6 @@ interface BackendFeedItem {
   link: string;
   links?: string[];
   published?: string;
-  publishedParsed: string; // ISO date string
   author?: {
     name: string;
   };
@@ -84,56 +83,56 @@ export const feedsApi = {
 
   async getFeeds(page: number = 1, pageSize: number = 20): Promise<Feed[]> {
     const limit = page * pageSize;
-    const response = await apiClient.get<BackendFeedItem[]>(`/v1/feeds/fetch/limit/${limit}`);
-    
+    const response = await apiClient.get<BackendFeedItem[]>(
+      `/v1/feeds/fetch/limit/${limit}`,
+    );
+
     if (Array.isArray(response)) {
       return response.map((item: BackendFeedItem) => ({
         id: item.link || "",
         title: item.title || "",
         description: item.description || "",
         link: item.link || "",
-        pubDate: item.publishedParsed 
-          ? new Date(item.publishedParsed).toISOString() 
-          : (item.published || ""),
+        published: item.published || "",
       }));
     }
-    
+
     return [];
   },
 
   async getFeedsPage(page: number = 0): Promise<Feed[]> {
-    const response = await apiClient.get<BackendFeedItem[]>(`/v1/feeds/fetch/page/${page}`);
-    
+    const response = await apiClient.get<BackendFeedItem[]>(
+      `/v1/feeds/fetch/page/${page}`,
+    );
+
     if (Array.isArray(response)) {
       return response.map((item: BackendFeedItem) => ({
         id: item.link || "",
         title: item.title || "",
         description: item.description || "",
         link: item.link || "",
-        pubDate: item.publishedParsed 
-          ? new Date(item.publishedParsed).toISOString() 
-          : (item.published || ""),
+        published: item.published || "",
       }));
     }
-    
+
     return [];
   },
 
   async getAllFeeds(): Promise<Feed[]> {
-    const response = await apiClient.get<BackendFeedItem[]>("/v1/feeds/fetch/list");
-    
+    const response = await apiClient.get<BackendFeedItem[]>(
+      "/v1/feeds/fetch/list",
+    );
+
     if (Array.isArray(response)) {
       return response.map((item: BackendFeedItem) => ({
         id: item.link || "",
         title: item.title || "",
         description: item.description || "",
         link: item.link || "",
-        pubDate: item.publishedParsed 
-          ? new Date(item.publishedParsed).toISOString() 
-          : (item.published || ""),
+        published: item.published || "",
       }));
     }
-    
+
     return [];
   },
 

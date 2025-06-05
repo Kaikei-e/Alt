@@ -3,5 +3,5 @@ export type Feed = {
   title: string;
   description: string;
   link: string;
-  pubDate: string;
+  published: string;
 };

@@ -24,7 +24,7 @@ export default function FeedCard({ feed }: { feed: Feed }) {
         {feed.description.slice(0, 200)}...
       </Text>
       <Text fontSize="xs" color="gray.500">
-        {feed.pubDate}
+        {feed.published}
       </Text>
     </Flex>
   );

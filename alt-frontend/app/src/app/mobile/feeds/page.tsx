@@ -157,21 +157,21 @@ export default function Feeds() {
             </Flex>
           ))}
           {/* Always render sentinel when there are feeds, regardless of loading state */}
-          <div 
-            ref={sentinelRef} 
-            style={{ 
-              height: "20px", 
+          <div
+            ref={sentinelRef}
+            style={{
+              height: "20px",
               width: "100%",
-              backgroundColor: "transparent"
-            }} 
+              backgroundColor: "transparent",
+            }}
           />
-          
+
           {isLoading && (
             <Flex justifyContent="center" p={4}>
               <CircularProgress isIndeterminate color="indigo.500" size="md" />
             </Flex>
           )}
-          
+
           {!hasMore && !isLoading && (
             <Flex
               flexDirection="column"
