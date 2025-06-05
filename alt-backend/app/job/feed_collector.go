@@ -1,6 +1,7 @@
 package job
 
 import (
+	"alt/domain"
 	"alt/utils/logger"
 	"context"
 	"fmt"
@@ -71,7 +72,7 @@ func validateFeedURL(feedURL url.URL) error {
 	return nil
 }
 
-func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL) ([]*rssFeed.Feed, error) {
+func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL) ([]*domain.FeedItem, error) {
 	fp := rssFeed.NewParser()
 	var feeds []*rssFeed.Feed
 	var errors []error
@@ -104,5 +105,30 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL) ([]*rssFeed.F
 		return nil, errors[0] // Return the first error
 	}
 
-	return feeds, nil
+	feedItems := ConvertFeedToFeedItem(feeds)
+	logger.Logger.Info("Feed items", "feedItems", feedItems)
+	return feedItems, nil
+}
+
+func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
+	var feedItems []*domain.FeedItem
+	for _, feed := range feeds {
+		for _, item := range feed.Items {
+			var author domain.Author
+			var authors []domain.Author
+			if item.Author != nil {
+				author = domain.Author{Name: item.Author.Name}
+				authors = append(authors, author)
+			}
+			feedItems = append(feedItems, &domain.FeedItem{
+				Title:           item.Title,
+				Description:     item.Description,
+				Link:            item.Link,
+				PublishedParsed: *item.PublishedParsed,
+				Author:          author,
+				Authors:         authors,
+			})
+		}
+	}
+	return feedItems
 }

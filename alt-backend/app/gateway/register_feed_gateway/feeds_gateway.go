@@ -31,6 +31,7 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 			UpdatedAt:   time.Now(),
 		}
 
+		logger.Logger.Info("Feed model link", "feedModel", feedModel.Link)
 		items = append(items, *feedModel)
 	}
 

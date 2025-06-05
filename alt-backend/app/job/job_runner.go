@@ -20,21 +20,22 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 
 	go func() {
 		for {
-			feeds, err := CollectMultipleFeeds(ctx, feedURLs)
+			feedItems, err := CollectMultipleFeeds(ctx, feedURLs)
 			if err != nil {
 				logger.Logger.Error("Error collecting feeds", "error", err)
 			} else {
-				logger.Logger.Info("Feed collection completed", "feed count", len(feeds))
+				logger.Logger.Info("Feed collection completed", "feed count", len(feedItems))
 
-				feedModels := make([]models.Feed, len(feeds))
-				for i, feed := range feeds {
-					feedModels[i] = models.Feed{
-						Title:       feed.Title,
-						Description: feed.Description,
-						Link:        feed.Link,
+				feedModels := make([]models.Feed, len(feedItems))
+				for i, feedItem := range feedItems {
+					feedModel := models.Feed{
+						Title:       feedItem.Title,
+						Description: feedItem.Description,
+						Link:        feedItem.Link,
 						CreatedAt:   time.Now().UTC(),
 						UpdatedAt:   time.Now().UTC(),
 					}
+					feedModels[i] = feedModel
 				}
 
 				r.RegisterMultipleFeeds(ctx, feedModels)
@@ -45,9 +46,3 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 		}
 	}()
 }
-
-// Remove the broken exponential backoff function since it doesn't actually retry the operation
-// func exponentialBackoffAndRetry(ctx context.Context, maxRetries int) (int, error) {
-// 	// This function was not working as intended - it just waited and returned
-// 	// without actually retrying the feed collection operation
-// }
