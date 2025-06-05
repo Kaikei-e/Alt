@@ -57,7 +57,6 @@ export default function Feeds() {
   };
 
   const loadMore = useCallback(async () => {
-      
     if (isLoading || !hasMore || error) {
       return;
     }
@@ -68,25 +67,23 @@ export default function Feeds() {
       const nextPage = currentPage + 1;
       const newFeeds = await feedsApi.getFeedsPage(nextPage);
 
-
       if (newFeeds.length === 0) {
         setHasMore(false);
       } else {
-        setFeeds((prevFeeds) => {
-          return [...prevFeeds, ...newFeeds];
-        });
+        setFeeds((prevFeeds) => [...prevFeeds, ...newFeeds]);
         setCurrentPage(nextPage);
 
         if (newFeeds.length < PAGE_SIZE) {
           setHasMore(false);
         }
       }
-    } catch (error) {
+    } catch (loadError) {
+      console.error("Error loading more feeds:", loadError);
       setHasMore(false);
     }
 
     setIsLoading(false);
-  }, [currentPage, hasMore, error]);
+  }, [currentPage, isLoading, hasMore, error]);
 
   useInfiniteScroll(loadMore, sentinelRef);
 

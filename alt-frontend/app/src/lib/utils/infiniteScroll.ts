@@ -13,7 +13,6 @@ export function useInfiniteScroll(
 
   // Create a stable callback that uses the ref
   const stableCallback = useCallback(() => {
-    console.log('Infinite scroll triggered');
     callbackRef.current();
   }, []);
 
@@ -23,27 +22,16 @@ export function useInfiniteScroll(
 
     const setupObserver = () => {
       const element = ref.current;
-      console.log('Checking for element:', element);
       
       if (!element) {
-        console.log('Element not found, retrying in 100ms...');
         timeoutId = setTimeout(setupObserver, 100);
         return;
       }
 
-      console.log('Element found, setting up intersection observer');
       observer = new IntersectionObserver(
         (entries) => {
-          console.log('Intersection observer triggered with', entries.length, 'entries');
           entries.forEach((entry) => {
-            console.log('Entry details:', {
-              isIntersecting: entry.isIntersecting,
-              intersectionRatio: entry.intersectionRatio,
-              boundingClientRect: entry.boundingClientRect,
-              target: entry.target
-            });
             if (entry.isIntersecting) {
-              console.log('Element is intersecting, triggering callback');
               stableCallback();
             }
           });
@@ -55,14 +43,12 @@ export function useInfiniteScroll(
       );
 
       observer.observe(element);
-      console.log('Successfully started observing element');
     };
 
     // Start the setup process
     setupObserver();
 
     return () => {
-      console.log('Cleaning up infinite scroll');
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
