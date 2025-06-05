@@ -57,21 +57,34 @@ export default function Feeds() {
   };
 
   const loadMore = useCallback(async () => {
-    if (isLoading || !hasMore || error) return;
+    console.log('loadMore called', { isLoading, hasMore, error, currentPage });
+    
+    if (isLoading || !hasMore || error) {
+      console.log('loadMore early return:', { isLoading, hasMore, error });
+      return;
+    }
 
+    console.log('Starting to load more feeds for page:', currentPage + 1);
     setIsLoading(true);
 
     try {
       const nextPage = currentPage + 1;
       const newFeeds = await feedsApi.getFeedsPage(nextPage);
 
+      console.log('Loaded feeds for page', nextPage, ':', newFeeds.length);
+
       if (newFeeds.length === 0) {
+        console.log('No more feeds available');
         setHasMore(false);
       } else {
-        setFeeds((prevFeeds) => [...prevFeeds, ...newFeeds]);
+        setFeeds((prevFeeds) => {
+          console.log('Adding', newFeeds.length, 'new feeds to', prevFeeds.length, 'existing feeds');
+          return [...prevFeeds, ...newFeeds];
+        });
         setCurrentPage(nextPage);
 
         if (newFeeds.length < PAGE_SIZE) {
+          console.log('Received less than PAGE_SIZE, setting hasMore to false');
           setHasMore(false);
         }
       }
@@ -81,7 +94,7 @@ export default function Feeds() {
     }
 
     setIsLoading(false);
-  }, [currentPage, isLoading, hasMore, error]);
+  }, [currentPage, hasMore, error]);
 
   useInfiniteScroll(loadMore, sentinelRef);
 
@@ -154,15 +167,23 @@ export default function Feeds() {
               <FeedCard feed={feed} />
             </Flex>
           ))}
+          {/* Always render sentinel when there are feeds, regardless of loading state */}
+          <div 
+            ref={sentinelRef} 
+            style={{ 
+              height: "20px", 
+              width: "100%",
+              backgroundColor: "transparent"
+            }} 
+          />
+          
           {isLoading && (
             <Flex justifyContent="center" p={4}>
               <CircularProgress isIndeterminate color="indigo.500" size="md" />
             </Flex>
           )}
-          {hasMore && !isLoading && (
-            <div ref={sentinelRef} style={{ height: "20px", width: "100%" }} />
-          )}
-          {!hasMore && (
+          
+          {!hasMore && !isLoading && (
             <Flex
               flexDirection="column"
               justifyContent="center"
@@ -170,7 +191,7 @@ export default function Feeds() {
               width="90%"
               p={4}
             >
-              <Text>No more feeds</Text>
+              <Text color="white">No more feeds</Text>
             </Flex>
           )}
         </Flex>
