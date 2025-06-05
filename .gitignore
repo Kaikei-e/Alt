@@ -1,2 +1,3 @@
 .env
 alt-backend/app/datastore/output.json
+alt-frontend/out
