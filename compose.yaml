@@ -10,7 +10,7 @@ services:
       - ./alt-frontend/out:/usr/share/nginx/html:ro
     depends_on:
       alt-frontend:
-        condition: service_healthy
+        condition: service_completed_successfully
       alt-backend:
         condition: service_healthy
     networks:
@@ -21,22 +21,16 @@ services:
     build:
       context: ./alt-frontend
       dockerfile: Dockerfile.frontend
-    ports:
-      - "3000:3000"
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=/api
+        - API_URL=http://alt-backend:9000
     environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost/api
+      - NEXT_PUBLIC_API_BASE_URL=/api
       - API_URL=http://alt-backend:9000
-    depends_on:
-      - alt-backend
-    networks:
-      - alt-network
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    tty: true
+    volumes:
+      - ./alt-frontend/out:/app/static-files
+    command: ["sh", "-c", "mkdir -p /app/static-files && cp -r out/. /app/static-files/ && echo 'Static files copied successfully' && exit 0"]
+    restart: "no"
     
   alt-backend:
     build:
