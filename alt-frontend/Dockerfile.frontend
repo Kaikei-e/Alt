@@ -22,5 +22,5 @@ ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api}
 
 RUN pnpm run build
 
-# Ensure the out directory exists and sync files, then wait for completion signal
-CMD ["sh", "-c", "echo 'Static files built successfully' && ls -la out/"]
+# Copy build output to the mounted volume directory
+CMD ["sh", "-c", "cp -r out/* /shared/out/ 2>/dev/null || true && echo 'Static files built successfully' && ls -la /shared/out/"]

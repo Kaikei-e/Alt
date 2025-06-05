@@ -7,7 +7,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - frontend_static:/usr/share/nginx/html:ro
+      - ./out:/usr/share/nginx/html:ro
     depends_on:
       alt-frontend:
         condition: service_completed_successfully
@@ -28,7 +28,7 @@ services:
       - NEXT_PUBLIC_API_BASE_URL=/api
       - API_URL=http://alt-backend:9000
     volumes:
-      - frontend_static:/app/out
+      - ./out:/shared/out
     restart: "no"
     
   alt-backend:
@@ -101,4 +101,3 @@ networks:
 
 volumes:
   db_data:
-  frontend_static:
