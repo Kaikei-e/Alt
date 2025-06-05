@@ -7,7 +7,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./alt-frontend/out:/usr/share/nginx/html:ro
+      - frontend_static:/usr/share/nginx/html:ro
     depends_on:
       alt-frontend:
         condition: service_completed_successfully
@@ -28,8 +28,7 @@ services:
       - NEXT_PUBLIC_API_BASE_URL=/api
       - API_URL=http://alt-backend:9000
     volumes:
-      - ./alt-frontend/out:/app/static-files
-    command: ["sh", "-c", "mkdir -p /app/static-files && cp -r out/. /app/static-files/ && echo 'Static files copied successfully' && exit 0"]
+      - frontend_static:/app/out
     restart: "no"
     
   alt-backend:
@@ -102,3 +101,4 @@ networks:
 
 volumes:
   db_data:
+  frontend_static:
