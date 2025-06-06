@@ -9,12 +9,14 @@ Alt is the RSS reader for the web.
 - [x] RSS feed storage
 - [x] RSS feed retrieval
 - [ ] RSS feed deletion
-- [ ] RSS feed read state
-- [ ] RSS feed unread state
-- [ ] RSS feed starred state
-- [ ] RSS feed unstarred state
-- [ ] RSS feed archived state
-- [ ] RSS feed unarchived state
-- [ ] RSS feed trash state
-- [ ] RSS feed untrash state
+- [x] RSS feed read state
+- [x] RSS feed unread state
 - [ ] RSS feed search
+- [ ] RSS feed pagination
+- [ ] RSS feed sorting
+- [ ] RSS feed filtering
+- [ ] RSS feed grouping
+- [ ] RSS feed archiving
+- [ ] RSS feed unarchiving
+- [ ] RSS feed trash
+- [ ] RSS feed untrash
