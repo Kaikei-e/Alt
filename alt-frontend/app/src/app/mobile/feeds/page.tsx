@@ -18,6 +18,7 @@ export default function Feeds() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
+  const [refreshKey, setRefreshKey] = useState<number>(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export default function Feeds() {
     setInitialLoading(false);
   };
 
-  const loadMore = useCallback(async () => {
+    const loadMore = useCallback(async () => {
     if (isLoading || !hasMore || error) {
       return;
     }
@@ -86,10 +87,58 @@ export default function Feeds() {
     setIsLoading(false);
   }, [currentPage, isLoading, hasMore, error]);
 
-  useInfiniteScroll(loadMore, sentinelRef);
+  // Create an InfiniteScrollWrapper component that remounts on refresh
+  const InfiniteScrollWrapper = () => {
+    useInfiniteScroll(loadMore, sentinelRef);
+    return null;
+  };
 
   const handleMarkAsRead = (feedLink: string) => {
     setReadFeeds((prev) => new Set(prev).add(feedLink));
+  };
+
+  const handleRefresh = async () => {
+    if (isLoading) return; // Prevent multiple refresh calls
+
+    setIsLoading(true);
+    setError(null);
+    setReadFeeds(new Set()); // Clear read feeds to show all available feeds
+
+    // Reset all pagination-related states
+    setCurrentPage(0);
+    setHasMore(true);
+    setFeeds([]);
+    setRefreshKey(prev => prev + 1); // Force infinite scroll component to remount
+
+    try {
+      // Manually load fresh feeds instead of calling loadInitialFeeds to avoid conflicts
+      let initialFeeds;
+      try {
+        initialFeeds = await feedsApi.getFeedsPage(0);
+      } catch (pageError) {
+        console.error("getFeedsPage failed, trying getAllFeeds:", pageError);
+        try {
+          const allFeeds = await feedsApi.getAllFeeds();
+          initialFeeds = allFeeds.slice(0, PAGE_SIZE);
+        } catch (allFeedsError) {
+          console.error("getAllFeeds also failed:", allFeedsError);
+          throw allFeedsError;
+        }
+      }
+
+      setFeeds(initialFeeds);
+      setCurrentPage(0);
+      setHasMore(initialFeeds.length === PAGE_SIZE);
+    } catch (error) {
+      console.error("Error refreshing feeds:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to refresh feeds";
+      setError(errorMessage);
+      setFeeds([]);
+      setHasMore(false);
+    }
+
+    setIsLoading(false);
   };
 
   const visibleFeeds = feeds.filter((feed) => !readFeeds.has(feed.link));
@@ -149,6 +198,7 @@ export default function Feeds() {
       bg="indigo.400"
       minHeight="100vh"
     >
+      <InfiniteScrollWrapper key={refreshKey} />
       {visibleFeeds.length > 0 ? (
         <Flex flexDirection="column" alignItems="center" width="100%">
           {visibleFeeds.map((feed: Feed) => (
@@ -183,7 +233,7 @@ export default function Feeds() {
             </Flex>
           )}
 
-          {!hasMore && !isLoading && (
+          {!hasMore && !isLoading && visibleFeeds.length === 0 && (
             <Flex
               flexDirection="column"
               justifyContent="center"
@@ -192,6 +242,9 @@ export default function Feeds() {
               p={4}
             >
               <Text color="white">No more feeds</Text>
+              <Text color="gray.300" fontSize="sm" mt={2}>
+                Try refreshing to see new content
+              </Text>
             </Flex>
           )}
         </Flex>
@@ -206,6 +259,34 @@ export default function Feeds() {
           <Text>No feeds available</Text>
         </Flex>
       )}
+
+      {/* Refresh Button - Fixed position in bottom left corner */}
+      <Button
+        position="fixed"
+        bottom="20px"
+        left="20px"
+        bg="ivory.200"
+        color="black"
+        p={2}
+        borderRadius="md"
+        size="xl"
+        fontSize="lg"
+        onClick={handleRefresh}
+        disabled={isLoading}
+        zIndex={1000}
+        boxShadow="lg"
+      >
+        {isLoading ? (
+          <CircularProgress
+            isIndeterminate
+            color="black"
+            size="md"
+            fontStyle={"italic"}
+          />
+        ) : (
+          "Refresh"
+        )}
+      </Button>
     </Flex>
   );
 }
