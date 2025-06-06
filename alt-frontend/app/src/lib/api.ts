@@ -143,4 +143,8 @@ export const feedsApi = {
   async registerRssFeed(url: string): Promise<{ message: string }> {
     return apiClient.post("/v1/rss-feed-link/register", { url });
   },
+
+  async updateFeedReadStatus(url: string): Promise<{ message: string }> {
+    return apiClient.post("/v1/feeds/read", { feed_url: url });
+  },
 };

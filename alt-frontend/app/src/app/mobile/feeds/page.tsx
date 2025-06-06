@@ -17,6 +17,7 @@ export default function Feeds() {
   const [hasMore, setHasMore] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -87,6 +88,12 @@ export default function Feeds() {
 
   useInfiniteScroll(loadMore, sentinelRef);
 
+  const handleMarkAsRead = (feedLink: string) => {
+    setReadFeeds((prev) => new Set(prev).add(feedLink));
+  };
+
+  const visibleFeeds = feeds.filter((feed) => !readFeeds.has(feed.link));
+
   if (initialLoading) {
     return (
       <Flex
@@ -142,21 +149,25 @@ export default function Feeds() {
       bg="indigo.400"
       minHeight="100vh"
     >
-      {feeds.length > 0 ? (
+      {visibleFeeds.length > 0 ? (
         <Flex flexDirection="column" alignItems="center" width="100%">
-          {feeds.map((feed: Feed) => (
+          {visibleFeeds.map((feed: Feed) => (
             <Flex
               key={feed.link}
               flexDirection="column"
               justifyContent="center"
               alignItems="center"
               width="100%"
-              p={4}
+              px={4}
+              py={2}
             >
-              <FeedCard feed={feed} />
+              <FeedCard
+                feed={feed}
+                isReadStatus={false}
+                setIsReadStatus={() => handleMarkAsRead(feed.link)}
+              />
             </Flex>
           ))}
-          {/* Always render sentinel when there are feeds, regardless of loading state */}
           <div
             ref={sentinelRef}
             style={{
