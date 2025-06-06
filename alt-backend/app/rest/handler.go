@@ -18,7 +18,7 @@ type rssFeedLink struct {
 }
 
 type readStatus struct {
-	FeedID string `json:"feed_id"`
+	FeedURL string `json:"feed_url"`
 }
 
 func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
@@ -88,7 +88,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 			logger.Logger.Error("Error binding read status", "error", err)
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
-		feedURL, err := url.Parse(readStatus.FeedID)
+		feedURL, err := url.Parse(readStatus.FeedURL)
 		if err != nil {
 			logger.Logger.Error("Error parsing feed URL", "error", err)
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})

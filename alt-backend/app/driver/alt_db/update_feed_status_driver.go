@@ -11,7 +11,7 @@ import (
 
 func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
 	identifyFeedQuery := `
-		SELECT id FROM feeds WHERE feed_url = $1
+		SELECT id FROM feeds WHERE link = $1
 	`
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
