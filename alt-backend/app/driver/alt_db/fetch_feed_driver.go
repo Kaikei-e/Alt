@@ -93,3 +93,36 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 
 	return feeds, nil
 }
+
+func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
+	const pageSize = 20
+
+	query := `
+		SELECT id, title, description, link, pub_date, created_at, updated_at 
+		FROM feeds f
+		WHERE NOT EXISTS (
+			SELECT 1 FROM read_status rs 
+			WHERE rs.feed_id = f.id AND rs.is_read = TRUE
+		)
+		ORDER BY created_at DESC 
+		LIMIT $1 OFFSET $2
+	`
+
+	rows, err := r.db.Query(ctx, query, pageSize, pageSize*page)
+	if err != nil {
+		return nil, errors.New("error fetching feeds list page")
+	}
+	defer rows.Close()
+
+	var feeds []*models.Feed
+	for rows.Next() {
+		var feed models.Feed
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		if err != nil {
+			return nil, errors.New("error scanning feeds list page")
+		}
+		feeds = append(feeds, &feed)
+	}
+
+	return feeds, nil
+}

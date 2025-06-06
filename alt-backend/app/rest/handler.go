@@ -5,6 +5,7 @@ import (
 	"alt/domain"
 	"alt/utils/logger"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,10 @@ import (
 
 type rssFeedLink struct {
 	URL string `json:"url"`
+}
+
+type readStatus struct {
+	FeedID string `json:"feed_id"`
 }
 
 func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
@@ -74,6 +79,28 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		feeds = removeEscapedString(feeds)
 
 		return c.JSON(http.StatusOK, feeds)
+	})
+
+	v1.POST("/feeds/read", func(c echo.Context) error {
+		var readStatus readStatus
+		err := c.Bind(&readStatus)
+		if err != nil {
+			logger.Logger.Error("Error binding read status", "error", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		feedURL, err := url.Parse(readStatus.FeedID)
+		if err != nil {
+			logger.Logger.Error("Error parsing feed URL", "error", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		err = container.FeedsReadingStatusUsecase.Execute(c.Request().Context(), *feedURL)
+		if err != nil {
+			logger.Logger.Error("Error updating feed read status", "error", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+
+		logger.Logger.Info("Feed read status updated", "feedURL", feedURL)
+		return c.JSON(http.StatusOK, map[string]string{"message": "Feed read status updated"})
 	})
 
 	v1.POST("/rss-feed-link/register", func(c echo.Context) error {
