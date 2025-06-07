@@ -1,4 +1,4 @@
-FROM node:lts-alpine
+FROM node:lts-alpine AS build
 
 WORKDIR /app
 
@@ -22,5 +22,9 @@ ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api}
 
 RUN pnpm run build
 
-# Copy build output to the mounted volume directory
-CMD ["sh", "-c", "cp -r out/* /shared/out/ 2>/dev/null || true && echo 'Static files built successfully' && ls -la /shared/out/"]
+# ビルドした静的ファイルをコピーする
+FROM alpine:3.20 AS copy
+COPY --from=build /app/out/ /build-output/
+WORKDIR /shared/out
+
+CMD ["sh", "-c", "rm -rf /shared/out/* 2>/dev/null || true; cp -r /build-output/* /shared/out/ 2>/dev/null || true; echo 'Static files copied successfully'; ls -la /shared/out; exit 0"]
