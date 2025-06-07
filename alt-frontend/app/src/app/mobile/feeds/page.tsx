@@ -4,7 +4,7 @@ import { Flex, Text, Button } from "@chakra-ui/react";
 import { feedsApi } from "@/lib/api";
 import { Feed } from "@/schema/feed";
 import FeedCard from "@/component/mobile/FeedCard";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import { CircularProgress } from "@chakra-ui/progress";
 
@@ -21,11 +21,13 @@ export default function Feeds() {
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    loadInitialFeeds();
-  }, []);
+  // Memoize visible feeds to prevent unnecessary recalculations
+  const visibleFeeds = useMemo(() => 
+    feeds.filter((feed) => !readFeeds.has(feed.link)),
+    [feeds, readFeeds]
+  );
 
-  const loadInitialFeeds = async () => {
+  const loadInitialFeeds = useCallback(async () => {
     setInitialLoading(true);
     setError(null);
 
@@ -44,6 +46,7 @@ export default function Feeds() {
         }
       }
 
+      // Batch state updates
       setFeeds(initialFeeds);
       setCurrentPage(0);
       setHasMore(initialFeeds.length === PAGE_SIZE);
@@ -51,14 +54,20 @@ export default function Feeds() {
       console.error("Error fetching initial feeds:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to load feeds";
+      
+      // Batch error state updates
       setError(errorMessage);
       setFeeds([]);
       setHasMore(false);
     }
     setInitialLoading(false);
-  };
+  }, []);
 
-    const loadMore = useCallback(async () => {
+  useEffect(() => {
+    loadInitialFeeds();
+  }, [loadInitialFeeds]);
+
+  const loadMore = useCallback(async () => {
     if (isLoading || !hasMore || error) {
       return;
     }
@@ -72,6 +81,7 @@ export default function Feeds() {
       if (newFeeds.length === 0) {
         setHasMore(false);
       } else {
+        // Batch state updates
         setFeeds((prevFeeds) => [...prevFeeds, ...newFeeds]);
         setCurrentPage(nextPage);
 
@@ -87,28 +97,24 @@ export default function Feeds() {
     setIsLoading(false);
   }, [currentPage, isLoading, hasMore, error]);
 
-  // Create an InfiniteScrollWrapper component that remounts on refresh
-  const InfiniteScrollWrapper = () => {
-    useInfiniteScroll(loadMore, sentinelRef);
-    return null;
-  };
+  // Use infinite scroll hook with reset key
+  useInfiniteScroll(loadMore, sentinelRef, refreshKey);
 
-  const handleMarkAsRead = (feedLink: string) => {
+  const handleMarkAsRead = useCallback((feedLink: string) => {
     setReadFeeds((prev) => new Set(prev).add(feedLink));
-  };
+  }, []);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     if (isLoading) return; // Prevent multiple refresh calls
 
+    // Batch all state resets
     setIsLoading(true);
     setError(null);
     setReadFeeds(new Set()); // Clear read feeds to show all available feeds
-
-    // Reset all pagination-related states
     setCurrentPage(0);
     setHasMore(true);
     setFeeds([]);
-    setRefreshKey(prev => prev + 1); // Force infinite scroll component to remount
+    setRefreshKey(prev => prev + 1); // Reset infinite scroll observer
 
     try {
       // Manually load fresh feeds instead of calling loadInitialFeeds to avoid conflicts
@@ -126,6 +132,7 @@ export default function Feeds() {
         }
       }
 
+      // Batch successful state updates
       setFeeds(initialFeeds);
       setCurrentPage(0);
       setHasMore(initialFeeds.length === PAGE_SIZE);
@@ -133,61 +140,67 @@ export default function Feeds() {
       console.error("Error refreshing feeds:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to refresh feeds";
+      
+      // Batch error state updates
       setError(errorMessage);
       setFeeds([]);
       setHasMore(false);
     }
 
     setIsLoading(false);
-  };
+  }, [isLoading]);
 
-  const visibleFeeds = feeds.filter((feed) => !readFeeds.has(feed.link));
+  // Memoize loading component
+  const LoadingComponent = useMemo(() => (
+    <Flex
+      flexDirection="column"
+      justifyContent="center"
+      alignItems="center"
+      height="100vh"
+      width="100%"
+    >
+      <CircularProgress isIndeterminate color="indigo.500" size="md" />
+    </Flex>
+  ), []);
+
+  // Memoize error component
+  const ErrorComponent = useMemo(() => (
+    <Flex
+      flexDirection="column"
+      justifyContent="center"
+      alignItems="center"
+      height="100vh"
+      width="100%"
+      p={4}
+    >
+      <Text
+        fontSize="lg"
+        fontWeight="bold"
+        color="red.500"
+        mb={4}
+        textAlign="center"
+      >
+        Unable to load feeds
+      </Text>
+      <Text color="gray.600" mb={6} textAlign="center" maxWidth="md">
+        {error}
+      </Text>
+      <Button
+        colorScheme="indigo"
+        onClick={loadInitialFeeds}
+        disabled={initialLoading}
+      >
+        {initialLoading ? "Retrying..." : "Retry"}
+      </Button>
+    </Flex>
+  ), [error, loadInitialFeeds, initialLoading]);
 
   if (initialLoading) {
-    return (
-      <Flex
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-        height="100vh"
-        width="100%"
-      >
-        <CircularProgress isIndeterminate color="indigo.500" size="md" />
-      </Flex>
-    );
+    return LoadingComponent;
   }
 
   if (error) {
-    return (
-      <Flex
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-        height="100vh"
-        width="100%"
-        p={4}
-      >
-        <Text
-          fontSize="lg"
-          fontWeight="bold"
-          color="red.500"
-          mb={4}
-          textAlign="center"
-        >
-          Unable to load feeds
-        </Text>
-        <Text color="gray.600" mb={6} textAlign="center" maxWidth="md">
-          {error}
-        </Text>
-        <Button
-          colorScheme="indigo"
-          onClick={loadInitialFeeds}
-          disabled={initialLoading}
-        >
-          {initialLoading ? "Retrying..." : "Retry"}
-        </Button>
-      </Flex>
-    );
+    return ErrorComponent;
   }
 
   return (
@@ -195,12 +208,11 @@ export default function Feeds() {
       flexDirection="column"
       alignItems="center"
       width="100%"
-      bg="indigo.400"
+      bg="indigo.200"
       minHeight="100vh"
     >
-      <InfiniteScrollWrapper key={refreshKey} />
       {visibleFeeds.length > 0 ? (
-        <Flex flexDirection="column" alignItems="center" width="100%">
+        <Flex flexDirection="column" alignItems="center" width="100%" bg={"whiteAlpha.200"}>
           {visibleFeeds.map((feed: Feed) => (
             <Flex
               key={feed.link}
@@ -265,7 +277,6 @@ export default function Feeds() {
         position="fixed"
         bottom="20px"
         left="20px"
-        bg="ivory.200"
         color="black"
         p={2}
         borderRadius="md"
@@ -284,7 +295,7 @@ export default function Feeds() {
             fontStyle={"italic"}
           />
         ) : (
-          "Refresh"
+          <Text color="ivory.200">Refresh</Text>
         )}
       </Button>
     </Flex>

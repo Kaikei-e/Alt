@@ -2,7 +2,7 @@ import { Button, Flex, Spinner, Text } from "@chakra-ui/react";
 import { Feed } from "@/schema/feed";
 import Link from "next/link";
 import { feedsApi } from "@/lib/api";
-import { useState } from "react";
+import { useState, useCallback, memo } from "react";
 
 type FeedCardProps = {
   feed: Feed;
@@ -10,14 +10,14 @@ type FeedCardProps = {
   setIsReadStatus: (isReadStatus: boolean) => void;
 };
 
-export default function FeedCard({
+const FeedCard = memo(function FeedCard({
   feed,
   isReadStatus,
   setIsReadStatus,
 }: FeedCardProps) {
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleReadStatus = async (url: string) => {
+  const handleReadStatus = useCallback(async (url: string) => {
     try {
       setIsLoading(true);
       await feedsApi.updateFeedReadStatus(url);
@@ -25,8 +25,13 @@ export default function FeedCard({
       setIsLoading(false);
     } catch (error) {
       console.error("Error updating feed read status", error);
+      setIsLoading(false);
     }
-  };
+  }, [setIsReadStatus]);
+
+  const onMarkAsRead = useCallback(() => {
+    handleReadStatus(feed.link);
+  }, [handleReadStatus, feed.link]);
 
   if (isLoading) {
     return <Spinner size="md" color="black" />;
@@ -35,6 +40,11 @@ export default function FeedCard({
   if (isReadStatus) {
     return null;
   }
+
+  // Truncate description more efficiently
+  const truncatedDescription = feed.description.length > 300 
+    ? `${feed.description.slice(0, 300)}...` 
+    : feed.description;
 
   return (
     <Flex
@@ -53,7 +63,7 @@ export default function FeedCard({
         </Link>
       </Text>
       <Text fontSize="xs" color="gray.500">
-        {feed.description.slice(0, 300)}...
+        {truncatedDescription}
       </Text>
 
       <Flex
@@ -63,7 +73,7 @@ export default function FeedCard({
         alignItems="center"
       >
         <Button
-          onClick={() => handleReadStatus(feed.link)}
+          onClick={onMarkAsRead}
           colorScheme="green"
           size="sm"
           mt={2}
@@ -78,4 +88,6 @@ export default function FeedCard({
       </Flex>
     </Flex>
   );
-}
+});
+
+export default FeedCard;

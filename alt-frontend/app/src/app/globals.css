@@ -1,3 +1,91 @@
+/* Critical CSS - Inlined for faster initial render */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Critical layout styles */
+html {
+  font-family: var(--font-geist-sans), system-ui, arial, sans-serif;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: #e0e7ff; /* indigo.200 fallback */
+  color: #1a202c;
+  font-feature-settings: 'rlig' 1, 'calt' 1;
+}
+
+/* Prevent layout shift during font loading */
+.font-loading {
+  visibility: hidden;
+}
+
+.font-loaded {
+  visibility: visible;
+}
+
+/* Critical component styles for above-the-fold content */
+.feed-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.feed-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  background-color: #dbeafe; /* blue.100 fallback */
+  border-radius: 1rem;
+  padding: 0.75rem;
+  margin: 0.5rem 1rem;
+}
+
+/* Loading spinner optimization */
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Optimize button interactions */
+.refresh-button {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 1000;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease-in-out;
+}
+
+.refresh-button:hover {
+  transform: translateY(-2px);
+}
+
+/* Reduce paint complexity */
+* {
+  box-sizing: border-box;
+}
+
+/* Optimize scrolling performance */
+.scroll-container {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -25,7 +113,6 @@ body {
 }
 
 * {
-  box-sizing: border-box;
   padding: 0;
   margin: 0;
 }
