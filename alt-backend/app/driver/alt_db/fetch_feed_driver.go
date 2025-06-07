@@ -69,7 +69,7 @@ func (r *AltDBRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([
 }
 
 func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
-	const pageSize = 20
+	const pageSize = 10
 
 	query := `
 		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT $1 OFFSET $2
@@ -95,16 +95,15 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 }
 
 func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
-	const pageSize = 20
+	const pageSize = 10
 
+	// Alternative query using LEFT JOIN - might be more efficient than NOT EXISTS
 	query := `
-		SELECT id, title, description, link, pub_date, created_at, updated_at 
+		SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at 
 		FROM feeds f
-		WHERE NOT EXISTS (
-			SELECT 1 FROM read_status rs 
-			WHERE rs.feed_id = f.id AND rs.is_read = TRUE
-		)
-		ORDER BY created_at DESC 
+		LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.is_read = TRUE
+		WHERE rs.feed_id IS NULL
+		ORDER BY f.created_at DESC 
 		LIMIT $1 OFFSET $2
 	`
 
