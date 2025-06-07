@@ -22,9 +22,35 @@ ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api}
 
 RUN pnpm run build
 
-# ビルドした静的ファイルをコピーする
-FROM alpine:3.20 AS copy
-COPY --from=build /app/out/ /build-output/
-WORKDIR /shared/out
+# Production stage - run the Node.js server
+FROM node:lts-alpine AS production
 
-CMD ["sh", "-c", "rm -rf /shared/out/* 2>/dev/null || true; cp -r /build-output/* /shared/out/ 2>/dev/null || true; echo 'Static files copied successfully'; ls -la /shared/out; exit 0"]
+WORKDIR /app
+
+# pnpmをグローバルインストール
+RUN npm install -g pnpm
+
+# package.jsonとpnpm-lock.yamlをコピー
+COPY app/package.json app/pnpm-lock.yaml ./
+
+# 本番環境用の依存関係のみインストール
+RUN pnpm install --frozen-lockfile --prod
+
+# ビルド済みファイルをコピー
+COPY --from=build /app/.next ./.next
+COPY --from=build /app/public ./public
+COPY --from=build /app/next.config.ts ./
+COPY --from=build /app/package.json ./
+
+# 環境変数を設定
+ARG API_URL
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV API_URL=${API_URL:-http://alt-backend:9000}
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api}
+ENV NODE_ENV=production
+ENV PORT=3000
+
+EXPOSE 3000
+
+# Next.jsサーバーを起動
+CMD ["pnpm", "start"]

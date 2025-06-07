@@ -3,11 +3,6 @@ const nextConfig = {
   // Essential optimizations
   compress: true,
   poweredByHeader: false,
-  output: 'export',
-  trailingSlash: true,
-  images: {
-    unoptimized: true,
-  },
   
   experimental: {
     optimizePackageImports: ["@chakra-ui/react", "@emotion/react"],

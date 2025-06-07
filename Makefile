@@ -27,27 +27,11 @@ up: $(ENV_FILE)
 	@echo "Starting Docker Compose services..."
 	docker compose up --build -d
 
-# フロントエンドの変更を確実に反映させるターゲット
-up-fresh: $(ENV_FILE)
-	@echo "Starting Docker Compose services with fresh frontend build..."
-	@echo "Stopping all services..."
-	docker compose down --remove-orphans
-	@echo "Removing frontend output volume to ensure changes are reflected..."
-	docker volume rm alt_out_data 2>/dev/null || true
-	@echo "Removing frontend container and image to force complete rebuild..."
-	docker container rm $$(docker compose ps -q alt-frontend) 2>/dev/null || true
-	docker image rm $$(docker compose images -q alt-frontend) 2>/dev/null || true
-	@echo "Building frontend with no cache..."
-	docker compose build --no-cache alt-frontend
-	@echo "Starting services..."
+up-clean-frontend: $(ENV_FILE)
+	@echo "Starting Docker Compose services with clean frontend build..."
+	docker build --no-cache -f ./alt-frontend/Dockerfile.frontend -t alt-frontend ./alt-frontend
 	docker compose up --build -d
-	@echo "----------------------------------------------------------------"
-	@echo "Frontend rebuild complete! If changes still don't appear:"
-	@echo "1. Clear your browser cache (Ctrl+Shift+R or Cmd+Shift+R)"
-	@echo "2. Try opening in an incognito/private window"
-	@echo "3. Check the container logs: docker compose logs alt-frontend"
-	@echo "----------------------------------------------------------------"
-
+	
 # 完全にクリーンな状態からフロントエンドを再構築 (最終手段)
 up-clean: $(ENV_FILE)
 	@echo "CLEAN OPTION: Complete clean rebuild of frontend..."
