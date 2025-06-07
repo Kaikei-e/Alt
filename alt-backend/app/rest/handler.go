@@ -134,7 +134,14 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	v1.GET("/feeds/fetch/page/:page", func(c echo.Context) error {
 		page, err := strconv.Atoi(c.Param("page"))
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			logger.Logger.Error("Invalid page parameter", "error", err, "page", c.Param("page"))
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid page parameter"})
+		}
+
+		// Validate page parameter
+		if page < 0 {
+			logger.Logger.Error("Negative page parameter", "page", page)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Page parameter must be non-negative"})
 		}
 
 		// Add caching headers for paginated results
@@ -143,7 +150,8 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 		feeds, err := container.FetchFeedsListUsecase.ExecutePage(c.Request().Context(), page)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			logger.Logger.Error("Error fetching feeds page", "error", err, "page", page)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feeds page"})
 		}
 
 		optimizedFeeds := optimizeFeedsResponse(feeds)

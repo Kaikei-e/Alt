@@ -103,10 +103,16 @@ func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int)
 }
 
 func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
+	// Try to fetch unread feeds first, fallback to all feeds if read_status table has issues
 	feeds, err := g.alt_db.FetchUnreadFeedsListPage(ctx, page)
 	if err != nil {
-		logger.Logger.Error("Error fetching feeds list page", "error", err)
-		return nil, errors.New("error fetching feeds list page")
+		logger.Logger.Warn("Error fetching unread feeds, falling back to all feeds", "error", err)
+		// Fallback to regular paginated feeds if read_status table has issues
+		feeds, err = g.alt_db.FetchFeedsListPage(ctx, page)
+		if err != nil {
+			logger.Logger.Error("Error fetching feeds list page", "error", err)
+			return nil, errors.New("error fetching feeds list page")
+		}
 	}
 
 	var feedItems []*domain.FeedItem
