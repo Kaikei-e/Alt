@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -22,15 +23,53 @@ type readStatus struct {
 }
 
 func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
-	// Add CORS middleware
+	// Add performance middleware
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+
+	// Add compression middleware for better performance
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+		Level: 5, // Balanced compression level
+		Skipper: func(c echo.Context) bool {
+			// Skip compression for already compressed content
+			return strings.Contains(c.Request().Header.Get("Accept-Encoding"), "br") ||
+				strings.Contains(c.Path(), "/health")
+		},
+	}))
+
+	// Add request timeout middleware
+	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
+		Timeout: 30 * time.Second,
+	}))
+
+	// Add rate limiting middleware
+	e.Use(middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Store: middleware.NewRateLimiterMemoryStore(100), // 100 requests per second
+	}))
+
+	// Add security headers
+	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
+		XSSProtection:         "1; mode=block",
+		ContentTypeNosniff:    "nosniff",
+		XFrameOptions:         "DENY",
+		HSTSMaxAge:            31536000,
+		ContentSecurityPolicy: "default-src 'self'",
+	}))
+
+	// Add CORS middleware with optimized settings
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "*"},
+		AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://curionoah.com", "*"},
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, "Cache-Control", "Authorization", "X-Requested-With"},
+		MaxAge:       86400, // Cache preflight for 24 hours
 	}))
 
 	v1 := e.Group("/v1")
+
+	// Health check with minimal overhead
 	v1.GET("/health", func(c echo.Context) error {
+		// Set cache headers for health check
+		c.Response().Header().Set("Cache-Control", "public, max-age=30")
 		response := map[string]string{
 			"status": "healthy",
 		}
@@ -38,6 +77,10 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	})
 
 	v1.GET("/feeds/fetch/single", func(c echo.Context) error {
+		// Add caching headers
+		c.Response().Header().Set("Cache-Control", "public, max-age=300") // 5 minutes
+		c.Response().Header().Set("ETag", `"single-feed"`)
+
 		feed, err := container.FetchSingleFeedUsecase.Execute(c.Request().Context())
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -46,11 +89,18 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	})
 
 	v1.GET("/feeds/fetch/list", func(c echo.Context) error {
+		// Add caching headers for feed list
+		c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15 minutes
+		c.Response().Header().Set("ETag", `"feeds-list"`)
+
 		feeds, err := container.FetchFeedsListUsecase.Execute(c.Request().Context())
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		return c.JSON(http.StatusOK, feeds)
+
+		// Optimize response size
+		optimizedFeeds := optimizeFeedsResponse(feeds)
+		return c.JSON(http.StatusOK, optimizedFeeds)
 	})
 
 	v1.GET("/feeds/fetch/limit/:limit", func(c echo.Context) error {
@@ -59,11 +109,24 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 			logger.Logger.Error("Error parsing limit", "error", err)
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
+
+		// Validate limit to prevent excessive resource usage
+		if limit > 1000 {
+			limit = 1000
+		}
+
+		// Add caching headers based on limit
+		cacheAge := getCacheAgeForLimit(limit)
+		c.Response().Header().Set("Cache-Control", "public, max-age="+strconv.Itoa(cacheAge))
+		c.Response().Header().Set("ETag", `"feeds-limit-`+strconv.Itoa(limit)+`"`)
+
 		feeds, err := container.FetchFeedsListUsecase.ExecuteLimit(c.Request().Context(), limit)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		return c.JSON(http.StatusOK, feeds)
+
+		optimizedFeeds := optimizeFeedsResponse(feeds)
+		return c.JSON(http.StatusOK, optimizedFeeds)
 	})
 
 	v1.GET("/feeds/fetch/page/:page", func(c echo.Context) error {
@@ -71,14 +134,20 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
+
+		// Add caching headers for paginated results
+		c.Response().Header().Set("Cache-Control", "public, max-age=600") // 10 minutes
+		c.Response().Header().Set("ETag", `"feeds-page-`+strconv.Itoa(page)+`"`)
+
 		feeds, err := container.FetchFeedsListUsecase.ExecutePage(c.Request().Context(), page)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 
-		feeds = removeEscapedString(feeds)
+		optimizedFeeds := optimizeFeedsResponse(feeds)
+		optimizedFeeds = removeEscapedString(optimizedFeeds)
 
-		return c.JSON(http.StatusOK, feeds)
+		return c.JSON(http.StatusOK, optimizedFeeds)
 	})
 
 	v1.POST("/feeds/read", func(c echo.Context) error {
@@ -100,6 +169,9 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		}
 
 		logger.Logger.Info("Feed read status updated", "feedURL", feedURL)
+
+		// Invalidate cache after update
+		c.Response().Header().Set("Cache-Control", "no-cache")
 		return c.JSON(http.StatusOK, map[string]string{"message": "Feed read status updated"})
 	})
 
@@ -122,13 +194,44 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
+
+		// Invalidate cache after registration
+		c.Response().Header().Set("Cache-Control", "no-cache")
 		return c.JSON(http.StatusOK, map[string]string{"message": "RSS feed link registered"})
 	})
+}
+
+// Optimize feeds response by truncating descriptions and removing unnecessary fields
+func optimizeFeedsResponse(feeds []*domain.FeedItem) []*domain.FeedItem {
+	for _, feed := range feeds {
+		// Truncate long descriptions to reduce payload size
+		if len(feed.Description) > 500 {
+			feed.Description = feed.Description[:500] + "..."
+		}
+		// Clean up whitespace and newlines
+		feed.Description = strings.TrimSpace(feed.Description)
+		feed.Title = strings.TrimSpace(feed.Title)
+	}
+	return feeds
+}
+
+// Determine cache age based on limit to optimize caching strategy
+func getCacheAgeForLimit(limit int) int {
+	switch {
+	case limit <= 20:
+		return 600 // 10 minutes for small requests
+	case limit <= 100:
+		return 900 // 15 minutes for medium requests
+	default:
+		return 1800 // 30 minutes for large requests
+	}
 }
 
 func removeEscapedString(feeds []*domain.FeedItem) []*domain.FeedItem {
 	for _, feed := range feeds {
 		feed.Description = strings.ReplaceAll(feed.Description, "\n", "")
+		feed.Description = strings.ReplaceAll(feed.Description, "\r", "")
+		feed.Description = strings.ReplaceAll(feed.Description, "\t", " ")
 	}
 	return feeds
 }
