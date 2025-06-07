@@ -27,6 +27,42 @@ up: $(ENV_FILE)
 	@echo "Starting Docker Compose services..."
 	docker compose up --build -d
 
+# フロントエンドの変更を確実に反映させるターゲット
+up-fresh: $(ENV_FILE)
+	@echo "Starting Docker Compose services with fresh frontend build..."
+	@echo "Stopping all services..."
+	docker compose down --remove-orphans
+	@echo "Removing frontend output volume to ensure changes are reflected..."
+	docker volume rm alt_out_data 2>/dev/null || true
+	@echo "Removing frontend container and image to force complete rebuild..."
+	docker container rm $$(docker compose ps -q alt-frontend) 2>/dev/null || true
+	docker image rm $$(docker compose images -q alt-frontend) 2>/dev/null || true
+	@echo "Building frontend with no cache..."
+	docker compose build --no-cache alt-frontend
+	@echo "Starting services..."
+	docker compose up --build -d
+	@echo "----------------------------------------------------------------"
+	@echo "Frontend rebuild complete! If changes still don't appear:"
+	@echo "1. Clear your browser cache (Ctrl+Shift+R or Cmd+Shift+R)"
+	@echo "2. Try opening in an incognito/private window"
+	@echo "3. Check the container logs: docker compose logs alt-frontend"
+	@echo "----------------------------------------------------------------"
+
+# 完全にクリーンな状態からフロントエンドを再構築 (最終手段)
+up-clean: $(ENV_FILE)
+	@echo "CLEAN OPTION: Complete clean rebuild of frontend..."
+	@echo "This will remove frontend containers, images, and volumes but PRESERVE database data."
+	@read -p "Are you sure? This will take several minutes to rebuild everything. (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
+	docker compose down --remove-orphans
+	@echo "Removing only frontend-related volume (preserving database)..."
+	docker volume rm alt_out_data 2>/dev/null || true
+	@echo "Cleaning up unused containers and images (preserving database volume)..."
+	docker container prune -f
+	docker image prune -f -a
+	docker compose build --no-cache
+	docker compose up --build -d
+	@echo "Clean rebuild complete! Frontend rebuilt from scratch, database data preserved."
+
 # Dockerイメージをビルドするターゲット (個別実行も可能)
 build: $(ENV_FILE)
 	@echo "Building Docker images..."
@@ -75,4 +111,4 @@ generate-mocks:
 	@echo "GoMock mocks generated successfully in $(MOCKS_DIR)/"
 
 
-.PHONY: all up build down down-volumes clean clean-env generate-mocks
+.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks

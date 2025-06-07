@@ -7,7 +7,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./out:/usr/share/nginx/html:ro
+      - out_data:/usr/share/nginx/html:ro
     depends_on:
       alt-frontend:
         condition: service_completed_successfully
@@ -21,6 +21,8 @@ services:
     build:
       context: ./alt-frontend
       dockerfile: Dockerfile.frontend
+      x-bake: &buildkit
+        platforms: ["linux/amd64"]
       args:
         - NEXT_PUBLIC_API_BASE_URL=/api
         - API_URL=http://alt-backend:9000
@@ -28,7 +30,7 @@ services:
       - NEXT_PUBLIC_API_BASE_URL=/api
       - API_URL=http://alt-backend:9000
     volumes:
-      - ./out:/shared/out
+      - out_data:/shared/out
     restart: "no"
     
   alt-backend:
@@ -102,3 +104,4 @@ networks:
 
 volumes:
   db_data:
+  out_data: {}
