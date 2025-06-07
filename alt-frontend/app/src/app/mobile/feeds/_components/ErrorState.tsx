@@ -6,7 +6,11 @@ type ErrorStateProps = {
   isLoading: boolean;
 };
 
-export default function ErrorState({ error, onRetry, isLoading }: ErrorStateProps) {
+export default function ErrorState({
+  error,
+  onRetry,
+  isLoading,
+}: ErrorStateProps) {
   return (
     <Flex
       flexDirection="column"
@@ -28,13 +32,9 @@ export default function ErrorState({ error, onRetry, isLoading }: ErrorStateProp
       <Text color="gray.600" mb={6} textAlign="center" maxWidth="md">
         {error}
       </Text>
-      <Button
-        colorScheme="indigo"
-        onClick={onRetry}
-        disabled={isLoading}
-      >
+      <Button colorScheme="indigo" onClick={onRetry} disabled={isLoading}>
         {isLoading ? "Retrying..." : "Retry"}
       </Button>
     </Flex>
-    );
+  );
 }

@@ -11,14 +11,14 @@ const geistSans = Geist({
   subsets: ["latin"],
   display: "swap",
   preload: true,
-  fallback: ['system-ui', 'arial'],
+  fallback: ["system-ui", "arial"],
 });
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
   preload: true,
-  fallback: ['ui-monospace', 'monospace'],
+  fallback: ["ui-monospace", "monospace"],
 });
 
 export const metadata: Metadata = {
@@ -35,8 +35,8 @@ export const metadata: Metadata = {
     ],
   },
   other: {
-    'theme-color': '#818CF8',
-    'color-scheme': 'light dark',
+    "theme-color": "#818CF8",
+    "color-scheme": "light dark",
   },
 };
 
