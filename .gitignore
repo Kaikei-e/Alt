@@ -1,3 +1,4 @@
 .env
 alt-backend/app/datastore/output.json
+alt-backend/app/alt-backend-optimized
 /out
