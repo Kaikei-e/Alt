@@ -7,6 +7,7 @@ import FeedCard from "@/component/mobile/FeedCard";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import { CircularProgress } from "@chakra-ui/progress";
+import ErrorState from "./_components/ErrorState";
 
 const PAGE_SIZE = 20;
 
@@ -166,47 +167,18 @@ export default function Feeds() {
     [],
   );
 
-  // Memoize error component
-  const ErrorComponent = useMemo(
-    () => (
-      <Flex
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-        height="100vh"
-        width="100%"
-        p={4}
-      >
-        <Text
-          fontSize="lg"
-          fontWeight="bold"
-          color="red.500"
-          mb={4}
-          textAlign="center"
-        >
-          Unable to load feeds
-        </Text>
-        <Text color="gray.600" mb={6} textAlign="center" maxWidth="md">
-          {error}
-        </Text>
-        <Button
-          colorScheme="indigo"
-          onClick={loadInitialFeeds}
-          disabled={initialLoading}
-        >
-          {initialLoading ? "Retrying..." : "Retry"}
-        </Button>
-      </Flex>
-    ),
-    [error, loadInitialFeeds, initialLoading],
-  );
-
   if (initialLoading) {
     return LoadingComponent;
   }
 
   if (error) {
-    return ErrorComponent;
+    return (
+      <ErrorState
+        error={error}
+        onRetry={loadInitialFeeds}
+        isLoading={initialLoading}
+      />
+    );
   }
 
   return (
