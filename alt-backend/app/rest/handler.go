@@ -3,7 +3,9 @@ package rest
 import (
 	"alt/di"
 	"alt/domain"
+	"alt/utils/html_parser"
 	"alt/utils/logger"
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -145,7 +147,6 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		}
 
 		optimizedFeeds := optimizeFeedsResponse(feeds)
-		optimizedFeeds = removeEscapedString(optimizedFeeds)
 
 		return c.JSON(http.StatusOK, optimizedFeeds)
 	})
@@ -203,14 +204,12 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 // Optimize feeds response by truncating descriptions and removing unnecessary fields
 func optimizeFeedsResponse(feeds []*domain.FeedItem) []*domain.FeedItem {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	for _, feed := range feeds {
-		// Truncate long descriptions to reduce payload size
-		if len(feed.Description) > 500 {
-			feed.Description = feed.Description[:500] + "..."
-		}
-		// Clean up whitespace and newlines
-		feed.Description = strings.TrimSpace(feed.Description)
 		feed.Title = strings.TrimSpace(feed.Title)
+		feed.Description = sanitizeAndExtract(ctx, feed.Description) // ★ ここだけ変更
 	}
 	return feeds
 }
@@ -227,11 +226,23 @@ func getCacheAgeForLimit(limit int) int {
 	}
 }
 
-func removeEscapedString(feeds []*domain.FeedItem) []*domain.FeedItem {
-	for _, feed := range feeds {
-		feed.Description = strings.ReplaceAll(feed.Description, "\n", "")
-		feed.Description = strings.ReplaceAll(feed.Description, "\r", "")
-		feed.Description = strings.ReplaceAll(feed.Description, "\t", " ")
+func sanitizeAndExtract(ctx context.Context, raw string) string {
+	if !strings.Contains(raw, "<") { // HTML でなければ早期 return
+		return truncate(strings.TrimSpace(raw))
 	}
-	return feeds
+	const ctype = "text/html; charset=utf-8"
+	paras, err := html_parser.ExtractPTags(ctx, strings.NewReader(raw), ctype)
+	if err != nil || len(paras) == 0 {
+		return truncate(strings.TrimSpace(html_parser.StripTags(raw)))
+	}
+	clean := strings.Join(paras, "\n")
+	return truncate(strings.TrimSpace(clean))
+}
+
+// truncate は従来の 500 文字丸めロジック（流用）
+func truncate(s string) string {
+	if len(s) > 500 {
+		return s[:500] + "..."
+	}
+	return s
 }
