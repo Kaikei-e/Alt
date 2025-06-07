@@ -40,7 +40,7 @@ class ApiClient {
     this.baseUrl = baseUrl;
   }
 
-  private getCacheKey(endpoint: string, method: string = 'GET'): string {
+  private getCacheKey(endpoint: string, method: string = "GET"): string {
     return `${method}:${endpoint}`;
   }
 
@@ -67,7 +67,7 @@ class ApiClient {
 
   async get<T>(endpoint: string, cacheTtl: number = 5): Promise<T> {
     const cacheKey = this.getCacheKey(endpoint);
-    
+
     // Check cache first
     const cachedData = this.getFromCache<T>(cacheKey);
     if (cachedData) {
@@ -100,15 +100,15 @@ class ApiClient {
       });
 
       this.pendingRequests.set(cacheKey, requestPromise);
-      
+
       const data = await requestPromise;
-      
+
       // Cache the result
       this.setCache(cacheKey, data, cacheTtl);
-      
+
       // Remove from pending requests
       this.pendingRequests.delete(cacheKey);
-      
+
       return data;
     } catch (error) {
       this.pendingRequests.delete(cacheKey);
@@ -135,10 +135,10 @@ class ApiClient {
       }
 
       const result = await response.json();
-      
+
       // Invalidate related cache entries after POST
       this.invalidateCache();
-      
+
       return result;
     } catch (error) {
       throw error;
@@ -177,7 +177,7 @@ export const feedsApi = {
     const limit = page * pageSize;
     const response = await apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/limit/${limit}`,
-      10 // 10 minute cache for feed data
+      10, // 10 minute cache for feed data
     );
 
     if (Array.isArray(response)) {
@@ -190,7 +190,7 @@ export const feedsApi = {
   async getFeedsPage(page: number = 0): Promise<Feed[]> {
     const response = await apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/page/${page}`,
-      10 // 10 minute cache for paginated data
+      10, // 10 minute cache for paginated data
     );
 
     if (Array.isArray(response)) {
@@ -203,7 +203,7 @@ export const feedsApi = {
   async getAllFeeds(): Promise<Feed[]> {
     const response = await apiClient.get<BackendFeedItem[]>(
       "/v1/feeds/fetch/list",
-      15 // 15 minute cache for all feeds
+      15, // 15 minute cache for all feeds
     );
 
     if (Array.isArray(response)) {
@@ -227,8 +227,8 @@ export const feedsApi = {
 
   // Method to prefetch data for performance
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
-    const prefetchPromises = pages.map(page => 
-      this.getFeedsPage(page).catch(() => {}) // Ignore errors in prefetching
+    const prefetchPromises = pages.map(
+      (page) => this.getFeedsPage(page).catch(() => {}), // Ignore errors in prefetching
     );
     await Promise.all(prefetchPromises);
   },

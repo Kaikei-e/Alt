@@ -17,17 +17,20 @@ const FeedCard = memo(function FeedCard({
 }: FeedCardProps) {
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleReadStatus = useCallback(async (url: string) => {
-    try {
-      setIsLoading(true);
-      await feedsApi.updateFeedReadStatus(url);
-      setIsReadStatus(true);
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Error updating feed read status", error);
-      setIsLoading(false);
-    }
-  }, [setIsReadStatus]);
+  const handleReadStatus = useCallback(
+    async (url: string) => {
+      try {
+        setIsLoading(true);
+        await feedsApi.updateFeedReadStatus(url);
+        setIsReadStatus(true);
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error updating feed read status", error);
+        setIsLoading(false);
+      }
+    },
+    [setIsReadStatus],
+  );
 
   const onMarkAsRead = useCallback(() => {
     handleReadStatus(feed.link);
@@ -42,9 +45,10 @@ const FeedCard = memo(function FeedCard({
   }
 
   // Truncate description more efficiently
-  const truncatedDescription = feed.description.length > 300 
-    ? `${feed.description.slice(0, 300)}...` 
-    : feed.description;
+  const truncatedDescription =
+    feed.description.length > 300
+      ? `${feed.description.slice(0, 300)}...`
+      : feed.description;
 
   return (
     <Flex

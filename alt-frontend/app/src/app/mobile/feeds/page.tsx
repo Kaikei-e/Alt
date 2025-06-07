@@ -22,9 +22,9 @@ export default function Feeds() {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Memoize visible feeds to prevent unnecessary recalculations
-  const visibleFeeds = useMemo(() => 
-    feeds.filter((feed) => !readFeeds.has(feed.link)),
-    [feeds, readFeeds]
+  const visibleFeeds = useMemo(
+    () => feeds.filter((feed) => !readFeeds.has(feed.link)),
+    [feeds, readFeeds],
   );
 
   const loadInitialFeeds = useCallback(async () => {
@@ -54,7 +54,7 @@ export default function Feeds() {
       console.error("Error fetching initial feeds:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to load feeds";
-      
+
       // Batch error state updates
       setError(errorMessage);
       setFeeds([]);
@@ -114,7 +114,7 @@ export default function Feeds() {
     setCurrentPage(0);
     setHasMore(true);
     setFeeds([]);
-    setRefreshKey(prev => prev + 1); // Reset infinite scroll observer
+    setRefreshKey((prev) => prev + 1); // Reset infinite scroll observer
 
     try {
       // Manually load fresh feeds instead of calling loadInitialFeeds to avoid conflicts
@@ -140,7 +140,7 @@ export default function Feeds() {
       console.error("Error refreshing feeds:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to refresh feeds";
-      
+
       // Batch error state updates
       setError(errorMessage);
       setFeeds([]);
@@ -151,49 +151,55 @@ export default function Feeds() {
   }, [isLoading]);
 
   // Memoize loading component
-  const LoadingComponent = useMemo(() => (
-    <Flex
-      flexDirection="column"
-      justifyContent="center"
-      alignItems="center"
-      height="100vh"
-      width="100%"
-    >
-      <CircularProgress isIndeterminate color="indigo.500" size="md" />
-    </Flex>
-  ), []);
+  const LoadingComponent = useMemo(
+    () => (
+      <Flex
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+        width="100%"
+      >
+        <CircularProgress isIndeterminate color="indigo.500" size="md" />
+      </Flex>
+    ),
+    [],
+  );
 
   // Memoize error component
-  const ErrorComponent = useMemo(() => (
-    <Flex
-      flexDirection="column"
-      justifyContent="center"
-      alignItems="center"
-      height="100vh"
-      width="100%"
-      p={4}
-    >
-      <Text
-        fontSize="lg"
-        fontWeight="bold"
-        color="red.500"
-        mb={4}
-        textAlign="center"
+  const ErrorComponent = useMemo(
+    () => (
+      <Flex
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+        width="100%"
+        p={4}
       >
-        Unable to load feeds
-      </Text>
-      <Text color="gray.600" mb={6} textAlign="center" maxWidth="md">
-        {error}
-      </Text>
-      <Button
-        colorScheme="indigo"
-        onClick={loadInitialFeeds}
-        disabled={initialLoading}
-      >
-        {initialLoading ? "Retrying..." : "Retry"}
-      </Button>
-    </Flex>
-  ), [error, loadInitialFeeds, initialLoading]);
+        <Text
+          fontSize="lg"
+          fontWeight="bold"
+          color="red.500"
+          mb={4}
+          textAlign="center"
+        >
+          Unable to load feeds
+        </Text>
+        <Text color="gray.600" mb={6} textAlign="center" maxWidth="md">
+          {error}
+        </Text>
+        <Button
+          colorScheme="indigo"
+          onClick={loadInitialFeeds}
+          disabled={initialLoading}
+        >
+          {initialLoading ? "Retrying..." : "Retry"}
+        </Button>
+      </Flex>
+    ),
+    [error, loadInitialFeeds, initialLoading],
+  );
 
   if (initialLoading) {
     return LoadingComponent;
@@ -212,7 +218,12 @@ export default function Feeds() {
       minHeight="100vh"
     >
       {visibleFeeds.length > 0 ? (
-        <Flex flexDirection="column" alignItems="center" width="100%" bg={"whiteAlpha.200"}>
+        <Flex
+          flexDirection="column"
+          alignItems="center"
+          width="100%"
+          bg={"whiteAlpha.200"}
+        >
           {visibleFeeds.map((feed: Feed) => (
             <Flex
               key={feed.link}

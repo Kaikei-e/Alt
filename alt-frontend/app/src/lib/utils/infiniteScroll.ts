@@ -3,14 +3,14 @@ import { useEffect, useRef } from "react";
 // Throttle function to limit callback execution frequency
 function throttle<T extends (...args: never[]) => void>(
   func: T,
-  delay: number
+  delay: number,
 ): (...args: Parameters<T>) => void {
   let timeoutId: NodeJS.Timeout | null = null;
   let lastExecTime = 0;
-  
+
   return (...args: Parameters<T>) => {
     const currentTime = Date.now();
-    
+
     if (currentTime - lastExecTime > delay) {
       func(...args);
       lastExecTime = currentTime;
@@ -18,10 +18,13 @@ function throttle<T extends (...args: never[]) => void>(
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      timeoutId = setTimeout(() => {
-        func(...args);
-        lastExecTime = Date.now();
-      }, delay - (currentTime - lastExecTime));
+      timeoutId = setTimeout(
+        () => {
+          func(...args);
+          lastExecTime = Date.now();
+        },
+        delay - (currentTime - lastExecTime),
+      );
     }
   };
 }
@@ -29,7 +32,7 @@ function throttle<T extends (...args: never[]) => void>(
 export function useInfiniteScroll(
   callback: () => void,
   ref: React.RefObject<HTMLDivElement | null>,
-  resetKey?: number | string
+  resetKey?: number | string,
 ) {
   const callbackRef = useRef(callback);
   const throttledCallbackRef = useRef<(() => void) | null>(null);
