@@ -14,14 +14,20 @@ jobs:
       with:
         node-version: lts/*
     - name: Install dependencies
-      run: npm install -g pnpm && pnpm install
+      run: |
+        cd alt-frontend/app
+        npm install -g pnpm && pnpm install
     - name: Install Playwright Browsers
-      run: pnpm exec playwright install --with-deps
+      run: |
+        cd alt-frontend/app
+        pnpm exec playwright install --with-deps
     - name: Run Playwright tests
-      run: pnpm exec playwright test
+      run: |
+        cd alt-frontend/app
+        pnpm exec playwright test
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
         name: playwright-report
-        path: playwright-report/
+        path: alt-frontend/app/playwright-report/
         retention-days: 30
