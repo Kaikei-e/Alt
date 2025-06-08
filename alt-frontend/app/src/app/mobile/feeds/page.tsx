@@ -9,7 +9,7 @@ import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import ErrorState from "./_components/ErrorState";
 import dynamic from "next/dynamic";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 const Progress = dynamic(
   () => import("@chakra-ui/progress").then((m) => m.CircularProgress),

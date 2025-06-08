@@ -173,7 +173,7 @@ export const feedsApi = {
     return apiClient.get("/v1/health", 1); // Short cache for health checks
   },
 
-  async getFeeds(page: number = 1, pageSize: number = 20): Promise<Feed[]> {
+  async getFeeds(page: number = 1, pageSize: number = 10): Promise<Feed[]> {
     const limit = page * pageSize;
     const response = await apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/limit/${limit}`,
