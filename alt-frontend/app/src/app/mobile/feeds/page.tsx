@@ -3,7 +3,7 @@
 import { Flex, Text, Button } from "@chakra-ui/react";
 import { feedsApi } from "@/lib/api";
 import { Feed } from "@/schema/feed";
-import FeedCard from "@/component/mobile/FeedCard";
+import FeedCard from "@/components/mobile/FeedCard";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import ErrorState from "./_components/ErrorState";
