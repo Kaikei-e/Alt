@@ -2,3 +2,4 @@
 alt-backend/app/datastore/output.json
 alt-backend/app/alt-backend-optimized
 /out
+test-results/.last-run.json
