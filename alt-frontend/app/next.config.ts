@@ -1,6 +1,3 @@
-const { withChakra } = require('@chakra-ui/next-js');
-module.exports = withChakra({ reactStrictMode: true });
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Essential optimizations

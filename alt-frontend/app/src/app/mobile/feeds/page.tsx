@@ -6,10 +6,15 @@ import { Feed } from "@/schema/feed";
 import FeedCard from "@/component/mobile/FeedCard";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
-import { CircularProgress } from "@chakra-ui/progress";
 import ErrorState from "./_components/ErrorState";
+import dynamic from "next/dynamic";
 
 const PAGE_SIZE = 20;
+
+const Progress = dynamic(
+  () => import("@chakra-ui/progress").then((m) => m.CircularProgress),
+  { ssr: false },
+);
 
 export default function Feeds() {
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -161,7 +166,7 @@ export default function Feeds() {
         height="100vh"
         width="100%"
       >
-        <CircularProgress isIndeterminate color="indigo.500" size="md" />
+        <Progress isIndeterminate color="indigo.500" size="md" />
       </Flex>
     ),
     [],
@@ -224,7 +229,7 @@ export default function Feeds() {
 
           {isLoading && (
             <Flex justifyContent="center" p={4}>
-              <CircularProgress isIndeterminate color="indigo.500" size="md" />
+              <Progress isIndeterminate color="indigo.500" size="md" />
             </Flex>
           )}
 
@@ -271,7 +276,7 @@ export default function Feeds() {
         boxShadow="lg"
       >
         {isLoading ? (
-          <CircularProgress
+          <Progress
             isIndeterminate
             color="black"
             size="md"
