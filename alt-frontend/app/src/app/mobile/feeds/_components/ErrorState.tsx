@@ -27,7 +27,7 @@ export default function ErrorState({
         mb={4}
         textAlign="center"
       >
-        Unable to load feeds
+        Failed to load feeds
       </Text>
       <Text color="gray.600" mb={6} textAlign="center" maxWidth="md">
         {error}

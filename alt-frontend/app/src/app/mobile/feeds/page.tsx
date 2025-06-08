@@ -165,6 +165,7 @@ export default function Feeds() {
         alignItems="center"
         height="100vh"
         width="100%"
+        data-testid="loading-spinner"
       >
         <Progress isIndeterminate color="indigo.500" size="md" />
       </Flex>

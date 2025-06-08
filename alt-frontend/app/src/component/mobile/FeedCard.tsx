@@ -60,6 +60,7 @@ const FeedCard = memo(function FeedCard({
       bg="blue.100"
       borderRadius="2xl"
       p={3}
+      data-testid="feed-card"
     >
       <Text fontSize="md" fontWeight="bold" color="gray.500">
         <Link href={feed.link} target="_blank">
