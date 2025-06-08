@@ -1,0 +1,32 @@
+name: Unit and Component Tests
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - name: Install dependencies
+        run: |
+          cd alt-frontend/app
+          npm install -g pnpm && pnpm install
+      - name: Run tests
+        run: |
+          cd alt-frontend/app
+          pnpm exec vitest
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-report
+          path: alt-frontend/app/coverage
+          retention-days: 30
