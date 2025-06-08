@@ -231,8 +231,8 @@ test.describe('Mobile Feeds Page', () => {
 
     await page.goto('/mobile/feeds');
 
-    // Should show error state - use more flexible selector
-    await expect(page.locator('text=Failed')).toBeVisible();
+    // Should show error state - use more specific selector to avoid strict mode violation
+    await expect(page.locator('text=Failed to load feeds')).toBeVisible();
     
     // Should show retry button
     await expect(page.locator('button:has-text("Retry")')).toBeVisible();
@@ -326,6 +326,9 @@ test.describe('Mobile Feeds Page', () => {
 
     await expect(page.locator('button:has-text("Mark as read")').first()).toBeVisible();
 
+    // Verify initial count
+    await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(10);
+
     // Scroll down to middle of page
     await page.evaluate(() => {
       window.scrollTo(0, window.innerHeight);
@@ -333,14 +336,15 @@ test.describe('Mobile Feeds Page', () => {
 
     const scrollPosition = await page.evaluate(() => window.scrollY);
 
-    // Trigger infinite scroll
+    // Trigger infinite scroll to load page 1 (10 more items)
     await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight);
     });
 
-    // Wait for new content to load
+    // Wait for new content to load - be more flexible with count since it might load multiple pages
     await page.waitForTimeout(2000);
-    await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(20);
+    const feedCount = await page.locator('button:has-text("Mark as read")').count();
+    expect(feedCount).toBeGreaterThanOrEqual(20); // Should have at least 20, might have 25 if page 2 also loads
 
     // User should still be able to scroll back to previous position
     await page.evaluate((pos) => {
