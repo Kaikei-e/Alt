@@ -10,7 +10,9 @@
     "fmt": "prettier --write .",
     "analyze": "ANALYZE=true next build",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:component": "vitest",
+    "test:all": "playwright test && vitest"
   },
   "dependencies": {
     "@chakra-ui/next-js": "^2.4.2",
@@ -32,9 +34,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/browser": "^3.2.2",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
     "prettier": "3.5.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.2"
   }
 }
