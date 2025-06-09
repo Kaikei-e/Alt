@@ -16,7 +16,7 @@ func (r *AltDBRepository) RegisterRSSFeedLink(ctx context.Context, link string) 
 
 	// Ensure transaction is always cleaned up
 	defer func() {
-		if err := tx.Rollback(ctx); err != nil {
+		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
 			logger.Logger.Warn("Error rolling back transaction", "error", err)
 		}
 	}()

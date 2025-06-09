@@ -15,7 +15,7 @@ func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.F
 	}
 
 	defer func() {
-		if err := tx.Rollback(ctx); err != nil {
+		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
 			logger.Logger.Warn("Error rolling back transaction", "error", err)
 		}
 	}()

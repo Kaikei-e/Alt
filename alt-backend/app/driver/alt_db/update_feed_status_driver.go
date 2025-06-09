@@ -27,7 +27,7 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 
 	// Ensure transaction is always cleaned up
 	defer func() {
-		if err := tx.Rollback(ctx); err != nil {
+		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
 			logger.Logger.Warn("Error rolling back transaction", "error", err)
 		}
 	}()
