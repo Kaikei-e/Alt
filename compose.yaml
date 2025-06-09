@@ -42,7 +42,7 @@ services:
       retries: 3
       start_period: 30s
     tty: true
-    
+
   alt-backend:
     build:
       context: ./alt-backend
@@ -65,12 +65,12 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9000/v1/health || exit 1"]
-      interval: 5s
-      timeout: 5s
+      interval: 20s
+      timeout: 10s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     tty: true
-    
+
   db:
     image: postgres:16-alpine
     restart: always
@@ -92,7 +92,7 @@ services:
     networks:
       - alt-network
     tty: true
-  
+
   migrate:
     build:
       context: ./migrate
