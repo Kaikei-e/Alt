@@ -168,6 +168,7 @@ export default function Feeds() {
         data-testid="loading-spinner"
       >
         <Progress isIndeterminate color="indigo.500" size="md" />
+        <Text>Loading...</Text>
       </Flex>
     ),
     [],

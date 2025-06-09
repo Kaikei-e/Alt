@@ -278,6 +278,11 @@ test.describe("Mobile Feeds Page", () => {
 
     await page.goto("/mobile/feeds");
 
+    // Wait for loading to finish and error state to appear
+    await page.locator('div:has-text("Loading...")').first().waitFor({
+      state: "hidden",
+    });
+
     // Should show error state - use more specific selector to avoid strict mode violation
     await expect(page.locator("text=Unable to load feeds")).toBeVisible();
 
