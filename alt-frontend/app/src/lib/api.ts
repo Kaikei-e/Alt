@@ -1,4 +1,5 @@
-import { Feed } from "@/schema/feed";
+import { BackendFeedItem, Feed } from "@/schema/feed";
+import { FeedSearchResult } from "@/schema/search";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost/api";
@@ -6,21 +7,6 @@ const API_BASE_URL =
 export type ApiResponse<T> = {
   data: T;
 };
-
-// Backend response types
-interface BackendFeedItem {
-  title: string;
-  description: string;
-  link: string;
-  links?: string[];
-  published?: string;
-  author?: {
-    name: string;
-  };
-  authors?: Array<{
-    name: string;
-  }>;
-}
 
 // Cache interface for performance optimization
 interface CacheEntry<T> {
@@ -231,6 +217,10 @@ export const feedsApi = {
       (page) => this.getFeedsPage(page).catch(() => {}), // Ignore errors in prefetching
     );
     await Promise.all(prefetchPromises);
+  },
+
+  async searchFeeds(query: string): Promise<FeedSearchResult> {
+    return apiClient.post<FeedSearchResult>(`/v1/feeds/search`, { query });
   },
 
   // Clear cache method
