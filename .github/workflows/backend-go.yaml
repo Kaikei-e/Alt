@@ -23,7 +23,7 @@ jobs:
         go mod tidy
     - name: Run tests
       run: |
-        cd alt-backend
+        cd alt-backend/app
         go test ./...
     - name: Upload test results
       uses: actions/upload-artifact@v4
