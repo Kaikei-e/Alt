@@ -33,8 +33,12 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 
 	err = g.alt_db.RegisterRSSFeedLink(ctx, feed.FeedLink)
 	if err != nil {
+		if errors.Is(err, pgx.ErrTxClosed) {
+			logger.Logger.Error("Failed to register RSS feed link", "error", err)
+			return errors.New("failed to register RSS feed link")
+		}
 		logger.Logger.Error("Error registering RSS feed link", "error", err)
-		return err
+		return errors.New("failed to register RSS feed link")
 	}
 	logger.Logger.Info("RSS feed link registered", "link", link)
 
