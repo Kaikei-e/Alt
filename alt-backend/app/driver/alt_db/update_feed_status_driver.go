@@ -3,7 +3,6 @@ package alt_db
 import (
 	"alt/utils/logger"
 	"context"
-	"errors"
 	"net/url"
 
 	"github.com/jackc/pgx/v5"
@@ -16,15 +15,22 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		logger.Logger.Error("Error beginning transaction", "error", err)
-		return err
+		return pgx.ErrTxClosed
 	}
 
 	var feedID string
 	err = tx.QueryRow(ctx, identifyFeedQuery, feedURL.String()).Scan(&feedID)
 	if err != nil {
 		logger.Logger.Error("Error identifying feed", "error", err, "feedURL", feedURL.String())
-		return errors.New("feed not found")
+		return pgx.ErrNoRows
 	}
+
+	// Ensure transaction is always cleaned up
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			logger.Logger.Warn("Error rolling back transaction", "error", err)
+		}
+	}()
 
 	updateFeedStatusQuery := `
 		INSERT INTO read_status (feed_id, is_read)
@@ -39,14 +45,9 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		err = tx.Rollback(ctx)
-		if err != nil {
-			logger.Logger.Error("Error rolling back transaction", "error", err)
-			return errors.New("error rolling back transaction")
-		}
 		logger.Logger.Error("Error committing transaction", "error", err)
 		return err
 	}
 
-	return err
+	return nil
 }

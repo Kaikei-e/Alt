@@ -14,6 +14,13 @@ func (r *AltDBRepository) RegisterRSSFeedLink(ctx context.Context, link string) 
 		return pgx.ErrTxClosed
 	}
 
+	// Ensure transaction is always cleaned up
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			logger.Logger.Warn("Error rolling back transaction", "error", err)
+		}
+	}()
+
 	_, err = tx.Exec(ctx, "INSERT INTO feed_links (url) VALUES ($1)", link)
 	if err != nil {
 		logger.Logger.Error("Error registering RSS feed link", "error", err)
@@ -22,11 +29,6 @@ func (r *AltDBRepository) RegisterRSSFeedLink(ctx context.Context, link string) 
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		err = tx.Rollback(ctx)
-		if err != nil {
-			logger.Logger.Error("Error rolling back transaction", "error", err)
-			return pgx.ErrTxClosed
-		}
 		logger.Logger.Error("Error committing transaction", "error", err)
 		return pgx.ErrTxClosed
 	}
