@@ -167,23 +167,9 @@ export default function Feeds() {
         width="100%"
         data-testid="loading-spinner"
       >
-        <Box
-          p={6}
-          borderRadius="20px"
-          className="glass"
-          textAlign="center"
-        >
-          <Progress
-            isIndeterminate
-            color="pink.400"
-            size="lg"
-          />
-          <Text
-            mt={4}
-            color="white"
-            fontSize="lg"
-            fontWeight="bold"
-          >
+        <Box p={6} borderRadius="20px" className="glass" textAlign="center">
+          <Progress isIndeterminate color="pink.400" size="lg" />
+          <Text mt={4} color="white" fontSize="lg" fontWeight="bold">
             Loading feeds...
           </Text>
         </Box>
@@ -276,11 +262,7 @@ export default function Feeds() {
 
             {isLoading && (
               <Flex justifyContent="center" p={6}>
-                <Progress
-                  isIndeterminate
-                  color="blue.400"
-                  size="md"
-                />
+                <Progress isIndeterminate color="blue.400" size="md" />
               </Flex>
             )}
 
@@ -356,16 +338,12 @@ export default function Feeds() {
           _hover: {
             transform: "none",
             bg: "linear-gradient(45deg, #ff006e, #8338ec)",
-          }
+          },
         }}
         transition="all 0.2s ease"
       >
         {isLoading ? (
-          <Progress
-            isIndeterminate
-            color="white"
-            size="sm"
-          />
+          <Progress isIndeterminate color="white" size="sm" />
         ) : (
           "Refresh"
         )}

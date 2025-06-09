@@ -5,7 +5,12 @@
 
 /* Vaporwave Theme - Global Styles */
 :root {
-  --vaporwave-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+  --vaporwave-bg: linear-gradient(
+    135deg,
+    #1a1a2e 0%,
+    #16213e 50%,
+    #0f0f23 100%
+  );
   --vaporwave-pink: #ff006e;
   --vaporwave-purple: #8338ec;
   --vaporwave-blue: #3a86ff;
@@ -35,7 +40,9 @@ body {
   min-height: 100dvh;
   background: var(--vaporwave-bg);
   color: var(--foreground);
-  font-feature-settings: "rlig" 1, "calt" 1;
+  font-feature-settings:
+    "rlig" 1,
+    "calt" 1;
   /* iOS safe area support */
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);

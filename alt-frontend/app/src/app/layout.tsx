@@ -22,13 +22,13 @@ const geistMono = Geist_Mono({
 });
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
   // Enable safe area support for notched devices
-  viewportFit: 'cover',
-}
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   title: "Alt",
@@ -61,14 +61,17 @@ export default function RootLayout({
       <head>
         {/* PWA and mobile optimization */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
         <meta name="format-detection" content="telephone=no" />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} app-container`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} app-container`}
+      >
         <CustomColorModeProvider>
-          <div className="app-container">
-            {children}
-          </div>
+          <div className="app-container">{children}</div>
         </CustomColorModeProvider>
       </body>
     </html>

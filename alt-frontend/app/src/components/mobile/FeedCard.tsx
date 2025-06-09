@@ -39,10 +39,7 @@ const FeedCard = memo(function FeedCard({
   if (isLoading) {
     return (
       <Flex justify="center" align="center" p={8}>
-        <Spinner
-          size="lg"
-          color="pink.400"
-        />
+        <Spinner size="lg" color="pink.400" />
       </Flex>
     );
   }
@@ -58,33 +55,17 @@ const FeedCard = memo(function FeedCard({
       : feed.description;
 
   return (
-    <Box
-      width="100%"
-      p={5}
-      data-testid="feed-card"
-    >
-      <Flex
-        flexDirection="column"
-        gap={4}
-      >
+    <Box width="100%" p={5} data-testid="feed-card">
+      <Flex flexDirection="column" gap={4}>
         {/* Title */}
-        <Text
-          fontSize="lg"
-          fontWeight="bold"
-          color="#ff006e"
-          lineHeight="1.3"
-        >
+        <Text fontSize="lg" fontWeight="bold" color="#ff006e" lineHeight="1.3">
           <Link href={feed.link} target="_blank">
             {feed.title}
           </Link>
         </Text>
 
         {/* Description */}
-        <Text
-          fontSize="sm"
-          color="rgba(255, 255, 255, 0.8)"
-          lineHeight="1.5"
-        >
+        <Text fontSize="sm" color="rgba(255, 255, 255, 0.8)" lineHeight="1.5">
           {truncatedDescription}
         </Text>
 
