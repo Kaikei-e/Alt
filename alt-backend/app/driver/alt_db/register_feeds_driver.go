@@ -13,7 +13,6 @@ func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.F
 		logger.Logger.Error("Error starting transaction", "error", err)
 		return errors.New("error starting transaction")
 	}
-	defer tx.Rollback(ctx)
 
 	var existingID string
 	err = tx.QueryRow(ctx, "SELECT id FROM feeds WHERE link = $1", feed.Link).Scan(&existingID)
@@ -37,6 +36,11 @@ func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.F
 
 	err = tx.Commit(ctx)
 	if err != nil {
+		err = tx.Rollback(ctx)
+		if err != nil {
+			logger.Logger.Error("Error rolling back transaction", "error", err)
+			return errors.New("error rolling back transaction")
+		}
 		logger.Logger.Error("Error committing transaction", "error", err)
 		return errors.New("error committing transaction")
 	}

@@ -18,7 +18,6 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 		logger.Logger.Error("Error beginning transaction", "error", err)
 		return err
 	}
-	defer tx.Rollback(ctx)
 
 	var feedID string
 	err = tx.QueryRow(ctx, identifyFeedQuery, feedURL.String()).Scan(&feedID)
@@ -40,6 +39,11 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 
 	err = tx.Commit(ctx)
 	if err != nil {
+		err = tx.Rollback(ctx)
+		if err != nil {
+			logger.Logger.Error("Error rolling back transaction", "error", err)
+			return errors.New("error rolling back transaction")
+		}
 		logger.Logger.Error("Error committing transaction", "error", err)
 		return err
 	}
