@@ -284,7 +284,7 @@ test.describe("Mobile Feeds Page", () => {
     });
 
     // Should show error state - use more specific selector to avoid strict mode violation
-    await expect(page.locator("text=Unable to load feeds")).toBeVisible();
+    await expect(page.locator("text=Failed to load feeds")).toBeVisible();
 
     // Should show retry button
     await expect(page.locator('button:has-text("Retry")')).toBeVisible();
