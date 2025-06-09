@@ -3,6 +3,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Vaporwave Theme - Global Styles */
+:root {
+  --vaporwave-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+  --vaporwave-pink: #ff006e;
+  --vaporwave-purple: #8338ec;
+  --vaporwave-blue: #3a86ff;
+  --vaporwave-gradient: linear-gradient(45deg, #ff006e, #8338ec, #3a86ff);
+  --glass-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --foreground: #ffffff;
+  --background: #1a1a2e;
+}
+
 /* Critical layout styles */
 html {
   font-family: var(--font-geist-sans), system-ui, arial, sans-serif;
@@ -10,17 +23,66 @@ html {
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Mobile viewport handling */
+  height: 100%;
+  height: 100dvh;
 }
 
 body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  background-color: #e0e7ff; /* indigo.200 fallback */
-  color: #1a202c;
-  font-feature-settings:
-    "rlig" 1,
-    "calt" 1;
+  min-height: 100dvh;
+  background: var(--vaporwave-bg);
+  color: var(--foreground);
+  font-feature-settings: "rlig" 1, "calt" 1;
+  /* iOS safe area support */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  /* Extend background behind safe areas */
+  background-attachment: fixed;
+  position: relative;
+}
+
+/* Ensure background covers entire viewport including safe areas */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--vaporwave-bg);
+  z-index: -1;
+}
+
+/* Global container to ensure proper spacing */
+#__next,
+.app-container {
+  min-height: 100vh;
+  min-height: 100dvh;
+  position: relative;
+  z-index: 1;
+}
+
+/* Glass morphism utility classes */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+}
+
+.vaporwave-gradient {
+  background: var(--vaporwave-gradient);
+}
+
+.vaporwave-text {
+  background: var(--vaporwave-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 /* Prevent layout shift during font loading */
@@ -32,13 +94,15 @@ body {
   visibility: visible;
 }
 
-/* Critical component styles for above-the-fold content */
+/* Updated component styles for vaporwave theme */
 .feed-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
 }
 
 .feed-card {
@@ -47,10 +111,36 @@ body {
   justify-content: center;
   align-items: center;
   width: 100%;
-  background-color: #dbeafe; /* blue.100 fallback */
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
   border-radius: 1rem;
-  padding: 0.75rem;
+  padding: 1.25rem;
   margin: 0.5rem 1rem;
+  position: relative;
+  transition: transform 0.2s ease;
+}
+
+.feed-card:hover {
+  transform: translateY(-2px);
+}
+
+/* Gradient border effect for feed cards */
+.feed-card-gradient {
+  position: relative;
+  margin: 1rem;
+}
+
+.feed-card-gradient::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: var(--vaporwave-gradient);
+  border-radius: 16px;
+  z-index: -1;
 }
 
 /* Loading spinner optimization */
@@ -67,13 +157,28 @@ body {
   }
 }
 
+/* Vaporwave button styles */
+.vaporwave-button {
+  background: var(--vaporwave-gradient);
+  color: white;
+  border: 2px solid var(--glass-border);
+  border-radius: 9999px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+}
+
+.vaporwave-button:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(45deg, #e6005c, #7129d4, #2e7aff);
+}
+
 /* Optimize button interactions */
 .refresh-button {
   position: fixed;
-  bottom: 20px;
-  left: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  left: calc(20px + env(safe-area-inset-left));
   z-index: 1000;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s ease-in-out;
 }
 
@@ -92,18 +197,6 @@ body {
   scroll-behavior: smooth;
 }
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 html,
 body {
   max-width: 100vw;
@@ -113,7 +206,7 @@ body {
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -128,10 +221,10 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+/* Vaporwave link styles */
+a:hover {
+  color: var(--vaporwave-pink);
+  transition: color 0.2s ease;
 }
 
 /* Screen Styles */
@@ -142,5 +235,42 @@ a {
 
   .mobile {
     display: none;
+  }
+
+  /* Desktop adjustments */
+  body {
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .refresh-button {
+    bottom: 20px;
+    left: 20px;
+  }
+}
+
+/* Responsive typography for vaporwave theme */
+@media (max-width: 767px) {
+  .vaporwave-title {
+    font-size: 1.5rem;
+    background: var(--vaporwave-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: bold;
+  }
+
+  .vaporwave-text {
+    color: rgba(255, 255, 255, 0.8);
+  }
+}
+
+/* Dark mode overrides (since we're always dark now) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1a1a2e;
+    --foreground: #ffffff;
   }
 }

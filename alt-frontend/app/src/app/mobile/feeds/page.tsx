@@ -1,6 +1,6 @@
 "use client";
 
-import { Flex, Text, Button } from "@chakra-ui/react";
+import { Flex, Text, Button, Box } from "@chakra-ui/react";
 import { feedsApi } from "@/lib/api";
 import { Feed } from "@/schema/feed";
 import FeedCard from "@/components/mobile/FeedCard";
@@ -156,7 +156,7 @@ export default function Feeds() {
     setIsLoading(false);
   }, [isLoading]);
 
-  // Memoize loading component
+  // Memoize loading component with vaporwave styling
   const LoadingComponent = useMemo(
     () => (
       <Flex
@@ -167,8 +167,26 @@ export default function Feeds() {
         width="100%"
         data-testid="loading-spinner"
       >
-        <Progress isIndeterminate color="indigo.500" size="md" />
-        <Text>Loading...</Text>
+        <Box
+          p={6}
+          borderRadius="20px"
+          className="glass"
+          textAlign="center"
+        >
+          <Progress
+            isIndeterminate
+            color="pink.400"
+            size="lg"
+          />
+          <Text
+            mt={4}
+            color="white"
+            fontSize="lg"
+            fontWeight="bold"
+          >
+            Loading feeds...
+          </Text>
+        </Box>
       </Flex>
     ),
     [],
@@ -180,114 +198,178 @@ export default function Feeds() {
 
   if (error) {
     return (
-      <ErrorState
-        error={error}
-        onRetry={loadInitialFeeds}
-        isLoading={initialLoading}
-      />
+      <Box minHeight="100vh" minH="100dvh">
+        <ErrorState
+          error={error}
+          onRetry={loadInitialFeeds}
+          isLoading={initialLoading}
+        />
+      </Box>
     );
   }
 
   return (
-    <Flex
-      flexDirection="column"
-      alignItems="center"
+    <Box
       width="100%"
-      bg="indigo.200"
+      className="feed-container"
       minHeight="100vh"
+      minH="100dvh"
+      position="relative"
     >
-      {visibleFeeds.length > 0 ? (
-        <Flex
-          flexDirection="column"
-          alignItems="center"
-          width="100%"
-          bg={"whiteAlpha.200"}
-        >
-          {visibleFeeds.map((feed: Feed) => (
-            <Flex
-              key={feed.link}
-              flexDirection="column"
-              justifyContent="center"
-              alignItems="center"
-              width="100%"
-              px={4}
-              py={2}
-            >
-              <FeedCard
-                feed={feed}
-                isReadStatus={false}
-                setIsReadStatus={() => handleMarkAsRead(feed.link)}
-              />
-            </Flex>
-          ))}
-          <div
-            ref={sentinelRef}
-            style={{
-              height: "20px",
-              width: "100%",
-              backgroundColor: "transparent",
-            }}
-          />
+      <Flex
+        flexDirection="column"
+        alignItems="center"
+        width="100%"
+        px={4}
+        pt={6}
+        pb="calc(80px + env(safe-area-inset-bottom))"
+      >
+        {visibleFeeds.length > 0 ? (
+          <>
+            {visibleFeeds.map((feed: Feed) => (
+              <Box
+                key={feed.link}
+                width="100%"
+                maxWidth="500px"
+                mb={4}
+                position="relative"
+              >
+                {/* Gradient border effect */}
+                <Box
+                  position="absolute"
+                  top="-2px"
+                  left="-2px"
+                  right="-2px"
+                  bottom="-2px"
+                  bg="linear-gradient(45deg, #ff006e, #8338ec, #3a86ff)"
+                  borderRadius="16px"
+                  zIndex={0}
+                />
+                <Box
+                  position="relative"
+                  zIndex={1}
+                  bg="#1a1a2e"
+                  borderRadius="14px"
+                  overflow="hidden"
+                  _hover={{
+                    transform: "translateY(-2px)",
+                  }}
+                  transition="transform 0.2s ease"
+                >
+                  <FeedCard
+                    feed={feed}
+                    isReadStatus={false}
+                    setIsReadStatus={() => handleMarkAsRead(feed.link)}
+                  />
+                </Box>
+              </Box>
+            ))}
 
-          {isLoading && (
-            <Flex justifyContent="center" p={4}>
-              <Progress isIndeterminate color="indigo.500" size="md" />
-            </Flex>
-          )}
+            <div
+              ref={sentinelRef}
+              style={{
+                height: "20px",
+                width: "100%",
+                backgroundColor: "transparent",
+              }}
+            />
 
-          {!hasMore && !isLoading && visibleFeeds.length === 0 && (
-            <Flex
-              flexDirection="column"
-              justifyContent="center"
-              alignItems="center"
-              width="90%"
-              p={4}
+            {isLoading && (
+              <Flex justifyContent="center" p={6}>
+                <Progress
+                  isIndeterminate
+                  color="blue.400"
+                  size="md"
+                />
+              </Flex>
+            )}
+
+            {!hasMore && !isLoading && visibleFeeds.length === 0 && (
+              <Box
+                p={6}
+                borderRadius="16px"
+                bg="rgba(255, 255, 255, 0.1)"
+                border="1px solid rgba(255, 255, 255, 0.2)"
+                textAlign="center"
+                mt={8}
+              >
+                <Text color="white" fontSize="lg" fontWeight="bold">
+                  No more feeds
+                </Text>
+                <Text color="gray.300" fontSize="sm" mt={2}>
+                  Try refreshing to see new content
+                </Text>
+              </Box>
+            )}
+          </>
+        ) : (
+          <Flex
+            flexDirection="column"
+            justifyContent="center"
+            alignItems="center"
+            height="80vh"
+            width="100%"
+          >
+            <Box
+              p={8}
+              borderRadius="20px"
+              bg="rgba(255, 255, 255, 0.1)"
+              border="1px solid rgba(255, 255, 255, 0.2)"
+              textAlign="center"
             >
-              <Text color="white">No more feeds</Text>
-              <Text color="gray.300" fontSize="sm" mt={2}>
-                Try refreshing to see new content
+              <Text color="white" fontSize="xl" fontWeight="bold">
+                No feeds available
               </Text>
-            </Flex>
-          )}
-        </Flex>
-      ) : (
-        <Flex
-          flexDirection="column"
-          justifyContent="center"
-          alignItems="center"
-          height="100vh"
-          width="100%"
-        >
-          <Text>No feeds available</Text>
-        </Flex>
-      )}
+            </Box>
+          </Flex>
+        )}
+      </Flex>
 
-      {/* Refresh Button - Fixed position in bottom left corner */}
       <Button
         position="fixed"
-        bottom="20px"
-        left="20px"
-        color="black"
-        p={2}
-        borderRadius="md"
-        size="xl"
-        fontSize="lg"
+        bottom="calc(20px + env(safe-area-inset-bottom))"
+        left="calc(20px + env(safe-area-inset-left))"
+        size="lg"
+        borderRadius="full"
+        bg="linear-gradient(45deg, #ff006e, #8338ec)"
+        color="white"
+        fontWeight="bold"
+        px={6}
+        py={3}
         onClick={handleRefresh}
         disabled={isLoading}
         zIndex={1000}
-        boxShadow="lg"
+        boxShadow="0 8px 32px rgba(255, 0, 110, 0.3)"
+        border="2px solid rgba(255, 255, 255, 0.2)"
+        _hover={{
+          transform: "translateY(-2px)",
+          bg: "linear-gradient(45deg, #e6005c, #7129d4)",
+          boxShadow: "0 12px 40px rgba(255, 0, 110, 0.4)",
+        }}
+        _active={{
+          transform: "translateY(0px)",
+          boxShadow: "0 4px 20px rgba(255, 0, 110, 0.3)",
+        }}
+        _disabled={{
+          opacity: 0.6,
+          cursor: "not-allowed",
+          _hover: {
+            transform: "none",
+            bg: "linear-gradient(45deg, #ff006e, #8338ec)",
+          }
+        }}
+        transition="all 0.2s ease"
       >
         {isLoading ? (
           <Progress
             isIndeterminate
-            color="black"
-            size="md"
-            fontStyle={"italic"}
+            color="white"
+            size="sm"
           />
         ) : (
-          <Text color="ivory.200">Refresh</Text>
+          "Refresh"
         )}
       </Button>
-    </Flex>
+    </Box>
   );
 }

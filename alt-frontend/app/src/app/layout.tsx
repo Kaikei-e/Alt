@@ -1,5 +1,5 @@
 // app/layout.tsx
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -21,6 +21,15 @@ const geistMono = Geist_Mono({
   fallback: ["ui-monospace", "monospace"],
 });
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  // Enable safe area support for notched devices
+  viewportFit: 'cover',
+}
+
 export const metadata: Metadata = {
   title: "Alt",
   description: "Alt: A simple RSS reader",
@@ -35,8 +44,10 @@ export const metadata: Metadata = {
     ],
   },
   other: {
-    "theme-color": "#818CF8",
-    "color-scheme": "light dark",
+    "theme-color": "#1a1a2e", // Match vaporwave dark theme
+    "color-scheme": "dark",
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-status-bar-style": "black-translucent",
   },
 };
 
@@ -46,9 +57,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <CustomColorModeProvider>{children}</CustomColorModeProvider>
+    <html lang="en" suppressHydrationWarning className="dark">
+      <head>
+        {/* PWA and mobile optimization */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="format-detection" content="telephone=no" />
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable} app-container`}>
+        <CustomColorModeProvider>
+          <div className="app-container">
+            {children}
+          </div>
+        </CustomColorModeProvider>
       </body>
     </html>
   );

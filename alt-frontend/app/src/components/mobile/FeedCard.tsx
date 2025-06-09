@@ -1,4 +1,4 @@
-import { Button, Flex, Spinner, Text } from "@chakra-ui/react";
+import { Button, Flex, Spinner, Text, Box } from "@chakra-ui/react";
 import { Feed } from "@/schema/feed";
 import Link from "next/link";
 import { feedsApi } from "@/lib/api";
@@ -37,7 +37,14 @@ const FeedCard = memo(function FeedCard({
   }, [handleReadStatus, feed.link]);
 
   if (isLoading) {
-    return <Spinner size="md" color="black" />;
+    return (
+      <Flex justify="center" align="center" p={8}>
+        <Spinner
+          size="lg"
+          color="pink.400"
+        />
+      </Flex>
+    );
   }
 
   if (isReadStatus) {
@@ -51,47 +58,80 @@ const FeedCard = memo(function FeedCard({
       : feed.description;
 
   return (
-    <Flex
-      key={feed.id}
-      flexDirection="column"
-      justifyContent="center"
-      alignItems="center"
+    <Box
       width="100%"
-      bg="blue.100"
-      borderRadius="2xl"
-      p={3}
+      p={5}
       data-testid="feed-card"
     >
-      <Text fontSize="md" fontWeight="bold" color="gray.500">
-        <Link href={feed.link} target="_blank">
-          {feed.title}
-        </Link>
-      </Text>
-      <Text fontSize="xs" color="gray.500">
-        {truncatedDescription}
-      </Text>
-
       <Flex
-        flexDirection="row"
-        justifyContent="space-between"
-        w="100%"
-        alignItems="center"
+        flexDirection="column"
+        gap={4}
       >
-        <Button
-          onClick={onMarkAsRead}
-          colorScheme="green"
-          size="sm"
-          mt={2}
-          w="50%"
-          disabled={isLoading}
+        {/* Title */}
+        <Text
+          fontSize="lg"
+          fontWeight="bold"
+          color="#ff006e"
+          lineHeight="1.3"
         >
-          Mark as read
-        </Button>
-        <Text fontSize="xs" color="gray.500" ml={2} mr={2} textAlign="center">
-          {feed.published}
+          <Link href={feed.link} target="_blank">
+            {feed.title}
+          </Link>
         </Text>
+
+        {/* Description */}
+        <Text
+          fontSize="sm"
+          color="rgba(255, 255, 255, 0.8)"
+          lineHeight="1.5"
+        >
+          {truncatedDescription}
+        </Text>
+
+        {/* Bottom section with button and date */}
+        <Flex
+          flexDirection="row"
+          justifyContent="space-between"
+          alignItems="center"
+          pt={2}
+        >
+          <Button
+            onClick={onMarkAsRead}
+            size="sm"
+            borderRadius="full"
+            bg="linear-gradient(45deg, #ff006e, #8338ec)"
+            color="white"
+            fontWeight="bold"
+            px={4}
+            disabled={isLoading}
+            _hover={{
+              bg: "linear-gradient(45deg, #e6005c, #7129d4)",
+              transform: "translateY(-1px)",
+            }}
+            _active={{
+              transform: "translateY(0px)",
+            }}
+            _disabled={{
+              opacity: 0.6,
+            }}
+            transition="all 0.2s ease"
+            border="1px solid rgba(255, 255, 255, 0.2)"
+          >
+            Mark as read
+          </Button>
+
+          <Text
+            fontSize="xs"
+            color="rgba(255, 255, 255, 0.6)"
+            fontWeight="medium"
+            textAlign="right"
+            ml={3}
+          >
+            {feed.published}
+          </Text>
+        </Flex>
       </Flex>
-    </Flex>
+    </Box>
   );
 });
 
