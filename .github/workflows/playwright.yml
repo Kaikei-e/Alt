@@ -21,14 +21,10 @@ jobs:
       run: |
         cd alt-frontend/app
         npm install -g pnpm && pnpm install
-    - name: Install Playwright Browsers
-      run: |
-        cd alt-frontend/app
-        pnpm exec playwright install --with-deps
     - name: Run Playwright tests
       run: |
         cd alt-frontend/app
-        pnpm exec playwright test
+        npx playwright test
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
