@@ -21,6 +21,10 @@ jobs:
       run: |
         cd alt-frontend/app
         npm install -g pnpm && pnpm install
+    - name: Install Playwright Browsers
+      run: |
+        cd alt-frontend/app
+        npx playwright install --with-deps
     - name: Run Playwright tests
       run: |
         cd alt-frontend/app
