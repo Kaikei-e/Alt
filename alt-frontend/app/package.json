@@ -12,7 +12,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:logic": "vitest",
-    "test:all": "playwright test && vitest"
+    "test:all": "playwright test -- && vitest"
   },
   "dependencies": {
     "@chakra-ui/next-js": "^2.4.2",
