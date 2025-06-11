@@ -1,4 +1,4 @@
-FROM ghcr.io/huggingface/text-generation-inference:2.0
+FROM ghcr.io/huggingface/text-generation-inference:3.3.2
 
 # キャッシュ／オフロード用ディレクトリ
 ENV HF_HOME=/hf
