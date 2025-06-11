@@ -1,0 +1,9 @@
+FROM golang:1.24.3-alpine
+
+WORKDIR /app
+
+COPY ./app ./
+
+EXPOSE 9200
+
+CMD ["go", "run", "main.go"]

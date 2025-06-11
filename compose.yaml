@@ -71,6 +71,49 @@ services:
       start_period: 30s
     tty: true
 
+  news-creator:
+    build:
+      context: ./news-creator
+      dockerfile: Dockerfile.creator
+    image: qwen3-8b-awq:latest
+    runtime: nvidia
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - MODEL_ID=Qwen/Qwen2.5-7B-Instruct
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: always
+    ports:
+      - "9100:9100"
+    networks:
+      - alt-network
+    tty: true
+
+  pre-processor:
+    build:
+      context: ./pre-processor
+      dockerfile: Dockerfile.preprocess
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - PRE_PROCESSOR_DB_USER=${PRE_PROCESSOR_DB_USER}
+      - PRE_PROCESSOR_DB_PASSWORD=${PRE_PROCESSOR_DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+    ports:
+      - "9200:9200"
+    networks:
+      - alt-network
+    tty: true
+
   db:
     image: postgres:16-alpine
     restart: always
@@ -78,9 +121,16 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      PRE_PROCESSOR_DB_USER: ${PRE_PROCESSOR_DB_USER}
+      PRE_PROCESSOR_DB_PASSWORD: ${PRE_PROCESSOR_DB_PASSWORD}
     volumes:
       - db_data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d/init.sql:rw
+      - ./db/init:/docker-entrypoint-initdb.d:rw
     ports:
       - "5432:5432"
     healthcheck:

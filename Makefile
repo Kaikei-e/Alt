@@ -30,22 +30,12 @@ up: $(ENV_FILE)
 up-clean-frontend: $(ENV_FILE)
 	@echo "Starting Docker Compose services with clean frontend build..."
 	docker build --no-cache -f ./alt-frontend/Dockerfile.frontend -t alt-frontend ./alt-frontend
+	docker compose up alt-frontend alt-backend db migrate nginx pre-processor --build -d
+
+up-with-news-creator: $(ENV_FILE)
+	@echo "Starting Docker Compose services with new creator build..."
+	docker build --no-cache -f ./news-creator/Dockerfile.creator -t news-creator ./news-creator
 	docker compose up --build -d
-	
-# 完全にクリーンな状態からフロントエンドを再構築 (最終手段)
-up-clean: $(ENV_FILE)
-	@echo "CLEAN OPTION: Complete clean rebuild of frontend..."
-	@echo "This will remove frontend containers, images, and volumes but PRESERVE database data."
-	@read -p "Are you sure? This will take several minutes to rebuild everything. (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
-	docker compose down --remove-orphans
-	@echo "Removing only frontend-related volume (preserving database)..."
-	docker volume rm alt_out_data 2>/dev/null || true
-	@echo "Cleaning up unused containers and images (preserving database volume)..."
-	docker container prune -f
-	docker image prune -f -a
-	docker compose build --no-cache
-	docker compose up --build -d
-	@echo "Clean rebuild complete! Frontend rebuilt from scratch, database data preserved."
 
 # Dockerイメージをビルドするターゲット (個別実行も可能)
 build: $(ENV_FILE)
