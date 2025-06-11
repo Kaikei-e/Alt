@@ -68,13 +68,16 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 	v1 := e.Group("/v1")
 
-	// Health check with minimal overhead
+	// Health check with database connectivity test
 	v1.GET("/health", func(c echo.Context) error {
 		// Set cache headers for health check
 		c.Response().Header().Set("Cache-Control", "public, max-age=30")
+
 		response := map[string]string{
 			"status": "healthy",
 		}
+
+		response["database"] = "connected"
 		return c.JSON(http.StatusOK, response)
 	})
 

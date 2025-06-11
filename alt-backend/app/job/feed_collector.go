@@ -77,7 +77,7 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL) ([]*domain.Fe
 	var feeds []*rssFeed.Feed
 	var errors []error
 
-	for _, feedURL := range feedURLs {
+	for i, feedURL := range feedURLs {
 		// First validate the URL
 		if err := validateFeedURL(feedURL); err != nil {
 			logger.Logger.Error("Feed URL validation failed", "url", feedURL.String(), "error", err)
@@ -94,6 +94,9 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL) ([]*domain.Fe
 
 		feeds = append(feeds, feed)
 		logger.Logger.Info("Successfully parsed feed", "url", feedURL.String(), "title", feed.Title)
+
+		time.Sleep(5 * time.Second)
+		logger.Logger.Info("Feed collection progress", "current", i+1, "total", len(feedURLs))
 	}
 
 	// Log summary of collection results
@@ -106,7 +109,7 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL) ([]*domain.Fe
 	}
 
 	feedItems := ConvertFeedToFeedItem(feeds)
-	logger.Logger.Info("Feed items", "feedItems", feedItems)
+	logger.Logger.Info("Feed items", "feedItems count", len(feedItems))
 	return feedItems, nil
 }
 

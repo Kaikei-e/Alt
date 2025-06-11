@@ -2,8 +2,10 @@ package alt_db
 
 import (
 	"alt/driver/models"
+	"alt/utils/logger"
 	"context"
 	"errors"
+	"fmt"
 )
 
 func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {
@@ -14,6 +16,7 @@ func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, erro
 	var feed models.Feed
 	err := r.db.QueryRow(ctx, query).Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 	if err != nil {
+		logger.Logger.Error("error fetching single feed", "error", err)
 		return nil, errors.New("error fetching single feed")
 	}
 
@@ -28,7 +31,7 @@ func (r *AltDBRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, e
 	var feeds []*models.Feed
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
-		return nil, errors.New("error fetching feeds list")
+		return nil, fmt.Errorf("error fetching feeds list: %w", err)
 	}
 	defer rows.Close()
 
@@ -36,6 +39,7 @@ func (r *AltDBRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, e
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
+			logger.Logger.Error("error scanning feeds list", "error", err)
 			return nil, errors.New("error scanning feeds list")
 		}
 		feeds = append(feeds, &feed)
@@ -52,6 +56,7 @@ func (r *AltDBRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([
 	var feeds []*models.Feed
 	rows, err := r.db.Query(ctx, query, limit)
 	if err != nil {
+		logger.Logger.Error("error fetching feeds list limit", "error", err)
 		return nil, errors.New("error fetching feeds list limit")
 	}
 	defer rows.Close()
@@ -60,6 +65,7 @@ func (r *AltDBRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
+			logger.Logger.Error("error scanning feeds list offset", "error", err)
 			return nil, errors.New("error scanning feeds list offset")
 		}
 		feeds = append(feeds, &feed)
@@ -78,6 +84,7 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 	var feeds []*models.Feed
 	rows, err := r.db.Query(ctx, query, pageSize, pageSize*page)
 	if err != nil {
+		logger.Logger.Error("error fetching feeds list page", "error", err)
 		return nil, errors.New("error fetching feeds list page")
 	}
 	defer rows.Close()
@@ -86,6 +93,7 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
+			logger.Logger.Error("error scanning feeds list page", "error", err)
 			return nil, errors.New("error scanning feeds list page")
 		}
 		feeds = append(feeds, &feed)
@@ -99,16 +107,17 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 
 	// Alternative query using LEFT JOIN - might be more efficient than NOT EXISTS
 	query := `
-		SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at 
+		SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
 		FROM feeds f
 		LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.is_read = TRUE
 		WHERE rs.feed_id IS NULL
-		ORDER BY f.created_at DESC 
+		ORDER BY f.created_at DESC
 		LIMIT $1 OFFSET $2
 	`
 
 	rows, err := r.db.Query(ctx, query, pageSize, pageSize*page)
 	if err != nil {
+		logger.Logger.Error("error fetching unread feeds list page", "error", err)
 		return nil, errors.New("error fetching feeds list page")
 	}
 	defer rows.Close()
@@ -118,6 +127,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 		var feed models.Feed
 		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
+			logger.Logger.Error("error scanning unread feeds list page", "error", err)
 			return nil, errors.New("error scanning feeds list page")
 		}
 		feeds = append(feeds, &feed)
