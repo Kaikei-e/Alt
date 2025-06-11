@@ -63,23 +63,24 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9000/v1/health || exit 1"]
       interval: 20s
       timeout: 10s
       retries: 5
-      start_period: 30s
+      start_period: 60s
     tty: true
 
   news-creator:
     build:
       context: ./news-creator
       dockerfile: Dockerfile.creator
-    image: qwen3-8b-awq:latest
     runtime: nvidia
     environment:
       - HF_TOKEN=${HF_TOKEN}
-      - MODEL_ID=Qwen/Qwen2.5-7B-Instruct
+      - NVIDIA_VISIBLE_DEVICES=all
     deploy:
       resources:
         reservations:
