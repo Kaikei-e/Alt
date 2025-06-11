@@ -1,0 +1,12 @@
+FROM ghcr.io/huggingface/text-generation-inference:2.0
+
+# キャッシュ／オフロード用ディレクトリ
+ENV HF_HOME=/hf
+WORKDIR /hf
+
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# AWQ モデルを指定。動的量子化は不要（すでに 4bit AWQ）。
+ENTRYPOINT ["/entrypoint.sh"]
