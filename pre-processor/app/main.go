@@ -58,7 +58,7 @@ func job(offset int, ctx context.Context, db *pgx.Conn) {
 
 		articles = append(articles, article)
 		time.Sleep(5 * time.Second)
-		logger.Logger.Info("Sleeping for 5 seconds. ", "index", i)
+		logger.Logger.Info("Sleeping for 5 seconds. ", "index", i+1)
 	}
 
 	for _, article := range articles {
