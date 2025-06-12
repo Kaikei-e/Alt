@@ -48,7 +48,8 @@ func job(offset int, ctx context.Context, db *pgx.Conn) {
 	logger.Logger.Info("Source URLs", "urls", urls)
 
 	var articles []*models.Article
-	for _, url := range urls {
+	for i, url := range urls {
+		logger.Logger.Info("Fetching article", "url", url.String(), "index", i)
 		article, err := articlefetcher.FetchArticle(url)
 		if err != nil {
 			logger.Logger.Error("Failed to fetch article", "error", err)
@@ -56,6 +57,8 @@ func job(offset int, ctx context.Context, db *pgx.Conn) {
 		}
 
 		articles = append(articles, article)
+		time.Sleep(5 * time.Second)
+		logger.Logger.Info("Sleeping for 5 seconds. ", "index", i)
 	}
 
 	for _, article := range articles {
