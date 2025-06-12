@@ -22,7 +22,7 @@ func main() {
 	ctx := context.Background()
 	dbPool, err := driver.Init(ctx)
 	if err != nil {
-		logger.Error("Failed to initialize database", "error", err)
+		logger.Error("Failed to initialize database connection pool", "error", err)
 		panic(err)
 	}
 

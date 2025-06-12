@@ -3,6 +3,7 @@ package articlefetcher
 import (
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"pre-processor/logger"
@@ -13,6 +14,11 @@ import (
 
 func FetchArticle(url url.URL) (*models.Article, error) {
 	logger.Logger.Info("Fetching article", "url", url.String())
+
+	if urlMP3Validator(url) {
+		logger.Logger.Info("Skipping MP3 URL", "url", url.String())
+		return nil, nil
+	}
 
 	// Create HTTP client with timeout
 	client := &http.Client{
@@ -41,4 +47,8 @@ func FetchArticle(url url.URL) (*models.Article, error) {
 		Content: article.TextContent,
 		URL:     url.String(),
 	}, nil
+}
+
+func urlMP3Validator(url url.URL) bool {
+	return strings.HasSuffix(url.String(), ".mp3")
 }
