@@ -5,6 +5,17 @@ ENV_FILE := ./.env
 # .env テンプレートファイルの名前
 ENV_TEMPLATE := ./.env.template
 
+# .env ファイルが存在する場合は読み込む
+ifneq (,$(wildcard $(ENV_FILE)))
+    include $(ENV_FILE)
+    export
+endif
+
+# デフォルトのデータベース設定
+POSTGRES_USER ?= devuser
+POSTGRES_PASSWORD ?= devpassword
+POSTGRES_DB ?= devdb
+
 # デフォルトのターゲット
 all: build up
 
@@ -84,5 +95,8 @@ generate-mocks:
 	done
 	@echo "GoMock mocks generated successfully in $(MOCKS_DIR)/"
 
+backup-db:
+	@echo "Backing up database..."
+	docker compose exec db pg_dump -U $(POSTGRES_USER) -h localhost -p 5432 $(POSTGRES_DB) > backup.sql
 
-.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks
+.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db
