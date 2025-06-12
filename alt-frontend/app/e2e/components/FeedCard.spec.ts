@@ -61,9 +61,15 @@ test("FeedCard", async ({ page }) => {
   expect(feeds[5].published).toBe("2024-01-06T12:00:00Z");
 
   // check the feed card is visible - use more specific selectors to avoid strict mode violations
-  await expect(page.getByRole('link', { name: 'Test Feed 1', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Test Feed 6', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Test Feed 1", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Test Feed 6", exact: true }),
+  ).toBeVisible();
 
   // check the feed card is not visible
-  await expect(page.getByRole('link', { name: 'Test Feed 11', exact: true })).not.toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Test Feed 11", exact: true }),
+  ).not.toBeVisible();
 });
