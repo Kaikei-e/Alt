@@ -8,28 +8,32 @@ import (
 
 	"alt/utils/logger"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
-func InitDBConnection(ctx context.Context) (*pgx.Conn, error) {
+func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 	const maxRetries = 10
 	const retryInterval = 2 * time.Second
 
-	var db *pgx.Conn
+	var pool *pgxpool.Pool
 	var err error
 
 	for i := 0; i < maxRetries; i++ {
-		db, err = pgx.Connect(ctx, getDBConnectionString())
+		pool, err = pgxpool.New(ctx, getDBConnectionString())
 		if err == nil {
-			// Test the connection
-			err = db.Ping(ctx)
+			// Test the connection pool
+			err = pool.Ping(ctx)
 			if err == nil {
-				logger.Logger.Info("Connected to database", "database", os.Getenv("DB_NAME"), "attempt", i+1)
-				return db, nil
+				logger.Logger.Info("Connected to database with connection pool",
+					"database", os.Getenv("DB_NAME"),
+					"attempt", i+1,
+					"max_conns", pool.Config().MaxConns,
+					"min_conns", pool.Config().MinConns)
+				return pool, nil
 			}
-			// Close the connection if ping failed
-			db.Close(ctx)
+			// Close the pool if ping failed
+			pool.Close()
 		}
 
 		if i < maxRetries-1 {
@@ -61,7 +65,17 @@ func getDBConnectionString() string {
 	password := envChecker(os.Getenv("DB_PASSWORD"), "DB_PASSWORD")
 	dbname := envChecker(os.Getenv("DB_NAME"), "DB_NAME")
 
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
+	// Connection pool configuration with optimal settings
+	connectionString := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable"+
+			" pool_max_conns=25"+ // Maximum number of connections in pool
+			" pool_min_conns=5"+ // Minimum number of connections in pool
+			" pool_max_conn_lifetime=30m"+ // Maximum time connection can be reused
+			" pool_max_conn_idle_time=15m"+ // Maximum time connection can be idle
+			" pool_health_check_period=1m", // How often to check connection health
+		host, port, user, password, dbname)
+
+	return connectionString
 }
 
 func envChecker(env string, variable string) string {

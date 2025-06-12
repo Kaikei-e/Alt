@@ -8,7 +8,7 @@ import (
 )
 
 func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, error) {
-	rows, err := r.db.Query(ctx, "SELECT url FROM feed_links")
+	rows, err := r.pool.Query(ctx, "SELECT url FROM feed_links")
 	if err != nil {
 		logger.Logger.Error("Error fetching RSS links", "error", err)
 		return nil, errors.New("error fetching RSS links")

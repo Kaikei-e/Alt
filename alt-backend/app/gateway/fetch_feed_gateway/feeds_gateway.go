@@ -8,7 +8,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
 )
 
@@ -16,9 +16,9 @@ type FetchFeedsGateway struct {
 	alt_db *alt_db.AltDBRepository
 }
 
-func NewFetchFeedsGateway(db *pgx.Conn) *FetchFeedsGateway {
+func NewFetchFeedsGateway(pool *pgxpool.Pool) *FetchFeedsGateway {
 	return &FetchFeedsGateway{
-		alt_db: alt_db.NewAltDBRepository(db),
+		alt_db: alt_db.NewAltDBRepository(pool),
 	}
 }
 

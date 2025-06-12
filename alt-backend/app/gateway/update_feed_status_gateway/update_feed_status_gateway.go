@@ -5,15 +5,15 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type UpdateFeedStatusGateway struct {
 	db *alt_db.AltDBRepository
 }
 
-func NewUpdateFeedStatusGateway(db *pgx.Conn) *UpdateFeedStatusGateway {
-	return &UpdateFeedStatusGateway{db: alt_db.NewAltDBRepository(db)}
+func NewUpdateFeedStatusGateway(pool *pgxpool.Pool) *UpdateFeedStatusGateway {
+	return &UpdateFeedStatusGateway{db: alt_db.NewAltDBRepository(pool)}
 }
 
 func (g *UpdateFeedStatusGateway) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {

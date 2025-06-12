@@ -14,7 +14,7 @@ func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, erro
 	`
 
 	var feed models.Feed
-	err := r.db.QueryRow(ctx, query).Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+	err := r.pool.QueryRow(ctx, query).Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 	if err != nil {
 		logger.Logger.Error("error fetching single feed", "error", err)
 		return nil, errors.New("error fetching single feed")
@@ -29,7 +29,7 @@ func (r *AltDBRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, e
 	`
 
 	var feeds []*models.Feed
-	rows, err := r.db.Query(ctx, query)
+	rows, err := r.pool.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching feeds list: %w", err)
 	}
@@ -54,7 +54,7 @@ func (r *AltDBRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([
 	`
 
 	var feeds []*models.Feed
-	rows, err := r.db.Query(ctx, query, limit)
+	rows, err := r.pool.Query(ctx, query, limit)
 	if err != nil {
 		logger.Logger.Error("error fetching feeds list limit", "error", err)
 		return nil, errors.New("error fetching feeds list limit")
@@ -82,7 +82,7 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 	`
 
 	var feeds []*models.Feed
-	rows, err := r.db.Query(ctx, query, pageSize, pageSize*page)
+	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page)
 	if err != nil {
 		logger.Logger.Error("error fetching feeds list page", "error", err)
 		return nil, errors.New("error fetching feeds list page")
@@ -115,7 +115,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 		LIMIT $1 OFFSET $2
 	`
 
-	rows, err := r.db.Query(ctx, query, pageSize, pageSize*page)
+	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page)
 	if err != nil {
 		logger.Logger.Error("error fetching unread feeds list page", "error", err)
 		return nil, errors.New("error fetching feeds list page")

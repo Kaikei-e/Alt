@@ -22,14 +22,14 @@ func main() {
 	log := logger.InitLogger()
 	log.Info("Starting server")
 
-	db, err := alt_db.InitDBConnection(ctx)
+	pool, err := alt_db.InitDBConnectionPool(ctx)
 	if err != nil {
 		logger.Logger.Error("Failed to connect to database", "error", err)
 		panic(err)
 	}
-	defer db.Close(context.Background())
+	defer pool.Close()
 
-	container := di.NewApplicationComponents(db)
+	container := di.NewApplicationComponents(pool)
 
 	// Start background job
 	go job.HourlyJobRunner(ctx, container.AltDBRepository)

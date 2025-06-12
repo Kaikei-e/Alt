@@ -8,15 +8,15 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type RegisterFeedsGateway struct {
 	alt_db *alt_db.AltDBRepository
 }
 
-func NewRegisterFeedsGateway(db *pgx.Conn) *RegisterFeedsGateway {
-	return &RegisterFeedsGateway{alt_db: alt_db.NewAltDBRepository(db)}
+func NewRegisterFeedsGateway(pool *pgxpool.Pool) *RegisterFeedsGateway {
+	return &RegisterFeedsGateway{alt_db: alt_db.NewAltDBRepository(pool)}
 }
 
 func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) error {

@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
 )
 
@@ -15,9 +15,9 @@ type FetchSingleFeedGateway struct {
 	alt_db *alt_db.AltDBRepository
 }
 
-func NewFetchSingleFeedGateway(db *pgx.Conn) *FetchSingleFeedGateway {
+func NewFetchSingleFeedGateway(pool *pgxpool.Pool) *FetchSingleFeedGateway {
 	return &FetchSingleFeedGateway{
-		alt_db: alt_db.NewAltDBRepository(db),
+		alt_db: alt_db.NewAltDBRepository(pool),
 	}
 }
 

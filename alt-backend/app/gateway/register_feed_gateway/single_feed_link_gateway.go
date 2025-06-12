@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
 )
 
@@ -14,8 +15,8 @@ type RegisterFeedGateway struct {
 	alt_db *alt_db.AltDBRepository
 }
 
-func NewRegisterFeedLinkGateway(db *pgx.Conn) *RegisterFeedGateway {
-	return &RegisterFeedGateway{alt_db: alt_db.NewAltDBRepository(db)}
+func NewRegisterFeedLinkGateway(pool *pgxpool.Pool) *RegisterFeedGateway {
+	return &RegisterFeedGateway{alt_db: alt_db.NewAltDBRepository(pool)}
 }
 
 func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link string) error {

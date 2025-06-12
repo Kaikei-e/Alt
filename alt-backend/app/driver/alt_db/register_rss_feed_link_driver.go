@@ -8,7 +8,7 @@ import (
 )
 
 func (r *AltDBRepository) RegisterRSSFeedLink(ctx context.Context, link string) error {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		logger.Logger.Error("Error starting transaction", "error", err)
 		return pgx.ErrTxClosed
