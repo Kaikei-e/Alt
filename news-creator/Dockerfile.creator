@@ -1,12 +1,19 @@
-FROM ghcr.io/huggingface/text-generation-inference:3.3.2
+FROM ollama/ollama:0.9.0
 
-# キャッシュ／オフロード用ディレクトリ
-ENV HF_HOME=/hf
-WORKDIR /hf
+# 2. OS パッケージ更新＋不要なキャッシュ削除
+USER root
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && apt-get install --no-install-recommends -y ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
-# Copy entrypoint script
+COPY models /root/.ollama/models
 COPY entrypoint.sh /entrypoint.sh
+
 RUN chmod +x /entrypoint.sh
 
-# AWQ モデルを指定。動的量子化は不要（すでに 4bit AWQ）。
+# 3. 非特権ユーザーを追加＆切り替え
+RUN useradd -m appuser
+USER appuser
+
 ENTRYPOINT ["/entrypoint.sh"]

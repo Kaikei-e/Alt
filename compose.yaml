@@ -47,7 +47,7 @@ services:
     build:
       context: ./alt-backend
       dockerfile: Dockerfile.backend
-    restart: always
+    restart: unless-stopped
     ports:
       - "9000:9000"
     networks:
@@ -79,18 +79,12 @@ services:
       dockerfile: Dockerfile.creator
     runtime: nvidia
     environment:
-      - HF_TOKEN=${HF_TOKEN}
       - NVIDIA_VISIBLE_DEVICES=all
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: always
+    volumes:
+      - ./news-creator/models:/root/.ollama/models
+    restart: unless-stopped
     ports:
-      - "9100:9100"
+      - "11434:11434"
     networks:
       - alt-network
     tty: true
