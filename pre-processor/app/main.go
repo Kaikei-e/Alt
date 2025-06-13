@@ -85,8 +85,13 @@ func main() {
 
 				for {
 					logger.Info("Starting summarize job execution", "offset", offsetSummarize)
-					job_for_summarize(offsetSummarize, ctx, dbPool)
-					offsetSummarize += OFFSET_STEP
+					foundArticles := job_for_summarize(offsetSummarize, ctx, dbPool)
+					if !foundArticles {
+						logger.Info("No articles found for summarization, resetting offset to 0")
+						offsetSummarize = 0
+					} else {
+						offsetSummarize += OFFSET_STEP
+					}
 					logger.Info("Summarize job completed, sleeping", "duration", SUMMARIZE_INTERVAL, "next_offset", offsetSummarize)
 					time.Sleep(SUMMARIZE_INTERVAL)
 				}
@@ -168,20 +173,20 @@ func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) error
 	return nil
 }
 
-func job_for_summarize(offsetSummarize int, ctx context.Context, dbPool *pgxpool.Pool) {
+func job_for_summarize(offsetSummarize int, ctx context.Context, dbPool *pgxpool.Pool) bool {
 	logger.Logger.Info("Starting summarize job", "offset", offsetSummarize)
 
 	articles, err := driver.GetArticlesForSummarization(ctx, dbPool, offsetSummarize, OFFSET_STEP)
 	if err != nil {
 		logger.Logger.Error("Failed to get articles without summary", "error", err)
-		return
+		return false
 	}
 
 	logger.Logger.Info("Found articles to summarize", "count", len(articles), "offset", offsetSummarize)
 
 	if len(articles) == 0 {
 		logger.Logger.Info("No articles found for summarization", "offset", offsetSummarize)
-		return
+		return false
 	}
 
 	var processedCount, savedCount int
@@ -223,6 +228,7 @@ func job_for_summarize(offsetSummarize int, ctx context.Context, dbPool *pgxpool
 	}
 
 	logger.Logger.Info("Summarize job completed", "offset", offsetSummarize, "processedArticles", processedCount, "savedSummaries", savedCount)
+	return true
 }
 
 func healthCheckForNewsCreator() error {
