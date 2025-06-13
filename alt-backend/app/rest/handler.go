@@ -24,6 +24,10 @@ type readStatus struct {
 	FeedURL string `json:"feed_url"`
 }
 
+type FeedURLPayload struct {
+	FeedURL string `json:"feed_url"`
+}
+
 func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	// Add performance middleware
 	e.Use(middleware.Logger())
@@ -185,6 +189,28 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		// Invalidate cache after update
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		return c.JSON(http.StatusOK, map[string]string{"message": "Feed read status updated"})
+	})
+
+	v1.POST("/feeds/fetch/details", func(c echo.Context) error {
+		var payload FeedURLPayload
+		err := c.Bind(&payload)
+		if err != nil {
+			logger.Logger.Error("Error binding feed URL", "error", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+
+		feedURLParsed, err := url.Parse(payload.FeedURL)
+		if err != nil {
+			logger.Logger.Error("Error parsing feed URL", "error", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+
+		details, err := container.FeedsSummaryUsecase.Execute(c.Request().Context(), feedURLParsed)
+		if err != nil {
+			logger.Logger.Error("Error fetching feed details", "error", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, details)
 	})
 
 	v1.POST("/rss-feed-link/register", func(c echo.Context) error {
