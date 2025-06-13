@@ -24,7 +24,6 @@ export default function Feeds() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
-  const [refreshKey, setRefreshKey] = useState<number>(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Memoize visible feeds to prevent unnecessary recalculations
@@ -103,8 +102,8 @@ export default function Feeds() {
     setIsLoading(false);
   }, [currentPage, isLoading, hasMore, error]);
 
-  // Use infinite scroll hook with reset key
-  useInfiniteScroll(loadMore, sentinelRef, refreshKey);
+  // Use infinite scroll hook
+  useInfiniteScroll(loadMore, sentinelRef);
 
   const handleMarkAsRead = useCallback((feedLink: string) => {
     setReadFeeds((prev) => new Set(prev).add(feedLink));
