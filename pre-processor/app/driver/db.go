@@ -150,12 +150,22 @@ func GetSourceURLs(offset int, ctx context.Context, db *pgxpool.Pool) ([]url.URL
 }
 
 func CheckArticleExists(ctx context.Context, db *pgxpool.Pool, urls []url.URL) (bool, error) {
+	if len(urls) == 0 {
+		return false, nil
+	}
+
+	// Convert url.URL slice to string slice
+	urlStrings := make([]string, len(urls))
+	for i, u := range urls {
+		urlStrings[i] = u.String()
+	}
+
 	query := `
-		SELECT COUNT(*) FROM articles WHERE url IN ($1)
+		SELECT COUNT(*) FROM articles WHERE url = ANY($1)
 	`
 
 	var count int
-	err := db.QueryRow(ctx, query, urls).Scan(&count)
+	err := db.QueryRow(ctx, query, urlStrings).Scan(&count)
 	if err != nil {
 		return false, err
 	}
