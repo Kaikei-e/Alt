@@ -88,7 +88,7 @@ services:
     networks:
       - alt-network
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:11434/api/tags || exit 1"]
+      test: ["CMD-SHELL", "curl http://localhost:11434/api/generate -d '{\"model\": \"phi4-mini:3.8b\", \"prompt\": \"Hello, world!\"}' || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

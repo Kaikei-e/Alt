@@ -4,6 +4,7 @@ alt-backend/app/alt-backend-optimized
 /out
 test-results/.last-run.json
 
-news-creator/models
+news-creator/cached_models/*
+news-creator/models/*
 
 backup.sql
