@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	articlefetcher "pre-processor/article-fetcher"
 	"pre-processor/driver"
@@ -12,9 +15,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const OFFSET_STEP = 20
-const SUMMARIZE_INTERVAL = 1 * time.Hour
-const FORMAT_INTERVAL = 30 * time.Minute
+const OFFSET_STEP = 40
+const SUMMARIZE_INTERVAL = 20 * time.Minute
+const FORMAT_INTERVAL = 20 * time.Minute
+const MODEL_ID = "qwen3:4b"
 
 func main() {
 	logger := logger.Init()
@@ -45,29 +49,38 @@ func main() {
 		}
 	}()
 
-	// Run job in background. The job will run every 1 hour.
-	var offsetSummarize int
+	ch := make(chan error)
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("Summarize job panicked", "panic", r)
-			}
-		}()
-
-		// Add a delay to stagger job execution and avoid database connection conflicts
-		logger.Info("Summarize job: waiting 30 seconds to stagger execution")
-		time.Sleep(30 * time.Second)
-		logger.Info("Summarize job: delay complete, starting goroutine")
-
-		logger.Info("Starting summarize job goroutine")
-		for {
-			logger.Info("Starting summarize job execution", "offset", offsetSummarize)
-			job_for_summarize(offsetSummarize, ctx, dbPool)
-			offsetSummarize += OFFSET_STEP
-			logger.Info("Summarize job completed, sleeping", "duration", SUMMARIZE_INTERVAL, "next_offset", offsetSummarize)
-			time.Sleep(SUMMARIZE_INTERVAL)
-		}
+		ch <- healthCheckForNewsCreator()
 	}()
+
+	select {
+	case err := <-ch:
+		if err != nil {
+			logger.Error("News creator is not healthy", "error", err)
+			time.Sleep(30 * time.Second)
+			ch <- healthCheckForNewsCreator()
+		} else {
+			logger.Info("News creator is healthy")
+			// Run job in background. The job will run every 1 hour.
+			var offsetSummarize int
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Error("Summarize job panicked", "panic", r)
+					}
+				}()
+
+				for {
+					logger.Info("Starting summarize job execution", "offset", offsetSummarize)
+					job_for_summarize(offsetSummarize, ctx, dbPool)
+					offsetSummarize += OFFSET_STEP
+					logger.Info("Summarize job completed, sleeping", "duration", SUMMARIZE_INTERVAL, "next_offset", offsetSummarize)
+					time.Sleep(SUMMARIZE_INTERVAL)
+				}
+			}()
+		}
+	}
 
 	logger.Info("Starting pre-processor server on port 9200")
 
@@ -76,33 +89,6 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok","service":"pre-processor"}`))
-	})
-
-	// Manual trigger endpoints for testing
-	http.HandleFunc("/trigger/format", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		logger.Info("Manual trigger: format job")
-		go job_for_format(offset, ctx, dbPool)
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"triggered","job":"format"}`))
-	})
-
-	http.HandleFunc("/trigger/summarize", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		logger.Info("Manual trigger: summarize job")
-		go job_for_summarize(offsetSummarize, ctx, dbPool)
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"triggered","job":"summarize"}`))
 	})
 
 	err = http.ListenAndServe(":9200", nil)
@@ -195,8 +181,42 @@ func job_for_summarize(offsetSummarize int, ctx context.Context, dbPool *pgxpool
 		}
 
 		logger.Logger.Info("Sleeping for 1 minute before next article", "currentIndex", i+1, "totalArticles", len(articles))
-		time.Sleep(1 * time.Minute)
+		time.Sleep(30 * time.Second)
 	}
 
 	logger.Logger.Info("Summarize job completed", "offset", offsetSummarize, "processedArticles", processedCount, "savedSummaries", savedCount)
+}
+
+func healthCheckForNewsCreator() error {
+	payload := map[string]interface{}{
+		"model":  MODEL_ID,
+		"prompt": "Say hello!",
+		"stream": false,
+		"options": map[string]interface{}{
+			"temperature":    0.3,
+			"top_p":          0.8,
+			"num_predict":    1500,
+			"repeat_penalty": 1.1,
+		},
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		logger.Logger.Error("Failed to marshal payload", "error", err)
+		return err
+	}
+
+	resp, err := http.Post("http://news-creator:11434/api/generate", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		logger.Logger.Error("Failed to send request to news creator", "error", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Logger.Error("News creator is not healthy", "status", resp.StatusCode)
+		return errors.New("news creator is not healthy")
+	}
+
+	return nil
 }

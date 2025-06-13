@@ -96,7 +96,7 @@ func GetSourceURLs(offset int, ctx context.Context, db *pgxpool.Pool) ([]url.URL
 
 	err := retryDBOperation(ctx, func() error {
 		query := `
-			SELECT link FROM feeds ORDER BY created_at DESC LIMIT 20 OFFSET $1
+			SELECT link FROM feeds ORDER BY created_at ASC LIMIT 40 OFFSET $1
 		`
 		rows, err := db.Query(ctx, query, offset)
 		if err != nil {
