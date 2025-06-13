@@ -1,6 +1,6 @@
 # Alt
 
-Alt is the RSS reader for the web.
+Alt is a simple RSS feed reader, currently optimized for viewing on mobile devices.
 
 ## Features
 
