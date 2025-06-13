@@ -87,6 +87,12 @@ services:
       - "11434:11434"
     networks:
       - alt-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     tty: true
 
   pre-processor:
@@ -101,6 +107,8 @@ services:
       - PRE_PROCESSOR_DB_PASSWORD=${PRE_PROCESSOR_DB_PASSWORD}
     depends_on:
       db:
+        condition: service_healthy
+      news-creator:
         condition: service_healthy
     restart: always
     ports:

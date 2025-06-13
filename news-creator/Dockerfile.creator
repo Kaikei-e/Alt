@@ -4,16 +4,24 @@ FROM ollama/ollama:0.9.0
 USER root
 RUN apt-get update \
  && apt-get upgrade -y \
- && apt-get install --no-install-recommends -y ca-certificates \
+ && apt-get install --no-install-recommends -y ca-certificates wget \
  && rm -rf /var/lib/apt/lists/*
 
-COPY models /root/.ollama/models
-COPY entrypoint.sh /entrypoint.sh
+# 3. 非特権ユーザーを追加
+RUN useradd -m appuser
 
+# Copy models to the location that will be accessible after user switch
+# This matches the volume mount and the expected Ollama models path
+COPY models /root/.ollama/models
+# Also ensure the appuser has access to the models directory
+RUN mkdir -p /home/appuser/.ollama && \
+    cp -r /root/.ollama/models /home/appuser/.ollama/ && \
+    chown -R appuser:appuser /home/appuser/.ollama
+
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# 3. 非特権ユーザーを追加＆切り替え
-RUN useradd -m appuser
+# Switch to non-privileged user
 USER appuser
 
 ENTRYPOINT ["/entrypoint.sh"]
