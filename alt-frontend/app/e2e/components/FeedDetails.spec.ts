@@ -37,7 +37,7 @@ test.describe("FeedDetails", () => {
         contentType: "application/json",
         body: JSON.stringify({
           feed_url: "https://example.com/feed1",
-          summary: "Test Summary for feed 1"
+          summary: "Test Summary for feed 1",
         }),
       });
     });
@@ -64,7 +64,7 @@ test.describe("FeedDetails", () => {
         contentType: "application/json",
         body: JSON.stringify({
           feed_url: "https://example.com/feed1",
-          summary: "Test Summary"
+          summary: "Test Summary",
         }),
       });
     });

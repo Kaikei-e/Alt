@@ -148,9 +148,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 }
                 fontSize="sm"
                 lineHeight="1.5"
-                fontStyle={
-                  error || !feedDetails?.summary ? "italic" : "normal"
-                }
+                fontStyle={error || !feedDetails?.summary ? "italic" : "normal"}
               >
                 {getDisplayContent()}
               </Text>

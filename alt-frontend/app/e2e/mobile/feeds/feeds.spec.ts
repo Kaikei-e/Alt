@@ -231,8 +231,6 @@ test.describe("Mobile Feeds Page", () => {
     );
   });
 
-
-
   test("should handle error state", async ({ page }) => {
     // Mock API error
     await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
