@@ -18,10 +18,12 @@ type SummarizedContent struct {
 }
 
 type payloadModel struct {
-	Model   string       `json:"model"`
-	Prompt  string       `json:"prompt"`
-	Stream  bool         `json:"stream"`
-	Options optionsModel `json:"options"`
+	Model       string       `json:"model"`
+	KeepAlive   int          `json:"keep_alive"`
+	Prompt      string       `json:"prompt"`
+	Stream      bool         `json:"stream"`
+	Options     optionsModel `json:"options"`
+	MaxWaitTime int          `json:"max_wait_time"`
 }
 
 type optionsModel struct {
@@ -77,9 +79,10 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 	prompt := fmt.Sprintf(PROMPT_TEMPLATE, article.Content)
 
 	payload := payloadModel{
-		Model:  MODEL,
-		Prompt: prompt,
-		Stream: false,
+		Model:     MODEL,
+		Prompt:    prompt,
+		Stream:    false,
+		KeepAlive: -1,
 		Options: optionsModel{
 			Temperature:   0.0,
 			TopP:          0.9,
