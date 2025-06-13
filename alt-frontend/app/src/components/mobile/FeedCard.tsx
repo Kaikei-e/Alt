@@ -3,6 +3,7 @@ import { Feed } from "@/schema/feed";
 import Link from "next/link";
 import { feedsApi } from "@/lib/api";
 import { useState, useCallback, memo } from "react";
+import { FeedDetails } from "./FeedDetails";
 
 type FeedCardProps = {
   feed: Feed;
@@ -101,15 +102,7 @@ const FeedCard = memo(function FeedCard({
             Mark as read
           </Button>
 
-          <Text
-            fontSize="xs"
-            color="rgba(255, 255, 255, 0.6)"
-            fontWeight="medium"
-            textAlign="right"
-            ml={3}
-          >
-            {feed.published}
-          </Text>
+          <FeedDetails feedURL={feed.link} />
         </Flex>
       </Flex>
     </Box>

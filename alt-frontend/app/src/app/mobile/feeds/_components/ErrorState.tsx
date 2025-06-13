@@ -1,4 +1,5 @@
 import { Flex, Text, Button } from "@chakra-ui/react";
+import { FeedDetails } from "@/components/mobile/FeedDetails";
 
 type ErrorStateProps = {
   error: string | null;
@@ -35,6 +36,9 @@ export default function ErrorState({
       <Button colorScheme="indigo" onClick={onRetry} disabled={isLoading}>
         {isLoading ? "Retrying..." : "Retry"}
       </Button>
+      <Flex mt={6}>
+        <FeedDetails feedURL="" />
+      </Flex>
     </Flex>
   );
 }
