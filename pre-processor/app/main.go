@@ -42,7 +42,18 @@ func main() {
 		logger.Info("Starting format job goroutine")
 		for {
 			logger.Info("Starting format job execution", "offset", offset)
-			job_for_format(offset, ctx, dbPool)
+			err := job_for_format(offset, ctx, dbPool)
+			if err != nil {
+				logger.Error("Failed to run format job", "error", err)
+				time.Sleep(30 * time.Second)
+				continue
+			} else if errors.Is(err, errors.New("articles already exist")) {
+				logger.Info("All articles are already fetched")
+				offset = 0
+				logger.Info("Format job completed, sleeping", "duration", FORMAT_INTERVAL, "next_offset", offset)
+				time.Sleep(FORMAT_INTERVAL)
+			}
+
 			offset += OFFSET_STEP
 			logger.Info("Format job completed, sleeping", "duration", FORMAT_INTERVAL, "next_offset", offset)
 			time.Sleep(FORMAT_INTERVAL)
@@ -54,6 +65,8 @@ func main() {
 		ch <- healthCheckForNewsCreator()
 	}()
 
+	var offsetSummarize int
+
 	select {
 	case err := <-ch:
 		if err != nil {
@@ -63,7 +76,6 @@ func main() {
 		} else {
 			logger.Info("News creator is healthy")
 			// Run job in background. The job will run every 1 hour.
-			var offsetSummarize int
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -79,6 +91,15 @@ func main() {
 					time.Sleep(SUMMARIZE_INTERVAL)
 				}
 			}()
+		}
+		completed, err := driver.CheckArticleSummarizationCompleted(ctx, dbPool, offsetSummarize, OFFSET_STEP)
+		if err != nil {
+			logger.Error("Failed to check article summarization completed", "error", err)
+		} else {
+			if completed {
+				logger.Info("Article summarization completed")
+				offsetSummarize = 0
+			}
 		}
 	}
 
@@ -98,14 +119,30 @@ func main() {
 	}
 }
 
-func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) {
+func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) error {
 	urls, err := driver.GetSourceURLs(offset, ctx, dbPool)
 	if err != nil {
 		logger.Logger.Error("Failed to get source URLs", "error", err)
-		return
+		return errors.New("failed to get source URLs")
 	}
 
-	logger.Logger.Info("Source URLs", "urls", urls)
+	logger.Logger.Info("Source URLs", "urls length", len(urls), "offset", offset)
+
+	if len(urls) == 0 {
+		logger.Logger.Info("No source URLs found", "offset", offset)
+		return nil
+	}
+
+	exists, err := driver.CheckArticleExists(ctx, dbPool, urls)
+	if err != nil {
+		logger.Logger.Error("Failed to check article exists", "error", err)
+		return errors.New("failed to check article exists")
+	}
+
+	if exists {
+		logger.Logger.Info("Articles already exist", "offset", offset)
+		return errors.New("articles already exist")
+	}
 
 	for i, url := range urls {
 		logger.Logger.Info("Fetching article", "url", url.String(), "index", i)
@@ -119,6 +156,7 @@ func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) {
 		err = driver.CreateArticle(ctx, dbPool, article)
 		if err != nil {
 			logger.Logger.Error("Failed to create article", "error", err)
+			return errors.New("failed to create article")
 		} else {
 			logger.Logger.Info("Successfully created article", "articleID", article.ID, "title", article.Title)
 		}
@@ -126,6 +164,8 @@ func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) {
 		time.Sleep(5 * time.Second)
 		logger.Logger.Info("Sleeping for 5 seconds. ", "index", i+1)
 	}
+
+	return nil
 }
 
 func job_for_summarize(offsetSummarize int, ctx context.Context, dbPool *pgxpool.Pool) {

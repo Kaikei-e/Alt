@@ -149,6 +149,20 @@ func GetSourceURLs(offset int, ctx context.Context, db *pgxpool.Pool) ([]url.URL
 	return urls, nil
 }
 
+func CheckArticleExists(ctx context.Context, db *pgxpool.Pool, urls []url.URL) (bool, error) {
+	query := `
+		SELECT COUNT(*) FROM articles WHERE url IN ($1)
+	`
+
+	var count int
+	err := db.QueryRow(ctx, query, urls).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count == len(urls), nil
+}
+
 func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Article) error {
 	query := `
 		INSERT INTO articles (title, content, url)
@@ -185,10 +199,7 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 	query := `
 		INSERT INTO article_summaries (article_id, article_title, summary_japanese)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (article_id) DO UPDATE SET
-			article_title = EXCLUDED.article_title,
-			summary_japanese = EXCLUDED.summary_japanese,
-			created_at = CURRENT_TIMESTAMP
+		ON CONFLICT (article_id) DO NOTHING
 		RETURNING id, created_at
 	`
 
@@ -217,6 +228,24 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 
 	logger.Logger.Info("Article summary created", "summary_id", articleSummary.ID)
 	return nil
+}
+
+func CheckArticleSummarizationCompleted(ctx context.Context, db *pgxpool.Pool, offset int, limit int) (bool, error) {
+	query := `
+		SELECT COUNT(*) FROM article_summaries
+		WHERE article_id NOT IN (SELECT article_id FROM articles)
+		LIMIT $1 OFFSET $2
+	`
+
+	var count int
+	err := db.QueryRow(ctx, query, limit, offset).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	logger.Logger.Info("Checking article summarization completed", "count", count, "offset", offset, "limit", limit)
+
+	return count == 0, nil
 }
 
 func GetArticleSummaryByArticleID(ctx context.Context, db *pgxpool.Pool, articleID string) (*models.ArticleSummary, error) {
