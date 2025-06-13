@@ -99,16 +99,16 @@ func GetSourceURLs(offset int, ctx context.Context, db *pgxpool.Pool) ([]url.URL
 		WITH recent_feeds AS (
 		    SELECT link, created_at
 		    FROM feeds
-		    ORDER BY created_at
+		    ORDER BY created_at DESC
 		    LIMIT 200 OFFSET $1
 		)
 		SELECT rf.link
 		FROM recent_feeds rf
 		WHERE rf.link NOT IN (
 		    SELECT a.url FROM articles a
-		    WHERE a.url = rf.link AND a.url IS NOT NULL
+		    WHERE a.url = rf.link
 		)
-		ORDER BY rf.created_at
+		ORDER BY rf.created_at DESC
 		LIMIT 40
 		`
 

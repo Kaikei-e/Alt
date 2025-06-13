@@ -107,7 +107,6 @@ func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) {
 
 	logger.Logger.Info("Source URLs", "urls", urls)
 
-	var articles []*models.Article
 	for i, url := range urls {
 		logger.Logger.Info("Fetching article", "url", url.String(), "index", i)
 		article, err := articlefetcher.FetchArticle(url)
@@ -116,17 +115,16 @@ func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) {
 			continue
 		}
 
-		articles = append(articles, article)
-		time.Sleep(5 * time.Second)
-		logger.Logger.Info("Sleeping for 5 seconds. ", "index", i+1)
-	}
-
-	for _, article := range articles {
+		// Insert article to database immediately after fetching
 		err = driver.CreateArticle(ctx, dbPool, article)
 		if err != nil {
 			logger.Logger.Error("Failed to create article", "error", err)
-			continue
+		} else {
+			logger.Logger.Info("Successfully created article", "articleID", article.ID, "title", article.Title)
 		}
+
+		time.Sleep(5 * time.Second)
+		logger.Logger.Info("Sleeping for 5 seconds. ", "index", i+1)
 	}
 }
 

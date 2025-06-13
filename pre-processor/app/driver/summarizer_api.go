@@ -29,6 +29,7 @@ type optionsModel struct {
 	TopP          float64  `json:"top_p"`
 	NumPredict    int      `json:"num_predict"`
 	RepeatPenalty float64  `json:"repeat_penalty"`
+	NumCtx        int      `json:"num_ctx"`
 	Stop          []string `json:"stop"`
 }
 
@@ -80,10 +81,11 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 		Prompt: prompt,
 		Stream: false,
 		Options: optionsModel{
-			Temperature:   0.2,
+			Temperature:   0.0,
 			TopP:          0.9,
-			NumPredict:    1500, // Reduced since we want concise summaries
-			RepeatPenalty: 1.05,
+			NumPredict:    500,
+			RepeatPenalty: 1.00,
+			NumCtx:        8192,
 			Stop:          []string{"<|user|>", "<|system|>"},
 		},
 	}

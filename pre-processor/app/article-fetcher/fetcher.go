@@ -42,13 +42,20 @@ func FetchArticle(url url.URL) (*models.Article, error) {
 
 	logger.Logger.Info("Article fetched", "title", article.Title, "content length", len(article.TextContent))
 
+	cleanedContent := cleanFetchedFeedContent(article.TextContent)
+
 	return &models.Article{
 		Title:   article.Title,
-		Content: article.TextContent,
+		Content: cleanedContent,
 		URL:     url.String(),
 	}, nil
 }
 
 func urlMP3Validator(url url.URL) bool {
 	return strings.HasSuffix(url.String(), ".mp3")
+}
+
+func cleanFetchedFeedContent(s string) string {
+	// remove all lines that start with backslash
+	return strings.ReplaceAll(s, "\\", " ") // replace backslash with space
 }
