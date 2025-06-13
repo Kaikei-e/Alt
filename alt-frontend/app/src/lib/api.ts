@@ -1,4 +1,9 @@
-import { BackendFeedItem, Feed } from "@/schema/feed";
+import {
+  BackendFeedItem,
+  Feed,
+  FeedDetails,
+  FeedURLPayload,
+} from "@/schema/feed";
 import { FeedSearchResult } from "@/schema/search";
 
 const API_BASE_URL =
@@ -209,6 +214,11 @@ export const feedsApi = {
 
   async updateFeedReadStatus(url: string): Promise<{ message: string }> {
     return apiClient.post("/v1/feeds/read", { feed_url: url });
+  },
+  async getFeedDetails(payload: FeedURLPayload): Promise<FeedDetails> {
+    return apiClient.post<FeedDetails>(`/v1/feeds/fetch/details`, {
+      feed_url: payload.feed_url,
+    });
   },
 
   // Method to prefetch data for performance

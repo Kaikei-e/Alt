@@ -19,3 +19,12 @@ export interface BackendFeedItem {
     name: string;
   }>;
 }
+
+export interface FeedURLPayload {
+  feed_url: string;
+}
+
+export interface FeedDetails {
+  feed_url: string;
+  summary: string;
+}
