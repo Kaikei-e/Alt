@@ -1,6 +1,6 @@
 "use client";
 
-import { Flex, Text, Button, Box } from "@chakra-ui/react";
+import { Flex, Text, Box } from "@chakra-ui/react";
 import { feedsApi } from "@/lib/api";
 import { Feed } from "@/schema/feed";
 import FeedCard from "@/components/mobile/FeedCard";
@@ -109,52 +109,6 @@ export default function Feeds() {
   const handleMarkAsRead = useCallback((feedLink: string) => {
     setReadFeeds((prev) => new Set(prev).add(feedLink));
   }, []);
-
-  const handleRefresh = useCallback(async () => {
-    if (isLoading) return; // Prevent multiple refresh calls
-
-    // Batch all state resets
-    setIsLoading(true);
-    setError(null);
-    setReadFeeds(new Set()); // Clear read feeds to show all available feeds
-    setCurrentPage(0);
-    setHasMore(true);
-    setFeeds([]);
-    setRefreshKey((prev) => prev + 1); // Reset infinite scroll observer
-
-    try {
-      // Manually load fresh feeds instead of calling loadInitialFeeds to avoid conflicts
-      let initialFeeds;
-      try {
-        initialFeeds = await feedsApi.getFeedsPage(0);
-      } catch (pageError) {
-        console.error("getFeedsPage failed, trying getAllFeeds:", pageError);
-        try {
-          const allFeeds = await feedsApi.getAllFeeds();
-          initialFeeds = allFeeds.slice(0, PAGE_SIZE);
-        } catch (allFeedsError) {
-          console.error("getAllFeeds also failed:", allFeedsError);
-          throw allFeedsError;
-        }
-      }
-
-      // Batch successful state updates
-      setFeeds(initialFeeds);
-      setCurrentPage(0);
-      setHasMore(initialFeeds.length === PAGE_SIZE);
-    } catch (error) {
-      console.error("Error refreshing feeds:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to refresh feeds";
-
-      // Batch error state updates
-      setError(errorMessage);
-      setFeeds([]);
-      setHasMore(false);
-    }
-
-    setIsLoading(false);
-  }, [isLoading]);
 
   // Memoize loading component with vaporwave styling
   const LoadingComponent = useMemo(
@@ -306,48 +260,6 @@ export default function Feeds() {
           </Flex>
         )}
       </Flex>
-
-      <Button
-        position="fixed"
-        bottom="calc(20px + env(safe-area-inset-bottom))"
-        left="calc(20px + env(safe-area-inset-left))"
-        size="lg"
-        borderRadius="full"
-        bg="linear-gradient(45deg, #ff006e, #8338ec)"
-        color="white"
-        fontWeight="bold"
-        px={6}
-        py={3}
-        onClick={handleRefresh}
-        disabled={isLoading}
-        zIndex={1000}
-        boxShadow="0 8px 32px rgba(255, 0, 110, 0.3)"
-        border="2px solid rgba(255, 255, 255, 0.2)"
-        _hover={{
-          transform: "translateY(-2px)",
-          bg: "linear-gradient(45deg, #e6005c, #7129d4)",
-          boxShadow: "0 12px 40px rgba(255, 0, 110, 0.4)",
-        }}
-        _active={{
-          transform: "translateY(0px)",
-          boxShadow: "0 4px 20px rgba(255, 0, 110, 0.3)",
-        }}
-        _disabled={{
-          opacity: 0.6,
-          cursor: "not-allowed",
-          _hover: {
-            transform: "none",
-            bg: "linear-gradient(45deg, #ff006e, #8338ec)",
-          },
-        }}
-        transition="all 0.2s ease"
-      >
-        {isLoading ? (
-          <Progress isIndeterminate color="white" size="sm" />
-        ) : (
-          "Refresh"
-        )}
-      </Button>
     </Box>
   );
 }

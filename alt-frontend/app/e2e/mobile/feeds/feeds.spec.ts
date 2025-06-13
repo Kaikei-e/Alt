@@ -231,31 +231,7 @@ test.describe("Mobile Feeds Page", () => {
     );
   });
 
-  test("should handle refresh functionality", async ({ page }) => {
-    await page.goto("/mobile/feeds");
 
-    await expect(
-      page.locator('button:has-text("Mark as read")').first(),
-    ).toBeVisible();
-
-    // Mark a feed as read first
-    const markAsReadButton = page
-      .locator('button:has-text("Mark as read")')
-      .first();
-    await markAsReadButton.click();
-    await page.waitForTimeout(500);
-
-    // Click refresh button - use a more flexible selector since the text is nested
-    const refreshButton = page.locator("button").filter({ hasText: "Refresh" });
-    await expect(refreshButton).toBeVisible();
-    await refreshButton.click();
-
-    // After refresh, the read feed should appear again
-    await page.waitForTimeout(1000);
-    await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(
-      10,
-    );
-  });
 
   test("should handle error state", async ({ page }) => {
     // Mock API error
