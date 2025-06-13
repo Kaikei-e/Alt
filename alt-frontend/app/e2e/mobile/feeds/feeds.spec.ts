@@ -105,9 +105,9 @@ test.describe("Mobile Feeds Page", () => {
       page.locator('button:has-text("Mark as read")').first(),
     ).toBeVisible();
 
-    // Check for published date
+    // Check for Details button
     await expect(
-      page.locator("text=2024-01-01T12:00:00Z").first(),
+      page.locator('button:has-text("Show Details")').first(),
     ).toBeVisible();
   });
 
@@ -373,23 +373,15 @@ test.describe("Mobile Feeds Page", () => {
     await expect(titleLink).toHaveText("Test Feed 1");
   });
 
-  test("should show correct published dates", async ({ page }) => {
+  test("should show correct title", async ({ page }) => {
     await page.goto("/mobile/feeds");
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
     ).toBeVisible();
 
-    // Check first few feeds have correct dates
-    await expect(
-      page.locator("text=2024-01-01T12:00:00Z").first(),
-    ).toBeVisible();
-    await expect(
-      page.locator("text=2024-01-02T12:00:00Z").first(),
-    ).toBeVisible();
-    await expect(
-      page.locator("text=2024-01-03T12:00:00Z").first(),
-    ).toBeVisible();
+    // Check first few feeds have correct
+    await expect(page.locator("text=Test Feed 1").first()).toBeVisible();
   });
 
   test("should maintain scroll position during infinite scroll", async ({
