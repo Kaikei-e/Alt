@@ -308,7 +308,7 @@ func job_for_summarize(offsetSummarize int, ctx context.Context, dbPool *pgxpool
 		}
 
 		logger.Logger.Info("Sleeping for 1 minute before next article", "currentIndex", i+1, "totalArticles", len(articles))
-		time.Sleep(30 * time.Second)
+		time.Sleep(1 * time.Minute)
 	}
 
 	logger.Logger.Info("Summarize job completed", "offset", offsetSummarize, "processedArticles", processedCount, "savedSummaries", savedCount)
@@ -349,7 +349,7 @@ func job_for_quality_check(offsetForScroing int, ctx context.Context, dbPool *pg
 		processedCount++
 		successCount++
 		logger.Logger.Info("Successfully processed article quality check", "articleID", articleWithScore.ArticleID)
-		logger.Logger.Info("Sleeping for 10 seconds before next article", "currentIndex", i+1, "totalArticles", len(articleWithScores))
+		logger.Logger.Info("Sleeping for 1 minute before next article", "currentIndex", i+1, "totalArticles", len(articleWithScores))
 		time.Sleep(1 * time.Minute)
 	}
 
