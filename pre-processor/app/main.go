@@ -147,47 +147,6 @@ func main() {
 		w.Write([]byte(`{"status":"ok","service":"pre-processor"}`))
 	})
 
-	// Add debug endpoint to test GetSourceURLs
-	http.HandleFunc("/debug/test-urls", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		logger.Info("Manual GetSourceURLs test requested")
-		urls, err := driver.GetSourceURLs(0, ctx, dbPool)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			response := map[string]string{"error": err.Error()}
-			jsonResp, _ := json.Marshal(response)
-			w.Write(jsonResp)
-			return
-		}
-
-		// Also get statistics
-		totalFeeds, processedFeeds, statsErr := driver.GetFeedStatistics(ctx, dbPool)
-
-		response := map[string]interface{}{
-			"urls_found":      len(urls),
-			"total_feeds":     totalFeeds,
-			"processed_feeds": processedFeeds,
-			"remaining_feeds": totalFeeds - processedFeeds,
-			"stats_error":     statsErr,
-		}
-
-		if len(urls) > 0 {
-			urlStrings := make([]string, len(urls))
-			for i, u := range urls {
-				urlStrings[i] = u.String()
-			}
-			sampleSize := 5
-			if len(urlStrings) < sampleSize {
-				sampleSize = len(urlStrings)
-			}
-			response["sample_urls"] = urlStrings[:sampleSize] // Show first 5 URLs
-		}
-
-		jsonResp, _ := json.Marshal(response)
-		w.Write(jsonResp)
-	})
-
 	err = http.ListenAndServe(":9200", nil)
 	if err != nil {
 		logger.Error("Failed to start HTTP server", "error", err)
