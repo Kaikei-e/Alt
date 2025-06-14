@@ -350,7 +350,7 @@ func job_for_quality_check(offsetForScroing int, ctx context.Context, dbPool *pg
 		successCount++
 		logger.Logger.Info("Successfully processed article quality check", "articleID", articleWithScore.ArticleID)
 		logger.Logger.Info("Sleeping for 10 seconds before next article", "currentIndex", i+1, "totalArticles", len(articleWithScores))
-		time.Sleep(10 * time.Second)
+		time.Sleep(1 * time.Minute)
 	}
 
 	logger.Logger.Info("Quality check completed",
