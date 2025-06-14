@@ -96,20 +96,13 @@ func GetSourceURLs(offset int, ctx context.Context, db *pgxpool.Pool) ([]url.URL
 
 	err := retryDBOperation(ctx, func() error {
 		query := `
-		WITH recent_feeds AS (
-		    SELECT link, created_at
-		    FROM feeds
-		    ORDER BY created_at DESC
-		    LIMIT 200 OFFSET $1
-		)
-		SELECT rf.link
-		FROM recent_feeds rf
-		WHERE rf.link NOT IN (
-		    SELECT a.url FROM articles a
-		    WHERE a.url = rf.link
-		)
-		ORDER BY rf.created_at DESC
-		LIMIT 40
+		SELECT f.link
+		FROM feeds f
+		LEFT JOIN articles a ON f.link = a.url
+		WHERE a.url IS NULL
+		AND f.link NOT LIKE '%.mp3'
+		ORDER BY f.created_at DESC
+		LIMIT 40 OFFSET $1
 		`
 
 		rows, err := db.Query(ctx, query, offset)
@@ -143,9 +136,21 @@ func GetSourceURLs(offset int, ctx context.Context, db *pgxpool.Pool) ([]url.URL
 		return nil, err
 	}
 
-	logger.Logger.Info("Getting source URLs", "offset", offset)
-	logger.Logger.Info("Got source URLs", "length", len(urls), "offset", offset)
+	// Add diagnostic logging when no URLs found
+	if len(urls) == 0 {
+		// Check total feeds and processed feeds for debugging
+		var totalFeeds, processedFeeds int
+		db.QueryRow(ctx, "SELECT COUNT(*) FROM feeds").Scan(&totalFeeds)
+		db.QueryRow(ctx, "SELECT COUNT(DISTINCT a.url) FROM articles a INNER JOIN feeds f ON a.url = f.link").Scan(&processedFeeds)
 
+		logger.Logger.Info("No URLs found for processing",
+			"offset", offset,
+			"total_feeds", totalFeeds,
+			"processed_feeds", processedFeeds,
+			"remaining_feeds", totalFeeds-processedFeeds)
+	}
+
+	logger.Logger.Info("Got source URLs", "count", len(urls), "offset", offset)
 	return urls, nil
 }
 
@@ -317,6 +322,30 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, offset i
 
 	logger.Logger.Info("Got articles without summary", "count", len(articles), "offset", offset, "limit", limit)
 	return articles, nil
+}
+
+func GetFeedStatistics(ctx context.Context, db *pgxpool.Pool) (totalFeeds int, processedFeeds int, err error) {
+	// Get total non-MP3 feeds count
+	err = db.QueryRow(ctx, "SELECT COUNT(*) FROM feeds WHERE link NOT LIKE '%.mp3'").Scan(&totalFeeds)
+	if err != nil {
+		logger.Logger.Error("Failed to get total non-MP3 feeds count", "error", err)
+		return 0, 0, err
+	}
+
+	// Get processed non-MP3 feeds count (feeds that have corresponding articles)
+	err = db.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT f.link)
+		FROM feeds f
+		INNER JOIN articles a ON f.link = a.url
+		WHERE f.link NOT LIKE '%.mp3'
+	`).Scan(&processedFeeds)
+	if err != nil {
+		logger.Logger.Error("Failed to get processed non-MP3 feeds count", "error", err)
+		return 0, 0, err
+	}
+
+	logger.Logger.Info("Feed statistics (non-MP3 only)", "total_feeds", totalFeeds, "processed_feeds", processedFeeds, "remaining_feeds", totalFeeds-processedFeeds)
+	return totalFeeds, processedFeeds, nil
 }
 
 func convertToURL(u string) (url.URL, error) {

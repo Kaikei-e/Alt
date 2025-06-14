@@ -53,13 +53,30 @@ func main() {
 					continue
 				}
 
-				// Check if no URLs found (reached end of feeds)
+				// Check if no URLs found
 				if err.Error() == "no urls found" {
-					logger.Info("No URLs found, reached end of feeds, resetting offset")
-					offset = 0
-					logger.Info("Format job completed, sleeping", "duration", FORMAT_INTERVAL, "next_offset", offset)
-					time.Sleep(FORMAT_INTERVAL)
-					continue
+					// Check if this is the first attempt (offset=0) or we've been incrementing
+					if offset == 0 {
+						// Check feed statistics using driver function
+						totalFeeds, processedFeeds, dbErr := driver.GetFeedStatistics(ctx, dbPool)
+						if dbErr != nil {
+							logger.Error("Failed to get feed statistics", "error", dbErr)
+						} else if totalFeeds == 0 {
+							logger.Info("No feeds found in database, waiting for feeds to be added")
+						} else {
+							logger.Info("No unprocessed feeds found", "total_feeds", totalFeeds, "processed_feeds", processedFeeds)
+						}
+
+						logger.Info("No URLs found at offset 0, sleeping and will retry later")
+						time.Sleep(FORMAT_INTERVAL)
+						continue
+					} else {
+						// We've been incrementing offset and reached the end, reset to 0
+						logger.Info("Reached end of feeds, resetting offset to 0")
+						offset = 0
+						time.Sleep(FORMAT_INTERVAL)
+						continue
+					}
 				}
 
 				// Handle other errors
@@ -81,37 +98,45 @@ func main() {
 
 	var offsetSummarize int
 
-	select {
-	case err := <-ch:
+	// Handle health check and start summarization job
+	go func() {
+		err := <-ch
 		if err != nil {
 			logger.Error("News creator is not healthy", "error", err)
-			time.Sleep(30 * time.Second)
-			ch <- healthCheckForNewsCreator()
+			// Retry health check in a loop
+			for {
+				time.Sleep(30 * time.Second)
+				err = healthCheckForNewsCreator()
+				if err == nil {
+					logger.Info("News creator is now healthy")
+					break
+				}
+				logger.Error("News creator still not healthy", "error", err)
+			}
 		} else {
 			logger.Info("News creator is healthy")
-			// Run job in background. The job will run every 1 hour.
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logger.Error("Summarize job panicked", "panic", r)
-					}
-				}()
-
-				for {
-					logger.Info("Starting summarize job execution", "offset", offsetSummarize)
-					foundArticles := job_for_summarize(offsetSummarize, ctx, dbPool)
-					if !foundArticles {
-						logger.Info("No articles found for summarization, resetting offset to 0")
-						offsetSummarize = 0
-					} else {
-						offsetSummarize += OFFSET_STEP
-					}
-					logger.Info("Summarize job completed, sleeping", "duration", SUMMARIZE_INTERVAL, "next_offset", offsetSummarize)
-					time.Sleep(SUMMARIZE_INTERVAL)
-				}
-			}()
 		}
-	}
+
+		// Start summarization job
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("Summarize job panicked", "panic", r)
+			}
+		}()
+
+		for {
+			logger.Info("Starting summarize job execution", "offset", offsetSummarize)
+			foundArticles := job_for_summarize(offsetSummarize, ctx, dbPool)
+			if !foundArticles {
+				logger.Info("No articles found for summarization, resetting offset to 0")
+				offsetSummarize = 0
+			} else {
+				offsetSummarize += OFFSET_STEP
+			}
+			logger.Info("Summarize job completed, sleeping", "duration", SUMMARIZE_INTERVAL, "next_offset", offsetSummarize)
+			time.Sleep(SUMMARIZE_INTERVAL)
+		}
+	}()
 
 	logger.Info("Starting pre-processor server on port 9200")
 
@@ -120,6 +145,47 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok","service":"pre-processor"}`))
+	})
+
+	// Add debug endpoint to test GetSourceURLs
+	http.HandleFunc("/debug/test-urls", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		logger.Info("Manual GetSourceURLs test requested")
+		urls, err := driver.GetSourceURLs(0, ctx, dbPool)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			response := map[string]string{"error": err.Error()}
+			jsonResp, _ := json.Marshal(response)
+			w.Write(jsonResp)
+			return
+		}
+
+		// Also get statistics
+		totalFeeds, processedFeeds, statsErr := driver.GetFeedStatistics(ctx, dbPool)
+
+		response := map[string]interface{}{
+			"urls_found":      len(urls),
+			"total_feeds":     totalFeeds,
+			"processed_feeds": processedFeeds,
+			"remaining_feeds": totalFeeds - processedFeeds,
+			"stats_error":     statsErr,
+		}
+
+		if len(urls) > 0 {
+			urlStrings := make([]string, len(urls))
+			for i, u := range urls {
+				urlStrings[i] = u.String()
+			}
+			sampleSize := 5
+			if len(urlStrings) < sampleSize {
+				sampleSize = len(urlStrings)
+			}
+			response["sample_urls"] = urlStrings[:sampleSize] // Show first 5 URLs
+		}
+
+		jsonResp, _ := json.Marshal(response)
+		w.Write(jsonResp)
 	})
 
 	err = http.ListenAndServe(":9200", nil)
@@ -159,6 +225,12 @@ func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) error
 		article, err := articlefetcher.FetchArticle(url)
 		if err != nil {
 			logger.Logger.Error("Failed to fetch article", "error", err)
+			continue
+		}
+
+		// Check if article is nil (e.g., when MP3 URLs are skipped)
+		if article == nil {
+			logger.Logger.Info("Article was skipped (likely MP3 or invalid content)", "url", url.String())
 			continue
 		}
 
