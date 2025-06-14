@@ -1,15 +1,14 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	articlefetcher "pre-processor/article-fetcher"
 	"pre-processor/driver"
 	"pre-processor/logger"
 	"pre-processor/models"
+	qualitychecker "pre-processor/quality-checker"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -135,6 +134,52 @@ func main() {
 			}
 			logger.Info("Summarize job completed, sleeping", "duration", SUMMARIZE_INTERVAL, "next_offset", offsetSummarize)
 			time.Sleep(SUMMARIZE_INTERVAL)
+		}
+	}()
+
+	chQualityCheck := make(chan error)
+	go func() {
+		chQualityCheck <- healthCheckForNewsCreator()
+	}()
+
+	var offsetQualityCheck int
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("Quality check job panicked", "panic", r)
+			}
+		}()
+
+		// Wait for health check first
+		err := <-chQualityCheck
+		if err != nil {
+			logger.Error("Quality check job is not healthy initially", "error", err)
+			// Retry health check in a loop
+			for {
+				time.Sleep(30 * time.Second)
+				err = healthCheckForNewsCreator()
+				if err == nil {
+					logger.Info("Quality check service is now healthy")
+					break
+				}
+				logger.Error("Quality check service still not healthy", "error", err)
+			}
+		} else {
+			logger.Info("Quality check service is healthy")
+		}
+
+		// Start quality check job loop
+		for {
+			logger.Info("Starting quality check job execution", "offset", offsetQualityCheck)
+			foundArticles := job_for_quality_check(offsetQualityCheck, ctx, dbPool)
+			if foundArticles == nil {
+				logger.Info("No articles found for quality check, resetting offset to 0")
+				offsetQualityCheck = 0
+			} else {
+				offsetQualityCheck += OFFSET_STEP
+			}
+			logger.Info("Quality check job completed, sleeping", "duration", "1 minute", "next_offset", offsetQualityCheck)
+			time.Sleep(1 * time.Minute)
 		}
 	}()
 
@@ -267,26 +312,45 @@ func job_for_summarize(offsetSummarize int, ctx context.Context, dbPool *pgxpool
 	return true
 }
 
-func healthCheckForNewsCreator() error {
-	payload := map[string]interface{}{
-		"model":  MODEL_ID,
-		"prompt": "Say hello!",
-		"stream": false,
-		"options": map[string]interface{}{
-			"temperature":    0.3,
-			"top_p":          0.8,
-			"num_predict":    1500,
-			"repeat_penalty": 1.1,
-		},
-	}
+func job_for_quality_check(offsetForScroing int, ctx context.Context, dbPool *pgxpool.Pool) []qualitychecker.ArticleWithScore {
+	logger.Logger.Info("Starting quality check job", "offset", offsetForScroing)
 
-	jsonData, err := json.Marshal(payload)
+	// Fetch articles and summaries
+	articleWithScores, err := qualitychecker.FetchArticleAndSummaries(ctx, dbPool, offsetForScroing, OFFSET_STEP)
 	if err != nil {
-		logger.Logger.Error("Failed to marshal payload", "error", err)
-		return err
+		logger.Logger.Error("Failed to fetch article and summary", "error", err)
+		return nil
 	}
 
-	resp, err := http.Post("http://news-creator:11434/api/generate", "application/json", bytes.NewBuffer(jsonData))
+	if len(articleWithScores) == 0 {
+		logger.Logger.Info("No articles found for quality check", "offset", offsetForScroing)
+		return nil
+	}
+
+	logger.Logger.Info("Found articles for quality check", "count", len(articleWithScores), "offset", offsetForScroing)
+
+	// Process each article with quality scoring
+	processedCount := 0
+	for i, articleWithScore := range articleWithScores {
+		logger.Logger.Info("Processing article for quality check", "index", i, "articleID", articleWithScore.ArticleID)
+
+		err = qualitychecker.RemoveLowScoreSummary(ctx, dbPool, &articleWithScore)
+		if err != nil {
+			logger.Logger.Error("Failed to process article quality check", "error", err, "articleID", articleWithScore.ArticleID)
+			continue
+		}
+
+		processedCount++
+		logger.Logger.Info("Sleeping for 10 seconds before next article", "currentIndex", i+1, "totalArticles", len(articleWithScores))
+		time.Sleep(10 * time.Second)
+	}
+
+	logger.Logger.Info("Quality check completed", "processedArticles", processedCount, "offset", offsetForScroing)
+	return articleWithScores
+}
+
+func healthCheckForNewsCreator() error {
+	resp, err := http.Get("http://news-creator:11434/api/tags")
 	if err != nil {
 		logger.Logger.Error("Failed to send request to news creator", "error", err)
 		return err
