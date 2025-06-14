@@ -3,11 +3,19 @@ package alt_db
 import (
 	"alt/utils/logger"
 	"context"
+	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
 
 func (r *AltDBRepository) RegisterRSSFeedLink(ctx context.Context, link string) error {
+	// Validate that the link is not empty or whitespace-only
+	if strings.TrimSpace(link) == "" {
+		logger.Logger.Error("Cannot register empty RSS feed link")
+		return errors.New("RSS feed link cannot be empty")
+	}
+
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		logger.Logger.Error("Error starting transaction", "error", err)

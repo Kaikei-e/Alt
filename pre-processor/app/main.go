@@ -17,7 +17,7 @@ import (
 
 const OFFSET_STEP = 40
 const SUMMARIZE_INTERVAL = 20 * time.Second
-const FORMAT_INTERVAL = 20 * time.Minute
+const FORMAT_INTERVAL = 10 * time.Minute
 const MODEL_ID = "phi4-mini:3.8b"
 
 func main() {

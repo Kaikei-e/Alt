@@ -6,6 +6,7 @@ import (
 	"alt/port/register_feed_port"
 	"alt/utils/logger"
 	"context"
+	"errors"
 )
 
 type RegisterFeedsUsecase struct {
@@ -25,12 +26,17 @@ func NewRegisterFeedsUsecase(registerFeedLinkGateway register_feed_port.Register
 func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 	err := r.registerFeedLinkGateway.RegisterRSSFeedLink(ctx, link)
 	if err != nil {
-		return err
+		logger.Logger.Error("Failed to register RSS feed link", "error", err)
+		if errors.Is(err, errors.New("RSS feed link cannot be empty")) {
+			return errors.New("RSS feed link cannot be empty")
+		}
+		return errors.New("failed to register RSS feed link")
 	}
 
 	feeds, err := r.fetchFeedGateway.FetchFeeds(ctx, link)
 	if err != nil {
-		return err
+		logger.Logger.Error("Failed to fetch feeds", "error", err)
+		return errors.New("failed to fetch feeds")
 	}
 
 	var feedItems []*domain.FeedItem
@@ -57,8 +63,11 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 
 	err = r.registerFeedsGateway.RegisterFeeds(ctx, feedItems)
 	if err != nil {
-		return err
+		logger.Logger.Error("Failed to register feeds", "error", err)
+		return errors.New("failed to register feeds")
 	}
+
+	logger.Logger.Info("Feed items", "count", len(feedItems))
 
 	return nil
 }

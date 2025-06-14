@@ -28,8 +28,13 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 	}
 
 	if feed.Link == "" {
-		logger.Logger.Error("RSS feed link is empty", "link", link)
-		return errors.New("RSS feed link is empty")
+		logger.Logger.Warn("RSS feed link is empty, using the link from the RSS feed", "link", link)
+		feed.Link = link
+	}
+
+	if feed.FeedLink == "" {
+		logger.Logger.Warn("RSS feed feed link is empty, using the link from the RSS feed", "link", feed.Link)
+		feed.FeedLink = link
 	}
 
 	err = g.alt_db.RegisterRSSFeedLink(ctx, feed.FeedLink)
