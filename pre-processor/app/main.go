@@ -168,6 +168,8 @@ func main() {
 			logger.Info("Quality check service is healthy")
 		}
 
+		logger.Info("Quality check job started successfully")
+
 		// Start quality check job loop
 		for {
 			logger.Info("Starting quality check job execution", "offset", offsetQualityCheck)
@@ -177,6 +179,7 @@ func main() {
 				offsetQualityCheck = 0
 			} else {
 				offsetQualityCheck += OFFSET_STEP
+				logger.Info("Quality check job found articles", "count", len(foundArticles))
 			}
 			logger.Info("Quality check job completed, sleeping", "duration", "1 minute", "next_offset", offsetQualityCheck)
 			time.Sleep(1 * time.Minute)
@@ -331,21 +334,31 @@ func job_for_quality_check(offsetForScroing int, ctx context.Context, dbPool *pg
 
 	// Process each article with quality scoring
 	processedCount := 0
+	successCount := 0
+	errorCount := 0
 	for i, articleWithScore := range articleWithScores {
 		logger.Logger.Info("Processing article for quality check", "index", i, "articleID", articleWithScore.ArticleID)
 
 		err = qualitychecker.RemoveLowScoreSummary(ctx, dbPool, &articleWithScore)
 		if err != nil {
 			logger.Logger.Error("Failed to process article quality check", "error", err, "articleID", articleWithScore.ArticleID)
+			errorCount++
 			continue
 		}
 
 		processedCount++
+		successCount++
+		logger.Logger.Info("Successfully processed article quality check", "articleID", articleWithScore.ArticleID)
 		logger.Logger.Info("Sleeping for 10 seconds before next article", "currentIndex", i+1, "totalArticles", len(articleWithScores))
 		time.Sleep(10 * time.Second)
 	}
 
-	logger.Logger.Info("Quality check completed", "processedArticles", processedCount, "offset", offsetForScroing)
+	logger.Logger.Info("Quality check completed",
+		"processedArticles", processedCount,
+		"successfulArticles", successCount,
+		"errorArticles", errorCount,
+		"totalArticles", len(articleWithScores),
+		"offset", offsetForScroing)
 	return articleWithScores
 }
 

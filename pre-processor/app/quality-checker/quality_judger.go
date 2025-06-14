@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"pre-processor/logger"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -53,16 +54,31 @@ const JudgeTemplate = `
 Rate the following summary from 1 (poor) to 10 (excellent) on:
 coherence, relevancy, fluency, overall.
 
-Return below format:
-<score><coherence>?;<relevancy>?;<fluency>?;<overall>?;</score>
+CRITICAL SCORING RULES:
+- Empty or missing summary = 1 point for all scores
+- Very short summary (less than 10 characters) = maximum 3 points overall
+- Broken/garbled text = maximum 2 points overall
+- Irrelevant content = maximum 3 points overall
+
+CRITICAL: You MUST respond with ONLY the score tags and numbers. No other text.
+CRITICAL: Use this EXACT format with semicolons as separators:
+<score><coherence>X;<relevancy>Y;<fluency>Z;<overall>W;</score>
+
+Where X, Y, Z, W are numbers from 1 to 10.
+
 Example format:
 <score><coherence>5;<relevancy>5;<fluency>5;<overall>5;</score>
 
 <|user|>
 ### BASE ARTICLE
 %s
+
 ### JAPANESE SUMMARY
 %s
+
+Rate the Japanese summary above based on how well it summarizes the base article.
+If the summary is empty, missing, or contains no meaningful content, give it 1 point for all scores.
+Return ONLY the score format shown above.
 <|assistant|>`
 
 func scoreSummary(prompt string) (*Score, error) {
@@ -136,30 +152,90 @@ func scoreSummary(prompt string) (*Score, error) {
 	return &scores, nil
 }
 
-func parseScore(score string) (Score, error) {
-	score = strings.TrimPrefix(score, "<score>")
-	score = strings.TrimSuffix(score, "</score>")
-	score = strings.TrimSpace(score)
+func parseScore(response string) (Score, error) {
+	response = strings.TrimSpace(response)
 
-	coherence := strings.Split(score, ";")[0]
-	relevancy := strings.Split(score, ";")[1]
-	fluency := strings.Split(score, ";")[2]
-	overall := strings.Split(score, ";")[3]
+	// Try to extract score content between <score> tags using regex
+	re := regexp.MustCompile(`<score>(.*?)</score>`)
+	matches := re.FindStringSubmatch(response)
+
+	var scoreContent string
+	if len(matches) > 1 {
+		scoreContent = strings.TrimSpace(matches[1])
+	} else {
+		logger.Logger.Error("Could not find score content in response", "response", response)
+		// Fallback: try to extract without tags
+		scoreContent = strings.TrimPrefix(response, "<score>")
+		scoreContent = strings.TrimSuffix(scoreContent, "</score>")
+		scoreContent = strings.TrimSpace(scoreContent)
+
+		// If still no valid content, return error
+		if scoreContent == "" || scoreContent == response {
+			logger.Logger.Error("Could not find score content in response", "response", response)
+			return Score{}, errors.New("could not find score content in response: " + response)
+		}
+	}
+
+	// Split the score and check if we have exactly 4 parts
+	parts := strings.Split(scoreContent, ";")
+
+	// Filter out empty parts (handles trailing semicolons)
+	var validParts []string
+	for _, part := range parts {
+		trimmedPart := strings.TrimSpace(part)
+		if trimmedPart != "" {
+			validParts = append(validParts, trimmedPart)
+		}
+	}
+
+	if len(validParts) != 4 {
+		logger.Logger.Error("Expected 4 score parts separated by semicolons, got", "parts", len(validParts), "scoreContent", scoreContent, "validParts", validParts)
+		return Score{}, errors.New("expected 4 score parts separated by semicolons, got " + strconv.Itoa(len(validParts)) + " parts: " + scoreContent)
+	}
+
+	// Clean each part and remove any potential XML-like tags
+	coherence := strings.TrimSpace(strings.ReplaceAll(validParts[0], "<coherence>", ""))
+	relevancy := strings.TrimSpace(strings.ReplaceAll(validParts[1], "<relevancy>", ""))
+	fluency := strings.TrimSpace(strings.ReplaceAll(validParts[2], "<fluency>", ""))
+	overall := strings.TrimSpace(strings.ReplaceAll(validParts[3], "<overall>", ""))
+
 	coherenceFloat, err := strconv.ParseFloat(coherence, 64)
 	if err != nil {
-		return Score{}, err
+		logger.Logger.Error("Failed to parse coherence score", "error", err, "coherence", coherence)
+		return Score{}, errors.New("failed to parse coherence score: " + coherence)
 	}
 	relevancyFloat, err := strconv.ParseFloat(relevancy, 64)
 	if err != nil {
-		return Score{}, err
+		logger.Logger.Error("Failed to parse relevancy score", "error", err, "relevancy", relevancy)
+		return Score{}, errors.New("failed to parse relevancy score: " + relevancy)
 	}
 	fluencyFloat, err := strconv.ParseFloat(fluency, 64)
 	if err != nil {
-		return Score{}, err
+		logger.Logger.Error("Failed to parse fluency score", "error", err, "fluency", fluency)
+		return Score{}, errors.New("failed to parse fluency score: " + fluency)
 	}
 	overallFloat, err := strconv.ParseFloat(overall, 64)
 	if err != nil {
-		return Score{}, err
+		logger.Logger.Error("Failed to parse overall score", "error", err, "overall", overall)
+		return Score{}, errors.New("failed to parse overall score: " + overall)
+	}
+
+	// Validate scores are within expected range
+	if coherenceFloat < 1 || coherenceFloat > 10 {
+		logger.Logger.Error("Coherence score is out of range", "score", coherenceFloat)
+		return Score{}, errors.New("coherence score " + strconv.FormatFloat(coherenceFloat, 'f', -1, 64) + " is out of range (1-10)")
+	}
+	if relevancyFloat < 1 || relevancyFloat > 10 {
+		logger.Logger.Error("Relevancy score is out of range", "score", relevancyFloat)
+		return Score{}, errors.New("relevancy score " + strconv.FormatFloat(relevancyFloat, 'f', -1, 64) + " is out of range (1-10)")
+	}
+	if fluencyFloat < 1 || fluencyFloat > 10 {
+		logger.Logger.Error("Fluency score is out of range", "score", fluencyFloat)
+		return Score{}, errors.New("fluency score " + strconv.FormatFloat(fluencyFloat, 'f', -1, 64) + " is out of range (1-10)")
+	}
+	if overallFloat < 1 || overallFloat > 10 {
+		logger.Logger.Error("Overall score is out of range", "score", overallFloat)
+		return Score{}, errors.New("overall score " + strconv.FormatFloat(overallFloat, 'f', -1, 64) + " is out of range (1-10)")
 	}
 
 	parsedScore := Score{
