@@ -242,8 +242,9 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 
 func CheckArticleSummarizationCompleted(ctx context.Context, db *pgxpool.Pool, offset int, limit int) (bool, error) {
 	query := `
-		SELECT COUNT(*) FROM article_summaries
-		WHERE article_id NOT IN (SELECT article_id FROM articles)
+		SELECT COUNT(*)
+		FROM articles a
+		WHERE a.id NOT IN (SELECT article_id FROM article_summaries)
 		LIMIT $1 OFFSET $2
 	`
 
@@ -253,7 +254,7 @@ func CheckArticleSummarizationCompleted(ctx context.Context, db *pgxpool.Pool, o
 		return false, err
 	}
 
-	logger.Logger.Info("Checking article summarization completed", "count", count, "offset", offset, "limit", limit)
+	logger.Logger.Info("Checking article summarization completed", "unsummarized_count", count, "offset", offset, "limit", limit)
 
 	return count == 0, nil
 }

@@ -44,14 +44,28 @@ func main() {
 			logger.Info("Starting format job execution", "offset", offset)
 			err := job_for_format(offset, ctx, dbPool)
 			if err != nil {
+				// Check if this is the "articles already exist" error
+				if err.Error() == "articles already exist" {
+					logger.Info("All articles are already fetched")
+					offset = 0
+					logger.Info("Format job completed, sleeping", "duration", FORMAT_INTERVAL, "next_offset", offset)
+					time.Sleep(FORMAT_INTERVAL)
+					continue
+				}
+
+				// Check if no URLs found (reached end of feeds)
+				if err.Error() == "no urls found" {
+					logger.Info("No URLs found, reached end of feeds, resetting offset")
+					offset = 0
+					logger.Info("Format job completed, sleeping", "duration", FORMAT_INTERVAL, "next_offset", offset)
+					time.Sleep(FORMAT_INTERVAL)
+					continue
+				}
+
+				// Handle other errors
 				logger.Error("Failed to run format job", "error", err)
 				time.Sleep(30 * time.Second)
 				continue
-			} else if errors.Is(err, errors.New("articles already exist")) {
-				logger.Info("All articles are already fetched")
-				offset = 0
-				logger.Info("Format job completed, sleeping", "duration", FORMAT_INTERVAL, "next_offset", offset)
-				time.Sleep(FORMAT_INTERVAL)
 			}
 
 			offset += OFFSET_STEP
@@ -97,15 +111,6 @@ func main() {
 				}
 			}()
 		}
-		completed, err := driver.CheckArticleSummarizationCompleted(ctx, dbPool, offsetSummarize, OFFSET_STEP)
-		if err != nil {
-			logger.Error("Failed to check article summarization completed", "error", err)
-		} else {
-			if completed {
-				logger.Info("Article summarization completed")
-				offsetSummarize = 0
-			}
-		}
 	}
 
 	logger.Info("Starting pre-processor server on port 9200")
@@ -135,7 +140,7 @@ func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) error
 
 	if len(urls) == 0 {
 		logger.Logger.Info("No source URLs found", "offset", offset)
-		return nil
+		return errors.New("no urls found")
 	}
 
 	exists, err := driver.CheckArticleExists(ctx, dbPool, urls)
