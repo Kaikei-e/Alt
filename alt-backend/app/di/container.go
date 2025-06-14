@@ -2,11 +2,13 @@ package di
 
 import (
 	"alt/driver/alt_db"
+	"alt/gateway/feed_stats_gateway"
 	"alt/gateway/fetch_feed_detail_gateway"
 	"alt/gateway/fetch_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/usecase/fetch_feed_details_usecase"
+	"alt/usecase/fetch_feed_stats_usecase"
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/reading_status"
 	"alt/usecase/register_feed_usecase.go"
@@ -15,15 +17,18 @@ import (
 )
 
 type ApplicationComponents struct {
+	AltDBRepository           *alt_db.AltDBRepository
 	FetchSingleFeedUsecase    *fetch_feed_usecase.FetchSingleFeedUsecase
 	FetchFeedsListUsecase     *fetch_feed_usecase.FetchFeedsListUsecase
 	RegisterFeedsUsecase      *register_feed_usecase.RegisterFeedsUsecase
 	FeedsReadingStatusUsecase *reading_status.FeedsReadingStatusUsecase
 	FeedsSummaryUsecase       *fetch_feed_details_usecase.FeedsSummaryUsecase
-	AltDBRepository           *alt_db.AltDBRepository
+	FeedAmountUsecase         *fetch_feed_stats_usecase.FeedsCountUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
+	altDBRepository := alt_db.NewAltDBRepository(pool)
+
 	// Create the concrete gateway implementations
 	feedFetcherGatewayImpl := fetch_feed_gateway.NewFetchSingleFeedGateway(pool)
 	fetchFeedsListGatewayImpl := fetch_feed_gateway.NewFetchFeedsGateway(pool)
@@ -41,14 +46,16 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	feedSummaryGatewayImpl := fetch_feed_detail_gateway.NewFeedSummaryGateway(pool)
 	feedsSummaryUsecase := fetch_feed_details_usecase.NewFeedsSummaryUsecase(feedSummaryGatewayImpl)
 
-	altDBRepository := alt_db.NewAltDBRepository(pool)
+	feedAmountGatewayImpl := feed_stats_gateway.NewFeedAmountGateway(pool)
+	feedsCountUsecase := fetch_feed_stats_usecase.NewFeedsCountUsecase(feedAmountGatewayImpl)
 
 	return &ApplicationComponents{
+		AltDBRepository:           altDBRepository,
 		FetchSingleFeedUsecase:    fetchSingleFeedUsecase,
 		FetchFeedsListUsecase:     fetchFeedsListUsecase,
 		RegisterFeedsUsecase:      registerFeedsUsecase,
 		FeedsReadingStatusUsecase: feedsReadingStatusUsecase,
 		FeedsSummaryUsecase:       feedsSummaryUsecase,
-		AltDBRepository:           altDBRepository,
+		FeedAmountUsecase:         feedsCountUsecase,
 	}
 }

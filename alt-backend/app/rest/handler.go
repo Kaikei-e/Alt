@@ -6,6 +6,7 @@ import (
 	"alt/utils/html_parser"
 	"alt/utils/logger"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -16,19 +17,8 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-type rssFeedLink struct {
-	URL string `json:"url"`
-}
-
-type readStatus struct {
-	FeedURL string `json:"feed_url"`
-}
-
-type FeedURLPayload struct {
-	FeedURL string `json:"feed_url"`
-}
-
 func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
+
 	// Add performance middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -37,20 +27,27 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5, // Balanced compression level
 		Skipper: func(c echo.Context) bool {
-			// Skip compression for already compressed content
+			// Skip compression for already compressed content and SSE endpoints
 			return strings.Contains(c.Request().Header.Get("Accept-Encoding"), "br") ||
-				strings.Contains(c.Path(), "/health")
+				strings.Contains(c.Path(), "/health") ||
+				strings.Contains(c.Path(), "/sse/")
 		},
 	}))
 
-	// Add request timeout middleware
+	// Add request timeout middleware (excluding SSE endpoints)
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
 		Timeout: 30 * time.Second,
+		Skipper: func(c echo.Context) bool {
+			return strings.Contains(c.Path(), "/sse/")
+		},
 	}))
 
-	// Add rate limiting middleware
+	// Add rate limiting middleware (skip for SSE endpoints)
 	e.Use(middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Store: middleware.NewRateLimiterMemoryStore(100), // 100 requests per second
+		Skipper: func(c echo.Context) bool {
+			return strings.Contains(c.Path(), "/sse/")
+		},
 	}))
 
 	// Add security headers
@@ -167,7 +164,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	})
 
 	v1.POST("/feeds/read", func(c echo.Context) error {
-		var readStatus readStatus
+		var readStatus ReadStatus
 		err := c.Bind(&readStatus)
 		if err != nil {
 			logger.Logger.Error("Error binding read status", "error", err)
@@ -192,7 +189,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	})
 
 	v1.POST("/feeds/fetch/details", func(c echo.Context) error {
-		var payload FeedURLPayload
+		var payload FeedUrlPayload
 		err := c.Bind(&payload)
 		if err != nil {
 			logger.Logger.Error("Error binding feed URL", "error", err)
@@ -213,8 +210,90 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		return c.JSON(http.StatusOK, details)
 	})
 
+	// Add SSE endpoint with proper Echo SSE handling
+	v1.GET("/sse/feeds/stats", func(c echo.Context) error {
+		// Set SSE headers using Echo's response
+		c.Response().Header().Set("Content-Type", "text/event-stream")
+		c.Response().Header().Set("Cache-Control", "no-cache")
+		c.Response().Header().Set("Connection", "keep-alive")
+		c.Response().Header().Set("Access-Control-Allow-Origin", "*")
+		c.Response().Header().Set("Access-Control-Allow-Headers", "Cache-Control")
+
+		// Don't let Echo write its own status
+		c.Response().WriteHeader(http.StatusOK)
+
+		// Get the underlying response writer for flushing
+		w := c.Response().Writer
+		flusher, canFlush := w.(http.Flusher)
+		if !canFlush {
+			logger.Logger.Error("Response writer doesn't support flushing")
+			return c.String(http.StatusInternalServerError, "Streaming not supported")
+		}
+
+		// Send initial data
+		amount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
+		if err != nil {
+			logger.Logger.Error("Error fetching initial feed amount", "error", err)
+			amount = 0
+		}
+
+		initialStats := FeedStatsSummary{
+			FeedAmount:           feedAmount{Amount: amount},
+			SummarizedFeedAmount: summarizedFeedAmount{Amount: 0},
+		}
+
+		// Send initial data
+		if jsonData, err := json.Marshal(initialStats); err == nil {
+			c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
+			flusher.Flush()
+		}
+
+		// Create ticker for periodic updates
+		ticker := time.NewTicker(5 * time.Second) // Shortened for testing
+		defer ticker.Stop()
+
+		// Keep connection alive
+		for {
+			select {
+			case <-ticker.C:
+				// Fetch fresh data
+				amount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
+				if err != nil {
+					logger.Logger.Error("Error fetching feed amount", "error", err)
+					continue
+				}
+
+				stats := FeedStatsSummary{
+					FeedAmount:           feedAmount{Amount: amount},
+					SummarizedFeedAmount: summarizedFeedAmount{Amount: 0},
+				}
+
+				// Convert to JSON and send
+				jsonData, err := json.Marshal(stats)
+				if err != nil {
+					logger.Logger.Error("Error marshaling stats", "error", err)
+					continue
+				}
+
+				// Write in SSE format
+				_, err = c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
+				if err != nil {
+					logger.Logger.Info("Client disconnected", "error", err)
+					return nil
+				}
+
+				// Flush the data
+				flusher.Flush()
+
+			case <-c.Request().Context().Done():
+				logger.Logger.Info("SSE connection closed by client")
+				return nil
+			}
+		}
+	})
+
 	v1.POST("/rss-feed-link/register", func(c echo.Context) error {
-		var rssFeedLink rssFeedLink
+		var rssFeedLink RssFeedLink
 		err := c.Bind(&rssFeedLink)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -237,6 +316,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		return c.JSON(http.StatusOK, map[string]string{"message": "RSS feed link registered"})
 	})
+
 }
 
 // Optimize feeds response by truncating descriptions and removing unnecessary fields
