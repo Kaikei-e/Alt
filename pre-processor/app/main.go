@@ -6,6 +6,7 @@ import (
 	"net/http"
 	articlefetcher "pre-processor/article-fetcher"
 	"pre-processor/driver"
+	"pre-processor/handlers"
 	"pre-processor/logger"
 	"pre-processor/models"
 	qualitychecker "pre-processor/quality-checker"
@@ -14,9 +15,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const OFFSET_STEP = 40
+const BATCH_SIZE = 40
 const SUMMARIZE_INTERVAL = 20 * time.Second
 const FORMAT_INTERVAL = 10 * time.Minute
+const QUALITY_CHECK_INTERVAL = 30 * time.Minute
 const MODEL_ID = "phi4-mini:3.8b"
 
 func main() {
@@ -29,63 +31,61 @@ func main() {
 		panic(err)
 	}
 
-	// Run job in background. The job will run every 30 minutes.
-	var offset int
+	// Initialize processors
+	feedProcessor := handlers.NewFeedProcessor(dbPool, BATCH_SIZE)
+	articleSummarizer := handlers.NewArticleSummarizer(dbPool, BATCH_SIZE)
+	qualityChecker := handlers.NewQualityChecker(dbPool, BATCH_SIZE)
+
+	// Run feed processing job in background
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logger.Error("Format job panicked", "panic", r)
+				logger.Error("Feed processing job panicked", "panic", r)
 			}
 		}()
 
-		logger.Info("Starting format job goroutine")
+		logger.Info("Starting feed processing job goroutine")
+
 		for {
-			logger.Info("Starting format job execution", "offset", offset)
-			err := job_for_format(offset, ctx, dbPool)
+			logger.Info("Starting feed processing job execution")
+			err := processFeedsJob(ctx, dbPool, feedProcessor)
 			if err != nil {
 				// Check if this is the "articles already exist" error
 				if err.Error() == "articles already exist" {
-					logger.Info("All articles are already fetched")
-					offset = 0
-					logger.Info("Format job completed, sleeping", "duration", FORMAT_INTERVAL, "next_offset", offset)
+					logger.Info("All articles in current batch are already fetched")
+					logger.Info("Feed processing job completed, sleeping", "duration", FORMAT_INTERVAL)
 					time.Sleep(FORMAT_INTERVAL)
 					continue
 				}
 
 				// Check if no URLs found
 				if err.Error() == "no urls found" {
-					// Check if this is the first attempt (offset=0) or we've been incrementing
-					if offset == 0 {
-						// Check feed statistics using driver function
-						totalFeeds, processedFeeds, dbErr := driver.GetFeedStatistics(ctx, dbPool)
-						if dbErr != nil {
-							logger.Error("Failed to get feed statistics", "error", dbErr)
-						} else if totalFeeds == 0 {
-							logger.Info("No feeds found in database, waiting for feeds to be added")
-						} else {
-							logger.Info("No unprocessed feeds found", "total_feeds", totalFeeds, "processed_feeds", processedFeeds)
-						}
+					// Reset pagination to start from beginning
+					feedProcessor.ResetPagination()
+					logger.Info("No unprocessed feeds found, reset pagination")
 
-						logger.Info("No URLs found at offset 0, sleeping and will retry later")
-						time.Sleep(FORMAT_INTERVAL)
-						continue
+					// Get stats for debugging
+					stats, statsErr := feedProcessor.GetProcessingStats(ctx)
+					if statsErr != nil {
+						logger.Error("Failed to get processing statistics", "error", statsErr)
 					} else {
-						// We've been incrementing offset and reached the end, reset to 0
-						logger.Info("Reached end of feeds, resetting offset to 0")
-						offset = 0
-						time.Sleep(FORMAT_INTERVAL)
-						continue
+						logger.Info("Processing statistics",
+							"total_feeds", stats.TotalFeeds,
+							"processed_feeds", stats.ProcessedFeeds,
+							"remaining_feeds", stats.RemainingFeeds)
 					}
+
+					time.Sleep(FORMAT_INTERVAL)
+					continue
 				}
 
 				// Handle other errors
-				logger.Error("Failed to run format job", "error", err)
+				logger.Error("Failed to run feed processing job", "error", err)
 				time.Sleep(30 * time.Second)
 				continue
 			}
 
-			offset += OFFSET_STEP
-			logger.Info("Format job completed, sleeping", "duration", FORMAT_INTERVAL, "next_offset", offset)
+			logger.Info("Feed processing job completed, sleeping", "duration", FORMAT_INTERVAL)
 			time.Sleep(FORMAT_INTERVAL)
 		}
 	}()
@@ -94,8 +94,6 @@ func main() {
 	go func() {
 		ch <- healthCheckForNewsCreator()
 	}()
-
-	var offsetSummarize int
 
 	// Handle health check and start summarization job
 	go func() {
@@ -124,15 +122,13 @@ func main() {
 		}()
 
 		for {
-			logger.Info("Starting summarize job execution", "offset", offsetSummarize)
-			foundArticles := job_for_summarize(offsetSummarize, ctx, dbPool)
+			logger.Info("Starting summarize job execution")
+			foundArticles := summarizationJob(ctx, dbPool, articleSummarizer)
 			if !foundArticles {
-				logger.Info("No articles found for summarization, resetting offset to 0")
-				offsetSummarize = 0
-			} else {
-				offsetSummarize += OFFSET_STEP
+				logger.Info("No articles found for summarization, resetting pagination")
+				articleSummarizer.ResetPagination()
 			}
-			logger.Info("Summarize job completed, sleeping", "duration", SUMMARIZE_INTERVAL, "next_offset", offsetSummarize)
+			logger.Info("Summarize job completed, sleeping", "duration", SUMMARIZE_INTERVAL)
 			time.Sleep(SUMMARIZE_INTERVAL)
 		}
 	}()
@@ -142,77 +138,59 @@ func main() {
 		chQualityCheck <- healthCheckForNewsCreator()
 	}()
 
-	var offsetQualityCheck int
+	// Handle health check and start quality check job
 	go func() {
+		err := <-chQualityCheck
+		if err != nil {
+			logger.Error("News creator is not healthy for quality check", "error", err)
+			// Retry health check in a loop
+			for {
+				time.Sleep(30 * time.Second)
+				err = healthCheckForNewsCreator()
+				if err == nil {
+					logger.Info("News creator is now healthy for quality check")
+					break
+				}
+				logger.Error("News creator still not healthy for quality check", "error", err)
+			}
+		} else {
+			logger.Info("News creator is healthy for quality check")
+		}
+
+		// Start quality check job
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("Quality check job panicked", "panic", r)
 			}
 		}()
 
-		// Wait for health check first
-		err := <-chQualityCheck
-		if err != nil {
-			logger.Error("Quality check job is not healthy initially", "error", err)
-			// Retry health check in a loop
-			for {
-				time.Sleep(30 * time.Second)
-				err = healthCheckForNewsCreator()
-				if err == nil {
-					logger.Info("Quality check service is now healthy")
-					break
-				}
-				logger.Error("Quality check service still not healthy", "error", err)
-			}
-		} else {
-			logger.Info("Quality check service is healthy")
-		}
-
-		logger.Info("Quality check job started successfully")
-
-		// Start quality check job loop
 		for {
-			logger.Info("Starting quality check job execution", "offset", offsetQualityCheck)
-			foundArticles := job_for_quality_check(offsetQualityCheck, ctx, dbPool)
-			if foundArticles == nil {
-				logger.Info("No articles found for quality check, resetting offset to 0")
-				offsetQualityCheck = 0
-			} else {
-				offsetQualityCheck += OFFSET_STEP
-				logger.Info("Quality check job found articles", "count", len(foundArticles))
+			logger.Info("Starting quality check job execution")
+			foundArticles := qualityCheckJob(ctx, dbPool, qualityChecker)
+			if !foundArticles {
+				logger.Info("No articles found for quality check, resetting pagination")
+				qualityChecker.ResetPagination()
 			}
-			logger.Info("Quality check job completed, sleeping", "duration", "1 minute", "next_offset", offsetQualityCheck)
-			time.Sleep(1 * time.Minute)
+			logger.Info("Quality check job completed, sleeping", "duration", QUALITY_CHECK_INTERVAL)
+			time.Sleep(QUALITY_CHECK_INTERVAL)
 		}
 	}()
 
-	logger.Info("Starting pre-processor server on port 9200")
-
-	// Add health check and debug endpoints
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","service":"pre-processor"}`))
-	})
-
-	err = http.ListenAndServe(":9200", nil)
-	if err != nil {
-		logger.Error("Failed to start HTTP server", "error", err)
-		panic(err)
-	}
+	// Keep the main goroutine alive
+	select {}
 }
 
-func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) error {
-	urls, err := driver.GetSourceURLs(offset, ctx, dbPool)
+func processFeedsJob(ctx context.Context, dbPool *pgxpool.Pool, feedProcessor *handlers.FeedProcessor) error {
+	urls, hasMore, err := feedProcessor.GetNextUnprocessedFeeds(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to get source URLs", "error", err)
-		return errors.New("failed to get source URLs")
+		logger.Logger.Error("Failed to get unprocessed feeds", "error", err)
+		return errors.New("failed to get unprocessed feeds")
 	}
 
-	logger.Logger.Info("Source URLs", "urls length", len(urls), "offset", offset)
+	logger.Logger.Info("Unprocessed feeds", "count", len(urls), "has_more", hasMore)
 
 	if len(urls) == 0 {
-		logger.Logger.Info("No source URLs found", "offset", offset)
+		logger.Logger.Info("No unprocessed feeds found")
 		return errors.New("no urls found")
 	}
 
@@ -223,7 +201,7 @@ func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) error
 	}
 
 	if exists {
-		logger.Logger.Info("Articles already exist", "offset", offset)
+		logger.Logger.Info("Articles already exist for this batch")
 		return errors.New("articles already exist")
 	}
 
@@ -257,19 +235,19 @@ func job_for_format(offset int, ctx context.Context, dbPool *pgxpool.Pool) error
 	return nil
 }
 
-func job_for_summarize(offsetSummarize int, ctx context.Context, dbPool *pgxpool.Pool) bool {
-	logger.Logger.Info("Starting summarize job", "offset", offsetSummarize)
+func summarizationJob(ctx context.Context, dbPool *pgxpool.Pool, articleSummarizer *handlers.ArticleSummarizer) bool {
+	logger.Logger.Info("Starting summarization job")
 
-	articles, err := driver.GetArticlesForSummarization(ctx, dbPool, offsetSummarize, OFFSET_STEP)
+	articles, hasMore, err := articleSummarizer.GetNextArticlesForSummarization(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to get articles without summary", "error", err)
+		logger.Logger.Error("Failed to get articles for summarization", "error", err)
 		return false
 	}
 
-	logger.Logger.Info("Found articles to summarize", "count", len(articles), "offset", offsetSummarize)
+	logger.Logger.Info("Found articles to summarize", "count", len(articles), "has_more", hasMore)
 
 	if len(articles) == 0 {
-		logger.Logger.Info("No articles found for summarization", "offset", offsetSummarize)
+		logger.Logger.Info("No articles found for summarization")
 		return false
 	}
 
@@ -311,45 +289,45 @@ func job_for_summarize(offsetSummarize int, ctx context.Context, dbPool *pgxpool
 		time.Sleep(1 * time.Minute)
 	}
 
-	logger.Logger.Info("Summarize job completed", "offset", offsetSummarize, "processedArticles", processedCount, "savedSummaries", savedCount)
+	logger.Logger.Info("Summarization job completed", "processedArticles", processedCount, "savedSummaries", savedCount)
 	return true
 }
 
-func job_for_quality_check(offsetForScroing int, ctx context.Context, dbPool *pgxpool.Pool) []qualitychecker.ArticleWithScore {
-	logger.Logger.Info("Starting quality check job", "offset", offsetForScroing)
+func qualityCheckJob(ctx context.Context, dbPool *pgxpool.Pool, qualityChecker *handlers.QualityChecker) bool {
+	logger.Logger.Info("Starting quality check job")
 
 	// Fetch articles and summaries
-	articleWithScores, err := qualitychecker.FetchArticleAndSummaries(ctx, dbPool, offsetForScroing, OFFSET_STEP)
+	articleWithSummaries, hasMore, err := qualityChecker.GetNextArticlesForQualityCheck(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to fetch article and summary", "error", err)
-		return nil
+		logger.Logger.Error("Failed to fetch articles with summaries", "error", err)
+		return false
 	}
 
-	if len(articleWithScores) == 0 {
-		logger.Logger.Info("No articles found for quality check", "offset", offsetForScroing)
-		return nil
+	if len(articleWithSummaries) == 0 {
+		logger.Logger.Info("No articles found for quality check")
+		return false
 	}
 
-	logger.Logger.Info("Found articles for quality check", "count", len(articleWithScores), "offset", offsetForScroing)
+	logger.Logger.Info("Found articles for quality check", "count", len(articleWithSummaries), "has_more", hasMore)
 
 	// Process each article with quality scoring
 	processedCount := 0
 	successCount := 0
 	errorCount := 0
-	for i, articleWithScore := range articleWithScores {
-		logger.Logger.Info("Processing article for quality check", "index", i, "articleID", articleWithScore.ArticleID)
+	for i, articleWithSummary := range articleWithSummaries {
+		logger.Logger.Info("Processing article for quality check", "index", i, "articleID", articleWithSummary.ArticleID)
 
-		err = qualitychecker.RemoveLowScoreSummary(ctx, dbPool, &articleWithScore)
+		err = qualitychecker.RemoveLowScoreSummary(ctx, dbPool, &articleWithSummary)
 		if err != nil {
-			logger.Logger.Error("Failed to process article quality check", "error", err, "articleID", articleWithScore.ArticleID)
+			logger.Logger.Error("Failed to process article quality check", "error", err, "articleID", articleWithSummary.ArticleID)
 			errorCount++
 			continue
 		}
 
 		processedCount++
 		successCount++
-		logger.Logger.Info("Successfully processed article quality check", "articleID", articleWithScore.ArticleID)
-		logger.Logger.Info("Sleeping for 1 minute before next article", "currentIndex", i+1, "totalArticles", len(articleWithScores))
+		logger.Logger.Info("Successfully processed article quality check", "articleID", articleWithSummary.ArticleID)
+		logger.Logger.Info("Sleeping for 1 minute before next article", "currentIndex", i+1, "totalArticles", len(articleWithSummaries))
 		time.Sleep(1 * time.Minute)
 	}
 
@@ -357,9 +335,9 @@ func job_for_quality_check(offsetForScroing int, ctx context.Context, dbPool *pg
 		"processedArticles", processedCount,
 		"successfulArticles", successCount,
 		"errorArticles", errorCount,
-		"totalArticles", len(articleWithScores),
-		"offset", offsetForScroing)
-	return articleWithScores
+		"totalArticles", len(articleWithSummaries))
+
+	return true
 }
 
 func healthCheckForNewsCreator() error {
