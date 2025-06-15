@@ -207,15 +207,27 @@ export default function Feeds() {
             <div
               ref={sentinelRef}
               style={{
-                height: "20px",
+                height: "100px",
                 width: "100%",
                 backgroundColor: "transparent",
+                position: "relative",
+                zIndex: 1
               }}
             />
 
             {isLoading && (
-              <Flex justifyContent="center" p={6}>
-                <Progress isIndeterminate color="blue.400" size="md" />
+              <Flex justifyContent="center" p={6} width="100%">
+                <Box
+                  p={4}
+                  borderRadius="12px"
+                  bg="rgba(255, 255, 255, 0.1)"
+                  border="1px solid rgba(255, 255, 255, 0.2)"
+                >
+                  <Progress isIndeterminate color="blue.400" size="md" />
+                  <Text color="white" fontSize="sm" mt={2} textAlign="center">
+                    Loading more...
+                  </Text>
+                </Box>
               </Flex>
             )}
 

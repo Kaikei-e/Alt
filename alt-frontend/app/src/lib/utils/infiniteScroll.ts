@@ -36,6 +36,8 @@ export function useInfiniteScroll(
 ) {
   const callbackRef = useRef(callback);
   const throttledCallbackRef = useRef<(() => void) | null>(null);
+  const retryCountRef = useRef(0);
+  const maxRetries = 3;
 
   // Keep the callback ref updated
   useEffect(() => {
@@ -45,8 +47,10 @@ export function useInfiniteScroll(
   // Create throttled callback when resetKey changes
   useEffect(() => {
     throttledCallbackRef.current = throttle(() => {
-      callbackRef.current();
-    }, 300);
+      if (retryCountRef.current < maxRetries) {
+        callbackRef.current();
+      }
+    }, 500); // Increased throttle time for better mobile performance
   }, [resetKey]);
 
   useEffect(() => {
@@ -66,12 +70,13 @@ export function useInfiniteScroll(
           entries.forEach((entry) => {
             if (entry.isIntersecting && throttledCallbackRef.current) {
               throttledCallbackRef.current();
+              retryCountRef.current = 0; // Reset retry count on successful intersection
             }
           });
         },
         {
-          rootMargin: "50px",
-          threshold: 0,
+          rootMargin: "200px 0px", // Increased rootMargin for better mobile detection
+          threshold: 0.1, // Added threshold for better detection
         },
       );
 
@@ -89,5 +94,10 @@ export function useInfiniteScroll(
         observer.disconnect();
       }
     };
-  }, [ref, resetKey]); // Add resetKey as dependency to force observer reset
+  }, [ref, resetKey]);
+
+  // Reset retry count when resetKey changes
+  useEffect(() => {
+    retryCountRef.current = 0;
+  }, [resetKey]);
 }
