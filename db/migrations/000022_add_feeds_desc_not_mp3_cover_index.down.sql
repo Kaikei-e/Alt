@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_feeds_desc_not_mp3_cover;
