@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	queryDurationThreshold = 500 * time.Millisecond
+	queryDurationThreshold = 100 * time.Millisecond
 )
 
 type QueryTracer struct {
