@@ -70,6 +70,9 @@ func Init(ctx context.Context) (*pgxpool.Pool, error) {
 	config.MaxConnLifetime = 1 * time.Hour
 	config.MaxConnIdleTime = 30 * time.Minute
 
+	// Add tracer
+	config.ConnConfig.Tracer = &QueryTracer{}
+
 	// Create the pool with the configuration
 	dbPool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
