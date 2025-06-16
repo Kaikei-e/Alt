@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import ErrorState from "./_components/ErrorState";
 import dynamic from "next/dynamic";
+import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
 const PAGE_SIZE = 10;
 
@@ -271,6 +272,7 @@ export default function Feeds() {
           </Flex>
         )}
       </Flex>
+      <FloatingMenu />
     </Box>
   );
 }

@@ -54,12 +54,16 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
     return "No summary available for this article";
   };
 
+  // Create unique test IDs based on feedURL to avoid conflicts
+  const uniqueId = feedURL ? btoa(feedURL).slice(0, 8) : 'default';
+
   return (
     <HStack justify="space-between">
       {!isOpen && (
         <Button
           onClick={handleShowDetails}
-          data-testid="show-details-button"
+          data-testid={`show-details-button-${uniqueId}`}
+          className="show-details-button"
           size="sm"
           borderRadius="full"
           bg="linear-gradient(45deg, #ff006e, #8338ec)"
@@ -119,7 +123,8 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 </Text>
                 <Button
                   onClick={handleHideDetails}
-                  data-testid="hide-details-button"
+                  data-testid={`hide-details-button-${uniqueId}`}
+                  className="hide-details-button"
                   size="sm"
                   borderRadius="full"
                   bg="linear-gradient(45deg, #ff006e, #8338ec)"
@@ -140,7 +145,8 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 </Button>
               </Flex>
               <Text
-                data-testid="summary-text"
+                data-testid={`summary-text-${uniqueId}`}
+                className="summary-text"
                 color={
                   error
                     ? "rgba(255, 255, 255, 0.6)"
