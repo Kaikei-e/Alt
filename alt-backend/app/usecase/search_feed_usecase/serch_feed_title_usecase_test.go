@@ -1,11 +1,11 @@
 package search_feed_usecase
 
 import (
-	"context"
-	"fmt"
-	"errors"
 	"alt/domain"
 	"alt/mocks"
+	"context"
+	"errors"
+	"fmt"
 	"testing"
 
 	"go.uber.org/mock/gomock"
@@ -52,7 +52,7 @@ func TestSearchFeedTitleUsecase_Execute(t *testing.T) {
 
 	t.Run("should return 0 results", func(t *testing.T) {
 		mockSearchByTitleGateway := mocks.NewMockSearchByTitlePort(ctrl)
-		mockSearchByTitleGateway.EXPECT().SearchByTitle(ctx, "test").Return([]*domain.FeedItem{}, nil)
+		mockSearchByTitleGateway.EXPECT().SearchByTitle(ctx, "").Return([]*domain.FeedItem{}, nil)
 
 		usecase := NewSearchFeedTitleUsecase(mockSearchByTitleGateway)
 		results, err := usecase.Execute(ctx, "")
