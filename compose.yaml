@@ -14,6 +14,18 @@ services:
         condition: service_healthy
     networks:
       - alt-network
+    # Resource limits for better performance
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    # Increase file descriptor limits
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     tty: true
 
   alt-frontend:
@@ -35,6 +47,13 @@ services:
     restart: unless-stopped
     networks:
       - alt-network
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
       interval: 10s
@@ -65,6 +84,20 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    # Resource limits for backend
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '4.0'
+        reservations:
+          memory: 2G
+          cpus: '2.0'
+    # Increase file descriptor limits for backend
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9000/v1/health || exit 1"]
       interval: 20s
