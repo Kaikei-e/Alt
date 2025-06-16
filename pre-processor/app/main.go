@@ -16,9 +16,9 @@ import (
 )
 
 const BATCH_SIZE = 40
-const SUMMARIZE_INTERVAL = 20 * time.Second
-const FORMAT_INTERVAL = 10 * time.Minute
-const QUALITY_CHECK_INTERVAL = 30 * time.Minute
+const SUMMARIZE_INTERVAL = 10 * time.Second
+const FORMAT_INTERVAL = 5 * time.Minute
+const QUALITY_CHECK_INTERVAL = 10 * time.Minute
 const MODEL_ID = "phi4-mini:3.8b"
 
 func main() {
@@ -228,8 +228,8 @@ func processFeedsJob(ctx context.Context, dbPool *pgxpool.Pool, feedProcessor *h
 			logger.Logger.Info("Successfully created article", "articleID", article.ID, "title", article.Title)
 		}
 
-		time.Sleep(5 * time.Second)
-		logger.Logger.Info("Sleeping for 5 seconds. ", "index", i+1)
+		time.Sleep(10 * time.Second)
+		logger.Logger.Info("Sleeping for 10 seconds. ", "index", i+1)
 	}
 
 	return nil
@@ -285,8 +285,8 @@ func summarizationJob(ctx context.Context, dbPool *pgxpool.Pool, articleSummariz
 			savedCount++
 		}
 
-		logger.Logger.Info("Sleeping for 1 minute before next article", "currentIndex", i+1, "totalArticles", len(articles))
-		time.Sleep(1 * time.Minute)
+		logger.Logger.Info("Sleeping for 10 seconds before next article", "currentIndex", i+1, "totalArticles", len(articles))
+		time.Sleep(10 * time.Second)
 	}
 
 	logger.Logger.Info("Summarization job completed", "processedArticles", processedCount, "savedSummaries", savedCount)
@@ -327,8 +327,8 @@ func qualityCheckJob(ctx context.Context, dbPool *pgxpool.Pool, qualityChecker *
 		processedCount++
 		successCount++
 		logger.Logger.Info("Successfully processed article quality check", "articleID", articleWithSummary.ArticleID)
-		logger.Logger.Info("Sleeping for 1 minute before next article", "currentIndex", i+1, "totalArticles", len(articleWithSummaries))
-		time.Sleep(1 * time.Minute)
+		logger.Logger.Info("Sleeping for 30 seconds before next article", "currentIndex", i+1, "totalArticles", len(articleWithSummaries))
+		time.Sleep(30 * time.Second)
 	}
 
 	logger.Logger.Info("Quality check completed",
