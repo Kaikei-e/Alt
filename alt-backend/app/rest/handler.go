@@ -7,6 +7,8 @@ import (
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -188,6 +190,32 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		return c.JSON(http.StatusOK, map[string]string{"message": "Feed read status updated"})
 	})
 
+	v1.POST("/feeds/search", func(c echo.Context) error {
+		var payload FeedSearchPayload
+		err := c.Bind(&payload)
+		if err != nil {
+			logger.Logger.Error("Error binding search payload", "error", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+
+		if payload.Query == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Search query must not be empty"})
+		}
+
+		logger.Logger.Info("Executing feed search", "query", payload.Query)
+		results, err := container.FeedSearchUsecase.Execute(c.Request().Context(), payload.Query)
+		if err != nil {
+			logger.Logger.Error("Error executing feed search", "error", err, "query", payload.Query)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+
+		// Clean HTML from search results using goquery
+		cleanedResults := html_parser.CleanSearchResultsWithGoquery(results)
+
+		logger.Logger.Info("Feed search completed successfully", "query", payload.Query, "results_count", len(cleanedResults))
+		return c.JSON(http.StatusOK, cleanedResults)
+	})
+
 	v1.POST("/feeds/fetch/details", func(c echo.Context) error {
 		var payload FeedUrlPayload
 		err := c.Bind(&payload)
@@ -199,6 +227,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		feedURLParsed, err := url.Parse(payload.FeedURL)
 		if err != nil {
 			logger.Logger.Error("Error parsing feed URL", "error", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+
+		err = isAllowedURL(feedURLParsed)
+		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 
@@ -303,8 +336,16 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "URL is required and cannot be empty"})
 		}
 
-		if !strings.HasPrefix(rssFeedLink.URL, "https://") {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "URL must start with https://"})
+		// Parse and validate URL for SSRF protection
+		parsedURL, err := url.Parse(rssFeedLink.URL)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid URL format"})
+		}
+
+		// Apply SSRF protection
+		err = isAllowedURL(parsedURL)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 
 		err = container.RegisterFeedsUsecase.Execute(c.Request().Context(), rssFeedLink.URL)
@@ -362,4 +403,93 @@ func truncate(s string) string {
 		return s[:500] + "..."
 	}
 	return s
+}
+
+func isAllowedURL(u *url.URL) error {
+	// Only allow HTTPS
+	if u.Scheme != "https" {
+		return errors.New("only HTTPS schemes allowed")
+	}
+
+	// Block private networks
+	if isPrivateIP(u.Hostname()) {
+		return errors.New("access to private networks not allowed")
+	}
+
+	// Block localhost variations
+	hostname := strings.ToLower(u.Hostname())
+	if hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127.") {
+		return errors.New("access to localhost not allowed")
+	}
+
+	// Block metadata endpoints (AWS, GCP, Azure)
+	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" || hostname == "169.254.169.254" {
+		return errors.New("access to metadata endpoint not allowed")
+	}
+
+	// Block common internal domains
+	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
+	for _, domain := range internalDomains {
+		if strings.HasSuffix(hostname, domain) {
+			return errors.New("access to internal domains not allowed")
+		}
+	}
+
+	return nil
+}
+
+func isPrivateIP(hostname string) bool {
+	// Try to parse as IP first
+	ip := net.ParseIP(hostname)
+	if ip != nil {
+		return isPrivateIPAddress(ip)
+	}
+
+	// If it's a hostname, resolve it to IPs
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		// Block on resolution failure as a security measure
+		return true
+	}
+
+	// Check if any resolved IP is private
+	for _, ip := range ips {
+		if isPrivateIPAddress(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isPrivateIPAddress(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+
+	// Check for private IPv4 ranges
+	if ip.To4() != nil {
+		// 10.0.0.0/8
+		if ip[0] == 10 {
+			return true
+		}
+		// 172.16.0.0/12
+		if ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
+			return true
+		}
+		// 192.168.0.0/16
+		if ip[0] == 192 && ip[1] == 168 {
+			return true
+		}
+	}
+
+	// Check for private IPv6 ranges
+	if ip.To16() != nil && ip.To4() == nil {
+		// Check for unique local addresses (fc00::/7)
+		if ip[0] == 0xfc || ip[0] == 0xfd {
+			return true
+		}
+	}
+
+	return false
 }

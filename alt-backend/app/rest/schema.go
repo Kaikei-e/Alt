@@ -24,3 +24,8 @@ type feedAmount struct {
 type summarizedFeedAmount struct {
 	Amount int `json:"amount"`
 }
+
+type FeedSearchPayload struct {
+	Query string `json:"query"`
+}
+	

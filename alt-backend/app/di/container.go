@@ -12,7 +12,8 @@ import (
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/reading_status"
 	"alt/usecase/register_feed_usecase.go"
-
+	"alt/usecase/search_feed_usecase"
+	"alt/gateway/feed_search_gateway"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,6 +25,7 @@ type ApplicationComponents struct {
 	FeedsReadingStatusUsecase *reading_status.FeedsReadingStatusUsecase
 	FeedsSummaryUsecase       *fetch_feed_details_usecase.FeedsSummaryUsecase
 	FeedAmountUsecase         *fetch_feed_stats_usecase.FeedsCountUsecase
+	FeedSearchUsecase         *search_feed_usecase.SearchFeedTitleUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -49,6 +51,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	feedAmountGatewayImpl := feed_stats_gateway.NewFeedAmountGateway(pool)
 	feedsCountUsecase := fetch_feed_stats_usecase.NewFeedsCountUsecase(feedAmountGatewayImpl)
 
+	feedSearchGatewayImpl := feed_search_gateway.NewSearchByTitleGateway(pool)
+	feedSearchUsecase := search_feed_usecase.NewSearchFeedTitleUsecase(feedSearchGatewayImpl)
+
 	return &ApplicationComponents{
 		AltDBRepository:           altDBRepository,
 		FetchSingleFeedUsecase:    fetchSingleFeedUsecase,
@@ -57,5 +62,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FeedsReadingStatusUsecase: feedsReadingStatusUsecase,
 		FeedsSummaryUsecase:       feedsSummaryUsecase,
 		FeedAmountUsecase:         feedsCountUsecase,
+		FeedSearchUsecase:         feedSearchUsecase,
 	}
 }
