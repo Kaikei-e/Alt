@@ -1,5 +1,16 @@
 import { test, expect } from "@playwright/test";
 
+// Helper function to generate mock feed data
+const generateMockFeeds = (count: number, startId: number = 1) => {
+  return Array.from({ length: count }, (_, index) => ({
+    title: `Test Feed ${startId + index}`,
+    description: `This is test feed description ${startId + index}`,
+    link: `https://example.com/feed/${startId + index}`,
+    published: new Date().toISOString(),
+    authors: [{ name: `Author ${startId + index}` }],
+  }));
+};
+
 test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
   const menuItems = [
@@ -22,8 +33,36 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
   ];
 
   test.beforeEach(async ({ page }) => {
+    // Mock the feeds API endpoints to prevent dependency on backend
+    await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(generateMockFeeds(10, 1)),
+      });
+    });
+
+    await page.route("**/api/v1/feeds/fetch/list", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(generateMockFeeds(10, 1)),
+      });
+    });
+
+    await page.route("**/api/v1/feeds/read", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Feed marked as read" }),
+      });
+    });
+
     // Navigate to the page that has the FloatingMenu component
     await page.goto("/mobile/feeds");
+
+    // Wait for the page to load and become stable
+    await page.waitForLoadState("networkidle");
 
     // Wait for the FloatingMenu to be present
     await page.waitForSelector('[data-testid="floating-menu-button"]', { timeout: 10000 });

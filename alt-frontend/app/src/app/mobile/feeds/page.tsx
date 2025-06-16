@@ -133,17 +133,37 @@ export default function Feeds() {
   );
 
   if (initialLoading) {
-    return LoadingComponent;
+    return (
+      <Box minHeight="100vh" minH="100dvh" position="relative">
+        <Flex
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
+          height="100vh"
+          width="100%"
+          data-testid="loading-spinner"
+        >
+          <Box p={6} borderRadius="20px" className="glass" textAlign="center">
+            <Progress isIndeterminate color="pink.400" size="lg" />
+            <Text mt={4} color="white" fontSize="lg" fontWeight="bold">
+              Loading feeds...
+            </Text>
+          </Box>
+        </Flex>
+        <FloatingMenu />
+      </Box>
+    );
   }
 
   if (error) {
     return (
-      <Box minHeight="100vh" minH="100dvh">
+      <Box minHeight="100vh" minH="100dvh" position="relative">
         <ErrorState
           error={error}
           onRetry={loadInitialFeeds}
           isLoading={initialLoading}
         />
+        <FloatingMenu />
       </Box>
     );
   }
