@@ -20,6 +20,16 @@ interface CacheEntry<T> {
   ttl: number;
 }
 
+interface message {
+  message: string;
+}
+
+interface errorMessage {
+  error: string;
+}
+
+type responseValidity = message | errorMessage;
+
 class ApiClient {
   private baseUrl: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,7 +140,11 @@ class ApiClient {
       // Invalidate related cache entries after POST
       this.invalidateCache();
 
-      return result;
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      return result as T;
     } catch (error) {
       throw error;
     }
@@ -208,11 +222,11 @@ export const feedsApi = {
     return apiClient.get("/v1/feeds/fetch/single", 5);
   },
 
-  async registerRssFeed(url: string): Promise<{ message: string }> {
+  async registerRssFeed(url: string): Promise<message> {
     return apiClient.post("/v1/rss-feed-link/register", { url });
   },
 
-  async updateFeedReadStatus(url: string): Promise<{ message: string }> {
+  async updateFeedReadStatus(url: string): Promise<message> {
     return apiClient.post("/v1/feeds/read", { feed_url: url });
   },
   async getFeedDetails(payload: FeedURLPayload): Promise<FeedDetails> {
@@ -224,13 +238,40 @@ export const feedsApi = {
   // Method to prefetch data for performance
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
     const prefetchPromises = pages.map(
-      (page) => this.getFeedsPage(page).catch(() => {}), // Ignore errors in prefetching
+      (page) => this.getFeedsPage(page).catch(() => { }), // Ignore errors in prefetching
     );
     await Promise.all(prefetchPromises);
   },
 
-  async searchFeeds(query: string): Promise<FeedSearchResult> {
-    return apiClient.post<FeedSearchResult>(`/v1/feeds/search`, { query });
+    async searchFeeds(query: string): Promise<FeedSearchResult> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/feeds/search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      // Backend returns array directly, so wrap it in expected structure
+      if (Array.isArray(result)) {
+        return { results: result, error: null };
+      }
+
+      // If already in expected format, return as is
+      return result;
+    } catch (error) {
+      return {
+        results: [],
+        error: error instanceof Error ? error.message : "Search failed"
+      };
+    }
   },
 
   // Clear cache method
