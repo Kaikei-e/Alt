@@ -423,7 +423,7 @@ func isAllowedURL(u *url.URL) error {
 	}
 
 	// Block metadata endpoints (AWS, GCP, Azure)
-	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" || hostname == "169.254.169.254" {
+	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" {
 		return errors.New("access to metadata endpoint not allowed")
 	}
 
