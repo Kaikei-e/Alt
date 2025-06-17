@@ -161,9 +161,11 @@ services:
       - SEARCH_INDEXER_DB_USER=${SEARCH_INDEXER_DB_USER}
       - SEARCH_INDEXER_DB_PASSWORD=${SEARCH_INDEXER_DB_PASSWORD}
       - MEILISEARCH_HOST=${MEILISEARCH_HOST}
-      - MEILISEARCH_API_KEY=${MEILISEARCH_API_KEY}
+      - MEILISEARCH_API_KEY=${MEILI_MASTER_KEY}
     depends_on:
       db:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
     networks:
       - alt-network
