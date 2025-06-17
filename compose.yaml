@@ -190,15 +190,6 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
-    # Resource limits to prevent OOM and improve stability
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2.0'
-        reservations:
-          memory: 1G
-          cpus: '1.0'
 
   db:
     image: postgres:16-alpine
