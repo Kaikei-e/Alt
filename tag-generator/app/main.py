@@ -60,6 +60,8 @@ def main():
                         processed_count += 1
                         total_articles_this_cycle += 1
 
+                        print(f"Processed {processed_count} articles...")
+
                         if processed_count % 10 == 0:  # Log progress every 10 articles
                             print(f"Processed {processed_count} articles...")
                             # Force garbage collection to prevent memory accumulation
