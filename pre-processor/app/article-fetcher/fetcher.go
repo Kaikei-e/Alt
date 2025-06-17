@@ -63,8 +63,8 @@ func urlMP3Validator(url url.URL) bool {
 }
 
 func cleanFetchedFeedContent(s string) string {
-	// remove all lines that start with backslash
-	return strings.ReplaceAll(s, "\\", " ") // replace backslash with space
+	// replace all new lines with space
+	return strings.ReplaceAll(s, "\n", " ")
 }
 
 // createSecureHTTPClient creates an HTTP client with SSRF protection
