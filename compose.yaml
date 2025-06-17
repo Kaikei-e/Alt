@@ -158,8 +158,10 @@ services:
       - DB_HOST=db
       - DB_PORT=5432
       - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
+      - SEARCH_INDEXER_DB_USER=${SEARCH_INDEXER_DB_USER}
+      - SEARCH_INDEXER_DB_PASSWORD=${SEARCH_INDEXER_DB_PASSWORD}
+      - MEILISEARCH_HOST=${MEILISEARCH_HOST}
+      - MEILISEARCH_API_KEY=${MEILISEARCH_API_KEY}
     depends_on:
       db:
         condition: service_healthy
@@ -191,6 +193,31 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  meilisearch:
+      image: getmeili/meilisearch:v1.6
+      restart: unless-stopped
+      environment:
+        MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
+        MEILI_ENV: "production"
+      ports:
+        - "7700:7700"
+      volumes:
+        - meili_data:/meili_data   # persistent index storage
+      networks:
+        - alt-network
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+      deploy:
+        resources:
+          limits:
+            memory: 1G
+          reservations:
+            memory: 512M
+      tty: true
+
   db:
     image: postgres:16-alpine
     restart: always
@@ -207,6 +234,8 @@ services:
       PRE_PROCESSOR_DB_PASSWORD: ${PRE_PROCESSOR_DB_PASSWORD}
       DB_TAG_GENERATOR_USER: ${DB_TAG_GENERATOR_USER}
       DB_TAG_GENERATOR_PASSWORD: ${DB_TAG_GENERATOR_PASSWORD}
+      SEARCH_INDEXER_DB_USER: ${SEARCH_INDEXER_DB_USER}
+      SEARCH_INDEXER_DB_PASSWORD: ${SEARCH_INDEXER_DB_PASSWORD}
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:rw
@@ -243,3 +272,4 @@ networks:
 
 volumes:
   db_data:
+  meili_data:
