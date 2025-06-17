@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from datetime import datetime, UTC
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
 import psycopg2
@@ -44,6 +44,10 @@ class TagGeneratorService:
         self.article_fetcher = ArticleFetcher()
         self.tag_extractor = TagExtractor()
         self.tag_inserter = TagInserter()
+
+        # Persistent cursor position for pagination between cycles
+        self.last_processed_created_at: Optional[str] = None
+        self.last_processed_id: Optional[str] = None
 
         logger.info("Tag Generator Service initialized")
         logger.info(f"Configuration: {self.config}")
@@ -97,10 +101,17 @@ class TagGeneratorService:
 
     def _get_initial_cursor_position(self) -> tuple[str, str]:
         """Get initial cursor position for pagination."""
-        last_created_at = datetime.now(UTC).isoformat()
-        last_id = "ffffffff-ffff-ffff-ffff-ffffffffffff"  # Max UUID for descending order
+        if self.last_processed_created_at and self.last_processed_id:
+            # Continue from where we left off
+            last_created_at = self.last_processed_created_at
+            last_id = self.last_processed_id
+            logger.info(f"Continuing article processing from cursor: {last_created_at}, ID: {last_id}")
+        else:
+            # First run - start from current time
+            last_created_at = datetime.now(UTC).isoformat()
+            last_id = "ffffffff-ffff-ffff-ffff-ffffffffffff"  # Max UUID for descending order
+            logger.info(f"Starting initial article processing from {last_created_at}")
 
-        logger.info(f"Starting article processing from {last_created_at}")
         return last_created_at, last_id
 
     def _process_single_article(
@@ -145,7 +156,7 @@ class TagGeneratorService:
 
     def _process_article_batch(self, conn: Connection) -> Dict[str, Any]:
         """
-        Process a batch of articles for tag generation.
+        Process a batch of articles for tag generation using true batch processing.
 
         Args:
             conn: Database connection
@@ -163,57 +174,135 @@ class TagGeneratorService:
             "last_id": last_id
         }
 
-        while batch_stats["total_processed"] < self.config.batch_limit:
+        # Collect articles for batch processing
+        articles_to_process = []
+
+        while len(articles_to_process) < self.config.batch_limit:
             try:
                 # Fetch articles
                 logger.debug("Fetching articles from database...")
                 articles = self.article_fetcher.fetch_articles(conn, last_created_at, last_id)
 
                 if not articles:
-                    if batch_stats["total_processed"] == 0:
-                        logger.info("No new articles found to process")
-                    else:
-                        logger.info(f"Finished processing batch of {batch_stats['total_processed']} articles")
+                    logger.info(f"No more articles found. Collected {len(articles_to_process)} articles for batch processing")
                     break
 
                 logger.info(f"Fetched {len(articles)} articles")
 
-                # Process each article
+                # Add articles to batch, respecting the batch limit
                 for article in articles:
-                    if batch_stats["total_processed"] >= self.config.batch_limit:
+                    if len(articles_to_process) >= self.config.batch_limit:
                         logger.info(f"Reached batch limit of {self.config.batch_limit} articles")
                         break
 
-                    success = self._process_single_article(conn, article)
+                    articles_to_process.append(article)
 
-                    if success:
-                        batch_stats["successful"] += 1
+                    # Update cursor position for next fetch (convert datetime to string)
+                    if isinstance(article["created_at"], str):
+                        last_created_at = article["created_at"]
                     else:
-                        batch_stats["failed"] += 1
-
-                    batch_stats["total_processed"] += 1
-
-                    # Update cursor position
-                    last_created_at = article["created_at"]
+                        last_created_at = article["created_at"].isoformat()
                     last_id = article["id"]
-                    batch_stats["last_created_at"] = last_created_at
-                    batch_stats["last_id"] = last_id
-
-                    # Log progress
-                    if batch_stats["total_processed"] % self.config.progress_log_interval == 0:
-                        logger.info(f"Processed {batch_stats['total_processed']} articles...")
-
-                        # Optional garbage collection
-                        if self.config.enable_gc_collection:
-                            gc.collect()
 
                 # Break if we've reached the batch limit
-                if batch_stats["total_processed"] >= self.config.batch_limit:
+                if len(articles_to_process) >= self.config.batch_limit:
                     break
 
             except Exception as e:
-                logger.error(f"Error during batch processing: {e}")
+                logger.error(f"Error during article collection: {e}")
                 break
+
+        # Process the collected articles as a true batch
+        if articles_to_process:
+            logger.info(f"Processing batch of {len(articles_to_process)} articles...")
+            batch_stats = self._process_articles_as_batch(conn, articles_to_process)
+            # Ensure string format for batch stats
+            if isinstance(last_created_at, str):
+                batch_stats["last_created_at"] = last_created_at
+            else:
+                batch_stats["last_created_at"] = last_created_at.isoformat()
+            batch_stats["last_id"] = last_id
+
+            # Update persistent cursor position for next cycle (ensure string format)
+            if isinstance(last_created_at, str):
+                self.last_processed_created_at = last_created_at
+            else:
+                self.last_processed_created_at = last_created_at.isoformat()
+            self.last_processed_id = last_id
+            logger.info(f"Updated cursor position for next cycle: {self.last_processed_created_at}, ID: {last_id}")
+
+        return batch_stats
+
+    def _process_articles_as_batch(self, conn: Connection, articles: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Process multiple articles as a single batch transaction.
+
+        Args:
+            conn: Database connection
+            articles: List of articles to process
+
+        Returns:
+            Dictionary with batch processing results
+        """
+        batch_stats = {
+            "total_processed": 0,
+            "successful": 0,
+            "failed": 0
+        }
+
+        # Prepare batch data for tag insertion
+        article_tags_batch = []
+
+        # Extract tags for all articles first
+        for i, article in enumerate(articles):
+            try:
+                article_id = article["id"]
+                title = article["title"]
+                content = article["content"]
+
+                logger.debug(f"Extracting tags for article {article_id}")
+                tags = self.tag_extractor.extract_tags(title, content)
+
+                if tags:  # Only include articles that have tags
+                    article_tags_batch.append({
+                        "article_id": article_id,
+                        "tags": tags
+                    })
+                    logger.debug(f"Extracted {len(tags)} tags for article {article_id}: {tags}")
+
+                # Log progress during tag extraction
+                if (i + 1) % self.config.progress_log_interval == 0:
+                    logger.info(f"Extracted tags for {i + 1}/{len(articles)} articles...")
+
+            except Exception as e:
+                logger.error(f"Error extracting tags for article {article.get('id', 'unknown')}: {e}")
+                batch_stats["failed"] += 1
+                continue
+
+        # Perform batch upsert of all tags in a single transaction
+        if article_tags_batch:
+            try:
+                logger.info(f"Upserting tags for {len(article_tags_batch)} articles in single transaction...")
+
+                # Use the batch upsert method that commits everything at once
+                result = self.tag_inserter.batch_upsert_tags(conn, article_tags_batch)
+
+                batch_stats["successful"] = result.get("processed_articles", 0)
+                batch_stats["failed"] += result.get("failed_articles", 0)
+                batch_stats["total_processed"] = len(articles)
+
+                if result.get("success"):
+                    logger.info(f"Successfully batch processed {batch_stats['successful']} articles")
+                else:
+                    logger.warning(f"Batch processing completed with {batch_stats['failed']} failures")
+
+            except Exception as e:
+                logger.error(f"Batch upsert failed: {e}")
+                batch_stats["failed"] = len(articles)
+                batch_stats["total_processed"] = len(articles)
+        else:
+            logger.warning("No articles with tags to process")
+            batch_stats["total_processed"] = len(articles)
 
         return batch_stats
 
