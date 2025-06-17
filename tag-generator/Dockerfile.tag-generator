@@ -1,0 +1,28 @@
+FROM python:3.13-slim
+
+# Install build dependencies for C++ compilation and system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    g++ \
+    wget \
+    mecab \
+    libmecab-dev \
+    mecab-ipadic-utf8 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY app/uv.lock .
+COPY app/pyproject.toml .
+
+RUN pip install uv && uv sync
+
+# Download required models and data using uv environment
+RUN uv run python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt'); nltk.download('punkt_tab')"
+
+# Install UniDic for Japanese text processing (alternative to the default ipadic)
+RUN uv run python -c "import unidic; unidic.download()" || echo "UniDic download may have failed, will try alternative approach"
+
+COPY app/ .
+
+CMD ["uv", "run", "main.py"]
