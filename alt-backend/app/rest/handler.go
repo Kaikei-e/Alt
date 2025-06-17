@@ -406,9 +406,9 @@ func truncate(s string) string {
 }
 
 func isAllowedURL(u *url.URL) error {
-	// Only allow HTTPS
-	if u.Scheme != "https" {
-		return errors.New("only HTTPS schemes allowed")
+	// Allow both HTTP and HTTPS
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return errors.New("only HTTP and HTTPS schemes allowed")
 	}
 
 	// Block private networks
