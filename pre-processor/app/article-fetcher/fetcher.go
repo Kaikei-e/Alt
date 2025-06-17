@@ -101,9 +101,9 @@ func createSecureHTTPClient() *http.Client {
 
 // validateURL validates a URL for SSRF protection
 func validateURL(u *url.URL) error {
-	// Only allow HTTPS
-	if u.Scheme != "https" {
-		return errors.New("only HTTPS schemes allowed")
+	// Only allow HTTP or HTTPS
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return errors.New("only HTTP or HTTPS schemes allowed")
 	}
 
 	// Block private networks
