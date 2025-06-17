@@ -150,6 +150,45 @@ services:
       - alt-network
     tty: true
 
+  search-indexer:
+    build:
+      context: ./search-indexer
+      dockerfile: Dockerfile.search-indexer
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    ports:
+      - "9300:9300"
+    tty: true
+
+  tag-generator:
+    build:
+      context: ./tag-generator
+      dockerfile: Dockerfile.tag-generator
+    networks:
+      - alt-network
+    ports:
+      - "9400:9400"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_TAG_GENERATOR_USER=${DB_TAG_GENERATOR_USER}
+      - DB_TAG_GENERATOR_PASSWORD=${DB_TAG_GENERATOR_PASSWORD}
+    tty: true
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     restart: always
@@ -164,6 +203,8 @@ services:
       DB_NAME: ${DB_NAME}
       PRE_PROCESSOR_DB_USER: ${PRE_PROCESSOR_DB_USER}
       PRE_PROCESSOR_DB_PASSWORD: ${PRE_PROCESSOR_DB_PASSWORD}
+      DB_TAG_GENERATOR_USER: ${DB_TAG_GENERATOR_USER}
+      DB_TAG_GENERATOR_PASSWORD: ${DB_TAG_GENERATOR_PASSWORD}
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:rw
