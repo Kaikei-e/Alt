@@ -36,4 +36,15 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     GRANT USAGE ON SCHEMA public TO pre_processor_user;
 EOSQL
 
+# Create search-indexer user
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    DO \$\$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'search_indexer_user') THEN
+            CREATE ROLE search_indexer_user LOGIN PASSWORD '${SEARCH_INDEXER_DB_PASSWORD}';
+        END IF;
+    END
+    \$\$;
+EOSQL
+
 echo "Application users created successfully."
