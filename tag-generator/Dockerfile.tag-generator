@@ -23,6 +23,10 @@ RUN uv run python -c "import nltk; nltk.download('stopwords'); nltk.download('pu
 # Install UniDic for Japanese text processing (alternative to the default ipadic)
 RUN uv run python -c "import unidic; unidic.download()" || echo "UniDic download may have failed, will try alternative approach"
 
+# Pre-download SentenceTransformer model to avoid runtime download issues
+# Force CPU-only to prevent GPU memory issues
+RUN uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu'); print('SentenceTransformer model cached successfully')"
+
 COPY app/ .
 
 CMD ["uv", "run", "main.py"]

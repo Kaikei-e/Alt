@@ -183,6 +183,8 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_TAG_GENERATOR_USER=${DB_TAG_GENERATOR_USER}
       - DB_TAG_GENERATOR_PASSWORD=${DB_TAG_GENERATOR_PASSWORD}
+      # Force CPU-only to prevent GPU memory issues
+      - CUDA_VISIBLE_DEVICES=""
     tty: true
     depends_on:
       db:
