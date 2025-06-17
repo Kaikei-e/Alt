@@ -20,7 +20,7 @@ class TagExtractionConfig:
     """Configuration for tag extraction parameters."""
     model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"
     device: str = 'cpu'
-    top_keywords: int = 5
+    top_keywords: int = 10
     min_score_threshold: float = 0.1
     min_token_length: int = 2
     min_text_length: int = 10
