@@ -44,19 +44,23 @@ export const FloatingMenu = () => {
 
   const menuItems = [
     {
-      label: "Feeds",
+      label: "View Feeds",
       href: "/mobile/feeds",
     },
     {
-      label: "Register",
+      label: "Register Feed",
       href: "/mobile/feeds/register",
     },
     {
-      label: "Search",
+      label: "Search Feeds",
       href: "/mobile/feeds/search",
     },
     {
-      label: "Stats",
+      label: "Search Articles",
+      href: "/mobile/articles/search",
+    },
+    {
+      label: "View Stats",
       href: "/mobile/feeds/stats",
     },
   ];

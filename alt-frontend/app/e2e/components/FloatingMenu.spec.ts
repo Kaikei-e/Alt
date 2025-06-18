@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { Feed } from "@/schema/feed";
+import { Article } from "@/schema/article";
 
 // Helper function to generate mock feed data
 const generateMockFeeds = (count: number, startId: number = 1) => {
@@ -11,23 +13,35 @@ const generateMockFeeds = (count: number, startId: number = 1) => {
   }));
 };
 
+const generateMockArticles = (count: number, startId: number = 1) => {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${startId + index}`,
+    title: `Test Article ${startId + index}`,
+    content: `Content for test article ${startId + index}. This is a longer content to test how the UI handles different text lengths.`,
+  }));
+};
+
 test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
   const menuItems = [
     {
-      label: "Feeds",
+      label: "View Feeds",
       href: "/mobile/feeds",
     },
     {
-      label: "Register",
+      label: "Register Feed",
       href: "/mobile/feeds/register",
     },
     {
-      label: "Search",
-      href: "/mobile/feeds/search",
+      label: "View Feeds",
+      href: "/mobile/feeds",
     },
     {
-      label: "Stats",
+      label: "Search Articles",
+      href: "/mobile/articles/search",
+    },
+    {
+      label: "View Stats",
       href: "/mobile/feeds/stats",
     },
   ];
@@ -55,6 +69,14 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ message: "Feed marked as read" }),
+      });
+    });
+
+    await page.route("**/api/v1/articles/search", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(generateMockArticles(10, 1)),
       });
     });
 
@@ -164,7 +186,7 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       if (boundingBox) {
         // Should be compact - not full screen width/height
         expect(boundingBox.width).toBeLessThan(400); // Max 400px width
-        expect(boundingBox.height).toBeLessThan(320); // Max 320px height (allowing for browser differences)
+        expect(boundingBox.height).toBeLessThan(380); // Max 380px height (allowing for browser differences)
       }
     });
   });
@@ -231,10 +253,10 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
       // Should not overwhelm the mobile screen
       const boundingBox = await menuContent.boundingBox();
-             if (boundingBox) {
-         expect(boundingBox.width).toBeLessThan(350); // Even more compact on mobile
-         expect(boundingBox.height).toBeLessThan(310); // Allowing slightly more space for browser differences
-       }
+      if (boundingBox) {
+        expect(boundingBox.width).toBeLessThan(350); // Even more compact on mobile
+        expect(boundingBox.height).toBeLessThan(380); // Allowing more space for browser differences
+      }
     });
 
     test("should scale appropriately on tablet", async ({ page }) => {
