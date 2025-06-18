@@ -1,7 +1,10 @@
 import { Article } from "@/schema/article";
 import { test, expect } from "@playwright/test";
 
-const generateMockArticles = (count: number, startId: number = 1): Article[] => {
+const generateMockArticles = (
+  count: number,
+  startId: number = 1,
+): Article[] => {
   return Array.from({ length: count }, (_, index) => ({
     id: `${startId + index}`,
     title: `Test Article ${startId + index}`,
@@ -26,23 +29,35 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     await page.goto("/mobile/articles/search");
     await page.fill("input[type='text']", "Test");
     await page.click("button[type='submit']");
-    await page.waitForSelector(".article-card-wrapper[data-testid='article-card']");
-    const articleCards = await page.$$(".article-card-wrapper[data-testid='article-card']");
+    await page.waitForSelector(
+      ".article-card-wrapper[data-testid='article-card']",
+    );
+    const articleCards = await page.$$(
+      ".article-card-wrapper[data-testid='article-card']",
+    );
     expect(articleCards).toHaveLength(mockArticles.length);
 
     for (const article of mockArticles) {
-      const articleCard = await articleCards.find(async (card) => await card.textContent() === article.title);
+      const articleCard = await articleCards.find(
+        async (card) => (await card.textContent()) === article.title,
+      );
       expect(articleCard).toBeDefined();
     }
   });
 
-  test("should display error message when query is invalid", async ({ page }) => {
+  test("should display error message when query is invalid", async ({
+    page,
+  }) => {
     await page.goto("/mobile/articles/search");
     await page.fill("input[type='text']", "a");
     // Wait for validation error to appear (real-time validation)
     await page.waitForSelector("[data-testid='error-message']");
-    const errorMessage = await page.textContent("[data-testid='error-message']");
-    expect(errorMessage).toContain("Search query must be at least 2 characters");
+    const errorMessage = await page.textContent(
+      "[data-testid='error-message']",
+    );
+    expect(errorMessage).toContain(
+      "Search query must be at least 2 characters",
+    );
   });
 
   test("should display error message when query is empty", async ({ page }) => {
@@ -51,7 +66,9 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     // Trigger validation by trying to submit or just waiting
     await page.click("button[type='submit']");
     await page.waitForSelector("[data-testid='error-message']");
-    const errorMessage = await page.textContent("[data-testid='error-message']");
+    const errorMessage = await page.textContent(
+      "[data-testid='error-message']",
+    );
     expect(errorMessage).toContain("Please enter a search query");
   });
 });

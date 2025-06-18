@@ -8,15 +8,18 @@ import { feedsApi } from "@/lib/api";
 export default function RegisterFeedsPage() {
   const [feedUrl, setFeedUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!feedUrl.trim()) {
       setMessage({
-        type: 'error',
-        text: 'Please enter a feed URL'
+        type: "error",
+        text: "Please enter a feed URL",
       });
       return;
     }
@@ -27,13 +30,13 @@ export default function RegisterFeedsPage() {
     const response = await feedsApi.registerRssFeed(feedUrl);
     if (response.message) {
       setMessage({
-        type: 'success',
-        text: 'Feed registered successfully!'
+        type: "success",
+        text: "Feed registered successfully!",
       });
     } else {
       setMessage({
-        type: 'error',
-        text: 'Failed to register feed. Please try again.'
+        type: "error",
+        text: "Failed to register feed. Please try again.",
       });
     }
 
@@ -58,11 +61,7 @@ export default function RegisterFeedsPage() {
           Register RSS Feed
         </Text>
 
-        <Text
-          textAlign="center"
-          color="rgba(255, 255, 255, 0.7)"
-          fontSize="sm"
-        >
+        <Text textAlign="center" color="rgba(255, 255, 255, 0.7)" fontSize="sm">
           Enter the URL of an RSS feed to add it to your collection
         </Text>
 
@@ -125,7 +124,7 @@ export default function RegisterFeedsPage() {
 
               {message && (
                 <Text
-                  color={message.type === 'success' ? '#4ade80' : '#f87171'}
+                  color={message.type === "success" ? "#4ade80" : "#f87171"}
                   textAlign="center"
                   fontSize="sm"
                   fontWeight="medium"

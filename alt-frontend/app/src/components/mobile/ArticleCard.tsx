@@ -7,7 +7,11 @@ interface ArticleCardProps {
 
 export const ArticleCard = ({ article }: ArticleCardProps) => {
   return (
-    <div data-testid="article-card" className="article-card-wrapper" style={{ width: '100%' }}>
+    <div
+      data-testid="article-card"
+      className="article-card-wrapper"
+      style={{ width: "100%" }}
+    >
       <Box
         className="glass"
         w="full"
@@ -38,7 +42,11 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
             {article.title}
           </Text>
 
-          <Dialog.Root size="cover" placement="center" motionPreset="slide-in-bottom">
+          <Dialog.Root
+            size="cover"
+            placement="center"
+            motionPreset="slide-in-bottom"
+          >
             <Dialog.Trigger asChild>
               <Button
                 colorScheme="pink"
@@ -75,18 +83,10 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                       {article.title}
                     </Dialog.Title>
                   </Dialog.Header>
-                  <Dialog.Body
-                    px={6}
-                    py={4}
-                    maxH="60vh"
-                    overflowY="auto"
-                  >
-                    <Text
-                      color="whiteAlpha.900"
-                      lineHeight="1.6"
-                      fontSize="md"
-                    >
-                      {article.content || "No additional content available for this article."}
+                  <Dialog.Body px={6} py={4} maxH="60vh" overflowY="auto">
+                    <Text color="whiteAlpha.900" lineHeight="1.6" fontSize="md">
+                      {article.content ||
+                        "No additional content available for this article."}
                     </Text>
                   </Dialog.Body>
                   <Dialog.Footer px={6} py={4}>

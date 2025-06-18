@@ -237,10 +237,8 @@ export const feedsApi = {
 
   // Method to prefetch data for performance
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
-    const prefetchPromises = pages.map(
-      (page) => this.getFeedsPage(page).catch(() => {
-
-      }),
+    const prefetchPromises = pages.map((page) =>
+      this.getFeedsPage(page).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   },
@@ -256,7 +254,9 @@ export const feedsApi = {
       });
 
       if (!response.ok) {
-        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+        throw new Error(
+          `API request failed: ${response.status} ${response.statusText}`,
+        );
       }
 
       const result = await response.json();
@@ -271,7 +271,7 @@ export const feedsApi = {
     } catch (error) {
       return {
         results: [],
-        error: error instanceof Error ? error.message : "Search failed"
+        error: error instanceof Error ? error.message : "Search failed",
       };
     }
   },

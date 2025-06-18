@@ -110,8 +110,6 @@ export default function Feeds() {
     setReadFeeds((prev) => new Set(prev).add(feedLink));
   }, []);
 
-
-
   if (initialLoading) {
     return (
       <Box minHeight="100vh" minH="100dvh" position="relative">
@@ -212,7 +210,7 @@ export default function Feeds() {
                 width: "100%",
                 backgroundColor: "transparent",
                 position: "relative",
-                zIndex: 1
+                zIndex: 1,
               }}
             />
 

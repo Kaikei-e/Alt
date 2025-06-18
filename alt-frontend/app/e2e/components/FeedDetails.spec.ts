@@ -45,17 +45,23 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".summary-text")).not.toBeVisible();
     });
 
-    test("should not display hide details button initially", async ({ page }) => {
+    test("should not display hide details button initially", async ({
+      page,
+    }) => {
       await expect(page.locator(".hide-details-button")).not.toBeVisible();
     });
 
     test("should have correct button text", async ({ page }) => {
-      await expect(page.locator(".show-details-button").first()).toHaveText("Show Details");
+      await expect(page.locator(".show-details-button").first()).toHaveText(
+        "Show Details",
+      );
     });
   });
 
   test.describe("Opening Details", () => {
-    test("should show details when show button is clicked", async ({ page }) => {
+    test("should show details when show button is clicked", async ({
+      page,
+    }) => {
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         await route.fulfill({
           status: 200,
@@ -78,10 +84,12 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".summary-text")).toBeVisible();
     });
 
-    test("should display loading state while fetching details", async ({ page }) => {
+    test("should display loading state while fetching details", async ({
+      page,
+    }) => {
       // Delay the response to test loading state
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -96,7 +104,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
 
       // Should show loading text (may be very brief, so we'll check for either loading or final state)
       try {
-        await expect(page.getByText("Loading summary...")).toBeVisible({ timeout: 2000 });
+        await expect(page.getByText("Loading summary...")).toBeVisible({
+          timeout: 2000,
+        });
       } catch {
         // Loading might be too fast to catch, check that details opened
         await expect(page.locator(".summary-text")).toBeVisible();
@@ -124,7 +134,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
   });
 
   test.describe("Closing Details", () => {
-    test("should hide details when hide button is clicked", async ({ page }) => {
+    test("should hide details when hide button is clicked", async ({
+      page,
+    }) => {
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         await route.fulfill({
           status: 200,
@@ -151,7 +163,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".show-details-button").first()).toBeVisible();
     });
 
-    test("should close details when clicking outside modal", async ({ page }) => {
+    test("should close details when clicking outside modal", async ({
+      page,
+    }) => {
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         await route.fulfill({
           status: 200,
@@ -168,7 +182,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".summary-text")).toBeVisible();
 
       // Click outside the modal (on backdrop)
-      await page.locator('body').click({ position: { x: 50, y: 50 } });
+      await page.locator("body").click({ position: { x: 50, y: 50 } });
 
       // Details should be hidden
       await expect(page.locator(".summary-text")).not.toBeVisible();
@@ -191,7 +205,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await page.locator(".show-details-button").first().click();
 
       // Should display error message
-      await expect(page.getByText("Summary not available for this article")).toBeVisible();
+      await expect(
+        page.getByText("Summary not available for this article"),
+      ).toBeVisible();
     });
 
     test("should handle network errors", async ({ page }) => {
@@ -202,7 +218,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await page.locator(".show-details-button").first().click();
 
       // Should display error message
-      await expect(page.getByText("Summary not available for this article")).toBeVisible();
+      await expect(
+        page.getByText("Summary not available for this article"),
+      ).toBeVisible();
     });
 
     test("should handle empty response", async ({ page }) => {
@@ -220,7 +238,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await page.locator(".show-details-button").first().click();
 
       // Should display no summary message
-      await expect(page.getByText("No summary available for this article")).toBeVisible();
+      await expect(
+        page.getByText("No summary available for this article"),
+      ).toBeVisible();
     });
 
     test("should handle missing feed URL", async ({ page }) => {
@@ -280,7 +300,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
         // Close
         await page.locator(".hide-details-button").click();
         await expect(page.locator(".summary-text")).not.toBeVisible();
-        await expect(page.locator(".show-details-button").first()).toBeVisible();
+        await expect(
+          page.locator(".show-details-button").first(),
+        ).toBeVisible();
       }
     });
 
@@ -300,7 +322,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
 
       // Rapid clicks
       await showButton.click();
-      await showButton.click({ timeout: 100 }).catch(() => { }); // Second click might fail if button is hidden
+      await showButton.click({ timeout: 100 }).catch(() => {}); // Second click might fail if button is hidden
 
       // Should still work correctly
       await expect(page.locator(".summary-text")).toBeVisible();
@@ -308,7 +330,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
   });
 
   test.describe("Multiple Feed Details", () => {
-    test("should handle details for different feeds independently", async ({ page }) => {
+    test("should handle details for different feeds independently", async ({
+      page,
+    }) => {
       let requestCount = 0;
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         requestCount++;
@@ -389,7 +413,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await showButton.focus();
       await expect(showButton).toBeFocused();
 
-      await page.keyboard.press('Enter');
+      await page.keyboard.press("Enter");
       await expect(page.locator(".summary-text")).toBeVisible();
     });
 

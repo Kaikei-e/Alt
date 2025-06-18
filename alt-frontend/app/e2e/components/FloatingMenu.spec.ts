@@ -22,7 +22,6 @@ const generateMockArticles = (count: number, startId: number = 1) => {
 };
 
 test.describe("FloatingMenu Component - Refined Design Tests", () => {
-
   const menuItems = [
     {
       label: "View Feeds",
@@ -87,7 +86,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for the FloatingMenu to be present
-    await page.waitForSelector('[data-testid="floating-menu-button"]', { timeout: 10000 });
+    await page.waitForSelector('[data-testid="floating-menu-button"]', {
+      timeout: 10000,
+    });
   });
 
   test.describe("Refined Initial State", () => {
@@ -98,14 +99,20 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(menuTrigger).toBeVisible();
 
       // Should have proper positioning
-      await expect(menuTrigger.locator('xpath=..')).toHaveCSS('position', 'fixed');
+      await expect(menuTrigger.locator("xpath=..")).toHaveCSS(
+        "position",
+        "fixed",
+      );
     });
 
     test("should have elegant trigger styling", async ({ page }) => {
       const menuTrigger = page.getByTestId("floating-menu-button");
 
       // Check for proper border radius (should be circular/rounded)
-      await expect(menuTrigger.locator('xpath=..')).toHaveCSS('border-radius', /\d+px/);
+      await expect(menuTrigger.locator("xpath=..")).toHaveCSS(
+        "border-radius",
+        /\d+px/,
+      );
     });
 
     test("should not show menu content initially", async ({ page }) => {
@@ -141,13 +148,17 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
   });
 
   test.describe("Compact Menu Items Display", () => {
-    test("should display all menu items in compact layout", async ({ page }) => {
+    test("should display all menu items in compact layout", async ({
+      page,
+    }) => {
       // Open menu
       await page.getByTestId("floating-menu-button").click();
 
       // Check all refined menu items are visible within the menu content
       for (const item of menuItems) {
-        await expect(page.getByTestId("menu-content").getByText(item.label)).toBeVisible();
+        await expect(
+          page.getByTestId("menu-content").getByText(item.label),
+        ).toBeVisible();
       }
     });
 
@@ -157,8 +168,11 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
       // Check each menu item has correct href within the menu content
       for (const item of menuItems) {
-        const linkElement = page.getByTestId("menu-content").getByRole('link').filter({ hasText: item.label });
-        await expect(linkElement).toHaveAttribute('href', item.href);
+        const linkElement = page
+          .getByTestId("menu-content")
+          .getByRole("link")
+          .filter({ hasText: item.label });
+        await expect(linkElement).toHaveAttribute("href", item.href);
       }
     });
 
@@ -213,14 +227,18 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(page.getByTestId("menu-content")).toBeVisible();
 
       // Click on backdrop area
-      await page.getByTestId("modal-backdrop").click({ position: { x: 50, y: 50 } });
+      await page
+        .getByTestId("modal-backdrop")
+        .click({ position: { x: 50, y: 50 } });
 
       // Menu should close
       await expect(page.getByTestId("menu-content")).not.toBeVisible();
       await expect(page.getByTestId("floating-menu-button")).toBeVisible();
     });
 
-    test("should preserve menu when clicking inside content", async ({ page }) => {
+    test("should preserve menu when clicking inside content", async ({
+      page,
+    }) => {
       // Open menu
       await page.getByTestId("floating-menu-button").click();
       await expect(page.getByTestId("menu-content")).toBeVisible();
@@ -283,7 +301,7 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(menuTrigger).toBeFocused();
 
       // Should activate with keyboard
-      await page.keyboard.press('Enter');
+      await page.keyboard.press("Enter");
       await expect(page.getByTestId("menu-content")).toBeVisible();
     });
 
@@ -292,10 +310,12 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await page.getByTestId("floating-menu-button").click();
 
       // Should be able to tab through menu items
-      await page.keyboard.press('Tab');
+      await page.keyboard.press("Tab");
 
       // First menu item should be focusable (with some tolerance for browser differences)
-      const firstLink = page.getByRole('link').filter({ hasText: menuItems[0].label });
+      const firstLink = page
+        .getByRole("link")
+        .filter({ hasText: menuItems[0].label });
       // Wait a bit for focus to settle
       await page.waitForTimeout(100);
 
@@ -305,7 +325,7 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       } catch {
         // If focus assertion fails, at least verify the link is interactive
         await expect(firstLink).toBeVisible();
-        await expect(firstLink).toHaveAttribute('href');
+        await expect(firstLink).toHaveAttribute("href");
       }
     });
 
@@ -315,7 +335,7 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(page.getByTestId("menu-content")).toBeVisible();
 
       // Press Escape
-      await page.keyboard.press('Escape');
+      await page.keyboard.press("Escape");
 
       // Menu should close
       await expect(page.getByTestId("menu-content")).not.toBeVisible();

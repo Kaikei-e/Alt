@@ -34,7 +34,9 @@ const SearchWindow = ({
   const validateQuery = (query: SearchQuery) => {
     const validationResult = v.safeParse(searchQuerySchema, query);
     if (!validationResult.success) {
-      const firstError = validationResult.issues?.[0]?.message || "Please enter a valid search query";
+      const firstError =
+        validationResult.issues?.[0]?.message ||
+        "Please enter a valid search query";
       setValidationError(firstError);
       return false;
     }
@@ -58,7 +60,9 @@ const SearchWindow = ({
       const validationResult = v.safeParse(searchQuerySchema, searchQuery);
 
       if (!validationResult.success) {
-        const firstError = validationResult.issues?.[0]?.message || "Please enter a valid search query";
+        const firstError =
+          validationResult.issues?.[0]?.message ||
+          "Please enter a valid search query";
         setValidationError(firstError);
         return;
       }
@@ -82,10 +86,11 @@ const SearchWindow = ({
       // 6. Track search time
       const searchTime = Date.now() - startTime;
       setSearchTime?.(searchTime);
-
     } catch (err) {
       console.error("Search error:", err);
-      setError(err instanceof Error ? err.message : "Search failed. Please try again.");
+      setError(
+        err instanceof Error ? err.message : "Search failed. Please try again.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -97,7 +102,7 @@ const SearchWindow = ({
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleSearch();
     }

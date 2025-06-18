@@ -35,7 +35,10 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
 
     test("should display search input field", async ({ page }) => {
       await expect(page.getByTestId("search-input")).toBeVisible();
-      await expect(page.getByTestId("search-input")).toHaveAttribute("type", "text");
+      await expect(page.getByTestId("search-input")).toHaveAttribute(
+        "type",
+        "text",
+      );
     });
 
     test("should display search button", async ({ page }) => {
@@ -48,7 +51,9 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
   });
 
   test.describe("Search Functionality", () => {
-    test("should perform successful search and display results", async ({ page }) => {
+    test("should perform successful search and display results", async ({
+      page,
+    }) => {
       const mockResponse = {
         results: mockDataForSuccessfulSearch,
         error: null,
@@ -69,14 +74,22 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
       await page.waitForTimeout(500);
 
       // Verify input value before proceeding
-      await expect(page.getByTestId("search-input")).toHaveValue("Artificial Intelligence");
+      await expect(page.getByTestId("search-input")).toHaveValue(
+        "Artificial Intelligence",
+      );
 
       // Click search button
       await page.getByRole("button", { name: "Search" }).click();
 
       // Wait for search to complete and results to appear
-      await expect(page.getByText("Artificial Intelligence is the future")).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText("Artificial Intelligence and Machine Learning are the future")).toBeVisible();
+      await expect(
+        page.getByText("Artificial Intelligence is the future"),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(
+        page.getByText(
+          "Artificial Intelligence and Machine Learning are the future",
+        ),
+      ).toBeVisible();
 
       // Verify result count using list items
       await expect(page.locator("li")).toHaveCount(2);
@@ -111,7 +124,9 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
       await page.getByRole("button", { name: "Search" }).click();
 
       // Should show validation error
-      await expect(page.getByText("Please enter a search query")).toBeVisible({ timeout: 3000 });
+      await expect(page.getByText("Please enter a search query")).toBeVisible({
+        timeout: 3000,
+      });
     });
 
     test("should handle server validation errors", async ({ page }) => {
@@ -131,10 +146,14 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
       await page.getByRole("button", { name: "Search" }).click();
 
       // Expect the actual client-side validation message
-      await expect(page.getByText("Please enter a search query")).toBeVisible({ timeout: 3000 });
+      await expect(page.getByText("Please enter a search query")).toBeVisible({
+        timeout: 3000,
+      });
     });
 
-    test("should handle API errors with generic HTTP message", async ({ page }) => {
+    test("should handle API errors with generic HTTP message", async ({
+      page,
+    }) => {
       await page.route("**/api/v1/feeds/search", async (route) => {
         await route.fulfill({
           status: 400,
@@ -151,7 +170,9 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
       await page.getByRole("button", { name: "Search" }).click();
 
       // Expect the actual HTTP error message being displayed
-      await expect(page.getByText("API request failed: 400 Bad Request")).toBeVisible({ timeout: 3000 });
+      await expect(
+        page.getByText("API request failed: 400 Bad Request"),
+      ).toBeVisible({ timeout: 3000 });
     });
   });
 
@@ -173,7 +194,9 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
       await page.getByRole("button", { name: "Search" }).click();
 
       // Should display error message
-      await expect(page.getByText("API request failed: 500 Internal Server Error")).toBeVisible({ timeout: 3000 });
+      await expect(
+        page.getByText("API request failed: 500 Internal Server Error"),
+      ).toBeVisible({ timeout: 3000 });
     });
 
     test("should handle network errors", async ({ page }) => {
@@ -186,7 +209,9 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
       await page.getByRole("button", { name: "Search" }).click();
 
       // Should show some kind of error message (implementation specific)
-      await expect(page.getByText(/error|failed|Search failed/i)).toBeVisible({ timeout: 3000 });
+      await expect(page.getByText(/error|failed|Search failed/i)).toBeVisible({
+        timeout: 3000,
+      });
     });
   });
 
@@ -229,7 +254,9 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
       await page.getByTestId("search-input").press("Enter");
 
       // Should trigger search and show results
-      await expect(page.getByText("Artificial Intelligence is the future")).toBeVisible({ timeout: 5000 });
+      await expect(
+        page.getByText("Artificial Intelligence is the future"),
+      ).toBeVisible({ timeout: 5000 });
     });
   });
 
@@ -253,8 +280,12 @@ test.describe("SearchWindow Component - Functionality Tests", () => {
       await page.getByRole("button", { name: "Search" }).click();
 
       // Check that all fields are displayed by the parent page
-      await expect(page.getByRole("heading", { name: "Artificial Intelligence" })).toBeVisible({ timeout: 5000 });
-      await expect(page.getByText("Artificial Intelligence is the future")).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Artificial Intelligence" }),
+      ).toBeVisible({ timeout: 5000 });
+      await expect(
+        page.getByText("Artificial Intelligence is the future"),
+      ).toBeVisible();
       await expect(page.getByText("John Doe")).toBeVisible();
     });
 

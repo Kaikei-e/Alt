@@ -9,7 +9,10 @@ import { useEffect, useState, useRef } from "react";
 export default function FeedsStatsPage() {
   const [feedAmount, setFeedAmount] = useState(0);
   const [summarizedFeedAmount, setSummarizedFeedAmount] = useState(0);
-  const eventSourceRef = useRef<{ close: () => void; getReadyState: () => number } | null>(null);
+  const eventSourceRef = useRef<{
+    close: () => void;
+    getReadyState: () => number;
+  } | null>(null);
 
   useEffect(() => {
     const sseConnection = feedsApiSse.getFeedsStats(
@@ -23,7 +26,7 @@ export default function FeedsStatsPage() {
       },
       (event) => {
         console.error("SSE connection error:", event);
-      }
+      },
     );
 
     eventSourceRef.current = sseConnection;

@@ -1,23 +1,22 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Feeds Stats Page - Comprehensive Tests", () => {
-
   const mockStatsData = {
     feed_amount: {
-      amount: 25
+      amount: 25,
     },
     summarized_feed: {
-      amount: 18
-    }
+      amount: 18,
+    },
   };
 
   const mockEmptyStatsData = {
     feed_amount: {
-      amount: 0
+      amount: 0,
     },
     summarized_feed: {
-      amount: 0
-    }
+      amount: 0,
+    },
   };
 
   test.beforeEach(async ({ page }) => {
@@ -27,10 +26,10 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await route.fulfill({
         status: 200,
         headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "Access-Control-Allow-Origin": "*",
         },
         body: `data: ${JSON.stringify(mockStatsData)}\n\n`,
       });
@@ -41,10 +40,10 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await route.fulfill({
         status: 200,
         headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "Access-Control-Allow-Origin": "*",
         },
         body: `data: ${JSON.stringify(mockStatsData)}\n\n`,
       });
@@ -62,9 +61,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(page.getByText("Feeds Stats")).toBeVisible();
     });
 
-        test("should have proper page structure", async ({ page }) => {
+    test("should have proper page structure", async ({ page }) => {
       // Check for main container
-      const mainContainer = page.locator('div').first();
+      const mainContainer = page.locator("div").first();
       await expect(mainContainer).toBeVisible();
 
       // Verify basic content is present instead of strict CSS checks
@@ -93,7 +92,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       }
     });
 
-        test("should handle initial zero values", async ({ page }) => {
+    test("should handle initial zero values", async ({ page }) => {
       // Before SSE data loads, should show values
       const feedsText = page.getByText(/^Feeds: \d+$/);
       const summarizedText = page.getByText(/^Summarized Feeds: \d+$/);
@@ -102,7 +101,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(summarizedText).toBeVisible();
     });
 
-        test("should update values when SSE sends new data", async ({ page }) => {
+    test("should update values when SSE sends new data", async ({ page }) => {
       // Test that the page can handle data updates
       // First verify initial state
       try {
@@ -131,7 +130,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.route("**/api/v1/feeds/stats/sse", async (route) => {
         await route.fulfill({
           status: 500,
-          body: "Internal Server Error"
+          body: "Internal Server Error",
         });
       });
 
@@ -150,11 +149,11 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
         await route.fulfill({
           status: 200,
           headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
           },
-          body: 'data: { invalid json }\n\n',
+          body: "data: { invalid json }\n\n",
         });
       });
 
@@ -168,7 +167,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
     test("should handle network connectivity issues", async ({ page }) => {
       // Simulate network failure
       await page.route("**/api/v1/feeds/stats/sse", async (route) => {
-        await route.abort('failed');
+        await route.abort("failed");
       });
 
       await page.goto("/mobile/feeds/stats");
@@ -223,16 +222,16 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
   test.describe("UI Styling and Layout", () => {
     test("should have proper typography", async ({ page }) => {
       const title = page.getByText("Feeds Stats");
-      await expect(title).toHaveCSS('font-size', '24px'); // 2xl font size
-      await expect(title).toHaveCSS('font-weight', '700'); // bold
+      await expect(title).toHaveCSS("font-size", "24px"); // 2xl font size
+      await expect(title).toHaveCSS("font-weight", "700"); // bold
     });
 
-        test("should have proper spacing and layout", async ({ page }) => {
-      const container = page.locator('div').first();
+    test("should have proper spacing and layout", async ({ page }) => {
+      const container = page.locator("div").first();
 
       // Should have column direction (with some tolerance for different CSS implementations)
       try {
-        await expect(container).toHaveCSS('flex-direction', 'column');
+        await expect(container).toHaveCSS("flex-direction", "column");
       } catch {
         // If flex-direction check fails, verify the container at least exists
         await expect(container).toBeVisible();
@@ -242,7 +241,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(page.getByText("Feeds Stats")).toBeVisible();
     });
 
-        test("should display stats in correct order", async ({ page }) => {
+    test("should display stats in correct order", async ({ page }) => {
       // Check that all required elements are present and visible in the expected order
       await expect(page.getByText("Feeds Stats")).toBeVisible();
       await expect(page.getByText(/^Feeds: \d+$/)).toBeVisible();
@@ -288,7 +287,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Should not cause horizontal scrolling
-      const body = page.locator('body');
+      const body = page.locator("body");
       const bodyBox = await body.boundingBox();
       expect(bodyBox?.width).toBeLessThanOrEqual(320);
 
@@ -333,12 +332,12 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
       await Promise.all([
         page.goto("/mobile/feeds/stats"),
-        context2.goto("/mobile/feeds/stats")
+        context2.goto("/mobile/feeds/stats"),
       ]);
 
       await Promise.all([
         page.waitForLoadState("networkidle"),
-        context2.waitForLoadState("networkidle")
+        context2.waitForLoadState("networkidle"),
       ]);
 
       // Both should work independently
@@ -350,7 +349,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
   });
 
   test.describe("Memory Management", () => {
-    test("should clean up SSE connections on page navigation", async ({ page }) => {
+    test("should clean up SSE connections on page navigation", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds/stats");
       await page.waitForLoadState("networkidle");
 
@@ -402,7 +403,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Page should be focusable (even if no interactive elements)
-      await page.keyboard.press('Tab');
+      await page.keyboard.press("Tab");
 
       // Should not cause any errors
       await expect(page.getByText("Feeds Stats")).toBeVisible();
@@ -413,7 +414,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Navigate to other elements and back
-      await page.keyboard.press('Tab');
+      await page.keyboard.press("Tab");
 
       // Content should remain visible and accessible
       await expect(page.getByText("Feeds Stats")).toBeVisible();

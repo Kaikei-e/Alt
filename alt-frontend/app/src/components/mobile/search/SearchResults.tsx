@@ -41,7 +41,7 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
             fontWeight="bold"
             _hover={{
               textDecoration: "underline",
-              color: "#e6005c"
+              color: "#e6005c",
             }}
             lineHeight="1.3"
           >
@@ -50,11 +50,7 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
         </Link>
 
         {result.description && (
-          <Text
-            color="rgba(255, 255, 255, 0.8)"
-            fontSize="sm"
-            lineHeight="1.4"
-          >
+          <Text color="rgba(255, 255, 255, 0.8)" fontSize="sm" lineHeight="1.4">
             {result.description}
           </Text>
         )}
@@ -62,10 +58,10 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
         <HStack gap={2} fontSize="xs" color="rgba(255, 255, 255, 0.6)">
           {result.published && (
             <Text>
-              {new Date(result.published).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
+              {new Date(result.published).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
               })}
             </Text>
           )}
@@ -91,9 +87,7 @@ const LoadingState = () => (
   >
     <VStack gap={4}>
       <Spinner size="lg" color="#ff006e" />
-      <Text color="rgba(255, 255, 255, 0.8)">
-        Searching feeds...
-      </Text>
+      <Text color="rgba(255, 255, 255, 0.8)">Searching feeds...</Text>
     </VStack>
   </Box>
 );
@@ -122,7 +116,10 @@ const EmptyState = ({ searchQuery }: { searchQuery: string }) => (
   </Box>
 );
 
-const SearchStats = ({ count, searchTime }: {
+const SearchStats = ({
+  count,
+  searchTime,
+}: {
   count: number;
   searchTime?: number;
 }) => (
@@ -142,7 +139,7 @@ export const SearchResults = ({
   results,
   isLoading,
   searchQuery,
-  searchTime
+  searchTime,
 }: SearchResultsProps) => {
   if (isLoading) {
     return <LoadingState />;
@@ -163,15 +160,16 @@ export const SearchResults = ({
       border="1px solid rgba(255, 255, 255, 0.1)"
       p={4}
     >
-      <SearchStats
-        count={results.length}
-        searchTime={searchTime}
-      />
+      <SearchStats count={results.length} searchTime={searchTime} />
 
       <Box as="ul" role="list" aria-label="Search results">
         <VStack gap={4} align="stretch">
           {results.map((result, index) => (
-            <Box as="li" key={result.link || `result-${index}`} listStyleType="none">
+            <Box
+              as="li"
+              key={result.link || `result-${index}`}
+              listStyleType="none"
+            >
               <SearchResultItem result={result} />
             </Box>
           ))}

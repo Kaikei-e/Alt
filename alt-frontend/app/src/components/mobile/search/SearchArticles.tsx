@@ -22,7 +22,7 @@ export const SearchArticles = ({
   query,
   setQuery,
   error,
-  setError
+  setError,
 }: SearchArticlesProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export const SearchArticles = ({
 
   // Handle URL query parameter on mount
   useEffect(() => {
-    const urlQuery = searchParams.get('q');
+    const urlQuery = searchParams.get("q");
     if (urlQuery) {
       setQuery(urlQuery);
       // Auto-search if there's a query in the URL
@@ -38,22 +38,29 @@ export const SearchArticles = ({
       if (result.success) {
         setError(null);
         setIsLoading(true);
-        feedsApi.searchArticles(urlQuery).then((response) => {
-          setArticles(response);
-          setIsLoading(false);
-        }).catch((err) => {
-          setError(err.message || "Search failed. Please try again.");
-          setIsLoading(false);
-        });
+        feedsApi
+          .searchArticles(urlQuery)
+          .then((response) => {
+            setArticles(response);
+            setIsLoading(false);
+          })
+          .catch((err) => {
+            setError(err.message || "Search failed. Please try again.");
+            setIsLoading(false);
+          });
       }
     }
   }, [searchParams, setQuery, setError, setArticles]);
 
   // Real-time validation
   const validateQuery = (queryText: string) => {
-    const validationResult = v.safeParse(articleSearchQuerySchema, { query: queryText });
+    const validationResult = v.safeParse(articleSearchQuerySchema, {
+      query: queryText,
+    });
     if (!validationResult.success) {
-      const firstError = validationResult.issues?.[0]?.message || "Please enter a valid search query";
+      const firstError =
+        validationResult.issues?.[0]?.message ||
+        "Please enter a valid search query";
       setValidationError(firstError);
       return false;
     }
@@ -75,7 +82,8 @@ export const SearchArticles = ({
       // Validate input
       const result = v.safeParse(articleSearchQuerySchema, { query });
       if (!result.success) {
-        const firstError = result.issues?.[0]?.message || "Please enter a valid search query";
+        const firstError =
+          result.issues?.[0]?.message || "Please enter a valid search query";
         setValidationError(firstError);
         return;
       }
@@ -85,7 +93,9 @@ export const SearchArticles = ({
       setArticles(response);
     } catch (err) {
       console.error("Search error:", err);
-      setError(err instanceof Error ? err.message : "Search failed. Please try again.");
+      setError(
+        err instanceof Error ? err.message : "Search failed. Please try again.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -97,7 +107,7 @@ export const SearchArticles = ({
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleSearch();
     }

@@ -55,7 +55,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
   };
 
   // Create unique test IDs based on feedURL to avoid conflicts
-  const uniqueId = feedURL ? btoa(feedURL).slice(0, 8) : 'default';
+  const uniqueId = feedURL ? btoa(feedURL).slice(0, 8) : "default";
 
   return (
     <HStack justify="space-between">

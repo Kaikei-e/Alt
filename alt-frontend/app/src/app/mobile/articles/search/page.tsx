@@ -39,9 +39,10 @@ export default function SearchPage() {
             setError={setError}
           />
         </Suspense>
-        {articles.length > 0 && articles.map((article) => (
-          <ArticleCard key={article.id} article={article} />
-        ))}
+        {articles.length > 0 &&
+          articles.map((article) => (
+            <ArticleCard key={article.id} article={article} />
+          ))}
       </Flex>
       <FloatingMenu />
     </Box>

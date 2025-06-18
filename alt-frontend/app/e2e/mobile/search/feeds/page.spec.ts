@@ -45,18 +45,22 @@ test.describe("Search for feeds", () => {
     await page.waitForTimeout(500); // Allow React state to stabilize
 
     // Verify input value before proceeding
-    await expect(page.getByTestId("search-input")).toHaveValue("Artificial Intelligence");
+    await expect(page.getByTestId("search-input")).toHaveValue(
+      "Artificial Intelligence",
+    );
 
     // Click search button
     await page.getByRole("button", { name: "Search" }).click();
 
     // Wait for search results to appear
     await expect(
-      page.getByText("Artificial Intelligence is the future")
+      page.getByText("Artificial Intelligence is the future"),
     ).toBeVisible({ timeout: 5000 });
 
     await expect(
-      page.getByText("Artificial Intelligence and Machine Learning are the future")
+      page.getByText(
+        "Artificial Intelligence and Machine Learning are the future",
+      ),
     ).toBeVisible();
 
     // Verify result count - now looking for proper list items within the results
@@ -88,6 +92,8 @@ test.describe("Search for feeds", () => {
     await page.getByRole("button", { name: "Search" }).click();
 
     // Expect the actual HTTP error message being displayed
-    await expect(page.getByText("API request failed: 400 Bad Request")).toBeVisible({ timeout: 3000 });
+    await expect(
+      page.getByText("API request failed: 400 Bad Request"),
+    ).toBeVisible({ timeout: 3000 });
   });
 });

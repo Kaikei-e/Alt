@@ -1,6 +1,7 @@
 import { FeedStatsSummary } from "@/schema/feedStats";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost/api";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost/api";
 
 function apiSseForStats(
   endpoint: string,
@@ -14,31 +15,33 @@ function apiSseForStats(
 
   function connect() {
     const fullUrl = `${API_BASE_URL}${endpoint}`;
-    console.log(`Connecting to SSE endpoint: ${fullUrl} (attempt ${reconnectAttempts + 1})`);
+    console.log(
+      `Connecting to SSE endpoint: ${fullUrl} (attempt ${reconnectAttempts + 1})`,
+    );
 
     eventSource = new EventSource(fullUrl);
 
     eventSource.onopen = (event) => {
-      console.log('SSE connection opened:', event);
+      console.log("SSE connection opened:", event);
       reconnectAttempts = 0; // Reset reconnect attempts on successful connection
     };
 
     eventSource.onmessage = (event) => {
-      console.log('SSE message received:', event.data);
+      console.log("SSE message received:", event.data);
       try {
         const parsedData = JSON.parse(event.data) as FeedStatsSummary;
         onMessage(parsedData);
       } catch (error) {
-        console.error('Error parsing SSE data:', error);
+        console.error("Error parsing SSE data:", error);
       }
     };
 
     eventSource.onerror = (event) => {
-      console.error('SSE error:', event);
-      console.log('EventSource readyState:', eventSource?.readyState);
+      console.error("SSE error:", event);
+      console.log("EventSource readyState:", eventSource?.readyState);
 
       if (eventSource?.readyState === EventSource.CLOSED) {
-        console.log('SSE connection closed, attempting to reconnect...');
+        console.log("SSE connection closed, attempting to reconnect...");
 
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts++;
@@ -46,7 +49,7 @@ function apiSseForStats(
             connect();
           }, reconnectDelay * reconnectAttempts); // Exponential backoff
         } else {
-          console.error('Max reconnection attempts reached');
+          console.error("Max reconnection attempts reached");
           onError(event);
         }
       } else {
@@ -63,21 +66,22 @@ function apiSseForStats(
         eventSource.close();
       }
     },
-    getReadyState: () => eventSource?.readyState ?? EventSource.CLOSED
+    getReadyState: () => eventSource?.readyState ?? EventSource.CLOSED,
   };
 }
 
 export const feedsApiSse = {
   getFeedsStats(
     onMessage: (data: FeedStatsSummary) => void,
-    onError?: (event: Event) => void
+    onError?: (event: Event) => void,
   ) {
     return apiSseForStats(
       "/v1/sse/feeds/stats",
       onMessage,
-      onError || ((event) => {
-        console.error('SSE error:', event);
-      }),
+      onError ||
+        ((event) => {
+          console.error("SSE error:", event);
+        }),
     );
   },
 };

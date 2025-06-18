@@ -49,21 +49,35 @@ test.describe("FeedCard Component - Functionality Tests", () => {
   test.describe("Initial State", () => {
     test("should render feed cards", async ({ page }) => {
       // Check that feed cards are visible
-      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Test Feed 6", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 1", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 6", exact: true }),
+      ).toBeVisible();
     });
 
     test("should display correct feed titles", async ({ page }) => {
       // Check multiple feed titles
-      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Test Feed 2", exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Test Feed 3", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 1", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 2", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 3", exact: true }),
+      ).toBeVisible();
     });
 
     test("should not display non-existent feeds", async ({ page }) => {
       // Check that feeds beyond our mock data are not visible
-      await expect(page.getByRole("link", { name: "Test Feed 11", exact: true })).not.toBeVisible();
-      await expect(page.getByRole("link", { name: "Test Feed 15", exact: true })).not.toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 11", exact: true }),
+      ).not.toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 15", exact: true }),
+      ).not.toBeVisible();
     });
 
     test("should display correct number of feed cards", async ({ page }) => {
@@ -76,28 +90,38 @@ test.describe("FeedCard Component - Functionality Tests", () => {
   test.describe("Feed Content Display", () => {
     test("should display feed descriptions", async ({ page }) => {
       // Check that descriptions are visible (use partial text to avoid strict mode violations)
-      await expect(page.getByText("Description for test feed 1", { exact: false }).first()).toBeVisible();
-      await expect(page.getByText("Description for test feed 6", { exact: false }).first()).toBeVisible();
+      await expect(
+        page.getByText("Description for test feed 1", { exact: false }).first(),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Description for test feed 6", { exact: false }).first(),
+      ).toBeVisible();
     });
 
     test("should display feed links correctly", async ({ page }) => {
       // Check that links have correct href attributes
-      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true }))
-        .toHaveAttribute("href", "https://example.com/feed1");
-      await expect(page.getByRole("link", { name: "Test Feed 6", exact: true }))
-        .toHaveAttribute("href", "https://example.com/feed6");
+      await expect(
+        page.getByRole("link", { name: "Test Feed 1", exact: true }),
+      ).toHaveAttribute("href", "https://example.com/feed1");
+      await expect(
+        page.getByRole("link", { name: "Test Feed 6", exact: true }),
+      ).toHaveAttribute("href", "https://example.com/feed6");
     });
 
     test("should handle long descriptions properly", async ({ page }) => {
       // Check that long descriptions are displayed (may be truncated)
-      const longDescription = "Description for test feed 1. This is a longer description to test how the UI handles different text lengths.";
+      const longDescription =
+        "Description for test feed 1. This is a longer description to test how the UI handles different text lengths.";
       await expect(page.getByText(longDescription)).toBeVisible();
     });
   });
 
   test.describe("Feed Interaction", () => {
     test("should be clickable links", async ({ page }) => {
-      const feedLink = page.getByRole("link", { name: "Test Feed 1", exact: true });
+      const feedLink = page.getByRole("link", {
+        name: "Test Feed 1",
+        exact: true,
+      });
 
       // Should be clickable (though we won't actually navigate)
       await expect(feedLink).toBeVisible();
@@ -105,7 +129,10 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     });
 
     test("should handle hover states", async ({ page }) => {
-      const feedLink = page.getByRole("link", { name: "Test Feed 1", exact: true });
+      const feedLink = page.getByRole("link", {
+        name: "Test Feed 1",
+        exact: true,
+      });
 
       // Hover over the link
       await feedLink.hover();
@@ -115,7 +142,10 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     });
 
     test("should handle focus states", async ({ page }) => {
-      const feedLink = page.getByRole("link", { name: "Test Feed 1", exact: true });
+      const feedLink = page.getByRole("link", {
+        name: "Test Feed 1",
+        exact: true,
+      });
 
       // Focus the link
       await feedLink.focus();
@@ -143,10 +173,14 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       expect(mockFeeds[5].published).toBe("2024-01-06T12:00:00Z");
     });
 
-    test("should handle feeds with different content lengths", async ({ page }) => {
+    test("should handle feeds with different content lengths", async ({
+      page,
+    }) => {
       // All feeds should be displayed regardless of content length
       for (let i = 1; i <= 10; i++) {
-        await expect(page.getByRole("link", { name: `Test Feed ${i}`, exact: true })).toBeVisible();
+        await expect(
+          page.getByRole("link", { name: `Test Feed ${i}`, exact: true }),
+        ).toBeVisible();
       }
     });
   });
@@ -182,13 +216,21 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Should show no feeds
-      await expect(page.getByRole("link").filter({ hasText: "Test Feed" })).toHaveCount(0);
+      await expect(
+        page.getByRole("link").filter({ hasText: "Test Feed" }),
+      ).toHaveCount(0);
     });
 
     test("should handle malformed feed data", async ({ page }) => {
       const malformedFeeds = [
         { id: "1", title: "", description: "", link: "", published: "" },
-        { id: "2", title: null, description: null, link: null, published: null },
+        {
+          id: "2",
+          title: null,
+          description: null,
+          link: null,
+          published: null,
+        },
       ];
 
       await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
@@ -201,7 +243,6 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-
     });
   });
 
@@ -244,7 +285,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // First feed should be visible
-      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 1", exact: true }),
+      ).toBeVisible();
 
       const loadTime = Date.now() - startTime;
       expect(loadTime).toBeLessThan(30000); // Should load within 30 seconds (more realistic for CI)
@@ -266,7 +309,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Should handle large lists gracefully
-      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 1", exact: true }),
+      ).toBeVisible();
     });
   });
 
@@ -279,7 +324,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Feeds should still be visible and properly formatted
-      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 1", exact: true }),
+      ).toBeVisible();
     });
 
     test("should display properly on tablet viewport", async ({ page }) => {
@@ -290,14 +337,19 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Feeds should still be visible and properly formatted
-      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 1", exact: true }),
+      ).toBeVisible();
     });
   });
 
   test.describe("Accessibility", () => {
     test("should have proper link structure", async ({ page }) => {
       // Check that links are properly structured
-      const feedLink = page.getByRole("link", { name: "Test Feed 1", exact: true });
+      const feedLink = page.getByRole("link", {
+        name: "Test Feed 1",
+        exact: true,
+      });
 
       await expect(feedLink).toBeVisible();
       await expect(feedLink).toHaveAttribute("href");
@@ -308,7 +360,10 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.keyboard.press("Tab");
 
       // Check that we can focus on feed links specifically
-      const firstFeedLink = page.getByRole("link", { name: "Test Feed 1", exact: true });
+      const firstFeedLink = page.getByRole("link", {
+        name: "Test Feed 1",
+        exact: true,
+      });
       await firstFeedLink.focus();
       await expect(firstFeedLink).toBeFocused();
     });
@@ -321,8 +376,12 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
     test("should handle screen reader accessibility", async ({ page }) => {
       // Check that links have accessible names
-      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Test Feed 6", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 1", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 6", exact: true }),
+      ).toBeVisible();
     });
   });
 
@@ -333,7 +392,7 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       // May or may not be present depending on integration
       // This test verifies the integration works if present
-      if (await detailsButtons.count() > 0) {
+      if ((await detailsButtons.count()) > 0) {
         await expect(detailsButtons.first()).toBeVisible();
       }
     });
@@ -344,7 +403,7 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       // May or may not be present depending on implementation
       // This test verifies pagination works if present
-      if (await paginationControls.count() > 0) {
+      if ((await paginationControls.count()) > 0) {
         await expect(paginationControls.first()).toBeVisible();
       }
     });

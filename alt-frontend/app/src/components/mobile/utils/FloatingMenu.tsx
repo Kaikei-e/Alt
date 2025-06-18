@@ -1,6 +1,14 @@
 "use client";
 
-import { Box, Button, Flex, IconButton, Portal, Text, VStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Flex,
+  IconButton,
+  Portal,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
 import Link from "next/link";
 import { useState, useCallback, useEffect } from "react";
 import { FaBars, FaTimes } from "react-icons/fa";
@@ -16,27 +24,25 @@ export const FloatingMenu = () => {
     setIsOpen(false);
   }, []);
 
-
-
   // Close menu on escape key
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen) {
+      if (event.key === "Escape" && isOpen) {
         handleCloseMenu();
       }
     };
 
     if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
+      document.addEventListener("keydown", handleEscape);
       // Prevent background scrolling when menu is open
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = "unset";
     }
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "unset";
     };
   }, [isOpen, handleCloseMenu]);
 
@@ -66,12 +72,7 @@ export const FloatingMenu = () => {
   return (
     <>
       {!isOpen && (
-        <Box
-          position="fixed"
-          bottom={4}
-          right={4}
-          zIndex={1000}
-        >
+        <Box position="fixed" bottom={4} right={4} zIndex={1000}>
           <Button
             onClick={handleOpenMenu}
             data-testid="floating-menu-button"
@@ -125,7 +126,9 @@ export const FloatingMenu = () => {
               border="1px solid rgba(255, 255, 255, 0.1)"
               p={4}
               data-testid="menu-content"
-              onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent<HTMLDivElement>) =>
+                e.stopPropagation()
+              }
               position="relative"
             >
               <Flex justify="space-between" align="center" mb={4}>
@@ -150,7 +153,11 @@ export const FloatingMenu = () => {
 
               <VStack gap={2} align="stretch">
                 {menuItems.map((item, index) => (
-                  <Link key={index} href={item.href} style={{ textDecoration: 'none' }}>
+                  <Link
+                    key={index}
+                    href={item.href}
+                    style={{ textDecoration: "none" }}
+                  >
                     <Box
                       width="full"
                       p={3}
@@ -168,11 +175,7 @@ export const FloatingMenu = () => {
                         transform: "translateY(0px)",
                       }}
                     >
-                      <Text
-                        color="white"
-                        fontWeight="medium"
-                        fontSize="sm"
-                      >
+                      <Text color="white" fontWeight="medium" fontSize="sm">
                         {item.label}
                       </Text>
                     </Box>

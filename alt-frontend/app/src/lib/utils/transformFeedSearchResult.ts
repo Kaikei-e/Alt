@@ -10,7 +10,11 @@ export const transformFeedSearchResult = (
   }
 
   // If it's wrapped in FeedSearchResult structure
-  if (feedSearchResult && typeof feedSearchResult === 'object' && 'results' in feedSearchResult) {
+  if (
+    feedSearchResult &&
+    typeof feedSearchResult === "object" &&
+    "results" in feedSearchResult
+  ) {
     if (Array.isArray(feedSearchResult.results)) {
       return feedSearchResult.results;
     }
