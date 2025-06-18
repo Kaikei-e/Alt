@@ -53,10 +53,6 @@ func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
 		return nil, errors.New("failed to read response body")
 	}
 
-	// Debug: Log the raw response body
-	logger.Logger.Info("Raw response body", "body", string(body), "length", len(body))
-
-	// Check HTTP status code
 	if resp.StatusCode != http.StatusOK {
 		logger.Logger.Error("Search request failed", "status", resp.StatusCode, "body", string(body))
 		return nil, fmt.Errorf("search request failed with status %d", resp.StatusCode)
@@ -65,12 +61,7 @@ func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
 	var response models.SearchArticlesAPIResponse
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		// Get preview of response body for debugging
-		preview := string(body)
-		if len(body) > 200 {
-			preview = string(body[:200])
-		}
-		logger.Logger.Error("Failed to unmarshal response body", "error", err, "body_preview", preview)
+		logger.Logger.Error("Failed to unmarshal response body", "error", err, "body_preview", string(body))
 		return nil, errors.New("failed to unmarshal response body")
 	}
 
