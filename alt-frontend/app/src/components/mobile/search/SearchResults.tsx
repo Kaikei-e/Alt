@@ -115,17 +115,16 @@ const EmptyState = ({ searchQuery }: { searchQuery: string }) => (
       </Text>
       {searchQuery && (
         <Text color="rgba(255, 255, 255, 0.6)" fontSize="sm">
-          No feeds match "{searchQuery}". Try different keywords.
+          No feeds match &quot;{searchQuery}&quot;. Try different keywords.
         </Text>
       )}
     </VStack>
   </Box>
 );
 
-const SearchStats = ({ count, searchTime, searchQuery }: {
+const SearchStats = ({ count, searchTime }: {
   count: number;
   searchTime?: number;
-  searchQuery: string;
 }) => (
   <HStack justify="space-between" align="center" mb={4}>
     <Text color="#ff006e" fontWeight="bold" fontSize="lg">
@@ -167,7 +166,6 @@ export const SearchResults = ({
       <SearchStats
         count={results.length}
         searchTime={searchTime}
-        searchQuery={searchQuery}
       />
 
       <Box as="ul" role="list" aria-label="Search results">

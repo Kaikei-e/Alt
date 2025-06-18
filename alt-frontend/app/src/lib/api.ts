@@ -25,12 +25,6 @@ interface message {
   message: string;
 }
 
-interface errorMessage {
-  error: string;
-}
-
-type responseValidity = message | errorMessage;
-
 class ApiClient {
   private baseUrl: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

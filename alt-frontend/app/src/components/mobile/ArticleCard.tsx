@@ -1,5 +1,5 @@
 import { Article } from "@/schema/article";
-import { Box, Text, Flex, Button, Dialog, Portal, CloseButton } from "@chakra-ui/react";
+import { Box, Text, Flex, Button, Dialog, Portal } from "@chakra-ui/react";
 
 interface ArticleCardProps {
   article: Article;
@@ -74,15 +74,6 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                     >
                       {article.title}
                     </Dialog.Title>
-                    <Dialog.CloseTrigger asChild>
-                      <CloseButton
-                        size="md"
-                        color="white"
-                        _hover={{
-                          bg: "whiteAlpha.200",
-                        }}
-                      />
-                    </Dialog.CloseTrigger>
                   </Dialog.Header>
                   <Dialog.Body
                     px={6}
@@ -103,7 +94,10 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                       <Button
                         variant="outline"
                         colorScheme="whiteAlpha"
+                        color="white"
                         borderRadius="10px"
+                        size="md"
+                        w="full"
                       >
                         Close
                       </Button>

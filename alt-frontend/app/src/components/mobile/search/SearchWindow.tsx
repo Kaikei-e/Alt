@@ -22,7 +22,6 @@ interface SearchWindowProps {
 const SearchWindow = ({
   searchQuery,
   setSearchQuery,
-  feedResults,
   setFeedResults,
   isLoading,
   setIsLoading,
@@ -122,7 +121,7 @@ const SearchWindow = ({
               type="text"
               placeholder="Search for feeds..."
               value={searchQuery.query || ""}
-              onChange={(e) => {
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                 const newQuery = { query: e.target.value };
                 setSearchQuery(newQuery);
                 // Clear errors when user starts typing

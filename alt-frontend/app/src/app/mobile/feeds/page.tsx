@@ -110,27 +110,7 @@ export default function Feeds() {
     setReadFeeds((prev) => new Set(prev).add(feedLink));
   }, []);
 
-  // Memoize loading component with vaporwave styling
-  const LoadingComponent = useMemo(
-    () => (
-      <Flex
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-        height="100vh"
-        width="100%"
-        data-testid="loading-spinner"
-      >
-        <Box p={6} borderRadius="20px" className="glass" textAlign="center">
-          <Progress isIndeterminate color="pink.400" size="lg" />
-          <Text mt={4} color="white" fontSize="lg" fontWeight="bold">
-            Loading feeds...
-          </Text>
-        </Box>
-      </Flex>
-    ),
-    [],
-  );
+
 
   if (initialLoading) {
     return (

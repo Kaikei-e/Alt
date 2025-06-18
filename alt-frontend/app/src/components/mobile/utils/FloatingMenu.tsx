@@ -16,9 +16,7 @@ export const FloatingMenu = () => {
     setIsOpen(false);
   }, []);
 
-  const handleToggleMenu = useCallback(() => {
-    setIsOpen(prev => !prev);
-  }, []);
+
 
   // Close menu on escape key
   useEffect(() => {
@@ -127,7 +125,7 @@ export const FloatingMenu = () => {
               border="1px solid rgba(255, 255, 255, 0.1)"
               p={4}
               data-testid="menu-content"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
               position="relative"
             >
               <Flex justify="space-between" align="center" mb={4}>

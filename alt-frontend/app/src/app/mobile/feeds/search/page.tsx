@@ -84,7 +84,7 @@ export default function SearchFeedsPage() {
               fontSize="sm"
               textAlign="center"
             >
-              💡 Try searching for topics like "AI", "technology", or "news"
+              💡 Try searching for topics like &quot;AI&quot;, &quot;technology&quot;, or &quot;news&quot;
             </Text>
           </Box>
         )}

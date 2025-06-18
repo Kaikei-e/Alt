@@ -18,7 +18,6 @@ interface SearchArticlesProps {
 }
 
 export const SearchArticles = ({
-  articles,
   setArticles,
   query,
   setQuery,
