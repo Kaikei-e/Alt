@@ -5,6 +5,7 @@ import {
   FeedURLPayload,
 } from "@/schema/feed";
 import { FeedSearchResult } from "@/schema/search";
+import { Article } from "@/schema/article";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost/api";
@@ -229,21 +230,28 @@ export const feedsApi = {
   async updateFeedReadStatus(url: string): Promise<message> {
     return apiClient.post("/v1/feeds/read", { feed_url: url });
   },
+
   async getFeedDetails(payload: FeedURLPayload): Promise<FeedDetails> {
     return apiClient.post<FeedDetails>(`/v1/feeds/fetch/details`, {
       feed_url: payload.feed_url,
     });
   },
 
+  async searchArticles(query: string): Promise<Article[]> {
+    return apiClient.get<Article[]>(`/v1/articles/search?q=${query}`);
+  },
+
   // Method to prefetch data for performance
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
     const prefetchPromises = pages.map(
-      (page) => this.getFeedsPage(page).catch(() => { }), // Ignore errors in prefetching
+      (page) => this.getFeedsPage(page).catch(() => {
+
+      }),
     );
     await Promise.all(prefetchPromises);
   },
 
-    async searchFeeds(query: string): Promise<FeedSearchResult> {
+  async searchFeeds(query: string): Promise<FeedSearchResult> {
     try {
       const response = await fetch(`${API_BASE_URL}/v1/feeds/search`, {
         method: "POST",
