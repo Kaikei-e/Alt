@@ -1,6 +1,6 @@
 package models
 
-type SearchArticlesResponse struct {
+type SearchArticlesAPIResponse struct {
 	Query string              `json:"query"`
 	Hits  []SearchArticlesHit `json:"hits"`
 }

@@ -24,11 +24,21 @@ func SearchArticles(query string) ([]models.SearchArticlesHit, error) {
 		return nil, err
 	}
 
-	var response models.SearchArticlesResponse
+	var response models.SearchArticlesAPIResponse
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return nil, err
 	}
 
-	return response.Hits, nil
+	results := make([]models.SearchArticlesHit, 0, len(response.Hits))
+
+	for _, hit := range response.Hits {
+		results = append(results, models.SearchArticlesHit{
+			ID:      hit.ID,
+			Title:   hit.Title,
+			Content: hit.Content,
+		})
+	}
+
+	return results, nil
 }

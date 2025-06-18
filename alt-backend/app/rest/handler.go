@@ -3,6 +3,7 @@ package rest
 import (
 	"alt/di"
 	"alt/domain"
+	"alt/driver/search_indexer"
 	"alt/utils/html_parser"
 	"alt/utils/logger"
 	"context"
@@ -241,6 +242,22 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, details)
+	})
+
+	v1.GET("/articles/search", func(c echo.Context) error {
+		query := c.QueryParam("q")
+		if query == "" {
+			logger.Logger.Error("Search query must not be empty")
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Search query must not be empty"})
+		}
+
+		results, err := search_indexer.SearchArticles(query)
+		if err != nil {
+			logger.Logger.Error("Error searching articles", "error", err)
+			return c.JSON(http.StatusInternalServerError, errors.New("error searching articles"))
+		}
+
+		return c.JSON(http.StatusOK, results)
 	})
 
 	// Add SSE endpoint with proper Echo SSE handling
