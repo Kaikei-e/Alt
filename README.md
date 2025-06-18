@@ -10,7 +10,8 @@ Alt is a simple RSS feed reader, currently optimized for viewing on mobile devic
 - [x] RSS feed retrieval
 - [ ] RSS feed deletion
 - [x] RSS feed read state
-- [ ] RSS feed search
+- [x] RSS feed search
+- [x] RSS feed search with indexing
 - [ ] RSS feed pagination
 - [ ] RSS feed sorting
 - [ ] RSS feed filtering
