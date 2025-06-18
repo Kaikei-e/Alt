@@ -2,7 +2,8 @@
 
 import { FeedStatsSummary } from "@/schema/feedStats";
 import { feedsApiSse } from "@/lib/apiSse";
-import { Flex, Text } from "@chakra-ui/react";
+import { Flex, Text, Box } from "@chakra-ui/react";
+import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useEffect, useState, useRef } from "react";
 
 export default function FeedsStatsPage() {
@@ -33,12 +34,15 @@ export default function FeedsStatsPage() {
   }, []);
 
   return (
-    <Flex flexDirection="column" gap="2" p="4">
-      <Text fontSize="2xl" fontWeight="bold">
-        Feeds Stats
-      </Text>
-      <Text>Feeds: {feedAmount}</Text>
-      <Text>Summarized Feeds: {summarizedFeedAmount}</Text>
-    </Flex>
+    <Box>
+      <Flex flexDirection="column" gap="2" p="4">
+        <Text fontSize="2xl" fontWeight="bold">
+          Feeds Stats
+        </Text>
+        <Text>Feeds: {feedAmount}</Text>
+        <Text>Summarized Feeds: {summarizedFeedAmount}</Text>
+      </Flex>
+      <FloatingMenu />
+    </Box>
   );
 }
