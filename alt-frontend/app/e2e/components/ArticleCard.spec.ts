@@ -16,7 +16,8 @@ test.describe("ArticleCard Component - Functionality Tests", () => {
   const mockArticles = generateMockArticles(20, 1);
 
   test.beforeEach(async ({ page }) => {
-    await page.route("**/api/v1/articles/search", async (route) => {
+    await page.route("**/api/v1/articles/search**", async (route) => {
+      console.log("API route intercepted:", route.request().url());
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -27,9 +28,22 @@ test.describe("ArticleCard Component - Functionality Tests", () => {
 
   test("should display articles", async ({ page }) => {
     await page.goto("/mobile/articles/search?q=Test");
-    await page.waitForSelector(
-      ".article-card-wrapper[data-testid='article-card']",
-    );
+
+    await page.waitForLoadState("networkidle");
+
+    const pageContent = await page.content();
+    console.log("Page loaded, looking for article cards...");
+
+    try {
+      await page.waitForSelector(
+        ".article-card-wrapper[data-testid='article-card']",
+        { timeout: 10000 }
+      );
+    } catch (error) {
+      console.log("Failed to find article cards, page content:", pageContent);
+      throw error;
+    }
+
     const articleCards = await page.$$(
       ".article-card-wrapper[data-testid='article-card']",
     );
