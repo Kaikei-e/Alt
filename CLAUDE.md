@@ -34,7 +34,7 @@
 
 ### LLMs
 
-- Anthropic
+- Phi4-mini
 
 
 ## Tech Stack for each application
