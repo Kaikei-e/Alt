@@ -91,15 +91,22 @@ The extra Gateway layer formalises the Anti-Corruption-Layer pattern, adding a b
 - Use Python 3.13 for helper applications.
 - Use PostgreSQL for database.
 - Use Meilisearch for search engine.
+- When you write Go, use "log/slog" for logging.
 
 ### 2.1 Mocking
 
 - Use `gomock` by default which is maintaining by Uber for Go.
 
 
-## Implementation Process
+## Implementation Steps
 
 - Use TDD for the whole project.
   - First, write a failing test.
   - Then, write the code to pass the test.
   - Then, refactor the code to make it clean and readable.
+- CRITICAL: These are very important to implement.
+  - Respect the existing implementation logic and you have to understard existing code logic first.
+  - You must write test only usecase and gateway layers.
+    - Do not write test for handler layer.
+    - Do not write test for driver layer.
+    - Do not write sql.
