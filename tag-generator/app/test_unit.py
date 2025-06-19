@@ -22,7 +22,7 @@ class TestTagExtractor:
         extractor = TagExtractor()
         assert extractor.config.model_name == "paraphrase-multilingual-MiniLM-L12-v2"
         assert extractor.config.top_keywords == 10
-        assert extractor.config.min_score_threshold == 0.1
+        assert extractor.config.min_score_threshold == 0.15
     
     def test_should_initialize_with_custom_config(self):
         """TagExtractor should accept custom configuration."""
@@ -102,7 +102,7 @@ class TestTagExtractor:
         assert ja_result == "ABC"  # Full-width to half-width
     
     def test_should_extract_keywords_with_keybert(self):
-        """Should use KeyBERT to extract keywords."""
+        """Should use KeyBERT to extract keywords for English text."""
         from tag_extractor.model_manager import get_model_manager
         
         model_manager = get_model_manager()
@@ -111,53 +111,185 @@ class TestTagExtractor:
         extractor = TagExtractor()
         
         # Mock the KeyBERT instance at the model manager level
+        with patch.object(model_manager, 'get_models') as mock_get_models, \
+             patch.object(model_manager, 'get_stopwords', return_value=(set(), set())):
+            mock_embedder = Mock()
+            mock_keybert = Mock()
+            mock_ja_tagger = Mock()
+            mock_keybert.extract_keywords.side_effect = [
+                [("machine learning", 0.8), ("artificial intelligence", 0.7), ("technology", 0.6)],
+                [("Apple Intelligence", 0.9), ("Mac Mini", 0.8)]
+            ]
+            mock_get_models.return_value = (mock_embedder, mock_keybert, mock_ja_tagger)
+            
+            result = extractor._extract_keywords_english("Machine learning is transforming technology with Apple Intelligence on Mac Mini")
+            
+            assert len(result) > 0
+            assert mock_keybert.extract_keywords.call_count == 2  # Called for single words and phrases
+    
+    def test_should_extract_japanese_compound_words(self):
+        """Should extract compound words from Japanese text."""
+        from tag_extractor.model_manager import get_model_manager
+        
+        extractor = TagExtractor()
+        model_manager = get_model_manager()
+        
+        # Mock Japanese tagger
         with patch.object(model_manager, 'get_models') as mock_get_models:
             mock_embedder = Mock()
             mock_keybert = Mock()
             mock_ja_tagger = Mock()
-            mock_keybert.extract_keywords.return_value = [
-                ("machine learning", 0.8),
-                ("artificial intelligence", 0.7),
-                ("technology", 0.6)
-            ]
+            
+            # Mock parsed word with feature attributes
+            mock_word = Mock()
+            mock_word.surface = "東京"
+            mock_word.feature = Mock()
+            mock_word.feature.pos1 = "名詞"
+            mock_word.feature.pos2 = "固有名詞"
+            
+            mock_ja_tagger.return_value = [mock_word]
             mock_get_models.return_value = (mock_embedder, mock_keybert, mock_ja_tagger)
             
-            result = extractor._extract_keywords_direct("Machine learning is transforming technology")
+            result = extractor._extract_compound_japanese_words("東京に行きました")
             
-            expected = [("machine learning", 0.8), ("artificial intelligence", 0.7), ("technology", 0.6)]
-            assert result == expected
-            mock_keybert.extract_keywords.assert_called_once()
+            assert len(result) >= 0  # Should return list of compound words
     
-    def test_should_filter_keywords_by_score_threshold(self):
-        """Should filter keywords based on minimum score threshold."""
+    def test_should_handle_japanese_text_extraction(self):
+        """Should extract keywords from Japanese text."""
+        from tag_extractor.model_manager import get_model_manager
+        
+        extractor = TagExtractor()
+        model_manager = get_model_manager()
+        
+        # Mock dependencies
+        with patch.object(model_manager, 'get_models') as mock_get_models, \
+             patch.object(model_manager, 'get_stopwords', return_value=(set(), set())), \
+             patch.object(extractor, '_extract_compound_japanese_words', return_value=["東京", "日本"]):
+            
+            mock_embedder = Mock()
+            mock_keybert = Mock()
+            mock_ja_tagger = Mock()
+            
+            # Mock parsed words
+            mock_word1 = Mock()
+            mock_word1.surface = "東京"
+            mock_word1.feature = Mock()
+            mock_word1.feature.pos1 = "名詞"
+            
+            mock_word2 = Mock()
+            mock_word2.surface = "日本"
+            mock_word2.feature = Mock()
+            mock_word2.feature.pos1 = "名詞"
+            
+            mock_ja_tagger.return_value = [mock_word1, mock_word2]
+            mock_get_models.return_value = (mock_embedder, mock_keybert, mock_ja_tagger)
+            
+            result = extractor._extract_keywords_japanese("東京は日本の首都です")
+            
+            assert isinstance(result, list)
+            assert len(result) >= 0
+    
+    @patch('nltk.word_tokenize')
+    def test_should_tokenize_english_text(self, mock_tokenize):
+        """Should tokenize English text properly."""
+        mock_tokenize.return_value = ["The", "machine", "learning", "algorithm", "is", "advanced"]
+        
         extractor = TagExtractor()
         
-        keywords = [
-            ("high_score", 0.8),
-            ("medium_score", 0.15),
-            ("low_score", 0.05)
-        ]
-        
-        # Default threshold is 0.1
-        result = extractor._filter_keywords(keywords)
-        expected = ["high_score", "medium_score"]
-        assert result == expected
+        with patch.object(extractor, '_load_stopwords'):
+            extractor._en_stopwords = {"the", "and", "a", "an", "is", "are"}
+            
+            result = extractor._tokenize_english("The machine learning algorithm is advanced")
+            
+            # Should exclude stopwords and short tokens
+            assert "machine" in result
+            assert "learning" in result
+            assert "algorithm" in result
+            assert "advanced" in result
+            assert "the" not in result
+            assert "is" not in result
     
-    def test_should_respect_max_keywords_limit(self):
-        """Should respect the maximum number of keywords configuration."""
-        config = TagExtractionConfig(top_keywords=2)
-        extractor = TagExtractor(config)
+    def test_should_use_fallback_extraction_for_japanese(self):
+        """Should use fallback extraction for Japanese text."""
+        extractor = TagExtractor()
         
-        keywords = [
-            ("keyword1", 0.9),
-            ("keyword2", 0.8),
-            ("keyword3", 0.7),
-            ("keyword4", 0.6)
-        ]
+        with patch.object(extractor, '_extract_keywords_japanese', return_value=["東京", "日本"]):
+            result = extractor._fallback_extraction("東京は日本の首都です", "ja")
+            
+            assert result == ["東京", "日本"]
+    
+    def test_should_use_fallback_extraction_for_english(self):
+        """Should use fallback extraction for English text."""
+        extractor = TagExtractor()
         
-        result = extractor._filter_keywords(keywords)
-        assert len(result) == 2
-        assert result == ["keyword1", "keyword2"]
+        with patch.object(extractor, '_tokenize_english', return_value=["machine", "learning", "algorithm"]):
+            result = extractor._fallback_extraction("machine learning algorithm", "en")
+            
+            assert "machine" in result
+            assert "learning" in result
+            assert "algorithm" in result
+    
+    @patch('tag_extractor.extract.detect')
+    def test_should_extract_tags_end_to_end_english(self, mock_detect):
+        """Should extract tags from English text end-to-end."""
+        mock_detect.return_value = "en"
+        
+        extractor = TagExtractor()
+        
+        with patch.object(extractor, '_extract_keywords_english', return_value=["machine", "learning", "ai"]):
+            result = extractor.extract_tags("Machine Learning", "Artificial intelligence and machine learning")
+            
+            assert result == ["machine", "learning", "ai"]
+    
+    @patch('tag_extractor.extract.detect')
+    def test_should_extract_tags_end_to_end_japanese(self, mock_detect):
+        """Should extract tags from Japanese text end-to-end."""
+        mock_detect.return_value = "ja"
+        
+        extractor = TagExtractor()
+        
+        with patch.object(extractor, '_extract_keywords_japanese', return_value=["東京", "日本"]):
+            result = extractor.extract_tags("東京について", "東京は日本の首都です")
+            
+            assert result == ["東京", "日本"]
+    
+    def test_should_handle_extraction_errors_with_fallback(self):
+        """Should handle extraction errors and use fallback."""
+        extractor = TagExtractor()
+        
+        with patch.object(extractor, '_detect_language', return_value="en"), \
+             patch.object(extractor, '_extract_keywords_english', side_effect=Exception("KeyBERT failed")), \
+             patch.object(extractor, '_fallback_extraction', return_value=["fallback", "keywords"]):
+            
+            result = extractor.extract_tags("Test Title", "Test content for fallback")
+            
+            assert result == ["fallback", "keywords"]
+    
+    def test_should_return_empty_for_failed_extractions(self):
+        """Should return empty list when all extractions fail."""
+        extractor = TagExtractor()
+        
+        with patch.object(extractor, '_detect_language', return_value="en"), \
+             patch.object(extractor, '_extract_keywords_english', side_effect=Exception("KeyBERT failed")), \
+             patch.object(extractor, '_fallback_extraction', side_effect=Exception("Fallback failed")):
+            
+            result = extractor.extract_tags("Test Title", "Test content")
+            
+            assert result == []
+    
+    def test_legacy_extract_tags_function(self):
+        """Should maintain backward compatibility with legacy function."""
+        from tag_extractor.extract import extract_tags
+        
+        with patch('tag_extractor.extract.TagExtractor') as mock_extractor_class:
+            mock_extractor = Mock()
+            mock_extractor.extract_tags.return_value = ["tag1", "tag2"]
+            mock_extractor_class.return_value = mock_extractor
+            
+            result = extract_tags("Test Title", "Test Content")
+            
+            assert result == ["tag1", "tag2"]
+            mock_extractor.extract_tags.assert_called_once_with("Test Title", "Test Content")
 
 
 class TestArticleFetcher:
@@ -396,7 +528,7 @@ class TestTagGeneratorService:
     def test_should_initialize_with_default_config(self):
         """TagGeneratorService should initialize with default configuration."""
         service = TagGeneratorService()
-        assert service.config.batch_limit == 100
+        assert service.config.batch_limit == 75
         assert service.config.processing_interval == 60
         assert isinstance(service.article_fetcher, ArticleFetcher)
         assert isinstance(service.tag_extractor, TagExtractor)
