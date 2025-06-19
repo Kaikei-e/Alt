@@ -24,10 +24,17 @@ type AltDBRepository struct {
 }
 
 func NewAltDBRepository(pool PgxIface) *AltDBRepository {
+	if pool == nil {
+		return nil
+	}
 	return &AltDBRepository{pool: pool}
 }
 
 // NewAltDBRepositoryWithPool creates a repository with a concrete pgxpool.Pool
+// Returns nil if pool is nil, which should be handled by the caller
 func NewAltDBRepositoryWithPool(pool *pgxpool.Pool) *AltDBRepository {
+	if pool == nil {
+		return nil
+	}
 	return &AltDBRepository{pool: pool}
 }

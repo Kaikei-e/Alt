@@ -2,6 +2,7 @@ package di
 
 import (
 	"alt/driver/alt_db"
+	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
 	"alt/gateway/fetch_feed_detail_gateway"
 	"alt/gateway/fetch_feed_gateway"
@@ -13,7 +14,6 @@ import (
 	"alt/usecase/reading_status"
 	"alt/usecase/register_feed_usecase.go"
 	"alt/usecase/search_feed_usecase"
-	"alt/gateway/feed_search_gateway"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -32,7 +32,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	altDBRepository := alt_db.NewAltDBRepository(pool)
 
 	// Create the concrete gateway implementations
-	feedFetcherGatewayImpl := fetch_feed_gateway.NewFetchSingleFeedGateway(pool)
+	feedFetcherGatewayImpl := fetch_feed_gateway.NewSingleFeedGateway(pool)
 	fetchFeedsListGatewayImpl := fetch_feed_gateway.NewFetchFeedsGateway(pool)
 	fetchSingleFeedUsecase := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGatewayImpl)
 	fetchFeedsListUsecase := fetch_feed_usecase.NewFetchFeedsListUsecase(fetchFeedsListGatewayImpl)

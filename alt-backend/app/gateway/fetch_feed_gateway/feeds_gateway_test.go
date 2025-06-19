@@ -15,7 +15,7 @@ import (
 func TestFetchFeedsGateway_FetchFeeds(t *testing.T) {
 	// Initialize logger to prevent nil pointer dereference
 	logger.InitLogger()
-	
+
 	// Create a test RSS feed XML
 	testRSSFeed := `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -88,10 +88,10 @@ func TestFetchFeedsGateway_FetchFeeds(t *testing.T) {
 					PublishedParsed: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 				},
 				{
-					Title:       "Test Item 2",
-					Description: "Test Item Description 2",
-					Link:        "https://example.com/item2",
-					Published:   "Tue, 02 Jan 2024 00:00:00 +0000",
+					Title:           "Test Item 2",
+					Description:     "Test Item Description 2",
+					Link:            "https://example.com/item2",
+					Published:       "Tue, 02 Jan 2024 00:00:00 +0000",
 					PublishedParsed: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
 				},
 			},
@@ -158,7 +158,7 @@ func TestFetchFeedsGateway_FetchFeedsList(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := gateway.FetchFeedsList(ctx)
-	
+
 	// Should error because alt_db is nil
 	if err == nil {
 		t.Error("FetchFeedsGateway.FetchFeedsList() expected error with nil alt_db, got nil")
@@ -172,7 +172,7 @@ func TestFetchFeedsGateway_FetchFeedsListLimit(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := gateway.FetchFeedsListLimit(ctx, 10)
-	
+
 	// Should error because alt_db is nil
 	if err == nil {
 		t.Error("FetchFeedsGateway.FetchFeedsListLimit() expected error with nil alt_db, got nil")
@@ -186,7 +186,7 @@ func TestFetchFeedsGateway_FetchFeedsListPage(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := gateway.FetchFeedsListPage(ctx, 1)
-	
+
 	// Should error because alt_db is nil
 	if err == nil {
 		t.Error("FetchFeedsGateway.FetchFeedsListPage() expected error with nil alt_db, got nil")
@@ -197,13 +197,14 @@ func TestNewFetchFeedsGateway(t *testing.T) {
 	// Test constructor
 	var pool *pgxpool.Pool // nil pool for testing
 	gateway := NewFetchFeedsGateway(pool)
-	
+
 	if gateway == nil {
 		t.Error("NewFetchFeedsGateway() returned nil")
 	}
-	
-	if gateway.alt_db == nil {
-		t.Error("NewFetchFeedsGateway() alt_db should be initialized")
+
+	// With our refactored approach, repository will be nil when pool is nil
+	if gateway.alt_db != nil {
+		t.Error("NewFetchFeedsGateway() with nil pool should have nil repository")
 	}
 }
 
@@ -212,7 +213,7 @@ func compareFeedItems(got, want []*domain.FeedItem) bool {
 	if len(got) != len(want) {
 		return false
 	}
-	
+
 	for i := range got {
 		if got[i].Title != want[i].Title ||
 			got[i].Description != want[i].Description ||
@@ -220,18 +221,18 @@ func compareFeedItems(got, want []*domain.FeedItem) bool {
 			got[i].Published != want[i].Published {
 			return false
 		}
-		
+
 		// Compare authors
 		if len(got[i].Authors) != len(want[i].Authors) {
 			return false
 		}
-		
+
 		for j := range got[i].Authors {
 			if got[i].Authors[j].Name != want[i].Authors[j].Name {
 				return false
 			}
 		}
-		
+
 		// Compare published time (allowing for small differences due to parsing)
 		if !got[i].PublishedParsed.IsZero() && !want[i].PublishedParsed.IsZero() {
 			if !got[i].PublishedParsed.Equal(want[i].PublishedParsed) {
@@ -239,6 +240,6 @@ func compareFeedItems(got, want []*domain.FeedItem) bool {
 			}
 		}
 	}
-	
+
 	return true
 }

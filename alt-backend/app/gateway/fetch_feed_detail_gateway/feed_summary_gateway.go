@@ -20,7 +20,7 @@ func NewFeedSummaryGateway(pool *pgxpool.Pool) *FeedSummaryGateway {
 
 func (g *FeedSummaryGateway) FetchFeedDetails(ctx context.Context, feedURL *url.URL) (*domain.FeedSummary, error) {
 	if g.alt_db == nil {
-		return nil, errors.New("database repository is not initialized")
+		return nil, errors.New("database connection not available")
 	}
 	summary, err := g.alt_db.FetchFeedSummary(ctx, feedURL)
 	if err != nil {

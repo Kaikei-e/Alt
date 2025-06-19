@@ -26,7 +26,7 @@ func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*dom
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(link)
 	if err != nil {
-		logger.Logger.Error("Error parsing feed", "error", err)
+		logger.SafeError("Error parsing feed", "error", err)
 		return nil, errors.New("error parsing feed")
 	}
 
@@ -65,11 +65,11 @@ func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*dom
 
 func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedItem, error) {
 	if g.alt_db == nil {
-		return nil, errors.New("database repository is not initialized")
+		return nil, errors.New("database connection not available")
 	}
 	feeds, err := g.alt_db.FetchFeedsList(ctx)
 	if err != nil {
-		logger.Logger.Error("Error fetching feeds list", "error", err)
+		logger.SafeError("Error fetching feeds list", "error", err)
 		return nil, errors.New("error fetching feeds list")
 	}
 
@@ -87,11 +87,11 @@ func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedI
 
 func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int) ([]*domain.FeedItem, error) {
 	if g.alt_db == nil {
-		return nil, errors.New("database repository is not initialized")
+		return nil, errors.New("database connection not available")
 	}
 	feeds, err := g.alt_db.FetchFeedsListLimit(ctx, offset)
 	if err != nil {
-		logger.Logger.Error("Error fetching feeds list offset", "error", err)
+		logger.SafeError("Error fetching feeds list offset", "error", err)
 		return nil, errors.New("error fetching feeds list offset")
 	}
 
@@ -110,16 +110,16 @@ func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int)
 
 func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
 	if g.alt_db == nil {
-		return nil, errors.New("database repository is not initialized")
+		return nil, errors.New("database connection not available")
 	}
 	// Try to fetch unread feeds first, fallback to all feeds if read_status table has issues
 	feeds, err := g.alt_db.FetchUnreadFeedsListPage(ctx, page)
 	if err != nil {
-		logger.Logger.Warn("Error fetching unread feeds, falling back to all feeds", "error", err)
+		logger.SafeWarn("Error fetching unread feeds, falling back to all feeds", "error", err)
 		// Fallback to regular paginated feeds if read_status table has issues
 		feeds, err = g.alt_db.FetchFeedsListPage(ctx, page)
 		if err != nil {
-			logger.Logger.Error("Error fetching feeds list page", "error", err)
+			logger.SafeError("Error fetching feeds list page", "error", err)
 			return nil, errors.New("error fetching feeds list page")
 		}
 	}

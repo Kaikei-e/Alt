@@ -22,7 +22,7 @@ func NewRegisterFeedsGateway(pool *pgxpool.Pool) *RegisterFeedsGateway {
 
 func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) error {
 	if g.alt_db == nil {
-		return errors.New("database repository is not initialized")
+		return errors.New("database connection not available")
 	}
 	var items []models.Feed
 	for _, feedItem := range feeds {
@@ -35,17 +35,17 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 			UpdatedAt:   time.Now(),
 		}
 
-		logger.Logger.Info("Feed model link", "feedModel", feedModel.Link)
+		logger.SafeInfo("Feed model link", "feedModel", feedModel.Link)
 		items = append(items, *feedModel)
 	}
 
 	err := g.alt_db.RegisterMultipleFeeds(ctx, items)
 	if err != nil {
-		logger.Logger.Error("Error registering multiple feeds", "error", err)
+		logger.SafeError("Error registering multiple feeds", "error", err)
 		return err
 	}
 
-	logger.Logger.Info("Feeds registered", "number of feeds", len(items))
+	logger.SafeInfo("Feeds registered", "number of feeds", len(items))
 
 	return nil
 }

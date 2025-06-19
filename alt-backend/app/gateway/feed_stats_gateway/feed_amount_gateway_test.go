@@ -8,9 +8,8 @@ import (
 )
 
 func TestFeedAmountGateway_Execute(t *testing.T) {
-	gateway := &FeedAmountGateway{
-		altDBRepository: nil, // This will cause an error, which we can test
-	}
+	// Use constructor with nil pool to test error handling
+	gateway := NewFeedAmountGateway(nil)
 
 	type args struct {
 		ctx context.Context
@@ -62,36 +61,41 @@ func TestNewFeedAmountGateway(t *testing.T) {
 	// Test constructor
 	var pool *pgxpool.Pool // nil pool for testing
 	gateway := NewFeedAmountGateway(pool)
-	
+
 	if gateway == nil {
 		t.Error("NewFeedAmountGateway() returned nil")
 	}
-	
-	if gateway.altDBRepository == nil {
-		t.Error("NewFeedAmountGateway() altDBRepository should be initialized")
+
+	// With our refactored approach, repository will be nil when pool is nil
+	if gateway.altDBRepository != nil {
+		t.Error("NewFeedAmountGateway() with nil pool should have nil repository")
 	}
 }
 
 func TestFeedAmountGateway_ErrorHandling(t *testing.T) {
-	gateway := &FeedAmountGateway{
-		altDBRepository: nil,
-	}
+	// Use constructor with nil pool to test error handling
+	gateway := NewFeedAmountGateway(nil)
 
 	// Test error propagation
 	count, err := gateway.Execute(context.Background())
 	if err == nil {
 		t.Error("FeedAmountGateway.Execute() expected error with nil repository, got nil")
 	}
-	
+
 	if count != 0 {
 		t.Errorf("FeedAmountGateway.Execute() expected count 0 on error, got %d", count)
+	}
+
+	// Verify the error message
+	expectedMsg := "database connection not available"
+	if err.Error() != expectedMsg {
+		t.Errorf("Expected error message '%s', got '%s'", expectedMsg, err.Error())
 	}
 }
 
 func TestFeedAmountGateway_ContextTimeout(t *testing.T) {
-	gateway := &FeedAmountGateway{
-		altDBRepository: nil,
-	}
+	// Use constructor with nil pool to test error handling
+	gateway := NewFeedAmountGateway(nil)
 
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 0) // Immediate timeout
@@ -104,9 +108,8 @@ func TestFeedAmountGateway_ContextTimeout(t *testing.T) {
 }
 
 func TestFeedAmountGateway_NilContext(t *testing.T) {
-	gateway := &FeedAmountGateway{
-		altDBRepository: nil,
-	}
+	// Use constructor with nil pool to test error handling
+	gateway := NewFeedAmountGateway(nil)
 
 	// Test with nil context (this should panic or error)
 	defer func() {

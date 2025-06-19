@@ -20,7 +20,7 @@ func NewFeedAmountGateway(pool *pgxpool.Pool) *FeedAmountGateway {
 
 func (g *FeedAmountGateway) Execute(ctx context.Context) (int, error) {
 	if g.altDBRepository == nil {
-		return 0, errors.New("database repository is not initialized")
+		return 0, errors.New("database connection not available")
 	}
 	return g.altDBRepository.FetchFeedAmount(ctx)
 }

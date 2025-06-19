@@ -11,29 +11,29 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
-type FetchSingleFeedGateway struct {
+type SingleFeedGateway struct {
 	alt_db *alt_db.AltDBRepository
 }
 
-func NewFetchSingleFeedGateway(pool *pgxpool.Pool) *FetchSingleFeedGateway {
-	return &FetchSingleFeedGateway{
+func NewSingleFeedGateway(pool *pgxpool.Pool) *SingleFeedGateway {
+	return &SingleFeedGateway{
 		alt_db: alt_db.NewAltDBRepositoryWithPool(pool),
 	}
 }
 
-func (g *FetchSingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFeed, error) {
+func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFeed, error) {
 	if g.alt_db == nil {
-		return nil, errors.New("database repository is not initialized")
+		return nil, errors.New("database connection not available")
 	}
 	// Get RSS feed URLs from the database
 	feedURLs, err := g.alt_db.FetchRSSFeedURLs(ctx)
 	if err != nil {
-		logger.Logger.Error("Error fetching RSS feed URLs", "error", err)
+		logger.SafeError("Error fetching RSS feed URLs", "error", err)
 		return nil, errors.New("error fetching RSS feed URLs")
 	}
 
 	if len(feedURLs) == 0 {
-		logger.Logger.Info("No RSS feed URLs found in database")
+		logger.SafeInfo("No RSS feed URLs found in database")
 		return &domain.RSSFeed{
 			Title:       "No feeds available",
 			Description: "No RSS feed URLs have been registered",
@@ -43,20 +43,20 @@ func (g *FetchSingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.R
 
 	// Use the first available feed URL
 	feedURL := feedURLs[0]
-	logger.Logger.Info("Fetching RSS feed", "url", feedURL.String())
+	logger.SafeInfo("Fetching RSS feed", "url", feedURL.String())
 
 	// Parse the RSS feed from the URL
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(feedURL.String())
 	if err != nil {
-		logger.Logger.Error("Error parsing feed", "error", err)
+		logger.SafeError("Error parsing feed", "error", err)
 		return nil, errors.New("error parsing feed")
 	}
 
 	// Convert the gofeed.Feed to domain.RSSFeed
 	domainFeed := convertGofeedToDomain(feed)
 
-	logger.Logger.Info("Successfully fetched RSS feed", "title", domainFeed.Title, "items", len(domainFeed.Items))
+	logger.SafeInfo("Successfully fetched RSS feed", "title", domainFeed.Title, "items", len(domainFeed.Items))
 
 	return domainFeed, nil
 }
@@ -104,28 +104,24 @@ func convertGofeedToDomain(feed *gofeed.Feed) *domain.RSSFeed {
 			Description: item.Description,
 			Link:        item.Link,
 			Published:   item.Published,
-			Authors: []domain.Author{
+			Links:       item.Links,
+		}
+
+		// Handle Author with nil check
+		if item.Author != nil {
+			domainItem.Author = domain.Author{
+				Name: item.Author.Name,
+			}
+			domainItem.Authors = []domain.Author{
 				{
 					Name: item.Author.Name,
 				},
-			},
-			Links: item.Links,
-			Author: domain.Author{
-				Name: item.Author.Name,
-			},
+			}
 		}
 
 		// Handle published time parsing
 		if item.PublishedParsed != nil {
 			domainItem.PublishedParsed = *item.PublishedParsed
-		}
-
-		// Handle item links
-		if len(item.Links) > 0 {
-			domainItem.Links = make([]string, len(item.Links))
-			for i, link := range item.Links {
-				domainItem.Links[i] = link
-			}
 		}
 
 		// Handle authors

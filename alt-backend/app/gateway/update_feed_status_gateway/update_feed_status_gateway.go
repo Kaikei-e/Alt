@@ -19,7 +19,7 @@ func NewUpdateFeedStatusGateway(pool *pgxpool.Pool) *UpdateFeedStatusGateway {
 
 func (g *UpdateFeedStatusGateway) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
 	if g.db == nil {
-		return errors.New("database repository is not initialized")
+		return errors.New("database connection not available")
 	}
 	return g.db.UpdateFeedStatus(ctx, feedURL)
 }

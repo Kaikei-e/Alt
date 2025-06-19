@@ -137,13 +137,14 @@ func TestNewRegisterFeedsGateway(t *testing.T) {
 	// Test constructor
 	var pool *pgxpool.Pool // nil pool for testing
 	gateway := NewRegisterFeedsGateway(pool)
-	
+
 	if gateway == nil {
 		t.Error("NewRegisterFeedsGateway() returned nil")
 	}
-	
-	if gateway.alt_db == nil {
-		t.Error("NewRegisterFeedsGateway() alt_db should be initialized")
+
+	// With our refactored approach, repository will be nil when pool is nil
+	if gateway.alt_db != nil {
+		t.Error("NewRegisterFeedsGateway() with nil pool should have nil repository")
 	}
 }
 
@@ -151,13 +152,14 @@ func TestNewRegisterFeedLinkGateway(t *testing.T) {
 	// Test constructor
 	var pool *pgxpool.Pool // nil pool for testing
 	gateway := NewRegisterFeedLinkGateway(pool)
-	
+
 	if gateway == nil {
 		t.Error("NewRegisterFeedLinkGateway() returned nil")
 	}
-	
-	if gateway.alt_db == nil {
-		t.Error("NewRegisterFeedLinkGateway() alt_db should be initialized")
+
+	// With our refactored approach, repository will be nil when pool is nil
+	if gateway.alt_db != nil {
+		t.Error("NewRegisterFeedLinkGateway() with nil pool should have nil repository")
 	}
 }
 

@@ -89,13 +89,14 @@ func TestNewFeedSummaryGateway(t *testing.T) {
 	// Test constructor
 	var pool *pgxpool.Pool // nil pool for testing
 	gateway := NewFeedSummaryGateway(pool)
-	
+
 	if gateway == nil {
 		t.Error("NewFeedSummaryGateway() returned nil")
 	}
-	
-	if gateway.alt_db == nil {
-		t.Error("NewFeedSummaryGateway() alt_db should be initialized")
+
+	// With our refactored approach, repository will be nil when pool is nil
+	if gateway.alt_db != nil {
+		t.Error("NewFeedSummaryGateway() with nil pool should have nil repository")
 	}
 }
 
@@ -151,7 +152,7 @@ func TestFeedSummaryGateway_URLValidation(t *testing.T) {
 
 			_, err := gateway.FetchFeedDetails(context.Background(), parsedURL)
 			if (err != nil) != testURL.wantErr {
-				t.Errorf("FeedSummaryGateway.FetchFeedDetails() with URL %s error = %v, wantErr %v", 
+				t.Errorf("FeedSummaryGateway.FetchFeedDetails() with URL %s error = %v, wantErr %v",
 					testURL.urlString, err, testURL.wantErr)
 			}
 		})
@@ -164,7 +165,7 @@ func TestFeedSummaryGateway_ErrorPropagation(t *testing.T) {
 	}
 
 	testURL, _ := url.Parse("https://example.com/feed.xml")
-	
+
 	// Test that errors from the database layer are properly propagated
 	_, err := gateway.FetchFeedDetails(context.Background(), testURL)
 	if err == nil {

@@ -14,10 +14,10 @@ func (r *AltDBRepository) FetchFeedAmount(ctx context.Context) (int, error) {
 	var amount int
 	err := r.pool.QueryRow(ctx, query).Scan(&amount)
 	if err != nil {
-		logger.Logger.Error("failed to fetch feed amount", "error", err)
+		logger.SafeError("failed to fetch feed amount", "error", err)
 		return 0, errors.New("failed to fetch feed amount")
 	}
 
-	logger.Logger.Info("feed amount fetched successfully", "amount", amount)
+	logger.SafeInfo("feed amount fetched successfully", "amount", amount)
 	return amount, nil
 }

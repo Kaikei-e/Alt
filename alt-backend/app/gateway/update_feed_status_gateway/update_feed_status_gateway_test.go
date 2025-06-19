@@ -71,13 +71,14 @@ func TestNewUpdateFeedStatusGateway(t *testing.T) {
 	// Test constructor
 	var pool *pgxpool.Pool // nil pool for testing
 	gateway := NewUpdateFeedStatusGateway(pool)
-	
+
 	if gateway == nil {
 		t.Error("NewUpdateFeedStatusGateway() returned nil")
 	}
-	
-	if gateway.db == nil {
-		t.Error("NewUpdateFeedStatusGateway() db should be initialized")
+
+	// With our refactored approach, repository will be nil when pool is nil
+	if gateway.db != nil {
+		t.Error("NewUpdateFeedStatusGateway() with nil pool should have nil repository")
 	}
 }
 
@@ -133,7 +134,7 @@ func TestUpdateFeedStatusGateway_URLHandling(t *testing.T) {
 
 			err := gateway.UpdateFeedStatus(context.Background(), *parsedURL)
 			if (err != nil) != testURL.wantErr {
-				t.Errorf("UpdateFeedStatusGateway.UpdateFeedStatus() with URL %s error = %v, wantErr %v", 
+				t.Errorf("UpdateFeedStatusGateway.UpdateFeedStatus() with URL %s error = %v, wantErr %v",
 					testURL.urlString, err, testURL.wantErr)
 			}
 		})
@@ -146,7 +147,7 @@ func TestUpdateFeedStatusGateway_ErrorPropagation(t *testing.T) {
 	}
 
 	testURL, _ := url.Parse("https://example.com/feed.xml")
-	
+
 	// Test that errors from the database layer are properly propagated
 	err := gateway.UpdateFeedStatus(context.Background(), *testURL)
 	if err == nil {
