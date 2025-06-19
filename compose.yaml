@@ -260,6 +260,7 @@ services:
     container_name: db_migrator
     volumes:
       - ./db/migrations:/migrations
+      - ./db/postgresql.conf:/etc/postgresql/postgresql.conf
     environment:
       DB_URL: "pgx5://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=disable&search_path=public"
       MIGRATE_MAX_RETRIES: "12"
