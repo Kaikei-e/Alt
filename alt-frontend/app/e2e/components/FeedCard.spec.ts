@@ -130,9 +130,16 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     test("should mark feed as read when button is clicked", async ({ page }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
+
+      // Wait for feeds to be fully loaded before counting
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+
       const initialFeedCount = await page
         .locator('button:has-text("Mark as read")')
         .count();
+
+      // Ensure we have feeds to test with
+      expect(initialFeedCount).toBeGreaterThan(0);
 
       const markAsReadButton = page
         .locator('button:has-text("Mark as read")')
@@ -140,14 +147,14 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await markAsReadButton.click();
 
-      // After marking as read, the feed should be removed from the list
-      // So we should have one less "Mark as read" button
+      // Wait for the UI to update after marking as read
       await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(
         initialFeedCount - 1,
+        { timeout: 10000 }
       );
     });
 
-        test("should update UI after marking as read", async ({ page }) => {
+    test("should update UI after marking as read", async ({ page }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 

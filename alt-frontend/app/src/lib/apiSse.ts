@@ -43,10 +43,11 @@ function apiSseForStats(
         console.log("SSE connection closed, attempting to reconnect...");
 
         if (reconnectAttempts < maxReconnectAttempts) {
-          reconnectAttempts++;
+          const delayMultiplier = reconnectAttempts + 1;
           setTimeout(() => {
+            reconnectAttempts++;
             connect();
-          }, reconnectDelay * reconnectAttempts); // Exponential backoff
+          }, reconnectDelay * delayMultiplier); // Exponential backoff
         } else {
           console.error("Max reconnection attempts reached");
           onError(event);
