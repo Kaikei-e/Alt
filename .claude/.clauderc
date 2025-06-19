@@ -61,7 +61,10 @@ exclude = [
 ###############################################################################
 
 [include]               # Modularise rules
-files = ["docs/CODERULES.md"]
+files = [
+  "docs/CODERULES.md",
+  ".claude/.clauderc"
+  ]
 
 [ide]
 default_editor = "vscode"

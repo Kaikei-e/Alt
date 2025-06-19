@@ -1,0 +1,22 @@
+# Performance-optimized settings for pre-processor
+# Copy this to .env or set as environment variables
+
+# Batch processing sizes
+BATCH_SIZE=40
+
+# Main job intervals (how often each job runs)
+SUMMARIZE_INTERVAL=5s              # Run summarization job every 5 seconds (was 20s)
+FEED_PROCESSING_INTERVAL=3m        # Process feeds every 3 minutes (was 10m)
+QUALITY_CHECK_INTERVAL=10m         # Quality check every 10 minutes (was 30m)
+
+# Sleep between individual items (to avoid overwhelming APIs)
+FEED_FETCH_SLEEP=2s                # Sleep 2 seconds between fetching articles (was 5s)
+SUMMARIZATION_SLEEP=10s            # Sleep 10 seconds between summarizations (was 60s)
+QUALITY_CHECK_SLEEP=30s            # Sleep 30 seconds between quality checks (was 60s)
+
+# Model configuration
+MODEL_ID=phi4-mini:3.8b
+
+# Future: Concurrency settings (not implemented yet)
+# MAX_CONCURRENT_SUMMARIZATIONS=2
+# MAX_CONCURRENT_QUALITY_CHECKS=1

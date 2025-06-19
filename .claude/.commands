@@ -1,5 +1,0 @@
-/tdd:new-test Generate a failing test for the given feature
-/tdd:implement Implement the code to pass the specific application
-/tdd:refactor Refactor the code to make it clean and readable
-/arch:check-deps Check for layer violations
-/gateway:gen-map Create JSON ⇄ domain mappers

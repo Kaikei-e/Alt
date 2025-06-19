@@ -8,3 +8,5 @@ news-creator/cached_models/*
 news-creator/models/*
 
 backup.sql
+
+__pycache__
