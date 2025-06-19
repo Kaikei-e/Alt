@@ -27,9 +27,10 @@ class TagGeneratorConfig:
     """Configuration for the tag generation service."""
     processing_interval: int = 60  # seconds between processing batches
     error_retry_interval: int = 60  # seconds to wait after errors
-    batch_limit: int = 100  # articles per processing cycle
+    batch_limit: int = 75  # articles per processing cycle
     progress_log_interval: int = 10  # log progress every N articles
     enable_gc_collection: bool = True  # enable manual garbage collection
+    memory_cleanup_interval: int = 25  # articles between memory cleanup
     max_connection_retries: int = 3  # max database connection retries
     connection_retry_delay: float = 5.0  # seconds between connection attempts
     use_connection_pool: bool = True  # enable connection pooling
@@ -52,7 +53,7 @@ class TagGeneratorService:
         # Persistent cursor position for pagination between cycles
         self.last_processed_created_at: Optional[str] = None
         self.last_processed_id: Optional[str] = None
-        
+
         # Connection pool setup
         self._connection_pool = None
         if self.config.use_connection_pool:
@@ -109,7 +110,7 @@ class TagGeneratorService:
         else:
             # Fallback to direct connection
             return self._create_direct_connection()
-    
+
     def _create_direct_connection(self) -> Connection:
         """Create direct database connection with retry logic."""
         dsn = self._get_database_dsn()
@@ -147,6 +148,12 @@ class TagGeneratorService:
             logger.info(f"Starting initial article processing from {last_created_at}")
 
         return last_created_at, last_id
+
+    def _cleanup_memory(self) -> None:
+        """Explicit memory cleanup to prevent accumulation."""
+        if self.config.enable_gc_collection:
+            gc.collect()
+            logger.debug("Memory cleanup performed")
 
     def _process_single_article(
         self,
@@ -308,6 +315,11 @@ class TagGeneratorService:
                 if (i + 1) % self.config.progress_log_interval == 0:
                     logger.info(f"Extracted tags for {i + 1}/{len(articles)} articles...")
 
+                # Periodic memory cleanup during batch processing
+                if (i + 1) % self.config.memory_cleanup_interval == 0:
+                    self._cleanup_memory()
+                    logger.debug(f"Memory cleanup after processing {i + 1} articles")
+
             except Exception as e:
                 logger.error(f"Error extracting tags for article {article.get('id', 'unknown')}: {e}")
                 batch_stats["failed"] += 1
@@ -422,7 +434,7 @@ class TagGeneratorService:
         finally:
             # Cleanup connection pool
             self._cleanup()
-    
+
     def _cleanup(self) -> None:
         """Cleanup resources."""
         if self._connection_pool:

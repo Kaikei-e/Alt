@@ -1,12 +1,13 @@
 import logging
 import re
 import unicodedata
-from typing import List, Optional, Tuple, Set
+from typing import List, Optional, Tuple, Set, Dict
 from dataclasses import dataclass
+from collections import Counter
 
 from langdetect import detect, LangDetectException
 import nltk
-
+import fugashi
 from .model_manager import get_model_manager, ModelConfig
 
 # Configure logging
@@ -15,14 +16,18 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TagExtractionConfig:
-    """Configuration for tag extraction parameters."""
     model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"
-    device: str = 'cpu'
+    device: str = "cpu"
     top_keywords: int = 10
-    min_score_threshold: float = 0.1
+    min_score_threshold: float = 0.15  # Lower threshold for better extraction
+    keyphrase_ngram_range: Tuple[int, int] = (1, 3)
+    use_mmr: bool = True
+    diversity: float = 0.5
     min_token_length: int = 2
     min_text_length: int = 10
-    japanese_pos_tags: Tuple[str, ...] = ("名詞", "固有名詞")
+    japanese_pos_tags: Tuple[str, ...] = ("名詞", "固有名詞", "地名", "組織名", "人名")
+    extract_compound_words: bool = True
+    use_frequency_boost: bool = True
 
 class TagExtractor:
     """A class for extracting tags from text using KeyBERT and language-specific processing."""
@@ -60,24 +65,205 @@ class TagExtractor:
     def _normalize_text(self, text: str, lang: str) -> str:
         """Normalize text based on language."""
         if lang == "ja":
-            return unicodedata.normalize("NFKC", text)
+            # NFKC normalization for Japanese
+            normalized = unicodedata.normalize("NFKC", text)
+            # Keep English words in Japanese text as-is
+            return normalized
         else:
             return text.lower()
 
-    def _tokenize_japanese(self, text: str) -> List[str]:
-        """Tokenize Japanese text using fugashi."""
+    def _extract_compound_japanese_words(self, text: str) -> List[str]:
+        """Extract compound words and important phrases from Japanese text."""
+        self._lazy_load_models()
+        compound_words = []
+
+        # Patterns for compound words - more restrictive to avoid over-splitting
+        patterns = [
+            # Tech terms with mixed scripts
+            r'[A-Za-z][A-Za-z0-9]*[ァ-ヶー]+(?:[A-Za-z0-9]*)?',  # e.g., "GitHubリポジトリ", "JAビル"
+            r'[ァ-ヶー]+[A-Za-z][A-Za-z0-9]*',  # e.g., "データセットID"
+            r'[A-Z]{2,}(?:[a-z]+)?',  # Acronyms like "JA", "AI", "CEO"
+            r'[一-龥]{2,}[ァ-ヶー]+',  # Kanji + Katakana compounds
+            r'[一-龥]+(?:の)[一-龥]+',  # Kanji + の + Kanji (e.g., "日本の首相")
+            # Important proper nouns
+            r'[一-龥]{2,4}(?:大統領|首相|総理|議員|知事|市長)',  # Political titles
+            r'[一-龥]{2,4}(?:会社|企業|組織|団体|協会|連盟)',  # Organizations
+            r'[ァ-ヶー]{3,}(?:システム|サービス|プラットフォーム)',  # Tech terms
+        ]
+
+        for pattern in patterns:
+            matches = re.findall(pattern, text)
+            compound_words.extend(matches)
+
+        # Use fugashi for more intelligent noun phrase extraction
+        parsed = list(self._ja_tagger(text))
+        i = 0
+        while i < len(parsed):
+            if parsed[i].feature.pos1 in self.config.japanese_pos_tags:
+                # Check if it's a proper noun or organization
+                if parsed[i].feature.pos2 in ['固有名詞', '組織', '人名', '地域']:
+                    compound = parsed[i].surface
+                    j = i + 1
+
+                    # Look for connected proper nouns
+                    while j < len(parsed):
+                        if parsed[j].feature.pos1 in self.config.japanese_pos_tags:
+                            if parsed[j].feature.pos2 in ['固有名詞', '組織', '人名', '地域']:
+                                compound += parsed[j].surface
+                                j += 1
+                            else:
+                                break
+                        elif parsed[j].surface in ['・', '＝', '－']:
+                            # Include connectors in proper nouns
+                            if j + 1 < len(parsed) and parsed[j + 1].feature.pos1 in self.config.japanese_pos_tags:
+                                compound += parsed[j].surface + parsed[j + 1].surface
+                                j += 2
+                            else:
+                                break
+                        else:
+                            break
+
+                    if len(compound) >= 3:  # Minimum length for compound words
+                        compound_words.append(compound)
+                    i = j
+                else:
+                    i += 1
+            else:
+                i += 1
+
+        # Deduplicate while preserving order
+        seen = set()
+        unique_compounds = []
+        for word in compound_words:
+            if word not in seen and len(word) >= 2:
+                seen.add(word)
+                unique_compounds.append(word)
+
+        return unique_compounds
+
+    def _extract_keywords_japanese(self, text: str) -> List[str]:
+        """Extract keywords specifically for Japanese text."""
         self._lazy_load_models()
         self._load_stopwords()
-        tokens = []
 
+        # Extract compound words and important terms
+        compounds = self._extract_compound_japanese_words(text)
+
+        # Count frequencies
+        term_freq = Counter(compounds)
+
+        # Also extract single important nouns
+        single_nouns = []
         for word in self._ja_tagger(text):
             if (word.feature.pos1 in self.config.japanese_pos_tags and
-                len(word.surface) > 1):
-                normalized = self._normalize_text(word.surface, "ja")
-                if normalized not in self._ja_stopwords:
-                    tokens.append(normalized)
+                2 <= len(word.surface) <= 10 and
+                word.surface not in self._ja_stopwords):
+                single_nouns.append(word.surface)
 
-        return tokens
+        # Add single noun frequencies
+        single_freq = Counter(single_nouns)
+
+        # Combine frequencies, giving priority to compounds
+        combined_freq = Counter()
+        for term, freq in term_freq.items():
+            combined_freq[term] = freq * 2  # Boost compound words
+
+        for term, freq in single_freq.items():
+            if term not in combined_freq:
+                combined_freq[term] = freq
+
+        # Get top keywords by frequency
+        top_keywords = []
+        for term, freq in combined_freq.most_common(self.config.top_keywords * 2):
+            if freq >= 2 or len(term) >= 4:  # Include terms that appear 2+ times or are longer
+                top_keywords.append(term)
+
+        # Limit to configured number
+        return top_keywords[:self.config.top_keywords]
+
+    def _extract_keywords_english(self, text: str) -> List[str]:
+        """Extract keywords specifically for English text using KeyBERT."""
+        self._lazy_load_models()
+
+        try:
+            # First extract both single words and phrases
+            single_keywords = self._keybert.extract_keywords(
+                text,
+                keyphrase_ngram_range=(1, 1),  # Single words only
+                top_n=self.config.top_keywords * 3,
+                use_mmr=True,
+                diversity=0.3
+            )
+
+            phrase_keywords = self._keybert.extract_keywords(
+                text,
+                keyphrase_ngram_range=(2, 3),  # Phrases only
+                top_n=self.config.top_keywords,
+                use_mmr=True,
+                diversity=0.5
+            )
+
+            # Combine and process keywords
+            all_keywords = []
+            seen_words = set()
+
+            # Process phrases first to identify important compound terms
+            for phrase, score in phrase_keywords:
+                phrase = phrase.strip().lower()
+                # Only keep phrases with high scores or specific patterns
+                if score >= self.config.min_score_threshold * 1.5:  # Higher threshold for phrases
+                    # Check if it's a meaningful compound (e.g., "apple intelligence", "mac mini")
+                    words = phrase.split()
+                    if len(words) >= 2:
+                        # Check for tech terms, product names, or proper nouns
+                        if any(w[0].isupper() for w in phrase.split() if w):
+                            all_keywords.append((phrase, score))
+                            # Mark individual words as seen to avoid duplication
+                            seen_words.update(words)
+
+            # Then add important single words not already in phrases
+            for word, score in single_keywords:
+                word = word.strip().lower()
+                if score >= self.config.min_score_threshold and word not in seen_words:
+                    # Skip generic words
+                    if len(word) > 2 and not word.isdigit():
+                        all_keywords.append((word, score))
+                        seen_words.add(word)
+
+            # Sort by score and filter
+            all_keywords.sort(key=lambda x: x[1], reverse=True)
+
+            # Final filtering and cleaning
+            result = []
+            seen_final = set()
+
+            for keyword, score in all_keywords:
+                # Clean and check for duplicates
+                keyword_clean = keyword.strip()
+                keyword_lower = keyword_clean.lower()
+
+                # Skip if we've seen this or a very similar variant
+                if keyword_lower not in seen_final:
+                    # Check for substring relationships
+                    is_substring = False
+                    for seen in seen_final:
+                        if keyword_lower in seen or seen in keyword_lower:
+                            # Only skip if the longer one has higher score
+                            is_substring = True
+                            break
+
+                    if not is_substring:
+                        result.append(keyword_clean)
+                        seen_final.add(keyword_lower)
+
+                        if len(result) >= self.config.top_keywords:
+                            break
+
+            return result
+
+        except Exception as e:
+            logger.error(f"KeyBERT extraction failed for English: {e}")
+            return []
 
     def _tokenize_english(self, text: str) -> List[str]:
         """Tokenize English text using NLTK."""
@@ -94,45 +280,22 @@ class TagExtractor:
 
         return result
 
-    def _get_candidate_tokens(self, text: str, lang: str) -> List[str]:
-        """Get candidate tokens based on language."""
+    def _fallback_extraction(self, text: str, lang: str) -> List[str]:
+        """Fallback extraction method when primary method fails."""
         if lang == "ja":
-            return self._tokenize_japanese(text)
+            # For Japanese, use the frequency-based approach
+            return self._extract_keywords_japanese(text)
         else:
-            return self._tokenize_english(text)
-
-    def _extract_keywords_direct(self, text: str) -> List[Tuple[str, float]]:
-        """Extract keywords directly from text using KeyBERT."""
-        self._lazy_load_models()
-        try:
-            return self._keybert.extract_keywords(text, top_n=self.config.top_keywords)
-        except Exception as e:
-            logger.error(f"Direct KeyBERT extraction failed: {e}")
+            # For English, try tokenization and frequency
+            tokens = self._tokenize_english(text)
+            if tokens:
+                token_freq = Counter(tokens)
+                return [term for term, _ in token_freq.most_common(self.config.top_keywords)]
             return []
-
-    def _extract_keywords_from_candidates(self, candidates: List[str]) -> List[Tuple[str, float]]:
-        """Extract keywords from processed candidate tokens."""
-        if not candidates:
-            return []
-
-        self._lazy_load_models()
-        try:
-            text_for_keybert = " ".join(candidates)
-            return self._keybert.extract_keywords(text_for_keybert, top_n=self.config.top_keywords)
-        except Exception as e:
-            logger.error(f"Candidate-based KeyBERT extraction failed: {e}")
-            return []
-
-    def _filter_keywords(self, keywords: List[Tuple[str, float]]) -> List[str]:
-        """Filter keywords based on score threshold."""
-        return [
-            keyword for keyword, score in keywords
-            if score >= self.config.min_score_threshold
-        ][:self.config.top_keywords]
 
     def extract_tags(self, title: str, content: str) -> List[str]:
         """
-        Extract tags from title and content.
+        Extract tags from title and content with language-specific processing.
 
         Args:
             title: The title text
@@ -154,28 +317,39 @@ class TagExtractor:
         lang = self._detect_language(raw_text)
         logger.info(f"Detected language: {lang}")
 
-        # Try direct extraction first
-        keywords = self._extract_keywords_direct(raw_text)
+        # Language-specific extraction
+        try:
+            if lang == "ja":
+                # Japanese-specific extraction
+                keywords = self._extract_keywords_japanese(raw_text)
+            else:
+                # English and other languages use KeyBERT
+                keywords = self._extract_keywords_english(raw_text)
 
-        if keywords:
-            result = self._filter_keywords(keywords)
-            logger.info(f"Direct extraction successful: {result}")
-            return result
+            if keywords:
+                logger.info(f"Extraction successful: {keywords}")
+                return keywords
+            else:
+                # Try fallback method
+                logger.info("Primary extraction failed, trying fallback method")
+                fallback_keywords = self._fallback_extraction(raw_text, lang)
+                if fallback_keywords:
+                    logger.info(f"Fallback extraction successful: {fallback_keywords}")
+                    return fallback_keywords
 
-        # Fallback to candidate-based extraction
-        logger.info("Direct extraction failed, trying candidate-based approach")
-        candidates = self._get_candidate_tokens(raw_text, lang)
-        logger.info(f"Found {len(candidates)} candidate tokens")
+        except Exception as e:
+            logger.error(f"Extraction error: {e}")
+            # Try fallback on any error
+            try:
+                fallback_keywords = self._fallback_extraction(raw_text, lang)
+                if fallback_keywords:
+                    logger.info(f"Emergency fallback successful: {fallback_keywords}")
+                    return fallback_keywords
+            except Exception as e2:
+                logger.error(f"Fallback also failed: {e2}")
 
-        if not candidates:
-            logger.warning("No candidate tokens found")
-            return []
-
-        keywords = self._extract_keywords_from_candidates(candidates)
-        result = self._filter_keywords(keywords)
-
-        logger.info(f"Final extraction result: {result}")
-        return result
+        logger.warning("No tags could be extracted")
+        return []
 
 # Maintain backward compatibility
 def extract_tags(title: str, content: str) -> List[str]:
