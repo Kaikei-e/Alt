@@ -1,13 +1,26 @@
-package handler
+package rest
 
 import (
 	"encoding/json"
 	"net/http"
 	"search-indexer/logger"
 	"search-indexer/search_engine"
+	"search-indexer/usecase"
 
 	"github.com/meilisearch/meilisearch-go"
 )
+
+// Handler contains all HTTP handlers for the search indexer
+type Handler struct {
+	searchUsecase *usecase.SearchArticlesUsecase
+}
+
+// NewHandler creates a new Handler
+func NewHandler(searchUsecase *usecase.SearchArticlesUsecase) *Handler {
+	return &Handler{
+		searchUsecase: searchUsecase,
+	}
+}
 
 type SearchArticlesHit struct {
 	ID      string   `json:"id"`

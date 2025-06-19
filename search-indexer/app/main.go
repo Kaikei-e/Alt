@@ -8,13 +8,12 @@ import (
 	"os/signal"
 	"time"
 
-	"search-indexer/db"
-	"search-indexer/handler"
+	"search-indexer/driver"
+	"search-indexer/gateway"
 	"search-indexer/logger"
-	"search-indexer/models"
-	"search-indexer/search_engine"
+	"search-indexer/rest"
+	"search-indexer/usecase"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/meilisearch/meilisearch-go"
 )
 
@@ -34,32 +33,41 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	dbPool := db.Init(ctx)
-	defer dbPool.Close()
+	// Create drivers (infrastructure layer)
+	dbDriver, err := driver.NewDatabaseDriverFromConfig(ctx)
+	if err != nil {
+		logger.Logger.Error("Failed to initialize database", "err", err)
+		return
+	}
+	defer dbDriver.Close()
 
-	// Initialize Meilisearch with retry logic
-	_, idx, err := initMeilisearch()
+	// Initialize Meilisearch client
+	msClient, err := initMeilisearchClient()
 	if err != nil {
 		logger.Logger.Error("Failed to initialize Meilisearch", "err", err)
 		return
 	}
+	searchDriver := driver.NewMeilisearchDriver(msClient, "articles")
 
-	// フィルタ属性は起動時に一度だけ設定
-	task, err := ensureFilterable(ctx, idx)
-	if err != nil {
-		logger.Logger.Error("filterable attributes", "err", err)
+	// Create gateways (anti-corruption layer)
+	articleRepo := gateway.NewArticleRepositoryGateway(dbDriver)
+	searchEngine := gateway.NewSearchEngineGateway(searchDriver)
+
+	// Ensure search index is properly set up
+	if err := searchEngine.EnsureIndex(ctx); err != nil {
+		logger.Logger.Error("Failed to ensure search index", "err", err)
 		return
 	}
-	if task != nil {
-		logger.Logger.Info("filterable attributes", "task", task)
-	}
+
+	// Create use cases (application layer)
+	indexUsecase := usecase.NewIndexArticlesUsecase(articleRepo, searchEngine)
 
 	// ──────────── batch indexer ────────────
-	go indexLoop(ctx, dbPool, idx)
+	go runIndexLoop(ctx, indexUsecase)
 
 	// ──────────── HTTP server ────────────
 	http.HandleFunc("/v1/search", func(w http.ResponseWriter, r *http.Request) {
-		handler.SearchArticles(w, r, idx)
+		rest.SearchArticles(w, r, msClient.Index("articles"))
 	})
 
 	srv := &http.Server{
@@ -78,8 +86,8 @@ func main() {
 	_ = srv.Shutdown(context.Background())
 }
 
-// initMeilisearch initializes the Meilisearch client with retry logic
-func initMeilisearch() (meilisearch.ServiceManager, meilisearch.IndexManager, error) {
+// initMeilisearchClient initializes the Meilisearch client with retry logic
+func initMeilisearchClient() (meilisearch.ServiceManager, error) {
 	const maxRetries = 5
 	const retryDelay = 5 * time.Second
 
@@ -87,15 +95,15 @@ func initMeilisearch() (meilisearch.ServiceManager, meilisearch.IndexManager, er
 	meilisearchKey := os.Getenv("MEILISEARCH_API_KEY")
 
 	if meilisearchHost == "" {
-		return nil, nil, fmt.Errorf("MEILISEARCH_HOST environment variable is not set")
+		return nil, fmt.Errorf("MEILISEARCH_HOST environment variable is not set")
 	}
 
 	logger.Logger.Info("Connecting to Meilisearch", "host", meilisearchHost)
 
 	var msClient meilisearch.ServiceManager
 
-	for i := 0; i < maxRetries; i++ {
-		msClient = search_engine.NewMeilisearchClient(meilisearchHost, meilisearchKey)
+	for i := range maxRetries {
+		msClient = meilisearch.New(meilisearchHost, meilisearch.WithAPIKey(meilisearchKey))
 
 		// Test the connection by checking if Meilisearch is healthy
 		if _, healthErr := msClient.Health(); healthErr != nil {
@@ -104,92 +112,18 @@ func initMeilisearch() (meilisearch.ServiceManager, meilisearch.IndexManager, er
 				time.Sleep(retryDelay)
 				continue
 			}
-			return nil, nil, fmt.Errorf("failed to connect to Meilisearch after %d attempts: %w", maxRetries, healthErr)
+			return nil, fmt.Errorf("failed to connect to Meilisearch after %d attempts: %w", maxRetries, healthErr)
 		}
 
 		logger.Logger.Info("Connected to Meilisearch successfully")
 		break
 	}
 
-	idx := msClient.Index("articles")
-	return msClient, idx, nil
+	return msClient, nil
 }
 
-func ensureFilterable(ctx context.Context, idx meilisearch.IndexManager) (*meilisearch.Task, error) {
-	// First, try to get the index info to check if it exists
-	_, err := idx.FetchInfo()
-	if err != nil {
-		// Index doesn't exist, let's create it
-		logger.Logger.Info("Index 'articles' doesn't exist, creating it...")
-
-		// Get the client from the index to create the index
-		// We'll create the index by adding documents which automatically creates it
-		// Create a minimal document to initialize the index
-		emptyDoc := []map[string]interface{}{
-			{
-				"id":      "init",
-				"title":   "Initialization document",
-				"content": "This document is used to create the index",
-				"tags":    []string{},
-			},
-		}
-
-		task, err := idx.AddDocuments(emptyDoc)
-		if err != nil {
-			logger.Logger.Error("Failed to create index", "err", err)
-			return nil, err
-		}
-
-		// Wait for the index creation task to complete
-		_, err = idx.WaitForTask(task.TaskUID, 1*time.Minute)
-		if err != nil {
-			logger.Logger.Error("Failed to wait for index creation", "err", err)
-			return nil, err
-		}
-
-		// Delete the initialization document
-		deleteTask, err := idx.DeleteDocument("init")
-		if err != nil {
-			logger.Logger.Warn("Failed to delete init document", "err", err)
-		} else {
-			_, err = idx.WaitForTask(deleteTask.TaskUID, 1*time.Minute)
-			if err != nil {
-				logger.Logger.Warn("Failed to wait for init document deletion", "err", err)
-			}
-		}
-
-		logger.Logger.Info("Index 'articles' created successfully")
-	}
-
-	// Now get the settings
-	settings, err := idx.GetSettings()
-	if err != nil {
-		logger.Logger.Error("Failed to get index settings", "err", err)
-		return nil, err
-	}
-
-	// Check if tags is already set as filterable
-	for _, f := range settings.FilterableAttributes {
-		if f == "tags" {
-			logger.Logger.Info("tags already registered as filterable")
-			return nil, nil
-		}
-	}
-
-	// Set tags as filterable attribute
-	logger.Logger.Info("Setting tags as filterable attribute")
-	task, err := idx.UpdateFilterableAttributes(&[]string{"tags"})
-	if err != nil {
-		logger.Logger.Error("Failed to update filterable attributes", "err", err)
-		return nil, err
-	}
-
-	duration := 1 * time.Minute
-	return idx.WaitForTask(task.TaskUID, duration)
-}
-
-// indexLoop は記事 + タグを取得して meilisearch に Upsert する。
-func indexLoop(ctx context.Context, dbPool *pgxpool.Pool, idx meilisearch.IndexManager) {
+// runIndexLoop runs the indexing loop using clean architecture
+func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecase) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Logger.Error("index loop panic", "err", r)
@@ -206,54 +140,21 @@ func indexLoop(ctx context.Context, dbPool *pgxpool.Pool, idx meilisearch.IndexM
 		default:
 		}
 
-		// ── fetch articles
-		dbCtx, cancel := context.WithTimeout(ctx, DB_TIMEOUT)
-		articles, newLastTS, newLastID, err := db.GetArticlesWithTags(
-			dbCtx, dbPool, lastCreatedAt, lastID, INDEX_BATCH_SIZE,
-		)
-		cancel()
+		result, err := indexUsecase.Execute(ctx, lastCreatedAt, lastID, INDEX_BATCH_SIZE)
 		if err != nil {
-			logger.Logger.Error("db fetch", "err", err)
+			logger.Logger.Error("indexing error", "err", err)
 			time.Sleep(INDEX_RETRY_INTERVAL)
 			continue
 		}
-		if len(articles) == 0 {
+
+		if result.IndexedCount == 0 {
 			logger.Logger.Info("no new articles")
 			time.Sleep(INDEX_INTERVAL)
 			continue
 		}
 
-		// ── convert
-		docs := make([]models.Doc, 0, len(articles))
-		for _, art := range articles {
-			tags := make([]string, len(art.Tags))
-			for i, t := range art.Tags {
-				tags[i] = t.Name
-			}
-			docs = append(docs, models.Doc{
-				ID:      art.ID,
-				Title:   art.Title,
-				Content: art.Content,
-				Tags:    tags,
-			})
-		}
-
-		// ── send to Meilisearch
-		task, err := idx.AddDocuments(docs)
-		if err != nil {
-			logger.Logger.Error("meili add", "err", err)
-			time.Sleep(INDEX_RETRY_INTERVAL)
-			continue
-		}
-		// タスク完了を同期的に確認
-		if _, err := idx.WaitForTask(task.TaskUID, MEILI_TIMEOUT); err != nil {
-			logger.Logger.Error("meili wait task", "err", err)
-			time.Sleep(INDEX_RETRY_INTERVAL)
-			continue
-		}
-		logger.Logger.Info("indexed", "count", len(docs))
-
-		// ── advance cursor
-		lastCreatedAt, lastID = newLastTS, newLastID
+		logger.Logger.Info("indexed", "count", result.IndexedCount)
+		lastCreatedAt = result.LastCreatedAt
+		lastID = result.LastID
 	}
 }
