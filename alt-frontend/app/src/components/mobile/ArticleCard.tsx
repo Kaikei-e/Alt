@@ -7,10 +7,10 @@ interface ArticleCardProps {
 
 export const ArticleCard = ({ article }: ArticleCardProps) => {
   return (
-    <div
+    <Box
       data-testid="article-card"
       className="article-card-wrapper"
-      style={{ width: "100%" }}
+      width="100%"
     >
       <Box
         className="glass"
@@ -109,6 +109,6 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
           </Dialog.Root>
         </Flex>
       </Box>
-    </div>
+    </Box>
   );
 };

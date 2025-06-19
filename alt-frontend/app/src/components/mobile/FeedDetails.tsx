@@ -1,5 +1,5 @@
 import { HStack, Text, Box, Portal, Button, Flex } from "@chakra-ui/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FeedDetails as FeedDetailsType, FeedURLPayload } from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
 
@@ -8,6 +8,23 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isOpen) {
+        handleHideDetails();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener("keydown", handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen]);
 
   const handleShowDetails = async () => {
     if (!feedURL) {
@@ -98,7 +115,13 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
             display="flex"
             alignItems="center"
             justifyContent="center"
-            onClick={handleHideDetails}
+            onClick={(e) => {
+              // Only close if clicking the backdrop itself, not the modal content
+              if (e.target === e.currentTarget) {
+                handleHideDetails();
+              }
+            }}
+            data-testid="modal-backdrop"
           >
             <Box
               onClick={(e) => e.stopPropagation()}
@@ -111,6 +134,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
               border="1px solid rgba(255, 255, 255, 0.1)"
               p={6}
               overflow="auto"
+              data-testid="modal-content"
             >
               <Flex
                 justify="space-between"

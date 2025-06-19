@@ -129,7 +129,7 @@ export const SearchArticles = ({
   };
 
   return (
-    <Box width="100%" maxWidth="500px" mb={6}>
+    <Box width="100%" maxWidth="500px" mb={6} data-testid="search-window">
       <form onSubmit={handleFormSubmit}>
         <VStack gap={4}>
           <Box width="full">
@@ -157,6 +157,7 @@ export const SearchArticles = ({
               }}
               borderRadius="15px"
               py={6}
+              data-testid="search-input"
             />
           </Box>
 
