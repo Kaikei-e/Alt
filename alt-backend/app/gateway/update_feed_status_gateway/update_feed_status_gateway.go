@@ -3,6 +3,7 @@ package update_feed_status_gateway
 import (
 	"alt/driver/alt_db"
 	"context"
+	"errors"
 	"net/url"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,9 +14,12 @@ type UpdateFeedStatusGateway struct {
 }
 
 func NewUpdateFeedStatusGateway(pool *pgxpool.Pool) *UpdateFeedStatusGateway {
-	return &UpdateFeedStatusGateway{db: alt_db.NewAltDBRepository(pool)}
+	return &UpdateFeedStatusGateway{db: alt_db.NewAltDBRepositoryWithPool(pool)}
 }
 
 func (g *UpdateFeedStatusGateway) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
+	if g.db == nil {
+		return errors.New("database repository is not initialized")
+	}
 	return g.db.UpdateFeedStatus(ctx, feedURL)
 }
