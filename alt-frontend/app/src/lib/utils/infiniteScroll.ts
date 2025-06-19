@@ -1,57 +1,45 @@
 import { useEffect, useRef } from "react";
+import { throttle } from "@/lib/utils/throttle";
 
-// Throttle function to limit callback execution frequency
-function throttle<T extends (...args: never[]) => void>(
-  func: T,
-  delay: number,
-): (...args: Parameters<T>) => void {
-  let timeoutId: NodeJS.Timeout | null = null;
-  let lastExecTime = 0;
-
-  return (...args: Parameters<T>) => {
-    const currentTime = Date.now();
-
-    if (currentTime - lastExecTime > delay) {
-      func(...args);
-      lastExecTime = currentTime;
-    } else {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      timeoutId = setTimeout(
-        () => {
-          func(...args);
-          lastExecTime = Date.now();
-        },
-        delay - (currentTime - lastExecTime),
-      );
-    }
-  };
-}
+const DEFAULT_THROTTLE_DELAY = 500;
+const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_ROOT_MARGIN = "200px 0px";
+const DEFAULT_THRESHOLD = 0.1;
+const SETUP_RETRY_DELAY = 100;
 
 export function useInfiniteScroll(
   callback: () => void,
   ref: React.RefObject<HTMLDivElement | null>,
   resetKey?: number | string,
+  options?: {
+    throttleDelay?: number;
+    maxRetries?: number;
+    rootMargin?: string;
+    threshold?: number;
+  }
 ) {
   const callbackRef = useRef(callback);
   const throttledCallbackRef = useRef<(() => void) | null>(null);
   const retryCountRef = useRef(0);
-  const maxRetries = 3;
+  
+  const {
+    throttleDelay = DEFAULT_THROTTLE_DELAY,
+    maxRetries = DEFAULT_MAX_RETRIES,
+    rootMargin = DEFAULT_ROOT_MARGIN,
+    threshold = DEFAULT_THRESHOLD,
+  } = options || {};
 
-  // Keep the callback ref updated
   useEffect(() => {
     callbackRef.current = callback;
   }, [callback]);
 
-  // Create throttled callback when resetKey changes
   useEffect(() => {
     throttledCallbackRef.current = throttle(() => {
       if (retryCountRef.current < maxRetries) {
         callbackRef.current();
       }
-    }, 500); // Increased throttle time for better mobile performance
-  }, [resetKey]);
+    }, throttleDelay);
+  }, [resetKey, throttleDelay, maxRetries]);
 
   useEffect(() => {
     let observer: IntersectionObserver | null = null;
@@ -61,7 +49,7 @@ export function useInfiniteScroll(
       const element = ref.current;
 
       if (!element || !throttledCallbackRef.current) {
-        timeoutId = setTimeout(setupObserver, 100);
+        timeoutId = setTimeout(setupObserver, SETUP_RETRY_DELAY);
         return;
       }
 
@@ -70,13 +58,13 @@ export function useInfiniteScroll(
           entries.forEach((entry) => {
             if (entry.isIntersecting && throttledCallbackRef.current) {
               throttledCallbackRef.current();
-              retryCountRef.current = 0; // Reset retry count on successful intersection
+              retryCountRef.current = 0;
             }
           });
         },
         {
-          rootMargin: "200px 0px", // Increased rootMargin for better mobile detection
-          threshold: 0.1, // Added threshold for better detection
+          rootMargin,
+          threshold,
         },
       );
 
@@ -94,9 +82,8 @@ export function useInfiniteScroll(
         observer.disconnect();
       }
     };
-  }, [ref, resetKey]);
+  }, [ref, resetKey, rootMargin, threshold]);
 
-  // Reset retry count when resetKey changes
   useEffect(() => {
     retryCountRef.current = 0;
   }, [resetKey]);

@@ -1,20 +1,19 @@
 import { FeedStatsSummary } from "@/schema/feedStats";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost/api";
+import { SseConfig, defaultSseConfig } from "@/lib/config";
 
 function apiSseForStats(
   endpoint: string,
   onMessage: (data: FeedStatsSummary) => void,
   onError: (event: Event) => void,
+  config: SseConfig = defaultSseConfig,
 ) {
   let eventSource: EventSource | null = null;
   let reconnectAttempts = 0;
-  const maxReconnectAttempts = 5;
-  const reconnectDelay = 2000; // 2 seconds
+  const maxReconnectAttempts = config.maxReconnectAttempts;
+  const reconnectDelay = config.reconnectDelay;
 
   function connect() {
-    const fullUrl = `${API_BASE_URL}${endpoint}`;
+    const fullUrl = `${config.baseUrl}${endpoint}`;
     console.log(
       `Connecting to SSE endpoint: ${fullUrl} (attempt ${reconnectAttempts + 1})`,
     );
@@ -70,7 +69,13 @@ function apiSseForStats(
   };
 }
 
-export const feedsApiSse = {
+export class SseClient {
+  private config: SseConfig;
+
+  constructor(config: SseConfig = defaultSseConfig) {
+    this.config = config;
+  }
+
   getFeedsStats(
     onMessage: (data: FeedStatsSummary) => void,
     onError?: (event: Event) => void,
@@ -82,6 +87,9 @@ export const feedsApiSse = {
         ((event) => {
           console.error("SSE error:", event);
         }),
+      this.config,
     );
-  },
-};
+  }
+}
+
+export const feedsApiSse = new SseClient();
