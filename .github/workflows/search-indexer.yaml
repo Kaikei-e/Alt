@@ -1,0 +1,32 @@
+name: Search Indexer Tests
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.24
+    - name: Install dependencies
+      run: |
+        cd search-indexer/app
+        go mod tidy
+    - name: Run tests
+      run: |
+        cd search-indexer/app
+        go test ./...
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      with:
+        name: go-test-results
+        path: search-indexer/test-results/
