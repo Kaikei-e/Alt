@@ -13,4 +13,7 @@ dependencies = [
     "ipadic>=1.0.0",
     "nltk>=3.9.1",
     "langdetect>=1.0.9",
+    "pytest>=8.4.1",
+    "pytest-mock>=3.14.1",
+    "psutil>=7.0.0",
 ]

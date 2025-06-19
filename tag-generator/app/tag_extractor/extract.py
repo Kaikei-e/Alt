@@ -1,15 +1,13 @@
 import logging
-import os
 import re
 import unicodedata
 from typing import List, Optional, Tuple, Set
 from dataclasses import dataclass
 
-from sentence_transformers import SentenceTransformer
-from keybert import KeyBERT
 from langdetect import detect, LangDetectException
-from fugashi import Tagger
 import nltk
+
+from .model_manager import get_model_manager, ModelConfig
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,54 +29,25 @@ class TagExtractor:
 
     def __init__(self, config: Optional[TagExtractionConfig] = None):
         self.config = config or TagExtractionConfig()
-        self._embedder: Optional[SentenceTransformer] = None
-        self._keybert: Optional[KeyBERT] = None
-        self._ja_tagger: Optional[Tagger] = None
-        self._ja_stopwords: Optional[Set[str]] = None
-        self._en_stopwords: Optional[Set[str]] = None
+        self._model_manager = get_model_manager()
+        self._models_loaded = False
 
     def _lazy_load_models(self) -> None:
-        """Lazy load models to avoid loading them at import time."""
-        if self._embedder is None:
-            logger.info("Loading SentenceTransformer model...")
-            self._embedder = SentenceTransformer(
-                self.config.model_name,
+        """Lazy load models using the singleton model manager."""
+        if not self._models_loaded:
+            model_config = ModelConfig(
+                model_name=self.config.model_name,
                 device=self.config.device
             )
-            self._keybert = KeyBERT(self._embedder)
-            self._ja_tagger = Tagger("-Owakati")
-            logger.info("Models loaded successfully")
+            self._embedder, self._keybert, self._ja_tagger = self._model_manager.get_models(model_config)
+            self._models_loaded = True
+            logger.debug("Models loaded via ModelManager")
 
     def _load_stopwords(self) -> None:
-        """Load stopwords for Japanese and English."""
-        if self._ja_stopwords is None:
-            current_dir = os.path.dirname(__file__)
-            ja_stopwords_path = os.path.join(current_dir, "stopwords_ja.txt")
-            en_stopwords_path = os.path.join(current_dir, "stopwords_en.txt")
-
-            # Load Japanese stopwords
-            try:
-                with open(ja_stopwords_path, 'r', encoding='utf-8') as f:
-                    self._ja_stopwords = set(line.strip() for line in f if line.strip())
-            except FileNotFoundError:
-                logger.warning(f"Japanese stopwords file not found: {ja_stopwords_path}")
-                self._ja_stopwords = set()
-
-            # Load English stopwords
-            try:
-                with open(en_stopwords_path, 'r', encoding='utf-8') as f:
-                    self._en_stopwords = set(line.strip().lower() for line in f if line.strip())
-            except FileNotFoundError:
-                logger.warning(f"English stopwords file not found: {en_stopwords_path}")
-                self._en_stopwords = set()
-
-            # Add NLTK English stopwords
-            try:
-                if self._en_stopwords is None:
-                    self._en_stopwords = set()
-                self._en_stopwords.update(set(nltk.corpus.stopwords.words("english")))
-            except Exception as e:
-                logger.warning(f"Could not load NLTK English stopwords: {e}")
+        """Load stopwords using the model manager."""
+        if not hasattr(self, '_stopwords_loaded'):
+            self._ja_stopwords, self._en_stopwords = self._model_manager.get_stopwords()
+            self._stopwords_loaded = True
 
     def _detect_language(self, text: str) -> str:
         """Detect the language of the text."""
@@ -101,9 +70,6 @@ class TagExtractor:
         self._load_stopwords()
         tokens = []
 
-        if self._ja_tagger is None or self._ja_stopwords is None:
-            return []
-
         for word in self._ja_tagger(text):
             if (word.feature.pos1 in self.config.japanese_pos_tags and
                 len(word.surface) > 1):
@@ -118,9 +84,6 @@ class TagExtractor:
         self._load_stopwords()
         tokens = nltk.word_tokenize(text)
         result = []
-
-        if self._en_stopwords is None:
-            return []
 
         for token in tokens:
             if (re.fullmatch(r"\w+", token) and
@@ -141,8 +104,6 @@ class TagExtractor:
     def _extract_keywords_direct(self, text: str) -> List[Tuple[str, float]]:
         """Extract keywords directly from text using KeyBERT."""
         self._lazy_load_models()
-        if self._keybert is None:
-            return []
         try:
             return self._keybert.extract_keywords(text, top_n=self.config.top_keywords)
         except Exception as e:
@@ -155,9 +116,6 @@ class TagExtractor:
             return []
 
         self._lazy_load_models()
-        if self._keybert is None:
-            return []
-
         try:
             text_for_keybert = " ".join(candidates)
             return self._keybert.extract_keywords(text_for_keybert, top_n=self.config.top_keywords)
