@@ -5,6 +5,7 @@ import time
 from datetime import datetime, UTC
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
+from contextlib import contextmanager
 
 import psycopg2
 from psycopg2.extras import DictCursor
@@ -65,17 +66,21 @@ class TagGeneratorService:
     def _setup_connection_pool(self) -> None:
         """Setup database connection pool."""
         try:
+            logger.info("Setting up connection pool...")
             dsn = self._get_database_dsn()
             pool_config = PoolConfig(
                 min_connections=self.config.pool_min_connections,
                 max_connections=self.config.pool_max_connections,
-                connection_timeout=30.0,
-                idle_timeout=300.0
+                connection_timeout=10.0,  # Shorter timeout to prevent hanging
+                idle_timeout=300.0,
+                max_retries=2,  # Fewer retries for faster failure
+                retry_delay=2.0
             )
             self._connection_pool = get_connection_pool(dsn, pool_config)
-            logger.info("Connection pool initialized")
+            logger.info("Connection pool initialized successfully")
         except Exception as e:
             logger.error(f"Failed to setup connection pool: {e}")
+            logger.warning("Will use direct connections as fallback")
             self._connection_pool = None
 
     def _get_database_dsn(self) -> str:
@@ -104,12 +109,37 @@ class TagGeneratorService:
 
     def _get_database_connection(self):
         """Get database connection - either from pool or create new."""
+        logger.debug("Acquiring database connection...")
+
         if self._connection_pool:
-            # Use connection pool
-            return self._connection_pool.get_connection()
+            # Use connection pool with explicit timeout handling
+            try:
+                logger.debug("Getting connection from pool...")
+                return self._connection_pool.get_connection()
+            except Exception as e:
+                logger.error(f"Failed to get connection from pool: {e}")
+                logger.info("Falling back to direct connection")
+                # Fallback to direct connection if pool fails
+                return self._create_direct_connection_context()
         else:
             # Fallback to direct connection
-            return self._create_direct_connection()
+            logger.debug("Using direct connection (no pool)")
+            return self._create_direct_connection_context()
+
+    @contextmanager
+    def _create_direct_connection_context(self):
+        """Create direct database connection as context manager."""
+        conn = None
+        try:
+            conn = self._create_direct_connection()
+            yield conn
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                    logger.debug("Direct connection closed")
+                except Exception as e:
+                    logger.warning(f"Error closing direct connection: {e}")
 
     def _create_direct_connection(self) -> Connection:
         """Create direct database connection with retry logic."""
@@ -371,32 +401,24 @@ class TagGeneratorService:
             Dictionary with cycle results
         """
         logger.info("Starting tag generation processing cycle")
+        logger.info("Preparing to acquire database connection...")
 
         try:
             # Use database connection (pooled or direct)
+            logger.info("Acquiring database connection...")
             with self._get_database_connection() as conn:
+                logger.info("Database connection acquired successfully")
+
                 # Process articles batch
+                logger.info("Starting article batch processing...")
                 batch_stats = self._process_article_batch(conn)
 
-                # Log summary
-                self._log_batch_summary(batch_stats)
-
-                return {
-                    "success": True,
-                    "batch_stats": batch_stats
-                }
+                logger.info("Article batch processing completed")
+                return batch_stats
 
         except Exception as e:
             logger.error(f"Processing cycle failed: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-
-        finally:
-            # Final garbage collection
-            if self.config.enable_gc_collection:
-                gc.collect()
+            raise
 
     def run_service(self) -> None:
         """Run the tag generation service continuously."""
