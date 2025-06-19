@@ -227,7 +227,6 @@ class ApiClient {
   }
 
   private cleanupExpiredEntries(): void {
-    const now = Date.now();
     for (const [key, entry] of this.cache.entries()) {
       if (!this.isValidCache(entry)) {
         this.cache.delete(key);
