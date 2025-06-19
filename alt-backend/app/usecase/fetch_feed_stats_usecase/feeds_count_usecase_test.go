@@ -2,9 +2,9 @@ package fetch_feed_stats_usecase
 
 import (
 	"alt/mocks"
+	"alt/usecase/testutil"
 	"alt/utils/logger"
 	"context"
-	"errors"
 	"testing"
 
 	"go.uber.org/mock/gomock"
@@ -17,60 +17,78 @@ func TestFeedsCountUsecase_Execute(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	ctx := context.Background()
+	mockPort := mocks.NewMockFeedAmountPort(ctrl)
 
-	type fields struct {
-		feedsCountPort *mocks.MockFeedAmountPort
-	}
-	type args struct {
-		ctx       context.Context
-		mockSetup func(*mocks.MockFeedAmountPort)
-	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    int
-		wantErr bool
+		name      string
+		ctx       context.Context
+		mockSetup func()
+		want      int
+		wantErr   bool
 	}{
 		{
-			name: "success",
-			fields: fields{
-				feedsCountPort: mocks.NewMockFeedAmountPort(ctrl),
-			},
-			args: args{
-				ctx: ctx,
-				mockSetup: func(mockPort *mocks.MockFeedAmountPort) {
-					mockPort.EXPECT().Execute(ctx).Return(10, nil)
-				},
+			name: "success with positive count",
+			ctx:  context.Background(),
+			mockSetup: func() {
+				mockPort.EXPECT().Execute(gomock.Any()).Return(10, nil).Times(1)
 			},
 			want:    10,
 			wantErr: false,
 		},
 		{
-			name: "error",
-			fields: fields{
-				feedsCountPort: mocks.NewMockFeedAmountPort(ctrl),
+			name: "success with zero count",
+			ctx:  context.Background(),
+			mockSetup: func() {
+				mockPort.EXPECT().Execute(gomock.Any()).Return(0, nil).Times(1)
 			},
-			args: args{
-				ctx: ctx,
-				mockSetup: func(mockPort *mocks.MockFeedAmountPort) {
-					mockPort.EXPECT().Execute(ctx).Return(0, errors.New("error"))
-				},
+			want:    0,
+			wantErr: false,
+		},
+		{
+			name: "success with large count",
+			ctx:  context.Background(),
+			mockSetup: func() {
+				mockPort.EXPECT().Execute(gomock.Any()).Return(999999, nil).Times(1)
+			},
+			want:    999999,
+			wantErr: false,
+		},
+		{
+			name: "database error",
+			ctx:  context.Background(),
+			mockSetup: func() {
+				mockPort.EXPECT().Execute(gomock.Any()).Return(0, testutil.ErrMockDatabase).Times(1)
+			},
+			want:    0,
+			wantErr: true,
+		},
+		{
+			name: "context cancellation",
+			ctx:  testutil.CreateCancelledContext(),
+			mockSetup: func() {
+				mockPort.EXPECT().Execute(gomock.Any()).Return(0, context.Canceled).Times(1)
+			},
+			want:    0,
+			wantErr: true,
+		},
+		{
+			name: "timeout error",
+			ctx:  context.Background(),
+			mockSetup: func() {
+				mockPort.EXPECT().Execute(gomock.Any()).Return(0, testutil.ErrMockTimeout).Times(1)
 			},
 			want:    0,
 			wantErr: true,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockPort := mocks.NewMockFeedAmountPort(ctrl)
-			tt.args.mockSetup(mockPort)
-
+			tt.mockSetup()
 			u := &FeedsCountUsecase{
 				feedsCountPort: mockPort,
 			}
-			got, err := u.Execute(tt.args.ctx)
+			got, err := u.Execute(tt.ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FeedsCountUsecase.Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return

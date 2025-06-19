@@ -3,8 +3,9 @@ package fetch_feed_usecase
 import (
 	"alt/domain"
 	"alt/mocks"
-	"alt/port/fetch_feed_port"
+	"alt/usecase/testutil"
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -15,53 +16,61 @@ func TestFetchFeedsListUsecase_Execute(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockFetchFeedsListGateway := mocks.NewMockFetchFeedsPort(ctrl)
+	mockGateway := mocks.NewMockFetchFeedsPort(ctrl)
+	mockData := testutil.CreateMockFeedItems()
 
-	mockDomainFeedItem := []*domain.FeedItem{
-		{
-			Title:       "Test Feed 1",
-			Description: "Test Description 1",
-			Link:        "https://test.com/feed1",
-		},
-		{
-			Title:       "Test Feed 2",
-			Description: "Test Description 2",
-			Link:        "https://test.com/feed2",
-		},
-	}
-
-	type fields struct {
-		fetchFeedsListGateway fetch_feed_port.FetchFeedsPort
-	}
-	type args struct {
-		ctx context.Context
-	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    []*domain.FeedItem
-		wantErr bool
+		name      string
+		ctx       context.Context
+		mockSetup func()
+		want      []*domain.FeedItem
+		wantErr   bool
 	}{
 		{
 			name: "success",
-			fields: fields{
-				fetchFeedsListGateway: mockFetchFeedsListGateway,
+			ctx:  context.Background(),
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsList(gomock.Any()).Return(mockData, nil).Times(1)
 			},
-			args: args{
-				ctx: context.Background(),
+			want:    mockData,
+			wantErr: false,
+		},
+		{
+			name: "database error",
+			ctx:  context.Background(),
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsList(gomock.Any()).Return(nil, testutil.ErrMockDatabase).Times(1)
 			},
-			want:    mockDomainFeedItem,
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "cancelled context",
+			ctx:  testutil.CreateCancelledContext(),
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsList(gomock.Any()).Return(nil, context.Canceled).Times(1)
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "empty result",
+			ctx:  context.Background(),
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsList(gomock.Any()).Return(testutil.CreateEmptyFeedItems(), nil).Times(1)
+			},
+			want:    testutil.CreateEmptyFeedItems(),
 			wantErr: false,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetchFeedsListGateway.EXPECT().FetchFeedsList(tt.args.ctx).Return(tt.want, nil).Times(1)
+			tt.mockSetup()
 			u := &FetchFeedsListUsecase{
-				fetchFeedsListGateway: tt.fields.fetchFeedsListGateway,
+				fetchFeedsListGateway: mockGateway,
 			}
-			got, err := u.Execute(tt.args.ctx)
+			got, err := u.Execute(tt.ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FetchFeedsListUsecase.Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -77,61 +86,82 @@ func TestFetchFeedsListUsecase_ExecuteLimit(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockFetchFeedsListGateway := mocks.NewMockFetchFeedsPort(ctrl)
+	mockGateway := mocks.NewMockFetchFeedsPort(ctrl)
+	mockData := testutil.CreateMockFeedItems()
 
-	mockDomainFeedItem := []*domain.FeedItem{
-		{
-			Title:       "Test Feed 1",
-			Description: "Test Description 1",
-			Link:        "https://test.com/feed1",
-		},
-		{
-			Title:       "Test Feed 2",
-			Description: "Test Description 2",
-			Link:        "https://test.com/feed2",
-		},
-	}
-
-	type fields struct {
-		fetchFeedsListGateway fetch_feed_port.FetchFeedsPort
-	}
-	type args struct {
-		ctx   context.Context
-		limit int
-	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    []*domain.FeedItem
-		wantErr bool
+		name      string
+		ctx       context.Context
+		limit     int
+		mockSetup func()
+		want      []*domain.FeedItem
+		wantErr   bool
 	}{
 		{
-			name: "success",
-			fields: fields{
-				fetchFeedsListGateway: mockFetchFeedsListGateway,
+			name:  "success with valid limit",
+			ctx:   context.Background(),
+			limit: 10,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListLimit(gomock.Any(), 10).Return(mockData, nil).Times(1)
 			},
-			args: args{
-				ctx:   context.Background(),
-				limit: 1,
-			},
-			want:    mockDomainFeedItem,
+			want:    mockData,
 			wantErr: false,
 		},
+		{
+			name:  "zero limit",
+			ctx:   context.Background(),
+			limit: 0,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListLimit(gomock.Any(), 0).Return(testutil.CreateEmptyFeedItems(), nil).Times(1)
+			},
+			want:    testutil.CreateEmptyFeedItems(),
+			wantErr: false,
+		},
+		{
+			name:  "negative limit",
+			ctx:   context.Background(),
+			limit: -1,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListLimit(gomock.Any(), -1).Return(nil, errors.New("invalid limit")).Times(1)
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:  "database error",
+			ctx:   context.Background(),
+			limit: 5,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListLimit(gomock.Any(), 5).Return(nil, testutil.ErrMockDatabase).Times(1)
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:  "cancelled context",
+			ctx:   testutil.CreateCancelledContext(),
+			limit: 5,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListLimit(gomock.Any(), 5).Return(nil, context.Canceled).Times(1)
+			},
+			want:    nil,
+			wantErr: true,
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetchFeedsListGateway.EXPECT().FetchFeedsListLimit(tt.args.ctx, tt.args.limit).Return(tt.want, nil).Times(1)
+			tt.mockSetup()
 			u := &FetchFeedsListUsecase{
-				fetchFeedsListGateway: tt.fields.fetchFeedsListGateway,
+				fetchFeedsListGateway: mockGateway,
 			}
-			got, err := u.ExecuteLimit(tt.args.ctx, tt.args.limit)
+			got, err := u.ExecuteLimit(tt.ctx, tt.limit)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("FetchFeedsListUsecase.ExecuteOffset() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("FetchFeedsListUsecase.ExecuteLimit() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("FetchFeedsListUsecase.ExecuteOffset() = %v, want %v", got, tt.want)
+				t.Errorf("FetchFeedsListUsecase.ExecuteLimit() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -141,57 +171,86 @@ func TestFetchFeedsListUsecase_ExecutePage(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockFetchFeedsListGateway := mocks.NewMockFetchFeedsPort(ctrl)
-
-	mockDomainFeedItem := []*domain.FeedItem{
-		{
-			Title:       "Test Feed 1",
-			Description: "Test Description 1",
-			Link:        "https://test.com/feed1",
-		},
-		{
-			Title:       "Test Feed 2",
-			Description: "Test Description 2",
-			Link:        "https://test.com/feed2",
-		},
-	}
-
-	type fields struct {
-		fetchFeedsListGateway fetch_feed_port.FetchFeedsPort
-	}
-	type args struct {
-		ctx  context.Context
-		page int
-	}
+	mockGateway := mocks.NewMockFetchFeedsPort(ctrl)
+	mockData := testutil.CreateMockFeedItems()
 
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    []*domain.FeedItem
-		wantErr bool
+		name      string
+		ctx       context.Context
+		page      int
+		mockSetup func()
+		want      []*domain.FeedItem
+		wantErr   bool
 	}{
 		{
-			name: "success",
-			fields: fields{
-				fetchFeedsListGateway: mockFetchFeedsListGateway,
+			name: "success with valid page",
+			ctx:  context.Background(),
+			page: 1,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListPage(gomock.Any(), 1).Return(mockData, nil).Times(1)
 			},
-			args: args{
-				ctx:  context.Background(),
-				page: 1,
-			},
-			want:    mockDomainFeedItem,
+			want:    mockData,
 			wantErr: false,
+		},
+		{
+			name: "page zero",
+			ctx:  context.Background(),
+			page: 0,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListPage(gomock.Any(), 0).Return(testutil.CreateEmptyFeedItems(), nil).Times(1)
+			},
+			want:    testutil.CreateEmptyFeedItems(),
+			wantErr: false,
+		},
+		{
+			name: "negative page",
+			ctx:  context.Background(),
+			page: -1,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListPage(gomock.Any(), -1).Return(nil, errors.New("invalid page number")).Times(1)
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "large page number",
+			ctx:  context.Background(),
+			page: 999999,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListPage(gomock.Any(), 999999).Return(testutil.CreateEmptyFeedItems(), nil).Times(1)
+			},
+			want:    testutil.CreateEmptyFeedItems(),
+			wantErr: false,
+		},
+		{
+			name: "database error",
+			ctx:  context.Background(),
+			page: 1,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListPage(gomock.Any(), 1).Return(nil, testutil.ErrMockDatabase).Times(1)
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "cancelled context",
+			ctx:  testutil.CreateCancelledContext(),
+			page: 1,
+			mockSetup: func() {
+				mockGateway.EXPECT().FetchFeedsListPage(gomock.Any(), 1).Return(nil, context.Canceled).Times(1)
+			},
+			want:    nil,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetchFeedsListGateway.EXPECT().FetchFeedsListPage(tt.args.ctx, tt.args.page).Return(tt.want, nil).Times(1)
+			tt.mockSetup()
 			u := &FetchFeedsListUsecase{
-				fetchFeedsListGateway: tt.fields.fetchFeedsListGateway,
+				fetchFeedsListGateway: mockGateway,
 			}
-			got, err := u.ExecutePage(tt.args.ctx, tt.args.page)
+			got, err := u.ExecutePage(tt.ctx, tt.page)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FetchFeedsListUsecase.ExecutePage() error = %v, wantErr %v", err, tt.wantErr)
 				return
