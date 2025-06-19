@@ -1,29 +1,11 @@
-import { Article } from "@/schema/article";
 import { expect, test } from "@playwright/test";
-
-const generateMockArticles = (
-  count: number,
-  startId: number = 1,
-): Article[] => {
-  return Array.from({ length: count }, (_, index) => ({
-    id: `${startId + index}`,
-    title: `Test Article ${startId + index}`,
-    content: `Content for test article ${startId + index}. This is a longer content to test how the UI handles different text lengths.`,
-  }));
-};
+import { mockApiEndpoints, generateMockArticles } from "../helpers/mockApi";
 
 test.describe("ArticleCard Component - Functionality Tests", () => {
   const mockArticles = generateMockArticles(20, 1);
 
   test.beforeEach(async ({ page }) => {
-    await page.route("**/api/v1/articles/search**", async (route) => {
-      console.log("API route intercepted:", route.request().url());
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(mockArticles),
-      });
-    });
+    await mockApiEndpoints(page, { articles: mockArticles });
   });
 
   test("should display articles", async ({ page }) => {
@@ -36,7 +18,7 @@ test.describe("ArticleCard Component - Functionality Tests", () => {
 
     try {
       await page.waitForSelector(
-        ".article-card-wrapper[data-testid='article-card']",
+        "[data-testid='article-card']",
         { timeout: 10000 }
       );
     } catch (error) {
@@ -45,7 +27,7 @@ test.describe("ArticleCard Component - Functionality Tests", () => {
     }
 
     const articleCards = await page.$$(
-      ".article-card-wrapper[data-testid='article-card']",
+      "[data-testid='article-card']",
     );
     expect(articleCards).toHaveLength(mockArticles.length);
 

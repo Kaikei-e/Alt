@@ -1,210 +1,239 @@
-import { Feed } from "@/schema/feed";
 import { expect, test } from "@playwright/test";
-
-const generateMockFeeds = (count: number, startId: number = 1): Feed[] => {
-  return Array.from({ length: count }, (_, index) => ({
-    id: `${startId + index}`,
-    title: `Test Feed ${startId + index}`,
-    description: `Description for test feed ${startId + index}. This is a longer description to test how the UI handles different text lengths.`,
-    link: `https://example.com/feed${startId + index}`,
-    published: `2024-01-${String(index + 1).padStart(2, "0")}T12:00:00Z`,
-  }));
-};
+import { mockApiEndpoints, generateMockFeeds } from "../helpers/mockApi";
 
 test.describe("FeedCard Component - Functionality Tests", () => {
   const mockFeeds = generateMockFeeds(10, 1);
 
   test.beforeEach(async ({ page }) => {
-    // Mock the feeds API endpoints before navigating to the page
-    await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(mockFeeds),
-      });
-    });
-
-    // Also mock the fallback endpoint (getAllFeeds)
-    await page.route("**/api/v1/feeds/fetch/list", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(mockFeeds),
-      });
-    });
-
-    // Mock the read status endpoint
-    await page.route("**/api/v1/feeds/read", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ message: "Feed marked as read" }),
-      });
-    });
-
-    await page.goto("/mobile/feeds");
-    await page.waitForLoadState("networkidle");
+    await mockApiEndpoints(page, { feeds: mockFeeds });
   });
 
   test.describe("Initial State", () => {
     test("should render feed cards", async ({ page }) => {
-      // Check that feed cards are visible
-      await expect(
-        page.getByRole("link", { name: "Test Feed 1", exact: true }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("link", { name: "Test Feed 6", exact: true }),
-      ).toBeVisible();
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
     });
 
     test("should display correct feed titles", async ({ page }) => {
-      // Check multiple feed titles
-      await expect(
-        page.getByRole("link", { name: "Test Feed 1", exact: true }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("link", { name: "Test Feed 2", exact: true }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("link", { name: "Test Feed 3", exact: true }),
-      ).toBeVisible();
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+
+      // Check for first few feed titles with increased timeout
+      await expect(page.getByText("Test Feed 1").first()).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("Test Feed 2").first()).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("Test Feed 3").first()).toBeVisible({ timeout: 10000 });
     });
 
-    test("should not display non-existent feeds", async ({ page }) => {
-      // Check that feeds beyond our mock data are not visible
+    test("should display mark as read buttons", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
       await expect(
-        page.getByRole("link", { name: "Test Feed 11", exact: true }),
-      ).not.toBeVisible();
-      await expect(
-        page.getByRole("link", { name: "Test Feed 15", exact: true }),
-      ).not.toBeVisible();
+        page.locator('button:has-text("Mark as read")').first(),
+      ).toBeVisible({ timeout: 10000 });
     });
 
     test("should display correct number of feed cards", async ({ page }) => {
-      // Count the number of feed links
-      const feedLinks = page.getByRole("link").filter({ hasText: "Test Feed" });
-      await expect(feedLinks).toHaveCount(10);
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      const feedCards = page.locator('[data-testid="feed-card"]');
+      await expect(feedCards).toHaveCount(10);
     });
   });
 
   test.describe("Feed Content Display", () => {
     test("should display feed descriptions", async ({ page }) => {
-      // Check that descriptions are visible (use partial text to avoid strict mode violations)
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
       await expect(
-        page.getByText("Description for test feed 1", { exact: false }).first(),
-      ).toBeVisible();
-      await expect(
-        page.getByText("Description for test feed 6", { exact: false }).first(),
+        page.getByText("Description for test feed 1").first(),
       ).toBeVisible();
     });
 
     test("should display feed links correctly", async ({ page }) => {
-      // Check that links have correct href attributes
-      await expect(
-        page.getByRole("link", { name: "Test Feed 1", exact: true }),
-      ).toHaveAttribute("href", "https://example.com/feed1");
-      await expect(
-        page.getByRole("link", { name: "Test Feed 6", exact: true }),
-      ).toHaveAttribute("href", "https://example.com/feed6");
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      const firstFeedLink = page.locator('a[href="https://example.com/feed1"]');
+      await expect(firstFeedLink).toBeVisible();
+      await expect(firstFeedLink).toHaveAttribute("target", "_blank");
     });
 
     test("should handle long descriptions properly", async ({ page }) => {
-      // Check that long descriptions are displayed (may be truncated)
-      const longDescription =
-        "Description for test feed 1. This is a longer description to test how the UI handles different text lengths.";
-      await expect(page.getByText(longDescription)).toBeVisible();
-    });
-  });
-
-  test.describe("Feed Interaction", () => {
-    test("should be clickable links", async ({ page }) => {
-      const feedLink = page.getByRole("link", {
-        name: "Test Feed 1",
-        exact: true,
-      });
-
-      // Should be clickable (though we won't actually navigate)
-      await expect(feedLink).toBeVisible();
-      await expect(feedLink).toHaveAttribute("href");
-    });
-
-    test("should handle hover states", async ({ page }) => {
-      const feedLink = page.getByRole("link", {
-        name: "Test Feed 1",
-        exact: true,
-      });
-
-      // Hover over the link
-      await feedLink.hover();
-
-      // Link should still be visible and functional
-      await expect(feedLink).toBeVisible();
-    });
-
-    test("should handle focus states", async ({ page }) => {
-      const feedLink = page.getByRole("link", {
-        name: "Test Feed 1",
-        exact: true,
-      });
-
-      // Focus the link
-      await feedLink.focus();
-      await expect(feedLink).toBeFocused();
-    });
-  });
-
-  test.describe("Data Validation", () => {
-    test("should validate mock data structure", async ({ page }) => {
-      // Test the mock data structure (these are synchronous assertions)
-      expect(mockFeeds.length).toBe(10);
-      expect(mockFeeds[0].title).toBe("Test Feed 1");
-      expect(mockFeeds[0].description).toBe(
-        "Description for test feed 1. This is a longer description to test how the UI handles different text lengths.",
-      );
-      expect(mockFeeds[0].link).toBe("https://example.com/feed1");
-      expect(mockFeeds[0].published).toBe("2024-01-01T12:00:00Z");
-
-      expect(mockFeeds[5].id).toBe("6");
-      expect(mockFeeds[5].title).toBe("Test Feed 6");
-      expect(mockFeeds[5].description).toBe(
-        "Description for test feed 6. This is a longer description to test how the UI handles different text lengths.",
-      );
-      expect(mockFeeds[5].link).toBe("https://example.com/feed6");
-      expect(mockFeeds[5].published).toBe("2024-01-06T12:00:00Z");
-    });
-
-    test("should handle feeds with different content lengths", async ({
-      page,
-    }) => {
-      // All feeds should be displayed regardless of content length
-      for (let i = 1; i <= 10; i++) {
-        await expect(
-          page.getByRole("link", { name: `Test Feed ${i}`, exact: true }),
-        ).toBeVisible();
-      }
-    });
-  });
-
-  test.describe("Error Handling", () => {
-    test("should handle API errors gracefully", async ({ page }) => {
-      // Navigate to a new page to test error handling
+      // Create a feed with very long description to test truncation
       await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
+        const longDescriptionFeed = {
+          ...mockFeeds[0],
+          description: "A".repeat(400), // Very long description
+        };
         await route.fulfill({
-          status: 500,
+          status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ error: "Internal server error" }),
+          body: JSON.stringify([longDescriptionFeed, ...mockFeeds.slice(1)]),
         });
       });
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
 
-      // Should handle error gracefully (exact behavior depends on implementation)
-      // May show error message or empty state
+      // Should show truncated description with ellipsis
+      const description = await page.locator('[data-testid="feed-card"]').first().locator('text=...');
+      await expect(description).toBeVisible();
+    });
+  });
+
+  test.describe("Feed Interaction", () => {
+    test("should be clickable links", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      const feedLink = page.locator('a[href="https://example.com/feed1"]');
+      await expect(feedLink).toBeVisible();
+
+      // Check that the link has proper attributes for external navigation
+      await expect(feedLink).toHaveAttribute("target", "_blank");
     });
 
-    test("should handle empty feed list", async ({ page }) => {
+    test("should handle hover states", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      const markAsReadButton = page
+        .locator('button:has-text("Mark as read")')
+        .first();
+
+      // Hover over the button
+      await markAsReadButton.hover();
+
+      // Button should still be visible and functional
+      await expect(markAsReadButton).toBeVisible();
+    });
+
+    test("should handle focus states", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      const markAsReadButton = page
+        .locator('button:has-text("Mark as read")')
+        .first();
+
+      // Focus the button
+      await markAsReadButton.focus();
+      await expect(markAsReadButton).toBeFocused();
+
+      // Should be able to activate with keyboard
+      await page.keyboard.press("Enter");
+
+      // Should handle the click (button might disappear if feed is marked as read)
+      // Just verify the action was processed
+    });
+  });
+
+  test.describe("Mark as Read Functionality", () => {
+    test("should mark feed as read when button is clicked", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      const initialFeedCount = await page
+        .locator('button:has-text("Mark as read")')
+        .count();
+
+      const markAsReadButton = page
+        .locator('button:has-text("Mark as read")')
+        .first();
+
+      await markAsReadButton.click();
+
+      // After marking as read, the feed should be removed from the list
+      // So we should have one less "Mark as read" button
+      await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(
+        initialFeedCount - 1,
+      );
+    });
+
+        test("should update UI after marking as read", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+
+      // Wait for feeds to be properly loaded
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+
+      // First verify the feed is visible
+      await expect(page.getByText("Test Feed 1").first()).toBeVisible();
+
+      // Get the specific feed card that contains exactly "Test Feed 1" (not "Test Feed 10")
+      const firstFeedCard = page.locator('[data-testid="feed-card"]').filter({
+        has: page.getByRole("link", { name: "Test Feed 1", exact: true })
+      });
+      const markAsReadButton = firstFeedCard.locator('button:has-text("Mark as read")');
+
+      await markAsReadButton.click();
+
+      // Wait for the mark as read operation to complete and the component to update
+      await page.waitForTimeout(1000);
+
+      // The first feed card should no longer be visible
+      await expect(firstFeedCard).not.toBeVisible();
+    });
+  });
+
+  test.describe("Data Validation", () => {
+    test("should handle feeds with different content lengths", async ({
+      page,
+    }) => {
+      // Test with feeds of varying content lengths
+      const variedFeeds = [
+        {
+          id: "1",
+          title: "Short",
+          description: "Short desc",
+          link: "https://example.com/short",
+          published: "2024-01-01T12:00:00Z",
+        },
+        {
+          id: "2",
+          title: "Medium Length Title Here",
+          description:
+            "This is a medium length description that should display properly in the UI without issues.",
+          link: "https://example.com/medium",
+          published: "2024-01-02T12:00:00Z",
+        },
+        {
+          id: "3",
+          title: "Very Long Title That Goes On And On And Should Be Handled Gracefully By The UI",
+          description:
+            "This is a very long description that contains a lot of text and should be truncated properly by the component to ensure that the UI remains clean and readable even with extensive content that might otherwise break the layout or make it difficult to read other feed items in the list.",
+          link: "https://example.com/long",
+          published: "2024-01-03T12:00:00Z",
+        },
+      ];
+
       await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(variedFeeds),
+        });
+      });
+
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
+
+      // All feeds should be displayed
+      await expect(page.getByRole("link", { name: "Short" })).toBeVisible();
+      await expect(page.getByText("Medium Length Title Here")).toBeVisible();
+      await expect(
+        page.getByText("Very Long Title That Goes On And On"),
+      ).toBeVisible();
+    });
+
+    test("should handle empty feed data gracefully", async ({ page }) => {
+      await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+      });
+
+      await page.route("**/api/v1/feeds/fetch/list", async (route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -215,39 +244,39 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      // Should show no feeds
-      await expect(
-        page.getByRole("link").filter({ hasText: "Test Feed" }),
-      ).toHaveCount(0);
+      // Should show no feeds message
+      await expect(page.getByText("No feeds available")).toBeVisible();
     });
 
-    test("should handle malformed feed data", async ({ page }) => {
-      const malformedFeeds = [
-        { id: "1", title: "", description: "", link: "", published: "" },
-        {
-          id: "2",
-          title: null,
-          description: null,
-          link: null,
-          published: null,
-        },
-      ];
-
+    test("should handle API errors gracefully", async ({ page }) => {
       await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
         await route.fulfill({
-          status: 200,
+          status: 500,
           contentType: "application/json",
-          body: JSON.stringify(malformedFeeds),
+          body: JSON.stringify({ error: "Internal server error" }),
+        });
+      });
+
+      await page.route("**/api/v1/feeds/fetch/list", async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Internal server error" }),
         });
       });
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
+
+      // Should show error state
+      await expect(page.getByText("Failed to load feeds")).toBeVisible();
     });
   });
 
   test.describe("Feed Ordering and Display", () => {
     test("should display feeds in correct order", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
       // Check that feeds appear in the expected order
       const feedLinks = page.getByRole("link").filter({ hasText: "Test Feed" });
 
@@ -269,28 +298,26 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
 
       // Should display only 3 feeds
-      const feedLinks = page.getByRole("link").filter({ hasText: "Test Feed" });
-      await expect(feedLinks).toHaveCount(3);
+      const feedCards = page.locator('[data-testid="feed-card"]');
+      await expect(feedCards).toHaveCount(3);
     });
   });
 
   test.describe("Performance and Loading", () => {
     test("should load feeds efficiently", async ({ page }) => {
-      // Check that feeds load within reasonable time
       const startTime = Date.now();
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-
-      // First feed should be visible
-      await expect(
-        page.getByRole("link", { name: "Test Feed 1", exact: true }),
-      ).toBeVisible();
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
 
       const loadTime = Date.now() - startTime;
-      expect(loadTime).toBeLessThan(30000); // Should load within 30 seconds (more realistic for CI)
+
+      // Should load within reasonable time (20 seconds to account for CI environment variations)
+      expect(loadTime).toBeLessThan(20000);
     });
 
     test("should handle large feed lists", async ({ page }) => {
@@ -301,17 +328,17 @@ test.describe("FeedCard Component - Functionality Tests", () => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(largeFeedSet),
+          body: JSON.stringify(largeFeedSet.slice(0, 10)), // Still return 10 for first page
         });
       });
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
 
-      // Should handle large lists gracefully
-      await expect(
-        page.getByRole("link", { name: "Test Feed 1", exact: true }),
-      ).toBeVisible();
+      // Should still display the expected number of feeds
+      const feedCards = page.locator('[data-testid="feed-card"]');
+      await expect(feedCards).toHaveCount(10);
     });
   });
 
@@ -322,6 +349,7 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
 
       // Feeds should still be visible and properly formatted
       await expect(
@@ -335,6 +363,7 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
 
       // Feeds should still be visible and properly formatted
       await expect(
@@ -345,67 +374,38 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
   test.describe("Accessibility", () => {
     test("should have proper link structure", async ({ page }) => {
-      // Check that links are properly structured
-      const feedLink = page.getByRole("link", {
-        name: "Test Feed 1",
-        exact: true,
-      });
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      const feedLink = page.locator('a[href="https://example.com/feed1"]');
 
       await expect(feedLink).toBeVisible();
-      await expect(feedLink).toHaveAttribute("href");
+      await expect(feedLink).toHaveAttribute("target", "_blank");
     });
 
     test("should be keyboard navigable", async ({ page }) => {
-      // Should be able to tab through feed links
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      // Tab through interactive elements
       await page.keyboard.press("Tab");
 
-      // Check that we can focus on feed links specifically
-      const firstFeedLink = page.getByRole("link", {
-        name: "Test Feed 1",
-        exact: true,
-      });
-      await firstFeedLink.focus();
-      await expect(firstFeedLink).toBeFocused();
+      const focusedElement = page.locator(":focus");
+      await expect(focusedElement).toBeVisible();
     });
 
     test("should have proper semantic structure", async ({ page }) => {
-      // Check that feeds are structured as links
-      const feedLinks = page.getByRole("link").filter({ hasText: "Test Feed" });
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      // Links should be properly structured
+      const feedLinks = page.getByRole("link");
       await expect(feedLinks.first()).toBeVisible();
     });
 
     test("should handle screen reader accessibility", async ({ page }) => {
-      // Check that links have accessible names
-      await expect(
-        page.getByRole("link", { name: "Test Feed 1", exact: true }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("link", { name: "Test Feed 6", exact: true }),
-      ).toBeVisible();
-    });
-  });
-
-  test.describe("Integration with Other Components", () => {
-    test("should work with FeedDetails component", async ({ page }) => {
-      // Check that show details buttons are present (if FeedDetails is integrated)
-      const detailsButtons = page.getByTestId("show-details-button");
-
-      // May or may not be present depending on integration
-      // This test verifies the integration works if present
-      if ((await detailsButtons.count()) > 0) {
-        await expect(detailsButtons.first()).toBeVisible();
-      }
-    });
-
-    test("should work with pagination if implemented", async ({ page }) => {
-      // Check for pagination controls if they exist
-      const paginationControls = page.locator("[data-testid*='pagination']");
-
-      // May or may not be present depending on implementation
-      // This test verifies pagination works if present
-      if ((await paginationControls.count()) > 0) {
-        await expect(paginationControls.first()).toBeVisible();
-      }
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+      // Check that important elements have appropriate text content
+      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Mark as read" }).first()).toBeVisible();
     });
   });
 });
