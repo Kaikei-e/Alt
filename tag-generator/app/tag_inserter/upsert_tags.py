@@ -336,6 +336,123 @@ class TagInserter:
         logger.info(f"Batch processing completed: {results['processed_articles']} successful, {results['failed_articles']} failed")
         return results
 
+    def batch_upsert_tags_no_commit(self, conn: Connection, article_tags: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Batch process multiple article-tag operations without auto-committing.
+        Transaction management is left to the caller.
+
+        Args:
+            conn: Database connection (caller manages transaction)
+            article_tags: List of dictionaries with 'article_id' and 'tags' keys
+
+        Returns:
+            Dictionary with batch operation results
+        """
+        if not article_tags:
+            return {"success": True, "processed_articles": 0, "message": "No articles to process"}
+
+        logger.info(f"Starting batch processing of {len(article_tags)} articles (caller manages transaction)")
+
+        results = {
+            "success": True,
+            "processed_articles": 0,
+            "failed_articles": 0,
+            "errors": []
+        }
+
+        try:
+            with self._get_cursor(conn) as cursor:
+                # Process all articles in the current transaction (no commit here)
+                all_tags = set()  # Collect all unique tags first
+                valid_article_tags = []
+
+                # Validate and collect all data
+                for item in article_tags:
+                    try:
+                        article_id = item.get("article_id")
+                        if not article_id:
+                            raise ValueError("Missing article_id in batch item")
+
+                        tags = item.get("tags", [])
+                        if not tags or not isinstance(tags, list):
+                            continue  # Skip articles with no valid tags
+
+                        # Clean and validate tags
+                        clean_tags = [tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()]
+                        if not clean_tags:
+                            continue
+
+                        valid_article_tags.append({
+                            "article_id": article_id,
+                            "tags": clean_tags
+                        })
+                        all_tags.update(clean_tags)
+
+                    except Exception as e:
+                        results["failed_articles"] += 1
+                        error_msg = f"Failed to validate article {item.get('article_id', 'unknown')}: {e}"
+                        results["errors"].append(error_msg)
+                        logger.error(error_msg)
+
+                if not valid_article_tags:
+                    logger.warning("No valid article-tag combinations found")
+                    return {"success": True, "processed_articles": 0, "message": "No valid articles to process"}
+
+                logger.info(f"Processing {len(valid_article_tags)} valid articles with {len(all_tags)} unique tags")
+
+                # Step 1: Insert all unique tags at once
+                self._insert_tags(cursor, list(all_tags))
+
+                # Step 2: Get all tag IDs at once
+                tag_id_map = self._get_tag_ids(cursor, list(all_tags))
+
+                if not tag_id_map:
+                    raise DatabaseError("No tag IDs could be retrieved")
+
+                # Step 3: Insert all article-tag relationships
+                all_relationships = []
+                for article_data in valid_article_tags:
+                    article_id = article_data["article_id"]
+                    article_tags_list = article_data["tags"]
+
+                    for tag in article_tags_list:
+                        if tag in tag_id_map:
+                            all_relationships.append((article_id, tag_id_map[tag]))
+
+                if all_relationships:
+                    # Batch insert all relationships at once
+                    psycopg2.extras.execute_batch(
+                        cursor,
+                        """
+                        INSERT INTO article_tags (article_id, tag_id)
+                        VALUES (%s::uuid, %s)
+                        ON CONFLICT (article_id, tag_id) DO NOTHING
+                        """,
+                        all_relationships,
+                        page_size=self.config.page_size
+                    )
+                    logger.info(f"Inserted {len(all_relationships)} article-tag relationships")
+
+                # DO NOT commit here - let caller manage transaction
+                results["processed_articles"] = len(valid_article_tags)
+                logger.info(f"Successfully batch processed {results['processed_articles']} articles (transaction pending)")
+
+        except Exception as e:
+            # DO NOT rollback here - let caller manage transaction
+            results["success"] = False
+            results["failed_articles"] = len(article_tags)
+            error_msg = f"Batch processing failed: {e}"
+            results["errors"].append(error_msg)
+            logger.error(error_msg)
+            # Re-raise to let caller handle transaction rollback
+            raise
+
+        if results["failed_articles"] > 0:
+            results["success"] = False
+
+        logger.info(f"Batch processing completed (no commit): {results['processed_articles']} successful, {results['failed_articles']} failed")
+        return results
+
 # Maintain backward compatibility
 def upsert_tags(conn: Connection, article_id: str, tags: List[str]) -> None:
     """

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 
 import psycopg2
+import psycopg2.extensions
 from psycopg2.extras import DictCursor
 from psycopg2.extensions import connection as Connection
 
@@ -34,9 +35,9 @@ class TagGeneratorConfig:
     memory_cleanup_interval: int = 25  # articles between memory cleanup
     max_connection_retries: int = 3  # max database connection retries
     connection_retry_delay: float = 5.0  # seconds between connection attempts
-    use_connection_pool: bool = True  # enable connection pooling
-    pool_min_connections: int = 2  # minimum pool connections
-    pool_max_connections: int = 10  # maximum pool connections
+    use_connection_pool: bool = True  # Enable connection pooling with fixes
+    pool_min_connections: int = 5  # minimum pool connections
+    pool_max_connections: int = 20  # maximum pool connections
 
 class DatabaseConnectionError(Exception):
     """Custom exception for database connection errors."""
@@ -104,18 +105,53 @@ class TagGeneratorService:
             f"{os.getenv('DB_NAME')}"
         )
 
-        logger.debug("Database connection string prepared")
         return dsn
 
     def _get_database_connection(self):
         """Get database connection - either from pool or create new."""
-        logger.debug("Acquiring database connection...")
 
         if self._connection_pool:
+            # Log connection pool statistics before attempting to get connection
+            try:
+                stats = self._connection_pool.get_stats()
+                logger.info(f"Connection pool stats: {stats}")
+            except Exception as e:
+                logger.warning(f"Failed to get pool stats: {e}")
+
             # Use connection pool with explicit timeout handling
             try:
-                logger.debug("Getting connection from pool...")
-                return self._connection_pool.get_connection()
+                # Add a reasonable timeout to prevent indefinite hanging
+                import signal
+
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("Connection pool timeout after 30 seconds")
+
+                # Set timeout for connection acquisition
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(30)  # 30 second timeout
+
+                try:
+                    conn_context = self._connection_pool.get_connection()
+                    signal.alarm(0)  # Cancel timeout
+                    return conn_context
+                finally:
+                    signal.alarm(0)  # Ensure timeout is cancelled
+
+            except TimeoutError as e:
+                logger.error(f"Connection pool timeout: {e}")
+                logger.info("Pool appears hung, attempting to reset pool...")
+                self._reset_connection_pool()
+
+                # Try once more with the reset pool
+                if self._connection_pool:
+                    try:
+                        logger.info("Trying connection acquisition after pool reset...")
+                        return self._connection_pool.get_connection()
+                    except Exception as retry_error:
+                        logger.error(f"Failed again after pool reset: {retry_error}")
+
+                logger.info("Falling back to direct connection")
+                return self._create_direct_connection_context()
             except Exception as e:
                 logger.error(f"Failed to get connection from pool: {e}")
                 logger.info("Falling back to direct connection")
@@ -137,7 +173,6 @@ class TagGeneratorService:
             if conn:
                 try:
                     conn.close()
-                    logger.debug("Direct connection closed")
                 except Exception as e:
                     logger.warning(f"Error closing direct connection: {e}")
 
@@ -149,8 +184,27 @@ class TagGeneratorService:
             try:
                 logger.info(f"Attempting database connection (attempt {attempt + 1}/{self.config.max_connection_retries})")
                 conn = psycopg2.connect(dsn)
-                logger.info("Database connected successfully")
-                return conn
+
+                # Ensure connection starts in a clean state
+                try:
+                    # First, check if we're in a transaction and rollback if needed
+                    if conn.status != psycopg2.extensions.STATUS_READY:
+                        conn.rollback()
+
+                    # Ensure autocommit is enabled
+                    if not conn.autocommit:
+                        conn.autocommit = True
+
+                    logger.info("Database connected successfully")
+                    return conn
+                except Exception as setup_error:
+                    logger.warning(f"Failed to setup connection state: {setup_error}")
+                    # If we can't set up the connection properly, close it and try again
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    raise setup_error
 
             except psycopg2.Error as e:
                 logger.error(f"Database connection failed (attempt {attempt + 1}): {e}")
@@ -183,7 +237,6 @@ class TagGeneratorService:
         """Explicit memory cleanup to prevent accumulation."""
         if self.config.enable_gc_collection:
             gc.collect()
-            logger.debug("Memory cleanup performed")
 
     def _process_single_article(
         self,
@@ -205,17 +258,14 @@ class TagGeneratorService:
         content = article["content"]
 
         try:
-            logger.debug(f"Processing article {article_id}")
 
             # Extract tags
             tags = self.tag_extractor.extract_tags(title, content)
-            logger.debug(f"Extracted {len(tags)} tags for article {article_id}: {tags}")
 
             # Insert tags
             result = self.tag_inserter.upsert_tags(conn, article_id, tags)
 
             if result.get("success"):
-                logger.debug(f"Successfully processed article {article_id} with {result.get('tags_processed', 0)} tags")
                 return True
             else:
                 logger.warning(f"Tag insertion reported failure for article {article_id}")
@@ -245,13 +295,12 @@ class TagGeneratorService:
             "last_id": last_id
         }
 
-        # Collect articles for batch processing
+        # Collect articles for batch processing (keep autocommit for fetching)
         articles_to_process = []
 
         while len(articles_to_process) < self.config.batch_limit:
             try:
                 # Fetch articles
-                logger.debug("Fetching articles from database...")
                 articles = self.article_fetcher.fetch_articles(conn, last_created_at, last_id)
 
                 if not articles:
@@ -283,33 +332,63 @@ class TagGeneratorService:
                 logger.error(f"Error during article collection: {e}")
                 break
 
-        # Process the collected articles as a true batch
-        if articles_to_process:
-            logger.info(f"Processing batch of {len(articles_to_process)} articles...")
-            batch_stats = self._process_articles_as_batch(conn, articles_to_process)
-            # Ensure string format for batch stats
-            if isinstance(last_created_at, str):
-                batch_stats["last_created_at"] = last_created_at
-            else:
-                batch_stats["last_created_at"] = last_created_at.isoformat()
-            batch_stats["last_id"] = last_id
+        # Start explicit transaction for batch processing only
+        try:
+            if conn.autocommit:
+                conn.autocommit = False
 
-            # Update persistent cursor position for next cycle (ensure string format)
-            if isinstance(last_created_at, str):
-                self.last_processed_created_at = last_created_at
+            if articles_to_process:
+                logger.info(f"Processing batch of {len(articles_to_process)} articles...")
+                batch_stats = self._process_articles_as_batch(conn, articles_to_process)
+                # Ensure string format for batch stats
+                if isinstance(last_created_at, str):
+                    batch_stats["last_created_at"] = last_created_at
+                else:
+                    batch_stats["last_created_at"] = last_created_at.isoformat()
+                batch_stats["last_id"] = last_id
+
+                # Update persistent cursor position for next cycle (ensure string format)
+                if isinstance(last_created_at, str):
+                    self.last_processed_created_at = last_created_at
+                else:
+                    self.last_processed_created_at = last_created_at.isoformat()
+                self.last_processed_id = last_id
+                logger.info(f"Updated cursor position for next cycle: {self.last_processed_created_at}, ID: {last_id}")
+
+                # Commit the transaction only if batch processing was successful
+                if batch_stats.get("successful", 0) > 0:
+                    conn.commit()
+                else:
+                    conn.rollback()
+                    logger.warning("Transaction rolled back due to batch processing failure")
             else:
-                self.last_processed_created_at = last_created_at.isoformat()
-            self.last_processed_id = last_id
-            logger.info(f"Updated cursor position for next cycle: {self.last_processed_created_at}, ID: {last_id}")
+                # No articles to process, still commit to end transaction cleanly
+                conn.commit()
+
+        except Exception as e:
+            logger.error(f"Error during batch processing: {e}")
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback transaction: {rollback_error}")
+            raise
+        finally:
+            # Reset autocommit mode
+            try:
+                if not conn.autocommit:
+                    conn.autocommit = True
+            except Exception as e:
+                logger.warning(f"Failed to restore autocommit mode: {e}")
 
         return batch_stats
 
     def _process_articles_as_batch(self, conn: Connection, articles: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Process multiple articles as a single batch transaction.
+        Note: Transaction management is handled by the caller.
 
         Args:
-            conn: Database connection
+            conn: Database connection (should already be in transaction mode)
             articles: List of articles to process
 
         Returns:
@@ -331,7 +410,6 @@ class TagGeneratorService:
                 title = article["title"]
                 content = article["content"]
 
-                logger.debug(f"Extracting tags for article {article_id}")
                 tags = self.tag_extractor.extract_tags(title, content)
 
                 if tags:  # Only include articles that have tags
@@ -339,7 +417,6 @@ class TagGeneratorService:
                         "article_id": article_id,
                         "tags": tags
                     })
-                    logger.debug(f"Extracted {len(tags)} tags for article {article_id}: {tags}")
 
                 # Log progress during tag extraction
                 if (i + 1) % self.config.progress_log_interval == 0:
@@ -348,20 +425,19 @@ class TagGeneratorService:
                 # Periodic memory cleanup during batch processing
                 if (i + 1) % self.config.memory_cleanup_interval == 0:
                     self._cleanup_memory()
-                    logger.debug(f"Memory cleanup after processing {i + 1} articles")
 
             except Exception as e:
                 logger.error(f"Error extracting tags for article {article.get('id', 'unknown')}: {e}")
                 batch_stats["failed"] += 1
                 continue
 
-        # Perform batch upsert of all tags in a single transaction
+        # Perform batch upsert of all tags in the current transaction
         if article_tags_batch:
             try:
-                logger.info(f"Upserting tags for {len(article_tags_batch)} articles in single transaction...")
+                logger.info(f"Upserting tags for {len(article_tags_batch)} articles in current transaction...")
 
-                # Use the batch upsert method that commits everything at once
-                result = self.tag_inserter.batch_upsert_tags(conn, article_tags_batch)
+                # Use the batch upsert method (transaction managed by caller)
+                result = self.tag_inserter.batch_upsert_tags_no_commit(conn, article_tags_batch)
 
                 batch_stats["successful"] = result.get("processed_articles", 0)
                 batch_stats["failed"] += result.get("failed_articles", 0)
@@ -371,11 +447,16 @@ class TagGeneratorService:
                     logger.info(f"Successfully batch processed {batch_stats['successful']} articles")
                 else:
                     logger.warning(f"Batch processing completed with {batch_stats['failed']} failures")
+                    # If batch processing failed, raise exception to trigger rollback
+                    if batch_stats["failed"] > 0:
+                        raise DatabaseConnectionError(f"Batch processing failed for {batch_stats['failed']} articles")
 
             except Exception as e:
                 logger.error(f"Batch upsert failed: {e}")
                 batch_stats["failed"] = len(articles)
                 batch_stats["total_processed"] = len(articles)
+                # Re-raise to trigger transaction rollback at higher level
+                raise
         else:
             logger.warning("No articles with tags to process")
             batch_stats["total_processed"] = len(articles)
@@ -395,7 +476,7 @@ class TagGeneratorService:
 
     def run_processing_cycle(self) -> Dict[str, Any]:
         """
-        Run a single processing cycle.
+        Run a single processing cycle with explicit transaction management.
 
         Returns:
             Dictionary with cycle results
@@ -403,22 +484,42 @@ class TagGeneratorService:
         logger.info("Starting tag generation processing cycle")
         logger.info("Preparing to acquire database connection...")
 
+        batch_stats = {
+            "success": False,
+            "total_processed": 0,
+            "successful": 0,
+            "failed": 0,
+            "error": None
+        }
+
         try:
             # Use database connection (pooled or direct)
             logger.info("Acquiring database connection...")
             with self._get_database_connection() as conn:
                 logger.info("Database connection acquired successfully")
 
-                # Process articles batch
+                # Ensure connection starts in autocommit mode
+                if not conn.autocommit:
+                    conn.autocommit = True
+
+                # Process articles batch (handles its own transaction)
                 logger.info("Starting article batch processing...")
-                batch_stats = self._process_article_batch(conn)
+                processing_stats = self._process_article_batch(conn)
+
+                # Update batch stats with processing results
+                batch_stats.update(processing_stats)
+                batch_stats["success"] = processing_stats.get("successful", 0) > 0 or processing_stats.get("total_processed", 0) == 0
 
                 logger.info("Article batch processing completed")
+                self._log_batch_summary(batch_stats)
                 return batch_stats
 
         except Exception as e:
-            logger.error(f"Processing cycle failed: {e}")
-            raise
+            error_msg = f"Processing cycle failed: {e}"
+            logger.error(error_msg)
+            batch_stats["error"] = str(e)
+            batch_stats["success"] = False
+            return batch_stats
 
     def run_service(self) -> None:
         """Run the tag generation service continuously."""
@@ -435,15 +536,17 @@ class TagGeneratorService:
                 # Run processing cycle
                 result = self.run_processing_cycle()
 
-                if result["success"]:
+                if result.get("success", False):
                     logger.info(
                         f"Cycle {cycle_count} completed successfully. "
+                        f"Processed: {result.get('successful', 0)}/{result.get('total_processed', 0)} articles. "
                         f"Sleeping for {self.config.processing_interval} seconds..."
                     )
                     time.sleep(self.config.processing_interval)
                 else:
                     logger.error(
                         f"Cycle {cycle_count} failed: {result.get('error', 'Unknown error')}. "
+                        f"Failed: {result.get('failed', 0)}/{result.get('total_processed', 0)} articles. "
                         f"Retrying in {self.config.error_retry_interval} seconds..."
                     )
                     time.sleep(self.config.error_retry_interval)
@@ -463,8 +566,27 @@ class TagGeneratorService:
             logger.info("Closing connection pool")
             close_connection_pool()
 
+    def _reset_connection_pool(self) -> None:
+        """Reset the connection pool if it gets into a bad state."""
+        try:
+            logger.warning("Resetting connection pool due to issues")
+            if self._connection_pool:
+                # Close the existing pool
+                self._connection_pool.close()
+                self._connection_pool = None
+
+            # Recreate the connection pool
+            self._setup_connection_pool()
+            logger.info("Connection pool successfully reset")
+
+        except Exception as e:
+            logger.error(f"Failed to reset connection pool: {e}")
+            # Disable pool as fallback
+            self._connection_pool = None
+
 def main():
     """Main entry point for the tag generation service."""
+
     logger.info("Hello from tag-generator!")
 
     try:
