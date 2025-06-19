@@ -6,6 +6,7 @@ import (
 	"alt/driver/models"
 	"alt/utils/logger"
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,10 +17,13 @@ type RegisterFeedsGateway struct {
 }
 
 func NewRegisterFeedsGateway(pool *pgxpool.Pool) *RegisterFeedsGateway {
-	return &RegisterFeedsGateway{alt_db: alt_db.NewAltDBRepository(pool)}
+	return &RegisterFeedsGateway{alt_db: alt_db.NewAltDBRepositoryWithPool(pool)}
 }
 
 func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) error {
+	if g.alt_db == nil {
+		return errors.New("database repository is not initialized")
+	}
 	var items []models.Feed
 	for _, feedItem := range feeds {
 		feedModel := &models.Feed{

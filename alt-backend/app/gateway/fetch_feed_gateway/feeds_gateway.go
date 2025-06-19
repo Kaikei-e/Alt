@@ -18,7 +18,7 @@ type FetchFeedsGateway struct {
 
 func NewFetchFeedsGateway(pool *pgxpool.Pool) *FetchFeedsGateway {
 	return &FetchFeedsGateway{
-		alt_db: alt_db.NewAltDBRepository(pool),
+		alt_db: alt_db.NewAltDBRepositoryWithPool(pool),
 	}
 }
 
@@ -64,6 +64,9 @@ func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*dom
 }
 
 func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedItem, error) {
+	if g.alt_db == nil {
+		return nil, errors.New("database repository is not initialized")
+	}
 	feeds, err := g.alt_db.FetchFeedsList(ctx)
 	if err != nil {
 		logger.Logger.Error("Error fetching feeds list", "error", err)
@@ -83,6 +86,9 @@ func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedI
 }
 
 func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int) ([]*domain.FeedItem, error) {
+	if g.alt_db == nil {
+		return nil, errors.New("database repository is not initialized")
+	}
 	feeds, err := g.alt_db.FetchFeedsListLimit(ctx, offset)
 	if err != nil {
 		logger.Logger.Error("Error fetching feeds list offset", "error", err)
@@ -103,6 +109,9 @@ func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int)
 }
 
 func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
+	if g.alt_db == nil {
+		return nil, errors.New("database repository is not initialized")
+	}
 	// Try to fetch unread feeds first, fallback to all feeds if read_status table has issues
 	feeds, err := g.alt_db.FetchUnreadFeedsListPage(ctx, page)
 	if err != nil {

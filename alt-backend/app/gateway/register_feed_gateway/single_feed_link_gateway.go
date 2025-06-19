@@ -16,10 +16,13 @@ type RegisterFeedGateway struct {
 }
 
 func NewRegisterFeedLinkGateway(pool *pgxpool.Pool) *RegisterFeedGateway {
-	return &RegisterFeedGateway{alt_db: alt_db.NewAltDBRepository(pool)}
+	return &RegisterFeedGateway{alt_db: alt_db.NewAltDBRepositoryWithPool(pool)}
 }
 
 func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link string) error {
+	if g.alt_db == nil {
+		return errors.New("database repository is not initialized")
+	}
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(link)
 	if err != nil {

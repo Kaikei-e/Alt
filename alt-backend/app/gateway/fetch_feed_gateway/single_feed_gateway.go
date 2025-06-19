@@ -17,11 +17,14 @@ type FetchSingleFeedGateway struct {
 
 func NewFetchSingleFeedGateway(pool *pgxpool.Pool) *FetchSingleFeedGateway {
 	return &FetchSingleFeedGateway{
-		alt_db: alt_db.NewAltDBRepository(pool),
+		alt_db: alt_db.NewAltDBRepositoryWithPool(pool),
 	}
 }
 
 func (g *FetchSingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFeed, error) {
+	if g.alt_db == nil {
+		return nil, errors.New("database repository is not initialized")
+	}
 	// Get RSS feed URLs from the database
 	feedURLs, err := g.alt_db.FetchRSSFeedURLs(ctx)
 	if err != nil {

@@ -14,7 +14,7 @@ type SearchByTitleGateway struct {
 }
 
 func NewSearchByTitleGateway(pool *pgxpool.Pool) *SearchByTitleGateway {
-	return &SearchByTitleGateway{alt_db: alt_db.NewAltDBRepository(pool)}
+	return &SearchByTitleGateway{alt_db: alt_db.NewAltDBRepositoryWithPool(pool)}
 }
 
 func (g *SearchByTitleGateway) SearchByTitle(ctx context.Context, query string) ([]*domain.FeedItem, error) {
