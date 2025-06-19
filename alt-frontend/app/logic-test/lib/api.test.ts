@@ -40,7 +40,7 @@ describe("ApiClient", () => {
             "Accept-Encoding": "gzip, deflate, br",
           }),
           keepalive: true,
-        })
+        }),
       );
       expect(result).toEqual(mockResponse);
     });
@@ -65,7 +65,7 @@ describe("ApiClient", () => {
     it("should handle cache expiration", async () => {
       const mockResponse1 = { data: "test1" };
       const mockResponse2 = { data: "test2" };
-      
+
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -98,7 +98,7 @@ describe("ApiClient", () => {
       });
 
       await expect(apiClient.get("/test")).rejects.toThrow(
-        "API request failed: 404 Not Found"
+        "API request failed: 404 Not Found",
       );
     });
 
@@ -127,7 +127,7 @@ describe("ApiClient", () => {
     it("should make POST request with correct headers and body", async () => {
       const mockResponse = { success: true };
       const postData = { key: "value" };
-      
+
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: vi.fn().mockResolvedValue(mockResponse),
@@ -145,7 +145,7 @@ describe("ApiClient", () => {
           }),
           body: JSON.stringify(postData),
           keepalive: true,
-        })
+        }),
       );
       expect(result).toEqual(mockResponse);
     });
@@ -189,7 +189,7 @@ describe("ApiClient", () => {
       });
 
       await expect(apiClient.post("/test", {})).rejects.toThrow(
-        "Something went wrong"
+        "Something went wrong",
       );
     });
 
@@ -201,7 +201,7 @@ describe("ApiClient", () => {
       });
 
       await expect(apiClient.post("/test", {})).rejects.toThrow(
-        "API request failed: 500 Internal Server Error"
+        "API request failed: 500 Internal Server Error",
       );
     });
   });
@@ -284,7 +284,7 @@ describe("feedsApi", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost/api/v1/feeds/fetch/limit/40",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
   });
@@ -376,7 +376,7 @@ describe("feedsApi", () => {
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({ url: "https://example.com/feed" }),
-        })
+        }),
       );
       expect(result).toEqual(mockResponse);
     });
@@ -394,7 +394,7 @@ describe("feedsApi", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost/api/v1/health",
-        expect.any(Object)
+        expect.any(Object),
       );
       expect(result).toEqual(mockResponse);
     });
@@ -417,11 +417,11 @@ describe("feedsApi", () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost/api/v1/feeds/fetch/page/0",
-        expect.any(Object)
+        expect.any(Object),
       );
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost/api/v1/feeds/fetch/page/1",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 

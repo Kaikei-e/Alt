@@ -65,7 +65,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to actually load by checking for feed cards
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
   });
 
   test.describe("Initial State", () => {
@@ -214,7 +216,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".summary-text")).toBeVisible();
 
       // Wait for modal to be fully rendered
-      await expect(page.locator('[data-testid="modal-backdrop"]')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="modal-backdrop"]'),
+      ).toBeVisible();
 
       // Try multiple strategies to click the backdrop
       const backdrop = page.locator('[data-testid="modal-backdrop"]');
@@ -380,7 +384,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
   });
 
   test.describe("Multiple Feed Details", () => {
-    test("should handle details for different feeds independently", async ({ page }) => {
+    test("should handle details for different feeds independently", async ({
+      page,
+    }) => {
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         const request = await route.request();
         const body = await request.postDataJSON();
@@ -431,7 +437,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
 
       // Check that modal elements are visible
       await expect(page.getByText("Article Summary")).toBeVisible();
-      await expect(page.locator('[data-testid="modal-backdrop"]')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="modal-backdrop"]'),
+      ).toBeVisible();
       await expect(page.locator('[data-testid="modal-content"]')).toBeVisible();
     });
 
@@ -507,15 +515,21 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await page.locator(".show-details-button").first().click();
 
       // Wait for the modal to be fully open
-      await expect(page.locator('[data-testid="modal-backdrop"]')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="modal-backdrop"]'),
+      ).toBeVisible();
       await expect(page.locator('[data-testid="modal-content"]')).toBeVisible();
 
       // Press Escape to close modal
       await page.keyboard.press("Escape");
 
       // Modal should be hidden
-      await expect(page.locator('[data-testid="modal-backdrop"]')).not.toBeVisible();
-      await expect(page.locator('[data-testid="modal-content"]')).not.toBeVisible();
+      await expect(
+        page.locator('[data-testid="modal-backdrop"]'),
+      ).not.toBeVisible();
+      await expect(
+        page.locator('[data-testid="modal-content"]'),
+      ).not.toBeVisible();
       await expect(page.locator(".show-details-button").first()).toBeVisible();
     });
   });

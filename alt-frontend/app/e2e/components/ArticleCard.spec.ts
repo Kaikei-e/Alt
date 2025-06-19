@@ -17,18 +17,15 @@ test.describe("ArticleCard Component - Functionality Tests", () => {
     console.log("Page loaded, looking for article cards...");
 
     try {
-      await page.waitForSelector(
-        "[data-testid='article-card']",
-        { timeout: 10000 }
-      );
+      await page.waitForSelector("[data-testid='article-card']", {
+        timeout: 10000,
+      });
     } catch (error) {
       console.log("Failed to find article cards, page content:", pageContent);
       throw error;
     }
 
-    const articleCards = await page.$$(
-      "[data-testid='article-card']",
-    );
+    const articleCards = await page.$$("[data-testid='article-card']");
     expect(articleCards).toHaveLength(mockArticles.length);
 
     for (const article of mockArticles) {

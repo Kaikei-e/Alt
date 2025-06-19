@@ -16,15 +16,12 @@ export function throttle<T extends (...args: never[]) => void>(
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      
+
       const remainingDelay = delay - timeSinceLastExec;
-      timeoutId = setTimeout(
-        () => {
-          func(...args);
-          lastExecTime = Date.now();
-        },
-        remainingDelay,
-      );
+      timeoutId = setTimeout(() => {
+        func(...args);
+        lastExecTime = Date.now();
+      }, remainingDelay);
     }
   };
 }
@@ -48,7 +45,7 @@ export function createRateLimiter(maxCalls: number, windowMs: number) {
 
   return function rateLimiter(): boolean {
     const now = Date.now();
-    
+
     // Remove calls outside the window
     while (calls.length > 0 && calls[0] <= now - windowMs) {
       calls.shift();

@@ -12,7 +12,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     test("should render feed cards", async ({ page }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({ timeout: 10000 });
     });
 
     test("should display correct feed titles", async ({ page }) => {
@@ -20,9 +22,15 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Check for first few feed titles with increased timeout
-      await expect(page.getByText("Test Feed 1").first()).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText("Test Feed 2").first()).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText("Test Feed 3").first()).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("Test Feed 1").first()).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.getByText("Test Feed 2").first()).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.getByText("Test Feed 3").first()).toBeVisible({
+        timeout: 10000,
+      });
     });
 
     test("should display mark as read buttons", async ({ page }) => {
@@ -74,10 +82,15 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible();
 
       // Should show truncated description with ellipsis
-      const description = await page.locator('[data-testid="feed-card"]').first().locator('text=...');
+      const description = await page
+        .locator('[data-testid="feed-card"]')
+        .first()
+        .locator("text=...");
       await expect(description).toBeVisible();
     });
   });
@@ -127,12 +140,16 @@ test.describe("FeedCard Component - Functionality Tests", () => {
   });
 
   test.describe("Mark as Read Functionality", () => {
-    test("should mark feed as read when button is clicked", async ({ page }) => {
+    test("should mark feed as read when button is clicked", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
       // Wait for feeds to be fully loaded before counting
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({ timeout: 10000 });
 
       const initialFeedCount = await page
         .locator('button:has-text("Mark as read")')
@@ -150,7 +167,7 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       // Wait for the UI to update after marking as read
       await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(
         initialFeedCount - 1,
-        { timeout: 10000 }
+        { timeout: 10000 },
       );
     });
 
@@ -159,16 +176,20 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Wait for feeds to be properly loaded
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({ timeout: 10000 });
 
       // First verify the feed is visible
       await expect(page.getByText("Test Feed 1").first()).toBeVisible();
 
       // Get the specific feed card that contains exactly "Test Feed 1" (not "Test Feed 10")
       const firstFeedCard = page.locator('[data-testid="feed-card"]').filter({
-        has: page.getByRole("link", { name: "Test Feed 1", exact: true })
+        has: page.getByRole("link", { name: "Test Feed 1", exact: true }),
       });
-      const markAsReadButton = firstFeedCard.locator('button:has-text("Mark as read")');
+      const markAsReadButton = firstFeedCard.locator(
+        'button:has-text("Mark as read")',
+      );
 
       await markAsReadButton.click();
 
@@ -203,7 +224,8 @@ test.describe("FeedCard Component - Functionality Tests", () => {
         },
         {
           id: "3",
-          title: "Very Long Title That Goes On And On And Should Be Handled Gracefully By The UI",
+          title:
+            "Very Long Title That Goes On And On And Should Be Handled Gracefully By The UI",
           description:
             "This is a very long description that contains a lot of text and should be truncated properly by the component to ensure that the UI remains clean and readable even with extensive content that might otherwise break the layout or make it difficult to read other feed items in the list.",
           link: "https://example.com/long",
@@ -221,7 +243,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible();
 
       // All feeds should be displayed
       await expect(page.getByRole("link", { name: "Short" })).toBeVisible();
@@ -305,7 +329,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible();
 
       // Should display only 3 feeds
       const feedCards = page.locator('[data-testid="feed-card"]');
@@ -319,7 +345,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible();
 
       const loadTime = Date.now() - startTime;
 
@@ -341,7 +369,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible();
 
       // Should still display the expected number of feeds
       const feedCards = page.locator('[data-testid="feed-card"]');
@@ -356,7 +386,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible();
 
       // Feeds should still be visible and properly formatted
       await expect(
@@ -370,7 +402,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible();
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible();
 
       // Feeds should still be visible and properly formatted
       await expect(
@@ -411,8 +445,12 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
       // Check that important elements have appropriate text content
-      await expect(page.getByRole("link", { name: "Test Feed 1", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Mark as read" }).first()).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Test Feed 1", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Mark as read" }).first(),
+      ).toBeVisible();
     });
   });
 });

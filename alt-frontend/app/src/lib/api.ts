@@ -6,7 +6,12 @@ import {
 } from "@/schema/feed";
 import { FeedSearchResult } from "@/schema/search";
 import { Article } from "@/schema/article";
-import { ApiConfig, defaultApiConfig, CacheConfig, defaultCacheConfig } from "@/lib/config";
+import {
+  ApiConfig,
+  defaultApiConfig,
+  CacheConfig,
+  defaultCacheConfig,
+} from "@/lib/config";
 
 export type ApiResponse<T> = {
   data: T;
@@ -50,7 +55,10 @@ class ApiClient {
   private pendingRequests = new Map<string, Promise<any>>();
   private cleanupTimer?: NodeJS.Timeout;
 
-  constructor(apiConfig: ApiConfig = defaultApiConfig, cacheConfig: CacheConfig = defaultCacheConfig) {
+  constructor(
+    apiConfig: ApiConfig = defaultApiConfig,
+    cacheConfig: CacheConfig = defaultCacheConfig,
+  ) {
     this.config = apiConfig;
     this.cacheConfig = cacheConfig;
     this.startCacheCleanup();
@@ -64,7 +72,11 @@ class ApiClient {
     return Date.now() - entry.timestamp < entry.ttl;
   }
 
-  private setCache<T>(key: string, data: T, ttlMinutes: number = this.cacheConfig.defaultTtl / (60 * 1000)): void {
+  private setCache<T>(
+    key: string,
+    data: T,
+    ttlMinutes: number = this.cacheConfig.defaultTtl / (60 * 1000),
+  ): void {
     // Implement cache size limit
     if (this.cache.size >= this.cacheConfig.maxSize) {
       this.evictOldestEntry();
@@ -101,15 +113,18 @@ class ApiClient {
     }
 
     try {
-      const responsePromise = this.makeRequest(`${this.config.baseUrl}${endpoint}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "max-age=300",
-          "Accept-Encoding": "gzip, deflate, br",
+      const responsePromise = this.makeRequest(
+        `${this.config.baseUrl}${endpoint}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "max-age=300",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          keepalive: true,
         },
-        keepalive: true,
-      }).then(response => response.json());
+      ).then((response) => response.json());
 
       this.pendingRequests.set(cacheKey, responsePromise);
 
@@ -130,15 +145,18 @@ class ApiClient {
 
   async post<T>(endpoint: string, data: Record<string, unknown>): Promise<T> {
     try {
-      const response = await this.makeRequest(`${this.config.baseUrl}${endpoint}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept-Encoding": "gzip, deflate, br",
+      const response = await this.makeRequest(
+        `${this.config.baseUrl}${endpoint}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          body: JSON.stringify(data),
+          keepalive: true,
         },
-        body: JSON.stringify(data),
-        keepalive: true,
-      });
+      );
 
       const result = await response.json();
 
@@ -155,14 +173,20 @@ class ApiClient {
         throw error;
       }
       throw new ApiClientError(
-        error instanceof Error ? error.message : "Unknown error occurred"
+        error instanceof Error ? error.message : "Unknown error occurred",
       );
     }
   }
 
-  private async makeRequest(url: string, options: RequestInit): Promise<Response> {
+  private async makeRequest(
+    url: string,
+    options: RequestInit,
+  ): Promise<Response> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      this.config.requestTimeout,
+    );
 
     try {
       const response = await fetch(url, {
@@ -175,7 +199,7 @@ class ApiClient {
       if (!response.ok) {
         throw new ApiClientError(
           `API request failed: ${response.status} ${response.statusText}`,
-          response.status
+          response.status,
         );
       }
 
@@ -319,7 +343,9 @@ export const feedsApi = {
 
   async searchFeeds(query: string): Promise<FeedSearchResult> {
     try {
-      const response = await apiClient.post<BackendFeedItem[] | FeedSearchResult>("/v1/feeds/search", { query });
+      const response = await apiClient.post<
+        BackendFeedItem[] | FeedSearchResult
+      >("/v1/feeds/search", { query });
 
       // Backend returns array directly, so wrap it in expected structure
       if (Array.isArray(response)) {
@@ -331,7 +357,8 @@ export const feedsApi = {
     } catch (error) {
       return {
         results: [],
-        error: error instanceof ApiClientError ? error.message : "Search failed",
+        error:
+          error instanceof ApiClientError ? error.message : "Search failed",
       };
     }
   },

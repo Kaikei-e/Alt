@@ -90,11 +90,11 @@ describe("throttle utility", () => {
 
       throttledFn("first");
       throttledFn("second");
-      
+
       vi.advanceTimersByTime(500);
       throttledFn("third");
 
-      // At this point: 
+      // At this point:
       // - "first" was called immediately
       // - "second" was scheduled but cancelled by "third"
       // - "third" is now scheduled for 500ms from when it was called
@@ -190,7 +190,7 @@ describe("throttle utility", () => {
       expect(rateLimiter()).toBe(false);
 
       // Wait for window to pass
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       expect(rateLimiter()).toBe(true);
       expect(rateLimiter()).toBe(true);
@@ -201,12 +201,12 @@ describe("throttle utility", () => {
       const rateLimiter = createRateLimiter(2, 200);
 
       expect(rateLimiter()).toBe(true); // t=0
-      
-      await new Promise(resolve => setTimeout(resolve, 100));
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
       expect(rateLimiter()).toBe(true); // t=100
       expect(rateLimiter()).toBe(false); // t=100, limit reached
 
-      await new Promise(resolve => setTimeout(resolve, 110)); // t=210
+      await new Promise((resolve) => setTimeout(resolve, 110)); // t=210
       // First call (t=0) should be outside window now
       expect(rateLimiter()).toBe(true);
     });
@@ -236,7 +236,7 @@ describe("throttle utility", () => {
       expect(shortWindowLimiter()).toBe(true);
       expect(shortWindowLimiter()).toBe(false);
 
-      await new Promise(resolve => setTimeout(resolve, 15));
+      await new Promise((resolve) => setTimeout(resolve, 15));
       expect(shortWindowLimiter()).toBe(true);
     });
   });

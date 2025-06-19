@@ -18,12 +18,16 @@ describe("ErrorHandler", () => {
   });
 
   afterEach(() => {
-    Object.values(consoleSpy).forEach(spy => spy.mockRestore());
+    Object.values(consoleSpy).forEach((spy) => spy.mockRestore());
   });
 
   describe("handleApiError", () => {
     it("should handle ApiClientError with status code", () => {
-      const apiError = new ApiClientError("Server error", 500, "INTERNAL_ERROR");
+      const apiError = new ApiClientError(
+        "Server error",
+        500,
+        "INTERNAL_ERROR",
+      );
       const result = ErrorHandler.handleApiError(apiError, { userId: "123" });
 
       expect(result).toEqual({
@@ -33,10 +37,10 @@ describe("ErrorHandler", () => {
         context: { userId: "123" },
       });
 
-      expect(consoleSpy.error).toHaveBeenCalledWith(
-        "[HIGH] Server error",
-        { code: "INTERNAL_ERROR", context: { userId: "123" } }
-      );
+      expect(consoleSpy.error).toHaveBeenCalledWith("[HIGH] Server error", {
+        code: "INTERNAL_ERROR",
+        context: { userId: "123" },
+      });
     });
 
     it("should handle ApiClientError with client error status", () => {
@@ -50,15 +54,17 @@ describe("ErrorHandler", () => {
         context: undefined,
       });
 
-      expect(consoleSpy.warn).toHaveBeenCalledWith(
-        "[MEDIUM] Not found",
-        { code: "404", context: undefined }
-      );
+      expect(consoleSpy.warn).toHaveBeenCalledWith("[MEDIUM] Not found", {
+        code: "404",
+        context: undefined,
+      });
     });
 
     it("should handle generic Error", () => {
       const error = new Error("Generic error");
-      const result = ErrorHandler.handleApiError(error, { action: "fetchData" });
+      const result = ErrorHandler.handleApiError(error, {
+        action: "fetchData",
+      });
 
       expect(result).toEqual({
         message: "Generic error",
@@ -66,10 +72,10 @@ describe("ErrorHandler", () => {
         context: { action: "fetchData" },
       });
 
-      expect(consoleSpy.warn).toHaveBeenCalledWith(
-        "[MEDIUM] Generic error",
-        { code: undefined, context: { action: "fetchData" } }
-      );
+      expect(consoleSpy.warn).toHaveBeenCalledWith("[MEDIUM] Generic error", {
+        code: undefined,
+        context: { action: "fetchData" },
+      });
     });
 
     it("should handle unknown error types", () => {
@@ -83,7 +89,7 @@ describe("ErrorHandler", () => {
 
       expect(consoleSpy.warn).toHaveBeenCalledWith(
         "[MEDIUM] An unknown error occurred",
-        { code: undefined, context: undefined }
+        { code: undefined, context: undefined },
       );
     });
 
@@ -99,7 +105,9 @@ describe("ErrorHandler", () => {
   describe("handleValidationError", () => {
     it("should handle validation error with custom message", () => {
       const error = new Error("Field is required");
-      const result = ErrorHandler.handleValidationError(error, { field: "email" });
+      const result = ErrorHandler.handleValidationError(error, {
+        field: "email",
+      });
 
       expect(result).toEqual({
         message: "Field is required",
@@ -108,10 +116,10 @@ describe("ErrorHandler", () => {
         context: { field: "email" },
       });
 
-      expect(consoleSpy.log).toHaveBeenCalledWith(
-        "[LOW] Field is required",
-        { code: "VALIDATION_ERROR", context: { field: "email" } }
-      );
+      expect(consoleSpy.log).toHaveBeenCalledWith("[LOW] Field is required", {
+        code: "VALIDATION_ERROR",
+        context: { field: "email" },
+      });
     });
 
     it("should handle non-Error validation failures", () => {
@@ -129,7 +137,9 @@ describe("ErrorHandler", () => {
   describe("handleNetworkError", () => {
     it("should handle network errors", () => {
       const networkError = new Error("Failed to fetch");
-      const result = ErrorHandler.handleNetworkError(networkError, { url: "/api/data" });
+      const result = ErrorHandler.handleNetworkError(networkError, {
+        url: "/api/data",
+      });
 
       expect(result).toEqual({
         message: "Network error occurred. Please check your connection.",
@@ -140,7 +150,7 @@ describe("ErrorHandler", () => {
 
       expect(consoleSpy.warn).toHaveBeenCalledWith(
         "[MEDIUM] Network error occurred. Please check your connection.",
-        { code: "NETWORK_ERROR", context: { url: "/api/data" } }
+        { code: "NETWORK_ERROR", context: { url: "/api/data" } },
       );
     });
   });
@@ -149,27 +159,51 @@ describe("ErrorHandler", () => {
     it("should return appropriate messages for different error codes", () => {
       const testCases = [
         {
-          error: { message: "Field required", severity: "low" as const, code: "VALIDATION_ERROR" },
+          error: {
+            message: "Field required",
+            severity: "low" as const,
+            code: "VALIDATION_ERROR",
+          },
           expected: "Field required",
         },
         {
-          error: { message: "Network failed", severity: "medium" as const, code: "NETWORK_ERROR" },
+          error: {
+            message: "Network failed",
+            severity: "medium" as const,
+            code: "NETWORK_ERROR",
+          },
           expected: "Unable to connect. Please check your internet connection.",
         },
         {
-          error: { message: "Not found", severity: "medium" as const, code: "404" },
+          error: {
+            message: "Not found",
+            severity: "medium" as const,
+            code: "404",
+          },
           expected: "The requested resource was not found.",
         },
         {
-          error: { message: "Server error", severity: "high" as const, code: "500" },
+          error: {
+            message: "Server error",
+            severity: "high" as const,
+            code: "500",
+          },
           expected: "Server error. Please try again later.",
         },
         {
-          error: { message: "Timeout", severity: "medium" as const, code: "408" },
+          error: {
+            message: "Timeout",
+            severity: "medium" as const,
+            code: "408",
+          },
           expected: "Request timeout. Please try again.",
         },
         {
-          error: { message: "Critical failure", severity: "critical" as const, code: "UNKNOWN" },
+          error: {
+            message: "Critical failure",
+            severity: "critical" as const,
+            code: "UNKNOWN",
+          },
           expected: "A critical error occurred. Please refresh the page.",
         },
         {
@@ -191,25 +225,33 @@ describe("ErrorHandler", () => {
     });
 
     it("should prioritize critical severity over error code", () => {
-      const error = { 
-        message: "Database connection lost", 
-        severity: "critical" as const, 
-        code: "404" 
+      const error = {
+        message: "Database connection lost",
+        severity: "critical" as const,
+        code: "404",
       };
       const result = ErrorHandler.createUserFriendlyMessage(error);
-      expect(result).toBe("A critical error occurred. Please refresh the page.");
+      expect(result).toBe(
+        "A critical error occurred. Please refresh the page.",
+      );
     });
   });
 
   describe("logging behavior", () => {
     it("should use correct log levels for different severities", () => {
-      ErrorHandler.handleApiError(new ApiClientError("Critical", 500), { test: true });
+      ErrorHandler.handleApiError(new ApiClientError("Critical", 500), {
+        test: true,
+      });
       expect(consoleSpy.error).toHaveBeenCalled();
 
-      ErrorHandler.handleApiError(new ApiClientError("High", 503), { test: true });
+      ErrorHandler.handleApiError(new ApiClientError("High", 503), {
+        test: true,
+      });
       expect(consoleSpy.error).toHaveBeenCalled();
 
-      ErrorHandler.handleApiError(new ApiClientError("Medium", 400), { test: true });
+      ErrorHandler.handleApiError(new ApiClientError("Medium", 400), {
+        test: true,
+      });
       expect(consoleSpy.warn).toHaveBeenCalled();
 
       ErrorHandler.handleValidationError(new Error("Low"), { test: true });
@@ -217,17 +259,17 @@ describe("ErrorHandler", () => {
     });
 
     it("should include context information in logs", () => {
-      const context = { 
-        userId: "user123", 
-        action: "updateProfile", 
-        timestamp: Date.now() 
+      const context = {
+        userId: "user123",
+        action: "updateProfile",
+        timestamp: Date.now(),
       };
-      
+
       ErrorHandler.handleApiError(new Error("Test error"), context);
 
       expect(consoleSpy.warn).toHaveBeenCalledWith(
         expect.stringContaining("Test error"),
-        expect.objectContaining({ context })
+        expect.objectContaining({ context }),
       );
     });
   });

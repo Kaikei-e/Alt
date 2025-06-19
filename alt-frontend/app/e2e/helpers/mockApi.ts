@@ -2,11 +2,14 @@ import { Page } from "@playwright/test";
 import { Feed } from "@/schema/feed";
 import { Article } from "@/schema/article";
 
-export const mockApiEndpoints = async (page: Page, data: {
-  feeds?: Feed[];
-  articles?: Article[];
-  healthStatus?: { status: string };
-}) => {
+export const mockApiEndpoints = async (
+  page: Page,
+  data: {
+    feeds?: Feed[];
+    articles?: Article[];
+    healthStatus?: { status: string };
+  },
+) => {
   const { feeds = [], articles = [], healthStatus = { status: "ok" } } = data;
 
   // Health check endpoints
@@ -37,13 +40,16 @@ export const mockApiEndpoints = async (page: Page, data: {
       });
     });
 
-    await page.route("http://localhost/api/v1/feeds/fetch/page/0", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(feeds),
-      });
-    });
+    await page.route(
+      "http://localhost/api/v1/feeds/fetch/page/0",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(feeds),
+        });
+      },
+    );
 
     // Mock all feeds endpoint
     await page.route("**/api/v1/feeds/fetch/list", async (route) => {
@@ -54,13 +60,16 @@ export const mockApiEndpoints = async (page: Page, data: {
       });
     });
 
-    await page.route("http://localhost/api/v1/feeds/fetch/list", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(feeds),
-      });
-    });
+    await page.route(
+      "http://localhost/api/v1/feeds/fetch/list",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(feeds),
+        });
+      },
+    );
 
     // Mock feed read status endpoint
     await page.route("**/api/v1/feeds/read", async (route) => {
@@ -91,16 +100,19 @@ export const mockApiEndpoints = async (page: Page, data: {
       });
     });
 
-    await page.route("http://localhost/api/v1/feeds/fetch/details", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          feed_url: "https://example.com/feed1",
-          summary: "Test summary for this feed",
-        }),
-      });
-    });
+    await page.route(
+      "http://localhost/api/v1/feeds/fetch/details",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            feed_url: "https://example.com/feed1",
+            summary: "Test summary for this feed",
+          }),
+        });
+      },
+    );
   }
 
   // Articles endpoints
@@ -113,17 +125,23 @@ export const mockApiEndpoints = async (page: Page, data: {
       });
     });
 
-    await page.route("http://localhost/api/v1/articles/search**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(articles),
-      });
-    });
+    await page.route(
+      "http://localhost/api/v1/articles/search**",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(articles),
+        });
+      },
+    );
   }
 };
 
-export const generateMockFeeds = (count: number, startId: number = 1): Feed[] => {
+export const generateMockFeeds = (
+  count: number,
+  startId: number = 1,
+): Feed[] => {
   return Array.from({ length: count }, (_, index) => ({
     id: `${startId + index}`,
     title: `Test Feed ${startId + index}`,
@@ -133,7 +151,10 @@ export const generateMockFeeds = (count: number, startId: number = 1): Feed[] =>
   }));
 };
 
-export const generateMockArticles = (count: number, startId: number = 1): Article[] => {
+export const generateMockArticles = (
+  count: number,
+  startId: number = 1,
+): Article[] => {
   return Array.from({ length: count }, (_, index) => ({
     id: `${startId + index}`,
     title: `Test Article ${startId + index}`,

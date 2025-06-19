@@ -32,7 +32,7 @@ describe("InfiniteScroll Logic", () => {
   });
 
   it("should create IntersectionObserver with correct options", () => {
-    const observer = new IntersectionObserver(() => { }, {
+    const observer = new IntersectionObserver(() => {}, {
       rootMargin: "200px 0px",
       threshold: 0.1,
     });
@@ -42,20 +42,20 @@ describe("InfiniteScroll Logic", () => {
       {
         rootMargin: "200px 0px",
         threshold: 0.1,
-      }
+      },
     );
   });
 
   it("should observe element when provided", () => {
     const mockElement = { tagName: "DIV" } as HTMLDivElement;
-    const observer = new IntersectionObserver(() => { });
+    const observer = new IntersectionObserver(() => {});
     observer.observe(mockElement);
 
     expect(mockObserverInstance.observe).toHaveBeenCalledWith(mockElement);
   });
 
   it("should disconnect observer on cleanup", () => {
-    const observer = new IntersectionObserver(() => { });
+    const observer = new IntersectionObserver(() => {});
     observer.disconnect();
 
     expect(mockObserverInstance.disconnect).toHaveBeenCalled();
@@ -157,7 +157,7 @@ describe("InfiniteScroll Logic", () => {
           return setTimeout(() => setupObserver(), 100);
         }
 
-        return new IntersectionObserver(() => { });
+        return new IntersectionObserver(() => {});
       };
 
       const timeoutId = setupObserver();
@@ -171,8 +171,8 @@ describe("InfiniteScroll Logic", () => {
     it("should clean up timeouts and observers", () => {
       const clearTimeoutSpy = vi.spyOn(global, "clearTimeout");
 
-      const timeoutId = setTimeout(() => { }, 100);
-      const observer = new IntersectionObserver(() => { });
+      const timeoutId = setTimeout(() => {}, 100);
+      const observer = new IntersectionObserver(() => {});
 
       clearTimeout(timeoutId);
       observer.disconnect();

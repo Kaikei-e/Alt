@@ -25,7 +25,7 @@ describe("Schema Validation", () => {
     it("should trim whitespace from queries", () => {
       const query = { query: "  javascript  " };
       const result = v.safeParse(searchQuerySchema, query);
-      
+
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.output.query).toBe("javascript");
@@ -50,20 +50,24 @@ describe("Schema Validation", () => {
     it("should reject queries that are too short", () => {
       const query = { query: "a" };
       const result = v.safeParse(searchQuerySchema, query);
-      
+
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.issues[0].message).toBe("Search query must be at least 2 characters");
+        expect(result.issues[0].message).toBe(
+          "Search query must be at least 2 characters",
+        );
       }
     });
 
     it("should reject queries that are too long", () => {
       const query = { query: "a".repeat(101) };
       const result = v.safeParse(searchQuerySchema, query);
-      
+
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.issues[0].message).toBe("Search query must be at most 100 characters");
+        expect(result.issues[0].message).toBe(
+          "Search query must be at most 100 characters",
+        );
       }
     });
 
@@ -128,7 +132,7 @@ describe("Schema Validation", () => {
     it("should trim whitespace from article queries", () => {
       const query = { query: "  react tutorial  " };
       const result = v.safeParse(articleSearchQuerySchema, query);
-      
+
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.output.query).toBe("react tutorial");
@@ -136,10 +140,7 @@ describe("Schema Validation", () => {
     });
 
     it("should reject empty article queries", () => {
-      const invalidQueries = [
-        { query: "" },
-        { query: "   " },
-      ];
+      const invalidQueries = [{ query: "" }, { query: "   " }];
 
       invalidQueries.forEach((query) => {
         const result = v.safeParse(articleSearchQuerySchema, query);
@@ -153,20 +154,24 @@ describe("Schema Validation", () => {
     it("should reject article queries that are too short", () => {
       const query = { query: "x" };
       const result = v.safeParse(articleSearchQuerySchema, query);
-      
+
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.issues[0].message).toBe("Search query must be at least 2 characters");
+        expect(result.issues[0].message).toBe(
+          "Search query must be at least 2 characters",
+        );
       }
     });
 
     it("should reject article queries that are too long", () => {
       const query = { query: "x".repeat(101) };
       const result = v.safeParse(articleSearchQuerySchema, query);
-      
+
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.issues[0].message).toBe("Search query must be at most 100 characters");
+        expect(result.issues[0].message).toBe(
+          "Search query must be at most 100 characters",
+        );
       }
     });
   });
@@ -175,7 +180,7 @@ describe("Schema Validation", () => {
     it("should handle missing query field", () => {
       const invalidData = {};
       const result = v.safeParse(searchQuerySchema, invalidData);
-      
+
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.issues).toHaveLength(1);
@@ -185,14 +190,14 @@ describe("Schema Validation", () => {
     it("should handle multiple validation errors", () => {
       const invalidData = { query: 123, extra: "field" };
       const result = v.safeParse(searchQuerySchema, invalidData as any);
-      
+
       expect(result.success).toBe(false);
     });
 
     it("should provide detailed error information", () => {
       const query = { query: "" };
       const result = v.safeParse(searchQuerySchema, query);
-      
+
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.issues[0]).toMatchObject({

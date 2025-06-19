@@ -58,7 +58,7 @@ describe("feedsApiSse", () => {
   beforeEach(() => {
     mockOnMessage = vi.fn();
     mockOnError = vi.fn();
-    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.clearAllMocks();
     vi.useFakeTimers();
     lastEventSourceInstance = null;
@@ -77,7 +77,9 @@ describe("feedsApiSse", () => {
       expect(connection).toBeDefined();
       expect(connection.getReadyState()).toBe(MockEventSource.CONNECTING);
       expect(lastEventSourceInstance).toBeDefined();
-      expect(lastEventSourceInstance?.url).toBe("http://localhost/api/v1/sse/feeds/stats");
+      expect(lastEventSourceInstance?.url).toBe(
+        "http://localhost/api/v1/sse/feeds/stats",
+      );
     });
 
     it("should handle successful connection", () => {
@@ -87,8 +89,10 @@ describe("feedsApiSse", () => {
       lastEventSourceInstance?.triggerOpen();
 
       // Check that "SSE connection opened:" was called (should be second call)
-      const openedCalls = consoleSpy.mock.calls.filter(call =>
-        typeof call[0] === 'string' && call[0].includes("SSE connection opened:")
+      const openedCalls = consoleSpy.mock.calls.filter(
+        (call) =>
+          typeof call[0] === "string" &&
+          call[0].includes("SSE connection opened:"),
       );
       expect(openedCalls.length).toBeGreaterThan(0);
     });
@@ -111,7 +115,7 @@ describe("feedsApiSse", () => {
     });
 
     it("should handle invalid JSON messages", () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const connection = feedsApiSse.getFeedsStats(mockOnMessage, mockOnError);
 
@@ -120,7 +124,7 @@ describe("feedsApiSse", () => {
       expect(mockOnMessage).not.toHaveBeenCalled();
       expect(errorSpy).toHaveBeenCalledWith(
         "Error parsing SSE data:",
-        expect.any(Error)
+        expect.any(Error),
       );
 
       errorSpy.mockRestore();
@@ -147,7 +151,9 @@ describe("feedsApiSse", () => {
       vi.advanceTimersByTime(2000);
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("SSE connection closed, attempting to reconnect...")
+        expect.stringContaining(
+          "SSE connection closed, attempting to reconnect...",
+        ),
       );
 
       // Should also create a new connection
@@ -156,7 +162,7 @@ describe("feedsApiSse", () => {
 
     it("should stop reconnecting after max attempts", () => {
       const connection = feedsApiSse.getFeedsStats(mockOnMessage, mockOnError);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       // Simulate multiple connection failures
       for (let i = 0; i < 6; i++) {
@@ -167,7 +173,9 @@ describe("feedsApiSse", () => {
         vi.advanceTimersByTime(2000 * (i + 1));
       }
 
-      expect(errorSpy).toHaveBeenCalledWith("Max reconnection attempts reached");
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Max reconnection attempts reached",
+      );
       expect(mockOnError).toHaveBeenCalled();
 
       errorSpy.mockRestore();
@@ -195,7 +203,7 @@ describe("feedsApiSse", () => {
       // Should have created 3 instances (initial + 2 reconnections)
       expect(allEventSourceInstances.length).toBe(3);
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("attempt 3")
+        expect.stringContaining("attempt 3"),
       );
     });
 
@@ -219,7 +227,7 @@ describe("feedsApiSse", () => {
     });
 
     it("should use default error handler when none provided", () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const connection = feedsApiSse.getFeedsStats(mockOnMessage);
 
@@ -237,8 +245,10 @@ describe("feedsApiSse", () => {
       lastEventSourceInstance?.triggerOpen();
 
       // Check that "SSE connection opened:" was called
-      const openedCalls = consoleSpy.mock.calls.filter(call =>
-        typeof call[0] === 'string' && call[0].includes("SSE connection opened:")
+      const openedCalls = consoleSpy.mock.calls.filter(
+        (call) =>
+          typeof call[0] === "string" &&
+          call[0].includes("SSE connection opened:"),
       );
       expect(openedCalls.length).toBeGreaterThan(0);
 

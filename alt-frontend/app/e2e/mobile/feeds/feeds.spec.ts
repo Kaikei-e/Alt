@@ -66,7 +66,9 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for the feeds to load by checking for feed cards first
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     // Wait for the feeds to load - use Mark as read buttons as proxy for feed cards
     await expect(
@@ -89,7 +91,9 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
@@ -124,7 +128,9 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
@@ -157,7 +163,9 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
@@ -174,7 +182,7 @@ test.describe("Mobile Feeds Page", () => {
     // Wait for more feeds to load
     await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(
       20,
-      { timeout: 10000 }
+      { timeout: 10000 },
     );
 
     // Verify new feeds are loaded
@@ -199,7 +207,9 @@ test.describe("Mobile Feeds Page", () => {
 
     // Wait for feeds to load
     await page.waitForLoadState("networkidle");
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
@@ -223,7 +233,9 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
@@ -248,7 +260,7 @@ test.describe("Mobile Feeds Page", () => {
     // Wait for more content to load
     await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(
       20,
-      { timeout: 15000 }
+      { timeout: 15000 },
     );
   });
 
@@ -271,14 +283,18 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
     ).toBeVisible();
 
     // Description should be truncated with ellipsis - check for ellipsis in the first feed card
-    await expect(page.locator('[data-testid="feed-card"]').first().locator("text=...")).toBeVisible();
+    await expect(
+      page.locator('[data-testid="feed-card"]').first().locator("text=..."),
+    ).toBeVisible();
   });
 
   test("should be responsive on mobile viewport", async ({ page }) => {
@@ -289,7 +305,9 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
@@ -311,7 +329,9 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
@@ -335,7 +355,9 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
@@ -345,7 +367,9 @@ test.describe("Mobile Feeds Page", () => {
     await expect(page.locator("text=Test Feed 1").first()).toBeVisible();
   });
 
-  test("should maintain scroll position during infinite scroll", async ({ page }) => {
+  test("should maintain scroll position during infinite scroll", async ({
+    page,
+  }) => {
     // Mock additional pages
     await page.route("**/api/v1/feeds/fetch/page/1", async (route) => {
       await route.fulfill({
@@ -359,7 +383,9 @@ test.describe("Mobile Feeds Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 10000 },
+    );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
@@ -382,7 +408,7 @@ test.describe("Mobile Feeds Page", () => {
     // Wait for more content
     await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(
       20,
-      { timeout: 10000 }
+      { timeout: 10000 },
     );
 
     // Verify scroll position has been maintained (not jumped back to top)

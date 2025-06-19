@@ -44,7 +44,7 @@ describe("Feeds API Integration", () => {
         "http://localhost/api/v1/feeds/fetch/limit/10",
         expect.objectContaining({
           method: "GET",
-        })
+        }),
       );
 
       expect(result).toEqual([
@@ -58,7 +58,7 @@ describe("Feeds API Integration", () => {
         {
           id: "https://example.com/feed2",
           title: "Dev Blog",
-          description: "Development insights", 
+          description: "Development insights",
           link: "https://example.com/feed2",
           published: "2023-01-02",
         },
@@ -105,7 +105,7 @@ describe("Feeds API Integration", () => {
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({ query: "javascript" }),
-        })
+        }),
       );
 
       expect(result).toEqual({
@@ -142,7 +142,7 @@ describe("Feeds API Integration", () => {
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({ url: "https://example.com/rss" }),
-        })
+        }),
       );
 
       expect(result).toEqual(mockResponse);
@@ -164,7 +164,7 @@ describe("Feeds API Integration", () => {
         "http://localhost/api/v1/health",
         expect.objectContaining({
           method: "GET",
-        })
+        }),
       );
 
       expect(result).toEqual(mockHealthResponse);

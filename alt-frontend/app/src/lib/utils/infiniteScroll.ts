@@ -16,12 +16,12 @@ export function useInfiniteScroll(
     maxRetries?: number;
     rootMargin?: string;
     threshold?: number;
-  }
+  },
 ) {
   const callbackRef = useRef(callback);
   const throttledCallbackRef = useRef<(() => void) | null>(null);
   const retryCountRef = useRef(0);
-  
+
   const {
     throttleDelay = DEFAULT_THROTTLE_DELAY,
     maxRetries = DEFAULT_MAX_RETRIES,
