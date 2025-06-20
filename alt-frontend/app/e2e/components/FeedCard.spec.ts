@@ -68,15 +68,29 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
     test("should handle long descriptions properly", async ({ page }) => {
       // Create a feed with very long description to test truncation
-      await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
-        const longDescriptionFeed = {
-          ...mockFeeds[0],
-          description: "A".repeat(400), // Very long description
-        };
+      const longDescriptionFeed = {
+        ...mockFeeds[0],
+        description: "A".repeat(400), // Very long description
+      };
+      const feedsWithLongDescription = [longDescriptionFeed, ...mockFeeds.slice(1)];
+
+      // Mock cursor-based API endpoint
+      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify([longDescriptionFeed, ...mockFeeds.slice(1)]),
+          body: JSON.stringify({
+            data: feedsWithLongDescription,
+            next_cursor: null,
+          }),
+        });
+      });
+
+      await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(feedsWithLongDescription),
         });
       });
 
@@ -233,6 +247,18 @@ test.describe("FeedCard Component - Functionality Tests", () => {
         },
       ];
 
+      // Mock cursor-based API endpoint
+      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: variedFeeds,
+            next_cursor: null,
+          }),
+        });
+      });
+
       await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
         await route.fulfill({
           status: 200,
@@ -256,6 +282,18 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     });
 
     test("should handle empty feed data gracefully", async ({ page }) => {
+      // Mock the cursor-based API endpoint to return empty data
+      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: [],
+            next_cursor: null,
+          }),
+        });
+      });
+
       await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
         await route.fulfill({
           status: 200,
@@ -280,6 +318,15 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     });
 
     test("should handle API errors gracefully", async ({ page }) => {
+      // Mock the cursor-based API endpoint to return error
+      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Internal server error" }),
+        });
+      });
+
       await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
         await route.fulfill({
           status: 500,
@@ -318,6 +365,18 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     test("should handle different feed counts", async ({ page }) => {
       // Test with different number of feeds
       const smallFeedSet = generateMockFeeds(3, 1);
+
+      // Mock cursor-based API endpoint
+      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: smallFeedSet,
+            next_cursor: null,
+          }),
+        });
+      });
 
       await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
         await route.fulfill({
@@ -358,12 +417,25 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     test("should handle large feed lists", async ({ page }) => {
       // Test with a larger number of feeds
       const largeFeedSet = generateMockFeeds(50, 1);
+      const firstPageFeeds = largeFeedSet.slice(0, 10);
+
+      // Mock cursor-based API endpoint
+      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: firstPageFeeds,
+            next_cursor: "10", // Has more data
+          }),
+        });
+      });
 
       await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(largeFeedSet.slice(0, 10)), // Still return 10 for first page
+          body: JSON.stringify(firstPageFeeds), // Still return 10 for first page
         });
       });
 

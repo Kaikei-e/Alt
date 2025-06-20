@@ -6,11 +6,12 @@ import { Feed } from "@/schema/feed";
 import FeedCard from "@/components/mobile/FeedCard";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
+import { useCursorPagination } from "@/hooks/useCursorPagination";
 import ErrorState from "./_components/ErrorState";
 import dynamic from "next/dynamic";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
 
 const Progress = dynamic(
   () => import("@chakra-ui/progress").then((m) => m.CircularProgress),
@@ -18,14 +19,20 @@ const Progress = dynamic(
 );
 
 export default function Feeds() {
-  const [feeds, setFeeds] = useState<Feed[]>([]);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Use cursor-based pagination hook
+  const {
+    data: feeds,
+    hasMore,
+    isLoading,
+    error,
+    isInitialLoading,
+    loadInitial,
+    loadMore,
+    refresh,
+  } = useCursorPagination(feedsApi.getFeedsWithCursor, { limit: PAGE_SIZE });
 
   // Memoize visible feeds to prevent unnecessary recalculations
   const visibleFeeds = useMemo(
@@ -33,75 +40,9 @@ export default function Feeds() {
     [feeds, readFeeds],
   );
 
-  const loadInitialFeeds = useCallback(async () => {
-    setInitialLoading(true);
-    setError(null);
-
-    try {
-      let initialFeeds;
-      try {
-        initialFeeds = await feedsApi.getFeedsPage(0);
-      } catch (pageError) {
-        console.error("getFeedsPage failed, trying getAllFeeds:", pageError);
-        try {
-          const allFeeds = await feedsApi.getAllFeeds();
-          initialFeeds = allFeeds.slice(0, PAGE_SIZE);
-        } catch (allFeedsError) {
-          console.error("getAllFeeds also failed:", allFeedsError);
-          throw allFeedsError;
-        }
-      }
-
-      // Batch state updates
-      setFeeds(initialFeeds);
-      setCurrentPage(0);
-      setHasMore(initialFeeds.length === PAGE_SIZE);
-    } catch (error) {
-      console.error("Error fetching initial feeds:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to load feeds";
-
-      // Batch error state updates
-      setError(errorMessage);
-      setFeeds([]);
-      setHasMore(false);
-    }
-    setInitialLoading(false);
-  }, []);
-
   useEffect(() => {
-    loadInitialFeeds();
-  }, [loadInitialFeeds]);
-
-  const loadMore = useCallback(async () => {
-    if (isLoading || !hasMore || error) {
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const nextPage = currentPage + 1;
-      const newFeeds = await feedsApi.getFeedsPage(nextPage);
-
-      if (newFeeds.length === 0) {
-        setHasMore(false);
-      } else {
-        // Batch state updates
-        setFeeds((prevFeeds) => [...prevFeeds, ...newFeeds]);
-        setCurrentPage(nextPage);
-
-        if (newFeeds.length < PAGE_SIZE) {
-          setHasMore(false);
-        }
-      }
-    } catch (loadError) {
-      console.error("Error loading more feeds:", loadError);
-      setHasMore(false);
-    }
-
-    setIsLoading(false);
-  }, [currentPage, isLoading, hasMore, error]);
+    loadInitial();
+  }, [loadInitial]);
 
   // Use infinite scroll hook
   useInfiniteScroll(loadMore, sentinelRef);
@@ -110,7 +51,7 @@ export default function Feeds() {
     setReadFeeds((prev) => new Set(prev).add(feedLink));
   }, []);
 
-  if (initialLoading) {
+  if (isInitialLoading) {
     return (
       <Box minHeight="100vh" minH="100dvh" position="relative">
         <Flex
@@ -138,8 +79,8 @@ export default function Feeds() {
       <Box minHeight="100vh" minH="100dvh" position="relative">
         <ErrorState
           error={error}
-          onRetry={loadInitialFeeds}
-          isLoading={initialLoading}
+          onRetry={refresh}
+          isLoading={isInitialLoading}
         />
         <FloatingMenu />
       </Box>

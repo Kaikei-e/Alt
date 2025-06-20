@@ -265,9 +265,42 @@ const transformFeedItem = (item: BackendFeedItem): Feed => ({
   published: item.published || "",
 });
 
+export type CursorResponse<T> = {
+  data: T[];
+  next_cursor: string | null;
+};
+
 export const feedsApi = {
   async checkHealth(): Promise<{ status: string }> {
     return apiClient.get("/v1/health", 1); // Short cache for health checks
+  },
+
+  async getFeedsWithCursor(cursor?: string, limit: number = 20): Promise<CursorResponse<Feed>> {
+    // Validate limit constraints
+    if (limit < 1 || limit > 100) {
+      throw new Error("Limit must be between 1 and 100");
+    }
+
+    const params = new URLSearchParams();
+    params.set("limit", limit.toString());
+    if (cursor) {
+      params.set("cursor", cursor);
+    }
+
+    // Use different cache TTL based on whether it's first page or not
+    const cacheTtl = cursor ? 15 : 5; // 15 min for subsequent pages, 5 min for first page
+    const response = await apiClient.get<CursorResponse<BackendFeedItem>>(
+      `/v1/feeds/fetch/cursor?${params.toString()}`,
+      cacheTtl
+    );
+
+    // Transform backend feed items to frontend format
+    const transformedData = response.data.map(transformFeedItem);
+
+    return {
+      data: transformedData,
+      next_cursor: response.next_cursor,
+    };
   },
 
   async getFeeds(page: number = 1, pageSize: number = 10): Promise<Feed[]> {

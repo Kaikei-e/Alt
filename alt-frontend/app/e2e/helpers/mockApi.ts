@@ -1,5 +1,5 @@
 import { Page } from "@playwright/test";
-import { Feed } from "@/schema/feed";
+import { Feed, BackendFeedItem } from "@/schema/feed";
 import { Article } from "@/schema/article";
 
 export const mockApiEndpoints = async (
@@ -31,12 +31,63 @@ export const mockApiEndpoints = async (
 
   // Feeds endpoints
   if (feeds.length > 0) {
-    // Mock paginated feeds endpoint
+    // Convert Feed[] to BackendFeedItem[] for API compatibility
+    const backendFeeds: BackendFeedItem[] = feeds.map(feed => ({
+      title: feed.title,
+      description: feed.description,
+      link: feed.link,
+      published: feed.published,
+    }));
+
+    // Mock cursor-based feeds endpoint (NEW)
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      const url = new URL(route.request().url());
+      const cursor = url.searchParams.get('cursor');
+      const limit = parseInt(url.searchParams.get('limit') || '20');
+
+      // Simple pagination simulation
+      const startIndex = cursor ? parseInt(cursor) : 0;
+      const endIndex = Math.min(startIndex + limit, backendFeeds.length);
+      const paginatedFeeds = backendFeeds.slice(startIndex, endIndex);
+      const nextCursor = endIndex < backendFeeds.length ? endIndex.toString() : null;
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: paginatedFeeds,
+          next_cursor: nextCursor,
+        }),
+      });
+    });
+
+    await page.route("http://localhost/api/v1/feeds/fetch/cursor**", async (route) => {
+      const url = new URL(route.request().url());
+      const cursor = url.searchParams.get('cursor');
+      const limit = parseInt(url.searchParams.get('limit') || '20');
+
+      // Simple pagination simulation
+      const startIndex = cursor ? parseInt(cursor) : 0;
+      const endIndex = Math.min(startIndex + limit, backendFeeds.length);
+      const paginatedFeeds = backendFeeds.slice(startIndex, endIndex);
+      const nextCursor = endIndex < backendFeeds.length ? endIndex.toString() : null;
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: paginatedFeeds,
+          next_cursor: nextCursor,
+        }),
+      });
+    });
+
+    // Mock paginated feeds endpoint (LEGACY - keeping for backward compatibility)
     await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(feeds),
+        body: JSON.stringify(backendFeeds),
       });
     });
 
@@ -46,7 +97,7 @@ export const mockApiEndpoints = async (
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(feeds),
+          body: JSON.stringify(backendFeeds),
         });
       },
     );
@@ -56,7 +107,7 @@ export const mockApiEndpoints = async (
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(feeds),
+        body: JSON.stringify(backendFeeds),
       });
     });
 
@@ -66,7 +117,7 @@ export const mockApiEndpoints = async (
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(feeds),
+          body: JSON.stringify(backendFeeds),
         });
       },
     );

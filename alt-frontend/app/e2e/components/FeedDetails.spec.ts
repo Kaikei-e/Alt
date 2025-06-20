@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { FeedDetails, Feed } from "@/schema/feed";
+import { FeedDetails, Feed, BackendFeedItem } from "@/schema/feed";
 
 const generateMockFeeds = (count: number, startId: number = 1): Feed[] => {
   return Array.from({ length: count }, (_, index) => ({
@@ -25,12 +25,32 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
   test.beforeEach(async ({ page }) => {
     const mockFeeds = generateMockFeeds(10, 1);
 
-    // Mock the feeds API endpoint (primary)
+    // Convert Feed[] to BackendFeedItem[] for API compatibility
+    const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+      title: feed.title,
+      description: feed.description,
+      link: feed.link,
+      published: feed.published,
+    }));
+
+    // Mock the cursor-based feeds API endpoint (NEW)
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: backendFeeds,
+          next_cursor: null,
+        }),
+      });
+    });
+
+    // Mock the feeds API endpoint (primary - LEGACY)
     await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(mockFeeds),
+        body: JSON.stringify(backendFeeds),
       });
     });
 
@@ -39,7 +59,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(mockFeeds),
+        body: JSON.stringify(backendFeeds),
       });
     });
 

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { Feed } from "@/schema/feed";
+import { Feed, BackendFeedItem } from "@/schema/feed";
 
 // Generate mock feeds for testing
 const generateMockFeeds = (count: number, startId: number = 1): Feed[] => {
@@ -16,12 +16,32 @@ test.describe("Mobile Feeds Page", () => {
   test.beforeEach(async ({ page }) => {
     const mockFeeds = generateMockFeeds(10, 1);
 
+    // Convert Feed[] to BackendFeedItem[] for API compatibility
+    const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+      title: feed.title,
+      description: feed.description,
+      link: feed.link,
+      published: feed.published,
+    }));
+
+    // Mock cursor-based feeds API endpoint (NEW)
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: backendFeeds,
+          next_cursor: null,
+        }),
+      });
+    });
+
     // Mock all required API endpoints
     await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(mockFeeds),
+        body: JSON.stringify(backendFeeds),
       });
     });
 
@@ -29,7 +49,7 @@ test.describe("Mobile Feeds Page", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(mockFeeds),
+        body: JSON.stringify(backendFeeds),
       });
     });
 
@@ -150,12 +170,56 @@ test.describe("Mobile Feeds Page", () => {
   });
 
   test("should implement infinite scrolling", async ({ page }) => {
-    // Mock additional pages for infinite scroll
+    const additionalFeeds = generateMockFeeds(10, 11);
+    const backendAdditionalFeeds: BackendFeedItem[] = additionalFeeds.map(feed => ({
+      title: feed.title,
+      description: feed.description,
+      link: feed.link,
+      published: feed.published,
+    }));
+
+    // Mock cursor-based API for pagination
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      const url = new URL(route.request().url());
+      const cursor = url.searchParams.get('cursor');
+
+      if (cursor === "10") {
+        // Return second page
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: backendAdditionalFeeds,
+            next_cursor: null,
+          }),
+        });
+      } else {
+        // Return first page with cursor for next page
+        const mockFeeds = generateMockFeeds(10, 1);
+        const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+          title: feed.title,
+          description: feed.description,
+          link: feed.link,
+          published: feed.published,
+        }));
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: backendFeeds,
+            next_cursor: "10",
+          }),
+        });
+      }
+    });
+
+    // Mock additional pages for infinite scroll (LEGACY)
     await page.route("**/api/v1/feeds/fetch/page/1", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(generateMockFeeds(10, 11)),
+        body: JSON.stringify(backendAdditionalFeeds),
       });
     });
 
@@ -190,13 +254,34 @@ test.describe("Mobile Feeds Page", () => {
   });
 
   test("should show loading state during initial load", async ({ page }) => {
+    const mockFeeds = generateMockFeeds(10, 1);
+    const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+      title: feed.title,
+      description: feed.description,
+      link: feed.link,
+      published: feed.published,
+    }));
+
+    // Mock cursor-based API with delay
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: backendFeeds,
+          next_cursor: null,
+        }),
+      });
+    });
+
     // Add delay to initial request to test loading state
     await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(generateMockFeeds(10, 1)),
+        body: JSON.stringify(backendFeeds),
       });
     });
 
@@ -219,13 +304,58 @@ test.describe("Mobile Feeds Page", () => {
   });
 
   test("should show loading state during infinite scroll", async ({ page }) => {
-    // Mock additional pages with delay
+    const additionalFeeds = generateMockFeeds(10, 11);
+    const backendAdditionalFeeds: BackendFeedItem[] = additionalFeeds.map(feed => ({
+      title: feed.title,
+      description: feed.description,
+      link: feed.link,
+      published: feed.published,
+    }));
+
+    // Mock cursor-based API for pagination with delay
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      const url = new URL(route.request().url());
+      const cursor = url.searchParams.get('cursor');
+
+      if (cursor === "10") {
+        // Return second page with delay
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: backendAdditionalFeeds,
+            next_cursor: null,
+          }),
+        });
+      } else {
+        // Return first page with cursor for next page
+        const mockFeeds = generateMockFeeds(10, 1);
+        const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+          title: feed.title,
+          description: feed.description,
+          link: feed.link,
+          published: feed.published,
+        }));
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: backendFeeds,
+            next_cursor: "10",
+          }),
+        });
+      }
+    });
+
+    // Mock additional pages with delay (LEGACY)
     await page.route("**/api/v1/feeds/fetch/page/1", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(generateMockFeeds(10, 11)),
+        body: JSON.stringify(backendAdditionalFeeds),
       });
     });
 
@@ -241,15 +371,7 @@ test.describe("Mobile Feeds Page", () => {
       page.locator('button:has-text("Mark as read")').first(),
     ).toBeVisible();
 
-    // Add delay to next page to test loading state
-    await page.route("**/api/v1/feeds/fetch/page/1", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(generateMockFeeds(10, 11)),
-      });
-    });
+    // The infinite scroll loading is already handled by the cursor-based API mock above
 
     // Scroll to trigger infinite scroll
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -271,11 +393,30 @@ test.describe("Mobile Feeds Page", () => {
       description: `${"Very long description ".repeat(50)}for feed ${index + 1}`,
     }));
 
+    const backendLongFeeds: BackendFeedItem[] = longDescriptionFeeds.map(feed => ({
+      title: feed.title,
+      description: feed.description,
+      link: feed.link,
+      published: feed.published,
+    }));
+
+    // Mock cursor-based API
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: backendLongFeeds,
+          next_cursor: null,
+        }),
+      });
+    });
+
     await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(longDescriptionFeeds),
+        body: JSON.stringify(backendLongFeeds),
       });
     });
 
@@ -370,12 +511,56 @@ test.describe("Mobile Feeds Page", () => {
   test("should maintain scroll position during infinite scroll", async ({
     page,
   }) => {
-    // Mock additional pages
+    const additionalFeeds = generateMockFeeds(10, 11);
+    const backendAdditionalFeeds: BackendFeedItem[] = additionalFeeds.map(feed => ({
+      title: feed.title,
+      description: feed.description,
+      link: feed.link,
+      published: feed.published,
+    }));
+
+    // Mock cursor-based API for pagination
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      const url = new URL(route.request().url());
+      const cursor = url.searchParams.get('cursor');
+
+      if (cursor === "10") {
+        // Return second page
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: backendAdditionalFeeds,
+            next_cursor: null,
+          }),
+        });
+      } else {
+        // Return first page with cursor for next page
+        const mockFeeds = generateMockFeeds(10, 1);
+        const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+          title: feed.title,
+          description: feed.description,
+          link: feed.link,
+          published: feed.published,
+        }));
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: backendFeeds,
+            next_cursor: "10",
+          }),
+        });
+      }
+    });
+
+    // Mock additional pages (LEGACY)
     await page.route("**/api/v1/feeds/fetch/page/1", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(generateMockFeeds(10, 11)),
+        body: JSON.stringify(backendAdditionalFeeds),
       });
     });
 
