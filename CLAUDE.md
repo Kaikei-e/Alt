@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+<!-- Model Configuration -->
+<!-- ALWAYS use claude-4-sonnet for this project -->
+<!-- DO NOT use opus unless explicitly requested -->
+
 ## About this Project
 
 This project is a mobile-first RSS reader built with a microservice architecture stack. The codebase follows a five-layer variant of Clean Architecture for the main application.
