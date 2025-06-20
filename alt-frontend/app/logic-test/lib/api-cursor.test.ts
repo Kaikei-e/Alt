@@ -1,6 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { apiClient } from "@/lib/api";
 
+// Type for cursor API response
+type CursorResponse = {
+  data: Array<{
+    title: string;
+    description: string;
+    link: string;
+    published: string;
+  }>;
+  next_cursor: string | null;
+};
+
 // Mock fetch globally
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -38,14 +49,14 @@ describe("Cursor-based API", () => {
       });
 
       // Mock the future implementation
-      const getFeedsWithCursor = async (cursor?: string, limit: number = 20) => {
+      const getFeedsWithCursor = async (cursor?: string, limit: number = 20): Promise<CursorResponse> => {
         const params = new URLSearchParams();
         params.set("limit", limit.toString());
         if (cursor) {
           params.set("cursor", cursor);
         }
-        
-        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
+
+        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10) as Promise<CursorResponse>;
       };
 
       const result = await getFeedsWithCursor(undefined, 20);
@@ -84,14 +95,14 @@ describe("Cursor-based API", () => {
         json: vi.fn().mockResolvedValue(mockResponse),
       });
 
-      const getFeedsWithCursor = async (cursor?: string, limit: number = 20) => {
+      const getFeedsWithCursor = async (cursor?: string, limit: number = 20): Promise<CursorResponse> => {
         const params = new URLSearchParams();
         params.set("limit", limit.toString());
         if (cursor) {
           params.set("cursor", cursor);
         }
-        
-        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
+
+        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10) as Promise<CursorResponse>;
       };
 
       const testCursor = "2023-01-01T00:00:00Z";
@@ -106,19 +117,19 @@ describe("Cursor-based API", () => {
     });
 
     it("should validate limit parameter constraints", async () => {
-      const getFeedsWithCursor = async (cursor?: string, limit: number = 20) => {
+      const getFeedsWithCursor = async (cursor?: string, limit: number = 20): Promise<CursorResponse> => {
         // Validate limit constraints
         if (limit < 1 || limit > 100) {
           throw new Error("Limit must be between 1 and 100");
         }
-        
+
         const params = new URLSearchParams();
         params.set("limit", limit.toString());
         if (cursor) {
           params.set("cursor", cursor);
         }
-        
-        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
+
+        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10) as Promise<CursorResponse>;
       };
 
       // Test limit too small
@@ -151,14 +162,14 @@ describe("Cursor-based API", () => {
         json: vi.fn().mockResolvedValue(mockResponse),
       });
 
-      const getFeedsWithCursor = async (cursor?: string, limit: number = 20) => {
+      const getFeedsWithCursor = async (cursor?: string, limit: number = 20): Promise<CursorResponse> => {
         const params = new URLSearchParams();
         params.set("limit", limit.toString());
         if (cursor) {
           params.set("cursor", cursor);
         }
-        
-        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
+
+        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10) as Promise<CursorResponse>;
       };
 
       const result = await getFeedsWithCursor("2022-01-01T00:00:00Z", 20);
@@ -174,18 +185,18 @@ describe("Cursor-based API", () => {
         statusText: "Bad Request",
       });
 
-      const getFeedsWithCursor = async (cursor?: string, limit: number = 20) => {
+      const getFeedsWithCursor = async (cursor?: string, limit: number = 20): Promise<CursorResponse> => {
         const params = new URLSearchParams();
         params.set("limit", limit.toString());
         if (cursor) {
           params.set("cursor", cursor);
         }
-        
-        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
+
+        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10) as Promise<CursorResponse>;
       };
 
       const invalidCursor = "invalid-date-format";
-      
+
       await expect(getFeedsWithCursor(invalidCursor, 20)).rejects.toThrow(
         "API request failed: 400 Bad Request"
       );
@@ -209,21 +220,21 @@ describe("Cursor-based API", () => {
         json: vi.fn().mockResolvedValue(mockResponse),
       });
 
-      const getFeedsWithCursor = async (cursor?: string, limit: number = 20) => {
+      const getFeedsWithCursor = async (cursor?: string, limit: number = 20): Promise<CursorResponse> => {
         const params = new URLSearchParams();
         params.set("limit", limit.toString());
         if (cursor) {
           params.set("cursor", cursor);
         }
-        
+
         // Use different cache TTL based on whether it's first page or not
         const cacheTtl = cursor ? 15 : 5; // 15 min for subsequent pages, 5 min for first page
-        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, cacheTtl);
+        return apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, cacheTtl) as Promise<CursorResponse>;
       };
 
       // First call (should cache)
       await getFeedsWithCursor(undefined, 20);
-      
+
       // Second call should use cache
       await getFeedsWithCursor(undefined, 20);
 
@@ -284,8 +295,8 @@ describe("Cursor-based API", () => {
             params.set("cursor", this.cursor);
           }
 
-          const response = await apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
-          
+          const response = await apiClient.get(`/v1/feeds/fetch/cursor?${params.toString()}`, 10) as CursorResponse;
+
           this.cursor = response.next_cursor;
           this.hasMore = response.next_cursor !== null;
 
