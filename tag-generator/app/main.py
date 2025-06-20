@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from datetime import datetime, UTC
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from dataclasses import dataclass
 from contextlib import contextmanager
 
@@ -15,7 +15,6 @@ from psycopg2.extensions import connection as Connection
 from article_fetcher.fetch import ArticleFetcher
 from tag_extractor.extract import TagExtractor
 from tag_inserter.upsert_tags import TagInserter
-from db_pool import get_connection_pool, PoolConfig, close_connection_pool
 
 # Configure logging
 logging.basicConfig(
@@ -35,9 +34,6 @@ class TagGeneratorConfig:
     memory_cleanup_interval: int = 25  # articles between memory cleanup
     max_connection_retries: int = 3  # max database connection retries
     connection_retry_delay: float = 5.0  # seconds between connection attempts
-    use_connection_pool: bool = True  # Enable connection pooling with fixes
-    pool_min_connections: int = 5  # minimum pool connections
-    pool_max_connections: int = 20  # maximum pool connections
 
 class DatabaseConnectionError(Exception):
     """Custom exception for database connection errors."""
@@ -56,33 +52,11 @@ class TagGeneratorService:
         self.last_processed_created_at: Optional[str] = None
         self.last_processed_id: Optional[str] = None
 
-        # Connection pool setup
+        # Using direct database connections (connection pool disabled due to hanging issues)
         self._connection_pool = None
-        if self.config.use_connection_pool:
-            self._setup_connection_pool()
 
         logger.info("Tag Generator Service initialized")
         logger.info(f"Configuration: {self.config}")
-
-    def _setup_connection_pool(self) -> None:
-        """Setup database connection pool."""
-        try:
-            logger.info("Setting up connection pool...")
-            dsn = self._get_database_dsn()
-            pool_config = PoolConfig(
-                min_connections=self.config.pool_min_connections,
-                max_connections=self.config.pool_max_connections,
-                connection_timeout=10.0,  # Shorter timeout to prevent hanging
-                idle_timeout=300.0,
-                max_retries=2,  # Fewer retries for faster failure
-                retry_delay=2.0
-            )
-            self._connection_pool = get_connection_pool(dsn, pool_config)
-            logger.info("Connection pool initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to setup connection pool: {e}")
-            logger.warning("Will use direct connections as fallback")
-            self._connection_pool = None
 
     def _get_database_dsn(self) -> str:
         """Build database connection string from environment variables."""
@@ -108,59 +82,8 @@ class TagGeneratorService:
         return dsn
 
     def _get_database_connection(self):
-        """Get database connection - either from pool or create new."""
-
-        if self._connection_pool:
-            # Log connection pool statistics before attempting to get connection
-            try:
-                stats = self._connection_pool.get_stats()
-                logger.info(f"Connection pool stats: {stats}")
-            except Exception as e:
-                logger.warning(f"Failed to get pool stats: {e}")
-
-            # Use connection pool with explicit timeout handling
-            try:
-                # Add a reasonable timeout to prevent indefinite hanging
-                import signal
-
-                def timeout_handler(signum, frame):
-                    raise TimeoutError("Connection pool timeout after 30 seconds")
-
-                # Set timeout for connection acquisition
-                signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(30)  # 30 second timeout
-
-                try:
-                    conn_context = self._connection_pool.get_connection()
-                    signal.alarm(0)  # Cancel timeout
-                    return conn_context
-                finally:
-                    signal.alarm(0)  # Ensure timeout is cancelled
-
-            except TimeoutError as e:
-                logger.error(f"Connection pool timeout: {e}")
-                logger.info("Pool appears hung, attempting to reset pool...")
-                self._reset_connection_pool()
-
-                # Try once more with the reset pool
-                if self._connection_pool:
-                    try:
-                        logger.info("Trying connection acquisition after pool reset...")
-                        return self._connection_pool.get_connection()
-                    except Exception as retry_error:
-                        logger.error(f"Failed again after pool reset: {retry_error}")
-
-                logger.info("Falling back to direct connection")
-                return self._create_direct_connection_context()
-            except Exception as e:
-                logger.error(f"Failed to get connection from pool: {e}")
-                logger.info("Falling back to direct connection")
-                # Fallback to direct connection if pool fails
-                return self._create_direct_connection_context()
-        else:
-            # Fallback to direct connection
-            logger.debug("Using direct connection (no pool)")
-            return self._create_direct_connection_context()
+        """Get database connection using direct connection."""
+        return self._create_direct_connection_context()
 
     @contextmanager
     def _create_direct_connection_context(self):
@@ -482,7 +405,6 @@ class TagGeneratorService:
             Dictionary with cycle results
         """
         logger.info("Starting tag generation processing cycle")
-        logger.info("Preparing to acquire database connection...")
 
         batch_stats = {
             "success": False,
@@ -495,6 +417,7 @@ class TagGeneratorService:
         try:
             # Use database connection (pooled or direct)
             logger.info("Acquiring database connection...")
+
             with self._get_database_connection() as conn:
                 logger.info("Database connection acquired successfully")
 
@@ -562,27 +485,7 @@ class TagGeneratorService:
 
     def _cleanup(self) -> None:
         """Cleanup resources."""
-        if self._connection_pool:
-            logger.info("Closing connection pool")
-            close_connection_pool()
-
-    def _reset_connection_pool(self) -> None:
-        """Reset the connection pool if it gets into a bad state."""
-        try:
-            logger.warning("Resetting connection pool due to issues")
-            if self._connection_pool:
-                # Close the existing pool
-                self._connection_pool.close()
-                self._connection_pool = None
-
-            # Recreate the connection pool
-            self._setup_connection_pool()
-            logger.info("Connection pool successfully reset")
-
-        except Exception as e:
-            logger.error(f"Failed to reset connection pool: {e}")
-            # Disable pool as fallback
-            self._connection_pool = None
+        logger.info("Service cleanup completed")
 
 def main():
     """Main entry point for the tag generation service."""

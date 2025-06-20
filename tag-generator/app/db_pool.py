@@ -177,10 +177,12 @@ class ConnectionPool:
         logger.debug("Starting connection acquisition...")
         conn = None
         try:
-            # Try to get existing connection
+            # Try to get existing connection with shorter timeout to prevent hanging
             logger.debug("Attempting to get connection from queue...")
             try:
-                conn = self._pool.get(timeout=self.config.connection_timeout)
+                # Use shorter timeout to fail faster if pool is hung
+                queue_timeout = min(self.config.connection_timeout, 10.0)
+                conn = self._pool.get(timeout=queue_timeout)
                 logger.debug(f"Got connection from queue: {conn}")
 
                 # Validate connection
@@ -193,7 +195,7 @@ class ConnectionPool:
                     logger.debug("Connection validation passed")
 
             except queue.Empty:
-                logger.debug("No connections available in pool (queue empty)")
+                logger.debug("No connections available in pool (queue empty or timeout)")
 
             # Create new connection if needed
             if conn is None:
@@ -206,7 +208,13 @@ class ConnectionPool:
                         conn = self._create_new_connection()
                         logger.debug(f"Created new connection: {conn}")
                     else:
-                        logger.error("Connection pool exhausted!")
+                        logger.warning(f"Connection pool exhausted! {current_count}/{self.config.max_connections}")
+                        # Log pool statistics for debugging
+                        try:
+                            stats = self.get_stats()
+                            logger.warning(f"Pool stats: {stats}")
+                        except Exception as stats_error:
+                            logger.warning(f"Failed to get pool stats: {stats_error}")
                         raise RuntimeError("Connection pool exhausted")
 
             if conn is None:
