@@ -5,6 +5,7 @@ import (
 	"alt/driver/search_indexer"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
+	"alt/gateway/feed_url_link_gateway"
 	"alt/gateway/fetch_feed_detail_gateway"
 	"alt/gateway/fetch_feed_gateway"
 	"alt/gateway/register_feed_gateway"
@@ -54,7 +55,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	searchIndexerDriverImpl := search_indexer.NewHTTPSearchIndexerDriver()
 	feedSearchMeilisearchGatewayImpl := feed_search_gateway.NewSearchFeedMeilisearchGateway(searchIndexerDriverImpl)
-	feedSearchUsecase := search_feed_usecase.NewSearchFeedMeilisearchUsecase(feedSearchMeilisearchGatewayImpl)
+	feedURLLinkGatewayImpl := feed_url_link_gateway.NewFeedURLLinkGateway(altDBRepository)
+	feedSearchUsecase := search_feed_usecase.NewSearchFeedMeilisearchUsecase(feedSearchMeilisearchGatewayImpl, feedURLLinkGatewayImpl)
 
 	return &ApplicationComponents{
 		AltDBRepository:           altDBRepository,

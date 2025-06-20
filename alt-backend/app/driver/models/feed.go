@@ -11,3 +11,11 @@ type Feed struct {
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
 }
+
+type FeedAndArticle struct {
+	FeedID    string `db:"feed_id"`
+	ArticleID string `db:"article_id"`
+	URL       string `db:"url"`
+	FeedTitle string `db:"feed_title"`
+	ArticleTitle string `db:"article_title"`
+}
