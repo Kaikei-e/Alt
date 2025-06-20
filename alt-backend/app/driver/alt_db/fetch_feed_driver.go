@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {
@@ -105,12 +106,17 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
 	const pageSize = 10
 
-	// Alternative query using LEFT JOIN - might be more efficient than NOT EXISTS
+	// For now, keeping the original OFFSET-based implementation for backward compatibility
+	// Consider migrating to cursor-based pagination (FetchUnreadFeedsListCursor) for better performance
 	query := `
 		SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
 		FROM feeds f
-		LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.is_read = TRUE
-		WHERE rs.feed_id IS NULL
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM read_status rs
+			WHERE rs.feed_id = f.id
+			AND rs.is_read = TRUE
+		)
 		ORDER BY f.created_at DESC
 		LIMIT $1 OFFSET $2
 	`
@@ -129,6 +135,66 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 		if err != nil {
 			logger.Logger.Error("error scanning unread feeds list page", "error", err)
 			return nil, errors.New("error scanning feeds list page")
+		}
+		feeds = append(feeds, &feed)
+	}
+
+	return feeds, nil
+}
+
+func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	// Cursor-based pagination for better performance
+	// Uses created_at as cursor to avoid OFFSET performance issues
+	var query string
+	var args []interface{}
+	
+	if cursor == nil {
+		// First page - no cursor
+		query = `
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			FROM feeds f
+			WHERE NOT EXISTS (
+				SELECT 1
+				FROM read_status rs
+				WHERE rs.feed_id = f.id
+				AND rs.is_read = TRUE
+			)
+			ORDER BY f.created_at DESC, f.id DESC
+			LIMIT $1
+		`
+		args = []interface{}{limit}
+	} else {
+		// Subsequent pages - use cursor
+		query = `
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			FROM feeds f
+			WHERE NOT EXISTS (
+				SELECT 1
+				FROM read_status rs
+				WHERE rs.feed_id = f.id
+				AND rs.is_read = TRUE
+			)
+			AND f.created_at < $1
+			ORDER BY f.created_at DESC, f.id DESC
+			LIMIT $2
+		`
+		args = []interface{}{cursor, limit}
+	}
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		logger.Logger.Error("error fetching unread feeds with cursor", "error", err, "cursor", cursor)
+		return nil, errors.New("error fetching feeds list")
+	}
+	defer rows.Close()
+
+	var feeds []*models.Feed
+	for rows.Next() {
+		var feed models.Feed
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		if err != nil {
+			logger.Logger.Error("error scanning unread feeds with cursor", "error", err)
+			return nil, errors.New("error scanning feeds list")
 		}
 		feeds = append(feeds, &feed)
 	}

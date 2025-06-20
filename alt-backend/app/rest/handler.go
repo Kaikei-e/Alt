@@ -166,6 +166,73 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		return c.JSON(http.StatusOK, optimizedFeeds)
 	})
 
+	v1.GET("/feeds/fetch/cursor", func(c echo.Context) error {
+		// Parse query parameters
+		limitStr := c.QueryParam("limit")
+		cursorStr := c.QueryParam("cursor")
+
+		// Default limit
+		limit := 20
+		if limitStr != "" {
+			parsedLimit, err := strconv.Atoi(limitStr)
+			if err != nil {
+				logger.Logger.Error("Invalid limit parameter", "error", err, "limit", limitStr)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid limit parameter"})
+			}
+			if parsedLimit > 0 && parsedLimit <= 100 {
+				limit = parsedLimit
+			} else if parsedLimit > 100 {
+				limit = 100
+			} else {
+				logger.Logger.Error("Invalid limit value", "limit", parsedLimit)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Limit must be between 1 and 100"})
+			}
+		}
+
+		// Parse cursor if provided
+		var cursor *time.Time
+		if cursorStr != "" {
+			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
+			if err != nil {
+				logger.Logger.Error("Invalid cursor parameter", "error", err, "cursor", cursorStr)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
+			}
+			cursor = &parsedCursor
+		}
+
+		// Add caching headers for cursor-based pagination
+		if cursor == nil {
+			c.Response().Header().Set("Cache-Control", "public, max-age=300") // 5 minutes for first page
+		} else {
+			c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15 minutes for other pages
+		}
+
+		logger.Logger.Info("Fetching feeds with cursor", "cursor", cursor, "limit", limit)
+		feeds, err := container.FetchFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
+		if err != nil {
+			logger.Logger.Error("Error fetching feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feeds with cursor"})
+		}
+
+		optimizedFeeds := optimizeFeedsResponse(feeds)
+
+		// Include next cursor in response for pagination
+		response := map[string]interface{}{
+			"data": optimizedFeeds,
+		}
+
+		// Add next cursor if there are results
+		if len(optimizedFeeds) > 0 {
+			lastFeed := optimizedFeeds[len(optimizedFeeds)-1]
+			// Parse the published time to use as next cursor
+			if lastPublished, err := time.Parse(time.RFC3339, lastFeed.Published); err == nil {
+				response["next_cursor"] = lastPublished.Format(time.RFC3339)
+			}
+		}
+
+		return c.JSON(http.StatusOK, response)
+	})
+
 	v1.POST("/feeds/read", func(c echo.Context) error {
 		var readStatus ReadStatus
 		err := c.Bind(&readStatus)

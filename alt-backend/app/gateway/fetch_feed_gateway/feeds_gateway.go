@@ -136,3 +136,27 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 
 	return feedItems, nil
 }
+
+func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	if g.alt_db == nil {
+		return nil, errors.New("database connection not available")
+	}
+
+	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit)
+	if err != nil {
+		logger.SafeError("Error fetching feeds with cursor", "error", err)
+		return nil, errors.New("error fetching feeds with cursor")
+	}
+
+	var feedItems []*domain.FeedItem
+	for _, feed := range feeds {
+		feedItems = append(feedItems, &domain.FeedItem{
+			Title:       feed.Title,
+			Description: feed.Description,
+			Link:        feed.Link,
+			Published:   feed.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	return feedItems, nil
+}

@@ -13,6 +13,7 @@ import (
 	domain "alt/domain"
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -108,6 +109,21 @@ func (m *MockFetchFeedsPort) FetchFeedsList(ctx context.Context) ([]*domain.Feed
 func (mr *MockFetchFeedsPortMockRecorder) FetchFeedsList(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsList", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchFeedsList), ctx)
+}
+
+// FetchFeedsListCursor mocks base method.
+func (m *MockFetchFeedsPort) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeedsListCursor", ctx, cursor, limit)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeedsListCursor indicates an expected call of FetchFeedsListCursor.
+func (mr *MockFetchFeedsPortMockRecorder) FetchFeedsListCursor(ctx, cursor, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsListCursor", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchFeedsListCursor), ctx, cursor, limit)
 }
 
 // FetchFeedsListLimit mocks base method.

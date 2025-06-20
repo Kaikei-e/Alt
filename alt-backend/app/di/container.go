@@ -20,14 +20,15 @@ import (
 )
 
 type ApplicationComponents struct {
-	AltDBRepository           *alt_db.AltDBRepository
-	FetchSingleFeedUsecase    *fetch_feed_usecase.FetchSingleFeedUsecase
-	FetchFeedsListUsecase     *fetch_feed_usecase.FetchFeedsListUsecase
-	RegisterFeedsUsecase      *register_feed_usecase.RegisterFeedsUsecase
-	FeedsReadingStatusUsecase *reading_status.FeedsReadingStatusUsecase
-	FeedsSummaryUsecase       *fetch_feed_details_usecase.FeedsSummaryUsecase
-	FeedAmountUsecase         *fetch_feed_stats_usecase.FeedsCountUsecase
-	FeedSearchUsecase         *search_feed_usecase.SearchFeedMeilisearchUsecase
+	AltDBRepository             *alt_db.AltDBRepository
+	FetchSingleFeedUsecase      *fetch_feed_usecase.FetchSingleFeedUsecase
+	FetchFeedsListUsecase       *fetch_feed_usecase.FetchFeedsListUsecase
+	FetchFeedsListCursorUsecase *fetch_feed_usecase.FetchFeedsListCursorUsecase
+	RegisterFeedsUsecase        *register_feed_usecase.RegisterFeedsUsecase
+	FeedsReadingStatusUsecase   *reading_status.FeedsReadingStatusUsecase
+	FeedsSummaryUsecase         *fetch_feed_details_usecase.FeedsSummaryUsecase
+	FeedAmountUsecase           *fetch_feed_stats_usecase.FeedsCountUsecase
+	FeedSearchUsecase           *search_feed_usecase.SearchFeedMeilisearchUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -38,6 +39,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchFeedsListGatewayImpl := fetch_feed_gateway.NewFetchFeedsGateway(pool)
 	fetchSingleFeedUsecase := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGatewayImpl)
 	fetchFeedsListUsecase := fetch_feed_usecase.NewFetchFeedsListUsecase(fetchFeedsListGatewayImpl)
+	fetchFeedsListCursorUsecase := fetch_feed_usecase.NewFetchFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 
 	registerFeedLinkGatewayImpl := register_feed_gateway.NewRegisterFeedLinkGateway(pool)
 	registerFeedsGatewayImpl := register_feed_gateway.NewRegisterFeedsGateway(pool)
@@ -59,13 +61,14 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	feedSearchUsecase := search_feed_usecase.NewSearchFeedMeilisearchUsecase(feedSearchMeilisearchGatewayImpl, feedURLLinkGatewayImpl)
 
 	return &ApplicationComponents{
-		AltDBRepository:           altDBRepository,
-		FetchSingleFeedUsecase:    fetchSingleFeedUsecase,
-		FetchFeedsListUsecase:     fetchFeedsListUsecase,
-		RegisterFeedsUsecase:      registerFeedsUsecase,
-		FeedsReadingStatusUsecase: feedsReadingStatusUsecase,
-		FeedsSummaryUsecase:       feedsSummaryUsecase,
-		FeedAmountUsecase:         feedsCountUsecase,
-		FeedSearchUsecase:         feedSearchUsecase,
+		AltDBRepository:             altDBRepository,
+		FetchSingleFeedUsecase:      fetchSingleFeedUsecase,
+		FetchFeedsListUsecase:       fetchFeedsListUsecase,
+		FetchFeedsListCursorUsecase: fetchFeedsListCursorUsecase,
+		RegisterFeedsUsecase:        registerFeedsUsecase,
+		FeedsReadingStatusUsecase:   feedsReadingStatusUsecase,
+		FeedsSummaryUsecase:         feedsSummaryUsecase,
+		FeedAmountUsecase:           feedsCountUsecase,
+		FeedSearchUsecase:           feedSearchUsecase,
 	}
 }
