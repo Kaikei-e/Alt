@@ -103,3 +103,17 @@ type Name string
 const (
 	Creator Name = "creator"
 )
+
+type SearchArticleHit struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Content string   `json:"content"`
+	Tags    []string `json:"tags"`
+}
+
+type SearchIndexerArticleHit struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Content string   `json:"content"`
+	Tags    []string `json:"tags"`
+}

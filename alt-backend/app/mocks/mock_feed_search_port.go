@@ -55,3 +55,42 @@ func (mr *MockSearchByTitlePortMockRecorder) SearchByTitle(ctx, query any) *gomo
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchByTitle", reflect.TypeOf((*MockSearchByTitlePort)(nil).SearchByTitle), ctx, query)
 }
+
+// MockSearchFeedPort is a mock of SearchFeedPort interface.
+type MockSearchFeedPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockSearchFeedPortMockRecorder
+	isgomock struct{}
+}
+
+// MockSearchFeedPortMockRecorder is the mock recorder for MockSearchFeedPort.
+type MockSearchFeedPortMockRecorder struct {
+	mock *MockSearchFeedPort
+}
+
+// NewMockSearchFeedPort creates a new mock instance.
+func NewMockSearchFeedPort(ctrl *gomock.Controller) *MockSearchFeedPort {
+	mock := &MockSearchFeedPort{ctrl: ctrl}
+	mock.recorder = &MockSearchFeedPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSearchFeedPort) EXPECT() *MockSearchFeedPortMockRecorder {
+	return m.recorder
+}
+
+// SearchFeeds mocks base method.
+func (m *MockSearchFeedPort) SearchFeeds(ctx context.Context, query string) ([]domain.SearchArticleHit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchFeeds", ctx, query)
+	ret0, _ := ret[0].([]domain.SearchArticleHit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchFeeds indicates an expected call of SearchFeeds.
+func (mr *MockSearchFeedPortMockRecorder) SearchFeeds(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchFeeds", reflect.TypeOf((*MockSearchFeedPort)(nil).SearchFeeds), ctx, query)
+}
