@@ -18,6 +18,8 @@ write = [
   "alt-backend/app/rest/**",          # HTTP handlers and routers
   "alt-backend/app/gateway/**",       # Anti-corruption layer implementations
   "alt-backend/app/driver/**",        # Database, API, external integrations
+  "alt-backend/app/usecase/**",       # Business logic orchestration
+  "alt-backend/app/port/**",          # Interface contracts
   "alt-backend/app/utils/**",         # Utilities, helpers, common functions
   "alt-backend/app/mocks/**",         # Generated mock files
   "alt-backend/**/*_test.go",         # All test files in backend
@@ -65,8 +67,6 @@ write = [
 exclude = [
   # ─── Core Business Logic (Sacred) ────────────────────────────────────────
   "alt-backend/app/domain/**",        # Domain entities and value objects
-  "alt-backend/app/usecase/**",       # Business logic orchestration
-  "alt-backend/app/port/**",          # Interface contracts
 
   # ─── Database Schema & Migrations ────────────────────────────────────────
   "db/migrations/**",                 # Database schema changes
@@ -223,6 +223,9 @@ restart_service = "docker-compose restart $1"
 test_backend = "cd alt-backend && go test ./..."
 test_frontend = "cd alt-frontend && pnpm test"
 test_all = "cd alt-frontend && pnpm test:all"
+
+# mocking
+mock_alt_backend = "make generate-mocks"
 
 # Code quality
 lint_go = "cd alt-backend && golangci-lint run"
