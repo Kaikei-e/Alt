@@ -20,15 +20,16 @@ import (
 )
 
 type ApplicationComponents struct {
-	AltDBRepository             *alt_db.AltDBRepository
-	FetchSingleFeedUsecase      *fetch_feed_usecase.FetchSingleFeedUsecase
-	FetchFeedsListUsecase       *fetch_feed_usecase.FetchFeedsListUsecase
-	FetchFeedsListCursorUsecase *fetch_feed_usecase.FetchFeedsListCursorUsecase
-	RegisterFeedsUsecase        *register_feed_usecase.RegisterFeedsUsecase
-	FeedsReadingStatusUsecase   *reading_status.FeedsReadingStatusUsecase
-	FeedsSummaryUsecase         *fetch_feed_details_usecase.FeedsSummaryUsecase
-	FeedAmountUsecase           *fetch_feed_stats_usecase.FeedsCountUsecase
-	FeedSearchUsecase           *search_feed_usecase.SearchFeedMeilisearchUsecase
+	AltDBRepository                   *alt_db.AltDBRepository
+	FetchSingleFeedUsecase            *fetch_feed_usecase.FetchSingleFeedUsecase
+	FetchFeedsListUsecase             *fetch_feed_usecase.FetchFeedsListUsecase
+	FetchFeedsListCursorUsecase       *fetch_feed_usecase.FetchFeedsListCursorUsecase
+	RegisterFeedsUsecase              *register_feed_usecase.RegisterFeedsUsecase
+	FeedsReadingStatusUsecase         *reading_status.FeedsReadingStatusUsecase
+	FeedsSummaryUsecase               *fetch_feed_details_usecase.FeedsSummaryUsecase
+	FeedAmountUsecase                 *fetch_feed_stats_usecase.FeedsCountUsecase
+	UnsummarizedArticlesCountUsecase  *fetch_feed_stats_usecase.UnsummarizedArticlesCountUsecase
+	FeedSearchUsecase                 *search_feed_usecase.SearchFeedMeilisearchUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -55,20 +56,24 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	feedAmountGatewayImpl := feed_stats_gateway.NewFeedAmountGateway(pool)
 	feedsCountUsecase := fetch_feed_stats_usecase.NewFeedsCountUsecase(feedAmountGatewayImpl)
 
+	unsummarizedArticlesCountGatewayImpl := feed_stats_gateway.NewUnsummarizedArticlesCountGateway(pool)
+	unsummarizedArticlesCountUsecase := fetch_feed_stats_usecase.NewUnsummarizedArticlesCountUsecase(unsummarizedArticlesCountGatewayImpl)
+
 	searchIndexerDriverImpl := search_indexer.NewHTTPSearchIndexerDriver()
 	feedSearchMeilisearchGatewayImpl := feed_search_gateway.NewSearchFeedMeilisearchGateway(searchIndexerDriverImpl)
 	feedURLLinkGatewayImpl := feed_url_link_gateway.NewFeedURLLinkGateway(altDBRepository)
 	feedSearchUsecase := search_feed_usecase.NewSearchFeedMeilisearchUsecase(feedSearchMeilisearchGatewayImpl, feedURLLinkGatewayImpl)
 
 	return &ApplicationComponents{
-		AltDBRepository:             altDBRepository,
-		FetchSingleFeedUsecase:      fetchSingleFeedUsecase,
-		FetchFeedsListUsecase:       fetchFeedsListUsecase,
-		FetchFeedsListCursorUsecase: fetchFeedsListCursorUsecase,
-		RegisterFeedsUsecase:        registerFeedsUsecase,
-		FeedsReadingStatusUsecase:   feedsReadingStatusUsecase,
-		FeedsSummaryUsecase:         feedsSummaryUsecase,
-		FeedAmountUsecase:           feedsCountUsecase,
-		FeedSearchUsecase:           feedSearchUsecase,
+		AltDBRepository:                  altDBRepository,
+		FetchSingleFeedUsecase:           fetchSingleFeedUsecase,
+		FetchFeedsListUsecase:            fetchFeedsListUsecase,
+		FetchFeedsListCursorUsecase:      fetchFeedsListCursorUsecase,
+		RegisterFeedsUsecase:             registerFeedsUsecase,
+		FeedsReadingStatusUsecase:        feedsReadingStatusUsecase,
+		FeedsSummaryUsecase:              feedsSummaryUsecase,
+		FeedAmountUsecase:                feedsCountUsecase,
+		UnsummarizedArticlesCountUsecase: unsummarizedArticlesCountUsecase,
+		FeedSearchUsecase:                feedSearchUsecase,
 	}
 }

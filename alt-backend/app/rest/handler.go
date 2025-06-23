@@ -354,9 +354,15 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 			amount = 0
 		}
 
+		unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
+		if err != nil {
+			logger.Logger.Error("Error fetching initial unsummarized articles count", "error", err)
+			unsummarizedCount = 0
+		}
+
 		initialStats := FeedStatsSummary{
 			FeedAmount:           feedAmount{Amount: amount},
-			SummarizedFeedAmount: summarizedFeedAmount{Amount: 0},
+			SummarizedFeedAmount: summarizedFeedAmount{Amount: unsummarizedCount},
 		}
 
 		// Send initial data
@@ -380,9 +386,15 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 					continue
 				}
 
+				unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
+				if err != nil {
+					logger.Logger.Error("Error fetching unsummarized articles count", "error", err)
+					continue
+				}
+
 				stats := FeedStatsSummary{
 					FeedAmount:           feedAmount{Amount: amount},
-					SummarizedFeedAmount: summarizedFeedAmount{Amount: 0},
+					SummarizedFeedAmount: summarizedFeedAmount{Amount: unsummarizedCount},
 				}
 
 				// Convert to JSON and send
