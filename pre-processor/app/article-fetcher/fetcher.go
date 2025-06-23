@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"pre-processor/logger"
@@ -15,7 +16,28 @@ import (
 	"github.com/go-shiori/go-readability"
 )
 
+var (
+	// Global rate limiter to ensure minimum 5 seconds between requests
+	lastRequestTime time.Time
+	rateLimitMutex  sync.Mutex
+	minInterval     = 5 * time.Second
+)
+
 func FetchArticle(url url.URL) (*models.Article, error) {
+	// Enforce rate limiting - wait at least 5 seconds between requests
+	rateLimitMutex.Lock()
+	if !lastRequestTime.IsZero() {
+		elapsed := time.Since(lastRequestTime)
+		if elapsed < minInterval {
+			waitTime := minInterval - elapsed
+			logger.Logger.Info("Rate limiting: waiting before next request",
+				"wait_time", waitTime,
+				"url", url.String())
+			time.Sleep(waitTime)
+		}
+	}
+	lastRequestTime = time.Now()
+	rateLimitMutex.Unlock()
 	logger.Logger.Info("Fetching article", "url", url.String())
 
 	if urlMP3Validator(url) {

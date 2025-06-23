@@ -15,6 +15,7 @@ type ArticleWithSummary struct {
 	ArticleID       string `db:"article_id"`
 	Content         string `db:"content"`
 	SummaryJapanese string `db:"summary_japanese"`
+	SummaryID       string `db:"summary_id"`
 }
 
 // CreateArticleSummary creates a new article summary
@@ -123,6 +124,9 @@ func GetArticlesWithSummaries(ctx context.Context, db *pgxpool.Pool, lastCreated
 				return err
 			}
 
+			// Store the summary ID in the struct
+			articleWithSummary.SummaryID = id
+			
 			articlesWithSummaries = append(articlesWithSummaries, articleWithSummary)
 			// Keep track of the last item for cursor
 			finalCreatedAt = &createdAt
