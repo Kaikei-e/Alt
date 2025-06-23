@@ -14,11 +14,11 @@ jobs:
   quality-check:
     name: Quality Gates
     runs-on: ubuntu-latest
-    
+
     defaults:
       run:
         working-directory: ./pre-processor/app
-    
+
     # No real database - using mocks only for fast CI
 
     steps:
@@ -89,7 +89,7 @@ jobs:
       run: make build
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: pre-processor-binary
         path: pre-processor/app/bin/pre-processor
@@ -101,11 +101,11 @@ jobs:
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
-    
+
     defaults:
       run:
         working-directory: ./pre-processor/app
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -119,15 +119,17 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    - name: Install Gosec Security Scanner
+      run: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+
     - name: Run Gosec Security Scanner
-      uses: securecodewarrior/github-action-gosec@master
-      with:
-        args: '-fmt sarif -out gosec-results.sarif ./pre-processor/app/...'
+      run: |
+        gosec -fmt sarif -out gosec-results.sarif ./...
 
     - name: Upload SARIF file
       uses: github/codeql-action/upload-sarif@v2
       with:
-        sarif_file: gosec-results.sarif
+        sarif_file: ./pre-processor/app/gosec-results.sarif
 
     - name: Run vulnerability check
       run: |
