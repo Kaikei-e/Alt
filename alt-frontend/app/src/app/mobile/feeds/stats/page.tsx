@@ -2,7 +2,7 @@
 
 import { FeedStatsSummary } from "@/schema/feedStats";
 import { feedsApiSse } from "@/lib/apiSse";
-import { Flex, Text, Box, Card, Stat, SimpleGrid } from "@chakra-ui/react";
+import { Flex, Text, Box, Card, SimpleGrid } from "@chakra-ui/react";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useEffect, useState, useRef } from "react";
 
@@ -46,19 +46,17 @@ export default function FeedsStatsPage() {
         <SimpleGrid columns={1} gap="4">
           <Card.Root>
             <Card.Body>
-              <Stat.Root>
-                <Stat.Label>Total Feeds</Stat.Label>
-                <Stat.ValueText>{feedAmount}</Stat.ValueText>
-              </Stat.Root>
+              <Text fontSize="lg" fontWeight="semibold">
+                Feeds: {feedAmount}
+              </Text>
             </Card.Body>
           </Card.Root>
 
           <Card.Root>
             <Card.Body>
-              <Stat.Root>
-                <Stat.Label>Unsummarized Articles</Stat.Label>
-                <Stat.ValueText>{unsummarizedArticlesAmount}</Stat.ValueText>
-              </Stat.Root>
+              <Text fontSize="lg" fontWeight="semibold">
+                Unsummarized Articles: {unsummarizedArticlesAmount}
+              </Text>
             </Card.Body>
           </Card.Root>
         </SimpleGrid>
