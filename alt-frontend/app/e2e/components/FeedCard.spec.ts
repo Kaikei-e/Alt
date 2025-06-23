@@ -70,7 +70,7 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       // Create a feed with very long description to test truncation
       const longDescriptionFeed = {
         ...mockFeeds[0],
-        description: "A".repeat(400), // Very long description
+        description: "A".repeat(400), // Very long description (400 chars > 200 limit)
       };
       const feedsWithLongDescription = [longDescriptionFeed, ...mockFeeds.slice(1)];
 
@@ -252,7 +252,7 @@ test.describe("FeedCard Component - Functionality Tests", () => {
           title:
             "Very Long Title That Goes On And On And Should Be Handled Gracefully By The UI",
           description:
-            "This is a very long description that contains a lot of text and should be truncated properly by the component to ensure that the UI remains clean and readable even with extensive content that might otherwise break the layout or make it difficult to read other feed items in the list.",
+            "This is a very long description that contains a lot of text and should be truncated properly by the component to ensure that the UI remains clean and readable even with extensive content that might otherwise break the layout or make it difficult to read other feed items in the list. This description exceeds 200 characters to test the truncation functionality.",
           link: "https://example.com/long",
           published: "2024-01-03T12:00:00Z",
         },

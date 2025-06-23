@@ -205,17 +205,6 @@ export default function FeedsPage() {
         height="100vh"
         data-testid="feeds-scroll-container"
       >
-        {/* Header */}
-        <Text
-          fontSize="2xl"
-          fontWeight="bold"
-          color="#ff006e"
-          mb={6}
-          textAlign="center"
-        >
-          Latest Feeds
-        </Text>
-
         {visibleFeeds.length > 0 ? (
           <>
             {/* Virtual scrolling spacer for items before visible range */}

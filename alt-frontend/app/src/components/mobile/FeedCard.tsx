@@ -46,8 +46,8 @@ const FeedCard = memo(function FeedCard({
   }
 
   // Truncate description for better UX
-  const truncatedDescription = feed.description.length > 150
-    ? feed.description.substring(0, 150) + "..."
+  const truncatedDescription = feed.description.length > 200
+    ? feed.description.substring(0, 200) + "..."
     : feed.description;
 
   return (
@@ -76,7 +76,7 @@ const FeedCard = memo(function FeedCard({
         aria-label={`Feed: ${feed.title}`}
         bg="var(--alt-bg-primary, #1a1a2e)"
       >
-        <Flex direction="column" gap={4}>
+        <Flex direction="column" gap={2}>
           {/* Title as link */}
           <Link
             href={feed.link}
@@ -100,7 +100,7 @@ const FeedCard = memo(function FeedCard({
             {truncatedDescription}
           </Text>
 
-          {/* Bottom section with button and date */}
+          {/* Bottom section with button and details */}
           <Flex
             justify="space-between"
             align="center"
@@ -111,25 +111,26 @@ const FeedCard = memo(function FeedCard({
               borderRadius="full"
               bg="linear-gradient(45deg, #ff006e, #8338ec)"
               color="white"
+              px={4}
               border="1px solid rgba(255, 255, 255, 0.2)"
-              loading={isLoading}
+              disabled={isLoading}
               onClick={() => handleReadStatus(feed.link)}
               _hover={{
+                bg: "linear-gradient(45deg, #e6005c, #7129d4)",
                 transform: "scale(1.05)",
                 boxShadow: "0 4px 12px rgba(255, 0, 110, 0.4)",
               }}
+              _disabled={{
+                opacity: 0.6,
+                cursor: "not-allowed",
+              }}
               aria-label={`Mark ${feed.title} as read`}
             >
-              {isLoading ? <Spinner size="sm" /> : "Mark as read"}
+              {isLoading ? <Spinner size="sm" /> : <Text fontSize="sm" fontWeight="bold">Mark as read</Text>}
             </Button>
 
             <FeedDetails feedURL={feed.link} />
           </Flex>
-
-          {/* Publication date */}
-          <Text fontSize="xs" color="whiteAlpha.600">
-            {new Date(feed.published).toLocaleDateString()}
-          </Text>
         </Flex>
       </Box>
     </Box>

@@ -403,7 +403,7 @@ test.describe("Mobile Feeds Page", () => {
   });
 
   test("should truncate long descriptions", async ({ page }) => {
-    // Create feeds with very long descriptions
+    // Create feeds with very long descriptions (exceeds 200 char limit)
     const longDescriptionFeeds = generateMockFeeds(3, 1).map((feed, index) => ({
       ...feed,
       description: `${"Very long description ".repeat(50)}for feed ${index + 1}`,

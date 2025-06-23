@@ -55,6 +55,17 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       });
     });
 
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: generateMockFeeds(10, 1),
+          next_cursor: null,
+        }),
+      });
+    });
+
     await page.route("**/api/v1/feeds/fetch/list", async (route) => {
       await route.fulfill({
         status: 200,
@@ -85,7 +96,10 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     // Wait for the page to load and become stable
     await page.waitForLoadState("networkidle");
 
-    // Wait for the FloatingMenu to be present
+    // Wait for feeds to load first, then floating menu
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 10000 });
+
+    // Now wait for the FloatingMenu
     await page.waitForSelector('[data-testid="floating-menu-button"]', {
       timeout: 10000,
     });
