@@ -1,6 +1,6 @@
 "use client";
 
-import { Text, Box } from "@chakra-ui/react";
+import { Text, Box, TextProps } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 
 interface AnimatedNumberProps {
@@ -11,7 +11,7 @@ interface AnimatedNumberProps {
   /** Number format options */
   formatOptions?: Intl.NumberFormatOptions;
   /** Custom styles for the text */
-  textProps?: any;
+  textProps?: Omit<TextProps, 'children'>;
   /** Callback when animation completes */
   onComplete?: () => void;
 }
@@ -31,7 +31,7 @@ export function AnimatedNumber({
 
     // Check for reduced motion preference
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    
+
     if (reducedMotion) {
       // Skip animation for accessibility
       setDisplayValue(value);
@@ -47,10 +47,10 @@ export function AnimatedNumber({
     const animate = () => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      
+
       // Easing function (ease-out cubic)
       const easedProgress = 1 - Math.pow(1 - progress, 3);
-      
+
       const currentValue = startValue + (difference * easedProgress);
       setDisplayValue(Math.round(currentValue));
 
@@ -64,14 +64,14 @@ export function AnimatedNumber({
     };
 
     const animationFrame = requestAnimationFrame(animate);
-    
+
     return () => {
       cancelAnimationFrame(animationFrame);
       setIsAnimating(false);
     };
   }, [value, duration, onComplete, displayValue]);
 
-  const formattedValue = formatOptions 
+  const formattedValue = formatOptions
     ? new Intl.NumberFormat('en-US', formatOptions).format(displayValue)
     : displayValue.toString();
 
@@ -92,7 +92,7 @@ export function AnimatedNumber({
       >
         {formattedValue}
       </Text>
-      
+
       {/* Hidden element for screen readers to announce changes */}
       <Box
         position="absolute"

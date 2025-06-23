@@ -14,6 +14,7 @@ export default function FeedsStatsPage() {
   const [feedAmount, setFeedAmount] = useState(0);
   const [unsummarizedArticlesAmount, setUnsummarizedArticlesAmount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
+  const [lastDataReceived, setLastDataReceived] = useState<number>(Date.now());
   const eventSourceRef = useRef<{
     close: () => void;
     getReadyState: () => number;
@@ -22,21 +23,42 @@ export default function FeedsStatsPage() {
   // Progress tracking for SSE updates (5-second cycle)
   const { progress, reset: resetProgress } = useSSEProgress(5000);
 
+  // Connection health check
+  useEffect(() => {
+    const healthCheck = setInterval(() => {
+      const timeSinceLastData = Date.now() - lastDataReceived;
+      const readyState = eventSourceRef.current?.getReadyState() ?? EventSource.CLOSED;
+
+      // Consider connected if:
+      // 1. EventSource is in OPEN state AND
+      // 2. We've received data within the last 10 seconds (2x the expected interval)
+      const shouldBeConnected = readyState === EventSource.OPEN && timeSinceLastData < 10000;
+
+      setIsConnected(shouldBeConnected);
+    }, 1000); // Check every second
+
+    return () => clearInterval(healthCheck);
+  }, [lastDataReceived]);
+
   useEffect(() => {
     const sseConnection = feedsApiSse.getFeedsStats(
       (data: FeedStatsSummary) => {
+        // Update data
         if (data.feed_amount?.amount !== undefined) {
           setFeedAmount(data.feed_amount.amount);
         }
         if (data.summarized_feed?.amount !== undefined) {
           setUnsummarizedArticlesAmount(data.summarized_feed.amount);
         }
-        setIsConnected(true);
+
+        // Update last data received timestamp
+        setLastDataReceived(Date.now());
         resetProgress(); // Reset progress bar on new data
       },
       (event) => {
         console.error("SSE connection error:", event);
-        setIsConnected(false);
+        // Don't immediately set to disconnected - let the health check handle it
+        // This prevents flickering when there are temporary connection issues
       },
     );
 
@@ -82,6 +104,7 @@ export default function FeedsStatsPage() {
             h={2}
             borderRadius="full"
             bg={isConnected ? "#4caf50" : "#e53935"}
+            transition="background-color 0.3s ease"
           />
           <Text fontSize="sm" color="whiteAlpha.800">
             {isConnected ? "Connected" : "Disconnected"}

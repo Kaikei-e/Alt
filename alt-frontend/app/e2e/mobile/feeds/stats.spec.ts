@@ -419,4 +419,461 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(page.getByText("Feeds Statistics")).toBeVisible();
     });
   });
+
+  test.describe("Connection Status Indicator", () => {
+    test("should show connected status when SSE is working", async ({ page }) => {
+      // Mock both EventSource and the SSE API directly
+      await page.addInitScript(() => {
+        // Mock the feedsApiSse.getFeedsStats method
+        (window as any)._mockSSEConnected = true;
+        (window as any)._mockSSEData = {
+          feed_amount: { amount: 25 },
+          summarized_feed: { amount: 18 }
+        };
+
+        // Override the SSE client
+        const originalFetch = window.fetch;
+        window.fetch = async (url, options) => {
+          if (typeof url === 'string' && url.includes('/sse/feeds/stats')) {
+            // Don't actually fetch, return a mock response
+            return new Response('', { status: 200 });
+          }
+          return originalFetch(url, options);
+        };
+
+        // Mock EventSource to simulate proper connection states
+        class MockEventSource extends EventTarget {
+          public readyState: number = 1; // OPEN
+          public url: string;
+          public onopen: ((event: Event) => void) | null = null;
+          public onmessage: ((event: MessageEvent) => void) | null = null;
+          public onerror: ((event: Event) => void) | null = null;
+
+          constructor(url: string) {
+            super();
+            this.url = url;
+            this.readyState = 1; // OPEN
+
+            // Simulate successful connection
+            setTimeout(() => {
+              const openEvent = new Event('open');
+              if (this.onopen) this.onopen(openEvent);
+              this.dispatchEvent(openEvent);
+
+                            // Send initial data
+              const messageEvent = new MessageEvent('message', {
+                data: JSON.stringify((window as any)._mockSSEData)
+              });
+              if (this.onmessage) this.onmessage(messageEvent);
+              this.dispatchEvent(messageEvent);
+
+              // Keep sending data every 2 seconds
+              const interval = setInterval(() => {
+                if (this.readyState === 1) {
+                  const msgEvent = new MessageEvent('message', {
+                    data: JSON.stringify((window as any)._mockSSEData)
+                  });
+                  if (this.onmessage) this.onmessage(msgEvent);
+                }
+              }, 2000);
+            }, 100);
+          }
+
+          close() {
+            this.readyState = 2; // CLOSED
+          }
+
+          static readonly CONNECTING = 0;
+          static readonly OPEN = 1;
+          static readonly CLOSED = 2;
+        }
+
+        // Replace the global EventSource
+        (window as any).EventSource = MockEventSource;
+      });
+
+      await page.goto("/mobile/feeds/stats");
+      await page.waitForLoadState("networkidle");
+
+      // Wait for connection to establish
+      await page.waitForTimeout(3000);
+
+      // Should show connected status
+      await expect(page.getByText("Connected")).toBeVisible();
+
+      // Should not show disconnected status
+      await expect(page.getByText("Disconnected")).not.toBeVisible();
+
+      // Connection indicator dot should be green - using more flexible selector
+      const statusDot = page.locator('div').filter({
+        has: page.getByText('Connected')
+      }).locator('div').first();
+      await expect(statusDot).toBeVisible();
+    });
+
+    test("should show disconnected status when SSE fails", async ({ page }) => {
+      // Mock EventSource to simulate connection failure
+      await page.addInitScript(() => {
+        (window as any)._mockSSEConnected = false;
+
+        // Override fetch to simulate failure
+        const originalFetch = window.fetch;
+        window.fetch = async (url, options) => {
+          if (typeof url === 'string' && url.includes('/sse/feeds/stats')) {
+            throw new Error('Connection failed');
+          }
+          return originalFetch(url, options);
+        };
+
+        class MockEventSource extends EventTarget {
+          public readyState: number = 2; // CLOSED
+          public url: string;
+          public onopen: ((event: Event) => void) | null = null;
+          public onmessage: ((event: MessageEvent) => void) | null = null;
+          public onerror: ((event: Event) => void) | null = null;
+
+          constructor(url: string) {
+            super();
+            this.url = url;
+            this.readyState = 2; // CLOSED
+
+            // Simulate connection error
+            setTimeout(() => {
+              const errorEvent = new Event('error');
+              if (this.onerror) this.onerror(errorEvent);
+              this.dispatchEvent(errorEvent);
+            }, 100);
+          }
+
+          close() {
+            this.readyState = 2; // CLOSED
+          }
+
+          static readonly CONNECTING = 0;
+          static readonly OPEN = 1;
+          static readonly CLOSED = 2;
+        }
+
+        (window as any).EventSource = MockEventSource;
+      });
+
+      await page.goto("/mobile/feeds/stats");
+      await page.waitForLoadState("networkidle");
+
+      // Wait for connection timeout (health check runs every 1s with 10s timeout)
+      await page.waitForTimeout(12000);
+
+      // Should show disconnected status
+      await expect(page.getByText("Disconnected")).toBeVisible();
+
+      // Should not show connected status - use exact matching to avoid substring match
+      await expect(page.getByText("Connected", { exact: true })).not.toBeVisible();
+
+      // Connection indicator dot should be red
+      const statusDot = page.locator('div').filter({
+        has: page.getByText('Disconnected')
+      }).locator('div').first();
+      await expect(statusDot).toBeVisible();
+    });
+
+    test("should handle connection state transitions", async ({ page }) => {
+      // Start with working connection, then simulate failure
+      await page.addInitScript(() => {
+        let connectionActive = true;
+        (window as any)._mockSSEData = {
+          feed_amount: { amount: 25 },
+          summarized_feed: { amount: 18 }
+        };
+
+        class MockEventSource extends EventTarget {
+          public readyState: number = 1; // OPEN
+          public url: string;
+          public onopen: ((event: Event) => void) | null = null;
+          public onmessage: ((event: MessageEvent) => void) | null = null;
+          public onerror: ((event: Event) => void) | null = null;
+          private interval: any;
+
+          constructor(url: string) {
+            super();
+            this.url = url;
+            this.readyState = 1; // OPEN
+
+            // Initial connection
+            setTimeout(() => {
+              const openEvent = new Event('open');
+              if (this.onopen) this.onopen(openEvent);
+
+              // Send initial data
+              const messageEvent = new MessageEvent('message', {
+                data: JSON.stringify((window as any)._mockSSEData)
+              });
+              if (this.onmessage) this.onmessage(messageEvent);
+
+              // Keep connection alive for 4 seconds, then fail
+              this.interval = setInterval(() => {
+                if (connectionActive && this.readyState === 1) {
+                  const msgEvent = new MessageEvent('message', {
+                    data: JSON.stringify((window as any)._mockSSEData)
+                  });
+                  if (this.onmessage) this.onmessage(msgEvent);
+                }
+              }, 2000);
+
+              // Simulate disconnection after 4 seconds
+              setTimeout(() => {
+                connectionActive = false;
+                this.readyState = 2; // CLOSED
+                clearInterval(this.interval);
+                const errorEvent = new Event('error');
+                if (this.onerror) this.onerror(errorEvent);
+              }, 4000);
+            }, 100);
+          }
+
+          close() {
+            this.readyState = 2; // CLOSED
+            if (this.interval) clearInterval(this.interval);
+          }
+
+          static readonly CONNECTING = 0;
+          static readonly OPEN = 1;
+          static readonly CLOSED = 2;
+        }
+
+        (window as any).EventSource = MockEventSource;
+      });
+
+      await page.goto("/mobile/feeds/stats");
+      await page.waitForLoadState("networkidle");
+
+      // Start with working connection
+      await page.waitForTimeout(2000);
+      await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+
+      // Wait for simulated disconnection + health check timeout
+      await page.waitForTimeout(12000);
+
+      // Should now show disconnected
+      await expect(page.getByText("Disconnected")).toBeVisible();
+    });
+
+    test("should maintain stable connection status (no flickering)", async ({ page }) => {
+      // Mock stable connection
+      await page.addInitScript(() => {
+        (window as any)._mockSSEData = {
+          feed_amount: { amount: 25 },
+          summarized_feed: { amount: 18 }
+        };
+
+        class MockEventSource extends EventTarget {
+          public readyState: number = 1; // OPEN
+          public url: string;
+          public onopen: ((event: Event) => void) | null = null;
+          public onmessage: ((event: MessageEvent) => void) | null = null;
+          public onerror: ((event: Event) => void) | null = null;
+
+          constructor(url: string) {
+            super();
+            this.url = url;
+            this.readyState = 1; // OPEN
+
+            // Send data every 2 seconds to maintain connection
+            const sendData = () => {
+              if (this.readyState === 1) {
+                const messageEvent = new MessageEvent('message', {
+                  data: JSON.stringify((window as any)._mockSSEData)
+                });
+                if (this.onmessage) this.onmessage(messageEvent);
+                setTimeout(sendData, 2000);
+              }
+            };
+
+            setTimeout(() => {
+              const openEvent = new Event('open');
+              if (this.onopen) this.onopen(openEvent);
+              sendData();
+            }, 100);
+          }
+
+          close() {
+            this.readyState = 2; // CLOSED
+          }
+
+          static readonly CONNECTING = 0;
+          static readonly OPEN = 1;
+          static readonly CLOSED = 2;
+        }
+
+        (window as any).EventSource = MockEventSource;
+      });
+
+      await page.goto("/mobile/feeds/stats");
+      await page.waitForLoadState("networkidle");
+
+      // Monitor connection status changes over time
+      const connectionStatusChanges: string[] = [];
+
+      // Wait for initial connection
+      await page.waitForTimeout(2000);
+
+      // Record status over 10 seconds to detect flickering
+      for (let i = 0; i < 10; i++) {
+        try {
+          const isConnected = await page.getByText("Connected", { exact: true }).isVisible();
+          const isDisconnected = await page.getByText("Disconnected", { exact: true }).isVisible();
+
+          if (isConnected && !isDisconnected) {
+            connectionStatusChanges.push("Connected");
+          } else if (isDisconnected && !isConnected) {
+            connectionStatusChanges.push("Disconnected");
+          } else {
+            connectionStatusChanges.push("Unknown");
+          }
+        } catch {
+          connectionStatusChanges.push("Error");
+        }
+        await page.waitForTimeout(1000);
+      }
+
+      // Should not have rapid changes (max 2 different states in 10 seconds)
+      const uniqueStates = [...new Set(connectionStatusChanges)];
+      expect(uniqueStates.length).toBeLessThanOrEqual(2);
+
+      // Should be predominantly in one state
+      const connectedCount = connectionStatusChanges.filter(s => s === "Connected").length;
+      const disconnectedCount = connectionStatusChanges.filter(s => s === "Disconnected").length;
+      const stableCount = Math.max(connectedCount, disconnectedCount);
+
+      // At least 80% of the time should be in a stable state
+      expect(stableCount).toBeGreaterThanOrEqual(8);
+    });
+
+    test("should show correct connection status on page load", async ({ page }) => {
+      // Mock working SSE connection
+      await page.addInitScript(() => {
+        (window as any)._mockSSEData = {
+          feed_amount: { amount: 25 },
+          summarized_feed: { amount: 18 }
+        };
+
+        class MockEventSource extends EventTarget {
+          public readyState: number = 0; // CONNECTING
+          public url: string;
+          public onopen: ((event: Event) => void) | null = null;
+          public onmessage: ((event: MessageEvent) => void) | null = null;
+          public onerror: ((event: Event) => void) | null = null;
+
+          constructor(url: string) {
+            super();
+            this.url = url;
+            this.readyState = 0; // CONNECTING
+
+            // Simulate connection process
+            setTimeout(() => {
+              this.readyState = 1; // OPEN
+              const openEvent = new Event('open');
+              if (this.onopen) this.onopen(openEvent);
+
+              const messageEvent = new MessageEvent('message', {
+                data: JSON.stringify((window as any)._mockSSEData)
+              });
+              if (this.onmessage) this.onmessage(messageEvent);
+
+              // Keep sending data
+              setInterval(() => {
+                if (this.readyState === 1) {
+                  const msgEvent = new MessageEvent('message', {
+                    data: JSON.stringify((window as any)._mockSSEData)
+                  });
+                  if (this.onmessage) this.onmessage(msgEvent);
+                }
+              }, 2000);
+            }, 1000);
+          }
+
+          close() {
+            this.readyState = 2; // CLOSED
+          }
+
+          static readonly CONNECTING = 0;
+          static readonly OPEN = 1;
+          static readonly CLOSED = 2;
+        }
+
+        (window as any).EventSource = MockEventSource;
+      });
+
+      // Fresh page load
+      await page.goto("/mobile/feeds/stats");
+      await page.waitForLoadState("networkidle");
+
+      // After SSE connects, should show connected
+      await page.waitForTimeout(3000);
+      await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+    });
+
+    test("should handle intermittent connection issues gracefully", async ({ page }) => {
+      // Mock connection with brief interruption
+      await page.addInitScript(() => {
+        (window as any)._mockSSEData = {
+          feed_amount: { amount: 25 },
+          summarized_feed: { amount: 18 }
+        };
+
+        class MockEventSource extends EventTarget {
+          public readyState: number = 1; // OPEN
+          public url: string;
+          public onopen: ((event: Event) => void) | null = null;
+          public onmessage: ((event: MessageEvent) => void) | null = null;
+          public onerror: ((event: Event) => void) | null = null;
+
+          constructor(url: string) {
+            super();
+            this.url = url;
+            this.readyState = 1; // OPEN
+
+            // Send regular data
+            const sendData = () => {
+              if (this.readyState === 1) {
+                const messageEvent = new MessageEvent('message', {
+                  data: JSON.stringify((window as any)._mockSSEData)
+                });
+                if (this.onmessage) this.onmessage(messageEvent);
+              }
+            };
+
+            setTimeout(() => {
+              const openEvent = new Event('open');
+              if (this.onopen) this.onopen(openEvent);
+              sendData();
+
+              // Continue sending data every 3 seconds (within timeout window)
+              setInterval(sendData, 3000);
+            }, 100);
+          }
+
+          close() {
+            this.readyState = 2; // CLOSED
+          }
+
+          static readonly CONNECTING = 0;
+          static readonly OPEN = 1;
+          static readonly CLOSED = 2;
+        }
+
+        (window as any).EventSource = MockEventSource;
+      });
+
+      await page.goto("/mobile/feeds/stats");
+      await page.waitForLoadState("networkidle");
+
+      // Start connected
+      await page.waitForTimeout(2000);
+      await expect(page.getByText("Connected")).toBeVisible();
+
+      // Should remain connected during brief hiccups (data comes every 3s, timeout is 10s)
+      await page.waitForTimeout(8000);
+      await expect(page.getByText("Connected")).toBeVisible();
+    });
+  });
 });

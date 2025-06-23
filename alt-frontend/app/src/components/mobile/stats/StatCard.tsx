@@ -30,7 +30,7 @@ export const StatCard = ({ icon, label, value, description }: StatCardProps) => 
     >
       <Flex direction="column" gap={3}>
         <Flex align="center" gap={2}>
-          <Icon as={icon} color="var(--vaporwave-pink)" boxSize={5} />
+          <Icon as={icon} color="#ff006e" boxSize={5} />
           <Text
             fontSize="sm"
             textTransform="uppercase"
@@ -45,7 +45,7 @@ export const StatCard = ({ icon, label, value, description }: StatCardProps) => 
           {value.toLocaleString()}
         </Text>
 
-        <Text fontSize="sm" color="rgba(255, 255, 255, 0.8)" lineHeight="1.5">
+        <Text fontSize="sm" color="whiteAlpha.700" lineHeight="1.5">
           {description}
         </Text>
       </Flex>
