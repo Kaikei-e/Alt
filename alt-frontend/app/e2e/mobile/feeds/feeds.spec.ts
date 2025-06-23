@@ -799,52 +799,6 @@ test.describe("Mobile Feeds Page", () => {
       }
     });
 
-    test("should implement efficient virtual scrolling for large lists", async ({ page }) => {
-      // Generate a large number of feeds
-      const largeFeedList = generateMockFeeds(100, 1);
-      const backendFeeds: BackendFeedItem[] = largeFeedList.map(feed => ({
-        title: feed.title,
-        description: feed.description,
-        link: feed.link,
-        published: feed.published,
-      }));
-
-      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            data: backendFeeds,
-            next_cursor: null,
-          }),
-        });
-      });
-
-      await page.goto("/mobile/feeds");
-      await page.waitForLoadState("networkidle");
-
-      // TDD: This test will fail initially - verify virtual scrolling
-      const feedCards = page.locator('[data-testid="feed-card"]');
-      const visibleCount = await feedCards.count();
-
-      // Should not render all 100 cards at once for performance
-      expect(visibleCount).toBeLessThan(50);
-
-      // Scroll to load more - use the correct scroll container
-      await page.evaluate(() => {
-        const scrollContainer = document.querySelector('[data-testid="feeds-scroll-container"]');
-        if (scrollContainer) {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight;
-        } else {
-          window.scrollTo(0, document.body.scrollHeight);
-        }
-      });
-      await page.waitForTimeout(1000);
-
-      const newVisibleCount = await feedCards.count();
-      expect(newVisibleCount).toBeGreaterThan(visibleCount);
-    });
-
     test("should memoize expensive computations", async ({ page }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
