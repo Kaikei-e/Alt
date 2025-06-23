@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"pre-processor/logger"
 	"pre-processor/models"
@@ -13,6 +14,10 @@ import (
 
 // CheckArticleExists checks if articles already exist in the database
 func CheckArticleExists(ctx context.Context, db *pgxpool.Pool, urls []url.URL) (bool, error) {
+	if db == nil {
+		return false, fmt.Errorf("database connection is nil")
+	}
+	
 	if len(urls) == 0 {
 		return false, nil
 	}
@@ -38,6 +43,10 @@ func CheckArticleExists(ctx context.Context, db *pgxpool.Pool, urls []url.URL) (
 
 // CreateArticle creates a new article in the database
 func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Article) error {
+	if db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+
 	query := `
 		INSERT INTO articles (title, content, url)
 		VALUES ($1, $2, $3)
@@ -70,6 +79,10 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 
 // HasUnsummarizedArticles efficiently checks if there are articles without summaries
 func HasUnsummarizedArticles(ctx context.Context, db *pgxpool.Pool) (bool, error) {
+	if db == nil {
+		return false, fmt.Errorf("database connection is nil")
+	}
+
 	query := `
 		SELECT EXISTS (
 				SELECT 1
@@ -99,6 +112,10 @@ func HasUnsummarizedArticles(ctx context.Context, db *pgxpool.Pool) (bool, error
 // lastCreatedAt and lastID are used as cursor parameters for pagination
 // Returns: articles, lastCreatedAt, lastID, error for cursor tracking
 func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCreatedAt *time.Time, lastID string, limit int) ([]*models.Article, *time.Time, string, error) {
+	if db == nil {
+		return nil, nil, "", fmt.Errorf("database connection is nil")
+	}
+
 	var articles []*models.Article
 	var finalCreatedAt *time.Time
 	var finalID string

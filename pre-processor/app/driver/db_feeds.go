@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"pre-processor/logger"
 	"time"
@@ -10,6 +11,12 @@ import (
 )
 
 func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context, db *pgxpool.Pool) ([]url.URL, *time.Time, string, error) {
+	// Handle nil database
+	if db == nil {
+		logger.Logger.Error("Database connection is nil")
+		return nil, nil, "", fmt.Errorf("database connection is nil")
+	}
+
 	var urls []url.URL
 	var finalCreatedAt *time.Time
 	var finalID string
@@ -105,6 +112,12 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 
 // GetFeedStatistics returns statistics about feeds processing
 func GetFeedStatistics(ctx context.Context, db *pgxpool.Pool) (totalFeeds int, processedFeeds int, err error) {
+	// Handle nil database
+	if db == nil {
+		logger.Logger.Error("Database connection is nil")
+		return 0, 0, fmt.Errorf("database connection is nil")
+	}
+
 	// Get total non-MP3 feeds count
 	err = db.QueryRow(ctx, "SELECT COUNT(*) FROM feeds WHERE link NOT LIKE '%.mp3'").Scan(&totalFeeds)
 	if err != nil {

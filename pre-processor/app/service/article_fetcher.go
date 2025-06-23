@@ -2,10 +2,26 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net"
+	"net/http"
 	"net/url"
-	articlefetcher "pre-processor/article-fetcher"
+	"strings"
+	"sync"
+	"time"
+
+	"pre-processor/logger"
 	"pre-processor/models"
+
+	"github.com/go-shiori/go-readability"
+)
+
+var (
+	// Global rate limiter to ensure minimum 5 seconds between requests
+	lastRequestTime time.Time
+	rateLimitMutex  sync.Mutex
+	minInterval     = 5 * time.Second
 )
 
 // ArticleFetcherService implementation
@@ -24,14 +40,26 @@ func NewArticleFetcherService(logger *slog.Logger) ArticleFetcherService {
 func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string) (*models.Article, error) {
 	s.logger.Info("fetching article", "url", urlStr)
 
-	// GREEN PHASE: Minimal implementation calling existing fetcher
+	// Validate URL first
+	if err := s.ValidateURL(urlStr); err != nil {
+		s.logger.Error("failed to validate URL", "url", urlStr, "error", err)
+		return nil, err
+	}
+
+	// Parse URL
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
 		s.logger.Error("failed to parse URL", "url", urlStr, "error", err)
 		return nil, err
 	}
 
-	article, err := articlefetcher.FetchArticle(*parsedURL)
+	// Initialize global logger if needed
+	if logger.Logger == nil {
+		logger.Init()
+	}
+
+	// Fetch article using embedded logic
+	article, err := s.fetchArticleFromURL(*parsedURL)
 	if err != nil {
 		s.logger.Error("failed to fetch article", "url", urlStr, "error", err)
 		return nil, err
@@ -45,13 +73,206 @@ func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string)
 func (s *articleFetcherService) ValidateURL(urlStr string) error {
 	s.logger.Info("validating URL", "url", urlStr)
 
-	// GREEN PHASE: Minimal implementation
-	_, err := url.Parse(urlStr)
+	// Validate empty string
+	if urlStr == "" {
+		s.logger.Error("URL validation failed", "url", urlStr, "error", "URL cannot be empty")
+		return errors.New("URL cannot be empty")
+	}
+
+	// Parse URL
+	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
 		s.logger.Error("URL validation failed", "url", urlStr, "error", err)
 		return err
 	}
 
+	// Validate scheme
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		s.logger.Error("URL validation failed", "url", urlStr, "error", "only HTTP or HTTPS schemes allowed")
+		return errors.New("only HTTP or HTTPS schemes allowed")
+	}
+
 	s.logger.Info("URL validated successfully", "url", urlStr)
 	return nil
+}
+
+// fetchArticleFromURL fetches an article from a URL (moved from article-fetcher package)
+func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Article, error) {
+	// Enforce rate limiting
+	rateLimitMutex.Lock()
+	if !lastRequestTime.IsZero() {
+		elapsed := time.Since(lastRequestTime)
+		if elapsed < minInterval {
+			waitTime := minInterval - elapsed
+			s.logger.Info("Rate limiting: waiting before next request",
+				"wait_time", waitTime,
+				"url", url.String())
+			time.Sleep(waitTime)
+		}
+	}
+	lastRequestTime = time.Now()
+	rateLimitMutex.Unlock()
+
+	// Skip MP3 files
+	if strings.HasSuffix(url.String(), ".mp3") {
+		s.logger.Info("Skipping MP3 URL", "url", url.String())
+		return nil, nil
+	}
+
+	// Validate URL for SSRF protection
+	if err := s.validateURLForSSRF(&url); err != nil {
+		s.logger.Error("URL validation failed", "error", err, "url", url.String())
+		return nil, err
+	}
+
+	// Create secure HTTP client
+	client := s.createSecureHTTPClient()
+
+	// Fetch the page
+	resp, err := client.Get(url.String())
+	if err != nil {
+		s.logger.Error("Failed to fetch page", "error", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Parse with readability
+	article, err := readability.FromReader(resp.Body, &url)
+	if err != nil {
+		s.logger.Error("Failed to parse article", "error", err)
+		return nil, err
+	}
+
+	s.logger.Info("Article fetched", "title", article.Title, "content length", len(article.TextContent))
+
+	cleanedContent := strings.ReplaceAll(article.TextContent, "\n", " ")
+
+	return &models.Article{
+		Title:   article.Title,
+		Content: cleanedContent,
+		URL:     url.String(),
+	}, nil
+}
+
+// Helper methods (moved from article-fetcher package)
+func (s *articleFetcherService) createSecureHTTPClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout: 10 * time.Second,
+	}
+
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := s.validateTarget(host, port); err != nil {
+				return nil, err
+			}
+
+			return dialer.DialContext(ctx, network, addr)
+		},
+		TLSHandshakeTimeout: 10 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
+}
+
+func (s *articleFetcherService) validateURLForSSRF(u *url.URL) error {
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return errors.New("only HTTP or HTTPS schemes allowed")
+	}
+
+	if s.isPrivateHost(u.Hostname()) {
+		return errors.New("access to private networks not allowed")
+	}
+
+	return nil
+}
+
+func (s *articleFetcherService) validateTarget(host, port string) error {
+	blockedPorts := map[string]bool{
+		"22": true, "23": true, "25": true, "53": true, "110": true,
+		"143": true, "993": true, "995": true, "1433": true, "3306": true,
+		"5432": true, "6379": true, "11211": true,
+	}
+
+	if blockedPorts[port] {
+		return errors.New("access to this port is not allowed")
+	}
+
+	if s.isPrivateHost(host) {
+		return errors.New("access to private networks not allowed")
+	}
+
+	return nil
+}
+
+func (s *articleFetcherService) isPrivateHost(hostname string) bool {
+	ip := net.ParseIP(hostname)
+	if ip != nil {
+		return s.isPrivateIPAddress(ip)
+	}
+
+	hostname = strings.ToLower(hostname)
+	if hostname == "localhost" || strings.HasPrefix(hostname, "127.") {
+		return true
+	}
+
+	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" {
+		return true
+	}
+
+	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
+	for _, domain := range internalDomains {
+		if strings.HasSuffix(hostname, domain) {
+			return true
+		}
+	}
+
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		return true
+	}
+
+	for _, ip := range ips {
+		if s.isPrivateIPAddress(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *articleFetcherService) isPrivateIPAddress(ip net.IP) bool {
+	if ip4 := ip.To4(); ip4 != nil {
+		switch {
+		case ip4[0] == 10:
+			return true
+		case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31:
+			return true
+		case ip4[0] == 192 && ip4[1] == 168:
+			return true
+		case ip4[0] == 127:
+			return true
+		}
+	}
+
+	if ip6 := ip.To16(); ip6 != nil {
+		if ip6[0] == 0xfe && ip6[1] == 0x80 {
+			return true
+		}
+		if ip6[0] == 0xfc && ip6[1] == 0x00 {
+			return true
+		}
+	}
+
+	return false
 }

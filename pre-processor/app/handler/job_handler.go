@@ -141,7 +141,7 @@ func (h *jobHandler) runSummarizationLoop() {
 
 // runQualityCheckLoop runs the quality check loop
 func (h *jobHandler) runQualityCheckLoop() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {

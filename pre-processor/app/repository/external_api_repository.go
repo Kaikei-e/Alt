@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"pre-processor/driver"
 	"pre-processor/models"
+	"strings"
 	"time"
 )
 
@@ -28,6 +30,22 @@ func NewExternalAPIRepository(logger *slog.Logger) ExternalAPIRepository {
 
 // SummarizeArticle summarizes an article using external API
 func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error) {
+	// Input validation
+	if article == nil {
+		r.logger.Error("article cannot be nil")
+		return nil, fmt.Errorf("article cannot be nil")
+	}
+
+	if article.ID == "" {
+		r.logger.Error("article ID cannot be empty")
+		return nil, fmt.Errorf("article ID cannot be empty")
+	}
+
+	if article.Content == "" {
+		r.logger.Error("article content cannot be empty", "article_id", article.ID)
+		return nil, fmt.Errorf("article content cannot be empty")
+	}
+
 	r.logger.Info("summarizing article", "article_id", article.ID)
 
 	// Use existing driver function
@@ -49,10 +67,30 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 
 // CheckHealth checks the health of an external service
 func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL string) error {
+	// Input validation
+	if serviceURL == "" {
+		r.logger.Error("service URL cannot be empty")
+		return fmt.Errorf("service URL cannot be empty")
+	}
+
+	// Validate URL format
+	if !strings.HasPrefix(serviceURL, "http://") && !strings.HasPrefix(serviceURL, "https://") {
+		r.logger.Error("invalid service URL", "url", serviceURL)
+		return fmt.Errorf("invalid service URL: must start with http:// or https://")
+	}
+
+	// Parse URL to ensure it's valid
+	parsedURL, err := url.Parse(serviceURL)
+	if err != nil {
+		r.logger.Error("invalid service URL format", "url", serviceURL, "error", err)
+		return fmt.Errorf("invalid service URL: %w", err)
+	}
+
 	r.logger.Info("checking service health", "url", serviceURL)
 
 	// GREEN PHASE: Basic health check implementation
-	req, err := http.NewRequestWithContext(ctx, "GET", serviceURL+"/api/tags", nil)
+	healthEndpoint := parsedURL.String() + "/api/tags"
+	req, err := http.NewRequestWithContext(ctx, "GET", healthEndpoint, nil)
 	if err != nil {
 		r.logger.Error("failed to create health check request", "error", err)
 		return fmt.Errorf("failed to create health check request: %w", err)
