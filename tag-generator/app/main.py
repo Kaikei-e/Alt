@@ -2,7 +2,7 @@ import gc
 import logging
 import os
 import time
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from typing import Optional, Dict, Any, List, Union
 from dataclasses import dataclass
 from contextlib import contextmanager
@@ -34,6 +34,9 @@ class TagGeneratorConfig:
     memory_cleanup_interval: int = 25  # articles between memory cleanup
     max_connection_retries: int = 3  # max database connection retries
     connection_retry_delay: float = 5.0  # seconds between connection attempts
+    # Health monitoring
+    health_check_interval: int = 10  # cycles between health checks
+    max_consecutive_empty_cycles: int = 20  # max cycles with 0 articles before warning
 
 class DatabaseConnectionError(Exception):
     """Custom exception for database connection errors."""
@@ -51,6 +54,12 @@ class TagGeneratorService:
         # Persistent cursor position for pagination between cycles
         self.last_processed_created_at: Optional[str] = None
         self.last_processed_id: Optional[str] = None
+
+        # Health monitoring
+        self.consecutive_empty_cycles = 0
+        self.total_cycles = 0
+        self.total_articles_processed = 0
+        self.last_health_check_cycle = 0
 
         # Using direct database connections (connection pool disabled due to hanging issues)
         self._connection_pool = None
@@ -142,19 +151,119 @@ class TagGeneratorService:
         raise DatabaseConnectionError("Database connection failed")
 
     def _get_initial_cursor_position(self) -> tuple[str, str]:
-        """Get initial cursor position for pagination."""
+        """Get initial cursor position for pagination with robust recovery mechanisms."""
         if self.last_processed_created_at and self.last_processed_id:
-            # Continue from where we left off
-            last_created_at = self.last_processed_created_at
-            last_id = self.last_processed_id
-            logger.info(f"Continuing article processing from cursor: {last_created_at}, ID: {last_id}")
-        else:
-            # First run - start from current time
-            last_created_at = datetime.now(UTC).isoformat()
-            last_id = "ffffffff-ffff-ffff-ffff-ffffffffffff"  # Max UUID for descending order
-            logger.info(f"Starting initial article processing from {last_created_at}")
+            # Check for cursor poisoning (timestamp in the future or too old)
+            try:
+                cursor_time = datetime.fromisoformat(self.last_processed_created_at.replace('Z', '+00:00'))
+                current_time = datetime.now(UTC)
+                time_diff = cursor_time - current_time
 
-        return last_created_at, last_id
+                # Check for various cursor poisoning scenarios
+                cursor_is_poisoned = False
+                reason = ""
+
+                if time_diff.total_seconds() > 3600:  # More than 1 hour in future
+                    cursor_is_poisoned = True
+                    reason = f"cursor {time_diff.total_seconds()/3600:.1f} hours in future"
+                elif time_diff.total_seconds() < -86400 * 30:  # More than 30 days old
+                    cursor_is_poisoned = True
+                    reason = f"cursor {abs(time_diff.total_seconds())/86400:.1f} days old"
+
+                if cursor_is_poisoned:
+                    logger.warning(f"Detected cursor poisoning: {reason}")
+                    logger.warning("Switching to untagged article recovery mode")
+                    return self._get_recovery_cursor_position()
+                else:
+                    # Continue from where we left off
+                    last_created_at = self.last_processed_created_at
+                    last_id = self.last_processed_id
+                    logger.info(f"Continuing article processing from cursor: {last_created_at}, ID: {last_id}")
+                    return last_created_at, last_id
+
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid cursor timestamp format: {self.last_processed_created_at}, error: {e}")
+                logger.warning("Switching to recovery mode due to invalid format")
+                return self._get_recovery_cursor_position()
+        else:
+            # First run - use recovery mode to find untagged articles
+            logger.info("First run - searching for untagged articles")
+            return self._get_recovery_cursor_position()
+
+    def _get_recovery_cursor_position(self) -> tuple[str, str]:
+        """Get cursor position for recovery mode - prioritizes untagged articles."""
+        try:
+            with self._get_database_connection() as conn:
+                # Try to find the most recent untagged article
+                query = """
+                    SELECT
+                        a.id::text AS id,
+                        a.created_at
+                    FROM articles a
+                    LEFT JOIN article_tags at ON a.id = at.article_id
+                    WHERE at.article_id IS NULL
+                    ORDER BY a.created_at DESC, a.id DESC
+                    LIMIT 1
+                """
+
+                with conn.cursor() as cursor:
+                    cursor.execute(query)
+                    result = cursor.fetchone()
+
+                    if result:
+                        # Start from just after the most recent untagged article
+                        most_recent_untagged_time = result[1]
+                        if isinstance(most_recent_untagged_time, str):
+                            start_time = most_recent_untagged_time
+                        else:
+                            start_time = most_recent_untagged_time.isoformat()
+
+                        # Add a small buffer to ensure we catch this article
+                        start_time_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                        start_time_dt += timedelta(microseconds=1)
+                        start_time = start_time_dt.isoformat()
+
+                        logger.info(f"Recovery mode: Starting from most recent untagged article at {start_time}")
+                        return start_time, "ffffffff-ffff-ffff-ffff-ffffffffffff"
+                    else:
+                        # No untagged articles found, start from a reasonable past date
+                        past_date = datetime.now(UTC) - timedelta(days=7)  # Look back 7 days
+                        start_time = past_date.isoformat()
+                        logger.info(f"Recovery mode: No untagged articles found, starting from {start_time}")
+                        return start_time, "ffffffff-ffff-ffff-ffff-ffffffffffff"
+
+        except Exception as e:
+            logger.error(f"Failed to determine recovery cursor position: {e}")
+            # Fallback to a reasonable past date
+            past_date = datetime.now(UTC) - timedelta(days=1)
+            start_time = past_date.isoformat()
+            logger.warning(f"Using fallback recovery cursor: {start_time}")
+            return start_time, "ffffffff-ffff-ffff-ffff-ffffffffffff"
+
+    def _fetch_untagged_articles_fallback(self, conn: Connection) -> List[Dict[str, Any]]:
+        """
+        Fallback method to fetch untagged articles when cursor pagination fails.
+
+        Args:
+            conn: Database connection
+
+        Returns:
+            List of untagged articles
+        """
+        try:
+            # Use the ArticleFetcher's method for fetching untagged articles
+            untagged_articles = self.article_fetcher.fetch_articles_by_status(
+                conn,
+                has_tags=False,
+                limit=self.config.batch_limit
+            )
+
+            logger.info(f"Fallback method retrieved {len(untagged_articles)} untagged articles")
+            return untagged_articles
+
+        except Exception as e:
+            logger.error(f"Fallback method failed to fetch untagged articles: {e}")
+            return []
 
     def _cleanup_memory(self) -> None:
         """Explicit memory cleanup to prevent accumulation."""
@@ -201,6 +310,7 @@ class TagGeneratorService:
     def _process_article_batch(self, conn: Connection) -> Dict[str, Any]:
         """
         Process a batch of articles for tag generation using true batch processing.
+        Includes fallback mechanism for cursor pagination failures.
 
         Args:
             conn: Database connection
@@ -220,17 +330,43 @@ class TagGeneratorService:
 
         # Collect articles for batch processing (keep autocommit for fetching)
         articles_to_process = []
+        fetch_attempts = 0
+        max_empty_fetches = 3  # Allow 3 empty fetches before switching to fallback
 
         while len(articles_to_process) < self.config.batch_limit:
             try:
-                # Fetch articles
+                # Fetch articles using cursor pagination
                 articles = self.article_fetcher.fetch_articles(conn, last_created_at, last_id)
 
                 if not articles:
-                    logger.info(f"No more articles found. Collected {len(articles_to_process)} articles for batch processing")
-                    break
+                    fetch_attempts += 1
+                    logger.info(f"No articles found with cursor pagination (attempt {fetch_attempts})")
+
+                    # If we consistently get no results, try fallback approach
+                    if fetch_attempts >= max_empty_fetches and len(articles_to_process) == 0:
+                        logger.warning("Cursor pagination consistently failing, switching to untagged article fallback")
+                        fallback_articles = self._fetch_untagged_articles_fallback(conn)
+                        if fallback_articles:
+                            articles_to_process.extend(fallback_articles[:self.config.batch_limit])
+                            logger.info(f"Fallback method found {len(fallback_articles)} untagged articles")
+                            # Update cursor based on the last article processed
+                            if articles_to_process:
+                                last_article = articles_to_process[-1]
+                                if isinstance(last_article["created_at"], str):
+                                    last_created_at = last_article["created_at"]
+                                else:
+                                    last_created_at = last_article["created_at"].isoformat()
+                                last_id = last_article["id"]
+                            break
+                        else:
+                            logger.info("No untagged articles found via fallback method")
+                            break
+                    else:
+                        logger.info(f"No more articles found. Collected {len(articles_to_process)} articles for batch processing")
+                        break
 
                 logger.info(f"Fetched {len(articles)} articles")
+                fetch_attempts = 0  # Reset counter on successful fetch
 
                 # Add articles to batch, respecting the batch limit
                 for article in articles:
@@ -253,6 +389,16 @@ class TagGeneratorService:
 
             except Exception as e:
                 logger.error(f"Error during article collection: {e}")
+                # Try fallback method on exception
+                if len(articles_to_process) == 0:
+                    logger.warning("Attempting fallback method due to fetch error")
+                    try:
+                        fallback_articles = self._fetch_untagged_articles_fallback(conn)
+                        if fallback_articles:
+                            articles_to_process.extend(fallback_articles[:self.config.batch_limit])
+                            logger.info(f"Fallback method recovered {len(fallback_articles)} articles")
+                    except Exception as fallback_error:
+                        logger.error(f"Fallback method also failed: {fallback_error}")
                 break
 
         # Start explicit transaction for batch processing only
@@ -445,30 +591,45 @@ class TagGeneratorService:
             return batch_stats
 
     def run_service(self) -> None:
-        """Run the tag generation service continuously."""
+        """Run the tag generation service continuously with health monitoring."""
         logger.info("Starting Tag Generation Service")
         logger.info("Service will run continuously. Press Ctrl+C to stop.")
 
-        cycle_count = 0
-
         try:
             while True:
-                cycle_count += 1
-                logger.info(f"=== Processing Cycle {cycle_count} ===")
+                self.total_cycles += 1
+                logger.info(f"=== Processing Cycle {self.total_cycles} ===")
 
                 # Run processing cycle
-                result = self.run_processing_cycle()
+                result = self._run_processing_cycle_with_monitoring()
 
                 if result.get("success", False):
+                    articles_processed = result.get('successful', 0)
+                    total_in_batch = result.get('total_processed', 0)
+
+                    # Update health monitoring
+                    if total_in_batch == 0:
+                        self.consecutive_empty_cycles += 1
+                    else:
+                        self.consecutive_empty_cycles = 0
+                        self.total_articles_processed += articles_processed
+
+                    # Perform health check periodically
+                    if (self.total_cycles - self.last_health_check_cycle) >= self.config.health_check_interval:
+                        self._perform_health_check()
+                        self.last_health_check_cycle = self.total_cycles
+
                     logger.info(
-                        f"Cycle {cycle_count} completed successfully. "
-                        f"Processed: {result.get('successful', 0)}/{result.get('total_processed', 0)} articles. "
+                        f"Cycle {self.total_cycles} completed successfully. "
+                        f"Processed: {articles_processed}/{total_in_batch} articles. "
+                        f"Empty cycles: {self.consecutive_empty_cycles}. "
                         f"Sleeping for {self.config.processing_interval} seconds..."
                     )
                     time.sleep(self.config.processing_interval)
                 else:
+                    self.consecutive_empty_cycles += 1
                     logger.error(
-                        f"Cycle {cycle_count} failed: {result.get('error', 'Unknown error')}. "
+                        f"Cycle {self.total_cycles} failed: {result.get('error', 'Unknown error')}. "
                         f"Failed: {result.get('failed', 0)}/{result.get('total_processed', 0)} articles. "
                         f"Retrying in {self.config.error_retry_interval} seconds..."
                     )
@@ -482,6 +643,34 @@ class TagGeneratorService:
         finally:
             # Cleanup connection pool
             self._cleanup()
+
+    def _run_processing_cycle_with_monitoring(self) -> Dict[str, Any]:
+        """Run processing cycle with enhanced monitoring."""
+        return self.run_processing_cycle()
+
+    def _perform_health_check(self) -> None:
+        """Perform health check and log service status."""
+        logger.info("=== HEALTH CHECK ===")
+        logger.info(f"Total cycles completed: {self.total_cycles}")
+        logger.info(f"Total articles processed: {self.total_articles_processed}")
+        logger.info(f"Consecutive empty cycles: {self.consecutive_empty_cycles}")
+        logger.info(f"Average articles per cycle: {self.total_articles_processed / max(1, self.total_cycles - self.consecutive_empty_cycles):.1f}")
+
+        # Warning for too many empty cycles
+        if self.consecutive_empty_cycles >= self.config.max_consecutive_empty_cycles:
+            logger.warning(f"⚠️  SERVICE HEALTH WARNING: {self.consecutive_empty_cycles} consecutive empty cycles detected!")
+            logger.warning("This may indicate cursor poisoning, database issues, or no untagged articles available")
+            logger.warning("Consider investigating database state or restarting service if issues persist")
+
+            # Try to get untagged article count for diagnosis
+            try:
+                with self._get_database_connection() as conn:
+                    untagged_count = self.article_fetcher.count_untagged_articles(conn)
+                    logger.info(f"Diagnostic: {untagged_count} untagged articles found in database")
+            except Exception as e:
+                logger.error(f"Failed to get untagged article count for diagnostics: {e}")
+
+        logger.info("=== END HEALTH CHECK ===")
 
     def _cleanup(self) -> None:
         """Cleanup resources."""
