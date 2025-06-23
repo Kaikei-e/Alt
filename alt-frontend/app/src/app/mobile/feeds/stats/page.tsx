@@ -2,13 +2,13 @@
 
 import { FeedStatsSummary } from "@/schema/feedStats";
 import { feedsApiSse } from "@/lib/apiSse";
-import { Flex, Text, Box } from "@chakra-ui/react";
+import { Flex, Text, Box, Card, Stat, SimpleGrid } from "@chakra-ui/react";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useEffect, useState, useRef } from "react";
 
 export default function FeedsStatsPage() {
   const [feedAmount, setFeedAmount] = useState(0);
-  const [summarizedFeedAmount, setSummarizedFeedAmount] = useState(0);
+  const [unsummarizedArticlesAmount, setUnsummarizedArticlesAmount] = useState(0);
   const eventSourceRef = useRef<{
     close: () => void;
     getReadyState: () => number;
@@ -21,7 +21,7 @@ export default function FeedsStatsPage() {
           setFeedAmount(data.feed_amount.amount);
         }
         if (data.summarized_feed?.amount !== undefined) {
-          setSummarizedFeedAmount(data.summarized_feed.amount);
+          setUnsummarizedArticlesAmount(data.summarized_feed.amount);
         }
       },
       (event) => {
@@ -38,12 +38,30 @@ export default function FeedsStatsPage() {
 
   return (
     <Box>
-      <Flex flexDirection="column" gap="2" p="4">
-        <Text fontSize="2xl" fontWeight="bold">
-          Feeds Stats
+      <Flex flexDirection="column" gap="4" p="4">
+        <Text fontSize="2xl" fontWeight="bold" mb="4">
+          Feeds Statistics
         </Text>
-        <Text>Feeds: {feedAmount}</Text>
-        <Text>Summarized Feeds: {summarizedFeedAmount}</Text>
+
+        <SimpleGrid columns={1} gap="4">
+          <Card.Root>
+            <Card.Body>
+              <Stat.Root>
+                <Stat.Label>Total Feeds</Stat.Label>
+                <Stat.ValueText>{feedAmount}</Stat.ValueText>
+              </Stat.Root>
+            </Card.Body>
+          </Card.Root>
+
+          <Card.Root>
+            <Card.Body>
+              <Stat.Root>
+                <Stat.Label>Unsummarized Articles</Stat.Label>
+                <Stat.ValueText>{unsummarizedArticlesAmount}</Stat.ValueText>
+              </Stat.Root>
+            </Card.Body>
+          </Card.Root>
+        </SimpleGrid>
       </Flex>
       <FloatingMenu />
     </Box>

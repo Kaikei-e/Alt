@@ -58,7 +58,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
   test.describe("Initial Page Load", () => {
     test("should display page title", async ({ page }) => {
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
     });
 
     test("should have proper page structure", async ({ page }) => {
@@ -67,15 +67,15 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(mainContainer).toBeVisible();
 
       // Verify basic content is present instead of strict CSS checks
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
       await expect(page.getByText(/^Feeds: \d+$/)).toBeVisible();
-      await expect(page.getByText(/^Summarized Feeds: \d+$/)).toBeVisible();
+      await expect(page.getByText(/^Unsummarized Articles: \d+$/)).toBeVisible();
     });
 
     test("should display feed statistics labels", async ({ page }) => {
       // Should show both stat labels (might show 0 initially)
       await expect(page.getByText(/Feeds:/).first()).toBeVisible();
-      await expect(page.getByText(/Summarized Feeds:/).first()).toBeVisible();
+      await expect(page.getByText(/Unsummarized Articles:/).first()).toBeVisible();
     });
   });
 
@@ -84,7 +84,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       // Wait for SSE data to load and display
       try {
         await expect(page.getByText("Feeds: 25")).toBeVisible();
-        await expect(page.getByText("Summarized Feeds: 18")).toBeVisible();
+        await expect(page.getByText("Unsummarized Articles: 18")).toBeVisible();
       } catch {
         // If SSE data doesn't load, at least verify the page structure is correct
         await expect(page.getByText(/Feeds: \d+/)).toBeVisible();
@@ -106,11 +106,11 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       // First verify initial state
       try {
         await expect(page.getByText("Feeds: 25")).toBeVisible();
-        await expect(page.getByText("Summarized Feeds: 18")).toBeVisible();
+        await expect(page.getByText("Unsummarized Articles: 18")).toBeVisible();
       } catch {
         // If specific values aren't available, just verify structure
         await expect(page.getByText(/^Feeds: \d+$/)).toBeVisible();
-        await expect(page.getByText(/^Summarized Feeds: \d+$/)).toBeVisible();
+        await expect(page.getByText(/^Unsummarized Articles: \d+$/)).toBeVisible();
       }
 
       // Test that page refresh maintains functionality
@@ -118,9 +118,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Verify page still works after reload
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
       await expect(page.getByText(/^Feeds: \d+$/)).toBeVisible();
-      await expect(page.getByText(/^Summarized Feeds: \d+$/)).toBeVisible();
+      await expect(page.getByText(/^Unsummarized Articles: \d+$/)).toBeVisible();
     });
   });
 
@@ -138,9 +138,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Page should still render with default values
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
       await expect(page.getByText(/Feeds:/).first()).toBeVisible();
-      await expect(page.getByText(/Summarized Feeds:/).first()).toBeVisible();
+      await expect(page.getByText(/Unsummarized Articles:/).first()).toBeVisible();
     });
 
     test("should handle malformed SSE data", async ({ page }) => {
@@ -161,7 +161,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Should not crash and should show default values
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
     });
 
     test("should handle network connectivity issues", async ({ page }) => {
@@ -174,7 +174,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Should render page structure despite connection failure
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
     });
   });
 
@@ -182,7 +182,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
     test("should display zero values correctly", async ({ page }) => {
       // Test that the page can display zero values when SSE provides them
       // Since SSE mocking is complex, just verify the page structure can handle different values
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
 
       // Check that numeric values are displayed (might be 0 or other values)
       const feedsText = page.getByText(/^Feeds: \d+$/);
@@ -195,7 +195,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
     test("should display large numbers correctly", async ({ page }) => {
       // Test that the page can handle displaying numbers
       // Since SSE mocking is complex, just verify the page structure
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
 
       // Verify numeric display capability
       const feedsText = page.getByText(/^Feeds: \d+$/);
@@ -208,7 +208,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
     test("should handle partial data updates", async ({ page }) => {
       // Test that the page handles data gracefully
       // Since SSE mocking is complex, just verify basic functionality
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
 
       // Verify both stats are displayed with some values
       const feedsText = page.getByText(/^Feeds: \d+$/);
@@ -238,14 +238,14 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       }
 
       // Verify basic layout structure exists
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
     });
 
     test("should display stats in correct order", async ({ page }) => {
       // Check that all required elements are present and visible in the expected order
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
       await expect(page.getByText(/^Feeds: \d+$/)).toBeVisible();
-      await expect(page.getByText(/^Summarized Feeds: \d+$/)).toBeVisible();
+      await expect(page.getByText(/^Unsummarized Articles: \d+$/)).toBeVisible();
 
       // Verify the stats appear after the title
       const titleElement = page.getByText("Feeds Stats");
@@ -264,9 +264,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // All elements should be visible
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
       await expect(page.getByText(/Feeds:/).first()).toBeVisible();
-      await expect(page.getByText(/Summarized Feeds:/).first()).toBeVisible();
+      await expect(page.getByText(/Unsummarized Articles:/).first()).toBeVisible();
     });
 
     test("should display properly on tablet viewport", async ({ page }) => {
@@ -275,7 +275,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.goto("/mobile/feeds/stats");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
       await expect(page.getByText("Feeds: 25")).toBeVisible();
       await expect(page.getByText("Summarized Feeds: 18")).toBeVisible();
     });
@@ -292,7 +292,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       expect(bodyBox?.width).toBeLessThanOrEqual(320);
 
       // Content should still be visible
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
     });
   });
 
@@ -304,7 +304,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Title should appear quickly
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
 
       const loadTime = Date.now() - startTime;
       expect(loadTime).toBeLessThan(10000); // Should load within 10 seconds
@@ -322,7 +322,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Should load properly again
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
       await expect(page.getByText("Feeds: 25")).toBeVisible();
     });
 
@@ -341,7 +341,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       ]);
 
       // Both should work independently
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
       await expect(context2.getByText("Feeds Stats")).toBeVisible();
 
       await context2.close();
@@ -367,7 +367,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Should work properly without memory leaks
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
     });
 
     test("should handle page close gracefully", async ({ page }) => {
@@ -395,7 +395,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
       // Stats should be readable by screen readers
       await expect(page.getByText(/^Feeds: \d+$/)).toBeVisible();
-      await expect(page.getByText(/^Summarized Feeds: \d+$/)).toBeVisible();
+      await expect(page.getByText(/^Unsummarized Articles: \d+$/)).toBeVisible();
     });
 
     test("should be keyboard navigable", async ({ page }) => {
@@ -406,7 +406,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.keyboard.press("Tab");
 
       // Should not cause any errors
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
     });
 
     test("should maintain focus management", async ({ page }) => {
@@ -417,7 +417,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.keyboard.press("Tab");
 
       // Content should remain visible and accessible
-      await expect(page.getByText("Feeds Stats")).toBeVisible();
+      await expect(page.getByText("Feeds Statistics")).toBeVisible();
     });
   });
 });
