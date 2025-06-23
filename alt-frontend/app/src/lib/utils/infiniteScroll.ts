@@ -1,11 +1,10 @@
 import { useEffect, useRef } from "react";
 import { throttle } from "@/lib/utils/throttle";
 
-const DEFAULT_THROTTLE_DELAY = 500;
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_ROOT_MARGIN = "200px 0px";
+const DEFAULT_THROTTLE_DELAY = 100; // Reduced for better responsiveness
+const DEFAULT_ROOT_MARGIN = "100px 0px"; // Reduced for faster triggering
 const DEFAULT_THRESHOLD = 0.1;
-const SETUP_RETRY_DELAY = 100;
+const SETUP_RETRY_DELAY = 50; // Faster retry
 
 export function useInfiniteScroll(
   callback: () => void,
@@ -13,7 +12,6 @@ export function useInfiniteScroll(
   resetKey?: number | string,
   options?: {
     throttleDelay?: number;
-    maxRetries?: number;
     rootMargin?: string;
     threshold?: number;
   },
@@ -24,7 +22,6 @@ export function useInfiniteScroll(
 
   const {
     throttleDelay = DEFAULT_THROTTLE_DELAY,
-    maxRetries = DEFAULT_MAX_RETRIES,
     rootMargin = DEFAULT_ROOT_MARGIN,
     threshold = DEFAULT_THRESHOLD,
   } = options || {};
@@ -35,11 +32,9 @@ export function useInfiniteScroll(
 
   useEffect(() => {
     throttledCallbackRef.current = throttle(() => {
-      if (retryCountRef.current < maxRetries) {
-        callbackRef.current();
-      }
+      callbackRef.current();
     }, throttleDelay);
-  }, [resetKey, throttleDelay, maxRetries]);
+  }, [resetKey, throttleDelay]);
 
   useEffect(() => {
     let observer: IntersectionObserver | null = null;
@@ -57,8 +52,13 @@ export function useInfiniteScroll(
         (entries) => {
           entries.forEach((entry) => {
             if (entry.isIntersecting && throttledCallbackRef.current) {
-              throttledCallbackRef.current();
-              retryCountRef.current = 0;
+              // Add small delay to ensure DOM is ready
+              setTimeout(() => {
+                if (throttledCallbackRef.current) {
+                  throttledCallbackRef.current();
+                  retryCountRef.current = 0;
+                }
+              }, 10);
             }
           });
         },

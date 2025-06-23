@@ -2,7 +2,7 @@ import { Button, Flex, Spinner, Text, Box } from "@chakra-ui/react";
 import { Feed } from "@/schema/feed";
 import Link from "next/link";
 import { feedsApi } from "@/lib/api";
-import { useState, useCallback, memo } from "react";
+import { useState, useCallback, memo, KeyboardEvent } from "react";
 import { FeedDetails } from "./FeedDetails";
 
 type FeedCardProps = {
@@ -24,87 +24,114 @@ const FeedCard = memo(function FeedCard({
         setIsLoading(true);
         await feedsApi.updateFeedReadStatus(url);
         setIsReadStatus(true);
-        setIsLoading(false);
       } catch (error) {
-        console.error("Error updating feed read status", error);
+        console.error("Failed to mark feed as read:", error);
+      } finally {
         setIsLoading(false);
       }
     },
-    [setIsReadStatus],
+    [setIsReadStatus]
   );
 
-  const onMarkAsRead = useCallback(() => {
-    handleReadStatus(feed.link);
-  }, [handleReadStatus, feed.link]);
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleReadStatus(feed.link);
+    }
+  }, [feed.link, handleReadStatus]);
 
-  if (isLoading) {
-    return (
-      <Flex justify="center" align="center" p={8}>
-        <Spinner size="lg" color="pink.400" />
-      </Flex>
-    );
-  }
-
+  // Don't render if already read
   if (isReadStatus) {
     return null;
   }
 
-  // Truncate description more efficiently
-  const truncatedDescription =
-    feed.description.length > 300
-      ? `${feed.description.slice(0, 300)}...`
-      : feed.description;
+  // Truncate description for better UX
+  const truncatedDescription = feed.description.length > 150
+    ? feed.description.substring(0, 150) + "..."
+    : feed.description;
 
   return (
-    <Box width="100%" p={5} data-testid="feed-card">
-      <Flex flexDirection="column" gap={4}>
-        {/* Title */}
-        <Text fontSize="lg" fontWeight="bold" color="#ff006e" lineHeight="1.3">
-          <Link href={feed.link} target="_blank">
-            {feed.title}
-          </Link>
-        </Text>
-
-        {/* Description */}
-        <Text fontSize="sm" color="rgba(255, 255, 255, 0.8)" lineHeight="1.5">
-          {truncatedDescription}
-        </Text>
-
-        {/* Bottom section with button and date */}
-        <Flex
-          flexDirection="row"
-          justifyContent="space-between"
-          alignItems="center"
-          pt={2}
-        >
-          <Button
-            onClick={onMarkAsRead}
-            size="sm"
-            borderRadius="full"
-            bg="linear-gradient(45deg, #ff006e, #8338ec)"
-            color="white"
-            fontWeight="bold"
-            px={4}
-            disabled={isLoading}
-            _hover={{
-              bg: "linear-gradient(45deg, #e6005c, #7129d4)",
-              transform: "translateY(-1px)",
-            }}
-            _active={{
-              transform: "translateY(0px)",
-            }}
-            _disabled={{
-              opacity: 0.6,
-            }}
-            transition="all 0.2s ease"
-            border="1px solid rgba(255, 255, 255, 0.2)"
+    // Gradient border container with hover effects
+    <Box
+      p="2px"
+      borderRadius="18px"
+      background="linear-gradient(45deg, rgb(255, 0, 110), rgb(131, 56, 236), rgb(58, 134, 255))"
+      transition="transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out"
+      _hover={{
+        transform: "translateY(-2px)",
+        boxShadow: "0 20px 40px rgba(255, 0, 110, 0.3)",
+      }}
+      cursor="pointer"
+      data-testid="feed-card-container"
+    >
+      <Box
+        className="glass"
+        w="full"
+        p={5}
+        borderRadius="16px"
+        data-testid="feed-card"
+        role="article"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        aria-label={`Feed: ${feed.title}`}
+        bg="var(--alt-bg-primary, #1a1a2e)"
+      >
+        <Flex direction="column" gap={4}>
+          {/* Title as link */}
+          <Link
+            href={feed.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${feed.title} in external link`}
           >
-            Mark as read
-          </Button>
+            <Text
+              fontSize="lg"
+              fontWeight="semibold"
+              color="#ff006e"
+              _hover={{ textDecoration: "underline" }}
+              lineHeight="1.4"
+            >
+              {feed.title}
+            </Text>
+          </Link>
 
-          <FeedDetails feedURL={feed.link} />
+          {/* Description */}
+          <Text fontSize="sm" color="rgba(255, 255, 255, 0.8)" lineHeight="1.5">
+            {truncatedDescription}
+          </Text>
+
+          {/* Bottom section with button and date */}
+          <Flex
+            justify="space-between"
+            align="center"
+            mt={2}
+          >
+            <Button
+              size="sm"
+              borderRadius="full"
+              bg="linear-gradient(45deg, #ff006e, #8338ec)"
+              color="white"
+              border="1px solid rgba(255, 255, 255, 0.2)"
+              loading={isLoading}
+              onClick={() => handleReadStatus(feed.link)}
+              _hover={{
+                transform: "scale(1.05)",
+                boxShadow: "0 4px 12px rgba(255, 0, 110, 0.4)",
+              }}
+              aria-label={`Mark ${feed.title} as read`}
+            >
+              {isLoading ? <Spinner size="sm" /> : "Mark as read"}
+            </Button>
+
+            <FeedDetails feedURL={feed.link} />
+          </Flex>
+
+          {/* Publication date */}
+          <Text fontSize="xs" color="whiteAlpha.600">
+            {new Date(feed.published).toLocaleDateString()}
+          </Text>
         </Flex>
-      </Flex>
+      </Box>
     </Box>
   );
 });

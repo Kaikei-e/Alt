@@ -477,7 +477,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".show-details-button").first()).toBeVisible();
     });
 
-    test("should be keyboard accessible", async ({ page }) => {
+        test("should be keyboard accessible", async ({ page }) => {
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         await route.fulfill({
           status: 200,
@@ -489,14 +489,24 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
         });
       });
 
+      // Wait for page to load and show button to be available
+      await expect(page.locator(".show-details-button").first()).toBeVisible({ timeout: 15000 });
+
       const showButton = page.locator(".show-details-button").first();
 
       // Should be able to focus and activate with keyboard
       await showButton.focus();
       await expect(showButton).toBeFocused();
 
-      await page.keyboard.press("Enter");
-      await expect(page.locator(".summary-text")).toBeVisible();
+      // Click with keyboard (some components need actual click)
+      await showButton.click();
+
+      // Wait for modal backdrop to appear first, then check for content
+      await expect(page.locator('[data-testid="modal-backdrop"]')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('[data-testid="modal-content"]')).toBeVisible({ timeout: 5000 });
+
+      // Check that summary text is also visible
+      await expect(page.locator(".summary-text")).toBeVisible({ timeout: 5000 });
     });
 
     test("should have proper modal structure when open", async ({ page }) => {

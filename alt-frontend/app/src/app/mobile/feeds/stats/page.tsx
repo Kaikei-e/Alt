@@ -15,10 +15,7 @@ export default function FeedsStatsPage() {
   const [unsummarizedArticlesAmount, setUnsummarizedArticlesAmount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [lastDataReceived, setLastDataReceived] = useState<number>(Date.now());
-  const eventSourceRef = useRef<{
-    close: () => void;
-    getReadyState: () => number;
-  } | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Progress tracking for SSE updates (5-second cycle)
   const { progress, reset: resetProgress } = useSSEProgress(5000);
@@ -27,7 +24,7 @@ export default function FeedsStatsPage() {
   useEffect(() => {
     const healthCheck = setInterval(() => {
       const timeSinceLastData = Date.now() - lastDataReceived;
-      const readyState = eventSourceRef.current?.getReadyState() ?? EventSource.CLOSED;
+      const readyState = eventSourceRef.current?.readyState ?? EventSource.CLOSED;
 
       // Consider connected if:
       // 1. EventSource is in OPEN state AND
@@ -55,10 +52,11 @@ export default function FeedsStatsPage() {
         setLastDataReceived(Date.now());
         resetProgress(); // Reset progress bar on new data
       },
-      (event) => {
-        console.error("SSE connection error:", event);
+      () => {
+        // Handle SSE connection error
         // Don't immediately set to disconnected - let the health check handle it
         // This prevents flickering when there are temporary connection issues
+        setIsConnected(false);
       },
     );
 

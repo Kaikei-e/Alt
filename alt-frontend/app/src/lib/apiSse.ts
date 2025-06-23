@@ -1,73 +1,109 @@
 import { FeedStatsSummary } from "@/schema/feedStats";
 import { SseConfig, defaultSseConfig } from "@/lib/config";
 
-function apiSseForStats(
+export function setupSSE(
   endpoint: string,
-  onMessage: (data: FeedStatsSummary) => void,
-  onError: (event: Event) => void,
-  config: SseConfig = defaultSseConfig,
-) {
-  let eventSource: EventSource | null = null;
-  let reconnectAttempts = 0;
-  const maxReconnectAttempts = config.maxReconnectAttempts;
-  const reconnectDelay = config.reconnectDelay;
+  onData: (data: FeedStatsSummary) => void,
+  onError?: () => void
+): EventSource | null {
+  try {
+    const eventSource = new EventSource(endpoint);
 
-  function connect() {
-    const fullUrl = `${config.baseUrl}${endpoint}`;
-    console.log(
-      `Connecting to SSE endpoint: ${fullUrl} (attempt ${reconnectAttempts + 1})`,
-    );
-
-    eventSource = new EventSource(fullUrl);
-
-    eventSource.onopen = (event) => {
-      console.log("SSE connection opened:", event);
-      reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+    eventSource.onopen = () => {
+      // Connection established
     };
 
     eventSource.onmessage = (event) => {
-      console.log("SSE message received:", event.data);
       try {
-        const parsedData = JSON.parse(event.data) as FeedStatsSummary;
-        onMessage(parsedData);
-      } catch (error) {
-        console.error("Error parsing SSE data:", error);
+        const data = JSON.parse(event.data) as FeedStatsSummary;
+        onData(data);
+      } catch {
+        // Error parsing SSE data - handled silently
       }
     };
 
-    eventSource.onerror = (event) => {
-      console.error("SSE error:", event);
-      console.log("EventSource readyState:", eventSource?.readyState);
+    eventSource.onerror = () => {
+      // SSE error - handled silently
+      if (onError) {
+        onError();
+      }
+    };
 
-      if (eventSource?.readyState === EventSource.CLOSED) {
-        console.log("SSE connection closed, attempting to reconnect...");
+    return eventSource;
+  } catch {
+    // Error creating SSE connection - handled silently
+    if (onError) {
+      onError();
+    }
+    return null;
+  }
+}
+
+export function setupSSEWithReconnect(
+  endpoint: string,
+  onData: (data: FeedStatsSummary) => void,
+  onError?: () => void,
+  maxReconnectAttempts: number = 3
+): { eventSource: EventSource | null; cleanup: () => void } {
+  let eventSource: EventSource | null = null;
+  let reconnectAttempts = 0;
+  let reconnectTimeout: NodeJS.Timeout | null = null;
+
+  const connect = () => {
+    try {
+      eventSource = new EventSource(endpoint);
+
+      eventSource.onopen = () => {
+        reconnectAttempts = 0; // Reset on successful connection
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as FeedStatsSummary;
+          onData(data);
+        } catch {
+          // Error parsing SSE data - handled silently
+        }
+      };
+
+      eventSource.onerror = () => {
+        // SSE error - handled silently
+        eventSource?.close();
 
         if (reconnectAttempts < maxReconnectAttempts) {
-          const delayMultiplier = reconnectAttempts + 1;
-          setTimeout(() => {
-            reconnectAttempts++;
-            connect();
-          }, reconnectDelay * delayMultiplier); // Exponential backoff
+          reconnectAttempts++;
+          const delay = Math.pow(2, reconnectAttempts - 1) * 1000; // Exponential backoff
+          reconnectTimeout = setTimeout(connect, delay);
         } else {
-          console.error("Max reconnection attempts reached");
-          onError(event);
+          // Max reconnection attempts reached - handled silently
+          if (onError) {
+            onError();
+          }
         }
-      } else {
-        onError(event);
+      };
+
+    } catch {
+      // Error creating SSE connection - handled silently
+      if (onError) {
+        onError();
       }
-    };
-  }
+    }
+  };
+
+  const cleanup = () => {
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+  };
 
   connect();
 
-  return {
-    close: () => {
-      if (eventSource) {
-        eventSource.close();
-      }
-    },
-    getReadyState: () => eventSource?.readyState ?? EventSource.CLOSED,
-  };
+  return { eventSource, cleanup };
 }
 
 export class SseClient {
@@ -79,16 +115,15 @@ export class SseClient {
 
   getFeedsStats(
     onMessage: (data: FeedStatsSummary) => void,
-    onError?: (event: Event) => void,
+    onError?: () => void,
   ) {
-    return apiSseForStats(
-      "/v1/sse/feeds/stats",
+    return setupSSE(
+      `${this.config.baseUrl}/v1/sse/feeds/stats`,
       onMessage,
       onError ||
-        ((event) => {
-          console.error("SSE error:", event);
-        }),
-      this.config,
+        (() => {
+          // SSE error - handled silently
+        })
     );
   }
 }

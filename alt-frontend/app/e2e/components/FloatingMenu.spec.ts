@@ -361,12 +361,16 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     test("should handle rapid interactions gracefully", async ({ page }) => {
       const menuTrigger = page.getByTestId("floating-menu-button");
 
-      // Rapid interactions
+      // Rapid interactions with proper waiting
       await menuTrigger.click();
+      await expect(page.getByTestId("menu-content")).toBeVisible();
+
       await page.getByTestId("close-menu-button").click();
+      await expect(page.getByTestId("menu-content")).not.toBeVisible();
+
       await menuTrigger.click();
 
-      // Should still work correctly
+      // Should still work correctly after rapid interactions
       await expect(page.getByTestId("menu-content")).toBeVisible();
     });
 
