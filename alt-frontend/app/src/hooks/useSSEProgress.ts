@@ -12,7 +12,7 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
     intervalMsRef.current = intervalMs;
   }, [intervalMs]);
 
-  // Clear any existing timer
+  // Stable clear function - no dependencies
   const clearTimer = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -20,36 +20,42 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
     }
   }, []);
 
-  // Create timer update function
-  const createTimerUpdate = useCallback(() => {
-    return () => {
-      // Don't update state if component is unmounted
-      if (!isMountedRef.current) {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        return;
+  // Stable update function - no dependencies, uses refs only
+  const updateProgress = useCallback(() => {
+    // Don't update state if component is unmounted
+    if (!isMountedRef.current) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
+      return;
+    }
 
-      const elapsed = Date.now() - startTimeRef.current;
-      const newProgress = Math.min((elapsed / intervalMsRef.current) * 100, 100);
-      setProgress(newProgress);
-    };
+    const elapsed = Date.now() - startTimeRef.current;
+    const newProgress = Math.min((elapsed / intervalMsRef.current) * 100, 100);
+    setProgress(newProgress);
   }, []);
 
-  // Start a new timer - internal function with proper cleanup check
-  const startNewTimer = useCallback(() => {
-    startTimeRef.current = Date.now();
-    const updateFn = createTimerUpdate();
-    intervalRef.current = setInterval(updateFn, 50);
-  }, [createTimerUpdate]);
-
-  // Start the progress timer
+  // Stable start function - no dependencies that change
   const startTimer = useCallback(() => {
-    clearTimer(); // Always clear first
-    startNewTimer();
-  }, [clearTimer, startNewTimer]);
+    // Clear any existing timer immediately
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    // Don't start if component is unmounted
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    // Reset start time and progress
+    startTimeRef.current = Date.now();
+    setProgress(0);
+
+    // Start new timer
+    intervalRef.current = setInterval(updateProgress, 50);
+  }, [updateProgress]);
 
   // Stable reset function - NO dependencies that change, uses refs only
   const reset = useCallback(() => {
@@ -69,23 +75,10 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
     startTimeRef.current = Date.now();
 
     // Start new timer immediately to ensure no timing gaps
-    intervalRef.current = setInterval(() => {
-      // Don't update state if component is unmounted
-      if (!isMountedRef.current) {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        return;
-      }
+    intervalRef.current = setInterval(updateProgress, 50);
+  }, [updateProgress]); // Only depends on updateProgress which is stable
 
-      const elapsed = Date.now() - startTimeRef.current;
-      const newProgress = Math.min((elapsed / intervalMsRef.current) * 100, 100);
-      setProgress(newProgress);
-    }, 50);
-  }, []); // NO dependencies - completely stable
-
-  // Initial setup and cleanup
+  // Initial setup and cleanup - only restart when intervalMs changes
   useEffect(() => {
     isMountedRef.current = true;
     startTimer();
@@ -94,7 +87,18 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
       isMountedRef.current = false;
       clearTimer();
     };
-  }, [intervalMs, startTimer, clearTimer]); // Restart when interval changes
+  }, [intervalMs]); // Only depend on intervalMs, not the functions
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, []);
 
   return { progress, reset };
 };
