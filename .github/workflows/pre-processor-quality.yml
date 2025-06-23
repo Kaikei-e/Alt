@@ -1,0 +1,135 @@
+name: Pre-processor Quality Gates
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'pre-processor/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'pre-processor/**'
+
+jobs:
+  quality-check:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./pre-processor/app
+    
+    # No real database - using mocks only for fast CI
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+        cache-dependency-path: pre-processor/app/go.sum
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('pre-processor/app/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Install development tools
+      run: |
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+        go install go.uber.org/mock/mockgen@latest
+        go install golang.org/x/tools/cmd/goimports@latest
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Verify go.mod is tidy
+      run: |
+        go mod tidy
+        if [ ! -z "$(git status --porcelain go.mod go.sum)" ]; then
+          echo "go.mod or go.sum is not tidy"
+          git diff go.mod go.sum
+          exit 1
+        fi
+
+    - name: Generate mocks
+      run: make mocks
+
+    - name: Format code
+      run: make format
+
+    - name: Lint code
+      run: make lint
+
+    - name: Security scan
+      run: make security
+
+    - name: Run tests with race detection (mocks only)
+      run: make test-race
+
+    - name: Generate coverage report (mocks only)
+      run: make coverage
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./pre-processor/app/coverage.out
+        flags: pre-processor
+        name: pre-processor-coverage
+
+    - name: Build application
+      run: make build
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: pre-processor-binary
+        path: pre-processor/app/bin/pre-processor
+        retention-days: 7
+
+  # Integration tests removed from CI - run locally with real DB
+  # CI focuses on unit tests with mocks for speed and reliability
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./pre-processor/app
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+        cache-dependency-path: pre-processor/app/go.sum
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run Gosec Security Scanner
+      uses: securecodewarrior/github-action-gosec@master
+      with:
+        args: '-fmt sarif -out gosec-results.sarif ./pre-processor/app/...'
+
+    - name: Upload SARIF file
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: gosec-results.sarif
+
+    - name: Run vulnerability check
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck ./...
