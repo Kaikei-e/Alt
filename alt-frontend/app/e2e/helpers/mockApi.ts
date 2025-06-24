@@ -139,6 +139,23 @@ export const mockApiEndpoints = async (
       });
     });
 
+    // Mock feed status endpoint (additional endpoint that might be used)
+    await page.route("**/api/v1/feeds/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Feed status updated" }),
+      });
+    });
+
+    await page.route("http://localhost/api/v1/feeds/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Feed status updated" }),
+      });
+    });
+
     // Mock feed details endpoint
     await page.route("**/api/v1/feeds/fetch/details", async (route) => {
       await route.fulfill({

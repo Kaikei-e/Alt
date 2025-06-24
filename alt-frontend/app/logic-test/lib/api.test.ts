@@ -400,6 +400,89 @@ describe("feedsApi", () => {
     });
   });
 
+  describe("getFeedStats", () => {
+    it("should fetch feed statistics with correct endpoint", async () => {
+      const mockStatsResponse = {
+        feed_amount: { amount: 42 },
+        summarized_feed: { amount: 28 }
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue(mockStatsResponse),
+      });
+
+      const result = await feedsApi.getFeedStats();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost/api/v1/feeds/stats",
+        expect.objectContaining({
+          method: "GET",
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            "Cache-Control": "max-age=300",
+            "Accept-Encoding": "gzip, deflate, br",
+          }),
+          keepalive: true,
+        }),
+      );
+      expect(result).toEqual(mockStatsResponse);
+    });
+
+    it("should use 5-minute cache for stats", async () => {
+      const mockStatsResponse = {
+        feed_amount: { amount: 42 },
+        summarized_feed: { amount: 28 }
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue(mockStatsResponse),
+      });
+
+      // First call
+      await feedsApi.getFeedStats();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      // Second call should use cache
+      await feedsApi.getFeedStats();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle empty stats response", async () => {
+      const emptyStatsResponse = {
+        feed_amount: { amount: 0 },
+        summarized_feed: { amount: 0 }
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue(emptyStatsResponse),
+      });
+
+      const result = await feedsApi.getFeedStats();
+      expect(result).toEqual(emptyStatsResponse);
+    });
+
+    it("should handle API errors for stats", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      });
+
+      await expect(feedsApi.getFeedStats()).rejects.toThrow(
+        "API request failed: 500 Internal Server Error"
+      );
+    });
+
+    it("should handle network errors for stats", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+      await expect(feedsApi.getFeedStats()).rejects.toThrow("Network error");
+    });
+  });
+
   describe("prefetchFeeds", () => {
     it("should prefetch multiple pages", async () => {
       mockFetch

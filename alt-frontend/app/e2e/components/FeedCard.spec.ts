@@ -185,13 +185,13 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       );
     });
 
-        test("should update UI after marking as read", async ({ page }) => {
+    test("should update UI after marking as read", async ({ page }) => {
       // Mock the mark as read API call
-      await page.route("**/api/v1/feeds/status", async (route) => {
+      await page.route("**/api/v1/feeds/read", async (route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ success: true }),
+          body: JSON.stringify({ message: "Feed read status updated" }),
         });
       });
 

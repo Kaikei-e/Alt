@@ -87,7 +87,7 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
       isMountedRef.current = false;
       clearTimer();
     };
-  }, [intervalMs]); // Only depend on intervalMs, not the functions
+  }, [intervalMs, startTimer, clearTimer]); // Include all dependencies
 
   // Cleanup on unmount
   useEffect(() => {
