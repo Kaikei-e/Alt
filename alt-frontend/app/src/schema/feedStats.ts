@@ -6,3 +6,12 @@ export interface FeedStatsSummary {
     amount: number;
   };
 }
+
+export interface UnsummarizedFeedStatsSummary {
+  feed_amount: {
+    amount: number;
+  };
+  unsummarized_feed: {
+    amount: number;
+  };
+}

@@ -17,13 +17,20 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       timeout: 10000,
     });
 
+    // Fill the input and wait for validation to clear
     await page.fill("[data-testid='search-input']", "Test");
+
+    // Wait for validation to process and button to become enabled
+    await expect(page.locator("button[type='submit']")).toBeEnabled({
+      timeout: 5000,
+    });
+
+    // Ensure input still has the value (validation might have cleared it)
+    await expect(page.locator("[data-testid='search-input']")).toHaveValue("Test");
+
     await page.click("button[type='submit']");
 
-    // Wait for search results to load - be more flexible about timing
-    await page.waitForTimeout(2000);
-
-    // Try to find article cards - they should be rendered by ArticleCard component
+    // Wait for search results to load
     try {
       await page.waitForSelector("[data-testid='article-card']", {
         timeout: 10000,
@@ -32,12 +39,13 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       const articleCards = await page.$$("[data-testid='article-card']");
       expect(articleCards.length).toBeGreaterThan(0);
 
-      // Check that at least some articles are visible
-      await expect(page.getByText("Test Article 1")).toBeVisible();
+      // Check that at least some articles are visible with exact matching
+      await expect(page.getByText("Test Article 1", { exact: true })).toBeVisible();
     } catch (error) {
-      // Check if there's at least some indication of search results
-      const hasTestText = await page.locator("text=Test Article").count();
-      expect(hasTestText).toBeGreaterThan(0);
+      // Log page state for debugging
+      console.log("Page content:", await page.content());
+      console.log("Expected articles:", mockArticles.length);
+      throw error;
     }
   });
 

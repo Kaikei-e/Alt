@@ -1,9 +1,9 @@
-import { FeedStatsSummary } from "@/schema/feedStats";
+import { UnsummarizedFeedStatsSummary } from "@/schema/feedStats";
 import { SseConfig, defaultSseConfig } from "@/lib/config";
 
 export function setupSSE(
   endpoint: string,
-  onData: (data: FeedStatsSummary) => void,
+  onData: (data: UnsummarizedFeedStatsSummary) => void,
   onError?: () => void
 ): EventSource | null {
   try {
@@ -15,7 +15,7 @@ export function setupSSE(
 
     eventSource.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data) as FeedStatsSummary;
+        const data = JSON.parse(event.data) as UnsummarizedFeedStatsSummary;
         onData(data);
       } catch {
         // Error parsing SSE data - handled silently
@@ -41,7 +41,7 @@ export function setupSSE(
 
 export function setupSSEWithReconnect(
   endpoint: string,
-  onData: (data: FeedStatsSummary) => void,
+  onData: (data: UnsummarizedFeedStatsSummary) => void,
   onError?: () => void,
   maxReconnectAttempts: number = 3
 ): { eventSource: EventSource | null; cleanup: () => void } {
@@ -59,7 +59,7 @@ export function setupSSEWithReconnect(
 
       eventSource.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data) as FeedStatsSummary;
+          const data = JSON.parse(event.data) as UnsummarizedFeedStatsSummary;
           onData(data);
         } catch {
           // Error parsing SSE data - handled silently
@@ -114,16 +114,16 @@ export class SseClient {
   }
 
   getFeedsStats(
-    onMessage: (data: FeedStatsSummary) => void,
+    onMessage: (data: UnsummarizedFeedStatsSummary) => void,
     onError?: () => void,
   ) {
     return setupSSE(
       `${this.config.baseUrl}/v1/sse/feeds/stats`,
       onMessage,
       onError ||
-        (() => {
-          // SSE error - handled silently
-        })
+      (() => {
+        // SSE error - handled silently
+      })
     );
   }
 }

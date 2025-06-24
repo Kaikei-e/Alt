@@ -1,6 +1,6 @@
 "use client";
 
-import { FeedStatsSummary } from "@/schema/feedStats";
+import { UnsummarizedFeedStatsSummary } from "@/schema/feedStats";
 import { feedsApiSse } from "@/lib/apiSse";
 import { Flex, Text, Box } from "@chakra-ui/react";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
@@ -39,13 +39,12 @@ export default function FeedsStatsPage() {
 
   useEffect(() => {
     const sseConnection = feedsApiSse.getFeedsStats(
-      (data: FeedStatsSummary) => {
-        // Update data
+      (data: UnsummarizedFeedStatsSummary) => {
         if (data.feed_amount?.amount !== undefined) {
           setFeedAmount(data.feed_amount.amount);
         }
-        if (data.summarized_feed?.amount !== undefined) {
-          setUnsummarizedArticlesAmount(data.summarized_feed.amount);
+        if (data.unsummarized_feed?.amount !== undefined) {
+          setUnsummarizedArticlesAmount(data.unsummarized_feed.amount);
         }
 
         // Update last data received timestamp

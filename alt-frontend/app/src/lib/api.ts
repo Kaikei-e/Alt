@@ -369,7 +369,7 @@ export const feedsApi = {
   // Method to prefetch data for performance
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
     const prefetchPromises = pages.map((page) =>
-      this.getFeedsPage(page).catch(() => {}),
+      this.getFeedsPage(page).catch(() => { }),
     );
     await Promise.all(prefetchPromises);
   },

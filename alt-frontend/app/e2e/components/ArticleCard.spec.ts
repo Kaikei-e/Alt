@@ -41,6 +41,11 @@ test.describe("ArticleCard Component - Functionality Tests", () => {
 
       // Check that at least some articles are visible
       await expect(page.getByText("Test Article 1", { exact: true })).toBeVisible();
+
+      // Verify article content
+      for (const article of mockArticles) {
+        await expect(page.getByText(article.title, { exact: true })).toBeVisible();
+      }
     } catch (error) {
       // Log page state for debugging
       console.log("Page content:", await page.content());
