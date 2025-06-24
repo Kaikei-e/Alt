@@ -1,20 +1,29 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Space_Grotesk, Inter, Fira_Code } from "next/font/google";
 import "./globals.css";
 
 // カスタム Provider をインポート
 import { Provider as CustomColorModeProvider } from "@/components/ui/provider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
   display: "swap",
   preload: true,
-  fallback: ["system-ui", "arial"],
+  fallback: ["system-ui", "sans-serif"],
 });
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  display: "swap",
+  preload: true,
+  fallback: ["system-ui", "sans-serif"],
+});
+
+const firaCode = Fira_Code({
+  variable: "--font-fira-code",
   subsets: ["latin"],
   display: "swap",
   preload: true,
@@ -68,7 +77,7 @@ export default function RootLayout({
         <meta name="format-detection" content="telephone=no" />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} app-container`}
+        className={`${spaceGrotesk.variable} ${inter.variable} ${firaCode.variable} app-container`}
       >
         <CustomColorModeProvider>
           <div className="app-container">{children}</div>
