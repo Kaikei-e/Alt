@@ -107,7 +107,8 @@ Colors have meaning. Use intentionally.
 --alt-glass-border: rgba(255, 255, 255, 0.2);
 
 /* Backgrounds - Deep & Minimal */
---alt-bg: #1a1a2e;
+--alt-gradient-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+--vaporwave-bg: var(--alt-gradient-bg);
 ```
 
 ### Typography - Clarity First

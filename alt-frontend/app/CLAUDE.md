@@ -56,8 +56,8 @@ Apply this consolidation pattern to reduce test count.`;
 
 #### Test Strategy: UI vs Logic Separation
 ```
-UIコンポーネント → Playwright (E2E/Integration)
-ビジネスロジック → Vitest (Unit)
+UIコンポーネント → Playwright (E2E/Integration) eg. FeedCard.tsx is FeedCard.spec.ts
+ビジネスロジック → Vitest (Unit) eg. feedsApi.ts is feedsApi.test.ts
 ```
 
 #### Test File Location and Organization
