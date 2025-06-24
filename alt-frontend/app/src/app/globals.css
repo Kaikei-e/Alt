@@ -4,21 +4,21 @@
   --alt-pink: #ff006e;
   --alt-purple: #8338ec;
   --alt-blue: #3a86ff;
-  
+
   /* Backgrounds */
   --alt-bg-primary: #1a1a2e;
   --alt-bg-secondary: #16213e;
   --alt-bg-tertiary: #0f0f23;
-  
+
   /* Glass Effects */
   --alt-glass: rgba(255, 255, 255, 0.1);
   --alt-glass-border: rgba(255, 255, 255, 0.2);
   --alt-glass-hover: rgba(255, 255, 255, 0.15);
-  
+
   /* Gradients */
   --alt-gradient-primary: linear-gradient(45deg, #ff006e, #8338ec, #3a86ff);
   --alt-gradient-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
-  
+
   /* Spacing System (Fibonacci + Golden Ratio) */
   --space-1: 0.25rem;    /* 4px */
   --space-2: 0.5rem;     /* 8px */
@@ -31,7 +31,7 @@
   --space-12: 3rem;      /* 48px */
   --space-16: 4rem;      /* 64px */
   --space-20: 5rem;      /* 80px */
-  
+
   /* Typography Scale (Fluid) */
   --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
   --text-sm: clamp(0.875rem, 0.8rem + 0.375vw, 1rem);
@@ -41,24 +41,24 @@
   --text-2xl: clamp(1.5rem, 1.3rem + 1vw, 2rem);
   --text-3xl: clamp(1.875rem, 1.6rem + 1.375vw, 2.625rem);
   --text-4xl: clamp(2.25rem, 1.9rem + 1.75vw, 3.375rem);
-  
+
   /* Font Family System */
   --font-primary: 'Inter Variable', system-ui, sans-serif;
   --font-display: 'Space Grotesk Variable', var(--font-primary);
   --font-mono: 'Fira Code Variable', 'SF Mono', monospace;
-  
+
   /* Semantic Text Colors */
   --alt-text-primary: #ffffff;
   --alt-text-secondary: rgba(255, 255, 255, 0.8);
   --alt-text-muted: rgba(255, 255, 255, 0.6);
   --alt-text-glow: #ff006e;
-  
+
   /* Semantic Status Colors */
   --alt-success: #00ff88;     /* Neon green */
   --alt-error: #ff4757;       /* Neon red */
   --alt-warning: #ffaa00;     /* Neon orange */
   --alt-info: #3a86ff;        /* Alt blue */
-  
+
   /* Border Radius (Organic Shapes) */
   --radius-xs: 0.25rem;    /* 4px */
   --radius-sm: 0.5rem;     /* 8px */
@@ -67,7 +67,7 @@
   --radius-xl: 1.5rem;     /* 24px */
   --radius-2xl: 2rem;      /* 32px */
   --radius-full: 9999px;   /* Pill shape */
-  
+
   /* Legacy support */
   --vaporwave-bg: var(--alt-gradient-bg);
   --vaporwave-pink: var(--alt-pink);
@@ -340,3 +340,5 @@ a:hover {
     --foreground: #ffffff;
   }
 }
+
+
