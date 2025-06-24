@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"alt/config"
 	"context"
 	"errors"
 	"net"
@@ -12,8 +13,20 @@ import (
 
 // SecureHTTPClient creates an HTTP client with SSRF protection
 func SecureHTTPClient() *http.Client {
+	// Use default configuration if not provided
+	cfg := &config.HTTPConfig{
+		ClientTimeout:       30 * time.Second,
+		DialTimeout:         10 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	return SecureHTTPClientWithConfig(cfg)
+}
+
+// SecureHTTPClientWithConfig creates an HTTP client with SSRF protection using provided configuration
+func SecureHTTPClientWithConfig(cfg *config.HTTPConfig) *http.Client {
 	dialer := &net.Dialer{
-		Timeout: 10 * time.Second,
+		Timeout: cfg.DialTimeout,
 	}
 
 	transport := &http.Transport{
@@ -30,15 +43,15 @@ func SecureHTTPClient() *http.Client {
 
 			return dialer.DialContext(ctx, network, addr)
 		},
-		TLSHandshakeTimeout: 10 * time.Second,
-		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: cfg.TLSHandshakeTimeout,
+		IdleConnTimeout:     cfg.IdleConnTimeout,
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 10,
 	}
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   30 * time.Second,
+		Timeout:   cfg.ClientTimeout,
 	}
 }
 

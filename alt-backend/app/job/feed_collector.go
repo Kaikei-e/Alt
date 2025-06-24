@@ -3,8 +3,10 @@ package job
 import (
 	"alt/domain"
 	"alt/utils/logger"
+	"alt/utils/rate_limiter"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,7 +15,17 @@ import (
 	rssFeed "github.com/mmcdole/gofeed"
 )
 
-func CollectSingleFeed(ctx context.Context, feedURL url.URL) (*rssFeed.Feed, error) {
+func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_limiter.HostRateLimiter) (*rssFeed.Feed, error) {
+	// Apply rate limiting if rate limiter is configured
+	if rateLimiter != nil {
+		slog.Info("Applying rate limiting for single feed collection", "url", feedURL.String())
+		if err := rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
+			slog.Error("Rate limiting failed for single feed collection", "url", feedURL.String(), "error", err)
+			return nil, fmt.Errorf("rate limiting failed: %w", err)
+		}
+		slog.Info("Rate limiting passed, proceeding with single feed collection", "url", feedURL.String())
+	}
+
 	fp := rssFeed.NewParser()
 	feed, err := fp.ParseURL(feedURL.String())
 	if err != nil {
@@ -24,11 +36,10 @@ func CollectSingleFeed(ctx context.Context, feedURL url.URL) (*rssFeed.Feed, err
 	logger.Logger.Info("Feed collected", "feed title", feed.Title)
 
 	return feed, nil
-
 }
 
 // validateFeedURL performs basic validation on a feed URL before attempting to parse it
-func validateFeedURL(feedURL url.URL) error {
+func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_limiter.HostRateLimiter) error {
 	// Check if URL scheme is valid
 	if feedURL.Scheme != "http" && feedURL.Scheme != "https" {
 		return fmt.Errorf("invalid URL scheme: %s (must be http or https)", feedURL.Scheme)
@@ -39,9 +50,19 @@ func validateFeedURL(feedURL url.URL) error {
 		return fmt.Errorf("missing host in URL")
 	}
 
+	// Apply rate limiting if rate limiter is configured
+	if rateLimiter != nil {
+		slog.Info("Applying rate limiting for feed URL validation", "url", feedURL.String())
+		if err := rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
+			slog.Error("Rate limiting failed for feed URL validation", "url", feedURL.String(), "error", err)
+			return fmt.Errorf("rate limiting failed for validation: %w", err)
+		}
+		slog.Info("Rate limiting passed, proceeding with feed URL validation", "url", feedURL.String())
+	}
+
 	// Try to make a HEAD request to check if URL is accessible
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 30 * time.Second, // Use a reasonable default, should be configurable in future
 	}
 
 	resp, err := client.Head(feedURL.String())
@@ -72,17 +93,28 @@ func validateFeedURL(feedURL url.URL) error {
 	return nil
 }
 
-func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL) ([]*domain.FeedItem, error) {
+func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *rate_limiter.HostRateLimiter) ([]*domain.FeedItem, error) {
 	fp := rssFeed.NewParser()
 	var feeds []*rssFeed.Feed
 	var errors []error
 
 	for i, feedURL := range feedURLs {
 		// First validate the URL
-		if err := validateFeedURL(feedURL); err != nil {
+		if err := validateFeedURL(ctx, feedURL, rateLimiter); err != nil {
 			logger.Logger.Error("Feed URL validation failed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
 			continue
+		}
+
+		// Apply rate limiting before parsing (separate from validation rate limiting)
+		if rateLimiter != nil {
+			slog.Info("Applying rate limiting for multiple feed collection", "url", feedURL.String())
+			if err := rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
+				slog.Error("Rate limiting failed for multiple feed collection", "url", feedURL.String(), "error", err)
+				errors = append(errors, fmt.Errorf("rate limiting failed: %w", err))
+				continue
+			}
+			slog.Info("Rate limiting passed, proceeding with multiple feed collection", "url", feedURL.String())
 		}
 
 		feed, err := fp.ParseURL(feedURL.String())
@@ -95,7 +127,7 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL) ([]*domain.Fe
 		feeds = append(feeds, feed)
 		logger.Logger.Info("Successfully parsed feed", "url", feedURL.String(), "title", feed.Title)
 
-		time.Sleep(5 * time.Second)
+		// Note: Rate limiting replaced the hardcoded sleep
 		logger.Logger.Info("Feed collection progress", "current", i+1, "total", len(feedURLs))
 	}
 

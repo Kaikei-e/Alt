@@ -16,6 +16,8 @@ import (
 	"alt/usecase/reading_status"
 	"alt/usecase/register_feed_usecase.go"
 	"alt/usecase/search_feed_usecase"
+	"alt/utils/rate_limiter"
+	"time"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -36,16 +38,19 @@ type ApplicationComponents struct {
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	altDBRepository := alt_db.NewAltDBRepository(pool)
 
-	// Create the concrete gateway implementations
-	feedFetcherGatewayImpl := fetch_feed_gateway.NewSingleFeedGateway(pool)
-	fetchFeedsListGatewayImpl := fetch_feed_gateway.NewFetchFeedsGateway(pool)
+	// Create rate limiter with 5-second minimum interval for external API calls
+	rateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
+
+	// Create the concrete gateway implementations with rate limiting
+	feedFetcherGatewayImpl := fetch_feed_gateway.NewSingleFeedGatewayWithRateLimiter(pool, rateLimiter)
+	fetchFeedsListGatewayImpl := fetch_feed_gateway.NewFetchFeedsGatewayWithRateLimiter(pool, rateLimiter)
 	fetchSingleFeedUsecase := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGatewayImpl)
 	fetchFeedsListUsecase := fetch_feed_usecase.NewFetchFeedsListUsecase(fetchFeedsListGatewayImpl)
 	fetchFeedsListCursorUsecase := fetch_feed_usecase.NewFetchFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 
 	registerFeedLinkGatewayImpl := register_feed_gateway.NewRegisterFeedLinkGateway(pool)
 	registerFeedsGatewayImpl := register_feed_gateway.NewRegisterFeedsGateway(pool)
-	fetchFeedsGatewayImpl := fetch_feed_gateway.NewFetchFeedsGateway(pool)
+	fetchFeedsGatewayImpl := fetch_feed_gateway.NewFetchFeedsGatewayWithRateLimiter(pool, rateLimiter)
 	registerFeedsUsecase := register_feed_usecase.NewRegisterFeedsUsecase(registerFeedLinkGatewayImpl, registerFeedsGatewayImpl, fetchFeedsGatewayImpl)
 
 	updateFeedStatusGatewayImpl := update_feed_status_gateway.NewUpdateFeedStatusGateway(pool)

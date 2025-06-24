@@ -7,6 +7,7 @@ import (
 	"alt/driver/alt_db"
 	"alt/driver/models"
 	"alt/utils/logger"
+	"alt/utils/rate_limiter"
 )
 
 func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
@@ -18,9 +19,12 @@ func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
 
 	logger.Logger.Info("Found RSS feed URLs", "count", len(feedURLs))
 
+	// Create rate limiter with 5-second minimum interval for external API calls
+	rateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
+
 	go func() {
 		for {
-			feedItems, err := CollectMultipleFeeds(ctx, feedURLs)
+			feedItems, err := CollectMultipleFeeds(ctx, feedURLs, rateLimiter)
 			if err != nil {
 				logger.Logger.Error("Error collecting feeds", "error", err)
 			} else {

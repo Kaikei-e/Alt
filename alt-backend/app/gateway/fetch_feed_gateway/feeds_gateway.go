@@ -4,8 +4,10 @@ import (
 	"alt/domain"
 	"alt/driver/alt_db"
 	"alt/utils/logger"
+	"alt/utils/rate_limiter"
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,16 +15,35 @@ import (
 )
 
 type FetchFeedsGateway struct {
-	alt_db *alt_db.AltDBRepository
+	alt_db      *alt_db.AltDBRepository
+	rateLimiter *rate_limiter.HostRateLimiter
 }
 
 func NewFetchFeedsGateway(pool *pgxpool.Pool) *FetchFeedsGateway {
 	return &FetchFeedsGateway{
-		alt_db: alt_db.NewAltDBRepositoryWithPool(pool),
+		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
+		rateLimiter: nil, // No rate limiting for backward compatibility
+	}
+}
+
+func NewFetchFeedsGatewayWithRateLimiter(pool *pgxpool.Pool, rateLimiter *rate_limiter.HostRateLimiter) *FetchFeedsGateway {
+	return &FetchFeedsGateway{
+		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
+		rateLimiter: rateLimiter,
 	}
 }
 
 func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*domain.FeedItem, error) {
+	// Apply rate limiting if rate limiter is configured
+	if g.rateLimiter != nil {
+		slog.Info("Applying rate limiting for external feed request", "url", link)
+		if err := g.rateLimiter.WaitForHost(ctx, link); err != nil {
+			slog.Error("Rate limiting failed", "url", link, "error", err)
+			return nil, errors.New("rate limiting failed")
+		}
+		slog.Info("Rate limiting passed, proceeding with feed request", "url", link)
+	}
+
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(link)
 	if err != nil {

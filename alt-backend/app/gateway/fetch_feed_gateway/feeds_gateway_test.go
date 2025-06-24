@@ -3,6 +3,7 @@ package fetch_feed_gateway
 import (
 	"alt/domain"
 	"alt/utils/logger"
+	"alt/utils/rate_limiter"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -242,4 +243,119 @@ func compareFeedItems(got, want []*domain.FeedItem) bool {
 	}
 
 	return true
+}
+
+func TestFetchFeedsGateway_RateLimiting(t *testing.T) {
+	// Initialize logger to prevent nil pointer dereference
+	logger.InitLogger()
+
+	// Create a test RSS feed XML
+	testRSSFeed := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+	<channel>
+		<title>Test Feed</title>
+		<description>Test Description</description>
+		<item>
+			<title>Test Item</title>
+			<description>Test Description</description>
+			<link>https://example.com/item</link>
+		</item>
+	</channel>
+</rss>`
+
+	// Create test server for same host testing
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(testRSSFeed))
+	}))
+	defer server1.Close()
+
+	// Create another test server for different host testing
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(testRSSFeed))
+	}))
+	defer server2.Close()
+
+	// Test that rate limiter is called for external API calls
+	t.Run("gateway should use rate limiter for external calls", func(t *testing.T) {
+		rateLimiter := rate_limiter.NewHostRateLimiter(100 * time.Millisecond)
+		gateway := &FetchFeedsGateway{
+			alt_db:      nil,
+			rateLimiter: rateLimiter, // This field doesn't exist yet - should cause compile error
+		}
+
+		ctx := context.Background()
+
+		// First call should succeed
+		start := time.Now()
+		_, err := gateway.FetchFeeds(ctx, server1.URL)
+		if err != nil {
+			t.Fatalf("First FetchFeeds call failed: %v", err)
+		}
+		firstCallDuration := time.Since(start)
+
+		// Should be relatively fast (less than 50ms)
+		if firstCallDuration > 50*time.Millisecond {
+			t.Errorf("First call took too long: %v", firstCallDuration)
+		}
+
+		// Second call to same host should be rate limited
+		start = time.Now()
+		_, err = gateway.FetchFeeds(ctx, server1.URL)
+		if err != nil {
+			t.Fatalf("Second FetchFeeds call failed: %v", err)
+		}
+		secondCallDuration := time.Since(start)
+
+		// Should wait for rate limit (approximately 100ms)
+		if secondCallDuration < 80*time.Millisecond {
+			t.Errorf("Second call was not rate limited: %v", secondCallDuration)
+		}
+	})
+
+	t.Run("different hosts should not interfere with rate limiting", func(t *testing.T) {
+		rateLimiter := rate_limiter.NewHostRateLimiter(200 * time.Millisecond)
+		gateway := &FetchFeedsGateway{
+			alt_db:      nil,
+			rateLimiter: rateLimiter, // This field doesn't exist yet - should cause compile error
+		}
+
+		ctx := context.Background()
+
+		// Call to first host
+		_, err := gateway.FetchFeeds(ctx, server1.URL)
+		if err != nil {
+			t.Fatalf("First host call failed: %v", err)
+		}
+
+		// Call to second host should be immediate (different host)
+		start := time.Now()
+		_, err = gateway.FetchFeeds(ctx, server2.URL)
+		if err != nil {
+			t.Fatalf("Second host call failed: %v", err)
+		}
+		duration := time.Since(start)
+
+		// Should be immediate for different host
+		if duration > 50*time.Millisecond {
+			t.Errorf("Different host call took too long: %v", duration)
+		}
+	})
+}
+
+func TestFetchFeedsGateway_WithRateLimiter(t *testing.T) {
+	// Test the constructor with rate limiter
+	var pool *pgxpool.Pool
+	rateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
+
+	gateway := NewFetchFeedsGatewayWithRateLimiter(pool, rateLimiter) // This function doesn't exist yet - should cause compile error
+
+	if gateway == nil {
+		t.Error("NewFetchFeedsGatewayWithRateLimiter() returned nil")
+	}
+
+	if gateway.rateLimiter != rateLimiter {
+		t.Error("Rate limiter not properly set in gateway")
+	}
 }

@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"alt/config"
 	"alt/di"
 	"alt/domain"
 	"alt/driver/search_indexer"
@@ -9,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,9 +20,10 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"golang.org/x/time/rate"
 )
 
-func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
+func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *config.Config) {
 
 	// Add performance middleware
 	e.Use(middleware.Logger())
@@ -39,7 +42,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 	// Add request timeout middleware (excluding SSE endpoints)
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
-		Timeout: 30 * time.Second,
+		Timeout: cfg.Server.ReadTimeout,
 		Skipper: func(c echo.Context) bool {
 			return strings.Contains(c.Path(), "/sse/")
 		},
@@ -47,7 +50,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 	// Add rate limiting middleware (skip for SSE endpoints)
 	e.Use(middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
-		Store: middleware.NewRateLimiterMemoryStore(100), // 100 requests per second
+		Store: middleware.NewRateLimiterMemoryStore(rate.Limit(cfg.RateLimit.FeedFetchLimit)),
 		Skipper: func(c echo.Context) bool {
 			return strings.Contains(c.Path(), "/sse/")
 		},
@@ -87,7 +90,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 	v1.GET("/feeds/fetch/single", func(c echo.Context) error {
 		// Add caching headers
-		c.Response().Header().Set("Cache-Control", "public, max-age=300") // 5 minutes
+		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
 		c.Response().Header().Set("ETag", `"single-feed"`)
 
 		feed, err := container.FetchSingleFeedUsecase.Execute(c.Request().Context())
@@ -99,7 +102,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 	v1.GET("/feeds/fetch/list", func(c echo.Context) error {
 		// Add caching headers for feed list
-		c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15 minutes
+		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.SearchCacheExpiry.Seconds())))
 		c.Response().Header().Set("ETag", `"feeds-list"`)
 
 		feeds, err := container.FetchFeedsListUsecase.Execute(c.Request().Context())
@@ -372,7 +375,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 		}
 
 		// Create ticker for periodic updates
-		ticker := time.NewTicker(5 * time.Second) // Shortened for testing
+		ticker := time.NewTicker(cfg.Cache.FeedCacheExpiry)
 		defer ticker.Stop()
 
 		// Keep connection alive
@@ -422,8 +425,8 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	})
 
 	v1.GET("/feeds/stats", func(c echo.Context) error {
-		// Add caching headers for stats (5 minutes)
-		c.Response().Header().Set("Cache-Control", "public, max-age=300")
+		// Add caching headers for stats
+		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
 		c.Response().Header().Set("ETag", `"feeds-stats"`)
 
 		// Fetch feed amount

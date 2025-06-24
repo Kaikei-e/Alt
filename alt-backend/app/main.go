@@ -1,17 +1,18 @@
 package main
 
 import (
+	"alt/config"
 	"alt/di"
 	"alt/driver/alt_db"
 	"alt/job"
 	"alt/rest"
 	"alt/utils/logger"
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -19,8 +20,15 @@ import (
 func main() {
 	ctx := context.Background()
 
+	// Load configuration first
+	cfg, err := config.NewConfig()
+	if err != nil {
+		fmt.Printf("Failed to load configuration: %v\n", err)
+		panic(err)
+	}
+
 	log := logger.InitLogger()
-	log.Info("Starting server")
+	log.Info("Starting server", "port", cfg.Server.Port)
 
 	pool, err := alt_db.InitDBConnectionPool(ctx)
 	if err != nil {
@@ -40,20 +48,20 @@ func main() {
 	e.HideBanner = true
 	e.HidePort = false
 
-	// Optimize server configuration
+	// Use configuration for server settings
 	server := &http.Server{
-		Addr:         ":9000",
+		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler:      e,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
-	rest.RegisterRoutes(e, container)
+	rest.RegisterRoutes(e, container, cfg)
 
 	// Start server in a goroutine
 	go func() {
-		logger.Logger.Info("Server starting on port 9000")
+		logger.Logger.Info("Server starting", "port", cfg.Server.Port)
 		if err := e.StartServer(server); err != nil && err != http.ErrServerClosed {
 			logger.Logger.Error("Error starting server", "error", err)
 			panic(err)
@@ -67,8 +75,8 @@ func main() {
 
 	logger.Logger.Info("Shutting down server...")
 
-	// Graceful shutdown with timeout
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Graceful shutdown with timeout (use server timeout configuration)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.WriteTimeout)
 	defer cancel()
 
 	if err := e.Shutdown(shutdownCtx); err != nil {

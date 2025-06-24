@@ -4,20 +4,31 @@ import (
 	"alt/domain"
 	"alt/driver/alt_db"
 	"alt/utils/logger"
+	"alt/utils/rate_limiter"
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
 )
 
 type SingleFeedGateway struct {
-	alt_db *alt_db.AltDBRepository
+	alt_db      *alt_db.AltDBRepository
+	rateLimiter *rate_limiter.HostRateLimiter
 }
 
 func NewSingleFeedGateway(pool *pgxpool.Pool) *SingleFeedGateway {
 	return &SingleFeedGateway{
-		alt_db: alt_db.NewAltDBRepositoryWithPool(pool),
+		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
+		rateLimiter: nil, // No rate limiting for backward compatibility
+	}
+}
+
+func NewSingleFeedGatewayWithRateLimiter(pool *pgxpool.Pool, rateLimiter *rate_limiter.HostRateLimiter) *SingleFeedGateway {
+	return &SingleFeedGateway{
+		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
+		rateLimiter: rateLimiter,
 	}
 }
 
@@ -44,6 +55,16 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 	// Use the first available feed URL
 	feedURL := feedURLs[0]
 	logger.SafeInfo("Fetching RSS feed", "url", feedURL.String())
+
+	// Apply rate limiting if rate limiter is configured
+	if g.rateLimiter != nil {
+		slog.Info("Applying rate limiting for external single feed request", "url", feedURL.String())
+		if err := g.rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
+			slog.Error("Rate limiting failed for single feed", "url", feedURL.String(), "error", err)
+			return nil, errors.New("rate limiting failed")
+		}
+		slog.Info("Rate limiting passed, proceeding with single feed request", "url", feedURL.String())
+	}
 
 	// Parse the RSS feed from the URL
 	fp := gofeed.NewParser()
