@@ -46,11 +46,11 @@ const altConfig = defineConfig({
       },
 
       // Modern variable fonts for performance (DESIGN_LANGUAGE.md)
-      fonts: {
-        heading: { value: "var(--font-space-grotesk), 'Space Grotesk Variable', system-ui, sans-serif" },
-        body: { value: "var(--font-inter), 'Inter Variable', system-ui, sans-serif" },
-        mono: { value: "var(--font-fira-code), 'Fira Code Variable', ui-monospace, monospace" },
-      },
+      // fonts: {
+      //   heading: { value: "var(--font-space-grotesk), 'Space Grotesk Variable', system-ui, sans-serif" },
+      //   body: { value: "var(--font-inter), 'Inter Variable', system-ui, sans-serif" },
+      //   mono: { value: "var(--font-fira-code), 'Fira Code Variable', ui-monospace, monospace" },
+      // },
 
       // Fluid typography scale (DESIGN_LANGUAGE.md)
       fontSizes: {
