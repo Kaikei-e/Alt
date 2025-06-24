@@ -86,11 +86,12 @@ export default function FeedsStatsPage() {
       <Box p={5} maxW="container.sm" mx="auto" pt={8}>
         {/* Header */}
         <Text
-          fontSize="2xl"
-          fontWeight="bold"
-          color="var(--vaporwave-pink)"
+          fontSize="24px"
+          fontWeight="700"
+          color="#ff006e"
           mb={6}
           textAlign="center"
+          lineHeight="1.2"
         >
           Feeds Statistics
         </Text>
@@ -113,14 +114,14 @@ export default function FeedsStatsPage() {
         <Flex direction="column" gap={4}>
           <StatCard
             icon={FiRss}
-            label="Total Feeds"
+            label="TOTAL FEEDS"
             value={feedAmount}
             description="RSS feeds being monitored"
           />
 
           <StatCard
             icon={FiFileText}
-            label="Unsummarized Articles"
+            label="UNSUMMARIZED ARTICLES"
             value={unsummarizedArticlesAmount}
             description="Articles waiting for AI summarization"
           />

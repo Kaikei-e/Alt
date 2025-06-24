@@ -6,6 +6,7 @@ import {
 } from "@/schema/feed";
 import { FeedSearchResult } from "@/schema/search";
 import { Article } from "@/schema/article";
+import { FeedStatsSummary } from "@/schema/feedStats";
 import {
   ApiConfig,
   defaultApiConfig,
@@ -393,6 +394,10 @@ export const feedsApi = {
           error instanceof ApiClientError ? error.message : "Search failed",
       };
     }
+  },
+
+  async getFeedStats(): Promise<FeedStatsSummary> {
+    return apiClient.get<FeedStatsSummary>("/v1/feeds/stats", 5); // 5 minute cache for stats
   },
 
   // Clear cache method
