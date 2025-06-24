@@ -5,11 +5,13 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/driver/search_indexer"
+	middleware_custom "alt/middleware"
+	"alt/utils/errors"
 	"alt/utils/html_parser"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
-	"errors"
+	stderrors "errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -25,8 +27,16 @@ import (
 
 func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *config.Config) {
 
-	// Add performance middleware
-	e.Use(middleware.Logger())
+	// Add request ID middleware first to ensure all requests have IDs
+	e.Use(middleware_custom.RequestIDMiddleware())
+	
+	// Add custom logging middleware that uses context-aware logging
+	e.Use(middleware_custom.LoggingMiddleware(logger.Logger))
+	
+	// Add validation middleware
+	e.Use(middleware_custom.ValidationMiddleware())
+	
+	// Add recovery middleware
 	e.Use(middleware.Recover())
 
 	// Add compression middleware for better performance
@@ -95,7 +105,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 		feed, err := container.FetchSingleFeedUsecase.Execute(c.Request().Context())
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return handleError(c, err, "fetch_single_feed")
 		}
 		return c.JSON(http.StatusOK, feed)
 	})
@@ -107,7 +117,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 		feeds, err := container.FetchFeedsListUsecase.Execute(c.Request().Context())
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return handleError(c, err, "fetch_feeds_list")
 		}
 
 		// Optimize response size
@@ -118,8 +128,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	v1.GET("/feeds/fetch/limit/:limit", func(c echo.Context) error {
 		limit, err := strconv.Atoi(c.Param("limit"))
 		if err != nil {
-			logger.Logger.Error("Error parsing limit", "error", err)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return handleValidationError(c, "Invalid limit parameter", "limit", c.Param("limit"))
 		}
 
 		// Validate limit to prevent excessive resource usage
@@ -134,7 +143,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 		feeds, err := container.FetchFeedsListUsecase.ExecuteLimit(c.Request().Context(), limit)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return handleError(c, err, "fetch_feeds_limit")
 		}
 
 		optimizedFeeds := optimizeFeedsResponse(feeds)
@@ -323,8 +332,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 		results, err := search_indexer.SearchArticles(query)
 		if err != nil {
-			logger.Logger.Error("Error searching articles", "error", err)
-			return c.JSON(http.StatusInternalServerError, errors.New("error searching articles"))
+			return handleError(c, err, "search_articles")
 		}
 
 		return c.JSON(http.StatusOK, results)
@@ -460,28 +468,33 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		var rssFeedLink RssFeedLink
 		err := c.Bind(&rssFeedLink)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
 		}
 
 		if strings.TrimSpace(rssFeedLink.URL) == "" {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "URL is required and cannot be empty"})
+			return handleValidationError(c, "URL is required and cannot be empty", "url", rssFeedLink.URL)
 		}
 
 		// Parse and validate URL for SSRF protection
 		parsedURL, err := url.Parse(rssFeedLink.URL)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid URL format"})
+			return handleValidationError(c, "Invalid URL format", "url", rssFeedLink.URL)
 		}
 
 		// Apply SSRF protection
 		err = isAllowedURL(parsedURL)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			securityErr := errors.ValidationError("URL not allowed for security reasons", map[string]interface{}{
+				"url":    rssFeedLink.URL,
+				"reason": err.Error(),
+			})
+			errors.LogError(logger.Logger, securityErr, "url_validation")
+			return c.JSON(securityErr.HTTPStatusCode(), securityErr.ToHTTPResponse())
 		}
 
 		err = container.RegisterFeedsUsecase.Execute(c.Request().Context(), rssFeedLink.URL)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return handleError(c, err, "register_feed")
 		}
 
 		// Invalidate cache after registration
@@ -489,6 +502,39 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		return c.JSON(http.StatusOK, map[string]string{"message": "RSS feed link registered"})
 	})
 
+}
+
+// handleError converts errors to appropriate HTTP responses using structured error handling
+func handleError(c echo.Context, err error, operation string) error {
+	// Log the error with context
+	errors.LogError(logger.Logger, err, operation)
+	
+	// Handle AppError types
+	if appErr, ok := err.(*errors.AppError); ok {
+		return c.JSON(appErr.HTTPStatusCode(), appErr.ToHTTPResponse())
+	}
+	
+	// Handle unknown errors
+	unknownErr := errors.UnknownError("internal server error", err, map[string]interface{}{
+		"operation": operation,
+		"path":      c.Request().URL.Path,
+		"method":    c.Request().Method,
+	})
+	
+	errors.LogError(logger.Logger, unknownErr, operation)
+	return c.JSON(unknownErr.HTTPStatusCode(), unknownErr.ToHTTPResponse())
+}
+
+// handleValidationError creates a validation error response
+func handleValidationError(c echo.Context, message string, field string, value interface{}) error {
+	validationErr := errors.ValidationError(message, map[string]interface{}{
+		"field": field,
+		"value": value,
+		"path":  c.Request().URL.Path,
+	})
+	
+	errors.LogError(logger.Logger, validationErr, "validation")
+	return c.JSON(validationErr.HTTPStatusCode(), validationErr.ToHTTPResponse())
 }
 
 // Optimize feeds response by truncating descriptions and removing unnecessary fields
@@ -539,30 +585,30 @@ func truncate(s string) string {
 func isAllowedURL(u *url.URL) error {
 	// Allow both HTTP and HTTPS
 	if u.Scheme != "https" && u.Scheme != "http" {
-		return errors.New("only HTTP and HTTPS schemes allowed")
+		return stderrors.New("only HTTP and HTTPS schemes allowed")
 	}
 
 	// Block private networks
 	if isPrivateIP(u.Hostname()) {
-		return errors.New("access to private networks not allowed")
+		return stderrors.New("access to private networks not allowed")
 	}
 
 	// Block localhost variations
 	hostname := strings.ToLower(u.Hostname())
 	if hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127.") {
-		return errors.New("access to localhost not allowed")
+		return stderrors.New("access to localhost not allowed")
 	}
 
 	// Block metadata endpoints (AWS, GCP, Azure)
 	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" {
-		return errors.New("access to metadata endpoint not allowed")
+		return stderrors.New("access to metadata endpoint not allowed")
 	}
 
 	// Block common internal domains
 	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
 	for _, domain := range internalDomains {
 		if strings.HasSuffix(hostname, domain) {
-			return errors.New("access to internal domains not allowed")
+			return stderrors.New("access to internal domains not allowed")
 		}
 	}
 

@@ -1,15 +1,15 @@
 package rest
 
 type RssFeedLink struct {
-	URL string `json:"url"`
+	URL string `json:"url" validate:"required,url"`
 }
 
 type ReadStatus struct {
-	FeedURL string `json:"feed_url"`
+	FeedURL string `json:"feed_url" validate:"required,url"`
 }
 
 type FeedUrlPayload struct {
-	FeedURL string `json:"feed_url"`
+	FeedURL string `json:"feed_url" validate:"required,url"`
 }
 
 type FeedStatsSummary struct {
@@ -35,7 +35,7 @@ type unsummarizedFeedAmount struct {
 }
 
 type FeedSearchPayload struct {
-	Query string `json:"query"`
+	Query string `json:"query" validate:"required,min=1,max=1000"`
 }
 
 type SearchArticlesResponse struct {
