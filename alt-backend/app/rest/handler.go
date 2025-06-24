@@ -356,7 +356,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 		unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
 		if err != nil {
-			logger.Logger.Error("Error fetching initial unsummarized articles count", "error", err)
+			logger.Logger.Error("Error fetching initial summarized articles count", "error", err)
 			unsummarizedCount = 0
 		}
 
@@ -386,15 +386,15 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 					continue
 				}
 
-				unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
+				summarizedCount, err := container.SummarizedArticlesCountUsecase.Execute(c.Request().Context())
 				if err != nil {
-					logger.Logger.Error("Error fetching unsummarized articles count", "error", err)
+					logger.Logger.Error("Error fetching summarized articles count", "error", err)
 					continue
 				}
 
 				stats := FeedStatsSummary{
 					FeedAmount:           feedAmount{Amount: amount},
-					SummarizedFeedAmount: summarizedFeedAmount{Amount: unsummarizedCount},
+					SummarizedFeedAmount: summarizedFeedAmount{Amount: summarizedCount},
 				}
 
 				// Convert to JSON and send
@@ -419,6 +419,38 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 				return nil
 			}
 		}
+	})
+
+	v1.GET("/feeds/stats", func(c echo.Context) error {
+		// Add caching headers for stats (5 minutes)
+		c.Response().Header().Set("Cache-Control", "public, max-age=300")
+		c.Response().Header().Set("ETag", `"feeds-stats"`)
+
+		// Fetch feed amount
+		feedCount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
+		if err != nil {
+			logger.Logger.Error("Error fetching feed amount", "error", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed statistics"})
+		}
+
+		// Fetch summarized articles count
+		summarizedCount, err := container.SummarizedArticlesCountUsecase.Execute(c.Request().Context())
+		if err != nil {
+			logger.Logger.Error("Error fetching summarized articles count", "error", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed statistics"})
+		}
+
+		// Create response in expected format
+		stats := FeedStatsSummary{
+			FeedAmount:           feedAmount{Amount: feedCount},
+			SummarizedFeedAmount: summarizedFeedAmount{Amount: summarizedCount},
+		}
+
+		logger.Logger.Info("Feed stats retrieved successfully",
+			"feed_count", feedCount,
+			"summarized_count", summarizedCount)
+
+		return c.JSON(http.StatusOK, stats)
 	})
 
 	v1.POST("/rss-feed-link/register", func(c echo.Context) error {

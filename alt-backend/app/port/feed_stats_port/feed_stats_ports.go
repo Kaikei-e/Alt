@@ -11,3 +11,7 @@ type FeedAmountPort interface {
 type UnsummarizedArticlesCountPort interface {
 	Execute(ctx context.Context) (int, error)
 }
+
+type SummarizedArticlesCountPort interface {
+	Execute(ctx context.Context) (int, error)
+}

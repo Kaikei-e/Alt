@@ -93,3 +93,42 @@ func (mr *MockUnsummarizedArticlesCountPortMockRecorder) Execute(ctx any) *gomoc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockUnsummarizedArticlesCountPort)(nil).Execute), ctx)
 }
+
+// MockSummarizedArticlesCountPort is a mock of SummarizedArticlesCountPort interface.
+type MockSummarizedArticlesCountPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockSummarizedArticlesCountPortMockRecorder
+	isgomock struct{}
+}
+
+// MockSummarizedArticlesCountPortMockRecorder is the mock recorder for MockSummarizedArticlesCountPort.
+type MockSummarizedArticlesCountPortMockRecorder struct {
+	mock *MockSummarizedArticlesCountPort
+}
+
+// NewMockSummarizedArticlesCountPort creates a new mock instance.
+func NewMockSummarizedArticlesCountPort(ctrl *gomock.Controller) *MockSummarizedArticlesCountPort {
+	mock := &MockSummarizedArticlesCountPort{ctrl: ctrl}
+	mock.recorder = &MockSummarizedArticlesCountPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSummarizedArticlesCountPort) EXPECT() *MockSummarizedArticlesCountPortMockRecorder {
+	return m.recorder
+}
+
+// Execute mocks base method.
+func (m *MockSummarizedArticlesCountPort) Execute(ctx context.Context) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Execute", ctx)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Execute indicates an expected call of Execute.
+func (mr *MockSummarizedArticlesCountPortMockRecorder) Execute(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockSummarizedArticlesCountPort)(nil).Execute), ctx)
+}

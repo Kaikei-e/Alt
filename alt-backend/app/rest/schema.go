@@ -17,11 +17,20 @@ type FeedStatsSummary struct {
 	SummarizedFeedAmount summarizedFeedAmount `json:"summarized_feed"`
 }
 
+type UnsummarizedFeedStatsSummary struct {
+	FeedAmount             feedAmount             `json:"feed_amount"`
+	UnsummarizedFeedAmount unsummarizedFeedAmount `json:"unsummarized_feed"`
+}
+
 type feedAmount struct {
 	Amount int `json:"amount"`
 }
 
 type summarizedFeedAmount struct {
+	Amount int `json:"amount"`
+}
+
+type unsummarizedFeedAmount struct {
 	Amount int `json:"amount"`
 }
 
