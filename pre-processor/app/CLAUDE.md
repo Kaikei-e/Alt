@@ -17,6 +17,91 @@
 - NO breaking changes to existing functionality
 - Quality gates PREVENT degradation
 
+### HTTP Client Configuration (MANDATORY)
+```go
+// Standard HTTP client with timeouts and rate limiting
+func NewHTTPClient() *http.Client {
+    return &http.Client{
+        Timeout: 30 * time.Second,
+        Transport: &http.Transport{
+            DialContext: (&net.Dialer{
+                Timeout: 10 * time.Second,
+            }).DialContext,
+            TLSHandshakeTimeout:   10 * time.Second,
+            ResponseHeaderTimeout: 10 * time.Second,
+            ExpectContinueTimeout: 1 * time.Second,
+            MaxIdleConns:          10,
+            MaxIdleConnsPerHost:   2,
+        },
+    }
+}
+
+// Rate-limited client wrapper
+type RateLimitedClient struct {
+    client      *http.Client
+    rateLimiter *RateLimiter
+    logger      *slog.Logger
+}
+
+func (c *RateLimitedClient) Get(url string) (*http.Response, error) {
+    c.rateLimiter.Wait() // MANDATORY wait
+
+    c.logger.Info("making external request",
+        "url", url,
+        "timestamp", time.Now())
+
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return nil, fmt.Errorf("request creation failed: %w", err)
+    }
+
+    // Set proper User-Agent
+    req.Header.Set("User-Agent", "pre-processor/1.0 (+https://alt.example.com/bot)")
+
+    return c.client.Do(req)
+}
+```
+
+### Circuit Breaker Pattern
+```go
+// Prevent cascading failures from external services
+type CircuitBreaker struct {
+    failures    int
+    lastFailure time.Time
+    threshold   int
+    timeout     time.Duration
+    mu          sync.RWMutex
+}
+
+func (cb *CircuitBreaker) Call(fn func() error) error {
+    cb.mu.RLock()
+    if cb.failures >= cb.threshold {
+        if time.Since(cb.lastFailure) < cb.timeout {
+            cb.mu.RUnlock()
+            return errors.New("circuit breaker open")
+        }
+    }
+    cb.mu.RUnlock()
+
+    err := fn()
+
+    cb.mu.Lock()
+    defer cb.mu.Unlock()
+
+    if err != nil {
+        cb.failures++
+        cb.lastFailure = time.Now()
+        return err
+    }
+
+    cb.failures = 0
+    return nil
+}
+```
+
 ---
 
 ## 📋 Tech Stack (MANDATORY)
@@ -129,7 +214,92 @@ func (s *Service) ProcessFeed(input string) (ProcessedFeed, error) {
 
 ---
 
+## 🌐 External Dependencies & Rate Limiting
+
+### Rate Limiting Rules (MANDATORY)
+```go
+// Minimum 5 second intervals between external requests
+const MinRequestInterval = 5 * time.Second
+
+type RateLimiter struct {
+    lastRequest time.Time
+    mu          sync.Mutex
+}
+
+func (r *RateLimiter) Wait() {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    elapsed := time.Since(r.lastRequest)
+    if elapsed < MinRequestInterval {
+        time.Sleep(MinRequestInterval - elapsed)
+    }
+    r.lastRequest = time.Now()
+}
+
+// Usage in HTTP clients
+func (c *FeedClient) FetchFeed(url string) (*Feed, error) {
+    c.rateLimiter.Wait() // MANDATORY before external requests
+
+    resp, err := c.httpClient.Get(url)
+    // ... rest of implementation
+}
+```
+
+### External Request Guidelines
+- **NEVER** make external HTTP requests in unit tests
+- **ALWAYS** use 5+ second intervals between requests
+- **ALWAYS** implement timeout and retry logic
+- **ALWAYS** respect robots.txt and API limits
+
+---
+
 ## 🧪 Testing Standards
+
+### Test Categories & Rules
+
+#### Unit Tests (NO External Dependencies)
+```go
+// ✅ CORRECT: Mock external dependencies
+func TestFeedService_ProcessFeed(t *testing.T) {
+    ctrl := gomock.NewController(t)
+    defer ctrl.Finish()
+
+    mockClient := mocks.NewMockFeedClient(ctrl)
+    mockClient.EXPECT().
+        FetchFeed("http://example.com/feed").
+        Return(&Feed{Title: "Test"}, nil)
+
+    service := NewFeedService(mockClient)
+    result, err := service.ProcessFeed("http://example.com/feed")
+
+    require.NoError(t, err)
+    assert.Equal(t, "Test", result.Title)
+}
+
+// ❌ WRONG: Real HTTP request in unit test
+func TestFeedService_ProcessFeed_WRONG(t *testing.T) {
+    service := NewFeedService(http.DefaultClient) // DON'T DO THIS
+    result, err := service.ProcessFeed("http://real-site.com/feed") // NEVER!
+}
+```
+
+#### Integration Tests (Controlled External Access)
+```go
+// ✅ Integration tests with rate limiting
+func TestFeedIntegration(t *testing.T) {
+    if testing.Short() {
+        t.Skip("skipping integration test")
+    }
+
+    client := NewRateLimitedClient(5 * time.Second) // Respect rate limits
+    service := NewFeedService(client)
+
+    // Test with controlled, predictable external resource
+    result, err := service.ProcessFeed("http://test-feed.example.com/rss")
+    require.NoError(t, err)
+}
+```
 
 ### Test Coverage Requirements
 - **Service Layer**: 90%+ coverage (PRIMARY FOCUS)
@@ -306,6 +476,29 @@ quality-check:
 ```
 
 ---
+
+### Fundamental Development Rules
+
+#### External Dependencies (CRITICAL)
+- **UNIT TESTS**: NEVER make real HTTP requests, database calls, or file I/O
+- **RATE LIMITING**: Minimum 5 seconds between external requests
+- **TIMEOUTS**: All external calls must have timeouts (30s max)
+- **CIRCUIT BREAKERS**: Implement for all external services
+- **USER AGENT**: Always identify your service in requests
+- **RETRIES**: Exponential backoff with jitter
+
+#### Network Safety
+```go
+// ❌ FORBIDDEN in unit tests
+http.Get("http://example.com")           // Real HTTP request
+sql.Open("postgres://...")               // Real DB connection
+os.Open("/path/to/file")                // Real file access
+
+// ✅ REQUIRED in unit tests
+mockClient.EXPECT().Get(gomock.Any())    // Mocked HTTP
+mockRepo.EXPECT().Save(gomock.Any())     // Mocked repository
+// Use test fixtures for file data
+```
 
 ## 🔒 Security & Performance
 
