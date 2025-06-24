@@ -3,11 +3,10 @@ package fetch_feed_gateway
 import (
 	"alt/domain"
 	"alt/driver/alt_db"
+	"alt/utils/errors"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"context"
-	"errors"
-	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
@@ -34,17 +33,26 @@ func NewSingleFeedGatewayWithRateLimiter(pool *pgxpool.Pool, rateLimiter *rate_l
 
 func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFeed, error) {
 	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
+		dbErr := errors.DatabaseError("database connection not available", nil, map[string]interface{}{
+			"gateway": "SingleFeedGateway",
+			"method":  "FetchSingleFeed",
+		})
+		logger.GlobalContext.LogError(ctx, "database_connection_check", dbErr)
+		return nil, dbErr
 	}
 	// Get RSS feed URLs from the database
 	feedURLs, err := g.alt_db.FetchRSSFeedURLs(ctx)
 	if err != nil {
-		logger.SafeError("Error fetching RSS feed URLs", "error", err)
-		return nil, errors.New("error fetching RSS feed URLs")
+		dbErr := errors.DatabaseError("failed to fetch RSS feed URLs", err, map[string]interface{}{
+			"gateway": "SingleFeedGateway",
+			"method":  "FetchRSSFeedURLs",
+		})
+		logger.GlobalContext.LogError(ctx, "fetch_rss_feed_urls", dbErr)
+		return nil, dbErr
 	}
 
 	if len(feedURLs) == 0 {
-		logger.SafeInfo("No RSS feed URLs found in database")
+		logger.GlobalContext.WithContext(ctx).Info("No RSS feed URLs found in database")
 		return &domain.RSSFeed{
 			Title:       "No feeds available",
 			Description: "No RSS feed URLs have been registered",
@@ -54,30 +62,40 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 
 	// Use the first available feed URL
 	feedURL := feedURLs[0]
-	logger.SafeInfo("Fetching RSS feed", "url", feedURL.String())
+	logger.GlobalContext.WithContext(ctx).Info("Fetching RSS feed", "url", feedURL.String())
 
 	// Apply rate limiting if rate limiter is configured
 	if g.rateLimiter != nil {
-		slog.Info("Applying rate limiting for external single feed request", "url", feedURL.String())
+		logger.GlobalContext.WithContext(ctx).Info("Applying rate limiting for external single feed request", "url", feedURL.String())
 		if err := g.rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
-			slog.Error("Rate limiting failed for single feed", "url", feedURL.String(), "error", err)
-			return nil, errors.New("rate limiting failed")
+			rateLimitErr := errors.RateLimitError("rate limiting failed for feed fetch", err, map[string]interface{}{
+				"gateway": "SingleFeedGateway",
+				"url":     feedURL.String(),
+				"host":    feedURL.Host,
+			})
+			logger.GlobalContext.LogError(ctx, "rate_limit_wait", rateLimitErr)
+			return nil, rateLimitErr
 		}
-		slog.Info("Rate limiting passed, proceeding with single feed request", "url", feedURL.String())
+		logger.GlobalContext.WithContext(ctx).Info("Rate limiting passed, proceeding with single feed request", "url", feedURL.String())
 	}
 
 	// Parse the RSS feed from the URL
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(feedURL.String())
 	if err != nil {
-		logger.SafeError("Error parsing feed", "error", err)
-		return nil, errors.New("error parsing feed")
+		apiErr := errors.ExternalAPIError("failed to parse RSS feed", err, map[string]interface{}{
+			"gateway": "SingleFeedGateway",
+			"url":     feedURL.String(),
+			"method":  "ParseURL",
+		})
+		logger.GlobalContext.LogError(ctx, "external_feed_parse", apiErr)
+		return nil, apiErr
 	}
 
 	// Convert the gofeed.Feed to domain.RSSFeed
 	domainFeed := convertGofeedToDomain(feed)
 
-	logger.SafeInfo("Successfully fetched RSS feed", "title", domainFeed.Title, "items", len(domainFeed.Items))
+	logger.GlobalContext.WithContext(ctx).Info("Successfully fetched RSS feed", "title", domainFeed.Title, "items", len(domainFeed.Items))
 
 	return domainFeed, nil
 }
@@ -113,9 +131,7 @@ func convertGofeedToDomain(feed *gofeed.Feed) *domain.RSSFeed {
 	// Handle feed links
 	if len(feed.Links) > 0 {
 		domainFeed.Links = make([]string, len(feed.Links))
-		for i, link := range feed.Links {
-			domainFeed.Links[i] = link
-		}
+		copy(domainFeed.Links, feed.Links)
 	}
 
 	// Convert feed items

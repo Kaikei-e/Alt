@@ -2,8 +2,9 @@ package feed_stats_gateway
 
 import (
 	"alt/driver/alt_db"
+	"alt/utils/errors"
+	"alt/utils/logger"
 	"context"
-	"errors"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -20,7 +21,23 @@ func NewFeedAmountGateway(pool *pgxpool.Pool) *FeedAmountGateway {
 
 func (g *FeedAmountGateway) Execute(ctx context.Context) (int, error) {
 	if g.altDBRepository == nil {
-		return 0, errors.New("database connection not available")
+		dbErr := errors.DatabaseError("database connection not available", nil, map[string]interface{}{
+			"gateway": "FeedAmountGateway",
+			"method":  "Execute",
+		})
+		errors.LogError(logger.Logger, dbErr, "database_connection_check")
+		return 0, dbErr
 	}
-	return g.altDBRepository.FetchFeedAmount(ctx)
+	
+	count, err := g.altDBRepository.FetchFeedAmount(ctx)
+	if err != nil {
+		dbErr := errors.DatabaseError("failed to fetch feed amount", err, map[string]interface{}{
+			"gateway": "FeedAmountGateway",
+			"method":  "FetchFeedAmount",
+		})
+		errors.LogError(logger.Logger, dbErr, "fetch_feed_amount")
+		return 0, dbErr
+	}
+	
+	return count, nil
 }

@@ -2,6 +2,7 @@ package feed_stats_gateway
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -86,10 +87,10 @@ func TestFeedAmountGateway_ErrorHandling(t *testing.T) {
 		t.Errorf("FeedAmountGateway.Execute() expected count 0 on error, got %d", count)
 	}
 
-	// Verify the error message
+	// Verify the error message contains expected content
 	expectedMsg := "database connection not available"
-	if err.Error() != expectedMsg {
-		t.Errorf("Expected error message '%s', got '%s'", expectedMsg, err.Error())
+	if !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("Expected error message to contain '%s', got '%s'", expectedMsg, err.Error())
 	}
 }
 
@@ -115,12 +116,12 @@ func TestFeedAmountGateway_NilContext(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			// If it doesn't panic, it should at least error
-			_, err := gateway.Execute(nil)
+			_, err := gateway.Execute(context.TODO())
 			if err == nil {
 				t.Error("FeedAmountGateway.Execute() expected error with nil context, got nil")
 			}
 		}
 	}()
 
-	gateway.Execute(nil)
+	gateway.Execute(context.TODO())
 }

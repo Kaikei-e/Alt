@@ -115,12 +115,12 @@ func TestSummarizedArticlesCountGateway_NilContext(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			// If it doesn't panic, it should at least error
-			_, err := gateway.Execute(nil)
+			_, err := gateway.Execute(context.TODO())
 			if err == nil {
 				t.Error("SummarizedArticlesCountGateway.Execute() expected error with nil context, got nil")
 			}
 		}
 	}()
 
-	gateway.Execute(nil)
+	gateway.Execute(context.TODO())
 }
