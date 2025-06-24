@@ -63,6 +63,11 @@ write = [
   "**/requirements.txt",              # Python dependencies
 ]
 
+# READ - Paths where Claude can read but not modify
+read = [
+  "alt-backend/app/domain/**",
+]
+
 # EXCLUDE - Critical paths Claude must NEVER modify
 exclude = [
   # ─── Core Business Logic (Sacred) ────────────────────────────────────────
