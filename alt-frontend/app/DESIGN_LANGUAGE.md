@@ -256,8 +256,8 @@ claude "Create a comprehensive design system with multiple variants..."
 #### Quality Gates
 ```bash
 # Quick verification
-npm run typecheck
-npm run lint
+pnpm run typecheck
+pnpm run lint
 
 # Test glass effects
 claude "Add backdrop-filter blur to this component"
@@ -265,36 +265,6 @@ claude "Add backdrop-filter blur to this component"
 
 ---
 
-## Implementation Notes
-
-### Chakra Integration
-```typescript
-// Provider setup
-<ChakraProvider theme={altTheme}>
-  <App />
-</ChakraProvider>
-
-// Component usage
-<Button variant="alt">Alt Button</Button>
-<Card variant="glass">Glass Card</Card>
-```
-
-### CSS Foundation
-```css
-/* Global glass utility */
-.alt-glass {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-/* Hover enhancement */
-.alt-glass:hover {
-  border-color: var(--alt-pink);
-}
-```
-
----
 
 ## Key Reminders
 
