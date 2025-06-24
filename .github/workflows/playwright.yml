@@ -5,6 +5,11 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -12,26 +17,64 @@ jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version: lts/*
-    - name: Install dependencies
-      run: |
-        cd alt-frontend/app
-        npm install -g pnpm && pnpm install
-    - name: Install Playwright Browsers
-      run: |
-        cd alt-frontend/app
-        npx playwright install --with-deps
-    - name: Run Playwright tests
-      run: |
-        cd alt-frontend/app
-        npx playwright test
-    - uses: actions/upload-artifact@v4
-      if: ${{ !cancelled() }}
-      with:
-        name: playwright-report
-        path: alt-frontend/app/playwright-report/
-        retention-days: 30
+      # コード取得
+      - uses: actions/checkout@v4
+
+      # pnpm のインストール（キャッシュ対応）
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false                            # インストールは後で手動実行
+          cache: true                                   # pnpm ストアをキャッシュ :contentReference[oaicite:4]{index=4}
+
+      # Node.js セットアップ（pnpm キャッシュを有効に）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: "pnpm"                                 # node_modules のキャッシュ :contentReference[oaicite:5]{index=5}
+
+      # 環境変数セットアップ
+      - name: Prepare environment
+        working-directory: alt-frontend/app
+        run: |
+          npm install -g corepack@latest
+          corepack enable
+          corepack prepare pnpm@latest --activate
+          # Playwright のバージョン取得
+          echo "PLAYWRIGHT_VERSION=$(node -e "console.log(require('./package.json').devDependencies['@playwright/test'])")" >> $GITHUB_ENV
+
+      # Playwright ブラウザバイナリのキャッシュ
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      # 依存関係のインストール（キャッシュヒット時スキップ不可）
+      - name: Install dependencies
+        working-directory: alt-frontend/app
+        run: pnpm install
+
+      # ブラウザインストールはキャッシュミス時のみ
+      - name: Install Playwright browsers & deps
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: alt-frontend/app
+        run: npx playwright install --with-deps         # 必要な OS 依存ライブラリも含む :contentReference[oaicite:6]{index=6}
+
+      # E2E テスト実行
+      - name: Run Playwright tests
+        working-directory: alt-frontend/app
+        run: npx playwright test
+
+      # 結果レポートのアップロード（常に）
+      - uses: actions/upload-artifact@v4
+        if: always()                                   # 成功・失敗にかかわらず収集 :contentReference[oaicite:7]{index=7}
+        with:
+          name: playwright-report
+          path: alt-frontend/app/playwright-report/
+          retention-days: 30

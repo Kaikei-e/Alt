@@ -1,50 +1,39 @@
 import { defineConfig, devices } from "@playwright/test";
+import dotenv from "dotenv";
+import path from "path";
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// import dotenv from 'dotenv';
-// import path from 'path';
-// dotenv.config({ path: path.resolve(__dirname, '.env') });
+// .env がある場合は読み込む（ローカル開発用）
+dotenv.config({ path: path.resolve(__dirname, ".env") });
 
-/**
- * See https://playwright.dev/docs/test-configuration.
- */
+const isCI = !!process.env.CI;
+
 export default defineConfig({
   testDir: "./e2e",
-  /* Run tests in files in parallel */
-  fullyParallel: true,
-  /* Fail the build on CI if you accidentally left test.only in the source code. */
-  forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : "90%",
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
+
+  // ローカルでは並列、CIでは安定重視でシリアル実行
+  fullyParallel: !isCI,
+  workers: isCI ? 1 : "90%",
+
+  // CI で .only が残っていると失敗
+  forbidOnly: isCI,
+  retries: isCI ? 2 : 0,
+
+  // レポーター
   reporter: "html",
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: "http://localhost:3010",
-
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: "on-first-retry",
-
-    /* Screenshot on failure */
-    screenshot: "only-on-failure",
-
-    /* Video on failure */
-    video: "retain-on-failure",
-
-    /* Run in headless mode by default to avoid X server issues */
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3010",
     headless: true,
-
-    /* Timeout for actions */
     actionTimeout: 5 * 1000,
+
+    // CIではトレースは最初のリトライ時のみ、ローカルではオフ
+    trace: isCI ? "on-first-retry" : "off",
+    // 画面キャプチャは失敗時のみ
+    screenshot: "only-on-failure",
+    // ビデオは CI では不要、ローカルは失敗時に保持
+    video: isCI ? "off" : "retain-on-failure",
   },
 
-  /* Configure projects for major browsers */
   projects: [
     {
       name: "chromium",
@@ -53,34 +42,26 @@ export default defineConfig({
         headless: true,
       },
     },
-
-    /* Test against mobile viewports. */
+    // 必要に応じてモバイルや他ブラウザのプロジェクトを追加
     // {
-    //   name: 'Mobile Chrome',
-    //   use: { ...devices['Pixel 5'] },
+    //   name: "firefox",
+    //   use: { ...devices["Desktop Firefox"] },
     // },
     // {
-    //   name: 'Mobile Safari',
-    //   use: { ...devices['iPhone 12'] },
-    // },
-
-    /* Test against branded browsers. */
-    // {
-    //   name: 'Microsoft Edge',
-    //   use: { ...devices['Desktop Edge'], channel: 'msedge' },
-    // },
-    // {
-    //   name: 'Google Chrome',
-    //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+    //   name: "webkit",
+    //   use: { ...devices["Desktop Safari"] },
     // },
   ],
 
-  /* Run your local dev server before starting the tests */
   webServer: {
-    command: "next dev --port 3010",
+    // CI ではビルド→本番起動、ローカルでは next dev
+    command: isCI
+      ? "npm run build && npm run start -- -p 3010"
+      : "next dev --port 3010",
     url: "http://localhost:3010",
-    reuseExistingServer: true, // Always reuse existing server for now
-    timeout: 30 * 1000,
+    // ローカルでは既存サーバを再利用、CIでは常に新規起動
+    reuseExistingServer: !isCI,
+    timeout: 60 * 1000,
     stdout: "pipe",
     stderr: "pipe",
   },
