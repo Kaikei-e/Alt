@@ -1,21 +1,30 @@
 "use client";
 
+import React from "react";
 import { UnsummarizedFeedStatsSummary } from "@/schema/feedStats";
-import { feedsApiSse } from "@/lib/apiSse";
+import { setupSSEWithReconnect } from "@/lib/apiSse";
 import { Flex, Text, Box } from "@chakra-ui/react";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useEffect, useState, useRef } from "react";
 import { useSSEProgress } from "@/hooks/useSSEProgress";
-import { FiRss, FiFileText } from "react-icons/fi";
+import { FiRss, FiFileText, FiLayers } from "react-icons/fi";
 import { SSEProgressBar } from "@/components/mobile/stats/SSEProgressBar";
 import { StatCard } from "@/components/mobile/stats/StatCard";
+
+// Type guard for validating numeric amounts
+const isValidAmount = (value: unknown): value is number => {
+  return typeof value === 'number' && !isNaN(value) && value >= 0 && isFinite(value);
+};
 
 export default function FeedsStatsPage() {
   const [feedAmount, setFeedAmount] = useState(0);
   const [unsummarizedArticlesAmount, setUnsummarizedArticlesAmount] = useState(0);
+  const [totalArticlesAmount, setTotalArticlesAmount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [lastDataReceived, setLastDataReceived] = useState<number>(Date.now());
+  const [retryCount, setRetryCount] = useState(0);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   // Progress tracking for SSE updates (5-second cycle)
   const { progress, reset: resetProgress } = useSSEProgress(5000);
@@ -38,31 +47,80 @@ export default function FeedsStatsPage() {
   }, [lastDataReceived]);
 
   useEffect(() => {
-    const sseConnection = feedsApiSse.getFeedsStats(
+    let isMounted = true; // Race condition prevention
+
+    const { eventSource, cleanup } = setupSSEWithReconnect(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/v1/sse/feeds/stats`,
       (data: UnsummarizedFeedStatsSummary) => {
-        if (data.feed_amount?.amount !== undefined) {
-          setFeedAmount(data.feed_amount.amount);
-        }
-        if (data.unsummarized_feed?.amount !== undefined) {
-          setUnsummarizedArticlesAmount(data.unsummarized_feed.amount);
+        if (!isMounted) return; // Prevent updates after unmount
+
+        try {
+          // Handle feed amount with validation
+          if (data.feed_amount?.amount !== undefined) {
+            const amount = data.feed_amount.amount;
+            if (isValidAmount(amount)) {
+              setFeedAmount(amount);
+            } else {
+              console.warn('Invalid feed_amount:', amount);
+              setFeedAmount(0);
+            }
+          }
+        } catch (error) {
+          console.error('Error updating feed amount:', error);
         }
 
-        // Update last data received timestamp
-        setLastDataReceived(Date.now());
-        resetProgress(); // Reset progress bar on new data
+        try {
+          // Handle unsummarized articles with validation
+          if (data.unsummarized_feed?.amount !== undefined) {
+            const amount = data.unsummarized_feed.amount;
+            if (isValidAmount(amount)) {
+              setUnsummarizedArticlesAmount(amount);
+            } else {
+              console.warn('Invalid unsummarized_feed amount:', amount);
+              setUnsummarizedArticlesAmount(0);
+            }
+          }
+        } catch (error) {
+          console.error('Error updating unsummarized articles:', error);
+        }
+
+        try {
+          // Handle total articles with validation
+          const totalArticlesAmount = data.total_articles?.amount ?? 0;
+          if (isValidAmount(totalArticlesAmount)) {
+            setTotalArticlesAmount(totalArticlesAmount);
+          } else {
+            console.warn('Invalid total_articles amount:', totalArticlesAmount);
+            setTotalArticlesAmount(0);
+          }
+        } catch (error) {
+          console.error('Error updating total articles:', error);
+        }
+
+        // Update connection state and reset retry count on successful data
+        if (isMounted) {
+          setLastDataReceived(Date.now());
+          setIsConnected(true);
+          setRetryCount(0);
+          resetProgress(); // Reset progress bar on new data
+        }
       },
       () => {
-        // Handle SSE connection error
-        // Don't immediately set to disconnected - let the health check handle it
-        // This prevents flickering when there are temporary connection issues
-        setIsConnected(false);
+        // Handle SSE connection error with retry tracking
+        if (isMounted) {
+          setIsConnected(false);
+          setRetryCount(prev => prev + 1);
+        }
       },
+      3 // Max 3 reconnect attempts
     );
 
-    eventSourceRef.current = sseConnection;
+    eventSourceRef.current = eventSource;
+    cleanupRef.current = cleanup;
 
     return () => {
-      eventSourceRef.current?.close();
+      isMounted = false; // Prevent race conditions
+      cleanup();
     };
   }, [resetProgress]);
 
@@ -105,7 +163,12 @@ export default function FeedsStatsPage() {
             transition="background-color 0.3s ease"
           />
           <Text fontSize="sm" color="whiteAlpha.800">
-            {isConnected ? "Connected" : "Disconnected"}
+            {isConnected 
+              ? "Connected" 
+              : retryCount > 0 
+                ? `Reconnecting... (${retryCount}/3)`
+                : "Disconnected"
+            }
           </Text>
         </Flex>
 
@@ -116,6 +179,15 @@ export default function FeedsStatsPage() {
             label="TOTAL FEEDS"
             value={feedAmount}
             description="RSS feeds being monitored"
+          />
+
+          {/* NEW CARD */}
+          <StatCard
+            icon={FiLayers}
+            label="TOTAL ARTICLES"
+            value={totalArticlesAmount}
+            description="All articles across RSS feeds"
+            data-testid="stat-card-total-articles"
           />
 
           <StatCard

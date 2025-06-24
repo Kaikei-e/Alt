@@ -1,7 +1,19 @@
 "use client";
 
+import React from "react";
 import { Box, Flex, Text, Icon } from "@chakra-ui/react";
 import { IconType } from "react-icons";
+
+// Safe number formatter with fallbacks
+const safeFormatNumber = (value: number): string => {
+  if (value > Number.MAX_SAFE_INTEGER) {
+    return '∞';
+  }
+  if (value < 0) {
+    return '0';
+  }
+  return value.toLocaleString();
+};
 
 interface StatCardProps {
   /** The label/title for the statistic */
@@ -12,9 +24,17 @@ interface StatCardProps {
   icon: IconType;
   /** Additional description text */
   description: string;
+  /** Optional test ID for testing */
+  'data-testid'?: string;
 }
 
-export const StatCard = ({ icon, label, value, description }: StatCardProps) => {
+export const StatCard = ({ 
+  icon, 
+  label, 
+  value, 
+  description,
+  'data-testid': testId 
+}: StatCardProps) => {
   return (
     <Box
       className="glass"
@@ -27,6 +47,7 @@ export const StatCard = ({ icon, label, value, description }: StatCardProps) => 
         transform: "translateY(-5px)",
         boxShadow: "0 20px 40px rgba(255, 0, 110, 0.3)",
       }}
+      data-testid={testId}
     >
       <Flex direction="column" gap={3}>
         <Flex align="center" gap={2}>
@@ -42,7 +63,7 @@ export const StatCard = ({ icon, label, value, description }: StatCardProps) => 
         </Flex>
 
         <Text fontSize="3xl" fontWeight="bold" color="white">
-          {value.toLocaleString()}
+          {safeFormatNumber(value)}
         </Text>
 
         <Text fontSize="sm" color="whiteAlpha.700" lineHeight="1.5">

@@ -14,4 +14,7 @@ export interface UnsummarizedFeedStatsSummary {
   unsummarized_feed: {
     amount: number;
   };
+  total_articles?: {  // Optional field for backward compatibility
+    amount: number;
+  };
 }

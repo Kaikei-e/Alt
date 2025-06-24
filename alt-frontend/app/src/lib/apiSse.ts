@@ -16,14 +16,23 @@ export function setupSSE(
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as UnsummarizedFeedStatsSummary;
-        onData(data);
-      } catch {
-        // Error parsing SSE data - handled silently
+        // Validate basic structure before passing to callback
+        if (data && typeof data === 'object') {
+          onData(data);
+        } else {
+          console.warn('Invalid SSE data structure:', data);
+        }
+      } catch (error) {
+        console.error('Error parsing SSE data:', error, 'Raw data:', event.data);
       }
     };
 
-    eventSource.onerror = () => {
-      // SSE error - handled silently
+    eventSource.onerror = (error) => {
+      console.error('SSE connection error:', {
+        readyState: eventSource.readyState,
+        url: endpoint,
+        error
+      });
       if (onError) {
         onError();
       }
@@ -60,30 +69,43 @@ export function setupSSEWithReconnect(
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as UnsummarizedFeedStatsSummary;
-          onData(data);
-        } catch {
-          // Error parsing SSE data - handled silently
+          // Validate basic structure before passing to callback
+          if (data && typeof data === 'object') {
+            onData(data);
+          } else {
+            console.warn('Invalid SSE data structure:', data);
+          }
+        } catch (error) {
+          console.error('Error parsing SSE data:', error, 'Raw data:', event.data);
         }
       };
 
-      eventSource.onerror = () => {
-        // SSE error - handled silently
+      eventSource.onerror = (error) => {
+        console.error('SSE connection error:', {
+          readyState: eventSource?.readyState,
+          url: endpoint,
+          attempts: reconnectAttempts,
+          maxAttempts: maxReconnectAttempts,
+          error
+        });
+        
         eventSource?.close();
 
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts++;
           const delay = Math.pow(2, reconnectAttempts - 1) * 1000; // Exponential backoff
+          console.log(`Retrying SSE connection (${reconnectAttempts}/${maxReconnectAttempts}) in ${delay}ms...`);
           reconnectTimeout = setTimeout(connect, delay);
         } else {
-          // Max reconnection attempts reached - handled silently
+          console.error('Max SSE reconnection attempts reached');
           if (onError) {
             onError();
           }
         }
       };
 
-    } catch {
-      // Error creating SSE connection - handled silently
+    } catch (error) {
+      console.error('Failed to create SSE connection:', error);
       if (onError) {
         onError();
       }

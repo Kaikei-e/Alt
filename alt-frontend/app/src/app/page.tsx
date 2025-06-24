@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Flex, Text, VStack, HStack } from "@chakra-ui/react";
 import { FiRss, FiFileText, FiArrowRight } from "react-icons/fi";
@@ -9,13 +9,6 @@ import { FeedStatsSummary } from "@/schema/feedStats";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import css from "./page.module.css";
-
-// Lazy load heavy components
-const VaporwaveBackground = lazy(() =>
-  import("@/components/mobile/stats/VaporwaveBackground").then(mod => ({
-    default: mod.VaporwaveBackground
-  }))
-);
 
 export default function Home() {
   const router = useRouter();
@@ -57,6 +50,7 @@ export default function Home() {
       position="relative"
       pt="env(safe-area-inset-top)"
       pb="env(safe-area-inset-bottom)"
+      background="var(--vaporwave-bg)"
     >
       <Box
         as="a"
@@ -86,14 +80,6 @@ export default function Home() {
       >
         Skip to main content
       </Box>
-
-      {/* Vaporwave Background */}
-      <Suspense fallback={<div data-testid="vaporwave-background-loading" />}>
-        <Box position="absolute" inset={0} zIndex={0} data-testid="vaporwave-background">
-          <VaporwaveBackground />
-        </Box>
-      </Suspense>
-
       {/* Main Content */}
       <Box
         id="main-content"

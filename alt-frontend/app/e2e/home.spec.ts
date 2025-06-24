@@ -164,9 +164,5 @@ test.describe('Home Page - PROTECTED', () => {
     // Test high contrast preference
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'no-preference' });
     await expect(navCard).toBeVisible();
-
-    // Verify vaporwave background is always present across viewports
-    const vaporwaveBackground = page.locator('[data-testid="vaporwave-background"]');
-    await expect(vaporwaveBackground).toBeVisible();
   });
 });
