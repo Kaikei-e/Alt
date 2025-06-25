@@ -29,13 +29,13 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 	// Add request ID middleware first to ensure all requests have IDs
 	e.Use(middleware_custom.RequestIDMiddleware())
-	
+
 	// Add custom logging middleware that uses context-aware logging
 	e.Use(middleware_custom.LoggingMiddleware(logger.Logger))
-	
+
 	// Add validation middleware
 	e.Use(middleware_custom.ValidationMiddleware())
-	
+
 	// Add recovery middleware
 	e.Use(middleware.Recover())
 
@@ -367,13 +367,20 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 		unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
 		if err != nil {
-			logger.Logger.Error("Error fetching initial summarized articles count", "error", err)
+			logger.Logger.Error("Error fetching initial unsummarized articles count", "error", err)
 			unsummarizedCount = 0
 		}
 
-		initialStats := FeedStatsSummary{
-			FeedAmount:           feedAmount{Amount: amount},
-			SummarizedFeedAmount: summarizedFeedAmount{Amount: unsummarizedCount},
+		totalArticlesCount, err := container.TotalArticlesCountUsecase.Execute(c.Request().Context())
+		if err != nil {
+			logger.Logger.Error("Error fetching initial total articles count", "error", err)
+			totalArticlesCount = 0
+		}
+
+		initialStats := UnsummarizedFeedStatsSummary{
+			FeedAmount:             feedAmount{Amount: amount},
+			UnsummarizedFeedAmount: unsummarizedFeedAmount{Amount: unsummarizedCount},
+			ArticleAmount:          articleAmount{Amount: totalArticlesCount},
 		}
 
 		// Send initial data
@@ -383,7 +390,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		}
 
 		// Create ticker for periodic updates
-		ticker := time.NewTicker(cfg.Cache.FeedCacheExpiry)
+		ticker := time.NewTicker(cfg.Server.SSEInterval)
 		defer ticker.Stop()
 
 		// Keep connection alive
@@ -397,15 +404,22 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 					continue
 				}
 
-				summarizedCount, err := container.SummarizedArticlesCountUsecase.Execute(c.Request().Context())
+				unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
 				if err != nil {
-					logger.Logger.Error("Error fetching summarized articles count", "error", err)
+					logger.Logger.Error("Error fetching unsummarized articles count", "error", err)
 					continue
 				}
 
-				stats := FeedStatsSummary{
-					FeedAmount:           feedAmount{Amount: amount},
-					SummarizedFeedAmount: summarizedFeedAmount{Amount: summarizedCount},
+				totalArticlesCount, err := container.TotalArticlesCountUsecase.Execute(c.Request().Context())
+				if err != nil {
+					logger.Logger.Error("Error fetching total articles count", "error", err)
+					continue
+				}
+
+				stats := UnsummarizedFeedStatsSummary{
+					FeedAmount:             feedAmount{Amount: amount},
+					UnsummarizedFeedAmount: unsummarizedFeedAmount{Amount: unsummarizedCount},
+					ArticleAmount:          articleAmount{Amount: totalArticlesCount},
 				}
 
 				// Convert to JSON and send
@@ -508,19 +522,19 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 func handleError(c echo.Context, err error, operation string) error {
 	// Log the error with context
 	errors.LogError(logger.Logger, err, operation)
-	
+
 	// Handle AppError types
 	if appErr, ok := err.(*errors.AppError); ok {
 		return c.JSON(appErr.HTTPStatusCode(), appErr.ToHTTPResponse())
 	}
-	
+
 	// Handle unknown errors
 	unknownErr := errors.UnknownError("internal server error", err, map[string]interface{}{
 		"operation": operation,
 		"path":      c.Request().URL.Path,
 		"method":    c.Request().Method,
 	})
-	
+
 	errors.LogError(logger.Logger, unknownErr, operation)
 	return c.JSON(unknownErr.HTTPStatusCode(), unknownErr.ToHTTPResponse())
 }
@@ -532,7 +546,7 @@ func handleValidationError(c echo.Context, message string, field string, value i
 		"value": value,
 		"path":  c.Request().URL.Path,
 	})
-	
+
 	errors.LogError(logger.Logger, validationErr, "validation")
 	return c.JSON(validationErr.HTTPStatusCode(), validationErr.ToHTTPResponse())
 }
