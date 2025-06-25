@@ -21,29 +21,39 @@ export default function FeedsStatsPage() {
   const [unsummarizedArticlesAmount, setUnsummarizedArticlesAmount] = useState(0);
   const [totalArticlesAmount, setTotalArticlesAmount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
-  const [lastDataReceived, setLastDataReceived] = useState<number>(Date.now());
   const [retryCount, setRetryCount] = useState(0);
   const eventSourceRef = useRef<EventSource | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const lastDataReceivedRef = useRef<number>(Date.now());
 
   // Progress tracking for SSE updates (5-second cycle)
   const { progress, reset: resetProgress } = useSSEProgress(5000);
 
-  // Connection health check
+  // Connection health check using ref to avoid re-creating interval
   useEffect(() => {
     const healthCheck = setInterval(() => {
-      const timeSinceLastData = Date.now() - lastDataReceived;
+      const now = Date.now();
+      const timeSinceLastData = now - lastDataReceivedRef.current;
       const readyState = eventSourceRef.current?.readyState ?? EventSource.CLOSED;
 
       // Consider connected if we're receiving data regularly
-      const isReceivingData = timeSinceLastData < 15000; // 15s timeout
+      // Increased timeout to 30s to account for network delays and SSE intervals
+      const isReceivingData = timeSinceLastData < 30000; // 30s timeout
       const isConnectionOpen = readyState === EventSource.OPEN;
 
-      setIsConnected(isReceivingData && isConnectionOpen);
-    }, 1000); // Check every second
+      const shouldBeConnected = isReceivingData && isConnectionOpen;
+
+      // Only update state if it actually changed to prevent unnecessary re-renders
+      setIsConnected(prev => {
+        if (prev !== shouldBeConnected) {
+          return shouldBeConnected;
+        }
+        return prev;
+      });
+    }, 3000); // Check every 3 seconds for more stable checking
 
     return () => clearInterval(healthCheck);
-  }, [lastDataReceived]);
+  }, []); // No dependencies needed since we use ref
 
   useEffect(() => {
     let isMounted = true; // Race condition prevention
@@ -104,19 +114,30 @@ export default function FeedsStatsPage() {
         // Update connection state and reset retry count on successful data
         if (isMounted) {
           const now = Date.now();
-          setLastDataReceived(now);
-          setIsConnected(true);
-          setRetryCount(0);
+
+          lastDataReceivedRef.current = now;
+          // Only update connection state if it's actually changed
+          setIsConnected(prev => {
+            if (prev !== true) {
+              return true;
+            }
+            return prev;
+          });
+          setRetryCount(prev => {
+            if (prev !== 0) {
+              return 0;
+            }
+            return prev;
+          });
           resetProgress(); // Reset progress bar on new data
         }
       },
       () => {
         // Handle SSE connection error with retry tracking
         if (isMounted) {
-          setIsConnected(false);
+          setIsConnected(prev => prev !== false ? false : prev);
           setRetryCount(prev => {
             const newCount = prev + 1;
-            console.log(`SSE connection error, retry count: ${newCount}`);
             return newCount;
           });
         }
@@ -126,9 +147,9 @@ export default function FeedsStatsPage() {
         // Handle SSE connection opened - update last data received time
         if (isMounted) {
           const now = Date.now();
-          setLastDataReceived(now);
-          setIsConnected(true);
-          setRetryCount(0);
+          lastDataReceivedRef.current = now;
+          setIsConnected(prev => prev !== true ? true : prev);
+          setRetryCount(prev => prev !== 0 ? 0 : prev);
         }
       }
     );
@@ -141,7 +162,7 @@ export default function FeedsStatsPage() {
       isMounted = false; // Prevent race conditions
       cleanup();
     };
-  }, [resetProgress]);
+  }, [resetProgress]); // Only resetProgress dependency needed
 
   return (
     <Box

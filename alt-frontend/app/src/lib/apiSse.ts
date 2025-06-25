@@ -47,13 +47,14 @@ export function setupSSEWithReconnect(
   let eventSource: EventSource | null = null;
   let reconnectAttempts = 0;
   let reconnectTimeout: NodeJS.Timeout | null = null;
+  let hasReceivedData = false; // Track if we've actually received data
 
   const connect = () => {
     try {
       eventSource = new EventSource(endpoint);
 
       eventSource.onopen = () => {
-        reconnectAttempts = 0; // Reset on successful connection
+        // Don't reset attempts here - only reset when we actually receive data
         if (onOpen) {
           onOpen();
         }
@@ -64,6 +65,11 @@ export function setupSSEWithReconnect(
           const data = JSON.parse(event.data) as UnsummarizedFeedStatsSummary;
           // Validate basic structure before passing to callback
           if (data && typeof data === 'object') {
+            // Only reset attempts when we successfully receive and parse data
+            if (!hasReceivedData) {
+              hasReceivedData = true;
+            }
+            reconnectAttempts = 0; // Reset only on successful data reception
             onData(data);
           }
         } catch (error) {
@@ -71,7 +77,7 @@ export function setupSSEWithReconnect(
         }
       };
 
-      eventSource.onerror = () => {
+                  eventSource.onerror = () => {
         if (onError) {
           onError();
         }
@@ -89,8 +95,6 @@ export function setupSSEWithReconnect(
       console.error('Error creating SSE connection:', error);
       if (onError) {
         onError();
-      } else {
-        console.error('No error handler provided');
       }
     }
   };
