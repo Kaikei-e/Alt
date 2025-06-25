@@ -314,7 +314,7 @@ func (g *HTTPFeedGateway) FetchFeed(ctx context.Context, url string) (*domain.Fe
 - [ ] All tests passing
 - [ ] Clean Architecture dependencies respected
 - [ ] Rate limiting implemented for external calls
-- [ ] Structured logging with context
+- [ ] Structured logging with context (refer: /alt-backend/app/utils/logger/init.go)
 - [ ] Error handling with proper wrapping
 - [ ] No hardcoded values
 - [ ] `gofmt` and `goimports` applied
