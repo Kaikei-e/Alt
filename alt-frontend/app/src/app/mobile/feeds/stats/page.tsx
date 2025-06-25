@@ -36,10 +36,10 @@ export default function FeedsStatsPage() {
       const readyState = eventSourceRef.current?.readyState ?? EventSource.CLOSED;
 
       // Consider connected if EventSource is in OPEN state
-      // For data timeout, allow 15 seconds (3x the 5-second server interval)
-      // But during first 10 seconds after page load, be more lenient for initial connection
-      const isInitialConnection = Date.now() - lastDataReceived <= 10000;
-      const dataTimeout = isInitialConnection ? 10000 : 15000; // 10s initially, then 15s
+      // Server sends heartbeat every 10s and data every 5s, so allow 20s timeout
+      // But during first 15 seconds after page load, be more lenient for initial connection
+      const isInitialConnection = Date.now() - lastDataReceived <= 15000;
+      const dataTimeout = isInitialConnection ? 15000 : 20000; // 15s initially, then 20s
 
       const shouldBeConnected = readyState === EventSource.OPEN && timeSinceLastData < dataTimeout;
 
@@ -115,7 +115,15 @@ export default function FeedsStatsPage() {
           setRetryCount(prev => prev + 1);
         }
       },
-      3 // Max 3 reconnect attempts
+      3, // Max 3 reconnect attempts
+      () => {
+        // Handle SSE connection opened - update last data received time
+        if (isMounted) {
+          setLastDataReceived(Date.now());
+          setIsConnected(true);
+          setRetryCount(0);
+        }
+      }
     );
 
     eventSourceRef.current = eventSource;

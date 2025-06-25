@@ -52,7 +52,8 @@ export function setupSSEWithReconnect(
   endpoint: string,
   onData: (data: UnsummarizedFeedStatsSummary) => void,
   onError?: () => void,
-  maxReconnectAttempts: number = 3
+  maxReconnectAttempts: number = 3,
+  onOpen?: () => void
 ): { eventSource: EventSource | null; cleanup: () => void } {
   let eventSource: EventSource | null = null;
   let reconnectAttempts = 0;
@@ -64,6 +65,9 @@ export function setupSSEWithReconnect(
 
       eventSource.onopen = () => {
         reconnectAttempts = 0; // Reset on successful connection
+        if (onOpen) {
+          onOpen();
+        }
       };
 
       eventSource.onmessage = (event) => {

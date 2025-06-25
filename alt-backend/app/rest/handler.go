@@ -393,9 +393,22 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		ticker := time.NewTicker(cfg.Server.SSEInterval)
 		defer ticker.Stop()
 
+		// Create heartbeat ticker to keep connection alive (every 10 seconds)
+		heartbeatTicker := time.NewTicker(10 * time.Second)
+		defer heartbeatTicker.Stop()
+
 		// Keep connection alive
 		for {
 			select {
+			case <-heartbeatTicker.C:
+				// Send heartbeat comment to keep connection alive
+				_, err := c.Response().Write([]byte(": heartbeat\n\n"))
+				if err != nil {
+					logger.Logger.Info("Client disconnected during heartbeat", "error", err)
+					return nil
+				}
+				flusher.Flush()
+
 			case <-ticker.C:
 				// Fetch fresh data
 				amount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
