@@ -18,7 +18,7 @@ func TestNewConfig_WithDefaults(t *testing.T) {
 			expected: Config{
 				Server: ServerConfig{
 					Port:         9000,
-					ReadTimeout:  30 * time.Second,
+					ReadTimeout:  300 * time.Second,
 					WriteTimeout: 30 * time.Second,
 					IdleTimeout:  120 * time.Second,
 				},
@@ -46,7 +46,7 @@ func TestNewConfig_WithDefaults(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear environment first
 			clearTestEnv()
-			
+
 			// Set test environment variables
 			for key, value := range tt.envVars {
 				os.Setenv(key, value)
@@ -65,12 +65,12 @@ func TestNewConfig_WithDefaults(t *testing.T) {
 			if config.Server.ReadTimeout != tt.expected.Server.ReadTimeout {
 				t.Errorf("Server.ReadTimeout = %v, want %v", config.Server.ReadTimeout, tt.expected.Server.ReadTimeout)
 			}
-			
+
 			// Verify database config
 			if config.Database.MaxConnections != tt.expected.Database.MaxConnections {
 				t.Errorf("Database.MaxConnections = %d, want %d", config.Database.MaxConnections, tt.expected.Database.MaxConnections)
 			}
-			
+
 			// Verify rate limit config
 			if config.RateLimit.ExternalAPIInterval != tt.expected.RateLimit.ExternalAPIInterval {
 				t.Errorf("RateLimit.ExternalAPIInterval = %v, want %v", config.RateLimit.ExternalAPIInterval, tt.expected.RateLimit.ExternalAPIInterval)
@@ -124,7 +124,7 @@ func TestNewConfig_WithEnvironmentOverrides(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear environment first
 			clearTestEnv()
-			
+
 			// Set test environment variables
 			for key, value := range tt.envVars {
 				os.Setenv(key, value)
@@ -186,7 +186,7 @@ func TestConfigValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear environment first
 			clearTestEnv()
-			
+
 			// Set test environment variables
 			for key, value := range tt.envVars {
 				os.Setenv(key, value)
@@ -217,14 +217,14 @@ func clearTestEnv() {
 		"CACHE_FEED_EXPIRY", "CACHE_SEARCH_EXPIRY",
 		"LOG_LEVEL", "LOG_FORMAT",
 	}
-	
+
 	for _, env := range envVars {
 		os.Unsetenv(env)
 	}
 }
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > len(substr) && s[:len(substr)] == substr) ||
 		(len(s) > len(substr) && s[len(s)-len(substr):] == substr) ||
 		findSubstring(s, substr))
