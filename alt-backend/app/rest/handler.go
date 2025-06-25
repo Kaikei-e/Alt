@@ -338,6 +338,76 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		return c.JSON(http.StatusOK, results)
 	})
 
+	v1.GET("/feeds/stats", func(c echo.Context) error {
+		// Add caching headers for stats
+		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
+		c.Response().Header().Set("ETag", `"feeds-stats"`)
+
+		// Fetch feed amount
+		feedCount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
+		if err != nil {
+			logger.Logger.Error("Error fetching feed amount", "error", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed statistics"})
+		}
+
+		// Fetch summarized articles count
+		summarizedCount, err := container.SummarizedArticlesCountUsecase.Execute(c.Request().Context())
+		if err != nil {
+			logger.Logger.Error("Error fetching summarized articles count", "error", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed statistics"})
+		}
+
+		// Create response in expected format
+		stats := FeedStatsSummary{
+			FeedAmount:           feedAmount{Amount: feedCount},
+			SummarizedFeedAmount: summarizedFeedAmount{Amount: summarizedCount},
+		}
+
+		logger.Logger.Info("Feed stats retrieved successfully",
+			"feed_count", feedCount,
+			"summarized_count", summarizedCount)
+
+		return c.JSON(http.StatusOK, stats)
+	})
+
+	v1.POST("/rss-feed-link/register", func(c echo.Context) error {
+		var rssFeedLink RssFeedLink
+		err := c.Bind(&rssFeedLink)
+		if err != nil {
+			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
+		}
+
+		if strings.TrimSpace(rssFeedLink.URL) == "" {
+			return handleValidationError(c, "URL is required and cannot be empty", "url", rssFeedLink.URL)
+		}
+
+		// Parse and validate URL for SSRF protection
+		parsedURL, err := url.Parse(rssFeedLink.URL)
+		if err != nil {
+			return handleValidationError(c, "Invalid URL format", "url", rssFeedLink.URL)
+		}
+
+		// Apply SSRF protection
+		err = isAllowedURL(parsedURL)
+		if err != nil {
+			securityErr := errors.ValidationError("URL not allowed for security reasons", map[string]interface{}{
+				"url":    rssFeedLink.URL,
+				"reason": err.Error(),
+			})
+			errors.LogError(logger.Logger, securityErr, "url_validation")
+			return c.JSON(securityErr.HTTPStatusCode(), securityErr.ToHTTPResponse())
+		}
+
+		err = container.RegisterFeedsUsecase.Execute(c.Request().Context(), rssFeedLink.URL)
+		if err != nil {
+			return handleError(c, err, "register_feed")
+		}
+
+		// Invalidate cache after registration
+		c.Response().Header().Set("Cache-Control", "no-cache")
+		return c.JSON(http.StatusOK, map[string]string{"message": "RSS feed link registered"})
+	})
+
 	// Add SSE endpoint with proper Echo SSE handling
 	v1.GET("/sse/feeds/stats", func(c echo.Context) error {
 		// Set SSE headers using Echo's response
@@ -457,76 +527,6 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 				return nil
 			}
 		}
-	})
-
-	v1.GET("/feeds/stats", func(c echo.Context) error {
-		// Add caching headers for stats
-		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
-		c.Response().Header().Set("ETag", `"feeds-stats"`)
-
-		// Fetch feed amount
-		feedCount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
-		if err != nil {
-			logger.Logger.Error("Error fetching feed amount", "error", err)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed statistics"})
-		}
-
-		// Fetch summarized articles count
-		summarizedCount, err := container.SummarizedArticlesCountUsecase.Execute(c.Request().Context())
-		if err != nil {
-			logger.Logger.Error("Error fetching summarized articles count", "error", err)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed statistics"})
-		}
-
-		// Create response in expected format
-		stats := FeedStatsSummary{
-			FeedAmount:           feedAmount{Amount: feedCount},
-			SummarizedFeedAmount: summarizedFeedAmount{Amount: summarizedCount},
-		}
-
-		logger.Logger.Info("Feed stats retrieved successfully",
-			"feed_count", feedCount,
-			"summarized_count", summarizedCount)
-
-		return c.JSON(http.StatusOK, stats)
-	})
-
-	v1.POST("/rss-feed-link/register", func(c echo.Context) error {
-		var rssFeedLink RssFeedLink
-		err := c.Bind(&rssFeedLink)
-		if err != nil {
-			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
-		}
-
-		if strings.TrimSpace(rssFeedLink.URL) == "" {
-			return handleValidationError(c, "URL is required and cannot be empty", "url", rssFeedLink.URL)
-		}
-
-		// Parse and validate URL for SSRF protection
-		parsedURL, err := url.Parse(rssFeedLink.URL)
-		if err != nil {
-			return handleValidationError(c, "Invalid URL format", "url", rssFeedLink.URL)
-		}
-
-		// Apply SSRF protection
-		err = isAllowedURL(parsedURL)
-		if err != nil {
-			securityErr := errors.ValidationError("URL not allowed for security reasons", map[string]interface{}{
-				"url":    rssFeedLink.URL,
-				"reason": err.Error(),
-			})
-			errors.LogError(logger.Logger, securityErr, "url_validation")
-			return c.JSON(securityErr.HTTPStatusCode(), securityErr.ToHTTPResponse())
-		}
-
-		err = container.RegisterFeedsUsecase.Execute(c.Request().Context(), rssFeedLink.URL)
-		if err != nil {
-			return handleError(c, err, "register_feed")
-		}
-
-		// Invalidate cache after registration
-		c.Response().Header().Set("Cache-Control", "no-cache")
-		return c.JSON(http.StatusOK, map[string]string{"message": "RSS feed link registered"})
 	})
 
 }
