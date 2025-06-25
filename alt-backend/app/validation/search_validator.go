@@ -9,7 +9,7 @@ type SearchQueryValidator struct{}
 
 func (v *SearchQueryValidator) Validate(ctx context.Context, value interface{}) ValidationResult {
 	result := ValidationResult{Valid: true}
-	
+
 	// Check if input is a map (JSON object)
 	inputMap, ok := value.(map[string]interface{})
 	if !ok {
@@ -20,7 +20,7 @@ func (v *SearchQueryValidator) Validate(ctx context.Context, value interface{}) 
 		})
 		return result
 	}
-	
+
 	// Check if query field exists
 	queryField, exists := inputMap["query"]
 	if !exists {
@@ -31,7 +31,7 @@ func (v *SearchQueryValidator) Validate(ctx context.Context, value interface{}) 
 		})
 		return result
 	}
-	
+
 	// Check if query is a string
 	queryStr, ok := queryField.(string)
 	if !ok {
@@ -42,7 +42,7 @@ func (v *SearchQueryValidator) Validate(ctx context.Context, value interface{}) 
 		})
 		return result
 	}
-	
+
 	// Check if query is empty or whitespace only
 	if strings.TrimSpace(queryStr) == "" {
 		result.Valid = false
@@ -53,7 +53,7 @@ func (v *SearchQueryValidator) Validate(ctx context.Context, value interface{}) 
 		})
 		return result
 	}
-	
+
 	// Check query length (maximum 1000 characters)
 	if len(queryStr) > 1000 {
 		result.Valid = false
@@ -63,7 +63,7 @@ func (v *SearchQueryValidator) Validate(ctx context.Context, value interface{}) 
 		})
 		return result
 	}
-	
+
 	return result
 }
 
@@ -71,7 +71,7 @@ type ArticleSearchValidator struct{}
 
 func (v *ArticleSearchValidator) Validate(ctx context.Context, value interface{}) ValidationResult {
 	result := ValidationResult{Valid: true}
-	
+
 	// Check if input is a map (query parameters)
 	inputMap, ok := value.(map[string]interface{})
 	if !ok {
@@ -82,7 +82,7 @@ func (v *ArticleSearchValidator) Validate(ctx context.Context, value interface{}
 		})
 		return result
 	}
-	
+
 	// Check if q parameter exists
 	qField, exists := inputMap["q"]
 	if !exists {
@@ -93,7 +93,7 @@ func (v *ArticleSearchValidator) Validate(ctx context.Context, value interface{}
 		})
 		return result
 	}
-	
+
 	// Check if q is a string
 	qStr, ok := qField.(string)
 	if !ok {
@@ -104,7 +104,7 @@ func (v *ArticleSearchValidator) Validate(ctx context.Context, value interface{}
 		})
 		return result
 	}
-	
+
 	// Check if q is empty or whitespace only
 	if strings.TrimSpace(qStr) == "" {
 		result.Valid = false
@@ -115,7 +115,7 @@ func (v *ArticleSearchValidator) Validate(ctx context.Context, value interface{}
 		})
 		return result
 	}
-	
+
 	// Check query length (maximum 500 characters for GET parameters)
 	if len(qStr) > 500 {
 		result.Valid = false
@@ -125,6 +125,6 @@ func (v *ArticleSearchValidator) Validate(ctx context.Context, value interface{}
 		})
 		return result
 	}
-	
+
 	return result
 }

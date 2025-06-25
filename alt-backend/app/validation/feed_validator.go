@@ -11,7 +11,7 @@ type FeedRegistrationValidator struct{}
 
 func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interface{}) ValidationResult {
 	result := ValidationResult{Valid: true}
-	
+
 	// Check if input is a map (JSON object)
 	inputMap, ok := value.(map[string]interface{})
 	if !ok {
@@ -22,7 +22,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		})
 		return result
 	}
-	
+
 	// Check if URL field exists
 	urlField, exists := inputMap["url"]
 	if !exists {
@@ -33,7 +33,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		})
 		return result
 	}
-	
+
 	// Check if URL is a string
 	urlStr, ok := urlField.(string)
 	if !ok {
@@ -44,7 +44,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		})
 		return result
 	}
-	
+
 	// Validate URL using FeedURLValidator
 	urlValidator := &FeedURLValidator{}
 	urlResult := urlValidator.Validate(ctx, urlStr)
@@ -53,7 +53,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		result.Errors = append(result.Errors, urlResult.Errors...)
 		return result
 	}
-	
+
 	// Additional SSRF protection checks
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
@@ -66,7 +66,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		})
 		return result
 	}
-	
+
 	// Check for localhost
 	hostname := strings.ToLower(parsedURL.Hostname())
 	if hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127.") {
@@ -78,7 +78,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		})
 		return result
 	}
-	
+
 	// Check for metadata endpoints
 	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" {
 		result.Valid = false
@@ -89,9 +89,21 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		})
 		return result
 	}
-	
-	// Check for private IP addresses
-	if isPrivateIPAddress(hostname) {
+
+	// Check for internal domain suffixes
+	if strings.HasSuffix(hostname, ".local") || strings.HasSuffix(hostname, ".internal") ||
+		strings.HasSuffix(hostname, ".corp") || strings.HasSuffix(hostname, ".lan") {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Field:   "url",
+			Message: "internal domain suffixes not allowed",
+			Value:   urlStr,
+		})
+		return result
+	}
+
+	// Check for private IP addresses (including 0.0.0.0)
+	if hostname == "0.0.0.0" || isPrivateIPAddress(hostname) {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
 			Field:   "url",
@@ -100,7 +112,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		})
 		return result
 	}
-	
+
 	return result
 }
 
@@ -108,7 +120,7 @@ type FeedDetailValidator struct{}
 
 func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) ValidationResult {
 	result := ValidationResult{Valid: true}
-	
+
 	// Check if input is a map (JSON object)
 	inputMap, ok := value.(map[string]interface{})
 	if !ok {
@@ -119,7 +131,7 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		})
 		return result
 	}
-	
+
 	// Check if feed_url field exists
 	feedURLField, exists := inputMap["feed_url"]
 	if !exists {
@@ -130,7 +142,7 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		})
 		return result
 	}
-	
+
 	// Check if feed_url is a string
 	feedURLStr, ok := feedURLField.(string)
 	if !ok {
@@ -141,7 +153,7 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		})
 		return result
 	}
-	
+
 	// Check if feed_url is empty
 	if strings.TrimSpace(feedURLStr) == "" {
 		result.Valid = false
@@ -152,7 +164,7 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		})
 		return result
 	}
-	
+
 	// Validate feed URL format
 	parsedURL, err := url.Parse(feedURLStr)
 	if err != nil || parsedURL.Scheme == "" {
@@ -164,7 +176,7 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		})
 		return result
 	}
-	
+
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
@@ -174,7 +186,7 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		})
 		return result
 	}
-	
+
 	return result
 }
 
@@ -185,21 +197,36 @@ func isPrivateIPAddress(hostname string) bool {
 	if ip != nil {
 		return isPrivateIP(ip)
 	}
-	
-	// If it's a hostname, resolve it to IPs
+
+	// For hostnames with common TLDs, don't block on DNS resolution failure
+	// Only block if we can resolve and it resolves to private IPs
+	commonTLDs := []string{".com", ".org", ".net", ".edu", ".gov", ".mil", ".int"}
+	isCommonTLD := false
+	for _, tld := range commonTLDs {
+		if strings.HasSuffix(strings.ToLower(hostname), tld) {
+			isCommonTLD = true
+			break
+		}
+	}
+
+	// If it's a hostname, try to resolve it to IPs
 	ips, err := net.LookupIP(hostname)
 	if err != nil {
-		// Block on resolution failure as a security measure
-		return true
+		// Only block on resolution failure for uncommon TLDs or suspicious domains
+		if !isCommonTLD {
+			return true
+		}
+		// For common TLDs, allow through (might be DNS issue or non-existent but not malicious)
+		return false
 	}
-	
+
 	// Check if any resolved IP is private
 	for _, ip := range ips {
 		if isPrivateIP(ip) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -207,7 +234,7 @@ func isPrivateIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true
 	}
-	
+
 	// Check for private IPv4 ranges
 	ipv4 := ip.To4()
 	if ipv4 != nil {
@@ -224,7 +251,7 @@ func isPrivateIP(ip net.IP) bool {
 			return true
 		}
 	}
-	
+
 	// Check for private IPv6 ranges
 	if ip.To16() != nil && ip.To4() == nil {
 		// Check for unique local addresses (fc00::/7)
@@ -232,6 +259,6 @@ func isPrivateIP(ip net.IP) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }

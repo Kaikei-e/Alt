@@ -11,6 +11,14 @@ type Config struct {
 	Cache     CacheConfig     `json:"cache"`
 	Logging   LoggingConfig   `json:"logging"`
 	HTTP      HTTPConfig      `json:"http"`
+
+	// Legacy fields for backward compatibility
+	Port               int           `json:"port"`
+	DatabaseURL        string        `json:"database_url"`
+	LogLevel           string        `json:"log_level"`
+	MeilisearchURL     string        `json:"meilisearch_url"`
+	RateLimitInterval  time.Duration `json:"rate_limit_interval"`
+	MaxPaginationLimit int           `json:"max_pagination_limit"`
 }
 
 type ServerConfig struct {
@@ -51,14 +59,19 @@ type HTTPConfig struct {
 // with fallback to default values
 func NewConfig() (*Config, error) {
 	config := &Config{}
-	
+
 	if err := loadFromEnvironment(config); err != nil {
 		return nil, err
 	}
-	
+
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
-	
+
 	return config, nil
+}
+
+// Load is an alias for NewConfig for backward compatibility
+func Load() (*Config, error) {
+	return NewConfig()
 }

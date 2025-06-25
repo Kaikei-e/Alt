@@ -11,6 +11,14 @@ func TestRateLimiterPortInterface(t *testing.T) {
 	// This test ensures the RateLimiterPort interface compiles correctly
 	// Actual implementation testing will be done in the gateway layer
 	var _ RateLimiterPort = (*mockRateLimiterPort)(nil)
+
+	// Test that we can create and use a mock implementation
+	port := &mockRateLimiterPort{}
+	ctx := context.Background()
+	err := port.WaitForHost(ctx, "example.com")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
 }
 
 // mockRateLimiterPort is a simple mock to verify interface compliance

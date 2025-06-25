@@ -3,6 +3,7 @@ package feed_search_gateway
 import (
 	"alt/domain"
 	"alt/mocks"
+	"alt/utils/logger"
 	"context"
 	"errors"
 	"testing"
@@ -11,6 +12,9 @@ import (
 )
 
 func TestSearchFeedMeilisearchGateway_SearchFeeds(t *testing.T) {
+	// Initialize logger to prevent nil pointer issues
+	logger.InitLogger()
+	
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
