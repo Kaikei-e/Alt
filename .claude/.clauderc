@@ -65,7 +65,22 @@ write = [
 
 # READ - Paths where Claude can read but not modify
 read = [
-  "alt-backend/app/domain/**",
+  "alt-backend/app/**",
+  "alt-frontend/app/**",
+  "tag-generator/**",
+  "search-indexer/**",
+  "pre-processor/**",
+  "news-creator/**",
+  "news-creator/models/**",
+  "news-creator/cached_models/**",
+  "news-creator/data/**",
+  "nginx/**",
+  "compose.yml",
+  "migrate"
+  "db"
+  "/**.md"
+  "Makefile"
+  "**.sh"
 ]
 
 # EXCLUDE - Critical paths Claude must NEVER modify
