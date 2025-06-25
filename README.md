@@ -16,7 +16,6 @@ The project is built **mobile-first**, 100 % open-source (Apache-2.0), and engin
 | **Auto-tagging** | spaCy + zero-shot NLI | `tag-generator/` |
 | **Full-text & faceted search** | Meilisearch via a Go proxy | `search-indexer/` |
 | **Daily digest bot** | LLM summariser | `news-creator/` |
-| **JWT auth (opt-in)** | Single-tenant for now | `alt-backend/` |
 | **One-command up** | `docker compose up` | `compose.yaml` |
 
 ---
