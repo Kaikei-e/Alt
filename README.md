@@ -12,10 +12,11 @@ The project is built **mobile-first**, 100 % open-source (Apache-2.0), and engin
 | Category | What you get | Where it lives |
 |----------|--------------|----------------|
 | **Fast crawl** | Go workers pull and de-duplicate feeds in parallel | `alt-backend/` |
-| **Readability cleanup** | Boiler-plate stripping & language detect | `pre-processor/` |
-| **Auto-tagging** | spaCy + zero-shot NLI | `tag-generator/` |
+| **Readability cleanup** | Pre-processing & language detect articles for AI summarization | `pre-processor/` |
+| **Auto-scoring summaries** | Using LLM to score summaries and remove bad ones | `pre-processor/` |
+| **Auto-tagging** | ML tagging via Python | `tag-generator/` |
 | **Full-text & faceted search** | Meilisearch via a Go proxy | `search-indexer/` |
-| **Daily digest bot** | LLM summariser | `news-creator/` |
+| **Auto summarization** | LLM summariser | `news-creator/` |
 | **One-command up** | `docker compose up` | `compose.yaml` |
 
 ---
