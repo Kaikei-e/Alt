@@ -53,7 +53,7 @@ export default function FeedsStatsPage() {
     let isMounted = true; // Race condition prevention
 
     const { eventSource, cleanup } = setupSSEWithReconnect(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/v1/sse/feeds/stats`,
+      `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api'}/v1/sse/feeds/stats`,
       (data: UnsummarizedFeedStatsSummary) => {
         if (!isMounted) return; // Prevent updates after unmount
 
