@@ -65,12 +65,13 @@ describe("Cursor-based API", () => {
         "http://localhost/api/v1/feeds/fetch/cursor?limit=20",
         expect.objectContaining({
           method: "GET",
-          headers: expect.objectContaining({
+          headers: {
             "Content-Type": "application/json",
             "Cache-Control": "max-age=300",
             "Accept-Encoding": "gzip, deflate, br",
-          }),
+          },
           keepalive: true,
+          signal: expect.any(AbortSignal),
         }),
       );
 
@@ -110,7 +111,16 @@ describe("Cursor-based API", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         `http://localhost/api/v1/feeds/fetch/cursor?limit=10&cursor=${encodeURIComponent(testCursor)}`,
-        expect.any(Object),
+        expect.objectContaining({
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "max-age=300",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          keepalive: true,
+          signal: expect.any(AbortSignal),
+        }),
       );
 
       expect(result).toEqual(mockResponse);

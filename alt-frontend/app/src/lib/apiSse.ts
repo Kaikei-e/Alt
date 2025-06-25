@@ -9,30 +9,19 @@ export function setupSSE(
   try {
     const eventSource = new EventSource(endpoint);
 
-    eventSource.onopen = () => {
-      console.log('SSE connection established');
-    };
-
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as UnsummarizedFeedStatsSummary;
         // Validate basic structure before passing to callback
         if (data && typeof data === 'object') {
           onData(data);
-        } else {
-          console.warn('Invalid SSE data structure:', data);
         }
       } catch (error) {
-        console.error('Error parsing SSE data:', error, 'Raw data:', event.data);
+        console.error('Error parsing SSE message:', error);
       }
     };
 
-    eventSource.onerror = (error) => {
-      console.error('SSE connection error:', {
-        readyState: eventSource.readyState,
-        url: endpoint,
-        error
-      });
+    eventSource.onerror = () => {
       if (onError) {
         onError();
       }
@@ -40,7 +29,7 @@ export function setupSSE(
 
     return eventSource;
   } catch {
-    // Error creating SSE connection - handled silently
+    console.error('Error creating SSE connection');
     if (onError) {
       onError();
     }
@@ -76,42 +65,32 @@ export function setupSSEWithReconnect(
           // Validate basic structure before passing to callback
           if (data && typeof data === 'object') {
             onData(data);
-          } else {
-            console.warn('Invalid SSE data structure:', data);
           }
         } catch (error) {
-          console.error('Error parsing SSE data:', error, 'Raw data:', event.data);
+          console.error('Error parsing SSE message:', error);
         }
       };
 
-      eventSource.onerror = (error) => {
-        console.error('SSE connection error:', {
-          readyState: eventSource?.readyState,
-          url: endpoint,
-          attempts: reconnectAttempts,
-          maxAttempts: maxReconnectAttempts,
-          error
-        });
+      eventSource.onerror = () => {
+        if (onError) {
+          onError();
+        }
 
         eventSource?.close();
 
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts++;
           const delay = Math.pow(2, reconnectAttempts - 1) * 1000; // Exponential backoff
-          console.log(`Retrying SSE connection (${reconnectAttempts}/${maxReconnectAttempts}) in ${delay}ms...`);
           reconnectTimeout = setTimeout(connect, delay);
-        } else {
-          console.error('Max SSE reconnection attempts reached');
-          if (onError) {
-            onError();
-          }
         }
       };
 
     } catch (error) {
-      console.error('Failed to create SSE connection:', error);
+      console.error('Error creating SSE connection:', error);
       if (onError) {
         onError();
+      } else {
+        console.error('No error handler provided');
       }
     }
   };
@@ -148,7 +127,7 @@ export class SseClient {
       onMessage,
       onError ||
       (() => {
-        // SSE error - handled silently
+        console.error('SSE error');
       })
     );
   }

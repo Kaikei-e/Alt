@@ -180,18 +180,18 @@ describe("feedsApiSse", () => {
     it("should handle total_articles in SSE data", () => {
       const onData = vi.fn();
       const onError = vi.fn();
-      
+
       feedsApiSse.getFeedsStats(onData, onError);
-      
+
       // Simulate SSE message with total_articles
       const mockData = {
         feed_amount: { amount: 10 },
         unsummarized_feed: { amount: 5 },
         total_articles: { amount: 100 }
       };
-      
+
       lastEventSourceInstance?.triggerMessage(JSON.stringify(mockData));
-      
+
       expect(onData).toHaveBeenCalledWith(mockData);
       expect(onData).toHaveBeenCalledTimes(1);
     });
@@ -199,17 +199,17 @@ describe("feedsApiSse", () => {
     it("should handle missing total_articles field", () => {
       const onData = vi.fn();
       const onError = vi.fn();
-      
+
       feedsApiSse.getFeedsStats(onData, onError);
-      
+
       // Simulate SSE message without total_articles
       const mockData = {
         feed_amount: { amount: 10 },
         unsummarized_feed: { amount: 5 }
       };
-      
+
       lastEventSourceInstance?.triggerMessage(JSON.stringify(mockData));
-      
+
       expect(onData).toHaveBeenCalledWith(mockData);
       expect(onError).not.toHaveBeenCalled();
     });

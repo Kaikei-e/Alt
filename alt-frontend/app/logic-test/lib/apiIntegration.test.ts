@@ -44,6 +44,13 @@ describe("Feeds API Integration", () => {
         "http://localhost/api/v1/feeds/fetch/limit/10",
         expect.objectContaining({
           method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "max-age=300",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          keepalive: true,
+          signal: expect.any(AbortSignal),
         }),
       );
 
@@ -104,7 +111,13 @@ describe("Feeds API Integration", () => {
         "http://localhost/api/v1/feeds/search",
         expect.objectContaining({
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
           body: JSON.stringify({ query: "javascript" }),
+          keepalive: true,
+          signal: expect.any(AbortSignal),
         }),
       );
 
@@ -141,7 +154,13 @@ describe("Feeds API Integration", () => {
         "http://localhost/api/v1/rss-feed-link/register",
         expect.objectContaining({
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
           body: JSON.stringify({ url: "https://example.com/rss" }),
+          keepalive: true,
+          signal: expect.any(AbortSignal),
         }),
       );
 
@@ -164,6 +183,13 @@ describe("Feeds API Integration", () => {
         "http://localhost/api/v1/health",
         expect.objectContaining({
           method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "max-age=300",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          keepalive: true,
+          signal: expect.any(AbortSignal),
         }),
       );
 

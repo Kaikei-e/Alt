@@ -29,21 +29,17 @@ export default function FeedsStatsPage() {
   // Progress tracking for SSE updates (5-second cycle)
   const { progress, reset: resetProgress } = useSSEProgress(5000);
 
-    // Connection health check
+  // Connection health check
   useEffect(() => {
     const healthCheck = setInterval(() => {
       const timeSinceLastData = Date.now() - lastDataReceived;
       const readyState = eventSourceRef.current?.readyState ?? EventSource.CLOSED;
 
-      // Consider connected if EventSource is in OPEN state
-      // Server sends heartbeat every 10s and data every 5s, so allow 20s timeout
-      // But during first 15 seconds after page load, be more lenient for initial connection
-      const isInitialConnection = Date.now() - lastDataReceived <= 15000;
-      const dataTimeout = isInitialConnection ? 15000 : 20000; // 15s initially, then 20s
+      // Consider connected if we're receiving data regularly
+      const isReceivingData = timeSinceLastData < 15000; // 15s timeout
+      const isConnectionOpen = readyState === EventSource.OPEN;
 
-      const shouldBeConnected = readyState === EventSource.OPEN && timeSinceLastData < dataTimeout;
-
-      setIsConnected(shouldBeConnected);
+      setIsConnected(isReceivingData && isConnectionOpen);
     }, 1000); // Check every second
 
     return () => clearInterval(healthCheck);
@@ -52,8 +48,16 @@ export default function FeedsStatsPage() {
   useEffect(() => {
     let isMounted = true; // Race condition prevention
 
+    // SSE endpoint configuration
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api';
+    const sseUrl = `${apiBaseUrl}/v1/sse/feeds/stats`;
+
+    // Set initial disconnected state
+    setIsConnected(false);
+    setRetryCount(0);
+
     const { eventSource, cleanup } = setupSSEWithReconnect(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api'}/v1/sse/feeds/stats`,
+      sseUrl,
       (data: UnsummarizedFeedStatsSummary) => {
         if (!isMounted) return; // Prevent updates after unmount
 
@@ -64,12 +68,11 @@ export default function FeedsStatsPage() {
             if (isValidAmount(amount)) {
               setFeedAmount(amount);
             } else {
-              console.warn('Invalid feed_amount:', amount);
               setFeedAmount(0);
             }
           }
         } catch (error) {
-          console.error('Error updating feed amount:', error);
+          console.error('Error handling feed amount:', error);
         }
 
         try {
@@ -79,12 +82,11 @@ export default function FeedsStatsPage() {
             if (isValidAmount(amount)) {
               setUnsummarizedArticlesAmount(amount);
             } else {
-              console.warn('Invalid unsummarized_feed amount:', amount);
               setUnsummarizedArticlesAmount(0);
             }
           }
         } catch (error) {
-          console.error('Error updating unsummarized articles:', error);
+          console.error('Error handling unsummarized articles:', error);
         }
 
         try {
@@ -93,16 +95,16 @@ export default function FeedsStatsPage() {
           if (isValidAmount(totalArticlesAmount)) {
             setTotalArticlesAmount(totalArticlesAmount);
           } else {
-            console.warn('Invalid total_articles amount:', totalArticlesAmount);
             setTotalArticlesAmount(0);
           }
         } catch (error) {
-          console.error('Error updating total articles:', error);
+          console.error('Error handling total articles:', error);
         }
 
         // Update connection state and reset retry count on successful data
         if (isMounted) {
-          setLastDataReceived(Date.now());
+          const now = Date.now();
+          setLastDataReceived(now);
           setIsConnected(true);
           setRetryCount(0);
           resetProgress(); // Reset progress bar on new data
@@ -112,20 +114,26 @@ export default function FeedsStatsPage() {
         // Handle SSE connection error with retry tracking
         if (isMounted) {
           setIsConnected(false);
-          setRetryCount(prev => prev + 1);
+          setRetryCount(prev => {
+            const newCount = prev + 1;
+            console.log(`SSE connection error, retry count: ${newCount}`);
+            return newCount;
+          });
         }
       },
       3, // Max 3 reconnect attempts
       () => {
         // Handle SSE connection opened - update last data received time
         if (isMounted) {
-          setLastDataReceived(Date.now());
+          const now = Date.now();
+          setLastDataReceived(now);
           setIsConnected(true);
           setRetryCount(0);
         }
       }
     );
 
+    // Update the event source reference for health checks
     eventSourceRef.current = eventSource;
     cleanupRef.current = cleanup;
 
@@ -153,67 +161,59 @@ export default function FeedsStatsPage() {
 
       <Box p={5} maxW="container.sm" mx="auto" pt={8}>
         {/* Header */}
-        <Text
-          fontSize="24px"
-          fontWeight="700"
-          color="#ff006e"
-          mb={6}
-          textAlign="center"
-          lineHeight="1.2"
-        >
-          Feeds Statistics
-        </Text>
-
-        {/* Connection Status */}
-        <Flex justify="center" align="center" gap={2} mb={6}>
-          <Box
-            w={2}
-            h={2}
-            borderRadius="full"
-            bg={isConnected ? "#4caf50" : "#e53935"}
-            transition="background-color 0.3s ease"
-          />
-          <Text fontSize="sm" color="whiteAlpha.800">
-            {isConnected
-              ? "Connected"
-              : retryCount > 0
-                ? `Reconnecting... (${retryCount}/3)`
-                : "Disconnected"
-            }
+        <Box mb={8} textAlign="center">
+          <Text
+            fontSize="2xl"
+            fontWeight="bold"
+            color="var(--vaporwave-cyan)"
+            textShadow="0 0 20px var(--vaporwave-cyan)"
+            mb={2}
+          >
+            Feeds Statistics
           </Text>
-        </Flex>
 
-        <Flex direction="column" gap={4}>
+          {/* Connection Status */}
+          <Flex align="center" justify="center" gap={2}>
+            <Box
+              w={2}
+              h={2}
+              borderRadius="full"
+              bg={isConnected ? "#4caf50" : "#e53935"}
+              transition="background-color 0.3s ease"
+            />
+            <Text
+              fontSize="sm"
+              color={isConnected ? "var(--vaporwave-green)" : retryCount > 0 ? "var(--vaporwave-yellow)" : "var(--vaporwave-magenta)"}
+              textShadow={isConnected ? "0 0 8px var(--vaporwave-green)" : retryCount > 0 ? "0 0 8px var(--vaporwave-yellow)" : "0 0 8px var(--vaporwave-magenta)"}
+            >
+              {isConnected ? "Connected" : retryCount > 0 ? `Reconnecting (${retryCount}/3)` : "Disconnected"}
+            </Text>
+          </Flex>
+        </Box>
+
+        {/* Statistics Cards */}
+        <Flex direction="column" gap={6}>
           <StatCard
-            icon={FiRss}
             label="TOTAL FEEDS"
             value={feedAmount}
             description="RSS feeds being monitored"
+            icon={FiRss}
           />
+
           <StatCard
-            icon={FiLayers}
             label="TOTAL ARTICLES"
             value={totalArticlesAmount}
             description="All articles across RSS feeds"
-            data-testid="stat-card-total-articles"
-          />
-          <StatCard
             icon={FiFileText}
+          />
+
+          <StatCard
             label="UNSUMMARIZED ARTICLES"
             value={unsummarizedArticlesAmount}
             description="Articles waiting for AI summarization"
+            icon={FiLayers}
           />
         </Flex>
-
-        {/* Footer */}
-        <Text
-          textAlign="center"
-          fontSize="sm"
-          color="whiteAlpha.600"
-          mt={8}
-        >
-          Updates every 5 seconds via Server-Sent Events
-        </Text>
       </Box>
 
       <FloatingMenu />
