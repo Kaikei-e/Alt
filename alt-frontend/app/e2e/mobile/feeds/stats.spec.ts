@@ -26,6 +26,38 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
   };
 
   test.beforeEach(async ({ page }) => {
+    // Mock regular stats API endpoint first
+    await page.route("**/api/v1/feeds/stats", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockStatsData),
+      });
+    });
+
+    // Mock SSE stats endpoint
+    await page.route("**/api/v1/sse/feeds/stats", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        headers: {
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "Content-Type": "text/event-stream",
+        },
+        body: `data: ${JSON.stringify(mockStatsData)}\n\n`,
+      });
+    });
+
+    // Mock health endpoint
+    await page.route("**/api/v1/health", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "ok" }),
+      });
+    });
+
     // Mock EventSource directly in the browser context
     await page.addInitScript(() => {
       class MockEventSource extends EventTarget {
@@ -78,7 +110,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
     await page.goto("/mobile/feeds/stats");
     await page.waitForLoadState("networkidle");
     // Give SSE time to connect and process data
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2000); // Reduced timeout
   });
 
   test.describe("Initial Page Load", () => {
@@ -204,8 +236,8 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
                       data: JSON.stringify(data)
                     }));
                   }
-                }, 100);
-              }, 100);
+                }, 50); // Reduced delay
+              }, 50); // Reduced delay
             }
 
             close() {
@@ -221,15 +253,15 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
         }, scenario.data);
 
         await page.reload();
-        await page.waitForLoadState("networkidle");
-        await page.waitForTimeout(3000);
+        await page.waitForLoadState("networkidle", { timeout: 15000 }); // Reduced timeout
+        await page.waitForTimeout(1000); // Reduced wait
 
         // Check if expected value appears (or fallback to structure check)
         const totalArticlesCard = page.locator('.glass').filter({ hasText: 'TOTAL ARTICLES' });
-        await expect(totalArticlesCard).toBeVisible();
+        await expect(totalArticlesCard).toBeVisible({ timeout: 5000 });
 
         try {
-          await expect(totalArticlesCard.locator(`text=${scenario.expected}`)).toBeVisible({ timeout: 5000 });
+          await expect(totalArticlesCard.locator(`text=${scenario.expected}`)).toBeVisible({ timeout: 3000 }); // Reduced timeout
         } catch {
           // If expected value doesn't appear, at least verify the card structure exists
           await expect(totalArticlesCard.locator("text=TOTAL ARTICLES")).toBeVisible();
