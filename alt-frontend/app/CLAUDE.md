@@ -154,6 +154,7 @@ test.describe('FeedCard Component - PROTECTED', () => {
 10. [Code Quality](#code-quality)
 11. [Security Practices](#security-practices)
 12. [Documentation](#documentation)
+13. [Playwright MCP Usage Rules](#playwright-mcp-usage-rules)
 
 ---
 
@@ -1081,6 +1082,29 @@ import { Component } from '@/components/Component';
 How to test this component
 ```
 
+## Playwright MCP Usage Rules
+
+### Absolute Prohibitions
+
+1. **No code execution in any form**
+   Disallow any browser or environment control via external scripts or subprocesses (e.g., Python, JavaScript, Bash, `subprocess` calls). ([modelcontextprotocol.io][1])
+
+### Allowed Operations
+
+2. **Only direct MCP tool invocations**
+   Permit exclusively official Playwright MCP commands such as `playwright:browser_navigate` and `playwright:browser_screenshot`. ([en.wikipedia.org][3])
+
+### Error Handling
+
+3. **Immediate error reporting**
+   On any failure, surface the error message verbatim—do not search for workarounds or execute alternative approaches. ([medium.com][4])
+
+[1]: https://modelcontextprotocol.io/specification/draft/basic/security_best_practices?utm_source=chatgpt.com "Security Best Practices - Model Context Protocol"
+[2]: https://medium.com/%40karlink/automating-web-testing-with-playwright-mcp-8d9424647817?utm_source=chatgpt.com "Automating Web Testing with Playwright MCP | by Karlin K - Medium"
+[3]: https://en.wikipedia.org/wiki/Model_Context_Protocol?utm_source=chatgpt.com "Model Context Protocol"
+[4]: https://medium.com/%40karlink/automating-web-testing-with-playwright-mcp-8d9424647817 "Automating Web Testing with Playwright MCP | by Karlin K | May, 2025 | Medium"
+
+
 ---
 
 ## Appendix: Quick Reference
@@ -1168,27 +1192,6 @@ fi
 echo "✅ All testing tool compliance checks passed!"
 ```
 
-### Emergency Procedures for Claude Code Issues
-
-#### When Claude Uses Wrong Testing Tool
-```bash
-# 1. Immediate correction
-git stash
-
-# 2. Provide explicit tool guidance
-claude "You used the wrong testing tool. Follow these MANDATORY rules:
-- For UI components (anything in /components): MUST use Playwright (.spec.ts)
-- For business logic (anything in /lib, /utils): MUST use Vitest (.test.ts)
-- NEVER use React Testing Library for UI components
-- NEVER use Playwright for pure business logic
-
-Rewrite the tests using the correct tool."
-
-# 3. Verify tool compliance
-pnpm run test:playwright  # For UI components
-pnpm run test:unit       # For business logic
-```
-
 ### React 19 Migration Checklist (Claude-Safe)
 - [ ] Update to React 19 (Human approval required)
 - [ ] Enable new JSX transform (Human configures)
@@ -1210,46 +1213,6 @@ pnpm run test:unit       # For business logic
 - [ ] Use HTTPS everywhere (Infrastructure decision)
 - [ ] Implement proper auth (Human designs, Claude implements)
 - [ ] Keep dependencies updated (Automated + human oversight)
-
-### Emergency Procedures for Claude Code Issues
-
-#### When Claude Breaks Existing Functionality
-```bash
-# 1. Immediate rollback
-git reset --hard HEAD^
-
-# 2. Identify the issue
-pnpm test -- --verbose
-pnpm run typecheck
-
-# 3. Provide corrective instructions
-claude "The previous changes broke these tests: [list failing tests]
-Fix ONLY the broken functionality without modifying the test files.
-Explain what went wrong and how you're fixing it."
-
-# 4. Verify the fix
-pnpm test
-pnpm run typecheck
-pnpm run lint
-```
-
-#### When Claude Generates Low-Quality Code
-```bash
-# 1. Don't commit the changes
-git stash
-
-# 2. Use more specific instructions
-claude "Rewrite the previous implementation with these requirements:
-- Follow our TypeScript strict mode standards
-- Use existing design system components
-- Implement proper error handling
-- Add comprehensive logging
-- Think harder about edge cases"
-
-# 3. Review and iterate
-git diff --staged  # Review changes carefully
-pnpm test -- --coverage  # Verify test coverage
-```
 
 #### Quality Recovery Workflow
 ```typescript
