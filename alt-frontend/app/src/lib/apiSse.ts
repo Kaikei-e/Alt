@@ -10,7 +10,7 @@ export function setupSSE(
     const eventSource = new EventSource(endpoint);
 
     eventSource.onopen = () => {
-      // Connection established
+      console.log('SSE connection established');
     };
 
     eventSource.onmessage = (event) => {
@@ -88,7 +88,7 @@ export function setupSSEWithReconnect(
           maxAttempts: maxReconnectAttempts,
           error
         });
-        
+
         eventSource?.close();
 
         if (reconnectAttempts < maxReconnectAttempts) {

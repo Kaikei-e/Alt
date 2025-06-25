@@ -29,16 +29,19 @@ export default function FeedsStatsPage() {
   // Progress tracking for SSE updates (5-second cycle)
   const { progress, reset: resetProgress } = useSSEProgress(5000);
 
-  // Connection health check
+    // Connection health check
   useEffect(() => {
     const healthCheck = setInterval(() => {
       const timeSinceLastData = Date.now() - lastDataReceived;
       const readyState = eventSourceRef.current?.readyState ?? EventSource.CLOSED;
 
-      // Consider connected if:
-      // 1. EventSource is in OPEN state AND
-      // 2. We've received data within the last 10 seconds (2x the expected interval)
-      const shouldBeConnected = readyState === EventSource.OPEN && timeSinceLastData < 10000;
+      // Consider connected if EventSource is in OPEN state
+      // For data timeout, allow 15 seconds (3x the 5-second server interval)
+      // But during first 10 seconds after page load, be more lenient for initial connection
+      const isInitialConnection = Date.now() - lastDataReceived <= 10000;
+      const dataTimeout = isInitialConnection ? 10000 : 15000; // 10s initially, then 15s
+
+      const shouldBeConnected = readyState === EventSource.OPEN && timeSinceLastData < dataTimeout;
 
       setIsConnected(shouldBeConnected);
     }, 1000); // Check every second
@@ -163,16 +166,15 @@ export default function FeedsStatsPage() {
             transition="background-color 0.3s ease"
           />
           <Text fontSize="sm" color="whiteAlpha.800">
-            {isConnected 
-              ? "Connected" 
-              : retryCount > 0 
+            {isConnected
+              ? "Connected"
+              : retryCount > 0
                 ? `Reconnecting... (${retryCount}/3)`
                 : "Disconnected"
             }
           </Text>
         </Flex>
 
-        {/* Stats Cards */}
         <Flex direction="column" gap={4}>
           <StatCard
             icon={FiRss}
@@ -180,8 +182,6 @@ export default function FeedsStatsPage() {
             value={feedAmount}
             description="RSS feeds being monitored"
           />
-
-          {/* NEW CARD */}
           <StatCard
             icon={FiLayers}
             label="TOTAL ARTICLES"
@@ -189,7 +189,6 @@ export default function FeedsStatsPage() {
             description="All articles across RSS feeds"
             data-testid="stat-card-total-articles"
           />
-
           <StatCard
             icon={FiFileText}
             label="UNSUMMARIZED ARTICLES"
