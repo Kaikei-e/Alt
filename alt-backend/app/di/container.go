@@ -46,6 +46,7 @@ type ApplicationComponents struct {
 	FeedAmountUsecase                 *fetch_feed_stats_usecase.FeedsCountUsecase
 	UnsummarizedArticlesCountUsecase  *fetch_feed_stats_usecase.UnsummarizedArticlesCountUsecase
 	SummarizedArticlesCountUsecase    *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
+	TotalArticlesCountUsecase         *fetch_feed_stats_usecase.TotalArticlesCountUsecase
 	FeedSearchUsecase                 *search_feed_usecase.SearchFeedMeilisearchUsecase
 }
 
@@ -94,6 +95,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	summarizedArticlesCountGatewayImpl := feed_stats_gateway.NewSummarizedArticlesCountGateway(pool)
 	summarizedArticlesCountUsecase := fetch_feed_stats_usecase.NewSummarizedArticlesCountUsecase(summarizedArticlesCountGatewayImpl)
 
+	totalArticlesCountGatewayImpl := feed_stats_gateway.NewTotalArticlesCountGateway(pool)
+	totalArticlesCountUsecase := fetch_feed_stats_usecase.NewTotalArticlesCountUsecase(totalArticlesCountGatewayImpl)
+
 	searchIndexerDriverImpl := search_indexer.NewHTTPSearchIndexerDriver()
 	feedSearchMeilisearchGatewayImpl := feed_search_gateway.NewSearchFeedMeilisearchGateway(searchIndexerDriverImpl)
 	feedURLLinkGatewayImpl := feed_url_link_gateway.NewFeedURLLinkGateway(altDBRepository)
@@ -118,6 +122,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FeedAmountUsecase:                feedsCountUsecase,
 		UnsummarizedArticlesCountUsecase: unsummarizedArticlesCountUsecase,
 		SummarizedArticlesCountUsecase:   summarizedArticlesCountUsecase,
+		TotalArticlesCountUsecase:        totalArticlesCountUsecase,
 		FeedSearchUsecase:                feedSearchUsecase,
 	}
 }
