@@ -24,9 +24,6 @@ bytes = "1.10.1"
 # SIMD JSON parsing
 simd-json = { version = "0.15.1", features = ["serde_impl"] }
 
-# Lock-free queue
-multiqueue = "0.3.2"
-
 # HTTP client
 hyper = { version = "1.6.0", features = ["client", "http1"] }
 hyper-util = { version = "0.1.14", features = ["client", "http1", "client-legacy"] }
