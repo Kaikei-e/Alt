@@ -79,6 +79,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		// Create summary model
 		summary := &models.ArticleSummary{
 			ArticleID:       article.ID,
+			ArticleTitle:    article.Title,
 			SummaryJapanese: summarizedContent.SummaryJapanese,
 			CreatedAt:       time.Now(),
 		}
@@ -100,7 +101,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		s.cursor = newCursor
 	}
 
-	s.logger.Info("article summarization completed", 
+	s.logger.Info("article summarization completed",
 		"processed", result.ProcessedCount,
 		"success", result.SuccessCount,
 		"errors", result.ErrorCount,
@@ -127,7 +128,7 @@ func (s *articleSummarizerService) HasUnsummarizedArticles(ctx context.Context) 
 	}
 
 	s.logger.Info("unsummarized articles check completed", "has_articles", hasArticles)
-	
+
 	return hasArticles, nil
 }
 

@@ -14,6 +14,7 @@ import (
 // ArticleWithSummary represents an article with its summary for quality checking
 type ArticleWithSummary struct {
 	ArticleID       string `db:"article_id"`
+	ArticleTitle    string `db:"title"`
 	Content         string `db:"content"`
 	SummaryJapanese string `db:"summary_japanese"`
 	SummaryID       string `db:"summary_id"`
@@ -139,7 +140,7 @@ func GetArticlesWithSummaries(ctx context.Context, db *pgxpool.Pool, lastCreated
 
 			// Store the summary ID in the struct
 			articleWithSummary.SummaryID = id
-			
+
 			articlesWithSummaries = append(articlesWithSummaries, articleWithSummary)
 			// Keep track of the last item for cursor
 			finalCreatedAt = &createdAt
