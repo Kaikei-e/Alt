@@ -16,7 +16,7 @@ all: quality-check build
 # Help target
 help:
 	@echo "Pre-processor Service Build Commands:"
-	@echo "  make test           - Run all tests"
+	@echo "  make test           - Run fast unit tests"
 	@echo "  make test-race      - Run tests with race detection"
 	@echo "  make coverage       - Generate test coverage report"
 	@echo "  make lint           - Run linter"
@@ -27,9 +27,9 @@ help:
 	@echo "  make build          - Build the application"
 	@echo "  make clean          - Clean build artifacts"
 
-# Run all tests
+# Run fast unit tests only (default)
 test:
-	@echo "🧪 Running tests..."
+	@echo "🧪 Running fast unit tests..."
 	$(GOTEST) -v ./...
 
 # Test with race detection
