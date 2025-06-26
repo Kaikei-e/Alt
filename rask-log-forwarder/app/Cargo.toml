@@ -74,6 +74,9 @@ bumpalo = "3.14"
 # Stream utilities
 futures = "0.3"
 
+# Async trait support
+async-trait = "0.1"
+
 # Compression
 flate2 = "1.0"
 
@@ -100,6 +103,7 @@ wiremock = "0.6"
 httpmock = "0.7"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
+serial_test = "3.0"
 
 [features]
 default = ["disk-fallback", "metrics"]
