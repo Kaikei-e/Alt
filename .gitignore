@@ -10,3 +10,4 @@ news-creator/models/*
 backup.sql
 
 __pycache__
+.vscode/settings.json
