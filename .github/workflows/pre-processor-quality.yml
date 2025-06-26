@@ -131,7 +131,7 @@ jobs:
         gosec -fmt sarif -out gosec-results.sarif ./...
 
     - name: Upload SARIF file
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: ./pre-processor/app/gosec-results.sarif
 
