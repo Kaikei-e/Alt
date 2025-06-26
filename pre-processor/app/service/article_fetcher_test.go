@@ -24,6 +24,7 @@ func TestArticleFetcherService_InterfaceCompliance(t *testing.T) {
 
 		// Verify interface compliance at compile time
 		var _ ArticleFetcherService = service
+
 		assert.NotNil(t, service)
 	})
 }
@@ -85,8 +86,8 @@ func TestArticleFetcherService_ValidateURL(t *testing.T) {
 func TestArticleFetcherService_FetchArticle(t *testing.T) {
 	tests := map[string]struct {
 		input       string
-		expectError bool
 		description string
+		expectError bool
 	}{
 		"should handle malformed URL": {
 			input:       "://invalid",
@@ -133,7 +134,7 @@ func TestArticleFetcherService_FetchArticle(t *testing.T) {
 	}
 }
 
-// TestArticleFetcherService_PublicURLValidation tests URL validation for public domains
+// TestArticleFetcherService_PublicURLValidation tests URL validation for public domains.
 func TestArticleFetcherService_PublicURLValidation(t *testing.T) {
 	service := NewArticleFetcherService(testLoggerFetcher())
 

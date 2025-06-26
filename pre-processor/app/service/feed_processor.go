@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+
 	"pre-processor/repository"
 )
 
-// FeedProcessorService implementation
+// FeedProcessorService implementation.
 type feedProcessorService struct {
 	feedRepo    repository.FeedRepository
 	articleRepo repository.ArticleRepository
@@ -16,7 +17,7 @@ type feedProcessorService struct {
 	cursor      *repository.Cursor
 }
 
-// NewFeedProcessorService creates a new feed processor service
+// NewFeedProcessorService creates a new feed processor service.
 func NewFeedProcessorService(
 	feedRepo repository.FeedRepository,
 	articleRepo repository.ArticleRepository,
@@ -32,7 +33,7 @@ func NewFeedProcessorService(
 	}
 }
 
-// ProcessFeeds processes a batch of feeds
+// ProcessFeeds processes a batch of feeds.
 func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) (*ProcessingResult, error) {
 	s.logger.Info("Starting feed processing", "batch_size", batchSize)
 
@@ -45,6 +46,7 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 
 	if len(urls) == 0 {
 		s.logger.Info("No unprocessed feeds found")
+
 		return &ProcessingResult{
 			ProcessedCount: 0,
 			SuccessCount:   0,
@@ -72,6 +74,7 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 
 	if exists {
 		s.logger.Info("Articles already exist for this batch")
+
 		return &ProcessingResult{
 			ProcessedCount: 0,
 			SuccessCount:   0,
@@ -83,6 +86,7 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 
 	// Process each URL
 	var successCount, errorCount int
+
 	var errors []error
 
 	for _, url := range urls {
@@ -92,8 +96,11 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 		article, err := s.fetcher.FetchArticle(ctx, url.String())
 		if err != nil {
 			s.logger.Error("Failed to fetch article", "url", url.String(), "error", err)
+
 			errorCount++
+
 			errors = append(errors, err)
+
 			continue
 		}
 
@@ -105,12 +112,16 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 		// Save article
 		if err := s.articleRepo.Create(ctx, article); err != nil {
 			s.logger.Error("Failed to save article", "url", url.String(), "error", err)
+
 			errorCount++
+
 			errors = append(errors, err)
+
 			continue
 		}
 
 		successCount++
+
 		s.logger.Info("Successfully processed article", "url", url.String())
 	}
 
@@ -131,7 +142,7 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 	return result, nil
 }
 
-// GetProcessingStats returns current processing statistics
+// GetProcessingStats returns current processing statistics.
 func (s *feedProcessorService) GetProcessingStats(ctx context.Context) (*ProcessingStats, error) {
 	s.logger.Info("Getting processing statistics")
 
@@ -155,10 +166,11 @@ func (s *feedProcessorService) GetProcessingStats(ctx context.Context) (*Process
 	return stats, nil
 }
 
-// ResetPagination resets the pagination cursor
+// ResetPagination resets the pagination cursor.
 func (s *feedProcessorService) ResetPagination() error {
 	s.logger.Info("Resetting pagination cursor")
 	s.cursor = &repository.Cursor{}
 	s.logger.Info("Pagination cursor reset")
+
 	return nil
 }

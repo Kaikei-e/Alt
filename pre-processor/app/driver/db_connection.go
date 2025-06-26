@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"pre-processor/logger"
 	"strings"
 	"time"
+
+	"pre-processor/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// retryDBOperation retries database operations that fail with "conn busy" errors
+// retryDBOperation retries database operations that fail with "conn busy" errors.
 func retryDBOperation(ctx context.Context, operation func() error, operationName string) error {
 	maxRetries := 3
 	baseDelay := 100 * time.Millisecond
@@ -47,7 +48,7 @@ func retryDBOperation(ctx context.Context, operation func() error, operationName
 	return fmt.Errorf("operation %s failed after %d retries", operationName, maxRetries)
 }
 
-// Init initializes a new database connection pool
+// Init initializes a new database connection pool.
 func Init(ctx context.Context) (*pgxpool.Pool, error) {
 	// Build connection string
 	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable pool_max_conns=20 pool_min_conns=5 pool_max_conn_lifetime=1h pool_max_conn_idle_time=30m",
@@ -85,9 +86,11 @@ func Init(ctx context.Context) (*pgxpool.Pool, error) {
 	if err != nil {
 		logger.Logger.Error("Failed to ping database", "error", err)
 		dbPool.Close()
+
 		return nil, err
 	}
 
 	logger.Logger.Info("Connected to database pool", "max_conns", config.MaxConns, "min_conns", config.MinConns)
+
 	return dbPool, nil
 }

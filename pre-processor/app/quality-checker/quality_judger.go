@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"pre-processor/logger"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"pre-processor/logger"
 
 	"pre-processor/driver"
 
@@ -19,30 +20,32 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const QUALITY_CHECKER_API_URL = "http://news-creator:11434/api/generate"
-const MODEL = "phi4-mini:3.8b"
-const LOW_SCORE_THRESHOLD = 7.0
+const (
+	qualityCheckerAPIURL = "http://news-creator:11434/api/generate"
+	modelName            = "phi4-mini:3.8b"
+	lowScoreThreshold    = 7.0
+)
 
 type judgePrompt struct {
 	Model   string       `json:"model"`
 	Prompt  string       `json:"prompt"`
-	Stream  bool         `json:"stream"`
 	Options optionsModel `json:"options"`
+	Stream  bool         `json:"stream"`
 }
 
 type optionsModel struct {
+	Stop        []string `json:"stop"`
 	Temperature float64  `json:"temperature"`
 	TopP        float64  `json:"top_p"`
 	NumPredict  int      `json:"num_predict"`
 	NumCtx      int      `json:"num_ctx"`
-	Stop        []string `json:"stop"`
 }
 
 type ollamaResponse struct {
 	Model      string `json:"model"`
 	Response   string `json:"response"`
-	Done       bool   `json:"done"`
 	DoneReason string `json:"done_reason"`
+	Done       bool   `json:"done"`
 }
 
 type Score struct {
@@ -98,9 +101,9 @@ Rate the summary now using 1-10 scale only. Format: <score>coherence:X;relevancy
 <|assistant|>
 `
 
-func scoreSummary(prompt string) (*Score, error) {
+func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 	// Use more restrictive parameters to encourage format compliance
-	optionsModel := optionsModel{
+	opts := optionsModel{
 		Temperature: 0.0,  // Very low temperature for more deterministic output
 		TopP:        0.5,  // More restrictive sampling
 		NumPredict:  80,   // Shorter to force concise responses
@@ -109,10 +112,10 @@ func scoreSummary(prompt string) (*Score, error) {
 	}
 
 	payload := judgePrompt{
-		Model:   "phi4-mini:3.8b",
+		Model:   modelName,
 		Prompt:  prompt,
 		Stream:  false,
-		Options: optionsModel,
+		Options: opts,
 	}
 
 	jsonPayload, err := json.Marshal(payload)
@@ -122,7 +125,8 @@ func scoreSummary(prompt string) (*Score, error) {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", QUALITY_CHECKER_API_URL, strings.NewReader(string(jsonPayload)))
+
+	req, err := http.NewRequestWithContext(ctx, "POST", qualityCheckerAPIURL, strings.NewReader(string(jsonPayload)))
 	if err != nil {
 		logger.Logger.Error("Failed to create HTTP request", "error", err)
 		return nil, err
@@ -135,7 +139,11 @@ func scoreSummary(prompt string) (*Score, error) {
 		logger.Logger.Error("Failed to send HTTP request", "error", err)
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			logger.Logger.Error("failed to close response body", "error", err)
+		}
+	}()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -144,9 +152,9 @@ func scoreSummary(prompt string) (*Score, error) {
 	}
 
 	var ollamaResp ollamaResponse
-	if err := json.Unmarshal(body, &ollamaResp); err != nil {
+	if err = json.Unmarshal(body, &ollamaResp); err != nil {
 		logger.Logger.Error("Failed to unmarshal response", "error", err, "body", string(body))
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
 	logger.Logger.Info("Received ollama response", "done", ollamaResp.Done, "response", ollamaResp.Response)
@@ -171,11 +179,13 @@ func scoreSummary(prompt string) (*Score, error) {
 			Overall:   1.0,
 		}
 		logger.Logger.Warn("Using fallback scores due to parsing failure", "scores", fallbackScore)
+
 		return fallbackScore, nil
 	}
 
 	// Try to parse the extracted JSON
 	logger.Logger.Info("Successfully parsed scores", "scores", scores)
+
 	return &scores, nil
 }
 
@@ -199,10 +209,11 @@ func parseScore(response string) (Score, error) {
 	}
 
 	logger.Logger.Error("Could not extract scores from response", "response", response)
-	return Score{}, errors.New("could not extract scores from response: " + response)
+
+	return Score{}, fmt.Errorf("could not extract scores from response: %s", response)
 }
 
-// extractFromScoreTags tries to extract scores from <score>...</score> tags
+// extractFromScoreTags tries to extract scores from <score>...</score> tags.
 func extractFromScoreTags(response string) (Score, bool) {
 	patterns := []string{
 		`<score>(.*?)</score>`, // With closing tag
@@ -218,10 +229,11 @@ func extractFromScoreTags(response string) (Score, bool) {
 			}
 		}
 	}
+
 	return Score{}, false
 }
 
-// extractFromNamedFormat tries to extract from named format like "coherence:5;relevancy:6..."
+// extractFromNamedFormat tries to extract from named format like "coherence:5;relevancy:6...".
 func extractFromNamedFormat(response string) (Score, bool) {
 	// Look for named scores with flexible separators and spacing
 	pattern := `coherence\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,]*relevancy\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,]*fluency\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,]*overall\s*[:=]\s*(\d+(?:\.\d+)?)`
@@ -230,10 +242,11 @@ func extractFromNamedFormat(response string) (Score, bool) {
 	if matches := re.FindStringSubmatch(response); len(matches) == 5 {
 		return buildScore(matches[1], matches[2], matches[3], matches[4])
 	}
+
 	return Score{}, false
 }
 
-// extractFromNumberSequence tries to extract 4 consecutive numbers
+// extractFromNumberSequence tries to extract 4 consecutive numbers.
 func extractFromNumberSequence(response string) (Score, bool) {
 	// Look for exactly 4 numbers separated by common delimiters
 	pattern := `(\d+(?:\.\d+)?)[;\s,]+(\d+(?:\.\d+)?)[;\s,]+(\d+(?:\.\d+)?)[;\s,]+(\d+(?:\.\d+)?)`
@@ -242,10 +255,11 @@ func extractFromNumberSequence(response string) (Score, bool) {
 	if matches := re.FindStringSubmatch(response); len(matches) == 5 {
 		return buildScore(matches[1], matches[2], matches[3], matches[4])
 	}
+
 	return Score{}, false
 }
 
-// extractFromAnyNumbers tries to find any 4 numbers in the response (fallback)
+// extractFromAnyNumbers tries to find any 4 numbers in the response (fallback).
 func extractFromAnyNumbers(response string) (Score, bool) {
 	re := regexp.MustCompile(`\b(\d+(?:\.\d+)?)\b`)
 	numbers := re.FindAllString(response, -1)
@@ -253,10 +267,11 @@ func extractFromAnyNumbers(response string) (Score, bool) {
 	if len(numbers) >= 4 {
 		return buildScore(numbers[0], numbers[1], numbers[2], numbers[3])
 	}
+
 	return Score{}, false
 }
 
-// parseScoreContent parses content from score tags (handles both named and unnamed formats)
+// parseScoreContent parses content from score tags (handles both named and unnamed formats).
 func parseScoreContent(content string) (Score, bool) {
 	// Try named format first
 	if strings.Contains(content, ":") || strings.Contains(content, "=") {
@@ -267,7 +282,7 @@ func parseScoreContent(content string) (Score, bool) {
 	return parseNumberSequence(content)
 }
 
-// parseNamedScores parses "coherence:5;relevancy:6;fluency:4;overall:5" format
+// parseNamedScores parses "coherence:5;relevancy:6;fluency:4;overall:5" format.
 func parseNamedScores(content string) (Score, bool) {
 	scoreMap := make(map[string]string)
 
@@ -299,6 +314,7 @@ func parseNamedScores(content string) (Score, bool) {
 			if key == "relevancy" {
 				key = "relevan" // Match the struct field name
 			}
+
 			scoreMap[key] = numberMatch
 		}
 	}
@@ -316,7 +332,7 @@ func parseNamedScores(content string) (Score, bool) {
 	return Score{}, false
 }
 
-// parseNumberSequence parses simple number sequences like "5;6;4;5" or "5,6,4,5"
+// parseNumberSequence parses simple number sequences like "5;6;4;5" or "5,6,4,5".
 func parseNumberSequence(content string) (Score, bool) {
 	parts := regexp.MustCompile(`[;,\s]+`).Split(content, -1)
 	numbers := make([]string, 0, 4)
@@ -335,7 +351,7 @@ func parseNumberSequence(content string) (Score, bool) {
 	return Score{}, false
 }
 
-// buildScore creates a Score struct from string values with validation
+// buildScore creates a Score struct from string values with validation.
 func buildScore(coherence, relevancy, fluency, overall string) (Score, bool) {
 	coherenceFloat, err1 := strconv.ParseFloat(coherence, 64)
 	relevancyFloat, err2 := strconv.ParseFloat(relevancy, 64)
@@ -354,47 +370,71 @@ func buildScore(coherence, relevancy, fluency, overall string) (Score, bool) {
 	}, true
 }
 
-// clampScore ensures the score is within the valid range of 1-10
+// clampScore ensures the score is within the valid range of 1-10.
 func clampScore(score float64) float64 {
 	if score < 1.0 {
 		return 1.0
 	}
+
 	if score > 10.0 {
 		return 10.0
 	}
+
 	return score
 }
 
-// scoreSummaryWithRetry attempts to score a summary with retries and exponential backoff
-func scoreSummaryWithRetry(prompt string, maxRetries int) (*Score, error) {
+// scoreSummaryWithRetry attempts to score a summary with retries and exponential backoff.
+func scoreSummaryWithRetry(ctx context.Context, prompt string, maxRetries int) (*Score, error) {
 	var lastErr error
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		logger.Logger.Info("Attempting to score summary", "attempt", attempt, "maxRetries", maxRetries)
-
-		scores, err := scoreSummary(prompt)
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		scores, err := scoreSummary(ctx, prompt)
 		if err == nil && scores != nil {
-			logger.Logger.Info("Successfully scored summary", "attempt", attempt, "scores", scores)
 			return scores, nil
 		}
-
 		lastErr = err
-		if attempt < maxRetries {
-			logger.Logger.Warn("Scoring attempt failed, retrying", "attempt", attempt, "error", err)
-			// Simple exponential backoff: wait 1s, 2s, 4s...
-			time.Sleep(time.Duration(attempt) * time.Second)
-		}
+		logger.Logger.Warn("Failed to score summary, retrying...", "attempt", attempt+1, "max_retries", maxRetries, "error", err)
+		time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond) // Simple exponential backoff
+	}
+	return nil, lastErr
+}
+
+// JudgeArticleQuality judges the quality of an article's summary and takes action if the score is low.
+func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary) error {
+	if articleWithSummary == nil || articleWithSummary.ArticleID == "" {
+		return errors.New("article with summary is invalid")
 	}
 
-	logger.Logger.Error("All scoring attempts failed", "maxRetries", maxRetries, "lastError", lastErr)
-	return nil, lastErr
+	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
+	scores, err := scoreSummaryWithRetry(ctx, prompt, 3)
+	if err != nil {
+		logger.Logger.Error("Failed to get summary score after retries", "articleID", articleWithSummary.ArticleID, "error", err)
+		// Fallback: if scoring consistently fails, assign a low score to be safe
+		scores = &Score{Overall: 1.0}
+		logger.Logger.Warn("Using fallback scores due to persistent failures", "articleID", articleWithSummary.ArticleID, "scores", scores)
+	}
+
+	if scores == nil {
+		return errors.New("received nil scores for article " + articleWithSummary.ArticleID)
+	}
+
+	// If score is too low, remove the summary (but keep the article)
+	if scores.Overall < lowScoreThreshold {
+		logger.Logger.Info("Removing low quality summary",
+			"articleID", articleWithSummary.ArticleID,
+			"score", scores.Overall,
+			"threshold", lowScoreThreshold)
+		return RemoveLowScoreSummary(ctx, dbPool, articleWithSummary)
+	}
+
+	logger.Logger.Info("Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", scores.Overall)
+	return nil
 }
 
 func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary) error {
 	// Create the proper prompt for scoring
 	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
 
-	scores, err := scoreSummaryWithRetry(prompt, 3)
+	scores, err := scoreSummaryWithRetry(ctx, prompt, 3)
 	if err != nil {
 		logger.Logger.Error("Failed to score summary after retries", "error", err, "articleID", articleWithSummary.ArticleID)
 		// Use fallback scoring instead of failing completely
@@ -420,11 +460,11 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 		"overall", scores.Overall)
 
 	// If score is too low, remove the summary (but keep the article)
-	if scores.Overall < LOW_SCORE_THRESHOLD {
+	if scores.Overall < lowScoreThreshold {
 		logger.Logger.Info("Removing low quality summary",
 			"articleID", articleWithSummary.ArticleID,
 			"score", scores.Overall,
-			"threshold", LOW_SCORE_THRESHOLD)
+			"threshold", lowScoreThreshold)
 
 		txOptions := pgx.TxOptions{
 			IsoLevel: pgx.RepeatableRead,
@@ -440,6 +480,7 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 		if err != nil {
 			tx.Rollback(ctx)
 			logger.Logger.Error("Failed to delete article summary", "error", err, "articleID", articleWithSummary.ArticleID)
+
 			return errors.New("failed to delete article summary")
 		}
 

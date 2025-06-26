@@ -5,9 +5,10 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"pre-processor/logger"
 	"testing"
 	"time"
+
+	"pre-processor/logger"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ func TestFeedRepository_InterfaceCompliance(t *testing.T) {
 
 		// Verify interface compliance at compile time
 		var _ FeedRepository = repo
+
 		assert.NotNil(t, repo)
 	})
 }
@@ -71,7 +73,7 @@ func TestFeedRepository_GetUnprocessedFeeds(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation with nil database
 			// Initialize global logger for driver dependencies
 			logger.Init()
-			
+
 			repo := NewFeedRepository(nil, testLoggerRepo())
 
 			urls, cursor, err := repo.GetUnprocessedFeeds(context.Background(), tc.cursor, tc.limit)
@@ -94,7 +96,7 @@ func TestFeedRepository_GetUnprocessedFeeds_NilHandling(t *testing.T) {
 		// GREEN PHASE: Test minimal implementation
 		// Initialize global logger for driver dependencies
 		logger.Init()
-		
+
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
 		urls, cursor, err := repo.GetUnprocessedFeeds(context.Background(), nil, 10)
@@ -110,15 +112,15 @@ func TestFeedRepository_GetUnprocessedFeeds_NilHandling(t *testing.T) {
 		// GREEN PHASE: Test context handling
 		// Initialize global logger for driver dependencies
 		logger.Init()
-		
+
 		repo := NewFeedRepository(nil, testLoggerRepo())
-		
+
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
 		urls, cursor, err := repo.GetUnprocessedFeeds(ctx, nil, 10)
 
-		// Should return error due to cancelled context or nil database
+		// Should return error due to canceled context or nil database
 		assert.Error(t, err)
 		assert.Nil(t, urls)
 		assert.Nil(t, cursor)
@@ -127,16 +129,16 @@ func TestFeedRepository_GetUnprocessedFeeds_NilHandling(t *testing.T) {
 
 func TestFeedRepository_GetProcessingStats(t *testing.T) {
 	tests := map[string]struct {
-		wantErr        bool
-		wantTotal      int
-		wantProcessed  int
-		wantRemaining  int
+		wantErr       bool
+		wantTotal     int
+		wantProcessed int
+		wantRemaining int
 	}{
 		"nil database": {
-			wantErr:        true,
-			wantTotal:      0,
-			wantProcessed:  0,
-			wantRemaining:  0,
+			wantErr:       true,
+			wantTotal:     0,
+			wantProcessed: 0,
+			wantRemaining: 0,
 		},
 	}
 
@@ -145,7 +147,7 @@ func TestFeedRepository_GetProcessingStats(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation with nil database
 			// Initialize global logger for driver dependencies
 			logger.Init()
-			
+
 			repo := NewFeedRepository(nil, testLoggerRepo())
 
 			stats, err := repo.GetProcessingStats(context.Background())
@@ -169,7 +171,7 @@ func TestFeedRepository_GetProcessingStats_NilHandling(t *testing.T) {
 		// GREEN PHASE: Test minimal implementation
 		// Initialize global logger for driver dependencies
 		logger.Init()
-		
+
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
 		stats, err := repo.GetProcessingStats(context.Background())
@@ -184,15 +186,15 @@ func TestFeedRepository_GetProcessingStats_NilHandling(t *testing.T) {
 		// GREEN PHASE: Test context handling
 		// Initialize global logger for driver dependencies
 		logger.Init()
-		
+
 		repo := NewFeedRepository(nil, testLoggerRepo())
-		
+
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
 		stats, err := repo.GetProcessingStats(ctx)
 
-		// Should return error due to cancelled context or nil database
+		// Should return error due to canceled context or nil database
 		assert.Error(t, err)
 		assert.Nil(t, stats)
 	})
@@ -203,9 +205,9 @@ func TestFeedRepository_CursorHandling(t *testing.T) {
 		// GREEN PHASE: Test cursor edge cases
 		// Initialize global logger for driver dependencies
 		logger.Init()
-		
+
 		repo := NewFeedRepository(nil, testLoggerRepo())
-		
+
 		cursor := &Cursor{
 			LastCreatedAt: &time.Time{}, // Zero time
 			LastID:        "",
@@ -223,9 +225,9 @@ func TestFeedRepository_CursorHandling(t *testing.T) {
 		// GREEN PHASE: Test cursor edge cases
 		// Initialize global logger for driver dependencies
 		logger.Init()
-		
+
 		repo := NewFeedRepository(nil, testLoggerRepo())
-		
+
 		now := time.Now()
 		cursor := &Cursor{
 			LastCreatedAt: &now,
@@ -246,7 +248,7 @@ func TestFeedRepository_ErrorHandling(t *testing.T) {
 		// GREEN PHASE: Test error wrapping
 		// Initialize global logger for driver dependencies
 		logger.Init()
-		
+
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
 		// Test GetUnprocessedFeeds error wrapping
@@ -267,7 +269,7 @@ func TestFeedRepository_URLConversion(t *testing.T) {
 		// The repository converts []url.URL to []*url.URL
 		// Initialize global logger for driver dependencies
 		logger.Init()
-		
+
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
 		urls, cursor, err := repo.GetUnprocessedFeeds(context.Background(), nil, 10)
@@ -276,7 +278,7 @@ func TestFeedRepository_URLConversion(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, urls) // Should be []*url.URL type
 		assert.Nil(t, cursor)
-		
+
 		// Type assertion to ensure correct return type
 		var _ []*url.URL = urls
 	})
@@ -289,7 +291,7 @@ func TestFeedRepository_Logging(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
 		}))
-		
+
 		repo := NewFeedRepository(nil, logger)
 
 		// These should trigger logging even with errors

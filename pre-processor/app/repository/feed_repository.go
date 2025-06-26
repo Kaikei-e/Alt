@@ -5,19 +5,20 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"pre-processor/driver"
 	"time"
+
+	"pre-processor/driver"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// FeedRepository implementation
+// FeedRepository implementation.
 type feedRepository struct {
 	db     *pgxpool.Pool
 	logger *slog.Logger
 }
 
-// NewFeedRepository creates a new feed repository
+// NewFeedRepository creates a new feed repository.
 func NewFeedRepository(db *pgxpool.Pool, logger *slog.Logger) FeedRepository {
 	return &feedRepository{
 		db:     db,
@@ -25,11 +26,12 @@ func NewFeedRepository(db *pgxpool.Pool, logger *slog.Logger) FeedRepository {
 	}
 }
 
-// GetUnprocessedFeeds gets unprocessed feeds using cursor-based pagination
+// GetUnprocessedFeeds gets unprocessed feeds using cursor-based pagination.
 func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *Cursor, limit int) ([]*url.URL, *Cursor, error) {
 	r.logger.Info("getting unprocessed feeds", "limit", limit)
 
 	var lastCreatedAt *time.Time
+
 	var lastID string
 
 	if cursor != nil {
@@ -57,10 +59,11 @@ func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *Cursor
 	}
 
 	r.logger.Info("got unprocessed feeds", "count", len(urlPtrs))
+
 	return urlPtrs, newCursor, nil
 }
 
-// GetProcessingStats returns feed processing statistics
+// GetProcessingStats returns feed processing statistics.
 func (r *feedRepository) GetProcessingStats(ctx context.Context) (*ProcessingStats, error) {
 	r.logger.Info("getting processing statistics")
 
@@ -78,5 +81,6 @@ func (r *feedRepository) GetProcessingStats(ctx context.Context) (*ProcessingSta
 	}
 
 	r.logger.Info("got processing statistics", "total", stats.TotalFeeds, "processed", stats.ProcessedFeeds, "remaining", stats.RemainingFeeds)
+
 	return stats, nil
 }

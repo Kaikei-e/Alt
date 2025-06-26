@@ -6,19 +6,20 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"pre-processor/driver"
-	"pre-processor/models"
 	"strings"
 	"time"
+
+	"pre-processor/driver"
+	"pre-processor/models"
 )
 
-// ExternalAPIRepository implementation
+// ExternalAPIRepository implementation.
 type externalAPIRepository struct {
 	logger *slog.Logger
 	client *http.Client
 }
 
-// NewExternalAPIRepository creates a new external API repository
+// NewExternalAPIRepository creates a new external API repository.
 func NewExternalAPIRepository(logger *slog.Logger) ExternalAPIRepository {
 	return &externalAPIRepository{
 		logger: logger,
@@ -28,7 +29,7 @@ func NewExternalAPIRepository(logger *slog.Logger) ExternalAPIRepository {
 	}
 }
 
-// SummarizeArticle summarizes an article using external API
+// SummarizeArticle summarizes an article using external API.
 func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error) {
 	// Input validation
 	if article == nil {
@@ -62,10 +63,11 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 	}
 
 	r.logger.Info("article summarized successfully", "article_id", article.ID)
+
 	return summarizedContent, nil
 }
 
-// CheckHealth checks the health of an external service
+// CheckHealth checks the health of an external service.
 func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL string) error {
 	// Input validation
 	if serviceURL == "" {
@@ -90,7 +92,8 @@ func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL stri
 
 	// GREEN PHASE: Basic health check implementation
 	healthEndpoint := parsedURL.String() + "/api/tags"
-	req, err := http.NewRequestWithContext(ctx, "GET", healthEndpoint, nil)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", healthEndpoint, http.NoBody)
 	if err != nil {
 		r.logger.Error("failed to create health check request", "error", err)
 		return fmt.Errorf("failed to create health check request: %w", err)
@@ -109,5 +112,6 @@ func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL stri
 	}
 
 	r.logger.Info("service is healthy")
+
 	return nil
 }

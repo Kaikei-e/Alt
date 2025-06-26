@@ -22,6 +22,7 @@ func TestArticleSummarizerService_InterfaceCompliance(t *testing.T) {
 
 		// Verify interface compliance at compile time
 		var _ ArticleSummarizerService = service
+
 		assert.NotNil(t, service)
 	})
 }

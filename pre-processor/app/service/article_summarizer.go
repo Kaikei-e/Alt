@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"log/slog"
+	"time"
+
 	"pre-processor/models"
 	"pre-processor/repository"
-	"time"
 )
 
-// ArticleSummarizerService implementation
+// ArticleSummarizerService implementation.
 type articleSummarizerService struct {
 	articleRepo repository.ArticleRepository
 	summaryRepo repository.SummaryRepository
@@ -17,7 +18,7 @@ type articleSummarizerService struct {
 	cursor      *repository.Cursor
 }
 
-// NewArticleSummarizerService creates a new article summarizer service
+// NewArticleSummarizerService creates a new article summarizer service.
 func NewArticleSummarizerService(
 	articleRepo repository.ArticleRepository,
 	summaryRepo repository.SummaryRepository,
@@ -33,7 +34,7 @@ func NewArticleSummarizerService(
 	}
 }
 
-// SummarizeArticles processes a batch of articles for summarization
+// SummarizeArticles processes a batch of articles for summarization.
 func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchSize int) (*SummarizationResult, error) {
 	s.logger.Info("starting article summarization", "batch_size", batchSize)
 
@@ -41,6 +42,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 	// Safety check for testing with nil repositories
 	if s.articleRepo == nil {
 		s.logger.Warn("articleRepo is nil, returning empty result for testing")
+
 		return &SummarizationResult{
 			ProcessedCount: 0,
 			SuccessCount:   0,
@@ -71,8 +73,10 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		summarizedContent, err := s.apiRepo.SummarizeArticle(ctx, article)
 		if err != nil {
 			s.logger.Error("failed to generate summary", "article_id", article.ID, "error", err)
+
 			result.ErrorCount++
 			result.Errors = append(result.Errors, err)
+
 			continue
 		}
 
@@ -87,12 +91,15 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		// Save the summary
 		if err := s.summaryRepo.Create(ctx, summary); err != nil {
 			s.logger.Error("failed to save summary", "article_id", article.ID, "error", err)
+
 			result.ErrorCount++
 			result.Errors = append(result.Errors, err)
+
 			continue
 		}
 
 		result.SuccessCount++
+
 		s.logger.Debug("successfully summarized article", "article_id", article.ID)
 	}
 
@@ -110,7 +117,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 	return result, nil
 }
 
-// HasUnsummarizedArticles checks if there are articles that need summarization
+// HasUnsummarizedArticles checks if there are articles that need summarization.
 func (s *articleSummarizerService) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
 	s.logger.Info("checking for unsummarized articles")
 
@@ -132,10 +139,11 @@ func (s *articleSummarizerService) HasUnsummarizedArticles(ctx context.Context) 
 	return hasArticles, nil
 }
 
-// ResetPagination resets the pagination cursor
+// ResetPagination resets the pagination cursor.
 func (s *articleSummarizerService) ResetPagination() error {
 	s.logger.Info("resetting pagination cursor")
 	s.cursor = &repository.Cursor{}
 	s.logger.Info("pagination cursor reset")
+
 	return nil
 }

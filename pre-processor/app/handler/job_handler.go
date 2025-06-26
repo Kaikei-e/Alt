@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"pre-processor/service"
 	"sync"
 	"time"
+
+	"pre-processor/service"
 )
 
-// JobHandler implementation
+// JobHandler implementation.
 type jobHandler struct {
 	feedProcessor     service.FeedProcessorService
 	articleSummarizer service.ArticleSummarizerService
@@ -24,7 +25,7 @@ type jobHandler struct {
 	batchSize int
 }
 
-// NewJobHandler creates a new job handler
+// NewJobHandler creates a new job handler.
 func NewJobHandler(
 	feedProcessor service.FeedProcessorService,
 	articleSummarizer service.ArticleSummarizerService,
@@ -47,11 +48,12 @@ func NewJobHandler(
 	}
 }
 
-// StartFeedProcessingJob starts the feed processing job
+// StartFeedProcessingJob starts the feed processing job.
 func (h *jobHandler) StartFeedProcessingJob(ctx context.Context) error {
 	h.logger.Info("starting feed processing job")
 
 	h.wg.Add(1)
+
 	go func() {
 		defer h.wg.Done()
 		h.runFeedProcessingLoop()
@@ -60,7 +62,7 @@ func (h *jobHandler) StartFeedProcessingJob(ctx context.Context) error {
 	return nil
 }
 
-// StartSummarizationJob starts the article summarization job
+// StartSummarizationJob starts the article summarization job.
 func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
 	h.logger.Info("starting summarization job")
 
@@ -71,6 +73,7 @@ func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
 	}
 
 	h.wg.Add(1)
+
 	go func() {
 		defer h.wg.Done()
 		h.runSummarizationLoop()
@@ -79,7 +82,7 @@ func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
 	return nil
 }
 
-// StartQualityCheckJob starts the quality check job
+// StartQualityCheckJob starts the quality check job.
 func (h *jobHandler) StartQualityCheckJob(ctx context.Context) error {
 	h.logger.Info("starting quality check job")
 
@@ -90,6 +93,7 @@ func (h *jobHandler) StartQualityCheckJob(ctx context.Context) error {
 	}
 
 	h.wg.Add(1)
+
 	go func() {
 		defer h.wg.Done()
 		h.runQualityCheckLoop()
@@ -98,16 +102,17 @@ func (h *jobHandler) StartQualityCheckJob(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops all jobs
+// Stop stops all jobs.
 func (h *jobHandler) Stop() error {
 	h.logger.Info("stopping all jobs")
 	h.cancel()
 	h.wg.Wait()
 	h.logger.Info("all jobs stopped")
+
 	return nil
 }
 
-// runFeedProcessingLoop runs the feed processing loop
+// runFeedProcessingLoop runs the feed processing loop.
 func (h *jobHandler) runFeedProcessingLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -123,7 +128,7 @@ func (h *jobHandler) runFeedProcessingLoop() {
 	}
 }
 
-// runSummarizationLoop runs the summarization loop
+// runSummarizationLoop runs the summarization loop.
 func (h *jobHandler) runSummarizationLoop() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -139,7 +144,7 @@ func (h *jobHandler) runSummarizationLoop() {
 	}
 }
 
-// runQualityCheckLoop runs the quality check loop
+// runQualityCheckLoop runs the quality check loop.
 func (h *jobHandler) runQualityCheckLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -155,7 +160,7 @@ func (h *jobHandler) runQualityCheckLoop() {
 	}
 }
 
-// processFeedsBatch processes a batch of feeds
+// processFeedsBatch processes a batch of feeds.
 func (h *jobHandler) processFeedsBatch() {
 	result, err := h.feedProcessor.ProcessFeeds(h.ctx, h.batchSize)
 	if err != nil {
@@ -173,13 +178,14 @@ func (h *jobHandler) processFeedsBatch() {
 	// Don't reset if there were simply no feeds to process (ProcessedCount == 0)
 	if !result.HasMore && result.ProcessedCount > 0 {
 		h.logger.Info("reached end of feeds, resetting pagination cursor")
+
 		if err := h.feedProcessor.ResetPagination(); err != nil {
 			h.logger.Error("failed to reset feed processor pagination", "error", err)
 		}
 	}
 }
 
-// processSummarizationBatch processes a batch of articles for summarization
+// processSummarizationBatch processes a batch of articles for summarization.
 func (h *jobHandler) processSummarizationBatch() {
 	result, err := h.articleSummarizer.SummarizeArticles(h.ctx, h.batchSize)
 	if err != nil {
@@ -197,13 +203,14 @@ func (h *jobHandler) processSummarizationBatch() {
 	// Don't reset if there were simply no articles to process (ProcessedCount == 0)
 	if !result.HasMore && result.ProcessedCount > 0 {
 		h.logger.Info("reached end of articles, resetting pagination cursor")
+
 		if err := h.articleSummarizer.ResetPagination(); err != nil {
 			h.logger.Error("failed to reset summarizer pagination", "error", err)
 		}
 	}
 }
 
-// processQualityCheckBatch processes a batch of articles for quality checking
+// processQualityCheckBatch processes a batch of articles for quality checking.
 func (h *jobHandler) processQualityCheckBatch() {
 	result, err := h.qualityChecker.CheckQuality(h.ctx, h.batchSize)
 	if err != nil {
@@ -223,6 +230,7 @@ func (h *jobHandler) processQualityCheckBatch() {
 	// Don't reset if there were simply no articles to process (ProcessedCount == 0)
 	if !result.HasMore && result.ProcessedCount > 0 {
 		h.logger.Info("reached end of articles, resetting pagination cursor")
+
 		if err := h.qualityChecker.ResetPagination(); err != nil {
 			h.logger.Error("failed to reset quality checker pagination", "error", err)
 		}

@@ -10,11 +10,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"pre-processor/logger"
-	"pre-processor/models"
 	"strings"
 	"testing"
 	"time"
+
+	"pre-processor/logger"
+	"pre-processor/models"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,6 +34,7 @@ func TestExternalAPIRepository_InterfaceCompliance(t *testing.T) {
 
 		// Verify interface compliance at compile time
 		var _ ExternalAPIRepository = repo
+
 		assert.NotNil(t, repo)
 	})
 }
@@ -40,10 +42,10 @@ func TestExternalAPIRepository_InterfaceCompliance(t *testing.T) {
 func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 	tests := map[string]struct {
 		article      *models.Article
+		validateResp func(t *testing.T, resp *models.SummarizedContent)
+		errContains  string
 		setupLogger  bool
 		wantErr      bool
-		errContains  string
-		validateResp func(t *testing.T, resp *models.SummarizedContent)
 	}{
 		"should handle nil article": {
 			article:     nil,
@@ -100,12 +102,14 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Nil(t, summary)
+
 				if tc.errContains != "" {
 					assert.Contains(t, err.Error(), tc.errContains)
 				}
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, summary)
+
 				if tc.validateResp != nil {
 					tc.validateResp(t, summary)
 				}
@@ -116,11 +120,11 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 
 func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 	tests := map[string]struct {
-		serviceURL  string
-		setupLogger bool
 		mockServer  func() *httptest.Server
-		wantErr     bool
+		serviceURL  string
 		errContains string
+		setupLogger bool
+		wantErr     bool
 	}{
 		"should handle empty service URL": {
 			serviceURL:  "",
@@ -180,9 +184,11 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 
 			// Setup mock server if provided and update URL
 			serviceURL := tc.serviceURL
+
 			if tc.mockServer != nil {
 				server := tc.mockServer()
 				defer server.Close()
+
 				if tc.serviceURL == "http://localhost:8080" {
 					serviceURL = server.URL
 				}
@@ -194,6 +200,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 
 			if tc.wantErr {
 				require.Error(t, err)
+
 				if tc.errContains != "" {
 					assert.Contains(t, err.Error(), tc.errContains)
 				}
@@ -205,6 +212,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 
 	t.Run("should handle connection errors without external calls", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 		// Use invalid port that will definitely fail
@@ -217,6 +225,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 	t.Run("should handle context cancellation in SummarizeArticle", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -236,6 +245,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 
 	t.Run("should handle context cancellation in CheckHealth", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -254,6 +264,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 
 	t.Run("should handle context timeout", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
@@ -274,6 +285,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 	t.Run("should handle very long article content", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 		// Create article with very long content
@@ -297,6 +309,7 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 
 	t.Run("should handle URL with special characters", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 		// Test various problematic URLs using mock servers
@@ -340,13 +353,13 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 	})
 }
 
-// Table-driven tests for comprehensive coverage using mock servers
+// Table-driven tests for comprehensive coverage using mock servers.
 func TestExternalAPIRepository_TableDriven(t *testing.T) {
 	type testCase struct {
-		name        string
-		operation   string
 		setup       func() (ExternalAPIRepository, interface{}, *httptest.Server)
 		validate    func(t *testing.T, result interface{}, err error)
+		name        string
+		operation   string
 		setupLogger bool
 	}
 
@@ -435,6 +448,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			}
 
 			var result interface{}
+
 			var err error
 
 			switch tc.operation {
@@ -449,9 +463,10 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 	}
 }
 
-// Benchmark tests with mock servers
+// Benchmark tests with mock servers.
 func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 	logger.Init()
+
 	repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 	article := &models.Article{
@@ -462,6 +477,7 @@ func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 	}
 
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		// This will fail but we're measuring the validation overhead
 		repo.SummarizeArticle(context.Background(), article)
@@ -470,6 +486,7 @@ func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 
 func BenchmarkExternalAPIRepository_CheckHealth(b *testing.B) {
 	logger.Init()
+
 	repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -478,6 +495,7 @@ func BenchmarkExternalAPIRepository_CheckHealth(b *testing.B) {
 	defer server.Close()
 
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		repo.CheckHealth(context.Background(), server.URL)
 	}
@@ -508,6 +526,7 @@ func TestExternalAPIRepository_HelperFunctions(t *testing.T) {
 func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 	t.Run("should handle network timeouts gracefully", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 		// Use context timeout instead of server sleep to test timeout behavior
@@ -528,6 +547,7 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 
 	t.Run("should handle malformed response gracefully", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

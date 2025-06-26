@@ -5,7 +5,7 @@ import (
 	"net/url"
 )
 
-// convertToURL converts a string to a url.URL
+// convertToURL converts a string to a url.URL.
 func convertToURL(u string) (url.URL, error) {
 	ul, err := url.Parse(u)
 	if err != nil {

@@ -25,11 +25,13 @@ func main() {
 
 	// Initialize database
 	ctx := context.Background()
+
 	dbPool, err := driver.Init(ctx)
 	if err != nil {
 		log.Error("Failed to initialize database", "error", err)
 		panic(err)
 	}
+
 	defer dbPool.Close()
 
 	// Initialize repositories
@@ -105,6 +107,7 @@ func main() {
 
 	// Check health of dependencies
 	log.Info("Checking health of dependencies")
+
 	if err := healthHandler.CheckDependencies(ctx); err != nil {
 		log.Warn("Some dependencies are not healthy", "error", err)
 	}

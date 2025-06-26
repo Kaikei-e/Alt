@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"time"
+
 	"pre-processor/driver"
 	"pre-processor/models"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ArticleRepository implementation
+// ArticleRepository implementation.
 type articleRepository struct {
 	db     *pgxpool.Pool
 	logger *slog.Logger
 }
 
-// NewArticleRepository creates a new article repository
+// NewArticleRepository creates a new article repository.
 func NewArticleRepository(db *pgxpool.Pool, logger *slog.Logger) ArticleRepository {
 	return &articleRepository{
 		db:     db,
@@ -26,7 +27,7 @@ func NewArticleRepository(db *pgxpool.Pool, logger *slog.Logger) ArticleReposito
 	}
 }
 
-// Create creates a new article
+// Create creates a new article.
 func (r *articleRepository) Create(ctx context.Context, article *models.Article) error {
 	r.logger.Info("creating article", "url", article.URL)
 
@@ -37,21 +38,24 @@ func (r *articleRepository) Create(ctx context.Context, article *models.Article)
 	}
 
 	r.logger.Info("article created successfully", "url", article.URL)
+
 	return nil
 }
 
-// CheckExists checks if articles exist for the given URLs
+// CheckExists checks if articles exist for the given URLs.
 func (r *articleRepository) CheckExists(ctx context.Context, urls []string) (bool, error) {
 	r.logger.Info("checking if articles exist", "count", len(urls))
 
 	// Convert strings to url.URL
 	urlObjs := make([]url.URL, len(urls))
+
 	for i, urlStr := range urls {
 		parsedURL, err := url.Parse(urlStr)
 		if err != nil {
 			r.logger.Error("failed to parse URL", "url", urlStr, "error", err)
 			return false, fmt.Errorf("failed to parse URL %s: %w", urlStr, err)
 		}
+
 		urlObjs[i] = *parsedURL
 	}
 
@@ -63,14 +67,16 @@ func (r *articleRepository) CheckExists(ctx context.Context, urls []string) (boo
 	}
 
 	r.logger.Info("checked article existence", "exists", exists)
+
 	return exists, nil
 }
 
-// FindForSummarization finds articles that need summarization
+// FindForSummarization finds articles that need summarization.
 func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *Cursor, limit int) ([]*models.Article, *Cursor, error) {
 	r.logger.Info("finding articles for summarization", "limit", limit)
 
 	var lastCreatedAt *time.Time
+
 	var lastID string
 
 	if cursor != nil {
@@ -92,10 +98,11 @@ func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *Cu
 	}
 
 	r.logger.Info("found articles for summarization", "count", len(articles))
+
 	return articles, newCursor, nil
 }
 
-// HasUnsummarizedArticles checks if there are articles without summaries
+// HasUnsummarizedArticles checks if there are articles without summaries.
 func (r *articleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
 	r.logger.Info("checking for unsummarized articles")
 
@@ -107,5 +114,6 @@ func (r *articleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, 
 	}
 
 	r.logger.Info("checked for unsummarized articles", "has_unsummarized", hasUnsummarized)
+
 	return hasUnsummarized, nil
 }

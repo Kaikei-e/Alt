@@ -2,18 +2,17 @@ package qualitychecker
 
 import (
 	"context"
+
 	"pre-processor/driver"
 	"pre-processor/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ArticleWithScore represents an article with its summary for quality scoring
-// This is a compatibility alias to the driver.ArticleWithSummary type
+// This is a compatibility alias to the driver.ArticleWithSummary type.
 type ArticleWithScore = driver.ArticleWithSummary
 
-// FetchArticleAndSummaries is deprecated - use driver.GetArticlesWithSummaries instead
-// This function is kept for backward compatibility but will be removed in the future
+// This function is kept for backward compatibility but will be removed in the future.
 func FetchArticleAndSummaries(ctx context.Context, dbPool *pgxpool.Pool, offset int, offsetStep int) ([]ArticleWithScore, error) {
 	logger.Logger.Warn("FetchArticleAndSummaries is deprecated, please use driver.GetArticlesWithSummaries with cursor-based pagination")
 

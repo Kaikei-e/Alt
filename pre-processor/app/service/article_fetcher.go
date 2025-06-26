@@ -18,24 +18,24 @@ import (
 )
 
 var (
-	// Global rate limiter to ensure minimum 5 seconds between requests
+	// Global rate limiter to ensure minimum 5 seconds between requests.
 	lastRequestTime time.Time
 	rateLimitMutex  sync.Mutex
 	minInterval     = 5 * time.Second
 )
 
-// HTTPClient interface for dependency injection
+// HTTPClient interface for dependency injection.
 type HTTPClient interface {
 	Get(url string) (*http.Response, error)
 }
 
-// ArticleFetcherService implementation
+// ArticleFetcherService implementation.
 type articleFetcherService struct {
 	logger     *slog.Logger
 	httpClient HTTPClient
 }
 
-// NewArticleFetcherService creates a new article fetcher service
+// NewArticleFetcherService creates a new article fetcher service.
 func NewArticleFetcherService(logger *slog.Logger) ArticleFetcherService {
 	return &articleFetcherService{
 		logger:     logger,
@@ -43,7 +43,7 @@ func NewArticleFetcherService(logger *slog.Logger) ArticleFetcherService {
 	}
 }
 
-// NewArticleFetcherServiceWithClient creates a new article fetcher service with custom HTTP client
+// NewArticleFetcherServiceWithClient creates a new article fetcher service with custom HTTP client.
 func NewArticleFetcherServiceWithClient(logger *slog.Logger, httpClient HTTPClient) ArticleFetcherService {
 	return &articleFetcherService{
 		logger:     logger,
@@ -51,7 +51,7 @@ func NewArticleFetcherServiceWithClient(logger *slog.Logger, httpClient HTTPClie
 	}
 }
 
-// FetchArticle fetches an article from the given URL
+// FetchArticle fetches an article from the given URL.
 func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string) (*models.Article, error) {
 	s.logger.Info("fetching article", "url", urlStr)
 
@@ -81,10 +81,11 @@ func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string)
 	}
 
 	s.logger.Info("article fetched successfully", "url", urlStr)
+
 	return article, nil
 }
 
-// ValidateURL validates a URL for security and format
+// ValidateURL validates a URL for security and format.
 func (s *articleFetcherService) ValidateURL(urlStr string) error {
 	s.logger.Info("validating URL", "url", urlStr)
 
@@ -108,10 +109,11 @@ func (s *articleFetcherService) ValidateURL(urlStr string) error {
 	}
 
 	s.logger.Info("URL validated successfully", "url", urlStr)
+
 	return nil
 }
 
-// fetchArticleFromURL fetches an article from a URL (moved from article-fetcher package)
+// fetchArticleFromURL fetches an article from a URL (moved from article-fetcher package).
 func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Article, error) {
 	// Enforce rate limiting
 	rateLimitMutex.Lock()
@@ -125,6 +127,7 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 			time.Sleep(waitTime)
 		}
 	}
+
 	lastRequestTime = time.Now()
 	rateLimitMutex.Unlock()
 
@@ -179,17 +182,17 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 	}, nil
 }
 
-// HTTPClientWrapper wraps http.Client to implement HTTPClient interface
+// HTTPClientWrapper wraps http.Client to implement HTTPClient interface.
 type HTTPClientWrapper struct {
 	*http.Client
 }
 
-// Get implements HTTPClient interface
+// Get implements HTTPClient interface.
 func (w *HTTPClientWrapper) Get(url string) (*http.Response, error) {
 	return w.Client.Get(url)
 }
 
-// Helper methods (moved from article-fetcher package)
+// Helper methods (moved from article-fetcher package).
 func (s *articleFetcherService) createSecureHTTPClient() HTTPClient {
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
@@ -306,6 +309,7 @@ func (s *articleFetcherService) isPrivateIPAddress(ip net.IP) bool {
 		if ip6[0] == 0xfe && ip6[1] == 0x80 {
 			return true
 		}
+
 		if ip6[0] == 0xfc && ip6[1] == 0x00 {
 			return true
 		}

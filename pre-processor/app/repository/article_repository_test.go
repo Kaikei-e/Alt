@@ -4,9 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"testing"
+
 	"pre-processor/logger"
 	"pre-processor/models"
-	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -24,6 +25,7 @@ func TestArticleRepository_InterfaceCompliance(t *testing.T) {
 
 		// Verify interface compliance at compile time
 		var _ ArticleRepository = repo
+
 		assert.NotNil(t, repo)
 	})
 }

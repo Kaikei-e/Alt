@@ -13,13 +13,13 @@ import (
 
 func TestFeedProcessorService_ProcessFeeds(t *testing.T) {
 	// REFACTOR phase - Focus on the service logic structure and interface compliance
-
 	t.Run("service implements interface correctly", func(t *testing.T) {
 		// Test that our service properly implements the interface
 		service := NewFeedProcessorService(nil, nil, nil, testLogger())
 
 		// Verify interface compliance
 		var _ FeedProcessorService = service
+
 		assert.NotNil(t, service)
 	})
 
@@ -64,12 +64,13 @@ func testLogger() *slog.Logger {
 	}))
 }
 
-// Helper functions for tests
+// Helper functions for tests.
 func mustParseURL(rawURL string) *url.URL {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		panic(err)
 	}
+
 	return u
 }
 

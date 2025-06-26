@@ -4,20 +4,21 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
+
 	"pre-processor/logger"
 	"pre-processor/models"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// CheckArticleExists checks if articles already exist in the database
+// CheckArticleExists checks if articles already exist in the database.
 func CheckArticleExists(ctx context.Context, db *pgxpool.Pool, urls []url.URL) (bool, error) {
 	if db == nil {
 		return false, fmt.Errorf("database connection is nil")
 	}
-	
+
 	if len(urls) == 0 {
 		return false, nil
 	}
@@ -33,6 +34,7 @@ func CheckArticleExists(ctx context.Context, db *pgxpool.Pool, urls []url.URL) (
 	`
 
 	var count int
+
 	err := db.QueryRow(ctx, query, urlStrings).Scan(&count)
 	if err != nil {
 		return false, err
@@ -41,7 +43,7 @@ func CheckArticleExists(ctx context.Context, db *pgxpool.Pool, urls []url.URL) (
 	return count == len(urls), nil
 }
 
-// CreateArticle creates a new article in the database
+// CreateArticle creates a new article in the database.
 func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Article) error {
 	if db == nil {
 		return fmt.Errorf("database connection is nil")
@@ -54,6 +56,7 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 	`
 
 	logger.Logger.Info("Creating article", "article link", article.URL)
+
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		logger.Logger.Error("Failed to begin transaction", "error", err)
@@ -64,6 +67,7 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 	if err != nil {
 		tx.Rollback(ctx)
 		logger.Logger.Error("Failed to create article", "error", err)
+
 		return err
 	}
 
@@ -74,10 +78,11 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 	}
 
 	logger.Logger.Info("Article created", "article", article.Title)
+
 	return nil
 }
 
-// HasUnsummarizedArticles efficiently checks if there are articles without summaries
+// HasUnsummarizedArticles efficiently checks if there are articles without summaries.
 func HasUnsummarizedArticles(ctx context.Context, db *pgxpool.Pool) (bool, error) {
 	if db == nil {
 		return false, fmt.Errorf("database connection is nil")
@@ -98,6 +103,7 @@ func HasUnsummarizedArticles(ctx context.Context, db *pgxpool.Pool) (bool, error
 	`
 
 	var hasUnsummarized bool
+
 	err := db.QueryRow(ctx, query).Scan(&hasUnsummarized)
 	if err != nil {
 		logger.Logger.Error("Failed to check for unsummarized articles", "error", err)
@@ -105,23 +111,25 @@ func HasUnsummarizedArticles(ctx context.Context, db *pgxpool.Pool) (bool, error
 	}
 
 	logger.Logger.Info("Checked for unsummarized articles", "has_unsummarized", hasUnsummarized)
+
 	return hasUnsummarized, nil
 }
 
-// GetArticlesForSummarization gets articles without summaries using cursor-based pagination
-// lastCreatedAt and lastID are used as cursor parameters for pagination
-// Returns: articles, lastCreatedAt, lastID, error for cursor tracking
+// Returns: articles, lastCreatedAt, lastID, error for cursor tracking.
 func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCreatedAt *time.Time, lastID string, limit int) ([]*models.Article, *time.Time, string, error) {
 	if db == nil {
 		return nil, nil, "", fmt.Errorf("database connection is nil")
 	}
 
 	var articles []*models.Article
+
 	var finalCreatedAt *time.Time
+
 	var finalID string
 
 	err := retryDBOperation(ctx, func() error {
 		var query string
+
 		var args []interface{}
 
 		if lastCreatedAt == nil || lastCreatedAt.IsZero() {
@@ -163,12 +171,15 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 		defer rows.Close()
 
 		articles = nil // Reset articles slice for retry
+
 		for rows.Next() {
 			var article models.Article
+
 			err = rows.Scan(&article.ID, &article.Title, &article.Content, &article.URL, &article.CreatedAt)
 			if err != nil {
 				return err
 			}
+
 			articles = append(articles, &article)
 			// Keep track of the last item for cursor
 			finalCreatedAt = &article.CreatedAt
@@ -184,5 +195,6 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 	}
 
 	logger.Logger.Info("Got articles for summarization", "count", len(articles), "limit", limit, "has_cursor", lastCreatedAt != nil)
+
 	return articles, finalCreatedAt, finalID, nil
 }

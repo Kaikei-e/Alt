@@ -3,13 +3,14 @@ package repository
 import (
 	"context"
 	"net/url"
-	"pre-processor/models"
 	"time"
+
+	"pre-processor/models"
 )
 
 //go:generate mockgen -source=interfaces.go -destination=../test/mocks/repository_mocks.go -package=mocks
 
-// ArticleRepository handles article data persistence
+// ArticleRepository handles article data persistence.
 type ArticleRepository interface {
 	Create(ctx context.Context, article *models.Article) error
 	CheckExists(ctx context.Context, urls []string) (bool, error)
@@ -17,13 +18,13 @@ type ArticleRepository interface {
 	HasUnsummarizedArticles(ctx context.Context) (bool, error)
 }
 
-// FeedRepository handles feed data persistence
+// FeedRepository handles feed data persistence.
 type FeedRepository interface {
 	GetUnprocessedFeeds(ctx context.Context, cursor *Cursor, limit int) ([]*url.URL, *Cursor, error)
 	GetProcessingStats(ctx context.Context) (*ProcessingStats, error)
 }
 
-// SummaryRepository handles article summary persistence
+// SummaryRepository handles article summary persistence.
 type SummaryRepository interface {
 	Create(ctx context.Context, summary *models.ArticleSummary) error
 	FindArticlesWithSummaries(ctx context.Context, cursor *Cursor, limit int) ([]*models.ArticleWithSummary, *Cursor, error)
@@ -31,19 +32,19 @@ type SummaryRepository interface {
 	Exists(ctx context.Context, summaryID string) (bool, error)
 }
 
-// ExternalAPIRepository handles external API calls
+// ExternalAPIRepository handles external API calls.
 type ExternalAPIRepository interface {
 	SummarizeArticle(ctx context.Context, article *models.Article) (*models.SummarizedContent, error)
 	CheckHealth(ctx context.Context, serviceURL string) error
 }
 
-// Cursor represents pagination cursor for efficient pagination
+// Cursor represents pagination cursor for efficient pagination.
 type Cursor struct {
 	LastCreatedAt *time.Time
 	LastID        string
 }
 
-// ProcessingStats represents processing statistics
+// ProcessingStats represents processing statistics.
 type ProcessingStats struct {
 	TotalFeeds     int
 	ProcessedFeeds int

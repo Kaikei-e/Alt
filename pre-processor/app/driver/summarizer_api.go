@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"pre-processor/models"
 	"strings"
+
+	"pre-processor/models"
 
 	"pre-processor/logger"
 )
@@ -19,34 +20,35 @@ type SummarizedContent struct {
 
 type payloadModel struct {
 	Model       string       `json:"model"`
-	KeepAlive   int          `json:"keep_alive"`
 	Prompt      string       `json:"prompt"`
-	Stream      bool         `json:"stream"`
 	Options     optionsModel `json:"options"`
+	KeepAlive   int          `json:"keep_alive"`
 	MaxWaitTime int          `json:"max_wait_time"`
+	Stream      bool         `json:"stream"`
 }
 
 type optionsModel struct {
+	Stop          []string `json:"stop"`
 	Temperature   float64  `json:"temperature"`
 	TopP          float64  `json:"top_p"`
 	NumPredict    int      `json:"num_predict"`
 	RepeatPenalty float64  `json:"repeat_penalty"`
 	NumCtx        int      `json:"num_ctx"`
-	Stop          []string `json:"stop"`
 }
 
 type OllamaResponse struct {
 	Model      string `json:"model"`
 	Response   string `json:"response"`
-	Done       bool   `json:"done"`
 	DoneReason string `json:"done_reason"`
+	Done       bool   `json:"done"`
 }
 
-const SUMMARIZER_API_URL = "http://news-creator:11434/api/generate"
-const MODEL = "phi4-mini:3.8b"
+const (
+	summarizerAPIURL = "http://news-creator:11434/api/generate"
+	modelName        = "phi4-mini:3.8b"
 
-// Refined prompt template optimized for Phi-4-mini-instruct
-const PROMPT_TEMPLATE = `<|system|>
+	// Refined prompt template optimized for Phi-4-mini-instruct.
+	promptTemplate = `<|system|>
 You are an expert multilingual journalist and translator specializing in creating high-quality Japanese summaries of English news articles. You have extensive knowledge of both languages and understand cultural nuances.
 
 <|user|>
@@ -74,12 +76,13 @@ Please analyze the following English news article and create a comprehensive Jap
 
 <|assistant|>
 `
+)
 
 func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*SummarizedContent, error) {
-	prompt := fmt.Sprintf(PROMPT_TEMPLATE, article.Content)
+	prompt := fmt.Sprintf(promptTemplate, article.Content)
 
 	payload := payloadModel{
-		Model:     MODEL,
+		Model:     modelName,
 		Prompt:    prompt,
 		Stream:    false,
 		KeepAlive: -1,
@@ -100,7 +103,8 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", SUMMARIZER_API_URL, strings.NewReader(string(jsonData)))
+
+	req, err := http.NewRequestWithContext(ctx, "POST", summarizerAPIURL, strings.NewReader(string(jsonData)))
 	if err != nil {
 		logger.Logger.Error("Failed to create request", "error", err)
 		return nil, err
@@ -113,11 +117,16 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 		logger.Logger.Error("Failed to send request", "error", err)
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Logger.Error("failed to close response body", "error", err)
+		}
+	}()
 
 	// Check HTTP status code
 	if resp.StatusCode != http.StatusOK {
-		logger.Logger.Error("API returned non-200 status", "status", resp.Status, "code", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logger.Logger.Error("API returned non-200 status", "status", resp.Status, "code", resp.StatusCode, "body", string(bodyBytes))
 		return nil, fmt.Errorf("API request failed with status: %s", resp.Status)
 	}
 
@@ -132,6 +141,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 
 	// Parse the Ollama API response
 	var apiResponse OllamaResponse
+
 	err = json.Unmarshal(body, &apiResponse)
 	if err != nil {
 		logger.Logger.Error("Failed to unmarshal API response", "error", err)
@@ -143,14 +153,16 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 		logger.Logger.Warn("Received incomplete response from API")
 	}
 
+	cleanedSummary := cleanSummarizedContent(apiResponse.Response)
+
 	summarizedContent := &SummarizedContent{
 		ArticleID:       article.ID,
-		SummaryJapanese: apiResponse.Response,
+		SummaryJapanese: cleanedSummary,
 	}
 
 	logger.Logger.Info("Summary generated successfully",
 		"article_id", article.ID,
-		"summary_length", len(apiResponse.Response))
+		"summary_length", len(cleanedSummary))
 
 	return summarizedContent, nil
 }
@@ -170,6 +182,7 @@ func cleanSummarizedContent(content string) string {
 
 	// Basic cleanup: trim whitespace and remove empty lines
 	lines := strings.Split(content, "\n")
+
 	var cleanLines []string
 
 	for _, line := range lines {
@@ -185,5 +198,6 @@ func cleanSummarizedContent(content string) string {
 
 	// Join lines with space and return final cleaned content
 	result := strings.Join(cleanLines, " ")
+
 	return strings.TrimSpace(result)
 }

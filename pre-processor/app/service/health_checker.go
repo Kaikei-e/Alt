@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-// HealthCheckerService implementation
+// HealthCheckerService implementation.
 type healthCheckerService struct {
 	logger         *slog.Logger
-	newsCreatorURL string
 	client         *http.Client
+	newsCreatorURL string
 }
 
-// NewHealthCheckerService creates a new health checker service
+// NewHealthCheckerService creates a new health checker service.
 func NewHealthCheckerService(newsCreatorURL string, logger *slog.Logger) HealthCheckerService {
 	return &healthCheckerService{
 		logger:         logger,
@@ -26,7 +26,7 @@ func NewHealthCheckerService(newsCreatorURL string, logger *slog.Logger) HealthC
 	}
 }
 
-// CheckNewsCreatorHealth checks if news creator service is healthy
+// CheckNewsCreatorHealth checks if news creator service is healthy.
 func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error {
 	s.logger.Info("checking news creator health", "url", s.newsCreatorURL)
 
@@ -46,16 +46,17 @@ func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error
 	}
 
 	s.logger.Info("news creator is healthy")
+
 	return nil
 }
 
-// WaitForHealthy waits for the news creator service to become healthy
+// WaitForHealthy waits for the news creator service to become healthy.
 func (s *healthCheckerService) WaitForHealthy(ctx context.Context) error {
 	s.logger.Info("waiting for news creator to become healthy")
 
 	// Simple fix: just do immediate health checks with faster retries
 	// This avoids the complexity of shared state and works for the current use case
-	
+
 	// First check if already healthy
 	if err := s.CheckNewsCreatorHealth(ctx); err == nil {
 		s.logger.Info("news creator is now healthy")
@@ -69,7 +70,7 @@ func (s *healthCheckerService) WaitForHealthy(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			s.logger.Error("context cancelled while waiting for health")
+			s.logger.Error("context canceled while waiting for health")
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.CheckNewsCreatorHealth(ctx); err == nil {

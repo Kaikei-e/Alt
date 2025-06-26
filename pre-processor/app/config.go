@@ -6,25 +6,21 @@ import (
 	"time"
 )
 
-// ProcessingConfig holds all processing configuration
+// ProcessingConfig holds all processing configuration.
 type ProcessingConfig struct {
-	BatchSize              int
-	SummarizeInterval      time.Duration
-	FeedProcessingInterval time.Duration
-	QualityCheckInterval   time.Duration
-	ModelID                string
-
-	// Sleep intervals between processing individual items
-	FeedFetchSleep     time.Duration
-	SummarizationSleep time.Duration
-	QualityCheckSleep  time.Duration
-
-	// Concurrency settings
+	ModelID                     string
+	BatchSize                   int
+	SummarizeInterval           time.Duration
+	FeedProcessingInterval      time.Duration
+	QualityCheckInterval        time.Duration
+	FeedFetchSleep              time.Duration
+	SummarizationSleep          time.Duration
+	QualityCheckSleep           time.Duration
 	MaxConcurrentSummarizations int
 	MaxConcurrentQualityChecks  int
 }
 
-// GetConfig returns the configuration with environment variable overrides
+// GetConfig returns the configuration with environment variable overrides.
 func GetConfig() *ProcessingConfig {
 	return &ProcessingConfig{
 		BatchSize:              getEnvInt("BATCH_SIZE", 40),
@@ -46,6 +42,7 @@ func getEnvString(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
+
 	return defaultValue
 }
 
@@ -55,6 +52,7 @@ func getEnvInt(key string, defaultValue int) int {
 			return parsed
 		}
 	}
+
 	return defaultValue
 }
 
@@ -64,5 +62,6 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 			return parsed
 		}
 	}
+
 	return defaultValue
 }

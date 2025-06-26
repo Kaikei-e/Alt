@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"pre-processor/logger"
 	"time"
+
+	"pre-processor/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -18,12 +19,16 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 	}
 
 	var urls []url.URL
+
 	var finalCreatedAt *time.Time
+
 	var finalID string
+
 	limit := 40
 
 	err := retryDBOperation(ctx, func() error {
 		var query string
+
 		var args []interface{}
 
 		if lastCreatedAt == nil || lastCreatedAt.IsZero() {
@@ -62,9 +67,12 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 		defer rows.Close()
 
 		urls = nil // Reset urls slice for retry
+
 		for rows.Next() {
 			var u string
+
 			var createdAt time.Time
+
 			var id string
 
 			err = rows.Scan(&u, &createdAt, &id)
@@ -96,6 +104,7 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 	if len(urls) == 0 {
 		// Check total feeds and processed feeds for debugging
 		var totalFeeds, processedFeeds int
+
 		db.QueryRow(ctx, "SELECT COUNT(*) FROM feeds WHERE link NOT LIKE '%.mp3'").Scan(&totalFeeds)
 		db.QueryRow(ctx, "SELECT COUNT(DISTINCT a.url) FROM articles a INNER JOIN feeds f ON a.url = f.link WHERE f.link NOT LIKE '%.mp3'").Scan(&processedFeeds)
 
@@ -107,10 +116,11 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 	}
 
 	logger.Logger.Info("Got source URLs", "count", len(urls), "has_cursor", lastCreatedAt != nil)
+
 	return urls, finalCreatedAt, finalID, nil
 }
 
-// GetFeedStatistics returns statistics about feeds processing
+// GetFeedStatistics returns statistics about feeds processing.
 func GetFeedStatistics(ctx context.Context, db *pgxpool.Pool) (totalFeeds int, processedFeeds int, err error) {
 	// Handle nil database
 	if db == nil {
@@ -138,5 +148,6 @@ func GetFeedStatistics(ctx context.Context, db *pgxpool.Pool) (totalFeeds int, p
 	}
 
 	logger.Logger.Info("Feed statistics (non-MP3 only)", "total_feeds", totalFeeds, "processed_feeds", processedFeeds, "remaining_feeds", totalFeeds-processedFeeds)
+
 	return totalFeeds, processedFeeds, nil
 }

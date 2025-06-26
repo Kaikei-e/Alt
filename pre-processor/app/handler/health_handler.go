@@ -4,16 +4,17 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+
 	"pre-processor/service"
 )
 
-// HealthHandler implementation
+// HealthHandler implementation.
 type healthHandler struct {
 	healthChecker service.HealthCheckerService
 	logger        *slog.Logger
 }
 
-// NewHealthHandler creates a new health handler
+// NewHealthHandler creates a new health handler.
 func NewHealthHandler(healthChecker service.HealthCheckerService, logger *slog.Logger) HealthHandler {
 	return &healthHandler{
 		healthChecker: healthChecker,
@@ -21,17 +22,18 @@ func NewHealthHandler(healthChecker service.HealthCheckerService, logger *slog.L
 	}
 }
 
-// CheckHealth checks the health of the service
+// CheckHealth checks the health of the service.
 func (h *healthHandler) CheckHealth(ctx context.Context) error {
 	h.logger.Info("performing health check")
 
 	// Check if we can perform basic operations
 	// This is a simple implementation - in a real system you might check database connectivity, etc.
 	h.logger.Info("health check completed - service is healthy")
+
 	return nil
 }
 
-// CheckDependencies checks the health of external dependencies
+// CheckDependencies checks the health of external dependencies.
 func (h *healthHandler) CheckDependencies(ctx context.Context) error {
 	h.logger.Info("checking dependencies health")
 
@@ -42,5 +44,6 @@ func (h *healthHandler) CheckDependencies(ctx context.Context) error {
 	}
 
 	h.logger.Info("all dependencies are healthy")
+
 	return nil
 }

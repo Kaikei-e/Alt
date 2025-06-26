@@ -7,10 +7,11 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"pre-processor/logger"
-	"pre-processor/models"
 	"testing"
 	"time"
+
+	"pre-processor/logger"
+	"pre-processor/models"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,6 +30,7 @@ func TestSummaryRepository_InterfaceCompliance(t *testing.T) {
 
 		// Verify interface compliance at compile time
 		var _ SummaryRepository = repo
+
 		assert.NotNil(t, repo)
 	})
 }
@@ -36,9 +38,9 @@ func TestSummaryRepository_InterfaceCompliance(t *testing.T) {
 func TestSummaryRepository_Create(t *testing.T) {
 	tests := map[string]struct {
 		summary     *models.ArticleSummary
+		errContains string
 		setupLogger bool
 		wantErr     bool
-		errContains string
 	}{
 		"should handle nil database gracefully": {
 			summary: &models.ArticleSummary{
@@ -81,6 +83,7 @@ func TestSummaryRepository_Create(t *testing.T) {
 
 			if tc.wantErr {
 				require.Error(t, err)
+
 				if tc.errContains != "" {
 					assert.Contains(t, err.Error(), tc.errContains)
 				}
@@ -94,10 +97,10 @@ func TestSummaryRepository_Create(t *testing.T) {
 func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 	tests := map[string]struct {
 		cursor      *Cursor
+		errContains string
 		limit       int
 		setupLogger bool
 		wantErr     bool
-		errContains string
 	}{
 		"should handle nil database gracefully": {
 			cursor:      nil,
@@ -147,6 +150,7 @@ func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 				require.Error(t, err)
 				assert.Nil(t, articles)
 				assert.Nil(t, cursor)
+
 				if tc.errContains != "" {
 					assert.Contains(t, err.Error(), tc.errContains)
 				}
@@ -162,9 +166,9 @@ func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 func TestSummaryRepository_Delete(t *testing.T) {
 	tests := map[string]struct {
 		summaryID   string
+		errContains string
 		setupLogger bool
 		wantErr     bool
-		errContains string
 	}{
 		"should handle nil database gracefully": {
 			summaryID:   "summary-123",
@@ -193,6 +197,7 @@ func TestSummaryRepository_Delete(t *testing.T) {
 
 			if tc.wantErr {
 				require.Error(t, err)
+
 				if tc.errContains != "" {
 					assert.Contains(t, err.Error(), tc.errContains)
 				}
@@ -206,10 +211,10 @@ func TestSummaryRepository_Delete(t *testing.T) {
 func TestSummaryRepository_Exists(t *testing.T) {
 	tests := map[string]struct {
 		summaryID   string
+		errContains string
 		setupLogger bool
 		wantErr     bool
 		wantExists  bool
-		errContains string
 	}{
 		"should handle nil database gracefully": {
 			summaryID:   "summary-123",
@@ -241,6 +246,7 @@ func TestSummaryRepository_Exists(t *testing.T) {
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Equal(t, tc.wantExists, exists)
+
 				if tc.errContains != "" {
 					assert.Contains(t, err.Error(), tc.errContains)
 				}
@@ -255,6 +261,7 @@ func TestSummaryRepository_Exists(t *testing.T) {
 func TestSummaryRepository_ErrorHandling(t *testing.T) {
 	t.Run("should handle context cancellation", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -286,6 +293,7 @@ func TestSummaryRepository_ErrorHandling(t *testing.T) {
 func TestSummaryRepository_EdgeCases(t *testing.T) {
 	t.Run("should handle large limit values", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
 		// Test with very large limit
@@ -298,6 +306,7 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 
 	t.Run("should handle cursor with nil LastCreatedAt", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
 		cursor := &Cursor{
@@ -314,6 +323,7 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 
 	t.Run("should handle cursor with empty LastID", func(t *testing.T) {
 		logger.Init()
+
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
 		now := time.Now()
@@ -330,13 +340,13 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 	})
 }
 
-// Table-driven tests for comprehensive coverage
+// Table-driven tests for comprehensive coverage.
 func TestSummaryRepository_TableDriven(t *testing.T) {
 	type testCase struct {
-		name        string
-		operation   string
 		setup       func() (SummaryRepository, interface{})
 		validate    func(t *testing.T, result interface{}, err error)
+		name        string
+		operation   string
 		setupLogger bool
 	}
 
@@ -417,6 +427,7 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 			ctx := context.Background()
 
 			var result interface{}
+
 			var err error
 
 			switch tc.operation {
@@ -427,13 +438,15 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 					cursor *Cursor
 					limit  int
 				})
+
 				var articles []*models.ArticleWithSummary
+
 				var cursor *Cursor
 				articles, cursor, err = repo.FindArticlesWithSummaries(ctx, params.cursor, params.limit)
 				result = struct {
-					articles []*models.ArticleWithSummary
 					cursor   *Cursor
-				}{articles, cursor}
+					articles []*models.ArticleWithSummary
+				}{cursor, articles}
 			case "delete":
 				err = repo.Delete(ctx, input.(string))
 			case "exists":

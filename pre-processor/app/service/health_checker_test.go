@@ -26,16 +26,17 @@ func TestHealthCheckerService_InterfaceCompliance(t *testing.T) {
 
 		// Verify interface compliance at compile time
 		var _ HealthCheckerService = service
+
 		assert.NotNil(t, service)
 	})
 }
 
 func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 	tests := map[string]struct {
-		name         string
 		mockResponse func(w http.ResponseWriter, r *http.Request)
-		expectError  bool
 		validateFunc func(t *testing.T, err error)
+		name         string
+		expectError  bool
 	}{
 		"should handle healthy service": {
 			mockResponse: func(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +81,7 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 
 			if tc.expectError {
 				require.Error(t, err)
+
 				if tc.validateFunc != nil {
 					tc.validateFunc(t, err)
 				}
@@ -101,7 +103,7 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 }
 
 func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
-	t.Run("should handle cancelled context", func(t *testing.T) {
+	t.Run("should handle canceled context", func(t *testing.T) {
 		// Create mock server that never responds healthy
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)

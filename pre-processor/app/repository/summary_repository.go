@@ -4,20 +4,21 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
+
 	"pre-processor/driver"
 	"pre-processor/models"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// SummaryRepository implementation
+// SummaryRepository implementation.
 type summaryRepository struct {
 	db     *pgxpool.Pool
 	logger *slog.Logger
 }
 
-// NewSummaryRepository creates a new summary repository
+// NewSummaryRepository creates a new summary repository.
 func NewSummaryRepository(db *pgxpool.Pool, logger *slog.Logger) SummaryRepository {
 	return &summaryRepository{
 		db:     db,
@@ -25,7 +26,7 @@ func NewSummaryRepository(db *pgxpool.Pool, logger *slog.Logger) SummaryReposito
 	}
 }
 
-// Create creates a new article summary
+// Create creates a new article summary.
 func (r *summaryRepository) Create(ctx context.Context, summary *models.ArticleSummary) error {
 	// Validate input
 	if summary == nil {
@@ -47,10 +48,11 @@ func (r *summaryRepository) Create(ctx context.Context, summary *models.ArticleS
 	}
 
 	r.logger.Info("article summary created successfully", "article_id", summary.ArticleID)
+
 	return nil
 }
 
-// FindArticlesWithSummaries finds articles with summaries for quality checking
+// FindArticlesWithSummaries finds articles with summaries for quality checking.
 func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, cursor *Cursor, limit int) ([]*models.ArticleWithSummary, *Cursor, error) {
 	// Validate limit
 	if limit <= 0 {
@@ -61,6 +63,7 @@ func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, curso
 	r.logger.Info("finding articles with summaries", "limit", limit)
 
 	var lastCreatedAt *time.Time
+
 	var lastID string
 
 	if cursor != nil {
@@ -93,10 +96,11 @@ func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, curso
 	}
 
 	r.logger.Info("found articles with summaries", "count", len(result))
+
 	return result, newCursor, nil
 }
 
-// Delete deletes an article summary
+// Delete deletes an article summary.
 func (r *summaryRepository) Delete(ctx context.Context, summaryID string) error {
 	// Validate input
 	if summaryID == "" {
@@ -122,10 +126,11 @@ func (r *summaryRepository) Delete(ctx context.Context, summaryID string) error 
 	}
 
 	r.logger.Info("article summary deleted successfully", "summary_id", summaryID)
+
 	return nil
 }
 
-// Exists checks if an article summary exists
+// Exists checks if an article summary exists.
 func (r *summaryRepository) Exists(ctx context.Context, summaryID string) (bool, error) {
 	// Validate input
 	if summaryID == "" {
@@ -144,6 +149,7 @@ func (r *summaryRepository) Exists(ctx context.Context, summaryID string) (bool,
 	query := `SELECT EXISTS(SELECT 1 FROM article_summaries WHERE id = $1)`
 
 	var exists bool
+
 	err := r.db.QueryRow(ctx, query, summaryID).Scan(&exists)
 	if err != nil {
 		r.logger.Error("failed to check if article summary exists", "error", err, "summary_id", summaryID)
@@ -151,5 +157,6 @@ func (r *summaryRepository) Exists(ctx context.Context, summaryID string) (bool,
 	}
 
 	r.logger.Debug("article summary existence check completed", "summary_id", summaryID, "exists", exists)
+
 	return exists, nil
 }

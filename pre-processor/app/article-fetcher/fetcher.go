@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	// Global rate limiter to ensure minimum 5 seconds between requests
+	// Global rate limiter to ensure minimum 5 seconds between requests.
 	lastRequestTime time.Time
 	rateLimitMutex  sync.Mutex
 	minInterval     = 5 * time.Second
@@ -36,6 +36,7 @@ func FetchArticle(url url.URL) (*models.Article, error) {
 			time.Sleep(waitTime)
 		}
 	}
+
 	lastRequestTime = time.Now()
 	rateLimitMutex.Unlock()
 	logger.Logger.Info("Fetching article", "url", url.String())
@@ -89,7 +90,7 @@ func cleanFetchedFeedContent(s string) string {
 	return strings.ReplaceAll(s, "\n", " ")
 }
 
-// createSecureHTTPClient creates an HTTP client with SSRF protection
+// createSecureHTTPClient creates an HTTP client with SSRF protection.
 func createSecureHTTPClient() *http.Client {
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
@@ -121,7 +122,7 @@ func createSecureHTTPClient() *http.Client {
 	}
 }
 
-// validateURL validates a URL for SSRF protection
+// validateURL validates a URL for SSRF protection.
 func validateURL(u *url.URL) error {
 	// Only allow HTTP or HTTPS
 	if u.Scheme != "http" && u.Scheme != "https" {
@@ -136,7 +137,7 @@ func validateURL(u *url.URL) error {
 	return nil
 }
 
-// validateTarget validates the target host and port for SSRF protection
+// validateTarget validates the target host and port for SSRF protection.
 func validateTarget(host, port string) error {
 	// Block common internal ports
 	blockedPorts := map[string]bool{
@@ -167,7 +168,7 @@ func validateTarget(host, port string) error {
 	return nil
 }
 
-// isPrivateHost checks if a hostname resolves to private IP addresses
+// isPrivateHost checks if a hostname resolves to private IP addresses.
 func isPrivateHost(hostname string) bool {
 	// Try to parse as IP first
 	ip := net.ParseIP(hostname)
@@ -211,7 +212,7 @@ func isPrivateHost(hostname string) bool {
 	return false
 }
 
-// isPrivateIPAddress checks if an IP address is in private ranges
+// isPrivateIPAddress checks if an IP address is in private ranges.
 func isPrivateIPAddress(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true

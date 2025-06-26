@@ -8,28 +8,28 @@ import (
 	"time"
 )
 
-// JobScheduler implementation
+// JobScheduler implementation.
 type jobScheduler struct {
 	jobs   map[string]*scheduledJob
-	mutex  sync.RWMutex
 	logger *slog.Logger
+	mutex  sync.RWMutex
 }
 
 type scheduledJob struct {
-	name       string
-	interval   time.Duration
+	ctx        context.Context
+	lastError  error
 	jobFunc    func() error
 	ticker     *time.Ticker
-	ctx        context.Context
 	cancel     context.CancelFunc
-	isRunning  bool
 	lastRun    *time.Time
 	nextRun    *time.Time
+	name       string
+	interval   time.Duration
 	errorCount int
-	lastError  error
+	isRunning  bool
 }
 
-// NewJobScheduler creates a new job scheduler
+// NewJobScheduler creates a new job scheduler.
 func NewJobScheduler(logger *slog.Logger) JobScheduler {
 	return &jobScheduler{
 		jobs:   make(map[string]*scheduledJob),
@@ -37,7 +37,7 @@ func NewJobScheduler(logger *slog.Logger) JobScheduler {
 	}
 }
 
-// Schedule schedules a job to run at the specified interval
+// Schedule schedules a job to run at the specified interval.
 func (s *jobScheduler) Schedule(ctx context.Context, jobName string, intervalStr string, jobFunc func() error) error {
 	s.logger.Info("scheduling job", "name", jobName, "interval", intervalStr)
 
@@ -76,10 +76,11 @@ func (s *jobScheduler) Schedule(ctx context.Context, jobName string, intervalStr
 	go s.runJob(job)
 
 	s.logger.Info("job scheduled successfully", "name", jobName)
+
 	return nil
 }
 
-// Stop stops a specific job
+// Stop stops a specific job.
 func (s *jobScheduler) Stop(jobName string) error {
 	s.logger.Info("stopping job", "name", jobName)
 
@@ -95,10 +96,11 @@ func (s *jobScheduler) Stop(jobName string) error {
 	delete(s.jobs, jobName)
 
 	s.logger.Info("job stopped", "name", jobName)
+
 	return nil
 }
 
-// StopAll stops all scheduled jobs
+// StopAll stops all scheduled jobs.
 func (s *jobScheduler) StopAll() error {
 	s.logger.Info("stopping all jobs")
 
@@ -112,10 +114,11 @@ func (s *jobScheduler) StopAll() error {
 
 	s.jobs = make(map[string]*scheduledJob)
 	s.logger.Info("all jobs stopped")
+
 	return nil
 }
 
-// GetJobStatus returns the status of a job
+// GetJobStatus returns the status of a job.
 func (s *jobScheduler) GetJobStatus(jobName string) (JobStatus, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -126,10 +129,12 @@ func (s *jobScheduler) GetJobStatus(jobName string) (JobStatus, error) {
 	}
 
 	var lastRunStr, nextRunStr *string
+
 	if job.lastRun != nil {
 		str := job.lastRun.Format(time.RFC3339)
 		lastRunStr = &str
 	}
+
 	if job.nextRun != nil {
 		str := job.nextRun.Format(time.RFC3339)
 		nextRunStr = &str
@@ -145,18 +150,20 @@ func (s *jobScheduler) GetJobStatus(jobName string) (JobStatus, error) {
 	}, nil
 }
 
-// stopJobLocked stops a job (must be called with mutex locked)
+// stopJobLocked stops a job (must be called with mutex locked).
 func (s *jobScheduler) stopJobLocked(job *scheduledJob) {
 	if job.ticker != nil {
 		job.ticker.Stop()
 	}
+
 	if job.cancel != nil {
 		job.cancel()
 	}
+
 	job.isRunning = false
 }
 
-// runJob runs a scheduled job
+// runJob runs a scheduled job.
 func (s *jobScheduler) runJob(job *scheduledJob) {
 	s.logger.Info("starting job execution loop", "name", job.name)
 	defer s.logger.Info("job execution loop ended", "name", job.name)
@@ -171,7 +178,7 @@ func (s *jobScheduler) runJob(job *scheduledJob) {
 	}
 }
 
-// executeJob executes a single job run
+// executeJob executes a single job run.
 func (s *jobScheduler) executeJob(job *scheduledJob) {
 	s.logger.Info("executing job", "name", job.name)
 

@@ -3,15 +3,16 @@ package driver
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"pre-processor/logger"
 	"pre-processor/models"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ArticleWithSummary represents an article with its summary for quality checking
+// ArticleWithSummary represents an article with its summary for quality checking.
 type ArticleWithSummary struct {
 	ArticleID       string `db:"article_id"`
 	ArticleTitle    string `db:"title"`
@@ -20,7 +21,7 @@ type ArticleWithSummary struct {
 	SummaryID       string `db:"summary_id"`
 }
 
-// CreateArticleSummary creates a new article summary
+// CreateArticleSummary creates a new article summary.
 func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary *models.ArticleSummary) error {
 	if db == nil {
 		return fmt.Errorf("database connection is nil")
@@ -47,6 +48,7 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 	if err != nil {
 		tx.Rollback(ctx)
 		logger.Logger.Error("Failed to create article summary", "error", err)
+
 		return err
 	}
 
@@ -57,10 +59,11 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 	}
 
 	logger.Logger.Info("Article summary created", "summary_id", articleSummary.ID)
+
 	return nil
 }
 
-// GetArticleSummaryByArticleID retrieves an article summary by article ID
+// GetArticleSummaryByArticleID retrieves an article summary by article ID.
 func GetArticleSummaryByArticleID(ctx context.Context, db *pgxpool.Pool, articleID string) (*models.ArticleSummary, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database connection is nil")
@@ -73,6 +76,7 @@ func GetArticleSummaryByArticleID(ctx context.Context, db *pgxpool.Pool, article
 	`
 
 	var summary models.ArticleSummary
+
 	err := db.QueryRow(ctx, query, articleID).Scan(
 		&summary.ID, &summary.ArticleID, &summary.ArticleTitle,
 		&summary.SummaryJapanese, &summary.CreatedAt,
@@ -91,11 +95,14 @@ func GetArticlesWithSummaries(ctx context.Context, db *pgxpool.Pool, lastCreated
 	}
 
 	var articlesWithSummaries []ArticleWithSummary
+
 	var finalCreatedAt *time.Time
+
 	var finalID string
 
 	err := retryDBOperation(ctx, func() error {
 		var query string
+
 		var args []interface{}
 
 		if lastCreatedAt == nil || lastCreatedAt.IsZero() {
@@ -128,9 +135,12 @@ func GetArticlesWithSummaries(ctx context.Context, db *pgxpool.Pool, lastCreated
 		defer rows.Close()
 
 		articlesWithSummaries = nil // Reset slice for retry
+
 		for rows.Next() {
 			var articleWithSummary ArticleWithSummary
+
 			var createdAt time.Time
+
 			var id string
 
 			err = rows.Scan(&articleWithSummary.ArticleID, &articleWithSummary.Content, &articleWithSummary.SummaryJapanese, &createdAt, &id)
@@ -156,5 +166,6 @@ func GetArticlesWithSummaries(ctx context.Context, db *pgxpool.Pool, lastCreated
 	}
 
 	logger.Logger.Info("Got articles with summaries", "count", len(articlesWithSummaries), "limit", limit, "has_cursor", lastCreatedAt != nil)
+
 	return articlesWithSummaries, finalCreatedAt, finalID, nil
 }
