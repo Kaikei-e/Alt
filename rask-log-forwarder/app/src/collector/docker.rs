@@ -3,9 +3,9 @@ use bollard::models::ContainerSummary;
 use bollard::query_parameters::LogsOptions;
 use bytes::Bytes;
 use futures::StreamExt;
-use multiqueue::BroadcastSender;
 use std::collections::HashMap;
 use thiserror::Error;
+use tokio::sync::broadcast::Sender as BroadcastSender;
 use tokio::time::Duration;
 
 #[derive(Error, Debug)]
@@ -156,7 +156,7 @@ impl DockerCollector {
                             // Zero-copy: chunk.into_bytes() returns Bytes directly
                             let bytes = chunk.into_bytes();
 
-                            if tx.try_send(bytes).is_err() {
+                            if tx.send(bytes).is_err() {
                                 // Queue full, apply backpressure
                                 tracing::warn!(
                                     "Log queue full for container {}, applying backpressure",

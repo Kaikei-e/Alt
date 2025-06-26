@@ -30,8 +30,8 @@ async fn test_buffer_with_zero_capacity() {
         backpressure_delay: Duration::from_micros(100),
     };
     let result = LogBuffer::new_with_config(config).await;
-    // Zero capacity should still work as it's handled by the underlying queue
-    assert!(result.is_ok());
+    // Zero capacity should fail with tokio broadcast channel
+    assert!(result.is_err());
 }
 
 #[tokio::test]

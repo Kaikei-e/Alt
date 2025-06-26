@@ -1,6 +1,6 @@
 #![deny(warnings)]
 
-use multiqueue::{BroadcastReceiver, BroadcastSender, broadcast_queue};
+use tokio::sync::broadcast::{Receiver as BroadcastReceiver, Sender as BroadcastSender};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
@@ -42,15 +42,14 @@ impl LogBuffer {
         if capacity == 0 {
             return Err(BufferError::InvalidCapacity);
         }
-        
+
         // Prevent excessive memory allocation
         if capacity > 100_000_000 {
             return Err(BufferError::InvalidCapacity);
         }
-        
-        let (sender, receiver) = broadcast_queue(capacity.try_into()
-            .map_err(|_| BufferError::InvalidCapacity)?);
-        
+
+        let (sender, receiver) = tokio::sync::broadcast::channel(capacity);
+
         Ok(Self {
             sender,
             receiver,
@@ -63,23 +62,23 @@ impl LogBuffer {
             start_time: Instant::now(),
         })
     }
-    
+
     pub fn capacity(&self) -> usize {
         self.capacity
     }
-    
+
     pub fn len(&self) -> usize {
         self.current_len.load(Ordering::Relaxed)
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    
+
     pub fn is_full(&self) -> bool {
         self.len() >= self.capacity
     }
-    
+
     pub fn metrics(&self) -> BufferMetrics {
         let len = self.len();
         BufferMetrics {
@@ -100,7 +99,7 @@ impl LogBuffer {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
                 return Err(BufferError::Full);
             }
-            
+
             // Try to atomically increment if under capacity
             match self.current_len.compare_exchange_weak(
                 current_len,
@@ -110,8 +109,8 @@ impl LogBuffer {
             ) {
                 Ok(_) => {
                     // Successfully reserved space, now try to send
-                    match self.sender.try_send(log_entry) {
-                        Ok(()) => {
+                    match self.sender.send(log_entry) {
+                        Ok(_) => {
                             self.pushed.fetch_add(1, Ordering::Relaxed);
                             // Update peak size if necessary
                             self.update_peak_size(current_len + 1);
@@ -132,9 +131,9 @@ impl LogBuffer {
             }
         }
     }
-    
+
     #[inline(always)]
-    pub fn pop(&self) -> Result<Arc<NginxLogEntry>, BufferError> {
+    pub fn pop(&mut self) -> Result<Arc<NginxLogEntry>, BufferError> {
         match self.receiver.try_recv() {
             Ok(log_entry) => {
                 self.popped.fetch_add(1, Ordering::Relaxed);
@@ -144,23 +143,23 @@ impl LogBuffer {
             Err(_) => Err(BufferError::Empty)
         }
     }
-    
+
     // Non-blocking push with immediate result
     #[inline(always)]
     pub fn try_push(&self, log_entry: Arc<NginxLogEntry>) -> bool {
         self.push(log_entry).is_ok()
     }
-    
+
     // Non-blocking pop with immediate result
     #[inline(always)]
-    pub fn try_pop(&self) -> Option<Arc<NginxLogEntry>> {
+    pub fn try_pop(&mut self) -> Option<Arc<NginxLogEntry>> {
         self.pop().ok()
     }
-    
+
     // Batch operations for better performance
     pub fn push_batch(&self, entries: Vec<Arc<NginxLogEntry>>) -> Result<usize, BufferError> {
         let mut pushed_count = 0;
-        
+
         for entry in entries {
             if self.push(entry).is_ok() {
                 pushed_count += 1;
@@ -168,13 +167,13 @@ impl LogBuffer {
                 break; // Stop on first failure to maintain order
             }
         }
-        
+
         Ok(pushed_count)
     }
-    
-    pub fn pop_batch(&self, max_size: usize) -> Vec<Arc<NginxLogEntry>> {
+
+    pub fn pop_batch(&mut self, max_size: usize) -> Vec<Arc<NginxLogEntry>> {
         let mut batch = Vec::with_capacity(max_size);
-        
+
         for _ in 0..max_size {
             if let Ok(entry) = self.pop() {
                 batch.push(entry);
@@ -182,10 +181,10 @@ impl LogBuffer {
                 break;
             }
         }
-        
+
         batch
     }
-    
+
     // Helper method to update peak size atomically
     fn update_peak_size(&self, current_size: usize) {
         let mut peak = self.peak_size.load(Ordering::Relaxed);
@@ -201,11 +200,11 @@ impl LogBuffer {
             }
         }
     }
-    
+
     pub fn detailed_metrics(&self) -> DetailedMetrics {
         let basic_metrics = self.metrics();
         let now = Instant::now();
-        
+
         // Calculate throughput
         let total_time = now.duration_since(self.start_time).as_secs_f64();
         let throughput = if total_time > 0.0 {
@@ -213,7 +212,7 @@ impl LogBuffer {
         } else {
             0.0
         };
-        
+
         DetailedMetrics {
             capacity: basic_metrics.capacity,
             len: basic_metrics.len,
@@ -227,7 +226,7 @@ impl LogBuffer {
             fill_ratio: basic_metrics.len as f64 / basic_metrics.capacity as f64,
         }
     }
-    
+
     // Reset metrics (useful for testing and monitoring)
     pub fn reset_metrics(&self) {
         self.pushed.store(0, Ordering::Relaxed);
@@ -235,12 +234,12 @@ impl LogBuffer {
         self.dropped.store(0, Ordering::Relaxed);
         self.peak_size.store(self.len(), Ordering::Relaxed);
     }
-    
+
     // Backpressure methods
     pub async fn push_with_backpressure(&self, log_entry: Arc<NginxLogEntry>) -> Result<(), BufferError> {
         self.push_with_strategy(log_entry, BackpressureStrategy::default()).await
     }
-    
+
     pub async fn push_with_strategy(
         &self,
         log_entry: Arc<NginxLogEntry>,
@@ -248,7 +247,7 @@ impl LogBuffer {
     ) -> Result<(), BufferError> {
         let mut attempts = 0;
         const MAX_ATTEMPTS: usize = 100; // Prevent infinite loops
-        
+
         loop {
             match self.push(log_entry.clone()) {
                 Ok(()) => return Ok(()),
@@ -257,7 +256,7 @@ impl LogBuffer {
                     if attempts >= MAX_ATTEMPTS {
                         return Err(BufferError::Full);
                     }
-                    
+
                     match strategy {
                         BackpressureStrategy::Sleep(duration) => {
                             sleep(duration).await;
@@ -285,18 +284,18 @@ impl LogBuffer {
             }
         }
     }
-    
+
     pub fn fill_ratio(&self) -> f64 {
         self.len() as f64 / self.capacity as f64
     }
-    
+
     pub fn needs_backpressure(&self) -> bool {
         self.fill_ratio() > 0.8 // Apply backpressure when >80% full
     }
-    
+
     pub fn backpressure_level(&self) -> BackpressureLevel {
         let ratio = self.fill_ratio();
-        
+
         if ratio < 0.5 {
             BackpressureLevel::None
         } else if ratio < 0.8 {
@@ -309,8 +308,8 @@ impl LogBuffer {
     }
 }
 
-// SAFETY: LogBuffer uses lock-free atomics and multiqueue is designed to be thread-safe
-// The underlying multiqueue uses lock-free data structures but doesn't implement
+// SAFETY: LogBuffer uses lock-free atomics and tokio::sync::broadcast is designed to be thread-safe
+// The underlying tokio::sync::broadcast uses lock-free data structures but doesn't implement
 // Send/Sync due to raw pointer usage. Since we're only using it for single-producer
 // single-consumer operations with proper synchronization via atomics, this is safe.
 unsafe impl Send for LogBuffer {}

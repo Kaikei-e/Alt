@@ -1,11 +1,11 @@
-use crate::parser::EnrichedLogEntry;
 use crate::buffer::DetailedMetrics;
-use multiqueue::{broadcast_queue, BroadcastSender, BroadcastReceiver};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use crate::parser::EnrichedLogEntry;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-use tokio::time::{sleep, timeout};
 use thiserror::Error;
+use tokio::sync::broadcast::{self, Receiver as BroadcastReceiver, Sender as BroadcastSender};
+use tokio::time::{sleep, timeout};
 
 #[derive(Error, Debug)]
 pub enum BufferError {
@@ -114,30 +114,37 @@ impl LogBufferSender {
         let current_depth = self.metrics.queue_depth.load(Ordering::Relaxed);
         if current_depth >= self.config.capacity {
             self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-            self.metrics.messages_dropped.fetch_add(1, Ordering::Relaxed);
+            self.metrics
+                .messages_dropped
+                .fetch_add(1, Ordering::Relaxed);
             return Err(BufferError::BufferFull);
         }
 
         // Check backpressure
         if self.config.enable_backpressure {
-            let threshold = (self.config.capacity as f64 * self.config.backpressure_threshold) as usize;
+            let threshold =
+                (self.config.capacity as f64 * self.config.backpressure_threshold) as usize;
 
             if current_depth > threshold {
-                self.metrics.backpressure_events.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .backpressure_events
+                    .fetch_add(1, Ordering::Relaxed);
                 sleep(self.config.backpressure_delay).await;
             }
         }
 
         // Try to send
-        match self.sender.try_send(entry) {
-            Ok(()) => {
+        match self.sender.send(entry) {
+            Ok(_receiver_count) => {
                 self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
                 self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
                 Ok(())
             }
             Err(_) => {
                 self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                self.metrics.messages_dropped.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .messages_dropped
+                    .fetch_add(1, Ordering::Relaxed);
                 Err(BufferError::BufferFull)
             }
         }
@@ -164,7 +171,9 @@ impl LogBufferReceiver {
         loop {
             match self.receiver.try_recv() {
                 Ok(entry) => {
-                    self.metrics.messages_received.fetch_add(1, Ordering::Relaxed);
+                    self.metrics
+                        .messages_received
+                        .fetch_add(1, Ordering::Relaxed);
                     // Ensure we don't underflow
                     let current = self.metrics.queue_depth.load(Ordering::Relaxed);
                     if current > 0 {
@@ -202,12 +211,15 @@ pub struct LogBuffer {
 
 impl LogBuffer {
     pub fn new(capacity: usize) -> Result<Self, BufferError> {
+        if capacity == 0 {
+            return Err(BufferError::BufferClosed);
+        }
         let config = BufferConfig {
             capacity,
             ..Default::default()
         };
         let metrics = Arc::new(BufferMetricsCollector::new());
-        let (sender, receiver) = broadcast_queue(capacity.try_into().unwrap_or(u64::MAX));
+        let (sender, receiver) = broadcast::channel(capacity);
 
         Ok(Self {
             config,
@@ -218,8 +230,11 @@ impl LogBuffer {
     }
 
     pub async fn new_with_config(config: BufferConfig) -> Result<Self, BufferError> {
+        if config.capacity == 0 {
+            return Err(BufferError::BufferClosed);
+        }
         let metrics = Arc::new(BufferMetricsCollector::new());
-        let (sender, receiver) = broadcast_queue(config.capacity.try_into().unwrap_or(u64::MAX));
+        let (sender, receiver) = broadcast::channel(config.capacity);
 
         Ok(Self {
             config,
@@ -228,7 +243,6 @@ impl LogBuffer {
             receiver: Some(receiver),
         })
     }
-
 
     pub fn split(&self) -> (LogBufferSender, LogBufferReceiver) {
         // Clone the existing sender/receiver instead of creating new ones
@@ -239,7 +253,7 @@ impl LogBuffer {
         };
 
         let buffer_receiver = LogBufferReceiver {
-            receiver: self.receiver.as_ref().expect("Buffer closed").add_stream(),
+            receiver: self.sender.as_ref().expect("Buffer closed").subscribe(),
             metrics: self.metrics.clone(),
         };
 
@@ -252,20 +266,24 @@ impl LogBuffer {
             let current_depth = self.metrics.queue_depth.load(Ordering::Relaxed);
             if current_depth >= self.config.capacity {
                 self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                self.metrics.messages_dropped.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .messages_dropped
+                    .fetch_add(1, Ordering::Relaxed);
                 return Err(BufferError::BufferFull);
             }
 
             let enriched_entry = entry.into();
-            match sender.try_send(enriched_entry) {
-                Ok(()) => {
+            match sender.send(enriched_entry) {
+                Ok(_receiver_count) => {
                     self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
                     self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
                     Ok(())
                 }
                 Err(_) => {
                     self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                    self.metrics.messages_dropped.fetch_add(1, Ordering::Relaxed);
+                    self.metrics
+                        .messages_dropped
+                        .fetch_add(1, Ordering::Relaxed);
                     Err(BufferError::BufferFull)
                 }
             }
@@ -278,7 +296,9 @@ impl LogBuffer {
         if let Some(receiver) = &mut self.receiver {
             match receiver.try_recv() {
                 Ok(entry) => {
-                    self.metrics.messages_received.fetch_add(1, Ordering::Relaxed);
+                    self.metrics
+                        .messages_received
+                        .fetch_add(1, Ordering::Relaxed);
                     // Ensure we don't underflow
                     let current = self.metrics.queue_depth.load(Ordering::Relaxed);
                     if current > 0 {
