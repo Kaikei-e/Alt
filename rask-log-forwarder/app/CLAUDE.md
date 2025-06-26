@@ -29,7 +29,7 @@
 - Generic log parsing supporting multiple formats (JSON, plain text, nginx format)
 - Service-aware enrichment using Docker labels (`rask.group`)
 - SIMD-accelerated JSON parsing (>4 GB/s throughput)
-- Lock-free buffering with multiqueue (8-9M msgs/sec)
+- Lock-free buffering with tokio::sync::broadcast (8-9M msgs/sec)
 - Batch transmission via HTTP/1.1 keep-alive or gRPC streaming
 - Guaranteed delivery with exponential backoff and disk fallback
 
