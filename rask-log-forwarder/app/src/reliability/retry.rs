@@ -151,8 +151,8 @@ impl RetryManager {
     }
     
     fn apply_jitter(&self, delay: Duration) -> Duration {
-        let mut rng = rand::thread_rng();
-        let jitter_factor = rng.gen_range(0.5..1.5); // ±50% jitter
+        let mut rng = rand::rng();
+        let jitter_factor = rng.random_range(0.5..1.5); // ±50% jitter
         let jittered_millis = (delay.as_millis() as f64 * jitter_factor) as u64;
         Duration::from_millis(jittered_millis)
     }
