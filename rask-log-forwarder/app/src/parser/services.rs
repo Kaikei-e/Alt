@@ -56,6 +56,12 @@ lazy_static! {
     ).unwrap();
 }
 
+impl Default for NginxParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NginxParser {
     pub fn new() -> Self {
         Self {
@@ -171,6 +177,12 @@ impl ServiceParser for NginxParser {
 // Go Structured Log Parser
 pub struct GoStructuredParser;
 
+impl Default for GoStructuredParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GoStructuredParser {
     pub fn new() -> Self {
         Self
@@ -263,6 +275,12 @@ lazy_static! {
     static ref POSTGRES_LOG_PATTERN: Regex = Regex::new(
         r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) \w+ \[\d+\] (\w+):\s+(.+)"#
     ).unwrap();
+}
+
+impl Default for PostgresParser {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PostgresParser {

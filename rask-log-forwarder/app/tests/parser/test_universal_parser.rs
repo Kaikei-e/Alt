@@ -70,36 +70,3 @@ async fn test_universal_parser_with_unknown_service() {
     assert_eq!(entry.log_type, "plain");
     assert!(entry.message.contains("Some random log message"));
 }
-
-fn create_nginx_container() -> ContainerInfo {
-    let mut labels = HashMap::new();
-    labels.insert("rask.group".to_string(), "alt-frontend".to_string());
-
-    ContainerInfo {
-        id: "nginx123".to_string(),
-        service_name: "nginx".to_string(),
-        labels,
-        group: Some("alt-frontend".to_string()),
-    }
-}
-
-fn create_go_backend_container() -> ContainerInfo {
-    let mut labels = HashMap::new();
-    labels.insert("rask.group".to_string(), "alt-backend".to_string());
-
-    ContainerInfo {
-        id: "backend456".to_string(),
-        service_name: "alt-backend".to_string(),
-        labels,
-        group: Some("alt-backend".to_string()),
-    }
-}
-
-fn create_unknown_container() -> ContainerInfo {
-    ContainerInfo {
-        id: "unknown789".to_string(),
-        service_name: "unknown-service".to_string(),
-        labels: HashMap::new(),
-        group: None,
-    }
-}

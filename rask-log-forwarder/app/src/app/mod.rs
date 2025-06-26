@@ -98,7 +98,7 @@ pub fn setup_logging(log_level: LogLevel) -> Result<(), Box<dyn std::error::Erro
 }
 
 pub fn get_version() -> String {
-    format!("{}", env!("CARGO_PKG_VERSION"))
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 // Main entry point for the application
@@ -113,7 +113,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Handle help flag
     if args.len() > 1 && (args[1] == "--help" || args[1] == "-h") {
-        Config::parse_from(&["rask-log-forwarder", "--help"]);
+        Config::parse_from(["rask-log-forwarder", "--help"]);
         return Ok(());
     }
 

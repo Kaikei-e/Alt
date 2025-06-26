@@ -318,7 +318,7 @@ impl ShutdownHandle {
         info!("Initiating graceful shutdown...");
 
         // Send shutdown signal
-        if let Err(_) = self.shutdown_tx.send(()) {
+        if self.shutdown_tx.send(()).is_err() {
             warn!("Shutdown channel already closed");
         }
 
@@ -368,22 +368,16 @@ impl SignalHandler {
         let active = self.active.clone();
 
         tokio::spawn(async move {
-            loop {
-                if !*active.read().await {
-                    break;
-                }
-
+            if *active.read().await {
                 match signal::ctrl_c().await {
                     Ok(()) => {
                         info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
-                        if let Err(_) = shutdown_tx.send(()) {
+                        if shutdown_tx.send(()).is_err() {
                             error!("Failed to send shutdown signal");
                         }
-                        break;
                     }
                     Err(err) => {
                         error!("Failed to listen for SIGINT: {}", err);
-                        break;
                     }
                 }
             }

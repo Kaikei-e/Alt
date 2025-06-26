@@ -88,7 +88,7 @@ impl LogCollector {
 
         // Use Docker API instead of file tailing
         let docker_collector = DockerCollector::new().await
-            .map_err(|e| CollectorError::DockerError(e))?;
+            .map_err(CollectorError::DockerError)?;
 
         self.container_info = Some(container_info.clone());
 

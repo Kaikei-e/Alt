@@ -11,12 +11,12 @@ lazy_static! {
     static ref NGINX_ACCESS_REGEX: Regex = Regex::new(
         r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+)"#
     ).unwrap();
-    
+
     // Combined Log Format includes referer and user-agent
     static ref NGINX_ACCESS_COMBINED_REGEX: Regex = Regex::new(
-        r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+) "([^"]*)" "([^"]*)""#  
+        r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+) "([^"]*)" "([^"]*)""#
     ).unwrap();
-    
+
     // Nginx Error Log Format: timestamp [level] pid#tid: *cid message
     static ref NGINX_ERROR_REGEX: Regex = Regex::new(
         r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (\d+)#(\d+): (.*?)(?:\n)?$"#
@@ -28,35 +28,41 @@ pub struct SimdParser {
     arena: bumpalo::Bump,
 }
 
+impl Default for SimdParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SimdParser {
     pub fn new() -> Self {
         Self {
             arena: bumpalo::Bump::new(),
         }
     }
-    
+
     pub fn parse_docker_log(&self, bytes: Bytes) -> Result<LogEntry, ParseError> {
         // Convert Bytes to mutable Vec<u8> for simd_json
         let mut data = bytes.to_vec();
         let json = from_slice::<OwnedValue>(&mut data)?;
-        
+
         let obj = json.as_object()
             .ok_or(ParseError::InvalidFormat("Expected JSON object".to_string()))?;
-        
+
         let log = obj.get("log")
             .and_then(|v| v.as_str())
             .ok_or(ParseError::MissingField("log"))?;
-        
+
         let stream = obj.get("stream")
             .and_then(|v| v.as_str())
             .unwrap_or("stdout");
-        
+
         let time_str = obj.get("time")
             .and_then(|v| v.as_str())
             .ok_or(ParseError::MissingField("time"))?;
-        
+
         let timestamp = time_str.parse::<DateTime<Utc>>()?;
-        
+
         Ok(LogEntry {
             message: log.to_string(),
             stream: stream.to_string(),
@@ -65,10 +71,10 @@ impl SimdParser {
             container_id: None,
         })
     }
-    
+
     pub fn parse_nginx_log(&self, bytes: Bytes) -> Result<NginxLogEntry, ParseError> {
         let log_entry = self.parse_docker_log(bytes)?;
-        
+
         // Detect if this is an nginx access log
         if self.is_nginx_access_log(&log_entry.message) {
             self.parse_nginx_access_log(log_entry)
@@ -78,18 +84,18 @@ impl SimdParser {
             Err(ParseError::InvalidFormat("Not a recognized nginx log format".to_string()))
         }
     }
-    
+
     fn is_nginx_access_log(&self, message: &str) -> bool {
         NGINX_ACCESS_REGEX.is_match(message) || NGINX_ACCESS_COMBINED_REGEX.is_match(message)
     }
-    
+
     fn is_nginx_error_log(&self, message: &str) -> bool {
         NGINX_ERROR_REGEX.is_match(message)
     }
-    
+
     fn parse_nginx_access_log(&self, log_entry: LogEntry) -> Result<NginxLogEntry, ParseError> {
         let message_clone = log_entry.message.clone();
-        
+
         // Try combined format first (more fields)
         if let Some(captures) = NGINX_ACCESS_COMBINED_REGEX.captures(&message_clone) {
             Ok(NginxLogEntry {
@@ -127,10 +133,10 @@ impl SimdParser {
             Err(ParseError::InvalidFormat("Could not parse nginx access log".to_string()))
         }
     }
-    
+
     fn parse_nginx_error_log(&self, log_entry: LogEntry) -> Result<NginxLogEntry, ParseError> {
         let message_clone = log_entry.message.clone();
-        
+
         if let Some(captures) = NGINX_ERROR_REGEX.captures(&message_clone) {
             Ok(NginxLogEntry {
                 service_type: "nginx".to_string(),

@@ -44,11 +44,11 @@ impl BatchTransmitter {
             serializer: BatchSerializer::new(),
         }
     }
-    
+
     pub async fn send_batch(&self, batch: Batch) -> Result<TransmissionResult, TransmissionError> {
         self.send_batch_with_retry(batch, 0).await
     }
-    
+
     pub async fn send_batch_with_retry(
         &self,
         batch: Batch,
@@ -57,41 +57,37 @@ impl BatchTransmitter {
         let start = Instant::now();
         let batch_id = batch.id().to_string();
         let batch_size = batch.size();
-        
+
         debug!(
             "Sending batch {} with {} entries (attempt {})",
             batch_id, batch_size, retry_count + 1
         );
-        
+
         // Prepare payload
         let use_compression = self.client.config.enable_compression && batch.size() > 100;
         let payload = self.prepare_payload(&batch, use_compression)?;
         let bytes_sent = payload.len();
-        
+
         // Build headers
         let headers = self.build_headers(&batch, use_compression);
-        
+
         // Send request
         let mut request_builder = self.client.client
             .post(self.client.ingest_url.clone())
             .headers(headers)
             .timeout(self.client.config.timeout);
-        
-        if use_compression {
-            request_builder = request_builder.body(payload);
-        } else {
-            request_builder = request_builder.body(payload);
-        }
-        
+
+        request_builder = request_builder.body(payload);
+
         let response = request_builder.send().await?;
         let latency = start.elapsed();
-        
+
         let status_code = response.status().as_u16();
         let success = response.status().is_success();
-        
+
         // Record metrics
         self.client.stats.record_request(success, latency);
-        
+
         if success {
             info!(
                 "Successfully sent batch {} ({} entries, {} bytes) in {:?}",
@@ -103,7 +99,7 @@ impl BatchTransmitter {
                 batch_id, retry_count + 1, status_code
             );
         }
-        
+
         Ok(TransmissionResult {
             success,
             status_code,
@@ -114,7 +110,7 @@ impl BatchTransmitter {
             retry_count,
         })
     }
-    
+
     pub fn prepare_payload(&self, batch: &Batch, compress: bool) -> Result<Vec<u8>, SerializationError> {
         if compress {
             self.serializer.serialize_compressed(batch, SerializationFormat::NDJSON)
@@ -123,16 +119,16 @@ impl BatchTransmitter {
             Ok(ndjson.into_bytes())
         }
     }
-    
+
     pub fn build_headers(&self, batch: &Batch, compressed: bool) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        
+
         // Content type
         headers.insert(
             CONTENT_TYPE,
             HeaderValue::from_static("application/x-ndjson"),
         );
-        
+
         // Compression
         if compressed {
             headers.insert(
@@ -140,37 +136,37 @@ impl BatchTransmitter {
                 HeaderValue::from_static("gzip"),
             );
         }
-        
+
         // Batch metadata
         headers.insert(
             HeaderName::from_static("x-batch-id"),
             HeaderValue::from_str(batch.id()).unwrap(),
         );
-        
+
         headers.insert(
             HeaderName::from_static("x-batch-size"),
             HeaderValue::from_str(&batch.size().to_string()).unwrap(),
         );
-        
+
         headers.insert(
             HeaderName::from_static("x-batch-type"),
             HeaderValue::from_str(&format!("{:?}", batch.batch_type())).unwrap(),
         );
-        
+
         // Forwarder info
         headers.insert(
             HeaderName::from_static("x-forwarder-version"),
             HeaderValue::from_str(env!("CARGO_PKG_VERSION")).unwrap(),
         );
-        
+
         headers.insert(
             USER_AGENT,
             HeaderValue::from_str(&self.client.config.user_agent).unwrap(),
         );
-        
+
         headers
     }
-    
+
     pub async fn send_batch_streaming(&self, _batch: Batch) -> Result<TransmissionResult, TransmissionError> {
         // For very large batches, implement streaming transmission
         // This would serialize and send data in chunks

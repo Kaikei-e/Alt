@@ -111,6 +111,12 @@ pub struct UniversalParser {
     postgres_parser: PostgresParser,
 }
 
+impl Default for UniversalParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UniversalParser {
     pub fn new() -> Self {
         Self {

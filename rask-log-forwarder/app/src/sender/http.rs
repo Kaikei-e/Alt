@@ -69,15 +69,15 @@ impl BatchSender {
         // Validate endpoint URL
         let endpoint_uri = config.endpoint.parse::<Uri>()
             .map_err(|e| SenderError::InvalidConfig(format!("Invalid endpoint URL: {}", e)))?;
-        
+
         // Configure HTTP client with connection pooling
         let connector = HttpConnector::new();
-        
+
         let client = Client::builder(hyper_util::rt::TokioExecutor::new())
             .pool_max_idle_per_host(config.max_connections)
             .pool_idle_timeout(config.keep_alive_timeout)
             .build(connector);
-        
+
         let sender = Self {
             client,
             config,
@@ -89,34 +89,34 @@ impl BatchSender {
                 failed_requests: 0,
             })),
         };
-        
+
         // Test initial connection
         sender.health_check().await
             .map_err(|e| SenderError::ConnectionFailed(format!("Initial connection test failed: {}", e)))?;
-        
+
         Ok(sender)
     }
-    
+
     pub async fn can_connect(&self) -> bool {
         self.health_check().await.is_ok()
     }
-    
+
     pub async fn health_check(&self) -> Result<(), SenderError> {
         let health_uri = format!("{}/health", self.config.endpoint).parse::<Uri>()
             .map_err(|e| SenderError::InvalidConfig(format!("Invalid health check URL: {}", e)))?;
-        
+
         let request = Request::builder()
             .method(Method::GET)
             .uri(health_uri)
             .header("User-Agent", &self.config.user_agent)
             .body(Empty::<Bytes>::new())
             .map_err(|_| SenderError::InvalidConfig("Failed to build request".to_string()))?;
-        
+
         let response = timeout(self.config.timeout, self.client.request(request))
             .await
             .map_err(|_| SenderError::Timeout("Health check timeout".to_string()))?
             .map_err(|e| SenderError::NetworkError(e.to_string()))?;
-        
+
         self.update_stats(|stats| {
             stats.total_requests += 1;
             if response.status().is_success() {
@@ -125,24 +125,24 @@ impl BatchSender {
                 stats.failed_requests += 1;
             }
         });
-        
+
         if response.status().is_success() {
             Ok(())
         } else {
             Err(SenderError::HttpError { status: response.status().as_u16() })
         }
     }
-    
+
     pub async fn connection_stats(&self) -> ConnectionStats {
         self.stats.lock().unwrap().clone()
     }
-    
-    fn update_stats<F>(&self, f: F) 
-    where 
+
+    fn update_stats<F>(&self, f: F)
+    where
         F: FnOnce(&mut ConnectionStats)
     {
         if let Ok(mut stats) = self.stats.lock() {
-            f(&mut *stats);
+            f(&mut stats);
         }
     }
 }

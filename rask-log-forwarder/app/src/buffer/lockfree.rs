@@ -74,7 +74,7 @@ impl BufferMetricsCollector {
             start_time: Instant::now(),
         }
     }
-    
+
     pub fn snapshot(&self) -> BufferMetrics {
         BufferMetrics {
             messages_sent: self.messages_sent.load(Ordering::Relaxed),
@@ -85,12 +85,12 @@ impl BufferMetricsCollector {
             backpressure_events: self.backpressure_events.load(Ordering::Relaxed),
         }
     }
-    
+
     #[allow(dead_code)]
     fn increment_batches(&self) {
         self.batches_formed.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     pub fn reset(&self) {
         self.messages_sent.store(0, Ordering::Relaxed);
         self.messages_received.store(0, Ordering::Relaxed);
@@ -117,17 +117,17 @@ impl LogBufferSender {
             self.metrics.messages_dropped.fetch_add(1, Ordering::Relaxed);
             return Err(BufferError::BufferFull);
         }
-        
+
         // Check backpressure
         if self.config.enable_backpressure {
             let threshold = (self.config.capacity as f64 * self.config.backpressure_threshold) as usize;
-            
+
             if current_depth > threshold {
                 self.metrics.backpressure_events.fetch_add(1, Ordering::Relaxed);
                 sleep(self.config.backpressure_delay).await;
             }
         }
-        
+
         // Try to send
         match self.sender.try_send(entry) {
             Ok(()) => {
@@ -142,7 +142,7 @@ impl LogBufferSender {
             }
         }
     }
-    
+
     pub async fn send_with_timeout(
         &self,
         entry: EnrichedLogEntry,
@@ -180,7 +180,7 @@ impl LogBufferReceiver {
             }
         }
     }
-    
+
     pub async fn recv_with_timeout(
         &mut self,
         timeout_duration: Duration,
@@ -208,7 +208,7 @@ impl LogBuffer {
         };
         let metrics = Arc::new(BufferMetricsCollector::new());
         let (sender, receiver) = broadcast_queue(capacity.try_into().unwrap_or(u64::MAX));
-        
+
         Ok(Self {
             config,
             metrics,
@@ -216,11 +216,11 @@ impl LogBuffer {
             receiver: Some(receiver),
         })
     }
-    
+
     pub async fn new_with_config(config: BufferConfig) -> Result<Self, BufferError> {
         let metrics = Arc::new(BufferMetricsCollector::new());
         let (sender, receiver) = broadcast_queue(config.capacity.try_into().unwrap_or(u64::MAX));
-        
+
         Ok(Self {
             config,
             metrics,
@@ -228,8 +228,8 @@ impl LogBuffer {
             receiver: Some(receiver),
         })
     }
-    
-    
+
+
     pub fn split(&self) -> (LogBufferSender, LogBufferReceiver) {
         // Clone the existing sender/receiver instead of creating new ones
         let buffer_sender = LogBufferSender {
@@ -237,15 +237,15 @@ impl LogBuffer {
             config: self.config.clone(),
             metrics: self.metrics.clone(),
         };
-        
+
         let buffer_receiver = LogBufferReceiver {
             receiver: self.receiver.as_ref().expect("Buffer closed").add_stream(),
             metrics: self.metrics.clone(),
         };
-        
+
         (buffer_sender, buffer_receiver)
     }
-    
+
     pub fn push(&self, entry: impl Into<EnrichedLogEntry>) -> Result<(), BufferError> {
         if let Some(sender) = &self.sender {
             // Check if buffer is full
@@ -255,7 +255,7 @@ impl LogBuffer {
                 self.metrics.messages_dropped.fetch_add(1, Ordering::Relaxed);
                 return Err(BufferError::BufferFull);
             }
-            
+
             let enriched_entry = entry.into();
             match sender.try_send(enriched_entry) {
                 Ok(()) => {
@@ -273,7 +273,7 @@ impl LogBuffer {
             Err(BufferError::BufferClosed)
         }
     }
-    
+
     pub fn pop(&mut self) -> Result<EnrichedLogEntry, BufferError> {
         if let Some(receiver) = &mut self.receiver {
             match receiver.try_recv() {
@@ -292,28 +292,32 @@ impl LogBuffer {
             Err(BufferError::BufferClosed)
         }
     }
-    
+
     pub fn metrics(&self) -> Arc<BufferMetricsCollector> {
         self.metrics.clone()
     }
-    
+
     pub fn config(&self) -> &BufferConfig {
         &self.config
     }
-    
+
     pub fn capacity(&self) -> usize {
         self.config.capacity
     }
-    
+
     pub fn len(&self) -> usize {
         self.metrics.queue_depth.load(Ordering::Relaxed)
     }
-    
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn detailed_metrics(&self) -> DetailedMetrics {
         let snapshot = self.metrics.snapshot();
         let elapsed = self.metrics.start_time.elapsed();
         let elapsed_secs = elapsed.as_secs_f64();
-        
+
         DetailedMetrics {
             capacity: self.config.capacity,
             len: snapshot.queue_depth,
@@ -331,28 +335,28 @@ impl LogBuffer {
             fill_ratio: snapshot.queue_depth as f64 / self.config.capacity as f64,
         }
     }
-    
+
     pub fn reset_metrics(&self) {
         self.metrics.reset();
     }
-    
+
     // Additional methods expected by tests
     pub fn try_pop(&mut self) -> Option<EnrichedLogEntry> {
         self.pop().ok()
     }
-    
+
     pub fn is_full(&self) -> bool {
         self.len() >= self.capacity()
     }
-    
+
     pub fn fill_ratio(&self) -> f64 {
         self.len() as f64 / self.capacity() as f64
     }
-    
+
     pub fn needs_backpressure(&self) -> bool {
         self.fill_ratio() >= self.config.backpressure_threshold
     }
-    
+
     pub fn backpressure_level(&self) -> crate::buffer::backpressure::BackpressureLevel {
         let ratio = self.fill_ratio();
         if ratio >= 0.95 {
@@ -365,14 +369,14 @@ impl LogBuffer {
             crate::buffer::backpressure::BackpressureLevel::None
         }
     }
-    
+
     pub async fn push_with_strategy(
         &self,
         entry: impl Into<EnrichedLogEntry> + Clone,
         strategy: crate::buffer::backpressure::BackpressureStrategy,
     ) -> Result<(), BufferError> {
         use crate::buffer::backpressure::BackpressureStrategy;
-        
+
         match strategy {
             BackpressureStrategy::Drop => {
                 // Try once, if it fails, drop immediately

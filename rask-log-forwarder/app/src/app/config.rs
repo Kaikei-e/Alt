@@ -342,8 +342,10 @@ impl Config {
             ));
         };
 
-        let mut config = Config::default();
-        config.target_service = Some(service_name.to_string());
+        let mut config = Config {
+            target_service: Some(service_name.to_string()),
+            ..Config::default()
+        };
         config.post_process()?;
         config.validate()?;
         Ok(config)
