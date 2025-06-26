@@ -1,3 +1,20 @@
+networks:
+  alt-network:
+
+volumes:
+  db_data:
+  meili_data:
+  rask_log_aggregator_data:
+
+x-rask-env: &rask-env
+  environment:
+    RASK_CONFIG: |
+      [agent]
+      sink = "http://rask-aggregator:9600/ingest"
+      mode = "docker_json"
+      auto_partial_merge = true
+      max_inflight = 8192
+
 services:
   nginx:
     image: nginx:latest
@@ -27,6 +44,13 @@ services:
         soft: 65536
         hard: 65536
     tty: true
+    labels:
+      - rask.group=alt-frontend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   alt-frontend:
     build:
@@ -61,6 +85,13 @@ services:
       retries: 3
       start_period: 30s
     tty: true
+    labels:
+      - rask.group=alt-frontend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   alt-backend:
     build:
@@ -105,7 +136,13 @@ services:
       retries: 5
       start_period: 60s
     tty: true
-
+    labels:
+      - rask.group=alt-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   news-creator:
     build:
       context: ./news-creator
@@ -127,7 +164,13 @@ services:
       retries: 3
       start_period: 60s
     tty: true
-
+    labels:
+      - rask.group=alt-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   pre-processor:
     build:
       context: ./pre-processor
@@ -149,7 +192,13 @@ services:
     networks:
       - alt-network
     tty: true
-
+    labels:
+      - rask.group=alt-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   search-indexer:
     build:
       context: ./search-indexer
@@ -172,7 +221,13 @@ services:
     ports:
       - "9300:9300"
     tty: true
-
+    labels:
+      - rask.group=alt-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   tag-generator:
     build:
       context: ./tag-generator
@@ -194,7 +249,13 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
-
+    labels:
+      - rask.group=alt-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   meilisearch:
       image: getmeili/meilisearch:v1.6
       restart: unless-stopped
@@ -219,7 +280,30 @@ services:
           reservations:
             memory: 2G
       tty: true
-
+      labels:
+        - rask.group=alt-backend
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "10m"
+          max-file: "3"
+  rask-log-aggregator:
+    build:
+      context: ./rask-log-aggregator
+      dockerfile: Dockerfile.rask-log-aggregator
+    restart: unless-stopped
+    ports:
+      - "9600:9600"
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=alt-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   db:
     image: postgres:16-alpine
     restart: always
@@ -252,7 +336,13 @@ services:
     networks:
       - alt-network
     tty: true
-
+    labels:
+      - rask.group=alt-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   migrate:
     build:
       context: ./migrate
@@ -270,9 +360,165 @@ services:
         condition: service_healthy
     networks:
       - alt-network
-networks:
-  alt-network:
 
-volumes:
-  db_data:
-  meili_data:
+################### For Rask Log Aggregator ###################
+  nginx-logs:
+    build:
+      context: ./rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:nginx"
+    <<: *rask-env
+    environment:
+      TARGET_SERVICE: "${NGINX_TARGET:-nginx}"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"  # docker group (fallback to 984)
+    restart: unless-stopped
+    profiles:
+      - logging
+
+  alt-frontend-logs:
+    build:
+      context: ./rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:alt-frontend"
+    <<: *rask-env
+    environment:
+      TARGET_SERVICE: "${ALT_FRONTEND_TARGET:-alt-frontend}"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"  # docker group (fallback to 984)
+    restart: unless-stopped
+    profiles:
+      - logging
+
+  alt-backend-logs:
+    build:
+      context: ./rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:alt-backend"
+    <<: *rask-env
+    environment:
+      TARGET_SERVICE: "${ALT_BACKEND_TARGET:-alt-backend}"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "debug"
+      RUST_LOG: "debug"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"  # docker group (fallback to 984)
+    restart: unless-stopped
+    profiles:
+      - logging
+
+  tag-generator-logs:
+    build:
+      context: ./rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:tag-generator"
+    <<: *rask-env
+    environment:
+      TARGET_SERVICE: "tag-generator"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"  # docker group (fallback to 984)
+    restart: unless-stopped
+    profiles:
+      - logging
+
+  pre-processor-logs:
+    build:
+      context: ./rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:pre-processor"
+    <<: *rask-env
+    environment:
+      TARGET_SERVICE: "pre-processor"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"  # docker group (fallback to 984)
+    restart: unless-stopped
+    profiles:
+      - logging
+
+  search-indexer-logs:
+    build:
+      context: ./rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:search-indexer"
+    <<: *rask-env
+    environment:
+      TARGET_SERVICE: "search-indexer"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"  # docker group (fallback to 984)
+    restart: unless-stopped
+    profiles:
+      - logging
+
+  news-creator-logs:
+    build:
+      context: ./rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:news-creator"
+    <<: *rask-env
+    environment:
+      TARGET_SERVICE: "news-creator"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    group_add:
+      - "${DOCKER_GROUP_ID:-984}"  # docker group (fallback to 984)
+    restart: unless-stopped
+    profiles:
+      - logging
+
+  meilisearch-logs:
+    build:
+      context: ./rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:meilisearch"
+    <<: *rask-env
+    environment:
+      TARGET_SERVICE: "meilisearch"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    restart: unless-stopped
+    profiles:
+      - logging
+
+  db-logs:
+    build:
+      context: ./rask-log-forwarder/app
+      dockerfile: Dockerfile.rask-log-forwarder
+    network_mode: "service:db"
+    <<: *rask-env
+    environment:
+      TARGET_SERVICE: "db"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    restart: unless-stopped
+    profiles:
+      - logging
+

@@ -1,0 +1,13 @@
+app/target/
+app/.git/
+app/benches/
+app/tests/
+app/.vscode/
+app/.idea/
+app/*.swp
+app/*.swo
+app/*~
+app/CLAUDE.md*
+app/Dockerfile*
+app/docker-compose*.yml
+app/.dockerignore

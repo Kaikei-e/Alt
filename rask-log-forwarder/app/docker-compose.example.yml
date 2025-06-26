@@ -1,0 +1,82 @@
+# Example integration in compose.yaml
+version: '3.8'
+
+x-rask-forwarder: &rask-forwarder
+  build:
+    context: .
+    dockerfile: Dockerfile.rask-log-forwarder
+  environment:
+    - RASK_ENDPOINT=http://rask-aggregator:9600/v1/aggregate
+    - BATCH_SIZE=10000
+    - BUFFER_CAPACITY=100000
+    - FLUSH_INTERVAL_MS=500
+    - LOG_LEVEL=info
+    - ENABLE_METRICS=true
+    - METRICS_PORT=9090
+    - ENABLE_DISK_FALLBACK=true
+    - MAX_DISK_USAGE_MB=1000
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 30s
+
+services:
+  # Example service
+  nginx:
+    image: nginx:latest
+    labels:
+      - "rask.group=alt-frontend"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - alt-network
+
+  # Dedicated forwarder for nginx
+  nginx-logs:
+    <<: *rask-forwarder
+    network_mode: "service:nginx"
+    environment:
+      - TARGET_SERVICE=nginx
+      - RASK_ENDPOINT=http://rask-aggregator:9600/ingest
+      - BATCH_SIZE=10000
+      - BUFFER_CAPACITY=100000
+      - FLUSH_INTERVAL_MS=500
+      - LOG_LEVEL=info
+      - ENABLE_METRICS=true
+      - METRICS_PORT=9090
+      - ENABLE_DISK_FALLBACK=true
+      - MAX_DISK_USAGE_MB=1000
+    depends_on:
+      nginx:
+        condition: service_healthy
+
+  # Forwarder for alt-backend
+  alt-backend-logs:
+    <<: *rask-forwarder
+    network_mode: "service:alt-backend"
+    environment:
+      - TARGET_SERVICE=alt-backend
+      - RASK_ENDPOINT=http://rask-aggregator:9600/ingest
+      - BATCH_SIZE=10000
+      - BUFFER_CAPACITY=100000
+      - FLUSH_INTERVAL_MS=500
+      - LOG_LEVEL=info
+      - ENABLE_METRICS=true
+      - METRICS_PORT=9090
+      - ENABLE_DISK_FALLBACK=true
+      - MAX_DISK_USAGE_MB=1000
+    depends_on:
+      alt-backend:
+        condition: service_healthy
+
+networks:
+  alt-network:
+    driver: bridge

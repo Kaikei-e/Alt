@@ -1,0 +1,34 @@
+# Dockerfile.rask-log-forwarder
+FROM rust:1.87-bookworm AS builder
+
+WORKDIR /app
+COPY . .
+
+# Build with release optimizations
+RUN cargo build --release --bin rask-log-forwarder
+
+# Runtime image
+FROM debian:bookworm-slim
+
+# Install required runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -r -s /bin/false rask
+
+# Copy binary
+COPY --from=builder /app/target/release/rask-log-forwarder /usr/local/bin/
+
+# Create directories
+RUN mkdir -p /tmp/rask-fallback && chown rask:rask /tmp/rask-fallback
+
+# Health check disabled for network_mode issues
+# HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+#     CMD curl -f http://localhost:9090/health || exit 1
+
+USER rask
+
+ENTRYPOINT ["rask-log-forwarder"]
