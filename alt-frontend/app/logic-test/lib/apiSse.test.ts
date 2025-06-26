@@ -187,7 +187,7 @@ describe("feedsApiSse", () => {
       const mockData = {
         feed_amount: { amount: 10 },
         unsummarized_feed: { amount: 5 },
-        total_articles: { amount: 100 }
+        total_articles: { amount: 100 },
       };
 
       lastEventSourceInstance?.triggerMessage(JSON.stringify(mockData));
@@ -205,7 +205,7 @@ describe("feedsApiSse", () => {
       // Simulate SSE message without total_articles
       const mockData = {
         feed_amount: { amount: 10 },
-        unsummarized_feed: { amount: 5 }
+        unsummarized_feed: { amount: 5 },
       };
 
       lastEventSourceInstance?.triggerMessage(JSON.stringify(mockData));

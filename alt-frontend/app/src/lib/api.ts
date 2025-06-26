@@ -276,7 +276,10 @@ export const feedsApi = {
     return apiClient.get("/v1/health", 1); // Short cache for health checks
   },
 
-  async getFeedsWithCursor(cursor?: string, limit: number = 20): Promise<CursorResponse<Feed>> {
+  async getFeedsWithCursor(
+    cursor?: string,
+    limit: number = 20,
+  ): Promise<CursorResponse<Feed>> {
     // Validate limit constraints
     if (limit < 1 || limit > 100) {
       throw new Error("Limit must be between 1 and 100");
@@ -292,7 +295,7 @@ export const feedsApi = {
     const cacheTtl = cursor ? 15 : 5; // 15 min for subsequent pages, 5 min for first page
     const response = await apiClient.get<CursorResponse<BackendFeedItem>>(
       `/v1/feeds/fetch/cursor?${params.toString()}`,
-      cacheTtl
+      cacheTtl,
     );
 
     // Transform backend feed items to frontend format
@@ -369,7 +372,7 @@ export const feedsApi = {
   // Method to prefetch data for performance
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
     const prefetchPromises = pages.map((page) =>
-      this.getFeedsPage(page).catch(() => { }),
+      this.getFeedsPage(page).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   },

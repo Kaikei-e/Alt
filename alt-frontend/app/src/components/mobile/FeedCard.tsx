@@ -30,15 +30,18 @@ const FeedCard = memo(function FeedCard({
         setIsLoading(false);
       }
     },
-    [setIsReadStatus]
+    [setIsReadStatus],
   );
 
-  const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      handleReadStatus(feed.link);
-    }
-  }, [feed.link, handleReadStatus]);
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        handleReadStatus(feed.link);
+      }
+    },
+    [feed.link, handleReadStatus],
+  );
 
   // Don't render if already read
   if (isReadStatus) {
@@ -46,9 +49,10 @@ const FeedCard = memo(function FeedCard({
   }
 
   // Truncate description for better UX
-  const truncatedDescription = feed.description.length > 200
-    ? feed.description.substring(0, 200) + "..."
-    : feed.description;
+  const truncatedDescription =
+    feed.description.length > 200
+      ? feed.description.substring(0, 200) + "..."
+      : feed.description;
 
   return (
     // Gradient border container with hover effects
@@ -101,11 +105,7 @@ const FeedCard = memo(function FeedCard({
           </Text>
 
           {/* Bottom section with button and details */}
-          <Flex
-            justify="space-between"
-            align="center"
-            mt={2}
-          >
+          <Flex justify="space-between" align="center" mt={2}>
             <Button
               size="sm"
               borderRadius="full"
@@ -126,7 +126,13 @@ const FeedCard = memo(function FeedCard({
               }}
               aria-label={`Mark ${feed.title} as read`}
             >
-              {isLoading ? <Spinner size="sm" /> : <Text fontSize="sm" fontWeight="bold">Mark as read</Text>}
+              {isLoading ? (
+                <Spinner size="sm" />
+              ) : (
+                <Text fontSize="sm" fontWeight="bold">
+                  Mark as read
+                </Text>
+              )}
             </Button>
 
             <FeedDetails feedURL={feed.link} />

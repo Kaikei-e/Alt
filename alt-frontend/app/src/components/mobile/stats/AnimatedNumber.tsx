@@ -11,7 +11,7 @@ interface AnimatedNumberProps {
   /** Number format options */
   formatOptions?: Intl.NumberFormatOptions;
   /** Custom styles for the text */
-  textProps?: Omit<TextProps, 'children'>;
+  textProps?: Omit<TextProps, "children">;
   /** Callback when animation completes */
   onComplete?: () => void;
 }
@@ -30,7 +30,9 @@ export function AnimatedNumber({
     if (displayValue === value) return;
 
     // Check for reduced motion preference
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
 
     if (reducedMotion) {
       // Skip animation for accessibility
@@ -51,7 +53,7 @@ export function AnimatedNumber({
       // Easing function (ease-out cubic)
       const easedProgress = 1 - Math.pow(1 - progress, 3);
 
-      const currentValue = startValue + (difference * easedProgress);
+      const currentValue = startValue + difference * easedProgress;
       setDisplayValue(Math.round(currentValue));
 
       if (progress < 1) {
@@ -72,7 +74,7 @@ export function AnimatedNumber({
   }, [value, duration, onComplete, displayValue]);
 
   const formattedValue = formatOptions
-    ? new Intl.NumberFormat('en-US', formatOptions).format(displayValue)
+    ? new Intl.NumberFormat("en-US", formatOptions).format(displayValue)
     : displayValue.toString();
 
   return (
@@ -103,7 +105,9 @@ export function AnimatedNumber({
         aria-live="assertive"
         aria-atomic="true"
       >
-        {isAnimating ? `Updating value to ${formattedValue}` : `Current value: ${formattedValue}`}
+        {isAnimating
+          ? `Updating value to ${formattedValue}`
+          : `Current value: ${formattedValue}`}
       </Box>
     </>
   );

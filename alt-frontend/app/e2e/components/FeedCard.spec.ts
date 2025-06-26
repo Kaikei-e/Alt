@@ -72,7 +72,10 @@ test.describe("FeedCard Component - Functionality Tests", () => {
         ...mockFeeds[0],
         description: "A".repeat(400), // Very long description (400 chars > 200 limit)
       };
-      const feedsWithLongDescription = [longDescriptionFeed, ...mockFeeds.slice(1)];
+      const feedsWithLongDescription = [
+        longDescriptionFeed,
+        ...mockFeeds.slice(1),
+      ];
 
       // Mock cursor-based API endpoint
       await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
@@ -204,7 +207,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       ).toBeVisible({ timeout: 15000 });
 
       // Count total feed cards before marking as read
-      const initialFeedCount = await page.locator('[data-testid="feed-card"]').count();
+      const initialFeedCount = await page
+        .locator('[data-testid="feed-card"]')
+        .count();
 
       // Get the first feed card
       const firstFeedCard = page.locator('[data-testid="feed-card"]').first();
@@ -222,7 +227,10 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.waitForTimeout(1000);
 
       // The total number of feed cards should be reduced by 1
-      await expect(page.locator('[data-testid="feed-card"]')).toHaveCount(initialFeedCount - 1, { timeout: 5000 });
+      await expect(page.locator('[data-testid="feed-card"]')).toHaveCount(
+        initialFeedCount - 1,
+        { timeout: 5000 },
+      );
     });
   });
 
@@ -358,7 +366,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Should show error state - updated to match actual ErrorState component text
-      await expect(page.getByText("Unable to Load Feeds")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("Unable to Load Feeds")).toBeVisible({
+        timeout: 10000,
+      });
     });
   });
 

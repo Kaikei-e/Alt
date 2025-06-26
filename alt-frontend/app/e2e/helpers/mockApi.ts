@@ -32,7 +32,7 @@ export const mockApiEndpoints = async (
   // Feeds endpoints
   if (feeds.length > 0) {
     // Convert Feed[] to BackendFeedItem[] for API compatibility
-    const backendFeeds: BackendFeedItem[] = feeds.map(feed => ({
+    const backendFeeds: BackendFeedItem[] = feeds.map((feed) => ({
       title: feed.title,
       description: feed.description,
       link: feed.link,
@@ -42,14 +42,15 @@ export const mockApiEndpoints = async (
     // Mock cursor-based feeds endpoint (NEW)
     await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
       const url = new URL(route.request().url());
-      const cursor = url.searchParams.get('cursor');
-      const limit = parseInt(url.searchParams.get('limit') || '20');
+      const cursor = url.searchParams.get("cursor");
+      const limit = parseInt(url.searchParams.get("limit") || "20");
 
       // Simple pagination simulation
       const startIndex = cursor ? parseInt(cursor) : 0;
       const endIndex = Math.min(startIndex + limit, backendFeeds.length);
       const paginatedFeeds = backendFeeds.slice(startIndex, endIndex);
-      const nextCursor = endIndex < backendFeeds.length ? endIndex.toString() : null;
+      const nextCursor =
+        endIndex < backendFeeds.length ? endIndex.toString() : null;
 
       await route.fulfill({
         status: 200,
@@ -61,26 +62,30 @@ export const mockApiEndpoints = async (
       });
     });
 
-    await page.route("http://localhost/api/v1/feeds/fetch/cursor**", async (route) => {
-      const url = new URL(route.request().url());
-      const cursor = url.searchParams.get('cursor');
-      const limit = parseInt(url.searchParams.get('limit') || '20');
+    await page.route(
+      "http://localhost/api/v1/feeds/fetch/cursor**",
+      async (route) => {
+        const url = new URL(route.request().url());
+        const cursor = url.searchParams.get("cursor");
+        const limit = parseInt(url.searchParams.get("limit") || "20");
 
-      // Simple pagination simulation
-      const startIndex = cursor ? parseInt(cursor) : 0;
-      const endIndex = Math.min(startIndex + limit, backendFeeds.length);
-      const paginatedFeeds = backendFeeds.slice(startIndex, endIndex);
-      const nextCursor = endIndex < backendFeeds.length ? endIndex.toString() : null;
+        // Simple pagination simulation
+        const startIndex = cursor ? parseInt(cursor) : 0;
+        const endIndex = Math.min(startIndex + limit, backendFeeds.length);
+        const paginatedFeeds = backendFeeds.slice(startIndex, endIndex);
+        const nextCursor =
+          endIndex < backendFeeds.length ? endIndex.toString() : null;
 
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: paginatedFeeds,
-          next_cursor: nextCursor,
-        }),
-      });
-    });
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: paginatedFeeds,
+            next_cursor: nextCursor,
+          }),
+        });
+      },
+    );
 
     // Mock paginated feeds endpoint (LEGACY - keeping for backward compatibility)
     await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {

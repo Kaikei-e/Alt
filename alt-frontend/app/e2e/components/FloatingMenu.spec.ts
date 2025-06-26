@@ -49,7 +49,7 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     const mockFeeds = generateMockFeeds(10, 1);
 
     // Convert Feed[] to BackendFeedItem[] for API compatibility
-    const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+    const backendFeeds: BackendFeedItem[] = mockFeeds.map((feed) => ({
       title: feed.title,
       description: feed.description,
       link: feed.link,
@@ -126,7 +126,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     await page.waitForLoadState("networkidle");
 
     // Wait for feeds to load first, then floating menu
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
+      { timeout: 15000 },
+    );
 
     // Now wait for the FloatingMenu
     await page.waitForSelector('[data-testid="floating-menu-button"]', {
@@ -303,7 +305,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Wait for feeds to load with increased timeout for mobile
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 15000 });
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({ timeout: 15000 });
 
       // Trigger should be visible and appropriately sized
       await expect(page.getByTestId("floating-menu-button")).toBeVisible();
@@ -331,7 +335,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await page.waitForLoadState("networkidle");
 
       // Wait for feeds to load with increased timeout for tablet
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 15000 });
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({ timeout: 15000 });
 
       // Should still maintain refined proportions on tablet
       await expect(page.getByTestId("floating-menu-button")).toBeVisible();

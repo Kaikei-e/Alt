@@ -15,7 +15,8 @@ type MockCursorResponse = {
 };
 
 // Mock API function
-const mockGetFeedsWithCursor = vi.fn<(cursor?: string, limit?: number) => Promise<MockCursorResponse>>();
+const mockGetFeedsWithCursor =
+  vi.fn<(cursor?: string, limit?: number) => Promise<MockCursorResponse>>();
 
 // Class-based pagination manager (easier to test than React hooks)
 class CursorPagination<T> {
@@ -27,16 +28,31 @@ class CursorPagination<T> {
   private _isInitialLoading = true;
 
   constructor(
-    private fetchFn: (cursor?: string, limit?: number) => Promise<{ data: T[]; next_cursor: string | null }>,
-    private limit: number = 20
+    private fetchFn: (
+      cursor?: string,
+      limit?: number,
+    ) => Promise<{ data: T[]; next_cursor: string | null }>,
+    private limit: number = 20,
   ) {}
 
-  get data() { return this._data; }
-  get cursor() { return this._cursor; }
-  get hasMore() { return this._hasMore; }
-  get isLoading() { return this._isLoading; }
-  get error() { return this._error; }
-  get isInitialLoading() { return this._isInitialLoading; }
+  get data() {
+    return this._data;
+  }
+  get cursor() {
+    return this._cursor;
+  }
+  get hasMore() {
+    return this._hasMore;
+  }
+  get isLoading() {
+    return this._isLoading;
+  }
+  get error() {
+    return this._error;
+  }
+  get isInitialLoading() {
+    return this._isInitialLoading;
+  }
 
   async loadInitial() {
     this._isInitialLoading = true;
@@ -72,7 +88,8 @@ class CursorPagination<T> {
       this._cursor = response.next_cursor;
       this._hasMore = response.next_cursor !== null;
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to load more data";
+      this._error =
+        err instanceof Error ? err.message : "Failed to load more data";
     } finally {
       this._isLoading = false;
     }
@@ -114,8 +131,20 @@ describe("CursorPagination", () => {
 
   it("should load initial data successfully", async () => {
     const mockData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
-      { id: "2", title: "Feed 2", description: "Desc 2", link: "https://2.com", published: "2023-01-02" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
+      {
+        id: "2",
+        title: "Feed 2",
+        description: "Desc 2",
+        link: "https://2.com",
+        published: "2023-01-02",
+      },
     ];
 
     const mockResponse: MockCursorResponse = {
@@ -138,11 +167,23 @@ describe("CursorPagination", () => {
 
   it("should load more data and append to existing data", async () => {
     const initialData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     const moreData = [
-      { id: "2", title: "Feed 2", description: "Desc 2", link: "https://2.com", published: "2023-01-02" },
+      {
+        id: "2",
+        title: "Feed 2",
+        description: "Desc 2",
+        link: "https://2.com",
+        published: "2023-01-02",
+      },
     ];
 
     mockGetFeedsWithCursor
@@ -163,8 +204,12 @@ describe("CursorPagination", () => {
 
     expect(mockGetFeedsWithCursor).toHaveBeenCalledTimes(2);
     expect(mockGetFeedsWithCursor).toHaveBeenNthCalledWith(1, undefined, 20);
-    expect(mockGetFeedsWithCursor).toHaveBeenNthCalledWith(2, "2023-01-01T00:00:00Z", 20);
-    
+    expect(mockGetFeedsWithCursor).toHaveBeenNthCalledWith(
+      2,
+      "2023-01-01T00:00:00Z",
+      20,
+    );
+
     expect(pagination.data).toEqual([...initialData, ...moreData]);
     expect(pagination.cursor).toBe("2023-01-02T00:00:00Z");
     expect(pagination.hasMore).toBe(true);
@@ -172,7 +217,13 @@ describe("CursorPagination", () => {
 
   it("should handle end of data when next_cursor is null", async () => {
     const mockData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     mockGetFeedsWithCursor.mockResolvedValueOnce({
@@ -203,7 +254,13 @@ describe("CursorPagination", () => {
   it("should not load more when already loading", async () => {
     // Setup initial state with hasMore true and cursor available
     const initialData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     mockGetFeedsWithCursor.mockResolvedValueOnce({
@@ -225,7 +282,13 @@ describe("CursorPagination", () => {
 
   it("should not load more when hasMore is false", async () => {
     const mockData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     // Setup state where hasMore is false
@@ -245,11 +308,23 @@ describe("CursorPagination", () => {
 
   it("should refresh data correctly", async () => {
     const initialData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     const refreshedData = [
-      { id: "2", title: "Feed 2", description: "Desc 2", link: "https://2.com", published: "2023-01-02" },
+      {
+        id: "2",
+        title: "Feed 2",
+        description: "Desc 2",
+        link: "https://2.com",
+        published: "2023-01-02",
+      },
     ];
 
     mockGetFeedsWithCursor

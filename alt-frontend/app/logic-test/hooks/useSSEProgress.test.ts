@@ -18,17 +18,19 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
 
       try {
         // Wait for real progress (no fake timers)
-        await new Promise(resolve => setTimeout(resolve, 400)); // 40% progress
+        await new Promise((resolve) => setTimeout(resolve, 400)); // 40% progress
 
         const progressAt400ms = result.current.progress;
         expect(progressAt400ms).toBeGreaterThanOrEqual(35);
         expect(progressAt400ms).toBeLessThan(45);
 
         // Continue without any reset call - this should NOT reset randomly
-        await new Promise(resolve => setTimeout(resolve, 200)); // 60% total
+        await new Promise((resolve) => setTimeout(resolve, 200)); // 60% total
 
         const progressAt600ms = result.current.progress;
-        console.log(`Progress at 400ms: ${progressAt400ms}%, at 600ms: ${progressAt600ms}%`);
+        console.log(
+          `Progress at 400ms: ${progressAt400ms}%, at 600ms: ${progressAt600ms}%`,
+        );
 
         // This is where the bug shows - progress might reset unexpectedly
         if (progressAt600ms < progressAt400ms) {
@@ -47,14 +49,16 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
       let resetFunctionChanges = 0;
       let sseReconnections = 0;
 
-      const { result, rerender, unmount } = renderHook(() => useSSEProgress(1000));
+      const { result, rerender, unmount } = renderHook(() =>
+        useSSEProgress(1000),
+      );
 
       try {
         let lastResetFunction = result.current.reset;
 
         // Simulate component re-renders that happen in real usage
         for (let i = 0; i < 5; i++) {
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
           rerender();
 
           if (result.current.reset !== lastResetFunction) {
@@ -80,7 +84,7 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
 
       try {
         // Let it run for 300ms
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
         const progress300 = result.current.progress;
 
         // Reset manually
@@ -88,7 +92,7 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
         expect(result.current.progress).toBe(0);
 
         // Wait another 300ms - should be ~30%, not 60%
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
         const progressAfterReset = result.current.progress;
 
         console.log(`Progress before reset: ${progress300}%`);
@@ -99,7 +103,9 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
         const tolerance = 15; // Increase tolerance for CI environment timing variations
 
         if (Math.abs(progressAfterReset - expectedProgress) > tolerance) {
-          console.log(`🐛 Possible timer overlap! Expected ~${expectedProgress}%, got ${progressAfterReset}%`);
+          console.log(
+            `🐛 Possible timer overlap! Expected ~${expectedProgress}%, got ${progressAfterReset}%`,
+          );
         }
 
         // Use a more lenient assertion for CI environments
@@ -114,7 +120,9 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
       // Test if the reset function has ANY dependencies that change
       let intervalMs = 1000;
 
-      const { result, rerender, unmount } = renderHook(() => useSSEProgress(intervalMs));
+      const { result, rerender, unmount } = renderHook(() =>
+        useSSEProgress(intervalMs),
+      );
 
       try {
         const originalReset = result.current.reset;
@@ -126,8 +134,12 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
         const newReset = result.current.reset;
 
         if (originalReset !== newReset) {
-          console.log("🐛 FOUND THE BUG! Reset function recreated when intervalMs changed!");
-          console.log("This causes SSE connection to restart in parent component!");
+          console.log(
+            "🐛 FOUND THE BUG! Reset function recreated when intervalMs changed!",
+          );
+          console.log(
+            "This causes SSE connection to restart in parent component!",
+          );
 
           // Log the function source to see what's different
           console.log("Original function:", originalReset.toString());
@@ -159,9 +171,13 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
           if (messageIndex < mockSSEMessages.length) {
             const message = mockSSEMessages[messageIndex++];
 
-            await new Promise(resolve => setTimeout(resolve, message.timestamp));
+            await new Promise((resolve) =>
+              setTimeout(resolve, message.timestamp),
+            );
 
-            console.log(`SSE message at ${message.timestamp}ms: resetting progress`);
+            console.log(
+              `SSE message at ${message.timestamp}ms: resetting progress`,
+            );
             act(() => result.current.reset()); // This is what happens when SSE data arrives
           }
         };
@@ -170,13 +186,13 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
         const messageProcessing = processNextMessage();
 
         // Monitor progress continuously
-        const progressLog: Array<{time: number, progress: number}> = [];
+        const progressLog: Array<{ time: number; progress: number }> = [];
 
         for (let i = 0; i < 30; i++) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           progressLog.push({
             time: i * 100,
-            progress: result.current.progress
+            progress: result.current.progress,
           });
         }
 
@@ -184,7 +200,7 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
 
         // Analyze the progress log for odd behavior
         console.log("Progress timeline:");
-        progressLog.forEach(entry => {
+        progressLog.forEach((entry) => {
           console.log(`${entry.time}ms: ${entry.progress.toFixed(1)}%`);
         });
 
@@ -195,12 +211,15 @@ describe("useSSEProgress Hook - REAL BROWSER BEHAVIOR", () => {
 
           // Allow for resets due to SSE messages, but not random decreases
           // Increase tolerance for concurrent execution timing variations
-          const isExpectedReset = mockSSEMessages.some(msg =>
-            Math.abs(msg.timestamp - curr.time) < 150 && curr.progress === 0
+          const isExpectedReset = mockSSEMessages.some(
+            (msg) =>
+              Math.abs(msg.timestamp - curr.time) < 150 && curr.progress === 0,
           );
 
           if (curr.progress < prev.progress && !isExpectedReset) {
-            console.log(`🐛 Unexpected progress decrease at ${curr.time}ms: ${prev.progress}% → ${curr.progress}%`);
+            console.log(
+              `🐛 Unexpected progress decrease at ${curr.time}ms: ${prev.progress}% → ${curr.progress}%`,
+            );
             expect(curr.progress).toBeGreaterThanOrEqual(prev.progress);
           }
         }

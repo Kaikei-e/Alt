@@ -17,7 +17,7 @@ test.describe("Mobile Feeds Page", () => {
     const mockFeeds = generateMockFeeds(10, 1);
 
     // Convert Feed[] to BackendFeedItem[] for API compatibility
-    const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+    const backendFeeds: BackendFeedItem[] = mockFeeds.map((feed) => ({
       title: feed.title,
       description: feed.description,
       link: feed.link,
@@ -171,17 +171,19 @@ test.describe("Mobile Feeds Page", () => {
 
   test("should implement infinite scrolling", async ({ page }) => {
     const additionalFeeds = generateMockFeeds(10, 11);
-    const backendAdditionalFeeds: BackendFeedItem[] = additionalFeeds.map(feed => ({
-      title: feed.title,
-      description: feed.description,
-      link: feed.link,
-      published: feed.published,
-    }));
+    const backendAdditionalFeeds: BackendFeedItem[] = additionalFeeds.map(
+      (feed) => ({
+        title: feed.title,
+        description: feed.description,
+        link: feed.link,
+        published: feed.published,
+      }),
+    );
 
     // Mock cursor-based API for pagination
     await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
       const url = new URL(route.request().url());
-      const cursor = url.searchParams.get('cursor');
+      const cursor = url.searchParams.get("cursor");
 
       if (cursor === "10") {
         // Return second page
@@ -196,7 +198,7 @@ test.describe("Mobile Feeds Page", () => {
       } else {
         // Return first page with cursor for next page
         const mockFeeds = generateMockFeeds(10, 1);
-        const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+        const backendFeeds: BackendFeedItem[] = mockFeeds.map((feed) => ({
           title: feed.title,
           description: feed.description,
           link: feed.link,
@@ -242,7 +244,9 @@ test.describe("Mobile Feeds Page", () => {
 
     // Scroll to bottom to trigger infinite scroll - need to scroll the correct container
     await page.evaluate(() => {
-      const scrollContainer = document.querySelector('[data-testid="feeds-scroll-container"]');
+      const scrollContainer = document.querySelector(
+        '[data-testid="feeds-scroll-container"]',
+      );
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       } else {
@@ -263,7 +267,7 @@ test.describe("Mobile Feeds Page", () => {
 
   test("should show loading state during initial load", async ({ page }) => {
     const mockFeeds = generateMockFeeds(10, 1);
-    const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+    const backendFeeds: BackendFeedItem[] = mockFeeds.map((feed) => ({
       title: feed.title,
       description: feed.description,
       link: feed.link,
@@ -296,10 +300,14 @@ test.describe("Mobile Feeds Page", () => {
     await page.goto("/mobile/feeds");
 
     // Should show skeleton loading container initially
-    await expect(page.locator('[data-testid="feeds-skeleton-container"]')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="feeds-skeleton-container"]'),
+    ).toBeVisible();
 
     // Should show skeleton feed cards
-    await expect(page.locator('[data-testid="skeleton-feed-card"]')).toHaveCount(5);
+    await expect(
+      page.locator('[data-testid="skeleton-feed-card"]'),
+    ).toHaveCount(5);
 
     // Wait for feeds to load
     await page.waitForLoadState("networkidle");
@@ -312,22 +320,26 @@ test.describe("Mobile Feeds Page", () => {
     ).toBeVisible();
 
     // Skeleton loading should disappear (feeds are now loaded)
-    await expect(page.locator('[data-testid="feeds-skeleton-container"]')).not.toBeVisible();
+    await expect(
+      page.locator('[data-testid="feeds-skeleton-container"]'),
+    ).not.toBeVisible();
   });
 
   test("should show loading state during infinite scroll", async ({ page }) => {
     const additionalFeeds = generateMockFeeds(10, 11);
-    const backendAdditionalFeeds: BackendFeedItem[] = additionalFeeds.map(feed => ({
-      title: feed.title,
-      description: feed.description,
-      link: feed.link,
-      published: feed.published,
-    }));
+    const backendAdditionalFeeds: BackendFeedItem[] = additionalFeeds.map(
+      (feed) => ({
+        title: feed.title,
+        description: feed.description,
+        link: feed.link,
+        published: feed.published,
+      }),
+    );
 
     // Mock cursor-based API for pagination with delay
     await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
       const url = new URL(route.request().url());
-      const cursor = url.searchParams.get('cursor');
+      const cursor = url.searchParams.get("cursor");
 
       if (cursor === "10") {
         // Return second page with delay
@@ -343,7 +355,7 @@ test.describe("Mobile Feeds Page", () => {
       } else {
         // Return first page with cursor for next page
         const mockFeeds = generateMockFeeds(10, 1);
-        const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+        const backendFeeds: BackendFeedItem[] = mockFeeds.map((feed) => ({
           title: feed.title,
           description: feed.description,
           link: feed.link,
@@ -387,7 +399,9 @@ test.describe("Mobile Feeds Page", () => {
 
     // Scroll to trigger infinite scroll - need to scroll the correct container
     await page.evaluate(() => {
-      const scrollContainer = document.querySelector('[data-testid="feeds-scroll-container"]');
+      const scrollContainer = document.querySelector(
+        '[data-testid="feeds-scroll-container"]',
+      );
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       } else {
@@ -397,7 +411,11 @@ test.describe("Mobile Feeds Page", () => {
     });
 
     // Should show loading indicator for infinite scroll
-    await expect(page.locator('[data-testid="infinite-scroll-sentinel"]').getByText("Loading more...")).toBeVisible();
+    await expect(
+      page
+        .locator('[data-testid="infinite-scroll-sentinel"]')
+        .getByText("Loading more..."),
+    ).toBeVisible();
 
     // Wait for more content to load
     await expect(page.locator('button:has-text("Mark as read")')).toHaveCount(
@@ -413,12 +431,14 @@ test.describe("Mobile Feeds Page", () => {
       description: `${"Very long description ".repeat(50)}for feed ${index + 1}`,
     }));
 
-    const backendLongFeeds: BackendFeedItem[] = longDescriptionFeeds.map(feed => ({
-      title: feed.title,
-      description: feed.description,
-      link: feed.link,
-      published: feed.published,
-    }));
+    const backendLongFeeds: BackendFeedItem[] = longDescriptionFeeds.map(
+      (feed) => ({
+        title: feed.title,
+        description: feed.description,
+        link: feed.link,
+        published: feed.published,
+      }),
+    );
 
     // Mock cursor-based API
     await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
@@ -532,17 +552,19 @@ test.describe("Mobile Feeds Page", () => {
     page,
   }) => {
     const additionalFeeds = generateMockFeeds(10, 11);
-    const backendAdditionalFeeds: BackendFeedItem[] = additionalFeeds.map(feed => ({
-      title: feed.title,
-      description: feed.description,
-      link: feed.link,
-      published: feed.published,
-    }));
+    const backendAdditionalFeeds: BackendFeedItem[] = additionalFeeds.map(
+      (feed) => ({
+        title: feed.title,
+        description: feed.description,
+        link: feed.link,
+        published: feed.published,
+      }),
+    );
 
     // Mock cursor-based API for pagination
     await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
       const url = new URL(route.request().url());
-      const cursor = url.searchParams.get('cursor');
+      const cursor = url.searchParams.get("cursor");
 
       if (cursor === "10") {
         // Return second page
@@ -557,7 +579,7 @@ test.describe("Mobile Feeds Page", () => {
       } else {
         // Return first page with cursor for next page
         const mockFeeds = generateMockFeeds(10, 1);
-        const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+        const backendFeeds: BackendFeedItem[] = mockFeeds.map((feed) => ({
           title: feed.title,
           description: feed.description,
           link: feed.link,
@@ -603,13 +625,17 @@ test.describe("Mobile Feeds Page", () => {
 
     // Get initial scroll position from the correct container
     const initialScrollPosition = await page.evaluate(() => {
-      const scrollContainer = document.querySelector('[data-testid="feeds-scroll-container"]');
+      const scrollContainer = document.querySelector(
+        '[data-testid="feeds-scroll-container"]',
+      );
       return scrollContainer ? scrollContainer.scrollTop : window.scrollY;
     });
 
     // Scroll down
     await page.evaluate(() => {
-      const scrollContainer = document.querySelector('[data-testid="feeds-scroll-container"]');
+      const scrollContainer = document.querySelector(
+        '[data-testid="feeds-scroll-container"]',
+      );
       if (scrollContainer) {
         scrollContainer.scrollTop = 1000;
       } else {
@@ -619,7 +645,9 @@ test.describe("Mobile Feeds Page", () => {
 
     // Trigger infinite scroll
     await page.evaluate(() => {
-      const scrollContainer = document.querySelector('[data-testid="feeds-scroll-container"]');
+      const scrollContainer = document.querySelector(
+        '[data-testid="feeds-scroll-container"]',
+      );
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       } else {
@@ -635,7 +663,9 @@ test.describe("Mobile Feeds Page", () => {
 
     // Verify scroll position has been maintained (not jumped back to top)
     const currentScrollPosition = await page.evaluate(() => {
-      const scrollContainer = document.querySelector('[data-testid="feeds-scroll-container"]');
+      const scrollContainer = document.querySelector(
+        '[data-testid="feeds-scroll-container"]',
+      );
       return scrollContainer ? scrollContainer.scrollTop : window.scrollY;
     });
     expect(currentScrollPosition).toBeGreaterThan(initialScrollPosition);
@@ -643,29 +673,42 @@ test.describe("Mobile Feeds Page", () => {
 
   // TDD: New failing tests for design compliance and missing functionality
   test.describe("Design System Compliance - TDD Tests", () => {
-    test("should display feed cards with vaporwave gradient borders", async ({ page }) => {
+    test("should display feed cards with vaporwave gradient borders", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
       // Wait for feeds to load
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
       // TDD: Check for gradient border implementation
       // The feed card is wrapped in a gradient border container
-      const gradientContainer = page.locator('[data-testid="feed-card-container"]').first();
+      const gradientContainer = page
+        .locator('[data-testid="feed-card-container"]')
+        .first();
 
       // Check for gradient border effect - CSS converts hex to RGB values
-      await expect(gradientContainer).toHaveCSS("background", /linear-gradient.*rgb\(255, 0, 110\).*rgb\(131, 56, 236\).*rgb\(58, 134, 255\)/);
+      await expect(gradientContainer).toHaveCSS(
+        "background",
+        /linear-gradient.*rgb\(255, 0, 110\).*rgb\(131, 56, 236\).*rgb\(58, 134, 255\)/,
+      );
       await expect(gradientContainer).toHaveCSS("border-radius", "18px");
     });
 
-    test("should apply glass morphism effect to feed cards", async ({ page }) => {
+    test("should apply glass morphism effect to feed cards", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
@@ -676,30 +719,46 @@ test.describe("Mobile Feeds Page", () => {
       // Check for glass morphism properties
       await expect(feedCard).toHaveCSS("border-radius", "16px");
       // The backdrop-filter might be applied via CSS variables, so check for presence
-      const backdropFilter = await feedCard.evaluate(el => getComputedStyle(el).backdropFilter);
+      const backdropFilter = await feedCard.evaluate(
+        (el) => getComputedStyle(el).backdropFilter,
+      );
       expect(backdropFilter).toMatch(/blur|none/); // Either has blur or is none (fallback)
     });
 
-    test("should implement hover effects on feed card containers", async ({ page }) => {
+    test("should implement hover effects on feed card containers", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
-      const feedCardContainer = page.locator('[data-testid="feed-card-container"]').first();
+      const feedCardContainer = page
+        .locator('[data-testid="feed-card-container"]')
+        .first();
 
       // TDD: This test will fail initially - verify hover transform effect
       await feedCardContainer.hover();
-      await expect(feedCardContainer).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, -2)"); // translateY(-2px)
-      await expect(feedCardContainer).toHaveCSS("transition", /transform.*ease.*box-shadow.*ease/);
+      await expect(feedCardContainer).toHaveCSS(
+        "transform",
+        "matrix(1, 0, 0, 1, 0, -2)",
+      ); // translateY(-2px)
+      await expect(feedCardContainer).toHaveCSS(
+        "transition",
+        /transform.*ease.*box-shadow.*ease/,
+      );
     });
 
-    test("should use vaporwave pink gradient for skeleton cards", async ({ page }) => {
+    test("should use vaporwave pink gradient for skeleton cards", async ({
+      page,
+    }) => {
       // Mock slow API to catch skeleton loading state
       await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -713,39 +772,58 @@ test.describe("Mobile Feeds Page", () => {
       await page.goto("/mobile/feeds");
 
       // Should show skeleton cards with gradient background
-      await expect(page.locator('[data-testid="skeleton-feed-card"]')).toHaveCount(5);
+      await expect(
+        page.locator('[data-testid="skeleton-feed-card"]'),
+      ).toHaveCount(5);
 
-      const skeletonCard = page.locator('[data-testid="skeleton-feed-card"]').first();
+      const skeletonCard = page
+        .locator('[data-testid="skeleton-feed-card"]')
+        .first();
       await expect(skeletonCard).toBeVisible();
 
       // Check for gradient background with pink colors
-      const background = await skeletonCard.evaluate(el => getComputedStyle(el).background);
+      const background = await skeletonCard.evaluate(
+        (el) => getComputedStyle(el).background,
+      );
       expect(background).toMatch(/linear-gradient.*rgba?\(255,\s*0,\s*110/); // Check for pink color in gradient
     });
   });
 
   test.describe("Accessibility Enhancements - TDD Tests", () => {
-    test("should include proper ARIA labels for screen readers", async ({ page }) => {
+    test("should include proper ARIA labels for screen readers", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
       // TDD: This test will fail initially - verify ARIA labels
-      const markAsReadButton = page.locator('button:has-text("Mark as read")').first();
-      await expect(markAsReadButton).toHaveAttribute("aria-label", /mark.*read/i);
+      const markAsReadButton = page
+        .locator('button:has-text("Mark as read")')
+        .first();
+      await expect(markAsReadButton).toHaveAttribute(
+        "aria-label",
+        /mark.*read/i,
+      );
 
       const feedLink = page.locator('[data-testid="feed-card"] a').first();
       await expect(feedLink).toHaveAttribute("aria-label", /open.*external/i);
     });
 
-    test("should support keyboard navigation for feed cards", async ({ page }) => {
+    test("should support keyboard navigation for feed cards", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
@@ -760,11 +838,15 @@ test.describe("Mobile Feeds Page", () => {
       // Verify some interaction occurred
     });
 
-    test("should announce dynamic content changes to screen readers", async ({ page }) => {
+    test("should announce dynamic content changes to screen readers", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
@@ -785,7 +867,9 @@ test.describe("Mobile Feeds Page", () => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
@@ -803,7 +887,9 @@ test.describe("Mobile Feeds Page", () => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
@@ -831,9 +917,11 @@ test.describe("Mobile Feeds Page", () => {
   });
 
   test.describe("Enhanced Error Handling - TDD Tests", () => {
-    test("should display retry button with exponential backoff", async ({ page }) => {
+    test("should display retry button with exponential backoff", async ({
+      page,
+    }) => {
       let attemptCount = 0;
-      const mockFeeds = generateMockFeeds(5, 1).map(feed => ({
+      const mockFeeds = generateMockFeeds(5, 1).map((feed) => ({
         title: feed.title,
         description: feed.description,
         link: feed.link,
@@ -849,7 +937,7 @@ test.describe("Mobile Feeds Page", () => {
           await route.fulfill({
             status: 500,
             contentType: "application/json",
-            body: JSON.stringify({ error: "Internal server error" })
+            body: JSON.stringify({ error: "Internal server error" }),
           });
         } else {
           // Succeed on subsequent attempts
@@ -868,7 +956,9 @@ test.describe("Mobile Feeds Page", () => {
       await page.waitForLoadState("networkidle");
 
       // Should show error state first
-      await expect(page.getByText("Unable to Load Feeds")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("Unable to Load Feeds")).toBeVisible({
+        timeout: 10000,
+      });
 
       // Retry button should be visible
       const retryButton = page.locator('button:has-text("Retry")');
@@ -878,15 +968,21 @@ test.describe("Mobile Feeds Page", () => {
       await retryButton.click();
 
       // Wait for the retry process and eventual success
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 20000, // Increased timeout for retry logic
       });
 
       // Verify we have feeds showing - use the actual aria-label from FeedCard component
-      await expect(page.getByRole("link", { name: "Open Test Feed 1 in external link" })).toBeVisible({ timeout: 5000 });
+      await expect(
+        page.getByRole("link", { name: "Open Test Feed 1 in external link" }),
+      ).toBeVisible({ timeout: 5000 });
     });
 
-    test("should show detailed error messages for different failure types", async ({ page }) => {
+    test("should show detailed error messages for different failure types", async ({
+      page,
+    }) => {
       await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
         await route.fulfill({
           status: 429,
@@ -899,10 +995,14 @@ test.describe("Mobile Feeds Page", () => {
       await page.waitForLoadState("networkidle");
 
       // Should show error state with specific error message
-      await expect(page.getByText("Unable to Load Feeds")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("Unable to Load Feeds")).toBeVisible({
+        timeout: 10000,
+      });
 
       // Should show rate limit specific message
-      await expect(page.getByText("Rate limit exceeded")).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText("Rate limit exceeded")).toBeVisible({
+        timeout: 5000,
+      });
 
       const retryButton = page.locator('button:has-text("Retry")');
       await expect(retryButton).toBeVisible({ timeout: 5000 });

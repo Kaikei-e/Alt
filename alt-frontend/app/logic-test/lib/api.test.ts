@@ -430,7 +430,7 @@ describe("feedsApi", () => {
     it("should fetch feed statistics with correct endpoint", async () => {
       const mockStatsResponse = {
         feed_amount: { amount: 42 },
-        summarized_feed: { amount: 28 }
+        summarized_feed: { amount: 28 },
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -459,7 +459,7 @@ describe("feedsApi", () => {
     it("should use 5-minute cache for stats", async () => {
       const mockStatsResponse = {
         feed_amount: { amount: 42 },
-        summarized_feed: { amount: 28 }
+        summarized_feed: { amount: 28 },
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -479,7 +479,7 @@ describe("feedsApi", () => {
     it("should handle empty stats response", async () => {
       const emptyStatsResponse = {
         feed_amount: { amount: 0 },
-        summarized_feed: { amount: 0 }
+        summarized_feed: { amount: 0 },
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -499,7 +499,7 @@ describe("feedsApi", () => {
       });
 
       await expect(feedsApi.getFeedStats()).rejects.toThrow(
-        "API request failed: 500 Internal Server Error"
+        "API request failed: 500 Internal Server Error",
       );
     });
 

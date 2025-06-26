@@ -42,7 +42,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
         contentType: "text/event-stream",
         headers: {
           "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
+          Connection: "keep-alive",
           "Content-Type": "text/event-stream",
         },
         body: `data: ${JSON.stringify(mockStatsData)}\n\n`,
@@ -74,7 +74,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
           // Simulate immediate connection
           setTimeout(() => {
             if (this.onopen) {
-              this.onopen(new Event('open'));
+              this.onopen(new Event("open"));
             }
 
             // Send mock data
@@ -86,9 +86,11 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
               };
 
               if (this.onmessage) {
-                this.onmessage(new MessageEvent('message', {
-                  data: JSON.stringify(mockData)
-                }));
+                this.onmessage(
+                  new MessageEvent("message", {
+                    data: JSON.stringify(mockData),
+                  }),
+                );
               }
             }, 100);
           }, 100);
@@ -142,9 +144,15 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(page.getByText("Feeds Statistics")).toBeVisible();
 
       // Check for the three stat cards with correct labels
-      const totalFeedsCard = page.locator('.glass').filter({ hasText: 'TOTAL FEEDS' });
-      const totalArticlesCard = page.locator('.glass').filter({ hasText: 'TOTAL ARTICLES' });
-      const unsummarizedCard = page.locator('.glass').filter({ hasText: 'UNSUMMARIZED ARTICLES' });
+      const totalFeedsCard = page
+        .locator(".glass")
+        .filter({ hasText: "TOTAL FEEDS" });
+      const totalArticlesCard = page
+        .locator(".glass")
+        .filter({ hasText: "TOTAL ARTICLES" });
+      const unsummarizedCard = page
+        .locator(".glass")
+        .filter({ hasText: "UNSUMMARIZED ARTICLES" });
 
       await expect(totalFeedsCard).toBeVisible();
       await expect(totalArticlesCard).toBeVisible();
@@ -152,8 +160,12 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
       // Check for descriptions
       await expect(page.getByText("RSS feeds being monitored")).toBeVisible();
-      await expect(page.getByText("All articles across RSS feeds")).toBeVisible();
-      await expect(page.getByText("Articles waiting for AI summarization")).toBeVisible();
+      await expect(
+        page.getByText("All articles across RSS feeds"),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Articles waiting for AI summarization"),
+      ).toBeVisible();
     });
   });
 
@@ -174,9 +186,15 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(page.getByText("TOTAL ARTICLES")).toBeVisible();
       await expect(page.getByText("UNSUMMARIZED ARTICLES")).toBeVisible();
       // Numbers should be present - check for actual numeric values
-      const feedCard = page.locator('.glass').filter({ hasText: 'TOTAL FEEDS' });
-      const totalArticlesCard = page.locator('.glass').filter({ hasText: 'TOTAL ARTICLES' });
-      const articleCard = page.locator('.glass').filter({ hasText: 'UNSUMMARIZED ARTICLES' });
+      const feedCard = page
+        .locator(".glass")
+        .filter({ hasText: "TOTAL FEEDS" });
+      const totalArticlesCard = page
+        .locator(".glass")
+        .filter({ hasText: "TOTAL ARTICLES" });
+      const articleCard = page
+        .locator(".glass")
+        .filter({ hasText: "UNSUMMARIZED ARTICLES" });
 
       await expect(feedCard).toBeVisible();
       await expect(totalArticlesCard).toBeVisible();
@@ -203,10 +221,41 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
     test("should handle different data scenarios", async ({ page }) => {
       const testScenarios = [
-        { name: 'Normal data', data: { total_articles: { amount: 100 }, feed_amount: { amount: 5 }, unsummarized_feed: { amount: 10 } }, expected: '100' },
-        { name: 'Zero articles', data: { total_articles: { amount: 0 }, feed_amount: { amount: 0 }, unsummarized_feed: { amount: 0 } }, expected: '0' },
-        { name: 'Large number', data: { total_articles: { amount: 999999 }, feed_amount: { amount: 1 }, unsummarized_feed: { amount: 1 } }, expected: '999,999' },
-        { name: 'Missing field', data: { feed_amount: { amount: 1 }, unsummarized_feed: { amount: 1 } }, expected: '0' },
+        {
+          name: "Normal data",
+          data: {
+            total_articles: { amount: 100 },
+            feed_amount: { amount: 5 },
+            unsummarized_feed: { amount: 10 },
+          },
+          expected: "100",
+        },
+        {
+          name: "Zero articles",
+          data: {
+            total_articles: { amount: 0 },
+            feed_amount: { amount: 0 },
+            unsummarized_feed: { amount: 0 },
+          },
+          expected: "0",
+        },
+        {
+          name: "Large number",
+          data: {
+            total_articles: { amount: 999999 },
+            feed_amount: { amount: 1 },
+            unsummarized_feed: { amount: 1 },
+          },
+          expected: "999,999",
+        },
+        {
+          name: "Missing field",
+          data: {
+            feed_amount: { amount: 1 },
+            unsummarized_feed: { amount: 1 },
+          },
+          expected: "0",
+        },
       ];
 
       for (const scenario of testScenarios) {
@@ -226,15 +275,17 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
               // Simulate immediate connection
               setTimeout(() => {
                 if (this.onopen) {
-                  this.onopen(new Event('open'));
+                  this.onopen(new Event("open"));
                 }
 
                 // Send scenario data
                 setTimeout(() => {
                   if (this.onmessage) {
-                    this.onmessage(new MessageEvent('message', {
-                      data: JSON.stringify(data)
-                    }));
+                    this.onmessage(
+                      new MessageEvent("message", {
+                        data: JSON.stringify(data),
+                      }),
+                    );
                   }
                 }, 50); // Reduced delay
               }, 50); // Reduced delay
@@ -257,14 +308,20 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
         await page.waitForTimeout(1000); // Reduced wait
 
         // Check if expected value appears (or fallback to structure check)
-        const totalArticlesCard = page.locator('.glass').filter({ hasText: 'TOTAL ARTICLES' });
+        const totalArticlesCard = page
+          .locator(".glass")
+          .filter({ hasText: "TOTAL ARTICLES" });
         await expect(totalArticlesCard).toBeVisible({ timeout: 5000 });
 
         try {
-          await expect(totalArticlesCard.locator(`text=${scenario.expected}`)).toBeVisible({ timeout: 3000 }); // Reduced timeout
+          await expect(
+            totalArticlesCard.locator(`text=${scenario.expected}`),
+          ).toBeVisible({ timeout: 3000 }); // Reduced timeout
         } catch {
           // If expected value doesn't appear, at least verify the card structure exists
-          await expect(totalArticlesCard.locator("text=TOTAL ARTICLES")).toBeVisible();
+          await expect(
+            totalArticlesCard.locator("text=TOTAL ARTICLES"),
+          ).toBeVisible();
         }
       }
     });
@@ -291,13 +348,13 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
                 // Fail first 2 attempts
                 this.readyState = 2; // CLOSED
                 if (this.onerror) {
-                  this.onerror(new Event('error'));
+                  this.onerror(new Event("error"));
                 }
               } else {
                 // Succeed on 3rd attempt
                 this.readyState = 1; // OPEN
                 if (this.onopen) {
-                  this.onopen(new Event('open'));
+                  this.onopen(new Event("open"));
                 }
 
                 // Send data after connection
@@ -309,9 +366,11 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
                   };
 
                   if (this.onmessage) {
-                    this.onmessage(new MessageEvent('message', {
-                      data: JSON.stringify(mockData)
-                    }));
+                    this.onmessage(
+                      new MessageEvent("message", {
+                        data: JSON.stringify(mockData),
+                      }),
+                    );
                   }
                 }, 100);
               }
@@ -358,7 +417,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             setTimeout(() => {
               this.readyState = 2; // CLOSED
               if (this.onerror) {
-                this.onerror(new Event('error'));
+                this.onerror(new Event("error"));
               }
             }, 100);
           }
@@ -380,7 +439,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForTimeout(3000);
 
       // Should show disconnected status
-      await expect(page.getByText("Disconnected").or(page.getByText(/Reconnecting/))).toBeVisible({ timeout: 5000 });
+      await expect(
+        page.getByText("Disconnected").or(page.getByText(/Reconnecting/)),
+      ).toBeVisible({ timeout: 5000 });
 
       // But should still show the page structure
       await expect(page.getByText("TOTAL FEEDS")).toBeVisible();
@@ -392,7 +453,10 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
   test.describe("Connection Status", () => {
     test("should display connection status indicator", async ({ page }) => {
       // Should show connection status (Connected, Disconnected, or Reconnecting)
-      const connectionStatus = page.getByText("Connected").or(page.getByText("Disconnected")).or(page.getByText(/Reconnecting/));
+      const connectionStatus = page
+        .getByText("Connected")
+        .or(page.getByText("Disconnected"))
+        .or(page.getByText(/Reconnecting/));
       await expect(connectionStatus).toBeVisible({ timeout: 5000 });
     });
 
@@ -414,7 +478,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             setTimeout(() => {
               this.readyState = 2; // CLOSED
               if (this.onerror) {
-                this.onerror(new Event('error'));
+                this.onerror(new Event("error"));
               }
             }, 100);
           }
@@ -436,13 +500,17 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForTimeout(3000);
 
       // Should show reconnection status
-      const reconnectingText = page.getByText(/Reconnecting/).or(page.getByText("Disconnected"));
+      const reconnectingText = page
+        .getByText(/Reconnecting/)
+        .or(page.getByText("Disconnected"));
       await expect(reconnectingText).toBeVisible({ timeout: 5000 });
     });
   });
 
   test.describe("Responsive Design", () => {
-    test("should display correctly across different viewports", async ({ page }) => {
+    test("should display correctly across different viewports", async ({
+      page,
+    }) => {
       const viewports = [
         { width: 375, height: 667 }, // iPhone SE
         { width: 414, height: 896 }, // iPhone 11 Pro Max
@@ -460,7 +528,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
         await expect(page.getByText("UNSUMMARIZED ARTICLES")).toBeVisible();
 
         // Cards should be properly sized and visible
-        const cards = page.locator('.glass');
+        const cards = page.locator(".glass");
         await expect(cards.first()).toBeVisible();
         await expect(cards.nth(1)).toBeVisible();
         await expect(cards.nth(2)).toBeVisible();
@@ -487,14 +555,15 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             // Simulate immediate connection
             setTimeout(() => {
               if (this.onopen) {
-                this.onopen(new Event('open'));
+                this.onopen(new Event("open"));
               }
 
               // Send multiple rapid updates
               let updateCount = 0;
               this.interval = setInterval(() => {
                 updateCount++;
-                if (updateCount <= 5) { // Limit to 5 updates
+                if (updateCount <= 5) {
+                  // Limit to 5 updates
                   const data = {
                     feed_amount: { amount: updateCount },
                     unsummarized_feed: { amount: updateCount * 2 },
@@ -502,9 +571,11 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
                   };
 
                   if (this.onmessage) {
-                    this.onmessage(new MessageEvent('message', {
-                      data: JSON.stringify(data)
-                    }));
+                    this.onmessage(
+                      new MessageEvent("message", {
+                        data: JSON.stringify(data),
+                      }),
+                    );
                   }
                 } else {
                   clearInterval(this.interval);
@@ -539,7 +610,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(page.getByText("UNSUMMARIZED ARTICLES")).toBeVisible();
 
       // Should handle the updates without crashing
-      const cards = page.locator('.glass');
+      const cards = page.locator(".glass");
       await expect(cards).toHaveCount(3);
     });
   });
@@ -561,15 +632,17 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             // Simulate immediate connection
             setTimeout(() => {
               if (this.onopen) {
-                this.onopen(new Event('open'));
+                this.onopen(new Event("open"));
               }
 
               // Send malformed data
               setTimeout(() => {
                 if (this.onmessage) {
-                  this.onmessage(new MessageEvent('message', {
-                    data: 'invalid json'
-                  }));
+                  this.onmessage(
+                    new MessageEvent("message", {
+                      data: "invalid json",
+                    }),
+                  );
                 }
               }, 100);
             }, 100);

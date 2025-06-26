@@ -15,7 +15,8 @@ type MockCursorResponse = {
 };
 
 // Mock API function
-const mockGetFeedsWithCursor = vi.fn<(cursor?: string, limit?: number) => Promise<MockCursorResponse>>();
+const mockGetFeedsWithCursor =
+  vi.fn<(cursor?: string, limit?: number) => Promise<MockCursorResponse>>();
 
 // Hook behavior simulator (tests hook logic without DOM dependencies)
 class CursorPaginationHookTester<T> {
@@ -29,8 +30,11 @@ class CursorPaginationHookTester<T> {
   };
 
   constructor(
-    private fetchFn: (cursor?: string, limit?: number) => Promise<{ data: T[]; next_cursor: string | null }>,
-    private limit: number = 20
+    private fetchFn: (
+      cursor?: string,
+      limit?: number,
+    ) => Promise<{ data: T[]; next_cursor: string | null }>,
+    private limit: number = 20,
   ) {}
 
   // Simulate hook's initial state
@@ -50,7 +54,8 @@ class CursorPaginationHookTester<T> {
       this.state.cursor = response.next_cursor;
       this.state.hasMore = response.next_cursor !== null;
     } catch (err) {
-      this.state.error = err instanceof Error ? err.message : "Failed to load data";
+      this.state.error =
+        err instanceof Error ? err.message : "Failed to load data";
       this.state.data = [];
       this.state.hasMore = false;
     } finally {
@@ -74,7 +79,8 @@ class CursorPaginationHookTester<T> {
       this.state.cursor = response.next_cursor;
       this.state.hasMore = response.next_cursor !== null;
     } catch (err) {
-      this.state.error = err instanceof Error ? err.message : "Failed to load more data";
+      this.state.error =
+        err instanceof Error ? err.message : "Failed to load more data";
     } finally {
       this.state.isLoading = false;
     }
@@ -120,8 +126,20 @@ describe("useCursorPagination Hook Logic", () => {
 
   it("should load initial data successfully", async () => {
     const mockData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
-      { id: "2", title: "Feed 2", description: "Desc 2", link: "https://2.com", published: "2023-01-02" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
+      {
+        id: "2",
+        title: "Feed 2",
+        description: "Desc 2",
+        link: "https://2.com",
+        published: "2023-01-02",
+      },
     ];
 
     const mockResponse: MockCursorResponse = {
@@ -145,11 +163,23 @@ describe("useCursorPagination Hook Logic", () => {
 
   it("should load more data and append to existing data", async () => {
     const initialData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     const moreData = [
-      { id: "2", title: "Feed 2", description: "Desc 2", link: "https://2.com", published: "2023-01-02" },
+      {
+        id: "2",
+        title: "Feed 2",
+        description: "Desc 2",
+        link: "https://2.com",
+        published: "2023-01-02",
+      },
     ];
 
     mockGetFeedsWithCursor
@@ -172,8 +202,12 @@ describe("useCursorPagination Hook Logic", () => {
 
     expect(mockGetFeedsWithCursor).toHaveBeenCalledTimes(2);
     expect(mockGetFeedsWithCursor).toHaveBeenNthCalledWith(1, undefined, 20);
-    expect(mockGetFeedsWithCursor).toHaveBeenNthCalledWith(2, "2023-01-01T00:00:00Z", 20);
-    
+    expect(mockGetFeedsWithCursor).toHaveBeenNthCalledWith(
+      2,
+      "2023-01-01T00:00:00Z",
+      20,
+    );
+
     expect(state.data).toEqual([...initialData, ...moreData]);
     expect(state.cursor).toBe("2023-01-02T00:00:00Z");
     expect(state.hasMore).toBe(true);
@@ -181,7 +215,13 @@ describe("useCursorPagination Hook Logic", () => {
 
   it("should handle end of data when next_cursor is null", async () => {
     const mockData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     mockGetFeedsWithCursor.mockResolvedValueOnce({
@@ -214,7 +254,13 @@ describe("useCursorPagination Hook Logic", () => {
   it("should not load more when already loading", async () => {
     // Setup initial state with hasMore true and cursor available
     const initialData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     mockGetFeedsWithCursor.mockResolvedValueOnce({
@@ -226,14 +272,15 @@ describe("useCursorPagination Hook Logic", () => {
 
     // Mock a slow response for loadMore to simulate loading state
     mockGetFeedsWithCursor.mockImplementationOnce(
-      () => new Promise(resolve => {
-        setTimeout(() => resolve({ data: [], next_cursor: null }), 100);
-      })
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve({ data: [], next_cursor: null }), 100);
+        }),
     );
 
     // Start loadMore (it will set isLoading to true)
     const promise1 = hookTester.loadMore();
-    
+
     // Try to call loadMore again while first is still loading
     await hookTester.loadMore(); // This should return early
 
@@ -245,7 +292,13 @@ describe("useCursorPagination Hook Logic", () => {
 
   it("should not load more when hasMore is false", async () => {
     const mockData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     // Setup state where hasMore is false
@@ -265,11 +318,23 @@ describe("useCursorPagination Hook Logic", () => {
 
   it("should refresh data correctly", async () => {
     const initialData = [
-      { id: "1", title: "Feed 1", description: "Desc 1", link: "https://1.com", published: "2023-01-01" },
+      {
+        id: "1",
+        title: "Feed 1",
+        description: "Desc 1",
+        link: "https://1.com",
+        published: "2023-01-01",
+      },
     ];
 
     const refreshedData = [
-      { id: "2", title: "Feed 2", description: "Desc 2", link: "https://2.com", published: "2023-01-02" },
+      {
+        id: "2",
+        title: "Feed 2",
+        description: "Desc 2",
+        link: "https://2.com",
+        published: "2023-01-02",
+      },
     ];
 
     mockGetFeedsWithCursor

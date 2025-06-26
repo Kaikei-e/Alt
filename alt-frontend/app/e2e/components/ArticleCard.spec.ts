@@ -26,7 +26,9 @@ test.describe("ArticleCard Component - Functionality Tests", () => {
     });
 
     // Ensure input still has the value (validation might have cleared it)
-    await expect(page.locator("[data-testid='search-input']")).toHaveValue("Test");
+    await expect(page.locator("[data-testid='search-input']")).toHaveValue(
+      "Test",
+    );
 
     await page.click("button[type='submit']");
 
@@ -40,11 +42,15 @@ test.describe("ArticleCard Component - Functionality Tests", () => {
       expect(articleCards.length).toBeGreaterThan(0);
 
       // Check that at least some articles are visible
-      await expect(page.getByText("Test Article 1", { exact: true })).toBeVisible();
+      await expect(
+        page.getByText("Test Article 1", { exact: true }),
+      ).toBeVisible();
 
       // Verify article content
       for (const article of mockArticles) {
-        await expect(page.getByText(article.title, { exact: true })).toBeVisible();
+        await expect(
+          page.getByText(article.title, { exact: true }),
+        ).toBeVisible();
       }
     } catch (error) {
       // Log page state for debugging

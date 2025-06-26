@@ -65,13 +65,13 @@ class VaporwaveBackgroundSimulator {
   getPerformanceMetrics() {
     const baseComplexity = 10;
     let complexity = baseComplexity;
-    
+
     if (this.enableGradients) complexity += 20;
     if (this.enableGeometry) complexity += 30;
     if (this.enableVHS) complexity += 15;
-    
+
     complexity *= this.animationSpeed;
-    
+
     if (this.reducedMotion) complexity = Math.min(complexity, 20);
 
     return {
@@ -103,7 +103,7 @@ describe("VaporwaveBackground", () => {
   describe("Basic Functionality", () => {
     it("should initialize with default settings", () => {
       const config = simulator.getLayerConfig();
-      
+
       expect(config.gradients.enabled).toBe(true);
       expect(config.geometry.enabled).toBe(true);
       expect(config.vhs.enabled).toBe(true);
@@ -116,8 +116,12 @@ describe("VaporwaveBackground", () => {
 
     it("should use vaporwave color palette", () => {
       const config = simulator.getLayerConfig();
-      
-      expect(config.gradients.colors).toEqual(["#8338ec", "#ff006e", "#3a86ff"]);
+
+      expect(config.gradients.colors).toEqual([
+        "#8338ec",
+        "#ff006e",
+        "#3a86ff",
+      ]);
     });
   });
 
@@ -125,7 +129,7 @@ describe("VaporwaveBackground", () => {
     it("should hide when visibility is set to false", () => {
       simulator.setVisible(false);
       const styles = simulator.getComputedStyles();
-      
+
       expect(styles.opacity).toBe("0");
     });
 
@@ -133,7 +137,7 @@ describe("VaporwaveBackground", () => {
       simulator.setVisible(false);
       simulator.setVisible(true);
       const styles = simulator.getComputedStyles();
-      
+
       expect(styles.opacity).toBe("1");
     });
   });
@@ -142,21 +146,21 @@ describe("VaporwaveBackground", () => {
     it("should accept valid animation speed values", () => {
       simulator.setAnimationSpeed(2);
       const styles = simulator.getComputedStyles();
-      
+
       expect(styles.animationDuration).toBe("30s"); // 60/2
     });
 
     it("should clamp animation speed to valid range", () => {
       simulator.setAnimationSpeed(5); // Above max
       const styles = simulator.getComputedStyles();
-      
+
       expect(styles.animationDuration).toBe("20s"); // 60/3 (clamped to 3)
     });
 
     it("should handle zero animation speed", () => {
       simulator.setAnimationSpeed(0);
       const styles = simulator.getComputedStyles();
-      
+
       expect(styles.animationDuration).toBe("Infinitys"); // 60/0 would be infinity
     });
   });
@@ -164,13 +168,13 @@ describe("VaporwaveBackground", () => {
   describe("Layer Configuration", () => {
     it("should have correct gradient layer count", () => {
       const config = simulator.getLayerConfig();
-      
+
       expect(config.gradients.layers).toBe(3);
     });
 
     it("should have geometric shapes when enabled", () => {
       const config = simulator.getLayerConfig();
-      
+
       expect(config.geometry.shapes).toContain("triangles");
       expect(config.geometry.shapes).toContain("grid");
       expect(config.geometry.shapes).toContain("circles");
@@ -179,7 +183,7 @@ describe("VaporwaveBackground", () => {
 
     it("should have VHS effects when enabled", () => {
       const config = simulator.getLayerConfig();
-      
+
       expect(config.vhs.scanLines).toBe(true);
       expect(config.vhs.noise).toBe(true);
       expect(config.vhs.intensity).toBe(0.1);
@@ -190,13 +194,13 @@ describe("VaporwaveBackground", () => {
         enableVHS: false,
         enableGeometry: false,
       });
-      
+
       const config = customSimulator.getLayerConfig();
-      
+
       expect(config.vhs.enabled).toBe(false);
       expect(config.geometry.enabled).toBe(false);
       expect(config.gradients.enabled).toBe(true); // Still enabled
-      
+
       customSimulator.destroy();
     });
   });
@@ -205,7 +209,7 @@ describe("VaporwaveBackground", () => {
     it("should respect reduced motion preference", () => {
       simulator.enableReducedMotion(true);
       const styles = simulator.getComputedStyles();
-      
+
       expect(styles.animationPlayState).toBe("paused");
       expect(styles.willChange).toBe("auto");
       expect(styles.transform).toBe("none");
@@ -214,7 +218,7 @@ describe("VaporwaveBackground", () => {
     it("should disable effects when reduced motion is enabled", () => {
       simulator.enableReducedMotion(true);
       const config = simulator.getLayerConfig();
-      
+
       expect(config.gradients.enabled).toBe(false);
       expect(config.geometry.enabled).toBe(false);
       expect(config.vhs.enabled).toBe(false);
@@ -224,7 +228,7 @@ describe("VaporwaveBackground", () => {
       simulator.enableReducedMotion(true);
       simulator.setVisible(true);
       const styles = simulator.getComputedStyles();
-      
+
       expect(styles.opacity).toBe("1");
     });
   });
@@ -232,7 +236,7 @@ describe("VaporwaveBackground", () => {
   describe("Performance Metrics", () => {
     it("should calculate complexity based on enabled features", () => {
       const metrics = simulator.getPerformanceMetrics();
-      
+
       expect(metrics.complexity).toBeGreaterThan(10); // Base + features
       expect(metrics.estimatedFPS).toBeGreaterThan(0);
       expect(metrics.memoryUsage).toBeGreaterThan(0);
@@ -241,17 +245,17 @@ describe("VaporwaveBackground", () => {
 
     it("should reduce complexity with reduced motion", () => {
       const normalMetrics = simulator.getPerformanceMetrics();
-      
+
       simulator.enableReducedMotion(true);
       const reducedMetrics = simulator.getPerformanceMetrics();
-      
+
       expect(reducedMetrics.complexity).toBeLessThanOrEqual(20);
       expect(reducedMetrics.complexity).toBeLessThan(normalMetrics.complexity);
     });
 
     it("should estimate reasonable FPS", () => {
       const metrics = simulator.getPerformanceMetrics();
-      
+
       expect(metrics.estimatedFPS).toBeGreaterThanOrEqual(30);
       expect(metrics.estimatedFPS).toBeLessThanOrEqual(60);
     });
@@ -259,7 +263,7 @@ describe("VaporwaveBackground", () => {
     it("should handle high animation speeds", () => {
       simulator.setAnimationSpeed(3); // Maximum speed
       const metrics = simulator.getPerformanceMetrics();
-      
+
       expect(metrics.complexity).toBeGreaterThan(100);
       expect(metrics.estimatedFPS).toBeGreaterThanOrEqual(30); // Should still be reasonable
     });
@@ -272,15 +276,15 @@ describe("VaporwaveBackground", () => {
         enableGeometry: false,
         enableGradients: false,
       });
-      
+
       const config = minimalSimulator.getLayerConfig();
       const metrics = minimalSimulator.getPerformanceMetrics();
-      
+
       expect(config.gradients.layers).toBe(0);
       expect(config.geometry.count).toBe(0);
       expect(config.vhs.intensity).toBe(0);
       expect(metrics.complexity).toBe(10); // Base complexity only
-      
+
       minimalSimulator.destroy();
     });
 
@@ -290,10 +294,10 @@ describe("VaporwaveBackground", () => {
       simulator.enableReducedMotion(true);
       simulator.setVisible(true);
       simulator.enableReducedMotion(false);
-      
+
       const styles = simulator.getComputedStyles();
       const config = simulator.getLayerConfig();
-      
+
       expect(styles.opacity).toBe("1");
       expect(config.gradients.enabled).toBe(true);
     });

@@ -34,14 +34,15 @@ export default function FeedsPage() {
     refresh,
   } = useCursorPagination(feedsApi.getFeedsWithCursor, { limit: PAGE_SIZE });
 
-    // Memoize visible feeds to prevent unnecessary recalculations
+  // Memoize visible feeds to prevent unnecessary recalculations
   const visibleFeeds = useMemo(
     () => feeds.filter((feed) => !readFeeds.has(feed.link)),
     [feeds, readFeeds],
   );
 
   // Virtual scrolling for large lists - Re-enabled for performance
-  const shouldUseVirtualScrolling = visibleFeeds.length > VIRTUAL_SCROLL_THRESHOLD;
+  const shouldUseVirtualScrolling =
+    visibleFeeds.length > VIRTUAL_SCROLL_THRESHOLD;
   const virtualizedFeeds = useMemo(() => {
     if (!shouldUseVirtualScrolling) {
       return visibleFeeds;
@@ -95,7 +96,7 @@ export default function FeedsPage() {
     threshold: 0.1,
   });
 
-    // Virtual scroll effect
+  // Virtual scroll effect
   useEffect(() => {
     if (!shouldUseVirtualScrolling) return;
 
@@ -109,19 +110,20 @@ export default function FeedsPage() {
 
       const start = Math.max(0, Math.floor(scrollTop / itemHeight) - 2);
       // Cap the visible range to maintain performance - show at most 25 items at once
-      const visibleCount = Math.min(25, Math.ceil(containerHeight / itemHeight) + 5);
+      const visibleCount = Math.min(
+        25,
+        Math.ceil(containerHeight / itemHeight) + 5,
+      );
       const end = Math.min(visibleFeeds.length, start + visibleCount);
 
       setVisibleRange({ start, end });
     };
 
-    container.addEventListener('scroll', updateVisibleRange);
+    container.addEventListener("scroll", updateVisibleRange);
     updateVisibleRange(); // Initial calculation
 
-    return () => container.removeEventListener('scroll', updateVisibleRange);
+    return () => container.removeEventListener("scroll", updateVisibleRange);
   }, [shouldUseVirtualScrolling, visibleFeeds.length]);
-
-
 
   // Show skeleton loading state for immediate visual feedback
   if (isInitialLoading) {
@@ -150,27 +152,23 @@ export default function FeedsPage() {
   // Show error state
   if (error) {
     return (
-      <ErrorState
-        error={error}
-        onRetry={retryFetch}
-        isLoading={isRetrying}
-      />
+      <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />
     );
   }
 
   return (
     <Box minH="100vh" position="relative">
-        <Box
-          aria-live="polite"
-          aria-atomic="true"
-          position="absolute"
-          left="-10000px"
-          width="1px"
-          height="1px"
-          overflow="hidden"
-        >
-          {liveRegionMessage}
-        </Box>
+      <Box
+        aria-live="polite"
+        aria-atomic="true"
+        position="absolute"
+        left="-10000px"
+        width="1px"
+        height="1px"
+        overflow="hidden"
+      >
+        {liveRegionMessage}
+      </Box>
 
       <Box
         ref={scrollContainerRef}
@@ -202,9 +200,13 @@ export default function FeedsPage() {
             </Flex>
 
             {/* Virtual scrolling spacer for items after visible range */}
-            {shouldUseVirtualScrolling && visibleRange.end < visibleFeeds.length && (
-              <Box height={`${(visibleFeeds.length - visibleRange.end) * 200}px`} width="100%" />
-            )}
+            {shouldUseVirtualScrolling &&
+              visibleRange.end < visibleFeeds.length && (
+                <Box
+                  height={`${(visibleFeeds.length - visibleRange.end) * 200}px`}
+                  width="100%"
+                />
+              )}
 
             {/* No more feeds indicator */}
             {!hasMore && visibleFeeds.length > 0 && (
@@ -256,7 +258,7 @@ export default function FeedsPage() {
         )}
       </Box>
 
-        <FloatingMenu />
-      </Box>
+      <FloatingMenu />
+    </Box>
   );
 }

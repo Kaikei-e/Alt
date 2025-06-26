@@ -3,7 +3,7 @@
 import { Box, BoxProps } from "@chakra-ui/react";
 import { ReactNode } from "react";
 
-interface GlassPanelProps extends Omit<BoxProps, 'children'> {
+interface GlassPanelProps extends Omit<BoxProps, "children"> {
   children: ReactNode;
   /** Enable gradient border effect */
   gradientBorder?: boolean;
@@ -22,7 +22,7 @@ export function GlassPanel({
 }: GlassPanelProps) {
   // Calculate glass effect intensity
   const blurValue = Math.min(Math.max(glassIntensity, 1), 10) * 2; // 2-20px
-  const opacityValue = 0.05 + (glassIntensity * 0.01); // 0.06-0.15
+  const opacityValue = 0.05 + glassIntensity * 0.01; // 0.06-0.15
 
   const baseStyles = {
     background: `rgba(255, 255, 255, ${opacityValue})`,
@@ -35,21 +35,19 @@ export function GlassPanel({
     willChange: "transform",
   };
 
-  const hoverStyles = enableHover ? {
-    _hover: {
-      transform: "translateY(-2px)",
-      background: `rgba(255, 255, 255, ${opacityValue + 0.02})`,
-      borderColor: "rgba(255, 255, 255, 0.3)",
-      boxShadow: "0 8px 32px rgba(255, 0, 110, 0.15)",
-    }
-  } : {};
+  const hoverStyles = enableHover
+    ? {
+        _hover: {
+          transform: "translateY(-2px)",
+          background: `rgba(255, 255, 255, ${opacityValue + 0.02})`,
+          borderColor: "rgba(255, 255, 255, 0.3)",
+          boxShadow: "0 8px 32px rgba(255, 0, 110, 0.15)",
+        },
+      }
+    : {};
 
   const content = (
-    <Box
-      {...baseStyles}
-      {...hoverStyles}
-      {...boxProps}
-    >
+    <Box {...baseStyles} {...hoverStyles} {...boxProps}>
       {children}
     </Box>
   );

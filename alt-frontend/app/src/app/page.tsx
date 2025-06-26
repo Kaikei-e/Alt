@@ -17,12 +17,12 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const handleNavigateToFeeds = () => {
-    router.push('/mobile/feeds');
+    router.push("/mobile/feeds");
   };
 
   // Performance optimization: Preload /mobile/feeds route for instant navigation
   useEffect(() => {
-    router.prefetch('/mobile/feeds');
+    router.prefetch("/mobile/feeds");
   }, [router]);
 
   useEffect(() => {
@@ -71,9 +71,9 @@ export default function Home() {
         }}
         onClick={(e) => {
           e.preventDefault();
-          const mainContent = document.getElementById('main-content');
+          const mainContent = document.getElementById("main-content");
           if (mainContent) {
-            mainContent.setAttribute('tabindex', '-1');
+            mainContent.setAttribute("tabindex", "-1");
             mainContent.focus();
           }
         }}
@@ -147,7 +147,7 @@ export default function Home() {
               handleNavigateToFeeds();
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
+              if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 handleNavigateToFeeds();
               }
@@ -183,7 +183,12 @@ export default function Home() {
               _groupHover={{ opacity: 1 }}
             />
 
-            <Flex align="center" justify="space-between" position="relative" zIndex={1}>
+            <Flex
+              align="center"
+              justify="space-between"
+              position="relative"
+              zIndex={1}
+            >
               <HStack gap={3}>
                 <Box
                   color="accent.default"
@@ -202,11 +207,7 @@ export default function Home() {
                   >
                     Browse Feeds
                   </Text>
-                  <Text
-                    fontSize="xs"
-                    color="fg.subtle"
-                    fontFamily="body"
-                  >
+                  <Text fontSize="xs" color="fg.subtle" fontFamily="body">
                     Explore RSS subscriptions
                   </Text>
                 </VStack>
@@ -235,7 +236,12 @@ export default function Home() {
           </Text>
 
           {isLoading ? (
-            <VStack gap={3} w="full" aria-live="polite" aria-label="Loading statistics">
+            <VStack
+              gap={3}
+              w="full"
+              aria-live="polite"
+              aria-label="Loading statistics"
+            >
               {[1, 2].map((i) => (
                 <Box
                   key={i}
@@ -251,9 +257,21 @@ export default function Home() {
                   aria-label={`Loading statistic ${i}`}
                 >
                   <Flex direction="column" gap={2}>
-                    <Box h="12px" bg="rgba(255, 255, 255, 0.1)" borderRadius="xs" />
-                    <Box h="24px" bg="rgba(255, 0, 110, 0.15)" borderRadius="sm" />
-                    <Box h="10px" bg="rgba(255, 255, 255, 0.06)" borderRadius="xs" />
+                    <Box
+                      h="12px"
+                      bg="rgba(255, 255, 255, 0.1)"
+                      borderRadius="xs"
+                    />
+                    <Box
+                      h="24px"
+                      bg="rgba(255, 0, 110, 0.15)"
+                      borderRadius="sm"
+                    />
+                    <Box
+                      h="10px"
+                      bg="rgba(255, 255, 255, 0.06)"
+                      borderRadius="xs"
+                    />
                   </Flex>
                 </Box>
               ))}
@@ -271,11 +289,7 @@ export default function Home() {
               role="alert"
               aria-live="assertive"
             >
-              <Text
-                color="semantic.error"
-                fontFamily="body"
-                fontSize="sm"
-              >
+              <Text color="semantic.error" fontFamily="body" fontSize="sm">
                 {error}
               </Text>
             </Box>

@@ -21,7 +21,7 @@ class SSEProgressBarSimulator {
   private progress = 0;
   private isVisible = true;
   private duration = 5000;
-  
+
   constructor(duration: number = 5000) {
     this.duration = duration;
   }
@@ -45,7 +45,7 @@ class SSEProgressBarSimulator {
     // Simulate CSS updates that would happen in the real component
     const width = this.isVisible ? `${this.progress}%` : "0%";
     const opacity = this.isVisible ? "1" : "0";
-    
+
     // Store the computed styles for testing
     (this as any)._computedWidth = width;
     (this as any)._computedOpacity = opacity;
@@ -63,7 +63,7 @@ class SSEProgressBarSimulator {
     // Return the vaporwave gradient colors that should be applied
     return {
       start: "#8338ec", // purple
-      middle: "#ff006e", // pink  
+      middle: "#ff006e", // pink
       end: "#3a86ff", // blue
     };
   }
@@ -148,7 +148,7 @@ describe("SSEProgressBar", () => {
   describe("Vaporwave Styling", () => {
     it("should use vaporwave gradient colors", () => {
       const colors = simulator.getGradientColors();
-      
+
       expect(colors.start).toBe("#8338ec"); // purple
       expect(colors.middle).toBe("#ff006e"); // pink
       expect(colors.end).toBe("#3a86ff"); // blue
@@ -156,7 +156,7 @@ describe("SSEProgressBar", () => {
 
     it("should maintain consistent color scheme with existing design", () => {
       const colors = simulator.getGradientColors();
-      
+
       // These should match the existing CSS variables
       expect(colors.start).toMatch(/^#[0-9a-f]{6}$/i);
       expect(colors.middle).toMatch(/^#[0-9a-f]{6}$/i);
@@ -176,7 +176,7 @@ describe("SSEProgressBar", () => {
     it("should not update unnecessarily when progress hasn't changed", () => {
       simulator.setProgress(50);
       const initialWidth = simulator.getComputedWidth();
-      
+
       simulator.setProgress(50); // Same value
       expect(simulator.getComputedWidth()).toBe(initialWidth);
     });

@@ -17,20 +17,25 @@
 
   /* Gradients */
   --alt-gradient-primary: linear-gradient(45deg, #ff006e, #8338ec, #3a86ff);
-  --alt-gradient-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+  --alt-gradient-bg: linear-gradient(
+    135deg,
+    #1a1a2e 0%,
+    #16213e 50%,
+    #0f0f23 100%
+  );
 
   /* Spacing System (Fibonacci + Golden Ratio) */
-  --space-1: 0.25rem;    /* 4px */
-  --space-2: 0.5rem;     /* 8px */
-  --space-3: 0.75rem;    /* 12px */
-  --space-4: 1rem;       /* 16px */
-  --space-5: 1.25rem;    /* 20px */
-  --space-6: 1.5rem;     /* 24px */
-  --space-8: 2rem;       /* 32px */
-  --space-10: 2.5rem;    /* 40px */
-  --space-12: 3rem;      /* 48px */
-  --space-16: 4rem;      /* 64px */
-  --space-20: 5rem;      /* 80px */
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.25rem; /* 20px */
+  --space-6: 1.5rem; /* 24px */
+  --space-8: 2rem; /* 32px */
+  --space-10: 2.5rem; /* 40px */
+  --space-12: 3rem; /* 48px */
+  --space-16: 4rem; /* 64px */
+  --space-20: 5rem; /* 80px */
 
   /* Typography Scale (Fluid) */
   --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
@@ -43,9 +48,9 @@
   --text-4xl: clamp(2.25rem, 1.9rem + 1.75vw, 3.375rem);
 
   /* Font Family System */
-  --font-primary: 'Inter Variable', system-ui, sans-serif;
-  --font-display: 'Space Grotesk Variable', var(--font-primary);
-  --font-mono: 'Fira Code Variable', 'SF Mono', monospace;
+  --font-primary: "Inter Variable", system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", var(--font-primary);
+  --font-mono: "Fira Code Variable", "SF Mono", monospace;
 
   /* Semantic Text Colors */
   --alt-text-primary: #ffffff;
@@ -54,19 +59,19 @@
   --alt-text-glow: #ff006e;
 
   /* Semantic Status Colors */
-  --alt-success: #00ff88;     /* Neon green */
-  --alt-error: #ff4757;       /* Neon red */
-  --alt-warning: #ffaa00;     /* Neon orange */
-  --alt-info: #3a86ff;        /* Alt blue */
+  --alt-success: #00ff88; /* Neon green */
+  --alt-error: #ff4757; /* Neon red */
+  --alt-warning: #ffaa00; /* Neon orange */
+  --alt-info: #3a86ff; /* Alt blue */
 
   /* Border Radius (Organic Shapes) */
-  --radius-xs: 0.25rem;    /* 4px */
-  --radius-sm: 0.5rem;     /* 8px */
-  --radius-md: 0.75rem;    /* 12px */
-  --radius-lg: 1rem;       /* 16px */
-  --radius-xl: 1.5rem;     /* 24px */
-  --radius-2xl: 2rem;      /* 32px */
-  --radius-full: 9999px;   /* Pill shape */
+  --radius-xs: 0.25rem; /* 4px */
+  --radius-sm: 0.5rem; /* 8px */
+  --radius-md: 0.75rem; /* 12px */
+  --radius-lg: 1rem; /* 16px */
+  --radius-xl: 1.5rem; /* 24px */
+  --radius-2xl: 2rem; /* 32px */
+  --radius-full: 9999px; /* Pill shape */
 
   /* Legacy support */
   --vaporwave-bg: var(--alt-gradient-bg);
@@ -341,5 +346,3 @@ a:hover {
     --foreground: #ffffff;
   }
 }
-
-

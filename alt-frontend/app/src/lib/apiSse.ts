@@ -4,7 +4,7 @@ import { SseConfig, defaultSseConfig } from "@/lib/config";
 export function setupSSE(
   endpoint: string,
   onData: (data: UnsummarizedFeedStatsSummary) => void,
-  onError?: () => void
+  onError?: () => void,
 ): EventSource | null {
   try {
     const eventSource = new EventSource(endpoint);
@@ -13,11 +13,11 @@ export function setupSSE(
       try {
         const data = JSON.parse(event.data) as UnsummarizedFeedStatsSummary;
         // Validate basic structure before passing to callback
-        if (data && typeof data === 'object') {
+        if (data && typeof data === "object") {
           onData(data);
         }
       } catch (error) {
-        console.error('Error parsing SSE message:', error);
+        console.error("Error parsing SSE message:", error);
       }
     };
 
@@ -29,7 +29,7 @@ export function setupSSE(
 
     return eventSource;
   } catch {
-    console.error('Error creating SSE connection');
+    console.error("Error creating SSE connection");
     if (onError) {
       onError();
     }
@@ -42,7 +42,7 @@ export function setupSSEWithReconnect(
   onData: (data: UnsummarizedFeedStatsSummary) => void,
   onError?: () => void,
   maxReconnectAttempts: number = 3,
-  onOpen?: () => void
+  onOpen?: () => void,
 ): { eventSource: EventSource | null; cleanup: () => void } {
   let eventSource: EventSource | null = null;
   let reconnectAttempts = 0;
@@ -64,7 +64,7 @@ export function setupSSEWithReconnect(
         try {
           const data = JSON.parse(event.data) as UnsummarizedFeedStatsSummary;
           // Validate basic structure before passing to callback
-          if (data && typeof data === 'object') {
+          if (data && typeof data === "object") {
             // Only reset attempts when we successfully receive and parse data
             if (!hasReceivedData) {
               hasReceivedData = true;
@@ -73,11 +73,11 @@ export function setupSSEWithReconnect(
             onData(data);
           }
         } catch (error) {
-          console.error('Error parsing SSE message:', error);
+          console.error("Error parsing SSE message:", error);
         }
       };
 
-                  eventSource.onerror = () => {
+      eventSource.onerror = () => {
         if (onError) {
           onError();
         }
@@ -90,9 +90,8 @@ export function setupSSEWithReconnect(
           reconnectTimeout = setTimeout(connect, delay);
         }
       };
-
     } catch (error) {
-      console.error('Error creating SSE connection:', error);
+      console.error("Error creating SSE connection:", error);
       if (onError) {
         onError();
       }
@@ -130,9 +129,9 @@ export class SseClient {
       `${this.config.baseUrl}/v1/sse/feeds/stats`,
       onMessage,
       onError ||
-      (() => {
-        console.error('SSE error');
-      })
+        (() => {
+          console.error("SSE error");
+        }),
     );
   }
 }

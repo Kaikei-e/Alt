@@ -26,7 +26,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
     const mockFeeds = generateMockFeeds(10, 1);
 
     // Convert Feed[] to BackendFeedItem[] for API compatibility
-    const backendFeeds: BackendFeedItem[] = mockFeeds.map(feed => ({
+    const backendFeeds: BackendFeedItem[] = mockFeeds.map((feed) => ({
       title: feed.title,
       description: feed.description,
       link: feed.link,
@@ -477,7 +477,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".show-details-button").first()).toBeVisible();
     });
 
-        test("should be keyboard accessible", async ({ page }) => {
+    test("should be keyboard accessible", async ({ page }) => {
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         await route.fulfill({
           status: 200,
@@ -490,7 +490,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       });
 
       // Wait for page to load and show button to be available
-      await expect(page.locator(".show-details-button").first()).toBeVisible({ timeout: 15000 });
+      await expect(page.locator(".show-details-button").first()).toBeVisible({
+        timeout: 15000,
+      });
 
       const showButton = page.locator(".show-details-button").first();
 
@@ -502,11 +504,17 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await showButton.click();
 
       // Wait for modal backdrop to appear first, then check for content
-      await expect(page.locator('[data-testid="modal-backdrop"]')).toBeVisible({ timeout: 10000 });
-      await expect(page.locator('[data-testid="modal-content"]')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('[data-testid="modal-backdrop"]')).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.locator('[data-testid="modal-content"]')).toBeVisible({
+        timeout: 5000,
+      });
 
       // Check that summary text is also visible
-      await expect(page.locator(".summary-text")).toBeVisible({ timeout: 5000 });
+      await expect(page.locator(".summary-text")).toBeVisible({
+        timeout: 5000,
+      });
     });
 
     test("should have proper modal structure when open", async ({ page }) => {

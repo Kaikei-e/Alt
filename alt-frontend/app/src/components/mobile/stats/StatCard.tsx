@@ -7,10 +7,10 @@ import { IconType } from "react-icons";
 // Safe number formatter with fallbacks
 const safeFormatNumber = (value: number): string => {
   if (value > Number.MAX_SAFE_INTEGER) {
-    return '∞';
+    return "∞";
   }
   if (value < 0) {
-    return '0';
+    return "0";
   }
   return value.toLocaleString();
 };
@@ -25,15 +25,15 @@ interface StatCardProps {
   /** Additional description text */
   description: string;
   /** Optional test ID for testing */
-  'data-testid'?: string;
+  "data-testid"?: string;
 }
 
-export const StatCard = ({ 
-  icon, 
-  label, 
-  value, 
+export const StatCard = ({
+  icon,
+  label,
+  value,
   description,
-  'data-testid': testId 
+  "data-testid": testId,
 }: StatCardProps) => {
   return (
     <Box

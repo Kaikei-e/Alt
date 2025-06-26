@@ -45,19 +45,19 @@
 
 /* Refined gradient text animation */
 @keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 .gradientText {
-  background: linear-gradient(
-    45deg,
-    #ff006e,
-    #8338ec,
-    #3a86ff,
-    #ff006e
-  );
+  background: linear-gradient(45deg, #ff006e, #8338ec, #3a86ff, #ff006e);
   background-size: 300% 300%;
   animation: gradientShift 8s ease infinite;
   -webkit-background-clip: text;
@@ -68,8 +68,12 @@
 
 /* Subtle loading skeleton */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 .loadingSkeleton {
@@ -90,7 +94,7 @@
 }
 
 .accentBorder::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;

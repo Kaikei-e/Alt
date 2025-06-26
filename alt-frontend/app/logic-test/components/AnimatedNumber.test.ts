@@ -41,8 +41,8 @@ class AnimatedNumberSimulator {
   }
 
   formatValue(formatOptions?: Intl.NumberFormatOptions) {
-    return formatOptions 
-      ? new Intl.NumberFormat('en-US', formatOptions).format(this.displayValue)
+    return formatOptions
+      ? new Intl.NumberFormat("en-US", formatOptions).format(this.displayValue)
       : this.displayValue.toString();
   }
 }
@@ -78,7 +78,7 @@ describe("AnimatedNumber", () => {
   describe("Value Setting", () => {
     it("should set target value correctly", () => {
       simulator.setValue(100);
-      
+
       expect(simulator.getTargetValue()).toBe(100);
       expect(simulator.isAnimating()).toBe(true);
     });
@@ -104,7 +104,7 @@ describe("AnimatedNumber", () => {
     it("should reach target value when animation completes", () => {
       simulator.setValue(50);
       simulator.completeAnimation();
-      
+
       expect(simulator.getCurrentValue()).toBe(50);
       expect(simulator.isAnimating()).toBe(false);
     });
@@ -112,9 +112,9 @@ describe("AnimatedNumber", () => {
     it("should handle consecutive value changes", () => {
       simulator.setValue(100);
       simulator.setValue(200); // Change target before completion
-      
+
       expect(simulator.getTargetValue()).toBe(200);
-      
+
       simulator.completeAnimation();
       expect(simulator.getCurrentValue()).toBe(200);
     });
@@ -137,32 +137,32 @@ describe("AnimatedNumber", () => {
     it("should format numbers as strings by default", () => {
       simulator.setValue(1234);
       simulator.completeAnimation();
-      
+
       expect(simulator.formatValue()).toBe("1234");
     });
 
     it("should apply custom number formatting", () => {
       simulator.setValue(1234567);
       simulator.completeAnimation();
-      
-      const formatted = simulator.formatValue({ 
-        style: 'decimal',
+
+      const formatted = simulator.formatValue({
+        style: "decimal",
         minimumFractionDigits: 0,
-        maximumFractionDigits: 0
+        maximumFractionDigits: 0,
       });
-      
+
       expect(formatted).toMatch(/1,234,567|1234567/); // Locale-dependent
     });
 
     it("should handle currency formatting", () => {
       simulator.setValue(1234);
       simulator.completeAnimation();
-      
+
       const formatted = simulator.formatValue({
-        style: 'currency',
-        currency: 'USD'
+        style: "currency",
+        currency: "USD",
       });
-      
+
       expect(formatted).toMatch(/\$1,234\.00|\$1234\.00/);
     });
   });
@@ -171,27 +171,27 @@ describe("AnimatedNumber", () => {
     it("should handle same value assignment", () => {
       simulator.setValue(42);
       simulator.completeAnimation();
-      
+
       simulator.setValue(42); // Same value
       expect(simulator.isAnimating()).toBe(false);
     });
 
     it("should handle zero to positive transition", () => {
       expect(simulator.getCurrentValue()).toBe(0);
-      
+
       simulator.setValue(100);
       simulator.completeAnimation();
-      
+
       expect(simulator.getCurrentValue()).toBe(100);
     });
 
     it("should handle positive to negative transition", () => {
       simulator.setValue(50);
       simulator.completeAnimation();
-      
+
       simulator.setValue(-25);
       simulator.completeAnimation();
-      
+
       expect(simulator.getCurrentValue()).toBe(-25);
     });
   });

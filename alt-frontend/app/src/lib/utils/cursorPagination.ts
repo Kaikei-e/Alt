@@ -11,32 +11,35 @@ export class CursorPagination<T> {
   private _isInitialLoading = true;
 
   constructor(
-    private fetchFn: (cursor?: string, limit?: number) => Promise<{ data: T[]; next_cursor: string | null }>,
-    private limit: number = 20
+    private fetchFn: (
+      cursor?: string,
+      limit?: number,
+    ) => Promise<{ data: T[]; next_cursor: string | null }>,
+    private limit: number = 20,
   ) {}
 
-  get data() { 
-    return this._data; 
+  get data() {
+    return this._data;
   }
-  
-  get cursor() { 
-    return this._cursor; 
+
+  get cursor() {
+    return this._cursor;
   }
-  
-  get hasMore() { 
-    return this._hasMore; 
+
+  get hasMore() {
+    return this._hasMore;
   }
-  
-  get isLoading() { 
-    return this._isLoading; 
+
+  get isLoading() {
+    return this._isLoading;
   }
-  
-  get error() { 
-    return this._error; 
+
+  get error() {
+    return this._error;
   }
-  
-  get isInitialLoading() { 
-    return this._isInitialLoading; 
+
+  get isInitialLoading() {
+    return this._isInitialLoading;
   }
 
   async loadInitial() {
@@ -73,7 +76,8 @@ export class CursorPagination<T> {
       this._cursor = response.next_cursor;
       this._hasMore = response.next_cursor !== null;
     } catch (err) {
-      this._error = err instanceof Error ? err.message : "Failed to load more data";
+      this._error =
+        err instanceof Error ? err.message : "Failed to load more data";
     } finally {
       this._isLoading = false;
     }

@@ -16,24 +16,39 @@ export default function ErrorState({
   const [isRetrying, setIsRetrying] = useState(false);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-      // Enhanced error message mapping
+  // Enhanced error message mapping
   const getErrorMessage = (error: string | null) => {
     if (!error) return "An unexpected error occurred";
 
     // Check for status codes in error messages (format: "API request failed: 429 Too Many Requests")
-    if (error.includes("429") || error.toLowerCase().includes("rate limit") || error.toLowerCase().includes("too many requests")) {
+    if (
+      error.includes("429") ||
+      error.toLowerCase().includes("rate limit") ||
+      error.toLowerCase().includes("too many requests")
+    ) {
       return "Rate limit exceeded";
     }
-    if (error.includes("500") || error.toLowerCase().includes("server error") || error.toLowerCase().includes("internal server error")) {
+    if (
+      error.includes("500") ||
+      error.toLowerCase().includes("server error") ||
+      error.toLowerCase().includes("internal server error")
+    ) {
       return "Server error - please try again later";
     }
-    if (error.includes("503") || error.toLowerCase().includes("service unavailable")) {
+    if (
+      error.includes("503") ||
+      error.toLowerCase().includes("service unavailable")
+    ) {
       return "Service temporarily unavailable";
     }
     if (error.includes("502") || error.toLowerCase().includes("bad gateway")) {
       return "Service temporarily unavailable";
     }
-    if (error.toLowerCase().includes("network") || error.toLowerCase().includes("fetch") || error.toLowerCase().includes("connection")) {
+    if (
+      error.toLowerCase().includes("network") ||
+      error.toLowerCase().includes("fetch") ||
+      error.toLowerCase().includes("connection")
+    ) {
       return "Network connection error";
     }
     if (error.toLowerCase().includes("timeout") || error.includes("408")) {
@@ -67,9 +82,12 @@ export default function ErrorState({
       } catch (err) {
         // If failed and we haven't exceeded max retries, try again
         if (currentRetry < maxRetries) {
-          const delay = process.env.NODE_ENV === 'test' ? 100 : Math.min(1000 * Math.pow(2, currentRetry - 1), 8000);
+          const delay =
+            process.env.NODE_ENV === "test"
+              ? 100
+              : Math.min(1000 * Math.pow(2, currentRetry - 1), 8000);
 
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
           return attemptRetry();
         } else {
           // All retries exhausted
@@ -106,12 +124,7 @@ export default function ErrorState({
         maxWidth="400px"
         width="100%"
       >
-        <Text
-          fontSize="xl"
-          fontWeight="bold"
-          color="#e53935"
-          mb={4}
-        >
+        <Text fontSize="xl" fontWeight="bold" color="#e53935" mb={4}>
           Unable to Load Feeds
         </Text>
 
@@ -154,20 +167,15 @@ export default function ErrorState({
               ? "Retrying..."
               : retryCount > 0
                 ? `Retry (${retryCount + 1})`
-                : "Retry"
-          }
+                : "Retry"}
         </Button>
 
         {retryCount > 0 && (
-          <Text
-            color="rgba(255, 255, 255, 0.6)"
-            fontSize="sm"
-            mt={4}
-          >
+          <Text color="rgba(255, 255, 255, 0.6)" fontSize="sm" mt={4}>
             Using exponential backoff (attempt {retryCount + 1})
           </Text>
-                 )}
-       </Box>
+        )}
+      </Box>
     </Flex>
   );
 }

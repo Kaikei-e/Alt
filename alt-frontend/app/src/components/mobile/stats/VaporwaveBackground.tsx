@@ -43,7 +43,8 @@ export function VaporwaveBackground({
 
   // Clamp animation speed
   const clampedSpeed = Math.max(0, Math.min(3, animationSpeed));
-  const animationDuration = clampedSpeed > 0 ? `${60 / clampedSpeed}s` : "infinite";
+  const animationDuration =
+    clampedSpeed > 0 ? `${60 / clampedSpeed}s` : "infinite";
 
   // Disable effects if reduced motion is preferred
   const effectsEnabled = !reducedMotion;
@@ -79,11 +80,13 @@ export function VaporwaveBackground({
             bottom="-50%"
             background="radial-gradient(circle at 20% 50%, rgba(131, 56, 236, 0.3) 0%, transparent 50%)"
             style={{
-              animation: reducedMotion ? "none" : `vaporwaveFloat1 ${animationDuration} ease-in-out infinite`,
+              animation: reducedMotion
+                ? "none"
+                : `vaporwaveFloat1 ${animationDuration} ease-in-out infinite`,
               transform: reducedMotion ? "none" : "translateZ(0)",
             }}
           />
-          
+
           {/* Secondary gradient layer */}
           <Box
             position="absolute"
@@ -93,12 +96,14 @@ export function VaporwaveBackground({
             bottom="-50%"
             background="radial-gradient(circle at 80% 20%, rgba(255, 0, 110, 0.2) 0%, transparent 50%)"
             style={{
-              animation: reducedMotion ? "none" : `vaporwaveFloat2 ${animationDuration} ease-in-out infinite reverse`,
+              animation: reducedMotion
+                ? "none"
+                : `vaporwaveFloat2 ${animationDuration} ease-in-out infinite reverse`,
               transform: reducedMotion ? "none" : "translateZ(0)",
               animationDelay: "1s",
             }}
           />
-          
+
           {/* Tertiary gradient layer */}
           <Box
             position="absolute"
@@ -108,7 +113,9 @@ export function VaporwaveBackground({
             bottom="-50%"
             background="radial-gradient(circle at 60% 80%, rgba(58, 134, 255, 0.25) 0%, transparent 50%)"
             style={{
-              animation: reducedMotion ? "none" : `vaporwaveFloat3 ${animationDuration} ease-in-out infinite`,
+              animation: reducedMotion
+                ? "none"
+                : `vaporwaveFloat3 ${animationDuration} ease-in-out infinite`,
               transform: reducedMotion ? "none" : "translateZ(0)",
               animationDelay: "2s",
             }}
@@ -130,7 +137,9 @@ export function VaporwaveBackground({
               linear-gradient(-45deg, transparent 40%, rgba(255, 0, 110, 0.03) 50%, transparent 60%)
             `,
             backgroundSize: "60px 60px, 80px 80px",
-            animation: reducedMotion ? "none" : `geometryMove ${animationDuration} linear infinite`,
+            animation: reducedMotion
+              ? "none"
+              : `geometryMove ${animationDuration} linear infinite`,
           }}
         />
       )}
@@ -147,10 +156,12 @@ export function VaporwaveBackground({
             bottom="0"
             background="repeating-linear-gradient(0deg, transparent 0px, rgba(255, 255, 255, 0.02) 1px, transparent 2px, transparent 4px)"
             style={{
-              animation: reducedMotion ? "none" : `scanLines ${animationDuration} linear infinite`,
+              animation: reducedMotion
+                ? "none"
+                : `scanLines ${animationDuration} linear infinite`,
             }}
           />
-          
+
           {/* Noise texture */}
           <Box
             position="absolute"
@@ -174,35 +185,71 @@ export function VaporwaveBackground({
       {/* CSS Keyframes */}
       <style jsx>{`
         @keyframes vaporwaveFloat1 {
-          0%, 100% { transform: translate(0, 0) rotate(0deg); }
-          33% { transform: translate(30px, -30px) rotate(1deg); }
-          66% { transform: translate(-20px, 20px) rotate(-1deg); }
+          0%,
+          100% {
+            transform: translate(0, 0) rotate(0deg);
+          }
+          33% {
+            transform: translate(30px, -30px) rotate(1deg);
+          }
+          66% {
+            transform: translate(-20px, 20px) rotate(-1deg);
+          }
         }
-        
+
         @keyframes vaporwaveFloat2 {
-          0%, 100% { transform: translate(0, 0) rotate(0deg); }
-          50% { transform: translate(-40px, 30px) rotate(2deg); }
+          0%,
+          100% {
+            transform: translate(0, 0) rotate(0deg);
+          }
+          50% {
+            transform: translate(-40px, 30px) rotate(2deg);
+          }
         }
-        
+
         @keyframes vaporwaveFloat3 {
-          0%, 100% { transform: translate(0, 0) rotate(0deg); }
-          25% { transform: translate(20px, 40px) rotate(-1deg); }
-          75% { transform: translate(-30px, -20px) rotate(1deg); }
+          0%,
+          100% {
+            transform: translate(0, 0) rotate(0deg);
+          }
+          25% {
+            transform: translate(20px, 40px) rotate(-1deg);
+          }
+          75% {
+            transform: translate(-30px, -20px) rotate(1deg);
+          }
         }
-        
+
         @keyframes geometryMove {
-          0% { background-position: 0px 0px, 0px 0px; }
-          100% { background-position: 60px 60px, -80px 80px; }
+          0% {
+            background-position:
+              0px 0px,
+              0px 0px;
+          }
+          100% {
+            background-position:
+              60px 60px,
+              -80px 80px;
+          }
         }
-        
+
         @keyframes scanLines {
-          0% { transform: translateY(0); }
-          100% { transform: translateY(4px); }
+          0% {
+            transform: translateY(0);
+          }
+          100% {
+            transform: translateY(4px);
+          }
         }
-        
+
         @keyframes noiseFlicker {
-          0%, 100% { opacity: 0.05; }
-          50% { opacity: 0.03; }
+          0%,
+          100% {
+            opacity: 0.05;
+          }
+          50% {
+            opacity: 0.03;
+          }
         }
       `}</style>
     </Box>

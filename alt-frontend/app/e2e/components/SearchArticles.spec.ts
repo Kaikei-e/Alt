@@ -26,7 +26,9 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     });
 
     // Ensure input still has the value (validation might have cleared it)
-    await expect(page.locator("[data-testid='search-input']")).toHaveValue("Test");
+    await expect(page.locator("[data-testid='search-input']")).toHaveValue(
+      "Test",
+    );
 
     await page.click("button[type='submit']");
 
@@ -40,7 +42,9 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       expect(articleCards.length).toBeGreaterThan(0);
 
       // Check that at least some articles are visible with exact matching
-      await expect(page.getByText("Test Article 1", { exact: true })).toBeVisible();
+      await expect(
+        page.getByText("Test Article 1", { exact: true }),
+      ).toBeVisible();
     } catch (error) {
       // Log page state for debugging
       console.log("Page content:", await page.content());

@@ -20,8 +20,11 @@ export interface UseCursorPaginationResult<T> {
 }
 
 export function useCursorPagination<T>(
-  fetchFn: (cursor?: string, limit?: number) => Promise<{ data: T[]; next_cursor: string | null }>,
-  options: UseCursorPaginationOptions = {}
+  fetchFn: (
+    cursor?: string,
+    limit?: number,
+  ) => Promise<{ data: T[]; next_cursor: string | null }>,
+  options: UseCursorPaginationOptions = {},
 ): UseCursorPaginationResult<T> {
   const { limit = 20 } = options;
 
@@ -62,7 +65,7 @@ export function useCursorPagination<T>(
 
     try {
       const response = await fetchFn(cursor, limit);
-      setData(prevData => [...prevData, ...response.data]);
+      setData((prevData) => [...prevData, ...response.data]);
       setCursor(response.next_cursor);
       setHasMore(response.next_cursor !== null);
     } catch (err) {
