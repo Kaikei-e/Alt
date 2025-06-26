@@ -1,5 +1,5 @@
 use simd_json::OwnedValue;
-use simd_json::prelude::{ValueAsContainer, ValueAsScalar};
+use simd_json::prelude::{ValueAsObject, ValueAsScalar};
 use bytes::Bytes;
 use thiserror::Error;
 

@@ -1,11 +1,14 @@
-pub mod docker;
 pub mod discovery;
+pub mod docker;
 
-use tokio::sync::mpsc;
 use thiserror::Error;
+use tokio::sync::mpsc;
 
-pub use docker::{DockerCollector, LogStreamOptions, CollectorError as DockerError, ContainerInfo as DockerContainerInfo};
-pub use discovery::{ServiceDiscovery, ServiceDiscoveryTrait, ContainerInfo, DiscoveryError};
+pub use discovery::{ContainerInfo, DiscoveryError, ServiceDiscovery, ServiceDiscoveryTrait};
+pub use docker::{
+    CollectorError as DockerError, ContainerInfo as DockerContainerInfo, DockerCollector,
+    LogStreamOptions,
+};
 
 #[derive(Error, Debug)]
 pub enum CollectorError {
@@ -61,7 +64,9 @@ impl LogCollector {
         } else if config.auto_discover {
             discovery.get_target_service()?
         } else {
-            return Err(CollectorError::DiscoveryError(discovery::DiscoveryError::NoTargetService));
+            return Err(CollectorError::DiscoveryError(
+                discovery::DiscoveryError::NoTargetService,
+            ));
         };
 
         Ok(Self {
@@ -76,9 +81,15 @@ impl LogCollector {
         &self.target_service
     }
 
-    pub async fn start_collection(&mut self, tx: mpsc::UnboundedSender<LogEntry>) -> Result<(), CollectorError> {
+    pub async fn start_collection(
+        &mut self,
+        tx: mpsc::UnboundedSender<LogEntry>,
+    ) -> Result<(), CollectorError> {
         // Discover container
-        let container_info = self.discovery.find_container_by_service(&self.target_service).await?;
+        let container_info = self
+            .discovery
+            .find_container_by_service(&self.target_service)
+            .await?;
 
         tracing::info!(
             "Starting log collection for service '{}' (container: {})",
@@ -87,30 +98,33 @@ impl LogCollector {
         );
 
         // Use Docker API instead of file tailing
-        let docker_collector = DockerCollector::new().await
+        let docker_collector = DockerCollector::new()
+            .await
             .map_err(CollectorError::DockerError)?;
 
         self.container_info = Some(container_info.clone());
 
         // Start Docker API log streaming
-        self.start_docker_api_streaming(docker_collector, &container_info.id, tx).await
+        self.start_docker_api_streaming(docker_collector, &container_info.id, tx)
+            .await
     }
 
     async fn start_docker_api_streaming(
         &self,
         _docker_collector: DockerCollector,
         container_id: &str,
-        tx: mpsc::UnboundedSender<LogEntry>
+        tx: mpsc::UnboundedSender<LogEntry>,
     ) -> Result<(), CollectorError> {
-        use bollard::container::LogsOptions;
         use bollard::Docker;
+        use bollard::query_parameters::LogsOptions;
         use futures::StreamExt;
 
         // Create new Docker client since DockerCollector's docker field is private
-        let docker = Docker::connect_with_unix_defaults()
-            .map_err(|e| CollectorError::DiscoveryError(discovery::DiscoveryError::DockerError(e)))?;
+        let docker = Docker::connect_with_unix_defaults().map_err(|e| {
+            CollectorError::DiscoveryError(discovery::DiscoveryError::DockerError(e))
+        })?;
 
-        let options = LogsOptions::<String> {
+        let options = LogsOptions {
             follow: true,
             stdout: true,
             stderr: true,
@@ -136,7 +150,9 @@ impl LogCollector {
                 }
                 Err(e) => {
                     tracing::error!("Docker log stream error: {}", e);
-                    return Err(CollectorError::DiscoveryError(discovery::DiscoveryError::DockerError(e)));
+                    return Err(CollectorError::DiscoveryError(
+                        discovery::DiscoveryError::DockerError(e),
+                    ));
                 }
             }
         }

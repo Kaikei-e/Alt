@@ -1,4 +1,4 @@
-use bollard::{Docker, container::ListContainersOptions};
+use bollard::Docker;
 use std::collections::HashMap;
 use std::env;
 use thiserror::Error;
@@ -20,12 +20,12 @@ impl Clone for DiscoveryError {
         match self {
             DiscoveryError::ContainerNotFound(s) => DiscoveryError::ContainerNotFound(s.clone()),
             DiscoveryError::NoTargetService => DiscoveryError::NoTargetService,
-            DiscoveryError::DockerError(e) => DiscoveryError::DockerError(
-                bollard::errors::Error::DockerResponseServerError {
+            DiscoveryError::DockerError(e) => {
+                DiscoveryError::DockerError(bollard::errors::Error::DockerResponseServerError {
                     status_code: 500,
                     message: format!("Cloned error: {}", e),
-                }
-            ),
+                })
+            }
             DiscoveryError::InvalidHostname(s) => DiscoveryError::InvalidHostname(s.clone()),
         }
     }
@@ -41,9 +41,13 @@ pub struct ContainerInfo {
 
 #[async_trait::async_trait]
 pub trait ServiceDiscoveryTrait {
-    async fn find_container_by_service(&self, service_name: &str) -> Result<ContainerInfo, DiscoveryError>;
+    async fn find_container_by_service(
+        &self,
+        service_name: &str,
+    ) -> Result<ContainerInfo, DiscoveryError>;
     fn get_target_service(&self) -> Result<String, DiscoveryError>;
-    fn detect_target_service_from_hostname(&self, hostname: &str) -> Result<String, DiscoveryError>;
+    fn detect_target_service_from_hostname(&self, hostname: &str)
+    -> Result<String, DiscoveryError>;
 }
 
 pub struct ServiceDiscovery {
@@ -74,7 +78,10 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
         self.detect_target_service_from_hostname(&hostname)
     }
 
-    fn detect_target_service_from_hostname(&self, hostname: &str) -> Result<String, DiscoveryError> {
+    fn detect_target_service_from_hostname(
+        &self,
+        hostname: &str,
+    ) -> Result<String, DiscoveryError> {
         // Pattern: "service-logs" → "service"
         if hostname.ends_with("-logs") {
             let service_name = hostname.trim_end_matches("-logs");
@@ -84,13 +91,17 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
             Ok(service_name.to_string())
         } else {
             Err(DiscoveryError::InvalidHostname(format!(
-                "Hostname '{}' doesn't match pattern '*-logs'", hostname
+                "Hostname '{}' doesn't match pattern '*-logs'",
+                hostname
             )))
         }
     }
 
-    async fn find_container_by_service(&self, service_name: &str) -> Result<ContainerInfo, DiscoveryError> {
-        let options = ListContainersOptions::<String> {
+    async fn find_container_by_service(
+        &self,
+        service_name: &str,
+    ) -> Result<ContainerInfo, DiscoveryError> {
+        let options = bollard::query_parameters::ListContainersOptions {
             all: false, // Only running containers
             ..Default::default()
         };
@@ -101,41 +112,51 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
         for container in containers {
             if let Some(names) = &container.names {
                 // Container names start with '/' so we need to handle that
-                let container_name = names.iter()
-                    .find(|name| {
-                        let clean_name = name.trim_start_matches('/');
+                let container_name = names.iter().find(|name| {
+                    let clean_name = name.trim_start_matches('/');
 
-                        // Match exact service name
-                        let exact = clean_name == service_name;
-                        // Match with underscore separator
-                        let underscore = clean_name.starts_with(&format!("{}_", service_name));
-                        // Match with dash separator
-                        let dash = clean_name.starts_with(&format!("{}-", service_name));
+                    // Match exact service name
+                    let exact = clean_name == service_name;
+                    // Match with underscore separator
+                    let underscore = clean_name.starts_with(&format!("{}_", service_name));
+                    // Match with dash separator
+                    let dash = clean_name.starts_with(&format!("{}-", service_name));
 
-                        // Docker Compose patterns
-                        // Match pattern: project-service-replica (e.g., alt-alt-frontend-1)
-                        let compose_pattern = clean_name.ends_with(&format!("-{}-1", service_name));
-                        // Match pattern: project-service (e.g., alt-alt-frontend)
-                        let compose_no_replica = clean_name.ends_with(&format!("-{}", service_name));
-                        // Match pattern where service name appears after project prefix
-                        let contains_dash = clean_name.contains(&format!("-{}-", service_name));
+                    // Docker Compose patterns
+                    // Match pattern: project-service-replica (e.g., alt-alt-frontend-1)
+                    let compose_pattern = clean_name.ends_with(&format!("-{}-1", service_name));
+                    // Match pattern: project-service (e.g., alt-alt-frontend)
+                    let compose_no_replica = clean_name.ends_with(&format!("-{}", service_name));
+                    // Match pattern where service name appears after project prefix
+                    let contains_dash = clean_name.contains(&format!("-{}-", service_name));
 
-                        // Additional patterns for Docker Compose
-                        // Match pattern: *-service-* (more flexible)
-                        let flexible_pattern = clean_name.contains(&format!("-{}-", service_name)) ||
-                                               clean_name.contains(&format!("-{}_", service_name));
+                    // Additional patterns for Docker Compose
+                    // Match pattern: *-service-* (more flexible)
+                    let flexible_pattern = clean_name.contains(&format!("-{}-", service_name))
+                        || clean_name.contains(&format!("-{}_", service_name));
 
-                        // Match pattern: service appears in name with separators
-                        let service_in_name = clean_name.split(&['-', '_'][..])
-                            .any(|part| part == service_name);
+                    // Match pattern: service appears in name with separators
+                    let service_in_name = clean_name
+                        .split(&['-', '_'][..])
+                        .any(|part| part == service_name);
 
-                        exact || underscore || dash || compose_pattern || compose_no_replica || contains_dash || flexible_pattern || service_in_name
-                    });
+                    exact
+                        || underscore
+                        || dash
+                        || compose_pattern
+                        || compose_no_replica
+                        || contains_dash
+                        || flexible_pattern
+                        || service_in_name
+                });
 
                 if container_name.is_some() {
-                    let id = container.id.ok_or_else(||
-                        DiscoveryError::ContainerNotFound(format!("Container ID missing for {}", service_name))
-                    )?;
+                    let id = container.id.ok_or_else(|| {
+                        DiscoveryError::ContainerNotFound(format!(
+                            "Container ID missing for {}",
+                            service_name
+                        ))
+                    })?;
 
                     let labels = container.labels.unwrap_or_default();
                     let group = labels.get("rask.group").cloned();

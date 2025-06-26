@@ -1,12 +1,12 @@
 use bollard::Docker;
-use bollard::container::{ListContainersOptions, LogsOptions};
 use bollard::models::ContainerSummary;
-use futures::StreamExt;
+use bollard::query_parameters::LogsOptions;
 use bytes::Bytes;
+use futures::StreamExt;
 use multiqueue::BroadcastSender;
-use tokio::time::Duration;
 use std::collections::HashMap;
 use thiserror::Error;
+use tokio::time::Duration;
 
 #[derive(Error, Debug)]
 pub enum CollectorError {
@@ -64,18 +64,20 @@ impl DockerCollector {
         self.docker.ping().await.is_ok()
     }
 
-    pub async fn find_labeled_containers(&self, label_filter: &str) -> Result<Vec<ContainerInfo>, CollectorError> {
-        let filters = HashMap::from([
-            ("label".to_string(), vec![label_filter.to_string()])
-        ]);
+    pub async fn find_labeled_containers(
+        &self,
+        label_filter: &str,
+    ) -> Result<Vec<ContainerInfo>, CollectorError> {
+        let filters = HashMap::from([("label".to_string(), vec![label_filter.to_string()])]);
 
-        let options = Some(ListContainersOptions {
+        let options = Some(bollard::query_parameters::ListContainersOptions {
             all: false, // Only running containers
-            filters,
+            filters: Some(filters),
             ..Default::default()
         });
 
-        let containers = self.docker
+        let containers = self
+            .docker
             .list_containers(options)
             .await
             .map_err(|e| CollectorError::DiscoveryFailed(e.to_string()))?;
@@ -91,7 +93,11 @@ impl DockerCollector {
     fn container_to_info(&self, container: ContainerSummary) -> Option<ContainerInfo> {
         Some(ContainerInfo {
             id: container.id?,
-            name: container.names?.first()?.trim_start_matches('/').to_string(),
+            name: container
+                .names?
+                .first()?
+                .trim_start_matches('/')
+                .to_string(),
             image: container.image?,
             labels: container.labels.unwrap_or_default(),
         })
@@ -102,7 +108,8 @@ impl DockerCollector {
         tx: BroadcastSender<Bytes>,
         label_filter: &str,
     ) -> Result<(), CollectorError> {
-        self.start_tailing_logs_with_options(tx, label_filter, LogStreamOptions::default()).await
+        self.start_tailing_logs_with_options(tx, label_filter, LogStreamOptions::default())
+            .await
     }
 
     pub async fn start_tailing_logs_with_options(
@@ -118,7 +125,7 @@ impl DockerCollector {
             return Ok(());
         }
 
-        let log_options = LogsOptions::<String> {
+        let log_options = LogsOptions {
             follow: options.follow,
             stdout: options.stdout,
             stderr: options.stderr,
@@ -135,7 +142,11 @@ impl DockerCollector {
             let log_options = log_options.clone();
 
             tokio::spawn(async move {
-                tracing::info!("Starting to tail logs for container: {} ({})", container_name, container_id);
+                tracing::info!(
+                    "Starting to tail logs for container: {} ({})",
+                    container_name,
+                    container_id
+                );
 
                 let mut stream = docker.logs(&container_id, Some(log_options));
 
@@ -147,12 +158,19 @@ impl DockerCollector {
 
                             if tx.try_send(bytes).is_err() {
                                 // Queue full, apply backpressure
-                                tracing::warn!("Log queue full for container {}, applying backpressure", container_name);
+                                tracing::warn!(
+                                    "Log queue full for container {}, applying backpressure",
+                                    container_name
+                                );
                                 tokio::time::sleep(Duration::from_micros(100)).await;
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Error reading logs from container {}: {}", container_name, e);
+                            tracing::error!(
+                                "Error reading logs from container {}: {}",
+                                container_name,
+                                e
+                            );
                             break;
                         }
                     }

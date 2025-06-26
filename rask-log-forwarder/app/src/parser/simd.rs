@@ -1,5 +1,5 @@
 use simd_json::{OwnedValue, from_slice};
-use simd_json::prelude::{ValueAsContainer, ValueAsScalar};
+use simd_json::prelude::{ValueAsObject, ValueAsScalar};
 use bytes::Bytes;
 use super::schema::{LogEntry, NginxLogEntry, ParseError};
 use chrono::{DateTime, Utc};
