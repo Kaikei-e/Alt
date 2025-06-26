@@ -4,6 +4,7 @@ import { Flex, Text, Box } from "@chakra-ui/react";
 import { feedsApi } from "@/lib/api";
 import { Feed } from "@/schema/feed";
 import FeedCard from "@/components/mobile/FeedCard";
+import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
@@ -33,7 +34,7 @@ export default function FeedsPage() {
     refresh,
   } = useCursorPagination(feedsApi.getFeedsWithCursor, { limit: PAGE_SIZE });
 
-  // Memoize visible feeds to prevent unnecessary recalculations
+    // Memoize visible feeds to prevent unnecessary recalculations
   const visibleFeeds = useMemo(
     () => feeds.filter((feed) => !readFeeds.has(feed.link)),
     [feeds, readFeeds],
@@ -94,7 +95,7 @@ export default function FeedsPage() {
     threshold: 0.1,
   });
 
-  // Virtual scroll effect
+    // Virtual scroll effect
   useEffect(() => {
     if (!shouldUseVirtualScrolling) return;
 
@@ -122,51 +123,27 @@ export default function FeedsPage() {
 
 
 
-  // Show loading state with proper spinner
+  // Show skeleton loading state for immediate visual feedback
   if (isInitialLoading) {
     return (
-      <Flex
-        justify="center"
-        align="center"
-        minH="100vh"
-        direction="column"
-        gap={4}
-      >
-        <Box data-testid="loading-spinner">
-          <Box className="glass" p={8} borderRadius="20px" backdropFilter="blur(10px)">
-            <Flex direction="column" align="center" gap={4}>
-              <svg
-                width="48"
-                height="48"
-                viewBox="0 0 100 100"
-                style={{
-                  animation: "spin 1s linear infinite",
-                }}
-              >
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  stroke="#ff006e"
-                  strokeWidth="8"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeDasharray="60 40"
-                />
-              </svg>
-              <style jsx>{`
-                @keyframes spin {
-                  0% { transform: rotate(0deg); }
-                  100% { transform: rotate(360deg); }
-                }
-              `}</style>
-              <Text color="rgba(255, 255, 255, 0.8)" fontSize="sm">
-                Loading feeds...
-              </Text>
-            </Flex>
-          </Box>
+      <Box minH="100vh" position="relative">
+        <Box
+          p={5}
+          maxW="container.sm"
+          mx="auto"
+          height="100vh"
+          data-testid="feeds-skeleton-container"
+        >
+          <Flex direction="column" gap={4}>
+            {/* Render 5 skeleton cards for immediate visual feedback */}
+            {Array.from({ length: 5 }).map((_, index) => (
+              <SkeletonFeedCard key={`skeleton-${index}`} />
+            ))}
+          </Flex>
         </Box>
-      </Flex>
+
+        <FloatingMenu />
+      </Box>
     );
   }
 
@@ -183,17 +160,17 @@ export default function FeedsPage() {
 
   return (
     <Box minH="100vh" position="relative">
-      <Box
-        aria-live="polite"
-        aria-atomic="true"
-        position="absolute"
-        left="-10000px"
-        width="1px"
-        height="1px"
-        overflow="hidden"
-      >
-        {liveRegionMessage}
-      </Box>
+        <Box
+          aria-live="polite"
+          aria-atomic="true"
+          position="absolute"
+          left="-10000px"
+          width="1px"
+          height="1px"
+          overflow="hidden"
+        >
+          {liveRegionMessage}
+        </Box>
 
       <Box
         ref={scrollContainerRef}
@@ -279,7 +256,7 @@ export default function FeedsPage() {
         )}
       </Box>
 
-      <FloatingMenu />
-    </Box>
+        <FloatingMenu />
+      </Box>
   );
 }
