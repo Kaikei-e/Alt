@@ -183,7 +183,6 @@ export default function FeedsPage() {
 
   return (
     <Box minH="100vh" position="relative">
-      {/* ARIA live region for announcements */}
       <Box
         aria-live="polite"
         aria-atomic="true"
@@ -202,6 +201,7 @@ export default function FeedsPage() {
         maxW="container.sm"
         mx="auto"
         overflowY="auto"
+        overflowX="hidden"
         height="100vh"
         data-testid="feeds-scroll-container"
       >
