@@ -105,8 +105,16 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 		// Check total feeds and processed feeds for debugging
 		var totalFeeds, processedFeeds int
 
-		db.QueryRow(ctx, "SELECT COUNT(*) FROM feeds WHERE link NOT LIKE '%.mp3'").Scan(&totalFeeds)
-		db.QueryRow(ctx, "SELECT COUNT(DISTINCT a.url) FROM articles a INNER JOIN feeds f ON a.url = f.link WHERE f.link NOT LIKE '%.mp3'").Scan(&processedFeeds)
+		err = db.QueryRow(ctx, "SELECT COUNT(*) FROM feeds WHERE link NOT LIKE '%.mp3'").Scan(&totalFeeds)
+		if err != nil {
+			logger.Logger.Error("Failed to get total feeds", "error", err)
+			return nil, nil, "", err
+		}
+		err = db.QueryRow(ctx, "SELECT COUNT(DISTINCT a.url) FROM articles a INNER JOIN feeds f ON a.url = f.link WHERE f.link NOT LIKE '%.mp3'").Scan(&processedFeeds)
+		if err != nil {
+			logger.Logger.Error("Failed to get processed feeds", "error", err)
+			return nil, nil, "", err
+		}
 
 		logger.Logger.Info("No URLs found for processing",
 			"has_cursor", lastCreatedAt != nil,

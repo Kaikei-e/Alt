@@ -65,7 +65,10 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 
 	_, err = tx.Exec(ctx, query, article.Title, article.Content, article.URL)
 	if err != nil {
-		tx.Rollback(ctx)
+		err = tx.Rollback(ctx)
+		if err != nil {
+			logger.Logger.Error("Failed to rollback transaction", "error", err)
+		}
 		logger.Logger.Error("Failed to create article", "error", err)
 
 		return err
