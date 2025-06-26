@@ -510,14 +510,18 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 		logger.Init()
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
-		// Create server that delays longer than client timeout
+		// Use context timeout instead of server sleep to test timeout behavior
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+
+		// Create server with a small delay to ensure timeout occurs
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(35 * time.Second) // Exceed default client timeout
+			time.Sleep(100 * time.Millisecond) // Exceed context timeout
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer server.Close()
 
-		err := repo.CheckHealth(context.Background(), server.URL)
+		err := repo.CheckHealth(ctx, server.URL)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "health check request failed")
 	})

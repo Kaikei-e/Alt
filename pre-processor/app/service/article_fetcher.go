@@ -24,15 +24,30 @@ var (
 	minInterval     = 5 * time.Second
 )
 
+// HTTPClient interface for dependency injection
+type HTTPClient interface {
+	Get(url string) (*http.Response, error)
+}
+
 // ArticleFetcherService implementation
 type articleFetcherService struct {
-	logger *slog.Logger
+	logger     *slog.Logger
+	httpClient HTTPClient
 }
 
 // NewArticleFetcherService creates a new article fetcher service
 func NewArticleFetcherService(logger *slog.Logger) ArticleFetcherService {
 	return &articleFetcherService{
-		logger: logger,
+		logger:     logger,
+		httpClient: nil, // Will use createSecureHTTPClient() when nil
+	}
+}
+
+// NewArticleFetcherServiceWithClient creates a new article fetcher service with custom HTTP client
+func NewArticleFetcherServiceWithClient(logger *slog.Logger, httpClient HTTPClient) ArticleFetcherService {
+	return &articleFetcherService{
+		logger:     logger,
+		httpClient: httpClient,
 	}
 }
 
@@ -125,8 +140,13 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 		return nil, err
 	}
 
-	// Create secure HTTP client
-	client := s.createSecureHTTPClient()
+	// Use injected client or create secure HTTP client
+	var client HTTPClient
+	if s.httpClient != nil {
+		client = s.httpClient
+	} else {
+		client = s.createSecureHTTPClient()
+	}
 
 	// Fetch the page
 	resp, err := client.Get(url.String())
@@ -143,6 +163,11 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 		return nil, err
 	}
 
+	if article.TextContent == "" {
+		s.logger.Error("Article content is empty", "url", url.String())
+		return nil, errors.New("article content is empty")
+	}
+
 	s.logger.Info("Article fetched", "title", article.Title, "content length", len(article.TextContent))
 
 	cleanedContent := strings.ReplaceAll(article.TextContent, "\n", " ")
@@ -154,8 +179,18 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 	}, nil
 }
 
+// HTTPClientWrapper wraps http.Client to implement HTTPClient interface
+type HTTPClientWrapper struct {
+	*http.Client
+}
+
+// Get implements HTTPClient interface
+func (w *HTTPClientWrapper) Get(url string) (*http.Response, error) {
+	return w.Client.Get(url)
+}
+
 // Helper methods (moved from article-fetcher package)
-func (s *articleFetcherService) createSecureHTTPClient() *http.Client {
+func (s *articleFetcherService) createSecureHTTPClient() HTTPClient {
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
 	}
@@ -179,9 +214,11 @@ func (s *articleFetcherService) createSecureHTTPClient() *http.Client {
 		MaxIdleConnsPerHost: 10,
 	}
 
-	return &http.Client{
-		Transport: transport,
-		Timeout:   30 * time.Second,
+	return &HTTPClientWrapper{
+		Client: &http.Client{
+			Transport: transport,
+			Timeout:   30 * time.Second,
+		},
 	}
 }
 
