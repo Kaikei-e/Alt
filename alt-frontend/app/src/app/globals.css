@@ -169,6 +169,7 @@ body::before {
   min-height: 100vh;
   min-height: 100dvh;
   padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  padding-inline: 1rem;
 }
 
 .feed-card {
@@ -182,7 +183,7 @@ body::before {
   border: 1px solid var(--glass-border);
   border-radius: 1rem;
   padding: 1.25rem;
-  margin: 0.5rem 1rem;
+  margin: 0.5rem 0;
   position: relative;
   transition: transform 0.2s ease;
 }

@@ -170,6 +170,7 @@ export default function FeedsStatsPage() {
       minHeight="100dvh"
       background="var(--vaporwave-bg)"
       position="relative"
+      overflowX="hidden"
       pt="env(safe-area-inset-top)"
       pb="env(safe-area-inset-bottom)"
     >
@@ -180,7 +181,7 @@ export default function FeedsStatsPage() {
         onComplete={resetProgress}
       />
 
-      <Box p={5} maxW="container.sm" mx="auto" pt={8}>
+      <Box p={5} maxW="container.sm" mx="auto" pt={8} overflowX="hidden">
         {/* Header */}
         <Box mb={8} textAlign="center">
           <Text
