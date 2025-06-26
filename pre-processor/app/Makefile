@@ -10,6 +10,13 @@ GOMOD=$(GOCMD) mod
 BINARY_NAME=pre-processor
 BINARY_PATH=bin/$(BINARY_NAME)
 
+# Tools
+GOPATH := $(shell go env GOPATH)
+GOBIN := $(GOPATH)/bin
+GOLANGCILINT := $(GOBIN)/golangci-lint
+GOSEC := $(GOBIN)/gosec
+GOIMPORTS := $(GOBIN)/goimports
+
 # Default target
 all: quality-check build
 
@@ -61,23 +68,23 @@ coverage:
 # Lint code
 lint:
 	@echo "🔍 Running linter..."
-	golangci-lint run ./...
+	@$(GOLANGCILINT) run ./...
 
 # Security scan
 security:
 	@echo "🔒 Running security scan..."
-	gosec ./...
+	@$(GOSEC) ./...
 
 # Format code
 format:
 	@echo "🎨 Formatting code..."
 	$(GOCMD) fmt ./...
-	goimports -w .
+	@$(GOIMPORTS) -w .
 
 # Generate mocks
 mocks:
 	@echo "🤖 Generating mocks..."
-	$(GOCMD) generate ./...
+	@PATH=$(GOBIN):$(PATH) $(GOCMD) generate ./...
 
 # Build the application
 build:
@@ -103,7 +110,7 @@ dev-setup:
 	$(GOMOD) download
 	@echo "Installing development tools..."
 	$(GOCMD) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	$(GOCMD) install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+	$(GOCMD) install github.com/securego/gosec/v2/cmd/gosec@latest
 	$(GOCMD) install go.uber.org/mock/mockgen@latest
 	$(GOCMD) install golang.org/x/tools/cmd/goimports@latest
 	@echo "Development environment ready! ✅"
