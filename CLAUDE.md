@@ -37,6 +37,24 @@ Helper applications are built with different architectures for specific purposes
 - **tag-generator:** Python - ML-based tag generation
 - **news-creator:** LLM-based content generation
 
+#### Log Functionality
+- **rask-log-forwarder:** Rust - Log forwarder service
+- **rask-log-aggregator:** Rust - Log aggregator service
+
+##### Specific CLAUDE.mds
+
+- [alt-backend/app/CLAUDE.md](@alt-backend/app/CLAUDE.md)
+- [alt-frontend/app/CLAUDE.md](@alt-frontend/app/CLAUDE.md)
+- [pre-processor/app/CLAUDE.md](@pre-processor/app/CLAUDE.md)
+- [search-indexer/app/CLAUDE.md](@search-indexer/app/CLAUDE.md)
+- [tag-generator/app/CLAUDE.md](@tag-generator/app/CLAUDE.md)
+- [news-creator/app/CLAUDE.md](@news-creator/app/CLAUDE.md)
+- [rask-log-forwarder/app/CLAUDE.md](@rask-log-forwarder/app/CLAUDE.md)
+- [rask-log-aggregator/app/CLAUDE.md](@rask-log-aggregator/app/CLAUDE.md)
+
+
+
+
 ## Architecture Design
 
 ### Clean Architecture Directory Layout
