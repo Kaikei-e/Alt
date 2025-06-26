@@ -183,7 +183,7 @@ body::before {
   border: 1px solid var(--glass-border);
   border-radius: 1rem;
   padding: 1.25rem;
-  margin: 0.5rem 0;
+  margin: 0.5rem 1rem;
   position: relative;
   transition: transform 0.2s ease;
 }
