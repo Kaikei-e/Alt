@@ -57,7 +57,7 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
     intervalRef.current = setInterval(updateProgress, 50);
   }, [updateProgress]);
 
-  // Stable reset function - NO dependencies that change, uses refs only
+  // Stable reset function - NO dependencies to prevent infinite re-renders
   const reset = useCallback(() => {
     // Clear any existing timer immediately to prevent race conditions
     if (intervalRef.current) {
@@ -74,9 +74,21 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
     setProgress(0);
     startTimeRef.current = Date.now();
 
-    // Start new timer immediately to ensure no timing gaps
-    intervalRef.current = setInterval(updateProgress, 50);
-  }, [updateProgress]); // Only depends on updateProgress which is stable
+    // Start new timer immediately using refs to avoid dependencies
+    intervalRef.current = setInterval(() => {
+      if (!isMountedRef.current) {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        return;
+      }
+
+      const elapsed = Date.now() - startTimeRef.current;
+      const newProgress = Math.min((elapsed / intervalMsRef.current) * 100, 100);
+      setProgress(newProgress);
+    }, 50);
+  }, []); // 🔧 FIX: No dependencies to prevent infinite loops
 
   // Initial setup and cleanup - only restart when intervalMs changes
   useEffect(() => {
@@ -87,7 +99,7 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
       isMountedRef.current = false;
       clearTimer();
     };
-  }, [intervalMs, startTimer, clearTimer]); // Include all dependencies
+  }, [intervalMs]); // 🔧 FIX: Only depend on intervalMs to prevent excessive re-runs
 
   // Cleanup on unmount
   useEffect(() => {

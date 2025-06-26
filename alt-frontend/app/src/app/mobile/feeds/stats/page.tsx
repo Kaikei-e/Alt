@@ -40,12 +40,13 @@ export default function FeedsStatsPage() {
       const readyState =
         eventSourceRef.current?.readyState ?? EventSource.CLOSED;
 
-      // Consider connected if we're receiving data regularly
-      // Increased timeout to 30s to account for network delays and SSE intervals
-      const isReceivingData = timeSinceLastData < 30000; // 30s timeout
+      // Consider connected based on connection state and recent data
+      // Backend sends data every 5s, so 15s timeout gives buffer for network delays
+      const isReceivingData = timeSinceLastData < 15000; // 15s timeout (3x backend interval)
       const isConnectionOpen = readyState === EventSource.OPEN;
 
-      const shouldBeConnected = isReceivingData && isConnectionOpen;
+      // Connection is healthy if open AND receiving data regularly
+      const shouldBeConnected = isConnectionOpen && isReceivingData;
 
       // Only update state if it actually changed to prevent unnecessary re-renders
       setIsConnected((prev) => {
@@ -54,7 +55,7 @@ export default function FeedsStatsPage() {
         }
         return prev;
       });
-    }, 3000); // Check every 3 seconds for more stable checking
+    }, 5000); // Check every 5 seconds to reduce overhead
 
     return () => clearInterval(healthCheck);
   }, []); // No dependencies needed since we use ref
@@ -167,7 +168,7 @@ export default function FeedsStatsPage() {
       isMounted = false; // Prevent race conditions
       cleanup();
     };
-  }, [resetProgress]); // Only resetProgress dependency needed
+  }, []); // 🔧 FIX: Remove resetProgress from dependencies to prevent infinite SSE reconnections // Only resetProgress dependency needed
 
   return (
     <Box

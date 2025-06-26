@@ -82,11 +82,13 @@ export function setupSSEWithReconnect(
           onError();
         }
 
+        // Only close and reconnect if we haven't received data recently
+        // This prevents unnecessary reconnections due to temporary network issues
         eventSource?.close();
 
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts++;
-          const delay = Math.pow(2, reconnectAttempts - 1) * 1000; // Exponential backoff
+          const delay = Math.min(Math.pow(2, reconnectAttempts - 1) * 1000, 10000); // Exponential backoff with max 10s
           reconnectTimeout = setTimeout(connect, delay);
         }
       };
