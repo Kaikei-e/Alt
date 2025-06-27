@@ -40,7 +40,7 @@ pub struct ClientConfig {
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
-            endpoint: "http://rask-aggregator:9600/ingest".to_string(),
+            endpoint: "http://rask-aggregator:9600/v1/aggregate".to_string(),
             timeout: Duration::from_secs(30),
             connection_timeout: Duration::from_secs(10),
             max_connections: 20,
@@ -75,7 +75,7 @@ pub struct HttpClient {
     pub client: Client,
     pub config: ClientConfig,
     endpoint_url: Url,
-    pub ingest_url: Url,
+    pub aggregate_url: Url,
     pub stats: Arc<ClientStats>,
 }
 
@@ -117,15 +117,15 @@ impl HttpClient {
         let endpoint_url: Url = config.endpoint.parse()
             .map_err(|e| ClientError::InvalidConfiguration(format!("Invalid endpoint URL: {}", e)))?;
 
-        // Construct ingest URL
-        let ingest_url = if config.endpoint.ends_with("/ingest") {
+        // Construct aggregate URL
+        let aggregate_url = if config.endpoint.ends_with("/v1/aggregate") {
             endpoint_url.clone()
         } else {
             let mut url = endpoint_url.clone();
             if !url.path().ends_with('/') {
-                url.set_path(&format!("{}/ingest", url.path()));
+                url.set_path(&format!("{}/v1/aggregate", url.path()));
             } else {
-                url.set_path(&format!("{}ingest", url.path()));
+                url.set_path(&format!("{}v1/aggregate", url.path()));
             }
             url
         };
@@ -151,7 +151,7 @@ impl HttpClient {
             client,
             config,
             endpoint_url,
-            ingest_url,
+            aggregate_url,
             stats,
         })
     }
@@ -162,7 +162,7 @@ impl HttpClient {
 
     pub async fn health_check(&self) -> Result<(), ClientError> {
         let mut health_url = self.endpoint_url.clone();
-        health_url.set_path("/health");
+        health_url.set_path("/v1/health");
 
         let start = std::time::Instant::now();
 
@@ -215,7 +215,7 @@ impl HttpClient {
 impl HttpClientTrait for HttpClient {
     async fn health_check(&self) -> Result<(), ClientError> {
         let mut health_url = self.endpoint_url.clone();
-        health_url.set_path("/health");
+        health_url.set_path("/v1/health");
 
         let start = std::time::Instant::now();
 

@@ -73,7 +73,7 @@ impl BatchTransmitter {
 
         // Send request
         let mut request_builder = self.client.client
-            .post(self.client.ingest_url.clone())
+            .post(self.client.aggregate_url.clone())
             .headers(headers)
             .timeout(self.client.config.timeout);
 

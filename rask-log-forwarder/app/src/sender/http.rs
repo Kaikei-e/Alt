@@ -37,7 +37,7 @@ pub struct SenderConfig {
 impl Default for SenderConfig {
     fn default() -> Self {
         Self {
-            endpoint: "http://localhost:9600/ingest".to_string(),
+            endpoint: "http://localhost:9600/v1/aggregate".to_string(),
             timeout: Duration::from_secs(30),
             max_connections: 10,
             keep_alive: true,
@@ -102,7 +102,7 @@ impl BatchSender {
     }
 
     pub async fn health_check(&self) -> Result<(), SenderError> {
-        let health_uri = format!("{}/health", self.config.endpoint).parse::<Uri>()
+        let health_uri = format!("{}/v1/health", self.config.endpoint).parse::<Uri>()
             .map_err(|e| SenderError::InvalidConfig(format!("Invalid health check URL: {}", e)))?;
 
         let request = Request::builder()
