@@ -650,11 +650,11 @@ class TagGeneratorService:
 
     def _perform_health_check(self) -> None:
         """Perform health check and log service status."""
-        logger.info("=== HEALTH CHECK ===")
-        logger.info(f"Total cycles completed: {self.total_cycles}")
-        logger.info(f"Total articles processed: {self.total_articles_processed}")
-        logger.info(f"Consecutive empty cycles: {self.consecutive_empty_cycles}")
-        logger.info(f"Average articles per cycle: {self.total_articles_processed / max(1, self.total_cycles - self.consecutive_empty_cycles):.1f}")
+        logger.debug("=== HEALTH CHECK ===")
+        logger.debug(f"Total cycles completed: {self.total_cycles}")
+        logger.debug(f"Total articles processed: {self.total_articles_processed}")
+        logger.debug(f"Consecutive empty cycles: {self.consecutive_empty_cycles}")
+        logger.debug(f"Average articles per cycle: {self.total_articles_processed / max(1, self.total_cycles - self.consecutive_empty_cycles):.1f}")
 
         # Warning for too many empty cycles
         if self.consecutive_empty_cycles >= self.config.max_consecutive_empty_cycles:
@@ -670,7 +670,7 @@ class TagGeneratorService:
             except Exception as e:
                 logger.error(f"Failed to get untagged article count for diagnostics: {e}")
 
-        logger.info("=== END HEALTH CHECK ===")
+        logger.debug("=== END HEALTH CHECK ===")
 
     def _cleanup(self) -> None:
         """Cleanup resources."""

@@ -14,8 +14,13 @@ func LoggingMiddleware(baseLogger *slog.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			start := time.Now()
-			
+
 			req := c.Request()
+
+			// Skip logging for health check endpoint to reduce noise
+			if req.URL.Path == "/v1/health" {
+				return next(c)
+			}
 			ctx := req.Context()
 
 			// Log request start
@@ -31,7 +36,7 @@ func LoggingMiddleware(baseLogger *slog.Logger) echo.MiddlewareFunc {
 
 			// Calculate duration
 			duration := time.Since(start)
-			
+
 			// Get response information
 			res := c.Response()
 			status := res.Status

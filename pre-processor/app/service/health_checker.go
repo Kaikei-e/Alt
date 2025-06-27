@@ -28,7 +28,7 @@ func NewHealthCheckerService(newsCreatorURL string, logger *slog.Logger) HealthC
 
 // CheckNewsCreatorHealth checks if news creator service is healthy.
 func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error {
-	s.logger.Info("checking news creator health", "url", s.newsCreatorURL)
+	s.logger.Debug("checking news creator health", "url", s.newsCreatorURL)
 
 	// GREEN PHASE: Minimal implementation
 	healthURL := s.newsCreatorURL + "/api/tags"
@@ -45,21 +45,21 @@ func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error
 		return fmt.Errorf("news creator not healthy: status %d", resp.StatusCode)
 	}
 
-	s.logger.Info("news creator is healthy")
+	s.logger.Debug("news creator is healthy")
 
 	return nil
 }
 
 // WaitForHealthy waits for the news creator service to become healthy.
 func (s *healthCheckerService) WaitForHealthy(ctx context.Context) error {
-	s.logger.Info("waiting for news creator to become healthy")
+	s.logger.Debug("waiting for news creator to become healthy")
 
 	// Simple fix: just do immediate health checks with faster retries
 	// This avoids the complexity of shared state and works for the current use case
 
 	// First check if already healthy
 	if err := s.CheckNewsCreatorHealth(ctx); err == nil {
-		s.logger.Info("news creator is now healthy")
+		s.logger.Debug("news creator is now healthy")
 		return nil
 	}
 
@@ -74,7 +74,7 @@ func (s *healthCheckerService) WaitForHealthy(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.CheckNewsCreatorHealth(ctx); err == nil {
-				s.logger.Info("news creator is now healthy")
+				s.logger.Debug("news creator is now healthy")
 				return nil
 			}
 			// Don't log "still not healthy" - too noisy
