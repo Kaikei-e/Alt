@@ -5,7 +5,7 @@ use std::sync::Arc;
 #[tokio::test]
 async fn test_http_client_creation() {
     let config = ClientConfig {
-        endpoint: "http://rask-aggregator:9600/ingest".to_string(),
+        endpoint: "http://rask-aggregator:9600/v1/aggregate".to_string(),
         timeout: Duration::from_secs(30),
         max_connections: 10,
         keep_alive_timeout: Duration::from_secs(60),
@@ -20,7 +20,7 @@ async fn test_http_client_creation() {
 #[tokio::test]
 async fn test_client_configuration() {
     let config = ClientConfig {
-        endpoint: "http://example.com:9600/ingest".to_string(),
+        endpoint: "http://example.com:9600/v1/aggregate".to_string(),
         timeout: Duration::from_secs(5),
         max_connections: 20,
         keep_alive_timeout: Duration::from_secs(90),
@@ -36,7 +36,7 @@ async fn test_client_configuration() {
     // Might fail on health check, but config should be valid
     match result {
         Ok(client) => {
-            assert_eq!(client.endpoint(), "http://example.com:9600/ingest");
+            assert_eq!(client.endpoint(), "http://example.com:9600/v1/aggregate");
             let stats = client.connection_stats();
             assert_eq!(stats.max_connections, 20);
         }

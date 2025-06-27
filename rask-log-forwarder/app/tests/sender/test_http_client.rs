@@ -6,7 +6,7 @@ use futures::future;
 #[ignore = "requires running server"]
 async fn test_http_client_setup() {
     let config = SenderConfig {
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         timeout: Duration::from_secs(30),
         max_connections: 10,
         keep_alive: true,
@@ -21,7 +21,7 @@ async fn test_http_client_setup() {
 #[ignore = "requires running server"]
 async fn test_connection_pooling() {
     let config = SenderConfig {
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         max_connections: 5,
         keep_alive: true,
         ..Default::default()
@@ -52,7 +52,7 @@ async fn test_connection_pooling() {
 #[tokio::test]
 async fn test_connection_failure_handling() {
     let config = SenderConfig {
-        endpoint: "http://nonexistent-host:9600/ingest".to_string(),
+        endpoint: "http://nonexistent-host:9600/v1/aggregate".to_string(),
         timeout: Duration::from_millis(100),
         ..Default::default()
     };
@@ -68,7 +68,7 @@ async fn test_connection_failure_handling() {
 #[ignore = "requires running server"]
 async fn test_keep_alive_connections() {
     let config = SenderConfig {
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         keep_alive: true,
         keep_alive_timeout: Duration::from_secs(60),
         ..Default::default()

@@ -23,7 +23,7 @@ impl MockHttpClient {
                 failed_requests: 0,
                 average_response_time: Duration::ZERO,
             },
-            endpoint: "http://localhost:9600/ingest".to_string(),
+            endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         }
     }
 
@@ -83,7 +83,7 @@ async fn test_mock_http_client_successful_health_check() {
             failed_requests: 0,
             average_response_time: Duration::from_millis(50),
         })
-        .with_endpoint("http://mock-server:9600/ingest");
+        .with_endpoint("http://mock-server:9600/v1/aggregate");
 
     // Test the mock
     let result = mock_client.health_check().await;
@@ -95,7 +95,7 @@ async fn test_mock_http_client_successful_health_check() {
     assert_eq!(stats.failed_requests, 0);
 
     let endpoint = mock_client.endpoint();
-    assert_eq!(endpoint, "http://mock-server:9600/ingest");
+    assert_eq!(endpoint, "http://mock-server:9600/v1/aggregate");
 }
 
 #[tokio::test]

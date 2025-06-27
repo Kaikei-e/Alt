@@ -28,7 +28,7 @@ fn create_test_entry(message: &str) -> EnrichedLogEntry {
 #[tokio::test]
 async fn test_transmitter_creation() {
     let config = ClientConfig {
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         timeout: Duration::from_secs(10),
         ..Default::default()
     };
@@ -39,7 +39,7 @@ async fn test_transmitter_creation() {
         Ok(client) => {
             let transmitter = BatchTransmitter::new(client);
             // Should create transmitter successfully
-            assert_eq!(transmitter.client.endpoint(), "http://localhost:9600/ingest");
+            assert_eq!(transmitter.client.endpoint(), "http://localhost:9600/v1/aggregate");
         }
         Err(_) => {
             // Expected when server is not available
@@ -50,7 +50,7 @@ async fn test_transmitter_creation() {
 #[tokio::test]
 async fn test_payload_preparation() {
     let config = ClientConfig {
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         enable_compression: false,
         ..Default::default()
     };
@@ -84,7 +84,7 @@ async fn test_payload_preparation() {
 #[tokio::test]
 async fn test_compression() {
     let config = ClientConfig {
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         enable_compression: true,
         ..Default::default()
     };
@@ -117,7 +117,7 @@ async fn test_compression() {
 #[tokio::test]
 async fn test_header_building() {
     let config = ClientConfig {
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         user_agent: "test-forwarder/1.0".to_string(),
         ..Default::default()
     };
@@ -152,7 +152,7 @@ async fn test_header_building() {
 #[tokio::test]
 async fn test_large_batch_payload() {
     let config = ClientConfig {
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         timeout: Duration::from_secs(60), // Longer timeout for large batches
         ..Default::default()
     };

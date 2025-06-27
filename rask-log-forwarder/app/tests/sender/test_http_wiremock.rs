@@ -12,7 +12,7 @@ async fn test_http_client_with_wiremock_success() {
 
     // Setup mock endpoint
     Mock::given(method("GET"))
-        .and(path("/health"))
+        .and(path("/v1/health"))
         .respond_with(ResponseTemplate::new(200).set_body_string("OK"))
         .mount(&mock_server)
         .await;
@@ -46,7 +46,7 @@ async fn test_http_client_with_wiremock_server_error() {
 
     // Setup mock to return 500 error
     Mock::given(method("GET"))
-        .and(path("/health"))
+        .and(path("/v1/health"))
         .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
         .mount(&mock_server)
         .await;
@@ -77,7 +77,7 @@ async fn test_http_client_with_wiremock_timeout() {
 
     // Setup mock with delay longer than client timeout
     Mock::given(method("GET"))
-        .and(path("/health"))
+        .and(path("/v1/health"))
         .respond_with(
             ResponseTemplate::new(200)
                 .set_delay(Duration::from_secs(10)) // Delay longer than client timeout
@@ -119,13 +119,13 @@ async fn test_http_client_with_wiremock_multiple_endpoints() {
 
     // Setup multiple mock endpoints
     Mock::given(method("GET"))
-        .and(path("/health"))
+        .and(path("/v1/health"))
         .respond_with(ResponseTemplate::new(200).set_body_string("Healthy"))
         .mount(&mock_server)
         .await;
 
     Mock::given(method("POST"))
-        .and(path("/ingest"))
+        .and(path("/v1/aggregate"))
         .and(header("content-type", "application/x-ndjson"))
         .respond_with(ResponseTemplate::new(202).set_body_string("Accepted"))
         .mount(&mock_server)
@@ -160,7 +160,7 @@ async fn test_http_client_with_wiremock_user_agent() {
 
     // Setup mock that verifies user agent
     Mock::given(method("GET"))
-        .and(path("/health"))
+        .and(path("/v1/health"))
         .and(header("user-agent", custom_user_agent))
         .respond_with(ResponseTemplate::new(200))
         .mount(&mock_server)
