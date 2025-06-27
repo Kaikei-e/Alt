@@ -3,6 +3,7 @@ use tempfile::TempDir;
 use std::env;
 use tokio::time::Duration;
 use std::path::PathBuf;
+use serial_test::serial;
 
 
 #[tokio::test]
@@ -81,6 +82,7 @@ enable_compression = false
 }
 
 #[tokio::test]
+#[serial]
 async fn test_app_auto_service_detection() {
     // Mock hostname and set TARGET_SERVICE environment variable
     unsafe {

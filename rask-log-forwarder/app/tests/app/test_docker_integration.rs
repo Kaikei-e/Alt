@@ -1,8 +1,10 @@
 use rask_log_forwarder::app::{Config, docker::{DockerEnvironment, validate_docker_requirements}};
 use std::collections::HashMap;
 use std::env;
+use serial_test::serial;
 
 #[test]
+#[serial]
 fn test_docker_environment_detection() {
     // Simulate Docker environment variables
     unsafe {
@@ -120,6 +122,7 @@ fn test_docker_requirements_validation_fails() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_docker_environment_config() {
     unsafe {
         env::set_var("HOSTNAME", "nginx-logs");
