@@ -85,7 +85,10 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
       }
 
       const elapsed = Date.now() - startTimeRef.current;
-      const newProgress = Math.min((elapsed / intervalMsRef.current) * 100, 100);
+      const newProgress = Math.min(
+        (elapsed / intervalMsRef.current) * 100,
+        100,
+      );
       setProgress(newProgress);
     }, 50);
   }, []); // 🔧 FIX: No dependencies to prevent infinite loops

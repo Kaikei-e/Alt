@@ -11,7 +11,8 @@ const isValidAmount = (value: unknown): value is number => {
 
 export const useSSEFeedsStats = () => {
   const [feedAmount, setFeedAmount] = useState(0);
-  const [unsummarizedArticlesAmount, setUnsummarizedArticlesAmount] = useState(0);
+  const [unsummarizedArticlesAmount, setUnsummarizedArticlesAmount] =
+    useState(0);
   const [totalArticlesAmount, setTotalArticlesAmount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -29,7 +30,8 @@ export const useSSEFeedsStats = () => {
     const healthCheck = setInterval(() => {
       const now = Date.now();
       const timeSinceLastData = now - lastDataReceivedRef.current;
-      const readyState = eventSourceRef.current?.readyState ?? EventSource.CLOSED;
+      const readyState =
+        eventSourceRef.current?.readyState ?? EventSource.CLOSED;
 
       // Backend sends data every 5s, so 15s timeout gives buffer for network delays
       const isReceivingData = timeSinceLastData < 15000; // 15s timeout (3x backend interval)
@@ -55,7 +57,8 @@ export const useSSEFeedsStats = () => {
     let isMounted = true;
 
     // SSE endpoint configuration
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api";
+    const apiBaseUrl =
+      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api";
     const sseUrl = `${apiBaseUrl}/v1/sse/feeds/stats`;
 
     // Set initial disconnected state
@@ -116,7 +119,7 @@ export const useSSEFeedsStats = () => {
           setRetryCount((prev) => (prev !== 0 ? 0 : prev));
 
           // Trigger progress reset
-          setProgressResetTrigger(prev => prev + 1);
+          setProgressResetTrigger((prev) => prev + 1);
         }
       },
       () => {

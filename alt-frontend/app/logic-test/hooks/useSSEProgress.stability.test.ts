@@ -33,7 +33,11 @@ describe("useSSEProgress Hook - Stability Tests", () => {
       const mockCallback = vi.fn();
 
       // Create a component that would trigger useEffect if reset function changes
-      const TestComponent = ({ onResetChange }: { onResetChange: (fn: any) => void }) => {
+      const TestComponent = ({
+        onResetChange,
+      }: {
+        onResetChange: (fn: any) => void;
+      }) => {
         const { reset } = useSSEProgress(5000);
         onResetChange(reset);
         return null;
@@ -42,8 +46,8 @@ describe("useSSEProgress Hook - Stability Tests", () => {
       const { rerender } = renderHook(
         ({ onResetChange }) => TestComponent({ onResetChange }),
         {
-          initialProps: { onResetChange: mockCallback }
-        }
+          initialProps: { onResetChange: mockCallback },
+        },
       );
 
       // Should only be called once on initial render
@@ -173,7 +177,7 @@ describe("useSSEProgress Hook - Stability Tests", () => {
     it("should handle interval changes without creating infinite loops", () => {
       const { result, rerender } = renderHook(
         ({ interval }) => useSSEProgress(interval),
-        { initialProps: { interval: 5000 } }
+        { initialProps: { interval: 5000 } },
       );
 
       const initialTimerCount = vi.getTimerCount();

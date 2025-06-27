@@ -184,7 +184,12 @@ export const FloatingMenu = () => {
                 </IconButton>
               </Flex>
 
-              <VStack gap={1.5} align="stretch" maxHeight="300px" overflowY="auto">
+              <VStack
+                gap={1.5}
+                align="stretch"
+                maxHeight="300px"
+                overflowY="auto"
+              >
                 {menuItems.map((item, index) => (
                   <Link
                     key={index}

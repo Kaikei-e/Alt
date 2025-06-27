@@ -88,7 +88,10 @@ export function setupSSEWithReconnect(
 
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts++;
-          const delay = Math.min(Math.pow(2, reconnectAttempts - 1) * 1000, 10000); // Exponential backoff with max 10s
+          const delay = Math.min(
+            Math.pow(2, reconnectAttempts - 1) * 1000,
+            10000,
+          ); // Exponential backoff with max 10s
           reconnectTimeout = setTimeout(connect, delay);
         }
       };

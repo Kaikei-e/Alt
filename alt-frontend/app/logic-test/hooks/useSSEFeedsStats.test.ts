@@ -29,7 +29,7 @@ describe("useSSEFeedsStats Hook", () => {
     vi.useFakeTimers();
 
     // Mock environment variable
-    vi.stubEnv('NEXT_PUBLIC_API_BASE_URL', 'http://localhost:8080/api');
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://localhost:8080/api");
 
     // Mock cleanup function
     mockCleanup = vi.fn();
@@ -49,7 +49,9 @@ describe("useSSEFeedsStats Hook", () => {
     }));
 
     const { setupSSEWithReconnect } = await import("@/lib/apiSse");
-    vi.mocked(setupSSEWithReconnect).mockImplementation(mockSetupSSEWithReconnect);
+    vi.mocked(setupSSEWithReconnect).mockImplementation(
+      mockSetupSSEWithReconnect,
+    );
   });
 
   afterEach(() => {

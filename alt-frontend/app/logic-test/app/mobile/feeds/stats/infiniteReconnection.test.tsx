@@ -10,7 +10,7 @@ vi.mock("@chakra-ui/react", async (importOriginal) => {
     return ({ children, ...props }: any) => {
       const validProps: { [key: string]: any } = {};
       for (const key in props) {
-        if (key === 'onClick' || key.startsWith('data-')) {
+        if (key === "onClick" || key.startsWith("data-")) {
           validProps[key] = props[key];
         }
       }
@@ -20,9 +20,9 @@ vi.mock("@chakra-ui/react", async (importOriginal) => {
 
   return {
     ...actual,
-    Box: chakraMock('div'),
-    Flex: chakraMock('div'),
-    Text: chakraMock('span'),
+    Box: chakraMock("div"),
+    Flex: chakraMock("div"),
+    Text: chakraMock("span"),
   };
 });
 
@@ -82,7 +82,7 @@ describe("FeedsStatsPage - Infinite Reconnection Prevention", () => {
     vi.useFakeTimers();
 
     // Mock environment variable
-    vi.stubEnv('NEXT_PUBLIC_API_BASE_URL', 'http://localhost:8080/api');
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://localhost:8080/api");
 
     // Mock cleanup function
     mockCleanup = vi.fn();
@@ -102,7 +102,9 @@ describe("FeedsStatsPage - Infinite Reconnection Prevention", () => {
     }));
 
     const { setupSSEWithReconnect } = await import("@/lib/apiSse");
-    vi.mocked(setupSSEWithReconnect).mockImplementation(mockSetupSSEWithReconnect);
+    vi.mocked(setupSSEWithReconnect).mockImplementation(
+      mockSetupSSEWithReconnect,
+    );
   });
 
   afterEach(() => {
@@ -199,7 +201,7 @@ describe("FeedsStatsPage - Infinite Reconnection Prevention", () => {
           onDataCallback({
             feed_amount: { amount: i },
             unsummarized_feed: { amount: i * 2 },
-            total_articles: { amount: i * 10 }
+            total_articles: { amount: i * 10 },
           });
         });
       }
@@ -261,7 +263,7 @@ describe("FeedsStatsPage - Infinite Reconnection Prevention", () => {
           onDataCallback({
             feed_amount: { amount: Math.random() * 100 },
             unsummarized_feed: { amount: Math.random() * 50 },
-            total_articles: { amount: Math.random() * 1000 }
+            total_articles: { amount: Math.random() * 1000 },
           });
         });
       }
@@ -323,7 +325,7 @@ describe("FeedsStatsPage - Infinite Reconnection Prevention", () => {
         onDataCallback({
           feed_amount: { amount: 25 },
           unsummarized_feed: { amount: 18 },
-          total_articles: { amount: 1337 }
+          total_articles: { amount: 1337 },
         });
       });
 
