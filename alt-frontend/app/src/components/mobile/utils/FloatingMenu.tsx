@@ -15,6 +15,7 @@ import { FaBars, FaTimes } from "react-icons/fa";
 
 export const FloatingMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isPrefetched, setIsPrefetched] = useState(false);
 
   const handleOpenMenu = useCallback(() => {
     setIsOpen(true);
@@ -24,16 +25,16 @@ export const FloatingMenu = () => {
     setIsOpen(false);
   }, []);
 
-  // Close menu on escape key
+  // Handle keyboard interactions
   useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && isOpen) {
         handleCloseMenu();
       }
     };
 
     if (isOpen) {
-      document.addEventListener("keydown", handleEscape);
+      document.addEventListener("keydown", handleKeyDown);
       // Prevent background scrolling when menu is open
       document.body.style.overflow = "hidden";
     } else {
@@ -41,10 +42,22 @@ export const FloatingMenu = () => {
     }
 
     return () => {
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "unset";
     };
   }, [isOpen, handleCloseMenu]);
+
+  useEffect(() => {
+    if (isPrefetched) return;
+
+    const prefetch = () => setIsPrefetched(true);
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      (window as any).requestIdleCallback(prefetch);
+    } else {
+      // Fallback for environments without requestIdleCallback
+      setTimeout(prefetch, 0);
+    }
+  }, [isPrefetched]);
 
   const menuItems = [
     {
@@ -67,7 +80,16 @@ export const FloatingMenu = () => {
       label: "View Stats",
       href: "/mobile/feeds/stats",
     },
+    {
+      label: "Home",
+      href: "/",
+    },
   ];
+
+  // Helper that closes menu when a link is activated
+  const handleNavigate = useCallback(() => {
+    handleCloseMenu();
+  }, [handleCloseMenu]);
 
   return (
     <>
@@ -75,6 +97,12 @@ export const FloatingMenu = () => {
         <Box position="fixed" bottom={4} right={4} zIndex={1000}>
           <Button
             onClick={handleOpenMenu}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleOpenMenu();
+              }
+            }}
             data-testid="floating-menu-button"
             size="md"
             borderRadius="full"
@@ -94,6 +122,9 @@ export const FloatingMenu = () => {
               transform: "scale(0.98)",
             }}
             transition="all 0.2s ease"
+            tabIndex={0}
+            role="button"
+            aria-label="Open floating menu"
           >
             <FaBars size={16} />
           </Button>
@@ -109,7 +140,7 @@ export const FloatingMenu = () => {
             width="100vw"
             height="100vh"
             bg="rgba(0, 0, 0, 0.6)"
-            backdropFilter="blur(4px)"
+            backdropFilter="blur(16px)"
             zIndex={9999}
             display="flex"
             alignItems="center"
@@ -118,21 +149,23 @@ export const FloatingMenu = () => {
             data-testid="modal-backdrop"
           >
             <Box
-              width="320px"
-              maxWidth="90vw"
+              width="90vw"
+              maxWidth="320px"
+              maxHeight="400px" // Limit height to prevent overflow
               background="linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"
               borderRadius="xl"
               boxShadow="xl"
               border="1px solid rgba(255, 255, 255, 0.1)"
-              p={4}
+              p={3} // Reduced padding
               data-testid="menu-content"
               onClick={(e: React.MouseEvent<HTMLDivElement>) =>
                 e.stopPropagation()
               }
               position="relative"
+              overflow="hidden"
             >
-              <Flex justify="space-between" align="center" mb={4}>
-                <Text color="#ff006e" fontWeight="semibold" fontSize="lg">
+              <Flex justify="space-between" align="center" mb={3}>
+                <Text color="#ff006e" fontWeight="semibold" fontSize="md">
                   Menu
                 </Text>
                 <IconButton
@@ -151,21 +184,25 @@ export const FloatingMenu = () => {
                 </IconButton>
               </Flex>
 
-              <VStack gap={2} align="stretch">
+              <VStack gap={1.5} align="stretch" maxHeight="300px" overflowY="auto">
                 {menuItems.map((item, index) => (
                   <Link
                     key={index}
                     href={item.href}
                     style={{ textDecoration: "none" }}
+                    onClick={handleNavigate}
                   >
                     <Box
                       width="full"
-                      p={3}
                       bg="rgba(255, 255, 255, 0.05)"
-                      borderRadius="lg"
+                      borderRadius="md"
                       border="1px solid rgba(255, 255, 255, 0.08)"
                       textAlign="center"
-                      transition="all 0.2s ease"
+                      transition="all 0.15s ease" // Faster transition
+                      minH="44px" // Ensure minimum touch target size for accessibility
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
                       _hover={{
                         bg: "rgba(255, 255, 255, 0.1)",
                         borderColor: "#ff006e",
@@ -175,7 +212,12 @@ export const FloatingMenu = () => {
                         transform: "translateY(0px)",
                       }}
                     >
-                      <Text color="white" fontWeight="medium" fontSize="sm">
+                      <Text
+                        color="white"
+                        fontWeight="medium"
+                        fontSize="sm"
+                        lineHeight="1.2"
+                      >
                         {item.label}
                       </Text>
                     </Box>
@@ -185,6 +227,17 @@ export const FloatingMenu = () => {
             </Box>
           </Box>
         </Portal>
+      )}
+
+      {/* Hidden pre-rendered menu to warm up rendering & reduce first-open cost */}
+      {!isOpen && isPrefetched && (
+        <Box display="none">
+          {menuItems.map((item) => (
+            <Link key={item.href} href={item.href}>
+              {item.label}
+            </Link>
+          ))}
+        </Box>
       )}
     </>
   );

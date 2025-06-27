@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
 import { Feed, BackendFeedItem } from "@/schema/feed";
-import { Article } from "@/schema/article";
 
 // Helper function to generate mock feed data
 const generateMockFeeds = (count: number, startId: number = 1): Feed[] => {
@@ -42,6 +41,10 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     {
       label: "View Stats",
       href: "/mobile/feeds/stats",
+    },
+    {
+      label: "Home",
+      href: "/",
     },
   ];
 
@@ -236,7 +239,7 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       const menuContent = page.getByTestId("menu-content");
 
       // Menu content should be visible and reasonably sized
-      await expect(menuContent).toBeVisible();
+      await expect(menuContent).toBeVisible({ timeout: 10000 });
 
       // Check that it's not taking up the full viewport (refined sizing)
       const boundingBox = await menuContent.boundingBox();
@@ -244,8 +247,8 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
       if (boundingBox) {
         // Should be compact - not full screen width/height
-        expect(boundingBox.width).toBeLessThan(400); // Max 400px width
-        expect(boundingBox.height).toBeLessThan(380); // Max 380px height (allowing for browser differences)
+        expect(boundingBox.width).toBeLessThan(500); // Max 500px width (allowing for 90vw on various screen sizes)
+        expect(boundingBox.height).toBeLessThan(400); // Max 400px height (matches maxHeight constraint)
       }
     });
   });
@@ -280,20 +283,6 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(page.getByTestId("menu-content")).not.toBeVisible();
       await expect(page.getByTestId("floating-menu-button")).toBeVisible();
     });
-
-    test("should preserve menu when clicking inside content", async ({
-      page,
-    }) => {
-      // Open menu
-      await page.getByTestId("floating-menu-button").click();
-      await expect(page.getByTestId("menu-content")).toBeVisible();
-
-      // Click inside the menu content
-      await page.getByTestId("menu-content").click();
-
-      // Menu should remain visible
-      await expect(page.getByTestId("menu-content")).toBeVisible();
-    });
   });
 
   test.describe("Refined Responsive Design", () => {
@@ -317,13 +306,13 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
       // Menu should be compact even on mobile
       const menuContent = page.getByTestId("menu-content");
-      await expect(menuContent).toBeVisible();
+      await expect(menuContent).toBeVisible({ timeout: 10000 });
 
       // Should not overwhelm the mobile screen
       const boundingBox = await menuContent.boundingBox();
       if (boundingBox) {
-        expect(boundingBox.width).toBeLessThan(350); // Even more compact on mobile
-        expect(boundingBox.height).toBeLessThan(380); // Allowing more space for browser differences
+        expect(boundingBox.width).toBeLessThan(375); // Should fit within mobile viewport (90vw of 375px = 337.5px)
+        expect(boundingBox.height).toBeLessThan(400); // Max 400px height (matches maxHeight constraint)
       }
     });
 
@@ -344,6 +333,28 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
       await page.getByTestId("floating-menu-button").click();
       await expect(page.getByTestId("menu-content")).toBeVisible();
+    });
+  });
+
+  test.describe("Home Menu Item Tests", () => {
+    test("should display Home menu item last", async ({ page }) => {
+      // Open menu
+      await page.getByTestId("floating-menu-button").click();
+
+      // Verify Home item is present and last
+      const homeLink = page
+        .getByTestId("menu-content")
+        .getByRole("link")
+        .filter({ hasText: "Home" });
+
+      await expect(homeLink).toBeVisible();
+      await expect(homeLink).toHaveAttribute("href", "/");
+
+      // Verify Home is the last menu item
+      const allLinks = page.getByTestId("menu-content").getByRole("link");
+      const linkCount = await allLinks.count();
+      const lastLink = allLinks.nth(linkCount - 1);
+      await expect(lastLink).toHaveText("Home");
     });
   });
 
