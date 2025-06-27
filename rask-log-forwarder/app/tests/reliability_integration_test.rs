@@ -42,7 +42,7 @@ async fn test_reliability_manager_success_path() {
     
     // Create a LogSender with test configuration
     let client_config = ClientConfig {
-        endpoint: "http://localhost:8080/ingest".to_string(),
+        endpoint: "http://localhost:8080/v1/aggregate".to_string(),
         timeout: Duration::from_secs(5),
         connection_timeout: Duration::from_secs(5),
         max_connections: 10,
@@ -92,7 +92,7 @@ async fn test_reliability_manager_metrics_collection() {
     let health_config = HealthConfig::default();
     
     let client_config = ClientConfig {
-        endpoint: "http://localhost:8080/ingest".to_string(),
+        endpoint: "http://localhost:8080/v1/aggregate".to_string(),
         timeout: Duration::from_secs(5),
         connection_timeout: Duration::from_secs(5),
         max_connections: 10,
@@ -143,7 +143,7 @@ async fn test_reliability_manager_health_monitoring() {
     let health_config = HealthConfig::default();
     
     let client_config = ClientConfig {
-        endpoint: "http://localhost:8080/ingest".to_string(),
+        endpoint: "http://localhost:8080/v1/aggregate".to_string(),
         timeout: Duration::from_secs(5),
         connection_timeout: Duration::from_secs(5),
         max_connections: 10,

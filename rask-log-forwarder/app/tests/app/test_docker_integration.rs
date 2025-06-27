@@ -8,14 +8,14 @@ fn test_docker_environment_detection() {
     unsafe {
         env::set_var("HOSTNAME", "nginx-logs");
         env::set_var("TARGET_SERVICE", "nginx");
-        env::set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/ingest");
+        env::set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/v1/aggregate");
     }
 
     let docker_env = DockerEnvironment::detect().unwrap();
 
     assert_eq!(docker_env.hostname, "nginx-logs");
     assert_eq!(docker_env.target_service, Some("nginx".to_string()));
-    assert_eq!(docker_env.rask_endpoint, "http://rask-aggregator:9600/ingest");
+    assert_eq!(docker_env.rask_endpoint, "http://rask-aggregator:9600/v1/aggregate");
 
     // Cleanup
     unsafe {
@@ -30,7 +30,7 @@ fn test_sidecar_configuration() {
     let docker_env = DockerEnvironment {
         hostname: "alt-backend-logs".to_string(),
         target_service: Some("alt-backend".to_string()),
-        rask_endpoint: "http://rask-aggregator:9600/ingest".to_string(),
+        rask_endpoint: "http://rask-aggregator:9600/v1/aggregate".to_string(),
         network_mode: Some("service:alt-backend".to_string()),
         container_labels: HashMap::new(),
     };
@@ -38,7 +38,7 @@ fn test_sidecar_configuration() {
     let config = Config::from_docker_environment(&docker_env).unwrap();
 
     assert_eq!(config.target_service, Some("alt-backend".to_string()));
-    assert_eq!(config.endpoint, "http://rask-aggregator:9600/ingest");
+    assert_eq!(config.endpoint, "http://rask-aggregator:9600/v1/aggregate");
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn test_service_label_detection() {
     let docker_env = DockerEnvironment {
         hostname: "nginx-logs".to_string(),
         target_service: None,
-        rask_endpoint: "http://rask-aggregator:9600/ingest".to_string(),
+        rask_endpoint: "http://rask-aggregator:9600/v1/aggregate".to_string(),
         network_mode: Some("service:nginx".to_string()),
         container_labels: labels,
     };
@@ -64,7 +64,7 @@ fn test_sidecar_mode_detection() {
     let docker_env = DockerEnvironment {
         hostname: "test-logs".to_string(),
         target_service: None,
-        rask_endpoint: "http://rask-aggregator:9600/ingest".to_string(),
+        rask_endpoint: "http://rask-aggregator:9600/v1/aggregate".to_string(),
         network_mode: Some("service:test-service".to_string()),
         container_labels: HashMap::new(),
     };
@@ -80,7 +80,7 @@ fn test_docker_compose_integration() {
     // Test configuration that matches the compose.yaml structure
     let config = Config {
         target_service: Some("nginx".to_string()),
-        endpoint: "http://rask-aggregator:9600/ingest".to_string(),
+        endpoint: "http://rask-aggregator:9600/v1/aggregate".to_string(),
         batch_size: 10000,
         buffer_capacity: 100000,
         enable_disk_fallback: true,
@@ -100,7 +100,7 @@ fn test_docker_compose_integration() {
 #[test]
 fn test_docker_requirements_validation() {
     let config = Config {
-        endpoint: "http://rask-aggregator:9600/ingest".to_string(),
+        endpoint: "http://rask-aggregator:9600/v1/aggregate".to_string(),
         enable_disk_fallback: true,
         disk_fallback_path: std::path::PathBuf::from("/tmp/rask-fallback"),
         ..Default::default()
@@ -112,7 +112,7 @@ fn test_docker_requirements_validation() {
 #[test]
 fn test_docker_requirements_validation_fails() {
     let config = Config {
-        endpoint: "http://wrong-endpoint:9600/ingest".to_string(),
+        endpoint: "http://wrong-endpoint:9600/v1/aggregate".to_string(),
         ..Default::default()
     };
 
@@ -124,13 +124,13 @@ async fn test_docker_environment_config() {
     unsafe {
         env::set_var("HOSTNAME", "nginx-logs");
         env::set_var("TARGET_SERVICE", "nginx");
-        env::set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/ingest");
+        env::set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/v1/aggregate");
     }
 
     let config = Config::from_env().unwrap();
 
     assert_eq!(config.target_service, Some("nginx".to_string()));
-    assert_eq!(config.endpoint, "http://rask-aggregator:9600/ingest");
+    assert_eq!(config.endpoint, "http://rask-aggregator:9600/v1/aggregate");
 
     // Cleanup
     unsafe {

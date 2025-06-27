@@ -1,23 +1,8 @@
 use rask_log_forwarder::buffer::{LogBuffer, BufferConfig, MemoryPressure};
 use rask_log_forwarder::parser::EnrichedLogEntry;
 use std::time::Duration;
-use mockall::predicate::*;
 
 #[cfg(test)]
-use mockall::automock;
-
-// Mock for MemoryManager
-#[automock]
-pub trait MemoryManagerTrait {
-    async fn allocate(&self, size: u64);
-    async fn deallocate(&self, size: u64);
-    fn memory_usage(&self) -> u64;
-    fn memory_usage_ratio(&self) -> f64;
-    fn current_pressure(&self) -> MemoryPressure;
-    fn can_allocate(&self, size: u64) -> bool;
-}
-
-// Memory Managerの簡単なモック実装
 #[derive(Debug)]
 pub struct MockMemoryManager {
     pub current_usage: u64,

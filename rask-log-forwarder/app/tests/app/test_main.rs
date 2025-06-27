@@ -40,7 +40,7 @@ async fn test_app_with_config_file() {
 
     let config_content = r#"
 target_service = "file-test"
-endpoint = "http://localhost:9600/ingest"
+endpoint = "http://localhost:9600/v1/aggregate"
 batch_size = 5000
 flush_interval_ms = 500
 buffer_capacity = 100000
@@ -190,7 +190,7 @@ async fn test_app_health_check() {
 async fn test_config_validation() {
     let config = Config {
         target_service: Some("meilisearch".to_string()),
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         batch_size: 1000,
         flush_interval_ms: 500,
         buffer_capacity: 100000,
@@ -226,7 +226,7 @@ async fn test_service_specific_config() {
     for service in services {
         let config = Config {
             target_service: Some(service.to_string()),
-            endpoint: "http://localhost:9600/ingest".to_string(),
+            endpoint: "http://localhost:9600/v1/aggregate".to_string(),
             batch_size: 5000,
             flush_interval_ms: 500,
             buffer_capacity: 100000,
@@ -281,7 +281,7 @@ async fn test_log_level_configuration() {
     for level in levels {
         let config = Config {
             target_service: Some("test".to_string()),
-            endpoint: "http://localhost:9600/ingest".to_string(),
+            endpoint: "http://localhost:9600/v1/aggregate".to_string(),
             batch_size: 1000,
             flush_interval_ms: 500,
             buffer_capacity: 100000,
@@ -320,7 +320,7 @@ async fn test_batch_size_limits() {
     for size in batch_sizes {
         let config = Config {
             target_service: Some("test".to_string()),
-            endpoint: "http://localhost:9600/ingest".to_string(),
+            endpoint: "http://localhost:9600/v1/aggregate".to_string(),
             batch_size: size,
             flush_interval_ms: 500,
             buffer_capacity: 100000,
@@ -350,9 +350,9 @@ async fn test_batch_size_limits() {
 #[tokio::test]
 async fn test_endpoint_validation() {
     let endpoints = vec![
-        "http://localhost:9600/ingest",
+        "http://localhost:9600/v1/aggregate",
         "https://rask.example.com:443/api/logs",
-        "http://192.168.1.100:8080/ingest",
+        "http://192.168.1.100:8080/v1/aggregate",
     ];
 
     for endpoint in endpoints {

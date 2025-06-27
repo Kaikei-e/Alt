@@ -44,7 +44,7 @@ fn test_config_from_args() {
     let args = vec![
         "rask-log-forwarder",
         "--target-service", "nginx",
-        "--endpoint", "http://custom-aggregator:9000/ingest",
+        "--endpoint", "http://custom-aggregator:9000/v1/aggregate",
         "--batch-size", "5000",
         "--log-level", "debug",
         "--metrics-port", "9091"
@@ -53,7 +53,7 @@ fn test_config_from_args() {
     let config = Config::from_args(args).unwrap();
 
     assert_eq!(config.target_service, Some("nginx".to_string()));
-    assert_eq!(config.endpoint, "http://custom-aggregator:9000/ingest");
+    assert_eq!(config.endpoint, "http://custom-aggregator:9000/v1/aggregate");
     assert_eq!(config.batch_size, 5000);
     assert_eq!(config.log_level, LogLevel::Debug);
     assert_eq!(config.metrics_port, 9091);
@@ -72,7 +72,7 @@ fn test_config_from_environment() {
     // Set test environment variables
     unsafe {
         env::set_var("TARGET_SERVICE", "alt-backend");
-        env::set_var("RASK_ENDPOINT", "http://test-aggregator:9600/ingest");
+        env::set_var("RASK_ENDPOINT", "http://test-aggregator:9600/v1/aggregate");
         env::set_var("BATCH_SIZE", "15000");
         env::set_var("LOG_LEVEL", "warn");
         env::set_var("ENABLE_DISK_FALLBACK", "false");
@@ -81,7 +81,7 @@ fn test_config_from_environment() {
     let config = Config::from_env().unwrap();
 
     assert_eq!(config.target_service, Some("alt-backend".to_string()));
-    assert_eq!(config.endpoint, "http://test-aggregator:9600/ingest");
+    assert_eq!(config.endpoint, "http://test-aggregator:9600/v1/aggregate");
     assert_eq!(config.batch_size, 15000);
     assert!(matches!(config.log_level, LogLevel::Warn));
     assert!(!config.enable_disk_fallback);
@@ -102,7 +102,7 @@ fn test_config_validation() {
     assert!(config.validate().is_err());
 
     // Invalid batch size should fail
-    config.endpoint = "http://valid:9600/ingest".to_string();
+    config.endpoint = "http://valid:9600/v1/aggregate".to_string();
     config.batch_size = 0;
     assert!(config.validate().is_err());
 
@@ -119,7 +119,7 @@ fn test_config_file_loading() {
 
     let config_content = r#"
 target_service = "meilisearch"
-endpoint = "http://aggregator:9600/ingest"
+endpoint = "http://aggregator:9600/v1/aggregate"
 batch_size = 8000
 flush_interval_ms = 1000
 buffer_capacity = 50000
@@ -276,7 +276,7 @@ fn test_invalid_batch_size() {
 fn test_config_serialization() {
     let config = Config {
         target_service: Some("test-service".to_string()),
-        endpoint: "http://localhost:9600/ingest".to_string(),
+        endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         batch_size: 5000,
         log_level: LogLevel::Debug,
         enable_disk_fallback: true,
