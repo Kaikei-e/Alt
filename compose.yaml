@@ -9,11 +9,11 @@ volumes:
 x-rask-env: &rask-env
   environment:
     RASK_CONFIG: |
-      [agent]
-      sink = "http://rask-aggregator:9600/ingest"
-      mode = "docker_json"
-      auto_partial_merge = true
-      max_inflight = 8192
+      endpoint = "http://rask-log-aggregator:9600/v1/aggregate"
+      batch_size = 1
+      flush_interval_ms = 500
+      buffer_capacity = 100000
+      log_level = "info"
 
 services:
   nginx:
@@ -297,6 +297,8 @@ services:
     networks:
       - alt-network
     tty: true
+    volumes:
+      - ./rask-log-aggregator/logs:/logs
     labels:
       - rask.group=alt-backend
     logging:
@@ -407,8 +409,12 @@ services:
     environment:
       TARGET_SERVICE: "${ALT_BACKEND_TARGET:-alt-backend}"
       DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "debug"
-      RUST_LOG: "debug"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -427,6 +433,10 @@ services:
     environment:
       TARGET_SERVICE: "tag-generator"
       DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -445,6 +455,10 @@ services:
     environment:
       TARGET_SERVICE: "pre-processor"
       DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -463,6 +477,10 @@ services:
     environment:
       TARGET_SERVICE: "search-indexer"
       DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -481,6 +499,10 @@ services:
     environment:
       TARGET_SERVICE: "news-creator"
       DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -499,6 +521,10 @@ services:
     environment:
       TARGET_SERVICE: "meilisearch"
       DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -515,6 +541,10 @@ services:
     environment:
       TARGET_SERVICE: "db"
       DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      BATCH_SIZE: "1000"
+      FLUSH_INTERVAL_MS: "500"
+      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro

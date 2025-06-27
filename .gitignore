@@ -7,7 +7,9 @@ test-results/.last-run.json
 news-creator/cached_models/*
 news-creator/models/*
 
+# real data
 backup.sql
+rask-log-aggregator/logs/*
 
 __pycache__
 .vscode/settings.json
