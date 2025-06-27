@@ -25,7 +25,7 @@ impl DockerEnvironment {
         let target_service = env::var("TARGET_SERVICE").ok();
 
         let rask_endpoint = env::var("RASK_ENDPOINT")
-            .unwrap_or_else(|_| "http://rask-aggregator:9600/ingest".to_string());
+            .unwrap_or_else(|_| "http://rask-aggregator:9600/v1/aggregate".to_string());
 
         let network_mode = env::var("NETWORK_MODE").ok();
 

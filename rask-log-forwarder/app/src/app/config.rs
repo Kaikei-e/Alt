@@ -108,7 +108,7 @@ pub struct Config {
     pub target_service: Option<String>,
 
     /// Rask aggregator endpoint URL
-    #[arg(long, env = "RASK_ENDPOINT", default_value = "http://rask-aggregator:9600/ingest")]
+    #[arg(long, env = "RASK_ENDPOINT", default_value = "http://rask-aggregator:9600/v1/aggregate")]
     pub endpoint: String,
 
     /// Number of log entries per batch
@@ -192,7 +192,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             target_service: None,
-            endpoint: "http://rask-aggregator:9600/ingest".to_string(),
+            endpoint: "http://rask-log-aggregator:9600/v1/aggregate".to_string(),
             batch_size: 10000,
             flush_interval_ms: 500,
             buffer_capacity: 100000,
@@ -228,9 +228,14 @@ impl Config {
     }
 
     pub fn from_env() -> Result<Self, ConfigError> {
+        // First, try to load from RASK_CONFIG environment variable if it exists
+        if let Ok(rask_config) = std::env::var("RASK_CONFIG") {
+            return Self::from_rask_config_env(&rask_config);
+        }
+
         let mut config = Config::default();
 
-        // Load from environment variables
+        // Load from individual environment variables
         if let Ok(service) = std::env::var("TARGET_SERVICE") {
             config.target_service = Some(service);
         }
@@ -318,8 +323,33 @@ impl Config {
         I: IntoIterator<Item = T>,
         T: Into<std::ffi::OsString> + Clone,
     {
+        // Start with RASK_CONFIG if available, then override with CLI args
+        let base_config = if let Ok(rask_config) = std::env::var("RASK_CONFIG") {
+            Self::from_rask_config_env(&rask_config)?
+        } else {
+            Config::default()
+        };
+
         // Parse CLI args (which automatically includes env vars due to clap's env feature)
         let mut config = Config::parse_from(args);
+        
+        // Merge base_config values for fields that weren't explicitly set via CLI
+        if config.target_service.is_none() && base_config.target_service.is_some() {
+            config.target_service = base_config.target_service;
+        }
+        if config.endpoint == Config::default().endpoint && base_config.endpoint != Config::default().endpoint {
+            config.endpoint = base_config.endpoint;
+        }
+        if config.batch_size == Config::default().batch_size && base_config.batch_size != Config::default().batch_size {
+            config.batch_size = base_config.batch_size;
+        }
+        if config.flush_interval_ms == Config::default().flush_interval_ms && base_config.flush_interval_ms != Config::default().flush_interval_ms {
+            config.flush_interval_ms = base_config.flush_interval_ms;
+        }
+        if config.buffer_capacity == Config::default().buffer_capacity && base_config.buffer_capacity != Config::default().buffer_capacity {
+            config.buffer_capacity = base_config.buffer_capacity;
+        }
+        
         config.post_process()?;
         config.validate()?;
         Ok(config)
@@ -440,6 +470,13 @@ impl Config {
         self.target_service.clone().ok_or_else(|| {
             ConfigError::InvalidConfig("Target service not configured".to_string())
         })
+    }
+
+    pub fn from_rask_config_env(rask_config: &str) -> Result<Self, ConfigError> {
+        let mut config: Config = toml::from_str(rask_config)?;
+        config.post_process()?;
+        config.validate()?;
+        Ok(config)
     }
 }
 
