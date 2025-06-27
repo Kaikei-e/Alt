@@ -24,10 +24,6 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const handleNavigateToFeeds = () => {
-    router.push("/mobile/feeds");
-  };
-
   // Performance optimization: Preload /mobile/feeds route for instant navigation
   useEffect(() => {
     router.prefetch("/mobile/feeds");
