@@ -3,6 +3,24 @@ import { test, expect } from "@playwright/test";
 test.describe("FloatingMenu Cross-Page Navigation Integration Tests", () => {
   test.beforeEach(async ({ page }) => {
     // Mock API endpoints to prevent backend dependencies
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              title: "Test Feed 1",
+              description: "Test description 1",
+              link: "https://example.com/feed/1",
+              published: new Date().toISOString(),
+            },
+          ],
+          next_cursor: null,
+        }),
+      });
+    });
+
     await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
       await route.fulfill({
         status: 200,
@@ -15,17 +33,6 @@ test.describe("FloatingMenu Cross-Page Navigation Integration Tests", () => {
             published: new Date().toISOString(),
           },
         ]),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: [],
-          next_cursor: null,
-        }),
       });
     });
 
@@ -42,6 +49,17 @@ test.describe("FloatingMenu Cross-Page Navigation Integration Tests", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ status: "ok" }),
+      });
+    });
+
+    await page.route("**/api/v1/feeds/stats", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          feed_amount: { amount: 42 },
+          summarized_feed: { amount: 15 },
+        }),
       });
     });
   });
@@ -114,7 +132,9 @@ test.describe("FloatingMenu Cross-Page Navigation Integration Tests", () => {
     ).toBeVisible({ timeout: 10000 });
   });
 
-  test("should handle navigation without JavaScript errors", async ({ page }) => {
+  test("should handle navigation without JavaScript errors", async ({
+    page,
+  }) => {
     const errors: string[] = [];
     page.on("pageerror", (error) => {
       errors.push(error.message);
@@ -124,7 +144,9 @@ test.describe("FloatingMenu Cross-Page Navigation Integration Tests", () => {
     const menuButton = page.getByTestId("floating-menu-button");
     await expect(menuButton).toBeVisible({ timeout: 10000 });
     await menuButton.click();
-    await expect(page.getByTestId("menu-content")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("menu-content")).toBeVisible({
+      timeout: 10000,
+    });
 
     const homeLink = page
       .getByTestId("menu-content")
@@ -132,14 +154,19 @@ test.describe("FloatingMenu Cross-Page Navigation Integration Tests", () => {
       .filter({ hasText: "Home" });
 
     if (await homeLink.isVisible()) {
-      await homeLink.click({ force: true });
+      await Promise.all([
+        page.waitForURL((url) => url.pathname === "/" || url.pathname === ""),
+        homeLink.click({ force: true }),
+      ]);
       await page.waitForLoadState("networkidle");
     }
 
     expect(errors).toHaveLength(0);
   });
 
-  test("should work correctly from different mobile pages", async ({ page }) => {
+  test("should work correctly from different mobile pages", async ({
+    page,
+  }) => {
     // Only test pages that actually have FloatingMenu
     const testPages = ["/mobile/feeds"];
 

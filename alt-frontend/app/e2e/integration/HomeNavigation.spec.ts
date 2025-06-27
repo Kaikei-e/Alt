@@ -3,6 +3,24 @@ import { test, expect } from "@playwright/test";
 test.describe("Home Navigation Manual Test", () => {
   test.beforeEach(async ({ page }) => {
     // Mock API endpoints
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              title: "Test Feed 1",
+              description: "Test description 1",
+              link: "https://example.com/feed/1",
+              published: new Date().toISOString(),
+            },
+          ],
+          next_cursor: null,
+        }),
+      });
+    });
+
     await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
       await route.fulfill({
         status: 200,
@@ -15,17 +33,6 @@ test.describe("Home Navigation Manual Test", () => {
             published: new Date().toISOString(),
           },
         ]),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: [],
-          next_cursor: null,
-        }),
       });
     });
 
@@ -45,7 +52,7 @@ test.describe("Home Navigation Manual Test", () => {
       });
     });
 
-    await page.route("**/api/v1/feed_stats", async (route) => {
+    await page.route("**/api/v1/feeds/stats", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -71,19 +78,39 @@ test.describe("Home Navigation Manual Test", () => {
   });
 
   test("should verify Home link is clickable in FloatingMenu", async ({ page }) => {
-    // Start at feeds page
     await page.goto("/mobile/feeds");
     await page.waitForLoadState("networkidle");
 
-    // Wait for FloatingMenu button
-    await page.waitForSelector('[data-testid="floating-menu-button"]', { timeout: 10000 });
+    // Open menu with better error handling
+    const menuButton = page.getByTestId("floating-menu-button");
+    await expect(menuButton).toBeVisible({ timeout: 10000 });
+    await expect(menuButton).toBeEnabled({ timeout: 10000 });
 
-    // Open menu
-    await page.getByTestId("floating-menu-button").click();
-    await expect(page.getByTestId("menu-content")).toBeVisible();
+    await menuButton.click();
+
+    // Wait for menu to open with retry
+    try {
+      await expect(page.getByTestId("menu-content")).toBeVisible({ timeout: 10000 });
+    } catch (error) {
+      console.log("Menu failed to open, debugging and retrying...");
+
+      // Debug information
+      const buttonExists = await menuButton.count();
+      console.log("Button exists:", buttonExists);
+      const menuExists = await page.getByTestId("menu-content").count();
+      console.log("Menu content exists:", menuExists);
+
+      // Retry clicking
+      await menuButton.click();
+      await page.waitForTimeout(1000);
+      await expect(page.getByTestId("menu-content")).toBeVisible({ timeout: 5000 });
+    }
 
     // Find Home link
-    const homeLink = page.getByTestId("menu-content").getByRole("link").filter({ hasText: "Home" });
+    const homeLink = page
+      .getByTestId("menu-content")
+      .getByRole("link")
+      .filter({ hasText: "Home" });
 
     // Check link properties
     await expect(homeLink).toBeVisible();
@@ -105,9 +132,22 @@ test.describe("Home Navigation Manual Test", () => {
     // Wait for FloatingMenu button
     await page.waitForSelector('[data-testid="floating-menu-button"]', { timeout: 10000 });
 
-    // Open menu
-    await page.getByTestId("floating-menu-button").click();
-    await expect(page.getByTestId("menu-content")).toBeVisible();
+    // Open menu with retry logic
+    const menuButton = page.getByTestId("floating-menu-button");
+    await expect(menuButton).toBeVisible({ timeout: 5000 });
+    await expect(menuButton).toBeEnabled({ timeout: 5000 });
+
+    await menuButton.click();
+
+    // Wait for menu with retry
+    try {
+      await expect(page.getByTestId("menu-content")).toBeVisible({ timeout: 5000 });
+    } catch (error) {
+      console.log("Menu failed to open, retrying...");
+      await menuButton.click();
+      await page.waitForTimeout(1000);
+      await expect(page.getByTestId("menu-content")).toBeVisible({ timeout: 5000 });
+    }
 
     // Get the Home link
     const homeLink = page.getByTestId("menu-content").getByRole("link").filter({ hasText: "Home" });

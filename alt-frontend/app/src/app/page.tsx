@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Box, Flex, Text, VStack, HStack } from "@chakra-ui/react";
+import NextLink from "next/link";
+import {
+  Box,
+  Flex,
+  Text,
+  VStack,
+  HStack,
+  Link as ChakraLink,
+} from "@chakra-ui/react";
 import { FiRss, FiFileText, FiArrowRight } from "react-icons/fi";
 import { feedsApi } from "@/lib/api";
 import { FeedStatsSummary } from "@/schema/feedStats";
@@ -124,107 +131,90 @@ export default function Home() {
 
         {/* Navigation Section - Refined Glass Card */}
         <Box as="nav" aria-label="Main navigation" mb={6}>
-          <Link href="/mobile/feeds">
+          <ChakraLink
+            as={NextLink}
+            href="/mobile/feeds"
+            data-testid="nav-card"
+            bg="rgba(255, 255, 255, 0.05)"
+            border="1px solid"
+            borderColor="rgba(255, 255, 255, 0.1)"
+            backdropFilter="blur(12px) saturate(1.2)"
+            p={4}
+            borderRadius="lg"
+            color="fg.default"
+            cursor="pointer"
+            transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+            minH="44px"
+            w="full"
+            textAlign="left"
+            textDecoration="none"
+            display="block"
+            position="relative"
+            overflow="hidden"
+            _hover={{
+              transform: "translateY(-1px)",
+              bg: "rgba(255, 255, 255, 0.08)",
+              borderColor: "rgba(255, 0, 110, 0.3)",
+              boxShadow: "0 4px 20px rgba(255, 0, 110, 0.1)",
+              textDecoration: "none",
+            }}
+            _focus={{
+              outline: "2px solid",
+              outlineColor: "accent.default",
+              outlineOffset: "2px",
+            }}
+            _active={{
+              transform: "translateY(0)",
+            }}
+          >
+            {/* Subtle gradient overlay */}
             <Box
-              as="a"
-              data-testid="nav-card"
-              bg="rgba(255, 255, 255, 0.05)"
-              border="1px solid"
-              borderColor="rgba(255, 255, 255, 0.1)"
-              backdropFilter="blur(12px) saturate(1.2)"
-              p={4}
-              borderRadius="lg"
-              color="fg.default"
-              cursor="pointer"
-              transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-              minH="44px"
-              w="full"
-              textAlign="left"
-              textDecoration="none"
-              display="block"
+              position="absolute"
+              top={0}
+              left={0}
+              right={0}
+              bottom={0}
+              bgGradient="linear(45deg, transparent 0%, rgba(255, 0, 110, 0.05) 50%, transparent 100%)"
+              opacity={0}
+              transition="opacity 0.2s ease"
+              _hover={{ opacity: 1 }}
+            />
+
+            <Flex
+              align="center"
+              justify="space-between"
               position="relative"
-              overflow="hidden"
-              onClick={(e) => {
-                e.preventDefault();
-                handleNavigateToFeeds();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleNavigateToFeeds();
-                }
-              }}
-              tabIndex={0}
-              onFocus={(e) => {
-                // Ensure focus is properly set for testing
-                e.currentTarget.focus();
-              }}
-              role="link"
-              _hover={{
-                transform: "translateY(-1px)",
-                bg: "rgba(255, 255, 255, 0.08)",
-                borderColor: "rgba(255, 0, 110, 0.3)",
-                boxShadow: "0 4px 20px rgba(255, 0, 110, 0.1)",
-                textDecoration: "none",
-              }}
-              _focus={{
-                outline: "2px solid",
-                outlineColor: "accent.default",
-                outlineOffset: "2px",
-              }}
-              _active={{
-                transform: "translateY(0)",
-              }}
+              zIndex={1}
             >
-              {/* Subtle gradient overlay */}
-              <Box
-                position="absolute"
-                top={0}
-                left={0}
-                right={0}
-                bottom={0}
-                bgGradient="linear(45deg, transparent 0%, rgba(255, 0, 110, 0.05) 50%, transparent 100%)"
-                opacity={0}
-                transition="opacity 0.2s ease"
-                _groupHover={{ opacity: 1 }}
-              />
-
-              <Flex
-                align="center"
-                justify="space-between"
-                position="relative"
-                zIndex={1}
-              >
-                <HStack gap={3}>
-                  <Box
-                    color="accent.default"
-                    p={2}
-                    borderRadius="sm"
-                    bg="rgba(255, 0, 110, 0.1)"
-                  >
-                    <FiRss size={18} />
-                  </Box>
-                  <VStack align="start" gap={0}>
-                    <Text
-                      fontSize="lg"
-                      fontWeight="semibold"
-                      fontFamily="heading"
-                      color="fg.default"
-                    >
-                      Browse Feeds
-                    </Text>
-                    <Text fontSize="xs" color="fg.subtle" fontFamily="body">
-                      Explore RSS subscriptions
-                    </Text>
-                  </VStack>
-                </HStack>
-
-                <Box color="fg.subtle" opacity={0.6}>
-                  <FiArrowRight size={16} />
+              <HStack gap={3}>
+                <Box
+                  color="accent.default"
+                  p={2}
+                  borderRadius="sm"
+                  bg="rgba(255, 0, 110, 0.1)"
+                >
+                  <FiRss size={18} />
                 </Box>
-              </Flex>
-            </Box>
-          </Link>
+                <VStack align="start" gap={0}>
+                  <Text
+                    fontSize="lg"
+                    fontWeight="semibold"
+                    fontFamily="heading"
+                    color="fg.default"
+                  >
+                    Browse Feeds
+                  </Text>
+                  <Text fontSize="xs" color="fg.subtle" fontFamily="body">
+                    Explore RSS subscriptions
+                  </Text>
+                </VStack>
+              </HStack>
+
+              <Box color="fg.subtle" opacity={0.6}>
+                <FiArrowRight size={16} />
+              </Box>
+            </Flex>
+          </ChakraLink>
         </Box>
 
         {/* Dashboard Section - Refined Stats Grid */}
