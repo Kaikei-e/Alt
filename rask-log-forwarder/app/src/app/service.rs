@@ -257,7 +257,7 @@ impl ServiceManager {
                 // Process incoming log entries
                 Some(log_entry) = log_rx.recv() => {
                     debug!("Received log entry from container");
-                    
+
                     // Step 1: Remove ANSI escape sequences for easier parsing
                     let cleaned_log = strip_ansi_codes(&log_entry.log);
 
@@ -325,7 +325,7 @@ impl ServiceManager {
                         for part in cleaned_log.split_whitespace() {
                             if let Some(idx) = part.find('=') {
                                 let key = &part[..idx];
-                                let mut value = part[idx + 1..].trim_matches('"').to_string();
+                                let value = part[idx + 1..].trim_matches('"').to_string();
 
                                 match key {
                                     "msg" | "message" => message = value.clone(),
@@ -380,10 +380,10 @@ impl ServiceManager {
                         Err(_) => Some(chrono::Utc::now()),
                     };
                     parsed_entry.timestamp = timestamp;
-                    
+
                     debug!("Successfully created log entry");
                     log_batch.push(parsed_entry);
-                    
+
                     // Send batch if it reaches the target size or flush interval has passed
                     if log_batch.len() >= batch_size || last_flush.elapsed() >= flush_interval {
                         Self::send_log_batch(&log_batch, &reliability_manager).await;
@@ -418,7 +418,7 @@ impl ServiceManager {
     }
 
     async fn send_log_batch(
-        log_batch: &[crate::parser::services::ParsedLogEntry], 
+        log_batch: &[crate::parser::services::ParsedLogEntry],
         reliability_manager: &Arc<ReliabilityManager>
     ) {
         if log_batch.is_empty() {
@@ -426,7 +426,7 @@ impl ServiceManager {
         }
 
         info!("Sending batch of {} log entries", log_batch.len());
-        
+
         // Convert to JSON lines format for transmission
         let mut ndjson_lines = Vec::new();
         for entry in log_batch {
@@ -445,11 +445,11 @@ impl ServiceManager {
         }
 
         let ndjson_body = ndjson_lines.join("\n");
-        
+
         // Create a simple HTTP request to send the batch
         let client = reqwest::Client::new();
         let endpoint = "http://rask-log-aggregator:9600/v1/aggregate";
-        
+
         match client
             .post(endpoint)
             .header("Content-Type", "application/x-ndjson")
