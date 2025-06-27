@@ -1,3 +1,10 @@
+# CLAUDE.md - alt-frontend
+
+## Application Intent
+
+This is a Next.js application that is a frontend for the alt-backend.
+Mobile-first design and usage.
+
 #### When Claude Generates Excessive Tests
 ```bash
 # 1. Stop Claude immediately
