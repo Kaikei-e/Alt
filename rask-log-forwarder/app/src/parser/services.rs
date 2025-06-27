@@ -14,7 +14,7 @@ pub enum LogLevel {
     Fatal,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ParsedLogEntry {
     pub service_type: String,
     pub log_type: String,

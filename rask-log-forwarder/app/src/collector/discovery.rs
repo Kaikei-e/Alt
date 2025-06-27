@@ -108,67 +108,87 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
 
         let containers = self.docker.list_containers(Some(options)).await?;
 
-        // Find container with matching service name
-        for container in containers {
+        // First, filter out any containers that are for logging
+        let filtered_containers: Vec<_> = containers
+            .into_iter()
+            .filter(|c| {
+                if let Some(names) = &c.names {
+                    // Keep the container if NONE of its names end with "-logs"
+                    !names.iter().any(|n| n.trim_start_matches('/').ends_with("-logs"))
+                } else {
+                    // Keep containers with no names (unlikely, but safe)
+                    true
+                }
+            })
+            .collect();
+
+        // From the filtered list, find the best match
+        let mut best_match: Option<bollard::service::ContainerSummary> = None;
+
+        for container in filtered_containers {
             if let Some(names) = &container.names {
-                // Container names start with '/' so we need to handle that
-                let container_name = names.iter().find(|name| {
+                for name in names {
                     let clean_name = name.trim_start_matches('/');
+                    
+                    // Exact match is the best
+                    if clean_name == service_name {
+                        best_match = Some(container);
+                        break;
+                    }
 
-                    // Match exact service name
-                    let exact = clean_name == service_name;
-                    // Match with underscore separator
-                    let underscore = clean_name.starts_with(&format!("{}_", service_name));
-                    // Match with dash separator
-                    let dash = clean_name.starts_with(&format!("{}-", service_name));
+                    // Docker Compose pattern: project-service-replica (e.g., alt-alt-backend-1)
+                    // Check if the name ends with "-service-1" or "-service"
+                    if clean_name.ends_with(&format!("-{}-1", service_name)) || 
+                       clean_name.ends_with(&format!("-{}", service_name)) {
+                        best_match = Some(container.clone());
+                        break;
+                    }
 
-                    // Docker Compose patterns
-                    // Match pattern: project-service-replica (e.g., alt-alt-frontend-1)
-                    let compose_pattern = clean_name.ends_with(&format!("-{}-1", service_name));
-                    // Match pattern: project-service (e.g., alt-alt-frontend)
-                    let compose_no_replica = clean_name.ends_with(&format!("-{}", service_name));
-                    // Match pattern where service name appears after project prefix
-                    let contains_dash = clean_name.contains(&format!("-{}-", service_name));
-
-                    // Additional patterns for Docker Compose
-                    // Match pattern: *-service-* (more flexible)
-                    let flexible_pattern = clean_name.contains(&format!("-{}-", service_name))
-                        || clean_name.contains(&format!("-{}_", service_name));
-
-                    // Match pattern: service appears in name with separators
-                    let service_in_name = clean_name
-                        .split(&['-', '_'][..])
-                        .any(|part| part == service_name);
-
-                    exact
-                        || underscore
-                        || dash
-                        || compose_pattern
-                        || compose_no_replica
-                        || contains_dash
-                        || flexible_pattern
-                        || service_in_name
-                });
-
-                if container_name.is_some() {
-                    let id = container.id.ok_or_else(|| {
-                        DiscoveryError::ContainerNotFound(format!(
-                            "Container ID missing for {}",
-                            service_name
-                        ))
-                    })?;
-
-                    let labels = container.labels.unwrap_or_default();
-                    let group = labels.get("rask.group").cloned();
-
-                    return Ok(ContainerInfo {
-                        id,
-                        service_name: service_name.to_string(),
-                        labels,
-                        group,
-                    });
+                    // Also check if any part of the name matches the service exactly
+                    let parts: Vec<&str> = clean_name.split('-').collect();
+                    if parts.contains(&service_name) {
+                        // Make sure it's not a logs container (double check)
+                        if !clean_name.contains("-logs") {
+                            best_match = Some(container.clone());
+                        }
+                    }
                 }
             }
+            
+            if best_match.is_some() {
+                // If we found any match, check if it's an exact service name match
+                if let Some(ref matched_container) = best_match {
+                    if let Some(names) = &matched_container.names {
+                        if names.iter().any(|n| {
+                            let clean = n.trim_start_matches('/');
+                            clean == service_name || 
+                            clean.ends_with(&format!("-{}-1", service_name)) ||
+                            clean.ends_with(&format!("-{}", service_name))
+                        }) {
+                            break; // Found a good match, stop searching
+                        }
+                    }
+                }
+            }
+        }
+        
+        if let Some(container) = best_match {
+            let id = container.id.ok_or_else(|| {
+                DiscoveryError::ContainerNotFound(format!(
+                    "Container ID missing for {}",
+                    service_name
+                ))
+            })?;
+
+            let labels = container.labels.unwrap_or_default();
+            let group = labels.get("rask.group").cloned();
+
+            return Ok(ContainerInfo {
+                id,
+                service_name: service_name.to_string(),
+                labels,
+                group,
+            });
         }
 
         Err(DiscoveryError::ContainerNotFound(service_name.to_string()))
