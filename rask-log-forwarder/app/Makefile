@@ -38,7 +38,7 @@ docker-build:
 docker-run:
 	docker run --rm \
 		-e TARGET_SERVICE=test \
-		-e RASK_ENDPOINT=http://rask-aggregator:9600/ingest \
+		-e RASK_ENDPOINT=http://rask-aggregator:9600/v1/aggregate \
 		-v /var/run/docker.sock:/var/run/docker.sock:ro \
 		-v /var/lib/docker/containers:/var/lib/docker/containers:ro \
 		rask-log-forwarder:latest

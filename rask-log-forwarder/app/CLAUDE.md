@@ -447,7 +447,7 @@ pub struct Config {
     pub target_service: Option<String>,
 
     /// Rask aggregator endpoint
-    #[arg(long, env = "RASK_ENDPOINT", default_value = "http://rask-log-aggregator:9600/ingest")]
+    #[arg(long, env = "RASK_ENDPOINT", default_value = "http://rask-log-aggregator:9600/v1/aggregate")]
     pub endpoint: String,
 
     /// Batch size
@@ -607,7 +607,7 @@ version: '3.8'
 # Shared environment for all forwarders
 x-rask-env: &rask-env
   environment:
-    - RASK_ENDPOINT=http://rask-log-aggregator:9600/ingest
+    - RASK_ENDPOINT=http://rask-log-aggregator:9600/v1/aggregate
     - BATCH_SIZE=10000
     - BUFFER_CAPACITY=100000
     - FLUSH_INTERVAL_MS=500

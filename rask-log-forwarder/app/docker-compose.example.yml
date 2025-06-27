@@ -45,7 +45,7 @@ services:
     network_mode: "service:nginx"
     environment:
       - TARGET_SERVICE=nginx
-      - RASK_ENDPOINT=http://rask-aggregator:9600/ingest
+      - RASK_ENDPOINT=http://rask-log-aggregator:9600/v1/aggregate
       - BATCH_SIZE=10000
       - BUFFER_CAPACITY=100000
       - FLUSH_INTERVAL_MS=500
@@ -64,7 +64,7 @@ services:
     network_mode: "service:alt-backend"
     environment:
       - TARGET_SERVICE=alt-backend
-      - RASK_ENDPOINT=http://rask-aggregator:9600/ingest
+      - RASK_ENDPOINT=http://rask-log-aggregator:9600/v1/aggregate
       - BATCH_SIZE=10000
       - BUFFER_CAPACITY=100000
       - FLUSH_INTERVAL_MS=500
