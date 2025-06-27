@@ -52,7 +52,7 @@ export const FloatingMenu = () => {
 
     const prefetch = () => setIsPrefetched(true);
     if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      (window as any).requestIdleCallback(prefetch);
+      (window as Window).requestIdleCallback(prefetch);
     } else {
       // Fallback for environments without requestIdleCallback
       setTimeout(prefetch, 0);
