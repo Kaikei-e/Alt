@@ -44,12 +44,23 @@ jobs:
       run: |
         cd search-indexer/app
         go mod tidy
-    - name: Run tests
+    - name: Run go vet
       run: |
         cd search-indexer/app
-        go test ./...
+        go vet ./...
+    - name: Run tests with coverage
+      run: |
+        cd search-indexer/app
+        go test -coverprofile=coverage.out ./...
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./search-indexer/app/coverage.out
+        flags: search-indexer
+        name: search-indexer-coverage
     - name: Upload test results
       uses: actions/upload-artifact@v4
       with:
         name: go-test-results
         path: search-indexer/test-results/
+        retention-days: 30
