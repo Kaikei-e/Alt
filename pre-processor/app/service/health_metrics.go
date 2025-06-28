@@ -14,17 +14,17 @@ import (
 
 // HealthMetrics represents the comprehensive health metrics structure from TASK4.md
 type HealthMetrics struct {
-	LogsPerSecond   float64 `json:"logs_per_second"`
-	AvgLatency      float64 `json:"avg_latency_ms"`
-	ErrorRate       float64 `json:"error_rate"`
-	MemoryUsage     uint64  `json:"memory_usage_mb"`
-	Timestamp       int64   `json:"timestamp"`
-	ServiceStatus   string  `json:"service_status"`
-	Uptime          float64 `json:"uptime_seconds"`
-	RequestCount    uint64  `json:"request_count"`
-	SuccessCount    uint64  `json:"success_count"`
-	FailureCount    uint64  `json:"failure_count"`
-	GoroutineCount  int     `json:"goroutine_count"`
+	LogsPerSecond  float64 `json:"logs_per_second"`
+	AvgLatency     float64 `json:"avg_latency_ms"`
+	ErrorRate      float64 `json:"error_rate"`
+	MemoryUsage    uint64  `json:"memory_usage_mb"`
+	Timestamp      int64   `json:"timestamp"`
+	ServiceStatus  string  `json:"service_status"`
+	Uptime         float64 `json:"uptime_seconds"`
+	RequestCount   uint64  `json:"request_count"`
+	SuccessCount   uint64  `json:"success_count"`
+	FailureCount   uint64  `json:"failure_count"`
+	GoroutineCount int     `json:"goroutine_count"`
 }
 
 // ExtendedHealthMetrics provides additional metrics for comprehensive monitoring
@@ -37,11 +37,11 @@ type ExtendedHealthMetrics struct {
 }
 
 type PerformanceMetrics struct {
-	CPUUsage        float64 `json:"cpu_usage_percent"`
-	HeapSize        uint64  `json:"heap_size_mb"`
-	GCCount         uint32  `json:"gc_count"`
-	LastGCDuration  float64 `json:"last_gc_duration_ms"`
-	AllocRate       float64 `json:"alloc_rate_mb_per_sec"`
+	CPUUsage       float64 `json:"cpu_usage_percent"`
+	HeapSize       uint64  `json:"heap_size_mb"`
+	GCCount        uint32  `json:"gc_count"`
+	LastGCDuration float64 `json:"last_gc_duration_ms"`
+	AllocRate      float64 `json:"alloc_rate_mb_per_sec"`
 }
 
 // HealthMetricsCollector collects and aggregates health metrics
@@ -136,17 +136,17 @@ func (hmc *HealthMetricsCollector) GetHealthMetrics(ctx context.Context) *Health
 	uptime := time.Since(hmc.startTime).Seconds()
 
 	metrics := &HealthMetrics{
-		LogsPerSecond:   logsPerSecond,
-		AvgLatency:      avgLatency,
-		ErrorRate:       errorRate,
-		MemoryUsage:     memoryUsageMB,
-		Timestamp:       time.Now().Unix(),
-		ServiceStatus:   serviceStatus,
-		Uptime:          uptime,
-		RequestCount:    hmc.requestCount,
-		SuccessCount:    hmc.successCount,
-		FailureCount:    hmc.failureCount,
-		GoroutineCount:  runtime.NumGoroutine(),
+		LogsPerSecond:  logsPerSecond,
+		AvgLatency:     avgLatency,
+		ErrorRate:      errorRate,
+		MemoryUsage:    memoryUsageMB,
+		Timestamp:      time.Now().Unix(),
+		ServiceStatus:  serviceStatus,
+		Uptime:         uptime,
+		RequestCount:   hmc.requestCount,
+		SuccessCount:   hmc.successCount,
+		FailureCount:   hmc.failureCount,
+		GoroutineCount: runtime.NumGoroutine(),
 	}
 
 	hmc.logger.WithContext(ctx).Debug("health metrics collected",
@@ -175,8 +175,8 @@ func (hmc *HealthMetricsCollector) GetExtendedHealthMetrics(ctx context.Context)
 	}
 
 	componentHealth := map[string]interface{}{
-		"database": hmc.checkDatabaseHealth(),
-		"memory":   hmc.checkMemoryHealth(memStats),
+		"database":   hmc.checkDatabaseHealth(),
+		"memory":     hmc.checkMemoryHealth(memStats),
 		"goroutines": hmc.checkGoroutineHealth(),
 	}
 
@@ -312,7 +312,7 @@ func (hmc *HealthMetricsCollector) checkMemoryHealth(memStats runtime.MemStats) 
 
 func (hmc *HealthMetricsCollector) checkGoroutineHealth() map[string]interface{} {
 	count := runtime.NumGoroutine()
-	
+
 	status := "healthy"
 	if count > 100 {
 		status = "warning"

@@ -31,15 +31,15 @@ type CircuitBreakerMetrics struct {
 
 // CircuitBreaker implements the circuit breaker pattern
 type CircuitBreaker struct {
-	failures     int64
-	lastFailure  time.Time
-	threshold    int
-	timeout      time.Duration
-	state        CircuitBreakerState
-	totalCalls   int64
-	totalFailures int64
+	failures       int64
+	lastFailure    time.Time
+	threshold      int
+	timeout        time.Duration
+	state          CircuitBreakerState
+	totalCalls     int64
+	totalFailures  int64
 	totalSuccesses int64
-	mu           sync.RWMutex
+	mu             sync.RWMutex
 }
 
 // NewCircuitBreaker creates a new circuit breaker with specified threshold and timeout
@@ -55,44 +55,44 @@ func NewCircuitBreaker(threshold int, timeout time.Duration) *CircuitBreaker {
 func (cb *CircuitBreaker) Call(fn func() error) error {
 	cb.mu.Lock()
 	cb.totalCalls++
-	
+
 	// Check if circuit should move to half-open
 	if cb.state == StateOpen && time.Since(cb.lastFailure) >= cb.timeout {
 		cb.state = StateHalfOpen
 	}
-	
+
 	// Block requests if circuit is open
 	if cb.state == StateOpen {
 		cb.mu.Unlock()
 		return errors.New("circuit breaker open")
 	}
-	
+
 	cb.mu.Unlock()
-	
+
 	// Execute the function
 	err := fn()
-	
+
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	
+
 	if err != nil {
 		cb.failures++
 		cb.totalFailures++
 		cb.lastFailure = time.Now()
-		
+
 		// Check if we should open the circuit after this failure
 		if cb.failures >= int64(cb.threshold) {
 			cb.state = StateOpen
 		}
-		
+
 		// If we're in half-open state and failed, go back to open
 		if cb.state == StateHalfOpen {
 			cb.state = StateOpen
 		}
-		
+
 		return err
 	}
-	
+
 	// Success - reset failures and close circuit if half-open
 	cb.totalSuccesses++
 	if cb.state == StateHalfOpen {
@@ -101,7 +101,7 @@ func (cb *CircuitBreaker) Call(fn func() error) error {
 	} else if cb.state == StateClosed {
 		cb.failures = 0
 	}
-	
+
 	return nil
 }
 
@@ -123,7 +123,7 @@ func (cb *CircuitBreaker) Failures() int {
 func (cb *CircuitBreaker) Metrics() CircuitBreakerMetrics {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
-	
+
 	return CircuitBreakerMetrics{
 		TotalCalls:     cb.totalCalls,
 		TotalFailures:  cb.totalFailures,
@@ -137,7 +137,7 @@ func (cb *CircuitBreaker) Metrics() CircuitBreakerMetrics {
 func (cb *CircuitBreaker) Reset() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	
+
 	cb.failures = 0
 	cb.state = StateClosed
 	cb.lastFailure = time.Time{}

@@ -63,13 +63,13 @@ func (oe *OperationError) WithContext(ctx context.Context) *OperationError {
 // Error implements the error interface
 func (oe *OperationError) Error() string {
 	var contextInfo string
-	
+
 	if oe.RequestID != "" && oe.TraceID != "" {
 		contextInfo = fmt.Sprintf(" (%s/%s)", oe.RequestID, oe.TraceID)
 	} else if oe.RequestID != "" {
 		contextInfo = fmt.Sprintf(" (%s)", oe.RequestID)
 	}
-	
+
 	return fmt.Sprintf("operation '%s' failed%s: %v", oe.Operation, contextInfo, oe.Underlying)
 }
 
@@ -99,11 +99,11 @@ func (oe *OperationError) UnmarshalJSON(data []byte) error {
 	}{
 		Alias: (*Alias)(oe),
 	}
-	
+
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	
+
 	oe.Underlying = fmt.Errorf("%s", aux.Error)
 	return nil
 }
@@ -147,34 +147,34 @@ func ClassifyError(err error) ErrorType {
 	if err == nil {
 		return ErrorTypeUnknown
 	}
-	
+
 	errMsg := strings.ToLower(err.Error())
-	
+
 	// Transient errors (should retry)
 	transientKeywords := []string{
 		"timeout", "connection refused", "connection reset",
 		"temporary failure", "service unavailable", "too many requests",
 		"network", "dns", "socket", "broken pipe",
 	}
-	
+
 	for _, keyword := range transientKeywords {
 		if strings.Contains(errMsg, keyword) {
 			return ErrorTypeTransient
 		}
 	}
-	
+
 	// Permanent errors (should not retry)
 	permanentKeywords := []string{
 		"unauthorized", "forbidden", "not found", "invalid",
 		"bad request", "validation", "parse", "format",
 		"authentication", "permission", "access denied",
 	}
-	
+
 	for _, keyword := range permanentKeywords {
 		if strings.Contains(errMsg, keyword) {
 			return ErrorTypePermanent
 		}
 	}
-	
+
 	return ErrorTypeUnknown
 }

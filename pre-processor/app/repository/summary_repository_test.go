@@ -47,13 +47,13 @@ func TestSummaryRepository_Create(t *testing.T) {
 				ArticleTitle:    "Test Article",
 				SummaryJapanese: "テスト記事の要約",
 			},
-			
+
 			wantErr:     true,
 			errContains: "failed to create article summary",
 		},
 		"should handle nil summary": {
-			summary:     nil,
-			
+			summary: nil,
+
 			wantErr:     true,
 			errContains: "summary cannot be nil",
 		},
@@ -63,7 +63,7 @@ func TestSummaryRepository_Create(t *testing.T) {
 				ArticleTitle:    "Test Article",
 				SummaryJapanese: "テスト記事の要約",
 			},
-			
+
 			wantErr:     true,
 			errContains: "article ID cannot be empty",
 		},
@@ -99,9 +99,9 @@ func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 		wantErr     bool
 	}{
 		"should handle nil database gracefully": {
-			cursor:      nil,
-			limit:       10,
-			
+			cursor: nil,
+			limit:  10,
+
 			wantErr:     true,
 			errContains: "failed to find articles with summaries",
 		},
@@ -110,22 +110,22 @@ func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 				LastCreatedAt: &time.Time{},
 				LastID:        "last-123",
 			},
-			limit:       5,
-			
+			limit: 5,
+
 			wantErr:     true,
 			errContains: "failed to find articles with summaries",
 		},
 		"should handle zero limit": {
-			cursor:      nil,
-			limit:       0,
-			
+			cursor: nil,
+			limit:  0,
+
 			wantErr:     true,
 			errContains: "limit must be positive",
 		},
 		"should handle negative limit": {
-			cursor:      nil,
-			limit:       -1,
-			
+			cursor: nil,
+			limit:  -1,
+
 			wantErr:     true,
 			errContains: "limit must be positive",
 		},
@@ -164,14 +164,14 @@ func TestSummaryRepository_Delete(t *testing.T) {
 		wantErr     bool
 	}{
 		"should handle nil database gracefully": {
-			summaryID:   "summary-123",
-			
+			summaryID: "summary-123",
+
 			wantErr:     true,
 			errContains: "failed to delete article summary",
 		},
 		"should handle empty summary ID": {
-			summaryID:   "",
-			
+			summaryID: "",
+
 			wantErr:     true,
 			errContains: "summary ID cannot be empty",
 		},
@@ -207,15 +207,15 @@ func TestSummaryRepository_Exists(t *testing.T) {
 		wantExists  bool
 	}{
 		"should handle nil database gracefully": {
-			summaryID:   "summary-123",
-			
+			summaryID: "summary-123",
+
 			wantErr:     true,
 			wantExists:  false,
 			errContains: "failed to check if article summary exists",
 		},
 		"should handle empty summary ID": {
-			summaryID:   "",
-			
+			summaryID: "",
+
 			wantErr:     true,
 			wantExists:  false,
 			errContains: "summary ID cannot be empty",
@@ -247,7 +247,6 @@ func TestSummaryRepository_Exists(t *testing.T) {
 
 func TestSummaryRepository_ErrorHandling(t *testing.T) {
 	t.Run("should handle context cancellation", func(t *testing.T) {
-		
 
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -279,7 +278,6 @@ func TestSummaryRepository_ErrorHandling(t *testing.T) {
 
 func TestSummaryRepository_EdgeCases(t *testing.T) {
 	t.Run("should handle large limit values", func(t *testing.T) {
-		
 
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -292,7 +290,6 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("should handle cursor with nil LastCreatedAt", func(t *testing.T) {
-		
 
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -309,7 +306,6 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("should handle cursor with empty LastID", func(t *testing.T) {
-		
 
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -354,7 +350,6 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to create article summary")
 			},
-			
 		},
 		{
 			name:      "find with valid parameters",
@@ -374,7 +369,6 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to find articles with summaries")
 			},
-			
 		},
 		{
 			name:      "delete with valid ID",
@@ -387,7 +381,6 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to delete article summary")
 			},
-			
 		},
 		{
 			name:      "exists with valid ID",
@@ -400,7 +393,6 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to check if article summary exists")
 			},
-			
 		},
 	}
 

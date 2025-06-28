@@ -62,17 +62,17 @@ func (h *healthHandler) GetHealthMetrics(ctx context.Context) (map[string]interf
 	metrics := h.metricsCollector.GetHealthMetrics(ctx)
 
 	result := map[string]interface{}{
-		"logs_per_second":   metrics.LogsPerSecond,
-		"avg_latency_ms":    metrics.AvgLatency,
-		"error_rate":        metrics.ErrorRate,
-		"memory_usage_mb":   metrics.MemoryUsage,
-		"timestamp":         metrics.Timestamp,
-		"service_status":    metrics.ServiceStatus,
-		"uptime_seconds":    metrics.Uptime,
-		"request_count":     metrics.RequestCount,
-		"success_count":     metrics.SuccessCount,
-		"failure_count":     metrics.FailureCount,
-		"goroutine_count":   metrics.GoroutineCount,
+		"logs_per_second": metrics.LogsPerSecond,
+		"avg_latency_ms":  metrics.AvgLatency,
+		"error_rate":      metrics.ErrorRate,
+		"memory_usage_mb": metrics.MemoryUsage,
+		"timestamp":       metrics.Timestamp,
+		"service_status":  metrics.ServiceStatus,
+		"uptime_seconds":  metrics.Uptime,
+		"request_count":   metrics.RequestCount,
+		"success_count":   metrics.SuccessCount,
+		"failure_count":   metrics.FailureCount,
+		"goroutine_count": metrics.GoroutineCount,
 	}
 
 	h.logger.Info("health metrics retrieved successfully",
@@ -95,16 +95,16 @@ func (h *healthHandler) GetExtendedHealthMetrics(ctx context.Context) (map[strin
 
 	result := map[string]interface{}{
 		"basic_metrics": map[string]interface{}{
-			"logs_per_second":   extendedMetrics.LogsPerSecond,
-			"avg_latency_ms":    extendedMetrics.AvgLatency,
-			"error_rate":        extendedMetrics.ErrorRate,
-			"memory_usage_mb":   extendedMetrics.MemoryUsage,
-			"service_status":    extendedMetrics.ServiceStatus,
-			"uptime_seconds":    extendedMetrics.Uptime,
-			"request_count":     extendedMetrics.RequestCount,
-			"success_count":     extendedMetrics.SuccessCount,
-			"failure_count":     extendedMetrics.FailureCount,
-			"goroutine_count":   extendedMetrics.GoroutineCount,
+			"logs_per_second": extendedMetrics.LogsPerSecond,
+			"avg_latency_ms":  extendedMetrics.AvgLatency,
+			"error_rate":      extendedMetrics.ErrorRate,
+			"memory_usage_mb": extendedMetrics.MemoryUsage,
+			"service_status":  extendedMetrics.ServiceStatus,
+			"uptime_seconds":  extendedMetrics.Uptime,
+			"request_count":   extendedMetrics.RequestCount,
+			"success_count":   extendedMetrics.SuccessCount,
+			"failure_count":   extendedMetrics.FailureCount,
+			"goroutine_count": extendedMetrics.GoroutineCount,
 		},
 		"performance_metrics": map[string]interface{}{
 			"cpu_usage_percent":     extendedMetrics.PerformanceMetrics.CPUUsage,
@@ -145,15 +145,15 @@ func (h *healthHandler) CheckSLACompliance(ctx context.Context) (map[string]inte
 	}
 
 	result := map[string]interface{}{
-		"meets_sla":           meetsSLA,
-		"target_availability": 99.9, // From TASK4.md
+		"meets_sla":            meetsSLA,
+		"target_availability":  99.9, // From TASK4.md
 		"current_availability": availability,
-		"total_requests":      metrics.RequestCount,
-		"successful_requests": metrics.SuccessCount,
-		"failed_requests":     metrics.FailureCount,
-		"error_rate":          metrics.ErrorRate,
-		"uptime_seconds":      metrics.Uptime,
-		"timestamp":           metrics.Timestamp,
+		"total_requests":       metrics.RequestCount,
+		"successful_requests":  metrics.SuccessCount,
+		"failed_requests":      metrics.FailureCount,
+		"error_rate":           metrics.ErrorRate,
+		"uptime_seconds":       metrics.Uptime,
+		"timestamp":            metrics.Timestamp,
 		"status": func() string {
 			if meetsSLA {
 				return "compliant"

@@ -8,8 +8,8 @@ import (
 	"pre-processor/driver"
 	"pre-processor/models"
 
-	logger "pre-processor/utils/logger"
 	"github.com/jackc/pgx/v5/pgxpool"
+	logger "pre-processor/utils/logger"
 )
 
 // ProcessingStats represents current processing statistics.

@@ -47,8 +47,8 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 		wantErr      bool
 	}{
 		"should handle nil article": {
-			article:     nil,
-			
+			article: nil,
+
 			wantErr:     true,
 			errContains: "article cannot be nil",
 		},
@@ -59,7 +59,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 				Content: "Test content",
 				URL:     "http://example.com",
 			},
-			
+
 			wantErr:     true,
 			errContains: "article ID cannot be empty",
 		},
@@ -70,7 +70,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 				Content: "",
 				URL:     "http://example.com",
 			},
-			
+
 			wantErr:     true,
 			errContains: "article content cannot be empty",
 		},
@@ -81,7 +81,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 				Content: "This is a test article content that needs to be summarized",
 				URL:     "http://example.com",
 			},
-			
+
 			wantErr:     true,
 			errContains: "failed to summarize article",
 		},
@@ -123,20 +123,20 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 		wantErr     bool
 	}{
 		"should handle empty service URL": {
-			serviceURL:  "",
-			
+			serviceURL: "",
+
 			wantErr:     true,
 			errContains: "service URL cannot be empty",
 		},
 		"should handle invalid URL": {
-			serviceURL:  "not-a-valid-url",
-			
+			serviceURL: "not-a-valid-url",
+
 			wantErr:     true,
 			errContains: "invalid service URL",
 		},
 		"should handle healthy service": {
-			serviceURL:  "http://localhost:8080",
-			
+			serviceURL: "http://localhost:8080",
+
 			mockServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "/api/tags" {
@@ -148,8 +148,8 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 			wantErr: false,
 		},
 		"should handle unhealthy service": {
-			serviceURL:  "http://localhost:8080",
-			
+			serviceURL: "http://localhost:8080",
+
 			mockServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusServiceUnavailable)
@@ -159,8 +159,8 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 			errContains: "service not healthy",
 		},
 		"should handle various HTTP status codes": {
-			serviceURL:  "http://localhost:8080",
-			
+			serviceURL: "http://localhost:8080",
+
 			mockServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusNotFound)
@@ -204,7 +204,6 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 	}
 
 	t.Run("should handle connection errors without external calls", func(t *testing.T) {
-		
 
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
@@ -217,7 +216,6 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 
 func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 	t.Run("should handle context cancellation in SummarizeArticle", func(t *testing.T) {
-		
 
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
@@ -237,7 +235,6 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 	})
 
 	t.Run("should handle context cancellation in CheckHealth", func(t *testing.T) {
-		
 
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
@@ -256,7 +253,6 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 	})
 
 	t.Run("should handle context timeout", func(t *testing.T) {
-		
 
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
@@ -277,7 +273,6 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 
 func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 	t.Run("should handle very long article content", func(t *testing.T) {
-		
 
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
@@ -301,7 +296,6 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("should handle URL with special characters", func(t *testing.T) {
-		
 
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
@@ -375,7 +369,6 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to summarize article")
 			},
-			
 		},
 		{
 			name:      "health check with mock HTTPS server",
@@ -392,7 +385,6 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			validate: func(t *testing.T, result interface{}, err error) {
 				assert.NoError(t, err)
 			},
-			
 		},
 		{
 			name:      "summarize with minimal article",
@@ -408,7 +400,6 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			validate: func(t *testing.T, result interface{}, err error) {
 				assert.Error(t, err)
 			},
-			
 		},
 		{
 			name:      "health check with mock server and port",
@@ -425,7 +416,6 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			validate: func(t *testing.T, result interface{}, err error) {
 				assert.NoError(t, err)
 			},
-			
 		},
 	}
 
@@ -455,7 +445,6 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 
 // Benchmark tests with mock servers.
 func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
-	
 
 	repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
@@ -475,7 +464,6 @@ func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 }
 
 func BenchmarkExternalAPIRepository_CheckHealth(b *testing.B) {
-	
 
 	repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
@@ -515,7 +503,6 @@ func TestExternalAPIRepository_HelperFunctions(t *testing.T) {
 
 func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 	t.Run("should handle network timeouts gracefully", func(t *testing.T) {
-		
 
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 
@@ -536,7 +523,6 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 	})
 
 	t.Run("should handle malformed response gracefully", func(t *testing.T) {
-		
 
 		repo := NewExternalAPIRepository(testLoggerExternalAPI())
 

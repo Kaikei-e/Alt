@@ -100,7 +100,7 @@ func (re *RetryExecutor) Execute(ctx context.Context, operation func() error) er
 
 		// Calculate delay and wait
 		delay := re.policy.CalculateDelay(attempt)
-		
+
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("operation cancelled during retry delay: %w", ctx.Err())

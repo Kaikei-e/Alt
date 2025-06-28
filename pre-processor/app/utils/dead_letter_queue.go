@@ -13,27 +13,27 @@ import (
 
 // DeadLetterItem represents an item in the dead letter queue
 type DeadLetterItem struct {
-	ID          string
-	Data        interface{}
-	Error       error
-	Timestamp   time.Time
-	RetryCount  int
-	MaxRetries  int
-	NextRetry   time.Time
+	ID         string
+	Data       interface{}
+	Error      error
+	Timestamp  time.Time
+	RetryCount int
+	MaxRetries int
+	NextRetry  time.Time
 }
 
 // DeadLetterQueue manages failed operations for retry
 type DeadLetterQueue struct {
-	items   map[string]*DeadLetterItem
-	logger  *slog.Logger
-	mu      sync.RWMutex
+	items  map[string]*DeadLetterItem
+	logger *slog.Logger
+	mu     sync.RWMutex
 }
 
 // DeadLetterMetrics holds metrics for the dead letter queue
 type DeadLetterMetrics struct {
-	TotalItems    int
-	RetryingItems int
-	FailedItems   int
+	TotalItems     int
+	RetryingItems  int
+	FailedItems    int
 	ProcessedItems int64
 }
 
@@ -42,7 +42,7 @@ func NewDeadLetterQueue(logger *slog.Logger) *DeadLetterQueue {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	
+
 	return &DeadLetterQueue{
 		items:  make(map[string]*DeadLetterItem),
 		logger: logger,
@@ -53,7 +53,7 @@ func NewDeadLetterQueue(logger *slog.Logger) *DeadLetterQueue {
 func (dlq *DeadLetterQueue) Add(id string, data interface{}, err error, maxRetries int) {
 	dlq.mu.Lock()
 	defer dlq.mu.Unlock()
-	
+
 	item := &DeadLetterItem{
 		ID:         id,
 		Data:       data,
@@ -63,9 +63,9 @@ func (dlq *DeadLetterQueue) Add(id string, data interface{}, err error, maxRetri
 		MaxRetries: maxRetries,
 		NextRetry:  time.Now().Add(time.Minute), // Initial 1-minute delay
 	}
-	
+
 	dlq.items[id] = item
-	
+
 	dlq.logger.Warn("item added to dead letter queue",
 		"id", id,
 		"error", err,
@@ -77,7 +77,7 @@ func (dlq *DeadLetterQueue) Add(id string, data interface{}, err error, maxRetri
 func (dlq *DeadLetterQueue) AddOperationError(id string, data interface{}, opErr *operrors.OperationError, maxRetries int) {
 	dlq.mu.Lock()
 	defer dlq.mu.Unlock()
-	
+
 	item := &DeadLetterItem{
 		ID:         id,
 		Data:       data,
@@ -87,9 +87,9 @@ func (dlq *DeadLetterQueue) AddOperationError(id string, data interface{}, opErr
 		MaxRetries: maxRetries,
 		NextRetry:  time.Now().Add(time.Minute), // Initial 1-minute delay
 	}
-	
+
 	dlq.items[id] = item
-	
+
 	dlq.logger.Warn("operation error added to dead letter queue",
 		"id", id,
 		"operation", opErr.Operation,
@@ -104,16 +104,16 @@ func (dlq *DeadLetterQueue) AddOperationError(id string, data interface{}, opErr
 func (dlq *DeadLetterQueue) GetRetryableItems() []*DeadLetterItem {
 	dlq.mu.RLock()
 	defer dlq.mu.RUnlock()
-	
+
 	now := time.Now()
 	var retryable []*DeadLetterItem
-	
+
 	for _, item := range dlq.items {
 		if item.RetryCount < item.MaxRetries && now.After(item.NextRetry) {
 			retryable = append(retryable, item)
 		}
 	}
-	
+
 	return retryable
 }
 
@@ -121,14 +121,14 @@ func (dlq *DeadLetterQueue) GetRetryableItems() []*DeadLetterItem {
 func (dlq *DeadLetterQueue) MarkRetried(id string, success bool, err error) {
 	dlq.mu.Lock()
 	defer dlq.mu.Unlock()
-	
+
 	item, exists := dlq.items[id]
 	if !exists {
 		return
 	}
-	
+
 	item.RetryCount++
-	
+
 	if success {
 		delete(dlq.items, id)
 		dlq.logger.Info("item successfully retried and removed from dead letter queue",
@@ -137,10 +137,10 @@ func (dlq *DeadLetterQueue) MarkRetried(id string, success bool, err error) {
 		)
 		return
 	}
-	
+
 	// Update error and calculate next retry time
 	item.Error = err
-	
+
 	if item.RetryCount >= item.MaxRetries {
 		dlq.logger.Error("item exceeded max retries",
 			"id", id,
@@ -151,15 +151,15 @@ func (dlq *DeadLetterQueue) MarkRetried(id string, success bool, err error) {
 		// Keep in queue but don't retry
 		return
 	}
-	
+
 	// Exponential backoff: 1min, 2min, 4min, 8min, etc.
 	backoff := time.Duration(1<<item.RetryCount) * time.Minute
 	if backoff > 30*time.Minute {
 		backoff = 30 * time.Minute // Cap at 30 minutes
 	}
-	
+
 	item.NextRetry = time.Now().Add(backoff)
-	
+
 	dlq.logger.Warn("item retry failed, scheduled for next attempt",
 		"id", id,
 		"retry_count", item.RetryCount,
@@ -172,14 +172,14 @@ func (dlq *DeadLetterQueue) MarkRetried(id string, success bool, err error) {
 func (dlq *DeadLetterQueue) MarkRetriedWithOperationError(id string, success bool, opErr *operrors.OperationError) {
 	dlq.mu.Lock()
 	defer dlq.mu.Unlock()
-	
+
 	item, exists := dlq.items[id]
 	if !exists {
 		return
 	}
-	
+
 	item.RetryCount++
-	
+
 	if success {
 		delete(dlq.items, id)
 		dlq.logger.Info("operation successfully retried and removed from dead letter queue",
@@ -191,10 +191,10 @@ func (dlq *DeadLetterQueue) MarkRetriedWithOperationError(id string, success boo
 		)
 		return
 	}
-	
+
 	// Update error and calculate next retry time
 	item.Error = opErr
-	
+
 	if item.RetryCount >= item.MaxRetries {
 		dlq.logger.Error("operation exceeded max retries",
 			"id", id,
@@ -208,15 +208,15 @@ func (dlq *DeadLetterQueue) MarkRetriedWithOperationError(id string, success boo
 		// Keep in queue but don't retry
 		return
 	}
-	
+
 	// Exponential backoff: 1min, 2min, 4min, 8min, etc.
 	backoff := time.Duration(1<<item.RetryCount) * time.Minute
 	if backoff > 30*time.Minute {
 		backoff = 30 * time.Minute // Cap at 30 minutes
 	}
-	
+
 	item.NextRetry = time.Now().Add(backoff)
-	
+
 	dlq.logger.Warn("operation retry failed, scheduled for next attempt",
 		"id", id,
 		"operation", opErr.Operation,
@@ -232,7 +232,7 @@ func (dlq *DeadLetterQueue) MarkRetriedWithOperationError(id string, success boo
 func (dlq *DeadLetterQueue) Remove(id string) {
 	dlq.mu.Lock()
 	defer dlq.mu.Unlock()
-	
+
 	delete(dlq.items, id)
 	dlq.logger.Info("item removed from dead letter queue", "id", id)
 }
@@ -241,11 +241,11 @@ func (dlq *DeadLetterQueue) Remove(id string) {
 func (dlq *DeadLetterQueue) Metrics() DeadLetterMetrics {
 	dlq.mu.RLock()
 	defer dlq.mu.RUnlock()
-	
+
 	metrics := DeadLetterMetrics{
 		TotalItems: len(dlq.items),
 	}
-	
+
 	now := time.Now()
 	for _, item := range dlq.items {
 		if item.RetryCount >= item.MaxRetries {
@@ -254,18 +254,18 @@ func (dlq *DeadLetterQueue) Metrics() DeadLetterMetrics {
 			metrics.RetryingItems++
 		}
 	}
-	
+
 	return metrics
 }
 
 // ProcessRetries processes all retryable items using the provided function
 func (dlq *DeadLetterQueue) ProcessRetries(ctx context.Context, processor func(context.Context, *DeadLetterItem) error) {
 	retryable := dlq.GetRetryableItems()
-	
+
 	dlq.logger.Info("processing retryable items",
 		"count", len(retryable),
 	)
-	
+
 	for _, item := range retryable {
 		select {
 		case <-ctx.Done():
@@ -273,7 +273,7 @@ func (dlq *DeadLetterQueue) ProcessRetries(ctx context.Context, processor func(c
 			return
 		default:
 		}
-		
+
 		err := processor(ctx, item)
 		dlq.MarkRetried(item.ID, err == nil, err)
 	}
@@ -283,11 +283,11 @@ func (dlq *DeadLetterQueue) ProcessRetries(ctx context.Context, processor func(c
 func (dlq *DeadLetterQueue) StartRetryWorker(ctx context.Context, interval time.Duration, processor func(context.Context, *DeadLetterItem) error) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	
+
 	dlq.logger.Info("starting dead letter queue retry worker",
 		"interval", interval,
 	)
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -302,11 +302,11 @@ func (dlq *DeadLetterQueue) StartRetryWorker(ctx context.Context, interval time.
 // ProcessRetriesWithExecutor processes retryable items using a retry executor
 func (dlq *DeadLetterQueue) ProcessRetriesWithExecutor(ctx context.Context, executor *operrors.RetryExecutor, processor func(context.Context, *DeadLetterItem) error) {
 	retryable := dlq.GetRetryableItems()
-	
+
 	dlq.logger.Info("processing retryable items with retry executor",
 		"count", len(retryable),
 	)
-	
+
 	for _, item := range retryable {
 		select {
 		case <-ctx.Done():
@@ -314,14 +314,14 @@ func (dlq *DeadLetterQueue) ProcessRetriesWithExecutor(ctx context.Context, exec
 			return
 		default:
 		}
-		
+
 		// Use the retry executor to handle the operation
 		operation := func() error {
 			return processor(ctx, item)
 		}
-		
+
 		err := executor.Execute(ctx, operation)
-		
+
 		// Handle the result based on error type
 		if err == nil {
 			dlq.MarkRetried(item.ID, true, nil)

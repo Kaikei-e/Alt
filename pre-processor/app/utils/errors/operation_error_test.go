@@ -24,9 +24,9 @@ func TestOperationError_New(t *testing.T) {
 			err:       errors.New("network timeout"),
 			retryable: true,
 			expected: &OperationError{
-				Operation: "feed_processing",
+				Operation:  "feed_processing",
 				Underlying: errors.New("network timeout"),
-				Retryable: true,
+				Retryable:  true,
 			},
 		},
 		"non-retryable error": {
@@ -34,9 +34,9 @@ func TestOperationError_New(t *testing.T) {
 			err:       errors.New("invalid format"),
 			retryable: false,
 			expected: &OperationError{
-				Operation: "validation",
+				Operation:  "validation",
 				Underlying: errors.New("invalid format"),
-				Retryable: false,
+				Retryable:  false,
 			},
 		},
 	}

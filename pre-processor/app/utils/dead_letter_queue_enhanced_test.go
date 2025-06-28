@@ -172,13 +172,13 @@ func TestDeadLetterQueue_MetricsWithOperationErrors(t *testing.T) {
 
 	// Set one item to max retries
 	dlq.mu.Lock()
-	dlq.items["retryable-1"].RetryCount = 3 // Exceeded max retries
+	dlq.items["retryable-1"].RetryCount = 3                               // Exceeded max retries
 	dlq.items["non-retryable-1"].NextRetry = time.Now().Add(-time.Minute) // Ready for retry
 	dlq.mu.Unlock()
 
 	metrics := dlq.Metrics()
 
 	assert.Equal(t, 3, metrics.TotalItems)
-	assert.Equal(t, 1, metrics.FailedItems)    // retryable-1 exceeded max retries
-	assert.Equal(t, 1, metrics.RetryingItems)  // non-retryable-1 ready for retry
+	assert.Equal(t, 1, metrics.FailedItems)   // retryable-1 exceeded max retries
+	assert.Equal(t, 1, metrics.RetryingItems) // non-retryable-1 ready for retry
 }

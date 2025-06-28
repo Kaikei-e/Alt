@@ -93,11 +93,11 @@ func (r *RateLimiter) Wait() {
 	defer r.mu.Unlock()
 
 	elapsed := time.Since(r.lastRequest)
-	
+
 	// Add jitter (±20% of interval) to reduce thundering herd
 	jitter := time.Duration(rand.Float64()*0.4-0.2) * r.interval
 	waitTime := r.interval + jitter
-	
+
 	if elapsed < waitTime {
 		time.Sleep(waitTime - elapsed)
 	}
@@ -162,7 +162,7 @@ func (c *RateLimitedHTTPClient) GetWithRetry(ctx context.Context, url string) (*
 			// Exponential backoff with jitter
 			backoff := time.Duration(math.Pow(2, float64(attempt-1))) * time.Second
 			jitter := time.Duration(rand.Float64() * float64(backoff) * 0.1)
-			
+
 			select {
 			case <-time.After(backoff + jitter):
 			case <-ctx.Done():

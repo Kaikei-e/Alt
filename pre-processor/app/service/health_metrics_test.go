@@ -19,7 +19,7 @@ func TestHealthMetricsCollector_RecordRequest(t *testing.T) {
 			latency time.Duration
 			success bool
 		}
-		expectedErrorRate float64
+		expectedErrorRate  float64
 		expectedAvgLatency float64
 	}{
 		"all_successful_requests": {
@@ -31,7 +31,7 @@ func TestHealthMetricsCollector_RecordRequest(t *testing.T) {
 				{200 * time.Millisecond, true},
 				{150 * time.Millisecond, true},
 			},
-			expectedErrorRate: 0.0,
+			expectedErrorRate:  0.0,
 			expectedAvgLatency: 150.0, // (100+200+150)/3
 		},
 		"mixed_success_failure": {
@@ -44,7 +44,7 @@ func TestHealthMetricsCollector_RecordRequest(t *testing.T) {
 				{200 * time.Millisecond, true},
 				{300 * time.Millisecond, false},
 			},
-			expectedErrorRate: 50.0, // 2 failures out of 4
+			expectedErrorRate:  50.0,  // 2 failures out of 4
 			expectedAvgLatency: 275.0, // (100+500+200+300)/4
 		},
 	}
@@ -203,8 +203,8 @@ func TestHealthMetricsCollector_LogsPerSecond(t *testing.T) {
 
 func TestHealthMetricsCollector_Alerts(t *testing.T) {
 	tests := map[string]struct {
-		name         string
-		setupMetrics func(*HealthMetricsCollector, context.Context)
+		name           string
+		setupMetrics   func(*HealthMetricsCollector, context.Context)
 		expectedAlerts int
 		expectedLevels []string
 	}{

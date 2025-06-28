@@ -22,7 +22,7 @@ func baselineOperation() {
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
-	
+
 	// Simulate computation
 	sum := 0
 	for _, b := range data {
@@ -32,10 +32,10 @@ func baselineOperation() {
 
 func BenchmarkLoggingOverhead_JSONFormat(b *testing.B) {
 	benchmarks := []struct {
-		name       string
-		level      string
+		name        string
+		level       string
 		withContext bool
-		fields     int
+		fields      int
 	}{
 		{"info_no_context_no_fields", "info", false, 0},
 		{"info_with_context_no_fields", "info", true, 0},
@@ -140,7 +140,7 @@ func BenchmarkLoggingOverhead_ConcurrentLogging(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		ctx := logger.WithRequestID(context.Background(), "bench-concurrent-001")
-		
+
 		for pb.Next() {
 			contextLogger.WithContext(ctx).Info("concurrent benchmark operation",
 				"timestamp", time.Now().Unix())
@@ -163,11 +163,11 @@ func TestLoggingPerformance_OverheadMeasurement(t *testing.T) {
 
 	// Measure with logging
 	loggingConfigs := []struct {
-		name     string
-		format   string
-		level    string
-		context  bool
-		fields   int
+		name    string
+		format  string
+		level   string
+		context bool
+		fields  int
 	}{
 		{"minimal_json_info", "json", "info", false, 0},
 		{"context_json_info", "json", "info", true, 2},
@@ -178,14 +178,14 @@ func TestLoggingPerformance_OverheadMeasurement(t *testing.T) {
 	for _, config := range loggingConfigs {
 		t.Run(config.name, func(t *testing.T) {
 			loggingTime := measureWithLogging(iterations, warmupIterations, config)
-			
-			overhead := (float64(loggingTime - baselineTime) / float64(baselineTime)) * 100
-			
+
+			overhead := (float64(loggingTime-baselineTime) / float64(baselineTime)) * 100
+
 			t.Logf("Performance results for %s:", config.name)
 			t.Logf("  Baseline time: %v", baselineTime)
 			t.Logf("  Logging time:  %v", loggingTime)
 			t.Logf("  Overhead:      %.2f%%", overhead)
-			
+
 			// TASK4.md requirement: < 2% overhead
 			maxOverhead := 2.0
 			if overhead > maxOverhead {
@@ -266,7 +266,7 @@ func TestLoggingPerformance_GoroutineLeaks(t *testing.T) {
 		go func(workerID int) {
 			defer func() { done <- true }()
 
-			ctx := logger.WithRequestID(context.Background(), 
+			ctx := logger.WithRequestID(context.Background(),
 				"goroutine-test-"+string(rune(workerID+48)))
 
 			for j := 0; j < operationsPerWorker; j++ {
@@ -378,11 +378,11 @@ func measureBaseline(iterations, warmupIterations int) time.Duration {
 }
 
 func measureWithLogging(iterations, warmupIterations int, config struct {
-	name     string
-	format   string
-	level    string
-	context  bool
-	fields   int
+	name    string
+	format  string
+	level   string
+	context bool
+	fields  int
 }) time.Duration {
 	// Setup logger with discard output to avoid I/O overhead in measurement
 	contextLogger := logger.NewContextLogger(io.Discard, config.format, config.level)

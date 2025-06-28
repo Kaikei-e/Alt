@@ -3,9 +3,9 @@
 package middleware
 
 import (
-	"time"
 	"pre-processor/utils/logger"
-	
+	"time"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -14,13 +14,13 @@ func LoggingMiddleware(contextLogger *logger.ContextLogger) echo.MiddlewareFunc 
 		return func(c echo.Context) error {
 			req := c.Request()
 			res := c.Response()
-			
+
 			start := time.Now()
-			
+
 			// Add operation context for this request
 			ctx := logger.WithOperation(req.Context(), req.Method+" "+req.URL.Path)
 			c.SetRequest(req.WithContext(ctx))
-			
+
 			// Create rask-compatible logger with HTTP fields
 			log := contextLogger.WithContext(ctx).With(
 				// Rask HTTP fields
@@ -29,21 +29,21 @@ func LoggingMiddleware(contextLogger *logger.ContextLogger) echo.MiddlewareFunc 
 				"ip_address", c.RealIP(),
 				"user_agent", req.UserAgent(),
 				// Additional fields
-				"fields.duration_ms", "",  // Will be updated on completion
+				"fields.duration_ms", "", // Will be updated on completion
 			)
-			
+
 			// Log request start
 			log.Info("request started")
-			
+
 			// Process request
 			err := next(c)
-			
+
 			// Calculate duration
 			duration := time.Since(start)
-			
+
 			// Log request completion with updated fields
 			completionLog := contextLogger.WithContext(ctx).With(
-				"log_type", "access",  // Change to access log type
+				"log_type", "access", // Change to access log type
 				"method", req.Method,
 				"path", req.URL.Path,
 				"status_code", res.Status,
@@ -52,9 +52,9 @@ func LoggingMiddleware(contextLogger *logger.ContextLogger) echo.MiddlewareFunc 
 				"user_agent", req.UserAgent(),
 				"fields.duration_ms", duration.Milliseconds(),
 			)
-			
+
 			completionLog.Info("request completed")
-			
+
 			return err
 		}
 	}

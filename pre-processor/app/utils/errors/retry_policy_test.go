@@ -176,7 +176,7 @@ func TestRetryExecutor_Execute_NonRetryableError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Equal(t, 1, callCount) // Should not retry
-	
+
 	var opErr *OperationError
 	require.True(t, errors.As(err, &opErr))
 	assert.False(t, opErr.Retryable)
@@ -198,7 +198,7 @@ func TestRetryExecutor_Execute_MaxAttemptsExceeded(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Equal(t, 2, callCount) // Should try MaxAttempts times
-	
+
 	var opErr *OperationError
 	require.True(t, errors.As(err, &opErr))
 	assert.True(t, opErr.Retryable)
@@ -216,7 +216,7 @@ func TestRetryExecutor_Execute_ContextCancellation(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Cancel context after first failure
 	go func() {
 		time.Sleep(50 * time.Millisecond)
