@@ -12,15 +12,12 @@ import ErrorState from "./_components/ErrorState";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
 const PAGE_SIZE = 20;
-const VIRTUAL_SCROLL_THRESHOLD = 50; // Start virtual scrolling after 50 items
 
 export default function FeedsPage() {
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [liveRegionMessage, setLiveRegionMessage] = useState<string>("");
   const [isRetrying, setIsRetrying] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 25 });
-  const [itemHeight, setItemHeight] = useState(250); // Dynamic item height
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Use cursor-based pagination hook
@@ -40,16 +37,6 @@ export default function FeedsPage() {
     () => feeds.filter((feed) => !readFeeds.has(feed.link)),
     [feeds, readFeeds],
   );
-
-  // Virtual scrolling for large lists - Re-enabled for performance
-  const shouldUseVirtualScrolling =
-    visibleFeeds.length > VIRTUAL_SCROLL_THRESHOLD;
-  const virtualizedFeeds = useMemo(() => {
-    if (!shouldUseVirtualScrolling) {
-      return visibleFeeds;
-    }
-    return visibleFeeds.slice(visibleRange.start, visibleRange.end);
-  }, [visibleFeeds, shouldUseVirtualScrolling, visibleRange]);
 
   // Handle marking feed as read
   const handleMarkAsRead = useCallback((feedLink: string) => {
@@ -92,53 +79,10 @@ export default function FeedsPage() {
   }, [hasMore, isLoading, loadMore]);
 
   useInfiniteScroll(handleLoadMore, sentinelRef, feeds.length, {
-    throttleDelay: 100, // Increased throttle for better control
-    rootMargin: "50px 0px", // Reduced margin to prevent premature triggering
+    throttleDelay: 200, // Increased throttle for better stability
+    rootMargin: "100px 0px", // Trigger loading a bit earlier
     threshold: 0.1,
   });
-
-  // Measure actual item height for accurate virtual scrolling
-  useEffect(() => {
-    if (visibleFeeds.length > 0) {
-      const firstFeedCard = document.querySelector('[data-testid="feed-card-container"]');
-      if (firstFeedCard) {
-        const height = firstFeedCard.getBoundingClientRect().height;
-        // Add some margin for spacing between cards
-        const actualHeight = Math.ceil(height + 16); // 16px for gap
-        if (actualHeight !== itemHeight) {
-          setItemHeight(actualHeight);
-        }
-      }
-    }
-  }, [visibleFeeds.length, itemHeight]);
-
-  // Virtual scroll effect
-  useEffect(() => {
-    if (!shouldUseVirtualScrolling) return;
-
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const updateVisibleRange = () => {
-      const scrollTop = container.scrollTop;
-      const containerHeight = container.clientHeight;
-
-      const start = Math.max(0, Math.floor(scrollTop / itemHeight) - 2);
-      // Cap the visible range to maintain performance - show at most 25 items at once
-      const visibleCount = Math.min(
-        25,
-        Math.ceil(containerHeight / itemHeight) + 5,
-      );
-      const end = Math.min(visibleFeeds.length, start + visibleCount);
-
-      setVisibleRange({ start, end });
-    };
-
-    container.addEventListener("scroll", updateVisibleRange);
-    updateVisibleRange(); // Initial calculation
-
-    return () => container.removeEventListener("scroll", updateVisibleRange);
-  }, [shouldUseVirtualScrolling, visibleFeeds.length, itemHeight]);
 
   // Show skeleton loading state for immediate visual feedback
   if (isInitialLoading) {
@@ -197,14 +141,9 @@ export default function FeedsPage() {
       >
         {visibleFeeds.length > 0 ? (
           <>
-            {/* Virtual scrolling spacer for items before visible range */}
-            {shouldUseVirtualScrolling && visibleRange.start > 0 && (
-              <Box height={`${visibleRange.start * itemHeight}px`} width="100%" />
-            )}
-
-            {/* Feed Cards */}
+            {/* Feed Cards - Simple rendering without virtualization */}
             <Flex direction="column" gap={4}>
-              {virtualizedFeeds.map((feed: Feed) => (
+              {visibleFeeds.map((feed: Feed) => (
                 <FeedCard
                   key={feed.link}
                   feed={feed}
@@ -213,15 +152,6 @@ export default function FeedsPage() {
                 />
               ))}
             </Flex>
-
-            {/* Virtual scrolling spacer for items after visible range */}
-            {shouldUseVirtualScrolling &&
-              visibleRange.end < visibleFeeds.length && (
-                <Box
-                  height={`${(visibleFeeds.length - visibleRange.end) * itemHeight}px`}
-                  width="100%"
-                />
-              )}
 
             {/* No more feeds indicator */}
             {!hasMore && visibleFeeds.length > 0 && (

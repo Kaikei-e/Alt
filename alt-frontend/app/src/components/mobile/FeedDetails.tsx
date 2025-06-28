@@ -167,12 +167,12 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 top="0"
                 zIndex="2"
                 bg="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"
-                height="60px"
-                minHeight="60px"
+                height="50px"
+                minHeight="50px"
                 backdropFilter="blur(20px)"
                 borderBottom="1px solid rgba(255, 255, 255, 0.1)"
                 px={6}
-                py={4}
+                py={3}
                 data-testid="summary-header"
                 id="summary-header"
                 borderTopRadius="20px"
@@ -184,7 +184,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 <Text 
                   color="#ff006e" 
                   fontWeight="bold" 
-                  fontSize="lg"
+                  fontSize="md"
                   textShadow="0 2px 4px rgba(255, 0, 110, 0.3)"
                 >
                   Article Summary
@@ -249,11 +249,12 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 backdropFilter="blur(20px)"
                 borderTop="1px solid rgba(255, 255, 255, 0.1)"
                 px={6}
-                py={4}
+                py={3}
                 borderBottomRadius="20px"
                 display="flex"
                 alignItems="center"
                 justifyContent="flex-end"
+                minHeight="50px"
               >
                 <Button
                   onClick={handleHideDetails}
@@ -264,21 +265,21 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   bg="linear-gradient(45deg, #ff006e, #8338ec)"
                   color="white"
                   fontWeight="bold"
-                  p={3}
-                  minHeight="40px"
-                  minWidth="40px"
-                  fontSize="lg"
-                  boxShadow="0 8px 25px rgba(255, 0, 110, 0.4)"
+                  p={2.5}
+                  minHeight="36px"
+                  minWidth="36px"
+                  fontSize="md"
+                  boxShadow="0 6px 20px rgba(255, 0, 110, 0.4)"
                   _hover={{
                     bg: "linear-gradient(45deg, #e6005c, #7129d4)",
                     transform: "scale(1.1)",
-                    boxShadow: "0 12px 30px rgba(255, 0, 110, 0.6)",
+                    boxShadow: "0 8px 25px rgba(255, 0, 110, 0.6)",
                   }}
                   _active={{
                     transform: "scale(0.95)",
                   }}
                   transition="all 0.2s ease"
-                  border="2px solid rgba(255, 255, 255, 0.3)"
+                  border="1.5px solid rgba(255, 255, 255, 0.3)"
                 >
                   <IoClose />
                 </Button>

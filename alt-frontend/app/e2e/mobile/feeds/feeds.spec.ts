@@ -1051,4 +1051,298 @@ test.describe("Mobile Feeds Page", () => {
       await expect(retryButton).toBeVisible({ timeout: 5000 });
     });
   });
+
+  test.describe("High-Speed Scrolling Stability", () => {
+    test.beforeEach(async ({ page }) => {
+      // Generate a larger set of feeds for scrolling tests
+      const largeFeedSet = generateMockFeeds(50, 1);
+      const backendFeeds: BackendFeedItem[] = largeFeedSet.map((feed) => ({
+        title: feed.title,
+        description: feed.description,
+        link: feed.link,
+        published: feed.published,
+      }));
+
+      // Mock cursor-based API with larger dataset
+      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+        const url = new URL(route.request().url());
+        const cursor = url.searchParams.get("cursor");
+        const limit = parseInt(url.searchParams.get("limit") || "20");
+
+        const startIndex = cursor ? parseInt(cursor) : 0;
+        const endIndex = Math.min(startIndex + limit, backendFeeds.length);
+        const pageData = backendFeeds.slice(startIndex, endIndex);
+        const nextCursor = endIndex < backendFeeds.length ? endIndex.toString() : null;
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: pageData,
+            next_cursor: nextCursor,
+          }),
+        });
+      });
+    });
+
+    test("should render all feed cards correctly during rapid up/down scrolling", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+
+      // Wait for initial feeds to load
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+        timeout: 10000,
+      });
+
+      // Count initial feed cards
+      const initialCount = await page.locator('[data-testid="feed-card"]').count();
+      expect(initialCount).toBeGreaterThan(0);
+
+      // Perform rapid up/down scrolling that previously caused rendering issues
+      for (let i = 0; i < 5; i++) {
+        // Scroll down rapidly
+        await page.evaluate(() => {
+          const scrollContainer = document.querySelector(
+            '[data-testid="feeds-scroll-container"]',
+          );
+          if (scrollContainer) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight * 0.8;
+          }
+        });
+
+        await page.waitForTimeout(50); // Brief pause
+
+        // Scroll up rapidly
+        await page.evaluate(() => {
+          const scrollContainer = document.querySelector(
+            '[data-testid="feeds-scroll-container"]',
+          );
+          if (scrollContainer) {
+            scrollContainer.scrollTop = 0;
+          }
+        });
+
+        await page.waitForTimeout(50); // Brief pause
+      }
+
+      // Wait for any async operations to complete
+      await page.waitForTimeout(500);
+
+      // Verify that feed cards are still rendered correctly
+      const finalCount = await page.locator('[data-testid="feed-card"]').count();
+      expect(finalCount).toBeGreaterThanOrEqual(initialCount);
+
+      // Ensure feed cards have proper content (not empty/missing)
+      const firstFeed = page.locator('[data-testid="feed-card"]').first();
+      await expect(firstFeed).toBeVisible();
+      await expect(firstFeed.locator('button:has-text("Mark as read")')).toBeVisible();
+      await expect(firstFeed.locator('button:has-text("Show Details")')).toBeVisible();
+    });
+
+    test("should maintain feed card content during continuous fast scrolling", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+
+      // Wait for initial feeds to load
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+        timeout: 10000,
+      });
+
+      // Get the first feed's title for reference
+      const firstCard = page.locator('[data-testid="feed-card"]').first();
+      const firstFeedTitle = await firstCard.locator("a > p, a > span, a > div").first().textContent();
+      expect(firstFeedTitle).toBeTruthy();
+
+      // Perform continuous fast scrolling
+      await page.evaluate(() => {
+        const scrollContainer = document.querySelector(
+          '[data-testid="feeds-scroll-container"]',
+        );
+        if (scrollContainer) {
+          // Simulate very fast continuous scrolling
+          let scrollPosition = 0;
+          const scrollHeight = scrollContainer.scrollHeight;
+          const step = scrollHeight / 20; // 20 steps to cover full height
+
+          const fastScroll = () => {
+            scrollPosition += step;
+            if (scrollPosition > scrollHeight) {
+              scrollPosition = 0; // Reset to top
+            }
+            scrollContainer.scrollTop = scrollPosition;
+          };
+
+          // Rapid scrolling for 1 second
+          const interval = setInterval(fastScroll, 25); // 40fps scrolling
+          setTimeout(() => clearInterval(interval), 1000);
+        }
+      });
+
+      // Wait for scrolling to complete and any async operations
+      await page.waitForTimeout(1500);
+
+      // Scroll back to top to check first feed
+      await page.evaluate(() => {
+        const scrollContainer = document.querySelector(
+          '[data-testid="feeds-scroll-container"]',
+        );
+        if (scrollContainer) {
+          scrollContainer.scrollTop = 0;
+        }
+      });
+
+      await page.waitForTimeout(200);
+
+      // Verify the first feed is still properly rendered
+      const currentFirstCard = page.locator('[data-testid="feed-card"]').first();
+      await expect(currentFirstCard).toBeVisible();
+
+      const currentFirstFeedTitle = await currentFirstCard.locator("a > p, a > span, a > div").first().textContent();
+      expect(currentFirstFeedTitle).toBe(firstFeedTitle);
+      
+      // Ensure interactive elements are still functional
+      await expect(currentFirstCard.locator('button:has-text("Mark as read")')).toBeVisible();
+      await expect(currentFirstCard.locator('button:has-text("Show Details")')).toBeVisible();
+    });
+
+    test("should handle scroll-triggered infinite loading without breaking card rendering", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+
+      // Wait for initial feeds to load
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+        timeout: 10000,
+      });
+
+      const initialCount = await page.locator('[data-testid="feed-card"]').count();
+
+      // Rapidly scroll to trigger infinite loading multiple times
+      for (let i = 0; i < 3; i++) {
+        // Scroll to bottom to trigger loading
+        await page.evaluate(() => {
+          const scrollContainer = document.querySelector(
+            '[data-testid="feeds-scroll-container"]',
+          );
+          if (scrollContainer) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          }
+        });
+
+        // Wait for loading to start
+        await page.waitForTimeout(200);
+
+        // Scroll up and down rapidly while loading
+        await page.evaluate(() => {
+          const scrollContainer = document.querySelector(
+            '[data-testid="feeds-scroll-container"]',
+          );
+          if (scrollContainer) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight * 0.5;
+          }
+        });
+
+        await page.waitForTimeout(100);
+
+        // Back to bottom
+        await page.evaluate(() => {
+          const scrollContainer = document.querySelector(
+            '[data-testid="feeds-scroll-container"]',
+          );
+          if (scrollContainer) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          }
+        });
+
+        // Wait for new content to load
+        await page.waitForTimeout(1000);
+      }
+
+      // Verify that more feeds were loaded and all are properly rendered
+      const finalCount = await page.locator('[data-testid="feed-card"]').count();
+      expect(finalCount).toBeGreaterThan(initialCount);
+
+      // Check that all visible feed cards have proper content
+      const feedCards = page.locator('[data-testid="feed-card"]');
+      const count = await feedCards.count();
+      
+      // Check first few and last few cards to ensure they're properly rendered
+      for (let i of [0, 1, Math.floor(count/2), count-2, count-1]) {
+        if (i >= 0 && i < count) {
+          const card = feedCards.nth(i);
+          await expect(card).toBeVisible();
+          await expect(card.locator('button:has-text("Mark as read")')).toBeVisible();
+        }
+      }
+    });
+
+    test("should not lose feed cards during momentum scrolling simulation", async ({ page }) => {
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("networkidle");
+
+      // Wait for initial feeds to load
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+        timeout: 10000,
+      });
+
+      // Simulate momentum/inertial scrolling with varying speeds
+      await page.evaluate(() => {
+        const scrollContainer = document.querySelector(
+          '[data-testid="feeds-scroll-container"]',
+        );
+        if (scrollContainer) {
+          let velocity = 50; // Start with high velocity
+          let position = 0;
+          const deceleration = 0.95; // Momentum decay factor
+          const minVelocity = 1;
+
+          const momentumScroll = () => {
+            position += velocity;
+            velocity *= deceleration;
+
+            // Bounce off the edges
+            if (position >= scrollContainer.scrollHeight - scrollContainer.clientHeight) {
+              position = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+              velocity = -Math.abs(velocity); // Reverse direction
+            } else if (position <= 0) {
+              position = 0;
+              velocity = Math.abs(velocity); // Reverse direction
+            }
+
+            scrollContainer.scrollTop = position;
+
+            if (Math.abs(velocity) > minVelocity) {
+              requestAnimationFrame(momentumScroll);
+            }
+          };
+
+          momentumScroll();
+        }
+      });
+
+      // Wait for momentum scrolling to complete
+      await page.waitForTimeout(3000);
+
+      // Verify all feed cards are still properly rendered
+      const feedCards = page.locator('[data-testid="feed-card"]');
+      const count = await feedCards.count();
+      expect(count).toBeGreaterThan(0);
+
+      // Scroll to top and verify first feed
+      await page.evaluate(() => {
+        const scrollContainer = document.querySelector(
+          '[data-testid="feeds-scroll-container"]',
+        );
+        if (scrollContainer) {
+          scrollContainer.scrollTop = 0;
+        }
+      });
+
+      await page.waitForTimeout(200);
+
+      const firstFeed = page.locator('[data-testid="feed-card"]').first();
+      await expect(firstFeed).toBeVisible();
+      await expect(firstFeed.locator('button:has-text("Mark as read")')).toBeVisible();
+      await expect(firstFeed.locator('button:has-text("Show Details")')).toBeVisible();
+    });
+  });
 });
