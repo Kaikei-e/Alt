@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
 	"pre-processor/models"
 
 	"github.com/go-shiori/go-readability"
@@ -52,18 +52,18 @@ func NewArticleFetcherServiceWithClient(logger *slog.Logger, httpClient HTTPClie
 
 // FetchArticle fetches an article from the given URL.
 func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string) (*models.Article, error) {
-	s.logger.Info("fetching article", "url", urlStr)
+	s.logger.Info("Fetching article", "url", urlStr)
 
 	// Validate URL first
 	if err := s.ValidateURL(urlStr); err != nil {
-		s.logger.Error("failed to validate URL", "url", urlStr, "error", err)
+		s.logger.Error("Failed to validate URL", "url", urlStr, "error", err)
 		return nil, err
 	}
 
 	// Parse URL
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		s.logger.Error("failed to parse URL", "url", urlStr, "error", err)
+		s.logger.Error("Failed to parse URL", "url", urlStr, "error", err)
 		return nil, err
 	}
 
@@ -75,18 +75,18 @@ func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string)
 	// Fetch article using embedded logic
 	article, err := s.fetchArticleFromURL(*parsedURL)
 	if err != nil {
-		s.logger.Error("failed to fetch article", "url", urlStr, "error", err)
+		s.logger.Error("Failed to fetch article", "url", urlStr, "error", err)
 		return nil, err
 	}
 
-	s.logger.Info("article fetched successfully", "url", urlStr)
+	s.logger.Info("Article fetched successfully", "url", urlStr)
 
 	return article, nil
 }
 
 // ValidateURL validates a URL for security and format.
 func (s *articleFetcherService) ValidateURL(urlStr string) error {
-	s.logger.Info("validating URL", "url", urlStr)
+	s.logger.Info("Validating URL", "url", urlStr)
 
 	// Validate empty string
 	if urlStr == "" {

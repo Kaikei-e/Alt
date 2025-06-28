@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"pre-processor/logger"
+	logger "pre-processor/utils/logger"
 
 	"pre-processor/driver"
 

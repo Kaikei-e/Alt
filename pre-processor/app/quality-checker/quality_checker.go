@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"pre-processor/driver"
-	"log/slog"
+	logger "pre-processor/utils/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -14,7 +14,7 @@ type ArticleWithScore = driver.ArticleWithSummary
 
 // This function is kept for backward compatibility but will be removed in the future.
 func FetchArticleAndSummaries(ctx context.Context, dbPool *pgxpool.Pool, offset int, offsetStep int) ([]ArticleWithScore, error) {
-	slog.Default().Warn("FetchArticleAndSummaries is deprecated, please use driver.GetArticlesWithSummaries with cursor-based pagination")
+	logger.Logger.Warn("FetchArticleAndSummaries is deprecated, please use driver.GetArticlesWithSummaries with cursor-based pagination")
 
 	// For backward compatibility, we'll simulate the old behavior using the new driver function
 	// This is not efficient but maintains compatibility
@@ -26,7 +26,7 @@ func FetchArticleAndSummaries(ctx context.Context, dbPool *pgxpool.Pool, offset 
 	// Since we can't efficiently implement offset with cursor pagination,
 	// we'll just return the first batch for now
 	if len(articles) == 0 {
-		slog.Default().Info("No articles found for quality check")
+		logger.Logger.Info("No articles found for quality check")
 		return nil, nil
 	}
 

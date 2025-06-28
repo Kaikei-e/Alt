@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"log/slog"
+	logger "pre-processor/utils/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -26,7 +26,7 @@ func retryDBOperation(ctx context.Context, operation func() error, operationName
 		// Check if this is a conn busy error
 		if strings.Contains(err.Error(), "conn busy") && attempt < maxRetries-1 {
 			delay := baseDelay * time.Duration(1<<attempt) // Exponential backoff
-			slog.Default().Warn("Database connection busy, retrying",
+			logger.Logger.Warn("Database connection busy, retrying",
 				"operation", operationName,
 				"attempt", attempt+1,
 				"max_retries", maxRetries,
@@ -61,7 +61,7 @@ func Init(ctx context.Context) (*pgxpool.Pool, error) {
 	// Parse the connection string to create pool config
 	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
-		slog.Default().Error("Failed to parse database config", "error", err)
+		logger.Logger.Error("Failed to parse database config", "error", err)
 		return nil, err
 	}
 
@@ -77,20 +77,20 @@ func Init(ctx context.Context) (*pgxpool.Pool, error) {
 	// Create the pool with the configuration
 	dbPool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
-		slog.Default().Error("Failed to connect to database", "error", err)
+		logger.Logger.Error("Failed to connect to database", "error", err)
 		return nil, err
 	}
 
 	// Test the connection
 	err = dbPool.Ping(ctx)
 	if err != nil {
-		slog.Default().Error("Failed to ping database", "error", err)
+		logger.Logger.Error("Failed to ping database", "error", err)
 		dbPool.Close()
 
 		return nil, err
 	}
 
-	slog.Default().Info("Connected to database pool", "max_conns", config.MaxConns, "min_conns", config.MinConns)
+	logger.Logger.Info("Connected to database pool", "max_conns", config.MaxConns, "min_conns", config.MinConns)
 
 	return dbPool, nil
 }

@@ -12,6 +12,10 @@ import (
 
 type ContextKey string
 
+var (
+	Logger *slog.Logger
+)
+
 const (
 	RequestIDKey ContextKey = "request_id"
 	TraceIDKey   ContextKey = "trace_id"

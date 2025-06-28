@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"time"
 
-	"log/slog"
+	logger "pre-processor/utils/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -14,7 +14,7 @@ import (
 func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context, db *pgxpool.Pool) ([]url.URL, *time.Time, string, error) {
 	// Handle nil database
 	if db == nil {
-		slog.Default().Error("Database connection is nil")
+		logger.Logger.Error("Database connection is nil")
 		return nil, nil, "", fmt.Errorf("database connection is nil")
 	}
 
@@ -82,7 +82,7 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 
 			ul, err := convertToURL(u)
 			if err != nil {
-				slog.Default().Error("Failed to convert URL", "error", err)
+				logger.Logger.Error("Failed to convert URL", "error", err)
 				continue // Skip invalid URLs but don't fail the whole operation
 			}
 
@@ -96,7 +96,7 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 	}, "GetSourceURLs")
 
 	if err != nil {
-		slog.Default().Error("Failed to get source URLs", "error", err)
+		logger.Logger.Error("Failed to get source URLs", "error", err)
 		return nil, nil, "", err
 	}
 
@@ -107,23 +107,23 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 
 		err = db.QueryRow(ctx, "SELECT COUNT(*) FROM feeds WHERE link NOT LIKE '%.mp3'").Scan(&totalFeeds)
 		if err != nil {
-			slog.Default().Error("Failed to get total feeds", "error", err)
+			logger.Logger.Error("Failed to get total feeds", "error", err)
 			return nil, nil, "", err
 		}
 		err = db.QueryRow(ctx, "SELECT COUNT(DISTINCT a.url) FROM articles a INNER JOIN feeds f ON a.url = f.link WHERE f.link NOT LIKE '%.mp3'").Scan(&processedFeeds)
 		if err != nil {
-			slog.Default().Error("Failed to get processed feeds", "error", err)
+			logger.Logger.Error("Failed to get processed feeds", "error", err)
 			return nil, nil, "", err
 		}
 
-		slog.Default().Info("No URLs found for processing",
+		logger.Logger.Info("No URLs found for processing",
 			"has_cursor", lastCreatedAt != nil,
 			"total_feeds", totalFeeds,
 			"processed_feeds", processedFeeds,
 			"remaining_feeds", totalFeeds-processedFeeds)
 	}
 
-	slog.Default().Info("Got source URLs", "count", len(urls), "has_cursor", lastCreatedAt != nil)
+	logger.Logger.Info("Got source URLs", "count", len(urls), "has_cursor", lastCreatedAt != nil)
 
 	return urls, finalCreatedAt, finalID, nil
 }
@@ -132,14 +132,14 @@ func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context,
 func GetFeedStatistics(ctx context.Context, db *pgxpool.Pool) (totalFeeds int, processedFeeds int, err error) {
 	// Handle nil database
 	if db == nil {
-		slog.Default().Error("Database connection is nil")
+		logger.Logger.Error("Database connection is nil")
 		return 0, 0, fmt.Errorf("database connection is nil")
 	}
 
 	// Get total non-MP3 feeds count
 	err = db.QueryRow(ctx, "SELECT COUNT(*) FROM feeds WHERE link NOT LIKE '%.mp3'").Scan(&totalFeeds)
 	if err != nil {
-		slog.Default().Error("Failed to get total non-MP3 feeds count", "error", err)
+		logger.Logger.Error("Failed to get total non-MP3 feeds count", "error", err)
 		return 0, 0, err
 	}
 
@@ -151,11 +151,11 @@ func GetFeedStatistics(ctx context.Context, db *pgxpool.Pool) (totalFeeds int, p
 		WHERE f.link NOT LIKE '%.mp3'
 	`).Scan(&processedFeeds)
 	if err != nil {
-		slog.Default().Error("Failed to get processed non-MP3 feeds count", "error", err)
+		logger.Logger.Error("Failed to get processed non-MP3 feeds count", "error", err)
 		return 0, 0, err
 	}
 
-	slog.Default().Info("Feed statistics (non-MP3 only)", "total_feeds", totalFeeds, "processed_feeds", processedFeeds, "remaining_feeds", totalFeeds-processedFeeds)
+	logger.Logger.Info("Feed statistics (non-MP3 only)", "total_feeds", totalFeeds, "processed_feeds", processedFeeds, "remaining_feeds", totalFeeds-processedFeeds)
 
 	return totalFeeds, processedFeeds, nil
 }

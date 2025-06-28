@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -12,8 +13,6 @@ import (
 
 	"pre-processor/models"
 	"pre-processor/utils"
-
-	"log/slog"
 )
 
 type SummarizedContent struct {
@@ -103,7 +102,7 @@ func getHTTPClient() *utils.RateLimitedHTTPClient {
 	return httpClient
 }
 
-func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*SummarizedContent, error) {
+func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, logger *slog.Logger) (*SummarizedContent, error) {
 	prompt := fmt.Sprintf(promptTemplate, article.Content)
 
 	payload := payloadModel{
@@ -123,7 +122,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		slog.Default().Error("Failed to marshal payload", "error", err)
+		logger.Error("Failed to marshal payload", "error", err)
 		return nil, err
 	}
 
@@ -131,7 +130,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 
 	req, err := http.NewRequestWithContext(ctx, "POST", summarizerAPIURL, strings.NewReader(string(jsonData)))
 	if err != nil {
-		slog.Default().Error("Failed to create request", "error", err)
+		logger.Error("Failed to create request", "error", err)
 		return nil, err
 	}
 
@@ -139,43 +138,43 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 
 	resp, err := client.Do(req)
 	if err != nil {
-		slog.Default().Error("Failed to send request", "error", err)
+		logger.Error("Failed to send request", "error", err)
 		return nil, err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			slog.Default().Error("failed to close response body", "error", err)
+			logger.Error("failed to close response body", "error", err)
 		}
 	}()
 
 	// Check HTTP status code
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		slog.Default().Error("API returned non-200 status", "status", resp.Status, "code", resp.StatusCode, "body", string(bodyBytes))
+		logger.Error("API returned non-200 status", "status", resp.Status, "code", resp.StatusCode, "body", string(bodyBytes))
 		return nil, fmt.Errorf("API request failed with status: %s", resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		slog.Default().Error("Failed to read response body", "error", err)
+		logger.Error("Failed to read response body", "error", err)
 		return nil, err
 	}
 
-	slog.Default().Info("Response received", "status", resp.Status)
-	slog.Default().Debug("Response body", "body", string(body))
+	logger.Info("Response received", "status", resp.Status)
+	logger.Debug("Response body", "body", string(body))
 
 	// Parse the Ollama API response
 	var apiResponse OllamaResponse
 
 	err = json.Unmarshal(body, &apiResponse)
 	if err != nil {
-		slog.Default().Error("Failed to unmarshal API response", "error", err)
+		logger.Error("Failed to unmarshal API response", "error", err)
 		return nil, fmt.Errorf("failed to parse API response: %w", err)
 	}
 
 	// Check if response is complete
 	if !apiResponse.Done {
-		slog.Default().Warn("Received incomplete response from API")
+		logger.Warn("Received incomplete response from API")
 	}
 
 	cleanedSummary := cleanSummarizedContent(apiResponse.Response)
@@ -185,7 +184,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article) (*
 		SummaryJapanese: cleanedSummary,
 	}
 
-	slog.Default().Info("Summary generated successfully",
+	logger.Info("Summary generated successfully",
 		"article_id", article.ID,
 		"summary_length", len(cleanedSummary))
 

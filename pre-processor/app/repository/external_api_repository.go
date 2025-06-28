@@ -50,7 +50,7 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 	r.logger.Info("summarizing article", "article_id", article.ID)
 
 	// Use existing driver function
-	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, article)
+	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, article, r.logger)
 	if err != nil {
 		r.logger.Error("failed to summarize article", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to summarize article: %w", err)

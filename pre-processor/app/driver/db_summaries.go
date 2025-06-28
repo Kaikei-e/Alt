@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"log/slog"
 	"pre-processor/models"
+
+	logger "pre-processor/utils/logger"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -34,11 +35,11 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 		RETURNING id, created_at
 	`
 
-	slog.Default().Info("Creating article summary", "article_id", articleSummary.ArticleID)
+	logger.Logger.Info("Creating article summary", "article_id", articleSummary.ArticleID)
 
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		slog.Default().Error("Failed to begin transaction", "error", err)
+		logger.Logger.Error("Failed to begin transaction", "error", err)
 		return err
 	}
 
@@ -48,20 +49,20 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 	if err != nil {
 		err = tx.Rollback(ctx)
 		if err != nil {
-			slog.Default().Error("Failed to rollback transaction", "error", err)
+			logger.Logger.Error("Failed to rollback transaction", "error", err)
 		}
-		slog.Default().Error("Failed to create article summary", "error", err)
+		logger.Logger.Error("Failed to create article summary", "error", err)
 
 		return err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		slog.Default().Error("Failed to commit transaction", "error", err)
+		logger.Logger.Error("Failed to commit transaction", "error", err)
 		return err
 	}
 
-	slog.Default().Info("Article summary created", "summary_id", articleSummary.ID)
+	logger.Logger.Info("Article summary created", "summary_id", articleSummary.ID)
 
 	return nil
 }
@@ -85,7 +86,7 @@ func GetArticleSummaryByArticleID(ctx context.Context, db *pgxpool.Pool, article
 		&summary.SummaryJapanese, &summary.CreatedAt,
 	)
 	if err != nil {
-		slog.Default().Error("Failed to get article summary", "error", err)
+		logger.Logger.Error("Failed to get article summary", "error", err)
 		return nil, err
 	}
 
@@ -164,11 +165,11 @@ func GetArticlesWithSummaries(ctx context.Context, db *pgxpool.Pool, lastCreated
 	}, "GetArticlesWithSummaries")
 
 	if err != nil {
-		slog.Default().Error("Failed to get articles with summaries", "error", err)
+		logger.Logger.Error("Failed to get articles with summaries", "error", err)
 		return nil, nil, "", err
 	}
 
-	slog.Default().Info("Got articles with summaries", "count", len(articlesWithSummaries), "limit", limit, "has_cursor", lastCreatedAt != nil)
+	logger.Logger.Info("Got articles with summaries", "count", len(articlesWithSummaries), "limit", limit, "has_cursor", lastCreatedAt != nil)
 
 	return articlesWithSummaries, finalCreatedAt, finalID, nil
 }
