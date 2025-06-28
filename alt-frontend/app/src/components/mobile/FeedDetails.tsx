@@ -124,7 +124,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
               }
             }}
             _active={{
-              bg: "rgba(0, 0, 0, 0.85)"
+              bg: "rgba(0, 0, 0, 0.85)",
             }}
             data-testid="modal-backdrop"
             role="dialog"
@@ -161,7 +161,15 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 data-testid="summary-header"
                 id="summary-header"
               >
-                <Box data-testid="header-area" position="absolute" top="0" left="0" right="0" bottom="0" zIndex="-1" />
+                <Box
+                  data-testid="header-area"
+                  position="absolute"
+                  top="0"
+                  left="0"
+                  right="0"
+                  bottom="0"
+                  zIndex="-1"
+                />
                 <Flex
                   justify="space-between"
                   align="center"
@@ -207,7 +215,15 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 data-testid="scrollable-content"
                 id="summary-content"
               >
-                <Box data-testid="content-area" position="absolute" top="0" left="0" right="0" bottom="0" zIndex="-1" />
+                <Box
+                  data-testid="content-area"
+                  position="absolute"
+                  top="0"
+                  left="0"
+                  right="0"
+                  bottom="0"
+                  zIndex="-1"
+                />
                 <Text
                   data-testid={`summary-text-${uniqueId}`}
                   className="summary-text"
@@ -218,7 +234,9 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   }
                   fontSize="sm"
                   lineHeight="1.6"
-                  fontStyle={error || !feedDetails?.summary ? "italic" : "normal"}
+                  fontStyle={
+                    error || !feedDetails?.summary ? "italic" : "normal"
+                  }
                 >
                   {getDisplayContent()}
                 </Text>

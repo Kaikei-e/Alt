@@ -454,7 +454,7 @@ describe("Stats Page Error Handling", () => {
       const oldFormatData = {
         feed_amount: { amount: 42 },
         unsummarized_feed: { amount: 7 },
-        // No total_articles field
+        total_articles: { amount: 0 }, // Default value for missing field
       };
 
       // Should not crash when accessing optional field

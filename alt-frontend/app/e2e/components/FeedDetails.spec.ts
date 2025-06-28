@@ -217,9 +217,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".show-details-button").first()).toBeVisible();
     });
 
-    test("should close details when pressing Escape key", async ({
-      page,
-    }) => {
+    test("should close details when pressing Escape key", async ({ page }) => {
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         await route.fulfill({
           status: 200,
@@ -254,9 +252,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".show-details-button").first()).toBeVisible();
     });
 
-    test("should close details when clicking backdrop", async ({
-      page,
-    }) => {
+    test("should close details when clicking backdrop", async ({ page }) => {
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         await route.fulfill({
           status: 200,
@@ -283,13 +279,17 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       // Click on the backdrop element directly
       // Use evaluate to ensure we're clicking on the backdrop itself
       await page.evaluate(() => {
-        const backdrop = document.querySelector('[data-testid="modal-backdrop"]');
+        const backdrop = document.querySelector(
+          '[data-testid="modal-backdrop"]',
+        );
         if (backdrop) {
-          backdrop.dispatchEvent(new MouseEvent('click', {
-            bubbles: true,
-            cancelable: true,
-            view: window
-          }));
+          backdrop.dispatchEvent(
+            new MouseEvent("click", {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+            }),
+          );
         }
       });
 
@@ -610,7 +610,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
     test.beforeEach(async ({ page }) => {
       // Set mobile viewport for layout testing
       await page.setViewportSize({ width: 375, height: 667 });
-      
+
       // Mock feed details API for consistent testing
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         await route.fulfill({
@@ -618,41 +618,50 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
           contentType: "application/json",
           body: JSON.stringify({
             feed_url: "https://example.com/feed1",
-            summary: "This is a very long test summary that should demonstrate scrolling behavior. ".repeat(20),
+            summary:
+              "This is a very long test summary that should demonstrate scrolling behavior. ".repeat(
+                20,
+              ),
           }),
         });
       });
     });
 
-    test("should keep Article Summary header visible during scroll on mobile", async ({ page }) => {
+    test("should keep Article Summary header visible during scroll on mobile", async ({
+      page,
+    }) => {
       // Open details modal
       await page.locator(".show-details-button").first().click();
       await expect(page.locator(".summary-text")).toBeVisible();
 
       // Look for sticky positioned summary header
       const summaryHeader = page.locator('[data-testid="summary-header"]');
-      await expect(summaryHeader).toHaveCSS('position', 'sticky');
+      await expect(summaryHeader).toHaveCSS("position", "sticky");
     });
 
-    test("should have independent scrollable content area", async ({ page }) => {
+    test("should have independent scrollable content area", async ({
+      page,
+    }) => {
       // Open details modal
       await page.locator(".show-details-button").first().click();
       await expect(page.locator(".summary-text")).toBeVisible();
 
       // Look for scrollable content area
       const contentArea = page.locator('[data-testid="scrollable-content"]');
-      await expect(contentArea).toHaveCSS('overflow-y', 'auto');
+      await expect(contentArea).toHaveCSS("overflow-y", "auto");
     });
 
-      test("should maintain header visibility when content scrolls", async ({ page }) => {
+    test("should maintain header visibility when content scrolls", async ({
+      page,
+    }) => {
       // Open details modal
       await page.locator(".show-details-button").first().click();
       await expect(page.locator(".summary-text")).toBeVisible();
 
       // Check for proper flex layout structure
       const modalContent = page.locator('[data-testid="modal-content"]');
-      await expect(modalContent).toHaveCSS('display', 'flex');
-      await expect(modalContent).toHaveCSS('flex-direction', 'column');
+      await expect(modalContent).toHaveCSS("display", "flex");
+      await expect(modalContent).toHaveCSS("flex-direction", "column");
     });
 
     test("should have proper mobile viewport dimensions", async ({ page }) => {
@@ -663,20 +672,22 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       // Check modal sizing for mobile
       const modalContent = page.locator('[data-testid="modal-content"]');
       const boundingBox = await modalContent.boundingBox();
-      
+
       // Modal should use most of mobile screen width
       expect(boundingBox?.width).toBeGreaterThan(300); // Expect specific mobile optimizations
     });
 
-    test("should separate header and content areas visually", async ({ page }) => {
-      // Open details modal  
+    test("should separate header and content areas visually", async ({
+      page,
+    }) => {
+      // Open details modal
       await page.locator(".show-details-button").first().click();
       await expect(page.locator(".summary-text")).toBeVisible();
 
       // Look for distinct header and content areas
       const headerArea = page.locator('[data-testid="header-area"]');
       const contentArea = page.locator('[data-testid="content-area"]');
-      
+
       await expect(headerArea).toBeVisible();
       await expect(contentArea).toBeVisible();
     });
