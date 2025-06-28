@@ -2,8 +2,12 @@ name: Unit and Component Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'alt-frontend/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'alt-frontend/**'
 
 permissions:
   contents: read
