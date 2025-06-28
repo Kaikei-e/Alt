@@ -5,9 +5,10 @@ package middleware
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"pre-processor/utils/logger"
 
 	"github.com/labstack/echo/v4"
+
+	"pre-processor/utils/logger"
 )
 
 func RequestIDMiddleware() echo.MiddlewareFunc {

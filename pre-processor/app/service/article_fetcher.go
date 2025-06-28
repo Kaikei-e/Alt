@@ -11,9 +11,10 @@ import (
 	"time"
 
 	"log/slog"
-	"pre-processor/models"
 
 	"github.com/go-shiori/go-readability"
+
+	"pre-processor/models"
 )
 
 var (

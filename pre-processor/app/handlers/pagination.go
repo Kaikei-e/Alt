@@ -5,10 +5,10 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"pre-processor/driver"
 	"pre-processor/models"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 	logger "pre-processor/utils/logger"
 )
 

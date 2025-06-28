@@ -3,10 +3,11 @@
 package middleware
 
 import (
-	"pre-processor/utils/logger"
 	"time"
 
 	"github.com/labstack/echo/v4"
+
+	"pre-processor/utils/logger"
 )
 
 func LoggingMiddleware(contextLogger *logger.ContextLogger) echo.MiddlewareFunc {
