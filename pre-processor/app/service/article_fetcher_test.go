@@ -70,6 +70,14 @@ func TestArticleFetcherService_ValidateURL(t *testing.T) {
 			input:       "https://example.com/path with spaces",
 			expectError: false,
 		},
+		"should reject blocked port 22": {
+			input:       "https://example.com:22",
+			expectError: true,
+		},
+		"should reject blocked port 3306": {
+			input:       "https://example.com:3306",
+			expectError: true,
+		},
 	}
 
 	for name, tc := range tests {
