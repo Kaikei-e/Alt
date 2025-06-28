@@ -8,9 +8,9 @@ import (
 
 	"pre-processor/driver"
 	"pre-processor/handler"
-	"pre-processor/logger"
 	"pre-processor/repository"
 	"pre-processor/service"
+	utilsLogger "pre-processor/utils/logger"
 )
 
 const (
@@ -19,9 +19,18 @@ const (
 )
 
 func main() {
-	// Initialize logger
-	log := logger.Init()
-	log.Info("Starting pre-processor service")
+	// Load logger configuration from environment
+	config := utilsLogger.LoadLoggerConfigFromEnv()
+
+	// Initialize enhanced logger
+	logFile := os.Stdout
+	contextLogger := utilsLogger.NewContextLogger(logFile, config.Format, config.Level)
+
+	// Use context logger as primary logger
+	log := contextLogger.WithContext(context.Background())
+	log.Info("Starting pre-processor service",
+		"log_level", config.Level,
+		"log_format", config.Format)
 
 	// Initialize database
 	ctx := context.Background()
@@ -67,6 +76,9 @@ func main() {
 		log,
 	)
 
+	// Initialize health metrics collector
+	metricsCollector := service.NewHealthMetricsCollector(contextLogger)
+
 	// Initialize handlers
 	jobHandler := handler.NewJobHandler(
 		feedProcessorService,
@@ -79,6 +91,7 @@ func main() {
 
 	healthHandler := handler.NewHealthHandler(
 		healthCheckerService,
+		metricsCollector,
 		log,
 	)
 
