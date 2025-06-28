@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Start ollama server in background
-ollama serve &
-SERVER_PID=$!
-
-# Reduce Ollama log verbosity
+# Suppress verbose llama.cpp logs
 export OLLAMA_LOG_LEVEL=ERROR
+export LLAMA_LOG_LEVEL=0
+export LLAMA_LOG_VERBOSITY=0
+
+# Start ollama server in background with log suppression
+ollama serve 2>/dev/null &
+SERVER_PID=$!
 
 # Wait for server to be ready
 echo "Waiting for ollama server to start..."
@@ -14,15 +16,18 @@ until curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
     sleep 1
 done
 
-# Load the model to ensure it's available
+# Load the model to ensure it's available (with full log suppression)
 echo "Loading phi4-mini:3.8b model (quiet)..."
-# Load model quietly to warm cache without flooding logs
-ollama run phi4-mini:3.8b > /dev/null 2>&1
+# Suppress all output during model loading to avoid verbose llama_model_loader logs
+OLLAMA_LOG_LEVEL=ERROR ollama run phi4-mini:3.8b >/dev/null 2>&1 << 'EOF'
+exit
+EOF
 
 # Stop background server
 kill $SERVER_PID
-wait $SERVER_PID 2>/dev/null
+wait $SERVER_PID 2>/dev/null || true
 
-# Start server in foreground
+# Start server in foreground with log filtering
 echo "Starting ollama server in foreground..."
-exec ollama serve
+# Filter out llama_model_loader messages while keeping other important logs
+exec ollama serve 2>&1 | grep -v "llama_model_loader" || true
