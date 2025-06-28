@@ -10,8 +10,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-const DEFAULT_MAX_SIZE_MB: u64 = 100; // 100 MB
-const DEFAULT_MAX_AGE_HOURS: i64 = 24; // 24 h
+const DEFAULT_MAX_SIZE_MB: u64 = 10; // 10 MB
+const DEFAULT_MAX_AGE_HOURS: i64 = 12; // 12 h
 
 #[derive(Serialize, Deserialize)]
 pub struct EnrichedLogEntry {
@@ -52,7 +52,7 @@ pub struct JsonFileExporter {
 }
 
 impl JsonFileExporter {
-    /// デフォルト（100 MB または 24 時間）設定で作成
+    /// デフォルト（10 MB または 12 時間）設定で作成
     pub fn new(file_path: &str) -> Self {
         Self::with_rotation(file_path, DEFAULT_MAX_SIZE_MB, DEFAULT_MAX_AGE_HOURS)
     }

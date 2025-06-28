@@ -13,8 +13,8 @@ use std::time::Duration;
 async fn main() {
     let exporter = JsonFileExporter::new("/logs/logs.json");
 
-    // Spawn background disk cleaner (1 GB quota, checks every 10 min)
-    let cleaner = DiskCleaner::new("/logs", 1 * 1024 * 1024 * 1024, Duration::from_secs(600));
+    // Spawn background disk cleaner (100 MB quota, checks every 10 min)
+    let cleaner = DiskCleaner::new("/logs", 100 * 1024 * 1024, Duration::from_secs(600));
     cleaner.spawn();
 
     let v1_health_router: Router = Router::new().route("/v1/health", get(|| async { "Healthy" }));
