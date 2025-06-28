@@ -108,6 +108,19 @@ func (s *articleFetcherService) ValidateURL(urlStr string) error {
 		return errors.New("only HTTP or HTTPS schemes allowed")
 	}
 
+	// Additional SSRF and port validation
+	if err := s.validateURLForSSRF(parsedURL); err != nil {
+		s.logger.Error("URL validation failed", "url", urlStr, "error", err)
+		return err
+	}
+
+	if port := parsedURL.Port(); port != "" {
+		if err := s.validateTarget(parsedURL.Hostname(), port); err != nil {
+			s.logger.Error("URL validation failed", "url", urlStr, "error", err)
+			return err
+		}
+	}
+
 	s.logger.Info("URL validated successfully", "url", urlStr)
 
 	return nil
