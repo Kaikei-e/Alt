@@ -108,6 +108,12 @@ func (s *articleFetcherService) ValidateURL(urlStr string) error {
 		return errors.New("only HTTP or HTTPS schemes allowed")
 	}
 
+	// Validate host
+	if parsedURL.Hostname() == "" {
+		s.logger.Error("URL validation failed", "url", urlStr, "error", "missing host")
+		return errors.New("URL must contain a host")
+	}
+
 	s.logger.Info("URL validated successfully", "url", urlStr)
 
 	return nil
