@@ -1,5 +1,5 @@
 import { HStack, Text, Box, Portal, Button, Flex } from "@chakra-ui/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { FeedDetails as FeedDetailsType, FeedURLPayload } from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
 
@@ -8,6 +8,10 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleHideDetails = useCallback(() => {
+    setIsOpen(false);
+  }, []);
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -24,7 +28,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
     return () => {
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [isOpen]);
+  }, [isOpen, handleHideDetails]);
 
   const handleShowDetails = async () => {
     if (!feedURL) {
@@ -49,10 +53,6 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
       setIsLoading(false);
       setIsOpen(true);
     }
-  };
-
-  const handleHideDetails = () => {
-    setIsOpen(false);
   };
 
   const getDisplayContent = () => {
@@ -87,6 +87,8 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
           color="white"
           fontWeight="bold"
           px={4}
+          minHeight="44px"
+          minWidth="44px"
           _hover={{
             bg: "linear-gradient(45deg, #e6005c, #7129d4)",
             transform: "translateY(-1px)",
@@ -116,72 +118,111 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
             alignItems="center"
             justifyContent="center"
             onClick={(e) => {
-              // Only close if clicking the backdrop itself, not the modal content
+              // Ensure we're clicking on the backdrop itself, not any child elements
               if (e.target === e.currentTarget) {
                 handleHideDetails();
               }
             }}
+            _active={{
+              bg: "rgba(0, 0, 0, 0.85)"
+            }}
             data-testid="modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="summary-header"
+            aria-describedby="summary-content"
           >
             <Box
               onClick={(e) => e.stopPropagation()}
-              width="90vw"
-              maxWidth="500px"
+              width="85vw"
+              maxWidth="450px"
+              height="80vh"
               maxHeight="80vh"
+              minHeight="400px"
               background="#1a1a2e"
               borderRadius="lg"
               boxShadow="xl"
               border="1px solid rgba(255, 255, 255, 0.1)"
-              p={6}
-              overflow="auto"
+              display="flex"
+              flexDirection="column"
               data-testid="modal-content"
+              tabIndex={-1}
             >
-              <Flex
-                justify="space-between"
-                align="center"
-                flexDirection="row"
-                mb={4}
+              <Box
+                position="sticky"
+                top="0"
+                zIndex="1"
+                bg="#1a1a2e"
+                height="60px"
+                minHeight="60px"
+                backdropFilter="blur(16px)"
+                borderBottom="1px solid rgba(255,255,255,0.15)"
+                p={6}
+                data-testid="summary-header"
+                id="summary-header"
               >
-                <Text color="#ff006e" fontWeight="bold" fontSize="md" mb={4}>
-                  Article Summary
-                </Text>
-                <Button
-                  onClick={handleHideDetails}
-                  data-testid={`hide-details-button-${uniqueId}`}
-                  className="hide-details-button"
-                  size="sm"
-                  borderRadius="full"
-                  bg="linear-gradient(45deg, #ff006e, #8338ec)"
-                  color="white"
-                  fontWeight="bold"
-                  px={4}
-                  _hover={{
-                    bg: "linear-gradient(45deg, #e6005c, #7129d4)",
-                    transform: "translateY(-1px)",
-                  }}
-                  _active={{
-                    transform: "translateY(0px)",
-                  }}
-                  transition="all 0.2s ease"
-                  border="1px solid rgba(255, 255, 255, 0.2)"
+                <Box data-testid="header-area" position="absolute" top="0" left="0" right="0" bottom="0" zIndex="-1" />
+                <Flex
+                  justify="space-between"
+                  align="center"
+                  flexDirection="row"
                 >
-                  <Text>Hide Details</Text>
-                </Button>
-              </Flex>
-              <Text
-                data-testid={`summary-text-${uniqueId}`}
-                className="summary-text"
-                color={
-                  error
-                    ? "rgba(255, 255, 255, 0.6)"
-                    : "rgba(255, 255, 255, 0.9)"
-                }
-                fontSize="sm"
-                lineHeight="1.5"
-                fontStyle={error || !feedDetails?.summary ? "italic" : "normal"}
+                  <Text color="#ff006e" fontWeight="bold" fontSize="md">
+                    Article Summary
+                  </Text>
+                  <Button
+                    onClick={handleHideDetails}
+                    data-testid={`hide-details-button-${uniqueId}`}
+                    className="hide-details-button"
+                    size="sm"
+                    borderRadius="full"
+                    bg="linear-gradient(45deg, #ff006e, #8338ec)"
+                    color="white"
+                    fontWeight="bold"
+                    px={4}
+                    minHeight="44px"
+                    minWidth="44px"
+                    _hover={{
+                      bg: "linear-gradient(45deg, #e6005c, #7129d4)",
+                      transform: "translateY(-1px)",
+                    }}
+                    _active={{
+                      transform: "translateY(0px)",
+                    }}
+                    transition="all 0.2s ease"
+                    border="1px solid rgba(255, 255, 255, 0.2)"
+                  >
+                    <Text>Hide Details</Text>
+                  </Button>
+                </Flex>
+              </Box>
+              <Box
+                flex="1"
+                overflow="auto"
+                paddingX="16px"
+                paddingY="12px"
+                scrollBehavior="smooth"
+                overscrollBehavior="contain"
+                willChange="scroll-position"
+                data-testid="scrollable-content"
+                id="summary-content"
               >
-                {getDisplayContent()}
-              </Text>
+                <Box data-testid="content-area" position="absolute" top="0" left="0" right="0" bottom="0" zIndex="-1" />
+                <Text
+                  data-testid={`summary-text-${uniqueId}`}
+                  className="summary-text"
+                  color={
+                    error
+                      ? "rgba(255, 255, 255, 0.6)"
+                      : "rgba(255, 255, 255, 0.9)"
+                  }
+                  fontSize="sm"
+                  lineHeight="1.6"
+                  fontStyle={error || !feedDetails?.summary ? "italic" : "normal"}
+                >
+                  {getDisplayContent()}
+                </Text>
+              </Box>
             </Box>
           </Box>
         </Portal>
