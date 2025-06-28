@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"pre-processor/logger"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -72,7 +70,6 @@ func TestFeedRepository_GetUnprocessedFeeds(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation with nil database
 			// Initialize global logger for driver dependencies
-			logger.Init()
 
 			repo := NewFeedRepository(nil, testLoggerRepo())
 
@@ -95,7 +92,6 @@ func TestFeedRepository_GetUnprocessedFeeds_NilHandling(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		// GREEN PHASE: Test minimal implementation
 		// Initialize global logger for driver dependencies
-		logger.Init()
 
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
@@ -111,7 +107,6 @@ func TestFeedRepository_GetUnprocessedFeeds_NilHandling(t *testing.T) {
 	t.Run("should handle context cancellation", func(t *testing.T) {
 		// GREEN PHASE: Test context handling
 		// Initialize global logger for driver dependencies
-		logger.Init()
 
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
@@ -146,7 +141,6 @@ func TestFeedRepository_GetProcessingStats(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation with nil database
 			// Initialize global logger for driver dependencies
-			logger.Init()
 
 			repo := NewFeedRepository(nil, testLoggerRepo())
 
@@ -170,7 +164,6 @@ func TestFeedRepository_GetProcessingStats_NilHandling(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		// GREEN PHASE: Test minimal implementation
 		// Initialize global logger for driver dependencies
-		logger.Init()
 
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
@@ -185,7 +178,6 @@ func TestFeedRepository_GetProcessingStats_NilHandling(t *testing.T) {
 	t.Run("should handle context cancellation", func(t *testing.T) {
 		// GREEN PHASE: Test context handling
 		// Initialize global logger for driver dependencies
-		logger.Init()
 
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
@@ -204,7 +196,6 @@ func TestFeedRepository_CursorHandling(t *testing.T) {
 	t.Run("should handle cursor with zero time", func(t *testing.T) {
 		// GREEN PHASE: Test cursor edge cases
 		// Initialize global logger for driver dependencies
-		logger.Init()
 
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
@@ -224,7 +215,6 @@ func TestFeedRepository_CursorHandling(t *testing.T) {
 	t.Run("should handle cursor with empty ID", func(t *testing.T) {
 		// GREEN PHASE: Test cursor edge cases
 		// Initialize global logger for driver dependencies
-		logger.Init()
 
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
@@ -247,7 +237,6 @@ func TestFeedRepository_ErrorHandling(t *testing.T) {
 	t.Run("should wrap errors properly", func(t *testing.T) {
 		// GREEN PHASE: Test error wrapping
 		// Initialize global logger for driver dependencies
-		logger.Init()
 
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
@@ -268,7 +257,6 @@ func TestFeedRepository_URLConversion(t *testing.T) {
 		// GREEN PHASE: This test verifies the URL conversion logic
 		// The repository converts []url.URL to []*url.URL
 		// Initialize global logger for driver dependencies
-		logger.Init()
 
 		repo := NewFeedRepository(nil, testLoggerRepo())
 
