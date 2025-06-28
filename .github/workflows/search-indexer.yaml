@@ -5,6 +5,11 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
