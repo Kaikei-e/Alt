@@ -10,7 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"log/slog"
+	logger "pre-processor/utils/logger"
+
 	"pre-processor/models"
 
 	"github.com/go-shiori/go-readability"
@@ -30,7 +31,7 @@ func FetchArticle(url url.URL) (*models.Article, error) {
 		elapsed := time.Since(lastRequestTime)
 		if elapsed < minInterval {
 			waitTime := minInterval - elapsed
-			slog.Default().Info("Rate limiting: waiting before next request",
+			logger.Logger.Info("Rate limiting: waiting before next request",
 				"wait_time", waitTime,
 				"url", url.String())
 			time.Sleep(waitTime)
@@ -39,16 +40,16 @@ func FetchArticle(url url.URL) (*models.Article, error) {
 
 	lastRequestTime = time.Now()
 	rateLimitMutex.Unlock()
-	slog.Default().Info("Fetching article", "url", url.String())
+	logger.Logger.Info("Fetching article", "url", url.String())
 
 	if urlMP3Validator(url) {
-		slog.Default().Info("Skipping MP3 URL", "url", url.String())
+		logger.Logger.Info("Skipping MP3 URL", "url", url.String())
 		return nil, nil
 	}
 
 	// Validate URL for SSRF protection
 	if err := validateURL(&url); err != nil {
-		slog.Default().Error("URL validation failed", "error", err, "url", url.String())
+		logger.Logger.Error("URL validation failed", "error", err, "url", url.String())
 		return nil, err
 	}
 
@@ -58,7 +59,7 @@ func FetchArticle(url url.URL) (*models.Article, error) {
 	// Fetch the page
 	resp, err := client.Get(url.String())
 	if err != nil {
-		slog.Default().Error("Failed to fetch page", "error", err)
+		logger.Logger.Error("Failed to fetch page", "error", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -66,11 +67,11 @@ func FetchArticle(url url.URL) (*models.Article, error) {
 	// Parse the page with readability
 	article, err := readability.FromReader(resp.Body, &url)
 	if err != nil {
-		slog.Default().Error("Failed to parse article", "error", err)
+		logger.Logger.Error("Failed to parse article", "error", err)
 		return nil, err
 	}
 
-	slog.Default().Info("Article fetched", "title", article.Title, "content length", len(article.TextContent))
+	logger.Logger.Info("Article fetched", "title", article.Title, "content length", len(article.TextContent))
 
 	cleanedContent := cleanFetchedFeedContent(article.TextContent)
 
