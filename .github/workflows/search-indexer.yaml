@@ -63,4 +63,3 @@ jobs:
       with:
         name: go-test-results
         path: search-indexer/test-results/
-        retention-days: 30

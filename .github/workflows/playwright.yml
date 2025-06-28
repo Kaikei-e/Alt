@@ -21,10 +21,6 @@ jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: ["20"]
-
     steps:
       # コード取得
       - uses: actions/checkout@v4
@@ -71,7 +67,7 @@ jobs:
       - name: Install Playwright browsers & deps
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: alt-frontend/app
-        run: npx playwright install --with-deps         # 必要な OS 依存ライブラリも含む :contentReference[oaicite:6]{index=6}
+        run: npx playwright install --with-deps         # 必要な OS 依存ライブラリも含む
 
       # E2E テスト実行
       - name: Run Playwright tests
@@ -85,3 +81,4 @@ jobs:
           name: playwright-report-${{ github.run_id }}
           path: alt-frontend/app/playwright-report/
           retention-days: 30
+

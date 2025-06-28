@@ -39,7 +39,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: ${{ matrix.go }}
+        go-version: 1.24
         cache-dependency-path: pre-processor/app/go.sum
 
     - name: Cache Go modules
@@ -130,7 +130,8 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: ${{ matrix.go }}
+        go-version: 1.24
+
         cache-dependency-path: pre-processor/app/go.sum
 
     - name: Download dependencies
