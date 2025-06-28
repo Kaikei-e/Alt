@@ -181,6 +181,9 @@ services:
       - DB_NAME=${DB_NAME}
       - PRE_PROCESSOR_DB_USER=${PRE_PROCESSOR_DB_USER}
       - PRE_PROCESSOR_DB_PASSWORD=${PRE_PROCESSOR_DB_PASSWORD}
+      - LOG_FORMAT=json
+      - SERVICE_NAME=pre-processor
+      - LOG_LEVEL=info
     depends_on:
       db:
         condition: service_healthy
