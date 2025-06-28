@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"time"
 
-	"pre-processor/logger"
+	"log/slog"
 	"pre-processor/models"
 
 	"github.com/jackc/pgx/v5"
@@ -55,11 +55,11 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 		ON CONFLICT (url) DO NOTHING
 	`
 
-	logger.Logger.Info("Creating article", "article link", article.URL)
+	slog.Default().Info("Creating article", "article link", article.URL)
 
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		logger.Logger.Error("Failed to begin transaction", "error", err)
+		slog.Default().Error("Failed to begin transaction", "error", err)
 		return err
 	}
 
@@ -67,20 +67,20 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 	if err != nil {
 		err = tx.Rollback(ctx)
 		if err != nil {
-			logger.Logger.Error("Failed to rollback transaction", "error", err)
+			slog.Default().Error("Failed to rollback transaction", "error", err)
 		}
-		logger.Logger.Error("Failed to create article", "error", err)
+		slog.Default().Error("Failed to create article", "error", err)
 
 		return err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to commit transaction", "error", err)
+		slog.Default().Error("Failed to commit transaction", "error", err)
 		return err
 	}
 
-	logger.Logger.Info("Article created", "article", article.Title)
+	slog.Default().Info("Article created", "article", article.Title)
 
 	return nil
 }
@@ -109,11 +109,11 @@ func HasUnsummarizedArticles(ctx context.Context, db *pgxpool.Pool) (bool, error
 
 	err := db.QueryRow(ctx, query).Scan(&hasUnsummarized)
 	if err != nil {
-		logger.Logger.Error("Failed to check for unsummarized articles", "error", err)
+		slog.Default().Error("Failed to check for unsummarized articles", "error", err)
 		return false, err
 	}
 
-	logger.Logger.Info("Checked for unsummarized articles", "has_unsummarized", hasUnsummarized)
+	slog.Default().Info("Checked for unsummarized articles", "has_unsummarized", hasUnsummarized)
 
 	return hasUnsummarized, nil
 }
@@ -193,11 +193,11 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 	}, "GetArticlesForSummarization")
 
 	if err != nil {
-		logger.Logger.Error("Failed to get articles for summarization", "error", err)
+		slog.Default().Error("Failed to get articles for summarization", "error", err)
 		return nil, nil, "", err
 	}
 
-	logger.Logger.Info("Got articles for summarization", "count", len(articles), "limit", limit, "has_cursor", lastCreatedAt != nil)
+	slog.Default().Info("Got articles for summarization", "count", len(articles), "limit", limit, "has_cursor", lastCreatedAt != nil)
 
 	return articles, finalCreatedAt, finalID, nil
 }

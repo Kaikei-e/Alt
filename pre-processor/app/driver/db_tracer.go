@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"pre-processor/logger"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -23,13 +23,13 @@ func (t *QueryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx
 func (t *QueryTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
 	queryStart, ok := ctx.Value("query start").(time.Time)
 	if !ok {
-		logger.Logger.Error("query start not found")
+		slog.Default().Error("query start not found")
 		return
 	}
 
 	duration := time.Since(queryStart)
 
 	if duration > queryDurationThreshold {
-		logger.Logger.Info("query executed", "duration", duration)
+		slog.Default().Info("query executed", "duration", duration)
 	}
 }
