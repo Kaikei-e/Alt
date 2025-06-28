@@ -1,5 +1,6 @@
-import { HStack, Text, Box, Portal, Button, Flex } from "@chakra-ui/react";
+import { HStack, Text, Box, Portal, Button } from "@chakra-ui/react";
 import { useState, useEffect, useCallback } from "react";
+import { IoClose } from "react-icons/io5";
 import { FeedDetails as FeedDetailsType, FeedURLPayload } from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
 
@@ -125,6 +126,13 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 handleHideDetails();
               }
             }}
+            onTouchEnd={(e) => {
+              // Handle touch events for mobile
+              if (e.target === e.currentTarget) {
+                e.preventDefault();
+                handleHideDetails();
+              }
+            }}
             _active={{
               bg: "rgba(0, 0, 0, 0.9)"
             }}
@@ -134,6 +142,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
             aria-labelledby="summary-header"
             aria-describedby="summary-content"
             p={4}
+            style={{ touchAction: 'manipulation' }}
           >
             <Box
               onClick={(e) => e.stopPropagation()}
@@ -152,14 +161,14 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
               tabIndex={-1}
               overflow="hidden"
             >
-              {/* Header */}
+              {/* Header with title only */}
               <Box
                 position="sticky"
                 top="0"
                 zIndex="2"
                 bg="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"
-                height="70px"
-                minHeight="70px"
+                height="60px"
+                minHeight="60px"
                 backdropFilter="blur(20px)"
                 borderBottom="1px solid rgba(255, 255, 255, 0.1)"
                 px={6}
@@ -167,48 +176,19 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 data-testid="summary-header"
                 id="summary-header"
                 borderTopRadius="20px"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
               >
                 <Box data-testid="header-area" position="absolute" top="0" left="0" right="0" bottom="0" zIndex="-1" />
-                <Flex
-                  justify="space-between"
-                  align="center"
-                  height="100%"
+                <Text 
+                  color="#ff006e" 
+                  fontWeight="bold" 
+                  fontSize="lg"
+                  textShadow="0 2px 4px rgba(255, 0, 110, 0.3)"
                 >
-                  <Text 
-                    color="#ff006e" 
-                    fontWeight="bold" 
-                    fontSize="lg"
-                    textShadow="0 2px 4px rgba(255, 0, 110, 0.3)"
-                  >
-                    Article Summary
-                  </Text>
-                  <Button
-                    onClick={handleHideDetails}
-                    data-testid={`hide-details-button-${uniqueId}`}
-                    className="hide-details-button"
-                    size="sm"
-                    borderRadius="full"
-                    bg="linear-gradient(45deg, #ff006e, #8338ec)"
-                    color="white"
-                    fontWeight="bold"
-                    px={4}
-                    minHeight="36px"
-                    minWidth="100px"
-                    fontSize="sm"
-                    _hover={{
-                      bg: "linear-gradient(45deg, #e6005c, #7129d4)",
-                      transform: "scale(1.05)",
-                      boxShadow: "0 4px 12px rgba(255, 0, 110, 0.4)",
-                    }}
-                    _active={{
-                      transform: "scale(0.98)",
-                    }}
-                    transition="all 0.2s ease"
-                    border="1px solid rgba(255, 255, 255, 0.2)"
-                  >
-                    Hide Details
-                  </Button>
-                </Flex>
+                  Article Summary
+                </Text>
               </Box>
 
               {/* Content */}
@@ -222,6 +202,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 willChange="scroll-position"
                 data-testid="scrollable-content"
                 id="summary-content"
+                position="relative"
                 css={{
                   '&::-webkit-scrollbar': {
                     width: '6px',
@@ -253,9 +234,54 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   fontStyle={error || !feedDetails?.summary ? "italic" : "normal"}
                   textAlign="justify"
                   letterSpacing="0.3px"
+                  pb="16px" // Reduced padding since button is now in modal footer
                 >
                   {getDisplayContent()}
                 </Text>
+              </Box>
+
+              {/* Modal Footer with Hide Details button */}
+              <Box
+                position="sticky"
+                bottom="0"
+                zIndex="2"
+                bg="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"
+                backdropFilter="blur(20px)"
+                borderTop="1px solid rgba(255, 255, 255, 0.1)"
+                px={6}
+                py={4}
+                borderBottomRadius="20px"
+                display="flex"
+                alignItems="center"
+                justifyContent="flex-end"
+              >
+                <Button
+                  onClick={handleHideDetails}
+                  data-testid={`hide-details-button-${uniqueId}`}
+                  className="hide-details-button"
+                  size="sm"
+                  borderRadius="full"
+                  bg="linear-gradient(45deg, #ff006e, #8338ec)"
+                  color="white"
+                  fontWeight="bold"
+                  p={3}
+                  minHeight="40px"
+                  minWidth="40px"
+                  fontSize="lg"
+                  boxShadow="0 8px 25px rgba(255, 0, 110, 0.4)"
+                  _hover={{
+                    bg: "linear-gradient(45deg, #e6005c, #7129d4)",
+                    transform: "scale(1.1)",
+                    boxShadow: "0 12px 30px rgba(255, 0, 110, 0.6)",
+                  }}
+                  _active={{
+                    transform: "scale(0.95)",
+                  }}
+                  transition="all 0.2s ease"
+                  border="2px solid rgba(255, 255, 255, 0.3)"
+                >
+                  <IoClose />
+                </Button>
               </Box>
             </Box>
           </Box>

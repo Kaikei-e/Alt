@@ -242,7 +242,22 @@ test.describe("Mobile Feeds Page", () => {
       10,
     );
 
-    // Scroll to bottom to trigger infinite scroll - need to scroll the correct container
+    // Scroll to trigger infinite scroll
+    // First scroll to 80% to get closer to the sentinel
+    await page.evaluate(() => {
+      const scrollContainer = document.querySelector(
+        '[data-testid="feeds-scroll-container"]',
+      );
+      if (scrollContainer) {
+        const targetScroll = scrollContainer.scrollHeight * 0.8;
+        scrollContainer.scrollTop = targetScroll;
+      }
+    });
+
+    // Wait a moment
+    await page.waitForTimeout(500);
+
+    // Then scroll to bottom to trigger infinite scroll
     await page.evaluate(() => {
       const scrollContainer = document.querySelector(
         '[data-testid="feeds-scroll-container"]',
@@ -250,7 +265,6 @@ test.describe("Mobile Feeds Page", () => {
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       } else {
-        // Fallback to window scroll
         window.scrollTo(0, document.body.scrollHeight);
       }
     });
@@ -397,7 +411,22 @@ test.describe("Mobile Feeds Page", () => {
 
     // The infinite scroll loading is already handled by the cursor-based API mock above
 
-    // Scroll to trigger infinite scroll - need to scroll the correct container
+    // Scroll to trigger infinite scroll
+    // First scroll to 80% to get closer to the sentinel
+    await page.evaluate(() => {
+      const scrollContainer = document.querySelector(
+        '[data-testid="feeds-scroll-container"]',
+      );
+      if (scrollContainer) {
+        const targetScroll = scrollContainer.scrollHeight * 0.8;
+        scrollContainer.scrollTop = targetScroll;
+      }
+    });
+
+    // Wait a moment
+    await page.waitForTimeout(500);
+
+    // Then scroll to bottom to trigger infinite scroll
     await page.evaluate(() => {
       const scrollContainer = document.querySelector(
         '[data-testid="feeds-scroll-container"]',
@@ -405,7 +434,6 @@ test.describe("Mobile Feeds Page", () => {
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       } else {
-        // Fallback to window scroll
         window.scrollTo(0, document.body.scrollHeight);
       }
     });
@@ -644,6 +672,21 @@ test.describe("Mobile Feeds Page", () => {
     });
 
     // Trigger infinite scroll
+    // First scroll to 80% to get closer to the sentinel
+    await page.evaluate(() => {
+      const scrollContainer = document.querySelector(
+        '[data-testid="feeds-scroll-container"]',
+      );
+      if (scrollContainer) {
+        const targetScroll = scrollContainer.scrollHeight * 0.8;
+        scrollContainer.scrollTop = targetScroll;
+      }
+    });
+
+    // Wait a moment
+    await page.waitForTimeout(500);
+
+    // Then scroll to bottom to trigger infinite scroll
     await page.evaluate(() => {
       const scrollContainer = document.querySelector(
         '[data-testid="feeds-scroll-container"]',

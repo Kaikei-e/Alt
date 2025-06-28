@@ -20,6 +20,7 @@ export default function FeedsPage() {
   const [isRetrying, setIsRetrying] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 25 });
+  const [itemHeight, setItemHeight] = useState(250); // Dynamic item height
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Use cursor-based pagination hook
@@ -91,10 +92,25 @@ export default function FeedsPage() {
   }, [hasMore, isLoading, loadMore]);
 
   useInfiniteScroll(handleLoadMore, sentinelRef, feeds.length, {
-    throttleDelay: 50, // Reduce throttle for better test performance
-    rootMargin: "100px 0px", // Reduced margin for faster triggering
+    throttleDelay: 100, // Increased throttle for better control
+    rootMargin: "50px 0px", // Reduced margin to prevent premature triggering
     threshold: 0.1,
   });
+
+  // Measure actual item height for accurate virtual scrolling
+  useEffect(() => {
+    if (visibleFeeds.length > 0) {
+      const firstFeedCard = document.querySelector('[data-testid="feed-card-container"]');
+      if (firstFeedCard) {
+        const height = firstFeedCard.getBoundingClientRect().height;
+        // Add some margin for spacing between cards
+        const actualHeight = Math.ceil(height + 16); // 16px for gap
+        if (actualHeight !== itemHeight) {
+          setItemHeight(actualHeight);
+        }
+      }
+    }
+  }, [visibleFeeds.length, itemHeight]);
 
   // Virtual scroll effect
   useEffect(() => {
@@ -106,7 +122,6 @@ export default function FeedsPage() {
     const updateVisibleRange = () => {
       const scrollTop = container.scrollTop;
       const containerHeight = container.clientHeight;
-      const itemHeight = 200; // Approximate height per feed card
 
       const start = Math.max(0, Math.floor(scrollTop / itemHeight) - 2);
       // Cap the visible range to maintain performance - show at most 25 items at once
@@ -123,7 +138,7 @@ export default function FeedsPage() {
     updateVisibleRange(); // Initial calculation
 
     return () => container.removeEventListener("scroll", updateVisibleRange);
-  }, [shouldUseVirtualScrolling, visibleFeeds.length]);
+  }, [shouldUseVirtualScrolling, visibleFeeds.length, itemHeight]);
 
   // Show skeleton loading state for immediate visual feedback
   if (isInitialLoading) {
@@ -184,7 +199,7 @@ export default function FeedsPage() {
           <>
             {/* Virtual scrolling spacer for items before visible range */}
             {shouldUseVirtualScrolling && visibleRange.start > 0 && (
-              <Box height={`${visibleRange.start * 200}px`} width="100%" />
+              <Box height={`${visibleRange.start * itemHeight}px`} width="100%" />
             )}
 
             {/* Feed Cards */}
@@ -203,7 +218,7 @@ export default function FeedsPage() {
             {shouldUseVirtualScrolling &&
               visibleRange.end < visibleFeeds.length && (
                 <Box
-                  height={`${(visibleFeeds.length - visibleRange.end) * 200}px`}
+                  height={`${(visibleFeeds.length - visibleRange.end) * itemHeight}px`}
                   width="100%"
                 />
               )}
