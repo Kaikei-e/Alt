@@ -2,8 +2,12 @@ name: Backend Go Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'alt-backend/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'alt-backend/**'
 
 # 同一ブランチ/PR の古い実行をキャンセル
 concurrency:

@@ -3,8 +3,12 @@ name: Rask Log Forwarder Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'rask-log-forwarder/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'rask-log-forwarder/**'
 
 # 同一ブランチ/PR の古い実行をキャンセル
 concurrency:

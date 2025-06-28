@@ -2,8 +2,12 @@ name: Search Indexer Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'search-indexer/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'search-indexer/**'
 
 # 同一ブランチ/PR の古い実行をキャンセル
 concurrency:
