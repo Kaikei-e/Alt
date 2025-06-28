@@ -171,6 +171,10 @@ func ValidateURL(u *url.URL) error {
 		return errors.New("only HTTP and HTTPS schemes allowed")
 	}
 
+	if u.Hostname() == "" {
+		return errors.New("URL must contain a host")
+	}
+
 	// Block private networks
 	if isPrivateHost(u.Hostname()) {
 		return errors.New("access to private networks not allowed")

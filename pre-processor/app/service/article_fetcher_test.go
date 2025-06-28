@@ -62,6 +62,10 @@ func TestArticleFetcherService_ValidateURL(t *testing.T) {
 			input:       "ftp://example.com",
 			expectError: true,
 		},
+		"should reject missing host": {
+			input:       "http:///path",
+			expectError: true,
+		},
 		"should handle URLs with special characters": {
 			input:       "https://example.com/path with spaces",
 			expectError: false,
