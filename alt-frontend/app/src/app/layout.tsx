@@ -55,7 +55,7 @@ export const metadata: Metadata = {
   other: {
     "theme-color": "#1a1a2e", // Match vaporwave dark theme
     "color-scheme": "dark",
-    "apple-mobile-web-app-capable": "yes",
+    "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "black-translucent",
   },
 };
