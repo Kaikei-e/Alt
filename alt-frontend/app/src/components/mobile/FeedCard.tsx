@@ -111,7 +111,11 @@ const FeedCard = memo(function FeedCard({
               borderRadius="full"
               bg="linear-gradient(45deg, #ff006e, #8338ec)"
               color="white"
+              fontWeight="bold"
               px={4}
+              minHeight="44px"
+              minWidth="120px"
+              fontSize="sm"
               border="1px solid rgba(255, 255, 255, 0.2)"
               disabled={isLoading}
               onClick={() => handleReadStatus(feed.link)}
@@ -120,18 +124,20 @@ const FeedCard = memo(function FeedCard({
                 transform: "scale(1.05)",
                 boxShadow: "0 4px 12px rgba(255, 0, 110, 0.4)",
               }}
+              _active={{
+                transform: "scale(0.98)",
+              }}
               _disabled={{
                 opacity: 0.6,
                 cursor: "not-allowed",
               }}
+              transition="all 0.2s ease"
               aria-label={`Mark ${feed.title} as read`}
             >
               {isLoading ? (
                 <Spinner size="sm" />
               ) : (
-                <Text fontSize="sm" fontWeight="bold">
-                  Mark as read
-                </Text>
+                "Mark as read"
               )}
             </Button>
 

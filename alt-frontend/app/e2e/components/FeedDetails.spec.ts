@@ -673,8 +673,13 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       const modalContent = page.locator('[data-testid="modal-content"]');
       const boundingBox = await modalContent.boundingBox();
 
-      // Modal should use most of mobile screen width
-      expect(boundingBox?.width).toBeGreaterThan(300); // Expect specific mobile optimizations
+      // Modal should be properly sized for mobile (90vw, max 420px)
+      expect(boundingBox?.width).toBeGreaterThan(300);
+      expect(boundingBox?.width).toBeLessThanOrEqual(420);
+      
+      // Height should be 75vh or max 600px
+      expect(boundingBox?.height).toBeGreaterThan(300);
+      expect(boundingBox?.height).toBeLessThanOrEqual(600);
     });
 
     test("should separate header and content areas visually", async ({

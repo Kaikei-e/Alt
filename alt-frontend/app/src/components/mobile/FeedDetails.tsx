@@ -88,13 +88,15 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
           fontWeight="bold"
           px={4}
           minHeight="44px"
-          minWidth="44px"
+          minWidth="120px"
+          fontSize="sm"
           _hover={{
             bg: "linear-gradient(45deg, #e6005c, #7129d4)",
-            transform: "translateY(-1px)",
+            transform: "scale(1.05)",
+            boxShadow: "0 4px 12px rgba(255, 0, 110, 0.4)",
           }}
           _active={{
-            transform: "translateY(0px)",
+            transform: "scale(0.98)",
           }}
           transition="all 0.2s ease"
           border="1px solid rgba(255, 255, 255, 0.2)"
@@ -111,8 +113,8 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
             left="0"
             width="100vw"
             height="100vh"
-            bg="rgba(0, 0, 0, 0.8)"
-            backdropFilter="blur(8px)"
+            bg="rgba(0, 0, 0, 0.85)"
+            backdropFilter="blur(12px)"
             zIndex={9999}
             display="flex"
             alignItems="center"
@@ -124,58 +126,60 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
               }
             }}
             _active={{
-              bg: "rgba(0, 0, 0, 0.85)",
+              bg: "rgba(0, 0, 0, 0.9)"
             }}
             data-testid="modal-backdrop"
             role="dialog"
             aria-modal="true"
             aria-labelledby="summary-header"
             aria-describedby="summary-content"
+            p={4}
           >
             <Box
               onClick={(e) => e.stopPropagation()}
-              width="85vw"
-              maxWidth="450px"
-              height="80vh"
-              maxHeight="80vh"
-              minHeight="400px"
-              background="#1a1a2e"
-              borderRadius="lg"
-              boxShadow="xl"
-              border="1px solid rgba(255, 255, 255, 0.1)"
+              width="90vw"
+              maxWidth="420px"
+              height="75vh"
+              maxHeight="600px"
+              minHeight="350px"
+              background="linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"
+              borderRadius="20px"
+              boxShadow="0 25px 50px rgba(255, 0, 110, 0.3)"
+              border="1px solid rgba(255, 255, 255, 0.15)"
               display="flex"
               flexDirection="column"
               data-testid="modal-content"
               tabIndex={-1}
+              overflow="hidden"
             >
+              {/* Header */}
               <Box
                 position="sticky"
                 top="0"
-                zIndex="1"
-                bg="#1a1a2e"
-                height="60px"
-                minHeight="60px"
-                backdropFilter="blur(16px)"
-                borderBottom="1px solid rgba(255,255,255,0.15)"
-                p={6}
+                zIndex="2"
+                bg="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"
+                height="70px"
+                minHeight="70px"
+                backdropFilter="blur(20px)"
+                borderBottom="1px solid rgba(255, 255, 255, 0.1)"
+                px={6}
+                py={4}
                 data-testid="summary-header"
                 id="summary-header"
+                borderTopRadius="20px"
               >
-                <Box
-                  data-testid="header-area"
-                  position="absolute"
-                  top="0"
-                  left="0"
-                  right="0"
-                  bottom="0"
-                  zIndex="-1"
-                />
+                <Box data-testid="header-area" position="absolute" top="0" left="0" right="0" bottom="0" zIndex="-1" />
                 <Flex
                   justify="space-between"
                   align="center"
-                  flexDirection="row"
+                  height="100%"
                 >
-                  <Text color="#ff006e" fontWeight="bold" fontSize="md">
+                  <Text 
+                    color="#ff006e" 
+                    fontWeight="bold" 
+                    fontSize="lg"
+                    textShadow="0 2px 4px rgba(255, 0, 110, 0.3)"
+                  >
                     Article Summary
                   </Text>
                   <Button
@@ -188,55 +192,67 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                     color="white"
                     fontWeight="bold"
                     px={4}
-                    minHeight="44px"
-                    minWidth="44px"
+                    minHeight="36px"
+                    minWidth="100px"
+                    fontSize="sm"
                     _hover={{
                       bg: "linear-gradient(45deg, #e6005c, #7129d4)",
-                      transform: "translateY(-1px)",
+                      transform: "scale(1.05)",
+                      boxShadow: "0 4px 12px rgba(255, 0, 110, 0.4)",
                     }}
                     _active={{
-                      transform: "translateY(0px)",
+                      transform: "scale(0.98)",
                     }}
                     transition="all 0.2s ease"
                     border="1px solid rgba(255, 255, 255, 0.2)"
                   >
-                    <Text>Hide Details</Text>
+                    Hide Details
                   </Button>
                 </Flex>
               </Box>
+
+              {/* Content */}
               <Box
                 flex="1"
                 overflow="auto"
-                paddingX="16px"
-                paddingY="12px"
+                px={6}
+                py={5}
                 scrollBehavior="smooth"
                 overscrollBehavior="contain"
                 willChange="scroll-position"
                 data-testid="scrollable-content"
                 id="summary-content"
+                css={{
+                  '&::-webkit-scrollbar': {
+                    width: '6px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '3px',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    background: 'linear-gradient(45deg, #ff006e, #8338ec)',
+                    borderRadius: '3px',
+                  },
+                  '&::-webkit-scrollbar-thumb:hover': {
+                    background: 'linear-gradient(45deg, #e6005c, #7129d4)',
+                  },
+                }}
               >
-                <Box
-                  data-testid="content-area"
-                  position="absolute"
-                  top="0"
-                  left="0"
-                  right="0"
-                  bottom="0"
-                  zIndex="-1"
-                />
+                <Box data-testid="content-area" position="absolute" top="0" left="0" right="0" bottom="0" zIndex="-1" />
                 <Text
                   data-testid={`summary-text-${uniqueId}`}
                   className="summary-text"
                   color={
                     error
-                      ? "rgba(255, 255, 255, 0.6)"
-                      : "rgba(255, 255, 255, 0.9)"
+                      ? "rgba(255, 255, 255, 0.7)"
+                      : "rgba(255, 255, 255, 0.95)"
                   }
-                  fontSize="sm"
-                  lineHeight="1.6"
-                  fontStyle={
-                    error || !feedDetails?.summary ? "italic" : "normal"
-                  }
+                  fontSize="md"
+                  lineHeight="1.7"
+                  fontStyle={error || !feedDetails?.summary ? "italic" : "normal"}
+                  textAlign="justify"
+                  letterSpacing="0.3px"
                 >
                   {getDisplayContent()}
                 </Text>
