@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"pre-processor/logger"
 	"pre-processor/models"
 
 	"github.com/go-shiori/go-readability"
@@ -69,8 +68,8 @@ func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string)
 	}
 
 	// Initialize global logger if needed
-	if logger.Logger == nil {
-		logger.Init()
+	if slog.Default() == nil {
+		// logger initialization no longer needed
 	}
 
 	// Fetch article using embedded logic

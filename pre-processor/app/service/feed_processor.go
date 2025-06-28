@@ -4,17 +4,22 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"time"
 
 	"pre-processor/repository"
+	utilsLogger "pre-processor/utils/logger"
 )
 
 // FeedProcessorService implementation.
 type feedProcessorService struct {
-	feedRepo    repository.FeedRepository
-	articleRepo repository.ArticleRepository
-	fetcher     ArticleFetcherService
-	logger      *slog.Logger
-	cursor      *repository.Cursor
+	feedRepo          repository.FeedRepository
+	articleRepo       repository.ArticleRepository
+	fetcher           ArticleFetcherService
+	logger            *slog.Logger
+	contextLogger     *utilsLogger.ContextLogger
+	performanceLogger *utilsLogger.PerformanceLogger
+	cursor            *repository.Cursor
 }
 
 // NewFeedProcessorService creates a new feed processor service.
@@ -24,17 +29,32 @@ func NewFeedProcessorService(
 	fetcher ArticleFetcherService,
 	logger *slog.Logger,
 ) FeedProcessorService {
+	// Initialize enhanced logging components
+	contextLogger := utilsLogger.NewContextLogger(os.Stdout, "json", "info")
+	performanceLogger := utilsLogger.NewPerformanceLogger(os.Stdout, 5*time.Second)
+
 	return &feedProcessorService{
-		feedRepo:    feedRepo,
-		articleRepo: articleRepo,
-		fetcher:     fetcher,
-		logger:      logger,
-		cursor:      &repository.Cursor{},
+		feedRepo:          feedRepo,
+		articleRepo:       articleRepo,
+		fetcher:           fetcher,
+		logger:            logger,
+		contextLogger:     contextLogger,
+		performanceLogger: performanceLogger,
+		cursor:            &repository.Cursor{},
 	}
 }
 
 // ProcessFeeds processes a batch of feeds.
 func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) (*ProcessingResult, error) {
+	// Add operation context and start timing
+	ctx = utilsLogger.WithOperation(ctx, "process_batch")
+	timer := s.performanceLogger.StartTimer(ctx, "process_batch")
+	defer timer.End()
+
+	log := s.contextLogger.WithContext(ctx)
+	log.Info("starting batch processing", "batch_size", batchSize)
+
+	// Legacy logger for backward compatibility
 	s.logger.Info("Starting feed processing", "batch_size", batchSize)
 
 	// Get unprocessed feeds
@@ -133,6 +153,14 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 		HasMore:        len(urls) == batchSize, // Has more if we got a full batch
 	}
 
+	// Enhanced structured logging
+	log.Info("batch processing completed",
+		"processed", result.ProcessedCount,
+		"success", result.SuccessCount,
+		"errors", result.ErrorCount,
+		"has_more", result.HasMore)
+
+	// Legacy logger for backward compatibility
 	s.logger.Info("Feed processing completed",
 		"processed", result.ProcessedCount,
 		"success", result.SuccessCount,
