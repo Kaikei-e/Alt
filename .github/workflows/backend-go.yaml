@@ -21,10 +21,20 @@ jobs:
       run: |
         cd alt-backend/app
         go mod tidy
-    - name: Run tests
+    - name: Run go vet
       run: |
         cd alt-backend/app
-        go test ./...
+        go vet ./...
+    - name: Run tests with coverage
+      run: |
+        cd alt-backend/app
+        go test -coverprofile=coverage.out ./...
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./alt-backend/app/coverage.out
+        flags: alt-backend
+        name: alt-backend-coverage
     - name: Upload test results
       uses: actions/upload-artifact@v4
       with:

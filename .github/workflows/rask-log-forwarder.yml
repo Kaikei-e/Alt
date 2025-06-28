@@ -28,5 +28,22 @@ jobs:
     - name: Build (release)
       run: cargo build --release
 
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
     - name: Run unit tests
       run: cargo test --all --verbose
+
+    - name: Install cargo-tarpaulin
+      run: cargo install cargo-tarpaulin
+
+    - name: Generate coverage report
+      run: cargo tarpaulin --out Xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./rask-log-forwarder/app/tarpaulin-report.xml
+        flags: rask-log-forwarder
+        name: rask-log-forwarder-coverage
+
