@@ -10,10 +10,18 @@ on:
     paths:
       - 'pre-processor/**'
 
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality-check:
     name: Quality Gates
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.24"]
     permissions:
       contents: read
       security-events: write
@@ -104,6 +112,9 @@ jobs:
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.24"]
     permissions:
       contents: read
       security-events: write
@@ -120,6 +131,7 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: 1.24
+
         cache-dependency-path: pre-processor/app/go.sum
 
     - name: Download dependencies

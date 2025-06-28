@@ -108,6 +108,19 @@ func (s *articleFetcherService) ValidateURL(urlStr string) error {
 		return errors.New("only HTTP or HTTPS schemes allowed")
 	}
 
+	// Additional SSRF and port validation
+	if err := s.validateURLForSSRF(parsedURL); err != nil {
+		s.logger.Error("URL validation failed", "url", urlStr, "error", err)
+		return err
+	}
+
+	if port := parsedURL.Port(); port != "" {
+		if err := s.validateTarget(parsedURL.Hostname(), port); err != nil {
+			s.logger.Error("URL validation failed", "url", urlStr, "error", err)
+			return err
+		}
+	}
+
 	// Validate host
 	if parsedURL.Hostname() == "" {
 		s.logger.Error("URL validation failed", "url", urlStr, "error", "missing host")
@@ -279,17 +292,6 @@ func (s *articleFetcherService) isPrivateHost(hostname string) bool {
 	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
 	for _, domain := range internalDomains {
 		if strings.HasSuffix(hostname, domain) {
-			return true
-		}
-	}
-
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		return true
-	}
-
-	for _, ip := range ips {
-		if s.isPrivateIPAddress(ip) {
 			return true
 		}
 	}

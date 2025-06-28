@@ -3,8 +3,17 @@ name: Rask Log Forwarder Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'rask-log-forwarder/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'rask-log-forwarder/**'
+
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -25,8 +34,30 @@ jobs:
         toolchain: stable
         profile: minimal
 
+    - uses: swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          rask-log-forwarder/app
+
     - name: Build (release)
       run: cargo build --release
 
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
     - name: Run unit tests
       run: cargo test --all --verbose
+
+    - name: Install cargo-tarpaulin
+      run: cargo install cargo-tarpaulin
+
+    - name: Generate coverage report
+      run: cargo tarpaulin --out Xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./rask-log-forwarder/app/tarpaulin-report.xml
+        flags: rask-log-forwarder
+        name: rask-log-forwarder-coverage
+

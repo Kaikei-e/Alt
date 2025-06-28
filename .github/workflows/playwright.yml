@@ -2,8 +2,12 @@ name: Playwright Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'alt-frontend/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'alt-frontend/**'
 
 # 同一ブランチ/PR の古い実行をキャンセル
 concurrency:
@@ -28,9 +32,9 @@ jobs:
           run_install: false                            # インストールは後で手動実行
 
       # Node.js セットアップ（pnpm キャッシュを有効に）
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4 
         with:
-          node-version: lts/*
+          node-version: ${{ matrix.node }}
           cache: "pnpm"                                 # node_modules のキャッシュ
           cache-dependency-path: "alt-frontend/app/pnpm-lock.yaml"
 
@@ -72,9 +76,9 @@ jobs:
 
       # 結果レポートのアップロード（常に）
       - uses: actions/upload-artifact@v4
-        if: always()                                   # 成功・失敗にかかわらず収集
+        if: failure()                                  
         with:
-          name: playwright-report
+          name: playwright-report-${{ github.run_id }}
           path: alt-frontend/app/playwright-report/
           retention-days: 30
 

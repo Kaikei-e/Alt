@@ -2,8 +2,17 @@ name: Search Indexer Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'search-indexer/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'search-indexer/**'
+
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -11,20 +20,44 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.24"]
     steps:
     - uses: actions/checkout@v4
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.24
+        go-version: ${{ matrix.go }}
+        cache-dependency-path: search-indexer/app/go.sum
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('search-indexer/app/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
     - name: Install dependencies
       run: |
         cd search-indexer/app
         go mod tidy
-    - name: Run tests
+    - name: Run go vet
       run: |
         cd search-indexer/app
-        go test ./...
+        go vet ./...
+    - name: Run tests with coverage
+      run: |
+        cd search-indexer/app
+        go test -coverprofile=coverage.out ./...
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./search-indexer/app/coverage.out
+        flags: search-indexer
+        name: search-indexer-coverage
     - name: Upload test results
       uses: actions/upload-artifact@v4
       with:

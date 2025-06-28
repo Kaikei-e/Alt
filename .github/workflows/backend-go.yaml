@@ -2,8 +2,17 @@ name: Backend Go Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'alt-backend/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'alt-backend/**'
+
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -11,20 +20,44 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.24"]
     steps:
     - uses: actions/checkout@v4
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.24
+        go-version: ${{ matrix.go }}
+        cache-dependency-path: alt-backend/app/go.sum
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('alt-backend/app/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
     - name: Install dependencies
       run: |
         cd alt-backend/app
         go mod tidy
-    - name: Run tests
+    - name: Run go vet
       run: |
         cd alt-backend/app
-        go test ./...
+        go vet ./...
+    - name: Run tests with coverage
+      run: |
+        cd alt-backend/app
+        go test -coverprofile=coverage.out ./...
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./alt-backend/app/coverage.out
+        flags: alt-backend
+        name: alt-backend-coverage
     - name: Upload test results
       uses: actions/upload-artifact@v4
       with:
