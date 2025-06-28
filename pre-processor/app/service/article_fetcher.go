@@ -119,6 +119,8 @@ func (s *articleFetcherService) ValidateURL(urlStr string) error {
 			s.logger.Error("URL validation failed", "url", urlStr, "error", err)
 			return err
 		}
+	}
+
 	// Validate host
 	if parsedURL.Hostname() == "" {
 		s.logger.Error("URL validation failed", "url", urlStr, "error", "missing host")
@@ -290,17 +292,6 @@ func (s *articleFetcherService) isPrivateHost(hostname string) bool {
 	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
 	for _, domain := range internalDomains {
 		if strings.HasSuffix(hostname, domain) {
-			return true
-		}
-	}
-
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		return true
-	}
-
-	for _, ip := range ips {
-		if s.isPrivateIPAddress(ip) {
 			return true
 		}
 	}
