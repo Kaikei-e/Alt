@@ -19,6 +19,9 @@ jobs:
   quality-check:
     name: Quality Gates
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.22", "1.23", "1.24"]
     permissions:
       contents: read
       security-events: write
@@ -36,7 +39,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24'
+        go-version: ${{ matrix.go }}
         cache-dependency-path: pre-processor/app/go.sum
 
     - name: Cache Go modules
@@ -109,6 +112,9 @@ jobs:
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.22", "1.23", "1.24"]
     permissions:
       contents: read
       security-events: write
@@ -124,7 +130,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24'
+        go-version: ${{ matrix.go }}
         cache-dependency-path: pre-processor/app/go.sum
 
     - name: Download dependencies
