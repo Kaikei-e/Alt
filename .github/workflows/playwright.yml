@@ -80,8 +80,8 @@ jobs:
 
       # 結果レポートのアップロード（常に）
       - uses: actions/upload-artifact@v4
-        if: always()                                   # 成功・失敗にかかわらず収集 :contentReference[oaicite:7]{index=7}
+        if: failure()                                  
         with:
-          name: playwright-report
+          name: playwright-report-${{ github.run_id }}
           path: alt-frontend/app/playwright-report/
           retention-days: 30
