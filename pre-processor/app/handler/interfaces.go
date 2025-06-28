@@ -18,6 +18,10 @@ type JobHandler interface {
 type HealthHandler interface {
 	CheckHealth(ctx context.Context) error
 	CheckDependencies(ctx context.Context) error
+	GetHealthMetrics(ctx context.Context) (map[string]interface{}, error)
+	GetExtendedHealthMetrics(ctx context.Context) (map[string]interface{}, error)
+	CheckSLACompliance(ctx context.Context) (map[string]interface{}, error)
+	GetHealthAlerts(ctx context.Context) ([]map[string]interface{}, error)
 }
 
 // JobScheduler handles job scheduling and coordination.
