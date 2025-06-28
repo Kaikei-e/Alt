@@ -177,14 +177,11 @@ func ValidateURL(u *url.URL) error {
 	// Reuse target validation logic which checks private hosts and blocked ports
 	if err := validateTarget(host, port); err != nil {
 		return err
+	}
+
 	if u.Hostname() == "" {
 		return errors.New("URL must contain a host")
 	}
-
-	// Block private networks
-	if isPrivateHost(u.Hostname()) {
-		return errors.New("access to private networks not allowed")
-	}
-
+	
 	return nil
 }
