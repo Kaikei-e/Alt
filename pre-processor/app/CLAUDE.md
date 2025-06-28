@@ -330,29 +330,67 @@ service := NewService(mockRepo, slog.Default())
 // ABOUTME: It transforms raw feed data into normalized format for the pipeline
 ```
 
-### Structured Logging Pattern
+### Structured Logging Pattern with Rask Integration
 ```go
+// Enhanced logging with service context and metrics
 func (s *Service) ProcessBatch(ctx context.Context, items []Item) error {
     logger := s.logger.With(
         "operation", "process_batch",
         "batch_size", len(items),
         "trace_id", getTraceID(ctx),
+        "service", "pre-processor",
+        "version", s.version,
     )
 
+    start := time.Now()
     logger.Info("starting batch processing")
 
+    var processed, failed int
     for i, item := range items {
         if err := s.processItem(ctx, item); err != nil {
+            failed++
             logger.Error("item failed",
                 "item_id", item.ID,
                 "position", i,
-                "error", err)
+                "error", err,
+                "failed_count", failed)
             return fmt.Errorf("batch failed at position %d: %w", i, err)
         }
+        processed++
     }
 
-    logger.Info("batch completed successfully")
+    duration := time.Since(start)
+    logger.Info("batch completed successfully",
+        "processed_count", processed,
+        "failed_count", failed,
+        "duration_ms", duration.Milliseconds(),
+        "items_per_second", float64(processed)/duration.Seconds())
+
     return nil
+}
+
+// Logger configuration with rask-log-forwarder compatibility
+func NewStructuredLogger(serviceName, version string) *slog.Logger {
+    opts := &slog.HandlerOptions{
+        Level: slog.LevelInfo,
+        ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+            // Ensure consistent timestamp format for rask-log-aggregator
+            if a.Key == "time" {
+                return slog.String("timestamp", time.Now().UTC().Format(time.RFC3339Nano))
+            }
+            return a
+        },
+    }
+
+    handler := slog.NewJSONHandler(os.Stdout, opts)
+    logger := slog.New(handler)
+
+    // Add service context to all log entries
+    return logger.With(
+        "service", serviceName,
+        "version", version,
+        "component", "pre-processor",
+    )
 }
 ```
 
@@ -368,6 +406,136 @@ func (r *Repository) SaveFeed(ctx context.Context, feed Feed) error {
     }
 
     return nil
+}
+```
+
+---
+
+## 🔗 Rask Log Integration
+
+### Sidecar Architecture (Zero Application Changes)
+The rask-log-forwarder runs as a sidecar container that monitors Docker container logs via Docker API. **Applications only need to output JSON logs to stdout/stderr.**
+
+```yaml
+# Application configuration (existing compose.yaml pattern)
+pre-processor:
+  build: .
+  environment:
+    - LOG_LEVEL=info
+    - LOG_FORMAT=json  # Only requirement: JSON format to stdout
+    - SERVICE_NAME=pre-processor
+    - SERVICE_VERSION=1.0.0
+  # Standard Docker logging (already configured)
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+# Sidecar log forwarder (already configured in main compose.yaml)
+pre-processor-logs:
+  build:
+    context: ./rask-log-forwarder/app
+    dockerfile: Dockerfile.rask-log-forwarder
+  network_mode: "service:pre-processor"  # Shares network namespace
+  environment:
+    TARGET_SERVICE: "pre-processor"
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro      # Docker API access
+    - /var/lib/docker/containers:/var/lib/docker/containers:ro  # Container logs
+  group_add:
+    - "${DOCKER_GROUP_ID:-984}"  # Docker group access
+  profiles:
+    - logging
+```
+
+### Application Logging Requirements (Simplified)
+**The application only needs to:**
+1. Output structured JSON logs to stdout/stderr
+2. Include service metadata in log entries
+3. Follow standard Docker logging practices
+
+```go
+// Standard health check (no rask-specific logic needed)
+type ServiceHealth struct {
+    Status         string    `json:"status"`
+    LastProcessed  time.Time `json:"last_processed"`
+    ProcessedCount int64     `json:"processed_count"`
+    ErrorCount     int64     `json:"error_count"`
+}
+
+func (s *Service) HealthCheck(ctx context.Context) ServiceHealth {
+    logger := s.logger.With("operation", "health_check")
+    
+    health := ServiceHealth{
+        Status:         "healthy",
+        LastProcessed:  s.lastProcessed,
+        ProcessedCount: s.processedCount,
+        ErrorCount:     s.errorCount,
+    }
+
+    logger.Info("health check completed", "health", health)
+    return health
+}
+```
+
+### Log Structure for Rask Compatibility
+```go
+// Standard log entry structure
+type LogEntry struct {
+    Timestamp   string                 `json:"timestamp"`
+    Level       string                 `json:"level"`
+    Service     string                 `json:"service"`
+    Version     string                 `json:"version"`
+    Component   string                 `json:"component"`
+    Operation   string                 `json:"operation"`
+    TraceID     string                 `json:"trace_id,omitempty"`
+    Message     string                 `json:"message"`
+    Attributes  map[string]interface{} `json:"attributes,omitempty"`
+    Error       *ErrorDetails          `json:"error,omitempty"`
+}
+
+type ErrorDetails struct {
+    Type       string `json:"type"`
+    Message    string `json:"message"`
+    StackTrace string `json:"stack_trace,omitempty"`
+}
+
+// Context enrichment for distributed tracing
+func enrichContext(ctx context.Context, logger *slog.Logger) *slog.Logger {
+    traceID := getTraceID(ctx)
+    if traceID == "" {
+        traceID = generateTraceID()
+        ctx = setTraceID(ctx, traceID)
+    }
+
+    return logger.With(
+        "trace_id", traceID,
+        "timestamp", time.Now().UTC().Format(time.RFC3339Nano),
+    )
+}
+```
+
+### Environment Configuration (Application Only)
+```go
+// Simple configuration for structured logging
+type Config struct {
+    LogLevel       string `env:"LOG_LEVEL" default:"info"`
+    LogFormat      string `env:"LOG_FORMAT" default:"json"`
+    ServiceName    string `env:"SERVICE_NAME" default:"pre-processor"`
+    ServiceVersion string `env:"SERVICE_VERSION" default:"dev"`
+    ServerPort     int    `env:"SERVER_PORT" default:"9200"`
+}
+
+// No rask-specific configuration needed in application
+// Log forwarder sidecar handles all rask integration
+func LoadConfig() (*Config, error) {
+    cfg := &Config{}
+    if err := env.Parse(cfg); err != nil {
+        return nil, fmt.Errorf("config parse failed: %w", err)
+    }
+    return cfg, nil
 }
 ```
 
