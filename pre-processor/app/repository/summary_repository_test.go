@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"pre-processor/logger"
 	"pre-processor/models"
 
 	"github.com/stretchr/testify/assert"
@@ -48,13 +47,13 @@ func TestSummaryRepository_Create(t *testing.T) {
 				ArticleTitle:    "Test Article",
 				SummaryJapanese: "テスト記事の要約",
 			},
-			setupLogger: true,
+			
 			wantErr:     true,
 			errContains: "failed to create article summary",
 		},
 		"should handle nil summary": {
 			summary:     nil,
-			setupLogger: true,
+			
 			wantErr:     true,
 			errContains: "summary cannot be nil",
 		},
@@ -64,7 +63,7 @@ func TestSummaryRepository_Create(t *testing.T) {
 				ArticleTitle:    "Test Article",
 				SummaryJapanese: "テスト記事の要約",
 			},
-			setupLogger: true,
+			
 			wantErr:     true,
 			errContains: "article ID cannot be empty",
 		},
@@ -73,9 +72,6 @@ func TestSummaryRepository_Create(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation
-			if tc.setupLogger {
-				logger.Init()
-			}
 
 			repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -105,7 +101,7 @@ func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 		"should handle nil database gracefully": {
 			cursor:      nil,
 			limit:       10,
-			setupLogger: true,
+			
 			wantErr:     true,
 			errContains: "failed to find articles with summaries",
 		},
@@ -115,21 +111,21 @@ func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 				LastID:        "last-123",
 			},
 			limit:       5,
-			setupLogger: true,
+			
 			wantErr:     true,
 			errContains: "failed to find articles with summaries",
 		},
 		"should handle zero limit": {
 			cursor:      nil,
 			limit:       0,
-			setupLogger: true,
+			
 			wantErr:     true,
 			errContains: "limit must be positive",
 		},
 		"should handle negative limit": {
 			cursor:      nil,
 			limit:       -1,
-			setupLogger: true,
+			
 			wantErr:     true,
 			errContains: "limit must be positive",
 		},
@@ -138,9 +134,6 @@ func TestSummaryRepository_FindArticlesWithSummaries(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation
-			if tc.setupLogger {
-				logger.Init()
-			}
 
 			repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -172,13 +165,13 @@ func TestSummaryRepository_Delete(t *testing.T) {
 	}{
 		"should handle nil database gracefully": {
 			summaryID:   "summary-123",
-			setupLogger: true,
+			
 			wantErr:     true,
 			errContains: "failed to delete article summary",
 		},
 		"should handle empty summary ID": {
 			summaryID:   "",
-			setupLogger: true,
+			
 			wantErr:     true,
 			errContains: "summary ID cannot be empty",
 		},
@@ -187,9 +180,6 @@ func TestSummaryRepository_Delete(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation
-			if tc.setupLogger {
-				logger.Init()
-			}
 
 			repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -218,14 +208,14 @@ func TestSummaryRepository_Exists(t *testing.T) {
 	}{
 		"should handle nil database gracefully": {
 			summaryID:   "summary-123",
-			setupLogger: true,
+			
 			wantErr:     true,
 			wantExists:  false,
 			errContains: "failed to check if article summary exists",
 		},
 		"should handle empty summary ID": {
 			summaryID:   "",
-			setupLogger: true,
+			
 			wantErr:     true,
 			wantExists:  false,
 			errContains: "summary ID cannot be empty",
@@ -235,9 +225,6 @@ func TestSummaryRepository_Exists(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation
-			if tc.setupLogger {
-				logger.Init()
-			}
 
 			repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -260,7 +247,7 @@ func TestSummaryRepository_Exists(t *testing.T) {
 
 func TestSummaryRepository_ErrorHandling(t *testing.T) {
 	t.Run("should handle context cancellation", func(t *testing.T) {
-		logger.Init()
+		
 
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -292,7 +279,7 @@ func TestSummaryRepository_ErrorHandling(t *testing.T) {
 
 func TestSummaryRepository_EdgeCases(t *testing.T) {
 	t.Run("should handle large limit values", func(t *testing.T) {
-		logger.Init()
+		
 
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -305,7 +292,7 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("should handle cursor with nil LastCreatedAt", func(t *testing.T) {
-		logger.Init()
+		
 
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -322,7 +309,7 @@ func TestSummaryRepository_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("should handle cursor with empty LastID", func(t *testing.T) {
-		logger.Init()
+		
 
 		repo := NewSummaryRepository(nil, testLoggerSummaryRepo())
 
@@ -367,7 +354,7 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to create article summary")
 			},
-			setupLogger: true,
+			
 		},
 		{
 			name:      "find with valid parameters",
@@ -387,7 +374,7 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to find articles with summaries")
 			},
-			setupLogger: true,
+			
 		},
 		{
 			name:      "delete with valid ID",
@@ -400,7 +387,7 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to delete article summary")
 			},
-			setupLogger: true,
+			
 		},
 		{
 			name:      "exists with valid ID",
@@ -413,15 +400,12 @@ func TestSummaryRepository_TableDriven(t *testing.T) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to check if article summary exists")
 			},
-			setupLogger: true,
+			
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.setupLogger {
-				logger.Init()
-			}
 
 			repo, input := tc.setup()
 			ctx := context.Background()

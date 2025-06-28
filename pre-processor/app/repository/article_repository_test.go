@@ -6,7 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"pre-processor/logger"
 	"pre-processor/models"
 
 	"github.com/stretchr/testify/assert"
@@ -33,8 +32,6 @@ func TestArticleRepository_InterfaceCompliance(t *testing.T) {
 func TestArticleRepository_Create(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		// GREEN PHASE: Test minimal implementation
-		// Initialize global logger for driver dependencies
-		logger.Init()
 
 		repo := NewArticleRepository(nil, testLoggerRepo())
 
@@ -48,7 +45,6 @@ func TestArticleRepository_Create(t *testing.T) {
 func TestArticleRepository_CheckExists(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		// GREEN PHASE: Test minimal implementation
-		logger.Init()
 
 		repo := NewArticleRepository(nil, testLoggerRepo())
 
@@ -63,7 +59,6 @@ func TestArticleRepository_CheckExists(t *testing.T) {
 func TestArticleRepository_FindForSummarization(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		// GREEN PHASE: Test minimal implementation
-		logger.Init()
 
 		repo := NewArticleRepository(nil, testLoggerRepo())
 
@@ -79,7 +74,6 @@ func TestArticleRepository_FindForSummarization(t *testing.T) {
 func TestArticleRepository_HasUnsummarizedArticles(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		// GREEN PHASE: Test minimal implementation
-		logger.Init()
 
 		repo := NewArticleRepository(nil, testLoggerRepo())
 
