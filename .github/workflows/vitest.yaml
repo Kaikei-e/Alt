@@ -2,8 +2,17 @@ name: Unit and Component Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'alt-frontend/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'alt-frontend/**'
+
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -16,13 +25,23 @@ jobs:
         node: ["18", "20"]
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+          node-version: lts/*
+          cache: "pnpm"
+          cache-dependency-path: alt-frontend/app/pnpm-lock.yaml
+
       - name: Install dependencies
         run: |
           cd alt-frontend/app
-          npm install -g pnpm && pnpm install
+          pnpm install
       - name: Run tests
         run: |
           cd alt-frontend/app

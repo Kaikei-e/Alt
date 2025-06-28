@@ -3,8 +3,17 @@ name: Rask Log Forwarder Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'rask-log-forwarder/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'rask-log-forwarder/**'
+
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -24,6 +33,11 @@ jobs:
       with:
         toolchain: stable
         profile: minimal
+
+    - uses: swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          rask-log-forwarder/app
 
     - name: Build (release)
       run: cargo build --release

@@ -10,6 +10,11 @@ on:
     paths:
       - 'pre-processor/**'
 
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality-check:
     name: Quality Gates

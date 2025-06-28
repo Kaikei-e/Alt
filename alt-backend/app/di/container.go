@@ -15,13 +15,13 @@ import (
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/port/config_port"
-	"alt/port/rate_limiter_port"
 	"alt/port/error_handler_port"
+	"alt/port/rate_limiter_port"
 	"alt/usecase/fetch_feed_details_usecase"
 	"alt/usecase/fetch_feed_stats_usecase"
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/reading_status"
-	"alt/usecase/register_feed_usecase.go"
+	"alt/usecase/register_feed_usecase"
 	"alt/usecase/search_feed_usecase"
 	"alt/utils/rate_limiter"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,25 +29,25 @@ import (
 
 type ApplicationComponents struct {
 	// Ports
-	ConfigPort      config_port.ConfigPort
-	RateLimiterPort rate_limiter_port.RateLimiterPort
+	ConfigPort       config_port.ConfigPort
+	RateLimiterPort  rate_limiter_port.RateLimiterPort
 	ErrorHandlerPort error_handler_port.ErrorHandlerPort
-	
+
 	// Repository
-	AltDBRepository                   *alt_db.AltDBRepository
-	
+	AltDBRepository *alt_db.AltDBRepository
+
 	// Usecases
-	FetchSingleFeedUsecase            *fetch_feed_usecase.FetchSingleFeedUsecase
-	FetchFeedsListUsecase             *fetch_feed_usecase.FetchFeedsListUsecase
-	FetchFeedsListCursorUsecase       *fetch_feed_usecase.FetchFeedsListCursorUsecase
-	RegisterFeedsUsecase              *register_feed_usecase.RegisterFeedsUsecase
-	FeedsReadingStatusUsecase         *reading_status.FeedsReadingStatusUsecase
-	FeedsSummaryUsecase               *fetch_feed_details_usecase.FeedsSummaryUsecase
-	FeedAmountUsecase                 *fetch_feed_stats_usecase.FeedsCountUsecase
-	UnsummarizedArticlesCountUsecase  *fetch_feed_stats_usecase.UnsummarizedArticlesCountUsecase
-	SummarizedArticlesCountUsecase    *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
-	TotalArticlesCountUsecase         *fetch_feed_stats_usecase.TotalArticlesCountUsecase
-	FeedSearchUsecase                 *search_feed_usecase.SearchFeedMeilisearchUsecase
+	FetchSingleFeedUsecase           *fetch_feed_usecase.FetchSingleFeedUsecase
+	FetchFeedsListUsecase            *fetch_feed_usecase.FetchFeedsListUsecase
+	FetchFeedsListCursorUsecase      *fetch_feed_usecase.FetchFeedsListCursorUsecase
+	RegisterFeedsUsecase             *register_feed_usecase.RegisterFeedsUsecase
+	FeedsReadingStatusUsecase        *reading_status.FeedsReadingStatusUsecase
+	FeedsSummaryUsecase              *fetch_feed_details_usecase.FeedsSummaryUsecase
+	FeedAmountUsecase                *fetch_feed_stats_usecase.FeedsCountUsecase
+	UnsummarizedArticlesCountUsecase *fetch_feed_stats_usecase.UnsummarizedArticlesCountUsecase
+	SummarizedArticlesCountUsecase   *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
+	TotalArticlesCountUsecase        *fetch_feed_stats_usecase.TotalArticlesCountUsecase
+	FeedSearchUsecase                *search_feed_usecase.SearchFeedMeilisearchUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -108,10 +108,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ConfigPort:       configPort,
 		RateLimiterPort:  rateLimiterPort,
 		ErrorHandlerPort: errorHandlerPort,
-		
+
 		// Repository
-		AltDBRepository:                  altDBRepository,
-		
+		AltDBRepository: altDBRepository,
+
 		// Usecases
 		FetchSingleFeedUsecase:           fetchSingleFeedUsecase,
 		FetchFeedsListUsecase:            fetchFeedsListUsecase,

@@ -171,6 +171,12 @@ func ValidateURL(u *url.URL) error {
 		return errors.New("only HTTP and HTTPS schemes allowed")
 	}
 
+	host := u.Hostname()
+	port := u.Port()
+
+	// Reuse target validation logic which checks private hosts and blocked ports
+	if err := validateTarget(host, port); err != nil {
+		return err
 	if u.Hostname() == "" {
 		return errors.New("URL must contain a host")
 	}

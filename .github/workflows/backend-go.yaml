@@ -2,8 +2,17 @@ name: Backend Go Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'alt-backend/**'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'alt-backend/**'
+
+# 同一ブランチ/PR の古い実行をキャンセル
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -20,6 +29,17 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
+        cache-dependency-path: alt-backend/app/go.sum
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('alt-backend/app/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
     - name: Install dependencies
       run: |
         cd alt-backend/app
