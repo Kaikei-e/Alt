@@ -25,6 +25,11 @@ jobs:
         toolchain: stable
         profile: minimal
 
+    - uses: swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          rask-log-forwarder/app
+
     - name: Build (release)
       run: cargo build --release
 
