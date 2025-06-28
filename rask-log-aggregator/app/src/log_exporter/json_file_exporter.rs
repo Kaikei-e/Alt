@@ -2,13 +2,13 @@
 // Each call appends a single ND-JSON line. When the current file exceeds the
 // configured size or max age, a new file with a timestamp suffix is created.
 
+use chrono::{DateTime, Duration as ChronoDuration, Local};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::path::{Path, PathBuf};
-use chrono::{DateTime, Local, Duration as ChronoDuration};
+use std::sync::{Arc, Mutex};
 
 const DEFAULT_MAX_SIZE_MB: u64 = 100; // 100 MB
 const DEFAULT_MAX_AGE_HOURS: i64 = 24; // 24 h
@@ -34,7 +34,7 @@ pub enum LogLevel {
     Warn,
     Error,
     Fatal,
-} 
+}
 
 /// 内部共有状態（ファイルハンドルと生成時刻）
 struct Inner {

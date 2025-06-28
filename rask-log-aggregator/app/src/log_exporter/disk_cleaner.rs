@@ -1,13 +1,13 @@
 // DiskCleaner: periodically ensures the total size of log files stays under a given limit.
 // It deletes the oldest .json files in the directory until the total is below the threshold.
 
+use chrono::{DateTime, Local};
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio::time::sleep;
 use tokio::fs;
 use tokio::io;
-use chrono::{DateTime, Local};
-use tracing::{info, warn, error};
+use tokio::time::sleep;
+use tracing::{error, info, warn};
 
 pub struct DiskCleaner {
     directory: PathBuf,
@@ -66,7 +66,10 @@ impl DiskCleaner {
             return Ok(());
         }
 
-        info!("Total log size {} bytes exceeds limit {}, starting cleanup", total, self.max_total_bytes);
+        info!(
+            "Total log size {} bytes exceeds limit {}, starting cleanup",
+            total, self.max_total_bytes
+        );
 
         // Delete oldest files until under limit, but keep at least one newest file
         for (idx, (path, size, _)) in files.iter().enumerate() {
