@@ -11,27 +11,27 @@ func validateConfig(config *Config) error {
 	if err := validateServerConfig(&config.Server); err != nil {
 		return fmt.Errorf("server config validation failed: %w", err)
 	}
-	
+
 	if err := validateDatabaseConfig(&config.Database); err != nil {
 		return fmt.Errorf("database config validation failed: %w", err)
 	}
-	
+
 	if err := validateRateLimitConfig(&config.RateLimit); err != nil {
 		return fmt.Errorf("rate limit config validation failed: %w", err)
 	}
-	
+
 	if err := validateCacheConfig(&config.Cache); err != nil {
 		return fmt.Errorf("cache config validation failed: %w", err)
 	}
-	
+
 	if err := validateLoggingConfig(&config.Logging); err != nil {
 		return fmt.Errorf("logging config validation failed: %w", err)
 	}
-	
+
 	if err := validateHTTPConfig(&config.HTTP); err != nil {
 		return fmt.Errorf("HTTP config validation failed: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -40,20 +40,20 @@ func validateServerConfig(config *ServerConfig) error {
 	if config.Port < 1 || config.Port > 65535 {
 		return fmt.Errorf("port must be between 1 and 65535, got %d", config.Port)
 	}
-	
+
 	// Validate timeout values
 	if config.ReadTimeout <= 0 {
 		return fmt.Errorf("timeout values must be positive, got ReadTimeout: %v", config.ReadTimeout)
 	}
-	
+
 	if config.WriteTimeout <= 0 {
 		return fmt.Errorf("timeout values must be positive, got WriteTimeout: %v", config.WriteTimeout)
 	}
-	
+
 	if config.IdleTimeout <= 0 {
 		return fmt.Errorf("timeout values must be positive, got IdleTimeout: %v", config.IdleTimeout)
 	}
-	
+
 	return nil
 }
 
@@ -62,12 +62,12 @@ func validateDatabaseConfig(config *DatabaseConfig) error {
 	if config.MaxConnections < 1 {
 		return fmt.Errorf("max connections must be at least 1, got %d", config.MaxConnections)
 	}
-	
+
 	// Validate connection timeout
 	if config.ConnectionTimeout <= 0 {
 		return fmt.Errorf("connection timeout must be positive, got %v", config.ConnectionTimeout)
 	}
-	
+
 	return nil
 }
 
@@ -76,12 +76,12 @@ func validateRateLimitConfig(config *RateLimitConfig) error {
 	if config.ExternalAPIInterval < time.Second {
 		return fmt.Errorf("external API interval must be at least 1 second, got %v", config.ExternalAPIInterval)
 	}
-	
+
 	// Validate feed fetch limit
 	if config.FeedFetchLimit < 1 {
 		return fmt.Errorf("feed fetch limit must be at least 1, got %d", config.FeedFetchLimit)
 	}
-	
+
 	return nil
 }
 
@@ -90,11 +90,11 @@ func validateCacheConfig(config *CacheConfig) error {
 	if config.FeedCacheExpiry <= 0 {
 		return fmt.Errorf("feed cache expiry must be positive, got %v", config.FeedCacheExpiry)
 	}
-	
+
 	if config.SearchCacheExpiry <= 0 {
 		return fmt.Errorf("search cache expiry must be positive, got %v", config.SearchCacheExpiry)
 	}
-	
+
 	return nil
 }
 
@@ -102,7 +102,7 @@ func validateLoggingConfig(config *LoggingConfig) error {
 	// Validate log level
 	validLevels := []string{"debug", "info", "warn", "error"}
 	level := strings.ToLower(config.Level)
-	
+
 	valid := false
 	for _, validLevel := range validLevels {
 		if level == validLevel {
@@ -110,16 +110,16 @@ func validateLoggingConfig(config *LoggingConfig) error {
 			break
 		}
 	}
-	
+
 	if !valid {
-		return fmt.Errorf("log level must be one of: %s, got %s", 
+		return fmt.Errorf("log level must be one of: %s, got %s",
 			strings.Join(validLevels, ", "), config.Level)
 	}
-	
+
 	// Validate log format
 	validFormats := []string{"json", "text"}
 	format := strings.ToLower(config.Format)
-	
+
 	valid = false
 	for _, validFormat := range validFormats {
 		if format == validFormat {
@@ -127,12 +127,12 @@ func validateLoggingConfig(config *LoggingConfig) error {
 			break
 		}
 	}
-	
+
 	if !valid {
-		return fmt.Errorf("log format must be one of: %s, got %s", 
+		return fmt.Errorf("log format must be one of: %s, got %s",
 			strings.Join(validFormats, ", "), config.Format)
 	}
-	
+
 	return nil
 }
 
@@ -141,18 +141,18 @@ func validateHTTPConfig(config *HTTPConfig) error {
 	if config.ClientTimeout <= 0 {
 		return fmt.Errorf("client timeout must be positive, got %v", config.ClientTimeout)
 	}
-	
+
 	if config.DialTimeout <= 0 {
 		return fmt.Errorf("dial timeout must be positive, got %v", config.DialTimeout)
 	}
-	
+
 	if config.TLSHandshakeTimeout <= 0 {
 		return fmt.Errorf("TLS handshake timeout must be positive, got %v", config.TLSHandshakeTimeout)
 	}
-	
+
 	if config.IdleConnTimeout <= 0 {
 		return fmt.Errorf("idle connection timeout must be positive, got %v", config.IdleConnTimeout)
 	}
-	
+
 	return nil
 }
