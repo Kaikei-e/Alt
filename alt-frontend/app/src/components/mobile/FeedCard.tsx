@@ -4,6 +4,7 @@ import Link from "next/link";
 import { feedsApi } from "@/lib/api";
 import { useState, useCallback, memo, KeyboardEvent } from "react";
 import { FeedDetails } from "./FeedDetails";
+import { truncateFeedDescription } from "@/lib/utils/textUtils";
 
 type FeedCardProps = {
   feed: Feed;
@@ -49,10 +50,7 @@ const FeedCard = memo(function FeedCard({
   }
 
   // Truncate description for better UX
-  const truncatedDescription =
-    feed.description.length > 200
-      ? feed.description.substring(0, 200) + "..."
-      : feed.description;
+  const truncatedDescription = truncateFeedDescription(feed.description);
 
   return (
     // Gradient border container with hover effects

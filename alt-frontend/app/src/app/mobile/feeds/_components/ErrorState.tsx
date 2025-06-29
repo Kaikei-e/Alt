@@ -2,7 +2,7 @@ import { Flex, Text, Button, Box } from "@chakra-ui/react";
 import { useCallback, useState, useRef } from "react";
 
 type ErrorStateProps = {
-  error: string | null;
+  error: Error | null;
   onRetry: () => void;
   isLoading: boolean;
 };
@@ -17,45 +17,46 @@ export default function ErrorState({
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Enhanced error message mapping
-  const getErrorMessage = (error: string | null) => {
+  const getErrorMessage = (error: Error | null) => {
     if (!error) return "An unexpected error occurred";
 
     // Check for status codes in error messages (format: "API request failed: 429 Too Many Requests")
+    const errorMessage = error.message || String(error);
     if (
-      error.includes("429") ||
-      error.toLowerCase().includes("rate limit") ||
-      error.toLowerCase().includes("too many requests")
+      errorMessage.includes("429") ||
+      errorMessage.toLowerCase().includes("rate limit") ||
+      errorMessage.toLowerCase().includes("too many requests")
     ) {
       return "Rate limit exceeded";
     }
     if (
-      error.includes("500") ||
-      error.toLowerCase().includes("server error") ||
-      error.toLowerCase().includes("internal server error")
+      errorMessage.includes("500") ||
+      errorMessage.toLowerCase().includes("server error") ||
+      errorMessage.toLowerCase().includes("internal server error")
     ) {
       return "Server error - please try again later";
     }
     if (
-      error.includes("503") ||
-      error.toLowerCase().includes("service unavailable")
+      errorMessage.includes("503") ||
+      errorMessage.toLowerCase().includes("service unavailable")
     ) {
       return "Service temporarily unavailable";
     }
-    if (error.includes("502") || error.toLowerCase().includes("bad gateway")) {
+    if (errorMessage.includes("502") || errorMessage.toLowerCase().includes("bad gateway")) {
       return "Service temporarily unavailable";
     }
     if (
-      error.toLowerCase().includes("network") ||
-      error.toLowerCase().includes("fetch") ||
-      error.toLowerCase().includes("connection")
+      errorMessage.toLowerCase().includes("network") ||
+      errorMessage.toLowerCase().includes("fetch") ||
+      errorMessage.toLowerCase().includes("connection")
     ) {
       return "Network connection error";
     }
-    if (error.toLowerCase().includes("timeout") || error.includes("408")) {
+    if (errorMessage.toLowerCase().includes("timeout") || errorMessage.includes("408")) {
       return "Request timeout - please try again";
     }
 
-    return error;
+    return errorMessage;
   };
 
   // Exponential backoff retry logic with automatic retries

@@ -34,7 +34,7 @@ export default function FeedsPage() {
 
   // Memoize visible feeds to prevent unnecessary recalculations
   const visibleFeeds = useMemo(
-    () => feeds.filter((feed) => !readFeeds.has(feed.link)),
+    () => feeds?.filter((feed) => !readFeeds.has(feed.link)) || [],
     [feeds, readFeeds],
   );
 
@@ -78,7 +78,7 @@ export default function FeedsPage() {
     }
   }, [hasMore, isLoading, loadMore]);
 
-  useInfiniteScroll(handleLoadMore, sentinelRef, feeds.length, {
+  useInfiniteScroll(handleLoadMore, sentinelRef, feeds?.length || 0, {
     throttleDelay: 200, // Increased throttle for better stability
     rootMargin: "100px 0px", // Trigger loading a bit earlier
     threshold: 0.1,

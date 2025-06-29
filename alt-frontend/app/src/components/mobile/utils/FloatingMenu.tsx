@@ -10,12 +10,14 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState, useCallback, useEffect } from "react";
 import { FaBars, FaTimes } from "react-icons/fa";
 
 export const FloatingMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isPrefetched, setIsPrefetched] = useState(false);
+  const pathname = usePathname();
 
   const handleOpenMenu = useCallback(() => {
     setIsOpen(true);
@@ -65,6 +67,10 @@ export const FloatingMenu = () => {
       href: "/mobile/feeds",
     },
     {
+      label: "Read Feeds",
+      href: "/mobile/feeds/read",
+    },
+    {
       label: "Register Feed",
       href: "/mobile/feeds/register",
     },
@@ -90,6 +96,11 @@ export const FloatingMenu = () => {
   const handleNavigate = useCallback(() => {
     handleCloseMenu();
   }, [handleCloseMenu]);
+
+  // Helper to check if a menu item is active
+  const isActiveMenuItem = useCallback((href: string): boolean => {
+    return pathname === href;
+  }, [pathname]);
 
   return (
     <>
@@ -190,44 +201,48 @@ export const FloatingMenu = () => {
                 maxHeight="300px"
                 overflowY="auto"
               >
-                {menuItems.map((item, index) => (
-                  <Link
-                    key={index}
-                    href={item.href}
-                    style={{ textDecoration: "none" }}
-                    onClick={handleNavigate}
-                  >
-                    <Box
-                      width="full"
-                      bg="rgba(255, 255, 255, 0.05)"
-                      borderRadius="md"
-                      border="1px solid rgba(255, 255, 255, 0.08)"
-                      textAlign="center"
-                      transition="all 0.15s ease" // Faster transition
-                      minH="44px" // Ensure minimum touch target size for accessibility
-                      display="flex"
-                      alignItems="center"
-                      justifyContent="center"
-                      _hover={{
-                        bg: "rgba(255, 255, 255, 0.1)",
-                        borderColor: "#ff006e",
-                        transform: "translateY(-1px)",
-                      }}
-                      _active={{
-                        transform: "translateY(0px)",
-                      }}
+                {menuItems.map((item, index) => {
+                  const isActive = isActiveMenuItem(item.href);
+                  return (
+                    <Link
+                      key={index}
+                      href={item.href}
+                      style={{ textDecoration: "none" }}
+                      onClick={handleNavigate}
                     >
-                      <Text
-                        color="white"
-                        fontWeight="medium"
-                        fontSize="sm"
-                        lineHeight="1.2"
+                      <Box
+                        width="full"
+                        bg={isActive ? "rgba(255, 0, 110, 0.15)" : "rgba(255, 255, 255, 0.05)"}
+                        borderRadius="md"
+                        border={`1px solid ${isActive ? "#ff006e" : "rgba(255, 255, 255, 0.08)"}`}
+                        textAlign="center"
+                        transition="all 0.15s ease"
+                        minH="44px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        _hover={{
+                          bg: isActive ? "rgba(255, 0, 110, 0.25)" : "rgba(255, 255, 255, 0.1)",
+                          borderColor: "#ff006e",
+                          transform: "translateY(-1px)",
+                        }}
+                        _active={{
+                          transform: "translateY(0px)",
+                        }}
+                        position="relative"
                       >
-                        {item.label}
-                      </Text>
-                    </Box>
-                  </Link>
-                ))}
+                        <Text
+                          color={isActive ? "#ff006e" : "white"}
+                          fontWeight={isActive ? "bold" : "medium"}
+                          fontSize="sm"
+                          lineHeight="1.2"
+                        >
+                          {item.label}
+                        </Text>
+                      </Box>
+                    </Link>
+                  );
+                })}
               </VStack>
             </Box>
           </Box>

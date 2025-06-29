@@ -13,16 +13,13 @@ import {
   CacheConfig,
   defaultCacheConfig,
 } from "@/lib/config";
+import { 
+  CursorResponse,
+  MessageResponse
+} from "@/schema/common";
 
-export type ApiResponse<T> = {
-  data: T;
-};
-
-export type ApiError = {
-  message: string;
-  status?: number;
-  code?: string;
-};
+// Re-export types for external use
+export type { CursorResponse } from "@/schema/common";
 
 export class ApiClientError extends Error {
   public readonly status?: number;
@@ -43,9 +40,7 @@ interface CacheEntry<T> {
   ttl: number;
 }
 
-interface message {
-  message: string;
-}
+// Remove duplicate message interface - use MessageResponse from common
 
 class ApiClient {
   private config: ApiConfig;
@@ -257,29 +252,28 @@ class ApiClient {
 
 export const apiClient = new ApiClient();
 
-// Transform function to reduce data processing overhead
-const transformFeedItem = (item: BackendFeedItem): Feed => ({
-  id: item.link || "",
-  title: item.title || "",
-  description: item.description || "",
-  link: item.link || "",
-  published: item.published || "",
-});
+// Generic cursor-based API factory function
+type CursorFetchFunction<T> = (
+  cursor?: string,
+  limit?: number
+) => Promise<CursorResponse<T>>;
 
-export type CursorResponse<T> = {
-  data: T[];
-  next_cursor: string | null;
-};
-
-export const feedsApi = {
-  async checkHealth(): Promise<{ status: string }> {
-    return apiClient.get("/v1/health", 1); // Short cache for health checks
-  },
-
-  async getFeedsWithCursor(
+/**
+ * Creates a standardized cursor-based API function
+ * @param endpoint - API endpoint path
+ * @param transformer - Function to transform backend data to frontend format
+ * @param defaultCacheTtl - Default cache TTL in minutes
+ * @returns Cursor-based fetch function
+ */
+function createCursorApi<BackendType, FrontendType>(
+  endpoint: string,
+  transformer: (item: BackendType) => FrontendType,
+  defaultCacheTtl: number = 10
+): CursorFetchFunction<FrontendType> {
+  return async (
     cursor?: string,
-    limit: number = 20,
-  ): Promise<CursorResponse<Feed>> {
+    limit: number = 20
+  ): Promise<CursorResponse<FrontendType>> => {
     // Validate limit constraints
     if (limit < 1 || limit > 100) {
       throw new Error("Limit must be between 1 and 100");
@@ -291,21 +285,44 @@ export const feedsApi = {
       params.set("cursor", cursor);
     }
 
-    // Use different cache TTL based on whether it's first page or not
-    const cacheTtl = cursor ? 15 : 5; // 15 min for subsequent pages, 5 min for first page
-    const response = await apiClient.get<CursorResponse<BackendFeedItem>>(
-      `/v1/feeds/fetch/cursor?${params.toString()}`,
-      cacheTtl,
+    // Use different cache TTL based on context
+    const cacheTtl = cursor ? defaultCacheTtl + 5 : defaultCacheTtl;
+    const response = await apiClient.get<CursorResponse<BackendType>>(
+      `${endpoint}?${params.toString()}`,
+      cacheTtl
     );
 
-    // Transform backend feed items to frontend format
-    const transformedData = response.data.map(transformFeedItem);
+    // Transform backend items to frontend format
+    const transformedData = response.data.map(transformer);
 
     return {
       data: transformedData,
       next_cursor: response.next_cursor,
     };
+  };
+}
+
+// Transform function to reduce data processing overhead
+const transformFeedItem = (item: BackendFeedItem): Feed => ({
+  id: item.link || "",
+  title: item.title || "",
+  description: item.description || "",
+  link: item.link || "",
+  published: item.published || "",
+});
+
+// Remove duplicate CursorResponse - use from common
+
+export const feedsApi = {
+  async checkHealth(): Promise<{ status: string }> {
+    return apiClient.get("/v1/health", 1); // Short cache for health checks
   },
+
+  getFeedsWithCursor: createCursorApi(
+    "/v1/feeds/fetch/cursor",
+    transformFeedItem,
+    5 // 5 minute cache for regular feeds
+  ),
 
   async getFeeds(page: number = 1, pageSize: number = 10): Promise<Feed[]> {
     const limit = page * pageSize;
@@ -351,11 +368,11 @@ export const feedsApi = {
     return apiClient.get("/v1/feeds/fetch/single", 5);
   },
 
-  async registerRssFeed(url: string): Promise<message> {
+  async registerRssFeed(url: string): Promise<MessageResponse> {
     return apiClient.post("/v1/rss-feed-link/register", { url });
   },
 
-  async updateFeedReadStatus(url: string): Promise<message> {
+  async updateFeedReadStatus(url: string): Promise<MessageResponse> {
     return apiClient.post("/v1/feeds/read", { feed_url: url });
   },
 
@@ -401,6 +418,19 @@ export const feedsApi = {
 
   async getFeedStats(): Promise<FeedStatsSummary> {
     return apiClient.get<FeedStatsSummary>("/v1/feeds/stats", 5); // 5 minute cache for stats
+  },
+
+  getReadFeedsWithCursor: createCursorApi(
+    "/v1/feeds/fetch/read/cursor",
+    transformFeedItem,
+    10 // 10 minute cache for read feeds
+  ),
+
+  async prefetchReadFeeds(cursors: string[]): Promise<void> {
+    const prefetchPromises = cursors.map((cursor) =>
+      this.getReadFeedsWithCursor(cursor).catch(() => {})
+    );
+    await Promise.all(prefetchPromises);
   },
 
   // Clear cache method

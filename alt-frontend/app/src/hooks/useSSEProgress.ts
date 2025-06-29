@@ -102,6 +102,7 @@ export const useSSEProgress = (intervalMs: number = 5000) => {
       isMountedRef.current = false;
       clearTimer();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Intentionally omitting clearTimer/startTimer to avoid re-creation loops
   }, [intervalMs]); // 🔧 FIX: Only depend on intervalMs to prevent excessive re-runs
 
   // Cleanup on unmount
