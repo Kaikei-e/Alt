@@ -11,7 +11,7 @@ type PaginationValidator struct{}
 
 func (v *PaginationValidator) Validate(ctx context.Context, value interface{}) ValidationResult {
 	result := ValidationResult{Valid: true}
-	
+
 	// Check if input is a map (query parameters)
 	inputMap, ok := value.(map[string]interface{})
 	if !ok {
@@ -22,7 +22,7 @@ func (v *PaginationValidator) Validate(ctx context.Context, value interface{}) V
 		})
 		return result
 	}
-	
+
 	// Validate limit parameter if present
 	if limitField, exists := inputMap["limit"]; exists {
 		if err := v.validateLimit(limitField); err != nil {
@@ -30,7 +30,7 @@ func (v *PaginationValidator) Validate(ctx context.Context, value interface{}) V
 			result.Errors = append(result.Errors, *err)
 		}
 	}
-	
+
 	// Validate page parameter if present
 	if pageField, exists := inputMap["page"]; exists {
 		if err := v.validatePage(pageField); err != nil {
@@ -38,7 +38,7 @@ func (v *PaginationValidator) Validate(ctx context.Context, value interface{}) V
 			result.Errors = append(result.Errors, *err)
 		}
 	}
-	
+
 	// Validate cursor parameter if present
 	if cursorField, exists := inputMap["cursor"]; exists {
 		if err := v.validateCursor(cursorField); err != nil {
@@ -46,7 +46,7 @@ func (v *PaginationValidator) Validate(ctx context.Context, value interface{}) V
 			result.Errors = append(result.Errors, *err)
 		}
 	}
-	
+
 	return result
 }
 
@@ -59,7 +59,7 @@ func (v *PaginationValidator) validateLimit(limitField interface{}) *ValidationE
 			Message: "Limit parameter must be a string",
 		}
 	}
-	
+
 	// Parse limit as integer
 	limit, err := strconv.Atoi(strings.TrimSpace(limitStr))
 	if err != nil {
@@ -69,7 +69,7 @@ func (v *PaginationValidator) validateLimit(limitField interface{}) *ValidationE
 			Value:   limitStr,
 		}
 	}
-	
+
 	// Check if limit is positive
 	if limit <= 0 {
 		return &ValidationError{
@@ -78,7 +78,7 @@ func (v *PaginationValidator) validateLimit(limitField interface{}) *ValidationE
 			Value:   limitStr,
 		}
 	}
-	
+
 	// Check if limit is not too large
 	if limit > 1000 {
 		return &ValidationError{
@@ -87,7 +87,7 @@ func (v *PaginationValidator) validateLimit(limitField interface{}) *ValidationE
 			Value:   limitStr,
 		}
 	}
-	
+
 	return nil
 }
 
@@ -100,7 +100,7 @@ func (v *PaginationValidator) validatePage(pageField interface{}) *ValidationErr
 			Message: "Page parameter must be a string",
 		}
 	}
-	
+
 	// Parse page as integer
 	page, err := strconv.Atoi(strings.TrimSpace(pageStr))
 	if err != nil {
@@ -110,7 +110,7 @@ func (v *PaginationValidator) validatePage(pageField interface{}) *ValidationErr
 			Value:   pageStr,
 		}
 	}
-	
+
 	// Check if page is non-negative
 	if page < 0 {
 		return &ValidationError{
@@ -119,7 +119,7 @@ func (v *PaginationValidator) validatePage(pageField interface{}) *ValidationErr
 			Value:   pageStr,
 		}
 	}
-	
+
 	return nil
 }
 
@@ -132,12 +132,12 @@ func (v *PaginationValidator) validateCursor(cursorField interface{}) *Validatio
 			Message: "Cursor parameter must be a string",
 		}
 	}
-	
+
 	// Check if cursor is empty (empty is valid - means start from beginning)
 	if strings.TrimSpace(cursorStr) == "" {
 		return nil
 	}
-	
+
 	// Validate cursor as RFC3339 timestamp
 	_, err := time.Parse(time.RFC3339, cursorStr)
 	if err != nil {
@@ -147,6 +147,6 @@ func (v *PaginationValidator) validateCursor(cursorField interface{}) *Validatio
 			Value:   cursorStr,
 		}
 	}
-	
+
 	return nil
 }
