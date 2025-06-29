@@ -94,8 +94,9 @@ func (r *RateLimiter) Wait() {
 
 	elapsed := time.Since(r.lastRequest)
 
-	// Add jitter (±20% of interval) to reduce thundering herd
-	jitter := time.Duration(rand.Float64()*0.4-0.2) * r.interval
+	// Add jitter up to +20% of the interval to reduce thundering herd
+	// Jitter should never shorten the wait below the base interval
+	jitter := time.Duration(rand.Float64()*0.2) * r.interval
 	waitTime := r.interval + jitter
 
 	if elapsed < waitTime {
