@@ -86,9 +86,9 @@ Helper applications are built with different architectures for specific purposes
 ### Test-Driven Development (TDD)
 
 **CRITICAL: Follow the Red-Green-Refactor cycle:**
-1. **Red:** Write a failing test first
-2. **Green:** Write minimal code to pass the test
-3. **Refactor:** Improve code quality while keeping tests green
+1. **Red:** Write a failing test first. You write the interface or the function signature first that you want to test. And then you write the test.
+2. **Green:** Write minimal code to pass the test. You write the code that passes the test.
+3. **Refactor:** Improve code quality while keeping tests green. You refactor the code to make it more readable and maintainable.
 
 **Testing Strategy:**
 - Test only usecase and gateway layers
