@@ -14,7 +14,7 @@ import (
 func TestSearchFeedMeilisearchGateway_SearchFeeds(t *testing.T) {
 	// Initialize logger to prevent nil pointer issues
 	logger.InitLogger()
-	
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 

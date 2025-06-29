@@ -16,17 +16,17 @@ import (
 
 func TestRequestIDMiddleware(t *testing.T) {
 	tests := []struct {
-		name           string
+		name            string
 		requestIDHeader string
 		expectGenerated bool
 	}{
 		{
-			name:           "generates request ID when none provided",
+			name:            "generates request ID when none provided",
 			requestIDHeader: "",
 			expectGenerated: true,
 		},
 		{
-			name:           "uses provided request ID",
+			name:            "uses provided request ID",
 			requestIDHeader: "existing-request-123",
 			expectGenerated: false,
 		},
@@ -105,7 +105,7 @@ func TestRequestIDMiddleware_Integration(t *testing.T) {
 	assert.NotEmpty(t, responseRequestID)
 	assert.NotEmpty(t, requestIDFromContext)
 	assert.Equal(t, responseRequestID, requestIDFromContext)
-	
+
 	// Verify it's a valid UUID format (36 characters with dashes)
 	assert.Len(t, responseRequestID, 36)
 	assert.Contains(t, responseRequestID, "-")

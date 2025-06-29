@@ -35,7 +35,7 @@ type ErrorHandlerPort interface {
 	CreateRateLimitError(message string, cause error, context map[string]interface{}) AppError
 	CreateExternalAPIError(message string, cause error, context map[string]interface{}) AppError
 	CreateTimeoutError(message string, cause error, context map[string]interface{}) AppError
-	
+
 	// Error logging and handling
 	LogError(ctx context.Context, logger *slog.Logger, err error, operation string)
 	HandleError(ctx context.Context, err error, operation string) error

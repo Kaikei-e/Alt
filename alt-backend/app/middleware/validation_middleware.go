@@ -17,7 +17,7 @@ func ValidationMiddleware() echo.MiddlewareFunc {
 			if err := validateRoute(c); err != nil {
 				return err
 			}
-			
+
 			return next(c)
 		}
 	}
@@ -26,7 +26,7 @@ func ValidationMiddleware() echo.MiddlewareFunc {
 func validateRoute(c echo.Context) error {
 	path := c.Request().URL.Path
 	method := c.Request().Method
-	
+
 	switch {
 	case method == "POST" && strings.Contains(path, "/rss-feed-link/register"):
 		return validateFeedRegistration(c)
@@ -54,10 +54,10 @@ func validateFeedRegistration(c echo.Context) error {
 			"message": "Failed to read request body",
 		})
 	}
-	
+
 	// Reset body for further processing
 	c.Request().Body = io.NopCloser(strings.NewReader(string(body)))
-	
+
 	var requestData map[string]interface{}
 	if err := json.Unmarshal(body, &requestData); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
@@ -65,10 +65,10 @@ func validateFeedRegistration(c echo.Context) error {
 			"message": "Invalid JSON format",
 		})
 	}
-	
+
 	validator := &validation.FeedRegistrationValidator{}
 	result := validator.Validate(c.Request().Context(), requestData)
-	
+
 	if !result.Valid {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
 			"error":   "validation_failed",
@@ -76,7 +76,7 @@ func validateFeedRegistration(c echo.Context) error {
 			"details": result.Errors,
 		})
 	}
-	
+
 	return nil
 }
 
@@ -89,10 +89,10 @@ func validateFeedSearch(c echo.Context) error {
 			"message": "Failed to read request body",
 		})
 	}
-	
+
 	// Reset body for further processing
 	c.Request().Body = io.NopCloser(strings.NewReader(string(body)))
-	
+
 	var requestData map[string]interface{}
 	if err := json.Unmarshal(body, &requestData); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
@@ -100,10 +100,10 @@ func validateFeedSearch(c echo.Context) error {
 			"message": "Invalid JSON format",
 		})
 	}
-	
+
 	validator := &validation.SearchQueryValidator{}
 	result := validator.Validate(c.Request().Context(), requestData)
-	
+
 	if !result.Valid {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
 			"error":   "validation_failed",
@@ -111,7 +111,7 @@ func validateFeedSearch(c echo.Context) error {
 			"details": result.Errors,
 		})
 	}
-	
+
 	return nil
 }
 
@@ -124,10 +124,10 @@ func validateFeedDetails(c echo.Context) error {
 			"message": "Failed to read request body",
 		})
 	}
-	
+
 	// Reset body for further processing
 	c.Request().Body = io.NopCloser(strings.NewReader(string(body)))
-	
+
 	var requestData map[string]interface{}
 	if err := json.Unmarshal(body, &requestData); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
@@ -135,10 +135,10 @@ func validateFeedDetails(c echo.Context) error {
 			"message": "Invalid JSON format",
 		})
 	}
-	
+
 	validator := &validation.FeedDetailValidator{}
 	result := validator.Validate(c.Request().Context(), requestData)
-	
+
 	if !result.Valid {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
 			"error":   "validation_failed",
@@ -146,7 +146,7 @@ func validateFeedDetails(c echo.Context) error {
 			"details": result.Errors,
 		})
 	}
-	
+
 	return nil
 }
 
@@ -158,10 +158,10 @@ func validateArticleSearch(c echo.Context) error {
 			queryParams[key] = values[0]
 		}
 	}
-	
+
 	validator := &validation.ArticleSearchValidator{}
 	result := validator.Validate(c.Request().Context(), queryParams)
-	
+
 	if !result.Valid {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
 			"error":   "validation_failed",
@@ -169,7 +169,7 @@ func validateArticleSearch(c echo.Context) error {
 			"details": result.Errors,
 		})
 	}
-	
+
 	return nil
 }
 
@@ -181,10 +181,10 @@ func validatePagination(c echo.Context) error {
 			queryParams[key] = values[0]
 		}
 	}
-	
+
 	validator := &validation.PaginationValidator{}
 	result := validator.Validate(c.Request().Context(), queryParams)
-	
+
 	if !result.Valid {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
 			"error":   "validation_failed",
@@ -192,6 +192,6 @@ func validatePagination(c echo.Context) error {
 			"details": result.Errors,
 		})
 	}
-	
+
 	return nil
 }

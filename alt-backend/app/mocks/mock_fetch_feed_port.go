@@ -155,3 +155,18 @@ func (mr *MockFetchFeedsPortMockRecorder) FetchFeedsListPage(ctx, page any) *gom
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsListPage", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchFeedsListPage), ctx, page)
 }
+
+// FetchReadFeedsListCursor mocks base method.
+func (m *MockFetchFeedsPort) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchReadFeedsListCursor", ctx, cursor, limit)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchReadFeedsListCursor indicates an expected call of FetchReadFeedsListCursor.
+func (mr *MockFetchFeedsPortMockRecorder) FetchReadFeedsListCursor(ctx, cursor, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchReadFeedsListCursor", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchReadFeedsListCursor), ctx, cursor, limit)
+}

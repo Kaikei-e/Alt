@@ -9,4 +9,3 @@ import (
 type FetchFeedDetailsPort interface {
 	FetchFeedDetails(ctx context.Context, feedURL *url.URL) (*domain.FeedSummary, error)
 }
-	

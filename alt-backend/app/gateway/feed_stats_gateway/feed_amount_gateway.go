@@ -28,7 +28,7 @@ func (g *FeedAmountGateway) Execute(ctx context.Context) (int, error) {
 		errors.LogError(logger.Logger, dbErr, "database_connection_check")
 		return 0, dbErr
 	}
-	
+
 	count, err := g.altDBRepository.FetchFeedAmount(ctx)
 	if err != nil {
 		dbErr := errors.DatabaseError("failed to fetch feed amount", err, map[string]interface{}{
@@ -38,6 +38,6 @@ func (g *FeedAmountGateway) Execute(ctx context.Context) (int, error) {
 		errors.LogError(logger.Logger, dbErr, "fetch_feed_amount")
 		return 0, dbErr
 	}
-	
+
 	return count, nil
 }

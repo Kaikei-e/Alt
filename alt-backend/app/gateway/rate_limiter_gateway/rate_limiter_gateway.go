@@ -25,7 +25,7 @@ func (r *RateLimiterGateway) WaitForHost(ctx context.Context, host string) error
 	if host == "" {
 		return &url.Error{Op: "validate", URL: host, Err: fmt.Errorf("host cannot be empty")}
 	}
-	
+
 	// Create a mock URL to use the existing WaitForHost method
 	mockURL := "https://" + host
 	return r.hostLimiter.WaitForHost(ctx, mockURL)

@@ -49,11 +49,11 @@ func TestTotalArticlesCountGateway_Execute_Success(t *testing.T) {
 	logger.InitLogger()
 
 	tests := []struct {
-		name           string
-		mockCount      int
-		mockError      error
-		expectedCount  int
-		expectedError  bool
+		name          string
+		mockCount     int
+		mockError     error
+		expectedCount int
+		expectedError bool
 	}{
 		{
 			name:          "successful count retrieval",

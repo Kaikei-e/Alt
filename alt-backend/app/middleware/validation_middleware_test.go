@@ -79,7 +79,7 @@ func TestValidationMiddleware_FeedRegistration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := echo.New()
-			
+
 			nextCalled := false
 			next := func(c echo.Context) error {
 				nextCalled = true
@@ -170,7 +170,7 @@ func TestValidationMiddleware_FeedSearch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := echo.New()
-			
+
 			nextCalled := false
 			next := func(c echo.Context) error {
 				nextCalled = true
@@ -255,7 +255,7 @@ func TestValidationMiddleware_ArticleSearch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := echo.New()
-			
+
 			nextCalled := false
 			next := func(c echo.Context) error {
 				nextCalled = true
@@ -352,7 +352,7 @@ func TestValidationMiddleware_Pagination(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := echo.New()
-			
+
 			nextCalled := false
 			next := func(c echo.Context) error {
 				nextCalled = true

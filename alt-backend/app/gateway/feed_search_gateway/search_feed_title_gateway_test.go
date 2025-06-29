@@ -160,7 +160,7 @@ func TestNewSearchByTitleGateway(t *testing.T) {
 	gateway := &SearchByTitleGateway{
 		alt_db: alt_db.NewAltDBRepository(mock),
 	}
-	
+
 	// Gateway should be properly initialized
 	if gateway.alt_db == nil {
 		t.Error("SearchByTitleGateway alt_db should be initialized")
@@ -227,7 +227,7 @@ func TestSearchByTitleGateway_EmptyResultHandling(t *testing.T) {
 			// Setup mock to return empty results
 			rows := pgxmock.NewRows([]string{"title", "link", "description", "pub_date", "created_at"})
 			mock.ExpectQuery(`SELECT title, link, description, pub_date, created_at FROM feeds WHERE title ILIKE \$1 ORDER BY created_at DESC LIMIT 20`).
-				WithArgs("%"+query+"%").
+				WithArgs("%" + query + "%").
 				WillReturnRows(rows)
 
 			// Create gateway
