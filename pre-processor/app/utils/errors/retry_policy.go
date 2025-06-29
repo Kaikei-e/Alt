@@ -5,8 +5,9 @@ package errors
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"time"
+
+	"pre-processor/app/utils"
 )
 
 // RetryPolicy defines the retry behavior for failed operations
@@ -61,7 +62,7 @@ func (rp *RetryPolicy) CalculateDelay(attempt int) time.Duration {
 	if rp.Jitter {
 		// Add random jitter between 50% and 100% of calculated delay
 		jitterRange := float64(delay) * 0.5
-		jitter := rand.Float64() * jitterRange
+		jitter := utils.SecureRandomFloat64() * jitterRange
 		delay = time.Duration(float64(delay)*0.5 + jitter)
 	}
 

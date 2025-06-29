@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"math/rand"
 	"net"
 	"net/http"
 	"sync"
@@ -95,7 +94,8 @@ func (r *RateLimiter) Wait() {
 	elapsed := time.Since(r.lastRequest)
 
 	// Add jitter (±20% of interval) to reduce thundering herd
-	jitter := time.Duration(rand.Float64()*0.4-0.2) * r.interval
+	j := SecureRandomFloat64()*0.4 - 0.2
+	jitter := time.Duration(j * float64(r.interval))
 	waitTime := r.interval + jitter
 
 	if elapsed < waitTime {
@@ -161,7 +161,7 @@ func (c *RateLimitedHTTPClient) GetWithRetry(ctx context.Context, url string) (*
 		if attempt > 0 {
 			// Exponential backoff with jitter
 			backoff := time.Duration(math.Pow(2, float64(attempt-1))) * time.Second
-			jitter := time.Duration(rand.Float64() * float64(backoff) * 0.1)
+			jitter := time.Duration(SecureRandomFloat64() * float64(backoff) * 0.1)
 
 			select {
 			case <-time.After(backoff + jitter):
@@ -176,7 +176,9 @@ func (c *RateLimitedHTTPClient) GetWithRetry(ctx context.Context, url string) (*
 		}
 
 		if resp != nil {
-			resp.Body.Close()
+			if errClose := resp.Body.Close(); errClose != nil {
+				c.logger.Error("failed to close response body", "error", errClose)
+			}
 		}
 
 		c.logger.Warn("request failed, retrying",
