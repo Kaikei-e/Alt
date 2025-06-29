@@ -100,10 +100,10 @@ time.Sleep(5 * time.Second) // Minimum interval between API calls
 ## Test-Driven Development (TDD)
 
 ### Critical TDD Rules
-1. **Red-Green-Refactor Cycle:** Always write failing test first
+1. **Red-Green-Refactor Cycle:** Always write failing test first. If you are not sure about the test, use `think` or `ultrathink` to think about the test. Test must fail with assert.Error(t, err) or assert.Equal(t, expected, actual)
 2. **Test Only:** Usecase and Gateway layers (Driver tests optional)
-3. **Mock Dependencies:** Use `gomock` for external dependencies
-4. **Coverage Goal:** >80% for tested layers
+3. **Mock Dependencies:** Use `gomock` by Uber for external dependencies and use Makefile with make generate-mocks to generate mocks
+4. **Coverage Goal:** >80% for tested layers(Usecase and Gateway layers)
 
 ### TDD Workflow
 ```go
@@ -112,6 +112,7 @@ func TestCreateFeed_Success(t *testing.T) {
     // Setup test data and mocks
     // Call method that doesn't exist yet
     // Assert expected behavior
+    // Always fail with assert.Error(t, err) or assert.Equal(t, expected, actual)
 }
 
 // 2. GREEN: Minimal implementation to pass
