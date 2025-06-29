@@ -5,6 +5,7 @@ package middleware
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -36,6 +37,9 @@ func RequestIDMiddleware() echo.MiddlewareFunc {
 
 func generateRequestID() string {
 	bytes := make([]byte, 8)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		// In the unlikely event of failure, fallback to timestamp based ID
+		return hex.EncodeToString([]byte(time.Now().Format("150405.000000")))
+	}
 	return hex.EncodeToString(bytes)
 }

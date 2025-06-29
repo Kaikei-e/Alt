@@ -4,8 +4,9 @@ package errors
 
 import (
 	"context"
+	crand "crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"time"
 )
 
@@ -61,7 +62,7 @@ func (rp *RetryPolicy) CalculateDelay(attempt int) time.Duration {
 	if rp.Jitter {
 		// Add random jitter between 50% and 100% of calculated delay
 		jitterRange := float64(delay) * 0.5
-		jitter := rand.Float64() * jitterRange
+		jitter := randomFraction(jitterRange)
 		delay = time.Duration(float64(delay)*0.5 + jitter)
 	}
 
@@ -146,4 +147,16 @@ func (rp *RetryPolicy) WithMultiplier(multiplier float64) *RetryPolicy {
 	newPolicy := *rp
 	newPolicy.Multiplier = multiplier
 	return &newPolicy
+}
+
+// randomFraction returns a random float64 in the range [0, max). It uses
+// crypto/rand to comply with security guidelines. If the random generation
+// fails, the function returns 0.
+func randomFraction(max float64) float64 {
+	const precision = 1_000_000
+	n, err := crand.Int(crand.Reader, big.NewInt(precision))
+	if err != nil {
+		return 0
+	}
+	return (float64(n.Int64()) / precision) * max
 }

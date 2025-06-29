@@ -4,10 +4,11 @@ package utils
 
 import (
 	"context"
+	crand "crypto/rand"
 	"fmt"
 	"log/slog"
 	"math"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/http"
 	"sync"
@@ -87,6 +88,17 @@ func NewRateLimiter(interval time.Duration) *RateLimiter {
 	}
 }
 
+// randomFraction returns a random float64 in the range [0, max). It uses
+// crypto/rand to avoid gosec G404 warnings. If randomness fails, 0 is returned.
+func randomFraction(max float64) float64 {
+	const precision = 1_000_000
+	n, err := crand.Int(crand.Reader, big.NewInt(precision))
+	if err != nil {
+		return 0
+	}
+	return (float64(n.Int64()) / precision) * max
+}
+
 // Wait waits for the rate limit interval with jitter
 func (r *RateLimiter) Wait() {
 	r.mu.Lock()
@@ -94,8 +106,9 @@ func (r *RateLimiter) Wait() {
 
 	elapsed := time.Since(r.lastRequest)
 
-	// Add jitter (±20% of interval) to reduce thundering herd
-	jitter := time.Duration(rand.Float64()*0.4-0.2) * r.interval
+	// Add jitter up to +20% of the interval to reduce thundering herd
+	// Jitter should never shorten the wait below the base interval
+	jitter := time.Duration(randomFraction(0.2) * float64(r.interval))
 	waitTime := r.interval + jitter
 
 	if elapsed < waitTime {
@@ -161,7 +174,7 @@ func (c *RateLimitedHTTPClient) GetWithRetry(ctx context.Context, url string) (*
 		if attempt > 0 {
 			// Exponential backoff with jitter
 			backoff := time.Duration(math.Pow(2, float64(attempt-1))) * time.Second
-			jitter := time.Duration(rand.Float64() * float64(backoff) * 0.1)
+			jitter := time.Duration(randomFraction(0.1) * float64(backoff))
 
 			select {
 			case <-time.After(backoff + jitter):
@@ -176,7 +189,9 @@ func (c *RateLimitedHTTPClient) GetWithRetry(ctx context.Context, url string) (*
 		}
 
 		if resp != nil {
-			resp.Body.Close()
+			if cerr := resp.Body.Close(); cerr != nil {
+				c.logger.Error("response body close failed", "error", cerr)
+			}
 		}
 
 		c.logger.Warn("request failed, retrying",
