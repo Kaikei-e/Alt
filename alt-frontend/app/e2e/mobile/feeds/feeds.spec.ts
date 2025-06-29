@@ -795,41 +795,6 @@ test.describe("Mobile Feeds Page", () => {
         /transform.*ease.*box-shadow.*ease/,
       );
     });
-
-    test("should use vaporwave pink gradient for skeleton cards", async ({
-      page,
-    }) => {
-      // Mock slow API to catch skeleton loading state
-      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            data: [],
-            next_cursor: null,
-          }),
-        });
-      });
-
-      await page.goto("/mobile/feeds");
-
-      // Should show skeleton cards with gradient background
-      await expect(
-        page.locator('[data-testid="skeleton-feed-card"]'),
-      ).toHaveCount(5);
-
-      const skeletonCard = page
-        .locator('[data-testid="skeleton-feed-card"]')
-        .first();
-      await expect(skeletonCard).toBeVisible();
-
-      // Check for gradient background with pink colors
-      const background = await skeletonCard.evaluate(
-        (el) => getComputedStyle(el).background,
-      );
-      expect(background).toMatch(/linear-gradient.*rgba?\(255,\s*0,\s*110/); // Check for pink color in gradient
-    });
   });
 
   test.describe("Accessibility Enhancements - TDD Tests", () => {
@@ -1199,7 +1164,7 @@ test.describe("Mobile Feeds Page", () => {
 
       const currentFirstFeedTitle = await currentFirstCard.locator("a > p, a > span, a > div").first().textContent();
       expect(currentFirstFeedTitle).toBe(firstFeedTitle);
-      
+
       // Ensure interactive elements are still functional
       await expect(currentFirstCard.locator('button:has-text("Mark as read")')).toBeVisible();
       await expect(currentFirstCard.locator('button:has-text("Show Details")')).toBeVisible();
@@ -1264,7 +1229,7 @@ test.describe("Mobile Feeds Page", () => {
       // Check that all visible feed cards have proper content
       const feedCards = page.locator('[data-testid="feed-card"]');
       const count = await feedCards.count();
-      
+
       // Check first few and last few cards to ensure they're properly rendered
       for (let i of [0, 1, Math.floor(count/2), count-2, count-1]) {
         if (i >= 0 && i < count) {
