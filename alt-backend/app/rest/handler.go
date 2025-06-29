@@ -245,6 +245,75 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		return c.JSON(http.StatusOK, response)
 	})
 
+	v1.GET("/feeds/fetch/read/cursor", func(c echo.Context) error {
+		// Parse query parameters - 既存パターンと同じ
+		limitStr := c.QueryParam("limit")
+		cursorStr := c.QueryParam("cursor")
+
+		// Default limit
+		limit := 20
+		if limitStr != "" {
+			parsedLimit, err := strconv.Atoi(limitStr)
+			if err != nil {
+				logger.Logger.Error("Invalid limit parameter", "error", err, "limit", limitStr)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid limit parameter"})
+			}
+			if parsedLimit > 0 && parsedLimit <= 100 {
+				limit = parsedLimit
+			} else if parsedLimit > 100 {
+				limit = 100
+			} else {
+				logger.Logger.Error("Invalid limit value", "limit", parsedLimit)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Limit must be between 1 and 100"})
+			}
+		}
+
+		// Parse cursor if provided - 既存パターンと同じ
+		var cursor *time.Time
+		if cursorStr != "" {
+			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
+			if err != nil {
+				logger.Logger.Error("Invalid cursor parameter", "error", err, "cursor", cursorStr)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
+			}
+			cursor = &parsedCursor
+		}
+
+		// キャッシング戦略 - 既読記事の特性を考慮
+		// read_statusテーブルの更新頻度：
+		// - 新規既読: ユーザーアクションによる（低頻度）
+		// - 状態変更: is_read更新のみ（フィードコンテンツは不変）
+		if cursor == nil {
+			c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15分（初回）
+		} else {
+			c.Response().Header().Set("Cache-Control", "public, max-age=3600") // 60分（他ページ）
+		}
+
+		logger.Logger.Info("Fetching read feeds with cursor", "cursor", cursor, "limit", limit)
+		feeds, err := container.FetchReadFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
+		if err != nil {
+			logger.Logger.Error("Error fetching read feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch read feeds with cursor"})
+		}
+
+		optimizedFeeds := optimizeFeedsResponse(feeds)
+
+		// レスポンス構造 - 既存パターンと同じ
+		response := map[string]interface{}{
+			"data": optimizedFeeds,
+		}
+
+		// Add next cursor if there are results
+		if len(optimizedFeeds) > 0 {
+			lastFeed := optimizedFeeds[len(optimizedFeeds)-1]
+			if lastPublished, err := time.Parse(time.RFC3339, lastFeed.Published); err == nil {
+				response["next_cursor"] = lastPublished.Format(time.RFC3339)
+			}
+		}
+
+		return c.JSON(http.StatusOK, response)
+	})
+
 	v1.POST("/feeds/read", func(c echo.Context) error {
 		var readStatus ReadStatus
 		err := c.Bind(&readStatus)

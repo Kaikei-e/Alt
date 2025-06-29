@@ -24,6 +24,7 @@ import (
 	"alt/usecase/register_feed_usecase"
 	"alt/usecase/search_feed_usecase"
 	"alt/utils/rate_limiter"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -40,6 +41,7 @@ type ApplicationComponents struct {
 	FetchSingleFeedUsecase           *fetch_feed_usecase.FetchSingleFeedUsecase
 	FetchFeedsListUsecase            *fetch_feed_usecase.FetchFeedsListUsecase
 	FetchFeedsListCursorUsecase      *fetch_feed_usecase.FetchFeedsListCursorUsecase
+	FetchReadFeedsListCursorUsecase  *fetch_feed_usecase.FetchReadFeedsListCursorUsecase
 	RegisterFeedsUsecase             *register_feed_usecase.RegisterFeedsUsecase
 	FeedsReadingStatusUsecase        *reading_status.FeedsReadingStatusUsecase
 	FeedsSummaryUsecase              *fetch_feed_details_usecase.FeedsSummaryUsecase
@@ -74,6 +76,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchSingleFeedUsecase := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGatewayImpl)
 	fetchFeedsListUsecase := fetch_feed_usecase.NewFetchFeedsListUsecase(fetchFeedsListGatewayImpl)
 	fetchFeedsListCursorUsecase := fetch_feed_usecase.NewFetchFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
+	fetchReadFeedsListCursorUsecase := fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 
 	registerFeedLinkGatewayImpl := register_feed_gateway.NewRegisterFeedLinkGateway(pool)
 	registerFeedsGatewayImpl := register_feed_gateway.NewRegisterFeedsGateway(pool)
@@ -116,6 +119,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchSingleFeedUsecase:           fetchSingleFeedUsecase,
 		FetchFeedsListUsecase:            fetchFeedsListUsecase,
 		FetchFeedsListCursorUsecase:      fetchFeedsListCursorUsecase,
+		FetchReadFeedsListCursorUsecase:  fetchReadFeedsListCursorUsecase,
 		RegisterFeedsUsecase:             registerFeedsUsecase,
 		FeedsReadingStatusUsecase:        feedsReadingStatusUsecase,
 		FeedsSummaryUsecase:              feedsSummaryUsecase,

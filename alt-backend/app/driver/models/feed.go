@@ -13,9 +13,9 @@ type Feed struct {
 }
 
 type FeedAndArticle struct {
-	FeedID    string `db:"feed_id"`
-	ArticleID string `db:"article_id"`
-	URL       string `db:"url"`
-	FeedTitle string `db:"feed_title"`
+	FeedID       string `db:"feed_id"`
+	ArticleID    string `db:"article_id"`
+	URL          string `db:"url"`
+	FeedTitle    string `db:"feed_title"`
 	ArticleTitle string `db:"article_title"`
 }

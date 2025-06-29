@@ -16,7 +16,7 @@ func TestFetchFeedsGateway_FetchFeedsListCursor_NilCheck(t *testing.T) {
 
 	ctx := context.Background()
 	cursor := time.Now().Add(-24 * time.Hour)
-	
+
 	tests := []struct {
 		name    string
 		cursor  *time.Time
