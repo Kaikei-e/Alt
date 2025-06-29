@@ -29,13 +29,13 @@ func (u *FetchFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.
 	}
 
 	logger.Logger.Info("fetching feeds with cursor", "cursor", cursor, "limit", limit)
-	
+
 	feeds, err := u.fetchFeedsListGateway.FetchFeedsListCursor(ctx, cursor, limit)
 	if err != nil {
 		logger.Logger.Error("failed to fetch feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 		return nil, err
 	}
-	
+
 	logger.Logger.Info("successfully fetched feeds with cursor", "count", len(feeds))
 	return feeds, nil
 }

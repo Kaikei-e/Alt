@@ -182,6 +182,6 @@ func ValidateURL(u *url.URL) error {
 	if u.Hostname() == "" {
 		return errors.New("URL must contain a host")
 	}
-	
+
 	return nil
 }

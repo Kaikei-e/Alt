@@ -11,12 +11,12 @@ import (
 
 // MockRSSServer provides a configurable mock RSS server for testing
 type MockRSSServer struct {
-	server      *httptest.Server
-	mu          sync.RWMutex
-	responses   map[string]MockResponse
-	requestLog  []MockRequest
-	delay       time.Duration
-	failureRate float64 // 0.0 to 1.0
+	server       *httptest.Server
+	mu           sync.RWMutex
+	responses    map[string]MockResponse
+	requestLog   []MockRequest
+	delay        time.Duration
+	failureRate  float64 // 0.0 to 1.0
 	requestCount int
 }
 
@@ -42,10 +42,10 @@ func NewMockRSSServer() *MockRSSServer {
 	}
 
 	mock.server = httptest.NewServer(http.HandlerFunc(mock.handleRequest))
-	
+
 	// Set up default responses
 	mock.setupDefaultResponses()
-	
+
 	return mock
 }
 
@@ -84,7 +84,7 @@ func (m *MockRSSServer) SetFailureRate(rate float64) {
 func (m *MockRSSServer) GetRequestLog() []MockRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	log := make([]MockRequest, len(m.requestLog))
 	copy(log, m.requestLog)
 	return log
@@ -107,7 +107,7 @@ func (m *MockRSSServer) ClearRequestLog() {
 
 func (m *MockRSSServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
-	
+
 	// Log the request
 	m.requestCount++
 	m.requestLog = append(m.requestLog, MockRequest{
@@ -116,43 +116,43 @@ func (m *MockRSSServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 		Headers:   extractHeaders(r),
 		Timestamp: time.Now(),
 	})
-	
+
 	// Check if request should fail
 	shouldFail := float64(m.requestCount%100)/100.0 < m.failureRate
-	
+
 	// Get response configuration
 	response, exists := m.responses[r.URL.Path]
 	if !exists {
 		response = m.responses["/default"]
 	}
-	
+
 	// Apply global delay
 	delay := m.delay
 	if response.Delay > 0 {
 		delay = response.Delay
 	}
-	
+
 	m.mu.Unlock()
-	
+
 	// Apply delay
 	if delay > 0 {
 		time.Sleep(delay)
 	}
-	
+
 	// Handle failure simulation
 	if shouldFail {
 		http.Error(w, "Simulated server error", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Set response headers
 	for key, value := range response.Headers {
 		w.Header().Set(key, value)
 	}
-	
+
 	// Set status code
 	w.WriteHeader(response.StatusCode)
-	
+
 	// Write response body
 	w.Write([]byte(response.Body))
 }
@@ -167,7 +167,7 @@ func (m *MockRSSServer) setupDefaultResponses() {
 			"Content-Type": "application/rss+xml",
 		},
 	}
-	
+
 	// Valid RSS feed
 	m.responses["/feed.xml"] = MockResponse{
 		StatusCode: http.StatusOK,
@@ -176,7 +176,7 @@ func (m *MockRSSServer) setupDefaultResponses() {
 			"Content-Type": "application/rss+xml",
 		},
 	}
-	
+
 	// Large RSS feed
 	largeRSS := GenerateMockRSSFeedXML(1000)
 	m.responses["/large-feed.xml"] = MockResponse{
@@ -186,7 +186,7 @@ func (m *MockRSSServer) setupDefaultResponses() {
 			"Content-Type": "application/rss+xml",
 		},
 	}
-	
+
 	// Invalid RSS feed
 	m.responses["/invalid.xml"] = MockResponse{
 		StatusCode: http.StatusOK,
@@ -195,7 +195,7 @@ func (m *MockRSSServer) setupDefaultResponses() {
 			"Content-Type": "application/rss+xml",
 		},
 	}
-	
+
 	// Slow response
 	m.responses["/slow-feed.xml"] = MockResponse{
 		StatusCode: http.StatusOK,
@@ -205,7 +205,7 @@ func (m *MockRSSServer) setupDefaultResponses() {
 		},
 		Delay: 5 * time.Second,
 	}
-	
+
 	// Not found
 	m.responses["/notfound.xml"] = MockResponse{
 		StatusCode: http.StatusNotFound,
@@ -214,7 +214,7 @@ func (m *MockRSSServer) setupDefaultResponses() {
 			"Content-Type": "text/plain",
 		},
 	}
-	
+
 	// Server error
 	m.responses["/error.xml"] = MockResponse{
 		StatusCode: http.StatusInternalServerError,
@@ -223,14 +223,14 @@ func (m *MockRSSServer) setupDefaultResponses() {
 			"Content-Type": "text/plain",
 		},
 	}
-	
+
 	// Rate limited
 	m.responses["/rate-limited.xml"] = MockResponse{
 		StatusCode: http.StatusTooManyRequests,
 		Body:       "Rate Limited",
 		Headers: map[string]string{
-			"Content-Type":     "text/plain",
-			"Retry-After":      "60",
+			"Content-Type":      "text/plain",
+			"Retry-After":       "60",
 			"X-RateLimit-Limit": "100",
 		},
 	}
@@ -252,10 +252,10 @@ func NewMockDatabaseServer() *MockDatabaseServer {
 		data:     make(map[string]interface{}),
 		queryLog: make([]string, 0),
 	}
-	
+
 	mock.server = httptest.NewServer(http.HandlerFunc(mock.handleDatabaseRequest))
 	mock.setupDefaultData()
-	
+
 	return mock
 }
 
@@ -276,7 +276,7 @@ func (m *MockDatabaseServer) SetData(key string, value interface{}) {
 func (m *MockDatabaseServer) GetQueryLog() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	log := make([]string, len(m.queryLog))
 	copy(log, m.queryLog)
 	return log
@@ -296,49 +296,49 @@ func (m *MockDatabaseServer) SetFailureRate(rate float64) {
 
 func (m *MockDatabaseServer) handleDatabaseRequest(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
-	
+
 	// Log the query
 	m.queryCount++
 	query := r.URL.Query().Get("q")
 	m.queryLog = append(m.queryLog, query)
-	
+
 	// Check if request should fail
 	shouldFail := float64(m.queryCount%100)/100.0 < m.failureRate
-	
+
 	delay := m.delay
 	m.mu.Unlock()
-	
+
 	// Apply delay
 	if delay > 0 {
 		time.Sleep(delay)
 	}
-	
+
 	// Handle failure simulation
 	if shouldFail {
 		http.Error(w, "Database connection failed", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Handle different query types
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch {
 	case strings.Contains(query, "SELECT"):
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"rows": [{"id": 1, "title": "Test Feed", "link": "http://example.com"}]}`))
-		
+
 	case strings.Contains(query, "INSERT"):
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte(`{"id": 123, "status": "created"}`))
-		
+
 	case strings.Contains(query, "UPDATE"):
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"affected_rows": 1, "status": "updated"}`))
-		
+
 	case strings.Contains(query, "DELETE"):
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"affected_rows": 1, "status": "deleted"}`))
-		
+
 	default:
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status": "ok"}`))
@@ -377,10 +377,10 @@ func NewMockSearchServer() *MockSearchServer {
 		indexes:   make(map[string][]map[string]interface{}),
 		searchLog: make([]string, 0),
 	}
-	
+
 	mock.server = httptest.NewServer(http.HandlerFunc(mock.handleSearchRequest))
 	mock.setupDefaultIndexes()
-	
+
 	return mock
 }
 
@@ -401,7 +401,7 @@ func (m *MockSearchServer) AddToIndex(indexName string, documents []map[string]i
 func (m *MockSearchServer) GetSearchLog() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	log := make([]string, len(m.searchLog))
 	copy(log, m.searchLog)
 	return log
@@ -409,26 +409,26 @@ func (m *MockSearchServer) GetSearchLog() []string {
 
 func (m *MockSearchServer) handleSearchRequest(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
-	
+
 	// Log the search query
 	query := r.URL.Query().Get("q")
 	m.searchLog = append(m.searchLog, query)
-	
+
 	// Get index name from path
 	indexName := strings.TrimPrefix(r.URL.Path, "/indexes/")
 	indexName = strings.TrimSuffix(indexName, "/search")
-	
+
 	// Get documents from index
 	documents, exists := m.indexes[indexName]
 	if !exists {
 		documents = m.indexes["default"]
 	}
-	
+
 	m.mu.Unlock()
-	
+
 	// Simple search simulation - return documents that contain query term
 	var results []map[string]interface{}
-	
+
 	if query == "" {
 		results = documents
 	} else {
@@ -440,11 +440,11 @@ func (m *MockSearchServer) handleSearchRequest(w http.ResponseWriter, r *http.Re
 			}
 		}
 	}
-	
+
 	// Return search results
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	
+
 	response := fmt.Sprintf(`{
 		"hits": %s,
 		"query": "%s",
@@ -454,7 +454,7 @@ func (m *MockSearchServer) handleSearchRequest(w http.ResponseWriter, r *http.Re
 		"totalPages": 1,
 		"totalHits": %d
 	}`, formatDocumentsAsJSON(results), query, len(results))
-	
+
 	w.Write([]byte(response))
 }
 
@@ -479,7 +479,7 @@ func (m *MockSearchServer) setupDefaultIndexes() {
 			"link":        "http://business.example.com/1",
 		},
 	}
-	
+
 	m.indexes["feeds"] = m.indexes["default"]
 }
 
@@ -498,7 +498,7 @@ func formatDocumentsAsJSON(docs []map[string]interface{}) string {
 	if len(docs) == 0 {
 		return "[]"
 	}
-	
+
 	var parts []string
 	for _, doc := range docs {
 		parts = append(parts, fmt.Sprintf(`{
@@ -508,7 +508,7 @@ func formatDocumentsAsJSON(docs []map[string]interface{}) string {
 			"link": "%v"
 		}`, doc["id"], doc["title"], doc["description"], doc["link"]))
 	}
-	
+
 	return "[" + strings.Join(parts, ",") + "]"
 }
 

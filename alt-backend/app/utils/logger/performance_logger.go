@@ -11,10 +11,10 @@ type PerformanceLogger struct {
 }
 
 type Timer struct {
-	ctx         context.Context
-	operation   string
-	startTime   time.Time
-	perfLogger  *PerformanceLogger
+	ctx        context.Context
+	operation  string
+	startTime  time.Time
+	perfLogger *PerformanceLogger
 }
 
 func NewPerformanceLogger(logger *slog.Logger) *PerformanceLogger {
@@ -42,10 +42,10 @@ func (t *Timer) End() {
 // EndWithError completes the timer and logs an error along with the duration
 func (t *Timer) EndWithError(err error) {
 	duration := time.Since(t.startTime)
-	
+
 	// Log the error first
 	t.perfLogger.contextLogger.LogError(t.ctx, t.operation, err)
-	
+
 	// Then log the duration
 	t.perfLogger.contextLogger.WithContext(t.ctx).Info("operation failed after duration",
 		"operation", t.operation,
@@ -71,10 +71,10 @@ func (pl *PerformanceLogger) LogOperationMetrics(ctx context.Context, operation 
 		"operation", operation,
 		"duration_ms", duration.Milliseconds(),
 	}
-	
+
 	for key, value := range extraFields {
 		args = append(args, key, value)
 	}
-	
+
 	pl.contextLogger.WithContext(ctx).Info("operation metrics", args...)
 }

@@ -94,7 +94,7 @@ func LogError(logger *slog.Logger, err error, operation string) {
 	if logger == nil {
 		return
 	}
-	
+
 	if appErr, ok := err.(*AppError); ok {
 		args := []interface{}{
 			"operation", operation,

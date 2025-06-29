@@ -90,7 +90,7 @@ func TestHostRateLimiter_WaitForHost(t *testing.T) {
 func TestHostRateLimiter_RateLimitingBehavior(t *testing.T) {
 	limiter := NewHostRateLimiter(200 * time.Millisecond)
 	ctx := context.Background()
-	
+
 	url1 := "https://example.com/feed1"
 	url2 := "https://example.com/feed2"
 	url3 := "https://different.com/feed"
@@ -102,7 +102,7 @@ func TestHostRateLimiter_RateLimitingBehavior(t *testing.T) {
 		t.Fatalf("First WaitForHost() failed: %v", err)
 	}
 	firstCallDuration := time.Since(start)
-	
+
 	// Should be nearly immediate (less than 50ms)
 	if firstCallDuration > 50*time.Millisecond {
 		t.Errorf("First call took too long: %v", firstCallDuration)
@@ -115,7 +115,7 @@ func TestHostRateLimiter_RateLimitingBehavior(t *testing.T) {
 		t.Fatalf("Second WaitForHost() failed: %v", err)
 	}
 	secondCallDuration := time.Since(start)
-	
+
 	// Should wait for rate limit (approximately 200ms)
 	if secondCallDuration < 150*time.Millisecond {
 		t.Errorf("Second call was not rate limited: %v", secondCallDuration)
@@ -128,7 +128,7 @@ func TestHostRateLimiter_RateLimitingBehavior(t *testing.T) {
 		t.Fatalf("Third WaitForHost() failed: %v", err)
 	}
 	thirdCallDuration := time.Since(start)
-	
+
 	// Should be immediate for different host
 	if thirdCallDuration > 50*time.Millisecond {
 		t.Errorf("Third call (different host) took too long: %v", thirdCallDuration)
@@ -138,12 +138,12 @@ func TestHostRateLimiter_RateLimitingBehavior(t *testing.T) {
 func TestHostRateLimiter_ConcurrentAccess(t *testing.T) {
 	limiter := NewHostRateLimiter(100 * time.Millisecond)
 	ctx := context.Background()
-	
+
 	url := "https://example.com/feed"
-	
+
 	// Test concurrent access to same host
 	done := make(chan bool, 2)
-	
+
 	go func() {
 		err := limiter.WaitForHost(ctx, url)
 		if err != nil {
@@ -151,7 +151,7 @@ func TestHostRateLimiter_ConcurrentAccess(t *testing.T) {
 		}
 		done <- true
 	}()
-	
+
 	go func() {
 		err := limiter.WaitForHost(ctx, url)
 		if err != nil {
@@ -159,7 +159,7 @@ func TestHostRateLimiter_ConcurrentAccess(t *testing.T) {
 		}
 		done <- true
 	}()
-	
+
 	// Wait for both goroutines to complete
 	<-done
 	<-done
@@ -167,32 +167,32 @@ func TestHostRateLimiter_ConcurrentAccess(t *testing.T) {
 
 func TestHostRateLimiter_ContextCancellation(t *testing.T) {
 	limiter := NewHostRateLimiter(1 * time.Second) // Long interval
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Start a goroutine that will cancel the context after 100ms
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		cancel()
 	}()
-	
+
 	url := "https://example.com/feed"
-	
+
 	// First call to establish rate limiter state
 	err := limiter.WaitForHost(context.Background(), url)
 	if err != nil {
 		t.Fatalf("Setup call failed: %v", err)
 	}
-	
+
 	// Second call should be cancelled
 	start := time.Now()
 	err = limiter.WaitForHost(ctx, url)
 	duration := time.Since(start)
-	
+
 	if err == nil {
 		t.Error("Expected context cancellation error, got nil")
 	}
-	
+
 	// Should be cancelled within reasonable time
 	if duration > 200*time.Millisecond {
 		t.Errorf("Context cancellation took too long: %v", duration)

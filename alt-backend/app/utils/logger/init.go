@@ -7,9 +7,9 @@ import (
 )
 
 var (
-	Logger         *slog.Logger
-	GlobalContext  *ContextLogger
-	GlobalPerf     *PerformanceLogger
+	Logger        *slog.Logger
+	GlobalContext *ContextLogger
+	GlobalPerf    *PerformanceLogger
 )
 
 type LogConfig struct {
@@ -19,7 +19,7 @@ type LogConfig struct {
 
 func InitLogger() *slog.Logger {
 	config := getLogConfig()
-	
+
 	var handler slog.Handler
 	options := &slog.HandlerOptions{
 		Level: config.Level,

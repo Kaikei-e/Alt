@@ -149,7 +149,7 @@ func TestExternalAPIError(t *testing.T) {
 func TestTimeoutError(t *testing.T) {
 	cause := errors.New("context deadline exceeded")
 	context := map[string]interface{}{
-		"timeout": "30s",
+		"timeout":   "30s",
 		"operation": "fetch_feed",
 	}
 

@@ -129,7 +129,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 			name: "port_returns_rate_limit_error",
 			mockSetup: func(mockPort *mocks.MockFetchSingleFeedPort) {
 				rateLimitErr := errors.RateLimitError("rate limit exceeded", fmt.Errorf("too many requests"), map[string]interface{}{
-					"host":       "example.com",
+					"host":        "example.com",
 					"retry_after": "60s",
 				})
 				mockPort.EXPECT().FetchSingleFeed(ctx).Return(nil, rateLimitErr).Times(1)
@@ -219,7 +219,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 						}
 					}
 				}
-				
+
 				// Verify usecase context is added to AppError
 				if appErr, ok := err.(*errors.AppError); ok {
 					if appErr.Context == nil {
@@ -254,7 +254,7 @@ func TestFetchSingleFeedUsecase_Execute_ContextPropagation(t *testing.T) {
 	ctx = context.WithValue(ctx, "user_id", "user-456")
 
 	mockPort := mocks.NewMockFetchSingleFeedPort(ctrl)
-	
+
 	// Verify that context is passed through correctly
 	mockPort.EXPECT().FetchSingleFeed(ctx).DoAndReturn(func(passedCtx context.Context) (*domain.RSSFeed, error) {
 		// Verify context values are propagated
@@ -264,7 +264,7 @@ func TestFetchSingleFeedUsecase_Execute_ContextPropagation(t *testing.T) {
 		if userID := passedCtx.Value("user_id"); userID != "user-456" {
 			t.Errorf("Expected user_id 'user-456', got %v", userID)
 		}
-		
+
 		return &domain.RSSFeed{
 			Title: "Context Test Feed",
 			Link:  "http://example.com/context-test",
@@ -376,7 +376,7 @@ func TestFetchSingleFeedUsecase_Execute_EdgeCases(t *testing.T) {
 						Link:        fmt.Sprintf("http://example.com/item%d", i+1),
 					}
 				}
-				
+
 				largeFeed := &domain.RSSFeed{
 					Title:    "Large Feed",
 					Link:     "http://example.com/large-feed",

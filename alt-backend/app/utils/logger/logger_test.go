@@ -20,18 +20,18 @@ func TestContextLogger_WithContext(t *testing.T) {
 			expected: []string{},
 		},
 		{
-			name: "context with request ID",
-			ctx:  context.WithValue(context.Background(), RequestIDKey, "test-request-123"),
+			name:     "context with request ID",
+			ctx:      context.WithValue(context.Background(), RequestIDKey, "test-request-123"),
 			expected: []string{"request_id=test-request-123"},
 		},
 		{
-			name: "context with user ID",
-			ctx:  context.WithValue(context.Background(), UserIDKey, "user-456"),
+			name:     "context with user ID",
+			ctx:      context.WithValue(context.Background(), UserIDKey, "user-456"),
 			expected: []string{"user_id=user-456"},
 		},
 		{
-			name: "context with operation",
-			ctx:  context.WithValue(context.Background(), OperationKey, "create_feed"),
+			name:     "context with operation",
+			ctx:      context.WithValue(context.Background(), OperationKey, "create_feed"),
 			expected: []string{"operation=create_feed"},
 		},
 		{
@@ -120,7 +120,7 @@ func TestContextLogger_LogError(t *testing.T) {
 func TestPerformanceLogger_MeasureOperation(t *testing.T) {
 	var buf bytes.Buffer
 	baseLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	
+
 	perfLogger := NewPerformanceLogger(baseLogger)
 	ctx := context.WithValue(context.Background(), RequestIDKey, "perf-test")
 
@@ -147,7 +147,7 @@ func TestPerformanceLogger_MeasureOperation(t *testing.T) {
 func TestPerformanceLogger_MeasureWithError(t *testing.T) {
 	var buf bytes.Buffer
 	baseLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError}))
-	
+
 	perfLogger := NewPerformanceLogger(baseLogger)
 	ctx := context.WithValue(context.Background(), RequestIDKey, "error-test")
 
@@ -174,7 +174,7 @@ func TestPerformanceLogger_MeasureWithError(t *testing.T) {
 func TestPerformanceLogger_LogSlowOperation(t *testing.T) {
 	var buf bytes.Buffer
 	baseLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	
+
 	perfLogger := NewPerformanceLogger(baseLogger)
 	ctx := context.WithValue(context.Background(), RequestIDKey, "slow-test")
 

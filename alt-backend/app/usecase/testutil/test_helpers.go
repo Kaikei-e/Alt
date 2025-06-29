@@ -36,10 +36,10 @@ func CreateEmptyFeedItems() []*domain.FeedItem {
 
 // Common error instances
 var (
-	ErrMockDatabase    = errors.New("mock database error")
-	ErrMockNetwork     = errors.New("mock network error")
-	ErrMockValidation  = errors.New("mock validation error")
-	ErrMockTimeout     = errors.New("mock timeout error")
+	ErrMockDatabase   = errors.New("mock database error")
+	ErrMockNetwork    = errors.New("mock network error")
+	ErrMockValidation = errors.New("mock validation error")
+	ErrMockTimeout    = errors.New("mock timeout error")
 )
 
 // Context utilities

@@ -22,7 +22,7 @@ func TestFetchFeedsListCursorUsecase_Execute(t *testing.T) {
 
 	mockGateway := mocks.NewMockFetchFeedsPort(ctrl)
 	mockData := testutil.CreateMockFeedItems()
-	
+
 	// Create cursor time for testing
 	cursorTime := time.Now().Add(-24 * time.Hour)
 

@@ -27,11 +27,11 @@ func (u *FetchSingleFeedUsecase) Execute(ctx context.Context) (*domain.RSSFeed, 
 			}
 			appErr.Context["usecase"] = "FetchSingleFeedUsecase"
 			appErr.Context["operation"] = "Execute"
-			
+
 			logger.GlobalContext.LogError(ctx, "fetch_single_feed_usecase", appErr)
 			return nil, appErr
 		}
-		
+
 		// Wrap unknown errors
 		unknownErr := errors.UnknownError("usecase execution failed", err, map[string]interface{}{
 			"usecase":   "FetchSingleFeedUsecase",
@@ -40,12 +40,12 @@ func (u *FetchSingleFeedUsecase) Execute(ctx context.Context) (*domain.RSSFeed, 
 		logger.GlobalContext.LogError(ctx, "fetch_single_feed_usecase", unknownErr)
 		return nil, unknownErr
 	}
-	
+
 	logger.GlobalContext.WithContext(ctx).Info("successfully executed fetch single feed usecase",
 		"usecase", "FetchSingleFeedUsecase",
 		"feed_title", feed.Title,
 		"feed_items", len(feed.Items),
 	)
-	
+
 	return feed, nil
 }
