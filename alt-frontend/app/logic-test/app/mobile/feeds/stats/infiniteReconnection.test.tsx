@@ -54,10 +54,10 @@ vi.mock("@/components/mobile/stats/StatCard", () => ({
   ),
 }));
 
-vi.mock("react-icons/fi", () => ({
-  FiRss: () => <div data-testid="rss-icon">RSS</div>,
-  FiFileText: () => <div data-testid="file-text-icon">FileText</div>,
-  FiLayers: () => <div data-testid="layers-icon">Layers</div>,
+vi.mock("lucide-react", () => ({
+  Rss: () => <div data-testid="rss-icon">RSS</div>,
+  FileText: () => <div data-testid="file-text-icon">FileText</div>,
+  Layers: () => <div data-testid="layers-icon">Layers</div>,
 }));
 
 describe("FeedsStatsPage - Infinite Reconnection Prevention", () => {

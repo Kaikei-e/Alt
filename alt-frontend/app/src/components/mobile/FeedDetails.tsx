@@ -1,6 +1,6 @@
 import { HStack, Text, Box, Portal, Button } from "@chakra-ui/react";
 import { useState, useEffect, useCallback } from "react";
-import { IoClose } from "react-icons/io5";
+import { X } from "lucide-react";
 import { FeedDetails as FeedDetailsType, FeedURLPayload } from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
 
@@ -299,7 +299,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   transition="all 0.2s ease"
                   border="1.5px solid rgba(255, 255, 255, 0.3)"
                 >
-                  <IoClose />
+                  <X size={16} />
                 </Button>
               </Box>
             </Box>
