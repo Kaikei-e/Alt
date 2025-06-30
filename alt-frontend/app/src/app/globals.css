@@ -22,6 +22,9 @@
   --alt-secondary: #7C9070;
   --alt-tertiary: #D4A574;
 
+  --alt-success: #00FF00;
+  --alt-error: #FF0000;
+  --alt-warning: #FFFF00;
 
 
   /* --- Spacing (Fibonacci) --- */

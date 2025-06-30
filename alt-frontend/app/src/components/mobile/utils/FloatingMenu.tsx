@@ -196,7 +196,7 @@ export const FloatingMenu = () => {
               _hover={{
                 transform: "scale(1.05) rotate(90deg)",
                 shadow: "0 6px 20px var(--accent-primary)",
-                bg: "var(--accent-gradient)",
+                bg: "var(--alt-primary)",
               }}
               _active={{
                 transform: "scale(0.95) rotate(90deg)",
