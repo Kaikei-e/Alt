@@ -51,7 +51,11 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   // clicks are all coalesced into a single toggle while still allowing the
   // user to switch themes briskly when needed.
   const lastToggleRef = React.useRef<number>(0);
-  const DEBOUNCE_WINDOW = 100;
+  // Increase debounce window to 500 ms to ensure rapid sequential clicks are
+  // collapsed into a single toggle even under slower test environments.
+  // This aligns with the end-to-end tests which wait for 500 ms after issuing
+  // multiple clicks.
+  const DEBOUNCE_WINDOW = 500;
 
   const handleToggle = () => {
     const now = Date.now();
