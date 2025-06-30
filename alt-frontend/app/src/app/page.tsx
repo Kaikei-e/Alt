@@ -11,7 +11,7 @@ import {
   HStack,
   Link as ChakraLink,
 } from "@chakra-ui/react";
-import { FiRss, FiFileText, FiArrowRight } from "react-icons/fi";
+import { Rss, FileText, ArrowRight } from "lucide-react";
 import { feedsApi } from "@/lib/api";
 import { FeedStatsSummary } from "@/schema/feedStats";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
@@ -93,7 +93,7 @@ export default function Home() {
         right="16px"
         zIndex={100}
       >
-        <ThemeToggle size="md" variant="glass" />
+        <ThemeToggle size="md" />
       </Box>
       {/* Main Content */}
       <Box
@@ -200,7 +200,7 @@ export default function Home() {
                   borderRadius="sm"
                   bg="rgba(255, 0, 110, 0.1)"
                 >
-                  <FiRss size={18} />
+                  <Rss size={18} />
                 </Box>
                 <VStack align="start" gap={0}>
                   <Text
@@ -218,7 +218,7 @@ export default function Home() {
               </HStack>
 
               <Box color="fg.subtle" opacity={0.6}>
-                <FiArrowRight size={16} />
+                <ArrowRight size={16} />
               </Box>
             </Flex>
           </ChakraLink>
@@ -339,7 +339,7 @@ export default function Home() {
                       borderRadius="xs"
                       bg="rgba(255, 0, 110, 0.1)"
                     >
-                      <FiRss size={14} />
+                      <Rss size={14} />
                     </Box>
                     <Text
                       id="total-feeds-label"
@@ -418,7 +418,7 @@ export default function Home() {
                       borderRadius="xs"
                       bg="rgba(131, 56, 236, 0.1)"
                     >
-                      <FiFileText size={14} />
+                      <FileText size={14} />
                     </Box>
                     <Text
                       id="ai-feeds-label"

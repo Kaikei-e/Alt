@@ -5,7 +5,7 @@ import { Flex, Text, Box } from "@chakra-ui/react";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useSSEProgress } from "@/hooks/useSSEProgress";
 import { useSSEFeedsStats } from "@/hooks/useSSEFeedsStats";
-import { FiRss, FiFileText, FiLayers } from "react-icons/fi";
+import { Rss, FileText, Layers } from "lucide-react";
 import { SSEProgressBar } from "@/components/mobile/stats/SSEProgressBar";
 import { StatCard } from "@/components/mobile/stats/StatCard";
 
@@ -101,21 +101,21 @@ export default function FeedsStatsPage() {
             label="TOTAL FEEDS"
             value={feedAmount}
             description="RSS feeds being monitored"
-            icon={FiRss}
+            icon={Rss}
           />
 
           <StatCard
             label="TOTAL ARTICLES"
             value={totalArticlesAmount}
             description="All articles across RSS feeds"
-            icon={FiFileText}
+            icon={FileText}
           />
 
           <StatCard
             label="UNSUMMARIZED ARTICLES"
             value={unsummarizedArticlesAmount}
             description="Articles waiting for AI summarization"
-            icon={FiLayers}
+            icon={Layers}
           />
         </Flex>
       </Box>

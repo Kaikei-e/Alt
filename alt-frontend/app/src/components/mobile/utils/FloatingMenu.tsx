@@ -20,18 +20,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useCallback, useEffect } from "react";
-import {
-  FaBars,
-  FaTimes,
-  FaRss,
-  FaSearch,
-  FaPlus,
-  FaEye,
-  FaChartBar,
-  FaHome,
-  FaNewspaper,
-  FaStar,
-} from "react-icons/fa";
+import { Rss, Search, Plus, Eye, ChartBar, Home, Newspaper, Star, Menu, X } from "lucide-react";
 import { ThemeToggle } from "../../ThemeToggle";
 
 type MenuCategory = "feeds" | "other" | "articles";
@@ -102,49 +91,49 @@ export const FloatingMenu = () => {
       label: "View Feeds",
       href: "/mobile/feeds",
       category: "feeds",
-      icon: <FaRss size={18} />,
+      icon: <Rss size={18} />,
       description: "Browse all RSS feeds",
     },
     {
       label: "Viewed Feeds",
       href: "/mobile/feeds/viewed",
       category: "feeds",
-      icon: <FaEye size={18} />,
+      icon: <Eye size={18} />,
       description: "Previously read feeds",
     },
     {
       label: "Register Feed",
       href: "/mobile/feeds/register",
       category: "feeds",
-      icon: <FaPlus size={18} />,
+      icon: <Plus size={18} />,
       description: "Add new RSS feed",
     },
     {
       label: "Search Feeds",
       href: "/mobile/feeds/search",
       category: "feeds",
-      icon: <FaSearch size={18} />,
+      icon: <Search size={18} />,
       description: "Find specific feeds",
     },
     {
       label: "Search Articles",
       href: "/mobile/articles/search",
       category: "articles",
-      icon: <FaNewspaper size={18} />,
+      icon: <Newspaper size={18} />,
       description: "Search through articles",
     },
     {
       label: "View Stats",
       href: "/mobile/feeds/stats",
       category: "other",
-      icon: <FaChartBar size={18} />,
+      icon: <ChartBar size={18} />,
       description: "Analytics & insights",
     },
     {
       label: "Home",
       href: "/",
       category: "other",
-      icon: <FaHome size={18} />,
+      icon: <Home size={18} />,
       description: "Return to dashboard",
     },
   ];
@@ -167,19 +156,19 @@ export const FloatingMenu = () => {
     {
       title: "Feeds",
       items: menuItems.filter((i) => i.category === "feeds"),
-      icon: <FaRss size={16} />,
+      icon: <Rss size={16} />,
       gradient: "linear-gradient(135deg, #ff006e 0%, #ff4081 100%)",
     },
     {
       title: "Articles",
       items: menuItems.filter((i) => i.category === "articles"),
-      icon: <FaNewspaper size={16} />,
+      icon: <Newspaper size={16} />,
       gradient: "linear-gradient(135deg, #8338ec 0%, #9c27b0 100%)",
     },
     {
       title: "Other",
       items: menuItems.filter((i) => i.category === "other"),
-      icon: <FaStar size={16} />,
+      icon: <Star size={16} />,
       gradient: "linear-gradient(135deg, #3a86ff 0%, #2196f3 100%)",
     },
   ];
@@ -245,7 +234,7 @@ export const FloatingMenu = () => {
                   animation: "pulse 2s ease-in-out infinite",
                 }}
               />
-              <FaBars size={16} style={{ position: "relative", zIndex: 1 }} />
+              <Menu size={16} style={{ position: "relative", zIndex: 1 }} />
             </Button>
           </Box>
         </Drawer.Trigger>
@@ -307,7 +296,7 @@ export const FloatingMenu = () => {
                       alignItems="center"
                       justifyContent="center"
                     >
-                      <FaStar size={18} color="white" />
+                      <Star size={18} color="white" />
                     </Box>
                     <Box>
                       <Drawer.Title
@@ -383,7 +372,11 @@ export const FloatingMenu = () => {
                                   </Text>
                                 </Box>
                               </HStack>
-                              <AccordionIcon color="rgba(255, 255, 255, 0.7)" />
+                              <AccordionIcon
+                                color="rgba(255, 255, 255, 0.7)"
+                                transition="transform 0.2s"
+                                transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                              />
                             </AccordionButton>
                           </h2>
                           <AccordionPanel pb={4} pt={4} px={0}>
@@ -407,11 +400,10 @@ export const FloatingMenu = () => {
                                           : "rgba(255, 255, 255, 0.02)"
                                       }
                                       borderRadius="10px"
-                                      border={`1px solid ${
-                                        isActive
-                                          ? "rgba(255, 0, 110, 0.25)"
-                                          : "rgba(255, 255, 255, 0.04)"
-                                      }`}
+                                      border={`1px solid ${isActive
+                                        ? "rgba(255, 0, 110, 0.25)"
+                                        : "rgba(255, 255, 255, 0.04)"
+                                        }`}
                                       p={3}
                                       _hover={{
                                         bg: isActive
@@ -499,7 +491,7 @@ export const FloatingMenu = () => {
                   pt={4}
                   borderTop="1px solid rgba(255, 255, 255, 0.1)"
                 >
-                  <ThemeToggle size="md" showLabel variant="glass" />
+                  <ThemeToggle size="md" showLabel />
                 </Box>
               </Drawer.Body>
 
@@ -521,7 +513,7 @@ export const FloatingMenu = () => {
                   h="40px"
                   transition="all 0.2s ease"
                 >
-                  <FaTimes size={18} />
+                  <X size={18} />
                 </Button>
               </Drawer.CloseTrigger>
             </Drawer.Content>

@@ -8,26 +8,25 @@ import {
   useBreakpointValue,
   Box,
 } from "@chakra-ui/react";
-import { MdLightMode, MdDarkMode } from "react-icons/md";
+import { Sun, Moon } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 
 export interface ThemeToggleProps {
   size?: "sm" | "md" | "lg";
   showLabel?: boolean;
-  variant?: "minimal" | "glass";
+  variant?: "minimal" | "glass" | string;
 }
 
 const THEME_ICONS = {
-  vaporwave: MdDarkMode,
-  "liquid-beige": MdLightMode,
+  vaporwave: Moon,
+  "liquid-beige": Sun,
 };
 
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   size = "md",
   showLabel = false,
-  variant = "glass",
 }) => {
-  const { currentTheme, toggleTheme, themeConfig } = useTheme();
+  const { currentTheme, toggleTheme } = useTheme();
 
   // Wait for the theme to be resolved before rendering
   const [mounted, setMounted] = React.useState(false);

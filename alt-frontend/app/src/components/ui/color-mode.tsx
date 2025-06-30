@@ -3,14 +3,12 @@
 import type { IconButtonProps, SpanProps } from "@chakra-ui/react";
 import { ClientOnly, IconButton, Skeleton, Span } from "@chakra-ui/react";
 import { useTheme } from "next-themes";
-import type { ThemeProviderProps } from "next-themes";
-import * as React from "react";
-import { LuMoon, LuSun } from "react-icons/lu";
+import React from "react";
+import { Moon, Sun } from "lucide-react";
 
-export type ColorModeProviderProps = ThemeProviderProps;
+export type ColorModeProviderProps = React.PropsWithChildren;
 
-export function ColorModeProvider(props: ColorModeProviderProps) {
-  const { children } = props as any;
+export function ColorModeProvider({ children }: ColorModeProviderProps) {
   return <>{children}</>;
 }
 
@@ -42,7 +40,7 @@ export function useColorModeValue<T>(light: T, dark: T) {
 
 export function ColorModeIcon() {
   const { colorMode } = useColorMode();
-  return colorMode === "dark" ? <LuMoon /> : <LuSun />;
+  return colorMode === "dark" ? <Moon /> : <Sun />;
 }
 
 type ColorModeButtonProps = Omit<IconButtonProps, "aria-label">;
