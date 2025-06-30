@@ -17,6 +17,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  isCI: true
+
 jobs:
   test:
     timeout-minutes: 60
@@ -32,7 +35,7 @@ jobs:
           run_install: false                            # インストールは後で手動実行
 
       # Node.js セットアップ（pnpm キャッシュを有効に）
-      - uses: actions/setup-node@v4 
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: "pnpm"                                 # node_modules のキャッシュ
@@ -76,7 +79,7 @@ jobs:
 
       # 結果レポートのアップロード（常に）
       - uses: actions/upload-artifact@v4
-        if: failure()                                  
+        if: failure()
         with:
           name: playwright-report-${{ github.run_id }}
           path: alt-frontend/app/playwright-report/
