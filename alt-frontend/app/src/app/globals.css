@@ -91,18 +91,26 @@
   --vaporwave-gradient: var(--alt-gradient-primary);
   --glass-bg: var(--alt-glass);
   --glass-border: var(--alt-glass-border);
-  --foreground: #ffffff;
-  --background: var(--alt-bg-primary);
 
   /* -----------------------------------------------------------------------
-     1.  ABSTRACT DESIGN TOKENS (defaults = Vaporwave)
+     1.  ABSTRACT DESIGN TOKENS (defaults = Liquid-Beige for initial load)
      ---------------------------------------------------------------------*/
-  --surface-bg: var(--alt-glass);
-  --surface-border: var(--alt-glass-border);
-  --surface-blur: 20px;
+  /* Default theme variables - using liquid-beige as fallback */
+  --foreground: #2c2c2c;
+  --background: #d1c0a8;
+  --text-primary: #2c2c2c;
+  --text-secondary: #5a5a5a;
+  --accent-primary: #b85450;
+  --accent-secondary: #7c9070;
+  --accent-tertiary: #d4a574;
 
-  --accent-gradient: var(--alt-gradient-primary);
-  --app-bg: var(--alt-gradient-bg);
+  /* Surface design tokens */
+  --surface-bg: rgba(225, 213, 197, 0.18);
+  --surface-border: rgba(160, 129, 108, 0.45);
+  --surface-blur: 12px;
+
+  --accent-gradient: linear-gradient(135deg, #e8ded1 0%, #d6c8b9 100%);
+  --app-bg: #d1c0a8;
 }
 
 /* ---------------------------------------------------------------------------
@@ -122,6 +130,12 @@
   --surface-blur: var(--vwv-blur);
   --accent-gradient: var(--vwv-gradient);
   --app-bg: var(--vwv-bg);
+
+  /* Essential theme variables */
+  --foreground: #ffffff;
+  --background: var(--alt-bg-primary);
+  --text-primary: var(--alt-text-primary);
+  --text-secondary: var(--alt-text-secondary);
 
   /* Theme-specific accent colors */
   --accent-primary: #ff006e; /* Neon Pink */
@@ -147,6 +161,12 @@
   --accent-gradient: var(--liq-gradient);
   --app-bg: var(--liq-bg);
 
+  /* Essential theme variables */
+  --foreground: #ffffff;
+  --background: var(--liq-bg);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.8);
+
   /* Theme-specific accent colors (neutral) */
   --accent-primary: #ffffff; /* White */
   --accent-secondary: #cccccc; /* Light Gray */
@@ -166,6 +186,12 @@
   --surface-blur: var(--liq-blur);
   --accent-gradient: var(--liq-gradient);
   --app-bg: var(--liq-bg);
+
+  /* Essential theme variables */
+  --foreground: #2c2c2c;
+  --background: var(--liq-bg);
+  --text-primary: #2c2c2c;
+  --text-secondary: #5a5a5a;
 
   /* Theme-specific accent colors */
   --accent-primary: #b85450; /* Terracotta */
@@ -429,11 +455,18 @@ a:hover {
 }
 
 /* ---------------------------------------------------------------------------
-   8.  FORCED DARK MODE (legacy) – we always run dark, but keep for safety
+   8.  SYSTEM THEME PREFERENCE (updated to respect our new default)
    ---------------------------------------------------------------------------*/
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #1a1a2e;
-    --foreground: #ffffff;
+    /* Still default to liquid-beige even in dark mode preference */
+    /* Users can explicitly toggle to vaporwave if they want */
+    --background: #d1c0a8;
+    --foreground: #2c2c2c;
+    --text-primary: #2c2c2c;
+    --text-secondary: #5a5a5a;
+    --accent-primary: #b85450;
+    --accent-secondary: #7c9070;
+    --accent-tertiary: #d4a574;
   }
 }

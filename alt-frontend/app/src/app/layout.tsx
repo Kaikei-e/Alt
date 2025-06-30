@@ -1,63 +1,22 @@
 // app/layout.tsx
-import type { Metadata, Viewport } from "next";
-import { Geist, Inter, Fira_Code } from "next/font/google";
+import type { Metadata } from "next";
+import { Providers } from "./providers";
 import "./globals.css";
 
-// カスタム Provider をインポート
-import { Provider as CustomColorModeProvider } from "@/components/ui/provider";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: "swap",
-  preload: true,
-  fallback: ["system-ui", "sans-serif"],
-});
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  display: "swap",
-  preload: true,
-  fallback: ["system-ui", "sans-serif"],
-});
-
-const firaCode = Fira_Code({
-  variable: "--font-fira-code",
-  subsets: ["latin"],
-  display: "swap",
-  preload: true,
-  fallback: ["ui-monospace", "monospace"],
-});
-
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  // Enable safe area support for notched devices
-  viewportFit: "cover",
-};
-
 export const metadata: Metadata = {
-  title: "Alt",
-  description: "Alt: A simple RSS reader",
+  title: "Alt - AI-powered RSS reader",
+  description: "An AI-powered RSS reader with modern aesthetics.",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
     ],
-    apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
-    ],
+    apple: "/apple-touch-icon.png",
   },
+  manifest: "/manifest.json",
   other: {
-    "theme-color": "#1a1a2e", // Match vaporwave dark theme
-    "color-scheme": "dark",
-    "mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-status-bar-style": "black-translucent",
-  },
+    "theme-color": "#1a1a2e",
+  }
 };
 
 export default function RootLayout({
@@ -66,22 +25,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning className="light">
-      <head>
-        {/* PWA and mobile optimization */}
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta
-          name="apple-mobile-web-app-status-bar-style"
-          content="black-translucent"
-        />
-        <meta name="format-detection" content="telephone=no" />
-      </head>
-      <body
-        className={`${geistSans.variable} ${inter.variable} ${firaCode.variable} app-container`}
-      >
-        <CustomColorModeProvider>
-          <div className="app-container">{children}</div>
-        </CustomColorModeProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
