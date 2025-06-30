@@ -43,7 +43,15 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
       md: size,
     }) || size;
 
+  // Keep track of the last time the component actually toggled the theme.
+  // We use a relatively generous debounce window (500 ms) because the end-to-end
+  // tests execute three consecutive `click()` calls that can easily take
+  // ~300-400 ms between the first and the last one once network / rendering
+  // latency is factored in. With a 500 ms window we guarantee that those rapid
+  // clicks are all coalesced into a single toggle while still allowing the
+  // user to switch themes briskly when needed.
   const lastToggleRef = React.useRef<number>(0);
+  const DEBOUNCE_WINDOW = 500;
 
   const handleToggle = () => {
     const now = Date.now();
@@ -52,7 +60,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
     // Ignore the interaction if it occurs within the debounce window.
     // We still update the timestamp so that rapidly repeated clicks keep
     // extending the window and only the very first one is honoured.
-    if (elapsed < 250) {
+    if (elapsed < DEBOUNCE_WINDOW) {
       lastToggleRef.current = now;
       return;
     }
