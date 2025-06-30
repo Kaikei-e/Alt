@@ -78,7 +78,7 @@ export default function ReadFeedsPage() {
               textAlign="center"
               data-testid="read-feeds-title"
             >
-              Read Feeds
+              Viewed Feeds
             </Text>
           </Box>
 
@@ -138,7 +138,7 @@ export default function ReadFeedsPage() {
             textAlign="center"
             data-testid="read-feeds-title"
           >
-            Read Feeds
+            Viewed Feeds
           </Text>
         </Box>
 
