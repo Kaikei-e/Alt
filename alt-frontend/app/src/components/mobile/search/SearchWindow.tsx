@@ -139,13 +139,13 @@ const SearchWindow = ({
                 }
               }}
               onKeyDown={handleKeyPress}
-              bg="rgba(255, 255, 255, 0.1)"
-              border={`1px solid ${validationError ? "#f87171" : "rgba(255, 255, 255, 0.2)"}`}
-              color="white"
-              _placeholder={{ color: "rgba(255, 255, 255, 0.5)" }}
+              bg="var(--surface-bg)"
+              border={`1px solid ${validationError ? "#f87171" : "var(--alt-primary)"}`}
+              color="var(--text-primary)"
+              _placeholder={{ color: "var(--text-muted)" }}
               _focus={{
-                borderColor: validationError ? "#f87171" : "#ff006e",
-                boxShadow: `0 0 0 1px ${validationError ? "#f87171" : "#ff006e"}`,
+                borderColor: validationError ? "#f87171" : "var(--alt-primary)",
+                boxShadow: `0 0 0 1px ${validationError ? "#f87171" : "var(--alt-primary)"}`,
               }}
             />
           </Box>
