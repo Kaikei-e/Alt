@@ -1,43 +1,48 @@
-/* Alt Vaporwave Theme - Global Styles */
+/* Alt Theme – Global Styles (Vaporwave + Liquid Glass Variants)
+   -----------------------------------------------------------------------------
+   This single file bundles:
+   1) Original Alt Vaporwave variables
+   2) Abstract design‑tokens (surface / accent / app-bg)
+   3) Three variants, switched with data-style="vaporwave | liquid | liquid-beige"
+   -----------------------------------------------------------------------------*/
+
+/* ---------------------------------------------------------------------------
+   0.  ROOT  – Alt brand + base tokens
+   ---------------------------------------------------------------------------*/
 :root {
-  /* Alt Brand Colors */
+  /* --- Brand Colors --- */
   --alt-pink: #ff006e;
   --alt-purple: #8338ec;
   --alt-blue: #3a86ff;
 
-  /* Backgrounds */
+  /* --- Vaporwave Backgrounds --- */
   --alt-bg-primary: #1a1a2e;
   --alt-bg-secondary: #16213e;
   --alt-bg-tertiary: #0f0f23;
 
-  /* Glass Effects */
+  /* --- Vaporwave Glass Defaults --- */
   --alt-glass: rgba(255, 255, 255, 0.1);
   --alt-glass-border: rgba(255, 255, 255, 0.2);
   --alt-glass-hover: rgba(255, 255, 255, 0.15);
 
-  /* Gradients */
+  /* --- Gradients --- */
   --alt-gradient-primary: linear-gradient(45deg, #ff006e, #8338ec, #3a86ff);
-  --alt-gradient-bg: linear-gradient(
-    135deg,
-    #1a1a2e 0%,
-    #16213e 50%,
-    #0f0f23 100%
-  );
+  --alt-gradient-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
 
-  /* Spacing System (Fibonacci + Golden Ratio) */
+  /* --- Spacing (Fibonacci + φ) --- */
   --space-1: 0.25rem; /* 4px */
-  --space-2: 0.5rem; /* 8px */
+  --space-2: 0.5rem;  /* 8px */
   --space-3: 0.75rem; /* 12px */
-  --space-4: 1rem; /* 16px */
+  --space-4: 1rem;    /* 16px */
   --space-5: 1.25rem; /* 20px */
-  --space-6: 1.5rem; /* 24px */
-  --space-8: 2rem; /* 32px */
+  --space-6: 1.5rem;  /* 24px */
+  --space-8: 2rem;    /* 32px */
   --space-10: 2.5rem; /* 40px */
-  --space-12: 3rem; /* 48px */
-  --space-16: 4rem; /* 64px */
-  --space-20: 5rem; /* 80px */
+  --space-12: 3rem;   /* 48px */
+  --space-16: 4rem;   /* 64px */
+  --space-20: 5rem;   /* 80px */
 
-  /* Typography Scale (Fluid) */
+  /* --- Typography (Fluid) --- */
   --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
   --text-sm: clamp(0.875rem, 0.8rem + 0.375vw, 1rem);
   --text-base: clamp(1rem, 0.925rem + 0.375vw, 1.125rem);
@@ -47,33 +52,33 @@
   --text-3xl: clamp(1.875rem, 1.6rem + 1.375vw, 2.625rem);
   --text-4xl: clamp(2.25rem, 1.9rem + 1.75vw, 3.375rem);
 
-  /* Font Family System */
+  /* --- Fonts --- */
   --font-primary: "Inter Variable", system-ui, sans-serif;
   --font-display: "Space Grotesk Variable", var(--font-primary);
   --font-mono: "Fira Code Variable", "SF Mono", monospace;
 
-  /* Semantic Text Colors */
+  /* --- Semantic Text Colors --- */
   --alt-text-primary: #ffffff;
   --alt-text-secondary: rgba(255, 255, 255, 0.8);
   --alt-text-muted: rgba(255, 255, 255, 0.6);
   --alt-text-glow: #ff006e;
 
-  /* Semantic Status Colors */
-  --alt-success: #00ff88; /* Neon green */
-  --alt-error: #ff4757; /* Neon red */
-  --alt-warning: #ffaa00; /* Neon orange */
-  --alt-info: #3a86ff; /* Alt blue */
+  /* --- Semantic Status Colors --- */
+  --alt-success: #00ff88;
+  --alt-error: #ff4757;
+  --alt-warning: #ffaa00;
+  --alt-info: #3a86ff;
 
-  /* Border Radius (Organic Shapes) */
-  --radius-xs: 0.25rem; /* 4px */
-  --radius-sm: 0.5rem; /* 8px */
-  --radius-md: 0.75rem; /* 12px */
-  --radius-lg: 1rem; /* 16px */
-  --radius-xl: 1.5rem; /* 24px */
-  --radius-2xl: 2rem; /* 32px */
-  --radius-full: 9999px; /* Pill shape */
+  /* --- Radius --- */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+  --radius-full: 9999px;
 
-  /* Legacy support */
+  /* --- Legacy alias (kept for back‑compat) --- */
   --vaporwave-bg: var(--alt-gradient-bg);
   --vaporwave-pink: var(--alt-pink);
   --vaporwave-purple: var(--alt-purple);
@@ -83,16 +88,91 @@
   --glass-border: var(--alt-glass-border);
   --foreground: #ffffff;
   --background: var(--alt-bg-primary);
+
+  /* -----------------------------------------------------------------------
+     1.  ABSTRACT DESIGN TOKENS (defaults = Vaporwave)
+     ---------------------------------------------------------------------*/
+  --surface-bg: var(--alt-glass);
+  --surface-border: var(--alt-glass-border);
+  --surface-blur: 20px;
+
+  --accent-gradient: var(--alt-gradient-primary);
+  --app-bg: var(--alt-gradient-bg);
 }
 
-/* Critical layout styles */
+/* ---------------------------------------------------------------------------
+   2.  THEME VARIANTS  – data-style="vaporwave | liquid | liquid-beige"
+   ---------------------------------------------------------------------------*/
+
+/* 2‑A ▸ Vaporwave: keeps original mapping */
+[data-style="vaporwave"] {
+  --vwv-glass  : var(--alt-glass);
+  --vwv-border : var(--alt-glass-border);
+  --vwv-blur   : 20px;
+  --vwv-gradient: var(--alt-gradient-primary);
+  --vwv-bg: var(--alt-gradient-bg);
+
+  --surface-bg: var(--vwv-glass);
+  --surface-border: var(--vwv-border);
+  --surface-blur: var(--vwv-blur);
+  --accent-gradient: var(--vwv-gradient);
+  --app-bg: var(--vwv-bg);
+
+  /* Theme-specific accent colors */
+  --accent-primary: #ff006e;   /* Neon Pink */
+  --accent-secondary: #8338ec; /* Purple */
+  --accent-tertiary: #3a86ff;  /* Blue */
+}
+
+/* 2‑B ▸ Liquid Glass (neutral dark) */
+[data-style="liquid"] {
+  --liq-glass: rgba(255,255,255,0.18);
+  --liq-border: rgba(255,255,255,0.4);
+  --liq-blur: 12px;
+  --liq-gradient: linear-gradient(135deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.04) 100%);
+  --liq-bg: #1d1d1f;
+
+  --surface-bg: var(--liq-glass);
+  --surface-border: var(--liq-border);
+  --surface-blur: var(--liq-blur);
+  --accent-gradient: var(--liq-gradient);
+  --app-bg: var(--liq-bg);
+
+  /* Theme-specific accent colors (neutral) */
+  --accent-primary: #ffffff;   /* White */
+  --accent-secondary: #cccccc; /* Light Gray */
+  --accent-tertiary: #999999;  /* Medium Gray */
+}
+
+/* 2‑C ▸ Liquid Glass – Beige variant */
+[data-style="liquid-beige"] {
+  --liq-glass: rgba(225,213,197,0.18);
+  --liq-border: rgba(160,129,108,0.45);
+  --liq-blur: 12px;
+  --liq-gradient: linear-gradient(135deg,#E8DED1 0%,#D6C8B9 100%);
+  --liq-bg: #D1C0A8;
+
+  --surface-bg: var(--liq-glass);
+  --surface-border: var(--liq-border);
+  --surface-blur: var(--liq-blur);
+  --accent-gradient: var(--liq-gradient);
+  --app-bg: var(--liq-bg);
+
+  /* Theme-specific accent colors */
+  --accent-primary: #B85450;   /* Terracotta */
+  --accent-secondary: #7C9070; /* Sage Green */
+  --accent-tertiary: #D4A574;  /* Desert Sand */
+}
+
+/* ---------------------------------------------------------------------------
+   3.  BASE LAYOUT & TYPOGRAPHY
+   ---------------------------------------------------------------------------*/
 html {
-  font-family: var(--font-geist-sans), system-ui, arial, sans-serif;
+  font-family: var(--font-primary);
   line-height: 1.6;
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Mobile viewport handling */
   height: 100%;
   height: 100dvh;
 }
@@ -102,34 +182,27 @@ body {
   padding: 0;
   min-height: 100vh;
   min-height: 100dvh;
-  background: var(--vaporwave-bg);
+  background: var(--app-bg);
   color: var(--foreground);
-  font-feature-settings:
-    "rlig" 1,
-    "calt" 1;
-  /* iOS safe area support */
+  font-feature-settings: "rlig" 1, "calt" 1;
+  /* Safe area */
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
-  /* Extend background behind safe areas */
   background-attachment: fixed;
   position: relative;
 }
 
-/* Ensure background covers entire viewport including safe areas */
 body::before {
   content: "";
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--vaporwave-bg);
+  inset: 0;
+  background: var(--app-bg);
   z-index: -1;
 }
 
-/* Global container to ensure proper spacing */
+/* Root container */
 #__next,
 .app-container {
   min-height: 100vh;
@@ -138,34 +211,36 @@ body::before {
   z-index: 1;
 }
 
-/* Glass morphism utility classes */
+/* ---------------------------------------------------------------------------
+   4.  UTILITY CLASSES
+   ---------------------------------------------------------------------------*/
 .glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--glass-border);
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(var(--surface-blur)) saturate(120%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(120%);
+  transition: background .25s ease, border-color .25s ease;
 }
 
-.vaporwave-gradient {
-  background: var(--vaporwave-gradient);
+.accent-gradient,
+.vaporwave-gradient { /* keep legacy class */
+  background: var(--accent-gradient);
 }
 
 .vaporwave-text {
-  background: var(--vaporwave-gradient);
+  background: var(--accent-gradient);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* Prevent layout shift during font loading */
-.font-loading {
-  visibility: hidden;
-}
+/* Typography flash issue */
+.font-loading { visibility: hidden; }
+.font-loaded  { visibility: visible; }
 
-.font-loaded {
-  visibility: visible;
-}
-
-/* Updated component styles for vaporwave theme */
+/* ---------------------------------------------------------------------------
+   5.  COMPONENT STYLES – Feed / Buttons / Layout
+   ---------------------------------------------------------------------------*/
 .feed-container {
   display: flex;
   flex-direction: column;
@@ -183,69 +258,53 @@ body::before {
   justify-content: center;
   align-items: center;
   width: 100%;
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(var(--surface-blur));
+  -webkit-backdrop-filter: blur(var(--surface-blur));
   border-radius: 1rem;
   padding: 1.25rem;
   margin: 0.5rem 1rem;
   position: relative;
   transition: transform 0.2s ease;
 }
+.feed-card:hover { transform: translateY(-2px); }
 
-.feed-card:hover {
-  transform: translateY(-2px);
-}
-
-/* Gradient border effect for feed cards */
+/* Gradient border wrapper */
 .feed-card-gradient {
   position: relative;
   margin: 1rem;
 }
-
 .feed-card-gradient::before {
   content: "";
   position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  background: var(--vaporwave-gradient);
+  inset: -2px;
+  background: var(--accent-gradient);
   border-radius: 16px;
   z-index: -1;
 }
 
-/* Loading spinner optimization */
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
+/* Loading spinner */
+.loading-spinner { animation: spin 1s linear infinite; }
+@keyframes spin { from{ transform: rotate(0deg);} to{ transform: rotate(360deg);} }
 
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Vaporwave button styles */
+/* Accent button */
 .vaporwave-button {
-  background: var(--vaporwave-gradient);
+  background: var(--accent-gradient);
   color: white;
-  border: 2px solid var(--glass-border);
+  border: 2px solid var(--surface-border);
   border-radius: 9999px;
   font-weight: bold;
   transition: all 0.2s ease;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(var(--surface-blur));
+  -webkit-backdrop-filter: blur(var(--surface-blur));
 }
-
 .vaporwave-button:hover {
   transform: translateY(-1px);
-  background: linear-gradient(45deg, #e6005c, #7129d4, #2e7aff);
+  filter: brightness(1.1);
 }
 
-/* Optimize button interactions */
+/* Refresh FAB */
 .refresh-button {
   position: fixed;
   bottom: calc(20px + env(safe-area-inset-bottom));
@@ -253,93 +312,63 @@ body::before {
   z-index: 1000;
   transition: transform 0.2s ease-in-out;
 }
+.refresh-button:hover { transform: translateY(-2px); }
 
-.refresh-button:hover {
-  transform: translateY(-2px);
-}
-
-/* Reduce paint complexity */
-* {
-  box-sizing: border-box;
-}
-
-/* Optimize scrolling performance */
+/* Box sizing + smooth scroll */
+* { box-sizing: border-box; }
 .scroll-container {
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
 }
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
+html, body { max-width: 100vw; overflow-x: hidden; }
+* { padding: 0; margin: 0; }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  padding: 0;
-  margin: 0;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-/* Vaporwave link styles */
+a { color: inherit; text-decoration: none; }
 a:hover {
-  color: var(--vaporwave-pink);
+  color: var(--alt-pink);
   transition: color 0.2s ease;
 }
 
-/* Screen Styles */
+/* ---------------------------------------------------------------------------
+   6.  MEDIA QUERIES
+   ---------------------------------------------------------------------------*/
 @media (min-width: 768px) {
-  .desktop {
-    display: block;
-  }
-
-  .mobile {
-    display: none;
-  }
-
-  /* Desktop adjustments */
-  body {
-    padding-top: 0;
-    padding-bottom: 0;
-    padding-left: 0;
-    padding-right: 0;
-  }
-
-  .refresh-button {
-    bottom: 20px;
-    left: 20px;
-  }
+  .desktop { display: block; }
+  .mobile  { display: none; }
+  body { padding: 0; }
+  .refresh-button { bottom: 20px; left: 20px; }
 }
 
-/* Responsive typography for vaporwave theme */
 @media (max-width: 767px) {
   .vaporwave-title {
     font-size: 1.5rem;
-    background: var(--vaporwave-gradient);
-    -webkit-background-clip: text;
-    background-clip: text;
+    background: var(--accent-gradient);
+    -webkit-background-clip: text; background-clip: text;
     -webkit-text-fill-color: transparent;
     font-weight: bold;
   }
-
-  .vaporwave-text {
-    color: rgba(255, 255, 255, 0.8);
-  }
+  .vaporwave-text { color: rgba(255,255,255,0.8); }
 }
 
-/* Dark mode overrides (since we're always dark now) */
+/* ---------------------------------------------------------------------------
+   7.  REDUCED TRANSPARENCY & LEGACY SUPPORT
+   ---------------------------------------------------------------------------*/
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .feed-card,
+  .vaporwave-button { background: var(--app-bg); backdrop-filter:none; -webkit-backdrop-filter:none; }
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass,
+  .feed-card,
+  .vaporwave-button { backdrop-filter:none; -webkit-backdrop-filter:none; }
+}
+
+/* ---------------------------------------------------------------------------
+   8.  FORCED DARK MODE (legacy) – we always run dark, but keep for safety
+   ---------------------------------------------------------------------------*/
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #1a1a2e;
