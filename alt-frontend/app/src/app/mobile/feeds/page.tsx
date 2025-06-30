@@ -5,7 +5,7 @@ import { feedsApi } from "@/lib/api";
 import { Feed } from "@/schema/feed";
 import FeedCard from "@/components/mobile/FeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 import ErrorState from "./_components/ErrorState";
@@ -27,7 +27,6 @@ export default function FeedsPage() {
     isLoading,
     error,
     isInitialLoading,
-    loadInitial,
     loadMore,
     refresh,
   } = useCursorPagination(feedsApi.getFeedsWithCursor, {
