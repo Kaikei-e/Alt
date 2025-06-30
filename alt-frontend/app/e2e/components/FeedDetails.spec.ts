@@ -301,7 +301,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".show-details-button").first()).toBeVisible();
     });
 
-    test("should close details when touching backdrop on mobile", async ({ page }) => {
+    test("should close details when touching backdrop on mobile", async ({
+      page,
+    }) => {
       // Set mobile viewport
       await page.setViewportSize({ width: 375, height: 667 });
 
@@ -340,7 +342,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await expect(page.locator(".show-details-button").first()).toBeVisible();
     });
 
-    test("should handle touch events on backdrop programmatically", async ({ page }) => {
+    test("should handle touch events on backdrop programmatically", async ({
+      page,
+    }) => {
       await page.route("**/api/v1/feeds/fetch/details", async (route) => {
         await route.fulfill({
           status: 200,
@@ -366,9 +370,11 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
 
       // Programmatically dispatch touch events
       await page.evaluate(() => {
-        const backdrop = document.querySelector('[data-testid="modal-backdrop"]');
+        const backdrop = document.querySelector(
+          '[data-testid="modal-backdrop"]',
+        );
         if (backdrop) {
-          const touchEndEvent = new TouchEvent('touchend', {
+          const touchEndEvent = new TouchEvent("touchend", {
             bubbles: true,
             cancelable: true,
             touches: [],
@@ -383,8 +389,8 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
                 pageY: 10,
                 screenX: 10,
                 screenY: 10,
-              })
-            ]
+              }),
+            ],
           });
           backdrop.dispatchEvent(touchEndEvent);
         }
@@ -635,9 +641,13 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       if (buttonBox && modalBox) {
         // Button should be within modal boundaries
         expect(buttonBox.x).toBeGreaterThanOrEqual(modalBox.x);
-        expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(modalBox.x + modalBox.width);
+        expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(
+          modalBox.x + modalBox.width,
+        );
         expect(buttonBox.y).toBeGreaterThanOrEqual(modalBox.y);
-        expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(modalBox.y + modalBox.height);
+        expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(
+          modalBox.y + modalBox.height,
+        );
       }
     });
   });
@@ -839,7 +849,9 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
 
       if (buttonBox && modalBox) {
         // Button should be within modal boundaries
-        expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(modalBox.y + modalBox.height);
+        expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(
+          modalBox.y + modalBox.height,
+        );
         expect(buttonBox.x).toBeGreaterThanOrEqual(modalBox.x);
       }
     });

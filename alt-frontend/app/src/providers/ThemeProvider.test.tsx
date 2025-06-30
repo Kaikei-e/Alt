@@ -1,15 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act, cleanup } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import React from 'react'
-import { ThemeProvider } from './ThemeProvider'
-import { useTheme } from '../hooks/useTheme'
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, act, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import React from "react";
+import { ThemeProvider } from "./ThemeProvider";
+import { useTheme } from "../hooks/useTheme";
 
 // Polyfill window.matchMedia for jsdom environment
 if (!window.matchMedia) {
-  Object.defineProperty(window, 'matchMedia', {
+  Object.defineProperty(window, "matchMedia", {
     writable: true,
-    value: vi.fn().mockImplementation(query => ({
+    value: vi.fn().mockImplementation((query) => ({
       matches: false,
       media: query,
       onchange: null,
@@ -27,23 +27,23 @@ const localStorageMock = {
   getItem: vi.fn(),
   setItem: vi.fn(),
   removeItem: vi.fn(),
-  clear: vi.fn()
-}
+  clear: vi.fn(),
+};
 
-Object.defineProperty(window, 'localStorage', {
+Object.defineProperty(window, "localStorage", {
   value: localStorageMock,
-  writable: true
-})
+  writable: true,
+});
 
 // Mock document.body.setAttribute
-Object.defineProperty(document.body, 'setAttribute', {
+Object.defineProperty(document.body, "setAttribute", {
   value: vi.fn(),
-  writable: true
-})
+  writable: true,
+});
 
 // Simple test component
 const TestComponent = () => {
-  const { currentTheme, toggleTheme } = useTheme()
+  const { currentTheme, toggleTheme } = useTheme();
 
   return (
     <div>
@@ -52,144 +52,150 @@ const TestComponent = () => {
         Toggle
       </button>
     </div>
-  )
-}
+  );
+};
 
-describe('ThemeProvider', () => {
+describe("ThemeProvider", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    localStorageMock.getItem.mockReturnValue(null)
-    cleanup()
-  })
+    vi.clearAllMocks();
+    localStorageMock.getItem.mockReturnValue(null);
+    cleanup();
+  });
 
   afterEach(() => {
-    cleanup()
-  })
+    cleanup();
+  });
 
-  it('should provide theme context to children', async () => {
+  it("should provide theme context to children", async () => {
     render(
       <ThemeProvider>
         <TestComponent />
-      </ThemeProvider>
-    )
+      </ThemeProvider>,
+    );
 
     // Wait for hydration
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0))
-    })
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
-    expect(screen.getByTestId('theme-display')).toBeDefined()
-    expect(screen.getByTestId('toggle-btn')).toBeDefined()
-  })
+    expect(screen.getByTestId("theme-display")).toBeDefined();
+    expect(screen.getByTestId("toggle-btn")).toBeDefined();
+  });
 
-  it('should initialize with default theme', async () => {
+  it("should initialize with default theme", async () => {
     render(
       <ThemeProvider>
         <TestComponent />
-      </ThemeProvider>
-    )
+      </ThemeProvider>,
+    );
 
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0))
-    })
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
-    const themeDisplay = screen.getByTestId('theme-display')
-    expect(themeDisplay.textContent).toBe('liquid-beige')
-  })
+    const themeDisplay = screen.getByTestId("theme-display");
+    expect(themeDisplay.textContent).toBe("liquid-beige");
+  });
 
-  it('should restore theme from localStorage', async () => {
-    localStorageMock.getItem.mockReturnValue('vaporwave')
-
-    render(
-      <ThemeProvider>
-        <TestComponent />
-      </ThemeProvider>
-    )
-
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0))
-    })
-
-    const themeDisplay = screen.getByTestId('theme-display')
-    expect(themeDisplay.textContent).toBe('vaporwave')
-  })
-
-  it('should update body data-style attribute', async () => {
-    localStorageMock.getItem.mockReturnValue('vaporwave')
+  it("should restore theme from localStorage", async () => {
+    localStorageMock.getItem.mockReturnValue("vaporwave");
 
     render(
       <ThemeProvider>
         <TestComponent />
-      </ThemeProvider>
-    )
+      </ThemeProvider>,
+    );
 
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0))
-    })
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
-    expect(document.body.setAttribute).toHaveBeenCalledWith('data-style', 'vaporwave')
-  })
+    const themeDisplay = screen.getByTestId("theme-display");
+    expect(themeDisplay.textContent).toBe("vaporwave");
+  });
 
-  it('should handle theme toggle', async () => {
-    const user = userEvent.setup()
-    localStorageMock.getItem.mockReturnValue('liquid-beige')
+  it("should update body data-style attribute", async () => {
+    localStorageMock.getItem.mockReturnValue("vaporwave");
 
     render(
       <ThemeProvider>
         <TestComponent />
-      </ThemeProvider>
-    )
+      </ThemeProvider>,
+    );
 
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0))
-    })
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
-    const toggleBtn = screen.getByTestId('toggle-btn')
-    await user.click(toggleBtn)
+    expect(document.body.setAttribute).toHaveBeenCalledWith(
+      "data-style",
+      "vaporwave",
+    );
+  });
+
+  it("should handle theme toggle", async () => {
+    const user = userEvent.setup();
+    localStorageMock.getItem.mockReturnValue("liquid-beige");
+
+    render(
+      <ThemeProvider>
+        <TestComponent />
+      </ThemeProvider>,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const toggleBtn = screen.getByTestId("toggle-btn");
+    await user.click(toggleBtn);
 
     // Wait for state update
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0))
-    })
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
-    const themeDisplay = screen.getByTestId('theme-display')
-    expect(themeDisplay.textContent).toBe('liquid-beige')
-  })
+    const themeDisplay = screen.getByTestId("theme-display");
+    expect(themeDisplay.textContent).toBe("liquid-beige");
+  });
 
-  it('should persist theme changes to localStorage', async () => {
-    const user = userEvent.setup()
-    localStorageMock.getItem.mockReturnValue('liquid-beige')
-
-    render(
-      <ThemeProvider>
-        <TestComponent />
-      </ThemeProvider>
-    )
-
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0))
-    })
-
-    const toggleBtn = screen.getByTestId('toggle-btn')
-    await user.click(toggleBtn)
-
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('alt-theme', 'vaporwave')
-  })
-
-  it('should fallback to default theme for invalid stored theme', async () => {
-    localStorageMock.getItem.mockReturnValue('invalid-theme')
+  it("should persist theme changes to localStorage", async () => {
+    const user = userEvent.setup();
+    localStorageMock.getItem.mockReturnValue("liquid-beige");
 
     render(
       <ThemeProvider>
         <TestComponent />
-      </ThemeProvider>
-    )
+      </ThemeProvider>,
+    );
 
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0))
-    })
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
-    const themeDisplay = screen.getByTestId('theme-display')
-    expect(themeDisplay.textContent).toBe('liquid-beige')
-  })
-})
+    const toggleBtn = screen.getByTestId("toggle-btn");
+    await user.click(toggleBtn);
+
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      "alt-theme",
+      "vaporwave",
+    );
+  });
+
+  it("should fallback to default theme for invalid stored theme", async () => {
+    localStorageMock.getItem.mockReturnValue("invalid-theme");
+
+    render(
+      <ThemeProvider>
+        <TestComponent />
+      </ThemeProvider>,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const themeDisplay = screen.getByTestId("theme-display");
+    expect(themeDisplay.textContent).toBe("liquid-beige");
+  });
+});

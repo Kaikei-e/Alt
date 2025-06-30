@@ -7,18 +7,18 @@ test.describe("FeedCard Component - Functionality Tests", () => {
   test.beforeEach(async ({ page }) => {
     await page.unrouteAll();
 
-    await page.route('**/api/v1/health', async (route) => {
+    await page.route("**/api/v1/health", async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({ status: "ok" }),
       });
     });
 
-    await page.route('**/api/v1/feeds/fetch/cursor**', async (route) => {
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({
           data: mockFeeds,
           next_cursor: null,
@@ -26,9 +26,7 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       });
     });
 
-    
-
-      await mockApiEndpoints(page, { feeds: mockFeeds });
+    await mockApiEndpoints(page, { feeds: mockFeeds });
   });
 
   test.describe("Initial State", () => {

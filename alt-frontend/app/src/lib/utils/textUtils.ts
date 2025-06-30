@@ -12,12 +12,12 @@
 export const truncateText = (
   text: string,
   maxLength: number = 200,
-  suffix: string = "..."
+  suffix: string = "...",
 ): string => {
   if (text.length <= maxLength) {
     return text;
   }
-  
+
   return text.substring(0, maxLength) + suffix;
 };
 

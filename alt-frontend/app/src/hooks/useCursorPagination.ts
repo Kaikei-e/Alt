@@ -20,11 +20,11 @@ export function useCursorPagination<T>(
   ) => Promise<{ data: T[]; next_cursor: string | null }>,
   options: UseCursorPaginationOptions = {},
 ): UseCursorPaginationResult<T> {
-  const { 
-    limit = 20, 
-    enablePrefetch = false, 
-    prefetchDelay = 500, 
-    autoLoad = true 
+  const {
+    limit = 20,
+    enablePrefetch = false,
+    prefetchDelay = 500,
+    autoLoad = true,
   } = options;
 
   const [data, setData] = useState<T[]>([]);
@@ -34,36 +34,39 @@ export function useCursorPagination<T>(
   const [error, setError] = useState<Error | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  // Prefetch cache and refs  
+  // Prefetch cache and refs
   const prefetchCacheRef = useRef<Map<string, unknown>>(new Map());
   const prefetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Background prefetch function
-  const prefetchNextPage = useCallback(async (nextCursor: string) => {
-    if (!enablePrefetch || prefetchCacheRef.current.has(nextCursor)) {
-      return; // Not enabled or already prefetching/cached
-    }
-
-    try {
-      // Mark as being prefetched
-      prefetchCacheRef.current.set(nextCursor, 'loading');
-
-      const response = await fetchFn(nextCursor, limit);
-
-      // Cache the response
-      prefetchCacheRef.current.set(nextCursor, response);
-
-      // Clean up old cache entries (keep only last 3)
-      if (prefetchCacheRef.current.size > 3) {
-        const entries = Array.from(prefetchCacheRef.current.keys());
-        const oldestKey = entries[0];
-        prefetchCacheRef.current.delete(oldestKey);
+  const prefetchNextPage = useCallback(
+    async (nextCursor: string) => {
+      if (!enablePrefetch || prefetchCacheRef.current.has(nextCursor)) {
+        return; // Not enabled or already prefetching/cached
       }
-    } catch {
-      // Remove failed prefetch attempt
-      prefetchCacheRef.current.delete(nextCursor);
-    }
-  }, [enablePrefetch, fetchFn, limit]);
+
+      try {
+        // Mark as being prefetched
+        prefetchCacheRef.current.set(nextCursor, "loading");
+
+        const response = await fetchFn(nextCursor, limit);
+
+        // Cache the response
+        prefetchCacheRef.current.set(nextCursor, response);
+
+        // Clean up old cache entries (keep only last 3)
+        if (prefetchCacheRef.current.size > 3) {
+          const entries = Array.from(prefetchCacheRef.current.keys());
+          const oldestKey = entries[0];
+          prefetchCacheRef.current.delete(oldestKey);
+        }
+      } catch {
+        // Remove failed prefetch attempt
+        prefetchCacheRef.current.delete(nextCursor);
+      }
+    },
+    [enablePrefetch, fetchFn, limit],
+  );
 
   const loadInitial = useCallback(async () => {
     setIsInitialLoading(true);
@@ -86,7 +89,8 @@ export function useCursorPagination<T>(
         }, prefetchDelay);
       }
     } catch (err) {
-      const error = err instanceof Error ? err : new Error("Failed to load data");
+      const error =
+        err instanceof Error ? err : new Error("Failed to load data");
       setError(error);
       setData([]);
       setHasMore(false);
@@ -110,8 +114,11 @@ export function useCursorPagination<T>(
       // Check if we have prefetched data
       if (enablePrefetch && prefetchCacheRef.current.has(cursor)) {
         const cachedResponse = prefetchCacheRef.current.get(cursor);
-        if (cachedResponse !== 'loading') {
-          response = cachedResponse as { data: T[]; next_cursor: string | null };
+        if (cachedResponse !== "loading") {
+          response = cachedResponse as {
+            data: T[];
+            next_cursor: string | null;
+          };
           prefetchCacheRef.current.delete(cursor); // Use and remove from cache
         }
       }
@@ -135,12 +142,22 @@ export function useCursorPagination<T>(
         }, prefetchDelay);
       }
     } catch (err) {
-      const error = err instanceof Error ? err : new Error("Failed to load more data");
+      const error =
+        err instanceof Error ? err : new Error("Failed to load more data");
       setError(error);
     } finally {
       setIsLoading(false);
     }
-  }, [fetchFn, cursor, limit, isLoading, hasMore, enablePrefetch, prefetchNextPage, prefetchDelay]);
+  }, [
+    fetchFn,
+    cursor,
+    limit,
+    isLoading,
+    hasMore,
+    enablePrefetch,
+    prefetchNextPage,
+    prefetchDelay,
+  ]);
 
   const refresh = useCallback(async () => {
     // Clear prefetch cache on refresh
@@ -184,7 +201,7 @@ export function useCursorPagination<T>(
   useEffect(() => {
     const cache = prefetchCacheRef.current;
     const timeout = prefetchTimeoutRef.current;
-    
+
     return () => {
       if (timeout) {
         clearTimeout(timeout);

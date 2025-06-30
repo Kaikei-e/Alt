@@ -17,14 +17,8 @@ export default function ReadFeedsPage() {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Use the useReadFeeds hook for data management
-  const {
-    feeds,
-    isLoading,
-    error,
-    hasMore,
-    loadMore,
-    refresh,
-  } = useReadFeeds(20);
+  const { feeds, isLoading, error, hasMore, loadMore, refresh } =
+    useReadFeeds(20);
 
   // Check if this is initial loading (no feeds yet and loading)
   const isInitialLoading = isLoading && feeds.length === 0;
@@ -147,10 +141,7 @@ export default function ReadFeedsPage() {
             {/* Read Feed Cards */}
             <Flex direction="column" gap={4}>
               {feeds.map((feed: Feed) => (
-                <ReadFeedCard
-                  key={feed.link}
-                  feed={feed}
-                />
+                <ReadFeedCard key={feed.link} feed={feed} />
               ))}
             </Flex>
 

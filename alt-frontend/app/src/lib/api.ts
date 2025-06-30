@@ -13,10 +13,7 @@ import {
   CacheConfig,
   defaultCacheConfig,
 } from "@/lib/config";
-import {
-  CursorResponse,
-  MessageResponse
-} from "@/schema/common";
+import { CursorResponse, MessageResponse } from "@/schema/common";
 
 // Re-export types for external use
 export type { CursorResponse } from "@/schema/common";
@@ -255,7 +252,7 @@ export const apiClient = new ApiClient();
 // Generic cursor-based API factory function
 type CursorFetchFunction<T> = (
   cursor?: string,
-  limit?: number
+  limit?: number,
 ) => Promise<CursorResponse<T>>;
 
 /**
@@ -268,11 +265,11 @@ type CursorFetchFunction<T> = (
 function createCursorApi<BackendType, FrontendType>(
   endpoint: string,
   transformer: (item: BackendType) => FrontendType,
-  defaultCacheTtl: number = 10
+  defaultCacheTtl: number = 10,
 ): CursorFetchFunction<FrontendType> {
   return async (
     cursor?: string,
-    limit: number = 20
+    limit: number = 20,
   ): Promise<CursorResponse<FrontendType>> => {
     // Validate limit constraints
     if (limit < 1 || limit > 100) {
@@ -289,7 +286,7 @@ function createCursorApi<BackendType, FrontendType>(
     const cacheTtl = cursor ? defaultCacheTtl + 5 : defaultCacheTtl;
     const response = await apiClient.get<CursorResponse<BackendType>>(
       `${endpoint}?${params.toString()}`,
-      cacheTtl
+      cacheTtl,
     );
 
     // Transform backend items to frontend format
@@ -321,7 +318,7 @@ export const feedsApi = {
   getFeedsWithCursor: createCursorApi(
     "/v1/feeds/fetch/cursor",
     transformFeedItem,
-    5 // 5 minute cache for regular feeds
+    5, // 5 minute cache for regular feeds
   ),
 
   async getFeeds(page: number = 1, pageSize: number = 10): Promise<Feed[]> {
@@ -423,12 +420,12 @@ export const feedsApi = {
   getReadFeedsWithCursor: createCursorApi(
     "/v1/feeds/fetch/viewed/cursor",
     transformFeedItem,
-    10 // 10 minute cache for read feeds
+    10, // 10 minute cache for read feeds
   ),
 
   async prefetchReadFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getReadFeedsWithCursor(cursor).catch(() => {})
+      this.getReadFeedsWithCursor(cursor).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   },

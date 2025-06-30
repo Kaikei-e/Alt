@@ -134,7 +134,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
               }
             }}
             _active={{
-              bg: "rgba(0, 0, 0, 0.9)"
+              bg: "rgba(0, 0, 0, 0.9)",
             }}
             data-testid="modal-backdrop"
             role="dialog"
@@ -142,7 +142,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
             aria-labelledby="summary-header"
             aria-describedby="summary-content"
             p={4}
-            style={{ touchAction: 'manipulation' }}
+            style={{ touchAction: "manipulation" }}
           >
             <Box
               onClick={(e) => e.stopPropagation()}
@@ -180,10 +180,18 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 alignItems="center"
                 justifyContent="center"
               >
-                <Box data-testid="header-area" position="absolute" top="0" left="0" right="0" bottom="0" zIndex="-1" />
-                <Text 
-                  color="#ff006e" 
-                  fontWeight="bold" 
+                <Box
+                  data-testid="header-area"
+                  position="absolute"
+                  top="0"
+                  left="0"
+                  right="0"
+                  bottom="0"
+                  zIndex="-1"
+                />
+                <Text
+                  color="#ff006e"
+                  fontWeight="bold"
                   fontSize="md"
                   textShadow="0 2px 4px rgba(255, 0, 110, 0.3)"
                 >
@@ -204,23 +212,31 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 id="summary-content"
                 position="relative"
                 css={{
-                  '&::-webkit-scrollbar': {
-                    width: '6px',
+                  "&::-webkit-scrollbar": {
+                    width: "6px",
                   },
-                  '&::-webkit-scrollbar-track': {
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    borderRadius: '3px',
+                  "&::-webkit-scrollbar-track": {
+                    background: "rgba(255, 255, 255, 0.1)",
+                    borderRadius: "3px",
                   },
-                  '&::-webkit-scrollbar-thumb': {
-                    background: 'linear-gradient(45deg, #ff006e, #8338ec)',
-                    borderRadius: '3px',
+                  "&::-webkit-scrollbar-thumb": {
+                    background: "linear-gradient(45deg, #ff006e, #8338ec)",
+                    borderRadius: "3px",
                   },
-                  '&::-webkit-scrollbar-thumb:hover': {
-                    background: 'linear-gradient(45deg, #e6005c, #7129d4)',
+                  "&::-webkit-scrollbar-thumb:hover": {
+                    background: "linear-gradient(45deg, #e6005c, #7129d4)",
                   },
                 }}
               >
-                <Box data-testid="content-area" position="absolute" top="0" left="0" right="0" bottom="0" zIndex="-1" />
+                <Box
+                  data-testid="content-area"
+                  position="absolute"
+                  top="0"
+                  left="0"
+                  right="0"
+                  bottom="0"
+                  zIndex="-1"
+                />
                 <Text
                   data-testid={`summary-text-${uniqueId}`}
                   className="summary-text"
@@ -231,7 +247,9 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   }
                   fontSize="md"
                   lineHeight="1.7"
-                  fontStyle={error || !feedDetails?.summary ? "italic" : "normal"}
+                  fontStyle={
+                    error || !feedDetails?.summary ? "italic" : "normal"
+                  }
                   textAlign="justify"
                   letterSpacing="0.3px"
                   pb="16px" // Reduced padding since button is now in modal footer

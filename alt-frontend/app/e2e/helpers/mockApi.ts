@@ -215,21 +215,27 @@ export const mockApiEndpoints = async (
       });
     });
 
-    await page.route("http://localhost/api/v1/articles/search**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(articles),
-      });
-    });
+    await page.route(
+      "http://localhost/api/v1/articles/search**",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(articles),
+        });
+      },
+    );
 
-    await page.route("http://localhost:8080/api/v1/articles/search**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(articles),
-      });
-    });
+    await page.route(
+      "http://localhost:8080/api/v1/articles/search**",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(articles),
+        });
+      },
+    );
   }
 };
 

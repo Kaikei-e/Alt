@@ -6,7 +6,9 @@ import { createRequire } from "module";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const require = createRequire(import.meta.url);
 
-let withBundleAnalyzer: (config: Record<string, unknown>) => Record<string, unknown> = (c) => c;
+let withBundleAnalyzer: (
+  config: Record<string, unknown>,
+) => Record<string, unknown> = (c) => c;
 
 if (process.env.ANALYZE === "true") {
   try {
@@ -16,7 +18,9 @@ if (process.env.ANALYZE === "true") {
   } catch (err) {
     // Module might not be installed in production; log once and continue.
     // eslint-disable-next-line no-console
-    console.warn("[@next/bundle-analyzer] not installed; skipping bundle analysis.");
+    console.warn(
+      "[@next/bundle-analyzer] not installed; skipping bundle analysis.",
+    );
   }
 }
 

@@ -5,12 +5,14 @@ This is the frontend for the Alt project - a mobile-first RSS reader built with 
 ## Features
 
 ### Core Functionality
+
 - **Feed Management**: View and manage RSS feeds with real-time updates
 - **Read Status Tracking**: Mark feeds as read and view read feed history
 - **Search Capabilities**: Search through feeds and articles
 - **Mobile-First Design**: Optimized for mobile devices with responsive design
 
 ### Recently Added
+
 - **Viewed Feeds Page** (`/mobile/feeds/viewed`): Dedicated page for viewing previously read articles
 - **Enhanced Navigation**: FloatingMenu with active state indicators
 - **Optimized Performance**: Cursor-based pagination with prefetching capabilities
@@ -34,6 +36,7 @@ This is the frontend for the Alt project - a mobile-first RSS reader built with 
 ## Architecture
 
 Built following TDD (Test-Driven Development) principles with:
+
 - **TypeScript** for type safety
 - **Next.js** (Pages Router) for server-side rendering
 - **Chakra UI** for component library
@@ -43,6 +46,7 @@ Built following TDD (Test-Driven Development) principles with:
 ## API Integration
 
 The frontend integrates with the alt-backend microservice:
+
 - **Endpoint**: `/mobile/feeds/viewed`
 - **API**: `getReadFeedsWithCursor` for cursor-based pagination
 - **Implementation**: TDD + Clean Architecture patterns

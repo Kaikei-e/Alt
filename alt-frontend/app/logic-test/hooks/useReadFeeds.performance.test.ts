@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import { useReadFeeds } from '@/hooks/useReadFeeds';
-import { feedsApi } from '@/lib/api';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { useReadFeeds } from "@/hooks/useReadFeeds";
+import { feedsApi } from "@/lib/api";
 
 // Mock the API
-vi.mock('@/lib/api', () => ({
+vi.mock("@/lib/api", () => ({
   feedsApi: {
     getReadFeedsWithCursor: vi.fn(),
   },
@@ -12,7 +12,7 @@ vi.mock('@/lib/api', () => ({
 
 const mockFeedsApi = feedsApi as any;
 
-describe('useReadFeeds Performance Tests - PROTECTED', () => {
+describe("useReadFeeds Performance Tests - PROTECTED", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -23,12 +23,14 @@ describe('useReadFeeds Performance Tests - PROTECTED', () => {
       title: `Test Feed ${offset + index}`,
       description: `Description for test feed ${offset + index}`,
       link: `https://example.com/feed-${offset + index}`,
-      pub_date: new Date(Date.now() - (offset + index) * 1000 * 60 * 60).toISOString(),
+      pub_date: new Date(
+        Date.now() - (offset + index) * 1000 * 60 * 60,
+      ).toISOString(),
       read_status: true,
     }));
   };
 
-  it('基本的なデータ読み込み確認 (PROTECTED)', async () => {
+  it("基本的なデータ読み込み確認 (PROTECTED)", async () => {
     const PAGE_SIZE = 20;
 
     mockFeedsApi.getReadFeedsWithCursor.mockResolvedValue({
@@ -51,7 +53,7 @@ describe('useReadFeeds Performance Tests - PROTECTED', () => {
     expect(mockFeedsApi.getReadFeedsWithCursor).toHaveBeenCalledTimes(1);
   });
 
-  it('API呼び出し最適化確認 (PROTECTED)', async () => {
+  it("API呼び出し最適化確認 (PROTECTED)", async () => {
     const PAGE_SIZE = 20;
     let callCount = 0;
 
@@ -59,7 +61,7 @@ describe('useReadFeeds Performance Tests - PROTECTED', () => {
       callCount++;
       return {
         data: generateMockFeeds(PAGE_SIZE, (callCount - 1) * PAGE_SIZE),
-        next_cursor: callCount < 2 ? 'next-cursor' : null,
+        next_cursor: callCount < 2 ? "next-cursor" : null,
       };
     });
 
@@ -85,12 +87,12 @@ describe('useReadFeeds Performance Tests - PROTECTED', () => {
     expect(callCount).toBe(2);
   });
 
-  it('エラー処理の確認 (PROTECTED)', async () => {
+  it("エラー処理の確認 (PROTECTED)", async () => {
     const PAGE_SIZE = 20;
 
     // Mock API to fail first, then succeed
     mockFeedsApi.getReadFeedsWithCursor
-      .mockRejectedValueOnce(new Error('Network error'))
+      .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValueOnce({
         data: generateMockFeeds(PAGE_SIZE),
         next_cursor: null,
@@ -117,19 +119,21 @@ describe('useReadFeeds Performance Tests - PROTECTED', () => {
     expect(mockFeedsApi.getReadFeedsWithCursor).toHaveBeenCalledTimes(2);
   });
 
-  it('先読み機能の動作確認 (PROTECTED)', async () => {
+  it("先読み機能の動作確認 (PROTECTED)", async () => {
     const PAGE_SIZE = 20;
     let apiCallCount = 0;
 
-    mockFeedsApi.getReadFeedsWithCursor.mockImplementation(async (cursor?: string) => {
-      apiCallCount++;
-      
-      const offset = cursor === 'page-2' ? 20 : 0;
-      return {
-        data: generateMockFeeds(PAGE_SIZE, offset),
-        next_cursor: cursor ? null : 'page-2',
-      };
-    });
+    mockFeedsApi.getReadFeedsWithCursor.mockImplementation(
+      async (cursor?: string) => {
+        apiCallCount++;
+
+        const offset = cursor === "page-2" ? 20 : 0;
+        return {
+          data: generateMockFeeds(PAGE_SIZE, offset),
+          next_cursor: cursor ? null : "page-2",
+        };
+      },
+    );
 
     const { result } = renderHook(() => useReadFeeds(PAGE_SIZE));
 
@@ -142,7 +146,7 @@ describe('useReadFeeds Performance Tests - PROTECTED', () => {
     expect(result.current.hasMore).toBe(true);
 
     // Wait for prefetch to potentially complete
-    await new Promise(resolve => setTimeout(resolve, 600));
+    await new Promise((resolve) => setTimeout(resolve, 600));
 
     // Load more (should use prefetched data if available)
     result.current.loadMore();

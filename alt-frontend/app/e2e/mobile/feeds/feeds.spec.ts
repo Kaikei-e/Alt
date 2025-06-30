@@ -842,7 +842,9 @@ test.describe("Mobile Feeds Page", () => {
   });
 
   test.describe("Enhanced Error Handling - TDD Tests", () => {
-    test("should display retry button with exponential backoff", async ({ page }) => {
+    test("should display retry button with exponential backoff", async ({
+      page,
+    }) => {
       // Mock API to consistently fail
       await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
         await route.fulfill({
@@ -862,7 +864,9 @@ test.describe("Mobile Feeds Page", () => {
       });
 
       // Should show detailed error message
-      await expect(page.getByText("Server error - please try again later")).toBeVisible();
+      await expect(
+        page.getByText("Server error - please try again later"),
+      ).toBeVisible();
 
       const retryButton = page.getByRole("button", { name: /retry/i });
       await expect(retryButton).toBeVisible();
@@ -888,8 +892,12 @@ test.describe("Mobile Feeds Page", () => {
       await retryButton.click();
 
       // Should show successful state after retry
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 15000 });
-      await expect(page.getByText("Test Feed 1", { exact: true })).toBeVisible();
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({ timeout: 15000 });
+      await expect(
+        page.getByText("Test Feed 1", { exact: true }),
+      ).toBeVisible();
     });
 
     test("should show detailed error messages for different failure types", async ({
@@ -951,7 +959,8 @@ test.describe("Mobile Feeds Page", () => {
         const startIndex = cursor ? parseInt(cursor) : 0;
         const endIndex = Math.min(startIndex + limit, backendFeeds.length);
         const pageData = backendFeeds.slice(startIndex, endIndex);
-        const nextCursor = endIndex < backendFeeds.length ? endIndex.toString() : null;
+        const nextCursor =
+          endIndex < backendFeeds.length ? endIndex.toString() : null;
 
         await route.fulfill({
           status: 200,
@@ -964,17 +973,23 @@ test.describe("Mobile Feeds Page", () => {
       });
     });
 
-    test("should render all feed cards correctly during rapid up/down scrolling", async ({ page }) => {
+    test("should render all feed cards correctly during rapid up/down scrolling", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
       // Wait for initial feeds to load
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
       // Count initial feed cards
-      const initialCount = await page.locator('[data-testid="feed-card"]').count();
+      const initialCount = await page
+        .locator('[data-testid="feed-card"]')
+        .count();
       expect(initialCount).toBeGreaterThan(0);
 
       // Perform rapid up/down scrolling that previously caused rendering issues
@@ -1008,28 +1023,41 @@ test.describe("Mobile Feeds Page", () => {
       await page.waitForTimeout(500);
 
       // Verify that feed cards are still rendered correctly
-      const finalCount = await page.locator('[data-testid="feed-card"]').count();
+      const finalCount = await page
+        .locator('[data-testid="feed-card"]')
+        .count();
       expect(finalCount).toBeGreaterThanOrEqual(initialCount);
 
       // Ensure feed cards have proper content (not empty/missing)
       const firstFeed = page.locator('[data-testid="feed-card"]').first();
       await expect(firstFeed).toBeVisible();
-      await expect(firstFeed.locator('button:has-text("Mark as read")')).toBeVisible();
-      await expect(firstFeed.locator('button:has-text("Show Details")')).toBeVisible();
+      await expect(
+        firstFeed.locator('button:has-text("Mark as read")'),
+      ).toBeVisible();
+      await expect(
+        firstFeed.locator('button:has-text("Show Details")'),
+      ).toBeVisible();
     });
 
-    test("should maintain feed card content during continuous fast scrolling", async ({ page }) => {
+    test("should maintain feed card content during continuous fast scrolling", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
       // Wait for initial feeds to load
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
       // Get the first feed's title for reference
       const firstCard = page.locator('[data-testid="feed-card"]').first();
-      const firstFeedTitle = await firstCard.locator("a > p, a > span, a > div").first().textContent();
+      const firstFeedTitle = await firstCard
+        .locator("a > p, a > span, a > div")
+        .first()
+        .textContent();
       expect(firstFeedTitle).toBeTruthy();
 
       // Perform continuous fast scrolling
@@ -1073,27 +1101,42 @@ test.describe("Mobile Feeds Page", () => {
       await page.waitForTimeout(200);
 
       // Verify the first feed is still properly rendered
-      const currentFirstCard = page.locator('[data-testid="feed-card"]').first();
+      const currentFirstCard = page
+        .locator('[data-testid="feed-card"]')
+        .first();
       await expect(currentFirstCard).toBeVisible();
 
-      const currentFirstFeedTitle = await currentFirstCard.locator("a > p, a > span, a > div").first().textContent();
+      const currentFirstFeedTitle = await currentFirstCard
+        .locator("a > p, a > span, a > div")
+        .first()
+        .textContent();
       expect(currentFirstFeedTitle).toBe(firstFeedTitle);
 
       // Ensure interactive elements are still functional
-      await expect(currentFirstCard.locator('button:has-text("Mark as read")')).toBeVisible();
-      await expect(currentFirstCard.locator('button:has-text("Show Details")')).toBeVisible();
+      await expect(
+        currentFirstCard.locator('button:has-text("Mark as read")'),
+      ).toBeVisible();
+      await expect(
+        currentFirstCard.locator('button:has-text("Show Details")'),
+      ).toBeVisible();
     });
 
-    test("should handle scroll-triggered infinite loading without breaking card rendering", async ({ page }) => {
+    test("should handle scroll-triggered infinite loading without breaking card rendering", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
       // Wait for initial feeds to load
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
-      const initialCount = await page.locator('[data-testid="feed-card"]').count();
+      const initialCount = await page
+        .locator('[data-testid="feed-card"]')
+        .count();
 
       // Rapidly scroll to trigger infinite loading multiple times
       for (let i = 0; i < 3; i++) {
@@ -1137,7 +1180,9 @@ test.describe("Mobile Feeds Page", () => {
       }
 
       // Verify that more feeds were loaded and all are properly rendered
-      const finalCount = await page.locator('[data-testid="feed-card"]').count();
+      const finalCount = await page
+        .locator('[data-testid="feed-card"]')
+        .count();
       expect(finalCount).toBeGreaterThan(initialCount);
 
       // Check that all visible feed cards have proper content
@@ -1149,17 +1194,23 @@ test.describe("Mobile Feeds Page", () => {
         if (i >= 0 && i < count) {
           const card = feedCards.nth(i);
           await expect(card).toBeVisible();
-          await expect(card.locator('button:has-text("Mark as read")')).toBeVisible();
+          await expect(
+            card.locator('button:has-text("Mark as read")'),
+          ).toBeVisible();
         }
       }
     });
 
-    test("should not lose feed cards during momentum scrolling simulation", async ({ page }) => {
+    test("should not lose feed cards during momentum scrolling simulation", async ({
+      page,
+    }) => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
       // Wait for initial feeds to load
-      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({
         timeout: 10000,
       });
 
@@ -1179,8 +1230,12 @@ test.describe("Mobile Feeds Page", () => {
             velocity *= deceleration;
 
             // Bounce off the edges
-            if (position >= scrollContainer.scrollHeight - scrollContainer.clientHeight) {
-              position = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+            if (
+              position >=
+              scrollContainer.scrollHeight - scrollContainer.clientHeight
+            ) {
+              position =
+                scrollContainer.scrollHeight - scrollContainer.clientHeight;
               velocity = -Math.abs(velocity); // Reverse direction
             } else if (position <= 0) {
               position = 0;
@@ -1220,8 +1275,12 @@ test.describe("Mobile Feeds Page", () => {
 
       const firstFeed = page.locator('[data-testid="feed-card"]').first();
       await expect(firstFeed).toBeVisible();
-      await expect(firstFeed.locator('button:has-text("Mark as read")')).toBeVisible();
-      await expect(firstFeed.locator('button:has-text("Show Details")')).toBeVisible();
+      await expect(
+        firstFeed.locator('button:has-text("Mark as read")'),
+      ).toBeVisible();
+      await expect(
+        firstFeed.locator('button:has-text("Show Details")'),
+      ).toBeVisible();
     });
   });
 });

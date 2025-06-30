@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Feed } from '@/schema/feed';
-import { feedsApi } from '@/lib/api';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Feed } from "@/schema/feed";
+import { feedsApi } from "@/lib/api";
 
 export interface UseReadFeedsResult {
   feeds: Feed[];
@@ -13,9 +13,7 @@ export interface UseReadFeedsResult {
   refresh: () => void;
 }
 
-export const useReadFeeds = (
-  initialLimit: number = 20
-): UseReadFeedsResult => {
+export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
   const enablePrefetch = true;
 
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -29,85 +27,104 @@ export const useReadFeeds = (
   const prefetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Background prefetch function
-  const prefetchNextPage = useCallback(async (nextCursor: string) => {
-    if (!enablePrefetch) return; // Skip prefetch if disabled
+  const prefetchNextPage = useCallback(
+    async (nextCursor: string) => {
+      if (!enablePrefetch) return; // Skip prefetch if disabled
 
-    if (prefetchCacheRef.current.has(nextCursor)) {
-      return; // Already prefetching or cached
-    }
-
-    try {
-      // Mark as being prefetched
-      prefetchCacheRef.current.set(nextCursor, 'loading');
-
-      const response = await feedsApi.getReadFeedsWithCursor(nextCursor, initialLimit);
-
-      // Cache the response
-      prefetchCacheRef.current.set(nextCursor, response);
-
-      // Clean up old cache entries (keep only last 3)
-      if (prefetchCacheRef.current.size > 3) {
-        const entries = Array.from(prefetchCacheRef.current.keys());
-        const oldestKey = entries[0];
-        prefetchCacheRef.current.delete(oldestKey);
+      if (prefetchCacheRef.current.has(nextCursor)) {
+        return; // Already prefetching or cached
       }
-    } catch {
-      // Remove failed prefetch attempt
-      prefetchCacheRef.current.delete(nextCursor);
-    }
-  }, [initialLimit, enablePrefetch]);
 
-  const loadFeeds = useCallback(async (resetData: boolean = false) => {
-    try {
-      setIsLoading(true);
-      setError(null);
+      try {
+        // Mark as being prefetched
+        prefetchCacheRef.current.set(nextCursor, "loading");
 
-      const currentCursor = resetData ? undefined : cursor;
-      let response: { data: Feed[]; next_cursor: string | null } | undefined;
+        const response = await feedsApi.getReadFeedsWithCursor(
+          nextCursor,
+          initialLimit,
+        );
 
-      // Check if we have prefetched data (only if prefetch is enabled)
-      if (enablePrefetch && currentCursor && prefetchCacheRef.current.has(currentCursor)) {
-        const cachedResponse = prefetchCacheRef.current.get(currentCursor);
-        if (cachedResponse !== 'loading') {
-          response = cachedResponse as { data: Feed[]; next_cursor: string | null };
-          prefetchCacheRef.current.delete(currentCursor); // Use and remove from cache
+        // Cache the response
+        prefetchCacheRef.current.set(nextCursor, response);
+
+        // Clean up old cache entries (keep only last 3)
+        if (prefetchCacheRef.current.size > 3) {
+          const entries = Array.from(prefetchCacheRef.current.keys());
+          const oldestKey = entries[0];
+          prefetchCacheRef.current.delete(oldestKey);
         }
+      } catch {
+        // Remove failed prefetch attempt
+        prefetchCacheRef.current.delete(nextCursor);
       }
+    },
+    [initialLimit, enablePrefetch],
+  );
 
-      // If no cached data, fetch normally
-      if (!response) {
-        response = await feedsApi.getReadFeedsWithCursor(currentCursor, initialLimit);
-      }
+  const loadFeeds = useCallback(
+    async (resetData: boolean = false) => {
+      try {
+        setIsLoading(true);
+        setError(null);
 
-      if (resetData) {
-        setFeeds(response.data);
-      } else {
-        setFeeds(prevFeeds => [...prevFeeds, ...response.data]);
-      }
+        const currentCursor = resetData ? undefined : cursor;
+        let response: { data: Feed[]; next_cursor: string | null } | undefined;
 
-      setCursor(response.next_cursor || undefined);
-      setHasMore(response.next_cursor !== null);
-
-      // Prefetch next page in background if available (only if prefetch is enabled)
-      if (enablePrefetch && response.next_cursor) {
-        // Delay prefetch to avoid overwhelming the network
-        if (prefetchTimeoutRef.current) {
-          clearTimeout(prefetchTimeoutRef.current);
+        // Check if we have prefetched data (only if prefetch is enabled)
+        if (
+          enablePrefetch &&
+          currentCursor &&
+          prefetchCacheRef.current.has(currentCursor)
+        ) {
+          const cachedResponse = prefetchCacheRef.current.get(currentCursor);
+          if (cachedResponse !== "loading") {
+            response = cachedResponse as {
+              data: Feed[];
+              next_cursor: string | null;
+            };
+            prefetchCacheRef.current.delete(currentCursor); // Use and remove from cache
+          }
         }
-        prefetchTimeoutRef.current = setTimeout(() => {
-          prefetchNextPage(response.next_cursor!);
-        }, 500); // 500ms delay
+
+        // If no cached data, fetch normally
+        if (!response) {
+          response = await feedsApi.getReadFeedsWithCursor(
+            currentCursor,
+            initialLimit,
+          );
+        }
+
+        if (resetData) {
+          setFeeds(response.data);
+        } else {
+          setFeeds((prevFeeds) => [...prevFeeds, ...response.data]);
+        }
+
+        setCursor(response.next_cursor || undefined);
+        setHasMore(response.next_cursor !== null);
+
+        // Prefetch next page in background if available (only if prefetch is enabled)
+        if (enablePrefetch && response.next_cursor) {
+          // Delay prefetch to avoid overwhelming the network
+          if (prefetchTimeoutRef.current) {
+            clearTimeout(prefetchTimeoutRef.current);
+          }
+          prefetchTimeoutRef.current = setTimeout(() => {
+            prefetchNextPage(response.next_cursor!);
+          }, 500); // 500ms delay
+        }
+      } catch (err) {
+        setError(err as Error);
+        setHasMore(false);
+        if (resetData) {
+          setFeeds([]);
+        }
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      setError(err as Error);
-      setHasMore(false);
-      if (resetData) {
-        setFeeds([]);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [cursor, initialLimit, prefetchNextPage, enablePrefetch]);
+    },
+    [cursor, initialLimit, prefetchNextPage, enablePrefetch],
+  );
 
   const loadMore = useCallback(() => {
     if (!isLoading && hasMore && cursor) {
@@ -134,7 +151,10 @@ export const useReadFeeds = (
         setIsLoading(true);
         setError(null);
 
-        const response = await feedsApi.getReadFeedsWithCursor(undefined, initialLimit);
+        const response = await feedsApi.getReadFeedsWithCursor(
+          undefined,
+          initialLimit,
+        );
         setFeeds(response.data);
         setCursor(response.next_cursor || undefined);
         setHasMore(response.next_cursor !== null);

@@ -132,14 +132,16 @@ test.describe("Home Page - PROTECTED", () => {
 
     // Try multiple possible error messages
     try {
-      await expect(page.getByText(/unable to load statistics/i)).toBeVisible({ timeout: 3000 });
+      await expect(page.getByText(/unable to load statistics/i)).toBeVisible({
+        timeout: 3000,
+      });
     } catch {
       // Fallback: check for other error indicators
       const errorIndicators = [
         page.getByText(/error/i),
         page.getByText(/failed/i),
         page.getByText(/loading/i),
-        page.locator('[data-testid="error-state"]')
+        page.locator('[data-testid="error-state"]'),
       ];
 
       let foundError = false;

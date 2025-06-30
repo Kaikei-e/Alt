@@ -132,11 +132,7 @@ const FeedCard = memo(function FeedCard({
               transition="all 0.2s ease"
               aria-label={`Mark ${feed.title} as read`}
             >
-              {isLoading ? (
-                <Spinner size="sm" />
-              ) : (
-                "Mark as read"
-              )}
+              {isLoading ? <Spinner size="sm" /> : "Mark as read"}
             </Button>
 
             <FeedDetails feedURL={feed.link} />

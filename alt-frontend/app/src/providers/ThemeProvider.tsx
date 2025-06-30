@@ -1,9 +1,12 @@
 "use client";
 
 import React from "react";
-import { ThemeProvider as NextThemesProvider, useTheme as useNextTheme } from "next-themes";
-import { ThemeContext } from '../contexts/ThemeContext';
-import { THEME_CONFIGS, type Theme } from '../types/theme';
+import {
+  ThemeProvider as NextThemesProvider,
+  useTheme as useNextTheme,
+} from "next-themes";
+import { ThemeContext } from "../contexts/ThemeContext";
+import { THEME_CONFIGS, type Theme } from "../types/theme";
 
 // Add constant for localStorage key
 const LOCAL_STORAGE_KEY = "alt-theme";
@@ -15,7 +18,9 @@ const ThemeBridge = ({ children }: { children: React.ReactNode }) => {
 
   // Use resolvedTheme to ensure we always have a concrete value (light/dark)
   // Map next-themes values to our custom theme names - liquid-beige as default/light theme
-  const currentTheme = (resolvedTheme === 'dark' ? 'vaporwave' : 'liquid-beige') as Theme;
+  const currentTheme = (
+    resolvedTheme === "dark" ? "vaporwave" : "liquid-beige"
+  ) as Theme;
 
   // Local state to reflect current theme synchronously
   const [innerTheme, setInnerTheme] = React.useState<Theme>(currentTheme);
@@ -33,7 +38,9 @@ const ThemeBridge = ({ children }: { children: React.ReactNode }) => {
   // Restore theme from localStorage on first mount
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(LOCAL_STORAGE_KEY) as Theme | null;
+    const stored = window.localStorage.getItem(
+      LOCAL_STORAGE_KEY,
+    ) as Theme | null;
     if (!stored) return;
 
     const desired = stored === "vaporwave" ? "dark" : "light"; // value for next-themes
@@ -47,7 +54,12 @@ const ThemeBridge = ({ children }: { children: React.ReactNode }) => {
     if (typeof document === "undefined") return;
     document.body.setAttribute("data-style", themeName);
     document.body.setAttribute("data-theme", themeName);
-    document.body.className = document.body.className.replace(/\b(vaporwave|liquid-beige)\b/g, "").trim() + " " + themeName;
+    document.body.className =
+      document.body.className
+        .replace(/\b(vaporwave|liquid-beige)\b/g, "")
+        .trim() +
+      " " +
+      themeName;
     try {
       window.localStorage.setItem(LOCAL_STORAGE_KEY, themeName);
     } catch {
@@ -64,16 +76,17 @@ const ThemeBridge = ({ children }: { children: React.ReactNode }) => {
   const contextValue = {
     currentTheme: innerTheme,
     toggleTheme: () => {
-      const nextTheme = currentTheme === 'liquid-beige' ? 'vaporwave' : 'liquid-beige';
+      const nextTheme =
+        currentTheme === "liquid-beige" ? "vaporwave" : "liquid-beige";
       // Update DOM immediately for snappy UX & tests
       updateDomAttributes(nextTheme);
       setInnerTheme(nextTheme);
-      setTheme(nextTheme === 'vaporwave' ? 'dark' : 'light');
+      setTheme(nextTheme === "vaporwave" ? "dark" : "light");
     },
     setTheme: (newTheme: Theme) => {
       updateDomAttributes(newTheme);
       setInnerTheme(newTheme);
-      setTheme(newTheme === 'vaporwave' ? 'dark' : 'light');
+      setTheme(newTheme === "vaporwave" ? "dark" : "light");
     },
     themeConfig: THEME_CONFIGS[innerTheme],
   };
@@ -85,7 +98,6 @@ const ThemeBridge = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <NextThemesProvider
@@ -93,10 +105,10 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
       defaultTheme="light"
       enableSystem={false}
       // Map our app themes to next-themes' light/dark mode
-      themes={['light', 'dark']}
+      themes={["light", "dark"]}
       value={{
-        light: 'theme-liquid-beige',
-        dark: 'theme-vaporwave',
+        light: "theme-liquid-beige",
+        dark: "theme-vaporwave",
       }}
     >
       <ThemeBridge>{children}</ThemeBridge>

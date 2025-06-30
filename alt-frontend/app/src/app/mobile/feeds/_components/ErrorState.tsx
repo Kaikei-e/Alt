@@ -42,7 +42,10 @@ export default function ErrorState({
     ) {
       return "Service temporarily unavailable";
     }
-    if (errorMessage.includes("502") || errorMessage.toLowerCase().includes("bad gateway")) {
+    if (
+      errorMessage.includes("502") ||
+      errorMessage.toLowerCase().includes("bad gateway")
+    ) {
       return "Service temporarily unavailable";
     }
     if (
@@ -52,7 +55,10 @@ export default function ErrorState({
     ) {
       return "Network connection error";
     }
-    if (errorMessage.toLowerCase().includes("timeout") || errorMessage.includes("408")) {
+    if (
+      errorMessage.toLowerCase().includes("timeout") ||
+      errorMessage.includes("408")
+    ) {
       return "Request timeout - please try again";
     }
 

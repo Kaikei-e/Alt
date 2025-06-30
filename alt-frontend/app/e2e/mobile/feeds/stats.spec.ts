@@ -262,7 +262,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(page.getByText("UNSUMMARIZED ARTICLES")).toBeVisible();
 
       // Test that cards are functional with mock data already loaded
-      const totalFeedsCard = page.locator(".glass").filter({ hasText: "TOTAL FEEDS" });
+      const totalFeedsCard = page
+        .locator(".glass")
+        .filter({ hasText: "TOTAL FEEDS" });
       await expect(totalFeedsCard).toBeVisible();
 
       // Check that numeric values are present in the cards
@@ -340,9 +342,15 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForTimeout(3000); // Wait for reconnection attempts
 
       // Should eventually show connected state or at least show the structure
-      await expect(page.getByText("TOTAL FEEDS")).toBeVisible({ timeout: 5000 });
-      await expect(page.getByText("TOTAL ARTICLES")).toBeVisible({ timeout: 5000 });
-      await expect(page.getByText("UNSUMMARIZED ARTICLES")).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText("TOTAL FEEDS")).toBeVisible({
+        timeout: 5000,
+      });
+      await expect(page.getByText("TOTAL ARTICLES")).toBeVisible({
+        timeout: 5000,
+      });
+      await expect(page.getByText("UNSUMMARIZED ARTICLES")).toBeVisible({
+        timeout: 5000,
+      });
     });
 
     test("should show expected status when SSE fails", async ({ page }) => {
@@ -451,7 +459,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       } catch {
         // Fallback: just verify the page structure is intact
         await expect(page.getByText("Feeds Statistics")).toBeVisible();
-        console.log("Connection status not found, but page structure is intact");
+        console.log(
+          "Connection status not found, but page structure is intact",
+        );
       }
     });
   });

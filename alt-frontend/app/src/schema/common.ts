@@ -68,7 +68,7 @@ export interface ValidationError {
 }
 
 // Status types
-export type LoadingStatus = 'idle' | 'loading' | 'success' | 'error';
+export type LoadingStatus = "idle" | "loading" | "success" | "error";
 
 // Common utility types
 export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;

@@ -40,7 +40,10 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     },
   ];
 
-  const mockStats = { "feed_amount": { "amount": 6500 }, "summarized_feed": { "amount": 6381 } }
+  const mockStats = {
+    feed_amount: { amount: 6500 },
+    summarized_feed: { amount: 6381 },
+  };
 
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/v1/feeds/stats", async (route) => {
@@ -84,10 +87,7 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     test("should have elegant trigger styling", async ({ page }) => {
       const menuTrigger = page.getByTestId("floating-menu-button");
       // Check for proper border radius (should be circular/rounded)
-      await expect(menuTrigger).toHaveCSS(
-        "border-radius",
-        /\d+px/,
-      );
+      await expect(menuTrigger).toHaveCSS("border-radius", /\d+px/);
     });
 
     test("should not show menu content initially", async ({ page }) => {
@@ -116,9 +116,12 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       // Feeds category should be open by default
       const feedsAccordionButton = page.getByTestId("tab-feeds");
       await expect(feedsAccordionButton).toBeVisible();
-      await expect(feedsAccordionButton).toHaveAttribute("aria-expanded", "true");
+      await expect(feedsAccordionButton).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
 
-      const feedItems = menuItems.filter(item => item.category === "feeds");
+      const feedItems = menuItems.filter((item) => item.category === "feeds");
       for (const item of feedItems) {
         await expect(
           page.getByTestId("bottom-sheet-menu").getByText(item.label),
@@ -128,23 +131,34 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       // Check articles items by clicking accordion
       const articlesAccordionButton = page.getByTestId("tab-articles");
       await articlesAccordionButton.click();
-      await expect(articlesAccordionButton).toHaveAttribute("aria-expanded", "true");
+      await expect(articlesAccordionButton).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
 
-      const articlesItems = menuItems.filter(item => item.category === "articles");
+      const articlesItems = menuItems.filter(
+        (item) => item.category === "articles",
+      );
       for (const item of articlesItems) {
         await expect(
           page.getByTestId("bottom-sheet-menu").getByText(item.label),
         ).toBeVisible();
       }
       // Feeds should now be closed
-      await expect(feedsAccordionButton).toHaveAttribute("aria-expanded", "false");
+      await expect(feedsAccordionButton).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
 
       // Switch to other tab and check other items
       const otherAccordionButton = page.getByTestId("tab-other");
       await otherAccordionButton.click();
-      await expect(otherAccordionButton).toHaveAttribute("aria-expanded", "true");
+      await expect(otherAccordionButton).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
 
-      const otherItems = menuItems.filter(item => item.category === "other");
+      const otherItems = menuItems.filter((item) => item.category === "other");
       for (const item of otherItems) {
         await expect(
           page.getByTestId("bottom-sheet-menu").getByText(item.label),
@@ -188,7 +202,10 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(bottomSheet).toBeVisible({ timeout: 10000 });
 
       // Check positioning - should be on the bottom
-      await expect(bottomSheet.locator("xpath=..")).toHaveCSS("position", "fixed");
+      await expect(bottomSheet.locator("xpath=..")).toHaveCSS(
+        "position",
+        "fixed",
+      );
       await expect(bottomSheet.locator("xpath=..")).toHaveCSS("bottom", "0px");
 
       const boundingBox = await bottomSheet.boundingBox();
@@ -245,7 +262,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
   });
 
   test.describe("Home Menu Item Tests", () => {
-    test("should display Home menu item in Other accordion", async ({ page }) => {
+    test("should display Home menu item in Other accordion", async ({
+      page,
+    }) => {
       await page.getByTestId("floating-menu-button").click();
 
       await page.getByTestId("tab-other").click();
@@ -280,7 +299,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
       try {
         // Focus should go to the first accordion button
-        await expect(page.getByTestId("tab-feeds")).toBeFocused({ timeout: 2000 });
+        await expect(page.getByTestId("tab-feeds")).toBeFocused({
+          timeout: 2000,
+        });
       } catch {
         // If automatic focus doesn't work, manually focus the element
         await page.getByTestId("tab-feeds").focus();
@@ -327,7 +348,10 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(bottomSheet).toBeVisible();
 
       // Check positioning - should be on the bottom
-      await expect(bottomSheet.locator("xpath=..")).toHaveCSS("position", "fixed");
+      await expect(bottomSheet.locator("xpath=..")).toHaveCSS(
+        "position",
+        "fixed",
+      );
       await expect(bottomSheet.locator("xpath=..")).toHaveCSS("bottom", "0px");
 
       const boundingBox = await bottomSheet.boundingBox();
@@ -347,46 +371,67 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(page.getByTestId("tab-other")).toBeVisible();
     });
 
-    test("should show feeds items when feeds accordion is open", async ({ page }) => {
+    test("should show feeds items when feeds accordion is open", async ({
+      page,
+    }) => {
       await page.getByTestId("floating-menu-button").click();
       // Feeds is open by default
-      const feedItems = menuItems.filter(item => item.category === "feeds");
+      const feedItems = menuItems.filter((item) => item.category === "feeds");
       for (const item of feedItems) {
-        await expect(page.getByTestId("bottom-sheet-menu").getByText(item.label)).toBeVisible();
+        await expect(
+          page.getByTestId("bottom-sheet-menu").getByText(item.label),
+        ).toBeVisible();
       }
 
-      const otherItems = menuItems.filter(item => item.category === "other");
+      const otherItems = menuItems.filter((item) => item.category === "other");
       for (const item of otherItems) {
-        await expect(page.getByTestId("bottom-sheet-menu").getByText(item.label)).not.toBeVisible();
+        await expect(
+          page.getByTestId("bottom-sheet-menu").getByText(item.label),
+        ).not.toBeVisible();
       }
     });
 
-    test("should show other items when other accordion is active", async ({ page }) => {
+    test("should show other items when other accordion is active", async ({
+      page,
+    }) => {
       await page.getByTestId("floating-menu-button").click();
 
       // Click other accordion
       await page.getByTestId("tab-other").click();
-      await expect(page.getByTestId("tab-other")).toHaveAttribute("aria-expanded", "true");
+      await expect(page.getByTestId("tab-other")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
 
-      const otherItems = menuItems.filter(item => item.category === "other");
+      const otherItems = menuItems.filter((item) => item.category === "other");
       for (const item of otherItems) {
-        await expect(page.getByTestId("bottom-sheet-menu").getByText(item.label)).toBeVisible();
+        await expect(
+          page.getByTestId("bottom-sheet-menu").getByText(item.label),
+        ).toBeVisible();
       }
 
-      const feedItems = menuItems.filter(item => item.category === "feeds");
+      const feedItems = menuItems.filter((item) => item.category === "feeds");
       for (const item of feedItems) {
-        await expect(page.getByTestId("bottom-sheet-menu").getByText(item.label)).not.toBeVisible();
+        await expect(
+          page.getByTestId("bottom-sheet-menu").getByText(item.label),
+        ).not.toBeVisible();
       }
     });
 
-    test("should have slide-in from bottom animation when opening", async ({ page }) => {
+    test("should have slide-in from bottom animation when opening", async ({
+      page,
+    }) => {
       await page.getByTestId("floating-menu-button").click();
       const bottomSheet = page.getByTestId("bottom-sheet-menu");
       await expect(bottomSheet).toBeVisible();
       // Check transform or transition on the parent (Drawer.Positioner)
-      const positioner = bottomSheet.locator('xpath=..');
-      const transform = await positioner.evaluate(el => getComputedStyle(el).transform);
-      const transition = await positioner.evaluate(el => getComputedStyle(el).transitionProperty);
+      const positioner = bottomSheet.locator("xpath=..");
+      const transform = await positioner.evaluate(
+        (el) => getComputedStyle(el).transform,
+      );
+      const transition = await positioner.evaluate(
+        (el) => getComputedStyle(el).transitionProperty,
+      );
       expect(transform === "none" ? transition : transform).not.toBe("none");
     });
 
@@ -403,10 +448,14 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(page.getByTestId("floating-menu-button")).toBeVisible();
     });
 
-    test("should navigate correctly when menu item is clicked", async ({ page }) => {
+    test("should navigate correctly when menu item is clicked", async ({
+      page,
+    }) => {
       await page.getByTestId("floating-menu-button").click();
 
-      const viewFeedsItem = page.getByTestId("bottom-sheet-menu").getByText("View Feeds");
+      const viewFeedsItem = page
+        .getByTestId("bottom-sheet-menu")
+        .getByText("View Feeds");
       await viewFeedsItem.click();
 
       await expect(page).toHaveURL("/");

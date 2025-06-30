@@ -30,7 +30,7 @@ import {
   FaChartBar,
   FaHome,
   FaNewspaper,
-  FaStar
+  FaStar,
 } from "react-icons/fa";
 import { ThemeToggle } from "../../ThemeToggle";
 
@@ -68,7 +68,9 @@ export const FloatingMenu = () => {
 
       // Focus management for accessibility
       setTimeout(() => {
-        const firstAccordionButton = document.querySelector('[data-testid="tab-feeds"]') as HTMLElement;
+        const firstAccordionButton = document.querySelector(
+          '[data-testid="tab-feeds"]',
+        ) as HTMLElement;
         if (firstAccordionButton) {
           firstAccordionButton.focus();
         }
@@ -456,7 +458,9 @@ export const FloatingMenu = () => {
                                             align="center"
                                           >
                                             <Text
-                                              color={isActive ? "#ff006e" : "white"}
+                                              color={
+                                                isActive ? "#ff006e" : "white"
+                                              }
                                               fontWeight={
                                                 isActive ? "semibold" : "medium"
                                               }
