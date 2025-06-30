@@ -1,12 +1,34 @@
+import { createRequire } from "module";
+
+// Node ESM files (package.json has "type":"module") don’t have the CommonJS
+// `require` function.  We recreate it via `createRequire` so the conditional
+// require below still works when the file is treated as an ES module.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const require = createRequire(import.meta.url);
+
+let withBundleAnalyzer: (config: Record<string, unknown>) => Record<string, unknown> = (c) => c;
+
+if (process.env.ANALYZE === "true") {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, import/no-extraneous-dependencies
+    const nextBundleAnalyzer = require("@next/bundle-analyzer");
+    withBundleAnalyzer = nextBundleAnalyzer({ enabled: true });
+  } catch (err) {
+    // Module might not be installed in production; log once and continue.
+    // eslint-disable-next-line no-console
+    console.warn("[@next/bundle-analyzer] not installed; skipping bundle analysis.");
+  }
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Essential optimizations
   compress: true,
   poweredByHeader: false,
 
+  // Experimental optimizations
   experimental: {
     optimizePackageImports: ["@chakra-ui/react", "@emotion/react"],
-    // Improve tree shaking
     esmExternals: true,
   },
 
@@ -84,4 +106,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+module.exports = withBundleAnalyzer(nextConfig);
