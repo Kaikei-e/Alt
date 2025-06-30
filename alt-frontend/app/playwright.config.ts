@@ -1,9 +1,4 @@
 import { defineConfig, devices } from "@playwright/test";
-import dotenv from "dotenv";
-import path from "path";
-
-// .env がある場合は読み込む（ローカル開発用）
-dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 const isCI = !!process.env.CI;
 
