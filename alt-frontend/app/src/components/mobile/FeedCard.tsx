@@ -61,10 +61,6 @@ const FeedCard = memo(function FeedCard({
       /* Use theme accent gradient for border */
       background="var(--surface-bg)"
       transition="transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out"
-      _hover={{
-        transform: "translateY(-2px)",
-        boxShadow: "0 20px 40px var(--alt-secondary)",
-      }}
       cursor="pointer"
       data-testid="feed-card-container"
     >
