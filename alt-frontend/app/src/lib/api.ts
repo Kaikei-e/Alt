@@ -13,7 +13,7 @@ import {
   CacheConfig,
   defaultCacheConfig,
 } from "@/lib/config";
-import { 
+import {
   CursorResponse,
   MessageResponse
 } from "@/schema/common";
@@ -421,7 +421,7 @@ export const feedsApi = {
   },
 
   getReadFeedsWithCursor: createCursorApi(
-    "/v1/feeds/fetch/read/cursor",
+    "/v1/feeds/fetch/viewed/cursor",
     transformFeedItem,
     10 // 10 minute cache for read feeds
   ),

@@ -127,8 +127,25 @@ export const mockApiEndpoints = async (
       },
     );
 
-    // Mock feed read status endpoint
+    // Mock feed read status endpoint - correct endpoint
     await page.route("**/api/v1/feeds/read", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Feed read status updated" }),
+      });
+    });
+
+    await page.route("http://localhost/api/v1/feeds/read", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Feed read status updated" }),
+      });
+    });
+
+    // Legacy endpoint for backward compatibility
+    await page.route("**/api/v1/feeds/viewed", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -136,7 +153,7 @@ export const mockApiEndpoints = async (
       });
     });
 
-    await page.route("http://localhost/api/v1/feeds/read", async (route) => {
+    await page.route("http://localhost/api/v1/feeds/viewed", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",

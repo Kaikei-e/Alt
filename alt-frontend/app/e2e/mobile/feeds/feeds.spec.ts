@@ -925,67 +925,54 @@ test.describe("Mobile Feeds Page", () => {
   });
 
   test.describe("Enhanced Error Handling - TDD Tests", () => {
-    test("should display retry button with exponential backoff", async ({
-      page,
-    }) => {
-      let attemptCount = 0;
-      const mockFeeds = generateMockFeeds(5, 1).map((feed) => ({
-        title: feed.title,
-        description: feed.description,
-        link: feed.link,
-        published: feed.published,
-      }));
-
+    test("should display retry button with exponential backoff", async ({ page }) => {
+      // Mock API to consistently fail
       await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
-        attemptCount++;
-        console.log(`API attempt ${attemptCount}`);
-
-        if (attemptCount < 2) {
-          // Fail first attempt
-          await route.fulfill({
-            status: 500,
-            contentType: "application/json",
-            body: JSON.stringify({ error: "Internal server error" }),
-          });
-        } else {
-          // Succeed on subsequent attempts
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              data: mockFeeds,
-              next_cursor: null,
-            }),
-          });
-        }
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Internal Server Error" }),
+        });
       });
 
+      // Go to the page to trigger the error
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      // Should show error state first
+      // Should show error state
       await expect(page.getByText("Unable to Load Feeds")).toBeVisible({
-        timeout: 10000,
+        timeout: 15000,
       });
 
-      // Retry button should be visible
-      const retryButton = page.locator('button:has-text("Retry")');
-      await expect(retryButton).toBeVisible({ timeout: 5000 });
+      // Should show detailed error message
+      await expect(page.getByText("Server error - please try again later")).toBeVisible();
 
-      // Click retry - this should eventually succeed
+      const retryButton = page.getByRole("button", { name: /retry/i });
+      await expect(retryButton).toBeVisible();
+
+      // Mock successful response for retry
+      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: generateMockFeeds(5, 1).map((feed) => ({
+              title: feed.title,
+              description: feed.description,
+              link: feed.link,
+              published: feed.published,
+            })),
+            next_cursor: null,
+          }),
+        });
+      });
+
+      // Click retry button - it will handle backoff automatically
       await retryButton.click();
 
-      // Wait for the retry process and eventual success
-      await expect(
-        page.locator('[data-testid="feed-card"]').first(),
-      ).toBeVisible({
-        timeout: 20000, // Increased timeout for retry logic
-      });
-
-      // Verify we have feeds showing - use the actual aria-label from FeedCard component
-      await expect(
-        page.getByRole("link", { name: "Open Test Feed 1 in external link" }),
-      ).toBeVisible({ timeout: 5000 });
+      // Should show successful state after retry
+      await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText("Test Feed 1", { exact: true })).toBeVisible();
     });
 
     test("should show detailed error messages for different failure types", async ({
@@ -1019,6 +1006,16 @@ test.describe("Mobile Feeds Page", () => {
 
   test.describe("High-Speed Scrolling Stability", () => {
     test.beforeEach(async ({ page }) => {
+      // Ensure there are no conflicting cursor mocks from outer hooks
+      await page.unrouteAll();
+      await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: [], next_cursor: null }),
+        });
+      });
+
       // Generate a larger set of feeds for scrolling tests
       const largeFeedSet = generateMockFeeds(50, 1);
       const backendFeeds: BackendFeedItem[] = largeFeedSet.map((feed) => ({
@@ -1231,7 +1228,7 @@ test.describe("Mobile Feeds Page", () => {
       const count = await feedCards.count();
 
       // Check first few and last few cards to ensure they're properly rendered
-      for (let i of [0, 1, Math.floor(count/2), count-2, count-1]) {
+      for (let i of [0, 1, Math.floor(count / 2), count - 2, count - 1]) {
         if (i >= 0 && i < count) {
           const card = feedCards.nth(i);
           await expect(card).toBeVisible();

@@ -5,6 +5,8 @@ test.describe("FeedCard Component - Functionality Tests", () => {
   const mockFeeds = generateMockFeeds(10, 1);
 
   test.beforeEach(async ({ page }) => {
+    await page.unrouteAll();
+
     await mockApiEndpoints(page, { feeds: mockFeeds });
   });
 

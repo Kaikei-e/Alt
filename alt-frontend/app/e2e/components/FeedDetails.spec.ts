@@ -77,6 +77,14 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
+        body: JSON.stringify({ message: "Feed read status updated" }),
+      });
+    });
+
+    await page.route("**/api/v1/feeds/viewed", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
         body: JSON.stringify({ message: "Feed marked as read" }),
       });
     });
@@ -612,18 +620,18 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       // Check that hide button is positioned in modal footer
       const hideButton = page.locator(".hide-details-button");
       await expect(hideButton).toBeVisible();
-      
+
       // Check that it contains the close icon (IoClose component)
       await expect(hideButton).toBeVisible();
-      
+
       // Verify the button is in the modal footer area (bottom of modal)
       const modalContent = page.locator('[data-testid="modal-content"]');
       await expect(modalContent).toBeVisible();
-      
+
       // Check that the button is within the modal bounds
       const buttonBox = await hideButton.boundingBox();
       const modalBox = await modalContent.boundingBox();
-      
+
       if (buttonBox && modalBox) {
         // Button should be within modal boundaries
         expect(buttonBox.x).toBeGreaterThanOrEqual(modalBox.x);
@@ -804,7 +812,7 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
       // Modal should be properly sized for mobile (90vw, max 420px)
       expect(boundingBox?.width).toBeGreaterThan(300);
       expect(boundingBox?.width).toBeLessThanOrEqual(420);
-      
+
       // Height should be 75vh or max 600px
       expect(boundingBox?.height).toBeGreaterThan(300);
       expect(boundingBox?.height).toBeLessThanOrEqual(600);
@@ -819,16 +827,16 @@ test.describe("FeedDetails Component - Functionality Tests", () => {
 
       // Check that Article Summary title is centered in header
       await expect(page.getByText("Article Summary")).toBeVisible();
-      
+
       // Check that close button is visible in modal footer
       const closeButton = page.locator(".hide-details-button");
       await expect(closeButton).toBeVisible();
-      
+
       // Verify button is positioned within modal bounds (not fixed to viewport)
       const modalContent = page.locator('[data-testid="modal-content"]');
       const buttonBox = await closeButton.boundingBox();
       const modalBox = await modalContent.boundingBox();
-      
+
       if (buttonBox && modalBox) {
         // Button should be within modal boundaries
         expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(modalBox.y + modalBox.height);
