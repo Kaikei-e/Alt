@@ -73,10 +73,10 @@ export default function FeedsStatsPage() {
               fontSize="sm"
               color={
                 isConnected
-                  ? "var(--alt-success)"
+                  ? "var(--text-primary)"
                   : retryCount > 0
-                    ? "var(--alt-warning)"
-                    : "var(--alt-error)"
+                    ? "var(--text-primary)"
+                    : "var(--text-primary)"
               }
               textShadow={
                 isConnected

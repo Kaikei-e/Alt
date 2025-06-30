@@ -191,11 +191,10 @@ export const FloatingMenu = () => {
               p={0}
               w="48px"
               h="48px"
-              shadow="0 4px 16px var(--accent-primary)"
               border="2px solid rgba(255, 255, 255, 0.2)"
               _hover={{
                 transform: "scale(1.05) rotate(90deg)",
-                shadow: "0 6px 20px var(--accent-primary)",
+                shadow: "0 6px 20px var(--alt-primary)",
                 bg: "var(--alt-primary)",
               }}
               _active={{
@@ -217,9 +216,9 @@ export const FloatingMenu = () => {
                 transform="translate(-50%, -50%)"
                 w="120%"
                 h="120%"
-                bg="var(--accent-gradient)"
+                bg="var(--alt-primary)"
                 borderRadius="full"
-                opacity="0.6"
+                opacity="0.3"
                 css={{
                   "@keyframes pulse": {
                     "0%, 100%": {
