@@ -84,8 +84,8 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
           className="show-details-button"
           size="sm"
           borderRadius="full"
-          bg="var(--accent-gradient)"
-          color="white"
+          bg="var(--alt-secondary)"
+          color="var(--text-primary)"
           fontWeight="bold"
           px={4}
           minHeight="44px"
@@ -114,7 +114,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
             left="0"
             width="100vw"
             height="100vh"
-            bg="rgba(0, 0, 0, 0.85)"
+            bg="var(--alt-glass)"
             backdropFilter="blur(12px)"
             zIndex={9999}
             display="flex"
@@ -134,7 +134,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
               }
             }}
             _active={{
-              bg: "rgba(0, 0, 0, 0.9)",
+              bg: "var(--surface-bg)",
             }}
             data-testid="modal-backdrop"
             role="dialog"
@@ -166,7 +166,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 position="sticky"
                 top="0"
                 zIndex="2"
-                bg="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"
+                bg="var(--app-bg)"
                 height="50px"
                 minHeight="50px"
                 backdropFilter="blur(20px)"
@@ -190,10 +190,10 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   zIndex="-1"
                 />
                 <Text
-                  color="var(--accent-primary)"
+                  color="var(--alt-text-primary)"
                   fontWeight="bold"
                   fontSize="md"
-                  textShadow="0 2px 4px rgba(255, 0, 110, 0.3)"
+                  textShadow="0 2px 4px var(--alt-glass-shadow)"
                 >
                   Article Summary
                 </Text>
@@ -216,15 +216,15 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                     width: "6px",
                   },
                   "&::-webkit-scrollbar-track": {
-                    background: "rgba(255, 255, 255, 0.1)",
+                    background: "var(--app-bg)",
                     borderRadius: "3px",
                   },
                   "&::-webkit-scrollbar-thumb": {
-                    background: "var(--accent-gradient)",
+                    background: "var(--app-bg)",
                     borderRadius: "3px",
                   },
                   "&::-webkit-scrollbar-thumb:hover": {
-                    background: "var(--accent-gradient)",
+                    background: "var(--app-bg)",
                   },
                 }}
               >
@@ -242,8 +242,8 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   className="summary-text"
                   color={
                     error
-                      ? "rgba(255, 255, 255, 0.7)"
-                      : "rgba(255, 255, 255, 0.95)"
+                      ? "var(--alt-text-secondary)"
+                      : "var(--alt-text-primary)"
                   }
                   fontSize="md"
                   lineHeight="1.7"
@@ -263,7 +263,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 position="sticky"
                 bottom="0"
                 zIndex="2"
-                bg="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"
+                bg="var(--app-bg)"
                 backdropFilter="blur(20px)"
                 borderTop="1px solid rgba(255, 255, 255, 0.1)"
                 px={6}
@@ -281,23 +281,23 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   size="sm"
                   borderRadius="full"
                   bg="var(--accent-gradient)"
-                  color="white"
+                  color="var(--alt-text-primary)"
                   fontWeight="bold"
                   p={2.5}
                   minHeight="36px"
                   minWidth="36px"
                   fontSize="md"
-                  boxShadow="0 6px 20px rgba(255, 0, 110, 0.4)"
+                  boxShadow="var(--btn-shadow)"
                   _hover={{
                     bg: "var(--accent-gradient)",
                     transform: "scale(1.1)",
-                    boxShadow: "0 8px 25px rgba(255, 0, 110, 0.6)",
+                    boxShadow: "var(--btn-shadow)",
                   }}
                   _active={{
                     transform: "scale(0.95)",
                   }}
                   transition="all 0.2s ease"
-                  border="1.5px solid rgba(255, 255, 255, 0.3)"
+                  border="1.5px solid var(--alt-glass-border)"
                 >
                   <X size={16} />
                 </Button>

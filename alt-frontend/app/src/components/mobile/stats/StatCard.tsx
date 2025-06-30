@@ -51,22 +51,22 @@ export const StatCard = ({
     >
       <Flex direction="column" gap={3}>
         <Flex align="center" gap={2}>
-          <Icon as={icon} color="var(--alt-text-primary)" boxSize={5} />
+          <Icon as={icon} color="var(--alt-primary)" boxSize={5} />
           <Text
             fontSize="sm"
             textTransform="uppercase"
-            color="whiteAlpha.600"
+            color="var(--alt-text-primary)"
             letterSpacing="wider"
           >
             {label}
           </Text>
         </Flex>
 
-        <Text fontSize="3xl" fontWeight="bold" color="white">
+        <Text fontSize="3xl" fontWeight="bold" color="var(--alt-text-primary)">
           {safeFormatNumber(value)}
         </Text>
 
-        <Text fontSize="sm" color="whiteAlpha.700" lineHeight="1.5">
+        <Text fontSize="sm" color="var(--alt-text-primary)" lineHeight="1.5">
           {description}
         </Text>
       </Flex>

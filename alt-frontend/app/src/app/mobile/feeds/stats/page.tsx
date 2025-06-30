@@ -34,7 +34,7 @@ export default function FeedsStatsPage() {
     <Box
       minH="100vh"
       minHeight="100dvh"
-      background="var(--vaporwave-bg)"
+      background="var(--app-bg)"
       position="relative"
       overflowX="hidden"
       pt="env(safe-area-inset-top)"
@@ -53,7 +53,7 @@ export default function FeedsStatsPage() {
           <Text
             fontSize="2xl"
             fontWeight="bold"
-            color="var(--alt-text-primary)"
+            color="var(--alt-primary)"
             textShadow="0 0 20px var(--alt-text-primary)"
             mb={2}
           >

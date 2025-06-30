@@ -16,13 +16,13 @@ interface GlassPanelProps extends Omit<BoxProps, "children"> {
 export function GlassPanel({
   children,
   gradientBorder = false,
-  glassIntensity = 5,
+  // glassIntensity = 5,
   enableHover = true,
   ...boxProps
 }: GlassPanelProps) {
   // Calculate glass effect intensity
-  const blurValue = Math.min(Math.max(glassIntensity, 1), 10) * 2; // 2-20px
-  const opacityValue = 0.05 + glassIntensity * 0.01; // 0.06-0.15
+  // const blurValue = Math.min(Math.max(glassIntensity, 1), 10) * 2; // 2-20px
+  // const opacityValue = 0.05 + glassIntensity * 0.01; // 0.06-0.15
 
   const baseStyles = {
     background: "var(--alt-glass)",

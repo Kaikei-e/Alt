@@ -5,6 +5,7 @@ import { feedsApi } from "@/lib/api";
 import { useState, useCallback, memo, KeyboardEvent } from "react";
 import { FeedDetails } from "./FeedDetails";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";
+import { SquareArrowOutUpRight } from "lucide-react";
 
 type FeedCardProps = {
   feed: Feed;
@@ -58,11 +59,11 @@ const FeedCard = memo(function FeedCard({
       p="2px"
       borderRadius="18px"
       /* Use theme accent gradient for border */
-      background="var(--accent-gradient)"
+      background="var(--surface-bg)"
       transition="transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out"
       _hover={{
         transform: "translateY(-2px)",
-        boxShadow: "0 20px 40px var(--accent-primary)",
+        boxShadow: "0 20px 40px var(--alt-secondary)",
       }}
       cursor="pointer"
       data-testid="feed-card-container"
@@ -77,29 +78,32 @@ const FeedCard = memo(function FeedCard({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         aria-label={`Feed: ${feed.title}`}
-        bg="var(--alt-bg-primary, #1a1a2e)"
+        bg="var(--surface-bg)"
       >
         <Flex direction="column" gap={2}>
           {/* Title as link */}
-          <Link
-            href={feed.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Open ${feed.title} in external link`}
-          >
-            <Text
-              fontSize="lg"
-              fontWeight="semibold"
-              color="var(--accent-primary)"
-              _hover={{ textDecoration: "underline" }}
-              lineHeight="1.4"
+          <Flex direction="row" align="center" gap={2}>
+            <SquareArrowOutUpRight color="var(--alt-text-primary)" size={20} />
+            <Link
+              href={feed.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Open ${feed.title} in external link`}
             >
-              {feed.title}
-            </Text>
-          </Link>
+              <Text
+                fontSize="lg"
+                fontWeight="semibold"
+                color="var(--accent-primary)"
+                _hover={{ textDecoration: "underline" }}
+                lineHeight="1.4"
+              >
+                {feed.title}
+              </Text>
+            </Link>
+          </Flex>
 
           {/* Description */}
-          <Text fontSize="sm" color="rgba(255, 255, 255, 0.8)" lineHeight="1.5">
+          <Text fontSize="sm" color="var(--text-primary)" lineHeight="1.5">
             {truncatedDescription}
           </Text>
 
@@ -108,8 +112,8 @@ const FeedCard = memo(function FeedCard({
             <Button
               size="sm"
               borderRadius="full"
-              bg="var(--accent-gradient)"
-              color="white"
+              bg="var(--alt-primary)"
+              color="var(--text-primary)"
               fontWeight="bold"
               px={4}
               minHeight="44px"

@@ -157,7 +157,7 @@ export const FloatingMenu = () => {
       title: "Feeds",
       items: menuItems.filter((i) => i.category === "feeds"),
       icon: <Rss size={16} />,
-      gradient: "var(--accent-gradient)",
+      gradient: "var(--app-bg)",
     },
     {
       title: "Articles",
@@ -186,8 +186,8 @@ export const FloatingMenu = () => {
               data-testid="floating-menu-button"
               size="md"
               borderRadius="full"
-              bg="var(--accent-gradient)"
-              color="white"
+              bg="var(--alt-primary)"
+              color="var(--alt-text-primary)"
               p={0}
               w="48px"
               h="48px"
@@ -249,7 +249,7 @@ export const FloatingMenu = () => {
             <Drawer.Content
               w="100vw"
               maxW="100vw"
-              bg="var(--vaporwave-bg)"
+              bg="var(--app-bg)"
               color="white"
               borderTopRadius="32px"
               pt={6}
@@ -290,7 +290,7 @@ export const FloatingMenu = () => {
                     <Box
                       w="40px"
                       h="40px"
-                      bg="var(--accent-gradient)"
+                      bg="var(--alt-primary)"
                       borderRadius="full"
                       display="flex"
                       alignItems="center"
@@ -307,7 +307,7 @@ export const FloatingMenu = () => {
                       >
                         Navigation
                       </Drawer.Title>
-                      <Text fontSize="sm" color="rgba(255, 255, 255, 0.6)">
+                      <Text fontSize="sm" color="var(--text-primary)">
                         Quick access to all features
                       </Text>
                     </Box>
@@ -316,7 +316,7 @@ export const FloatingMenu = () => {
               </Drawer.Header>
 
               <Drawer.Body px={6} py={4}>
-                <Accordion allowToggle defaultIndex={0}>
+                <Accordion defaultIndex={0}>
                   {categories.map((cat, idx) => (
                     <AccordionItem key={idx} border="none" mb={4}>
                       {({ isExpanded }) => (
@@ -347,7 +347,7 @@ export const FloatingMenu = () => {
                                 <Box
                                   w="32px"
                                   h="32px"
-                                  bg={cat.gradient}
+                                  bg="var(--alt-secondary)"
                                   borderRadius="8px"
                                   display="flex"
                                   alignItems="center"
@@ -360,20 +360,20 @@ export const FloatingMenu = () => {
                                   <Text
                                     fontWeight="bold"
                                     fontSize="lg"
-                                    color="white"
+                                    color="var(--text-primary)"
                                   >
                                     {cat.title}
                                   </Text>
                                   <Text
                                     fontSize="sm"
-                                    color="var(--alt-text-secondary)"
+                                    color="var(--text-primary)"
                                   >
                                     {cat.items.length} items
                                   </Text>
                                 </Box>
                               </HStack>
                               <AccordionIcon
-                                color="var(--alt-text-secondary)"
+                                color="var(--alt-text-primary)"
                                 transition="transform 0.2s"
                                 transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
                               />
@@ -465,7 +465,7 @@ export const FloatingMenu = () => {
                                           {item.description && (
                                             <Text
                                               fontSize="xs"
-                                              color="var(--alt-text-secondary)"
+                                              color="var(--alt-text-primary)"
                                               mt={0.5}
                                             >
                                               {item.description}
@@ -500,7 +500,7 @@ export const FloatingMenu = () => {
                   aria-label="Close menu"
                   data-testid="close-menu-button"
                   variant="ghost"
-                  color="white"
+                  color="var(--alt-primary)"
                   borderRadius="full"
                   _hover={{
                     bg: "var(--accent-primary)",

@@ -120,6 +120,7 @@ export default function Home() {
             fontWeight="bold"
             bgGradient="var(--alt-gradient-primary)"
             bgClip="text"
+            color="var(--accent-gradient)"
             className={css.gradientText}
             mb={1}
           >
@@ -167,7 +168,7 @@ export default function Home() {
             }}
             _focus={{
               outline: "2px solid",
-              outlineColor: "accent.default",
+              outlineColor: "var(--alt-primary)",
               outlineOffset: "2px",
             }}
             _active={{
@@ -195,7 +196,7 @@ export default function Home() {
             >
               <HStack gap={3}>
                 <Box
-                  color="accent.default"
+                  color="var(--alt-primary)"
                   p={2}
                   borderRadius="sm"
                   bg="var(--alt-glass)"
@@ -207,17 +208,17 @@ export default function Home() {
                     fontSize="lg"
                     fontWeight="semibold"
                     fontFamily="heading"
-                    color="fg.default"
+                    color="var(--text-primary)"
                   >
                     Browse Feeds
                   </Text>
-                  <Text fontSize="xs" color="fg.subtle" fontFamily="body">
+                  <Text fontSize="xs" color="var(--text-primary)" fontFamily="body">
                     Explore RSS subscriptions
                   </Text>
                 </VStack>
               </HStack>
 
-              <Box color="fg.subtle" opacity={0.6}>
+              <Box color="var(--alt-primary)" opacity={0.6}>
                 <ArrowRight size={16} />
               </Box>
             </Flex>
@@ -231,7 +232,7 @@ export default function Home() {
             as="h2"
             fontSize="lg"
             fontWeight="semibold"
-            color="fg.default"
+            color="var(--alt-text-primary)"
             fontFamily="heading"
             alignSelf="flex-start"
             mb={1}
@@ -304,7 +305,7 @@ export default function Home() {
                 data-testid="stat-card"
                 bg="var(--alt-glass)"
                 border="1px solid"
-                borderColor="var(--alt-glass-border)"
+                borderColor="var(--alt-secondary)"
                 backdropFilter="blur(10px) saturate(1.1)"
                 w="full"
                 p={4}
@@ -317,7 +318,7 @@ export default function Home() {
                 _hover={{
                   transform: "translateY(-1px)",
                   bg: "var(--alt-glass)",
-                  borderColor: "var(--alt-glass-border)",
+                  borderColor: "var(--alt-tertiary)",
                   boxShadow: "0 8px 25px var(--alt-glass-shadow)",
                 }}
               >
@@ -334,7 +335,7 @@ export default function Home() {
                 <Flex direction="column" gap={2}>
                   <Flex align="center" gap={2}>
                     <Box
-                      color="accent.default"
+                      color="var(--alt-primary)"
                       p={1}
                       borderRadius="xs"
                       bg="var(--alt-glass)"
@@ -345,7 +346,7 @@ export default function Home() {
                       id="total-feeds-label"
                       fontSize="xs"
                       textTransform="uppercase"
-                      color="fg.subtle"
+                      color="var(--alt-text-primary)"
                       letterSpacing="wide"
                       fontFamily="body"
                       fontWeight="medium"
@@ -361,7 +362,7 @@ export default function Home() {
                       textProps={{
                         fontSize: "2xl",
                         fontWeight: "bold",
-                        color: "fg.default",
+                        color: "var(--alt-text-primary)",
                         fontFamily: "heading",
                       }}
                     />
@@ -369,7 +370,7 @@ export default function Home() {
 
                   <Text
                     fontSize="xs"
-                    color="fg.muted"
+                    color="var(--alt-text-primary)"
                     lineHeight="1.4"
                     fontFamily="body"
                   >
@@ -383,7 +384,7 @@ export default function Home() {
                 data-testid="stat-card"
                 bg="var(--alt-glass)"
                 border="1px solid"
-                borderColor="var(--alt-glass-border)"
+                borderColor="var(--alt-secondary)"
                 backdropFilter="blur(10px) saturate(1.1)"
                 w="full"
                 p={4}
@@ -395,9 +396,9 @@ export default function Home() {
                 aria-labelledby="ai-feeds-label"
                 _hover={{
                   transform: "translateY(-1px)",
-                  bg: "rgba(255, 255, 255, 0.06)",
-                  borderColor: "rgba(131, 56, 236, 0.2)",
-                  boxShadow: "0 8px 25px rgba(131, 56, 236, 0.1)",
+                  bg: "var(--alt-glass)",
+                  borderColor: "var(--alt-tertiary)",
+                  boxShadow: "0 8px 25px var(--alt-glass-shadow)",
                 }}
               >
                 {/* Subtle accent border */}
@@ -413,7 +414,7 @@ export default function Home() {
                 <Flex direction="column" gap={2}>
                   <Flex align="center" gap={2}>
                     <Box
-                      color="accent.emphasized"
+                      color="var(--alt-primary)"
                       p={1}
                       borderRadius="xs"
                       bg="var(--alt-glass)"
@@ -424,7 +425,7 @@ export default function Home() {
                       id="ai-feeds-label"
                       fontSize="xs"
                       textTransform="uppercase"
-                      color="fg.subtle"
+                      color="var(--alt-text-primary)"
                       letterSpacing="wide"
                       fontFamily="body"
                       fontWeight="medium"
@@ -440,7 +441,7 @@ export default function Home() {
                       textProps={{
                         fontSize: "2xl",
                         fontWeight: "bold",
-                        color: "fg.default",
+                        color: "var(--alt-text-primary)",
                         fontFamily: "heading",
                       }}
                     />
@@ -448,7 +449,7 @@ export default function Home() {
 
                   <Text
                     fontSize="xs"
-                    color="fg.muted"
+                    color="var(--alt-text-primary)"
                     lineHeight="1.4"
                     fontFamily="body"
                   >
