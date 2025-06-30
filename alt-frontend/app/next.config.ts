@@ -44,7 +44,6 @@ const nextConfig = {
     if (!isServer && !dev) {
       // Enhanced tree shaking
       config.optimization.usedExports = true;
-      config.optimization.sideEffects = false;
 
       // Better chunk splitting for caching
       config.optimization.splitChunks = {
