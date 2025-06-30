@@ -730,7 +730,7 @@ export const feedsApi = {
   },
 
   updateReadStatus: async (url: string): Promise<void> => {
-    const response = await fetch('/api/feeds/read-status', {
+    const response = await fetch('/api/feeds/viewed-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),

@@ -1,66 +1,83 @@
-# DESIGN_LANGUAGE.md - Alt Vaporwave Glass Design System
-*Version 1.0 - June 2025*
+# DESIGN_LANGUAGE.md - Alt Design System
+*Version 2.0 - Theme Toggle System*
 
-## Design Philosophy
+## Core Philosophy
+Alt combines **Glassmorphism** with two distinct aesthetics: **Vaporwave** (neon retro-future) and **Liquid Glass Beige** (organic luxury). Toggle between them like dark/light mode.
 
-### Core Vision
-Alt represents the harmony between **Glassmorphism** and **Vaporwave** - where transparency meets neon, and minimalism embraces retro-futurism. Our design language prioritizes **simplicity** over complexity, **purpose** over decoration.
-
-> "Less is more neon. Simplicity glows brightest."
-
-### Fundamental Principles
-
-#### 1. Restrained Neon
-Vaporwave colors demand attention - use them sparingly. Pink for primary actions, purple for secondary states, blue for information. Transparency provides the breathing room.
-
-#### 2. Glass as Structure
-Glass effects create depth without weight. Every layer serves hierarchy, not decoration.
-
-#### 3. Motion with Purpose
-Animation communicates state changes, never entertains. Prefer subtle transforms over complex sequences.
-
-#### 4. Elegant Simplicity
-The most sophisticated interface feels effortless. Remove the unnecessary to reveal the essential.
+**Key Principles:**
+- Glass creates structure, not decoration
+- Theme-specific accent colors
+- Minimal animations (hover effects only)
+- Simplicity over complexity
 
 ---
 
-## Claude Code Guidelines (Concise)
+## Theme Toggle System
 
-### Core Requirements
-1. **Chakra UI foundation** - Use Chakra components, extend with Alt styling
-2. **Glass-first design** - Every surface uses glassmorphism
-3. **Purposeful color** - Pink/purple/blue for specific functions only
-4. **Minimal animation** - Subtle hover effects, no complex sequences
-
-### Prompt Structure (Under 30 words)
-```bash
-# ✅ Effective prompt
-claude "Chakra Button + Alt glass effect + pink hover glow"
-
-# ❌ Too complex
-claude "Create a comprehensive button system with multiple variants..."
+### Two Variants (Toggle like Dark Mode)
+```javascript
+// Theme toggle implementation
+function toggleTheme() {
+  const current = document.body.getAttribute('data-style') || 'vaporwave';
+  const next = current === 'vaporwave' ? 'liquid-beige' : 'vaporwave';
+  document.body.setAttribute('data-style', next);
+}
 ```
 
-### Essential Alt Theme
+### Theme Specifications
+
+| Theme | Background | Glass | Accent Colors |
+|-------|------------|-------|---------------|
+| **vaporwave** | Gradient (#1a1a2e→#0f0f23) | rgba(255,255,255,0.1) | Pink #ff006e / Purple #8338ec / Blue #3a86ff |
+| **liquid-beige** | Warm beige (#D1C0A8) | rgba(225,213,197,0.18) | Terracotta #B85450 / Sage #7C9070 / Sand #D4A574 |
+
+### CSS Variables (Auto-switch with theme)
+```css
+/* These variables change automatically when theme toggles */
+--surface-bg      /* Glass background */
+--surface-border  /* Glass border */
+--surface-blur    /* Blur intensity */
+--accent-primary  /* Primary action color */
+--accent-secondary /* Secondary action color */
+--accent-tertiary /* Information color */
+--app-bg         /* Application background */
+```
+
+### Theme-Specific Colors
+```css
+/* Vaporwave Palette */
+[data-style="vaporwave"] {
+  --accent-primary: #ff006e;   /* Neon Pink */
+  --accent-secondary: #8338ec; /* Purple */
+  --accent-tertiary: #3a86ff;  /* Blue */
+}
+
+/* Liquid-Beige Palette (2025 Trend: Earthy Luxury) */
+[data-style="liquid-beige"] {
+  --accent-primary: #B85450;   /* Terracotta - warm CTAs */
+  --accent-secondary: #7C9070; /* Sage Green - organic balance */
+  --accent-tertiary: #D4A574;  /* Desert Sand - soft information */
+}
+```
+
+---
+
+## Implementation Guide
+
+### Essential Alt Theme (Chakra UI)
 ```typescript
-// alt-theme.ts (Chakra UI)
 export const altTheme = extendTheme({
-  colors: {
-    alt: {
-      pink: '#ff006e',
-      purple: '#8338ec',
-      blue: '#3a86ff',
-      glass: 'rgba(255, 255, 255, 0.1)',
-    }
-  },
   components: {
     Button: {
       variants: {
         alt: {
-          bg: 'alt.glass',
-          backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.2)',
-          _hover: { borderColor: 'alt.pink' }
+          bg: 'var(--surface-bg)',
+          backdropFilter: 'blur(var(--surface-blur))',
+          border: '1px solid var(--surface-border)',
+          _hover: {
+            borderColor: '#ff006e',
+            transform: 'translateY(-2px)'
+          }
         }
       }
     }
@@ -68,225 +85,102 @@ export const altTheme = extendTheme({
 })
 ```
 
-### Quick Implementation Patterns
+### Component Examples
 
-#### Glass Card
+#### Glass Card (Theme-aware)
 ```tsx
-// ✅ Simple Alt card
-<Card bg="rgba(255,255,255,0.1)" backdropFilter="blur(16px)">
-  <CardBody>Content</CardBody>
+<Card
+  bg="var(--surface-bg)"
+  backdropFilter="blur(var(--surface-blur))"
+  border="1px solid var(--surface-border)"
+  borderRadius="12px"
+>
+  <CardBody>Content adapts to theme</CardBody>
 </Card>
 ```
 
-#### Neon Button
+#### Theme Toggle Button
 ```tsx
-// ✅ Alt button with purpose
+<IconButton
+  icon={<SunIcon />}
+  onClick={toggleTheme}
+  variant="alt"
+  aria-label="Toggle theme"
+/>
+```
+
+#### Theme-Aware Accent Button
+```tsx
 <Button
   variant="alt"
-  _hover={{ boxShadow: '0 0 20px rgba(255,0,110,0.3)' }}
->
-  Action
-</Button>
-```
-
----
-
-## Visual Foundation
-
-### Color Philosophy
-Colors have meaning. Use intentionally.
-
-```css
-/* Primary Colors - Use Sparingly */
---alt-pink: #ff006e;     /* Primary CTAs only */
---alt-purple: #8338ec;   /* Secondary actions */
---alt-blue: #3a86ff;     /* Information states */
-
-/* Glass Foundation */
---alt-glass: rgba(255, 255, 255, 0.1);
---alt-glass-border: rgba(255, 255, 255, 0.2);
-
-/* Backgrounds - Deep & Minimal */
---alt-gradient-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
---vaporwave-bg: var(--alt-gradient-bg);
-```
-
-### Typography - Clarity First
-```css
-/* Clean, readable fonts */
---font-primary: 'Geist', system-ui;
---font-display: 'Geist', system-ui;
-
-/* Simple scale */
---text-sm: 0.875rem;
---text-base: 1rem;
---text-lg: 1.125rem;
---text-xl: 1.25rem;
-```
-
-### Glass Effects - The Core
-```css
-/* Standard glass surface */
-.glass {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-}
-
-/* Hover enhancement - subtle only */
-.glass:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-```
-
----
-
-## Motion Philosophy
-
-### Less is More
-Animations serve function, not aesthetics.
-
-#### Allowed Animations
-- **Hover feedback**: Subtle color/border changes
-- **State transitions**: Opacity, transform (small)
-- **Loading states**: Simple progress indicators
-
-#### Prohibited Animations
-- Complex sequences
-- Bouncing effects
-- Rotating elements (unless functional)
-- Multiple simultaneous animations
-
-```css
-/* ✅ Good - Purposeful hover */
-.interactive:hover {
-  transform: translateY(-1px);
-  transition: transform 0.15s ease;
-}
-
-/* ❌ Bad - Excessive animation */
-.flashy {
-  animation: bounce 0.5s infinite;
-  transform: rotate(360deg);
-}
-```
-
----
-
-## Component Principles
-
-### Simplicity Guidelines
-
-#### Button Design
-```tsx
-// ✅ Alt button - clean and purposeful
-<Button
-  bg="rgba(255,255,255,0.1)"
-  backdropFilter="blur(16px)"
-  border="1px solid rgba(255,255,255,0.2)"
   _hover={{
-    borderColor: '#ff006e',
-    boxShadow: '0 0 10px rgba(255,0,110,0.2)'
+    borderColor: 'var(--accent-primary)',
+    boxShadow: '0 0 10px var(--accent-primary)33' // 20% opacity
   }}
 >
-  Simple Action
+  Primary Action
 </Button>
 ```
 
-#### Card Design
-```tsx
-// ✅ Glass card - content focused
-<Card
-  bg="rgba(255,255,255,0.1)"
-  backdropFilter="blur(16px)"
-  border="1px solid rgba(255,255,255,0.2)"
->
-  <CardBody>
-    <Text>Clear, readable content</Text>
-  </CardBody>
-</Card>
-```
-
-### Quality Control
-
-#### Essential Checklist
-- [ ] Uses Chakra UI components
-- [ ] Glass effect present (backdrop-filter: blur)
-- [ ] Minimal color usage (pink/purple/blue)
-- [ ] Subtle hover only
-- [ ] Clean, readable text
-
-#### Avoid These Patterns
-```typescript
-// ❌ Don't create custom components unnecessarily
-const FlashyComponent = () => <div className="complex-animation">...</div>
-
-// ✅ Use Chakra + Alt styling
-<Box bg="alt.glass" backdropFilter="blur(16px)">...</Box>
-```
-
 ---
 
-## Team Standards
+## Claude Code Guidelines
 
-### Claude Code Best Practices
-
-#### Context Management
+### Prompt Examples (Max 25 words)
 ```bash
-# Clear frequently
-claude /clear
-
-# Provide minimal context
-echo "Chakra UI + Alt glass theme" > .clauderc
-```
-
-#### Effective Prompts
-```bash
-# ✅ Focused (under 25 words)
-claude "Chakra Card with glass background and subtle pink border hover"
-
-# ✅ Specific variant
-claude "Button variant='alt' with neon glow effect"
+# ✅ Good
+claude "Chakra Card with theme-aware glass effect"
+claude "Toggle button switching between three themes"
 
 # ❌ Too complex
-claude "Create a comprehensive design system with multiple variants..."
+claude "Create comprehensive theme system with animations..."
 ```
 
-#### Quality Gates
-```bash
-# Quick verification
-pnpm run typecheck
-pnpm run lint
+### Key Rules
+1. Always use CSS variables for theme flexibility
+2. Use Chakra UI components as base
+3. Apply glass effects to all surfaces
+4. Use theme-appropriate accent colors
+5. Keep animations subtle (transform/opacity only)
 
-# Test glass effects
-claude "Add backdrop-filter blur to this component"
+### Migration Checklist
+```css
+/* Old → New */
+bg="rgba(255,255,255,0.1)" → bg="var(--surface-bg)"
+backdropFilter="blur(20px)" → backdropFilter="blur(var(--surface-blur))"
+borderColor="rgba(255,255,255,0.2)" → borderColor="var(--surface-border)"
 ```
 
 ---
 
+## Quick Reference
 
-## Key Reminders
+### Setting Theme
+```html
+<body data-style="vaporwave">    <!-- Neon retro-future -->
+<body data-style="liquid-beige"> <!-- Earthy luxury -->
+```
 
-### Design Philosophy
-- **Simplicity over complexity**
-- **Purpose over decoration**
-- **Glass creates structure**
-- **Neon provides accent**
+### Theme Colors
+```css
+/* Vaporwave Mode */
+--accent-primary: #ff006e;   /* Neon Pink */
+--accent-secondary: #8338ec; /* Purple */
+--accent-tertiary: #3a86ff;  /* Blue */
 
-### Claude Code Usage
-- **Keep prompts under 30 words**
-- **Use Chakra UI as foundation**
-- **Apply Alt styling consistently**
-- **Avoid complex animations**
+/* Liquid-Beige Mode */
+--accent-primary: #B85450;   /* Terracotta */
+--accent-secondary: #7C9070; /* Sage Green */
+--accent-tertiary: #D4A574;  /* Desert Sand */
+```
 
-### Quality Standards
-- Glass effects on all surfaces
-- Minimal color usage
-- Subtle hover feedback only
-- Clean, readable typography
+### Quality Checklist
+- [ ] Uses CSS variables for theming
+- [ ] Glass effect on all surfaces
+- [ ] Works in both themes
+- [ ] Theme-appropriate accent colors
+- [ ] Subtle hover animations only
 
 ---
 
-*Alt Design System: Where glass meets neon, simplicity glows brightest.*
+**Remember:** Toggle between Vaporwave (neon cyber aesthetic) and Liquid-Beige (earthy luxury trend). Each theme has its own accent palette that reflects 2025 design trends.
