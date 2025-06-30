@@ -44,7 +44,16 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
 
   const handleToggle = () => {
     const now = Date.now();
-    if (now - lastToggleRef.current < 250) return; // debounce within 250ms
+    const elapsed = now - lastToggleRef.current;
+
+    // Ignore the interaction if it occurs within the debounce window.
+    // We still update the timestamp so that rapidly repeated clicks keep
+    // extending the window and only the very first one is honoured.
+    if (elapsed < 250) {
+      lastToggleRef.current = now;
+      return;
+    }
+
     lastToggleRef.current = now;
     toggleTheme();
   };
