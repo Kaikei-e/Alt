@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Box, Flex, Text, Icon } from "@chakra-ui/react";
-import { IconType } from "react-icons";
+import type { ElementType } from "react";
 
 // Safe number formatter with fallbacks
 const safeFormatNumber = (value: number): string => {
@@ -21,7 +21,7 @@ interface StatCardProps {
   /** The numeric value to display */
   value: number;
   /** Icon component */
-  icon: IconType;
+  icon: ElementType;
   /** Additional description text */
   description: string;
   /** Optional test ID for testing */

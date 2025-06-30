@@ -114,18 +114,16 @@ test.describe('既読記事ページ - PROTECTED', () => {
     // Verify border radius for glass effect
     expect(styles.borderRadius).toBe('16px');
 
-    // Verify gradient border container
+    // Verify theme-appropriate border styling
     const gradientContainer = page.locator('[data-testid="read-feed-card-container"]').first();
     const containerStyles = await gradientContainer.evaluate((el) => {
       const computedStyle = getComputedStyle(el);
       return {
-        background: computedStyle.background,
         borderRadius: computedStyle.borderRadius
       };
     });
 
-    // Verify gradient background
-    expect(containerStyles.background).toContain('linear-gradient');
+    // Verify consistent border radius
     expect(containerStyles.borderRadius).toBe('18px');
   });
 

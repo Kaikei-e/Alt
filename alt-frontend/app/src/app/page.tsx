@@ -16,6 +16,7 @@ import { feedsApi } from "@/lib/api";
 import { FeedStatsSummary } from "@/schema/feedStats";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import css from "./page.module.css";
 
 export default function Home() {
@@ -84,6 +85,16 @@ export default function Home() {
       >
         Skip to main content
       </Box>
+
+      {/* Theme Toggle Button */}
+      <Box
+        position="absolute"
+        top="env(safe-area-inset-top, 16px)"
+        right="16px"
+        zIndex={100}
+      >
+        <ThemeToggle size="md" variant="glass" />
+      </Box>
       {/* Main Content */}
       <Box
         id="main-content"
@@ -121,7 +132,7 @@ export default function Home() {
             maxW="300px"
             lineHeight="1.5"
           >
-            AI-powered RSS reader with vaporwave aesthetics
+            AI-powered RSS reader with modern aesthetics
           </Text>
         </VStack>
 

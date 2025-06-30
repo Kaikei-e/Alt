@@ -1,25 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { Feed, BackendFeedItem } from "@/schema/feed";
 
-// Helper function to generate mock feed data
-const generateMockFeeds = (count: number, startId: number = 1): Feed[] => {
-  return Array.from({ length: count }, (_, index) => ({
-    id: `${startId + index}`,
-    title: `Test Feed ${startId + index}`,
-    description: `This is test feed description ${startId + index}`,
-    link: `https://example.com/feed/${startId + index}`,
-    published: new Date().toISOString(),
-  }));
-};
-
-const generateMockArticles = (count: number, startId: number = 1) => {
-  return Array.from({ length: count }, (_, index) => ({
-    id: `${startId + index}`,
-    title: `Test Article ${startId + index}`,
-    content: `Content for test article ${startId + index}. This is a longer content to test how the UI handles different text lengths.`,
-  }));
-};
-
 test.describe("FloatingMenu Component - Refined Design Tests", () => {
   const menuItems = [
     {
@@ -59,77 +40,14 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     },
   ];
 
+  const mockStats = { "feed_amount": { "amount": 6500 }, "summarized_feed": { "amount": 6381 } }
+
   test.beforeEach(async ({ page }) => {
-    const mockFeeds = generateMockFeeds(10, 1);
-
-    // Convert Feed[] to BackendFeedItem[] for API compatibility
-    const backendFeeds: BackendFeedItem[] = mockFeeds.map((feed) => ({
-      title: feed.title,
-      description: feed.description,
-      link: feed.link,
-      published: feed.published,
-    }));
-
-    // Mock the feeds API endpoints to prevent dependency on backend
-    await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
+    await page.route("**/api/v1/feeds/stats", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(backendFeeds),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: backendFeeds,
-          next_cursor: null,
-        }),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/fetch/list", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(backendFeeds),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/read", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ message: "Feed read status updated" }),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/viewed", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ message: "Feed marked as read" }),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/fetch/details", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          feed_url: "https://example.com/feed/1",
-          summary: "Test summary for this feed",
-        }),
-      });
-    });
-
-    await page.route("**/api/v1/articles/search", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(generateMockArticles(10, 1)),
+        body: JSON.stringify(mockStats),
       });
     });
 
@@ -142,15 +60,10 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     });
 
     // Navigate to the page that has the FloatingMenu component
-    await page.goto("/mobile/feeds");
+    await page.goto("/");
 
     // Wait for the page to load and become stable
     await page.waitForLoadState("networkidle");
-
-    // Wait for feeds to load first, then floating menu
-    await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
-      { timeout: 15000 },
-    );
 
     // Now wait for the FloatingMenu
     await page.waitForSelector('[data-testid="floating-menu-button"]', {
@@ -317,11 +230,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
   test.describe("Responsive Design", () => {
     test("should maintain bottom sheet design on mobile", async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 667 });
-      await page.goto("/mobile/feeds");
+      await page.goto("/");
       await page.waitForLoadState("networkidle");
-      await expect(
-        page.locator('[data-testid="feed-card"]').first(),
-      ).toBeVisible({ timeout: 15000 });
+
       await expect(page.getByTestId("floating-menu-button")).toBeVisible();
       await page.getByTestId("floating-menu-button").click();
       const bottomSheet = page.getByTestId("bottom-sheet-menu");
@@ -498,7 +409,7 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       const viewFeedsItem = page.getByTestId("bottom-sheet-menu").getByText("View Feeds");
       await viewFeedsItem.click();
 
-      await expect(page).toHaveURL("/mobile/feeds");
+      await expect(page).toHaveURL("/");
       await expect(page.getByTestId("bottom-sheet-menu")).not.toBeVisible();
     });
   });

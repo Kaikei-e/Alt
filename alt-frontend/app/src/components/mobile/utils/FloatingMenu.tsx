@@ -32,6 +32,7 @@ import {
   FaNewspaper,
   FaStar
 } from "react-icons/fa";
+import { ThemeToggle } from "../../ThemeToggle";
 
 type MenuCategory = "feeds" | "other" | "articles";
 
@@ -215,6 +216,7 @@ export const FloatingMenu = () => {
               aria-label="Open floating menu"
               position="relative"
               overflow="hidden"
+              onClick={() => setIsOpen(true)}
             >
               {/* Animated background pulse */}
               <Box
@@ -326,144 +328,175 @@ export const FloatingMenu = () => {
                 <Accordion allowToggle defaultIndex={0}>
                   {categories.map((cat, idx) => (
                     <AccordionItem key={idx} border="none" mb={4}>
-                      <h2>
-                        <AccordionButton
-                          data-testid={`tab-${cat.title.toLowerCase()}`}
-                          px={6}
-                          py={5}
-                          justifyContent="space-between"
-                          bg="rgba(255, 255, 255, 0.04)"
-                          backdropFilter="blur(20px)"
-                          border="1px solid rgba(255, 255, 255, 0.1)"
-                          borderRadius="16px"
-                          _hover={{
-                            bg: "rgba(255, 255, 255, 0.08)",
-                            transform: "translateY(-2px)",
-                            boxShadow: "0 8px 25px rgba(0, 0, 0, 0.2)",
-                          }}
-                          _expanded={{
-                            bg: "rgba(255, 255, 255, 0.08)",
-                            borderColor: "rgba(255, 0, 110, 0.4)",
-                            boxShadow: "0 0 30px rgba(255, 0, 110, 0.2)",
-                          }}
-                          transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                        >
-                          <HStack gap={4} flex="1">
-                            <Box
-                              w="32px"
-                              h="32px"
-                              bg={cat.gradient}
-                              borderRadius="8px"
-                              display="flex"
-                              alignItems="center"
-                              justifyContent="center"
-                              color="white"
+                      {({ isExpanded }) => (
+                        <>
+                          <h2>
+                            <AccordionButton
+                              data-testid={`tab-${cat.title.toLowerCase()}`}
+                              px={6}
+                              py={5}
+                              justifyContent="space-between"
+                              bg="rgba(255, 255, 255, 0.04)"
+                              backdropFilter="blur(20px)"
+                              border="1px solid rgba(255, 255, 255, 0.1)"
+                              borderRadius="16px"
+                              _hover={{
+                                bg: "rgba(255, 255, 255, 0.08)",
+                                transform: "translateY(-2px)",
+                                boxShadow: "0 8px 25px rgba(0, 0, 0, 0.2)",
+                              }}
+                              _expanded={{
+                                bg: "rgba(255, 255, 255, 0.08)",
+                                borderColor: "rgba(255, 0, 110, 0.4)",
+                                boxShadow: "0 0 30px rgba(255, 0, 110, 0.2)",
+                              }}
+                              transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                             >
-                              {cat.icon}
-                            </Box>
-                            <Box textAlign="left">
-                              <Text fontWeight="bold" fontSize="lg" color="white">
-                                {cat.title}
-                              </Text>
-                              <Text fontSize="sm" color="rgba(255, 255, 255, 0.6)">
-                                {cat.items.length} items
-                              </Text>
-                            </Box>
-                          </HStack>
-                          <AccordionIcon color="rgba(255, 255, 255, 0.7)" />
-                        </AccordionButton>
-                      </h2>
-                      <AccordionPanel pb={4} pt={4} px={0}>
-                        <VStack gap={2} align="stretch">
-                          {cat.items.map((item, i) => {
-                            const isActive = isActiveMenuItem(item.href);
-                            return (
-                              <Link
-                                key={i}
-                                href={item.href}
-                                style={{ textDecoration: "none" }}
-                                onClick={handleNavigate}
-                              >
+                              <HStack gap={4} flex="1">
                                 <Box
-                                  mx="auto"
-                                  maxW="320px"
-                                  w="85%"
-                                  bg={
-                                    isActive
-                                      ? "rgba(255, 0, 110, 0.08)"
-                                      : "rgba(255, 255, 255, 0.02)"
-                                  }
-                                  borderRadius="10px"
-                                  border={`1px solid ${isActive
-                                      ? "rgba(255, 0, 110, 0.25)"
-                                      : "rgba(255, 255, 255, 0.04)"
-                                    }`}
-                                  p={3}
-                                  _hover={{
-                                    bg: isActive
-                                      ? "rgba(255, 0, 110, 0.12)"
-                                      : "rgba(255, 255, 255, 0.04)",
-                                    borderColor: "rgba(255, 0, 110, 0.3)",
-                                    transform: "translateY(-1px)",
-                                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
-                                  }}
-                                  _active={{ transform: "translateY(0px)" }}
-                                  transition="all 0.2s ease"
-                                  position="relative"
-                                  overflow="hidden"
+                                  w="32px"
+                                  h="32px"
+                                  bg={cat.gradient}
+                                  borderRadius="8px"
+                                  display="flex"
+                                  alignItems="center"
+                                  justifyContent="center"
+                                  color="white"
                                 >
-                                  {/* Active indicator */}
-                                  {isActive && (
-                                    <Box
-                                      position="absolute"
-                                      left="0"
-                                      top="0"
-                                      bottom="0"
-                                      w="3px"
-                                      bg="linear-gradient(to bottom, #ff006e, #8338ec)"
-                                      borderRadius="0 2px 2px 0"
-                                    />
-                                  )}
-
-                                  <HStack gap={3} align="center">
-                                    <Box
-                                      color={isActive ? "#ff006e" : "rgba(255, 255, 255, 0.6)"}
-                                      transition="color 0.2s ease"
-                                      fontSize="16px"
-                                    >
-                                      {item.icon}
-                                    </Box>
-                                    <Box flex="1">
-                                      <HStack justify="space-between" align="center">
-                                        <Text
-                                          color={isActive ? "#ff006e" : "white"}
-                                          fontWeight={isActive ? "semibold" : "medium"}
-                                          fontSize="sm"
-                                          lineHeight="1.2"
-                                        >
-                                          {item.label}
-                                        </Text>
-                                      </HStack>
-                                      {item.description && (
-                                        <Text
-                                          fontSize="xs"
-                                          color="rgba(255, 255, 255, 0.4)"
-                                          mt={0.5}
-                                        >
-                                          {item.description}
-                                        </Text>
-                                      )}
-                                    </Box>
-                                  </HStack>
+                                  {cat.icon}
                                 </Box>
-                              </Link>
-                            );
-                          })}
-                        </VStack>
-                      </AccordionPanel>
+                                <Box textAlign="left">
+                                  <Text
+                                    fontWeight="bold"
+                                    fontSize="lg"
+                                    color="white"
+                                  >
+                                    {cat.title}
+                                  </Text>
+                                  <Text
+                                    fontSize="sm"
+                                    color="rgba(255, 255, 255, 0.6)"
+                                  >
+                                    {cat.items.length} items
+                                  </Text>
+                                </Box>
+                              </HStack>
+                              <AccordionIcon color="rgba(255, 255, 255, 0.7)" />
+                            </AccordionButton>
+                          </h2>
+                          <AccordionPanel pb={4} pt={4} px={0}>
+                            <VStack gap={2} align="stretch">
+                              {cat.items.map((item, i) => {
+                                const isActive = isActiveMenuItem(item.href);
+                                return (
+                                  <Link
+                                    key={i}
+                                    href={item.href}
+                                    style={{ textDecoration: "none" }}
+                                    onClick={handleNavigate}
+                                  >
+                                    <Box
+                                      mx="auto"
+                                      maxW="320px"
+                                      w="85%"
+                                      bg={
+                                        isActive
+                                          ? "rgba(255, 0, 110, 0.08)"
+                                          : "rgba(255, 255, 255, 0.02)"
+                                      }
+                                      borderRadius="10px"
+                                      border={`1px solid ${
+                                        isActive
+                                          ? "rgba(255, 0, 110, 0.25)"
+                                          : "rgba(255, 255, 255, 0.04)"
+                                      }`}
+                                      p={3}
+                                      _hover={{
+                                        bg: isActive
+                                          ? "rgba(255, 0, 110, 0.12)"
+                                          : "rgba(255, 255, 255, 0.04)",
+                                        borderColor: "rgba(255, 0, 110, 0.3)",
+                                        transform: "translateY(-1px)",
+                                        boxShadow:
+                                          "0 2px 8px rgba(0, 0, 0, 0.15)",
+                                      }}
+                                      _active={{ transform: "translateY(0px)" }}
+                                      transition="all 0.2s ease"
+                                      position="relative"
+                                      overflow="hidden"
+                                    >
+                                      {/* Active indicator */}
+                                      {isActive && (
+                                        <Box
+                                          position="absolute"
+                                          left="0"
+                                          top="0"
+                                          bottom="0"
+                                          w="3px"
+                                          bg="linear-gradient(to bottom, #ff006e, #8338ec)"
+                                          borderRadius="0 2px 2px 0"
+                                        />
+                                      )}
+
+                                      <HStack gap={3} align="center">
+                                        <Box
+                                          color={
+                                            isActive
+                                              ? "#ff006e"
+                                              : "rgba(255, 255, 255, 0.6)"
+                                          }
+                                          transition="color 0.2s ease"
+                                          fontSize="16px"
+                                        >
+                                          {item.icon}
+                                        </Box>
+                                        <Box flex="1">
+                                          <HStack
+                                            justify="space-between"
+                                            align="center"
+                                          >
+                                            <Text
+                                              color={isActive ? "#ff006e" : "white"}
+                                              fontWeight={
+                                                isActive ? "semibold" : "medium"
+                                              }
+                                              fontSize="sm"
+                                              lineHeight="1.2"
+                                            >
+                                              {item.label}
+                                            </Text>
+                                          </HStack>
+                                          {item.description && (
+                                            <Text
+                                              fontSize="xs"
+                                              color="rgba(255, 255, 255, 0.4)"
+                                              mt={0.5}
+                                            >
+                                              {item.description}
+                                            </Text>
+                                          )}
+                                        </Box>
+                                      </HStack>
+                                    </Box>
+                                  </Link>
+                                );
+                              })}
+                            </VStack>
+                          </AccordionPanel>
+                        </>
+                      )}
                     </AccordionItem>
                   ))}
                 </Accordion>
+
+                {/* Theme Toggle */}
+                <Box
+                  mt={6}
+                  pt={4}
+                  borderTop="1px solid rgba(255, 255, 255, 0.1)"
+                >
+                  <ThemeToggle size="md" showLabel variant="glass" />
+                </Box>
               </Drawer.Body>
 
               <Drawer.CloseTrigger asChild>
@@ -502,8 +535,6 @@ export const FloatingMenu = () => {
           ))}
         </Box>
       )}
-
-
     </>
   );
 };

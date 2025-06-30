@@ -7,7 +7,28 @@ test.describe("FeedCard Component - Functionality Tests", () => {
   test.beforeEach(async ({ page }) => {
     await page.unrouteAll();
 
-    await mockApiEndpoints(page, { feeds: mockFeeds });
+    await page.route('**/api/v1/health', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: "ok" }),
+      });
+    });
+
+    await page.route('**/api/v1/feeds/fetch/cursor**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: mockFeeds,
+          next_cursor: null,
+        }),
+      });
+    });
+
+    
+
+      await mockApiEndpoints(page, { feeds: mockFeeds });
   });
 
   test.describe("Initial State", () => {
