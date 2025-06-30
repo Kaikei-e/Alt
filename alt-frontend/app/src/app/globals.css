@@ -492,6 +492,13 @@ select {
   font-size: inherit;
 }
 
+/* Consistent placeholder style */
+input::placeholder {
+  text-align: center;
+  color: var(--text-muted);
+  opacity: 1;
+}
+
 ::selection {
   background: var(--alt-primary);
   color: white;

@@ -87,13 +87,13 @@ export default function RegisterFeedsPage() {
                   value={feedUrl}
                   onChange={(e) => setFeedUrl(e.target.value)}
                   placeholder="https://example.com/feed.xml"
-                  bg="var(--alt-glass)"
-                  border="1px solid var(--alt-glass-border)"
-                  color="white"
-                  _placeholder={{ color: "var(--alt-text-secondary)" }}
+                  bg="var(--surface-bg)"
+                  border="1px solid var(--alt-primary)"
+                  color="var(--text-primary)"
+                  _placeholder={{ color: "var(--text-muted)" }}
                   _focus={{
-                    borderColor: "var(--accent-primary)",
-                    boxShadow: "0 0 0 1px var(--accent-primary)",
+                    borderColor: "var(--alt-primary)",
+                    boxShadow: "0 0 0 1px var(--alt-primary)",
                   }}
                 />
               </Box>
