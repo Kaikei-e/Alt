@@ -245,7 +245,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		return c.JSON(http.StatusOK, response)
 	})
 
-	v1.GET("/feeds/fetch/read/cursor", func(c echo.Context) error {
+	v1.GET("/feeds/fetch/viewed/cursor", func(c echo.Context) error {
 		// Parse query parameters - 既存パターンと同じ
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")
