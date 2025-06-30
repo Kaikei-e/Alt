@@ -22,7 +22,7 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
         transition="all 0.3s ease"
         _hover={{
           transform: "translateY(-5px)",
-          boxShadow: "0 20px 40px rgba(255, 0, 110, 0.3)",
+          boxShadow: "0 20px 40px var(--accent-primary)",
         }}
       >
         <Flex direction="column" gap={3}>
@@ -68,7 +68,7 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                   border="1px solid"
                   borderColor="whiteAlpha.200"
                   borderRadius="20px"
-                  boxShadow="0 25px 50px rgba(255, 0, 110, 0.2)"
+                  boxShadow="0 25px 50px var(--accent-primary)"
                   mx={4}
                   my={8}
                   maxH="90vh"

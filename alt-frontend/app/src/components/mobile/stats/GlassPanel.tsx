@@ -25,9 +25,9 @@ export function GlassPanel({
   const opacityValue = 0.05 + glassIntensity * 0.01; // 0.06-0.15
 
   const baseStyles = {
-    background: `rgba(255, 255, 255, ${opacityValue})`,
-    backdropFilter: `blur(${blurValue}px)`,
-    border: "1px solid rgba(255, 255, 255, 0.2)",
+    background: "var(--alt-glass)",
+    backdropFilter: "blur(var(--alt-glass-blur))",
+    border: "1px solid var(--accent-secondary)",
     borderRadius: "1rem",
     position: "relative" as const,
     overflow: "hidden",
@@ -37,13 +37,13 @@ export function GlassPanel({
 
   const hoverStyles = enableHover
     ? {
-        _hover: {
-          transform: "translateY(-2px)",
-          background: `rgba(255, 255, 255, ${opacityValue + 0.02})`,
-          borderColor: "rgba(255, 255, 255, 0.3)",
-          boxShadow: "0 8px 32px rgba(255, 0, 110, 0.15)",
-        },
-      }
+      _hover: {
+        transform: "translateY(-2px)",
+        background: "var(--alt-glass-hover)",
+        borderColor: "var(--alt-glass-border)",
+        boxShadow: "0 8px 32px var(--accent-secondary)",
+      },
+    }
     : {};
 
   const content = (
@@ -59,7 +59,7 @@ export function GlassPanel({
         position="relative"
         p="2px"
         borderRadius="calc(1rem + 2px)"
-        background="linear-gradient(45deg, #8338ec, #ff006e, #3a86ff)"
+        background="var(--accent-gradient)"
         _before={{
           content: '""',
           position: "absolute",
@@ -69,7 +69,7 @@ export function GlassPanel({
           bottom: 0,
           borderRadius: "inherit",
           padding: "2px",
-          background: "linear-gradient(45deg, #8338ec, #ff006e, #3a86ff)",
+          background: "var(--accent-gradient)",
           mask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
           maskComposite: "exclude",
           WebkitMaskComposite: "xor",

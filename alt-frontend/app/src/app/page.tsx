@@ -51,19 +51,19 @@ export default function Home() {
     <Box
       minH="100vh"
       minHeight="100dvh"
-      bg="bg.canvas"
+      bg="var(--app-bg)"
       position="relative"
       pt="env(safe-area-inset-top)"
       pb="env(safe-area-inset-bottom)"
-      background="var(--vaporwave-bg)"
+      background="var(--alt-gradient-bg)"
     >
       <Box
         as="a"
         position="absolute"
         top="-40px"
         left="6px"
-        bg="bg.canvas"
-        color="fg.default"
+        bg="var(--gradient-bg)"
+        color="var(--alt-text-primary)"
         p={2}
         borderRadius="xs"
         zIndex={1000}
@@ -118,7 +118,7 @@ export default function Home() {
             fontFamily="heading"
             lineHeight="1.2"
             fontWeight="bold"
-            bgGradient="vaporwave"
+            bgGradient="var(--alt-gradient-primary)"
             bgClip="text"
             className={css.gradientText}
             mb={1}
@@ -126,7 +126,7 @@ export default function Home() {
             Alt
           </Text>
           <Text
-            color="fg.muted"
+            color="var(--alt-text-muted)"
             fontSize="md"
             fontFamily="body"
             maxW="300px"
@@ -142,9 +142,9 @@ export default function Home() {
             as={NextLink}
             href="/mobile/feeds"
             data-testid="nav-card"
-            bg="rgba(255, 255, 255, 0.05)"
+            bg="var(--alt-glass)"
             border="1px solid"
-            borderColor="rgba(255, 255, 255, 0.1)"
+            borderColor="var(--alt-glass-border)"
             backdropFilter="blur(12px) saturate(1.2)"
             p={4}
             borderRadius="lg"
@@ -160,9 +160,9 @@ export default function Home() {
             overflow="hidden"
             _hover={{
               transform: "translateY(-1px)",
-              bg: "rgba(255, 255, 255, 0.08)",
-              borderColor: "rgba(255, 0, 110, 0.3)",
-              boxShadow: "0 4px 20px rgba(255, 0, 110, 0.1)",
+              bg: "var(--alt-glass)",
+              borderColor: "var(--alt-glass-border)",
+              boxShadow: "0 4px 20px var(--alt-glass-shadow)",
               textDecoration: "none",
             }}
             _focus={{
@@ -181,7 +181,7 @@ export default function Home() {
               left={0}
               right={0}
               bottom={0}
-              bgGradient="linear(45deg, transparent 0%, rgba(255, 0, 110, 0.05) 50%, transparent 100%)"
+              bgGradient="linear(45deg, transparent 0%, var(--alt-glass) 50%, transparent 100%)"
               opacity={0}
               transition="opacity 0.2s ease"
               _hover={{ opacity: 1 }}
@@ -198,7 +198,7 @@ export default function Home() {
                   color="accent.default"
                   p={2}
                   borderRadius="sm"
-                  bg="rgba(255, 0, 110, 0.1)"
+                  bg="var(--alt-glass)"
                 >
                   <Rss size={18} />
                 </Box>
@@ -250,9 +250,9 @@ export default function Home() {
                 <Box
                   key={i}
                   data-testid="stats-loading"
-                  bg="rgba(255, 255, 255, 0.03)"
+                  bg="var(--alt-glass)"
                   border="1px solid"
-                  borderColor="rgba(255, 255, 255, 0.08)"
+                  borderColor="var(--alt-glass-border)"
                   backdropFilter="blur(8px)"
                   p={4}
                   borderRadius="md"
@@ -263,17 +263,17 @@ export default function Home() {
                   <Flex direction="column" gap={2}>
                     <Box
                       h="12px"
-                      bg="rgba(255, 255, 255, 0.1)"
+                      bg="var(--alt-glass)"
                       borderRadius="xs"
                     />
                     <Box
                       h="24px"
-                      bg="rgba(255, 0, 110, 0.15)"
+                      bg="var(--alt-glass)"
                       borderRadius="sm"
                     />
                     <Box
                       h="10px"
-                      bg="rgba(255, 255, 255, 0.06)"
+                      bg="var(--alt-glass)"
                       borderRadius="xs"
                     />
                   </Flex>
@@ -282,9 +282,9 @@ export default function Home() {
             </VStack>
           ) : error ? (
             <Box
-              bg="rgba(255, 255, 255, 0.03)"
+              bg="var(--alt-glass)"
               border="1px solid"
-              borderColor="rgba(255, 75, 87, 0.2)"
+              borderColor="var(--alt-error)"
               backdropFilter="blur(8px)"
               p={4}
               borderRadius="md"
@@ -302,9 +302,9 @@ export default function Home() {
               {/* Total Feeds Card */}
               <Box
                 data-testid="stat-card"
-                bg="rgba(255, 255, 255, 0.04)"
+                bg="var(--alt-glass)"
                 border="1px solid"
-                borderColor="rgba(255, 255, 255, 0.08)"
+                borderColor="var(--alt-glass-border)"
                 backdropFilter="blur(10px) saturate(1.1)"
                 w="full"
                 p={4}
@@ -316,9 +316,9 @@ export default function Home() {
                 aria-labelledby="total-feeds-label"
                 _hover={{
                   transform: "translateY(-1px)",
-                  bg: "rgba(255, 255, 255, 0.06)",
-                  borderColor: "rgba(255, 0, 110, 0.2)",
-                  boxShadow: "0 8px 25px rgba(255, 0, 110, 0.1)",
+                  bg: "var(--alt-glass)",
+                  borderColor: "var(--alt-glass-border)",
+                  boxShadow: "0 8px 25px var(--alt-glass-shadow)",
                 }}
               >
                 {/* Subtle accent border */}
@@ -328,7 +328,7 @@ export default function Home() {
                   left={0}
                   right={0}
                   h="1px"
-                  bgGradient="linear(to-r, transparent, rgba(255, 0, 110, 0.5), transparent)"
+                  bgGradient="linear(to-r, transparent, var(--alt-glass), transparent)"
                 />
 
                 <Flex direction="column" gap={2}>
@@ -337,7 +337,7 @@ export default function Home() {
                       color="accent.default"
                       p={1}
                       borderRadius="xs"
-                      bg="rgba(255, 0, 110, 0.1)"
+                      bg="var(--alt-glass)"
                     >
                       <Rss size={14} />
                     </Box>
@@ -381,9 +381,9 @@ export default function Home() {
               {/* AI Summarized Feeds Card */}
               <Box
                 data-testid="stat-card"
-                bg="rgba(255, 255, 255, 0.04)"
+                bg="var(--alt-glass)"
                 border="1px solid"
-                borderColor="rgba(255, 255, 255, 0.08)"
+                borderColor="var(--alt-glass-border)"
                 backdropFilter="blur(10px) saturate(1.1)"
                 w="full"
                 p={4}
@@ -407,7 +407,7 @@ export default function Home() {
                   left={0}
                   right={0}
                   h="1px"
-                  bgGradient="linear(to-r, transparent, rgba(131, 56, 236, 0.5), transparent)"
+                  bgGradient="linear(to-r, transparent, var(--accent-primary), transparent)"
                 />
 
                 <Flex direction="column" gap={2}>
@@ -416,7 +416,7 @@ export default function Home() {
                       color="accent.emphasized"
                       p={1}
                       borderRadius="xs"
-                      bg="rgba(131, 56, 236, 0.1)"
+                      bg="var(--alt-glass)"
                     >
                       <FileText size={14} />
                     </Box>

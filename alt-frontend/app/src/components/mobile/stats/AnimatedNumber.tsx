@@ -82,7 +82,7 @@ export function AnimatedNumber({
       <Text
         fontFamily="monospace"
         fontWeight="bold"
-        textShadow="0 0 10px var(--vaporwave-pink)"
+        textShadow="0 0 10px var(--accent-secondary)"
         color="white"
         transition={isAnimating ? "none" : "color 0.2s ease"}
         style={{

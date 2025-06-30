@@ -68,7 +68,7 @@ export default function ReadFeedsPage() {
             <Text
               fontSize="2xl"
               fontWeight="bold"
-              color="#ff006e"
+              color="var(--alt-text-primary)"
               textAlign="center"
               data-testid="read-feeds-title"
             >
@@ -128,7 +128,7 @@ export default function ReadFeedsPage() {
           <Text
             fontSize="2xl"
             fontWeight="bold"
-            color="#ff006e"
+            color="var(--alt-text-primary)"
             textAlign="center"
             data-testid="read-feeds-title"
           >
@@ -149,7 +149,7 @@ export default function ReadFeedsPage() {
             {!hasMore && feeds.length > 0 && (
               <Text
                 textAlign="center"
-                color="whiteAlpha.600"
+                color="var(--alt-text-secondary)"
                 fontSize="sm"
                 mt={8}
                 mb={4}
@@ -162,10 +162,10 @@ export default function ReadFeedsPage() {
           /* Empty state */
           <Flex justify="center" align="center" py={20}>
             <Box className="glass" p={8} borderRadius="18px" textAlign="center">
-              <Text color="rgba(255, 255, 255, 0.6)" fontSize="lg" mb={2}>
+              <Text color="var(--alt-text-secondary)" fontSize="lg" mb={2}>
                 No read feeds yet
               </Text>
-              <Text color="rgba(255, 255, 255, 0.4)" fontSize="sm">
+              <Text color="var(--alt-text-secondary)" fontSize="sm">
                 Mark some feeds as read to see them here
               </Text>
             </Box>
@@ -192,7 +192,7 @@ export default function ReadFeedsPage() {
           >
             {/* Loading more indicator inside sentinel */}
             {isLoading && (
-              <Text color="rgba(255, 255, 255, 0.8)" fontSize="sm">
+              <Text color="var(--alt-text-secondary)" fontSize="sm">
                 Loading more read feeds...
               </Text>
             )}

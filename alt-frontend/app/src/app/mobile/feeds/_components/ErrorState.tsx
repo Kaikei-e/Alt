@@ -131,13 +131,13 @@ export default function ErrorState({
         maxWidth="400px"
         width="100%"
       >
-        <Text fontSize="xl" fontWeight="bold" color="#e53935" mb={4}>
+        <Text fontSize="xl" fontWeight="bold" color="var(--alt-text-error)" mb={4}>
           Unable to Load Feeds
         </Text>
 
         {showDetailedError && (
           <Text
-            color="rgba(255, 255, 255, 0.8)"
+            color="var(--alt-text-secondary)"
             mb={6}
             fontSize="md"
             lineHeight="1.5"
@@ -151,12 +151,12 @@ export default function ErrorState({
           disabled={isLoading || isRetrying}
           size="md"
           borderRadius="full"
-          bg="linear-gradient(45deg, #ff006e, #8338ec)"
+          bg="var(--accent-gradient)"
           color="white"
           fontWeight="bold"
           px={6}
           _hover={{
-            bg: "linear-gradient(45deg, #e6005c, #7129d4)",
+            bg: "var(--accent-gradient)",
             transform: "translateY(-1px)",
           }}
           _active={{
@@ -166,7 +166,7 @@ export default function ErrorState({
             opacity: 0.6,
           }}
           transition="all 0.2s ease"
-          border="1px solid rgba(255, 255, 255, 0.2)"
+          border="1px solid var(--alt-glass-border)"
         >
           {isRetrying
             ? "Retrying..."
@@ -178,7 +178,7 @@ export default function ErrorState({
         </Button>
 
         {retryCount > 0 && (
-          <Text color="rgba(255, 255, 255, 0.6)" fontSize="sm" mt={4}>
+          <Text color="var(--alt-text-secondary)" fontSize="sm" mt={4}>
             Using exponential backoff (attempt {retryCount + 1})
           </Text>
         )}

@@ -46,7 +46,7 @@ export default function RegisterFeedsPage() {
   return (
     <Box
       minHeight="100vh"
-      bg="linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"
+      bg="var(--alt-gradient-bg)"
       color="white"
       p={4}
     >
@@ -55,27 +55,27 @@ export default function RegisterFeedsPage() {
           fontSize="2xl"
           fontWeight="bold"
           textAlign="center"
-          color="#ff006e"
+          color="var(--alt-text-primary)"
           mt={8}
         >
           Register RSS Feed
         </Text>
 
-        <Text textAlign="center" color="rgba(255, 255, 255, 0.7)" fontSize="sm">
+        <Text textAlign="center" color="var(--alt-text-secondary)" fontSize="sm">
           Enter the URL of an RSS feed to add it to your collection
         </Text>
 
         <Box
-          bg="rgba(255, 255, 255, 0.05)"
+          bg="var(--alt-glass)"
           p={6}
           borderRadius="lg"
-          border="1px solid rgba(255, 255, 255, 0.1)"
+          border="1px solid var(--alt-glass-border)"
         >
           <form onSubmit={handleSubmit}>
             <VStack gap={4}>
               <Box width="full">
                 <Text
-                  color="rgba(255, 255, 255, 0.9)"
+                  color="var(--alt-text-primary)"
                   mb={2}
                   fontSize="sm"
                   fontWeight="medium"
@@ -87,13 +87,13 @@ export default function RegisterFeedsPage() {
                   value={feedUrl}
                   onChange={(e) => setFeedUrl(e.target.value)}
                   placeholder="https://example.com/feed.xml"
-                  bg="rgba(255, 255, 255, 0.1)"
-                  border="1px solid rgba(255, 255, 255, 0.2)"
+                  bg="var(--alt-glass)"
+                  border="1px solid var(--alt-glass-border)"
                   color="white"
-                  _placeholder={{ color: "rgba(255, 255, 255, 0.5)" }}
+                  _placeholder={{ color: "var(--alt-text-secondary)" }}
                   _focus={{
-                    borderColor: "#ff006e",
-                    boxShadow: "0 0 0 1px #ff006e",
+                    borderColor: "var(--accent-primary)",
+                    boxShadow: "0 0 0 1px var(--accent-primary)",
                   }}
                 />
               </Box>
@@ -101,21 +101,21 @@ export default function RegisterFeedsPage() {
               <Button
                 type="submit"
                 loading={isLoading}
-                bg="linear-gradient(45deg, #ff006e, #8338ec)"
+                bg="var(--accent-gradient)"
                 color="white"
                 fontWeight="bold"
                 px={8}
                 py={6}
                 borderRadius="full"
                 _hover={{
-                  bg: "linear-gradient(45deg, #e6005c, #7129d4)",
+                  bg: "var(--accent-gradient)",
                   transform: "translateY(-2px)",
                 }}
                 _active={{
                   transform: "translateY(0px)",
                 }}
                 transition="all 0.2s ease"
-                border="1px solid rgba(255, 255, 255, 0.2)"
+                border="1px solid var(--alt-glass-border)"
                 width="full"
                 disabled={isLoading}
               >
@@ -124,7 +124,7 @@ export default function RegisterFeedsPage() {
 
               {message && (
                 <Text
-                  color={message.type === "success" ? "#4ade80" : "#f87171"}
+                  color={message.type === "success" ? "var(--alt-success)" : "var(--alt-error)"}
                   textAlign="center"
                   fontSize="sm"
                   fontWeight="medium"
@@ -138,7 +138,7 @@ export default function RegisterFeedsPage() {
 
         <Text
           textAlign="center"
-          color="rgba(255, 255, 255, 0.6)"
+          color="var(--alt-text-secondary)"
           fontSize="xs"
           mt={4}
         >

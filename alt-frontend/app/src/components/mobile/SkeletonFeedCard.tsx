@@ -7,7 +7,7 @@ const SkeletonFeedCard = memo(function SkeletonFeedCard() {
         padding: "2px",
         borderRadius: "18px",
         background:
-          "linear-gradient(45deg, rgba(255, 0, 110, 0.2), rgba(131, 56, 236, 0.2), rgba(58, 134, 255, 0.2))",
+          "var(--accent-gradient)",
         marginBottom: "16px",
       }}
       data-testid="skeleton-feed-card"
@@ -25,7 +25,7 @@ const SkeletonFeedCard = memo(function SkeletonFeedCard() {
         <div
           style={{
             height: "24px",
-            backgroundColor: "rgba(255, 0, 110, 0.1)",
+            backgroundColor: "var(--accent-primary)",
             borderRadius: "4px",
             width: "80%",
             marginBottom: "12px",
@@ -36,7 +36,7 @@ const SkeletonFeedCard = memo(function SkeletonFeedCard() {
         <div
           style={{
             height: "16px",
-            backgroundColor: "rgba(255, 255, 255, 0.05)",
+            backgroundColor: "var(--accent-primary)",
             borderRadius: "4px",
             width: "100%",
             marginBottom: "8px",
@@ -45,7 +45,7 @@ const SkeletonFeedCard = memo(function SkeletonFeedCard() {
         <div
           style={{
             height: "16px",
-            backgroundColor: "rgba(255, 255, 255, 0.05)",
+            backgroundColor: "var(--accent-primary)",
             borderRadius: "4px",
             width: "70%",
             marginBottom: "16px",
@@ -64,7 +64,7 @@ const SkeletonFeedCard = memo(function SkeletonFeedCard() {
             style={{
               height: "32px",
               width: "120px",
-              backgroundColor: "rgba(255, 0, 110, 0.1)",
+              backgroundColor: "var(--accent-primary)",
               borderRadius: "16px",
             }}
           />
@@ -72,7 +72,7 @@ const SkeletonFeedCard = memo(function SkeletonFeedCard() {
             style={{
               height: "32px",
               width: "100px",
-              backgroundColor: "rgba(255, 255, 255, 0.05)",
+              backgroundColor: "var(--accent-primary)",
               borderRadius: "16px",
             }}
           />

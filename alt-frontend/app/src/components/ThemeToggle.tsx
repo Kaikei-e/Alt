@@ -111,12 +111,12 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
     _hover: {
       borderColor: "var(--accent-primary)",
       transform: "translateY(-1px)",
-      boxShadow: "0 4px 12px rgba(255, 0, 110, 0.2)",
+      boxShadow: "0 4px 12px var(--accent-secondary)",
     },
     _focus: {
       outline: "none",
       borderColor: "var(--accent-primary)",
-      boxShadow: "0 0 0 2px var(--accent-primary)",
+      boxShadow: "0 0 0 2px var(--accent-secondary)",
     },
     _active: {
       transform: "translateY(0px)",

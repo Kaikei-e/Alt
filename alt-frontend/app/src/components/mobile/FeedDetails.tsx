@@ -84,7 +84,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
           className="show-details-button"
           size="sm"
           borderRadius="full"
-          bg="linear-gradient(45deg, #ff006e, #8338ec)"
+          bg="var(--accent-gradient)"
           color="white"
           fontWeight="bold"
           px={4}
@@ -92,9 +92,9 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
           minWidth="120px"
           fontSize="sm"
           _hover={{
-            bg: "linear-gradient(45deg, #e6005c, #7129d4)",
+            bg: "var(--accent-gradient)",
             transform: "scale(1.05)",
-            boxShadow: "0 4px 12px rgba(255, 0, 110, 0.4)",
+            boxShadow: "0 4px 12px var(--accent-primary)",
           }}
           _active={{
             transform: "scale(0.98)",
@@ -153,7 +153,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
               minHeight="350px"
               background="linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"
               borderRadius="20px"
-              boxShadow="0 25px 50px rgba(255, 0, 110, 0.3)"
+              boxShadow="0 25px 50px var(--accent-primary)"
               border="1px solid rgba(255, 255, 255, 0.15)"
               display="flex"
               flexDirection="column"
@@ -190,7 +190,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   zIndex="-1"
                 />
                 <Text
-                  color="#ff006e"
+                  color="var(--accent-primary)"
                   fontWeight="bold"
                   fontSize="md"
                   textShadow="0 2px 4px rgba(255, 0, 110, 0.3)"
@@ -220,11 +220,11 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                     borderRadius: "3px",
                   },
                   "&::-webkit-scrollbar-thumb": {
-                    background: "linear-gradient(45deg, #ff006e, #8338ec)",
+                    background: "var(--accent-gradient)",
                     borderRadius: "3px",
                   },
                   "&::-webkit-scrollbar-thumb:hover": {
-                    background: "linear-gradient(45deg, #e6005c, #7129d4)",
+                    background: "var(--accent-gradient)",
                   },
                 }}
               >
@@ -280,7 +280,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   className="hide-details-button"
                   size="sm"
                   borderRadius="full"
-                  bg="linear-gradient(45deg, #ff006e, #8338ec)"
+                  bg="var(--accent-gradient)"
                   color="white"
                   fontWeight="bold"
                   p={2.5}
@@ -289,7 +289,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   fontSize="md"
                   boxShadow="0 6px 20px rgba(255, 0, 110, 0.4)"
                   _hover={{
-                    bg: "linear-gradient(45deg, #e6005c, #7129d4)",
+                    bg: "var(--accent-gradient)",
                     transform: "scale(1.1)",
                     boxShadow: "0 8px 25px rgba(255, 0, 110, 0.6)",
                   }}

@@ -17,7 +17,7 @@ export default function SearchFeedsPage() {
   return (
     <Box
       minHeight="100vh"
-      bg="linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"
+      bg="var(--alt-gradient-bg)"
       color="white"
       p={4}
     >
@@ -28,15 +28,15 @@ export default function SearchFeedsPage() {
             fontSize="3xl"
             fontWeight="bold"
             textAlign="center"
-            color="#ff006e"
-            bgGradient="linear(to-r, #ff006e, #8338ec)"
+            color="var(--alt-text-primary)"
+            bgGradient="var(--accent-gradient)"
             bgClip="text"
           >
             Search Feeds
           </Text>
           <Text
             textAlign="center"
-            color="rgba(255, 255, 255, 0.7)"
+            color="var(--alt-text-secondary)"
             fontSize="md"
             maxWidth="400px"
           >
@@ -46,11 +46,11 @@ export default function SearchFeedsPage() {
 
         {/* Search Input Section */}
         <Box
-          bg="rgba(255, 255, 255, 0.05)"
+          bg="var(--alt-glass)"
           p={6}
           borderRadius="xl"
-          border="1px solid rgba(255, 255, 255, 0.1)"
-          boxShadow="0 8px 32px rgba(0, 0, 0, 0.3)"
+          border="1px solid var(--alt-glass-border)"
+          boxShadow="0 8px 32px var(--alt-glass-shadow)"
         >
           <SearchWindow
             searchQuery={searchQuery}
@@ -74,13 +74,13 @@ export default function SearchFeedsPage() {
         {/* Quick Tips */}
         {!searchQuery.query && !isLoading && results.length === 0 && (
           <Box
-            bg="rgba(255, 255, 255, 0.03)"
+            bg="var(--alt-glass)"
             p={4}
             borderRadius="lg"
-            border="1px solid rgba(255, 255, 255, 0.1)"
+            border="1px solid var(--alt-glass-border)"
           >
             <Text
-              color="rgba(255, 255, 255, 0.6)"
+              color="var(--alt-text-secondary)"
               fontSize="sm"
               textAlign="center"
             >

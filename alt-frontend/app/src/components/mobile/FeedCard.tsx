@@ -57,11 +57,12 @@ const FeedCard = memo(function FeedCard({
     <Box
       p="2px"
       borderRadius="18px"
-      background="linear-gradient(45deg, rgb(255, 0, 110), rgb(131, 56, 236), rgb(58, 134, 255))"
+      /* Use theme accent gradient for border */
+      background="var(--accent-gradient)"
       transition="transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out"
       _hover={{
         transform: "translateY(-2px)",
-        boxShadow: "0 20px 40px rgba(255, 0, 110, 0.3)",
+        boxShadow: "0 20px 40px var(--accent-primary)",
       }}
       cursor="pointer"
       data-testid="feed-card-container"
@@ -89,7 +90,7 @@ const FeedCard = memo(function FeedCard({
             <Text
               fontSize="lg"
               fontWeight="semibold"
-              color="#ff006e"
+              color="var(--accent-primary)"
               _hover={{ textDecoration: "underline" }}
               lineHeight="1.4"
             >
@@ -107,7 +108,7 @@ const FeedCard = memo(function FeedCard({
             <Button
               size="sm"
               borderRadius="full"
-              bg="linear-gradient(45deg, #ff006e, #8338ec)"
+              bg="var(--accent-gradient)"
               color="white"
               fontWeight="bold"
               px={4}
@@ -118,9 +119,9 @@ const FeedCard = memo(function FeedCard({
               disabled={isLoading}
               onClick={() => handleReadStatus(feed.link)}
               _hover={{
-                bg: "linear-gradient(45deg, #e6005c, #7129d4)",
+                bg: "var(--accent-gradient)",
                 transform: "scale(1.05)",
-                boxShadow: "0 4px 12px rgba(255, 0, 110, 0.4)",
+                boxShadow: "0 4px 12px var(--accent-primary)",
               }}
               _active={{
                 transform: "scale(0.98)",

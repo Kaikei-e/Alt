@@ -51,7 +51,7 @@ export const StatCard = ({
     >
       <Flex direction="column" gap={3}>
         <Flex align="center" gap={2}>
-          <Icon as={icon} color="#ff006e" boxSize={5} />
+          <Icon as={icon} color="var(--alt-text-primary)" boxSize={5} />
           <Text
             fontSize="sm"
             textTransform="uppercase"

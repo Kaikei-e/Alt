@@ -32,12 +32,12 @@ export const SSEProgressBar = ({
       left={0}
       right={0}
       height="2px"
-      bg="blackAlpha.300"
+      bg="var(--alt-bg-secondary)"
       zIndex={1000}
     >
       <Box
         height="100%"
-        bg="linear-gradient(90deg, var(--vaporwave-pink), var(--vaporwave-purple))"
+        bg="var(--alt-gradient-primary)"
         width={`${progress}%`}
         transition="width 100ms linear"
       />

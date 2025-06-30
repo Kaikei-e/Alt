@@ -78,7 +78,7 @@ export function VaporwaveBackground({
             left="-50%"
             right="-50%"
             bottom="-50%"
-            background="radial-gradient(circle at 20% 50%, rgba(131, 56, 236, 0.3) 0%, transparent 50%)"
+            background="radial-gradient(circle at 20% 50%, var(--accent-primary) 0%, transparent 50%)"
             style={{
               animation: reducedMotion
                 ? "none"
@@ -94,7 +94,7 @@ export function VaporwaveBackground({
             left="-50%"
             right="-50%"
             bottom="-50%"
-            background="radial-gradient(circle at 80% 20%, rgba(255, 0, 110, 0.2) 0%, transparent 50%)"
+            background="radial-gradient(circle at 80% 20%, var(--accent-secondary) 0%, transparent 50%)"
             style={{
               animation: reducedMotion
                 ? "none"
@@ -111,7 +111,7 @@ export function VaporwaveBackground({
             left="-50%"
             right="-50%"
             bottom="-50%"
-            background="radial-gradient(circle at 60% 80%, rgba(58, 134, 255, 0.25) 0%, transparent 50%)"
+            background="radial-gradient(circle at 60% 80%, var(--accent-secondary) 0%, transparent 50%)"
             style={{
               animation: reducedMotion
                 ? "none"
@@ -133,8 +133,8 @@ export function VaporwaveBackground({
           bottom="0"
           style={{
             background: `
-              linear-gradient(45deg, transparent 40%, rgba(131, 56, 236, 0.03) 50%, transparent 60%),
-              linear-gradient(-45deg, transparent 40%, rgba(255, 0, 110, 0.03) 50%, transparent 60%)
+              linear-gradient(45deg, transparent 40%, var(--accent-secondary) 50%, transparent 60%),
+              linear-gradient(-45deg, transparent 40%, var(--accent-primary) 50%, transparent 60%)
             `,
             backgroundSize: "60px 60px, 80px 80px",
             animation: reducedMotion
@@ -154,7 +154,7 @@ export function VaporwaveBackground({
             left="0"
             right="0"
             bottom="0"
-            background="repeating-linear-gradient(0deg, transparent 0px, rgba(255, 255, 255, 0.02) 1px, transparent 2px, transparent 4px)"
+            background="repeating-linear-gradient(0deg, transparent 0px, var(--accent-primary) 1px, transparent 2px, transparent 4px)"
             style={{
               animation: reducedMotion
                 ? "none"
@@ -172,8 +172,8 @@ export function VaporwaveBackground({
             opacity="0.05"
             style={{
               background: `
-                radial-gradient(circle at 25% 25%, #fff 1px, transparent 0),
-                radial-gradient(circle at 75% 75%, #fff 1px, transparent 0)
+                radial-gradient(circle at 25% 25%, var(--accent-primary) 1px, transparent 0),
+                radial-gradient(circle at 75% 75%, var(--accent-primary) 1px, transparent 0)
               `,
               backgroundSize: "4px 4px, 6px 6px",
               animation: reducedMotion ? "none" : `noiseFlicker 0.5s infinite`,

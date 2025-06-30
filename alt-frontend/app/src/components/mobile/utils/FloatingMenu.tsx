@@ -157,19 +157,19 @@ export const FloatingMenu = () => {
       title: "Feeds",
       items: menuItems.filter((i) => i.category === "feeds"),
       icon: <Rss size={16} />,
-      gradient: "linear-gradient(135deg, #ff006e 0%, #ff4081 100%)",
+      gradient: "var(--accent-gradient)",
     },
     {
       title: "Articles",
       items: menuItems.filter((i) => i.category === "articles"),
       icon: <Newspaper size={16} />,
-      gradient: "linear-gradient(135deg, #8338ec 0%, #9c27b0 100%)",
+      gradient: "var(--accent-gradient)",
     },
     {
       title: "Other",
       items: menuItems.filter((i) => i.category === "other"),
       icon: <Star size={16} />,
-      gradient: "linear-gradient(135deg, #3a86ff 0%, #2196f3 100%)",
+      gradient: "var(--accent-gradient)",
     },
   ];
 
@@ -186,17 +186,17 @@ export const FloatingMenu = () => {
               data-testid="floating-menu-button"
               size="md"
               borderRadius="full"
-              bg="linear-gradient(135deg, #ff006e 0%, #8338ec 50%, #3a86ff 100%)"
+              bg="var(--accent-gradient)"
               color="white"
               p={0}
               w="48px"
               h="48px"
-              shadow="0 4px 16px rgba(255, 0, 110, 0.3)"
+              shadow="0 4px 16px var(--accent-primary)"
               border="2px solid rgba(255, 255, 255, 0.2)"
               _hover={{
                 transform: "scale(1.05) rotate(90deg)",
-                shadow: "0 6px 20px rgba(255, 0, 110, 0.4)",
-                bg: "linear-gradient(135deg, #e6005c 0%, #7129d4 50%, #2979ff 100%)",
+                shadow: "0 6px 20px var(--accent-primary)",
+                bg: "var(--accent-gradient)",
               }}
               _active={{
                 transform: "scale(0.95) rotate(90deg)",
@@ -217,7 +217,7 @@ export const FloatingMenu = () => {
                 transform="translate(-50%, -50%)"
                 w="120%"
                 h="120%"
-                bg="linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%)"
+                bg="var(--accent-gradient)"
                 borderRadius="full"
                 opacity="0.6"
                 css={{
@@ -249,7 +249,7 @@ export const FloatingMenu = () => {
             <Drawer.Content
               w="100vw"
               maxW="100vw"
-              bg="linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 30%, #16213e 70%, #0f0f23 100%)"
+              bg="var(--vaporwave-bg)"
               color="white"
               borderTopRadius="32px"
               pt={6}
@@ -265,7 +265,7 @@ export const FloatingMenu = () => {
                 left: 0,
                 right: 0,
                 height: "4px",
-                bgGradient: "linear(to-r, #ff006e, #8338ec, #3a86ff)",
+                bgGradient: "var(--accent-gradient)",
                 borderTopRadius: "32px",
               }}
             >
@@ -290,7 +290,7 @@ export const FloatingMenu = () => {
                     <Box
                       w="40px"
                       h="40px"
-                      bg="linear-gradient(135deg, #ff006e, #8338ec)"
+                      bg="var(--accent-gradient)"
                       borderRadius="full"
                       display="flex"
                       alignItems="center"
@@ -302,7 +302,7 @@ export const FloatingMenu = () => {
                       <Drawer.Title
                         fontSize="xl"
                         fontWeight="bold"
-                        bgGradient="linear(to-r, #ff006e, #8338ec)"
+                        bgGradient="var(--accent-primary)"
                         bgClip="text"
                       >
                         Navigation
@@ -327,19 +327,19 @@ export const FloatingMenu = () => {
                               px={6}
                               py={5}
                               justifyContent="space-between"
-                              bg="rgba(255, 255, 255, 0.04)"
+                              bg="var(--alt-glass)"
                               backdropFilter="blur(20px)"
-                              border="1px solid rgba(255, 255, 255, 0.1)"
+                              border="1px solid var(--alt-glass-border)"
                               borderRadius="16px"
                               _hover={{
-                                bg: "rgba(255, 255, 255, 0.08)",
+                                bg: "var(--alt-glass)",
                                 transform: "translateY(-2px)",
                                 boxShadow: "0 8px 25px rgba(0, 0, 0, 0.2)",
                               }}
                               _expanded={{
-                                bg: "rgba(255, 255, 255, 0.08)",
-                                borderColor: "rgba(255, 0, 110, 0.4)",
-                                boxShadow: "0 0 30px rgba(255, 0, 110, 0.2)",
+                                bg: "var(--alt-glass)",
+                                borderColor: "var(--alt-glass-border)",
+                                boxShadow: "0 0 30px var(--alt-glass-shadow)",
                               }}
                               transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                             >
@@ -366,14 +366,14 @@ export const FloatingMenu = () => {
                                   </Text>
                                   <Text
                                     fontSize="sm"
-                                    color="rgba(255, 255, 255, 0.6)"
+                                    color="var(--alt-text-secondary)"
                                   >
                                     {cat.items.length} items
                                   </Text>
                                 </Box>
                               </HStack>
                               <AccordionIcon
-                                color="rgba(255, 255, 255, 0.7)"
+                                color="var(--alt-text-secondary)"
                                 transition="transform 0.2s"
                                 transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
                               />
@@ -396,23 +396,23 @@ export const FloatingMenu = () => {
                                       w="85%"
                                       bg={
                                         isActive
-                                          ? "rgba(255, 0, 110, 0.08)"
-                                          : "rgba(255, 255, 255, 0.02)"
+                                          ? "var(--alt-glass)"
+                                          : "var(--alt-glass)"
                                       }
                                       borderRadius="10px"
                                       border={`1px solid ${isActive
-                                        ? "rgba(255, 0, 110, 0.25)"
-                                        : "rgba(255, 255, 255, 0.04)"
+                                        ? "var(--alt-glass-border)"
+                                        : "var(--alt-glass-border)"
                                         }`}
                                       p={3}
                                       _hover={{
                                         bg: isActive
-                                          ? "rgba(255, 0, 110, 0.12)"
-                                          : "rgba(255, 255, 255, 0.04)",
-                                        borderColor: "rgba(255, 0, 110, 0.3)",
+                                          ? "var(--alt-glass)"
+                                          : "var(--alt-glass)",
+                                        borderColor: "var(--alt-glass-border)",
                                         transform: "translateY(-1px)",
                                         boxShadow:
-                                          "0 2px 8px rgba(0, 0, 0, 0.15)",
+                                          "0 2px 8px var(--alt-glass-shadow)",
                                       }}
                                       _active={{ transform: "translateY(0px)" }}
                                       transition="all 0.2s ease"
@@ -427,7 +427,7 @@ export const FloatingMenu = () => {
                                           top="0"
                                           bottom="0"
                                           w="3px"
-                                          bg="linear-gradient(to bottom, #ff006e, #8338ec)"
+                                          bg="var(--accent-gradient)"
                                           borderRadius="0 2px 2px 0"
                                         />
                                       )}
@@ -436,8 +436,8 @@ export const FloatingMenu = () => {
                                         <Box
                                           color={
                                             isActive
-                                              ? "#ff006e"
-                                              : "rgba(255, 255, 255, 0.6)"
+                                              ? "var(--accent-primary)"
+                                              : "var(--alt-text-secondary)"
                                           }
                                           transition="color 0.2s ease"
                                           fontSize="16px"
@@ -451,7 +451,7 @@ export const FloatingMenu = () => {
                                           >
                                             <Text
                                               color={
-                                                isActive ? "#ff006e" : "white"
+                                                isActive ? "var(--accent-primary)" : "white"
                                               }
                                               fontWeight={
                                                 isActive ? "semibold" : "medium"
@@ -465,7 +465,7 @@ export const FloatingMenu = () => {
                                           {item.description && (
                                             <Text
                                               fontSize="xs"
-                                              color="rgba(255, 255, 255, 0.4)"
+                                              color="var(--alt-text-secondary)"
                                               mt={0.5}
                                             >
                                               {item.description}
@@ -489,7 +489,7 @@ export const FloatingMenu = () => {
                 <Box
                   mt={6}
                   pt={4}
-                  borderTop="1px solid rgba(255, 255, 255, 0.1)"
+                  borderTop="1px solid var(--accent-primary)"
                 >
                   <ThemeToggle size="md" showLabel />
                 </Box>
@@ -503,7 +503,7 @@ export const FloatingMenu = () => {
                   color="white"
                   borderRadius="full"
                   _hover={{
-                    bg: "rgba(255, 255, 255, 0.1)",
+                    bg: "var(--accent-primary)",
                     transform: "rotate(90deg)",
                   }}
                   position="absolute"

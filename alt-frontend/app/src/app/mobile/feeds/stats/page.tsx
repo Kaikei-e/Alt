@@ -53,8 +53,8 @@ export default function FeedsStatsPage() {
           <Text
             fontSize="2xl"
             fontWeight="bold"
-            color="var(--vaporwave-cyan)"
-            textShadow="0 0 20px var(--vaporwave-cyan)"
+            color="var(--alt-text-primary)"
+            textShadow="0 0 20px var(--alt-text-primary)"
             mb={2}
           >
             Feeds Statistics
@@ -66,24 +66,24 @@ export default function FeedsStatsPage() {
               w={2}
               h={2}
               borderRadius="full"
-              bg={isConnected ? "#4caf50" : "#e53935"}
+              bg={isConnected ? "var(--alt-success)" : "var(--alt-error)"}
               transition="background-color 0.3s ease"
             />
             <Text
               fontSize="sm"
               color={
                 isConnected
-                  ? "var(--vaporwave-green)"
+                  ? "var(--alt-success)"
                   : retryCount > 0
-                    ? "var(--vaporwave-yellow)"
-                    : "var(--vaporwave-magenta)"
+                    ? "var(--alt-warning)"
+                    : "var(--alt-error)"
               }
               textShadow={
                 isConnected
-                  ? "0 0 8px var(--vaporwave-green)"
+                  ? "0 0 8px var(--alt-success)"
                   : retryCount > 0
-                    ? "0 0 8px var(--vaporwave-yellow)"
-                    : "0 0 8px var(--vaporwave-magenta)"
+                    ? "0 0 8px var(--alt-warning)"
+                    : "0 0 8px var(--alt-error)"
               }
             >
               {isConnected

@@ -110,7 +110,8 @@
   --surface-blur: 12px;
 
   --accent-gradient: linear-gradient(135deg, #e8ded1 0%, #d6c8b9 100%);
-  --app-bg: #d1c0a8;
+  --app-bg: #1a1a2e;
+  --transition-speed: 0.35s;
 }
 
 /* ---------------------------------------------------------------------------
@@ -129,7 +130,7 @@
   --surface-border: var(--vwv-border);
   --surface-blur: var(--vwv-blur);
   --accent-gradient: var(--vwv-gradient);
-  --app-bg: var(--vwv-bg);
+  --app-bg: #1a1a2e;
 
   /* Essential theme variables */
   --foreground: #ffffff;
@@ -159,7 +160,7 @@
   --surface-border: var(--liq-border);
   --surface-blur: var(--liq-blur);
   --accent-gradient: var(--liq-gradient);
-  --app-bg: var(--liq-bg);
+  --app-bg: #0d0d0d;
 
   /* Essential theme variables */
   --foreground: #ffffff;
@@ -185,7 +186,7 @@
   --surface-border: var(--liq-border);
   --surface-blur: var(--liq-blur);
   --accent-gradient: var(--liq-gradient);
-  --app-bg: var(--liq-bg);
+  --app-bg: #d1c0a8;
 
   /* Essential theme variables */
   --foreground: #2c2c2c;
@@ -229,6 +230,7 @@ body {
   padding-right: env(safe-area-inset-right);
   background-attachment: fixed;
   position: relative;
+  transition: background var(--transition-speed) ease;
 }
 
 body::before {
@@ -469,4 +471,16 @@ a:hover {
     --accent-secondary: #7c9070;
     --accent-tertiary: #d4a574;
   }
+}
+
+.gradient-bg {
+  /* Universal utility – switches automatically with data-style */
+  background: var(--accent-gradient);
+}
+
+.gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }

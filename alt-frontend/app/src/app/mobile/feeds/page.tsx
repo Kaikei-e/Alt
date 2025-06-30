@@ -157,7 +157,7 @@ export default function FeedsPage() {
             {!hasMore && visibleFeeds.length > 0 && (
               <Text
                 textAlign="center"
-                color="whiteAlpha.600"
+                color="var(--alt-text-secondary)"
                 fontSize="sm"
                 mt={8}
                 mb={4}
@@ -169,7 +169,7 @@ export default function FeedsPage() {
         ) : (
           /* Empty state */
           <Flex justify="center" align="center" py={20}>
-            <Text color="rgba(255, 255, 255, 0.6)" fontSize="lg">
+            <Text color="var(--alt-text-secondary)" fontSize="lg">
               No feeds available
             </Text>
           </Flex>
@@ -195,7 +195,7 @@ export default function FeedsPage() {
           >
             {/* Loading more indicator inside sentinel */}
             {isLoading && (
-              <Text color="rgba(255, 255, 255, 0.8)" fontSize="sm">
+              <Text color="var(--alt-text-secondary)" fontSize="sm">
                 Loading more...
               </Text>
             )}
