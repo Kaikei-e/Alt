@@ -58,8 +58,8 @@ const FeedCard = memo(function FeedCard({
     <Box
       p="2px"
       borderRadius="18px"
-      /* Use theme accent gradient for border */
-      background="var(--surface-bg)"
+      /* Use solid border instead of gradient */
+      border="2px solid var(--surface-border)"
       transition="transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out"
       cursor="pointer"
       data-testid="feed-card-container"

@@ -51,7 +51,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   // clicks are all coalesced into a single toggle while still allowing the
   // user to switch themes briskly when needed.
   const lastToggleRef = React.useRef<number>(0);
-  const DEBOUNCE_WINDOW = 500;
+  const DEBOUNCE_WINDOW = 100;
 
   const handleToggle = () => {
     const now = Date.now();

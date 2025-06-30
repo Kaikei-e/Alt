@@ -30,7 +30,10 @@ export default function FeedsPage() {
     loadInitial,
     loadMore,
     refresh,
-  } = useCursorPagination(feedsApi.getFeedsWithCursor, { limit: PAGE_SIZE });
+  } = useCursorPagination(feedsApi.getFeedsWithCursor, {
+    limit: PAGE_SIZE,
+    autoLoad: true,
+  });
 
   // Memoize visible feeds to prevent unnecessary recalculations
   const visibleFeeds = useMemo(
@@ -65,11 +68,6 @@ export default function FeedsPage() {
       setIsRetrying(false);
     }
   }, [refresh]);
-
-  // Initialize feeds
-  useEffect(() => {
-    loadInitial();
-  }, [loadInitial]);
 
   // Use infinite scroll hook with proper callback
   const handleLoadMore = useCallback(() => {
@@ -138,6 +136,7 @@ export default function FeedsPage() {
         overflowX="hidden"
         height="100vh"
         data-testid="feeds-scroll-container"
+        bg="var(--app-bg)"
       >
         {visibleFeeds.length > 0 ? (
           <>

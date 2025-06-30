@@ -78,7 +78,7 @@ const ReadFeedCard = memo(function ReadFeedCard({ feed }: ReadFeedCardProps) {
               <Text
                 fontSize="sm"
                 color="var(--text-primary)"
-                fontWeight="medium"
+                fontWeight="bold"
               >
                 Already Read
               </Text>

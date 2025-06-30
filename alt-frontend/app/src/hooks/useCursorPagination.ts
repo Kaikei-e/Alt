@@ -24,7 +24,7 @@ export function useCursorPagination<T>(
     limit = 20,
     enablePrefetch = false,
     prefetchDelay = 500,
-    autoLoad = true,
+    autoLoad = false,
   } = options;
 
   const [data, setData] = useState<T[]>([]);

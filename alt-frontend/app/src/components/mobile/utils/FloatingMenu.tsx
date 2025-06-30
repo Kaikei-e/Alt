@@ -316,7 +316,7 @@ export const FloatingMenu = () => {
               </Drawer.Header>
 
               <Drawer.Body px={6} py={4}>
-                <Accordion defaultIndex={0}>
+                <Accordion allowToggle defaultIndex={0}>
                   {categories.map((cat, idx) => (
                     <AccordionItem key={idx} border="none" mb={4}>
                       {({ isExpanded }) => (
@@ -499,8 +499,8 @@ export const FloatingMenu = () => {
                 <Button
                   aria-label="Close menu"
                   data-testid="close-menu-button"
-                  variant="ghost"
-                  color="var(--alt-primary)"
+                  bg="var(--alt-primary)"
+                  color="var(--text-primary)"
                   borderRadius="full"
                   _hover={{
                     bg: "var(--accent-primary)",

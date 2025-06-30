@@ -91,11 +91,6 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
           minHeight="44px"
           minWidth="120px"
           fontSize="sm"
-          _hover={{
-            bg: "var(--accent-gradient)",
-            transform: "scale(1.05)",
-            boxShadow: "0 4px 12px var(--accent-primary)",
-          }}
           _active={{
             transform: "scale(0.98)",
           }}
@@ -205,6 +200,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 overflow="auto"
                 px={6}
                 py={5}
+                bg="var(--app-bg)"
                 scrollBehavior="smooth"
                 overscrollBehavior="contain"
                 willChange="scroll-position"
@@ -288,14 +284,6 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   minWidth="36px"
                   fontSize="md"
                   boxShadow="var(--btn-shadow)"
-                  _hover={{
-                    bg: "var(--accent-gradient)",
-                    transform: "scale(1.1)",
-                    boxShadow: "var(--btn-shadow)",
-                  }}
-                  _active={{
-                    transform: "scale(0.95)",
-                  }}
                   transition="all 0.2s ease"
                   border="1.5px solid var(--alt-glass-border)"
                 >
