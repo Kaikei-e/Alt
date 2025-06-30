@@ -52,14 +52,12 @@ const ThemeBridge = ({ children }: { children: React.ReactNode }) => {
   // Utility to update DOM + storage synchronously
   const updateDomAttributes = (themeName: Theme) => {
     if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    root.setAttribute("data-style", themeName);
     document.body.setAttribute("data-style", themeName);
     document.body.setAttribute("data-theme", themeName);
-    document.body.className =
-      document.body.className
-        .replace(/\b(vaporwave|liquid-beige)\b/g, "")
-        .trim() +
-      " " +
-      themeName;
+    document.body.classList.remove("vaporwave", "liquid-beige");
+    document.body.classList.add(themeName);
     try {
       window.localStorage.setItem(LOCAL_STORAGE_KEY, themeName);
     } catch {
@@ -101,14 +99,14 @@ const ThemeBridge = ({ children }: { children: React.ReactNode }) => {
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <NextThemesProvider
-      attribute="class"
+      attribute="data-style"
       defaultTheme="light"
       enableSystem={false}
       // Map our app themes to next-themes' light/dark mode
       themes={["light", "dark"]}
       value={{
-        light: "theme-liquid-beige",
-        dark: "theme-vaporwave",
+        light: "liquid-beige",
+        dark: "vaporwave",
       }}
     >
       <ThemeBridge>{children}</ThemeBridge>
