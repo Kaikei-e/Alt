@@ -315,11 +315,11 @@ services:
       clickhouse:
         condition: service_healthy
     environment:
-      APP_CLICKHOUSE_HOST: clickhouse
-      APP_CLICKHOUSE_PORT: 9009
-      APP_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-rask_user}
-      APP_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-rask_password}
-      APP_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB:-rask_logs}
+      APP_CLICKHOUSE_HOST: ${APP_CLICKHOUSE_HOST}
+      APP_CLICKHOUSE_PORT: ${APP_CLICKHOUSE_PORT}
+      APP_CLICKHOUSE_USER: ${APP_CLICKHOUSE_USER}
+      APP_CLICKHOUSE_PASSWORD: ${APP_CLICKHOUSE_PASSWORD}
+      APP_CLICKHOUSE_DATABASE: ${APP_CLICKHOUSE_DATABASE}
   clickhouse:
     image: clickhouse/clickhouse-server:23.8
     restart: unless-stopped

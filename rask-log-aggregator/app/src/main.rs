@@ -1,19 +1,19 @@
 mod config;
-mod log_exporter;
 mod domain;
+mod log_exporter;
 
-use crate::log_exporter::clickhouse_exporter::ClickHouseExporter;
-use crate::log_exporter::LogExporter;
 use crate::domain::EnrichedLogEntry;
+use crate::log_exporter::LogExporter;
+use crate::log_exporter::clickhouse_exporter::ClickHouseExporter;
 use axum::{
     Router,
     extract::State,
     routing::{get, post},
 };
-use std::sync::Arc;
 use clickhouse::Client;
-use tracing::{info, error, Level};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use std::sync::Arc;
+use tracing::{Level, error, info};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[tokio::main]
 async fn main() {
@@ -23,20 +23,26 @@ async fn main() {
         .init();
 
     let settings = config::get_configuration().expect("Failed to read configuration.");
-    info!("Loaded settings: {:?}", settings);
+    info!("Loaded settings");
 
     let client = Client::default()
-        .with_url(format!("http://{}:{}", settings.clickhouse_host, settings.clickhouse_port))
+        .with_url(format!(
+            "http://{}:{}",
+            settings.clickhouse_host, settings.clickhouse_port
+        ))
         .with_user(&settings.clickhouse_user)
         .with_password(&settings.clickhouse_password)
         .with_database(&settings.clickhouse_database);
 
     let exporter: Arc<dyn LogExporter> = Arc::new(ClickHouseExporter::new(client));
 
-    let v1_health_router: Router = Router::new().route("/v1/health", get(|| async {
-        info!("Health check requested");
-        "Healthy"
-    }));
+    let v1_health_router: Router = Router::new().route(
+        "/v1/health",
+        get(|| async {
+            info!("Health check requested");
+            "Healthy"
+        }),
+    );
     let v1_aggregate_router: Router = Router::new()
         .route("/v1/aggregate", post(aggregate_handler))
         .with_state(exporter);
@@ -52,7 +58,10 @@ async fn main() {
 }
 
 // Add handler function for /v1/aggregate
-async fn aggregate_handler(State(exporter): State<Arc<dyn LogExporter>>, body: String) -> &'static str {
+async fn aggregate_handler(
+    State(exporter): State<Arc<dyn LogExporter>>,
+    body: String,
+) -> &'static str {
     let logs: Vec<EnrichedLogEntry> = body
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())

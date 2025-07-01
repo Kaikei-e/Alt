@@ -1,7 +1,6 @@
-use config::{Config, ConfigError, File};
-use serde::Deserialize;
+use std::env;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct Settings {
     pub clickhouse_host: String,
     pub clickhouse_port: u16,
@@ -10,10 +9,18 @@ pub struct Settings {
     pub clickhouse_database: String,
 }
 
-pub fn get_configuration() -> Result<Settings, ConfigError> {
-    let settings = Config::builder()
-        .add_source(File::with_name("configuration"))
-        .build()?;
+pub fn get_configuration() -> Result<Settings, Box<dyn std::error::Error>> {
+    let clickhouse_host = env::var("APP_CLICKHOUSE_HOST")?;
+    let clickhouse_port = env::var("APP_CLICKHOUSE_PORT")?.parse::<u16>()?;
+    let clickhouse_user = env::var("APP_CLICKHOUSE_USER")?;
+    let clickhouse_password = env::var("APP_CLICKHOUSE_PASSWORD")?;
+    let clickhouse_database = env::var("APP_CLICKHOUSE_DATABASE")?;
 
-    settings.try_deserialize()
+    Ok(Settings {
+        clickhouse_host,
+        clickhouse_port,
+        clickhouse_user,
+        clickhouse_password,
+        clickhouse_database,
+    })
 }
