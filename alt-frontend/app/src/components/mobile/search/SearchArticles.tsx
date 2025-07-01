@@ -134,16 +134,18 @@ export const SearchArticles = ({
         <VStack gap={4}>
           <Box width="full">
             <Text
-              color="rgba(255, 255, 255, 0.9)"
+              color="var(--alt-primary)"
               mb={2}
-              fontSize="sm"
-              fontWeight="medium"
+              fontSize="2xl"
+              fontWeight="bold"
+              textAlign="center"
             >
               Search Articles
             </Text>
             <Input
               type="text"
               placeholder="Search for articles..."
+              textAlign="center"
               value={query}
               onChange={handleInputChange}
               onKeyDown={handleKeyPress}

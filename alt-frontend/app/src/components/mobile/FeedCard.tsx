@@ -79,7 +79,7 @@ const FeedCard = memo(function FeedCard({
         <Flex direction="column" gap={2}>
           {/* Title as link */}
           <Flex direction="row" align="center" gap={2}>
-            <SquareArrowOutUpRight color="var(--alt-text-primary)" size={20} />
+            <SquareArrowOutUpRight color="var(--alt-primary)" size={24} />
             <Link
               href={feed.link}
               target="_blank"

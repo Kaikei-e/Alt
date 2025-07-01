@@ -128,7 +128,7 @@ export default function ReadFeedsPage() {
           <Text
             fontSize="2xl"
             fontWeight="bold"
-            color="var(--alt-text-primary)"
+            color="var(--alt-primary)"
             textAlign="center"
             data-testid="read-feeds-title"
           >

@@ -49,7 +49,7 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
           >
             <Dialog.Trigger asChild>
               <Button
-                colorScheme="pink"
+                color="var(--alt-primary)"
                 size="sm"
                 borderRadius="10px"
                 _hover={{
@@ -63,10 +63,9 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
               <Dialog.Backdrop bg="blackAlpha.800" />
               <Dialog.Positioner>
                 <Dialog.Content
-                  bg="rgba(0, 0, 0, 0.9)"
+                  className="glass"
                   backdropFilter="blur(20px)"
                   border="1px solid"
-                  borderColor="whiteAlpha.200"
                   borderRadius="20px"
                   boxShadow="0 25px 50px var(--accent-primary)"
                   mx={4}
@@ -75,7 +74,8 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                 >
                   <Dialog.Header>
                     <Dialog.Title
-                      color="white"
+                      textAlign="center"
+                      color="var(--alt-primary)"
                       fontSize="xl"
                       fontWeight="bold"
                       pr={8}
@@ -84,7 +84,11 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                     </Dialog.Title>
                   </Dialog.Header>
                   <Dialog.Body px={6} py={4} maxH="60vh" overflowY="auto">
-                    <Text color="whiteAlpha.900" lineHeight="1.6" fontSize="md">
+                    <Text
+                      color="var(--text-primary)"
+                      lineHeight="1.6"
+                      fontSize="md"
+                    >
                       {article.content ||
                         "No additional content available for this article."}
                     </Text>
@@ -93,8 +97,7 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                     <Dialog.ActionTrigger asChild>
                       <Button
                         variant="outline"
-                        colorScheme="whiteAlpha"
-                        color="white"
+                        color="var(--alt-primary)"
                         borderRadius="10px"
                         size="md"
                         w="full"

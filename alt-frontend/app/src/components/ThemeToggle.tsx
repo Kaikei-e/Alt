@@ -160,7 +160,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
         </Button>
         <Text
           fontSize={currentStyles.fontSize}
-          color="var(--accent-secondary)"
+          color="var(--text-primary)"
           fontWeight="medium"
           textAlign="center"
           data-testid="theme-toggle-label"

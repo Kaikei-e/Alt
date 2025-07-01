@@ -450,7 +450,7 @@ export const FloatingMenu = () => {
                                           >
                                             <Text
                                               color={
-                                                isActive ? "var(--text-primary)" : "white"
+                                                isActive ? "var(--text-primary)" : "var(--alt-secondary)"
                                               }
                                               fontWeight={
                                                 isActive ? "semibold" : "medium"
