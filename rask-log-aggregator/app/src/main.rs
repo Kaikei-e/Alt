@@ -1,23 +1,42 @@
+mod config;
 mod log_exporter;
+mod domain;
 
-use crate::log_exporter::disk_cleaner::DiskCleaner;
-use crate::log_exporter::json_file_exporter::JsonFileExporter;
+use crate::log_exporter::clickhouse_exporter::ClickHouseExporter;
+use crate::log_exporter::LogExporter;
+use crate::domain::EnrichedLogEntry;
 use axum::{
     Router,
     extract::State,
     routing::{get, post},
 };
-use std::time::Duration;
+use std::sync::Arc;
+use clickhouse::Client;
+use tracing::{info, error, Level};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
 async fn main() {
-    let exporter = JsonFileExporter::new("/logs/logs.json");
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
+        .init();
 
-    // Spawn background disk cleaner (100 MB quota, checks every 10 min)
-    let cleaner = DiskCleaner::new("/logs", 100 * 1024 * 1024, Duration::from_secs(600));
-    cleaner.spawn();
+    let settings = config::get_configuration().expect("Failed to read configuration.");
+    info!("Loaded settings: {:?}", settings);
 
-    let v1_health_router: Router = Router::new().route("/v1/health", get(|| async { "Healthy" }));
+    let client = Client::default()
+        .with_url(format!("http://{}:{}", settings.clickhouse_host, settings.clickhouse_port))
+        .with_user(&settings.clickhouse_user)
+        .with_password(&settings.clickhouse_password)
+        .with_database(&settings.clickhouse_database);
+
+    let exporter: Arc<dyn LogExporter> = Arc::new(ClickHouseExporter::new(client));
+
+    let v1_health_router: Router = Router::new().route("/v1/health", get(|| async {
+        info!("Health check requested");
+        "Healthy"
+    }));
     let v1_aggregate_router: Router = Router::new()
         .route("/v1/aggregate", post(aggregate_handler))
         .with_state(exporter);
@@ -28,23 +47,21 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:9600").await.unwrap();
     let ip_addr = listener.local_addr().unwrap();
-    println!("Listening on {}", ip_addr);
+    info!("Listening on {}", ip_addr);
     let _ = axum::serve(listener, app).await.unwrap();
 }
 
 // Add handler function for /v1/aggregate
-async fn aggregate_handler(State(exporter): State<JsonFileExporter>, body: String) -> &'static str {
-    let mut line_count = 0;
-    for line in body.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        exporter.export_raw(trimmed);
-        line_count += 1;
-    }
+async fn aggregate_handler(State(exporter): State<Arc<dyn LogExporter>>, body: String) -> &'static str {
+    let logs: Vec<EnrichedLogEntry> = body
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
 
-    println!("[aggregator] received {} log lines", line_count);
+    if let Err(e) = exporter.export_batch(logs).await {
+        error!("Failed to export logs to ClickHouse: {}", e);
+        // ここでリトライやフォールバック処理を検討
+    }
 
     "OK"
 }
