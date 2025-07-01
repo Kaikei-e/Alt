@@ -1,10 +1,10 @@
 use chrono::Utc;
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use rask_log_forwarder::buffer::{BufferConfig, LogBuffer};
 use rask_log_forwarder::parser::NginxLogEntry;
 use std::sync::Arc;
 
-fn create_test_nginx_log(id: usize) -> Arc<NginxLogEntry> {
+fn _create_test_nginx_log(id: usize) -> Arc<NginxLogEntry> {
     Arc::new(NginxLogEntry {
         service_type: "nginx".to_string(),
         log_type: "access".to_string(),
@@ -39,7 +39,8 @@ fn bench_single_threaded_push(c: &mut Criterion) {
                 let (sender, _receiver) = buffer.split();
                 for i in 0..size {
                     let log_entry = create_test_enriched_log(i);
-                    rt.block_on(sender.send(black_box(log_entry))).unwrap();
+                    rt.block_on(sender.send(std::hint::black_box(log_entry)))
+                        .unwrap();
                 }
             });
         });
@@ -66,13 +67,14 @@ fn bench_single_threaded_push_pop(c: &mut Criterion) {
                 let (sender, _receiver) = buffer.split();
                 for i in 0..size {
                     let log_entry = create_test_enriched_log(i);
-                    rt.block_on(sender.send(black_box(log_entry))).unwrap();
+                    rt.block_on(sender.send(std::hint::black_box(log_entry)))
+                        .unwrap();
                 }
 
                 // Receive phase
                 let (_sender2, mut receiver) = buffer.split();
                 for _ in 0..size {
-                    black_box(rt.block_on(receiver.recv()).unwrap());
+                    std::hint::black_box(rt.block_on(receiver.recv()).unwrap());
                 }
             });
         });
@@ -102,7 +104,7 @@ fn bench_batch_operations(c: &mut Criterion) {
                     let batch: Vec<_> = (0..batch_size).map(create_test_enriched_log).collect();
 
                     let (sender, _receiver) = buffer.split();
-                    for log_entry in black_box(batch) {
+                    for log_entry in std::hint::black_box(batch) {
                         rt.block_on(sender.send(log_entry)).unwrap();
                     }
                 });
@@ -131,7 +133,7 @@ fn bench_batch_operations(c: &mut Criterion) {
                     }
 
                     // Benchmark receive_batch
-                    for _ in 0..black_box(batch_size) {
+                    for _ in 0..std::hint::black_box(batch_size) {
                         let _ = rt.block_on(receiver.recv());
                     }
                 });
@@ -164,7 +166,7 @@ fn bench_memory_usage(c: &mut Criterion) {
 
                 // Check memory usage
                 let metrics = buffer.metrics().snapshot();
-                black_box(metrics.queue_depth);
+                std::hint::black_box(metrics.queue_depth);
 
                 // Verify memory efficiency (simplified)
                 let overhead_per_1000 = 50.0;
@@ -204,7 +206,9 @@ fn bench_concurrent_access(c: &mut Criterion) {
                                 // 4 threads * 2500 = 10k total
                                 let log_entry = create_test_enriched_log(thread_id * 2500 + i);
                                 while rt
-                                    .block_on(sender_clone.send(black_box(log_entry.clone())))
+                                    .block_on(
+                                        sender_clone.send(std::hint::black_box(log_entry.clone())),
+                                    )
                                     .is_err()
                                 {
                                     std::hint::spin_loop();
@@ -243,7 +247,8 @@ fn bench_high_throughput_target(c: &mut Criterion) {
             let (sender, _receiver) = buffer.split();
             for i in 0..target_messages {
                 let log_entry = create_test_enriched_log(i);
-                rt.block_on(sender.send(black_box(log_entry))).unwrap();
+                rt.block_on(sender.send(std::hint::black_box(log_entry)))
+                    .unwrap();
             }
 
             // Verify we achieved target

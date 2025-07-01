@@ -86,8 +86,8 @@ async fn test_keep_alive_connections() {
     let sender = BatchSender::new(config).await.unwrap();
 
     // Make two requests and verify connection reuse
-    let _response1 = sender.health_check().await.unwrap();
-    let _response2 = sender.health_check().await.unwrap();
+    sender.health_check().await.unwrap();
+    sender.health_check().await.unwrap();
 
     let stats = sender.connection_stats().await;
     assert_eq!(stats.total_requests, 2);

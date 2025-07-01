@@ -20,7 +20,7 @@ check:
 
 # Run linter
 lint:
-	cargo clippy --all-targets --all-features
+	cargo clippy --all-targets --all-features -- -D warnings
 
 # Format code
 fmt:

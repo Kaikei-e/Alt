@@ -191,9 +191,9 @@ async fn test_mock_memory_manager_realistic_scenario() {
     let mut manager = MockMemoryManager::new(1024 * 1024); // 1MB
 
     // Simulate gradual memory usage
-    let allocations = vec![100 * 1024, 200 * 1024, 300 * 1024, 250 * 1024]; // KB allocations
+    let allocations = [100 * 1024, 200 * 1024, 300 * 1024, 250 * 1024]; // KB allocations
 
-    for (_i, allocation) in allocations.iter().enumerate() {
+    for allocation in allocations.iter() {
         manager.allocate(*allocation).await;
     }
 

@@ -190,6 +190,7 @@ fn test_mock_parser_multiple_logs() {
 
 // Mock for enrichment functionality
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ContainerInfo {
     pub id: String,
     pub name: String,
@@ -197,6 +198,7 @@ pub struct ContainerInfo {
     pub service_group: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ServiceInfo {
     pub service_name: String,
@@ -209,6 +211,7 @@ pub struct MockLogEnricher {
     pub service_info: ServiceInfo,
 }
 
+#[allow(dead_code)]
 impl MockLogEnricher {
     pub fn new() -> Self {
         Self {

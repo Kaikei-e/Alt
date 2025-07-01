@@ -1,10 +1,10 @@
 use chrono::Utc;
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rask_log_forwarder::buffer::{BufferConfig, LogBuffer};
 use rask_log_forwarder::parser::NginxLogEntry;
 use std::sync::Arc;
 
-fn create_test_nginx_log(id: usize) -> Arc<NginxLogEntry> {
+fn _create_test_nginx_log(id: usize) -> Arc<NginxLogEntry> {
     Arc::new(NginxLogEntry {
         service_type: "nginx".to_string(),
         log_type: "access".to_string(),
@@ -72,7 +72,7 @@ fn bench_memory_efficiency(c: &mut Criterion) {
                             );
                         }
 
-                        black_box(metrics.queue_depth);
+                        std::hint::black_box(metrics.queue_depth);
 
                         // Buffer automatically manages memory
                     }
@@ -110,7 +110,7 @@ fn bench_memory_growth_pattern(c: &mut Criterion) {
 
                 let metrics = buffer.metrics().snapshot();
                 memory_readings.push(50); // Simplified
-                black_box(metrics.queue_depth);
+                std::hint::black_box(metrics.queue_depth);
             }
 
             // Verify linear growth pattern
@@ -151,14 +151,14 @@ fn bench_memory_overhead(c: &mut Criterion) {
                 .unwrap();
 
             // Measure empty buffer overhead
-            let empty_metrics = buffer.metrics().snapshot();
+            let _empty_metrics = buffer.metrics().snapshot();
 
             // Add single item
             let log_entry = create_test_enriched_log(0);
             let (sender, _receiver) = buffer.split();
             rt.block_on(sender.send(log_entry)).unwrap();
 
-            let single_item_metrics = buffer.metrics().snapshot();
+            let _single_item_metrics = buffer.metrics().snapshot();
 
             // Calculate overhead (simplified)
             let overhead = 50;
@@ -171,7 +171,7 @@ fn bench_memory_overhead(c: &mut Criterion) {
                 overhead
             );
 
-            black_box(overhead);
+            std::hint::black_box(overhead);
         });
     });
 
@@ -209,7 +209,7 @@ fn bench_memory_fragmentation(c: &mut Criterion) {
                 // Memory should return to baseline (no significant fragmentation)
                 // Note: New buffer API handles this automatically
 
-                black_box((full_metrics.queue_depth, empty_metrics.queue_depth));
+                std::hint::black_box((full_metrics.queue_depth, empty_metrics.queue_depth));
             }
         });
     });
@@ -239,7 +239,7 @@ fn bench_memory_target_validation(c: &mut Criterion) {
                 rt.block_on(sender.send(log_entry)).unwrap();
             }
 
-            let metrics = buffer.metrics().snapshot();
+            let _metrics = buffer.metrics().snapshot();
             let memory_mb = 50.0; // Simplified calculation
 
             // Should be well under 128MB
@@ -256,7 +256,7 @@ fn bench_memory_target_validation(c: &mut Criterion) {
                 memory_mb
             );
 
-            black_box(memory_mb);
+            std::hint::black_box(memory_mb);
         });
     });
 

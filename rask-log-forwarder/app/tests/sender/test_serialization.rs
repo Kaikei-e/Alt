@@ -1,7 +1,6 @@
 use rask_log_forwarder::buffer::{Batch, BatchType};
 use rask_log_forwarder::parser::{EnrichedLogEntry, LogLevel};
 use rask_log_forwarder::sender::{BatchSerializer, SerializationFormat};
-use serde_json;
 use std::collections::HashMap;
 
 fn create_test_entry(message: &str) -> EnrichedLogEntry {
@@ -43,8 +42,8 @@ fn test_ndjson_serialization() {
     assert_eq!(lines.len(), 3);
 
     for (i, line) in lines.iter().enumerate() {
-        let parsed: serde_json::Value =
-            serde_json::from_str(line).expect(&format!("Line {} should be valid JSON", i));
+        let parsed: serde_json::Value = serde_json::from_str(line)
+            .unwrap_or_else(|_| panic!("Line {} should be valid JSON", i));
 
         assert!(
             parsed["message"]
@@ -158,7 +157,7 @@ fn test_compression() {
 
     // Compressed should be smaller than uncompressed
     assert!(compressed.len() < uncompressed.len());
-    assert!(compressed.len() > 0);
+    assert!(!compressed.is_empty());
 }
 
 #[test]

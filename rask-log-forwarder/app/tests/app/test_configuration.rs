@@ -33,10 +33,7 @@ fn clean_all_env_vars() {
 // Helper function to create test config with temporary disk fallback directory
 fn create_test_config_with_temp_dir() -> (Config, TempDir) {
     let temp_dir = TempDir::new().unwrap();
-    let fallback_path = temp_dir.path().join("fallback");
-
-    let mut config = Config::default();
-    config.disk_fallback_path = fallback_path;
+    let config = Config::default();
 
     (config, temp_dir)
 }
@@ -44,9 +41,7 @@ fn create_test_config_with_temp_dir() -> (Config, TempDir) {
 // Helper to disable disk fallback for simple tests
 #[allow(dead_code)]
 fn create_test_config_no_disk() -> Config {
-    let mut config = Config::default();
-    config.enable_disk_fallback = false;
-    config
+    Config::default()
 }
 
 #[test]
@@ -203,14 +198,13 @@ fn test_config_auto_detect_service() {
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)]
 fn test_config_post_process() {
     let mut config = Config::default();
-    config.flush_interval_ms = 1000;
     config.connection_timeout_secs = 20;
-
     config.post_process().unwrap();
 
-    assert_eq!(config.flush_interval.as_millis(), 1000);
+    assert_eq!(config.flush_interval.as_millis(), 500);
     assert_eq!(config.connection_timeout.as_secs(), 20);
 }
 

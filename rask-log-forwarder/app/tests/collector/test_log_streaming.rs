@@ -6,7 +6,7 @@ use tokio::time::sleep;
 
 async fn start_test_nginx_container() -> String {
     let output = Command::new("docker")
-        .args(&[
+        .args([
             "run",
             "-d",
             "--label",
@@ -32,7 +32,7 @@ async fn start_test_nginx_container() -> String {
 
 async fn cleanup_test_container(container_id: String) {
     Command::new("docker")
-        .args(&["rm", "-f", &container_id])
+        .args(["rm", "-f", &container_id])
         .output()
         .expect("Failed to cleanup test container");
 }

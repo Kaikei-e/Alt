@@ -7,7 +7,7 @@ use tokio::time::sleep;
 #[allow(dead_code)]
 async fn start_test_nginx_container() -> String {
     let output = Command::new("docker")
-        .args(&[
+        .args([
             "run",
             "-d",
             "--label",
@@ -36,7 +36,7 @@ async fn generate_test_nginx_logs(container_id: &str, count: usize) {
     for i in 0..count {
         // Use simple echo to stdout which will be captured by Docker logs
         Command::new("docker")
-            .args(&[
+            .args([
                 "exec",
                 container_id,
                 "sh",
@@ -53,7 +53,7 @@ async fn generate_test_nginx_logs(container_id: &str, count: usize) {
 
 async fn cleanup_test_container(container_id: String) {
     Command::new("docker")
-        .args(&["rm", "-f", &container_id])
+        .args(["rm", "-f", &container_id])
         .output()
         .expect("Failed to cleanup test container");
 }
@@ -66,7 +66,7 @@ async fn test_zero_copy_bytes_from_docker_logs() {
 
     // Test with a simple busybox container that generates logs
     let output = Command::new("docker")
-        .args(&[
+        .args([
             "run",
             "-d",
             "--label",
@@ -121,7 +121,7 @@ async fn test_zero_copy_bytes_from_docker_logs() {
     println!("Received log data: {}", log_str);
 
     // Basic assertion that we received some log data
-    assert!(log_str.len() > 0, "Should have log content");
+    assert!(!log_str.is_empty(), "Should have log content");
 
     cleanup_test_container(test_container).await;
 }

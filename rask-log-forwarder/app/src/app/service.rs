@@ -429,7 +429,7 @@ impl ServiceManager {
 
     async fn send_log_batch(
         log_batch: &[crate::parser::services::ParsedLogEntry],
-        reliability_manager: &Arc<ReliabilityManager>,
+        _reliability_manager: &Arc<ReliabilityManager>,
     ) {
         if log_batch.is_empty() {
             return;
