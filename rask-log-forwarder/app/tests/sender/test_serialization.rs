@@ -43,13 +43,13 @@ fn test_ndjson_serialization() {
 
     for (i, line) in lines.iter().enumerate() {
         let parsed: serde_json::Value = serde_json::from_str(line)
-            .unwrap_or_else(|_| panic!("Line {} should be valid JSON", i));
+            .unwrap_or_else(|_| panic!("Line {i} should be valid JSON"));
 
         assert!(
             parsed["message"]
                 .as_str()
                 .unwrap()
-                .contains(&format!("Message {}", i + 1))
+                .contains(&format!("Message {}", i + 1)),
         );
         assert_eq!(parsed["service_type"], "test");
         assert_eq!(parsed["container_id"], "test123");
@@ -105,7 +105,7 @@ fn test_large_batch_serialization() {
     let serializer = BatchSerializer::new();
 
     let entries: Vec<_> = (0..10000)
-        .map(|i| create_test_entry(&format!("Large batch message {}", i)))
+        .map(|i| create_test_entry(&format!("Large batch message {i}")))
         .collect();
 
     let batch = Batch::new(entries, BatchType::SizeBased);
@@ -142,8 +142,7 @@ fn test_compression() {
     let entries: Vec<_> = (0..1000)
         .map(|i| {
             create_test_entry(&format!(
-                "Compression test message with repeated content {}",
-                i
+                "Compression test message with repeated content {i}"
             ))
         })
         .collect();

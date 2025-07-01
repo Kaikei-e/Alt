@@ -137,7 +137,7 @@ async fn test_delete_batch() {
 
 fn create_test_batch_with_entries(count: usize) -> Batch {
     let entries = (0..count)
-        .map(|i| create_test_entry(&format!("Disk fallback test entry {}", i)))
+        .map(|i| create_test_entry(&format!("Disk fallback test entry {i}")))
         .collect();
 
     Batch::new(entries, rask_log_forwarder::buffer::BatchType::SizeBased)

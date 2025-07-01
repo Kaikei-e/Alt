@@ -24,7 +24,7 @@ async fn test_app_initialization() {
                 };
                 assert_eq!(config.target_service, Some("init-test".to_string()));
             } else {
-                panic!("Unexpected error creating app: {}", e);
+                panic!("Unexpected error creating app: {e}");
             }
         }
     }
@@ -72,7 +72,7 @@ enable_compression = false
                 let config = Config::from_file(&config_file).unwrap();
                 assert_eq!(config.target_service, Some("file-test".to_string()));
             } else {
-                panic!("Unexpected error creating app: {}", e);
+                panic!("Unexpected error creating app: {e}");
             }
         }
     }
@@ -100,7 +100,7 @@ async fn test_app_auto_service_detection() {
                 let service = env::var("TARGET_SERVICE").unwrap();
                 assert_eq!(service, "meilisearch");
             } else {
-                panic!("Unexpected error creating app: {}", e);
+                panic!("Unexpected error creating app: {e}");
             }
         }
     }
@@ -145,10 +145,9 @@ fn test_logging_setup() {
                 e.contains("global default trace dispatcher")
                     || e.contains("already been set")
                     || e.contains("panicked"),
-                "Unexpected logging setup error: {}",
-                e
+                "Unexpected logging setup error: {e}"
             );
-            println!("Logging setup failed as expected in parallel test: {}", e);
+            println!("Logging setup failed as expected in parallel test: {e}");
         }
     }
 }
@@ -177,7 +176,7 @@ async fn test_app_health_check() {
                 // This is expected in parallel tests - the core functionality is tested elsewhere
                 return;
             } else {
-                panic!("Unexpected error creating app: {}", e);
+                panic!("Unexpected error creating app: {e}");
             }
         }
     }

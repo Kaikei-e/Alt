@@ -14,7 +14,7 @@ async fn test_batch_formation_by_size() {
 
     // Add 10 entries to trigger size-based batching
     for i in 0..10 {
-        let entry = create_test_log_entry(&format!("message-{}", i));
+        let entry = create_test_log_entry(&format!("message-{i}"));
         former.add_entry(entry).await.unwrap();
     }
 
@@ -43,7 +43,7 @@ async fn test_batch_formation_by_timeout() {
 
     // Add just a few entries
     for i in 0..3 {
-        let entry = create_test_log_entry(&format!("message-{}", i));
+        let entry = create_test_log_entry(&format!("message-{i}"));
         former.add_entry(entry).await.unwrap();
     }
 
@@ -104,7 +104,7 @@ async fn test_concurrent_batch_formation() {
     let former_clone = former.clone();
     tokio::spawn(async move {
         for i in 0..250 {
-            let entry = create_test_log_entry(&format!("message-{}", i));
+            let entry = create_test_log_entry(&format!("message-{i}"));
             former_clone.add_entry(entry).await.unwrap();
 
             if i % 50 == 0 {

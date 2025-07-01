@@ -73,7 +73,7 @@ async fn test_buffer_backpressure_handling() {
     let metrics = buffer.metrics().snapshot();
     let drop_ratio =
         metrics.messages_dropped as f64 / (metrics.messages_sent + metrics.messages_dropped) as f64;
-    assert!(drop_ratio < 0.5, "Drop ratio too high: {:.2}", drop_ratio);
+    assert!(drop_ratio < 0.5, "Drop ratio too high: {drop_ratio:.2}");
 }
 
 #[tokio::test]
@@ -205,7 +205,7 @@ fn create_test_nginx_log(id: usize) -> Arc<NginxLogEntry> {
     Arc::new(NginxLogEntry {
         service_type: "nginx".to_string(),
         log_type: "access".to_string(),
-        message: format!("Test log message {}", id),
+        message: format!("Test log message {id}"),
         stream: "stdout".to_string(),
         timestamp: Utc::now(),
         container_id: Some(format!("container_{}", id % 10)),
@@ -385,7 +385,7 @@ fn create_test_enriched_log(id: usize) -> EnrichedLogEntry {
     EnrichedLogEntry {
         service_type: "test".to_string(),
         log_type: "info".to_string(),
-        message: format!("Test log message {}", id),
+        message: format!("Test log message {id}"),
         level: Some(rask_log_forwarder::parser::LogLevel::Info),
         timestamp: chrono::Utc::now().to_rfc3339(),
         stream: "stdout".to_string(),

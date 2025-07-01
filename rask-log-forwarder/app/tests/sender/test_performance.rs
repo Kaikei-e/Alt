@@ -108,7 +108,7 @@ async fn test_concurrent_transmissions() {
                 let handle = tokio::spawn(async move {
                     let transmitter = BatchTransmitter::new((*client_clone).clone());
 
-                    let entries = vec![create_test_entry(&format!("Concurrent test {}", i))];
+                    let entries = vec![create_test_entry(&format!("Concurrent test {i}"))];
                     let batch = Batch::new(entries, BatchType::SizeBased);
 
                     // Test payload preparation (no actual transmission)
@@ -145,7 +145,7 @@ async fn test_large_batch_performance() {
 
             // Create 10K entries
             let entries: Vec<_> = (0..10000)
-                .map(|i| create_test_entry(&format!("Performance test entry {}", i)))
+                .map(|i| create_test_entry(&format!("Performance test entry {i}")))
                 .collect();
 
             let batch = Batch::new(entries, BatchType::SizeBased);
@@ -187,7 +187,7 @@ async fn test_memory_efficiency() {
             // Test multiple batches to ensure no memory leaks
             for i in 0..10 {
                 let entries = (0..1000)
-                    .map(|j| create_test_entry(&format!("Memory test batch {} entry {}", i, j)))
+                    .map(|j| create_test_entry(&format!("Memory test batch {i} entry {j}")))
                     .collect();
 
                 let batch = Batch::new(entries, BatchType::SizeBased);

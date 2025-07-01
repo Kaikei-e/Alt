@@ -187,7 +187,7 @@ fn create_test_nginx_log(id: usize) -> Arc<dyn std::any::Any + Send + Sync> {
     Arc::new(EnrichedLogEntry {
         service_type: "nginx".to_string(),
         log_type: "access".to_string(),
-        message: format!("Test log message {}", id),
+        message: format!("Test log message {id}"),
         stream: "stdout".to_string(),
         timestamp: Utc::now().to_rfc3339(),
         container_id: format!("container_{}", id % 10),
@@ -266,11 +266,10 @@ async fn test_dropped_messages_tracking() {
 
     // Print for debugging
     println!(
-        "Sent count: {}, Dropped count: {}",
-        sent_count, dropped_count
+        "Sent count: {sent_count}, Dropped count: {dropped_count}"
     );
     println!(
-        "Metrics - sent: {}, dropped: {}, queue_depth: {}",
+            "Metrics - sent: {}, dropped: {}, queue_depth: {}",
         metrics.messages_sent, metrics.messages_dropped, metrics.queue_depth
     );
 

@@ -43,7 +43,7 @@ async fn test_client_configuration() {
         Err(ClientError::ConnectionFailed(_)) => {
             // Expected when server is not available
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -90,7 +90,7 @@ async fn test_connection_stats() {
             assert_eq!(max_connections, 15);
             // This is acceptable since we can't actually connect without a server
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -124,7 +124,7 @@ async fn test_client_clone_and_sharing() {
         Err(ClientError::ConnectionFailed(_)) => {
             // Expected when server is not available
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -147,7 +147,7 @@ async fn test_timeout_configuration() {
         Err(ClientError::ConnectionFailed(_)) | Err(ClientError::RequestTimeout(_)) => {
             // Expected with very short timeout
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -169,7 +169,7 @@ async fn test_user_agent_header() {
         Err(ClientError::ConnectionFailed(_)) => {
             // Expected when server is not available, but config is still valid
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -190,6 +190,6 @@ async fn test_compression_enabled() {
         Err(ClientError::ConnectionFailed(_)) => {
             // Expected when server is not available
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }

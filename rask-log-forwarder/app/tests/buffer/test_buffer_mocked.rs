@@ -127,7 +127,7 @@ fn create_test_enriched_log(id: usize) -> EnrichedLogEntry {
     EnrichedLogEntry {
         service_type: "test".to_string(),
         log_type: "info".to_string(),
-        message: format!("Test message {}", id),
+        message: format!("Test message {id}"),
         level: Some(rask_log_forwarder::parser::LogLevel::Info),
         timestamp: "2024-01-01T00:00:00Z".to_string(),
         stream: "stdout".to_string(),
@@ -137,7 +137,7 @@ fn create_test_enriched_log(id: usize) -> EnrichedLogEntry {
         response_size: None,
         ip_address: None,
         user_agent: None,
-        container_id: format!("container-{}", id),
+        container_id: format!("container-{id}"),
         service_name: "test-service".to_string(),
         service_group: Some("test-group".to_string()),
         fields: std::collections::HashMap::new(),

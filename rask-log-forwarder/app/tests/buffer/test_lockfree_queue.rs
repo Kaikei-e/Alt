@@ -88,7 +88,7 @@ async fn test_buffer_capacity_limits() {
 
     // Fill buffer to capacity
     for i in 0..10 {
-        let log_entry = create_test_log_entry(&format!("message-{}", i));
+        let log_entry = create_test_log_entry(&format!("message-{i}"));
         sender.send(log_entry).await.unwrap();
     }
 
@@ -115,7 +115,7 @@ async fn test_buffer_metrics() {
 
     // Send some messages
     for i in 0..5 {
-        let log_entry = create_test_log_entry(&format!("message-{}", i));
+        let log_entry = create_test_log_entry(&format!("message-{i}"));
         sender.send(log_entry).await.unwrap();
     }
 

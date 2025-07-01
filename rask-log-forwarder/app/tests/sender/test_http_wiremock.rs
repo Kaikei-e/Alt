@@ -110,7 +110,7 @@ async fn test_http_client_with_wiremock_timeout() {
         ClientError::NetworkError(ref err) if err.is_timeout() => {
             // reqwest timeout error
         }
-        _ => panic!("Expected timeout-related error, got: {:?}", error),
+        _ => panic!("Expected timeout-related error, got: {error:?}"),
     }
 }
 

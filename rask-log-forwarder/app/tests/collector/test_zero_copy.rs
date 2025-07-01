@@ -41,7 +41,7 @@ async fn generate_test_nginx_logs(container_id: &str, count: usize) {
                 container_id,
                 "sh",
                 "-c",
-                &format!("echo 'Test log message {}'", i),
+                &format!("echo 'Test log message {i}'"),
             ])
             .output()
             .expect("Failed to generate log");
@@ -118,7 +118,7 @@ async fn test_zero_copy_bytes_from_docker_logs() {
 
     // Verify it's valid data (could be Docker json-file format or raw bytes)
     let log_str = std::str::from_utf8(&bytes).expect("Should be valid UTF-8");
-    println!("Received log data: {}", log_str);
+    println!("Received log data: {log_str}");
 
     // Basic assertion that we received some log data
     assert!(!log_str.is_empty(), "Should have log content");
@@ -138,7 +138,7 @@ async fn test_zero_copy_performance() {
 
     // Test the queue throughput directly
     for i in 0..test_count {
-        let test_bytes = Bytes::from(format!("Test message {}", i));
+        let test_bytes = Bytes::from(format!("Test message {i}"));
         if tx.send(test_bytes).map(|_| ()).is_err() {
             break; // Queue full
         }
@@ -160,17 +160,14 @@ async fn test_zero_copy_performance() {
     // Validate that our queue architecture can handle high throughput
     assert!(
         throughput > 100.0,
-        "Queue should process >100 msgs/sec, got: {}",
-        throughput
+        "Queue should process >100 msgs/sec, got: {throughput}"
     );
     assert!(
         received_count > 500,
-        "Should process substantial number of messages, got: {}",
-        received_count
+            "Should process substantial number of messages, got: {received_count}"
     );
 
     println!(
-        "Queue performance: {} msgs/sec, {} messages processed",
-        throughput, received_count
+        "Queue performance: {throughput} msgs/sec, {received_count} messages processed"
     );
 }

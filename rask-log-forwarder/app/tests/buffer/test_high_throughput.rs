@@ -178,7 +178,7 @@ fn create_test_enriched_log(id: usize) -> EnrichedLogEntry {
     EnrichedLogEntry {
         service_type: "test".to_string(),
         log_type: "info".to_string(),
-        message: format!("Test log message {}", id),
+        message: format!("Test log message {id}"),
         level: Some(rask_log_forwarder::parser::LogLevel::Info),
         timestamp: chrono::Utc::now().to_rfc3339(),
         stream: "stdout".to_string(),

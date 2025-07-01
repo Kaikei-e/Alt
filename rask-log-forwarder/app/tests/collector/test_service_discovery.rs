@@ -57,8 +57,7 @@ impl ServiceDiscoveryTrait for MockServiceDiscovery {
             Ok(service_name.to_string())
         } else {
             Err(DiscoveryError::InvalidHostname(format!(
-                "Hostname '{}' doesn't match pattern '*-logs'",
-                hostname
+                "Hostname '{hostname}' doesn't match pattern '*-logs'"
             )))
         }
     }

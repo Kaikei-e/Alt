@@ -98,7 +98,7 @@ async fn test_compression() {
         Ok(client) => {
             let transmitter = BatchTransmitter::new(client);
             let entries: Vec<_> = (0..1000)
-                .map(|i| create_test_entry(&format!("Compression test message {}", i)))
+                .map(|i| create_test_entry(&format!("Compression test message {i}")))
                 .collect();
 
             let batch = Batch::new(entries, BatchType::SizeBased);
@@ -168,7 +168,7 @@ async fn test_large_batch_payload() {
 
             // Create 10K entries
             let entries: Vec<_> = (0..10000)
-                .map(|i| create_test_entry(&format!("Large batch entry {}", i)))
+                .map(|i| create_test_entry(&format!("Large batch entry {i}")))
                 .collect();
 
             let batch = Batch::new(entries, BatchType::SizeBased);

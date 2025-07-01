@@ -73,7 +73,7 @@ fn create_test_nginx_log(id: usize) -> Arc<NginxLogEntry> {
     Arc::new(NginxLogEntry {
         service_type: "nginx".to_string(),
         log_type: "access".to_string(),
-        message: format!("Test log message {}", id),
+        message: format!("Test log message {id}"),
         stream: "stdout".to_string(),
         timestamp: Utc::now(),
         container_id: Some(format!("container_{}", id % 10)),
