@@ -5,6 +5,7 @@ volumes:
   db_data:
   meili_data:
   rask_log_aggregator_data:
+  clickhouse_data:
 
 x-rask-env: &rask-env
   environment:
@@ -303,8 +304,6 @@ services:
     networks:
       - alt-network
     tty: true
-    volumes:
-      - ./rask-log-aggregator/logs:/logs
     labels:
       - rask.group=alt-backend
     logging:
@@ -312,6 +311,40 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      APP_CLICKHOUSE_HOST: clickhouse
+      APP_CLICKHOUSE_PORT: 9009
+      APP_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-rask_user}
+      APP_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-rask_password}
+      APP_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB:-rask_logs}
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-rask_logs}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-rask_user}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-rask_password}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9009:9000"
+    volumes:
+      - ./clickhouse/init:/docker-entrypoint-initdb.d
+      - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - alt-network
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
   db:
     image: postgres:16-alpine
     restart: always
