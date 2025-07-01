@@ -8,6 +8,8 @@ RUN cargo build --release --bin rask
 
 FROM debian:bookworm-slim
 
+WORKDIR /app
+
 COPY --from=builder /app/target/release/rask /usr/local/bin/rask-log-aggregator
 
 CMD ["rask-log-aggregator"]
