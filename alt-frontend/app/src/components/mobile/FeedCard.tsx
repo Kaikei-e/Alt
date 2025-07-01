@@ -79,7 +79,17 @@ const FeedCard = memo(function FeedCard({
         <Flex direction="column" gap={2}>
           {/* Title as link */}
           <Flex direction="row" align="center" gap={2}>
-            <SquareArrowOutUpRight color="var(--alt-primary)" size={24} />
+            <Box
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              width="24px"
+              height="24px"
+              flexShrink={0}
+              data-testid={`feed-link-icon-${feed.id}`}
+            >
+              <SquareArrowOutUpRight color="var(--alt-primary)" size={24} />
+            </Box>
             <Link
               href={feed.link}
               target="_blank"
@@ -87,7 +97,7 @@ const FeedCard = memo(function FeedCard({
               aria-label={`Open ${feed.title} in external link`}
             >
               <Text
-                fontSize="lg"
+                fontSize="md"
                 fontWeight="semibold"
                 color="var(--accent-primary)"
                 _hover={{ textDecoration: "underline" }}
