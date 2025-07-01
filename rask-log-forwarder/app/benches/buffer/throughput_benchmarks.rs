@@ -172,8 +172,7 @@ fn bench_memory_usage(c: &mut Criterion) {
                 let overhead_per_1000 = 50.0;
                 assert!(
                     overhead_per_1000 < 100_000.0,
-                    "Memory overhead too high: {} bytes per 1000 messages",
-                    overhead_per_1000
+                    "Memory overhead too high: {overhead_per_1000} bytes per 1000 messages"
                 );
             });
         });
@@ -264,7 +263,7 @@ fn create_test_enriched_log(id: usize) -> rask_log_forwarder::parser::EnrichedLo
     rask_log_forwarder::parser::EnrichedLogEntry {
         service_type: "test".to_string(),
         log_type: "access".to_string(),
-        message: format!("Test log message {}", id),
+        message: format!("Test log message {id}"),
         level: Some(rask_log_forwarder::parser::LogLevel::Info),
         timestamp: chrono::Utc::now().to_rfc3339(),
         stream: "stdout".to_string(),
