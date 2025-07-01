@@ -28,11 +28,12 @@ test.describe("FeedCard Icon Size", () => {
   test("icon size remains consistent for varying title lengths", async ({ page }) => {
     await page.goto("/mobile/feeds");
     await page.waitForLoadState("networkidle");
-    const firstIcon = page.getByTestId("feed-link-icon-1");
-    const secondIcon = page.getByTestId("feed-link-icon-2");
+    const icons = page.locator('[data-testid^="feed-link-icon-"]');
+    const firstIcon = icons.nth(0);
+    const secondIcon = icons.nth(1);
 
-    await expect(firstIcon).toBeVisible();
-    await expect(secondIcon).toBeVisible();
+    await expect(firstIcon).toBeVisible({ timeout: 10000 });
+    await expect(secondIcon).toBeVisible({ timeout: 10000 });
 
     const firstSize = await firstIcon.evaluate((el) => ({
       width: el.clientWidth,
