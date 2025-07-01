@@ -19,11 +19,6 @@ export const useSSEFeedsStats = () => {
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastDataReceivedRef = useRef<number>(Date.now());
 
-  // Progress reset callback that can be called from outside
-  const [progressResetTrigger, setProgressResetTrigger] = useState(0);
-  const resetProgress = useCallback(() => {
-    setProgressResetTrigger((prev) => prev + 1);
-  }, []);
 
   // Connection health check
   useEffect(() => {
@@ -117,9 +112,6 @@ export const useSSEFeedsStats = () => {
 
           setIsConnected((prev) => (prev !== true ? true : prev));
           setRetryCount((prev) => (prev !== 0 ? 0 : prev));
-
-          // Trigger progress reset
-          setProgressResetTrigger((prev) => prev + 1);
         }
       },
       () => {
@@ -156,7 +148,5 @@ export const useSSEFeedsStats = () => {
     totalArticlesAmount,
     isConnected,
     retryCount,
-    resetProgress,
-    progressResetTrigger,
   };
 };

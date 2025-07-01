@@ -69,8 +69,7 @@ describe("useSSEFeedsStats Hook", () => {
       expect(result.current.totalArticlesAmount).toBe(0);
       expect(result.current.isConnected).toBe(false);
       expect(result.current.retryCount).toBe(0);
-      expect(result.current.progressResetTrigger).toBe(0);
-      expect(typeof result.current.resetProgress).toBe("function");
+      // progress reset functionality was removed
     });
 
     it("should create SSE connection only once", () => {
@@ -119,7 +118,6 @@ describe("useSSEFeedsStats Hook", () => {
       expect(result.current.feedAmount).toBe(25);
       expect(result.current.unsummarizedArticlesAmount).toBe(18);
       expect(result.current.totalArticlesAmount).toBe(1337);
-      expect(result.current.progressResetTrigger).toBe(1);
     });
 
     it("should handle missing or invalid data gracefully", () => {
@@ -152,24 +150,6 @@ describe("useSSEFeedsStats Hook", () => {
       expect(result.current.totalArticlesAmount).toBe(0);
     });
 
-    it("should trigger progress reset when receiving data", () => {
-      const { result } = renderHook(() => useSSEFeedsStats());
-      const onDataCallback = mockSetupSSEWithReconnect.mock.calls[0][1];
-
-      const initialTrigger = result.current.progressResetTrigger;
-
-      act(() => {
-        onDataCallback({ feed_amount: { amount: 5 } });
-      });
-
-      expect(result.current.progressResetTrigger).toBe(initialTrigger + 1);
-
-      act(() => {
-        onDataCallback({ feed_amount: { amount: 10 } });
-      });
-
-      expect(result.current.progressResetTrigger).toBe(initialTrigger + 2);
-    });
   });
 
   describe("Connection State Management", () => {
@@ -265,25 +245,6 @@ describe("useSSEFeedsStats Hook", () => {
     });
   });
 
-  describe("Manual Progress Reset", () => {
-    it("should allow manual progress reset", () => {
-      const { result } = renderHook(() => useSSEFeedsStats());
-
-      const initialTrigger = result.current.progressResetTrigger;
-
-      act(() => {
-        result.current.resetProgress();
-      });
-
-      expect(result.current.progressResetTrigger).toBe(initialTrigger + 1);
-
-      act(() => {
-        result.current.resetProgress();
-      });
-
-      expect(result.current.progressResetTrigger).toBe(initialTrigger + 2);
-    });
-  });
 
   describe("Cleanup", () => {
     it("should cleanup SSE connection on unmount", () => {
@@ -310,23 +271,4 @@ describe("useSSEFeedsStats Hook", () => {
     });
   });
 
-  describe("Stability - NO Infinite Reconnections", () => {
-    it("should maintain stable SSE connection across multiple interactions", () => {
-      const { result } = renderHook(() => useSSEFeedsStats());
-      const onDataCallback = mockSetupSSEWithReconnect.mock.calls[0][1];
-
-      // Simulate multiple data receptions and manual resets
-      for (let i = 0; i < 10; i++) {
-        act(() => {
-          onDataCallback({ feed_amount: { amount: i } });
-          result.current.resetProgress();
-        });
-      }
-
-      // SSE should still be created only once
-      expect(mockSetupSSEWithReconnect).toHaveBeenCalledTimes(1);
-      expect(result.current.feedAmount).toBe(9);
-      expect(result.current.progressResetTrigger).toBe(20); // 10 from data + 10 from manual
-    });
-  });
 });

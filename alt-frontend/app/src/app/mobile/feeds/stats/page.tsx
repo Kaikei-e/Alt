@@ -1,12 +1,10 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React from "react";
 import { Flex, Text, Box } from "@chakra-ui/react";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
-import { useSSEProgress } from "@/hooks/useSSEProgress";
 import { useSSEFeedsStats } from "@/hooks/useSSEFeedsStats";
 import { Rss, FileText, Layers } from "lucide-react";
-import { SSEProgressBar } from "@/components/mobile/stats/SSEProgressBar";
 import { StatCard } from "@/components/mobile/stats/StatCard";
 
 export default function FeedsStatsPage() {
@@ -17,18 +15,7 @@ export default function FeedsStatsPage() {
     totalArticlesAmount,
     isConnected,
     retryCount,
-    progressResetTrigger,
   } = useSSEFeedsStats();
-
-  // Progress tracking for SSE updates (5-second cycle)
-  const { progress, reset: resetProgress } = useSSEProgress(5000);
-
-  // Reset progress when SSE sends new data
-  useEffect(() => {
-    if (progressResetTrigger > 0) {
-      resetProgress();
-    }
-  }, [progressResetTrigger, resetProgress]);
 
   return (
     <Box
@@ -40,12 +27,7 @@ export default function FeedsStatsPage() {
       pt="env(safe-area-inset-top)"
       pb="env(safe-area-inset-bottom)"
     >
-      {/* SSE Progress Bar */}
-      <SSEProgressBar
-        progress={progress}
-        isVisible={isConnected}
-        onComplete={resetProgress}
-      />
+
 
       <Box p={5} maxW="container.sm" mx="auto" pt={8} overflowX="hidden">
         {/* Header */}
