@@ -70,7 +70,7 @@ impl BatchSender {
         let endpoint_uri = config
             .endpoint
             .parse::<Uri>()
-            .map_err(|e| SenderError::InvalidConfig(format!("Invalid endpoint URL: {}", e)))?;
+            .map_err(|e| SenderError::InvalidConfig(format!("Invalid endpoint URL: {e}")))?;
 
         // Configure HTTP client with connection pooling
         let connector = HttpConnector::new();
