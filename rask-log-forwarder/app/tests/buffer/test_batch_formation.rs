@@ -1,4 +1,4 @@
-use rask_log_forwarder::buffer::{BatchFormer, BatchConfig};
+use rask_log_forwarder::buffer::{BatchConfig, BatchFormer};
 use rask_log_forwarder::parser::EnrichedLogEntry;
 use tokio::time::{Duration, timeout};
 
@@ -7,7 +7,7 @@ async fn test_batch_formation_by_size() {
     let config = BatchConfig {
         max_size: 10,
         max_wait_time: Duration::from_secs(10), // Long timeout
-        max_memory_size: 1024 * 1024, // 1MB
+        max_memory_size: 1024 * 1024,           // 1MB
     };
 
     let mut former = BatchFormer::new(config);
@@ -25,13 +25,16 @@ async fn test_batch_formation_by_size() {
         .unwrap();
 
     assert_eq!(batch.size(), 10);
-    assert_eq!(batch.batch_type(), rask_log_forwarder::buffer::BatchType::SizeBased);
+    assert_eq!(
+        batch.batch_type(),
+        rask_log_forwarder::buffer::BatchType::SizeBased
+    );
 }
 
 #[tokio::test]
 async fn test_batch_formation_by_timeout() {
     let config = BatchConfig {
-        max_size: 100, // Large size
+        max_size: 100,                            // Large size
         max_wait_time: Duration::from_millis(50), // Short timeout
         max_memory_size: 1024 * 1024,
     };
@@ -51,15 +54,18 @@ async fn test_batch_formation_by_timeout() {
         .unwrap();
 
     assert_eq!(batch.size(), 3);
-    assert_eq!(batch.batch_type(), rask_log_forwarder::buffer::BatchType::TimeBased);
+    assert_eq!(
+        batch.batch_type(),
+        rask_log_forwarder::buffer::BatchType::TimeBased
+    );
 }
 
 #[tokio::test]
 async fn test_batch_formation_by_memory() {
     let config = BatchConfig {
-        max_size: 1000, // Large size
+        max_size: 1000,                         // Large size
         max_wait_time: Duration::from_secs(10), // Long timeout
-        max_memory_size: 1024, // Small memory limit (1KB)
+        max_memory_size: 1024,                  // Small memory limit (1KB)
     };
 
     let mut former = BatchFormer::new(config);
@@ -78,7 +84,10 @@ async fn test_batch_formation_by_memory() {
 
     let batch = former.next_batch().await.unwrap();
     assert!(batch.size() < 10); // Should be less than all entries
-    assert_eq!(batch.batch_type(), rask_log_forwarder::buffer::BatchType::MemoryBased);
+    assert_eq!(
+        batch.batch_type(),
+        rask_log_forwarder::buffer::BatchType::MemoryBased
+    );
 }
 
 #[tokio::test]

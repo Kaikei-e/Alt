@@ -114,7 +114,9 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
             .filter(|c| {
                 if let Some(names) = &c.names {
                     // Keep the container if NONE of its names end with "-logs"
-                    !names.iter().any(|n| n.trim_start_matches('/').ends_with("-logs"))
+                    !names
+                        .iter()
+                        .any(|n| n.trim_start_matches('/').ends_with("-logs"))
                 } else {
                     // Keep containers with no names (unlikely, but safe)
                     true
@@ -129,7 +131,7 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
             if let Some(names) = &container.names {
                 for name in names {
                     let clean_name = name.trim_start_matches('/');
-                    
+
                     // Exact match is the best
                     if clean_name == service_name {
                         best_match = Some(container);
@@ -138,8 +140,9 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
 
                     // Docker Compose pattern: project-service-replica (e.g., alt-alt-backend-1)
                     // Check if the name ends with "-service-1" or "-service"
-                    if clean_name.ends_with(&format!("-{}-1", service_name)) || 
-                       clean_name.ends_with(&format!("-{}", service_name)) {
+                    if clean_name.ends_with(&format!("-{}-1", service_name))
+                        || clean_name.ends_with(&format!("-{}", service_name))
+                    {
                         best_match = Some(container.clone());
                         break;
                     }
@@ -154,16 +157,16 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
                     }
                 }
             }
-            
+
             if best_match.is_some() {
                 // If we found any match, check if it's an exact service name match
                 if let Some(ref matched_container) = best_match {
                     if let Some(names) = &matched_container.names {
                         if names.iter().any(|n| {
                             let clean = n.trim_start_matches('/');
-                            clean == service_name || 
-                            clean.ends_with(&format!("-{}-1", service_name)) ||
-                            clean.ends_with(&format!("-{}", service_name))
+                            clean == service_name
+                                || clean.ends_with(&format!("-{}-1", service_name))
+                                || clean.ends_with(&format!("-{}", service_name))
                         }) {
                             break; // Found a good match, stop searching
                         }
@@ -171,7 +174,7 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
                 }
             }
         }
-        
+
         if let Some(container) = best_match {
             let id = container.id.ok_or_else(|| {
                 DiscoveryError::ContainerNotFound(format!(

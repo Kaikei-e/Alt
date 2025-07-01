@@ -1,10 +1,10 @@
-use simd_json::{OwnedValue, from_slice};
-use simd_json::prelude::{ValueAsObject, ValueAsScalar};
-use bytes::Bytes;
 use super::schema::{LogEntry, NginxLogEntry, ParseError};
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use regex::Regex;
 use lazy_static::lazy_static;
+use regex::Regex;
+use simd_json::prelude::{ValueAsObject, ValueAsScalar};
+use simd_json::{OwnedValue, from_slice};
 
 lazy_static! {
     // Common Log Format: IP - user [timestamp] "METHOD path HTTP/version" status size
@@ -46,18 +46,22 @@ impl SimdParser {
         let mut data = bytes.to_vec();
         let json = from_slice::<OwnedValue>(&mut data)?;
 
-        let obj = json.as_object()
-            .ok_or(ParseError::InvalidFormat("Expected JSON object".to_string()))?;
+        let obj = json.as_object().ok_or(ParseError::InvalidFormat(
+            "Expected JSON object".to_string(),
+        ))?;
 
-        let log = obj.get("log")
+        let log = obj
+            .get("log")
             .and_then(|v| v.as_str())
             .ok_or(ParseError::MissingField("log"))?;
 
-        let stream = obj.get("stream")
+        let stream = obj
+            .get("stream")
             .and_then(|v| v.as_str())
             .unwrap_or("stdout");
 
-        let time_str = obj.get("time")
+        let time_str = obj
+            .get("time")
             .and_then(|v| v.as_str())
             .ok_or(ParseError::MissingField("time"))?;
 
@@ -81,7 +85,9 @@ impl SimdParser {
         } else if self.is_nginx_error_log(&log_entry.message) {
             self.parse_nginx_error_log(log_entry)
         } else {
-            Err(ParseError::InvalidFormat("Not a recognized nginx log format".to_string()))
+            Err(ParseError::InvalidFormat(
+                "Not a recognized nginx log format".to_string(),
+            ))
         }
     }
 
@@ -130,7 +136,9 @@ impl SimdParser {
                 level: None,
             })
         } else {
-            Err(ParseError::InvalidFormat("Could not parse nginx access log".to_string()))
+            Err(ParseError::InvalidFormat(
+                "Could not parse nginx access log".to_string(),
+            ))
         }
     }
 
@@ -154,7 +162,9 @@ impl SimdParser {
                 level: Some(captures[2].to_string()),
             })
         } else {
-            Err(ParseError::InvalidFormat("Could not parse nginx error log".to_string()))
+            Err(ParseError::InvalidFormat(
+                "Could not parse nginx error log".to_string(),
+            ))
         }
     }
 }

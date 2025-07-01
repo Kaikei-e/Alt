@@ -1,21 +1,27 @@
+use chrono::Utc;
+use rask_log_forwarder::buffer::{
+    BackpressureLevel, BackpressureStrategy, BufferConfig, BufferError, LogBuffer,
+};
+use rask_log_forwarder::parser::EnrichedLogEntry;
+use rask_log_forwarder::parser::NginxLogEntry;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
-use rask_log_forwarder::buffer::{LogBuffer, BufferConfig, BufferError, BackpressureStrategy, BackpressureLevel};
-use rask_log_forwarder::parser::NginxLogEntry;
-use chrono::Utc;
-use rask_log_forwarder::parser::EnrichedLogEntry;
 
 #[tokio::test]
 async fn test_buffer_backpressure_handling() {
-    let buffer = Arc::new(LogBuffer::new_with_config(BufferConfig {
-        capacity: 100,
-        batch_size: 10,
-        batch_timeout: Duration::from_millis(100),
-        enable_backpressure: true,
-        backpressure_threshold: 0.5,
-        backpressure_delay: Duration::from_millis(10),
-    }).await.unwrap()); // Small buffer
+    let buffer = Arc::new(
+        LogBuffer::new_with_config(BufferConfig {
+            capacity: 100,
+            batch_size: 10,
+            batch_timeout: Duration::from_millis(100),
+            enable_backpressure: true,
+            backpressure_threshold: 0.5,
+            backpressure_delay: Duration::from_millis(10),
+        })
+        .await
+        .unwrap(),
+    ); // Small buffer
     let (backpressure_tx, mut backpressure_rx) = tokio::sync::mpsc::channel(1000);
 
     // Slow consumer simulation
@@ -65,7 +71,8 @@ async fn test_buffer_backpressure_handling() {
 
     // Buffer should not have excessive drops
     let metrics = buffer.metrics().snapshot();
-    let drop_ratio = metrics.messages_dropped as f64 / (metrics.messages_sent + metrics.messages_dropped) as f64;
+    let drop_ratio =
+        metrics.messages_dropped as f64 / (metrics.messages_sent + metrics.messages_dropped) as f64;
     assert!(drop_ratio < 0.5, "Drop ratio too high: {:.2}", drop_ratio);
 }
 
@@ -78,10 +85,7 @@ async fn test_adaptive_backpressure() {
     let buffer = Arc::new(LogBuffer::new_with_config(buffer_config).await.unwrap());
 
     // Test different backpressure strategies with smaller scope
-    let strategies = vec![
-        BackpressureStrategy::Drop,
-        BackpressureStrategy::Yield,
-    ];
+    let strategies = vec![BackpressureStrategy::Drop, BackpressureStrategy::Yield];
 
     for strategy in strategies {
         buffer.reset_metrics();
@@ -99,7 +103,10 @@ async fn test_adaptive_backpressure() {
         }
 
         let metrics = buffer.metrics().snapshot();
-        println!("Strategy {:?}: pushed={}, dropped={}", strategy, metrics.messages_sent, metrics.messages_dropped);
+        println!(
+            "Strategy {:?}: pushed={}, dropped={}",
+            strategy, metrics.messages_sent, metrics.messages_dropped
+        );
 
         // Clear buffer for next test by resetting metrics
         // Note: In a real scenario, the buffer would naturally drain as items are consumed
@@ -175,18 +182,19 @@ async fn test_backpressure_strategy_behavior() {
 
     // Test Drop strategy - should fail immediately
     let log_entry = create_test_nginx_log(10);
-    let result = buffer.push_with_strategy(
-        log_entry.clone(),
-        BackpressureStrategy::Drop
-    ).await;
+    let result = buffer
+        .push_with_strategy(log_entry.clone(), BackpressureStrategy::Drop)
+        .await;
     assert!(result.is_err()); // Should fail immediately
 
     // Test Sleep strategy with very short sleep
     let start = std::time::Instant::now();
-    let result = buffer.push_with_strategy(
-        log_entry.clone(),
-        BackpressureStrategy::Sleep(Duration::from_millis(1))
-    ).await;
+    let result = buffer
+        .push_with_strategy(
+            log_entry.clone(),
+            BackpressureStrategy::Sleep(Duration::from_millis(1)),
+        )
+        .await;
     let elapsed = start.elapsed();
 
     assert!(result.is_err()); // Should fail because buffer is full
@@ -275,7 +283,8 @@ async fn test_backpressure_delays_under_load() {
     let start_time = std::time::Instant::now();
 
     // Send enough messages to trigger backpressure
-    for i in 0..90 { // Should hit 80% threshold
+    for i in 0..90 {
+        // Should hit 80% threshold
         let entry = create_test_enriched_log(i);
         let _ = sender.send(entry).await;
     }

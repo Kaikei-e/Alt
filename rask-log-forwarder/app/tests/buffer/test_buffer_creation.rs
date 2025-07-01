@@ -1,6 +1,6 @@
-use rask_log_forwarder::buffer::{LogBuffer, BufferConfig};
-use rask_log_forwarder::parser::NginxLogEntry;
 use chrono::Utc;
+use rask_log_forwarder::buffer::{BufferConfig, LogBuffer};
+use rask_log_forwarder::parser::NginxLogEntry;
 use std::sync::Arc;
 use std::time::Duration;
 

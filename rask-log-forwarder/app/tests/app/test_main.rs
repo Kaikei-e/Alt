@@ -1,17 +1,13 @@
-use rask_log_forwarder::app::{App, setup_logging, get_version, LogLevel, Config};
-use tempfile::TempDir;
-use std::env;
-use tokio::time::Duration;
-use std::path::PathBuf;
+use rask_log_forwarder::app::{App, Config, LogLevel, get_version, setup_logging};
 use serial_test::serial;
-
+use std::env;
+use std::path::PathBuf;
+use tempfile::TempDir;
+use tokio::time::Duration;
 
 #[tokio::test]
 async fn test_app_initialization() {
-    let args = vec![
-        "rask-log-forwarder",
-        "--target-service", "init-test",
-    ];
+    let args = vec!["rask-log-forwarder", "--target-service", "init-test"];
 
     // Handle logging setup errors properly in parallel tests
     match App::from_args(args).await {
@@ -60,7 +56,8 @@ enable_compression = false
 
     let args = vec![
         "rask-log-forwarder",
-        "--config-file", config_file.to_str().unwrap(),
+        "--config-file",
+        config_file.to_str().unwrap(),
     ];
 
     // Handle logging setup errors properly in parallel tests
@@ -116,8 +113,8 @@ async fn test_app_auto_service_detection() {
 #[test]
 fn test_logging_setup() {
     // Test logging setup in isolation to avoid conflicts with parallel tests
-    use std::sync::{Mutex, OnceLock};
     use std::panic;
+    use std::sync::{Mutex, OnceLock};
 
     // Test that setup_logging handles different log levels correctly
     // We only test the first call since subsequent calls in the same process will fail
@@ -125,9 +122,7 @@ fn test_logging_setup() {
 
     let result = SETUP_RESULT.get_or_init(|| {
         // Capture the result of the first setup attempt
-        let result = panic::catch_unwind(|| {
-            setup_logging(LogLevel::Info)
-        });
+        let result = panic::catch_unwind(|| setup_logging(LogLevel::Info));
 
         let setup_result = match result {
             Ok(setup_result) => setup_result.map_err(|e| e.to_string()),
@@ -146,10 +141,13 @@ fn test_logging_setup() {
         }
         Err(e) => {
             // Setup failed - should be due to already being set in parallel tests
-            assert!(e.contains("global default trace dispatcher") ||
-                    e.contains("already been set") ||
-                    e.contains("panicked"),
-                    "Unexpected logging setup error: {}", e);
+            assert!(
+                e.contains("global default trace dispatcher")
+                    || e.contains("already been set")
+                    || e.contains("panicked"),
+                "Unexpected logging setup error: {}",
+                e
+            );
             println!("Logging setup failed as expected in parallel test: {}", e);
         }
     }
@@ -163,10 +161,7 @@ fn test_version_display() {
 
 #[tokio::test]
 async fn test_app_health_check() {
-    let args = vec![
-        "rask-log-forwarder",
-        "--target-service", "health-test",
-    ];
+    let args = vec!["rask-log-forwarder", "--target-service", "health-test"];
 
     // Handle logging setup errors properly in parallel tests
     match App::from_args(args).await {
@@ -307,7 +302,11 @@ async fn test_log_level_configuration() {
 
         // Verify log level is set correctly
         match config.log_level {
-            LogLevel::Error | LogLevel::Warn | LogLevel::Info | LogLevel::Debug | LogLevel::Trace => {
+            LogLevel::Error
+            | LogLevel::Warn
+            | LogLevel::Info
+            | LogLevel::Debug
+            | LogLevel::Trace => {
                 // All valid levels
             }
         }

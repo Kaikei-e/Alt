@@ -1,4 +1,4 @@
-use rask_log_forwarder::reliability::{RetryManager, RetryConfig, RetryStrategy};
+use rask_log_forwarder::reliability::{RetryConfig, RetryManager, RetryStrategy};
 use std::time::Duration;
 
 #[tokio::test]
@@ -14,14 +14,14 @@ async fn test_exponential_backoff_timing() {
     let retry_manager = RetryManager::new(config);
 
     // Test backoff delays
-    let delays = (0..5).map(|attempt| {
-        retry_manager.calculate_delay(attempt)
-    }).collect::<Vec<_>>();
+    let delays = (0..5)
+        .map(|attempt| retry_manager.calculate_delay(attempt))
+        .collect::<Vec<_>>();
 
-    assert_eq!(delays[0], Duration::from_millis(100));  // 100ms
-    assert_eq!(delays[1], Duration::from_millis(200));  // 200ms
-    assert_eq!(delays[2], Duration::from_millis(400));  // 400ms
-    assert_eq!(delays[3], Duration::from_millis(800));  // 800ms
+    assert_eq!(delays[0], Duration::from_millis(100)); // 100ms
+    assert_eq!(delays[1], Duration::from_millis(200)); // 200ms
+    assert_eq!(delays[2], Duration::from_millis(400)); // 400ms
+    assert_eq!(delays[3], Duration::from_millis(800)); // 800ms
     assert_eq!(delays[4], Duration::from_millis(1600)); // 1600ms
 }
 
@@ -48,7 +48,10 @@ async fn test_retry_with_jitter() {
 
     // Ensure that at least one pair of samples differs – this minimizes flakiness
     let unique: std::collections::HashSet<_> = samples.iter().collect();
-    assert!(unique.len() > 1, "Jitter did not introduce enough variability");
+    assert!(
+        unique.len() > 1,
+        "Jitter did not introduce enough variability"
+    );
 }
 
 #[tokio::test]

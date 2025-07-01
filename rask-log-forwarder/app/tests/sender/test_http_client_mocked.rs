@@ -50,7 +50,7 @@ impl MockHttpClient {
                     ClientError::HttpError { status, message } => {
                         return Err(ClientError::HttpError {
                             status: *status,
-                            message: message.clone()
+                            message: message.clone(),
                         });
                     }
                     ClientError::RequestTimeout(msg) => {
@@ -103,7 +103,7 @@ async fn test_mock_http_client_failed_health_check() {
     let mock_client = MockHttpClient::new()
         .with_error(ClientError::HttpError {
             status: 503,
-            message: "Service Unavailable".to_string()
+            message: "Service Unavailable".to_string(),
         })
         .with_stats(ConnectionStats {
             max_connections: 10,
@@ -132,8 +132,9 @@ async fn test_mock_http_client_failed_health_check() {
 
 #[tokio::test]
 async fn test_mock_http_client_timeout() {
-    let mock_client = MockHttpClient::new()
-        .with_error(ClientError::RequestTimeout("Health check timeout".to_string()));
+    let mock_client = MockHttpClient::new().with_error(ClientError::RequestTimeout(
+        "Health check timeout".to_string(),
+    ));
 
     // Test the mock
     let result = mock_client.health_check().await;
@@ -150,15 +151,14 @@ async fn test_mock_http_client_timeout() {
 #[tokio::test]
 async fn test_mock_http_client_multiple_scenarios() {
     // Test successful scenario
-    let success_client = MockHttpClient::new()
-        .with_stats(ConnectionStats {
-            max_connections: 20,
-            active_connections: 2,
-            total_requests: 3,
-            successful_requests: 3,
-            failed_requests: 0,
-            average_response_time: Duration::from_millis(75),
-        });
+    let success_client = MockHttpClient::new().with_stats(ConnectionStats {
+        max_connections: 20,
+        active_connections: 2,
+        total_requests: 3,
+        successful_requests: 3,
+        failed_requests: 0,
+        average_response_time: Duration::from_millis(75),
+    });
 
     let result = success_client.health_check().await;
     assert!(result.is_ok());
@@ -169,17 +169,17 @@ async fn test_mock_http_client_multiple_scenarios() {
     assert_eq!(stats.max_connections, 20);
 
     // Test different error types
-    let timeout_client = MockHttpClient::new()
-        .with_error(ClientError::RequestTimeout("Connection timeout".to_string()));
+    let timeout_client = MockHttpClient::new().with_error(ClientError::RequestTimeout(
+        "Connection timeout".to_string(),
+    ));
 
     let timeout_result = timeout_client.health_check().await;
     assert!(timeout_result.is_err());
 
-    let http_error_client = MockHttpClient::new()
-        .with_error(ClientError::HttpError {
-            status: 500,
-            message: "Internal Server Error".to_string()
-        });
+    let http_error_client = MockHttpClient::new().with_error(ClientError::HttpError {
+        status: 500,
+        message: "Internal Server Error".to_string(),
+    });
 
     let http_result = http_error_client.health_check().await;
     assert!(http_result.is_err());

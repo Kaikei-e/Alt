@@ -1,4 +1,4 @@
-use rask_log_forwarder::buffer::{LogBuffer, BufferConfig, MemoryPressure};
+use rask_log_forwarder::buffer::{BufferConfig, LogBuffer, MemoryPressure};
 use rask_log_forwarder::parser::EnrichedLogEntry;
 use std::time::Duration;
 

@@ -1,7 +1,9 @@
-use super::{HttpClient, ClientError};
-use super::serialization::{BatchSerializer, SerializationFormat, SerializationError};
+use super::serialization::{BatchSerializer, SerializationError, SerializationFormat};
+use super::{ClientError, HttpClient};
 use crate::buffer::Batch;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE, CONTENT_ENCODING, USER_AGENT};
+use reqwest::header::{
+    CONTENT_ENCODING, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, USER_AGENT,
+};
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
@@ -60,7 +62,9 @@ impl BatchTransmitter {
 
         debug!(
             "Sending batch {} with {} entries (attempt {})",
-            batch_id, batch_size, retry_count + 1
+            batch_id,
+            batch_size,
+            retry_count + 1
         );
 
         // Prepare payload
@@ -72,7 +76,9 @@ impl BatchTransmitter {
         let headers = self.build_headers(&batch, use_compression);
 
         // Send request
-        let mut request_builder = self.client.client
+        let mut request_builder = self
+            .client
+            .client
             .post(self.client.aggregate_url.clone())
             .headers(headers)
             .timeout(self.client.config.timeout);
@@ -96,7 +102,9 @@ impl BatchTransmitter {
         } else {
             warn!(
                 "Failed to send batch {} (attempt {}): HTTP {}",
-                batch_id, retry_count + 1, status_code
+                batch_id,
+                retry_count + 1,
+                status_code
             );
         }
 
@@ -111,9 +119,14 @@ impl BatchTransmitter {
         })
     }
 
-    pub fn prepare_payload(&self, batch: &Batch, compress: bool) -> Result<Vec<u8>, SerializationError> {
+    pub fn prepare_payload(
+        &self,
+        batch: &Batch,
+        compress: bool,
+    ) -> Result<Vec<u8>, SerializationError> {
         if compress {
-            self.serializer.serialize_compressed(batch, SerializationFormat::NDJSON)
+            self.serializer
+                .serialize_compressed(batch, SerializationFormat::NDJSON)
         } else {
             let ndjson = self.serializer.serialize_ndjson(batch)?;
             Ok(ndjson.into_bytes())
@@ -131,10 +144,7 @@ impl BatchTransmitter {
 
         // Compression
         if compressed {
-            headers.insert(
-                CONTENT_ENCODING,
-                HeaderValue::from_static("gzip"),
-            );
+            headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
         }
 
         // Batch metadata
@@ -167,7 +177,10 @@ impl BatchTransmitter {
         headers
     }
 
-    pub async fn send_batch_streaming(&self, _batch: Batch) -> Result<TransmissionResult, TransmissionError> {
+    pub async fn send_batch_streaming(
+        &self,
+        _batch: Batch,
+    ) -> Result<TransmissionResult, TransmissionError> {
         // For very large batches, implement streaming transmission
         // This would serialize and send data in chunks
         todo!("Implement streaming transmission for very large batches")

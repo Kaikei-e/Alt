@@ -1,4 +1,4 @@
-use rask_log_forwarder::buffer::{LogBuffer, BufferConfig};
+use rask_log_forwarder::buffer::{BufferConfig, LogBuffer};
 use rask_log_forwarder::parser::EnrichedLogEntry;
 use std::sync::Arc;
 use tokio::time::{Duration, timeout};
@@ -11,22 +11,22 @@ async fn test_basic_queue_operations() {
         batch_timeout: Duration::from_millis(500),
         ..Default::default()
     };
-    
+
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
     let (sender, mut receiver) = buffer.split();
-    
+
     // Create test log entry
     let log_entry = create_test_log_entry("test message");
-    
+
     // Send log entry
     sender.send(log_entry.clone()).await.unwrap();
-    
+
     // Receive log entry
     let received = timeout(Duration::from_millis(100), receiver.recv())
         .await
         .unwrap()
         .unwrap();
-    
+
     assert_eq!(received.message, "test message");
 }
 
@@ -38,12 +38,12 @@ async fn test_high_throughput_operations() {
         batch_timeout: Duration::from_secs(1),
         ..Default::default()
     };
-    
+
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
     let (sender, mut receiver) = buffer.split();
-    
+
     let sender = Arc::new(sender);
-    
+
     // Spawn multiple producers
     let mut handles = vec![];
     for i in 0..10 {
@@ -56,12 +56,12 @@ async fn test_high_throughput_operations() {
         });
         handles.push(handle);
     }
-    
+
     // Wait for all producers to finish
     for handle in handles {
         handle.await.unwrap();
     }
-    
+
     // Verify all messages were received
     let mut received_count = 0;
     while let Ok(Ok(_)) = timeout(Duration::from_millis(10), receiver.recv()).await {
@@ -70,7 +70,7 @@ async fn test_high_throughput_operations() {
             break;
         }
     }
-    
+
     assert_eq!(received_count, 10_000);
 }
 
@@ -82,20 +82,20 @@ async fn test_buffer_capacity_limits() {
         batch_timeout: Duration::from_secs(10), // Long timeout
         ..Default::default()
     };
-    
+
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
     let (sender, _receiver) = buffer.split();
-    
+
     // Fill buffer to capacity
     for i in 0..10 {
         let log_entry = create_test_log_entry(&format!("message-{}", i));
         sender.send(log_entry).await.unwrap();
     }
-    
+
     // Next send should fail or apply backpressure
     let log_entry = create_test_log_entry("overflow message");
     let result = timeout(Duration::from_millis(100), sender.send(log_entry)).await;
-    
+
     // Should either timeout or return an error
     assert!(result.is_err() || result.unwrap().is_err());
 }
@@ -108,27 +108,27 @@ async fn test_buffer_metrics() {
         batch_timeout: Duration::from_millis(100),
         ..Default::default()
     };
-    
+
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
     let metrics = buffer.metrics();
     let (sender, mut receiver) = buffer.split();
-    
+
     // Send some messages
     for i in 0..5 {
         let log_entry = create_test_log_entry(&format!("message-{}", i));
         sender.send(log_entry).await.unwrap();
     }
-    
+
     // Check metrics
     let current_metrics = metrics.snapshot();
     assert_eq!(current_metrics.messages_sent, 5);
     assert!(current_metrics.queue_depth > 0);
-    
+
     // Receive messages
     for _ in 0..5 {
         receiver.recv().await.unwrap();
     }
-    
+
     let updated_metrics = metrics.snapshot();
     assert_eq!(updated_metrics.messages_received, 5);
 }

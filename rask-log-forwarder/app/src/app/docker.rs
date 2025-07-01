@@ -14,12 +14,13 @@ pub struct DockerEnvironment {
 impl DockerEnvironment {
     pub fn detect() -> Result<Self, ConfigError> {
         let hostname = env::var("HOSTNAME")
-            .or_else(|_| hostname::get()
-                .map_err(|e| format!("Failed to get hostname: {}", e))?
-                .to_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| "Could not convert hostname to string".to_string())
-            )
+            .or_else(|_| {
+                hostname::get()
+                    .map_err(|e| format!("Failed to get hostname: {}", e))?
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| "Could not convert hostname to string".to_string())
+            })
             .map_err(|e| ConfigError::EnvError(format!("Could not determine hostname: {}", e)))?;
 
         let target_service = env::var("TARGET_SERVICE").ok();
@@ -61,7 +62,7 @@ impl DockerEnvironment {
         }
 
         Err(ConfigError::InvalidConfig(
-            "Could not detect target service from Docker environment".to_string()
+            "Could not detect target service from Docker environment".to_string(),
         ))
     }
 
@@ -73,22 +74,22 @@ impl DockerEnvironment {
     }
 
     pub fn get_target_service_from_network_mode(&self) -> Option<String> {
-        self.network_mode
-            .as_ref()
-            .and_then(|mode| {
-                if mode.starts_with("service:") {
-                    Some(mode.trim_start_matches("service:").to_string())
-                } else {
-                    None
-                }
-            })
+        self.network_mode.as_ref().and_then(|mode| {
+            if mode.starts_with("service:") {
+                Some(mode.trim_start_matches("service:").to_string())
+            } else {
+                None
+            }
+        })
     }
 }
 
 impl Config {
     pub fn from_docker_environment(docker_env: &DockerEnvironment) -> Result<Self, ConfigError> {
         let mut config = Config {
-            target_service: docker_env.target_service.clone()
+            target_service: docker_env
+                .target_service
+                .clone()
                 .or_else(|| docker_env.get_target_service_from_network_mode())
                 .or_else(|| docker_env.detect_target_service_from_labels().ok()),
             endpoint: docker_env.rask_endpoint.clone(),
@@ -123,19 +124,22 @@ pub fn validate_docker_requirements(config: &Config) -> Result<(), ConfigError> 
     // Ensure endpoint points to aggregator service
     if !config.endpoint.contains("rask-aggregator") {
         return Err(ConfigError::InvalidConfig(
-            "Endpoint should point to rask-aggregator service in Docker environment".to_string()
+            "Endpoint should point to rask-aggregator service in Docker environment".to_string(),
         ));
     }
 
     // Ensure disk fallback path is writable in container
     if config.enable_disk_fallback {
-        let parent = config.disk_fallback_path.parent()
+        let parent = config
+            .disk_fallback_path
+            .parent()
             .ok_or_else(|| ConfigError::InvalidConfig("Invalid disk fallback path".to_string()))?;
 
         if !parent.exists() && parent != std::path::Path::new("/tmp") {
-            return Err(ConfigError::InvalidConfig(
-                format!("Disk fallback parent directory not accessible: {}", parent.display())
-            ));
+            return Err(ConfigError::InvalidConfig(format!(
+                "Disk fallback parent directory not accessible: {}",
+                parent.display()
+            )));
         }
     }
 

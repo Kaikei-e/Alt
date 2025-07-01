@@ -1,9 +1,9 @@
-use regex::Regex;
-use lazy_static::lazy_static;
-use serde_json::Value;
-use chrono::{DateTime, Utc};
 use super::docker::ParseError;
-use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
+use lazy_static::lazy_static;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LogLevel {
@@ -84,7 +84,11 @@ impl ServiceParser for NginxParser {
             let path = captures.get(4).map(|m| m.as_str().to_string());
             let status = captures.get(5).and_then(|m| m.as_str().parse().ok());
             let size = captures.get(6).and_then(|m| {
-                if m.as_str() == "-" { None } else { m.as_str().parse().ok() }
+                if m.as_str() == "-" {
+                    None
+                } else {
+                    m.as_str().parse().ok()
+                }
             });
             let user_agent = captures.get(8).map(|m| m.as_str().to_string());
 
@@ -117,7 +121,11 @@ impl ServiceParser for NginxParser {
                 _ => LogLevel::Info,
             };
 
-            let message = captures.get(3).map(|m| m.as_str()).unwrap_or(log).to_string();
+            let message = captures
+                .get(3)
+                .map(|m| m.as_str())
+                .unwrap_or(log)
+                .to_string();
 
             return Ok(ParsedLogEntry {
                 service_type: "nginx".to_string(),
@@ -198,9 +206,7 @@ impl ServiceParser for GoStructuredParser {
         // Try to parse as JSON first
         if let Ok(json) = serde_json::from_str::<Value>(log) {
             if let Some(obj) = json.as_object() {
-                let level_str = obj.get("level")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("info");
+                let level_str = obj.get("level").and_then(|v| v.as_str()).unwrap_or("info");
 
                 let level = match level_str {
                     "debug" => LogLevel::Debug,
@@ -211,20 +217,29 @@ impl ServiceParser for GoStructuredParser {
                     _ => LogLevel::Info,
                 };
 
-                let message = obj.get("msg")
+                let message = obj
+                    .get("msg")
                     .or_else(|| obj.get("message"))
                     .and_then(|v| v.as_str())
                     .unwrap_or(log)
                     .to_string();
 
-                let method = obj.get("method").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let path = obj.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let method = obj
+                    .get("method")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let path = obj
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 let status_code = obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);
 
                 // Extract additional fields
                 let mut fields = std::collections::HashMap::new();
                 for (key, value) in obj {
-                    if !["level", "msg", "message", "method", "path", "status"].contains(&key.as_str()) {
+                    if !["level", "msg", "message", "method", "path", "status"]
+                        .contains(&key.as_str())
+                    {
                         fields.insert(key.clone(), value.to_string());
                     }
                 }
@@ -272,9 +287,9 @@ pub struct PostgresParser {
 }
 
 lazy_static! {
-    static ref POSTGRES_LOG_PATTERN: Regex = Regex::new(
-        r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) \w+ \[\d+\] (\w+):\s+(.+)"#
-    ).unwrap();
+    static ref POSTGRES_LOG_PATTERN: Regex =
+        Regex::new(r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) \w+ \[\d+\] (\w+):\s+(.+)"#)
+            .unwrap();
 }
 
 impl Default for PostgresParser {
@@ -308,7 +323,11 @@ impl ServiceParser for PostgresParser {
                 _ => LogLevel::Info,
             };
 
-            let message = captures.get(3).map(|m| m.as_str()).unwrap_or(log).to_string();
+            let message = captures
+                .get(3)
+                .map(|m| m.as_str())
+                .unwrap_or(log)
+                .to_string();
 
             Ok(ParsedLogEntry {
                 service_type: "postgres".to_string(),

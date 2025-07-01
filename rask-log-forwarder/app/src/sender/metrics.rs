@@ -1,7 +1,7 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
 use parking_lot::Mutex;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct PerformanceMetrics {
@@ -43,7 +43,7 @@ impl MetricsCollector {
             uncompressed_bytes: Arc::new(AtomicU64::new(0)),
         }
     }
-    
+
     pub fn record_transmission(
         &self,
         success: bool,
@@ -53,16 +53,20 @@ impl MetricsCollector {
         compression_info: Option<(usize, usize)>, // (compressed, uncompressed)
     ) {
         self.total_batches.fetch_add(1, Ordering::Relaxed);
-        self.total_entries.fetch_add(entries_count as u64, Ordering::Relaxed);
-        self.total_bytes.fetch_add(bytes_sent as u64, Ordering::Relaxed);
-        self.total_latency.fetch_add(latency.as_millis() as u64, Ordering::Relaxed);
-        
+        self.total_entries
+            .fetch_add(entries_count as u64, Ordering::Relaxed);
+        self.total_bytes
+            .fetch_add(bytes_sent as u64, Ordering::Relaxed);
+        self.total_latency
+            .fetch_add(latency.as_millis() as u64, Ordering::Relaxed);
+
         if success {
-            self.successful_transmissions.fetch_add(1, Ordering::Relaxed);
+            self.successful_transmissions
+                .fetch_add(1, Ordering::Relaxed);
         } else {
             self.failed_transmissions.fetch_add(1, Ordering::Relaxed);
         }
-        
+
         // Record latency sample (keep last 1000 samples)
         {
             let mut samples = self.latency_samples.lock();
@@ -71,24 +75,26 @@ impl MetricsCollector {
                 samples.remove(0);
             }
         }
-        
+
         // Record compression metrics
         if let Some((compressed, uncompressed)) = compression_info {
-            self.compressed_bytes.fetch_add(compressed as u64, Ordering::Relaxed);
-            self.uncompressed_bytes.fetch_add(uncompressed as u64, Ordering::Relaxed);
+            self.compressed_bytes
+                .fetch_add(compressed as u64, Ordering::Relaxed);
+            self.uncompressed_bytes
+                .fetch_add(uncompressed as u64, Ordering::Relaxed);
         }
     }
-    
+
     pub fn snapshot(&self) -> PerformanceMetrics {
         let total_batches = self.total_batches.load(Ordering::Relaxed);
         let total_latency = self.total_latency.load(Ordering::Relaxed);
-        
+
         let average_latency = if total_batches > 0 {
             Duration::from_millis(total_latency / total_batches)
         } else {
             Duration::ZERO
         };
-        
+
         // Calculate percentiles from samples
         let (p95_latency, p99_latency) = {
             let mut samples = self.latency_samples.lock();
@@ -98,14 +104,14 @@ impl MetricsCollector {
                 samples.sort();
                 let p95_idx = (samples.len() as f64 * 0.95) as usize;
                 let p99_idx = (samples.len() as f64 * 0.99) as usize;
-                
+
                 (
                     samples.get(p95_idx).copied().unwrap_or(Duration::ZERO),
                     samples.get(p99_idx).copied().unwrap_or(Duration::ZERO),
                 )
             }
         };
-        
+
         let compressed = self.compressed_bytes.load(Ordering::Relaxed);
         let uncompressed = self.uncompressed_bytes.load(Ordering::Relaxed);
         let compression_ratio = if uncompressed > 0 {
@@ -113,7 +119,7 @@ impl MetricsCollector {
         } else {
             1.0
         };
-        
+
         PerformanceMetrics {
             total_batches_sent: total_batches,
             total_entries_sent: self.total_entries.load(Ordering::Relaxed),
@@ -126,7 +132,7 @@ impl MetricsCollector {
             compression_ratio,
         }
     }
-    
+
     pub fn reset(&self) {
         self.total_batches.store(0, Ordering::Relaxed);
         self.total_entries.store(0, Ordering::Relaxed);
@@ -136,7 +142,7 @@ impl MetricsCollector {
         self.total_latency.store(0, Ordering::Relaxed);
         self.compressed_bytes.store(0, Ordering::Relaxed);
         self.uncompressed_bytes.store(0, Ordering::Relaxed);
-        
+
         self.latency_samples.lock().clear();
     }
 }

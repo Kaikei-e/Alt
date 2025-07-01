@@ -101,7 +101,8 @@ impl ClientStats {
 
     pub fn record_request(&self, success: bool, response_time: Duration) {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
-        self.total_response_time.fetch_add(response_time.as_millis() as u64, Ordering::Relaxed);
+        self.total_response_time
+            .fetch_add(response_time.as_millis() as u64, Ordering::Relaxed);
 
         if success {
             self.successful_requests.fetch_add(1, Ordering::Relaxed);
@@ -114,8 +115,9 @@ impl ClientStats {
 impl HttpClient {
     pub async fn new(config: ClientConfig) -> Result<Self, ClientError> {
         // Validate endpoint URL
-        let endpoint_url: Url = config.endpoint.parse()
-            .map_err(|e| ClientError::InvalidConfiguration(format!("Invalid endpoint URL: {}", e)))?;
+        let endpoint_url: Url = config.endpoint.parse().map_err(|e| {
+            ClientError::InvalidConfiguration(format!("Invalid endpoint URL: {}", e))
+        })?;
 
         // Construct aggregate URL
         let aggregate_url = if config.endpoint.ends_with("/v1/aggregate") {
@@ -142,8 +144,9 @@ impl HttpClient {
             client_builder = client_builder.gzip(true);
         }
 
-        let client = client_builder.build()
-            .map_err(|e| ClientError::InvalidConfiguration(format!("Failed to build HTTP client: {}", e)))?;
+        let client = client_builder.build().map_err(|e| {
+            ClientError::InvalidConfiguration(format!("Failed to build HTTP client: {}", e))
+        })?;
 
         let stats = Arc::new(ClientStats::new());
 
@@ -166,13 +169,10 @@ impl HttpClient {
 
         let start = std::time::Instant::now();
 
-        let response = timeout(
-            self.config.timeout,
-            self.client.get(health_url).send()
-        )
-        .await
-        .map_err(|_| ClientError::RequestTimeout("Health check timeout".to_string()))?
-        .map_err(ClientError::NetworkError)?;
+        let response = timeout(self.config.timeout, self.client.get(health_url).send())
+            .await
+            .map_err(|_| ClientError::RequestTimeout("Health check timeout".to_string()))?
+            .map_err(ClientError::NetworkError)?;
 
         let response_time = start.elapsed();
         let success = response.status().is_success();
@@ -219,13 +219,10 @@ impl HttpClientTrait for HttpClient {
 
         let start = std::time::Instant::now();
 
-        let response = timeout(
-            self.config.timeout,
-            self.client.get(health_url).send()
-        )
-        .await
-        .map_err(|_| ClientError::RequestTimeout("Health check timeout".to_string()))?
-        .map_err(ClientError::NetworkError)?;
+        let response = timeout(self.config.timeout, self.client.get(health_url).send())
+            .await
+            .map_err(|_| ClientError::RequestTimeout("Health check timeout".to_string()))?
+            .map_err(ClientError::NetworkError)?;
 
         let response_time = start.elapsed();
         let success = response.status().is_success();

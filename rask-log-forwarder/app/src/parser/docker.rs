@@ -1,6 +1,6 @@
+use bytes::Bytes;
 use simd_json::OwnedValue;
 use simd_json::prelude::{ValueAsObject, ValueAsScalar};
-use bytes::Bytes;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -42,36 +42,32 @@ impl DockerJsonParser {
         let mut data = bytes.to_vec();
         let json: OwnedValue = simd_json::from_slice(&mut data)?;
 
-        let obj = json.as_object()
-            .ok_or(ParseError::InvalidFormat)?;
+        let obj = json.as_object().ok_or(ParseError::InvalidFormat)?;
 
         // Extract required fields
-        let log = obj.get("log")
+        let log = obj
+            .get("log")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ParseError::MissingField("log".to_string()))?
             .to_string();
 
-        let stream = obj.get("stream")
+        let stream = obj
+            .get("stream")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ParseError::MissingField("stream".to_string()))?
             .to_string();
 
-        let time = obj.get("time")
+        let time = obj
+            .get("time")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ParseError::MissingField("time".to_string()))?
             .to_string();
 
-        Ok(DockerLogEntry {
-            log,
-            stream,
-            time,
-        })
+        Ok(DockerLogEntry { log, stream, time })
     }
 
     pub fn parse_batch(&self, logs: Vec<Bytes>) -> Vec<Result<DockerLogEntry, ParseError>> {
-        logs.into_iter()
-            .map(|bytes| self.parse(bytes))
-            .collect()
+        logs.into_iter().map(|bytes| self.parse(bytes)).collect()
     }
 }
 
@@ -83,7 +79,8 @@ mod tests {
     fn test_docker_json_parsing() {
         let parser = DockerJsonParser::new();
 
-        let json_log = r#"{"log":"Hello nginx\n","stream":"stdout","time":"2024-01-01T12:00:00.123456789Z"}"#;
+        let json_log =
+            r#"{"log":"Hello nginx\n","stream":"stdout","time":"2024-01-01T12:00:00.123456789Z"}"#;
         let bytes = Bytes::from(json_log);
 
         let entry = parser.parse(bytes).unwrap();

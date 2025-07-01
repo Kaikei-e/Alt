@@ -1,8 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use rask_log_forwarder::buffer::{LogBuffer, BufferConfig};
+use chrono::Utc;
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use rask_log_forwarder::buffer::{BufferConfig, LogBuffer};
 use rask_log_forwarder::parser::NginxLogEntry;
 use std::sync::Arc;
-use chrono::Utc;
 
 fn create_test_nginx_log(id: usize) -> Arc<NginxLogEntry> {
     Arc::new(NginxLogEntry {
@@ -30,10 +30,12 @@ fn bench_single_threaded_push(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             b.iter(|| {
                 let rt = tokio::runtime::Runtime::new().unwrap();
-                let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                    capacity: size + 1000,
-                    ..Default::default()
-                })).unwrap();
+                let buffer = rt
+                    .block_on(LogBuffer::new_with_config(BufferConfig {
+                        capacity: size + 1000,
+                        ..Default::default()
+                    }))
+                    .unwrap();
                 let (sender, _receiver) = buffer.split();
                 for i in 0..size {
                     let log_entry = create_test_enriched_log(i);
@@ -53,10 +55,12 @@ fn bench_single_threaded_push_pop(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             b.iter(|| {
                 let rt = tokio::runtime::Runtime::new().unwrap();
-                let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                    capacity: size + 1000,
-                    ..Default::default()
-                })).unwrap();
+                let buffer = rt
+                    .block_on(LogBuffer::new_with_config(BufferConfig {
+                        capacity: size + 1000,
+                        ..Default::default()
+                    }))
+                    .unwrap();
 
                 // Push phase
                 let (sender, _receiver) = buffer.split();
@@ -89,20 +93,20 @@ fn bench_batch_operations(c: &mut Criterion) {
             |b, &batch_size| {
                 b.iter(|| {
                     let rt = tokio::runtime::Runtime::new().unwrap();
-                    let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                        capacity: batch_size + 1000,
-                        ..Default::default()
-                    })).unwrap();
-                    let batch: Vec<_> = (0..batch_size)
-                        .map(create_test_enriched_log)
-                        .collect();
+                    let buffer = rt
+                        .block_on(LogBuffer::new_with_config(BufferConfig {
+                            capacity: batch_size + 1000,
+                            ..Default::default()
+                        }))
+                        .unwrap();
+                    let batch: Vec<_> = (0..batch_size).map(create_test_enriched_log).collect();
 
                     let (sender, _receiver) = buffer.split();
                     for log_entry in black_box(batch) {
                         rt.block_on(sender.send(log_entry)).unwrap();
                     }
                 });
-            }
+            },
         );
 
         // Batch pop benchmark
@@ -112,10 +116,12 @@ fn bench_batch_operations(c: &mut Criterion) {
             |b, &batch_size| {
                 b.iter(|| {
                     let rt = tokio::runtime::Runtime::new().unwrap();
-                    let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                        capacity: batch_size + 1000,
-                        ..Default::default()
-                    })).unwrap();
+                    let buffer = rt
+                        .block_on(LogBuffer::new_with_config(BufferConfig {
+                            capacity: batch_size + 1000,
+                            ..Default::default()
+                        }))
+                        .unwrap();
 
                     // Fill buffer first
                     let (sender, mut receiver) = buffer.split();
@@ -129,7 +135,7 @@ fn bench_batch_operations(c: &mut Criterion) {
                         let _ = rt.block_on(receiver.recv());
                     }
                 });
-            }
+            },
         );
     }
     group.finish();
@@ -142,10 +148,12 @@ fn bench_memory_usage(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             b.iter(|| {
                 let rt = tokio::runtime::Runtime::new().unwrap();
-                let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                    capacity: size + 1000,
-                    ..Default::default()
-                })).unwrap();
+                let buffer = rt
+                    .block_on(LogBuffer::new_with_config(BufferConfig {
+                        capacity: size + 1000,
+                        ..Default::default()
+                    }))
+                    .unwrap();
 
                 // Fill buffer
                 let (sender, _receiver) = buffer.split();
@@ -160,7 +168,11 @@ fn bench_memory_usage(c: &mut Criterion) {
 
                 // Verify memory efficiency (simplified)
                 let overhead_per_1000 = 50.0;
-                assert!(overhead_per_1000 < 100_000.0, "Memory overhead too high: {} bytes per 1000 messages", overhead_per_1000);
+                assert!(
+                    overhead_per_1000 < 100_000.0,
+                    "Memory overhead too high: {} bytes per 1000 messages",
+                    overhead_per_1000
+                );
             });
         });
     }
@@ -174,25 +186,33 @@ fn bench_concurrent_access(c: &mut Criterion) {
     group.bench_function("multi_threaded_push", |b| {
         b.iter(|| {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                capacity: 100000,
-                ..Default::default()
-            })).unwrap();
+            let buffer = rt
+                .block_on(LogBuffer::new_with_config(BufferConfig {
+                    capacity: 100000,
+                    ..Default::default()
+                }))
+                .unwrap();
 
             std::thread::scope(|s| {
                 let (sender, _receiver) = buffer.split();
-                let handles: Vec<_> = (0..4).map(|thread_id| {
-                    let sender_clone = sender.clone();
-                    s.spawn(move || {
-                        let rt = tokio::runtime::Runtime::new().unwrap();
-                        for i in 0..2500 { // 4 threads * 2500 = 10k total
-                            let log_entry = create_test_enriched_log(thread_id * 2500 + i);
-                            while rt.block_on(sender_clone.send(black_box(log_entry.clone()))).is_err() {
-                                std::hint::spin_loop();
+                let handles: Vec<_> = (0..4)
+                    .map(|thread_id| {
+                        let sender_clone = sender.clone();
+                        s.spawn(move || {
+                            let rt = tokio::runtime::Runtime::new().unwrap();
+                            for i in 0..2500 {
+                                // 4 threads * 2500 = 10k total
+                                let log_entry = create_test_enriched_log(thread_id * 2500 + i);
+                                while rt
+                                    .block_on(sender_clone.send(black_box(log_entry.clone())))
+                                    .is_err()
+                                {
+                                    std::hint::spin_loop();
+                                }
                             }
-                        }
+                        })
                     })
-                }).collect();
+                    .collect();
 
                 for handle in handles {
                     handle.join().unwrap();
@@ -212,10 +232,12 @@ fn bench_high_throughput_target(c: &mut Criterion) {
     group.bench_function("1M_messages_sustained", |b| {
         b.iter(|| {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                capacity: 1_100_000,
-                ..Default::default()
-            })).unwrap();
+            let buffer = rt
+                .block_on(LogBuffer::new_with_config(BufferConfig {
+                    capacity: 1_100_000,
+                    ..Default::default()
+                }))
+                .unwrap();
             let target_messages = 1_000_000;
 
             let (sender, _receiver) = buffer.split();

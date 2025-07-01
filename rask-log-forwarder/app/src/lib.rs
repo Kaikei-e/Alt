@@ -1,11 +1,11 @@
 #![warn(rust_2018_idioms)]
 
+pub mod app;
+pub mod buffer;
 pub mod collector;
 pub mod parser;
-pub mod buffer;
-pub mod sender;
 pub mod reliability;
-pub mod app;
+pub mod sender;
 
 // Re-export main types for easy access
 pub use app::{App, Config};

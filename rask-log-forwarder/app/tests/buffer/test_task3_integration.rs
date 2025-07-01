@@ -1,5 +1,5 @@
 use rask_log_forwarder::buffer::{
-    BufferManager, BufferConfig, BatchConfig, MemoryConfig, MemoryPressure
+    BatchConfig, BufferConfig, BufferManager, MemoryConfig, MemoryPressure,
 };
 use rask_log_forwarder::parser::EnrichedLogEntry;
 use tokio::time::Duration;
@@ -12,27 +12,32 @@ async fn test_buffer_manager_integration() {
         batch_timeout: Duration::from_millis(100),
         ..Default::default()
     };
-    
+
     let batch_config = BatchConfig {
         max_size: 5,
         max_wait_time: Duration::from_millis(50),
         max_memory_size: 1024,
     };
-    
+
     let memory_config = MemoryConfig {
         max_memory: 10 * 1024,
         warning_threshold: 0.7,
         critical_threshold: 0.9,
     };
-    
-    let manager = BufferManager::new(buffer_config, batch_config, memory_config).await.unwrap();
-    
+
+    let manager = BufferManager::new(buffer_config, batch_config, memory_config)
+        .await
+        .unwrap();
+
     // Test memory manager
-    assert_eq!(manager.memory_manager().current_pressure(), MemoryPressure::None);
-    
+    assert_eq!(
+        manager.memory_manager().current_pressure(),
+        MemoryPressure::None
+    );
+
     // Test buffer splitting
     let (_sender, _receiver) = manager.split();
-    
+
     // Test that components are accessible
     assert!(manager.batch_former().has_ready_batch() == false);
 }

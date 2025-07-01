@@ -1,21 +1,17 @@
-pub mod queue;
-pub mod metrics;
 pub mod backpressure;
-pub mod lockfree;
 pub mod batch;
+pub mod lockfree;
 pub mod memory;
+pub mod metrics;
+pub mod queue;
 
 // New TASK3 exports
+pub use batch::{Batch, BatchConfig, BatchFormer, BatchType};
 pub use lockfree::{
-    LogBuffer, LogBufferSender, LogBufferReceiver,
-    BufferConfig, BufferError, BufferMetrics, BufferMetricsCollector
+    BufferConfig, BufferError, BufferMetrics, BufferMetricsCollector, LogBuffer, LogBufferReceiver,
+    LogBufferSender,
 };
-pub use batch::{
-    BatchFormer, Batch, BatchConfig, BatchType
-};
-pub use memory::{
-    MemoryManager, MemoryConfig, MemoryPressure, BackpressureDecision
-};
+pub use memory::{BackpressureDecision, MemoryConfig, MemoryManager, MemoryPressure};
 
 // Integration struct that combines all buffer components
 pub struct BufferManager {
@@ -36,21 +32,21 @@ impl BufferManager {
             memory_manager: MemoryManager::new(memory_config),
         })
     }
-    
+
     pub fn split(&self) -> (LogBufferSender, LogBufferReceiver) {
         self.buffer.split()
     }
-    
+
     pub fn batch_former(&self) -> &BatchFormer {
         &self.batch_former
     }
-    
+
     pub fn memory_manager(&self) -> &MemoryManager {
         &self.memory_manager
     }
 }
 
 // Legacy exports (keep for compatibility)
-pub use queue::{LogBuffer as LegacyLogBuffer};
+pub use backpressure::{BackpressureLevel, BackpressureStrategy};
 pub use metrics::{BufferMetrics as LegacyBufferMetrics, DetailedMetrics};
-pub use backpressure::{BackpressureStrategy, BackpressureLevel};
+pub use queue::LogBuffer as LegacyLogBuffer;

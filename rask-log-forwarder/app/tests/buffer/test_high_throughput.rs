@@ -1,4 +1,4 @@
-use rask_log_forwarder::buffer::{LogBuffer, BufferConfig};
+use rask_log_forwarder::buffer::{BufferConfig, LogBuffer};
 use rask_log_forwarder::parser::EnrichedLogEntry;
 use std::sync::Arc;
 use std::time::Duration;
@@ -122,8 +122,9 @@ async fn test_memory_usage_under_load() {
     // Send large log entries
     for i in 0..100 {
         let mut entry = create_test_enriched_log(i);
-        entry.fields.insert("large_field".to_string(),
-            "x".repeat(1000)); // 1KB per entry
+        entry
+            .fields
+            .insert("large_field".to_string(), "x".repeat(1000)); // 1KB per entry
         sender.send(entry).await.unwrap();
     }
 

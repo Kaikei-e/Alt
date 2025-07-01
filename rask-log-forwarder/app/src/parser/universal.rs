@@ -1,12 +1,14 @@
 use super::{
     docker::{DockerJsonParser, ParseError},
-    services::{NginxParser, GoStructuredParser, PostgresParser, ServiceParser, ParsedLogEntry, LogLevel},
     schema::NginxLogEntry,
+    services::{
+        GoStructuredParser, LogLevel, NginxParser, ParsedLogEntry, PostgresParser, ServiceParser,
+    },
 };
 use crate::collector::ContainerInfo;
-use std::collections::HashMap;
 use bytes::Bytes;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnrichedLogEntry {
@@ -41,15 +43,16 @@ impl From<NginxLogEntry> for EnrichedLogEntry {
             service_type: nginx_entry.service_type,
             log_type: nginx_entry.log_type,
             message: nginx_entry.message,
-            level: nginx_entry.level.as_ref().map(|level| {
-                match level.to_lowercase().as_str() {
+            level: nginx_entry
+                .level
+                .as_ref()
+                .map(|level| match level.to_lowercase().as_str() {
                     "error" => LogLevel::Error,
                     "warn" | "warning" => LogLevel::Warn,
                     "debug" => LogLevel::Debug,
                     "fatal" => LogLevel::Fatal,
                     _ => LogLevel::Info,
-                }
-            }),
+                }),
             timestamp: nginx_entry.timestamp.to_rfc3339(),
             stream: nginx_entry.stream,
             method: nginx_entry.method,
@@ -58,7 +61,9 @@ impl From<NginxLogEntry> for EnrichedLogEntry {
             response_size: nginx_entry.response_size,
             ip_address: nginx_entry.ip_address,
             user_agent: nginx_entry.user_agent,
-            container_id: nginx_entry.container_id.unwrap_or_else(|| "unknown".to_string()),
+            container_id: nginx_entry
+                .container_id
+                .unwrap_or_else(|| "unknown".to_string()),
             service_name: "nginx".to_string(),
             service_group: Some("alt-frontend".to_string()),
             fields: HashMap::new(),
@@ -163,10 +168,15 @@ impl UniversalParser {
         })
     }
 
-    fn parse_service_log(&self, log_content: &str, service_name: &str) -> Result<ParsedLogEntry, ParseError> {
+    fn parse_service_log(
+        &self,
+        log_content: &str,
+        service_name: &str,
+    ) -> Result<ParsedLogEntry, ParseError> {
         let parser: &dyn ServiceParser = match service_name {
             "nginx" => &self.nginx_parser,
-            "alt-backend" | "alt-frontend" | "pre-processor" | "search-indexer" | "tag-generator" => &self.go_parser,
+            "alt-backend" | "alt-frontend" | "pre-processor" | "search-indexer"
+            | "tag-generator" => &self.go_parser,
             "db" | "postgres" | "postgresql" => &self.postgres_parser,
             _ => {
                 // Try to auto-detect format
@@ -177,7 +187,11 @@ impl UniversalParser {
         parser.parse_log(log_content)
     }
 
-    fn auto_detect_format(&self, log_content: &str, service_name: &str) -> Result<ParsedLogEntry, ParseError> {
+    fn auto_detect_format(
+        &self,
+        log_content: &str,
+        service_name: &str,
+    ) -> Result<ParsedLogEntry, ParseError> {
         // Try JSON first (common for Go services)
         if log_content.trim_start().starts_with('{') {
             if let Ok(entry) = self.go_parser.parse_log(log_content) {
@@ -268,7 +282,10 @@ mod tests {
 
         let docker_log = r#"{"log":"192.168.1.1 - - [01/Jan/2024:00:00:00 +0000] \"GET /health HTTP/1.1\" 200 2 \"-\" \"curl/7.68.0\"\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
 
-        let entry = parser.parse_docker_log(docker_log.as_bytes(), &container_info).await.unwrap();
+        let entry = parser
+            .parse_docker_log(docker_log.as_bytes(), &container_info)
+            .await
+            .unwrap();
 
         assert_eq!(entry.service_type, "nginx");
         assert_eq!(entry.log_type, "access");
@@ -284,7 +301,10 @@ mod tests {
 
         let docker_log = r#"{"log":"{\"level\":\"info\",\"msg\":\"Processing request\",\"method\":\"GET\"}\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
 
-        let entry = parser.parse_docker_log(docker_log.as_bytes(), &container_info).await.unwrap();
+        let entry = parser
+            .parse_docker_log(docker_log.as_bytes(), &container_info)
+            .await
+            .unwrap();
 
         assert_eq!(entry.service_type, "go");
         assert_eq!(entry.log_type, "structured");
@@ -305,7 +325,10 @@ mod tests {
 
         let docker_log = r#"{"log":"Some random log message\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
 
-        let entry = parser.parse_docker_log(docker_log.as_bytes(), &container_info).await.unwrap();
+        let entry = parser
+            .parse_docker_log(docker_log.as_bytes(), &container_info)
+            .await
+            .unwrap();
 
         assert_eq!(entry.service_type, "unknown-service");
         assert_eq!(entry.log_type, "plain");

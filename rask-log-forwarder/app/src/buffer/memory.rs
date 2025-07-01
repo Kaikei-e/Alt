@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -44,19 +44,19 @@ impl MemoryManager {
             current_usage: Arc::new(AtomicUsize::new(0)),
         }
     }
-    
+
     pub async fn allocate(&self, size: usize) {
         self.current_usage.fetch_add(size, Ordering::Relaxed);
     }
-    
+
     pub async fn deallocate(&self, size: usize) {
         self.current_usage.fetch_sub(size, Ordering::Relaxed);
     }
-    
+
     pub fn current_pressure(&self) -> MemoryPressure {
         let current = self.current_usage.load(Ordering::Relaxed);
         let usage_ratio = current as f64 / self.config.max_memory as f64;
-        
+
         if usage_ratio >= self.config.critical_threshold {
             MemoryPressure::Critical
         } else if usage_ratio >= self.config.warning_threshold {
@@ -65,7 +65,7 @@ impl MemoryManager {
             MemoryPressure::None
         }
     }
-    
+
     pub fn calculate_backpressure(&self) -> BackpressureDecision {
         match self.current_pressure() {
             MemoryPressure::None => BackpressureDecision {
@@ -82,11 +82,11 @@ impl MemoryManager {
             },
         }
     }
-    
+
     pub fn memory_usage(&self) -> usize {
         self.current_usage.load(Ordering::Relaxed)
     }
-    
+
     pub fn memory_usage_ratio(&self) -> f64 {
         self.memory_usage() as f64 / self.config.max_memory as f64
     }

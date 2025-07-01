@@ -1,13 +1,13 @@
 #![deny(warnings)]
 
-use tokio::sync::broadcast::{Receiver as BroadcastReceiver, Sender as BroadcastSender};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
-use thiserror::Error;
-use crate::parser::NginxLogEntry;
+use super::backpressure::{BackpressureLevel, BackpressureStrategy};
 use super::metrics::{BufferMetrics, DetailedMetrics};
-use super::backpressure::{BackpressureStrategy, BackpressureLevel};
+use crate::parser::NginxLogEntry;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
+use thiserror::Error;
+use tokio::sync::broadcast::{Receiver as BroadcastReceiver, Sender as BroadcastSender};
 use tokio::time::sleep;
 
 #[derive(Error, Debug)]
@@ -140,7 +140,7 @@ impl LogBuffer {
                 self.current_len.fetch_sub(1, Ordering::Release);
                 Ok(log_entry)
             }
-            Err(_) => Err(BufferError::Empty)
+            Err(_) => Err(BufferError::Empty),
         }
     }
 
@@ -236,8 +236,12 @@ impl LogBuffer {
     }
 
     // Backpressure methods
-    pub async fn push_with_backpressure(&self, log_entry: Arc<NginxLogEntry>) -> Result<(), BufferError> {
-        self.push_with_strategy(log_entry, BackpressureStrategy::default()).await
+    pub async fn push_with_backpressure(
+        &self,
+        log_entry: Arc<NginxLogEntry>,
+    ) -> Result<(), BufferError> {
+        self.push_with_strategy(log_entry, BackpressureStrategy::default())
+            .await
     }
 
     pub async fn push_with_strategy(

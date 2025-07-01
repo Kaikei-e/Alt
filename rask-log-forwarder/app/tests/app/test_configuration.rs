@@ -1,16 +1,26 @@
 use rask_log_forwarder::app::{Config, LogLevel};
+use serial_test::serial;
 use std::{env, path::PathBuf, time::Duration};
 use tempfile::TempDir;
-use serial_test::serial;
 
 // Helper function to clean all environment variables before and after tests
 fn clean_all_env_vars() {
     let env_vars = [
-        "TARGET_SERVICE", "RASK_ENDPOINT", "BATCH_SIZE", "LOG_LEVEL",
-        "ENABLE_DISK_FALLBACK", "ENABLE_METRICS", "ENABLE_COMPRESSION",
-        "FLUSH_INTERVAL_MS", "BUFFER_CAPACITY", "CONNECTION_TIMEOUT_SECS",
-        "MAX_CONNECTIONS", "MAX_DISK_USAGE_MB", "METRICS_PORT",
-        "DISK_FALLBACK_PATH", "CONFIG_FILE"
+        "TARGET_SERVICE",
+        "RASK_ENDPOINT",
+        "BATCH_SIZE",
+        "LOG_LEVEL",
+        "ENABLE_DISK_FALLBACK",
+        "ENABLE_METRICS",
+        "ENABLE_COMPRESSION",
+        "FLUSH_INTERVAL_MS",
+        "BUFFER_CAPACITY",
+        "CONNECTION_TIMEOUT_SECS",
+        "MAX_CONNECTIONS",
+        "MAX_DISK_USAGE_MB",
+        "METRICS_PORT",
+        "DISK_FALLBACK_PATH",
+        "CONFIG_FILE",
     ];
 
     unsafe {
@@ -43,17 +53,25 @@ fn create_test_config_no_disk() -> Config {
 fn test_config_from_args() {
     let args = vec![
         "rask-log-forwarder",
-        "--target-service", "nginx",
-        "--endpoint", "http://custom-aggregator:9000/v1/aggregate",
-        "--batch-size", "5000",
-        "--log-level", "debug",
-        "--metrics-port", "9091"
+        "--target-service",
+        "nginx",
+        "--endpoint",
+        "http://custom-aggregator:9000/v1/aggregate",
+        "--batch-size",
+        "5000",
+        "--log-level",
+        "debug",
+        "--metrics-port",
+        "9091",
     ];
 
     let config = Config::from_args(args).unwrap();
 
     assert_eq!(config.target_service, Some("nginx".to_string()));
-    assert_eq!(config.endpoint, "http://custom-aggregator:9000/v1/aggregate");
+    assert_eq!(
+        config.endpoint,
+        "http://custom-aggregator:9000/v1/aggregate"
+    );
     assert_eq!(config.batch_size, 5000);
     assert_eq!(config.log_level, LogLevel::Debug);
     assert_eq!(config.metrics_port, 9091);
@@ -211,8 +229,14 @@ fn test_config_defaults() {
     std::thread::sleep(std::time::Duration::from_millis(10));
 
     // Double check that critical variables are actually unset
-    assert!(env::var("BATCH_SIZE").is_err(), "BATCH_SIZE should not be set");
-    assert!(env::var("TARGET_SERVICE").is_err(), "TARGET_SERVICE should not be set");
+    assert!(
+        env::var("BATCH_SIZE").is_err(),
+        "BATCH_SIZE should not be set"
+    );
+    assert!(
+        env::var("TARGET_SERVICE").is_err(),
+        "TARGET_SERVICE should not be set"
+    );
 
     let config = Config::from_env().unwrap();
 

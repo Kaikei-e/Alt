@@ -4,9 +4,12 @@ use rask_log_forwarder::collector::DockerCollector;
 async fn test_docker_client_connection() {
     let collector = DockerCollector::new().await;
     assert!(collector.is_ok(), "Should connect to Docker daemon");
-    
+
     let collector = collector.unwrap();
-    assert!(collector.can_connect().await, "Should be able to ping Docker");
+    assert!(
+        collector.can_connect().await,
+        "Should be able to ping Docker"
+    );
 }
 
 #[tokio::test]

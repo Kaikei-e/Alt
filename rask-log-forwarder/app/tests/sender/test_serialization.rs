@@ -1,8 +1,8 @@
-use rask_log_forwarder::sender::{BatchSerializer, SerializationFormat};
 use rask_log_forwarder::buffer::{Batch, BatchType};
 use rask_log_forwarder::parser::{EnrichedLogEntry, LogLevel};
-use std::collections::HashMap;
+use rask_log_forwarder::sender::{BatchSerializer, SerializationFormat};
 use serde_json;
+use std::collections::HashMap;
 
 fn create_test_entry(message: &str) -> EnrichedLogEntry {
     EnrichedLogEntry {
@@ -43,10 +43,15 @@ fn test_ndjson_serialization() {
     assert_eq!(lines.len(), 3);
 
     for (i, line) in lines.iter().enumerate() {
-        let parsed: serde_json::Value = serde_json::from_str(line)
-            .expect(&format!("Line {} should be valid JSON", i));
+        let parsed: serde_json::Value =
+            serde_json::from_str(line).expect(&format!("Line {} should be valid JSON", i));
 
-        assert!(parsed["message"].as_str().unwrap().contains(&format!("Message {}", i + 1)));
+        assert!(
+            parsed["message"]
+                .as_str()
+                .unwrap()
+                .contains(&format!("Message {}", i + 1))
+        );
         assert_eq!(parsed["service_type"], "test");
         assert_eq!(parsed["container_id"], "test123");
     }
@@ -100,9 +105,9 @@ fn test_batch_with_metadata_serialization() {
 fn test_large_batch_serialization() {
     let serializer = BatchSerializer::new();
 
-    let entries: Vec<_> = (0..10000).map(|i| {
-        create_test_entry(&format!("Large batch message {}", i))
-    }).collect();
+    let entries: Vec<_> = (0..10000)
+        .map(|i| create_test_entry(&format!("Large batch message {}", i)))
+        .collect();
 
     let batch = Batch::new(entries, BatchType::SizeBased);
     let ndjson = serializer.serialize_ndjson(&batch).unwrap();
@@ -135,14 +140,21 @@ fn test_empty_batch_error() {
 fn test_compression() {
     let serializer = BatchSerializer::new();
 
-    let entries: Vec<_> = (0..1000).map(|i| {
-        create_test_entry(&format!("Compression test message with repeated content {}", i))
-    }).collect();
+    let entries: Vec<_> = (0..1000)
+        .map(|i| {
+            create_test_entry(&format!(
+                "Compression test message with repeated content {}",
+                i
+            ))
+        })
+        .collect();
 
     let batch = Batch::new(entries, BatchType::SizeBased);
 
     let uncompressed = serializer.serialize_ndjson(&batch).unwrap();
-    let compressed = serializer.serialize_compressed(&batch, SerializationFormat::NDJSON).unwrap();
+    let compressed = serializer
+        .serialize_compressed(&batch, SerializationFormat::NDJSON)
+        .unwrap();
 
     // Compressed should be smaller than uncompressed
     assert!(compressed.len() < uncompressed.len());
@@ -162,8 +174,16 @@ fn test_serialization_estimate() {
     // Estimate should be reasonable (within a reasonable range of actual)
     assert!(estimate > 0, "Estimate should be positive");
     // Allow for a wider range since estimation is approximate
-    assert!((estimate as f64) > (actual.len() as f64 * 0.1),
-            "Estimate {} should be at least 10% of actual {}", estimate, actual.len());
-    assert!((estimate as f64) < (actual.len() as f64 * 5.0),
-            "Estimate {} should be no more than 500% of actual {}", estimate, actual.len());
+    assert!(
+        (estimate as f64) > (actual.len() as f64 * 0.1),
+        "Estimate {} should be at least 10% of actual {}",
+        estimate,
+        actual.len()
+    );
+    assert!(
+        (estimate as f64) < (actual.len() as f64 * 5.0),
+        "Estimate {} should be no more than 500% of actual {}",
+        estimate,
+        actual.len()
+    );
 }

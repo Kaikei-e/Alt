@@ -1,7 +1,10 @@
-use rask_log_forwarder::app::{Config, docker::{DockerEnvironment, validate_docker_requirements}};
+use rask_log_forwarder::app::{
+    Config,
+    docker::{DockerEnvironment, validate_docker_requirements},
+};
+use serial_test::serial;
 use std::collections::HashMap;
 use std::env;
-use serial_test::serial;
 
 #[test]
 #[serial]
@@ -17,7 +20,10 @@ fn test_docker_environment_detection() {
 
     assert_eq!(docker_env.hostname, "nginx-logs");
     assert_eq!(docker_env.target_service, Some("nginx".to_string()));
-    assert_eq!(docker_env.rask_endpoint, "http://rask-aggregator:9600/v1/aggregate");
+    assert_eq!(
+        docker_env.rask_endpoint,
+        "http://rask-aggregator:9600/v1/aggregate"
+    );
 
     // Cleanup
     unsafe {
@@ -47,7 +53,10 @@ fn test_sidecar_configuration() {
 fn test_service_label_detection() {
     let mut labels = HashMap::new();
     labels.insert("rask.group".to_string(), "alt-frontend".to_string());
-    labels.insert("com.docker.compose.service".to_string(), "nginx".to_string());
+    labels.insert(
+        "com.docker.compose.service".to_string(),
+        "nginx".to_string(),
+    );
 
     let docker_env = DockerEnvironment {
         hostname: "nginx-logs".to_string(),

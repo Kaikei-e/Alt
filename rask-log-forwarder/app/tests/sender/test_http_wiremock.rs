@@ -1,9 +1,9 @@
-use rask_log_forwarder::sender::{HttpClient, ClientConfig, ClientError};
-use wiremock::{
-    matchers::{method, path, header},
-    Mock, MockServer, ResponseTemplate,
-};
+use rask_log_forwarder::sender::{ClientConfig, ClientError, HttpClient};
 use std::time::Duration;
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{header, method, path},
+};
 
 #[tokio::test]
 async fn test_http_client_with_wiremock_success() {
@@ -79,8 +79,7 @@ async fn test_http_client_with_wiremock_timeout() {
     Mock::given(method("GET"))
         .and(path("/v1/health"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_delay(Duration::from_secs(10)) // Delay longer than client timeout
+            ResponseTemplate::new(200).set_delay(Duration::from_secs(10)), // Delay longer than client timeout
         )
         .mount(&mock_server)
         .await;
@@ -103,7 +102,9 @@ async fn test_http_client_with_wiremock_timeout() {
         ClientError::RequestTimeout(_) => {
             // Expected timeout
         }
-        ClientError::ConnectionFailed(msg) if msg.contains("timeout") || msg.contains("Timeout") => {
+        ClientError::ConnectionFailed(msg)
+            if msg.contains("timeout") || msg.contains("Timeout") =>
+        {
             // Also acceptable - different timeout error type
         }
         ClientError::NetworkError(ref err) if err.is_timeout() => {

@@ -1,5 +1,5 @@
-use rask_log_forwarder::collector::{DockerCollector, LogStreamOptions};
 use bytes::Bytes;
+use rask_log_forwarder::collector::{DockerCollector, LogStreamOptions};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -7,10 +7,13 @@ use tokio::time::sleep;
 async fn start_test_nginx_container() -> String {
     let output = Command::new("docker")
         .args(&[
-            "run", "-d",
-            "--label", "com.alt.log-forward=true",
-            "--name", "test-nginx-streaming",
-            "nginx:alpine"
+            "run",
+            "-d",
+            "--label",
+            "com.alt.log-forward=true",
+            "--name",
+            "test-nginx-streaming",
+            "nginx:alpine",
         ])
         .stdout(Stdio::piped())
         .output()
@@ -42,7 +45,9 @@ async fn test_nginx_log_stream_initialization() {
     // Start test nginx container
     let test_container = start_test_nginx_container().await;
 
-    let result = collector.start_tailing_logs(tx, "com.alt.log-forward=true").await;
+    let result = collector
+        .start_tailing_logs(tx, "com.alt.log-forward=true")
+        .await;
     assert!(result.is_ok(), "Should successfully start tailing logs");
 
     cleanup_test_container(test_container).await;
@@ -63,7 +68,9 @@ async fn test_log_stream_with_options() {
 
     let test_container = start_test_nginx_container().await;
 
-    let result = collector.start_tailing_logs_with_options(tx, "com.alt.log-forward=true", options).await;
+    let result = collector
+        .start_tailing_logs_with_options(tx, "com.alt.log-forward=true", options)
+        .await;
     assert!(result.is_ok(), "Should start tailing with custom options");
 
     cleanup_test_container(test_container).await;

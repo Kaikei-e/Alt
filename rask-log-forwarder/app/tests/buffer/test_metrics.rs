@@ -1,9 +1,9 @@
+use chrono::Utc;
+use rask_log_forwarder::buffer::{BufferConfig, LogBuffer};
+use rask_log_forwarder::parser::EnrichedLogEntry;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time;
-use rask_log_forwarder::buffer::{LogBuffer, BufferConfig};
-use rask_log_forwarder::parser::EnrichedLogEntry;
-use chrono::Utc;
 
 #[tokio::test]
 async fn test_buffer_metrics_tracking() {
@@ -14,7 +14,9 @@ async fn test_buffer_metrics_tracking() {
         enable_backpressure: false,
         backpressure_threshold: 0.0,
         backpressure_delay: Duration::from_millis(0),
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     // Fill buffer to capacity
     let (sender, _receiver) = buffer.split();
@@ -35,7 +37,9 @@ async fn test_memory_usage_calculation() {
     let buffer = LogBuffer::new_with_config(BufferConfig {
         capacity: 1000,
         ..Default::default()
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     // Add some entries
     let (sender, _receiver) = buffer.split();
@@ -57,7 +61,9 @@ async fn test_throughput_metrics() {
     let buffer = LogBuffer::new_with_config(BufferConfig {
         capacity: 1000000,
         ..Default::default()
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     let start = Instant::now();
 
     // Push many messages
@@ -155,7 +161,8 @@ fn test_metrics_reset() {
 
     // Try to cause some drops by filling remaining capacity + more
     let remaining_capacity = buffer.capacity() - buffer.len();
-    for i in 0..(remaining_capacity + 10) { // This should cause drops
+    for i in 0..(remaining_capacity + 10) {
+        // This should cause drops
         let log_entry = create_test_nginx_log(i + 50);
         buffer.push(log_entry).ok();
     }
@@ -258,23 +265,50 @@ async fn test_dropped_messages_tracking() {
     let metrics = buffer.metrics().snapshot();
 
     // Print for debugging
-    println!("Sent count: {}, Dropped count: {}", sent_count, dropped_count);
-    println!("Metrics - sent: {}, dropped: {}, queue_depth: {}",
-             metrics.messages_sent, metrics.messages_dropped, metrics.queue_depth);
+    println!(
+        "Sent count: {}, Dropped count: {}",
+        sent_count, dropped_count
+    );
+    println!(
+        "Metrics - sent: {}, dropped: {}, queue_depth: {}",
+        metrics.messages_sent, metrics.messages_dropped, metrics.queue_depth
+    );
 
     // With backpressure disabled and capacity=1000, trying to send 2000 messages:
     // The implementation counts all send attempts as 'messages_sent', regardless of success
-    assert_eq!(metrics.messages_sent, 2000, "All 2000 send attempts should be counted");
+    assert_eq!(
+        metrics.messages_sent, 2000,
+        "All 2000 send attempts should be counted"
+    );
 
     // Some messages should have been successfully queued (actual sends)
-    assert!(sent_count > 0, "At least some messages should be successfully sent");
-    assert!(sent_count <= 1000, "Successful sends should not exceed buffer capacity");
+    assert!(
+        sent_count > 0,
+        "At least some messages should be successfully sent"
+    );
+    assert!(
+        sent_count <= 1000,
+        "Successful sends should not exceed buffer capacity"
+    );
 
     // The rest should be dropped
-    assert_eq!(sent_count + dropped_count, 2000, "All attempts should be accounted for");
-    assert!(dropped_count > 0, "Some messages should be dropped due to capacity");
-    assert!(metrics.messages_dropped > 0, "Dropped count should be tracked in metrics");
-    assert_eq!(metrics.messages_dropped, dropped_count, "Dropped counts should match");
+    assert_eq!(
+        sent_count + dropped_count,
+        2000,
+        "All attempts should be accounted for"
+    );
+    assert!(
+        dropped_count > 0,
+        "Some messages should be dropped due to capacity"
+    );
+    assert!(
+        metrics.messages_dropped > 0,
+        "Dropped count should be tracked in metrics"
+    );
+    assert_eq!(
+        metrics.messages_dropped, dropped_count,
+        "Dropped counts should match"
+    );
 }
 
 #[tokio::test]
@@ -374,7 +408,10 @@ async fn test_concurrent_metrics_accuracy() {
     // Metrics should be consistent
     assert!(metrics.messages_sent <= 500); // 5 producers * 100 messages
     assert_eq!(metrics.messages_received, received_count);
-    assert_eq!(metrics.queue_depth, (metrics.messages_sent as usize).saturating_sub(metrics.messages_received as usize));
+    assert_eq!(
+        metrics.queue_depth,
+        (metrics.messages_sent as usize).saturating_sub(metrics.messages_received as usize)
+    );
 }
 
 #[tokio::test]

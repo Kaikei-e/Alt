@@ -1,11 +1,11 @@
-use hyper::{Request, Uri, Method};
-use hyper_util::client::legacy::{Client, connect::HttpConnector};
-use http_body_util::Empty;
 use bytes::Bytes;
+use http_body_util::Empty;
+use hyper::{Method, Request, Uri};
+use hyper_util::client::legacy::{Client, connect::HttpConnector};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::timeout;
 use thiserror::Error;
+use tokio::time::timeout;
 
 #[derive(Error, Debug)]
 pub enum SenderError {
@@ -67,7 +67,9 @@ pub struct BatchSender {
 impl BatchSender {
     pub async fn new(config: SenderConfig) -> Result<Self, SenderError> {
         // Validate endpoint URL
-        let endpoint_uri = config.endpoint.parse::<Uri>()
+        let endpoint_uri = config
+            .endpoint
+            .parse::<Uri>()
             .map_err(|e| SenderError::InvalidConfig(format!("Invalid endpoint URL: {}", e)))?;
 
         // Configure HTTP client with connection pooling
@@ -91,8 +93,9 @@ impl BatchSender {
         };
 
         // Test initial connection
-        sender.health_check().await
-            .map_err(|e| SenderError::ConnectionFailed(format!("Initial connection test failed: {}", e)))?;
+        sender.health_check().await.map_err(|e| {
+            SenderError::ConnectionFailed(format!("Initial connection test failed: {}", e))
+        })?;
 
         Ok(sender)
     }
@@ -102,7 +105,8 @@ impl BatchSender {
     }
 
     pub async fn health_check(&self) -> Result<(), SenderError> {
-        let health_uri = format!("{}/v1/health", self.config.endpoint).parse::<Uri>()
+        let health_uri = format!("{}/v1/health", self.config.endpoint)
+            .parse::<Uri>()
             .map_err(|e| SenderError::InvalidConfig(format!("Invalid health check URL: {}", e)))?;
 
         let request = Request::builder()
@@ -129,7 +133,9 @@ impl BatchSender {
         if response.status().is_success() {
             Ok(())
         } else {
-            Err(SenderError::HttpError { status: response.status().as_u16() })
+            Err(SenderError::HttpError {
+                status: response.status().as_u16(),
+            })
         }
     }
 
@@ -139,7 +145,7 @@ impl BatchSender {
 
     fn update_stats<F>(&self, f: F)
     where
-        F: FnOnce(&mut ConnectionStats)
+        F: FnOnce(&mut ConnectionStats),
     {
         if let Ok(mut stats) = self.stats.lock() {
             f(&mut stats);

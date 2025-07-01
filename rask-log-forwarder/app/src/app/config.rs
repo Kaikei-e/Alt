@@ -108,7 +108,11 @@ pub struct Config {
     pub target_service: Option<String>,
 
     /// Rask aggregator endpoint URL
-    #[arg(long, env = "RASK_ENDPOINT", default_value = "http://rask-aggregator:9600/v1/aggregate")]
+    #[arg(
+        long,
+        env = "RASK_ENDPOINT",
+        default_value = "http://rask-aggregator:9600/v1/aggregate"
+    )]
     pub endpoint: String,
 
     /// Number of log entries per batch
@@ -140,7 +144,11 @@ pub struct Config {
     pub enable_disk_fallback: bool,
 
     /// Disk fallback storage path
-    #[arg(long, env = "DISK_FALLBACK_PATH", default_value = "/tmp/rask-log-forwarder/fallback")]
+    #[arg(
+        long,
+        env = "DISK_FALLBACK_PATH",
+        default_value = "/tmp/rask-log-forwarder/fallback"
+    )]
     pub disk_fallback_path: PathBuf,
 
     /// Maximum disk usage for fallback in MB
@@ -245,17 +253,20 @@ impl Config {
         }
 
         if let Ok(batch_size) = std::env::var("BATCH_SIZE") {
-            config.batch_size = batch_size.parse()
+            config.batch_size = batch_size
+                .parse()
                 .map_err(|e| ConfigError::EnvError(format!("Invalid BATCH_SIZE: {}", e)))?;
         }
 
         if let Ok(flush_interval_ms) = std::env::var("FLUSH_INTERVAL_MS") {
-            config.flush_interval_ms = flush_interval_ms.parse()
+            config.flush_interval_ms = flush_interval_ms
+                .parse()
                 .map_err(|e| ConfigError::EnvError(format!("Invalid FLUSH_INTERVAL_MS: {}", e)))?;
         }
 
         if let Ok(buffer_capacity) = std::env::var("BUFFER_CAPACITY") {
-            config.buffer_capacity = buffer_capacity.parse()
+            config.buffer_capacity = buffer_capacity
+                .parse()
                 .map_err(|e| ConfigError::EnvError(format!("Invalid BUFFER_CAPACITY: {}", e)))?;
         }
 
@@ -266,23 +277,31 @@ impl Config {
                 "info" => LogLevel::Info,
                 "debug" => LogLevel::Debug,
                 "trace" => LogLevel::Trace,
-                _ => return Err(ConfigError::EnvError(format!("Invalid LOG_LEVEL: {}", log_level))),
+                _ => {
+                    return Err(ConfigError::EnvError(format!(
+                        "Invalid LOG_LEVEL: {}",
+                        log_level
+                    )));
+                }
             };
         }
 
         if let Ok(enable_metrics) = std::env::var("ENABLE_METRICS") {
-            config.enable_metrics = enable_metrics.parse()
+            config.enable_metrics = enable_metrics
+                .parse()
                 .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_METRICS: {}", e)))?;
         }
 
         if let Ok(metrics_port) = std::env::var("METRICS_PORT") {
-            config.metrics_port = metrics_port.parse()
+            config.metrics_port = metrics_port
+                .parse()
                 .map_err(|e| ConfigError::EnvError(format!("Invalid METRICS_PORT: {}", e)))?;
         }
 
         if let Ok(enable_disk_fallback) = std::env::var("ENABLE_DISK_FALLBACK") {
-            config.enable_disk_fallback = enable_disk_fallback.parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_DISK_FALLBACK: {}", e)))?;
+            config.enable_disk_fallback = enable_disk_fallback.parse().map_err(|e| {
+                ConfigError::EnvError(format!("Invalid ENABLE_DISK_FALLBACK: {}", e))
+            })?;
         }
 
         if let Ok(disk_fallback_path) = std::env::var("DISK_FALLBACK_PATH") {
@@ -290,17 +309,20 @@ impl Config {
         }
 
         if let Ok(max_disk_usage_mb) = std::env::var("MAX_DISK_USAGE_MB") {
-            config.max_disk_usage_mb = max_disk_usage_mb.parse()
+            config.max_disk_usage_mb = max_disk_usage_mb
+                .parse()
                 .map_err(|e| ConfigError::EnvError(format!("Invalid MAX_DISK_USAGE_MB: {}", e)))?;
         }
 
         if let Ok(connection_timeout_secs) = std::env::var("CONNECTION_TIMEOUT_SECS") {
-            config.connection_timeout_secs = connection_timeout_secs.parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid CONNECTION_TIMEOUT_SECS: {}", e)))?;
+            config.connection_timeout_secs = connection_timeout_secs.parse().map_err(|e| {
+                ConfigError::EnvError(format!("Invalid CONNECTION_TIMEOUT_SECS: {}", e))
+            })?;
         }
 
         if let Ok(max_connections) = std::env::var("MAX_CONNECTIONS") {
-            config.max_connections = max_connections.parse()
+            config.max_connections = max_connections
+                .parse()
                 .map_err(|e| ConfigError::EnvError(format!("Invalid MAX_CONNECTIONS: {}", e)))?;
         }
 
@@ -309,7 +331,8 @@ impl Config {
         }
 
         if let Ok(enable_compression) = std::env::var("ENABLE_COMPRESSION") {
-            config.enable_compression = enable_compression.parse()
+            config.enable_compression = enable_compression
+                .parse()
                 .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_COMPRESSION: {}", e)))?;
         }
 
@@ -332,24 +355,32 @@ impl Config {
 
         // Parse CLI args (which automatically includes env vars due to clap's env feature)
         let mut config = Config::parse_from(args);
-        
+
         // Merge base_config values for fields that weren't explicitly set via CLI
         if config.target_service.is_none() && base_config.target_service.is_some() {
             config.target_service = base_config.target_service;
         }
-        if config.endpoint == Config::default().endpoint && base_config.endpoint != Config::default().endpoint {
+        if config.endpoint == Config::default().endpoint
+            && base_config.endpoint != Config::default().endpoint
+        {
             config.endpoint = base_config.endpoint;
         }
-        if config.batch_size == Config::default().batch_size && base_config.batch_size != Config::default().batch_size {
+        if config.batch_size == Config::default().batch_size
+            && base_config.batch_size != Config::default().batch_size
+        {
             config.batch_size = base_config.batch_size;
         }
-        if config.flush_interval_ms == Config::default().flush_interval_ms && base_config.flush_interval_ms != Config::default().flush_interval_ms {
+        if config.flush_interval_ms == Config::default().flush_interval_ms
+            && base_config.flush_interval_ms != Config::default().flush_interval_ms
+        {
             config.flush_interval_ms = base_config.flush_interval_ms;
         }
-        if config.buffer_capacity == Config::default().buffer_capacity && base_config.buffer_capacity != Config::default().buffer_capacity {
+        if config.buffer_capacity == Config::default().buffer_capacity
+            && base_config.buffer_capacity != Config::default().buffer_capacity
+        {
             config.buffer_capacity = base_config.buffer_capacity;
         }
-        
+
         config.post_process()?;
         config.validate()?;
         Ok(config)
@@ -367,9 +398,10 @@ impl Config {
         let service_name = if hostname.ends_with("-logs") {
             hostname.trim_end_matches("-logs")
         } else {
-            return Err(ConfigError::InvalidConfig(
-                format!("Hostname '{}' doesn't match pattern '*-logs'", hostname)
-            ));
+            return Err(ConfigError::InvalidConfig(format!(
+                "Hostname '{}' doesn't match pattern '*-logs'",
+                hostname
+            )));
         };
 
         let mut config = Config {
@@ -426,50 +458,58 @@ impl Config {
 
     pub fn validate(&self) -> Result<(), ConfigError> {
         // Validate endpoint URL
-        Url::parse(&self.endpoint)
-            .map_err(|e| ConfigError::InvalidUrl(format!("Invalid endpoint URL '{}': {}", self.endpoint, e)))?;
+        Url::parse(&self.endpoint).map_err(|e| {
+            ConfigError::InvalidUrl(format!("Invalid endpoint URL '{}': {}", self.endpoint, e))
+        })?;
 
         // Validate batch size
         if self.batch_size == 0 {
-            return Err(ConfigError::InvalidConfig("Batch size must be greater than 0".to_string()));
+            return Err(ConfigError::InvalidConfig(
+                "Batch size must be greater than 0".to_string(),
+            ));
         }
 
         // Validate buffer capacity
         if self.buffer_capacity < self.batch_size {
-            return Err(ConfigError::InvalidConfig(
-                format!("Buffer capacity ({}) must be at least as large as batch size ({})",
-                        self.buffer_capacity, self.batch_size)
-            ));
+            return Err(ConfigError::InvalidConfig(format!(
+                "Buffer capacity ({}) must be at least as large as batch size ({})",
+                self.buffer_capacity, self.batch_size
+            )));
         }
 
         // Validate disk fallback path if enabled
         if self.enable_disk_fallback {
             if let Some(parent) = self.disk_fallback_path.parent() {
                 if !parent.exists() {
-                    return Err(ConfigError::InvalidConfig(
-                        format!("Disk fallback parent directory does not exist: {}", parent.display())
-                    ));
+                    return Err(ConfigError::InvalidConfig(format!(
+                        "Disk fallback parent directory does not exist: {}",
+                        parent.display()
+                    )));
                 }
             }
         }
 
         // Validate timeouts
         if self.connection_timeout_secs == 0 {
-            return Err(ConfigError::InvalidConfig("Connection timeout must be greater than 0".to_string()));
+            return Err(ConfigError::InvalidConfig(
+                "Connection timeout must be greater than 0".to_string(),
+            ));
         }
 
         // Validate retry config
         if self.retry_config.max_attempts == 0 {
-            return Err(ConfigError::InvalidConfig("Retry max attempts must be greater than 0".to_string()));
+            return Err(ConfigError::InvalidConfig(
+                "Retry max attempts must be greater than 0".to_string(),
+            ));
         }
 
         Ok(())
     }
 
     pub fn get_target_service(&self) -> Result<String, ConfigError> {
-        self.target_service.clone().ok_or_else(|| {
-            ConfigError::InvalidConfig("Target service not configured".to_string())
-        })
+        self.target_service
+            .clone()
+            .ok_or_else(|| ConfigError::InvalidConfig("Target service not configured".to_string()))
     }
 
     pub fn from_rask_config_env(rask_config: &str) -> Result<Self, ConfigError> {

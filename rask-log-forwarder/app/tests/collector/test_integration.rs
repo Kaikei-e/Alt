@@ -1,4 +1,4 @@
-use rask_log_forwarder::collector::{LogCollector, CollectorConfig, CollectorError};
+use rask_log_forwarder::collector::{CollectorConfig, CollectorError, LogCollector};
 
 #[tokio::test]
 async fn test_integration_config_creation() {
@@ -8,7 +8,7 @@ async fn test_integration_config_creation() {
         follow_rotations: true,
         buffer_size: 1024,
     };
-    
+
     assert!(config.auto_discover);
     assert!(config.follow_rotations);
     assert_eq!(config.buffer_size, 1024);
@@ -19,14 +19,14 @@ async fn test_integration_with_env_var() {
     unsafe {
         std::env::set_var("TARGET_SERVICE", "nginx");
     }
-    
+
     let config = CollectorConfig::default();
     let result = LogCollector::new(config).await;
-    
+
     // Should succeed in creating collector even if container doesn't exist
     // The error will come when starting collection
     assert!(result.is_ok() || matches!(result.unwrap_err(), CollectorError::DiscoveryError(_)));
-    
+
     unsafe {
         std::env::remove_var("TARGET_SERVICE");
     }
@@ -41,7 +41,7 @@ async fn test_integration_auto_discover_failure() {
         follow_rotations: true,
         buffer_size: 1024,
     };
-    
+
     // This should work with proper hostname detection
     let result = LogCollector::new(config).await;
     // May succeed or fail depending on hostname, but shouldn't panic
@@ -56,12 +56,12 @@ async fn test_integration_explicit_service() {
         follow_rotations: true,
         buffer_size: 1024,
     };
-    
+
     let result = LogCollector::new(config).await;
-    
+
     // Should succeed in creating collector
     assert!(result.is_ok());
-    
+
     let collector = result.unwrap();
     assert_eq!(collector.get_target_service(), "test-service");
 }

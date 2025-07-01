@@ -1,11 +1,11 @@
 use crate::parser::EnrichedLogEntry;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
-use tokio::time::{sleep_until, Instant as TokioInstant};
+use tokio::time::{Instant as TokioInstant, sleep_until};
 use uuid::Uuid;
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BatchType {
@@ -42,9 +42,7 @@ pub struct Batch {
 
 impl Batch {
     pub fn new(entries: Vec<EnrichedLogEntry>, batch_type: BatchType) -> Self {
-        let estimated_size = entries.iter()
-            .map(estimate_entry_size)
-            .sum();
+        let estimated_size = entries.iter().map(estimate_entry_size).sum();
 
         Self {
             id: Uuid::new_v4().to_string(),
@@ -55,7 +53,12 @@ impl Batch {
         }
     }
 
-    pub fn with_id(id: String, entries: Vec<EnrichedLogEntry>, batch_type: BatchType, estimated_size: usize) -> Self {
+    pub fn with_id(
+        id: String,
+        entries: Vec<EnrichedLogEntry>,
+        batch_type: BatchType,
+        estimated_size: usize,
+    ) -> Self {
         Self {
             id,
             entries,
@@ -128,7 +131,10 @@ impl BatchFormer {
         }
     }
 
-    pub async fn add_entry(&self, entry: EnrichedLogEntry) -> Result<(), crate::buffer::BufferError> {
+    pub async fn add_entry(
+        &self,
+        entry: EnrichedLogEntry,
+    ) -> Result<(), crate::buffer::BufferError> {
         let entry_size = estimate_entry_size(&entry);
         let should_batch;
         let batch_type;
@@ -213,8 +219,10 @@ impl BatchFormer {
 
         {
             let inner = self.inner.lock().unwrap();
-            should_start_timer = inner.batch_start_time.is_some() && !inner.pending_entries.is_empty();
-            deadline = inner.batch_start_time.unwrap_or_else(TokioInstant::now) + self.config.max_wait_time;
+            should_start_timer =
+                inner.batch_start_time.is_some() && !inner.pending_entries.is_empty();
+            deadline = inner.batch_start_time.unwrap_or_else(TokioInstant::now)
+                + self.config.max_wait_time;
         }
 
         if should_start_timer {
@@ -244,7 +252,9 @@ fn estimate_entry_size(entry: &EnrichedLogEntry) -> usize {
         + entry.user_agent.as_ref().map_or(0, |s| s.len())
         + entry.service_group.as_ref().map_or(0, |s| s.len());
 
-    let fields_size = entry.fields.iter()
+    let fields_size = entry
+        .fields
+        .iter()
         .map(|(k, v)| k.len() + v.len())
         .sum::<usize>();
 

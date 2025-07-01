@@ -1,9 +1,9 @@
-mod test_buffer_creation;
-mod test_high_throughput;
-mod test_metrics;
 mod test_backpressure;
-mod test_lockfree_queue;
 mod test_batch_formation;
-mod test_memory_management;
-mod test_task3_integration;
+mod test_buffer_creation;
 mod test_buffer_mocked;
+mod test_high_throughput;
+mod test_lockfree_queue;
+mod test_memory_management;
+mod test_metrics;
+mod test_task3_integration;

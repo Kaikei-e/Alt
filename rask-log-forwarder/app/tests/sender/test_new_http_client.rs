@@ -1,6 +1,6 @@
-use rask_log_forwarder::sender::{HttpClient, ClientConfig, ClientError};
-use tokio::time::Duration;
+use rask_log_forwarder::sender::{ClientConfig, ClientError, HttpClient};
 use std::sync::Arc;
+use tokio::time::Duration;
 
 #[tokio::test]
 async fn test_http_client_creation() {
@@ -56,7 +56,10 @@ async fn test_invalid_endpoint() {
 
     let result = HttpClient::new(config).await;
     assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), ClientError::InvalidConfiguration(_)));
+    assert!(matches!(
+        result.unwrap_err(),
+        ClientError::InvalidConfiguration(_)
+    ));
 }
 
 #[tokio::test]
@@ -108,13 +111,9 @@ async fn test_client_clone_and_sharing() {
             let client1 = client.clone();
             let client2 = client.clone();
 
-            let handle1 = tokio::spawn(async move {
-                client1.connection_stats()
-            });
+            let handle1 = tokio::spawn(async move { client1.connection_stats() });
 
-            let handle2 = tokio::spawn(async move {
-                client2.connection_stats()
-            });
+            let handle2 = tokio::spawn(async move { client2.connection_stats() });
 
             let stats1 = handle1.await.unwrap();
             let stats2 = handle2.await.unwrap();
@@ -133,7 +132,7 @@ async fn test_client_clone_and_sharing() {
 async fn test_timeout_configuration() {
     let config = ClientConfig {
         endpoint: "http://httpbin.org".to_string(), // Use a real endpoint for timeout test
-        timeout: Duration::from_millis(1), // Very short timeout
+        timeout: Duration::from_millis(1),          // Very short timeout
         connection_timeout: Duration::from_millis(1),
         ..Default::default()
     };

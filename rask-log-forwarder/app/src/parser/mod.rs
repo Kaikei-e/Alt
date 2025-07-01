@@ -1,7 +1,7 @@
-pub mod schema;
-pub mod simd;
 pub mod docker;
+pub mod schema;
 pub mod services;
+pub mod simd;
 pub mod universal;
 
 // Legacy exports (keep for compatibility)
@@ -11,15 +11,14 @@ pub use simd::SimdParser;
 // New TASK2 exports
 pub use docker::{DockerJsonParser, DockerLogEntry, ParseError};
 pub use services::{
-    NginxParser, GoStructuredParser, PostgresParser, 
-    ServiceParser, ParsedLogEntry, LogLevel
+    GoStructuredParser, LogLevel, NginxParser, ParsedLogEntry, PostgresParser, ServiceParser,
 };
-pub use universal::{UniversalParser, EnrichedLogEntry};
+pub use universal::{EnrichedLogEntry, UniversalParser};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_module_exports() {
         let _docker_parser = DockerJsonParser::new();

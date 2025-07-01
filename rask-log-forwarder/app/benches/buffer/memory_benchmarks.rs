@@ -1,8 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use rask_log_forwarder::buffer::{LogBuffer, BufferConfig};
+use chrono::Utc;
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use rask_log_forwarder::buffer::{BufferConfig, LogBuffer};
 use rask_log_forwarder::parser::NginxLogEntry;
 use std::sync::Arc;
-use chrono::Utc;
 
 fn create_test_nginx_log(id: usize) -> Arc<NginxLogEntry> {
     Arc::new(NginxLogEntry {
@@ -33,10 +33,12 @@ fn bench_memory_efficiency(c: &mut Criterion) {
             |b, &capacity| {
                 b.iter(|| {
                     let rt = tokio::runtime::Runtime::new().unwrap();
-                    let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                        capacity,
-                        ..Default::default()
-                    })).unwrap();
+                    let buffer = rt
+                        .block_on(LogBuffer::new_with_config(BufferConfig {
+                            capacity,
+                            ..Default::default()
+                        }))
+                        .unwrap();
 
                     // Fill buffer to various levels
                     for fill_ratio in [0.25, 0.5, 0.75, 1.0] {
@@ -63,7 +65,11 @@ fn bench_memory_efficiency(c: &mut Criterion) {
 
                         // Each enriched log entry should not exceed reasonable bounds
                         if metrics.queue_depth > 0 {
-                            assert!(memory_per_item < 1024, "Memory per item too high: {} bytes", memory_per_item);
+                            assert!(
+                                memory_per_item < 1024,
+                                "Memory per item too high: {} bytes",
+                                memory_per_item
+                            );
                         }
 
                         black_box(metrics.queue_depth);
@@ -71,7 +77,7 @@ fn bench_memory_efficiency(c: &mut Criterion) {
                         // Buffer automatically manages memory
                     }
                 });
-            }
+            },
         );
     }
     group.finish();
@@ -83,10 +89,12 @@ fn bench_memory_growth_pattern(c: &mut Criterion) {
     group.bench_function("linear_memory_growth", |b| {
         b.iter(|| {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                capacity: 100000,
-                ..Default::default()
-            })).unwrap();
+            let buffer = rt
+                .block_on(LogBuffer::new_with_config(BufferConfig {
+                    capacity: 100000,
+                    ..Default::default()
+                }))
+                .unwrap();
             let mut memory_readings = Vec::new();
 
             // Add items in batches and measure memory growth
@@ -107,14 +115,19 @@ fn bench_memory_growth_pattern(c: &mut Criterion) {
 
             // Verify linear growth pattern
             for i in 1..memory_readings.len() {
-                let growth = memory_readings[i] - memory_readings[i-1];
+                let growth = memory_readings[i] - memory_readings[i - 1];
                 // Growth should be approximately consistent (within 50% variance)
                 if i > 1 {
-                    let prev_growth = memory_readings[i-1] - memory_readings[i-2];
+                    let prev_growth = memory_readings[i - 1] - memory_readings[i - 2];
                     // Avoid division by zero
                     if prev_growth != 0 {
-                        let variance = (growth as f64 - prev_growth as f64).abs() / prev_growth as f64;
-                        assert!(variance < 0.5, "Memory growth variance too high: {:.2}", variance);
+                        let variance =
+                            (growth as f64 - prev_growth as f64).abs() / prev_growth as f64;
+                        assert!(
+                            variance < 0.5,
+                            "Memory growth variance too high: {:.2}",
+                            variance
+                        );
                     }
                 }
             }
@@ -130,10 +143,12 @@ fn bench_memory_overhead(c: &mut Criterion) {
     group.bench_function("buffer_overhead", |b| {
         b.iter(|| {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                capacity: 100000,
-                ..Default::default()
-            })).unwrap();
+            let buffer = rt
+                .block_on(LogBuffer::new_with_config(BufferConfig {
+                    capacity: 100000,
+                    ..Default::default()
+                }))
+                .unwrap();
 
             // Measure empty buffer overhead
             let empty_metrics = buffer.metrics().snapshot();
@@ -150,7 +165,11 @@ fn bench_memory_overhead(c: &mut Criterion) {
 
             // Overhead should be minimal (just the Arc pointer)
             let arc_size = std::mem::size_of::<Arc<NginxLogEntry>>();
-            assert!(overhead <= arc_size + 64, "Buffer overhead too high: {} bytes", overhead);
+            assert!(
+                overhead <= arc_size + 64,
+                "Buffer overhead too high: {} bytes",
+                overhead
+            );
 
             black_box(overhead);
         });
@@ -165,10 +184,12 @@ fn bench_memory_fragmentation(c: &mut Criterion) {
     group.bench_function("fragmentation_resistance", |b| {
         b.iter(|| {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                capacity: 50000,
-                ..Default::default()
-            })).unwrap();
+            let buffer = rt
+                .block_on(LogBuffer::new_with_config(BufferConfig {
+                    capacity: 50000,
+                    ..Default::default()
+                }))
+                .unwrap();
 
             // Pattern: fill, empty, fill again to test fragmentation
             for cycle in 0..5 {
@@ -204,10 +225,12 @@ fn bench_memory_target_validation(c: &mut Criterion) {
         b.iter(|| {
             // Test with maximum expected buffer size
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let buffer = rt.block_on(LogBuffer::new_with_config(BufferConfig {
-                capacity: 1_000_000,
-                ..Default::default()
-            })).unwrap();
+            let buffer = rt
+                .block_on(LogBuffer::new_with_config(BufferConfig {
+                    capacity: 1_000_000,
+                    ..Default::default()
+                }))
+                .unwrap();
 
             // Fill to capacity
             let (sender, _receiver) = buffer.split();
@@ -220,10 +243,18 @@ fn bench_memory_target_validation(c: &mut Criterion) {
             let memory_mb = 50.0; // Simplified calculation
 
             // Should be well under 128MB
-            assert!(memory_mb < 128.0, "Memory usage too high: {:.2} MB", memory_mb);
+            assert!(
+                memory_mb < 128.0,
+                "Memory usage too high: {:.2} MB",
+                memory_mb
+            );
 
             // For 1M log entries, should be much less than 128MB
-            assert!(memory_mb < 64.0, "Memory usage inefficient: {:.2} MB for 1M entries", memory_mb);
+            assert!(
+                memory_mb < 64.0,
+                "Memory usage inefficient: {:.2} MB for 1M entries",
+                memory_mb
+            );
 
             black_box(memory_mb);
         });

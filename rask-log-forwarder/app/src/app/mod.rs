@@ -1,15 +1,15 @@
 pub mod config;
-pub mod service;
 pub mod docker;
+pub mod service;
 
 pub use config::{Config, ConfigError, LogLevel};
-pub use service::{ServiceManager, ServiceError, ShutdownHandle};
+pub use service::{ServiceError, ServiceManager, ShutdownHandle};
 
 use clap::Parser;
 use std::process;
-use tracing::{info, error};
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use std::sync::Once;
+use tracing::{error, info};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 static INIT: Once = Once::new();
 
@@ -27,13 +27,17 @@ impl App {
         Self::from_config(config).await
     }
 
-    pub async fn from_config(config: Config) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn from_config(
+        config: Config,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Setup logging first
         setup_logging(config.log_level)?;
 
         info!("Starting rask-log-forwarder v{}", env!("CARGO_PKG_VERSION"));
-        info!("Configuration: target_service={:?}, endpoint={}, batch_size={}",
-              config.target_service, config.endpoint, config.batch_size);
+        info!(
+            "Configuration: target_service={:?}, endpoint={}, batch_size={}",
+            config.target_service, config.endpoint, config.batch_size
+        );
 
         // Load config file if specified
         let final_config = if let Some(config_file) = &config.config_file {
@@ -46,9 +50,7 @@ impl App {
         // Initialize service manager
         let service_manager = ServiceManager::new(final_config).await?;
 
-        Ok(Self {
-            service_manager,
-        })
+        Ok(Self { service_manager })
     }
 
     pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -85,11 +87,13 @@ pub fn setup_logging(log_level: LogLevel) -> Result<(), Box<dyn std::error::Erro
             .add_directive("h2=warn".parse().unwrap());
 
         let _ = tracing_subscriber::registry()
-            .with(fmt::layer()
-                .with_target(true)
-                .with_thread_ids(true)
-                .with_level(true)
-                .with_ansi(true))
+            .with(
+                fmt::layer()
+                    .with_target(true)
+                    .with_thread_ids(true)
+                    .with_level(true)
+                    .with_ansi(true),
+            )
             .with(filter)
             .try_init();
     });

@@ -1,5 +1,5 @@
-use rask_log_forwarder::collector::DockerCollector;
 use bytes::Bytes;
+use rask_log_forwarder::collector::DockerCollector;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -8,10 +8,13 @@ use tokio::time::sleep;
 async fn start_test_nginx_container() -> String {
     let output = Command::new("docker")
         .args(&[
-            "run", "-d",
-            "--label", "com.alt.log-forward=true",
-            "--name", "test-nginx-zero-copy",
-            "nginx:alpine"
+            "run",
+            "-d",
+            "--label",
+            "com.alt.log-forward=true",
+            "--name",
+            "test-nginx-zero-copy",
+            "nginx:alpine",
         ])
         .stdout(Stdio::piped())
         .output()
@@ -34,9 +37,11 @@ async fn generate_test_nginx_logs(container_id: &str, count: usize) {
         // Use simple echo to stdout which will be captured by Docker logs
         Command::new("docker")
             .args(&[
-                "exec", container_id,
-                "sh", "-c",
-                &format!("echo 'Test log message {}'", i)
+                "exec",
+                container_id,
+                "sh",
+                "-c",
+                &format!("echo 'Test log message {}'", i),
             ])
             .output()
             .expect("Failed to generate log");
@@ -62,11 +67,16 @@ async fn test_zero_copy_bytes_from_docker_logs() {
     // Test with a simple busybox container that generates logs
     let output = Command::new("docker")
         .args(&[
-            "run", "-d",
-            "--label", "com.alt.log-forward=true",
-            "--name", "test-busybox-zerocopy",
+            "run",
+            "-d",
+            "--label",
+            "com.alt.log-forward=true",
+            "--name",
+            "test-busybox-zerocopy",
             "busybox",
-            "sh", "-c", "echo 'Test log message' && sleep 30"
+            "sh",
+            "-c",
+            "echo 'Test log message' && sleep 30",
         ])
         .stdout(Stdio::piped())
         .output()
@@ -81,7 +91,10 @@ async fn test_zero_copy_bytes_from_docker_logs() {
     sleep(Duration::from_secs(2)).await;
 
     // Start tailing logs
-    collector.start_tailing_logs(tx, "com.alt.log-forward=true").await.unwrap();
+    collector
+        .start_tailing_logs(tx, "com.alt.log-forward=true")
+        .await
+        .unwrap();
 
     // Wait for logs to be captured
     let timeout_duration = Duration::from_secs(10);
@@ -145,8 +158,19 @@ async fn test_zero_copy_performance() {
     let throughput = received_count as f64 / duration.as_secs_f64();
 
     // Validate that our queue architecture can handle high throughput
-    assert!(throughput > 100.0, "Queue should process >100 msgs/sec, got: {}", throughput);
-    assert!(received_count > 500, "Should process substantial number of messages, got: {}", received_count);
+    assert!(
+        throughput > 100.0,
+        "Queue should process >100 msgs/sec, got: {}",
+        throughput
+    );
+    assert!(
+        received_count > 500,
+        "Should process substantial number of messages, got: {}",
+        received_count
+    );
 
-    println!("Queue performance: {} msgs/sec, {} messages processed", throughput, received_count);
+    println!(
+        "Queue performance: {} msgs/sec, {} messages processed",
+        throughput, received_count
+    );
 }

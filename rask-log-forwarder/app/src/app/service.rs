@@ -1,22 +1,22 @@
 use super::Config;
+use crate::parser::services::ServiceParser;
 use crate::{
-    collector::{LogCollector, CollectorConfig},
+    buffer::{BatchConfig, BufferConfig, BufferManager, MemoryConfig},
+    collector::{CollectorConfig, LogCollector},
     parser::UniversalParser,
-    buffer::{BufferManager, BufferConfig, BatchConfig, MemoryConfig},
-    sender::{LogSender, ClientConfig},
-    reliability::{ReliabilityManager, HealthReport},
+    reliability::{HealthReport, ReliabilityManager},
+    sender::{ClientConfig, LogSender},
 };
+use lazy_static::lazy_static;
+use regex::Regex;
+use reqwest;
+use serde_json;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::signal;
-use tokio::sync::{mpsc, RwLock};
-use tracing::{info, warn, error, debug};
-use serde_json;
-use reqwest;
-use regex::Regex;
-use lazy_static::lazy_static;
-use crate::parser::services::ServiceParser;
+use tokio::sync::{RwLock, mpsc};
+use tracing::{debug, error, info, warn};
 
 #[derive(Error, Debug)]
 pub enum ServiceError {
@@ -59,7 +59,10 @@ impl ServiceManager {
         config.auto_detect_service()?;
         let target_service = config.get_target_service()?;
 
-        info!("Initializing rask-log-forwarder for service: {}", target_service);
+        info!(
+            "Initializing rask-log-forwarder for service: {}",
+            target_service
+        );
 
         // Initialize parser (stateless, can be shared)
         let parser = Arc::new(UniversalParser::new());
@@ -113,7 +116,8 @@ impl ServiceManager {
                 running,
                 shutdown_rx,
                 target_service,
-            ).await;
+            )
+            .await;
         });
 
         // Start background tasks
@@ -121,7 +125,10 @@ impl ServiceManager {
             reliability_manager.start_background_tasks().await;
         }
 
-        info!("rask-log-forwarder started successfully for service: {}", self.target_service);
+        info!(
+            "rask-log-forwarder started successfully for service: {}",
+            self.target_service
+        );
 
         Ok(ShutdownHandle {
             shutdown_tx,
@@ -163,11 +170,8 @@ impl ServiceManager {
             critical_threshold: 0.95,
         };
 
-        self.buffer_manager = Some(BufferManager::new(
-            buffer_config,
-            batch_config,
-            memory_config,
-        ).await?);
+        self.buffer_manager =
+            Some(BufferManager::new(buffer_config, batch_config, memory_config).await?);
 
         // Initialize sender
         let client_config = ClientConfig {
@@ -195,7 +199,7 @@ impl ServiceManager {
             storage_path: self.config.disk_fallback_config.storage_path.clone(),
             max_disk_usage: self.config.disk_fallback_config.max_disk_usage_mb * 1024 * 1024,
             retention_period: Duration::from_secs(
-                self.config.disk_fallback_config.retention_hours * 3600
+                self.config.disk_fallback_config.retention_hours * 3600,
             ),
             compression: self.config.disk_fallback_config.compression,
         };
@@ -209,15 +213,21 @@ impl ServiceManager {
 
         let health_config = crate::reliability::HealthConfig::default();
 
-        self.reliability_manager = Some(ReliabilityManager::new(
-            retry_config,
-            disk_config,
-            metrics_config,
-            health_config,
-            (*self.sender.as_ref().unwrap()).clone(),
-        ).await.map_err(|e| ServiceError::SenderError(
-            crate::sender::ClientError::InvalidConfiguration(e.to_string())
-        ))?);
+        self.reliability_manager = Some(
+            ReliabilityManager::new(
+                retry_config,
+                disk_config,
+                metrics_config,
+                health_config,
+                (*self.sender.as_ref().unwrap()).clone(),
+            )
+            .await
+            .map_err(|e| {
+                ServiceError::SenderError(crate::sender::ClientError::InvalidConfiguration(
+                    e.to_string(),
+                ))
+            })?,
+        );
 
         Ok(())
     }
@@ -419,7 +429,7 @@ impl ServiceManager {
 
     async fn send_log_batch(
         log_batch: &[crate::parser::services::ParsedLogEntry],
-        reliability_manager: &Arc<ReliabilityManager>
+        reliability_manager: &Arc<ReliabilityManager>,
     ) {
         if log_batch.is_empty() {
             return;
@@ -474,7 +484,9 @@ impl ServiceManager {
     }
 
     pub async fn setup_signal_handlers(&self) -> Result<SignalHandler, ServiceError> {
-        let shutdown_tx = self.shutdown_tx.as_ref()
+        let shutdown_tx = self
+            .shutdown_tx
+            .as_ref()
             .ok_or(ServiceError::NotInitialized)?
             .clone();
 
@@ -482,10 +494,10 @@ impl ServiceManager {
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.collector.is_some() &&
-        self.buffer_manager.is_some() &&
-        self.sender.is_some() &&
-        self.reliability_manager.is_some()
+        self.collector.is_some()
+            && self.buffer_manager.is_some()
+            && self.sender.is_some()
+            && self.reliability_manager.is_some()
     }
 
     pub async fn is_running(&self) -> bool {

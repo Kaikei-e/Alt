@@ -1,9 +1,9 @@
-use rask_log_forwarder::buffer::{MemoryManager, MemoryConfig, MemoryPressure};
+use rask_log_forwarder::buffer::{MemoryConfig, MemoryManager, MemoryPressure};
 
 #[tokio::test]
 async fn test_memory_tracking() {
     let config = MemoryConfig {
-        max_memory: 1024 * 1024, // 1MB
+        max_memory: 1024 * 1024,  // 1MB
         warning_threshold: 0.8,   // 80%
         critical_threshold: 0.95, // 95%
     };

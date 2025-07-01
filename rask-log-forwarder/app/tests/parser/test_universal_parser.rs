@@ -1,5 +1,5 @@
-use rask_log_forwarder::parser::{UniversalParser, LogLevel};
 use rask_log_forwarder::collector::ContainerInfo;
+use rask_log_forwarder::parser::{LogLevel, UniversalParser};
 use std::collections::HashMap;
 
 #[tokio::test]
@@ -18,7 +18,10 @@ async fn test_universal_parser_with_nginx() {
 
     let docker_log = r#"{"log":"192.168.1.1 - - [01/Jan/2024:00:00:00 +0000] \"GET /health HTTP/1.1\" 200 2\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
 
-    let entry = parser.parse_docker_log(docker_log.as_bytes(), &container_info).await.unwrap();
+    let entry = parser
+        .parse_docker_log(docker_log.as_bytes(), &container_info)
+        .await
+        .unwrap();
 
     assert_eq!(entry.service_type, "nginx");
     assert_eq!(entry.log_type, "access");
@@ -43,7 +46,10 @@ async fn test_universal_parser_with_go_backend() {
 
     let docker_log = r#"{"log":"{\"level\":\"info\",\"msg\":\"Processing request\",\"method\":\"GET\"}\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
 
-    let entry = parser.parse_docker_log(docker_log.as_bytes(), &container_info).await.unwrap();
+    let entry = parser
+        .parse_docker_log(docker_log.as_bytes(), &container_info)
+        .await
+        .unwrap();
 
     assert_eq!(entry.service_type, "go");
     assert_eq!(entry.log_type, "structured");
@@ -62,9 +68,13 @@ async fn test_universal_parser_with_unknown_service() {
 
     let parser = UniversalParser::new();
 
-    let docker_log = r#"{"log":"Some random log message\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
+    let docker_log =
+        r#"{"log":"Some random log message\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
 
-    let entry = parser.parse_docker_log(docker_log.as_bytes(), &container_info).await.unwrap();
+    let entry = parser
+        .parse_docker_log(docker_log.as_bytes(), &container_info)
+        .await
+        .unwrap();
 
     assert_eq!(entry.service_type, "unknown-service");
     assert_eq!(entry.log_type, "plain");

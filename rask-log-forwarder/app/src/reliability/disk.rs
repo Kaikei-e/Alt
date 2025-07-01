@@ -1,14 +1,14 @@
 use crate::buffer::Batch;
-use serde::{Serialize, Deserialize};
+use flate2::Compression;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use flate2::read::GzDecoder;
-use flate2::write::GzEncoder;
-use flate2::Compression;
-use std::io::{Read, Write};
 
 #[derive(Error, Debug)]
 pub enum DiskError {
@@ -141,7 +141,8 @@ impl DiskFallback {
         };
 
         // Deserialize
-        let (stored_batch, _): (StoredBatch, usize) = bincode::serde::decode_from_slice(&deserialized_data, bincode::config::standard())?;
+        let (stored_batch, _): (StoredBatch, usize) =
+            bincode::serde::decode_from_slice(&deserialized_data, bincode::config::standard())?;
 
         tracing::debug!("Retrieved batch {} from disk", batch_id);
 
@@ -247,8 +248,9 @@ impl DiskFallback {
             data
         };
 
-        let (stored_batch, _): (StoredBatch, usize) = bincode::serde::decode_from_slice(&deserialized_data, bincode::config::standard())
-            .map_err(DiskError::DeserializationError)?;
+        let (stored_batch, _): (StoredBatch, usize) =
+            bincode::serde::decode_from_slice(&deserialized_data, bincode::config::standard())
+                .map_err(DiskError::DeserializationError)?;
         Ok(stored_batch)
     }
 

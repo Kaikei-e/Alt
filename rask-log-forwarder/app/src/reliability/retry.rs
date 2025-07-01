@@ -1,9 +1,9 @@
 #![deny(warnings, rust_2018_idioms)]
 
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use rand::Rng;
-use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -80,7 +80,8 @@ impl RetryManager {
 
     pub fn increment_attempt(&mut self, batch_id: &str) {
         // First get the current attempt count
-        let current_attempt = self.retry_states
+        let current_attempt = self
+            .retry_states
             .get(batch_id)
             .map(|state| state.attempt_count)
             .unwrap_or(0);
@@ -127,15 +128,11 @@ impl RetryManager {
         let base_delay = match self.config.strategy {
             RetryStrategy::ExponentialBackoff => {
                 let multiplier = 2_u64.pow(attempt);
-                Duration::from_millis(
-                    self.config.base_delay.as_millis() as u64 * multiplier
-                )
+                Duration::from_millis(self.config.base_delay.as_millis() as u64 * multiplier)
             }
-            RetryStrategy::LinearBackoff => {
-                Duration::from_millis(
-                    self.config.base_delay.as_millis() as u64 * (attempt as u64 + 1)
-                )
-            }
+            RetryStrategy::LinearBackoff => Duration::from_millis(
+                self.config.base_delay.as_millis() as u64 * (attempt as u64 + 1),
+            ),
             RetryStrategy::FixedDelay => self.config.base_delay,
         };
 
@@ -165,8 +162,11 @@ impl RetryManager {
         self.retry_states
             .iter()
             .filter(|(_, state)| {
-                !self.should_give_up(&state.batch_id) &&
-                state.next_retry_time.map(|t| Instant::now() >= t).unwrap_or(true)
+                !self.should_give_up(&state.batch_id)
+                    && state
+                        .next_retry_time
+                        .map(|t| Instant::now() >= t)
+                        .unwrap_or(true)
             })
             .map(|(batch_id, _)| batch_id.clone())
             .collect()
@@ -174,8 +174,7 @@ impl RetryManager {
 
     pub fn cleanup_old_retries(&mut self, max_age: Duration) {
         let now = Instant::now();
-        self.retry_states.retain(|_, state| {
-            now.duration_since(state.first_attempt_time) <= max_age
-        });
+        self.retry_states
+            .retain(|_, state| now.duration_since(state.first_attempt_time) <= max_age);
     }
 }

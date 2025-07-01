@@ -1,8 +1,6 @@
-use rask_log_forwarder::parser::{
-    ParsedLogEntry, ParseError, LogLevel, EnrichedLogEntry
-};
-use std::collections::HashMap;
 use chrono::Utc;
+use rask_log_forwarder::parser::{EnrichedLogEntry, LogLevel, ParseError, ParsedLogEntry};
+use std::collections::HashMap;
 
 // 簡単なモックパーサー実装
 #[derive(Debug)]
@@ -135,9 +133,20 @@ fn test_mock_parser_format_detection() {
     let mock_parser = MockLogParser::new();
 
     // Test format detection
-    assert_eq!(mock_parser.detect_format(r#"{"level":"info","msg":"test"}"#), "json");
-    assert_eq!(mock_parser.detect_format("2024-01-01 12:00:00 INFO Test message"), "plain");
-    assert_eq!(mock_parser.detect_format(r#"192.168.1.1 - - [01/Jan/2024:00:00:00 +0000] "GET /api/health HTTP/1.1" 200 2"#), "nginx");
+    assert_eq!(
+        mock_parser.detect_format(r#"{"level":"info","msg":"test"}"#),
+        "json"
+    );
+    assert_eq!(
+        mock_parser.detect_format("2024-01-01 12:00:00 INFO Test message"),
+        "plain"
+    );
+    assert_eq!(
+        mock_parser.detect_format(
+            r#"192.168.1.1 - - [01/Jan/2024:00:00:00 +0000] "GET /api/health HTTP/1.1" 200 2"#
+        ),
+        "nginx"
+    );
 }
 
 #[test]
@@ -156,9 +165,18 @@ fn test_mock_parser_multiple_logs() {
 
     // Setup expectations for multiple different log formats
     let test_logs = vec![
-        (r#"{"level":"info","msg":"Starting server"}"#, "Starting server"),
-        (r#"{"level":"info","msg":"Connection failed"}"#, "Connection failed"),
-        (r#"{"level":"info","msg":"Processing request"}"#, "Processing request"),
+        (
+            r#"{"level":"info","msg":"Starting server"}"#,
+            "Starting server",
+        ),
+        (
+            r#"{"level":"info","msg":"Connection failed"}"#,
+            "Connection failed",
+        ),
+        (
+            r#"{"level":"info","msg":"Processing request"}"#,
+            "Processing request",
+        ),
     ];
 
     // Test parsing multiple logs
@@ -207,13 +225,20 @@ impl MockLogEnricher {
         self
     }
 
-    pub fn enrich_log(&self, entry: ParsedLogEntry, container_info: &ContainerInfo) -> EnrichedLogEntry {
+    pub fn enrich_log(
+        &self,
+        entry: ParsedLogEntry,
+        container_info: &ContainerInfo,
+    ) -> EnrichedLogEntry {
         EnrichedLogEntry {
             service_type: entry.service_type,
             log_type: entry.log_type,
             message: entry.message,
             level: entry.level,
-            timestamp: entry.timestamp.map(|dt| dt.to_rfc3339()).unwrap_or_else(|| "2024-01-01T00:00:00Z".to_string()),
+            timestamp: entry
+                .timestamp
+                .map(|dt| dt.to_rfc3339())
+                .unwrap_or_else(|| "2024-01-01T00:00:00Z".to_string()),
             stream: entry.stream,
             method: entry.method,
             path: entry.path,
