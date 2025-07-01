@@ -50,7 +50,7 @@ async fn test_high_throughput_operations() {
         let sender_clone = sender.clone();
         let handle = tokio::spawn(async move {
             for j in 0..1000 {
-                let log_entry = create_test_log_entry(&format!("message-{}-{}", i, j));
+                let log_entry = create_test_log_entry(&format!("message-{i}-{j}"));
                 sender_clone.send(log_entry).await.unwrap();
             }
         });

@@ -8,7 +8,7 @@ fn _create_test_nginx_log(id: usize) -> Arc<NginxLogEntry> {
     Arc::new(NginxLogEntry {
         service_type: "nginx".to_string(),
         log_type: "access".to_string(),
-        message: format!("Test log message {}", id),
+        message: format!("Test log message {id}"),
         stream: "stdout".to_string(),
         timestamp: Utc::now(),
         container_id: Some(format!("container_{}", id % 10)),
@@ -67,8 +67,7 @@ fn bench_memory_efficiency(c: &mut Criterion) {
                         if metrics.queue_depth > 0 {
                             assert!(
                                 memory_per_item < 1024,
-                                "Memory per item too high: {} bytes",
-                                memory_per_item
+                                "Memory per item too high: {memory_per_item} bytes"
                             );
                         }
 
@@ -167,8 +166,7 @@ fn bench_memory_overhead(c: &mut Criterion) {
             let arc_size = std::mem::size_of::<Arc<NginxLogEntry>>();
             assert!(
                 overhead <= arc_size + 64,
-                "Buffer overhead too high: {} bytes",
-                overhead
+                "Buffer overhead too high: {overhead} bytes"
             );
 
             std::hint::black_box(overhead);
@@ -245,15 +243,13 @@ fn bench_memory_target_validation(c: &mut Criterion) {
             // Should be well under 128MB
             assert!(
                 memory_mb < 128.0,
-                "Memory usage too high: {:.2} MB",
-                memory_mb
+                "Memory usage too high: {memory_mb:.2} MB"
             );
 
             // For 1M log entries, should be much less than 128MB
             assert!(
                 memory_mb < 64.0,
-                "Memory usage inefficient: {:.2} MB for 1M entries",
-                memory_mb
+                "Memory usage inefficient: {memory_mb:.2} MB for 1M entries"
             );
 
             std::hint::black_box(memory_mb);
@@ -268,7 +264,7 @@ fn create_test_enriched_log(id: usize) -> rask_log_forwarder::parser::EnrichedLo
     rask_log_forwarder::parser::EnrichedLogEntry {
         service_type: "test".to_string(),
         log_type: "access".to_string(),
-        message: format!("Test log message {}", id),
+        message: format!("Test log message {id}"),
         level: Some(rask_log_forwarder::parser::LogLevel::Info),
         timestamp: chrono::Utc::now().to_rfc3339(),
         stream: "stdout".to_string(),
