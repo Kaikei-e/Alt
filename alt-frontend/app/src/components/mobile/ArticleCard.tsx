@@ -13,7 +13,7 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
       border="2px solid var(--surface-border)"
       transition="transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out"
       cursor="pointer"
-      data-testid="article-card-container"
+      data-testid="article-card"
     >
       <Box
         className="glass"
@@ -81,7 +81,7 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                   boxShadow="0 25px 50px var(--accent-primary)"
                   mx={4}
                   my={8}
-                  maxH="90vh"
+                  maxH="70vh"
                 >
                   <Dialog.Header>
                     <Dialog.Title

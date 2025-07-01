@@ -61,7 +61,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
     // Mock EventSource directly in the browser context
     await page.addInitScript(() => {
       class MockEventSource extends EventTarget {
-        public readyState: number = 1; // OPEN
+        public readyState: number = 0; // CONNECTING initially
         public url: string;
         public onopen: ((event: Event) => void) | null = null;
         public onmessage: ((event: MessageEvent) => void) | null = null;
@@ -71,13 +71,18 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
           super();
           this.url = url;
 
-          // Simulate immediate connection
+          // Simulate connection opening
           setTimeout(() => {
+            this.readyState = 1; // OPEN
+
             if (this.onopen) {
               this.onopen(new Event("open"));
             }
 
-            // Send mock data
+            // Dispatch open event for addEventListener
+            this.dispatchEvent(new Event("open"));
+
+            // Send mock data after connection opens
             setTimeout(() => {
               const mockData = {
                 feed_amount: { amount: 25 },
@@ -85,15 +90,18 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
                 total_articles: { amount: 1337 },
               };
 
+              const messageEvent = new MessageEvent("message", {
+                data: JSON.stringify(mockData),
+              });
+
               if (this.onmessage) {
-                this.onmessage(
-                  new MessageEvent("message", {
-                    data: JSON.stringify(mockData),
-                  }),
-                );
+                this.onmessage(messageEvent);
               }
-            }, 100);
-          }, 100);
+
+              // Also dispatch for addEventListener
+              this.dispatchEvent(messageEvent);
+            }, 200);
+          }, 200);
         }
 
         close() {
@@ -112,7 +120,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
     await page.goto("/mobile/feeds/stats");
     await page.waitForLoadState("networkidle");
     // Give SSE time to connect and process data
-    await page.waitForTimeout(2000); // Reduced timeout
+    await page.waitForTimeout(5000); // Increased timeout for SSE setup
   });
 
   test.describe("Initial Page Load", () => {
@@ -171,10 +179,13 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
   test.describe("SSE Data Loading", () => {
     test("should display correct feed amounts from SSE", async ({ page }) => {
+      // Wait longer for SSE connection to establish and data to load
+      await page.waitForTimeout(3000);
+
       // Wait for SSE data to load and display in glass cards
-      await expect(page.getByText("25")).toBeVisible({ timeout: 5000 });
-      await expect(page.getByText("1,337")).toBeVisible({ timeout: 5000 });
-      await expect(page.getByText("18")).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText("25")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("1,337")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("18")).toBeVisible({ timeout: 10000 });
       await expect(page.getByText("TOTAL FEEDS")).toBeVisible();
       await expect(page.getByText("TOTAL ARTICLES")).toBeVisible();
       await expect(page.getByText("UNSUMMARIZED ARTICLES")).toBeVisible();

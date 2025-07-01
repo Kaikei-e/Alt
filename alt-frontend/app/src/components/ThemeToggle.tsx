@@ -61,16 +61,14 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
     const now = Date.now();
     const elapsed = now - lastToggleRef.current;
 
-    // Ignore the interaction if it occurs within the debounce window.
-    // We still update the timestamp so that rapidly repeated clicks keep
-    // extending the window and only the very first one is honoured.
-    if (elapsed < DEBOUNCE_WINDOW) {
+    // Always allow the first click (when lastToggleRef.current === 0)
+    // or allow clicks that happen after the debounce window
+    if (lastToggleRef.current === 0 || elapsed >= DEBOUNCE_WINDOW) {
       lastToggleRef.current = now;
-      return;
+      toggleTheme();
     }
-
-    lastToggleRef.current = now;
-    toggleTheme();
+    // For rapid subsequent clicks within the debounce window, do nothing
+    // Don't update the timestamp to prevent extending the debounce period
   };
 
   const handleKeyDown = (event: React.KeyboardEvent) => {

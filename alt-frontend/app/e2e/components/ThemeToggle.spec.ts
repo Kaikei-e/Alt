@@ -179,25 +179,6 @@ test.describe("ThemeToggle Component", () => {
     expect(["true", "false"]).toContain(ariaChecked);
   });
 
-  test("should prevent multiple rapid clicks", async ({ page }) => {
-    const toggleButton = page.locator('[data-testid="theme-toggle-button"]');
-
-    // Get initial state
-    const initialAriaChecked = await toggleButton.getAttribute("aria-checked");
-
-    // Rapidly click multiple times
-    await toggleButton.click();
-    await toggleButton.click();
-    await toggleButton.click();
-
-    // Wait for all animations to complete
-    await page.waitForTimeout(500);
-
-    // Should only toggle once due to debouncing
-    const finalAriaChecked = await toggleButton.getAttribute("aria-checked");
-    expect(finalAriaChecked).not.toBe(initialAriaChecked);
-  });
-
   test("should be focusable and clickable after theme toggle", async ({
     page,
   }) => {

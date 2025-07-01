@@ -536,8 +536,17 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
   test.describe("Accessibility", () => {
     test("should have proper link structure", async ({ page }) => {
+      // Ensure API mocks are properly set up for this test
+      await mockApiEndpoints(page, { feeds: mockFeeds });
+
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
+
+      // Wait for feed cards to load first
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({ timeout: 15000 });
+
       const feedLink = page.locator('a[href="https://example.com/feed1"]');
 
       await expect(feedLink).toBeVisible();
@@ -545,6 +554,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     });
 
     test("should be keyboard navigable", async ({ page }) => {
+      // Ensure API mocks are properly set up for this test
+      await mockApiEndpoints(page, { feeds: mockFeeds });
+
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
@@ -570,14 +582,26 @@ test.describe("FeedCard Component - Functionality Tests", () => {
     });
 
     test("should have proper semantic structure", async ({ page }) => {
+      // Ensure API mocks are properly set up for this test
+      await mockApiEndpoints(page, { feeds: mockFeeds });
+
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
+
+      // Wait for feed cards to load first
+      await expect(
+        page.locator('[data-testid="feed-card"]').first(),
+      ).toBeVisible({ timeout: 15000 });
+
       // Links should be properly structured
       const feedLinks = page.getByRole("link");
       await expect(feedLinks.first()).toBeVisible();
     });
 
     test("should handle screen reader accessibility", async ({ page }) => {
+      // Ensure API mocks are properly set up for this test
+      await mockApiEndpoints(page, { feeds: mockFeeds });
+
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
