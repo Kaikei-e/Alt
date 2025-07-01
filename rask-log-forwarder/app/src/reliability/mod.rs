@@ -168,17 +168,16 @@ impl ReliabilityManager {
         {
             let mut disk_fallback = self.disk_fallback.lock().await;
             if let Err(e) = disk_fallback.store_batch(batch).await {
-                tracing::error!("Failed to store batch {} to disk: {}", batch_id, e);
+                tracing::error!("Failed to store batch {batch_id} to disk: {e}");
                 self.health_monitor
                     .update_component_health(
                         "disk_fallback",
-                        ComponentHealth::Unhealthy(format!("Disk storage failed: {}", e)),
+                        ComponentHealth::Unhealthy(format!("Disk storage failed: {e}")),
                     )
                     .await;
                 return Err(TransmissionError::ClientError(
                     crate::sender::ClientError::InvalidConfiguration(format!(
-                        "Disk fallback failed: {}",
-                        e
+                        "Disk fallback failed: {e}"
                     )),
                 ));
             }

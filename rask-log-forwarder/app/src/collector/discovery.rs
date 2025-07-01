@@ -23,7 +23,7 @@ impl Clone for DiscoveryError {
             DiscoveryError::DockerError(e) => {
                 DiscoveryError::DockerError(bollard::errors::Error::DockerResponseServerError {
                     status_code: 500,
-                    message: format!("Cloned error: {}", e),
+                    message: format!("Cloned error: {e}"),
                 })
             }
             DiscoveryError::InvalidHostname(s) => DiscoveryError::InvalidHostname(s.clone()),
@@ -91,8 +91,7 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
             Ok(service_name.to_string())
         } else {
             Err(DiscoveryError::InvalidHostname(format!(
-                "Hostname '{}' doesn't match pattern '*-logs'",
-                hostname
+                "Hostname '{hostname}' doesn't match pattern '*-logs'"
             )))
         }
     }
@@ -140,8 +139,8 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
 
                     // Docker Compose pattern: project-service-replica (e.g., alt-alt-backend-1)
                     // Check if the name ends with "-service-1" or "-service"
-                    if clean_name.ends_with(&format!("-{}-1", service_name))
-                        || clean_name.ends_with(&format!("-{}", service_name))
+                    if clean_name.ends_with(&format!("-{service_name}-1"))
+                        || clean_name.ends_with(&format!("-{service_name}"))
                     {
                         best_match = Some(container.clone());
                         break;
@@ -165,8 +164,8 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
                         if names.iter().any(|n| {
                             let clean = n.trim_start_matches('/');
                             clean == service_name
-                                || clean.ends_with(&format!("-{}-1", service_name))
-                                || clean.ends_with(&format!("-{}", service_name))
+                                || clean.ends_with(&format!("-{service_name}-1"))
+                                || clean.ends_with(&format!("-{service_name}"))
                         }) {
                             break; // Found a good match, stop searching
                         }
@@ -177,10 +176,7 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
 
         if let Some(container) = best_match {
             let id = container.id.ok_or_else(|| {
-                DiscoveryError::ContainerNotFound(format!(
-                    "Container ID missing for {}",
-                    service_name
-                ))
+                DiscoveryError::ContainerNotFound(format!("Container ID missing for {service_name}"))
             })?;
 
             let labels = container.labels.unwrap_or_default();

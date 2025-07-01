@@ -116,7 +116,7 @@ impl HttpClient {
     pub async fn new(config: ClientConfig) -> Result<Self, ClientError> {
         // Validate endpoint URL
         let endpoint_url: Url = config.endpoint.parse().map_err(|e| {
-            ClientError::InvalidConfiguration(format!("Invalid endpoint URL: {}", e))
+            ClientError::InvalidConfiguration(format!("Invalid endpoint URL: {e}"))
         })?;
 
         // Construct aggregate URL
@@ -145,7 +145,7 @@ impl HttpClient {
         }
 
         let client = client_builder.build().map_err(|e| {
-            ClientError::InvalidConfiguration(format!("Failed to build HTTP client: {}", e))
+            ClientError::InvalidConfiguration(format!("Failed to build HTTP client: {e}"))
         })?;
 
         let stats = Arc::new(ClientStats::new());

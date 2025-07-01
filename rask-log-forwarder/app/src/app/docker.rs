@@ -16,12 +16,12 @@ impl DockerEnvironment {
         let hostname = env::var("HOSTNAME")
             .or_else(|_| {
                 hostname::get()
-                    .map_err(|e| format!("Failed to get hostname: {}", e))?
+                    .map_err(|e| format!("Failed to get hostname: {e}"))?
                     .to_str()
                     .map(|s| s.to_string())
                     .ok_or_else(|| "Could not convert hostname to string".to_string())
             })
-            .map_err(|e| ConfigError::EnvError(format!("Could not determine hostname: {}", e)))?;
+            .map_err(|e| ConfigError::EnvError(format!("Could not determine hostname: {e}")))?;
 
         let target_service = env::var("TARGET_SERVICE").ok();
 
@@ -138,7 +138,7 @@ pub fn validate_docker_requirements(config: &Config) -> Result<(), ConfigError> 
         if !parent.exists() && parent != std::path::Path::new("/tmp") {
             return Err(ConfigError::InvalidConfig(format!(
                 "Disk fallback parent directory not accessible: {}",
-                parent.display()
+                parent.display(),
             )));
         }
     }

@@ -255,19 +255,19 @@ impl Config {
         if let Ok(batch_size) = std::env::var("BATCH_SIZE") {
             config.batch_size = batch_size
                 .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid BATCH_SIZE: {}", e)))?;
+                .map_err(|e| ConfigError::EnvError(format!("Invalid BATCH_SIZE: {e}")))?;
         }
 
         if let Ok(flush_interval_ms) = std::env::var("FLUSH_INTERVAL_MS") {
             config.flush_interval_ms = flush_interval_ms
                 .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid FLUSH_INTERVAL_MS: {}", e)))?;
+                .map_err(|e| ConfigError::EnvError(format!("Invalid FLUSH_INTERVAL_MS: {e}")))?;
         }
 
         if let Ok(buffer_capacity) = std::env::var("BUFFER_CAPACITY") {
             config.buffer_capacity = buffer_capacity
                 .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid BUFFER_CAPACITY: {}", e)))?;
+                .map_err(|e| ConfigError::EnvError(format!("Invalid BUFFER_CAPACITY: {e}")))?;
         }
 
         if let Ok(log_level) = std::env::var("LOG_LEVEL") {
@@ -278,10 +278,7 @@ impl Config {
                 "debug" => LogLevel::Debug,
                 "trace" => LogLevel::Trace,
                 _ => {
-                    return Err(ConfigError::EnvError(format!(
-                        "Invalid LOG_LEVEL: {}",
-                        log_level
-                    )));
+                    return Err(ConfigError::EnvError(format!("Invalid LOG_LEVEL: {log_level}")));
                 }
             };
         }
@@ -289,19 +286,19 @@ impl Config {
         if let Ok(enable_metrics) = std::env::var("ENABLE_METRICS") {
             config.enable_metrics = enable_metrics
                 .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_METRICS: {}", e)))?;
+                .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_METRICS: {e}")))?;
         }
 
         if let Ok(metrics_port) = std::env::var("METRICS_PORT") {
             config.metrics_port = metrics_port
                 .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid METRICS_PORT: {}", e)))?;
+                .map_err(|e| ConfigError::EnvError(format!("Invalid METRICS_PORT: {e}")))?;
         }
 
         if let Ok(enable_disk_fallback) = std::env::var("ENABLE_DISK_FALLBACK") {
-            config.enable_disk_fallback = enable_disk_fallback.parse().map_err(|e| {
-                ConfigError::EnvError(format!("Invalid ENABLE_DISK_FALLBACK: {}", e))
-            })?;
+            config.enable_disk_fallback = enable_disk_fallback
+                .parse()
+                .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_DISK_FALLBACK: {e}")))?;
         }
 
         if let Ok(disk_fallback_path) = std::env::var("DISK_FALLBACK_PATH") {
@@ -311,19 +308,19 @@ impl Config {
         if let Ok(max_disk_usage_mb) = std::env::var("MAX_DISK_USAGE_MB") {
             config.max_disk_usage_mb = max_disk_usage_mb
                 .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid MAX_DISK_USAGE_MB: {}", e)))?;
+                .map_err(|e| ConfigError::EnvError(format!("Invalid MAX_DISK_USAGE_MB: {e}")))?;
         }
 
         if let Ok(connection_timeout_secs) = std::env::var("CONNECTION_TIMEOUT_SECS") {
-            config.connection_timeout_secs = connection_timeout_secs.parse().map_err(|e| {
-                ConfigError::EnvError(format!("Invalid CONNECTION_TIMEOUT_SECS: {}", e))
-            })?;
+            config.connection_timeout_secs = connection_timeout_secs
+                .parse()
+                .map_err(|e| ConfigError::EnvError(format!("Invalid CONNECTION_TIMEOUT_SECS: {e}")))?;
         }
 
         if let Ok(max_connections) = std::env::var("MAX_CONNECTIONS") {
             config.max_connections = max_connections
                 .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid MAX_CONNECTIONS: {}", e)))?;
+                .map_err(|e| ConfigError::EnvError(format!("Invalid MAX_CONNECTIONS: {e}")))?;
         }
 
         if let Ok(config_file) = std::env::var("CONFIG_FILE") {
@@ -333,7 +330,7 @@ impl Config {
         if let Ok(enable_compression) = std::env::var("ENABLE_COMPRESSION") {
             config.enable_compression = enable_compression
                 .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_COMPRESSION: {}", e)))?;
+                .map_err(|e| ConfigError::EnvError(format!("Invalid ENABLE_COMPRESSION: {e}")))?;
         }
 
         config.post_process()?;
@@ -399,8 +396,7 @@ impl Config {
             hostname.trim_end_matches("-logs")
         } else {
             return Err(ConfigError::InvalidConfig(format!(
-                "Hostname '{}' doesn't match pattern '*-logs'",
-                hostname
+                "Hostname '{hostname}' doesn't match pattern '*-logs'"
             )));
         };
 

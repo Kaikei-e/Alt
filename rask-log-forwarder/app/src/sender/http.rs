@@ -94,7 +94,7 @@ impl BatchSender {
 
         // Test initial connection
         sender.health_check().await.map_err(|e| {
-            SenderError::ConnectionFailed(format!("Initial connection test failed: {}", e))
+            SenderError::ConnectionFailed(format!("Initial connection test failed: {e}"))
         })?;
 
         Ok(sender)
@@ -107,7 +107,7 @@ impl BatchSender {
     pub async fn health_check(&self) -> Result<(), SenderError> {
         let health_uri = format!("{}/v1/health", self.config.endpoint)
             .parse::<Uri>()
-            .map_err(|e| SenderError::InvalidConfig(format!("Invalid health check URL: {}", e)))?;
+            .map_err(|e| SenderError::InvalidConfig(format!("Invalid health check URL: {e}")))?;
 
         let request = Request::builder()
             .method(Method::GET)

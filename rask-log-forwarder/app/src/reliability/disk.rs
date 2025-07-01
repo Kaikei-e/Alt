@@ -233,7 +233,7 @@ impl DiskFallback {
     }
 
     fn get_batch_file_path(&self, batch_id: &str) -> PathBuf {
-        self.config.storage_path.join(format!("{}.batch", batch_id))
+        self.config.storage_path.join(format!("{batch_id}.batch"))
     }
 
     async fn load_stored_batch(&self, batch_id: &str) -> Result<StoredBatch, DiskError> {

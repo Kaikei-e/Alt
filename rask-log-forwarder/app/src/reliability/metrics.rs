@@ -368,7 +368,7 @@ impl MetricsCollector {
         match base_name {
             "batches_sent" => "rask_batches_sent_total".to_string(),
             "latency" => "rask_latency_seconds".to_string(),
-            _ => format!("rask_{}", base_name),
+            _ => format!("rask_{base_name}"),
         }
     }
 
