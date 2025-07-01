@@ -59,3 +59,30 @@ Each service runs in its own container so components can be scaled or swapped in
 - Test-driven development and automated health checks help maintain reliability.
 - The system is designed to be composable: you can replace any service (for example, the search engine or tag generator) without affecting the rest of the pipeline.
 
+## Backend Processing Flow
+
+Below is a high level diagram of how backend services cooperate to fetch, clean,
+summarise and tag articles before making them searchable. Each step runs in its
+own container.
+
+```mermaid
+flowchart LR
+    A(RSS Feeds) --> B[alt-backend]
+    B -->|store| C[(PostgreSQL)]
+    C --> D(pre-processor)
+    D -->|clean + language detect| C
+    D --> E(news-creator)
+    E -->|summaries| C
+    C --> F(tag-generator)
+    F -->|tags| C
+    C --> G(search-indexer)
+    G -->|index| H(Meilisearch)
+    B --> I[REST API]
+    I --> J(alt-frontend)
+```
+
+Articles are fetched by **alt-backend**, processed by **pre-processor** using the
+**news-creator** for LLM summaries, tagged via the **tag-generator**, indexed by
+**search-indexer** and finally served to the frontend through the backend's REST
+API.
+
