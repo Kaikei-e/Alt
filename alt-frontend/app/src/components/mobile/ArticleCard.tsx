@@ -8,28 +8,27 @@ interface ArticleCardProps {
 export const ArticleCard = ({ article }: ArticleCardProps) => {
   return (
     <Box
-      data-testid="article-card"
-      className="article-card-wrapper"
-      width="100%"
+      p="2px"
+      borderRadius="18px"
+      border="2px solid var(--surface-border)"
+      transition="transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out"
+      cursor="pointer"
+      data-testid="article-card-container"
     >
       <Box
         className="glass"
         w="full"
         p={5}
+        borderRadius="16px"
         mb={4}
-        borderRadius="18px"
-        cursor="pointer"
-        transition="all 0.3s ease"
-        _hover={{
-          transform: "translateY(-5px)",
-          boxShadow: "0 20px 40px var(--accent-primary)",
-        }}
+        role="article"
+        aria-label={`Article: ${article.title}`}
       >
         <Flex direction="column" gap={3}>
           <Text
             fontSize="lg"
-            fontWeight="bold"
-            color="white"
+            fontWeight="semibold"
+            color="var(--accent-primary)"
             lineHeight="1.4"
             overflow="hidden"
             textOverflow="ellipsis"
@@ -49,12 +48,23 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
           >
             <Dialog.Trigger asChild>
               <Button
-                color="var(--alt-primary)"
                 size="sm"
-                borderRadius="10px"
+                borderRadius="full"
+                bg="var(--alt-primary)"
+                color="var(--text-primary)"
+                fontWeight="bold"
+                px={4}
+                minHeight="36px"
+                minWidth="100px"
+                fontSize="sm"
+                border="1px solid rgba(255, 255, 255, 0.2)"
                 _hover={{
+                  bg: "var(--accent-gradient)",
                   transform: "scale(1.05)",
+                  boxShadow: "0 4px 12px var(--accent-primary)",
                 }}
+                _active={{ transform: "scale(0.98)" }}
+                transition="all 0.2s ease"
               >
                 Details
               </Button>
@@ -66,6 +76,7 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                   className="glass"
                   backdropFilter="blur(20px)"
                   border="1px solid"
+                  borderColor="var(--surface-border)"
                   borderRadius="20px"
                   boxShadow="0 25px 50px var(--accent-primary)"
                   mx={4}
@@ -98,9 +109,14 @@ export const ArticleCard = ({ article }: ArticleCardProps) => {
                       <Button
                         variant="outline"
                         color="var(--alt-primary)"
-                        borderRadius="10px"
+                        borderRadius="full"
                         size="md"
                         w="full"
+                        border="1px solid var(--alt-primary)"
+                        _hover={{
+                          bg: "var(--accent-gradient)",
+                          color: "var(--text-primary)",
+                        }}
                       >
                         Close
                       </Button>
