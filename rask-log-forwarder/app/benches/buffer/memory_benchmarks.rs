@@ -124,8 +124,7 @@ fn bench_memory_growth_pattern(c: &mut Criterion) {
                             (growth as f64 - prev_growth as f64).abs() / prev_growth as f64;
                         assert!(
                             variance < 0.5,
-                            "Memory growth variance too high: {:.2}",
-                            variance
+                            "Memory growth variance too high: {variance:.2}"
                         );
                     }
                 }

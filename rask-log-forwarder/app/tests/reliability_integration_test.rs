@@ -179,7 +179,7 @@ async fn test_reliability_manager_health_monitoring() {
 
 fn create_test_batch(entry_count: usize) -> Batch {
     let entries: Vec<EnrichedLogEntry> = (0..entry_count)
-        .map(|i| create_test_entry(&format!("Test log entry {}", i)))
+        .map(|i| create_test_entry(&format!("Test log entry {i}")))
         .collect();
 
     Batch::new(entries, rask_log_forwarder::buffer::BatchType::SizeBased)
