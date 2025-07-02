@@ -65,41 +65,57 @@ The backend is a pipeline of microservices that work together to fetch, process,
 
 ```mermaid
 graph TD
-    subgraph "User Interaction"
-        A[alt-frontend]
-    end
+subgraph “User Interaction”
+A[alt-frontend]
+end
 
-    subgraph "Core Services"
-        B[alt-backend]
-        C[(PostgreSQL DB)]
-        D[(Meilisearch)]
-    end
+```
+subgraph "Core Services"
+    B[alt-backend]
+    C[(PostgreSQL DB)]
+    D[(Meilisearch)]
+end
 
-    subgraph "Asynchronous Processing Pipeline"
-        E[pre-processor]
-        F[news-creator]
-        G[tag-generator]
-        H[search-indexer]
-    end
+subgraph "Asynchronous Processing Pipeline"
+    E[pre-processor]
+    F[news-creator]
+    G[tag-generator]
+    H[search-indexer]
+end
 
-    A -- "1. Register RSS URL" --> B
-    B -->|2. Save URL| C
-    
-    C -->|3. Fetch Articles| E
-    E -->|4. Save Articles| C
-    
-    E -->|5. Summarize Article| F
-    F -->|6. Return Summary| E
-    E -->|7. Save Summary| C
-    
-    C -->|8. Fetch Untagged Articles| G
-    G -->|9. Generate & Save Tags| C
-    
-    C -->|10. Fetch New/Updated Articles| H
-    H -->|11. Index Articles| D
-    
-    B -- "12. Provide API for Frontend" --> A
-    B -->|13. Query Search Index| D
+%% User to Backend
+A -->|1. Register RSS URL| B
+A <-->|12. API Communication| B
+
+%% Backend to Database
+B -->|2. Save URL| C
+B <-->|13. Query Search Index| D
+
+%% Processing Pipeline
+C -->|3. Fetch Articles| E
+E -->|4. Save Articles| C
+
+E -->|5. Summarize Article| F
+F -->|6. Return Summary| E
+E -->|7. Save Summary| C
+
+C -->|8. Fetch Untagged Articles| G
+G -->|9. Generate & Save Tags| C
+
+C -->|10. Fetch New/Updated Articles| H
+H -->|11. Index Articles| D
+
+%% Styling
+classDef userInterface fill:#e1f5fe
+classDef coreService fill:#f3e5f5
+classDef database fill:#e8f5e8
+classDef processor fill:#fff3e0
+
+class A userInterface
+class B coreService
+class C,D database
+class E,F,G,H processor
+```
 
 ```
 
