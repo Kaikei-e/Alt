@@ -25,7 +25,12 @@ class TagExtractionConfig:
     diversity: float = 0.5
     min_token_length: int = 2
     min_text_length: int = 10
-    japanese_pos_tags: Tuple[str, ...] = ("名詞", "固有名詞", "地名", "組織名", "人名")
+    japanese_pos_tags: Tuple[str, ...] = (
+        "名詞", "固有名詞", "地名", "組織名", "人名", 
+        "名詞-普通名詞-一般", "名詞-普通名詞-サ変可能", "名詞-普通名詞-形状詞可能", 
+        "名詞-固有名詞-一般", "名詞-固有名詞-人名", "名詞-固有名詞-組織", "名詞-固有名詞-地域", 
+        "名詞-数詞", "名詞-副詞可能", "名詞-代名詞", "名詞-接尾辞-名詞的", "名詞-非自立" 
+    )
     extract_compound_words: bool = True
     use_frequency_boost: bool = True
 
@@ -89,6 +94,11 @@ class TagExtractor:
             r'[一-龥]{2,4}(?:大統領|首相|総理|議員|知事|市長)',  # Political titles
             r'[一-龥]{2,4}(?:会社|企業|組織|団体|協会|連盟)',  # Organizations
             r'[ァ-ヶー]{3,}(?:システム|サービス|プラットフォーム)',  # Tech terms
+            # Additional patterns for Japanese compound words
+            r'[ァ-ヶー]{2,}(?:[ァ-ヶー]+)?(?:[A-Za-z0-9]+)?', # Katakana compounds (e.g., "クラウドコンピューティング", "AIモデル")
+            r'[一-龥]{2,}[A-Za-z0-9]+', # Kanji + Alphanumeric (e.g., "情報IT", "技術AI")
+            r'[A-Za-z0-9]+[一-龥]{2,}', # Alphanumeric + Kanji (e.g., "IoT機器", "Web技術")
+            r'\d+[A-Za-zァ-ヶー一-龥]+', # Number + Word (e.g., "5G通信", "3Dプリンター")
         ]
 
         for pattern in patterns:
