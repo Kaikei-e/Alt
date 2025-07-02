@@ -1,27 +1,38 @@
-import logging
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, TypedDict
 from dataclasses import dataclass
 from contextlib import contextmanager
 
 import psycopg2
 import psycopg2.extras
 from psycopg2.extensions import connection as Connection, cursor as Cursor
+import structlog
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
+
 
 @dataclass
 class TagInserterConfig:
     """Configuration for tag insertion operations."""
+
     batch_size: int = 1000
     page_size: int = 200
     max_retries: int = 3
     retry_delay: float = 1.0
 
+
 class DatabaseError(Exception):
     """Custom exception for database-related errors."""
+
     pass
+
+
+class BatchResult(TypedDict):
+    success: bool
+    processed_articles: int
+    failed_articles: int
+    errors: List[str]
+    message: Optional[str]
+
 
 class TagInserter:
     """A class for efficiently inserting and managing tags in the database."""
@@ -76,12 +87,12 @@ class TagInserter:
                 ON CONFLICT (name) DO NOTHING
                 """,
                 tag_rows,
-                page_size=self.config.page_size
+                page_size=self.config.page_size,
             )
-            logger.debug(f"Inserted {len(tag_rows)} tags into tags table")
+            logger.debug("Inserted tags into tags table", count=len(tag_rows))
 
         except psycopg2.Error as e:
-            logger.error(f"Failed to insert tags: {e}")
+            logger.error("Failed to insert tags", error=e)
             raise DatabaseError(f"Failed to insert tags: {e}") from e
 
     def _get_tag_ids(self, cursor: Cursor, tags: List[str]) -> Dict[str, int]:
@@ -101,8 +112,7 @@ class TagInserter:
         try:
             clean_tags = [tag.strip() for tag in tags]
             cursor.execute(
-                "SELECT id, name FROM tags WHERE name = ANY(%s)",
-                (clean_tags,)
+                "SELECT id, name FROM tags WHERE name = ANY(%s)", (clean_tags,)
             )
 
             id_map = {name: tag_id for tag_id, name in cursor.fetchall()}
@@ -110,16 +120,18 @@ class TagInserter:
             # Check if all tags were found
             missing_tags = set(clean_tags) - set(id_map.keys())
             if missing_tags:
-                logger.warning(f"Some tags were not found in database: {missing_tags}")
+                logger.warning("Some tags were not found in database", missing_tags=missing_tags)
 
-            logger.debug(f"Retrieved {len(id_map)} tag IDs")
+            logger.debug("Retrieved tag IDs", count=len(id_map))
             return id_map
 
         except psycopg2.Error as e:
-            logger.error(f"Failed to retrieve tag IDs: {e}")
+            logger.error("Failed to retrieve tag IDs", error=e)
             raise DatabaseError(f"Failed to retrieve tag IDs: {e}") from e
 
-    def _insert_article_tags(self, cursor: Cursor, article_id: str, tag_ids: Dict[str, int]) -> None:
+    def _insert_article_tags(
+        self, cursor: Cursor, article_id: str, tag_ids: Dict[str, int]
+    ) -> None:
         """
         Insert article-tag relationships into the article_tags table.
 
@@ -141,15 +153,19 @@ class TagInserter:
                 ON CONFLICT (article_id, tag_id) DO NOTHING
                 """,
                 rel_rows,
-                page_size=self.config.page_size
+                page_size=self.config.page_size,
             )
-            logger.debug(f"Inserted {len(rel_rows)} article-tag relationships")
+            logger.debug("Inserted article-tag relationships", count=len(rel_rows))
 
         except psycopg2.Error as e:
-            logger.error(f"Failed to insert article-tag relationships: {e}")
-            raise DatabaseError(f"Failed to insert article-tag relationships: {e}") from e
+            logger.error("Failed to insert article-tag relationships", error=e)
+            raise DatabaseError(
+                f"Failed to insert article-tag relationships: {e}"
+            ) from e
 
-    def upsert_tags(self, conn: Connection, article_id: str, tags: List[str]) -> Dict[str, Any]:
+    def upsert_tags(
+        self, conn: Connection, article_id: str, tags: List[str]
+    ) -> Dict[str, Any]:
         """
         Upsert tags into the tags table and create article-tag relationships.
 
@@ -173,9 +189,13 @@ class TagInserter:
 
         if not unique_tags:
             logger.warning("No valid tags provided after cleaning")
-            return {"success": True, "tags_processed": 0, "message": "No valid tags to process"}
+            return {
+                "success": True,
+                "tags_processed": 0,
+                "message": "No valid tags to process",
+            }
 
-        logger.info(f"Processing {len(unique_tags)} unique tags for article {article_id}")
+        logger.info("Processing unique tags for article", count=len(unique_tags), article_id=article_id)
 
         try:
             with self._get_cursor(conn) as cursor:
@@ -198,23 +218,25 @@ class TagInserter:
                     "success": True,
                     "tags_processed": len(tag_id_map),
                     "article_id": article_id,
-                    "processed_tags": list(tag_id_map.keys())
+                    "processed_tags": list(tag_id_map.keys()),
                 }
 
-                logger.info(f"Successfully processed {len(tag_id_map)} tags for article {article_id}")
+                logger.info("Successfully processed tags for article", count=len(tag_id_map), article_id=article_id)
                 return result
 
         except Exception as e:
             # Rollback on any error
             try:
                 conn.rollback()
-                logger.error(f"Transaction rolled back due to error: {e}")
+                logger.error("Transaction rolled back due to error", error=e)
             except Exception as rollback_error:
-                logger.error(f"Failed to rollback transaction: {rollback_error}")
+                logger.error("Failed to rollback transaction", error=rollback_error)
 
             raise
 
-    def batch_upsert_tags(self, conn: Connection, article_tags: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def batch_upsert_tags(
+        self, conn: Connection, article_tags: List[Dict[str, Any]]
+    ) -> BatchResult:
         """
         Batch process multiple article-tag operations in a single transaction.
 
@@ -226,15 +248,22 @@ class TagInserter:
             Dictionary with batch operation results
         """
         if not article_tags:
-            return {"success": True, "processed_articles": 0, "message": "No articles to process"}
+            return {
+                "success": True,
+                "processed_articles": 0,
+                "failed_articles": 0,
+                "errors": [],
+                "message": "No articles to process",
+            }
 
-        logger.info(f"Starting batch processing of {len(article_tags)} articles in single transaction")
+        logger.info("Starting batch processing of articles in single transaction", count=len(article_tags))
 
-        results = {
+        results: BatchResult = {
             "success": True,
             "processed_articles": 0,
             "failed_articles": 0,
-            "errors": []
+            "errors": [],
+            "message": None,
         }
 
         try:
@@ -255,27 +284,35 @@ class TagInserter:
                             continue  # Skip articles with no valid tags
 
                         # Clean and validate tags
-                        clean_tags = [tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()]
+                        clean_tags = [
+                            tag.strip()
+                            for tag in tags
+                            if isinstance(tag, str) and tag.strip()
+                        ]
                         if not clean_tags:
                             continue
 
-                        valid_article_tags.append({
-                            "article_id": article_id,
-                            "tags": clean_tags
-                        })
+                        valid_article_tags.append(
+                            {"article_id": article_id, "tags": clean_tags}
+                        )
                         all_tags.update(clean_tags)
 
                     except Exception as e:
-                        results["failed_articles"] += 1
+                        results["failed_articles"] = results.get("failed_articles", 0) + 1
                         error_msg = f"Failed to validate article {item.get('article_id', 'unknown')}: {e}"
-                        results["errors"].append(error_msg)
-                        logger.error(error_msg)
+                        logger.error("Failed to validate article", article_id=item.get('article_id', 'unknown'), error=e)
 
                 if not valid_article_tags:
                     logger.warning("No valid article-tag combinations found")
-                    return {"success": True, "processed_articles": 0, "message": "No valid articles to process"}
+                    return {
+                        "success": True,
+                        "processed_articles": 0,
+                        "failed_articles": 0,
+                        "errors": [],
+                        "message": "No valid articles to process",
+                    }
 
-                logger.info(f"Processing {len(valid_article_tags)} valid articles with {len(all_tags)} unique tags")
+                logger.info("Processing valid articles with unique tags", valid_articles=len(valid_article_tags), unique_tags=len(all_tags))
 
                 # Step 1: Insert all unique tags at once
                 self._insert_tags(cursor, list(all_tags))
@@ -306,37 +343,41 @@ class TagInserter:
                         ON CONFLICT (article_id, tag_id) DO NOTHING
                         """,
                         all_relationships,
-                        page_size=self.config.page_size
+                        page_size=self.config.page_size,
                     )
-                    logger.info(f"Inserted {len(all_relationships)} article-tag relationships")
+                    logger.info("Inserted article-tag relationships", count=len(all_relationships))
 
                 # Commit the entire batch transaction
                 conn.commit()
 
                 results["processed_articles"] = len(valid_article_tags)
-                logger.info(f"Successfully batch processed {results['processed_articles']} articles")
+                logger.info("Successfully batch processed articles", count=results['processed_articles'])
 
         except Exception as e:
             # Rollback on any error
             try:
                 conn.rollback()
-                logger.error(f"Batch transaction rolled back due to error: {e}")
+                logger.error("Batch transaction rolled back due to error", error=e)
             except Exception as rollback_error:
-                logger.error(f"Failed to rollback batch transaction: {rollback_error}")
+                logger.error("Failed to rollback batch transaction", error=rollback_error)
 
             results["success"] = False
             results["failed_articles"] = len(article_tags)
             error_msg = f"Batch processing failed: {e}"
             results["errors"].append(error_msg)
-            logger.error(error_msg)
+            logger.error("Batch processing failed", error=e)
 
         if results["failed_articles"] > 0:
             results["success"] = False
 
-        logger.info(f"Batch processing completed: {results['processed_articles']} successful, {results['failed_articles']} failed")
+        logger.info(
+            f"Batch processing completed: {results['processed_articles']} successful, {results['failed_articles']} failed"
+        )
         return results
 
-    def batch_upsert_tags_no_commit(self, conn: Connection, article_tags: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def batch_upsert_tags_no_commit(
+        self, conn: Connection, article_tags: List[Dict[str, Any]]
+    ) -> BatchResult:
         """
         Batch process multiple article-tag operations without auto-committing.
         Transaction management is left to the caller.
@@ -349,15 +390,25 @@ class TagInserter:
             Dictionary with batch operation results
         """
         if not article_tags:
-            return {"success": True, "processed_articles": 0, "message": "No articles to process"}
+            return {
+                "success": True,
+                "processed_articles": 0,
+                "failed_articles": 0,
+                "errors": [],
+                "message": "No articles to process",
+            }
 
-        logger.info(f"Starting batch processing of {len(article_tags)} articles (caller manages transaction)")
+        logger.info(
+            "Starting batch processing of articles (caller manages transaction)",
+            count=len(article_tags),
+        )
 
-        results = {
+        results: BatchResult = {
             "success": True,
             "processed_articles": 0,
             "failed_articles": 0,
-            "errors": []
+            "errors": [],
+            "message": None,
         }
 
         try:
@@ -378,27 +429,44 @@ class TagInserter:
                             continue  # Skip articles with no valid tags
 
                         # Clean and validate tags
-                        clean_tags = [tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()]
+                        clean_tags = [
+                            tag.strip()
+                            for tag in tags
+                            if isinstance(tag, str) and tag.strip()
+                        ]
                         if not clean_tags:
                             continue
 
-                        valid_article_tags.append({
-                            "article_id": article_id,
-                            "tags": clean_tags
-                        })
+                        valid_article_tags.append(
+                            {"article_id": article_id, "tags": clean_tags}
+                        )
                         all_tags.update(clean_tags)
 
                     except Exception as e:
-                        results["failed_articles"] += 1
+                        results["failed_articles"] = results.get("failed_articles", 0) + 1
                         error_msg = f"Failed to validate article {item.get('article_id', 'unknown')}: {e}"
                         results["errors"].append(error_msg)
-                        logger.error(error_msg)
+                        logger.error(
+                            "Failed to validate article",
+                            article_id=item.get("article_id", "unknown"),
+                            error=e,
+                        )
 
                 if not valid_article_tags:
                     logger.warning("No valid article-tag combinations found")
-                    return {"success": True, "processed_articles": 0, "message": "No valid articles to process"}
+                    return {
+                        "success": True,
+                        "processed_articles": 0,
+                        "failed_articles": 0,
+                        "errors": [],
+                        "message": "No valid articles to process",
+                    }
 
-                logger.info(f"Processing {len(valid_article_tags)} valid articles with {len(all_tags)} unique tags")
+                logger.info(
+                    "Processing valid articles with unique tags",
+                    valid_articles=len(valid_article_tags),
+                    unique_tags=len(all_tags),
+                )
 
                 # Step 1: Insert all unique tags at once
                 self._insert_tags(cursor, list(all_tags))
@@ -429,13 +497,19 @@ class TagInserter:
                         ON CONFLICT (article_id, tag_id) DO NOTHING
                         """,
                         all_relationships,
-                        page_size=self.config.page_size
+                        page_size=self.config.page_size,
                     )
-                    logger.info(f"Inserted {len(all_relationships)} article-tag relationships")
+                    logger.info(
+                        "Inserted article-tag relationships",
+                        count=len(all_relationships),
+                    )
 
                 # DO NOT commit here - let caller manage transaction
                 results["processed_articles"] = len(valid_article_tags)
-                logger.info(f"Successfully batch processed {results['processed_articles']} articles (transaction pending)")
+                logger.info(
+                    "Successfully batch processed articles (transaction pending)",
+                    count=results["processed_articles"],
+                )
 
         except Exception as e:
             # DO NOT rollback here - let caller manage transaction
@@ -443,15 +517,20 @@ class TagInserter:
             results["failed_articles"] = len(article_tags)
             error_msg = f"Batch processing failed: {e}"
             results["errors"].append(error_msg)
-            logger.error(error_msg)
+            logger.error("Batch processing failed", error=e)
             # Re-raise to let caller handle transaction rollback
             raise
 
         if results["failed_articles"] > 0:
             results["success"] = False
 
-        logger.info(f"Batch processing completed (no commit): {results['processed_articles']} successful, {results['failed_articles']} failed")
+        logger.info(
+            "Batch processing completed (no commit)",
+            successful=results["processed_articles"],
+            failed=results["failed_articles"],
+        )
         return results
+
 
 # Maintain backward compatibility
 def upsert_tags(conn: Connection, article_id: str, tags: List[str]) -> None:

@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PoolConfig:
     """Configuration for database connection pool."""
+
     min_connections: int = 2
     max_connections: int = 10
     connection_timeout: float = 10.0  # Reduced from 30.0 to detect issues faster
@@ -31,7 +32,7 @@ class PoolConfig:
 class PooledConnection:
     """Wrapper for pooled database connection."""
 
-    def __init__(self, connection: Connection, pool: 'ConnectionPool'):
+    def __init__(self, connection: Connection, pool: "ConnectionPool"):
         self.connection = connection
         self.pool = pool
         self.created_at = time.time()
@@ -93,8 +94,10 @@ class PooledConnection:
 
             # Only set autocommit if we're not already in autocommit mode
             # and connection is in a ready state
-            if (not self.connection.autocommit and
-                self.connection.status == psycopg2.extensions.STATUS_READY):
+            if (
+                not self.connection.autocommit
+                and self.connection.status == psycopg2.extensions.STATUS_READY
+            ):
                 self.connection.autocommit = True
                 logger.debug("Enabled autocommit mode")
 
@@ -119,7 +122,9 @@ class ConnectionPool:
     def __init__(self, dsn: str, config: Optional[PoolConfig] = None):
         self.dsn = dsn
         self.config = config or PoolConfig()
-        self._pool: queue.Queue[PooledConnection] = queue.Queue(maxsize=self.config.max_connections)
+        self._pool: queue.Queue[PooledConnection] = queue.Queue(
+            maxsize=self.config.max_connections
+        )
         self._all_connections: List[PooledConnection] = []
         self._lock = threading.Lock()
         self._closed = False
@@ -128,10 +133,14 @@ class ConnectionPool:
         self._initialize_pool()
 
         # Start cleanup thread
-        self._cleanup_thread = threading.Thread(target=self._cleanup_expired, daemon=True)
+        self._cleanup_thread = threading.Thread(
+            target=self._cleanup_expired, daemon=True
+        )
         self._cleanup_thread.start()
 
-        logger.info(f"Connection pool initialized with {self.config.min_connections}-{self.config.max_connections} connections")
+        logger.info(
+            f"Connection pool initialized with {self.config.min_connections}-{self.config.max_connections} connections"
+        )
 
     def _initialize_pool(self):
         """Create initial pool connections."""
@@ -195,20 +204,26 @@ class ConnectionPool:
                     logger.debug("Connection validation passed")
 
             except queue.Empty:
-                logger.debug("No connections available in pool (queue empty or timeout)")
+                logger.debug(
+                    "No connections available in pool (queue empty or timeout)"
+                )
 
             # Create new connection if needed
             if conn is None:
                 logger.debug("Creating new connection...")
                 with self._lock:
                     current_count = len(self._all_connections)
-                    logger.debug(f"Current connection count: {current_count}/{self.config.max_connections}")
+                    logger.debug(
+                        f"Current connection count: {current_count}/{self.config.max_connections}"
+                    )
 
                     if current_count < self.config.max_connections:
                         conn = self._create_new_connection()
                         logger.debug(f"Created new connection: {conn}")
                     else:
-                        logger.warning(f"Connection pool exhausted! {current_count}/{self.config.max_connections}")
+                        logger.warning(
+                            f"Connection pool exhausted! {current_count}/{self.config.max_connections}"
+                        )
                         # Log pool statistics for debugging
                         try:
                             stats = self.get_stats()
@@ -247,7 +262,9 @@ class ConnectionPool:
                     self._remove_connection(conn)
             else:
                 # Failed to reset transaction state, remove connection
-                logger.warning("Failed to reset connection transaction state, removing from pool")
+                logger.warning(
+                    "Failed to reset connection transaction state, removing from pool"
+                )
                 self._remove_connection(conn)
         else:
             # Connection is invalid or expired
@@ -267,8 +284,11 @@ class ConnectionPool:
                 time.sleep(60)  # Check every minute
 
                 with self._lock:
-                    expired = [conn for conn in self._all_connections
-                             if conn.is_expired(self.config.idle_timeout) and not conn.in_use]
+                    expired = [
+                        conn
+                        for conn in self._all_connections
+                        if conn.is_expired(self.config.idle_timeout) and not conn.in_use
+                    ]
 
                 for conn in expired:
                     logger.debug("Removing expired connection")
@@ -300,7 +320,7 @@ class ConnectionPool:
             "total_connections": total_connections,
             "active_connections": active_connections,
             "available_connections": self._pool.qsize(),
-            "max_connections": self.config.max_connections
+            "max_connections": self.config.max_connections,
         }
 
     def close(self):
@@ -328,7 +348,9 @@ _pool_instance: Optional[ConnectionPool] = None
 _pool_lock = threading.Lock()
 
 
-def get_connection_pool(dsn: str, config: Optional[PoolConfig] = None) -> ConnectionPool:
+def get_connection_pool(
+    dsn: str, config: Optional[PoolConfig] = None
+) -> ConnectionPool:
     """Get or create the global connection pool."""
     global _pool_instance
 

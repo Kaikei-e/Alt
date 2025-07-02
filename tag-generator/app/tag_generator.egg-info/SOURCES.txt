@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+article_fetcher/fetch.py
+tag_extractor/extract.py
+tag_extractor/model_manager.py
+tag_generator/__init__.py
+tag_generator/logging_config.py
+tag_generator.egg-info/PKG-INFO
+tag_generator.egg-info/SOURCES.txt
+tag_generator.egg-info/dependency_links.txt
+tag_generator.egg-info/requires.txt
+tag_generator.egg-info/top_level.txt
+tag_inserter/upsert_tags.py

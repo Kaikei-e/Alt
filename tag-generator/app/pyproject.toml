@@ -1,3 +1,6 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [project]
 name = "tag-generator"
 version = "0.1.0"
@@ -16,4 +19,17 @@ dependencies = [
     "pytest>=8.4.1",
     "pytest-mock>=3.14.1",
     "psutil>=7.0.0",
+    "structlog>=25.4.0",
 ]
+
+[dependency-groups]
+dev = [
+    
+    "pytest-timeout>=2.4.0",
+    "ruff>=0.12.1",
+    "types-psycopg2>=2.9.21.20250516",
+    "pyright"
+]
+
+[tool.setuptools.packages]
+find = { include = ["tag_generator", "tag_generator.*", "article_fetcher", "article_fetcher.*", "tag_extractor", "tag_extractor.*", "tag_inserter", "tag_inserter.*"] }

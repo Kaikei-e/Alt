@@ -3,23 +3,24 @@ Model manager for efficient model loading and sharing.
 Implements singleton pattern for ML models to improve performance.
 """
 
-import logging
 import threading
 from typing import Optional, Set
 from dataclasses import dataclass
 
 from sentence_transformers import SentenceTransformer
 from keybert import KeyBERT
-from fugashi import Tagger
+from fugashi import Tagger  # pyright: ignore
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
 class ModelConfig:
     """Configuration for model loading."""
+
     model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"
-    device: str = 'cpu'
+    device: str = "cpu"
 
 
 class ModelManager:
@@ -28,11 +29,11 @@ class ModelManager:
     Ensures models are loaded only once and shared across all TagExtractor instances.
     """
 
-    _instance: Optional['ModelManager'] = None
+    _instance: Optional["ModelManager"] = None
     _lock = threading.Lock()
     _models_lock = threading.Lock()
 
-    def __new__(cls) -> 'ModelManager':
+    def __new__(cls) -> "ModelManager":
         """Ensure singleton instance."""
         if cls._instance is None:
             with cls._lock:
@@ -43,7 +44,7 @@ class ModelManager:
 
     def __init__(self):
         """Initialize model manager (called only once)."""
-        if not getattr(self, '_initialized', False):
+        if not getattr(self, "_initialized", False):
             self._embedder: Optional[SentenceTransformer] = None
             self._keybert: Optional[KeyBERT] = None
             self._ja_tagger: Optional[Tagger] = None
@@ -53,7 +54,9 @@ class ModelManager:
             self._initialized = True
             logger.info("ModelManager singleton initialized")
 
-    def get_models(self, config: ModelConfig) -> tuple[SentenceTransformer, KeyBERT, Tagger]:
+    def get_models(
+        self, config: ModelConfig
+    ) -> tuple[SentenceTransformer, KeyBERT, Tagger]:
         """
         Get or load models with thread-safe lazy loading.
 
@@ -64,15 +67,19 @@ class ModelManager:
             Tuple of (embedder, keybert, ja_tagger)
         """
         with self._models_lock:
-            if (self._embedder is None or
-                self._config is None or
-                self._config.model_name != config.model_name or
-                self._config.device != config.device):
-
-                logger.info(f"Loading models with config: {config}")
+            if (
+                self._embedder is None
+                or self._config is None
+                or self._config.model_name != config.model_name
+                or self._config.device != config.device
+            ):
+                logger.info("Loading models", config=config)
                 self._load_models(config)
                 self._config = config
 
+            assert self._embedder is not None
+            assert self._keybert is not None
+            assert self._ja_tagger is not None
             return self._embedder, self._keybert, self._ja_tagger
 
     def get_stopwords(self) -> tuple[Set[str], Set[str]]:
@@ -86,19 +93,20 @@ class ModelManager:
             if self._ja_stopwords is None or self._en_stopwords is None:
                 self._load_stopwords()
 
+            assert self._ja_stopwords is not None
+            assert self._en_stopwords is not None
             return self._ja_stopwords, self._en_stopwords
 
     def _load_models(self, config: ModelConfig) -> None:
         """Load ML models (called within lock)."""
         try:
-            logger.info(f"Loading SentenceTransformer model: {config.model_name}")
+            logger.info("Loading SentenceTransformer model", model_name=config.model_name)
             self._embedder = SentenceTransformer(
-                config.model_name,
-                device=config.device
+                config.model_name, device=config.device
             )
 
             logger.info("Loading KeyBERT model")
-            self._keybert = KeyBERT(self._embedder)
+            self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType]
 
             logger.info("Loading Japanese tagger")
             self._ja_tagger = Tagger()
@@ -106,12 +114,11 @@ class ModelManager:
             logger.info("Models loaded successfully")
 
         except Exception as e:
-            logger.error(f"Failed to load models: {e}")
+            logger.error("Failed to load models", error=e)
             # Reset to None so we can retry
             self._embedder = None
             self._keybert = None
             self._ja_tagger = None
-            raise
 
     def _load_stopwords(self) -> None:
         """Load stopwords files (called within lock)."""
@@ -119,41 +126,49 @@ class ModelManager:
         import nltk
 
         current_dir = os.path.dirname(os.path.dirname(__file__))
-        ja_stopwords_path = os.path.join(current_dir, "tag_extractor", "stopwords_ja.txt")
-        en_stopwords_path = os.path.join(current_dir, "tag_extractor", "stopwords_en.txt")
+        ja_stopwords_path = os.path.join(
+            current_dir, "tag_extractor", "stopwords_ja.txt"
+        )
+        en_stopwords_path = os.path.join(
+            current_dir, "tag_extractor", "stopwords_en.txt"
+        )
 
         # Load Japanese stopwords
         try:
-            with open(ja_stopwords_path, 'r', encoding='utf-8') as f:
+            with open(ja_stopwords_path, "r", encoding="utf-8") as f:
                 self._ja_stopwords = set(line.strip() for line in f if line.strip())
-            logger.info(f"Loaded {len(self._ja_stopwords)} Japanese stopwords")
+            logger.info("Loaded Japanese stopwords", count=len(self._ja_stopwords))
         except FileNotFoundError:
-            logger.warning(f"Japanese stopwords file not found: {ja_stopwords_path}")
+            logger.warning("Japanese stopwords file not found", path=ja_stopwords_path)
             self._ja_stopwords = set()
 
         # Load English stopwords
         try:
-            with open(en_stopwords_path, 'r', encoding='utf-8') as f:
-                self._en_stopwords = set(line.strip().lower() for line in f if line.strip())
+            with open(en_stopwords_path, "r", encoding="utf-8") as f:
+                self._en_stopwords = set(
+                    line.strip().lower() for line in f if line.strip()
+                )
         except FileNotFoundError:
-            logger.warning(f"English stopwords file not found: {en_stopwords_path}")
+            logger.warning("English stopwords file not found", path=en_stopwords_path)
             self._en_stopwords = set()
 
         # Add NLTK English stopwords
+        if self._en_stopwords is None:
+            self._en_stopwords = set()
         try:
-            if self._en_stopwords is None:
-                self._en_stopwords = set()
             self._en_stopwords.update(set(nltk.corpus.stopwords.words("english")))
-            logger.info(f"Loaded {len(self._en_stopwords)} English stopwords")
+            logger.info("Loaded English stopwords", count=len(self._en_stopwords))
         except Exception as e:
-            logger.warning(f"Could not load NLTK English stopwords: {e}")
+            logger.warning("Could not load NLTK English stopwords", error=e)
 
     def is_loaded(self) -> bool:
         """Check if models are loaded."""
         with self._models_lock:
-            return (self._embedder is not None and
-                   self._keybert is not None and
-                   self._ja_tagger is not None)
+            return (
+                self._embedder is not None
+                and self._keybert is not None
+                and self._ja_tagger is not None
+            )
 
     def clear_models(self) -> None:
         """Clear loaded models (for testing)."""

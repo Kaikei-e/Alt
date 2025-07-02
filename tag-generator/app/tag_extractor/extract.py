@@ -1,18 +1,16 @@
-import logging
 import re
 import unicodedata
-from typing import List, Optional, Tuple, Set, Dict
+from typing import List, Optional, Tuple, cast
 from dataclasses import dataclass
 from collections import Counter
 
 from langdetect import detect, LangDetectException
 import nltk
-import fugashi
+import structlog
 from .model_manager import get_model_manager, ModelConfig
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
+
 
 @dataclass
 class TagExtractionConfig:
@@ -26,13 +24,27 @@ class TagExtractionConfig:
     min_token_length: int = 2
     min_text_length: int = 10
     japanese_pos_tags: Tuple[str, ...] = (
-        "名詞", "固有名詞", "地名", "組織名", "人名", 
-        "名詞-普通名詞-一般", "名詞-普通名詞-サ変可能", "名詞-普通名詞-形状詞可能", 
-        "名詞-固有名詞-一般", "名詞-固有名詞-人名", "名詞-固有名詞-組織", "名詞-固有名詞-地域", 
-        "名詞-数詞", "名詞-副詞可能", "名詞-代名詞", "名詞-接尾辞-名詞的", "名詞-非自立" 
+        "名詞",
+        "固有名詞",
+        "地名",
+        "組織名",
+        "人名",
+        "名詞-普通名詞-一般",
+        "名詞-普通名詞-サ変可能",
+        "名詞-普通名詞-形状詞可能",
+        "名詞-固有名詞-一般",
+        "名詞-固有名詞-人名",
+        "名詞-固有名詞-組織",
+        "名詞-固有名詞-地域",
+        "名詞-数詞",
+        "名詞-副詞可能",
+        "名詞-代名詞",
+        "名詞-接尾辞-名詞的",
+        "名詞-非自立",
     )
     extract_compound_words: bool = True
     use_frequency_boost: bool = True
+
 
 class TagExtractor:
     """A class for extracting tags from text using KeyBERT and language-specific processing."""
@@ -46,23 +58,24 @@ class TagExtractor:
         """Lazy load models using the singleton model manager."""
         if not self._models_loaded:
             model_config = ModelConfig(
-                model_name=self.config.model_name,
-                device=self.config.device
+                model_name=self.config.model_name, device=self.config.device
             )
-            self._embedder, self._keybert, self._ja_tagger = self._model_manager.get_models(model_config)
+            self._embedder, self._keybert, self._ja_tagger = (
+                self._model_manager.get_models(model_config)
+            )
             self._models_loaded = True
             logger.debug("Models loaded via ModelManager")
 
     def _load_stopwords(self) -> None:
         """Load stopwords using the model manager."""
-        if not hasattr(self, '_stopwords_loaded'):
+        if not hasattr(self, "_stopwords_loaded"):
             self._ja_stopwords, self._en_stopwords = self._model_manager.get_stopwords()
             self._stopwords_loaded = True
 
     def _detect_language(self, text: str) -> str:
         """Detect the language of the text."""
         try:
-            return detect(text.replace("\n", " "))
+            return str(detect(text.replace("\n", " ")))
         except LangDetectException:
             logger.warning("Language detection failed, defaulting to English")
             return "en"
@@ -85,20 +98,20 @@ class TagExtractor:
         # Patterns for compound words - more restrictive to avoid over-splitting
         patterns = [
             # Tech terms with mixed scripts
-            r'[A-Za-z][A-Za-z0-9]*[ァ-ヶー]+(?:[A-Za-z0-9]*)?',  # e.g., "GitHubリポジトリ", "JAビル"
-            r'[ァ-ヶー]+[A-Za-z][A-Za-z0-9]*',  # e.g., "データセットID"
-            r'[A-Z]{2,}(?:[a-z]+)?',  # Acronyms like "JA", "AI", "CEO"
-            r'[一-龥]{2,}[ァ-ヶー]+',  # Kanji + Katakana compounds
-            r'[一-龥]+(?:の)[一-龥]+',  # Kanji + の + Kanji (e.g., "日本の首相")
+            r"[A-Za-z][A-Za-z0-9]*[ァ-ヶー]+(?:[A-Za-z0-9]*)?",  # e.g., "GitHubリポジトリ", "JAビル"
+            r"[ァ-ヶー]+[A-Za-z][A-Za-z0-9]*",  # e.g., "データセットID"
+            r"[A-Z]{2,}(?:[a-z]+)?",  # Acronyms like "JA", "AI", "CEO"
+            r"[一-龥]{2,}[ァ-ヶー]+",  # Kanji + Katakana compounds
+            r"[一-龥]+(?:の)[一-龥]+",  # Kanji + の + Kanji (e.g., "日本の首相")
             # Important proper nouns
-            r'[一-龥]{2,4}(?:大統領|首相|総理|議員|知事|市長)',  # Political titles
-            r'[一-龥]{2,4}(?:会社|企業|組織|団体|協会|連盟)',  # Organizations
-            r'[ァ-ヶー]{3,}(?:システム|サービス|プラットフォーム)',  # Tech terms
+            r"[一-龥]{2,4}(?:大統領|首相|総理|議員|知事|市長)",  # Political titles
+            r"[一-龥]{2,4}(?:会社|企業|組織|団体|協会|連盟)",  # Organizations
+            r"[ァ-ヶー]{3,}(?:システム|サービス|プラットフォーム)",  # Tech terms
             # Additional patterns for Japanese compound words
-            r'[ァ-ヶー]{2,}(?:[ァ-ヶー]+)?(?:[A-Za-z0-9]+)?', # Katakana compounds (e.g., "クラウドコンピューティング", "AIモデル")
-            r'[一-龥]{2,}[A-Za-z0-9]+', # Kanji + Alphanumeric (e.g., "情報IT", "技術AI")
-            r'[A-Za-z0-9]+[一-龥]{2,}', # Alphanumeric + Kanji (e.g., "IoT機器", "Web技術")
-            r'\d+[A-Za-zァ-ヶー一-龥]+', # Number + Word (e.g., "5G通信", "3Dプリンター")
+            r"[ァ-ヶー]{2,}(?:[ァ-ヶー]+)?(?:[A-Za-z0-9]+)?",  # Katakana compounds (e.g., "クラウドコンピューティング", "AIモデル")
+            r"[一-龥]{2,}[A-Za-z0-9]+",  # Kanji + Alphanumeric (e.g., "情報IT", "技術AI")
+            r"[A-Za-z0-9]+[一-龥]{2,}",  # Alphanumeric + Kanji (e.g., "IoT機器", "Web技術")
+            r"\d+[A-Za-zァ-ヶー一-龥]+",  # Number + Word (e.g., "5G通信", "3Dプリンター")
         ]
 
         for pattern in patterns:
@@ -111,21 +124,30 @@ class TagExtractor:
         while i < len(parsed):
             if parsed[i].feature.pos1 in self.config.japanese_pos_tags:
                 # Check if it's a proper noun or organization
-                if parsed[i].feature.pos2 in ['固有名詞', '組織', '人名', '地域']:
+                if parsed[i].feature.pos2 in ["固有名詞", "組織", "人名", "地域"]:
                     compound = parsed[i].surface
                     j = i + 1
 
                     # Look for connected proper nouns
                     while j < len(parsed):
                         if parsed[j].feature.pos1 in self.config.japanese_pos_tags:
-                            if parsed[j].feature.pos2 in ['固有名詞', '組織', '人名', '地域']:
+                            if parsed[j].feature.pos2 in [
+                                "固有名詞",
+                                "組織",
+                                "人名",
+                                "地域",
+                            ]:
                                 compound += parsed[j].surface
                                 j += 1
                             else:
                                 break
-                        elif parsed[j].surface in ['・', '＝', '－']:
+                        elif parsed[j].surface in ["・", "＝", "－"]:
                             # Include connectors in proper nouns
-                            if j + 1 < len(parsed) and parsed[j + 1].feature.pos1 in self.config.japanese_pos_tags:
+                            if (
+                                j + 1 < len(parsed)
+                                and parsed[j + 1].feature.pos1
+                                in self.config.japanese_pos_tags
+                            ):
                                 compound += parsed[j].surface + parsed[j + 1].surface
                                 j += 2
                             else:
@@ -165,16 +187,18 @@ class TagExtractor:
         # Also extract single important nouns
         single_nouns = []
         for word in self._ja_tagger(text):
-            if (word.feature.pos1 in self.config.japanese_pos_tags and
-                2 <= len(word.surface) <= 10 and
-                word.surface not in self._ja_stopwords):
+            if (
+                word.feature.pos1 in self.config.japanese_pos_tags
+                and 2 <= len(word.surface) <= 10
+                and word.surface not in self._ja_stopwords
+            ):
                 single_nouns.append(word.surface)
 
         # Add single noun frequencies
         single_freq = Counter(single_nouns)
 
         # Combine frequencies, giving priority to compounds
-        combined_freq = Counter()
+        combined_freq: Counter[str] = Counter()
         for term, freq in term_freq.items():
             combined_freq[term] = freq * 2  # Boost compound words
 
@@ -185,11 +209,13 @@ class TagExtractor:
         # Get top keywords by frequency
         top_keywords = []
         for term, freq in combined_freq.most_common(self.config.top_keywords * 2):
-            if freq >= 2 or len(term) >= 4:  # Include terms that appear 2+ times or are longer
+            if (
+                freq >= 2 or len(term) >= 4
+            ):  # Include terms that appear 2+ times or are longer
                 top_keywords.append(term)
 
         # Limit to configured number
-        return top_keywords[:self.config.top_keywords]
+        return top_keywords[: self.config.top_keywords]
 
     def _extract_keywords_english(self, text: str) -> List[str]:
         """Extract keywords specifically for English text using KeyBERT."""
@@ -202,7 +228,7 @@ class TagExtractor:
                 keyphrase_ngram_range=(1, 1),  # Single words only
                 top_n=self.config.top_keywords * 3,
                 use_mmr=True,
-                diversity=0.3
+                diversity=0.3,
             )
 
             phrase_keywords = self._keybert.extract_keywords(
@@ -210,7 +236,7 @@ class TagExtractor:
                 keyphrase_ngram_range=(2, 3),  # Phrases only
                 top_n=self.config.top_keywords,
                 use_mmr=True,
-                diversity=0.5
+                diversity=0.5,
             )
 
             # Combine and process keywords
@@ -218,10 +244,13 @@ class TagExtractor:
             seen_words = set()
 
             # Process phrases first to identify important compound terms
-            for phrase, score in phrase_keywords:
-                phrase = phrase.strip().lower()
+            for phrase_tuple in cast(List[Tuple[str, float]], phrase_keywords):
+                phrase = phrase_tuple[0].strip().lower()
+                score = phrase_tuple[1]
                 # Only keep phrases with high scores or specific patterns
-                if score >= self.config.min_score_threshold * 1.5:  # Higher threshold for phrases
+                if (
+                    score >= self.config.min_score_threshold * 1.5
+                ):  # Higher threshold for phrases
                     # Check if it's a meaningful compound (e.g., "apple intelligence", "mac mini")
                     words = phrase.split()
                     if len(words) >= 2:
@@ -232,8 +261,9 @@ class TagExtractor:
                             seen_words.update(words)
 
             # Then add important single words not already in phrases
-            for word, score in single_keywords:
-                word = word.strip().lower()
+            for word_tuple in cast(List[Tuple[str, float]], single_keywords):
+                word = word_tuple[0].strip().lower()
+                score = word_tuple[1]
                 if score >= self.config.min_score_threshold and word not in seen_words:
                     # Skip generic words
                     if len(word) > 2 and not word.isdigit():
@@ -245,7 +275,7 @@ class TagExtractor:
 
             # Final filtering and cleaning
             result = []
-            seen_final = set()
+            seen_final: set[str] = set()
 
             for keyword, score in all_keywords:
                 # Clean and check for duplicates
@@ -272,7 +302,7 @@ class TagExtractor:
             return result
 
         except Exception as e:
-            logger.error(f"KeyBERT extraction failed for English: {e}")
+            logger.error("KeyBERT extraction failed for English", error=e)
             return []
 
     def _tokenize_english(self, text: str) -> List[str]:
@@ -282,8 +312,10 @@ class TagExtractor:
         result = []
 
         for token in tokens:
-            if (re.fullmatch(r"\w+", token) and
-                len(token) > self.config.min_token_length):
+            if (
+                re.fullmatch(r"\w+", token)
+                and len(token) > self.config.min_token_length
+            ):
                 normalized = self._normalize_text(token, "en")
                 if normalized not in self._en_stopwords:
                     result.append(normalized)
@@ -300,7 +332,9 @@ class TagExtractor:
             tokens = self._tokenize_english(text)
             if tokens:
                 token_freq = Counter(tokens)
-                return [term for term, _ in token_freq.most_common(self.config.top_keywords)]
+                return [
+                    term for term, _ in token_freq.most_common(self.config.top_keywords)
+                ]
             return []
 
     def extract_tags(self, title: str, content: str) -> List[str]:
@@ -318,14 +352,14 @@ class TagExtractor:
 
         # Validate input
         if len(raw_text.strip()) < self.config.min_text_length:
-            logger.info(f"Input too short ({len(raw_text)} chars), skipping extraction")
+            logger.info("Input too short, skipping extraction", char_count=len(raw_text))
             return []
 
-        logger.info(f"Processing text with {len(raw_text)} characters")
+        logger.info("Processing text", char_count=len(raw_text))
 
         # Detect language
         lang = self._detect_language(raw_text)
-        logger.info(f"Detected language: {lang}")
+        logger.info("Detected language", lang=lang)
 
         # Language-specific extraction
         try:
@@ -337,18 +371,18 @@ class TagExtractor:
                 keywords = self._extract_keywords_english(raw_text)
 
             if keywords:
-                logger.info(f"Extraction successful: {keywords}")
+                logger.info("Extraction successful", keywords=keywords)
                 return keywords
             else:
                 # Try fallback method
                 logger.info("Primary extraction failed, trying fallback method")
                 fallback_keywords = self._fallback_extraction(raw_text, lang)
                 if fallback_keywords:
-                    logger.info(f"Fallback extraction successful: {fallback_keywords}")
+                    logger.info("Fallback extraction successful", keywords=fallback_keywords)
                     return fallback_keywords
 
         except Exception as e:
-            logger.error(f"Extraction error: {e}")
+            logger.error("Extraction error", error=e)
             # Try fallback on any error
             try:
                 fallback_keywords = self._fallback_extraction(raw_text, lang)
@@ -356,10 +390,11 @@ class TagExtractor:
                     logger.info(f"Emergency fallback successful: {fallback_keywords}")
                     return fallback_keywords
             except Exception as e2:
-                logger.error(f"Fallback also failed: {e2}")
+                logger.error("Fallback also failed", error=e2)
 
         logger.warning("No tags could be extracted")
         return []
+
 
 # Maintain backward compatibility
 def extract_tags(title: str, content: str) -> List[str]:

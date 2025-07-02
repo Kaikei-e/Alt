@@ -1,4 +1,3 @@
-import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
@@ -6,29 +5,33 @@ import psycopg2
 import psycopg2.extras
 from psycopg2.extras import DictCursor
 from psycopg2.extensions import connection as Connection
+import structlog
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
+
 
 @dataclass
 class ArticleFetcherConfig:
     """Configuration for article fetching operations."""
+
     batch_size: int = 500
     max_retries: int = 3
     retry_delay: float = 1.0
     timeout: int = 30
 
+
 class ArticleFetchError(Exception):
     """Custom exception for article fetching errors."""
+
     pass
+
 
 class ArticleFetcher:
     """A class for efficiently fetching articles from the database."""
 
     def __init__(self, config: Optional[ArticleFetcherConfig] = None):
         self.config = config or ArticleFetcherConfig()
-        logger.info(f"ArticleFetcher initialized with batch_size={self.config.batch_size}")
+        logger.info("ArticleFetcher initialized", batch_size=self.config.batch_size)
 
     def _validate_cursor_params(self, last_created_at: str, last_id: str) -> None:
         """Validate cursor parameters for pagination."""
@@ -59,7 +62,7 @@ class ArticleFetcher:
         conn: Connection,
         last_created_at: str,
         last_id: str,
-        custom_batch_size: Optional[int] = None
+        custom_batch_size: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
         Fetch articles from the database using cursor-based pagination.
@@ -84,20 +87,19 @@ class ArticleFetcher:
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
 
-        logger.debug(f"Fetching articles with cursor: created_at={last_created_at}, id={last_id}, batch_size={batch_size}")
+        logger.debug("Fetching articles with cursor", created_at=last_created_at, id=last_id, batch_size=batch_size)
 
         try:
             query = self._build_fetch_query()
 
             with conn.cursor(cursor_factory=DictCursor) as cursor:
                 cursor.execute(
-                    query,
-                    (last_created_at, last_created_at, last_id, batch_size)
+                    query, (last_created_at, last_created_at, last_id, batch_size)
                 )
 
                 rows = cursor.fetchall()
 
-                logger.info(f"Successfully fetched {len(rows)} articles")
+                logger.info("Successfully fetched articles", count=len(rows))
 
                 # Convert DictRow to regular dict for better type safety
                 articles = [dict(row) for row in rows]
@@ -105,19 +107,14 @@ class ArticleFetcher:
                 return articles
 
         except psycopg2.Error as e:
-            error_msg = f"Failed to fetch articles: {e}"
-            logger.error(error_msg)
-            raise ArticleFetchError(error_msg) from e
+            logger.error("Failed to fetch articles", error=e)
+            raise ArticleFetchError(str(e)) from e
         except Exception as e:
-            error_msg = f"Unexpected error while fetching articles: {e}"
-            logger.error(error_msg)
-            raise ArticleFetchError(error_msg) from e
+            logger.error("Unexpected error while fetching articles", error=e)
+            raise ArticleFetchError(str(e)) from e
 
     def fetch_articles_by_status(
-        self,
-        conn: Connection,
-        has_tags: bool = False,
-        limit: Optional[int] = None
+        self, conn: Connection, has_tags: bool = False, limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Fetch articles based on whether they have tags or not.
@@ -163,14 +160,13 @@ class ArticleFetcher:
                 cursor.execute(query, (batch_size,))
                 rows = cursor.fetchall()
 
-                logger.info(f"Fetched {len(rows)} articles {'with' if has_tags else 'without'} tags")
+                logger.info("Fetched articles by tag status", count=len(rows), has_tags=has_tags)
 
                 return [dict(row) for row in rows]
 
         except psycopg2.Error as e:
-            error_msg = f"Failed to fetch articles by tag status: {e}"
-            logger.error(error_msg)
-            raise ArticleFetchError(error_msg) from e
+            logger.error("Failed to fetch articles by tag status", error=e)
+            raise ArticleFetchError(str(e)) from e
 
     def count_untagged_articles(self, conn: Connection) -> int:
         """
@@ -195,20 +191,22 @@ class ArticleFetcher:
                 result = cursor.fetchone()
 
                 if result is None:
-                    logger.warning("No result returned from count query")
+                    logger.warning("No result returned from count query for untagged articles")
                     return 0
 
-                count = result[0]
-                logger.info(f"Found {count} untagged articles")
+                count: int = result[0]
+                logger.info("Found untagged articles", count=count)
                 return count
 
         except psycopg2.Error as e:
-            error_msg = f"Failed to count untagged articles: {e}"
-            logger.error(error_msg)
-            raise ArticleFetchError(error_msg) from e
+            logger.error("Failed to count untagged articles", error=e)
+            raise ArticleFetchError(str(e)) from e
+
 
 # Maintain backward compatibility
-def fetch_articles(conn: Connection, last_created_at: str, last_id: str) -> List[Dict[str, Any]]:
+def fetch_articles(
+    conn: Connection, last_created_at: str, last_id: str
+) -> List[Dict[str, Any]]:
     """
     Legacy function for backward compatibility.
 
