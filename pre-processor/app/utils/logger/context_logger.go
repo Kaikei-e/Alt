@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"strings"
 )
 
 type ContextKey string
@@ -24,10 +23,9 @@ const (
 )
 
 type ContextLogger struct {
-	logger      *slog.Logger
-	serviceName string
-	raskLogger  *RaskLogger
-	useRask     bool
+	logger        *slog.Logger
+	serviceName   string
+	unifiedLogger *UnifiedLogger // New unified logger implementation
 }
 
 type LoggerConfig struct {
@@ -48,124 +46,58 @@ func LoadLoggerConfigFromEnv() *LoggerConfig {
 }
 
 func NewContextLogger(output io.Writer, format, level string) *ContextLogger {
-	var handler slog.Handler
-
-	// Configure log level
-	var logLevel slog.Level
-	switch strings.ToUpper(level) {
-	case "DEBUG":
-		logLevel = slog.LevelDebug
-	case "INFO":
-		logLevel = slog.LevelInfo
-	case "WARN":
-		logLevel = slog.LevelWarn
-	case "ERROR":
-		logLevel = slog.LevelError
-	default:
-		logLevel = slog.LevelInfo
-	}
-
-	options := &slog.HandlerOptions{
-		Level:     logLevel,
-		AddSource: logLevel == slog.LevelDebug,
-		// Use ReplaceAttr to customize field names for rask compatibility
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			switch a.Key {
-			case slog.TimeKey:
-				return slog.Attr{Key: "time", Value: a.Value}
-			case slog.LevelKey:
-				// Convert level to lowercase for rask compatibility
-				if level, ok := a.Value.Any().(slog.Level); ok {
-					return slog.Attr{Key: "level", Value: slog.StringValue(strings.ToLower(level.String()))}
-				}
-				return a
-			case slog.MessageKey:
-				return slog.Attr{Key: "msg", Value: a.Value}
-			default:
-				return a
-			}
-		},
-	}
-
-	// Configure output format for rask integration
-	switch strings.ToLower(format) {
-	case "json":
-		handler = slog.NewJSONHandler(output, options)
-	default:
-		handler = slog.NewTextHandler(output, options)
-	}
-
-	logger := slog.New(handler)
+	// Use UnifiedLogger internally for consistent Alt-backend compatible output
+	unifiedLogger := NewUnifiedLoggerWithLevel(output, "pre-processor", level)
 
 	return &ContextLogger{
-		logger:      logger,
-		serviceName: "pre-processor",
-		useRask:     false,
+		logger:        unifiedLogger.logger,
+		serviceName:   "pre-processor",
+		unifiedLogger: unifiedLogger,
 	}
 }
 
 // NewContextLoggerWithConfig creates a ContextLogger based on configuration
 func NewContextLoggerWithConfig(config *LoggerConfig, output io.Writer) *ContextLogger {
-	if config.UseRask {
-		return NewRaskContextLogger(output, config.ServiceName)
+	// Always use UnifiedLogger now - UseRask flag is deprecated
+	unifiedLogger := NewUnifiedLoggerWithLevel(output, config.ServiceName, config.Level)
+
+	return &ContextLogger{
+		logger:        unifiedLogger.logger,
+		serviceName:   config.ServiceName,
+		unifiedLogger: unifiedLogger,
 	}
-	return NewContextLogger(output, config.Format, config.Level)
 }
 
-// NewRaskContextLogger creates a ContextLogger that uses RaskLogger internally
+// NewRaskContextLogger creates a ContextLogger that uses UnifiedLogger internally
+// Deprecated: USE_RASK_LOGGER flag is deprecated, always uses UnifiedLogger now
 func NewRaskContextLogger(output io.Writer, serviceName string) *ContextLogger {
-	raskLogger := NewRaskLogger(output, serviceName)
-	
+	// Use UnifiedLogger instead of RaskLogger for consistency
+	unifiedLogger := NewUnifiedLogger(output, serviceName)
+
 	return &ContextLogger{
-		logger:      nil, // Not used when useRask is true
-		serviceName: serviceName,
-		raskLogger:  raskLogger,
-		useRask:     true,
+		logger:        unifiedLogger.logger,
+		serviceName:   serviceName,
+		unifiedLogger: unifiedLogger,
 	}
 }
 
 func (cl *ContextLogger) WithContext(ctx context.Context) *slog.Logger {
-	if cl.useRask {
-		// When using Rask logger, we need to create a custom handler that ensures
-		// all logs go through the RaskLogger's formatting
-		var fields []any
-		
-		if requestID := ctx.Value(RequestIDKey); requestID != nil {
-			fields = append(fields, "request_id", requestID)
-		}
-		
-		if traceID := ctx.Value(TraceIDKey); traceID != nil {
-			fields = append(fields, "trace_id", traceID)
-		}
-		
-		if operation := ctx.Value(OperationKey); operation != nil {
-			fields = append(fields, "operation", operation)
-		}
-		
-		// Create a wrapper handler that delegates to RaskLogger
-		raskWithFields := cl.raskLogger.With(fields...)
-		wrapper := &raskHandlerWrapper{raskLogger: raskWithFields}
-		
-		return slog.New(wrapper)
+	// Always use UnifiedLogger for consistent Alt-backend compatible output
+	if cl.unifiedLogger != nil {
+		return cl.unifiedLogger.WithContext(ctx)
 	}
 
-	// Existing behavior for non-Rask mode
-	logger := cl.logger.With(
-		"service", cl.serviceName,
-		"version", "1.0.0",
-	)
+	// Fallback for backward compatibility (should not happen with new implementation)
+	logger := cl.logger.With("service", cl.serviceName, "version", "1.0.0")
 
-	// Add context values directly (not nested)
+	// Add context values directly
 	var fields []any
-
 	if requestID := ctx.Value(RequestIDKey); requestID != nil {
 		fields = append(fields, "request_id", requestID)
 	}
-
 	if traceID := ctx.Value(TraceIDKey); traceID != nil {
 		fields = append(fields, "trace_id", traceID)
 	}
-
 	if operation := ctx.Value(OperationKey); operation != nil {
 		fields = append(fields, "operation", operation)
 	}
@@ -197,56 +129,4 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-// raskHandlerWrapper wraps RaskLogger to implement slog.Handler interface
-type raskHandlerWrapper struct {
-	raskLogger *RaskLogger
-	attrs      []slog.Attr
-	groups     []string
-}
-
-func (w *raskHandlerWrapper) Enabled(_ context.Context, level slog.Level) bool {
-	return true // Let RaskLogger decide
-}
-
-func (w *raskHandlerWrapper) Handle(_ context.Context, record slog.Record) error {
-	// Convert record to RaskLogger call
-	args := make([]any, 0, record.NumAttrs()*2+len(w.attrs)*2)
-	
-	// Add existing attributes
-	for _, attr := range w.attrs {
-		args = append(args, attr.Key, attr.Value.Any())
-	}
-	
-	// Add record attributes
-	record.Attrs(func(attr slog.Attr) bool {
-		args = append(args, attr.Key, attr.Value.Any())
-		return true
-	})
-	
-	w.raskLogger.Log(record.Level, record.Message, args...)
-	return nil
-}
-
-func (w *raskHandlerWrapper) WithAttrs(attrs []slog.Attr) slog.Handler {
-	newAttrs := make([]slog.Attr, len(w.attrs)+len(attrs))
-	copy(newAttrs, w.attrs)
-	copy(newAttrs[len(w.attrs):], attrs)
-	
-	return &raskHandlerWrapper{
-		raskLogger: w.raskLogger,
-		attrs:      newAttrs,
-		groups:     w.groups,
-	}
-}
-
-func (w *raskHandlerWrapper) WithGroup(name string) slog.Handler {
-	newGroups := make([]string, len(w.groups)+1)
-	copy(newGroups, w.groups)
-	newGroups[len(w.groups)] = name
-	
-	return &raskHandlerWrapper{
-		raskLogger: w.raskLogger,
-		attrs:      w.attrs,
-		groups:     newGroups,
-	}
-}
+// Deprecated RaskLogger wrapper code removed - using UnifiedLogger consistently

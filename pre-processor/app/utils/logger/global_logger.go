@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"log/slog"
 	"os"
 )
 
@@ -10,7 +9,14 @@ import (
 // it. Production code still overrides this value in main.go.
 func init() {
 	if Logger == nil {
-		// Minimal text handler that writes to stderr; level=INFO by default.
-		Logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{}))
+		// Use UnifiedLogger for consistent Alt-backend compatible output
+		unifiedLogger := NewUnifiedLogger(os.Stderr, "pre-processor")
+		Logger = unifiedLogger.logger
 	}
+}
+
+// InitGlobalLogger updates the global Logger with UnifiedLogger
+func InitGlobalLogger(config *LoggerConfig) {
+	unifiedLogger := NewUnifiedLoggerWithLevel(os.Stdout, config.ServiceName, config.Level)
+	Logger = unifiedLogger.logger
 }
