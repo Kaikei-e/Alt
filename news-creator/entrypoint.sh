@@ -29,5 +29,5 @@ wait $SERVER_PID 2>/dev/null || true
 
 # Start server in foreground with log filtering
 echo "Starting ollama server in foreground..."
-# Filter out llama_model_loader messages while keeping other important logs
-exec ollama serve 2>&1 | grep -v "llama_model_loader" || true
+# Filter out llama_model_loader messages **and** generic INFO-level lines (method #1 in the notes)
+exec ollama serve 2>&1 | grep -vE "INFO|print_info:|llama_model_load|load_tensors:|llama_context:|ggml_cuda_init:" || true
