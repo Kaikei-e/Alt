@@ -185,6 +185,7 @@ services:
       - LOG_FORMAT=json
       - SERVICE_NAME=pre-processor
       - LOG_LEVEL=info
+      - USE_RASK_LOGGER=true
     depends_on:
       db:
         condition: service_healthy
