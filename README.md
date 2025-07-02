@@ -67,29 +67,18 @@ The backend is a pipeline of microservices that work together to fetch, process,
 flowchart TD
     Start([Start])
     
-    %% Feed Registration Flow
     A[User submits RSS feed URL via alt-frontend]
     B[alt-backend saves URL to feed_links table]
-    
-    %% Article Processing Flow
     C[pre-processor periodically fetches articles from feed URLs]
     D[Parse and store articles in articles table]
-    
-    %% Summarization Flow
     E[pre-processor sends article content to news-creator]
     F[news-creator generates summary using LLM]
     G[pre-processor saves summary to article_summaries table]
-    
-    %% Tag Generation Flow
     H[tag-generator fetches untagged articles]
     I[Generate tags using ML model]
     J[Save tags to article_tags and feed_tags tables]
-    
-    %% Search Indexing Flow
     K[search-indexer fetches new/updated articles]
     L[Send article data to Meilisearch for indexing]
-    
-    %% API Services
     M[alt-backend provides REST API for frontend]
     N[User searches via frontend]
     O[alt-backend queries Meilisearch]
@@ -97,7 +86,6 @@ flowchart TD
     
     End([End])
     
-    %% Flow connections
     Start --> A
     A --> B
     B --> C
@@ -116,7 +104,6 @@ flowchart TD
     O --> P
     P --> End
     
-    %% Parallel processes indication
     C -.->|Periodic| C
     H -.->|Continuous| H
     K -.->|Continuous| K
