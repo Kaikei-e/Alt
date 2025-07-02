@@ -67,7 +67,6 @@ The backend is a pipeline of microservices that work together to fetch, process,
 flowchart TD
 Start([Start])
 
-```
 %% Feed Registration Flow
 A[User submits RSS feed URL via alt-frontend]
 B[alt-backend saves URL to feed_links table]
@@ -121,8 +120,6 @@ P --> End
 C -.->|Periodic| C
 H -.->|Continuous| H
 K -.->|Continuous| K
-```
-```
 
 ```
 
