@@ -17,13 +17,16 @@ type Indexer struct {
 
 	lastCreatedAt *time.Time
 	lastID        string
+
+	synonyms map[string][]string
 }
 
-func New(cfg *config.Config, dbDriver *driver.DatabaseDriver, idx meilisearch.IndexManager) *Indexer {
+func New(cfg *config.Config, dbDriver *driver.DatabaseDriver, idx meilisearch.IndexManager, synonyms map[string][]string) *Indexer {
 	return &Indexer{
 		config:   cfg,
 		dbDriver: dbDriver,
 		index:    idx,
+		synonyms: synonyms,
 	}
 }
 

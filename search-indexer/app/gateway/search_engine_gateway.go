@@ -11,6 +11,7 @@ type SearchDriver interface {
 	IndexDocuments(ctx context.Context, docs []driver.SearchDocumentDriver) error
 	Search(ctx context.Context, query string, limit int) ([]driver.SearchDocumentDriver, error)
 	EnsureIndex(ctx context.Context) error
+	RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error
 }
 
 type SearchEngineGateway struct {
@@ -76,6 +77,17 @@ func (g *SearchEngineGateway) EnsureIndex(ctx context.Context) error {
 	if err != nil {
 		return &port.SearchEngineError{
 			Op:  "EnsureIndex",
+			Err: err.Error(),
+		}
+	}
+	return nil
+}
+
+func (g *SearchEngineGateway) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
+	err := g.driver.RegisterSynonyms(ctx, synonyms)
+	if err != nil {
+		return &port.SearchEngineError{
+			Op:  "RegisterSynonyms",
 			Err: err.Error(),
 		}
 	}

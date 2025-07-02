@@ -15,6 +15,7 @@ type mockSearchDriver struct {
 	indexErr      error
 	searchErr     error
 	ensureErr     error
+	synonymsErr  error
 }
 
 func (m *mockSearchDriver) IndexDocuments(ctx context.Context, docs []driver.SearchDocumentDriver) error {
@@ -35,6 +36,13 @@ func (m *mockSearchDriver) Search(ctx context.Context, query string, limit int) 
 func (m *mockSearchDriver) EnsureIndex(ctx context.Context) error {
 	if m.ensureErr != nil {
 		return m.ensureErr
+	}
+	return nil
+}
+
+func (m *mockSearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
+	if m.synonymsErr != nil {
+		return m.synonymsErr
 	}
 	return nil
 }

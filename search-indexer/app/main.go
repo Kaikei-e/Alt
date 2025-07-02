@@ -12,6 +12,7 @@ import (
 	"search-indexer/gateway"
 	"search-indexer/logger"
 	"search-indexer/rest"
+	"search-indexer/tokenize"
 	"search-indexer/usecase"
 
 	"github.com/meilisearch/meilisearch-go"
@@ -29,6 +30,10 @@ const (
 func main() {
 	// ──────────── init ────────────
 	logger.Init()
+	tokenizer, err := tokenize.InitTokenizer()
+	if err != nil {
+		logger.Logger.Error("Failed to initialize tokenizer", "err", err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -60,7 +65,7 @@ func main() {
 	}
 
 	// Create use cases (application layer)
-	indexUsecase := usecase.NewIndexArticlesUsecase(articleRepo, searchEngine)
+	indexUsecase := usecase.NewIndexArticlesUsecase(articleRepo, searchEngine, tokenizer)
 
 	// ──────────── batch indexer ────────────
 	go runIndexLoop(ctx, indexUsecase)

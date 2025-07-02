@@ -2,10 +2,10 @@ package usecase
 
 import (
 	"context"
-	"testing"
-	"time"
 	"search-indexer/domain"
 	"search-indexer/port"
+	"testing"
+	"time"
 )
 
 // Mock implementations for testing
@@ -18,11 +18,11 @@ func (m *mockArticleRepo) GetArticlesWithTags(ctx context.Context, lastCreatedAt
 	if m.err != nil {
 		return nil, nil, "", m.err
 	}
-	
+
 	if len(m.articles) == 0 {
 		return []*domain.Article{}, nil, "", nil
 	}
-	
+
 	lastArticle := m.articles[len(m.articles)-1]
 	createdAt := lastArticle.CreatedAt()
 	return m.articles, &createdAt, lastArticle.ID(), nil
@@ -52,19 +52,23 @@ func (m *mockSearchEngine) EnsureIndex(ctx context.Context) error {
 	return nil
 }
 
+func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
+	return nil
+}
+
 func TestIndexArticlesUsecase_Execute(t *testing.T) {
 	now := time.Now()
 	article1, _ := domain.NewArticle("1", "Title 1", "Content 1", []string{"tag1"}, now)
 	article2, _ := domain.NewArticle("2", "Title 2", "Content 2", []string{"tag2"}, now.Add(time.Minute))
 
 	tests := []struct {
-		name           string
-		mockArticles   []*domain.Article
-		repoErr        error
-		searchErr      error
-		batchSize      int
-		wantIndexed    int
-		wantErr        bool
+		name         string
+		mockArticles []*domain.Article
+		repoErr      error
+		searchErr    error
+		batchSize    int
+		wantIndexed  int
+		wantErr      bool
 	}{
 		{
 			name:         "successful indexing",
@@ -110,13 +114,13 @@ func TestIndexArticlesUsecase_Execute(t *testing.T) {
 				articles: tt.mockArticles,
 				err:      tt.repoErr,
 			}
-			
+
 			searchEngine := &mockSearchEngine{
 				err: tt.searchErr,
 			}
 
-			usecase := NewIndexArticlesUsecase(repo, searchEngine)
-			
+			usecase := NewIndexArticlesUsecase(repo, searchEngine, nil)
+
 			result, err := usecase.Execute(context.Background(), nil, "", tt.batchSize)
 
 			if tt.wantErr {

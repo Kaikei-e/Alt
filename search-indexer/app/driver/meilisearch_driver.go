@@ -149,3 +149,23 @@ func (d *MeilisearchDriver) getStringSlice(m map[string]interface{}, key string)
 	}
 	return []string{}
 }
+
+func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
+	task, err := d.index.UpdateSynonyms(&synonyms)
+	if err != nil {
+		return &DriverError{
+			Op:  "RegisterSynonyms",
+			Err: "failed to register synonyms: " + err.Error(),
+		}
+	}
+
+	_, err = d.index.WaitForTask(task.TaskUID, 15*1000)
+	if err != nil {
+		return &DriverError{
+			Op:  "RegisterSynonyms",
+			Err: "failed to wait for synonyms update: " + err.Error(),
+		}
+	}
+
+	return nil
+}

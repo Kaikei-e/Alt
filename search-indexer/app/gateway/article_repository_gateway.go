@@ -41,7 +41,7 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTags(ctx context.Context, last
 		if err != nil {
 			return nil, nil, "", &port.RepositoryError{
 				Op:  "GetArticlesWithTags",
-				Err: "failed to convert article to domain: " + err.Error(),
+				Err: "failed to convert article to domain: id=" + driverArticle.ID + ", " + err.Error(),
 			}
 		}
 		domainArticles = append(domainArticles, domainArticle)
