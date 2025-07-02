@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -57,16 +58,28 @@ func TestContextIntegration(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			var buf bytes.Buffer
-			logger := NewUnifiedLogger(&buf, "test-service")
+			// Capture stdout
+			old := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			logger := NewUnifiedLogger("test-service")
 
 			ctx := test.setupContext()
 			loggerWithCtx := logger.WithContext(ctx)
 
 			loggerWithCtx.Info("operation completed", "status", "success")
 
+			// Restore stdout and read captured output
+			w.Close()
+			os.Stdout = old
+
+			var buf bytes.Buffer
+			buf.ReadFrom(r)
+			logOutput := buf.String()
+
 			var logEntry map[string]interface{}
-			err := json.Unmarshal(buf.Bytes(), &logEntry)
+			err := json.Unmarshal([]byte(logOutput), &logEntry)
 			require.NoError(t, err, "Should produce valid JSON")
 
 			// Verify basic log structure - should use lowercase levels for rask-log-forwarder compatibility
@@ -83,14 +96,26 @@ func TestContextIntegration(t *testing.T) {
 }
 
 func TestBackwardsCompatibility(t *testing.T) {
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "feed-processor")
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	logger := NewUnifiedLogger("feed-processor")
 
 	// Test that existing service patterns continue to work
 	logger.Info("Feed processing started", "feed_id", "feed-123", "source", "rss")
 
+	// Restore stdout and read captured output
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	logOutput := buf.String()
+
 	var logEntry map[string]interface{}
-	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	err := json.Unmarshal([]byte(logOutput), &logEntry)
 	require.NoError(t, err, "Should produce valid JSON")
 
 	// Verify existing patterns continue to work - should use lowercase levels for rask-log-forwarder compatibility
@@ -101,14 +126,26 @@ func TestBackwardsCompatibility(t *testing.T) {
 }
 
 func TestServiceLayerIntegration(t *testing.T) {
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "feed-validator")
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	logger := NewUnifiedLogger("feed-validator")
 
 	// Test service layer error patterns
 	logger.Error("validation failed", "feed_url", "https://example.com/feed.xml", "error_type", "malformed_xml")
 
+	// Restore stdout and read captured output
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	logOutput := buf.String()
+
 	var logEntry map[string]interface{}
-	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	err := json.Unmarshal([]byte(logOutput), &logEntry)
 	require.NoError(t, err)
 
 	// Verify service layer patterns work - should use lowercase levels for rask-log-forwarder compatibility

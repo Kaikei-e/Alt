@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"os"
 	"time"
 
 	"pre-processor/models"
@@ -51,8 +50,8 @@ func NewFeedMetricsProcessorService(
 	logger *slog.Logger,
 ) FeedMetricsProcessorService {
 	// Initialize advanced logging with metrics components
-	contextLogger := utilsLogger.NewContextLogger(os.Stdout, "json", "info")
-	performanceLogger := utilsLogger.NewPerformanceLogger(os.Stdout, 5*time.Second)
+	contextLogger := utilsLogger.NewContextLogger("json", "info")
+	performanceLogger := utilsLogger.NewPerformanceLogger(5 * time.Second)
 
 	// Initialize retry policy (3 attempts, 1 second base delay)
 	retryPolicy := operrors.NewRetryPolicy(3, 1*time.Second)

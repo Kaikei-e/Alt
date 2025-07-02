@@ -3,7 +3,6 @@
 package handler
 
 import (
-	"bytes"
 	"context"
 	"log/slog"
 	"testing"
@@ -49,8 +48,7 @@ func TestHealthHandler_GetHealthMetrics(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Setup
-			logBuffer := &bytes.Buffer{}
-			contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+			contextLogger := logger.NewContextLogger("json", "debug")
 			metricsCollector := service.NewHealthMetricsCollector(contextLogger)
 
 			mockHealthChecker := &mockHealthChecker{}
@@ -90,8 +88,7 @@ func TestHealthHandler_GetHealthMetrics(t *testing.T) {
 }
 
 func TestHealthHandler_GetExtendedHealthMetrics(t *testing.T) {
-	logBuffer := &bytes.Buffer{}
-	contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+	contextLogger := logger.NewContextLogger("json", "debug")
 	metricsCollector := service.NewHealthMetricsCollector(contextLogger)
 
 	mockHealthChecker := &mockHealthChecker{}
@@ -173,8 +170,7 @@ func TestHealthHandler_CheckSLACompliance(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			logBuffer := &bytes.Buffer{}
-			contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+			contextLogger := logger.NewContextLogger("json", "debug")
 			metricsCollector := service.NewHealthMetricsCollector(contextLogger)
 
 			mockHealthChecker := &mockHealthChecker{}
@@ -254,8 +250,7 @@ func TestHealthHandler_GetHealthAlerts(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			logBuffer := &bytes.Buffer{}
-			contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+			contextLogger := logger.NewContextLogger("json", "debug")
 			metricsCollector := service.NewHealthMetricsCollector(contextLogger)
 
 			mockHealthChecker := &mockHealthChecker{}
@@ -315,8 +310,7 @@ func TestHealthHandler_MetricsCollectorNotConfigured(t *testing.T) {
 
 func TestHealthHandler_ExistingMethods(t *testing.T) {
 	// Test that existing health check methods still work
-	logBuffer := &bytes.Buffer{}
-	contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+	contextLogger := logger.NewContextLogger("json", "debug")
 	metricsCollector := service.NewHealthMetricsCollector(contextLogger)
 
 	mockHealthChecker := &mockHealthChecker{}

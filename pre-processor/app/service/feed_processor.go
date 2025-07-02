@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	"pre-processor/repository"
@@ -30,8 +29,8 @@ func NewFeedProcessorService(
 	logger *slog.Logger,
 ) FeedProcessorService {
 	// Initialize enhanced logging components
-	contextLogger := utilsLogger.NewContextLogger(os.Stdout, "json", "info")
-	performanceLogger := utilsLogger.NewPerformanceLogger(os.Stdout, 5*time.Second)
+	contextLogger := utilsLogger.NewContextLogger("json", "info")
+	performanceLogger := utilsLogger.NewPerformanceLogger(5 * time.Second)
 
 	return &feedProcessorService{
 		feedRepo:          feedRepo,

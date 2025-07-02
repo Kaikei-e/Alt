@@ -4,7 +4,6 @@ package logger
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"time"
 )
@@ -21,8 +20,8 @@ type Timer struct {
 	threshold time.Duration
 }
 
-func NewPerformanceLogger(output io.Writer, slowThreshold time.Duration) *PerformanceLogger {
-	contextLogger := NewContextLogger(output, "json", "debug")
+func NewPerformanceLogger(slowThreshold time.Duration) *PerformanceLogger {
+	contextLogger := NewContextLogger("json", "debug")
 
 	return &PerformanceLogger{
 		contextLogger: contextLogger,

@@ -3,16 +3,13 @@
 package logger
 
 import (
-	"bytes"
 	"context"
-	"os"
 	"testing"
 )
 
 func BenchmarkCurrentRaskLogger(b *testing.B) {
 	// Benchmark UnifiedLogger implementation (replacement for RaskLogger)
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "pre-processor")
+	logger := NewUnifiedLogger("pre-processor")
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -27,8 +24,7 @@ func BenchmarkCurrentRaskLogger(b *testing.B) {
 
 func BenchmarkCurrentRaskLoggerWithContext(b *testing.B) {
 	// Benchmark UnifiedLogger with context attributes
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "pre-processor")
+	logger := NewUnifiedLogger("pre-processor")
 	contextLogger := logger.With(
 		"request_id", "bench-123",
 		"trace_id", "trace-456",
@@ -46,8 +42,7 @@ func BenchmarkCurrentRaskLoggerWithContext(b *testing.B) {
 
 func BenchmarkCurrentContextLogger(b *testing.B) {
 	// Benchmark current ContextLogger implementation
-	var buf bytes.Buffer
-	contextLogger := NewContextLogger(&buf, "json", "info")
+	contextLogger := NewContextLogger("json", "info")
 
 	ctx := WithRequestID(WithTraceID(context.Background(), "trace-bench"), "req-bench")
 	logger := contextLogger.WithContext(ctx)
@@ -64,8 +59,7 @@ func BenchmarkCurrentContextLogger(b *testing.B) {
 
 func BenchmarkUnifiedLogger(b *testing.B) {
 	// Benchmark new UnifiedLogger implementation (will fail initially)
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "pre-processor")
+	logger := NewUnifiedLogger("pre-processor")
 
 	ctx := WithRequestID(WithTraceID(context.Background(), "trace-unified"), "req-unified")
 	contextLogger := logger.WithContext(ctx)
@@ -82,7 +76,7 @@ func BenchmarkUnifiedLogger(b *testing.B) {
 
 func BenchmarkMemoryUsage(b *testing.B) {
 	// Memory usage benchmark for UnifiedLogger implementation
-	logger := NewUnifiedLogger(os.Stdout, "pre-processor")
+	logger := NewUnifiedLogger("pre-processor")
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -103,8 +97,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 
 func BenchmarkJSONMarshaling(b *testing.B) {
 	// Benchmark JSON marshaling overhead in UnifiedLogger implementation
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "pre-processor")
+	logger := NewUnifiedLogger("pre-processor")
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -124,8 +117,7 @@ func TestPerformanceBaseline(t *testing.T) {
 	}
 
 	// Test UnifiedLogger performance
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "pre-processor")
+	logger := NewUnifiedLogger("pre-processor")
 
 	startMem := testing.AllocsPerRun(1000, func() {
 		logger.Info("baseline test",
@@ -144,8 +136,7 @@ func TestPerformanceBaseline(t *testing.T) {
 
 func TestCurrentImplementationLimits(t *testing.T) {
 	// Test UnifiedLogger implementation limits and bottlenecks
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "pre-processor")
+	logger := NewUnifiedLogger("pre-processor")
 
 	// Test with many attributes
 	args := make([]any, 0, 20)
@@ -154,11 +145,6 @@ func TestCurrentImplementationLimits(t *testing.T) {
 	}
 
 	logger.Info("stress test with many attributes", args...)
-
-	// Verify output is still valid
-	if buf.Len() == 0 {
-		t.Error("No output produced with many attributes")
-	}
 
 	// Test memory growth with context chaining
 	baseLogger := logger

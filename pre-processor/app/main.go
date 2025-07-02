@@ -23,8 +23,7 @@ func main() {
 	config := logger.LoadLoggerConfigFromEnv()
 
 	// Initialize logger with feature flag support
-	logFile := os.Stdout
-	contextLogger := logger.NewContextLoggerWithConfig(config, logFile)
+	contextLogger := logger.NewContextLoggerWithConfig(config)
 
 	// Use context logger as primary logger
 	logger.Logger = contextLogger.WithContext(context.Background())

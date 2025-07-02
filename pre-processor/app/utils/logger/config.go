@@ -3,7 +3,6 @@
 package logger
 
 import (
-	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -26,11 +25,11 @@ func LoadUnifiedLoggerConfigFromEnv() *UnifiedLoggerConfig {
 
 // InitializeUnifiedLogger creates a UnifiedLogger based on configuration
 func InitializeUnifiedLogger(config *UnifiedLoggerConfig) *UnifiedLogger {
-	return NewUnifiedLoggerWithLevel(os.Stdout, config.ServiceName, config.Level)
+	return NewUnifiedLoggerWithLevel(config.ServiceName, config.Level)
 }
 
 // NewUnifiedLoggerWithLevel creates a UnifiedLogger with specific log level
-func NewUnifiedLoggerWithLevel(output io.Writer, serviceName, level string) *UnifiedLogger {
+func NewUnifiedLoggerWithLevel(serviceName, level string) *UnifiedLogger {
 	// Parse log level string to slog.Level
 	var slogLevel slog.Level
 	switch strings.ToLower(level) {
@@ -71,7 +70,7 @@ func NewUnifiedLoggerWithLevel(output io.Writer, serviceName, level string) *Uni
 		},
 	}
 
-	handler := slog.NewJSONHandler(output, options)
+	handler := slog.NewJSONHandler(os.Stdout, options)
 
 	// Pre-configure with service name and version like Alt-backend
 	logger := slog.New(handler).With("service", serviceName, "version", "1.0.0")

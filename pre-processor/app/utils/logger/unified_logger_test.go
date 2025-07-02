@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
 	"testing"
 	"time"
 
@@ -59,14 +60,26 @@ func TestSlogCompatibility(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			var buf bytes.Buffer
-			logger := NewUnifiedLogger(&buf, "test-service")
+			// Capture stdout
+			old := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			logger := NewUnifiedLogger("test-service")
 
 			// Use the logger's internal slog logger with the specified level
 			logger.logger.Log(context.Background(), test.level, test.message, test.args...)
 
+			// Restore stdout and read captured output
+			w.Close()
+			os.Stdout = old
+
+			var buf bytes.Buffer
+			buf.ReadFrom(r)
+			logOutput := buf.String()
+
 			var result map[string]interface{}
-			err := json.Unmarshal(buf.Bytes(), &result)
+			err := json.Unmarshal([]byte(logOutput), &result)
 			require.NoError(t, err, "Should produce valid JSON")
 
 			// Verify all expected fields are present
@@ -82,8 +95,12 @@ func TestSlogCompatibility(t *testing.T) {
 }
 
 func TestAltBackendCompatibility(t *testing.T) {
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "feed-processor")
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	logger := NewUnifiedLogger("feed-processor")
 
 	// Simulate typical Alt-backend logging pattern
 	logger.Info("Feed search completed successfully",
@@ -92,8 +109,16 @@ func TestAltBackendCompatibility(t *testing.T) {
 		"duration_ms", 125,
 		"cache_hit", true)
 
+	// Restore stdout and read captured output
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	logOutput := buf.String()
+
 	var logEntry map[string]interface{}
-	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	err := json.Unmarshal([]byte(logOutput), &logEntry)
 	require.NoError(t, err, "Should produce valid JSON")
 
 	// Verify Alt-backend field structure exactly
@@ -121,8 +146,12 @@ func TestAltBackendCompatibility(t *testing.T) {
 }
 
 func TestContextIntegrationWithSlog(t *testing.T) {
-	var buf bytes.Buffer
-	logger := NewUnifiedLogger(&buf, "context-test")
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	logger := NewUnifiedLogger("context-test")
 
 	// Test context integration with slog patterns
 	ctx := WithRequestID(WithTraceID(context.Background(), "trace-slog"), "req-slog")
@@ -131,8 +160,16 @@ func TestContextIntegrationWithSlog(t *testing.T) {
 	// Use both logger methods and direct slog calls
 	contextLogger.Warn("potential issue detected", "threshold", 0.95, "current", 0.97)
 
+	// Restore stdout and read captured output
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	logOutput := buf.String()
+
 	var logEntry map[string]interface{}
-	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	err := json.Unmarshal([]byte(logOutput), &logEntry)
 	require.NoError(t, err, "Should produce valid JSON")
 
 	// Verify context fields are preserved in slog format

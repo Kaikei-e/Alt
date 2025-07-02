@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -44,16 +45,39 @@ func TestContextLogger_StructuredLogging(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Capture log output
-			buf := &bytes.Buffer{}
-			contextLogger := logger.NewContextLogger(buf, "json", "debug")
+			// Capture stdout
+			old := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			contextLogger := logger.NewContextLogger("json", "debug")
 
 			ctx := tc.setupContext()
 			tc.logOperation(ctx, contextLogger)
 
+			// Restore stdout and read captured output
+			w.Close()
+			os.Stdout = old
+
+			var buf bytes.Buffer
+			buf.ReadFrom(r)
+			logOutput := buf.String()
+
+			// Split into lines and find the last non-empty line
+			lines := bytes.Split([]byte(logOutput), []byte("\n"))
+			var lastLogLine []byte
+			for i := len(lines) - 1; i >= 0; i-- {
+				if len(lines[i]) > 0 {
+					lastLogLine = lines[i]
+					break
+				}
+			}
+
+			require.NotEmpty(t, lastLogLine, "should have at least one log line")
+
 			// Parse JSON log output
 			var logEntry map[string]interface{}
-			err := json.Unmarshal(buf.Bytes(), &logEntry)
+			err := json.Unmarshal(lastLogLine, &logEntry)
 			require.NoError(t, err)
 
 			// Verify required fields
@@ -88,16 +112,28 @@ func TestPerformanceLogger_Timing(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			buf := &bytes.Buffer{}
-			perfLogger := logger.NewPerformanceLogger(buf, tc.threshold)
+			// Capture stdout
+			old := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			perfLogger := logger.NewPerformanceLogger(tc.threshold)
 
 			// Simulate operation timing
 			timer := perfLogger.StartTimer(context.Background(), tc.operation)
 			time.Sleep(tc.duration)
 			timer.End()
 
+			// Restore stdout and read captured output
+			w.Close()
+			os.Stdout = old
+
+			var buf bytes.Buffer
+			buf.ReadFrom(r)
+			logOutput := buf.String()
+
 			// Verify log contains timing information
-			logLines := bytes.Split(buf.Bytes(), []byte("\n"))
+			logLines := bytes.Split([]byte(logOutput), []byte("\n"))
 
 			foundTiming := false
 			foundSlowWarning := false

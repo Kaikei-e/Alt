@@ -4,7 +4,6 @@ package logger
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"os"
 )
@@ -45,9 +44,9 @@ func LoadLoggerConfigFromEnv() *LoggerConfig {
 	}
 }
 
-func NewContextLogger(output io.Writer, format, level string) *ContextLogger {
+func NewContextLogger(format, level string) *ContextLogger {
 	// Use UnifiedLogger internally for consistent Alt-backend compatible output
-	unifiedLogger := NewUnifiedLoggerWithLevel(output, "pre-processor", level)
+	unifiedLogger := NewUnifiedLoggerWithLevel("pre-processor", level)
 
 	return &ContextLogger{
 		logger:        unifiedLogger.logger,
@@ -57,9 +56,9 @@ func NewContextLogger(output io.Writer, format, level string) *ContextLogger {
 }
 
 // NewContextLoggerWithConfig creates a ContextLogger based on configuration
-func NewContextLoggerWithConfig(config *LoggerConfig, output io.Writer) *ContextLogger {
+func NewContextLoggerWithConfig(config *LoggerConfig) *ContextLogger {
 	// Always use UnifiedLogger now - UseRask flag is deprecated
-	unifiedLogger := NewUnifiedLoggerWithLevel(output, config.ServiceName, config.Level)
+	unifiedLogger := NewUnifiedLoggerWithLevel(config.ServiceName, config.Level)
 
 	return &ContextLogger{
 		logger:        unifiedLogger.logger,
@@ -70,9 +69,9 @@ func NewContextLoggerWithConfig(config *LoggerConfig, output io.Writer) *Context
 
 // NewRaskContextLogger creates a ContextLogger that uses UnifiedLogger internally
 // Deprecated: USE_RASK_LOGGER flag is deprecated, always uses UnifiedLogger now
-func NewRaskContextLogger(output io.Writer, serviceName string) *ContextLogger {
+func NewRaskContextLogger(serviceName string) *ContextLogger {
 	// Use UnifiedLogger instead of RaskLogger for consistency
-	unifiedLogger := NewUnifiedLogger(output, serviceName)
+	unifiedLogger := NewUnifiedLogger(serviceName)
 
 	return &ContextLogger{
 		logger:        unifiedLogger.logger,

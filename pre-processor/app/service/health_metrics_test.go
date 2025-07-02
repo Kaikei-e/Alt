@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -51,8 +52,7 @@ func TestHealthMetricsCollector_RecordRequest(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			logBuffer := &bytes.Buffer{}
-			contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+			contextLogger := logger.NewContextLogger("json", "debug")
 			collector := NewHealthMetricsCollector(contextLogger)
 
 			ctx := context.Background()
@@ -110,8 +110,7 @@ func TestHealthMetricsCollector_SLACompliance(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			logBuffer := &bytes.Buffer{}
-			contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+			contextLogger := logger.NewContextLogger("json", "debug")
 			collector := NewHealthMetricsCollector(contextLogger)
 
 			ctx := context.Background()
@@ -162,8 +161,7 @@ func TestHealthMetricsCollector_ServiceStatus(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			logBuffer := &bytes.Buffer{}
-			contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+			contextLogger := logger.NewContextLogger("json", "debug")
 			collector := NewHealthMetricsCollector(contextLogger)
 
 			status := collector.calculateServiceStatus(tc.errorRate)
@@ -178,8 +176,7 @@ func TestHealthMetricsCollector_LogsPerSecond(t *testing.T) {
 		t.Skip("skipping timing-sensitive test")
 	}
 
-	logBuffer := &bytes.Buffer{}
-	contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+	contextLogger := logger.NewContextLogger("json", "debug")
 	collector := NewHealthMetricsCollector(contextLogger)
 
 	ctx := context.Background()
@@ -260,8 +257,7 @@ func TestHealthMetricsCollector_Alerts(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			logBuffer := &bytes.Buffer{}
-			contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+			contextLogger := logger.NewContextLogger("json", "debug")
 			collector := NewHealthMetricsCollector(contextLogger)
 
 			ctx := context.Background()
@@ -291,8 +287,7 @@ func TestHealthMetricsCollector_Alerts(t *testing.T) {
 }
 
 func TestHealthMetricsCollector_ExtendedMetrics(t *testing.T) {
-	logBuffer := &bytes.Buffer{}
-	contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+	contextLogger := logger.NewContextLogger("json", "debug")
 	collector := NewHealthMetricsCollector(contextLogger)
 
 	ctx := context.Background()
@@ -327,8 +322,7 @@ func TestHealthMetricsCollector_ExtendedMetrics(t *testing.T) {
 }
 
 func TestHealthMetricsCollector_ResetMetrics(t *testing.T) {
-	logBuffer := &bytes.Buffer{}
-	contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+	contextLogger := logger.NewContextLogger("json", "debug")
 	collector := NewHealthMetricsCollector(contextLogger)
 
 	ctx := context.Background()
@@ -361,8 +355,7 @@ func TestHealthMetricsCollector_ConcurrentAccess(t *testing.T) {
 		t.Skip("skipping concurrent test")
 	}
 
-	logBuffer := &bytes.Buffer{}
-	contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+	contextLogger := logger.NewContextLogger("json", "debug")
 	collector := NewHealthMetricsCollector(contextLogger)
 
 	ctx := context.Background()
@@ -411,8 +404,12 @@ func TestHealthMetricsCollector_ConcurrentAccess(t *testing.T) {
 }
 
 func TestHealthMetricsCollector_LogHealthMetrics(t *testing.T) {
-	logBuffer := &bytes.Buffer{}
-	contextLogger := logger.NewContextLogger(logBuffer, "json", "debug")
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	contextLogger := logger.NewContextLogger("json", "debug")
 	collector := NewHealthMetricsCollector(contextLogger)
 
 	ctx := context.Background()
@@ -421,14 +418,18 @@ func TestHealthMetricsCollector_LogHealthMetrics(t *testing.T) {
 	collector.RecordRequest(ctx, 150*time.Millisecond, true)
 	collector.RecordRequest(ctx, 250*time.Millisecond, false)
 
-	// Clear buffer to capture only health metrics log
-	logBuffer.Reset()
-
 	// Log health metrics
 	collector.LogHealthMetrics(ctx)
 
+	// Restore stdout and read captured output
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	logOutput := buf.String()
+
 	// Verify log was generated
-	logOutput := logBuffer.String()
 	assert.Contains(t, logOutput, "health_metrics",
 		"should log health metrics")
 	assert.Contains(t, logOutput, "error_rate",

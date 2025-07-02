@@ -4,8 +4,8 @@ package logger
 
 import (
 	"context"
-	"io"
 	"log/slog"
+	"os"
 	"strings"
 )
 
@@ -16,8 +16,9 @@ type UnifiedLogger struct {
 }
 
 // NewUnifiedLogger creates a new UnifiedLogger that outputs Alt-backend compatible JSON
-func NewUnifiedLogger(output io.Writer, serviceName string) *UnifiedLogger {
+func NewUnifiedLogger(serviceName string) *UnifiedLogger {
 	// Configure Alt-backend compatible JSON handler
+
 	options := &slog.HandlerOptions{
 		Level:     slog.LevelDebug, // Allow all levels for compatibility
 		AddSource: false,
@@ -42,7 +43,7 @@ func NewUnifiedLogger(output io.Writer, serviceName string) *UnifiedLogger {
 		},
 	}
 
-	handler := slog.NewJSONHandler(output, options)
+	handler := slog.NewJSONHandler(os.Stdout, options)
 
 	// Pre-configure with service name and version like Alt-backend
 	logger := slog.New(handler).With("service", serviceName, "version", "1.0.0")
