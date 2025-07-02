@@ -1,10 +1,10 @@
 # ---- Base image -----------------------------------------------------------
-FROM ollama/ollama:0.9.0
+FROM ollama/ollama:0.9.4
 
 # ---- OS deps (最小限) ------------------------------------------------------
 USER root
-RUN apt-get update                                           \
-    && apt-get install --no-install-recommends -y ca-certificates bash curl \
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates bash curl libcurl4 libpsl5 librtmp1 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---- 非特権ユーザー -------------------------------------------------------

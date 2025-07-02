@@ -7,6 +7,23 @@ from collections import Counter
 from langdetect import detect, LangDetectException
 import nltk
 import structlog
+
+# Re-export heavy model classes for compatibility with unit tests that patch
+# them directly on this module path (e.g., `patch("tag_extractor.extract.SentenceTransformer")`).
+# Importing them lazily would complicate patching semantics, so we import once
+# at import time. This does not load actual model weights because instantiation
+# happens elsewhere; it only brings the symbols into the namespace.
+
+from sentence_transformers import SentenceTransformer as _SentenceTransformer  # type: ignore
+from keybert import KeyBERT as _KeyBERT  # type: ignore
+from fugashi import Tagger as _Tagger  # type: ignore
+
+# Alias for outward exposure
+SentenceTransformer = _SentenceTransformer  # noqa: N816 (keep original casing for patching)
+KeyBERT = _KeyBERT  # noqa: N816
+Tagger = _Tagger  # noqa: N816
+
+# Local imports depending on re-export must come after alias definitions for consistency
 from .model_manager import get_model_manager, ModelConfig
 
 logger = structlog.get_logger(__name__)

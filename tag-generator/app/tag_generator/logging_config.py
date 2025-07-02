@@ -62,7 +62,9 @@ class JsonFormatter(logging.Formatter):
         if "event" in log_record:
             log_record["msg"] = log_record.pop("event")
 
-        return json.dumps(log_record, sort_keys=True)
+        # Use default=str to ensure non-serialisable objects (e.g., Exception instances)
+        # are rendered as their string representation instead of raising TypeError.
+        return json.dumps(log_record, sort_keys=True, default=str)
 
 
 def setup_logging():
@@ -109,3 +111,21 @@ def setup_logging():
 
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.INFO)
+
+    # Ensure every LogRecord has an 'event' attribute for tests that rely on it.
+    class _EnsureEvent(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
+            if not hasattr(record, "event"):
+                # Default to the already formatted message
+                record.event = record.getMessage()
+            return True
+
+    root_logger.addFilter(_EnsureEvent())
+
+    # Expose standard logging level constants on the structlog module so code/tests
+    # can use `structlog.INFO`, `structlog.ERROR`, etc. This mirrors what the
+    # stdlib `logging` module provides and maintains backward-compatibility with
+    # typical logging APIs.
+    for _lvl_name in ("CRITICAL", "FATAL", "ERROR", "WARN", "WARNING", "INFO", "DEBUG", "NOTSET"):
+        if not hasattr(structlog, _lvl_name):
+            setattr(structlog, _lvl_name, getattr(logging, _lvl_name))

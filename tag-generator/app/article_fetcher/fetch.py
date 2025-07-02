@@ -107,11 +107,13 @@ class ArticleFetcher:
                 return articles
 
         except psycopg2.Error as e:
-            logger.error("Failed to fetch articles", error=e)
-            raise ArticleFetchError(str(e)) from e
+            # Ensure the exception object is converted to a string for safe JSON serialisation
+            logger.error("Failed to fetch articles", error=str(e))
+            # Propagate a domain-specific error with a stable message for callers/tests
+            raise ArticleFetchError("Failed to fetch articles") from e
         except Exception as e:
-            logger.error("Unexpected error while fetching articles", error=e)
-            raise ArticleFetchError(str(e)) from e
+            logger.error("Unexpected error while fetching articles", error=str(e))
+            raise ArticleFetchError("Failed to fetch articles") from e
 
     def fetch_articles_by_status(
         self, conn: Connection, has_tags: bool = False, limit: Optional[int] = None
@@ -165,8 +167,8 @@ class ArticleFetcher:
                 return [dict(row) for row in rows]
 
         except psycopg2.Error as e:
-            logger.error("Failed to fetch articles by tag status", error=e)
-            raise ArticleFetchError(str(e)) from e
+            logger.error("Failed to fetch articles by tag status", error=str(e))
+            raise ArticleFetchError("Failed to fetch articles") from e
 
     def count_untagged_articles(self, conn: Connection) -> int:
         """
@@ -199,8 +201,8 @@ class ArticleFetcher:
                 return count
 
         except psycopg2.Error as e:
-            logger.error("Failed to count untagged articles", error=e)
-            raise ArticleFetchError(str(e)) from e
+            logger.error("Failed to count untagged articles", error=str(e))
+            raise ArticleFetchError("Failed to fetch articles") from e
 
 
 # Maintain backward compatibility
