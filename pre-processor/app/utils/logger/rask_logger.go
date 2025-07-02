@@ -79,8 +79,17 @@ func (rl *RaskLogger) Log(level slog.Level, msg string, args ...any) {
 		return
 	}
 
-	rl.output.Write(jsonData)
-	rl.output.Write([]byte("\n"))
+	_, err = rl.output.Write(jsonData)
+	if err != nil {
+		fmt.Fprintf(rl.output, `{"error":"failed to write log entry","message":"%s"}%s`, msg, "\n")
+		return
+	}
+
+	_, err = rl.output.Write([]byte("\n"))
+	if err != nil {
+		fmt.Fprintf(rl.output, `{"error":"failed to write log entry","message":"%s"}%s`, msg, "\n")
+		return
+	}
 }
 
 // Info logs an info message
