@@ -437,10 +437,30 @@ impl ServiceManager {
 
         info!("Sending batch of {} log entries", log_batch.len());
 
-        // Convert to JSON lines format for transmission
+        // Convert ParsedLogEntry to EnrichedLogEntry format expected by rask-log-aggregator
         let mut ndjson_lines = Vec::new();
         for entry in log_batch {
-            match serde_json::to_string(entry) {
+            // Convert ParsedLogEntry to EnrichedLogEntry
+            let enriched_entry = crate::parser::universal::EnrichedLogEntry {
+                service_type: entry.service_type.clone(),
+                log_type: entry.log_type.clone(),
+                message: entry.message.clone(),
+                level: entry.level.clone(),
+                timestamp: entry.timestamp.map(|dt| dt.to_rfc3339()).unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+                stream: entry.stream.clone(),
+                method: entry.method.clone(),
+                path: entry.path.clone(),
+                status_code: entry.status_code,
+                response_size: entry.response_size,
+                ip_address: entry.ip_address.clone(),
+                user_agent: entry.user_agent.clone(),
+                container_id: "unknown".to_string(), // TODO: Pass real container ID
+                service_name: entry.service_type.clone(), // Use service_type as service_name
+                service_group: None,
+                fields: entry.fields.clone(),
+            };
+
+            match serde_json::to_string(&enriched_entry) {
                 Ok(json_line) => ndjson_lines.push(json_line),
                 Err(e) => {
                     error!("Failed to serialize log entry: {}", e);
