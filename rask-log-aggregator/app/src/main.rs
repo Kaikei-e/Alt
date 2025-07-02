@@ -62,14 +62,29 @@ async fn aggregate_handler(
     State(exporter): State<Arc<dyn LogExporter>>,
     body: String,
 ) -> &'static str {
+    info!("Received aggregate request with body length: {}", body.len());
+
     let logs: Vec<EnrichedLogEntry> = body
         .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
+        .filter_map(|line| {
+            match serde_json::from_str(line) {
+                Ok(entry) => Some(entry),
+                Err(e) => {
+                    error!("Failed to parse log entry: {e} - Line: {line}");
+                    None
+                }
+            }
+        })
         .collect();
 
+    info!("Parsed {} log entries from request", logs.len());
+    let log_count = logs.len();
+
     if let Err(e) = exporter.export_batch(logs).await {
-        error!("Failed to export logs to ClickHouse: {}", e);
+        error!("Failed to export logs to ClickHouse: {e}");
         // ここでリトライやフォールバック処理を検討
+    } else {
+        info!("Successfully exported {log_count} log entries to ClickHouse");
     }
 
     "OK"
