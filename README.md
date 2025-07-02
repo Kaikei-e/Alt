@@ -98,7 +98,7 @@ graph TD
     C -->|10. Fetch New/Updated Articles| H
     H -->|11. Index Articles| D
     
-    A <-- "12. Provide API for Frontend" -- B
+    B -- "12. Provide API for Frontend" --> A
     B -->|13. Query Search Index| D
 
 ```
