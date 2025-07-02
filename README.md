@@ -64,57 +64,64 @@ Each service runs in its own container so components can be scaled or swapped in
 The backend is a pipeline of microservices that work together to fetch, process, and index content from RSS feeds. Each service is a container that communicates with others over the network.
 
 ```mermaid
-graph TD
-subgraph “User Interaction”
-A[alt-frontend]
-end
+flowchart TD
+Start([Start])
 
 ```
-subgraph "Core Services"
-    B[alt-backend]
-    C[(PostgreSQL DB)]
-    D[(Meilisearch)]
-end
+%% Feed Registration Flow
+A[User submits RSS feed URL via alt-frontend]
+B[alt-backend saves URL to feed_links table]
 
-subgraph "Asynchronous Processing Pipeline"
-    E[pre-processor]
-    F[news-creator]
-    G[tag-generator]
-    H[search-indexer]
-end
+%% Article Processing Flow
+C[pre-processor periodically fetches articles from feed URLs]
+D[Parse and store articles in articles table]
 
-%% User to Backend
-A -->|1. Register RSS URL| B
-A <-->|12. API Communication| B
+%% Summarization Flow
+E[pre-processor sends article content to news-creator]
+F[news-creator generates summary using LLM]
+G[pre-processor saves summary to article_summaries table]
 
-%% Backend to Database
-B -->|2. Save URL| C
-B <-->|13. Query Search Index| D
+%% Tag Generation Flow
+H[tag-generator fetches untagged articles]
+I[Generate tags using ML model]
+J[Save tags to article_tags and feed_tags tables]
 
-%% Processing Pipeline
-C -->|3. Fetch Articles| E
-E -->|4. Save Articles| C
+%% Search Indexing Flow
+K[search-indexer fetches new/updated articles]
+L[Send article data to Meilisearch for indexing]
 
-E -->|5. Summarize Article| F
-F -->|6. Return Summary| E
-E -->|7. Save Summary| C
+%% API Services
+M[alt-backend provides REST API for frontend]
+N[User searches via frontend]
+O[alt-backend queries Meilisearch]
+P[Return search results to user]
 
-C -->|8. Fetch Untagged Articles| G
-G -->|9. Generate & Save Tags| C
+End([End])
 
-C -->|10. Fetch New/Updated Articles| H
-H -->|11. Index Articles| D
+%% Flow connections
+Start --> A
+A --> B
+B --> C
+C --> D
+D --> E
+E --> F
+F --> G
+G --> H
+H --> I
+I --> J
+J --> K
+K --> L
+L --> M
+M --> N
+N --> O
+O --> P
+P --> End
 
-%% Styling
-classDef userInterface fill:#e1f5fe
-classDef coreService fill:#f3e5f5
-classDef database fill:#e8f5e8
-classDef processor fill:#fff3e0
-
-class A userInterface
-class B coreService
-class C,D database
-class E,F,G,H processor
+%% Parallel processes indication
+C -.->|Periodic| C
+H -.->|Continuous| H
+K -.->|Continuous| K
+```
 ```
 
 ```
