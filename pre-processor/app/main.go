@@ -22,15 +22,16 @@ func main() {
 	// Load logger configuration from environment
 	config := logger.LoadLoggerConfigFromEnv()
 
-	// Initialize enhanced logger
+	// Initialize logger with feature flag support
 	logFile := os.Stdout
-	contextLogger := logger.NewContextLogger(logFile, config.Format, config.Level)
+	contextLogger := logger.NewContextLoggerWithConfig(config, logFile)
 
 	// Use context logger as primary logger
 	logger.Logger = contextLogger.WithContext(context.Background())
 	logger.Logger.Info("Starting pre-processor service",
 		"log_level", config.Level,
-		"log_format", config.Format)
+		"log_format", config.Format,
+		"use_rask_logger", config.UseRask)
 
 	// Initialize database
 	ctx := context.Background()

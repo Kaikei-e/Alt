@@ -26,19 +26,24 @@ const (
 type ContextLogger struct {
 	logger      *slog.Logger
 	serviceName string
+	raskLogger  *RaskLogger
+	useRask     bool
 }
 
 type LoggerConfig struct {
 	Level       string
 	Format      string
 	ServiceName string
+	UseRask     bool
 }
 
 func LoadLoggerConfigFromEnv() *LoggerConfig {
+	useRask := getEnvOrDefault("USE_RASK_LOGGER", "false") == "true"
 	return &LoggerConfig{
 		Level:       getEnvOrDefault("LOG_LEVEL", "info"),
 		Format:      getEnvOrDefault("LOG_FORMAT", "json"),
 		ServiceName: getEnvOrDefault("SERVICE_NAME", "pre-processor"),
+		UseRask:     useRask,
 	}
 }
 
@@ -95,11 +100,56 @@ func NewContextLogger(output io.Writer, format, level string) *ContextLogger {
 	return &ContextLogger{
 		logger:      logger,
 		serviceName: "pre-processor",
+		useRask:     false,
+	}
+}
+
+// NewContextLoggerWithConfig creates a ContextLogger based on configuration
+func NewContextLoggerWithConfig(config *LoggerConfig, output io.Writer) *ContextLogger {
+	if config.UseRask {
+		return NewRaskContextLogger(output, config.ServiceName)
+	}
+	return NewContextLogger(output, config.Format, config.Level)
+}
+
+// NewRaskContextLogger creates a ContextLogger that uses RaskLogger internally
+func NewRaskContextLogger(output io.Writer, serviceName string) *ContextLogger {
+	raskLogger := NewRaskLogger(output, serviceName)
+	
+	return &ContextLogger{
+		logger:      nil, // Not used when useRask is true
+		serviceName: serviceName,
+		raskLogger:  raskLogger,
+		useRask:     true,
 	}
 }
 
 func (cl *ContextLogger) WithContext(ctx context.Context) *slog.Logger {
-	// Add rask-compatible fields
+	if cl.useRask {
+		// When using Rask logger, we need to create a custom handler that ensures
+		// all logs go through the RaskLogger's formatting
+		var fields []any
+		
+		if requestID := ctx.Value(RequestIDKey); requestID != nil {
+			fields = append(fields, "request_id", requestID)
+		}
+		
+		if traceID := ctx.Value(TraceIDKey); traceID != nil {
+			fields = append(fields, "trace_id", traceID)
+		}
+		
+		if operation := ctx.Value(OperationKey); operation != nil {
+			fields = append(fields, "operation", operation)
+		}
+		
+		// Create a wrapper handler that delegates to RaskLogger
+		raskWithFields := cl.raskLogger.With(fields...)
+		wrapper := &raskHandlerWrapper{raskLogger: raskWithFields}
+		
+		return slog.New(wrapper)
+	}
+
+	// Existing behavior for non-Rask mode
 	logger := cl.logger.With(
 		"service", cl.serviceName,
 		"version", "1.0.0",
@@ -145,4 +195,58 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// raskHandlerWrapper wraps RaskLogger to implement slog.Handler interface
+type raskHandlerWrapper struct {
+	raskLogger *RaskLogger
+	attrs      []slog.Attr
+	groups     []string
+}
+
+func (w *raskHandlerWrapper) Enabled(_ context.Context, level slog.Level) bool {
+	return true // Let RaskLogger decide
+}
+
+func (w *raskHandlerWrapper) Handle(_ context.Context, record slog.Record) error {
+	// Convert record to RaskLogger call
+	args := make([]any, 0, record.NumAttrs()*2+len(w.attrs)*2)
+	
+	// Add existing attributes
+	for _, attr := range w.attrs {
+		args = append(args, attr.Key, attr.Value.Any())
+	}
+	
+	// Add record attributes
+	record.Attrs(func(attr slog.Attr) bool {
+		args = append(args, attr.Key, attr.Value.Any())
+		return true
+	})
+	
+	w.raskLogger.Log(record.Level, record.Message, args...)
+	return nil
+}
+
+func (w *raskHandlerWrapper) WithAttrs(attrs []slog.Attr) slog.Handler {
+	newAttrs := make([]slog.Attr, len(w.attrs)+len(attrs))
+	copy(newAttrs, w.attrs)
+	copy(newAttrs[len(w.attrs):], attrs)
+	
+	return &raskHandlerWrapper{
+		raskLogger: w.raskLogger,
+		attrs:      newAttrs,
+		groups:     w.groups,
+	}
+}
+
+func (w *raskHandlerWrapper) WithGroup(name string) slog.Handler {
+	newGroups := make([]string, len(w.groups)+1)
+	copy(newGroups, w.groups)
+	newGroups[len(w.groups)] = name
+	
+	return &raskHandlerWrapper{
+		raskLogger: w.raskLogger,
+		attrs:      w.attrs,
+		groups:     newGroups,
+	}
 }
