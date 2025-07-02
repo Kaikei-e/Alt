@@ -82,8 +82,8 @@ func TestContextIntegration(t *testing.T) {
 			err := json.Unmarshal([]byte(logOutput), &logEntry)
 			require.NoError(t, err, "Should produce valid JSON")
 
-			// Verify basic log structure - should use lowercase levels for rask-log-forwarder compatibility
-			assert.Equal(t, "info", logEntry["level"])
+			// Verify basic log structure - should use uppercase levels for rask-log-forwarder compatibility
+			assert.Equal(t, "INFO", logEntry["level"])
 			assert.Equal(t, "operation completed", logEntry["msg"])
 			assert.Equal(t, "success", logEntry["status"])
 
@@ -118,8 +118,8 @@ func TestBackwardsCompatibility(t *testing.T) {
 	err := json.Unmarshal([]byte(logOutput), &logEntry)
 	require.NoError(t, err, "Should produce valid JSON")
 
-	// Verify existing patterns continue to work - should use lowercase levels for rask-log-forwarder compatibility
-	assert.Equal(t, "info", logEntry["level"])
+	// Verify existing patterns continue to work - should use uppercase levels for rask-log-forwarder compatibility
+	assert.Equal(t, "INFO", logEntry["level"])
 	assert.Equal(t, "Feed processing started", logEntry["msg"])
 	assert.Equal(t, "feed-123", logEntry["feed_id"])
 	assert.Equal(t, "rss", logEntry["source"])
@@ -148,8 +148,8 @@ func TestServiceLayerIntegration(t *testing.T) {
 	err := json.Unmarshal([]byte(logOutput), &logEntry)
 	require.NoError(t, err)
 
-	// Verify service layer patterns work - should use lowercase levels for rask-log-forwarder compatibility
-	assert.Equal(t, "error", logEntry["level"])
+	// Verify service layer patterns work - should use uppercase levels for rask-log-forwarder compatibility
+	assert.Equal(t, "ERROR", logEntry["level"])
 	assert.Equal(t, "validation failed", logEntry["msg"])
 	assert.Equal(t, "https://example.com/feed.xml", logEntry["feed_url"])
 	assert.Equal(t, "malformed_xml", logEntry["error_type"])

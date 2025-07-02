@@ -39,7 +39,7 @@ impl Default for LogStreamOptions {
             follow: true,
             stdout: true,
             stderr: true,
-            timestamps: true,
+            timestamps: false,
             tail: "0".to_string(), // All logs
         }
     }

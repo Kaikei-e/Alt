@@ -27,7 +27,7 @@ func TestSlogCompatibility(t *testing.T) {
 			message: "request completed",
 			args:    []any{"method", "GET", "status", 200, "duration_ms", 45},
 			expectedJSON: map[string]interface{}{
-				"level":       "info",
+				"level":       "INFO",
 				"msg":         "request completed",
 				"method":      "GET",
 				"status":      float64(200),
@@ -39,7 +39,7 @@ func TestSlogCompatibility(t *testing.T) {
 			message: "database connection failed",
 			args:    []any{"error", "connection timeout", "retries", 3},
 			expectedJSON: map[string]interface{}{
-				"level":   "error",
+				"level":   "ERROR",
 				"msg":     "database connection failed",
 				"error":   "connection timeout",
 				"retries": float64(3),
@@ -50,7 +50,7 @@ func TestSlogCompatibility(t *testing.T) {
 			message: "processing item",
 			args:    []any{"trace_id", "abc123", "operation", "validate"},
 			expectedJSON: map[string]interface{}{
-				"level":     "debug",
+				"level":     "DEBUG",
 				"msg":       "processing item",
 				"trace_id":  "abc123",
 				"operation": "validate",
@@ -123,7 +123,7 @@ func TestAltBackendCompatibility(t *testing.T) {
 
 	// Verify Alt-backend field structure exactly
 	expectedFields := map[string]interface{}{
-		"level":         "info",
+		"level":         "INFO",
 		"msg":           "Feed search completed successfully",
 		"query":         "golang news",
 		"total_results": float64(42),
@@ -174,7 +174,7 @@ func TestContextIntegrationWithSlog(t *testing.T) {
 
 	// Verify context fields are preserved in slog format
 	expectedFields := map[string]interface{}{
-		"level":      "warn",
+		"level":      "WARN",
 		"msg":        "potential issue detected",
 		"threshold":  0.95,
 		"current":    0.97,

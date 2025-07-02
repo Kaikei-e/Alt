@@ -6,7 +6,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"strings"
 )
 
 // UnifiedLogger provides slog-based logging compatible with Alt-backend format
@@ -29,9 +28,9 @@ func NewUnifiedLogger(serviceName string) *UnifiedLogger {
 				// Keep "time" field name like Alt-backend
 				return slog.Attr{Key: "time", Value: a.Value}
 			case slog.LevelKey:
-				// Convert to "level" and lowercase for rask-log-forwarder compatibility
+				// Convert to "level" and keep original case for rask-log-forwarder compatibility
 				if level, ok := a.Value.Any().(slog.Level); ok {
-					return slog.Attr{Key: "level", Value: slog.StringValue(strings.ToLower(level.String()))}
+					return slog.Attr{Key: "level", Value: slog.StringValue(level.String())}
 				}
 				return a
 			case slog.MessageKey:

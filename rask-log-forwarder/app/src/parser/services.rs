@@ -209,11 +209,11 @@ impl ServiceParser for GoStructuredParser {
                 let level_str = obj.get("level").and_then(|v| v.as_str()).unwrap_or("info");
 
                 let level = match level_str {
-                    "debug" => LogLevel::Debug,
-                    "info" => LogLevel::Info,
-                    "warn" | "warning" => LogLevel::Warn,
-                    "error" => LogLevel::Error,
-                    "fatal" | "panic" => LogLevel::Fatal,
+                    "debug" | "DEBUG" => LogLevel::Debug,
+                    "info" | "INFO" => LogLevel::Info,
+                    "warn" | "warning" | "WARN" | "WARNING" => LogLevel::Warn,
+                    "error" | "ERROR" => LogLevel::Error,
+                    "fatal" | "panic" | "FATAL" | "PANIC" => LogLevel::Fatal,
                     _ => LogLevel::Info,
                 };
 
