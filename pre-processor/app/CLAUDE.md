@@ -330,26 +330,32 @@ service := NewService(mockRepo, slog.Default())
 // ABOUTME: It transforms raw feed data into normalized format for the pipeline
 ```
 
-### Structured Logging Pattern with Rask Integration
-```go
-// Enhanced logging with service context and metrics
-func (s *Service) ProcessBatch(ctx context.Context, items []Item) error {
-    logger := s.logger.With(
-        "operation", "process_batch",
-        "batch_size", len(items),
-        "trace_id", getTraceID(ctx),
-        "service", "pre-processor",
-        "version", s.version,
-    )
+### Unified Logging Standards (Updated)
 
+#### UnifiedLogger Usage
+```go
+// 1. Logger initialization (main.go)
+config := logger.LoadLoggerConfigFromEnv()
+contextLogger := logger.NewContextLoggerWithConfig(config, os.Stdout)
+logger.Logger = contextLogger.WithContext(context.Background())
+
+// 2. Service layer implementation with context
+func (s *Service) ProcessBatch(ctx context.Context, items []Item) error {
+    // Add operation context for tracing
+    ctx = logger.WithOperation(ctx, "process_batch")
+    ctx = logger.WithTraceID(ctx, generateTraceID())
+    
+    contextLogger := s.logger.WithContext(ctx)
+    
     start := time.Now()
-    logger.Info("starting batch processing")
+    contextLogger.Info("starting batch processing", 
+        "batch_size", len(items))
 
     var processed, failed int
     for i, item := range items {
         if err := s.processItem(ctx, item); err != nil {
             failed++
-            logger.Error("item failed",
+            contextLogger.Error("item failed",
                 "item_id", item.ID,
                 "position", i,
                 "error", err,
@@ -360,7 +366,7 @@ func (s *Service) ProcessBatch(ctx context.Context, items []Item) error {
     }
 
     duration := time.Since(start)
-    logger.Info("batch completed successfully",
+    contextLogger.Info("batch completed successfully",
         "processed_count", processed,
         "failed_count", failed,
         "duration_ms", duration.Milliseconds(),
@@ -369,28 +375,51 @@ func (s *Service) ProcessBatch(ctx context.Context, items []Item) error {
     return nil
 }
 
-// Logger configuration with rask-log-forwarder compatibility
-func NewStructuredLogger(serviceName, version string) *slog.Logger {
-    opts := &slog.HandlerOptions{
-        Level: slog.LevelInfo,
-        ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-            // Ensure consistent timestamp format for rask-log-aggregator
-            if a.Key == "time" {
-                return slog.String("timestamp", time.Now().UTC().Format(time.RFC3339Nano))
-            }
-            return a
-        },
+// 3. Standard JSON output format (Alt-backend compatible)
+{
+  "time": "2024-01-01T12:00:00Z",
+  "level": "INFO", 
+  "msg": "batch completed successfully",
+  "processed_count": 100,
+  "failed_count": 0,
+  "duration_ms": 1500,
+  "items_per_second": 66.67,
+  "service": "pre-processor",
+  "operation": "process_batch",
+  "trace_id": "trace-abc123"
+}
+```
+
+#### Context Integration Pattern
+```go
+// Context propagation in handlers
+func (h *Handler) ProcessRequest(w http.ResponseWriter, r *http.Request) {
+    // Extract or generate request context
+    requestID := r.Header.Get("X-Request-ID")
+    if requestID == "" {
+        requestID = generateRequestID()
     }
-
-    handler := slog.NewJSONHandler(os.Stdout, opts)
-    logger := slog.New(handler)
-
-    // Add service context to all log entries
-    return logger.With(
-        "service", serviceName,
-        "version", version,
-        "component", "pre-processor",
-    )
+    
+    ctx := logger.WithRequestID(r.Context(), requestID)
+    ctx = logger.WithOperation(ctx, "process_request")
+    
+    // Use context-aware logger
+    contextLogger := h.logger.WithContext(ctx)
+    contextLogger.Info("request started", 
+        "method", r.Method, 
+        "path", r.URL.Path)
+    
+    // Context automatically propagates to service layer
+    result, err := h.service.ProcessRequest(ctx, data)
+    if err != nil {
+        contextLogger.Error("request failed", "error", err)
+        http.Error(w, "Internal error", 500)
+        return
+    }
+    
+    contextLogger.Info("request completed", 
+        "status", 200,
+        "response_size", len(result))
 }
 ```
 
