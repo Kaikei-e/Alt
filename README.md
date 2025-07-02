@@ -64,6 +64,7 @@ Each service runs in its own container so components can be scaled or swapped in
 The backend is a pipeline of microservices that work together to fetch, process, and index content from RSS feeds. Each service is a container that communicates with others over the network.
 
 ```mermaid
+
 flowchart TD
 Start([Start])
 
@@ -120,7 +121,6 @@ P --> End
 C -.->|Periodic| C
 H -.->|Continuous| H
 K -.->|Continuous| K
-
 ```
 
 ### Flow Description
