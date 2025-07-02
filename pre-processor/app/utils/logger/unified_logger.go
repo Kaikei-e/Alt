@@ -28,9 +28,9 @@ func NewUnifiedLogger(output io.Writer, serviceName string) *UnifiedLogger {
 				// Keep "time" field name like Alt-backend
 				return slog.Attr{Key: "time", Value: a.Value}
 			case slog.LevelKey:
-				// Convert to "level" and uppercase like Alt-backend
+				// Convert to "level" and lowercase for rask-log-forwarder compatibility
 				if level, ok := a.Value.Any().(slog.Level); ok {
-					return slog.Attr{Key: "level", Value: slog.StringValue(strings.ToUpper(level.String()))}
+					return slog.Attr{Key: "level", Value: slog.StringValue(strings.ToLower(level.String()))}
 				}
 				return a
 			case slog.MessageKey:
@@ -44,8 +44,8 @@ func NewUnifiedLogger(output io.Writer, serviceName string) *UnifiedLogger {
 
 	handler := slog.NewJSONHandler(output, options)
 
-	// Pre-configure with service name like Alt-backend
-	logger := slog.New(handler).With("service", serviceName)
+	// Pre-configure with service name and version like Alt-backend
+	logger := slog.New(handler).With("service", serviceName, "version", "1.0.0")
 
 	return &UnifiedLogger{
 		logger:      logger,

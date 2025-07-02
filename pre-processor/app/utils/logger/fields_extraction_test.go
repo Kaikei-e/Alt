@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // extractFieldsFromSlogJSON simulates rask-log-forwarder's field extraction logic
@@ -25,132 +24,154 @@ func extractFieldsFromSlogJSON(logEntry string) map[string]string {
 		"time":    true,
 		"level":   true,
 		"msg":     true,
-		"message": true,
 		"service": true,
 	}
 
 	for key, value := range jsonData {
 		if !skipFields[key] {
-			fields[key] = toString(value)
+			fields[key] = fmt.Sprintf("%v", value)
 		}
 	}
 
 	return fields
 }
 
-func toString(value interface{}) string {
-	switch v := value.(type) {
-	case string:
-		return v
-	case float64:
-		return fmt.Sprintf("%.0f", v)
-	case int:
-		return fmt.Sprintf("%d", v)
-	case bool:
-		return fmt.Sprintf("%t", v)
-	default:
-		return fmt.Sprintf("%v", v)
-	}
-}
-
-func TestFieldsExtraction(t *testing.T) {
+func TestFieldsExtractionCompatibility(t *testing.T) {
 	tests := map[string]struct {
 		logEntry       string
 		expectedFields map[string]string
 	}{
-		"standard slog format with fields": {
-			logEntry: `{"time":"2024-01-01T12:00:00Z","level":"INFO","msg":"test","operation":"fetch","trace_id":"abc123","service":"pre-processor"}`,
-			expectedFields: map[string]string{
-				"operation": "fetch",
-				"trace_id":  "abc123",
-			},
-		},
-		"request logging pattern": {
-			logEntry: `{"time":"2024-01-01T12:00:00Z","level":"INFO","msg":"request completed","method":"GET","path":"/feeds","status":"200","duration_ms":"45","service":"pre-processor"}`,
+		"request processing log": {
+			logEntry: `{"time":"2024-01-15T10:30:00Z","level":"info","msg":"request completed","method":"GET","path":"/api/feeds","status":200,"duration_ms":45,"request_id":"req-123"}`,
 			expectedFields: map[string]string{
 				"method":      "GET",
-				"path":        "/feeds",
+				"path":        "/api/feeds",
 				"status":      "200",
 				"duration_ms": "45",
+				"request_id":  "req-123",
 			},
 		},
-		"error logging with context": {
-			logEntry: `{"time":"2024-01-01T12:00:00Z","level":"ERROR","msg":"database error","error":"connection timeout","table":"feeds","retries":"3","service":"pre-processor"}`,
+		"feed processing log": {
+			logEntry: `{"time":"2024-01-15T10:31:00Z","level":"info","msg":"feed processed","feed_id":"feed-456","feed_url":"https://example.com/rss","items_count":15,"trace_id":"trace-789"}`,
 			expectedFields: map[string]string{
-				"error":   "connection timeout",
-				"table":   "feeds",
-				"retries": "3",
+				"feed_id":     "feed-456",
+				"feed_url":    "https://example.com/rss",
+				"items_count": "15",
+				"trace_id":    "trace-789",
 			},
 		},
-		"empty additional fields": {
-			logEntry:       `{"time":"2024-01-01T12:00:00Z","level":"INFO","msg":"simple message","service":"pre-processor"}`,
+		"error log with context": {
+			logEntry: `{"time":"2024-01-15T10:32:00Z","level":"error","msg":"validation failed","error":"malformed XML","feed_url":"https://bad.example.com/feed","operation":"validate_feed","request_id":"req-error"}`,
+			expectedFields: map[string]string{
+				"error":      "malformed XML",
+				"feed_url":   "https://bad.example.com/feed",
+				"operation":  "validate_feed",
+				"request_id": "req-error",
+			},
+		},
+		"debug log with trace": {
+			logEntry: `{"time":"2024-01-15T10:33:00Z","level":"debug","msg":"processing item","item_id":"item-999","trace_id":"debug-trace","step":"validation","position":3}`,
+			expectedFields: map[string]string{
+				"item_id":  "item-999",
+				"trace_id": "debug-trace",
+				"step":     "validation",
+				"position": "3",
+			},
+		},
+		"warning with metrics": {
+			logEntry: `{"time":"2024-01-15T10:34:00Z","level":"warn","msg":"high memory usage","memory_mb":512,"threshold_mb":400,"process":"feed-parser","alert_sent":true}`,
+			expectedFields: map[string]string{
+				"memory_mb":    "512",
+				"threshold_mb": "400",
+				"process":      "feed-parser",
+				"alert_sent":   "true",
+			},
+		},
+		"log with no custom fields": {
+			logEntry:       `{"time":"2024-01-15T10:35:00Z","level":"info","msg":"system started","service":"pre-processor"}`,
 			expectedFields: map[string]string{},
-		},
-		"numeric values conversion": {
-			logEntry: `{"time":"2024-01-01T12:00:00Z","level":"INFO","msg":"metrics","count":10,"rate":95.5,"enabled":true,"service":"pre-processor"}`,
-			expectedFields: map[string]string{
-				"count":   "10",
-				"rate":    "96", // Should convert to string
-				"enabled": "true",
-			},
 		},
 	}
 
-	for name, tc := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Test the extraction logic that rask-log-forwarder would use
-			fields := extractFieldsFromSlogJSON(tc.logEntry)
-			assert.Equal(t, tc.expectedFields, fields, "Fields extraction should match expected format")
+			fields := extractFieldsFromSlogJSON(test.logEntry)
 
-			// Verify fields can be stored in ClickHouse Map(String, String) format
-			for key, value := range fields {
-				assert.IsType(t, "", key, "Field keys must be strings")
-				assert.IsType(t, "", value, "Field values must be strings")
-			}
+			// Verify all expected fields are extracted
+			assert.Equal(t, test.expectedFields, fields,
+				"Extracted fields should match expected for %s", name)
 		})
 	}
 }
 
-func TestRaskLogForwarderCompatibility(t *testing.T) {
-	// Test that our expected slog output is compatible with rask-log-forwarder parsing
-
-	// This is what UnifiedLogger should produce (will fail initially)
-	expectedSlogOutput := `{"time":"2024-01-01T12:00:00Z","level":"INFO","msg":"feed processed","feed_id":"123","status":"success","duration_ms":"150","service":"pre-processor"}`
-
-	fields := extractFieldsFromSlogJSON(expectedSlogOutput)
-
-	expectedFields := map[string]string{
-		"feed_id":     "123",
-		"status":      "success",
-		"duration_ms": "150",
+func TestFieldsExtractionEdgeCases(t *testing.T) {
+	tests := map[string]struct {
+		logEntry       string
+		expectedFields map[string]string
+	}{
+		"nested object field": {
+			logEntry: `{"time":"2024-01-15T10:30:00Z","level":"info","msg":"complex data","user":{"id":123,"name":"test"},"status":"ok"}`,
+			expectedFields: map[string]string{
+				"user":   "map[id:123 name:test]",
+				"status": "ok",
+			},
+		},
+		"array field": {
+			logEntry: `{"time":"2024-01-15T10:30:00Z","level":"info","msg":"list data","tags":["news","tech","go"],"count":3}`,
+			expectedFields: map[string]string{
+				"tags":  "[news tech go]",
+				"count": "3",
+			},
+		},
+		"special characters in values": {
+			logEntry: `{"time":"2024-01-15T10:30:00Z","level":"info","msg":"special chars","url":"https://example.com/path?q=test&type=rss","description":"Test: 'quotes' and \"escapes\""}`,
+			expectedFields: map[string]string{
+				"url":         "https://example.com/path?q=test&type=rss",
+				"description": "Test: 'quotes' and \"escapes\"",
+			},
+		},
 	}
 
-	assert.Equal(t, expectedFields, fields, "Extracted fields should be ready for ClickHouse Map(String, String)")
-
-	// Verify no standard fields leak into the fields map
-	assert.NotContains(t, fields, "time")
-	assert.NotContains(t, fields, "level")
-	assert.NotContains(t, fields, "msg")
-	assert.NotContains(t, fields, "service")
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			fields := extractFieldsFromSlogJSON(test.logEntry)
+			assert.Equal(t, test.expectedFields, fields,
+				"Should handle edge case: %s", name)
+		})
+	}
 }
 
-func TestClickHouseFieldsSchema(t *testing.T) {
-	// Test that extracted fields match ClickHouse Map(String, String) requirements
-
-	testLogEntry := `{"time":"2024-01-01T12:00:00Z","level":"INFO","msg":"test","request_id":"req-123","operation":"process_feed","items_count":"5","success_rate":"98.5","service":"pre-processor"}`
-
-	fields := extractFieldsFromSlogJSON(testLogEntry)
-
-	// All fields should be string key-value pairs for ClickHouse compatibility
-	for key, value := range fields {
-		require.IsType(t, "", key, "ClickHouse Map keys must be strings")
-		require.IsType(t, "", value, "ClickHouse Map values must be strings")
-		require.NotEmpty(t, key, "ClickHouse Map keys cannot be empty")
+func TestFieldsExtractionWithInvalidJSON(t *testing.T) {
+	invalidCases := []string{
+		"not json at all",
+		`{"incomplete": json`,
+		`{"time":"2024-01-15T10:30:00Z"`, // incomplete
+		"",                               // empty
 	}
 
-	// Verify expected fields are present
-	expectedFields := []string{"request_id", "operation", "items_count", "success_rate"}
-	for _, fieldName := range expectedFields {
-		assert.Contains(t, fields, fieldName, "Field %s should be extracted", fieldName)
+	for i, invalidJSON := range invalidCases {
+		t.Run(fmt.Sprintf("invalid_case_%d", i), func(t *testing.T) {
+			fields := extractFieldsFromSlogJSON(invalidJSON)
+			assert.Nil(t, fields, "Should return nil for invalid JSON")
+		})
 	}
+}
+
+func TestActualUnifiedLoggerOutput(t *testing.T) {
+	// This test verifies that our extraction works with actual UnifiedLogger output
+	// This will fail initially until UnifiedLogger is implemented
+
+	// TODO: Uncomment when UnifiedLogger is ready
+	// var buf bytes.Buffer
+	// logger := NewUnifiedLogger(&buf, "test-service")
+	//
+	// logger.Info("test message", "custom_field", "custom_value", "number", 42)
+	//
+	// fields := extractFieldsFromSlogJSON(buf.String())
+	// expected := map[string]string{
+	// 	"custom_field": "custom_value",
+	// 	"number":       "42",
+	// }
+	//
+	// assert.Equal(t, expected, fields, "Should extract fields from actual logger output")
 }

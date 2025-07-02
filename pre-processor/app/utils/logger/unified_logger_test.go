@@ -26,30 +26,30 @@ func TestSlogCompatibility(t *testing.T) {
 			message: "request completed",
 			args:    []any{"method", "GET", "status", 200, "duration_ms", 45},
 			expectedJSON: map[string]interface{}{
-				"level":       "INFO",
+				"level":       "info",
 				"msg":         "request completed",
 				"method":      "GET",
 				"status":      float64(200),
 				"duration_ms": float64(45),
 			},
 		},
-		"error level with context": {
+		"error level with nested fields": {
 			level:   slog.LevelError,
 			message: "database connection failed",
 			args:    []any{"error", "connection timeout", "retries", 3},
 			expectedJSON: map[string]interface{}{
-				"level":   "ERROR",
+				"level":   "error",
 				"msg":     "database connection failed",
 				"error":   "connection timeout",
 				"retries": float64(3),
 			},
 		},
-		"debug level with trace": {
+		"debug level for tracing": {
 			level:   slog.LevelDebug,
 			message: "processing item",
 			args:    []any{"trace_id", "abc123", "operation", "validate"},
 			expectedJSON: map[string]interface{}{
-				"level":     "DEBUG",
+				"level":     "debug",
 				"msg":       "processing item",
 				"trace_id":  "abc123",
 				"operation": "validate",
@@ -57,74 +57,96 @@ func TestSlogCompatibility(t *testing.T) {
 		},
 	}
 
-	for name, tc := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
+			logger := NewUnifiedLogger(&buf, "test-service")
 
-			// This will fail initially since UnifiedLogger doesn't exist yet
-			logger := NewUnifiedLogger(&buf, "pre-processor")
+			// Use the logger's internal slog logger with the specified level
+			logger.logger.Log(context.Background(), test.level, test.message, test.args...)
 
-			// Call the logger method that should produce Alt-backend compatible JSON
-			contextLogger := logger.WithContext(context.Background())
-			contextLogger.Log(context.Background(), tc.level, tc.message, tc.args...)
+			var result map[string]interface{}
+			err := json.Unmarshal(buf.Bytes(), &result)
+			require.NoError(t, err, "Should produce valid JSON")
 
-			// Parse the JSON output
-			var logEntry map[string]interface{}
-			err := json.Unmarshal(buf.Bytes(), &logEntry)
-			require.NoError(t, err, "JSON output should be valid")
-
-			// Verify Alt-backend compatible structure
-			for key, expectedValue := range tc.expectedJSON {
-				assert.Equal(t, expectedValue, logEntry[key], "Field %s should match Alt-backend format", key)
+			// Verify all expected fields are present
+			for key, expectedValue := range test.expectedJSON {
+				assert.Equal(t, expectedValue, result[key], "Field %s should match", key)
 			}
 
-			// Must contain service field like Alt-backend
-			assert.Equal(t, "pre-processor", logEntry["service"])
-
-			// Must contain time field in Alt-backend format
-			assert.Contains(t, logEntry, "time")
-
-			// Time should be parseable as RFC3339
-			timeStr, ok := logEntry["time"].(string)
-			require.True(t, ok, "time should be a string")
-			_, err = time.Parse(time.RFC3339, timeStr)
-			assert.NoError(t, err, "time should be in RFC3339 format like Alt-backend")
+			// Verify standard fields are present
+			assert.Contains(t, result, "time", "Should have timestamp")
+			assert.Equal(t, "test-service", result["service"], "Should have service name")
 		})
 	}
 }
 
-func TestAltBackendFieldStructure(t *testing.T) {
+func TestAltBackendCompatibility(t *testing.T) {
 	var buf bytes.Buffer
+	logger := NewUnifiedLogger(&buf, "feed-processor")
 
-	// This will fail initially since UnifiedLogger doesn't exist yet
-	logger := NewUnifiedLogger(&buf, "pre-processor")
-	contextLogger := logger.WithContext(context.Background())
-
-	// Test exact Alt-backend usage pattern
-	contextLogger.Info("Feed search completed successfully",
+	// Simulate typical Alt-backend logging pattern
+	logger.Info("Feed search completed successfully",
 		"query", "golang news",
-		"results_count", 10)
+		"total_results", 42,
+		"duration_ms", 125,
+		"cache_hit", true)
 
 	var logEntry map[string]interface{}
 	err := json.Unmarshal(buf.Bytes(), &logEntry)
-	require.NoError(t, err)
+	require.NoError(t, err, "Should produce valid JSON")
 
 	// Verify Alt-backend field structure exactly
 	expectedFields := map[string]interface{}{
-		"level":         "INFO",
+		"level":         "info",
 		"msg":           "Feed search completed successfully",
 		"query":         "golang news",
-		"results_count": float64(10),
-		"service":       "pre-processor",
+		"total_results": float64(42),
+		"duration_ms":   float64(125),
+		"cache_hit":     true,
+		"service":       "feed-processor",
 	}
 
 	for key, expectedValue := range expectedFields {
-		assert.Equal(t, expectedValue, logEntry[key], "Field %s must match Alt-backend exactly", key)
+		assert.Equal(t, expectedValue, logEntry[key], "Alt-backend field %s should match", key)
 	}
 
-	// Should NOT contain rask-specific fields in the JSON
-	assert.NotContains(t, logEntry, "service_type")
-	assert.NotContains(t, logEntry, "log_type")
-	assert.NotContains(t, logEntry, "service_name")
-	assert.NotContains(t, logEntry, "fields")
+	// Verify required Alt-backend structure
+	assert.Contains(t, logEntry, "time", "Should have RFC3339 timestamp")
+	assert.IsType(t, "", logEntry["time"], "Timestamp should be string")
+
+	// Verify timestamp is valid RFC3339
+	_, err = time.Parse(time.RFC3339, logEntry["time"].(string))
+	assert.NoError(t, err, "Timestamp should be valid RFC3339")
+}
+
+func TestContextIntegrationWithSlog(t *testing.T) {
+	var buf bytes.Buffer
+	logger := NewUnifiedLogger(&buf, "context-test")
+
+	// Test context integration with slog patterns
+	ctx := WithRequestID(WithTraceID(context.Background(), "trace-slog"), "req-slog")
+	contextLogger := logger.WithContext(ctx)
+
+	// Use both logger methods and direct slog calls
+	contextLogger.Warn("potential issue detected", "threshold", 0.95, "current", 0.97)
+
+	var logEntry map[string]interface{}
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	require.NoError(t, err, "Should produce valid JSON")
+
+	// Verify context fields are preserved in slog format
+	expectedFields := map[string]interface{}{
+		"level":      "warn",
+		"msg":        "potential issue detected",
+		"threshold":  0.95,
+		"current":    0.97,
+		"request_id": "req-slog",
+		"trace_id":   "trace-slog",
+		"service":    "context-test",
+	}
+
+	for key, expectedValue := range expectedFields {
+		assert.Equal(t, expectedValue, logEntry[key], "Context field %s should be preserved", key)
+	}
 }

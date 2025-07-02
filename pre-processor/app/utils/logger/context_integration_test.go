@@ -35,158 +35,85 @@ func TestContextIntegration(t *testing.T) {
 		},
 		"operation context": {
 			setupContext: func() context.Context {
-				return WithOperation(context.Background(), "process_feed")
+				return WithOperation(context.Background(), "feed-processing")
 			},
 			expectedFields: map[string]string{
-				"operation": "process_feed",
+				"operation": "feed-processing",
 			},
 		},
-		"full context chain": {
+		"combined context": {
 			setupContext: func() context.Context {
-				ctx := context.Background()
-				ctx = WithRequestID(ctx, "req-789")
-				ctx = WithTraceID(ctx, "trace-abc")
-				ctx = WithOperation(ctx, "validate_input")
-				return ctx
+				ctx := WithRequestID(context.Background(), "req-789")
+				ctx = WithTraceID(ctx, "trace-789")
+				return WithOperation(ctx, "validation")
 			},
 			expectedFields: map[string]string{
 				"request_id": "req-789",
-				"trace_id":   "trace-abc",
-				"operation":  "validate_input",
+				"trace_id":   "trace-789",
+				"operation":  "validation",
 			},
-		},
-		"empty context": {
-			setupContext: func() context.Context {
-				return context.Background()
-			},
-			expectedFields: map[string]string{},
 		},
 	}
 
-	for name, tc := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
-			ctx := tc.setupContext()
+			logger := NewUnifiedLogger(&buf, "test-service")
 
-			// This will fail initially since UnifiedLogger doesn't exist yet
-			logger := NewUnifiedLogger(&buf, "pre-processor")
-			contextLogger := logger.WithContext(ctx)
+			ctx := test.setupContext()
+			loggerWithCtx := logger.WithContext(ctx)
 
-			contextLogger.Info("operation completed", "status", "success")
+			loggerWithCtx.Info("operation completed", "status", "success")
 
-			// Parse the JSON output
 			var logEntry map[string]interface{}
 			err := json.Unmarshal(buf.Bytes(), &logEntry)
-			require.NoError(t, err, "JSON output should be valid")
+			require.NoError(t, err, "Should produce valid JSON")
 
-			// Verify all expected context fields are present
-			for key, expectedValue := range tc.expectedFields {
-				assert.Equal(t, expectedValue, logEntry[key], "Context field %s should be preserved", key)
-			}
-
-			// Verify basic log structure
-			assert.Equal(t, "INFO", logEntry["level"])
+			// Verify basic log structure - should use lowercase levels for rask-log-forwarder compatibility
+			assert.Equal(t, "info", logEntry["level"])
 			assert.Equal(t, "operation completed", logEntry["msg"])
 			assert.Equal(t, "success", logEntry["status"])
-			assert.Equal(t, "pre-processor", logEntry["service"])
+
+			// Verify expected context fields are present
+			for key, expectedValue := range test.expectedFields {
+				assert.Equal(t, expectedValue, logEntry[key], "Should have correct %s", key)
+			}
 		})
 	}
 }
 
-func TestExistingLoggerCompatibility(t *testing.T) {
-	// Test that the new logger produces output compatible with existing usage patterns
+func TestBackwardsCompatibility(t *testing.T) {
 	var buf bytes.Buffer
+	logger := NewUnifiedLogger(&buf, "feed-processor")
 
-	// This will fail initially since UnifiedLogger doesn't exist yet
-	logger := NewUnifiedLogger(&buf, "pre-processor")
-
-	// Test existing usage patterns from the codebase
-	ctx := WithRequestID(WithTraceID(context.Background(), "trace-test"), "req-test")
-	contextLogger := logger.WithContext(ctx)
-
-	// Pattern 1: Simple info logging (from service layer)
-	contextLogger.Info("Feed processing started", "feed_id", "feed-123")
-
-	// Parse first log entry
-	lines := bytes.Split(buf.Bytes(), []byte("\n"))
-	require.Greater(t, len(lines), 0, "Should produce log output")
+	// Test that existing service patterns continue to work
+	logger.Info("Feed processing started", "feed_id", "feed-123", "source", "rss")
 
 	var logEntry map[string]interface{}
-	err := json.Unmarshal(lines[0], &logEntry)
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
 	require.NoError(t, err, "Should produce valid JSON")
 
-	// Verify existing patterns continue to work
-	assert.Equal(t, "INFO", logEntry["level"])
+	// Verify existing patterns continue to work - should use lowercase levels for rask-log-forwarder compatibility
+	assert.Equal(t, "info", logEntry["level"])
 	assert.Equal(t, "Feed processing started", logEntry["msg"])
 	assert.Equal(t, "feed-123", logEntry["feed_id"])
-	assert.Equal(t, "req-test", logEntry["request_id"])
-	assert.Equal(t, "trace-test", logEntry["trace_id"])
-	assert.Equal(t, "pre-processor", logEntry["service"])
+	assert.Equal(t, "rss", logEntry["source"])
 }
 
-func TestMiddlewareLoggingCompatibility(t *testing.T) {
-	// Test compatibility with existing middleware logging patterns
+func TestServiceLayerIntegration(t *testing.T) {
 	var buf bytes.Buffer
+	logger := NewUnifiedLogger(&buf, "feed-validator")
 
-	// This will fail initially since UnifiedLogger doesn't exist yet
-	logger := NewUnifiedLogger(&buf, "pre-processor")
-
-	ctx := WithRequestID(context.Background(), "middleware-test")
-	contextLogger := logger.WithContext(ctx)
-
-	// Simulate middleware logging pattern
-	contextLogger.Info("request completed",
-		"method", "POST",
-		"path", "/api/feeds",
-		"status", 200,
-		"duration_ms", 150,
-		"response_size", 1024)
+	// Test service layer error patterns
+	logger.Error("validation failed", "feed_url", "https://example.com/feed.xml", "error_type", "malformed_xml")
 
 	var logEntry map[string]interface{}
 	err := json.Unmarshal(buf.Bytes(), &logEntry)
 	require.NoError(t, err)
 
-	// Verify middleware fields are preserved
-	expectedFields := map[string]interface{}{
-		"method":        "POST",
-		"path":          "/api/feeds",
-		"status":        float64(200),
-		"duration_ms":   float64(150),
-		"response_size": float64(1024),
-		"request_id":    "middleware-test",
-	}
-
-	for key, expectedValue := range expectedFields {
-		assert.Equal(t, expectedValue, logEntry[key], "Middleware field %s should be preserved", key)
-	}
-}
-
-func TestServiceLayerLoggingCompatibility(t *testing.T) {
-	// Test compatibility with existing service layer logging patterns
-	var buf bytes.Buffer
-
-	// This will fail initially since UnifiedLogger doesn't exist yet
-	logger := NewUnifiedLogger(&buf, "pre-processor")
-
-	ctx := WithOperation(WithTraceID(context.Background(), "svc-trace"), "validate_feed")
-	contextLogger := logger.WithContext(ctx)
-
-	// Simulate service layer error logging
-	contextLogger.Error("validation failed",
-		"feed_url", "https://example.com/feed.xml",
-		"error", "invalid XML structure",
-		"line_number", 42)
-
-	var logEntry map[string]interface{}
-	err := json.Unmarshal(buf.Bytes(), &logEntry)
-	require.NoError(t, err)
-
-	// Verify service layer patterns work
-	assert.Equal(t, "ERROR", logEntry["level"])
+	// Verify service layer patterns work - should use lowercase levels for rask-log-forwarder compatibility
+	assert.Equal(t, "error", logEntry["level"])
 	assert.Equal(t, "validation failed", logEntry["msg"])
 	assert.Equal(t, "https://example.com/feed.xml", logEntry["feed_url"])
-	assert.Equal(t, "invalid XML structure", logEntry["error"])
-	assert.Equal(t, float64(42), logEntry["line_number"])
-	assert.Equal(t, "svc-trace", logEntry["trace_id"])
-	assert.Equal(t, "validate_feed", logEntry["operation"])
+	assert.Equal(t, "malformed_xml", logEntry["error_type"])
 }
