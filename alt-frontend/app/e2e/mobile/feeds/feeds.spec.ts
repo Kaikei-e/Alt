@@ -14,6 +14,7 @@ const generateMockFeeds = (count: number, startId: number = 1): Feed[] => {
 
 test.describe("Mobile Feeds Page", () => {
   test.beforeEach(async ({ page }) => {
+    await page.unrouteAll();
     const mockFeeds = generateMockFeeds(10, 1);
 
     // Convert Feed[] to BackendFeedItem[] for API compatibility
@@ -99,7 +100,7 @@ test.describe("Mobile Feeds Page", () => {
     // Add error handling for any unmatched routes
     await page.route("**/api/**", async (route) => {
       console.log(`Unmatched API route: ${route.request().url()}`);
-      await route.continue();
+      await route.fallback();
     });
   });
 

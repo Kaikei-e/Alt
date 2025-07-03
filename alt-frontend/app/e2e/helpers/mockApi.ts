@@ -29,6 +29,14 @@ export const mockApiEndpoints = async (
     });
   });
 
+  await page.route("http://localhost:8080/api/v1/health", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(healthStatus),
+    });
+  });
+
   // Feeds endpoints
   if (feeds.length > 0) {
     // Convert Feed[] to BackendFeedItem[] for API compatibility
@@ -62,7 +70,7 @@ export const mockApiEndpoints = async (
       });
     });
 
-    await page.route(
+  await page.route(
       "http://localhost/api/v1/feeds/fetch/cursor**",
       async (route) => {
         const url = new URL(route.request().url());
@@ -70,6 +78,30 @@ export const mockApiEndpoints = async (
         const limit = parseInt(url.searchParams.get("limit") || "20");
 
         // Simple pagination simulation
+        const startIndex = cursor ? parseInt(cursor) : 0;
+        const endIndex = Math.min(startIndex + limit, backendFeeds.length);
+        const paginatedFeeds = backendFeeds.slice(startIndex, endIndex);
+        const nextCursor =
+          endIndex < backendFeeds.length ? endIndex.toString() : null;
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: paginatedFeeds,
+            next_cursor: nextCursor,
+          }),
+      });
+      },
+    );
+
+    await page.route(
+      "http://localhost:8080/api/v1/feeds/fetch/cursor**",
+      async (route) => {
+        const url = new URL(route.request().url());
+        const cursor = url.searchParams.get("cursor");
+        const limit = parseInt(url.searchParams.get("limit") || "20");
+
         const startIndex = cursor ? parseInt(cursor) : 0;
         const endIndex = Math.min(startIndex + limit, backendFeeds.length);
         const paginatedFeeds = backendFeeds.slice(startIndex, endIndex);
@@ -102,6 +134,17 @@ export const mockApiEndpoints = async (
         await route.fulfill({
           status: 200,
           contentType: "application/json",
+        body: JSON.stringify(backendFeeds),
+      });
+    },
+    );
+
+    await page.route(
+      "http://localhost:8080/api/v1/feeds/fetch/page/0",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
           body: JSON.stringify(backendFeeds),
         });
       },
@@ -118,6 +161,17 @@ export const mockApiEndpoints = async (
 
     await page.route(
       "http://localhost/api/v1/feeds/fetch/list",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(backendFeeds),
+        });
+      },
+    );
+
+    await page.route(
+      "http://localhost:8080/api/v1/feeds/fetch/list",
       async (route) => {
         await route.fulfill({
           status: 200,
@@ -144,6 +198,14 @@ export const mockApiEndpoints = async (
       });
     });
 
+    await page.route("http://localhost:8080/api/v1/feeds/read", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Feed read status updated" }),
+      });
+    });
+
     // Legacy endpoint for backward compatibility
     await page.route("**/api/v1/feeds/viewed", async (route) => {
       await route.fulfill({
@@ -154,6 +216,14 @@ export const mockApiEndpoints = async (
     });
 
     await page.route("http://localhost/api/v1/feeds/viewed", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Feed marked as read" }),
+      });
+    });
+
+    await page.route("http://localhost:8080/api/v1/feeds/viewed", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -178,6 +248,14 @@ export const mockApiEndpoints = async (
       });
     });
 
+    await page.route("http://localhost:8080/api/v1/feeds/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Feed status updated" }),
+      });
+    });
+
     // Mock feed details endpoint
     await page.route("**/api/v1/feeds/fetch/details", async (route) => {
       await route.fulfill({
@@ -192,6 +270,20 @@ export const mockApiEndpoints = async (
 
     await page.route(
       "http://localhost/api/v1/feeds/fetch/details",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            feed_url: "https://example.com/feed1",
+            summary: "Test summary for this feed",
+          }),
+        });
+      },
+    );
+
+    await page.route(
+      "http://localhost:8080/api/v1/feeds/fetch/details",
       async (route) => {
         await route.fulfill({
           status: 200,
