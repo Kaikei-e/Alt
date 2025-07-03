@@ -7,8 +7,15 @@ use super::{
 };
 use crate::collector::ContainerInfo;
 use bytes::Bytes;
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+lazy_static! {
+    static ref DOCKER_NATIVE_TIMESTAMP_PATTERN: Regex =
+        Regex::new(r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[Z]?\s"#).unwrap();
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnrichedLogEntry {
@@ -114,6 +121,7 @@ pub struct UniversalParser {
     nginx_parser: NginxParser,
     go_parser: GoStructuredParser,
     postgres_parser: PostgresParser,
+    native_timestamp_pattern: Regex,
 }
 
 impl Default for UniversalParser {
@@ -129,6 +137,7 @@ impl UniversalParser {
             nginx_parser: NginxParser::new(),
             go_parser: GoStructuredParser::new(),
             postgres_parser: PostgresParser::new(),
+            native_timestamp_pattern: DOCKER_NATIVE_TIMESTAMP_PATTERN.clone(),
         }
     }
 
@@ -141,8 +150,11 @@ impl UniversalParser {
         let bytes = Bytes::copy_from_slice(log_bytes);
         let docker_entry = self.docker_parser.parse(bytes)?;
 
+        // Remove native timestamp
+        let log_content = self.trim_docker_native_timestamp(docker_entry.log.clone());
+
         // Remove trailing newline from log message
-        let log_content = docker_entry.log.trim_end_matches('\n');
+        let log_content = log_content.trim_end_matches('\n');
 
         // Determine service-specific parser
         let parsed_entry = self.parse_service_log(log_content, &container_info.service_name)?;
@@ -244,6 +256,15 @@ impl UniversalParser {
 
         results
     }
+
+    // AS-IS: 2025-07-03T17:35:01.856438308Z {"char_count": 6281, "level": "info", "logger": "tag_extractor.extract", "msg": "Processing text", "service": "tag-generator", "taskName": null, "timestamp": "iso"}
+    // TO-BE: {"char_count": 6281, "level": "info", "logger": "tag_extractor.extract", "msg": "Processing text", "service": "tag-generator", "taskName": null, "timestamp": "iso"}
+    pub fn trim_docker_native_timestamp(&self, native_log: String) -> String {
+        // trim the timestamp
+        self.native_timestamp_pattern
+            .replace(&native_log, "")
+            .to_string()
+    }
 }
 
 #[cfg(test)]
@@ -333,5 +354,16 @@ mod tests {
         assert_eq!(entry.service_type, "unknown-service");
         assert_eq!(entry.log_type, "plain");
         assert!(entry.message.contains("Some random log message"));
+    }
+
+    #[test]
+    fn test_trim_docker_native_timestamp() {
+        let parser = UniversalParser::new();
+        let native_log = "2025-07-03T17:35:01.856438308Z {\"char_count\": 6281, \"level\": \"info\", \"logger\": \"tag_extractor.extract\", \"msg\": \"Processing text\", \"service\": \"tag-generator\", \"taskName\": null, \"timestamp\": \"iso\"}";
+        let trimmed_log = parser.trim_docker_native_timestamp(native_log.to_string());
+        assert_eq!(
+            trimmed_log,
+            "{\"char_count\": 6281, \"level\": \"info\", \"logger\": \"tag_extractor.extract\", \"msg\": \"Processing text\", \"service\": \"tag-generator\", \"taskName\": null, \"timestamp\": \"iso\"}"
+        );
     }
 }

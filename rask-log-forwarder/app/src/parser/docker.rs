@@ -1,6 +1,4 @@
 use bytes::Bytes;
-use lazy_static::lazy_static;
-use regex::Regex;
 use simd_json::OwnedValue;
 use simd_json::prelude::{ValueAsObject, ValueAsScalar};
 use thiserror::Error;
@@ -24,9 +22,7 @@ pub struct DockerLogEntry {
     pub time: String,
 }
 
-pub struct DockerJsonParser {
-    pub native_timestamp_pattern: Regex,
-}
+pub struct DockerJsonParser;
 
 impl Default for DockerJsonParser {
     fn default() -> Self {
@@ -34,22 +30,14 @@ impl Default for DockerJsonParser {
     }
 }
 
-lazy_static! {
-    static ref DOCKER_NATIVE_TIMESTAMP_PATTERN: Regex =
-        Regex::new(r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[Z]?\s"#).unwrap();
-}
-
 impl DockerJsonParser {
     pub fn new() -> Self {
-        Self {
-            native_timestamp_pattern: DOCKER_NATIVE_TIMESTAMP_PATTERN.clone(),
-        }
+        Self {}
     }
 
     pub fn parse(&self, bytes: Bytes) -> Result<DockerLogEntry, ParseError> {
         // Use SIMD-JSON for fast parsing
         let mut data = bytes.to_vec();
-        data = self.trim_docker_native_timestamp(data);
         let json: OwnedValue = simd_json::from_slice(&mut data)?;
 
         let obj = json.as_object().ok_or(ParseError::InvalidFormat)?;
@@ -79,33 +67,11 @@ impl DockerJsonParser {
     pub fn parse_batch(&self, logs: Vec<Bytes>) -> Vec<Result<DockerLogEntry, ParseError>> {
         logs.into_iter().map(|bytes| self.parse(bytes)).collect()
     }
-
-    // AS-IS: 2025-07-03T17:35:01.856438308Z {"char_count": 6281, "level": "info", "logger": "tag_extractor.extract", "msg": "Processing text", "service": "tag-generator", "taskName": null, "timestamp": "iso"}
-    // TO-BE: {"char_count": 6281, "level": "info", "logger": "tag_extractor.extract", "msg": "Processing text", "service": "tag-generator", "taskName": null, "timestamp": "iso"}
-    pub fn trim_docker_native_timestamp(&self, native_log: Vec<u8>) -> Vec<u8> {
-        // cvonvert from Vec<u8> to String
-        if let Ok(native_log_str) = String::from_utf8(native_log.clone()) {
-            // trim the timestamp
-            let trimmed_log = self.native_timestamp_pattern.replace(&native_log_str, "");
-            // convert back to Vec<u8>
-            trimmed_log.as_bytes().to_vec()
-        } else {
-            native_log.clone()
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_trim_docker_native_timestamp() {
-        let parser = DockerJsonParser::new();
-        let native_log = b"2025-07-03T17:35:01.856438308Z {\"char_count\": 6281, \"level\": \"info\", \"logger\": \"tag_extractor.extract\", \"msg\": \"Processing text\", \"service\": \"tag-generator\", \"taskName\": null, \"timestamp\": \"iso\"}";
-        let trimmed_log = parser.trim_docker_native_timestamp(native_log.to_vec());
-        assert_eq!(trimmed_log, b"{\"char_count\": 6281, \"level\": \"info\", \"logger\": \"tag_extractor.extract\", \"msg\": \"Processing text\", \"service\": \"tag-generator\", \"taskName\": null, \"timestamp\": \"iso\"}");
-    }
 
     #[test]
     fn test_docker_json_parsing() {
