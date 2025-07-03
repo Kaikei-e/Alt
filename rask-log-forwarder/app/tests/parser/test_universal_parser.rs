@@ -51,7 +51,7 @@ async fn test_universal_parser_with_go_backend() {
         .await
         .unwrap();
 
-    assert_eq!(entry.service_type, "go");
+    assert_eq!(entry.service_type, "alt-backend");
     assert_eq!(entry.log_type, "structured");
     assert_eq!(entry.level, Some(LogLevel::Info));
     assert_eq!(entry.container_id, "backend456");
