@@ -26,7 +26,7 @@ func TestConfigGateway_GetServerTimeouts(t *testing.T) {
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
+			WriteTimeout: 300 * time.Second,
 			IdleTimeout:  120 * time.Second,
 		},
 	}
@@ -36,7 +36,7 @@ func TestConfigGateway_GetServerTimeouts(t *testing.T) {
 
 	expected := config_port.ServerTimeouts{
 		Read:  30 * time.Second,
-		Write: 30 * time.Second,
+		Write: 300 * time.Second,
 		Idle:  120 * time.Second,
 	}
 
