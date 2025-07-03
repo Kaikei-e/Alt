@@ -50,7 +50,7 @@ func InitLogger() *slog.Logger {
 func getLogConfig() LogConfig {
 	config := LogConfig{
 		Level:  slog.LevelInfo,
-		Format: "text",
+		Format: "json",
 	}
 
 	// Read log level from environment
