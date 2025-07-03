@@ -17,9 +17,9 @@ until curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
 done
 
 # Load the model to ensure it's available (with full log suppression)
-echo "Loading phi4-mini:3.8b model (quiet)..."
+echo "Loading gemma3:4b model (quiet)..."
 # Suppress all output during model loading to avoid verbose llama_model_loader logs
-OLLAMA_LOG_LEVEL=ERROR ollama run phi4-mini:3.8b >/dev/null 2>&1 << 'EOF'
+OLLAMA_LOG_LEVEL=ERROR ollama run gemma3:4b >/dev/null 2>&1 << 'EOF'
 exit
 EOF
 
