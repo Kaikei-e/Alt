@@ -56,49 +56,40 @@ type Score struct {
 }
 
 const JudgeTemplate = `
-<|system|>
-You are a quality scoring system. Rate the Japanese summary based on how well it summarizes the English article.
+<start_of_turn>user
+You are a precise quality evaluation system for Japanese text summarization. Analyze the Japanese summary against the original English article and provide numerical scores.
 
-CRITICAL: Score ONLY from 1-10. DO NOT use scores above 10. Each score must be a single digit between 1 and 10.
+EVALUATION CRITERIA:
+- Coherence: Logical flow and structure (1-10)
+- Relevancy: Coverage of key information (1-10)
+- Fluency: Natural Japanese expression (1-10)
+- Overall: Comprehensive quality (1-10)
 
-Score categories: coherence, relevancy, fluency, overall.
+SCORING RULES:
+- Use ONLY integers 1-10
+- Empty/missing = all scores 1
+- Very short (<10 chars) = max overall 3
+- Broken/garbled text = max overall 2
+- Off-topic content = max overall 3
 
-SCORING SCALE (1-10 ONLY):
-- 1-3: Poor quality
-- 4-6: Average quality
-- 7-8: Good quality
-- 9-10: Excellent quality
-
-RULES:
-- Empty/missing summary = all scores 1
-- Very short summary (<10 chars) = max overall 3
-- Broken text = max overall 2
-- Irrelevant content = max overall 3
-- MAXIMUM POSSIBLE SCORE IS 10 - DO NOT EXCEED THIS
-
-FORMAT: You MUST respond with EXACTLY this format:
+OUTPUT FORMAT (EXACT):
 <score>coherence:X;relevancy:Y;fluency:Z;overall:W</score>
 
-Where X, Y, Z, W are single digits from 1-10 ONLY.
-
-Example: <score>coherence:5;relevancy:6;fluency:4;overall:5</score>
-Example: <score>coherence:8;relevancy:9;fluency:7;overall:8</score>
-
-IMPORTANT:
-- Use semicolons (;) between scores
-- Use colons (:) after each category name
-- Include the closing </score> tag
-- No explanations, just the score format
-- SCORES MUST BE 1-10 ONLY, NOT PERCENTAGES OR HIGHER NUMBERS
+No explanations. Only the score line.
 
 ARTICLE:
+---
 %s
+---
 
 SUMMARY:
+---
 %s
+---
 
-Rate the summary now using 1-10 scale only. Format: <score>coherence:X;relevancy:Y;fluency:Z;overall:W</score>
-<|assistant|>
+Evaluate now.
+<end_of_turn>
+<start_of_turn>model
 `
 
 func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
