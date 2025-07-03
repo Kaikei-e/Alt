@@ -47,36 +47,27 @@ type OllamaResponse struct {
 
 const (
 	summarizerAPIURL = "http://news-creator:11434/api/generate"
-	modelName        = "phi4-mini:3.8b"
+	modelName        = "gemma3:4b"
 
-	// Refined prompt template optimized for Phi-4-mini-instruct.
-	promptTemplate = `<|system|>
-You are an expert multilingual journalist and translator specializing in creating high-quality Japanese summaries of English news articles. You have extensive knowledge of both languages and understand cultural nuances.
+	// Refined prompt template optimized for gemma3:4b.
+	promptTemplate = `<start_of_turn>user
+You are an expert multilingual journalist specializing in Japanese news summarization. Your task is to analyze English articles and create comprehensive Japanese summaries that capture the essence while being culturally appropriate for Japanese audiences.
 
-<|user|>
-Please analyze the following English news article and create a comprehensive Japanese summary following these specific requirements:
+GUIDELINES:
+- Output in natural, professional Japanese (新聞記事スタイル)
+- Maximum 1500 Japanese characters
+- Focus on key facts, context, and implications
+- Maintain journalistic objectivity
+- Use appropriate honorifics and formal language where needed
 
-**TASK**: Create a Japanese summary of the English article below
-**LANGUAGE**: Output in Japanese only
-**LENGTH**: Maximum 1500 Japanese characters
-**STYLE**: Professional news summary style
-**FOCUS**: Capture key facts, main points, and important context
-**FORMAT**: Single paragraph, no bullet points
-
-**ARTICLE TO SUMMARIZE**:
+ARTICLE TO SUMMARIZE:
 ---
 %s
 ---
 
-**INSTRUCTIONS**:
-1. Read and understand the entire article carefully
-2. Identify the main facts, key players, and important context
-3. Create a flowing, natural Japanese summary that captures the essence
-4. Ensure the summary is informative yet concise
-5. Maintain journalistic objectivity
-6. Output ONLY the Japanese summary text
-
-<|assistant|>
+Create a flowing Japanese summary that reads naturally to native speakers. Begin directly with the summary without any preamble.
+<end_of_turn>
+<start_of_turn>model
 `
 )
 
