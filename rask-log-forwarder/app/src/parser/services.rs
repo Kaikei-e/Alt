@@ -183,7 +183,15 @@ impl ServiceParser for NginxParser {
 }
 
 // Go Structured Log Parser
-pub struct GoStructuredParser;
+pub struct GoStructuredParser {
+    log_pattern: Regex,
+}
+
+lazy_static! {
+    // Capture optional RFC3339 timestamp (group 1) followed by the JSON body (group 2)
+    static ref GO_STRUCTURED_LOG_PATTERN: Regex =
+        Regex::new(r#"^(?:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s)?(\{.*\})$"#).unwrap();
+}
 
 impl Default for GoStructuredParser {
     fn default() -> Self {
@@ -193,7 +201,9 @@ impl Default for GoStructuredParser {
 
 impl GoStructuredParser {
     pub fn new() -> Self {
-        Self
+        Self {
+            log_pattern: GO_STRUCTURED_LOG_PATTERN.clone(),
+        }
     }
 }
 
@@ -203,20 +213,34 @@ impl ServiceParser for GoStructuredParser {
     }
 
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
-        // Try to parse as JSON first
-        if let Ok(json) = serde_json::from_str::<Value>(log) {
-            if let Some(obj) = json.as_object() {
-                let level_str = obj.get("level").and_then(|v| v.as_str()).unwrap_or("info");
+        // Try to capture `timestamp JSON` or just `JSON`
+        if let Some(caps) = self.log_pattern.captures(log) {
+            // Optional RFC3339 timestamp (convert to UTC if present)
+            let timestamp = caps
+                .get(1)
+                .and_then(|m| DateTime::parse_from_rfc3339(m.as_str()).ok())
+                .map(|dt| dt.with_timezone(&Utc));
 
-                let level = match level_str {
-                    "debug" | "DEBUG" => LogLevel::Debug,
-                    "info" | "INFO" => LogLevel::Info,
-                    "warn" | "warning" | "WARN" | "WARNING" => LogLevel::Warn,
-                    "error" | "ERROR" => LogLevel::Error,
-                    "fatal" | "panic" | "FATAL" | "PANIC" => LogLevel::Fatal,
+            // JSON body is always capture group 2 (or the whole log as fallback)
+            let json_str = caps.get(2).map(|m| m.as_str()).unwrap_or(log);
+
+            if let Ok(Value::Object(obj)) = serde_json::from_str::<Value>(json_str) {
+                // Determine log level
+                let level_str = obj
+                    .get("level")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("info")
+                    .to_lowercase();
+                let level = match level_str.as_str() {
+                    "debug" => LogLevel::Debug,
+                    "info" => LogLevel::Info,
+                    "warn" | "warning" => LogLevel::Warn,
+                    "error" => LogLevel::Error,
+                    "fatal" | "panic" => LogLevel::Fatal,
                     _ => LogLevel::Info,
                 };
 
+                // Extract common fields
                 let message = obj
                     .get("msg")
                     .or_else(|| obj.get("message"))
@@ -234,13 +258,13 @@ impl ServiceParser for GoStructuredParser {
                     .map(|s| s.to_string());
                 let status_code = obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);
 
-                // Extract additional fields
+                // Preserve extra fields
                 let mut fields = std::collections::HashMap::new();
-                for (key, value) in obj {
+                for (k, v) in obj.iter() {
                     if !["level", "msg", "message", "method", "path", "status"]
-                        .contains(&key.as_str())
+                        .contains(&k.as_str())
                     {
-                        fields.insert(key.clone(), value.to_string());
+                        fields.insert(k.clone(), v.to_string());
                     }
                 }
 
@@ -249,7 +273,7 @@ impl ServiceParser for GoStructuredParser {
                     log_type: "structured".to_string(),
                     message,
                     level: Some(level),
-                    timestamp: None,
+                    timestamp,
                     stream: "stdout".to_string(),
                     method,
                     path,
@@ -262,7 +286,7 @@ impl ServiceParser for GoStructuredParser {
             }
         }
 
-        // Fallback to plain text
+        // --- Plain-text fallback ---
         Ok(ParsedLogEntry {
             service_type: "go".to_string(),
             log_type: "plain".to_string(),
@@ -364,6 +388,124 @@ impl ServiceParser for PostgresParser {
         }
     }
 }
+
+// pub struct PythonParser {
+//     log_regex: Regex,
+// }
+
+// lazy_static! {
+//     static ref PYTHON_LOG_PATTERN: Regex =
+//         Regex::new(r#"^(?:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s)?(\{.*\})$"#).unwrap();
+// }
+
+// impl Default for PythonParser {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
+
+// impl PythonParser {
+//     pub fn new() -> Self {
+//         Self {
+//             log_regex: PYTHON_LOG_PATTERN.clone(),
+//         }
+//     }
+// }
+
+// impl ServiceParser for PythonParser {
+//     fn service_type(&self) -> &str {
+//         "python"
+//     }
+
+//     // actual log example: 2025-07-03T16:04:53.555968377Z {"keywords": ["\u60c5\u5831", "\u5229\u7528", "\u5c0e\u5165", "\u5165\u529b", "\u78ba\u8a8d", "\u7ba1\u7406", "\u89b3\u70b9", "\u6a5f\u80fd", "\u5224\u65ad", "\u500b\u4eba"], "level": "info", "logger": "tag_extractor.extract", "msg": "Extraction successful", "service": "tag-generator", "taskName": null, "timestamp": "iso"}
+//     // "2025-07-03T16:04:51.375962475Z {""lang"": ""en"", ""level"": ""info"", ""logger"": ""tag_extractor.extract"", ""msg"": ""Detected language"", ""service"": ""tag-generator"", ""taskName"": null, ""timestamp"": ""iso""}"
+//     // "2025-07-03T16:04:51.372044691Z {""char_count"": 2730, ""level"": ""info"", ""logger"": ""tag_extractor.extract"", ""msg"": ""Processing text"", ""service"": ""tag-generator"", ""taskName"": null, ""timestamp"": ""iso""}"
+//     // "2025-07-03T16:04:51.372022662Z {""keywords"": [""watches"", ""watchos"", ""apple"", ""iphone"", ""versions"", ""beta"", ""warning"", ""incompatibility"", ""crashes""], ""level"": ""info"", ""logger"": ""tag_extractor.extract"", ""msg"": ""Extraction successful"", ""service"": ""tag-generator"", ""taskName"": null, ""timestamp"": ""iso""}"
+//     // "2025-07-03T16:04:50.915300394Z {""lang"": ""en"", ""level"": ""info"", ""logger"": ""tag_extractor.extract"", ""msg"": ""Detected language"", ""service"": ""tag-generator"", ""taskName"": null, ""timestamp"": ""iso""}"
+//     // "2025-07-03T16:04:50.911359550Z {""char_count"": 1771, ""level"": ""info"", ""logger"": ""tag_extractor.extract"", ""msg"": ""Processing text"", ""service"": ""tag-generator"", ""taskName"": null, ""timestamp"": ""iso""}"
+//     // "2025-07-03T16:04:50.911309112Z {""level"": ""info"", ""logger"": ""__main__"", ""msg"": ""Extracted tags for 40/75 articles..."", ""service"": ""tag-generator"", ""taskName"": null, ""timestamp"": ""iso""}"
+//     // "2025-07-03T16:04:50.911253858Z {""keywords"": [""calendar"", ""icon"", ""overlooked"", ""hidden"", ""android"", ""gemini"", ""app"", ""display"", ""event"", ""exciting""], ""level"": ""info"", ""logger"": ""tag_extractor.extract"", ""msg"": ""Extraction successful"", ""service"": ""tag-generator"", ""taskName"": null, ""timestamp"": ""iso""}"
+
+//     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
+//         if let Some(captures) = self.log_regex.captures(log) {
+//             let timestamp = captures
+//                 .get(1)
+//                 .and_then(|m| DateTime::parse_from_rfc3339(m.as_str()).ok())
+//                 .map(|dt| dt.with_timezone(&Utc));
+
+//             let json_str = captures.get(2).map(|m| m.as_str()).unwrap_or(log);
+
+//             if let Ok(Value::Object(obj)) = serde_json::from_str::<Value>(json_str) {
+//                 let level_str = obj.get("level").and_then(|v| v.as_str()).unwrap_or("info");
+//                 let level = match level_str {
+//                     "debug" => LogLevel::Debug,
+//                     "info" => LogLevel::Info,
+//                     "warn" | "warning" => LogLevel::Warn,
+//                     "error" => LogLevel::Error,
+//                     "fatal" | "panic" => LogLevel::Fatal,
+//                     _ => LogLevel::Info,
+//                 };
+
+//                 let message = obj
+//                     .get("msg")
+//                     .and_then(|v| v.as_str())
+//                     .unwrap_or(log)
+//                     .to_string();
+
+//                 let method = obj
+//                     .get("method")
+//                     .and_then(|v| v.as_str())
+//                     .map(|s| s.to_string());
+//                 let path = obj
+//                     .get("path")
+//                     .and_then(|v| v.as_str())
+//                     .map(|s| s.to_string());
+//                 let status_code = obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);
+
+//                 let mut fields = std::collections::HashMap::new();
+//                 for (k, v) in obj.iter() {
+//                     if !["level", "msg", "message", "method", "path", "status"]
+//                         .contains(&k.as_str())
+//                     {
+//                         fields.insert(k.clone(), v.to_string());
+//                     }
+//                 }
+
+//                 return Ok(ParsedLogEntry {
+//                     service_type: "python".to_string(),
+//                     log_type: "structured".to_string(),
+//                     message,
+//                     level: Some(level),
+//                     timestamp,
+//                     stream: "stdout".to_string(),
+//                     method,
+//                     path,
+//                     status_code,
+//                     response_size: None,
+//                     ip_address: None,
+//                     user_agent: None,
+//                     fields,
+//                 });
+//             }
+
+//             Ok(ParsedLogEntry {
+//                 service_type: "python".to_string(),
+//                 log_type: "unknown".to_string(),
+//                 message: log.to_string(),
+//                 level: Some(LogLevel::Info),
+//                 timestamp: None,
+//                 stream: "stdout".to_string(),
+//                 method: None,
+//                 path: None,
+//                 status_code: None,
+//                 response_size: None,
+//                 ip_address: None,
+//                 user_agent: None,
+//                 fields: std::collections::HashMap::new(),
+//             })
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
