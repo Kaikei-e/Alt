@@ -14,6 +14,7 @@ const generateMockFeeds = (count: number, startId: number = 1): Feed[] => {
 
 test.describe("Mobile Feeds Page", () => {
   test.beforeEach(async ({ page }) => {
+    await page.unrouteAll();
     const mockFeeds = generateMockFeeds(10, 1);
 
     // Convert Feed[] to BackendFeedItem[] for API compatibility
