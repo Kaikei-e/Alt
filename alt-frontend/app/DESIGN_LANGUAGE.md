@@ -1,82 +1,170 @@
 # DESIGN_LANGUAGE.md - Alt Design System
-*Version 2.0 - Theme Toggle System*
+*Version 2.0 - Glassmorphism × Theme Toggle*
 
 ## Core Philosophy
-Alt combines **Glassmorphism** with two distinct aesthetics: **Vaporwave** (neon retro-future) and **Liquid Glass Beige** (organic luxury). Toggle between them like dark/light mode.
+**Alt** = Glassmorphism with dual personality. Toggle between **Vaporwave** (neon cyber) and **Liquid-Beige** (earthy luxury) themes.
 
-**Key Principles:**
-- Glass creates structure, not decoration
-- Theme-specific accent colors
-- Minimal animations (hover effects only)
-- Simplicity over complexity
+### Design Principles
+1. **Glass surfaces** - Every UI element uses glassmorphism
+2. **Theme-aware colors** - Colors swap based on active theme
+3. **Minimal motion** - Only subtle hover effects (translateY, scale)
+4. **Clean typography** - Inter/Space Grotesk fonts
 
 ---
 
-## Theme Toggle System
+## Theme System
 
-### Two Variants (Toggle like Dark Mode)
+### Toggle Implementation
 ```javascript
-// Theme toggle implementation
+// Simple theme toggle
 function toggleTheme() {
   const current = document.body.getAttribute('data-style') || 'vaporwave';
-  const next = current === 'vaporwave' ? 'liquid-beige' : 'vaporwave';
-  document.body.setAttribute('data-style', next);
+  document.body.setAttribute('data-style',
+    current === 'vaporwave' ? 'liquid-beige' : 'vaporwave'
+  );
 }
 ```
 
 ### Theme Specifications
 
-| Theme | Background | Glass | Accent Colors |
-|-------|------------|-------|---------------|
-| **vaporwave** | Gradient (#1a1a2e→#0f0f23) | rgba(255,255,255,0.1) | Pink #ff006e / Purple #8338ec / Blue #3a86ff |
-| **liquid-beige** | Warm beige (#D1C0A8) | rgba(225,213,197,0.18) | Terracotta #B85450 / Sage #7C9070 / Sand #D4A574 |
+| Aspect | Vaporwave | Liquid-Beige |
+|--------|-----------|--------------|
+| **Background** | `#1a1a2e → #0f0f23` gradient | `#E8DED1 → #C8B8A1` gradient |
+| **Glass** | `rgba(255,255,255,0.1)` | `rgba(255,255,255,0.08)` |
+| **Border** | `rgba(255,255,255,0.2)` | `rgba(160,129,108,0.25)` |
+| **Text** | White on dark | Dark `#2c2416` on light |
+| **Primary** | `#ff006e` (Pink) | `#B85450` (Terracotta) |
+| **Secondary** | `#8338ec` (Purple) | `#7C9070` (Sage) |
+| **Tertiary** | `#3a86ff` (Blue) | `#D4A574` (Sand) |
 
-### CSS Variables (Auto-switch with theme)
+### Swappable Variables
 ```css
-/* These variables change automatically when theme toggles */
---surface-bg      /* Glass background */
---surface-border  /* Glass border */
---surface-blur    /* Blur intensity */
---accent-primary  /* Primary action color */
---accent-secondary /* Secondary action color */
---accent-tertiary /* Information color */
---app-bg         /* Application background */
+/* These auto-switch with theme */
+--alt-primary    /* Pink ↔ Terracotta */
+--alt-secondary  /* Purple ↔ Sage */
+--alt-tertiary   /* Blue ↔ Sand */
 ```
 
-### Theme-Specific Colors
+---
+
+## Component Patterns
+
+### Glass Base
 ```css
-/* Vaporwave Palette */
-[data-style="vaporwave"] {
-  --accent-primary: #ff006e;   /* Neon Pink */
-  --accent-secondary: #8338ec; /* Purple */
-  --accent-tertiary: #3a86ff;  /* Blue */
+.glass {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(var(--surface-blur)) saturate(120%);
+  border-radius: var(--radius-lg);
+  transition: all 0.2s ease;
+}
+```
+
+### Button Variants
+```css
+/* Glass button */
+.btn-primary {
+  background: var(--surface-bg);
+  backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--surface-border);
 }
 
-/* Liquid-Beige Palette (2025 Trend: Earthy Luxury) */
-[data-style="liquid-beige"] {
-  --accent-primary: #B85450;   /* Terracotta - warm CTAs */
-  --accent-secondary: #7C9070; /* Sage Green - organic balance */
-  --accent-tertiary: #D4A574;  /* Desert Sand - soft information */
+/* Gradient accent */
+.btn-accent {
+  background: var(--accent-gradient);
+  /* Auto-adjusts text color per theme */
 }
+```
+
+### Hover States
+```css
+/* Consistent hover pattern */
+:hover {
+  transform: translateY(-2px);
+  /* Optional: border-color: var(--alt-primary); */
+}
+```
+
+---
+
+## CSS Variable Reference
+
+### Core Colors
+```css
+/* Static brand colors */
+--alt-pink: #ff006e;
+--alt-purple: #8338ec;
+--alt-blue: #3a86ff;
+--alt-terracotta: #B85450;
+--alt-sage: #7C9070;
+--alt-sand: #D4A574;
+
+/* Theme-aware (use these) */
+--alt-primary
+--alt-secondary
+--alt-tertiary
+```
+
+### Surface Properties
+```css
+--surface-bg      /* Glass background */
+--surface-border  /* Glass border */
+--surface-hover   /* Hover state */
+--surface-blur    /* Blur amount (16-20px) */
+```
+
+### Typography Scale
+```css
+--text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+--text-sm: clamp(0.875rem, 0.8rem + 0.375vw, 1rem);
+--text-base: clamp(1rem, 0.925rem + 0.375vw, 1.125rem);
+--text-lg: clamp(1.125rem, 1rem + 0.625vw, 1.375rem);
+--text-xl: clamp(1.25rem, 1.1rem + 0.75vw, 1.625rem);
+```
+
+### Spacing (Fibonacci)
+```css
+--space-1: 0.25rem;  /* 4px */
+--space-2: 0.5rem;   /* 8px */
+--space-3: 0.75rem;  /* 12px */
+--space-4: 1rem;     /* 16px */
+--space-6: 1.5rem;   /* 24px */
+--space-8: 2rem;     /* 32px */
 ```
 
 ---
 
 ## Implementation Guide
 
-### Essential Alt Theme (Chakra UI)
+### Chakra UI Integration
 ```typescript
+// theme.ts
 export const altTheme = extendTheme({
+  styles: {
+    global: {
+      body: {
+        bg: 'var(--app-bg)',
+        color: 'var(--foreground)',
+      }
+    }
+  },
   components: {
     Button: {
+      baseStyle: {
+        transition: 'all 0.2s',
+        _hover: {
+          transform: 'translateY(-2px)',
+        }
+      },
       variants: {
-        alt: {
+        glass: {
           bg: 'var(--surface-bg)',
+          border: '1px solid',
+          borderColor: 'var(--surface-border)',
           backdropFilter: 'blur(var(--surface-blur))',
-          border: '1px solid var(--surface-border)',
           _hover: {
-            borderColor: '#ff006e',
-            transform: 'translateY(-2px)'
+            bg: 'var(--surface-hover)',
+            borderColor: 'var(--alt-primary)',
           }
         }
       }
@@ -86,101 +174,58 @@ export const altTheme = extendTheme({
 ```
 
 ### Component Examples
-
-#### Glass Card (Theme-aware)
 ```tsx
-<Card
-  bg="var(--surface-bg)"
-  backdropFilter="blur(var(--surface-blur))"
-  border="1px solid var(--surface-border)"
-  borderRadius="12px"
+// Glass Card
+<Box
+  className="glass"
+  p="var(--space-6)"
+  borderRadius="var(--radius-lg)"
 >
-  <CardBody>Content adapts to theme</CardBody>
-</Card>
-```
+  <Text color="var(--text-primary)">Content</Text>
+</Box>
 
-#### Theme Toggle Button
-```tsx
+// Theme Toggle
 <IconButton
-  icon={<SunIcon />}
+  className="theme-toggle"
   onClick={toggleTheme}
-  variant="alt"
   aria-label="Toggle theme"
+  icon={<SunIcon />}
 />
-```
 
-#### Theme-Aware Accent Button
-```tsx
+// Accent Button
 <Button
-  variant="alt"
-  _hover={{
-    borderColor: 'var(--accent-primary)',
-    boxShadow: '0 0 10px var(--accent-primary)33' // 20% opacity
-  }}
+  className="btn-accent"
+  bg="var(--accent-gradient)"
 >
-  Primary Action
+  Action
 </Button>
 ```
 
 ---
 
-## Claude Code Guidelines
+## Quality Checklist
 
-### Prompt Examples (Max 25 words)
-```bash
-# ✅ Good
-claude "Chakra Card with theme-aware glass effect"
-claude "Toggle button switching between three themes"
-
-# ❌ Too complex
-claude "Create comprehensive theme system with animations..."
-```
-
-### Key Rules
-1. Always use CSS variables for theme flexibility
-2. Use Chakra UI components as base
-3. Apply glass effects to all surfaces
-4. Use theme-appropriate accent colors
-5. Keep animations subtle (transform/opacity only)
-
-### Migration Checklist
-```css
-/* Old → New */
-bg="rgba(255,255,255,0.1)" → bg="var(--surface-bg)"
-backdropFilter="blur(20px)" → backdropFilter="blur(var(--surface-blur))"
-borderColor="rgba(255,255,255,0.2)" → borderColor="var(--surface-border)"
-```
+- [ ] All surfaces use `.glass` or glass properties
+- [ ] Colors use `--alt-primary/secondary/tertiary`
+- [ ] Hover effects limited to `translateY(-2px)`
+- [ ] Text uses `--text-primary/secondary/muted`
+- [ ] Spacing uses `--space-*` variables
+- [ ] Works in both themes without hardcoded colors
 
 ---
 
 ## Quick Reference
 
-### Setting Theme
-```html
-<body data-style="vaporwave">    <!-- Neon retro-future -->
-<body data-style="liquid-beige"> <!-- Earthy luxury -->
-```
-
-### Theme Colors
 ```css
-/* Vaporwave Mode */
---accent-primary: #ff006e;   /* Neon Pink */
---accent-secondary: #8338ec; /* Purple */
---accent-tertiary: #3a86ff;  /* Blue */
+/* Theme toggle */
+data-style="vaporwave"     /* Neon cyber */
+data-style="liquid-beige"  /* Earthy luxury */
 
-/* Liquid-Beige Mode */
---accent-primary: #B85450;   /* Terracotta */
---accent-secondary: #7C9070; /* Sage Green */
---accent-tertiary: #D4A574;  /* Desert Sand */
+/* Use these everywhere */
+var(--alt-primary)         /* Theme-aware accent */
+var(--surface-bg)          /* Glass background */
+var(--text-primary)        /* Main text color */
+var(--space-4)            /* Consistent spacing */
 ```
 
-### Quality Checklist
-- [ ] Uses CSS variables for theming
-- [ ] Glass effect on all surfaces
-- [ ] Works in both themes
-- [ ] Theme-appropriate accent colors
-- [ ] Subtle hover animations only
-
----
-
-**Remember:** Toggle between Vaporwave (neon cyber aesthetic) and Liquid-Beige (earthy luxury trend). Each theme has its own accent palette that reflects 2025 design trends.
+**Remember**: Let CSS variables handle theme switching. Never hardcode colors.
