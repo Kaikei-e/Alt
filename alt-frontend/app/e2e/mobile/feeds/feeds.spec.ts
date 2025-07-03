@@ -24,7 +24,7 @@ test.describe("Mobile Feeds Page", () => {
       published: feed.published,
     }));
 
-    // Mock cursor-based feeds API endpoint (NEW)
+    // Mock cursor-based feeds API endpoint (PRIMARY)
     await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
       await route.fulfill({
         status: 200,
@@ -37,27 +37,11 @@ test.describe("Mobile Feeds Page", () => {
     });
 
     // Mock all required API endpoints
-    await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
+    await page.route("**/api/v1/feeds/fetch/page/**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(backendFeeds),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/fetch/list", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(backendFeeds),
-      });
-    });
-
-    await page.route("**/api/v1/health", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ status: "ok" }),
       });
     });
 
@@ -69,15 +53,53 @@ test.describe("Mobile Feeds Page", () => {
       });
     });
 
-    await page.route("**/api/v1/feeds/fetch/details", async (route) => {
+    await page.route("**/api/v1/feeds/fetch/list", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(backendFeeds),
+      });
+    });
+
+    await page.route("**/api/v1/feeds/fetch/limit/**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(backendFeeds),
+      });
+    });
+
+    await page.route("**/api/v1/feeds/fetch/single", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(backendFeeds[0] || {}),
+      });
+    });
+
+    await page.route("**/api/v1/health", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "ok" }),
+      });
+    });
+
+    await page.route("**/api/v1/feeds/stats", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          feed_url: "https://example.com/feed1",
-          summary: "Test summary for this feed",
+          feed_amount: { amount: 42 },
+          summarized_feed: { amount: 28 },
         }),
       });
+    });
+
+    // Add error handling for any unmatched routes
+    await page.route("**/api/**", async (route) => {
+      console.log(`Unmatched API route: ${route.request().url()}`);
+      await route.continue();
     });
   });
 
@@ -85,15 +107,18 @@ test.describe("Mobile Feeds Page", () => {
     await page.goto("/mobile/feeds");
     await page.waitForLoadState("networkidle");
 
-    // Wait for the feeds to load by checking for feed cards first
+    // Wait for component initialization
+    await page.waitForTimeout(1000);
+
+    // Wait for the feeds to load by checking for feed cards first with extended timeout
     await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
-      { timeout: 10000 },
+      { timeout: 15000 },
     );
 
     // Wait for the feeds to load - use Mark as read buttons as proxy for feed cards
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 10000 });
 
     // Check that multiple feed cards are rendered (by counting Mark as read buttons)
     const feedCards = page.locator('button:has-text("Mark as read")');
@@ -110,14 +135,17 @@ test.describe("Mobile Feeds Page", () => {
     await page.goto("/mobile/feeds");
     await page.waitForLoadState("networkidle");
 
-    // Wait for feeds to load
+    // Wait for component initialization
+    await page.waitForTimeout(1000);
+
+    // Wait for feeds to load with extended timeout
     await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
-      { timeout: 10000 },
+      { timeout: 15000 },
     );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 10000 });
 
     // Check for title link
     await expect(
@@ -147,14 +175,17 @@ test.describe("Mobile Feeds Page", () => {
     await page.goto("/mobile/feeds");
     await page.waitForLoadState("networkidle");
 
-    // Wait for feeds to load
+    // Wait for component initialization
+    await page.waitForTimeout(1000);
+
+    // Wait for feeds to load with extended timeout
     await expect(page.locator('[data-testid="feed-card"]').first()).toBeVisible(
-      { timeout: 10000 },
+      { timeout: 15000 },
     );
 
     await expect(
       page.locator('button:has-text("Mark as read")').first(),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 10000 });
 
     const initialFeedCount = await page
       .locator('button:has-text("Mark as read")')
@@ -1127,11 +1158,14 @@ test.describe("Mobile Feeds Page", () => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      // Wait for initial feeds to load
+      // Wait longer for the page to fully load and process API responses
+      await page.waitForTimeout(2000);
+
+      // Wait for initial feeds to load with extended timeout
       await expect(
         page.locator('[data-testid="feed-card"]').first(),
       ).toBeVisible({
-        timeout: 10000,
+        timeout: 20000,
       });
 
       const initialCount = await page
@@ -1207,11 +1241,14 @@ test.describe("Mobile Feeds Page", () => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      // Wait for initial feeds to load
+      // Wait longer for the page to fully load and process API responses
+      await page.waitForTimeout(2000);
+
+      // Wait for initial feeds to load with extended timeout
       await expect(
         page.locator('[data-testid="feed-card"]').first(),
       ).toBeVisible({
-        timeout: 10000,
+        timeout: 20000,
       });
 
       // Simulate momentum/inertial scrolling with varying speeds

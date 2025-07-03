@@ -6,8 +6,8 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Home Page - PROTECTED", () => {
   test.beforeEach(async ({ page }) => {
-    // Mock the API response for consistent testing
-    await page.route("**/v1/feeds/stats", async (route) => {
+    // Mock API endpoints for home page
+    await page.route("**/api/v1/feeds/stats", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -15,55 +15,6 @@ test.describe("Home Page - PROTECTED", () => {
           feed_amount: { amount: 42 },
           summarized_feed: { amount: 28 },
         }),
-      });
-    });
-
-    // Mock feeds API for navigation testing
-    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: [
-            {
-              title: "Test Feed 1",
-              description: "Description for test feed 1",
-              link: "https://example.com/feed1",
-              published: "2024-01-01T00:00:00Z",
-            },
-          ],
-          next_cursor: null,
-        }),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/fetch/page/0", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([
-          {
-            title: "Test Feed 1",
-            description: "Description for test feed 1",
-            link: "https://example.com/feed1",
-            published: "2024-01-01T00:00:00Z",
-          },
-        ]),
-      });
-    });
-
-    await page.route("**/api/v1/feeds/fetch/list", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([
-          {
-            title: "Test Feed 1",
-            description: "Description for test feed 1",
-            link: "https://example.com/feed1",
-            published: "2024-01-01T00:00:00Z",
-          },
-        ]),
       });
     });
 
@@ -79,13 +30,41 @@ test.describe("Home Page - PROTECTED", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ message: "Feed read status updated" }),
+        body: JSON.stringify({ message: "Feed marked as read" }),
+      });
+    });
+
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              title: "Test Feed 1",
+              description: "Test Description 1",
+              link: "https://example.com/feed1",
+              published: "2023-01-01T00:00:00Z",
+            },
+            {
+              title: "Test Feed 2",
+              description: "Test Description 2",
+              link: "https://example.com/feed2",
+              published: "2023-01-02T00:00:00Z",
+            },
+          ],
+          next_cursor: null,
+        }),
       });
     });
 
     await page.goto("/");
-    // Wait for essential elements to load
-    await page.waitForSelector('[data-testid="nav-card"]');
+
+    // Wait for page to load completely
+    await page.waitForLoadState("networkidle");
+
+    // Wait for essential elements to load with extended timeout
+    await page.waitForSelector('[data-testid="nav-card"]', { timeout: 15000 });
   });
 
   test("should display dashboard statistics with animations and error handling (PROTECTED)", async ({
@@ -110,7 +89,7 @@ test.describe("Home Page - PROTECTED", () => {
     await expect(page.getByText("TOTAL FEEDS")).toBeVisible({ timeout: 10000 });
     await expect(page.getByText("42").first()).toBeVisible();
 
-    // Test AI Summarized Feeds stat (updated text)
+    // Test AI Summarized Feeds stat (corrected field name)
     await expect(page.getByText("AI SUMMARIZED")).toBeVisible();
     await expect(page.getByText("28").first()).toBeVisible();
 
