@@ -16,6 +16,7 @@ This is the frontend for the Alt project - a mobile-first RSS reader built with 
 - **Viewed Feeds Page** (`/mobile/feeds/viewed`): Dedicated page for viewing previously read articles
 - **Enhanced Navigation**: FloatingMenu with active state indicators
 - **Optimized Performance**: Cursor-based pagination with prefetching capabilities
+- **Automatic Redirects**: Unknown routes seamlessly return to the home page
 
 ## Pages Overview
 
