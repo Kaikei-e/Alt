@@ -183,6 +183,9 @@ fn test_config_auto_detect_service() {
     // Clean environment first
     clean_all_env_vars();
 
+    // Verify environment is clean
+    assert!(env::var("TARGET_SERVICE").is_err(), "TARGET_SERVICE should not be set before test");
+
     let mut config = Config::default();
 
     // Set environment variable
@@ -190,11 +193,36 @@ fn test_config_auto_detect_service() {
         env::set_var("TARGET_SERVICE", "test-service");
     }
 
+    // Verify environment variable is set
+    assert_eq!(env::var("TARGET_SERVICE").unwrap(), "test-service", "TARGET_SERVICE should be set");
+
+    // Test auto-detection with environment variable
     config.auto_detect_service().unwrap();
     assert_eq!(config.target_service, Some("test-service".to_string()));
 
     // Clean up after test
     clean_all_env_vars();
+
+    // Verify cleanup
+    assert!(env::var("TARGET_SERVICE").is_err(), "TARGET_SERVICE should be cleaned up after test");
+
+    // Test auto-detection without environment variable (should fail or use hostname)
+    let mut config2 = Config::default();
+    let result = config2.auto_detect_service();
+
+    // In CI environment, this might fail if hostname doesn't match pattern
+    // We'll accept either success (if hostname matches) or failure (if it doesn't)
+    match result {
+        Ok(()) => {
+            // Auto-detection succeeded (probably from hostname)
+            assert!(config2.target_service.is_some(), "Target service should be set after successful auto-detection");
+        }
+        Err(e) => {
+            // Auto-detection failed (expected in some environments)
+            assert!(e.to_string().contains("Could not auto-detect target service"),
+                   "Error should be about auto-detection failure: {}", e);
+        }
+    }
 }
 
 #[test]
