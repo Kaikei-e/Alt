@@ -220,7 +220,7 @@ fn test_config_auto_detect_service() {
         Err(e) => {
             // Auto-detection failed (expected in some environments)
             assert!(e.to_string().contains("Could not auto-detect target service"),
-                   "Error should be about auto-detection failure: {}", e);
+                   "Error should be about auto-detection failure: {e}");
         }
     }
 }
