@@ -37,8 +37,8 @@ export default function DesktopHome() {
         align="flex-start"
       >
         {/* Left column: hero and navigation */}
-        <VStack align="flex-start" spacing={6} flex="1">
-          <VStack align="flex-start" spacing={2}>
+        <VStack align="flex-start" gap={6} flex="1">
+          <VStack align="flex-start" gap={2}>
             <Text
               as="h1"
               fontSize="4xl"
@@ -91,7 +91,7 @@ export default function DesktopHome() {
                   >
                     <Rss size={20} />
                   </Box>
-                  <VStack align="start" spacing={0}>
+                  <VStack align="start" gap={0}>
                     <Text
                       fontSize="xl"
                       fontWeight="semibold"
@@ -118,7 +118,7 @@ export default function DesktopHome() {
         </VStack>
 
         {/* Right column: stats */}
-        <VStack align="stretch" spacing={6} flex="1" minW="280px">
+        <VStack align="stretch" gap={6} flex="1" minW="280px">
           <Box
             bg="var(--alt-glass)"
             border="1px solid"
