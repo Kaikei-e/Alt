@@ -19,7 +19,7 @@ func TestNewConfig_WithDefaults(t *testing.T) {
 				Server: ServerConfig{
 					Port:         9000,
 					ReadTimeout:  300 * time.Second,
-					WriteTimeout: 30 * time.Second,
+					WriteTimeout: 300 * time.Second,
 					IdleTimeout:  120 * time.Second,
 				},
 				Database: DatabaseConfig{

@@ -24,7 +24,7 @@ type Config struct {
 type ServerConfig struct {
 	Port         int           `json:"port" env:"SERVER_PORT" default:"9000"`
 	ReadTimeout  time.Duration `json:"read_timeout" env:"SERVER_READ_TIMEOUT" default:"300s"`
-	WriteTimeout time.Duration `json:"write_timeout" env:"SERVER_WRITE_TIMEOUT" default:"30s"`
+	WriteTimeout time.Duration `json:"write_timeout" env:"SERVER_WRITE_TIMEOUT" default:"300s"`
 	IdleTimeout  time.Duration `json:"idle_timeout" env:"SERVER_IDLE_TIMEOUT" default:"120s"`
 	SSEInterval  time.Duration `json:"sse_interval" env:"SERVER_SSE_INTERVAL" default:"5s"`
 }
