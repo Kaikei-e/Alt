@@ -36,7 +36,7 @@ export default function FeedsStatsPage() {
             fontSize="2xl"
             fontWeight="bold"
             color="var(--alt-primary)"
-            textShadow="0 0 20px var(--alt-text-primary)"
+            textShadow="0 0 20px var(--text-primary)"
             mb={2}
           >
             Feeds Statistics

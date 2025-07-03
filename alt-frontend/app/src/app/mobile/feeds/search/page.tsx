@@ -28,7 +28,7 @@ export default function SearchFeedsPage() {
             fontSize="3xl"
             fontWeight="bold"
             textAlign="center"
-            color="var(--alt-text-primary)"
+            color="var(--text-primary)"
             bgGradient="var(--accent-gradient)"
             bgClip="text"
           >

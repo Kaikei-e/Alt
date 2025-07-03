@@ -55,18 +55,18 @@ export const StatCard = ({
           <Text
             fontSize="sm"
             textTransform="uppercase"
-            color="var(--alt-text-primary)"
+            color="var(--text-primary)"
             letterSpacing="wider"
           >
             {label}
           </Text>
         </Flex>
 
-        <Text fontSize="3xl" fontWeight="bold" color="var(--alt-text-primary)">
+        <Text fontSize="3xl" fontWeight="bold" color="var(--text-primary)">
           {safeFormatNumber(value)}
         </Text>
 
-        <Text fontSize="sm" color="var(--alt-text-primary)" lineHeight="1.5">
+        <Text fontSize="sm" color="var(--text-primary)" lineHeight="1.5">
           {description}
         </Text>
       </Flex>

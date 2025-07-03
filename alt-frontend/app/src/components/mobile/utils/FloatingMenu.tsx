@@ -187,7 +187,7 @@ export const FloatingMenu = () => {
               size="md"
               borderRadius="full"
               bg="var(--alt-primary)"
-              color="var(--alt-text-primary)"
+              color="var(--text-primary)"
               p={0}
               w="48px"
               h="48px"
@@ -372,7 +372,7 @@ export const FloatingMenu = () => {
                                 </Box>
                               </HStack>
                               <AccordionIcon
-                                color="var(--alt-text-primary)"
+                                color="var(--text-primary)"
                                 transition="transform 0.2s"
                                 transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
                               />
@@ -464,7 +464,7 @@ export const FloatingMenu = () => {
                                           {item.description && (
                                             <Text
                                               fontSize="xs"
-                                              color="var(--alt-text-primary)"
+                                              color="var(--text-primary)"
                                               mt={0.5}
                                             >
                                               {item.description}

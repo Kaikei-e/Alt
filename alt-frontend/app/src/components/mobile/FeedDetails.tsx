@@ -185,7 +185,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   zIndex="-1"
                 />
                 <Text
-                  color="var(--alt-text-primary)"
+                  color="var(--text-primary)"
                   fontWeight="bold"
                   fontSize="md"
                   textShadow="0 2px 4px var(--alt-glass-shadow)"
@@ -239,7 +239,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   color={
                     error
                       ? "var(--alt-text-secondary)"
-                      : "var(--alt-text-primary)"
+                      : "var(--text-primary)"
                   }
                   fontSize="md"
                   lineHeight="1.7"
@@ -277,7 +277,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   size="sm"
                   borderRadius="full"
                   bg="var(--accent-gradient)"
-                  color="var(--alt-text-primary)"
+                  color="var(--text-primary)"
                   fontWeight="bold"
                   p={2.5}
                   minHeight="36px"

@@ -55,7 +55,7 @@ export default function RegisterFeedsPage() {
           fontSize="2xl"
           fontWeight="bold"
           textAlign="center"
-          color="var(--alt-text-primary)"
+          color="var(--text-primary)"
           mt={8}
         >
           Register RSS Feed
@@ -75,7 +75,7 @@ export default function RegisterFeedsPage() {
             <VStack gap={4}>
               <Box width="full">
                 <Text
-                  color="var(--alt-text-primary)"
+                  color="var(--text-primary)"
                   mb={2}
                   fontSize="sm"
                   fontWeight="medium"
