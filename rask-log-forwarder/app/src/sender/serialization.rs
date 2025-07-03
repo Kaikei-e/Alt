@@ -48,7 +48,7 @@ impl BatchSerializer {
             return Err(SerializationError::EmptyBatch);
         }
 
-        let mut buffer = Vec::with_capacity(batch.estimated_memory_size());
+        let mut buffer = Vec::with_capacity(self.estimate_serialized_size(batch));
 
         for entry in batch.entries() {
             serde_json::to_writer(&mut buffer, entry)?;
@@ -74,7 +74,7 @@ impl BatchSerializer {
             return Err(SerializationError::EmptyBatch);
         }
 
-        let mut buffer = Vec::with_capacity(batch.estimated_memory_size() + 1024);
+        let mut buffer = Vec::with_capacity(self.estimate_serialized_size(batch) + 1024);
 
         // Write batch metadata as first line
         let metadata = BatchMetadata {
