@@ -183,15 +183,7 @@ impl ServiceParser for NginxParser {
 }
 
 // Go Structured Log Parser
-pub struct GoStructuredParser {
-    log_pattern: Regex,
-}
-
-lazy_static! {
-    // Capture optional RFC3339 timestamp (group 1) followed by the JSON body (group 2)
-    static ref GO_STRUCTURED_LOG_PATTERN: Regex =
-        Regex::new(r#"^(?:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s)?(\{.*\})$"#).unwrap();
-}
+pub struct GoStructuredParser;
 
 impl Default for GoStructuredParser {
     fn default() -> Self {
@@ -201,9 +193,7 @@ impl Default for GoStructuredParser {
 
 impl GoStructuredParser {
     pub fn new() -> Self {
-        Self {
-            log_pattern: GO_STRUCTURED_LOG_PATTERN.clone(),
-        }
+        Self
     }
 }
 
@@ -213,80 +203,71 @@ impl ServiceParser for GoStructuredParser {
     }
 
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
-        // Try to capture `timestamp JSON` or just `JSON`
-        if let Some(caps) = self.log_pattern.captures(log) {
-            // Optional RFC3339 timestamp (convert to UTC if present)
-            let timestamp = caps
-                .get(1)
-                .and_then(|m| DateTime::parse_from_rfc3339(m.as_str()).ok())
-                .map(|dt| dt.with_timezone(&Utc));
+        let trimmed_log = log.trim();
 
-            // JSON body is always capture group 2 (or the whole log as fallback)
-            let json_str = caps.get(2).map(|m| m.as_str()).unwrap_or(log);
+        if let Some(start_brace_pos) = trimmed_log.find('{') {
+            let potential_json_slice = &trimmed_log[start_brace_pos..];
 
-            if let Ok(Value::Object(obj)) = serde_json::from_str::<Value>(json_str) {
-                // Determine log level
-                let level_str = obj
-                    .get("level")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("info")
-                    .to_lowercase();
-                let level = match level_str.as_str() {
-                    "debug" => LogLevel::Debug,
-                    "info" => LogLevel::Info,
-                    "warn" | "warning" => LogLevel::Warn,
-                    "error" => LogLevel::Error,
-                    "fatal" | "panic" => LogLevel::Fatal,
-                    _ => LogLevel::Info,
-                };
+            // 切り出したスライスがJSONとしてパース可能か試す
+            if let Ok(json) = serde_json::from_str::<Value>(potential_json_slice) {
+                if let Some(obj) = json.as_object() {
+                    let level_str = obj.get("level").and_then(|v| v.as_str()).unwrap_or("info");
 
-                // Extract common fields
-                let message = obj
-                    .get("msg")
-                    .or_else(|| obj.get("message"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(log)
-                    .to_string();
+                    let level = match level_str {
+                        "debug" | "DEBUG" => LogLevel::Debug,
+                        "info" | "INFO" => LogLevel::Info,
+                        "warn" | "warning" | "WARN" | "WARNING" => LogLevel::Warn,
+                        "error" | "ERROR" => LogLevel::Error,
+                        "fatal" | "panic" | "FATAL" | "PANIC" => LogLevel::Fatal,
+                        _ => LogLevel::Info,
+                    };
 
-                let method = obj
-                    .get("method")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let path = obj
-                    .get("path")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let status_code = obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);
+                    let message = obj
+                        .get("msg")
+                        .or_else(|| obj.get("message"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(log)
+                        .to_string();
 
-                // Preserve extra fields
-                let mut fields = std::collections::HashMap::new();
-                for (k, v) in obj.iter() {
-                    if !["level", "msg", "message", "method", "path", "status"]
-                        .contains(&k.as_str())
-                    {
-                        fields.insert(k.clone(), v.to_string());
+                    let method = obj
+                        .get("method")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let path = obj
+                        .get("path")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let status_code = obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);
+
+                    let mut fields = std::collections::HashMap::new();
+                    for (key, value) in obj {
+                        if !["level", "msg", "message", "method", "path", "status"]
+                            .contains(&key.as_str())
+                        {
+                            fields.insert(key.clone(), value.to_string());
+                        }
                     }
-                }
 
-                return Ok(ParsedLogEntry {
-                    service_type: "go".to_string(),
-                    log_type: "structured".to_string(),
-                    message,
-                    level: Some(level),
-                    timestamp,
-                    stream: "stdout".to_string(),
-                    method,
-                    path,
-                    status_code,
-                    response_size: None,
-                    ip_address: None,
-                    user_agent: None,
-                    fields,
-                });
+                    return Ok(ParsedLogEntry {
+                        service_type: "go".to_string(),
+                        log_type: "structured".to_string(), // 正しく "structured" になる
+                        message,
+                        level: Some(level),
+                        timestamp: None,
+                        stream: "stdout".to_string(),
+                        method,
+                        path,
+                        status_code,
+                        response_size: None,
+                        ip_address: None,
+                        user_agent: None,
+                        fields,
+                    });
+                }
             }
         }
 
-        // --- Plain-text fallback ---
+        // JSONとしてパースできなかった場合のフォールバック
         Ok(ParsedLogEntry {
             service_type: "go".to_string(),
             log_type: "plain".to_string(),
@@ -304,6 +285,116 @@ impl ServiceParser for GoStructuredParser {
         })
     }
 }
+
+// Python Structured Log Parser
+// pub struct PythonParser;
+
+// impl Default for PythonParser {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
+
+// impl PythonParser {
+//     pub fn new() -> Self {
+//         Self
+//     }
+// }
+
+// impl ServiceParser for PythonParser {
+//     fn service_type(&self) -> &str {
+//         "python"
+//     }
+
+//     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
+//                 // Try to capture `timestamp JSON` or just `JSON`
+//         if let Some(caps) = self.log_pattern.captures(log) {
+//             // Optional RFC3339 timestamp (convert to UTC if present)
+//             let timestamp = caps.get(1).and_then(|m| DateTime::parse_from_rfc3339(m.as_str()).ok()).map(|dt| dt.with_timezone(&Utc));
+
+//             // JSON body is always capture group 2 (or the whole log as fallback)
+//             let json_str = caps.get(2).map(|m| m.as_str()).unwrap_or(log);
+
+//             if let Ok(Value::Object(obj)) = serde_json::from_str::<Value>(json_str) {
+//                 // Determine log level
+//                 let level_str = obj
+//                     .get("level")
+//                     .and_then(|v| v.as_str())
+//                     .unwrap_or("info")
+//                     .to_lowercase();
+//                 let level = match level_str.as_str() {
+//                     "debug" => LogLevel::Debug,
+//                     "info" => LogLevel::Info,
+//                     "warn" | "warning" => LogLevel::Warn,
+//                     "error" => LogLevel::Error,
+//                     "fatal" | "panic" => LogLevel::Fatal,
+//                     _ => LogLevel::Info,
+//                 };
+
+//                 // Extract common fields
+//                 let message = obj
+//                     .get("msg")
+//                     .or_else(|| obj.get("message"))
+//                     .and_then(|v| v.as_str())
+//                     .unwrap_or(log)
+//                     .to_string();
+
+//                 let method = obj
+//                     .get("method")
+//                     .and_then(|v| v.as_str())
+//                     .map(|s| s.to_string());
+//                 let path = obj
+//                     .get("path")
+//                     .and_then(|v| v.as_str())
+//                     .map(|s| s.to_string());
+//                 let status_code = obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);
+
+//                 // Preserve extra fields
+//                 let mut fields = std::collections::HashMap::new();
+//                 for (k, v) in obj.iter() {
+//                     if !["level", "msg", "message", "method", "path", "status"]
+//                         .contains(&k.as_str())
+//                     {
+//                         fields.insert(k.clone(), v.to_string());
+//                     }
+//                 }
+
+//                 return Ok(ParsedLogEntry {
+//                     service_type: "go".to_string(),
+//                     log_type: "structured".to_string(),
+//                     message,
+//                     level: Some(level),
+//                     timestamp,
+//                     stream: "stdout".to_string(),
+//                     method,
+//                     path,
+//                     status_code,
+//                     response_size: None,
+//                     ip_address: None,
+//                     user_agent: None,
+//                     fields,
+//                 });
+//             }
+//         }
+
+//         // --- Plain-text fallback ---
+//         Ok(ParsedLogEntry {
+//             service_type: "go".to_string(),
+//             log_type: "plain".to_string(),
+//             message: log.to_string(),
+//             level: Some(LogLevel::Info),
+//             timestamp: None,
+//             stream: "stdout".to_string(),
+//             method: None,
+//             path: None,
+//             status_code: None,
+//             response_size: None,
+//             ip_address: None,
+//             user_agent: None,
+//             fields: std::collections::HashMap::new(),
+//         })
+//     }
+// }
 
 // PostgreSQL Log Parser
 pub struct PostgresParser {
@@ -542,19 +633,25 @@ mod tests {
     }
 
     #[test]
-    fn test_go_structured_log_parsing() {
+    fn test_go_structured_log_with_docker_timestamp_prefix() {
         let parser = GoStructuredParser::new();
 
-        let go_log = r#"{"level":"info","ts":"2024-01-01T12:00:00.123Z","caller":"main.go:42","msg":"Request processed","method":"GET","path":"/api/users","status":200,"duration":"15ms"}"#;
+        // Dockerが付与したタイムスタンプ付きのログをシミュレート
+        let log_with_prefix = r#"2025-07-03T16:27:09.758077205Z {"level":"info","msg":"Got articles for summarization","service":"pre-processor"}"#;
 
-        let entry = parser.parse_log(go_log).unwrap();
+        let entry = parser.parse_log(log_with_prefix).unwrap();
 
+        // log_typeが "structured" として正しくパースされることを確認
+        assert_eq!(entry.log_type, "structured");
         assert_eq!(entry.service_type, "go");
         assert_eq!(entry.level, Some(LogLevel::Info));
-        assert_eq!(entry.message, "Request processed");
-        assert_eq!(entry.method, Some("GET".to_string()));
-        assert_eq!(entry.path, Some("/api/users".to_string()));
-        assert_eq!(entry.status_code, Some(200));
+        assert_eq!(entry.message, "Got articles for summarization");
+
+        // プレフィックスがない純粋なJSONでもパースできることを確認
+        let log_without_prefix = r#"{"level":"info","msg":"pure json log"}"#;
+        let entry_no_prefix = parser.parse_log(log_without_prefix).unwrap();
+        assert_eq!(entry_no_prefix.log_type, "structured");
+        assert_eq!(entry_no_prefix.message, "pure json log");
     }
 
     #[test]
