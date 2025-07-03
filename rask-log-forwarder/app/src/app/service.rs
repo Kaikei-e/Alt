@@ -1,5 +1,4 @@
 use super::Config;
-use crate::parser::services::ServiceParser;
 use crate::{
     buffer::{BatchConfig, BufferConfig, BufferManager, MemoryConfig},
     collector::{CollectorConfig, LogCollector},
@@ -7,8 +6,6 @@ use crate::{
     reliability::{HealthReport, ReliabilityManager},
     sender::{ClientConfig, LogSender},
 };
-use lazy_static::lazy_static;
-use regex::Regex;
 use reqwest;
 use serde_json;
 use std::sync::Arc;
@@ -16,7 +13,7 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::signal;
 use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 #[derive(Error, Debug)]
 pub enum ServiceError {
@@ -234,7 +231,7 @@ impl ServiceManager {
 
     async fn main_processing_loop(
         collector: Arc<tokio::sync::Mutex<LogCollector>>,
-        _parser: Arc<UniversalParser>,
+        parser: Arc<UniversalParser>,
         reliability_manager: Arc<ReliabilityManager>,
         running: Arc<RwLock<bool>>,
         mut shutdown_rx: mpsc::UnboundedReceiver<()>,
@@ -246,7 +243,6 @@ impl ServiceManager {
         let (log_tx, mut log_rx) = tokio::sync::mpsc::unbounded_channel();
 
         // Start log collection in background
-        let _collection_running = running.clone();
         let collector_clone = collector.clone();
         tokio::spawn(async move {
             let mut collector_guard = collector_clone.lock().await;
@@ -266,133 +262,59 @@ impl ServiceManager {
             tokio::select! {
                 // Process incoming log entries
                 Some(log_entry) = log_rx.recv() => {
-                    debug!("Received log entry from container");
+                    // Create container info for the parser
+                    let container_info = crate::collector::ContainerInfo {
+                        id: log_entry.id.clone(),
+                        service_name: target_service.clone(),
+                        group: None, // Will be set by the parser if available
+                        labels: std::collections::HashMap::new(),
+                    };
 
-                    // Step 1: Remove ANSI escape sequences for easier parsing
-                    let cleaned_log = strip_ansi_codes(&log_entry.log);
+                    // Use UniversalParser to properly parse the Docker log
+                    match parser.parse_docker_log(log_entry.raw_bytes.as_ref(), &container_info).await {
+                        Ok(enriched_entry) => {
+                            // Convert EnrichedLogEntry to format expected by send_log_batch
+                            let parsed_entry = crate::parser::services::ParsedLogEntry {
+                                service_type: enriched_entry.service_type,
+                                log_type: enriched_entry.log_type,
+                                message: enriched_entry.message,
+                                level: enriched_entry.level,
+                                timestamp: Some(chrono::DateTime::parse_from_rfc3339(&enriched_entry.timestamp)
+                                    .unwrap_or_else(|_| chrono::Utc::now().into())
+                                    .with_timezone(&chrono::Utc)),
+                                stream: enriched_entry.stream,
+                                method: enriched_entry.method,
+                                path: enriched_entry.path,
+                                status_code: enriched_entry.status_code,
+                                response_size: enriched_entry.response_size,
+                                ip_address: enriched_entry.ip_address,
+                                user_agent: enriched_entry.user_agent,
+                                fields: enriched_entry.fields,
+                            };
 
-                    // Try parsing strategies in order of confidence
-                    let mut parsed_opt: Option<crate::parser::services::ParsedLogEntry> = None;
-
-                    // 1) JSON structured (common in Go, Python structured logging)
-                    if cleaned_log.trim_start().starts_with('{') {
-                        if let Ok(mut json_parsed) = crate::parser::services::GoStructuredParser::new().parse_log(&cleaned_log) {
-                            json_parsed.service_type = target_service.clone();
-                            parsed_opt = Some(json_parsed);
+                            log_batch.push(parsed_entry);
                         }
-                    }
-
-                    // 2) GIN access logs ("[GIN] yyyy/mm/dd - hh:mm:ss | 200 | ... | ip | METHOD  \"/path\"")
-                    if parsed_opt.is_none() && cleaned_log.contains("[GIN]") {
-                        let parts: Vec<&str> = cleaned_log.split('|').collect();
-                        if parts.len() >= 5 {
-                            let status_code_part = parts[1].trim();
-                            let ip_part = parts[3].trim();
-                            let method_path_part = parts[4].trim();
-
-                            let status_code = status_code_part.parse::<u16>().ok();
-
-                            // Split method and path
-                            let mut method: Option<String> = None;
-                            let mut path: Option<String> = None;
-                            let tokens: Vec<&str> = method_path_part.split_whitespace().collect();
-                            if tokens.len() >= 2 {
-                                method = Some(tokens[0].to_string());
-                                let p = tokens[1].trim_matches('"');
-                                path = Some(p.to_string());
-                            }
-
-                            parsed_opt = Some(crate::parser::services::ParsedLogEntry {
+                        Err(e) => {
+                            error!("Failed to parse log entry: {}", e);
+                            // Fallback: create a plain text entry
+                            let fallback_entry = crate::parser::services::ParsedLogEntry {
                                 service_type: target_service.clone(),
-                                log_type: "gin".to_string(),
-                                message: cleaned_log.clone(),
+                                log_type: "plain".to_string(),
+                                    message: log_entry.log.clone(),
                                 level: Some(crate::parser::services::LogLevel::Info),
-                                timestamp: None,
-                                stream: log_entry.stream.clone(),
-                                method,
-                                path,
-                                status_code,
+                                timestamp: Some(chrono::Utc::now()),
+                                stream: "stdout".to_string(),
+                                method: None,
+                                path: None,
+                                status_code: None,
                                 response_size: None,
-                                ip_address: if ip_part.is_empty() { None } else { Some(ip_part.to_string()) },
+                                ip_address: None,
                                 user_agent: None,
                                 fields: std::collections::HashMap::new(),
-                            });
+                            };
+                            log_batch.push(fallback_entry);
                         }
                     }
-
-                    // 3) key=value scanning fallback (existing logic)
-                    if parsed_opt.is_none() {
-                        // Try to parse key=value structured log parts (common in Go's slog)
-                        let mut fields: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-                        let mut message = cleaned_log.clone();
-                        let mut level = crate::parser::services::LogLevel::Info;
-                        let mut method: Option<String> = None;
-                        let mut path: Option<String> = None;
-                        let mut status_code: Option<u16> = None;
-                        let mut ip_address: Option<String> = None;
-                        let mut user_agent: Option<String> = None;
-
-                        for part in cleaned_log.split_whitespace() {
-                            if let Some(idx) = part.find('=') {
-                                let key = &part[..idx];
-                                let value = part[idx + 1..].trim_matches('"').to_string();
-
-                                match key {
-                                    "msg" | "message" => message = value.clone(),
-                                    "level" => {
-                                        level = match value.to_lowercase().as_str() {
-                                            "debug" => crate::parser::services::LogLevel::Debug,
-                                            "warn" | "warning" => crate::parser::services::LogLevel::Warn,
-                                            "error" => crate::parser::services::LogLevel::Error,
-                                            "fatal" | "panic" => crate::parser::services::LogLevel::Fatal,
-                                            _ => crate::parser::services::LogLevel::Info,
-                                        }
-                                    },
-                                    "method" => method = Some(value.clone()),
-                                    "path" => path = Some(value.clone()),
-                                    "status" | "status_code" => {
-                                        if let Ok(code) = value.parse::<u16>() {
-                                            status_code = Some(code);
-                                        }
-                                    },
-                                    "remote_addr" | "ip" => ip_address = Some(value.clone()),
-                                    "user_agent" | "agent" => user_agent = Some(value.clone()),
-                                    _ => {
-                                        fields.insert(key.to_string(), value);
-                                    }
-                                }
-                            }
-                        }
-
-                        parsed_opt = Some(crate::parser::services::ParsedLogEntry {
-                            service_type: target_service.clone(),
-                            log_type: "plain".to_string(),
-                            message,
-                            level: Some(level),
-                            timestamp: None,
-                            stream: log_entry.stream.clone(),
-                            method,
-                            path,
-                            status_code,
-                            response_size: None,
-                            ip_address,
-                            user_agent,
-                            fields,
-                        });
-                    }
-
-                    // At this point parsed_opt is guaranteed to be Some
-                    let mut parsed_entry = parsed_opt.unwrap();
-
-                    // Parse timestamp from Docker metadata first, fallback to now
-                    let timestamp = match chrono::DateTime::parse_from_rfc3339(&log_entry.time) {
-                        Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
-                        Err(_) => Some(chrono::Utc::now()),
-                    };
-                    parsed_entry.timestamp = timestamp;
-
-                    debug!("Successfully created log entry");
-                    log_batch.push(parsed_entry);
 
                     // Send batch if it reaches the target size or flush interval has passed
                     if log_batch.len() >= batch_size || last_flush.elapsed() >= flush_interval {
@@ -446,7 +368,10 @@ impl ServiceManager {
                 log_type: entry.log_type.clone(),
                 message: entry.message.clone(),
                 level: entry.level.clone(),
-                timestamp: entry.timestamp.map(|dt| dt.to_rfc3339()).unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+                timestamp: entry
+                    .timestamp
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
                 stream: entry.stream.clone(),
                 method: entry.method.clone(),
                 path: entry.path.clone(),
@@ -463,7 +388,7 @@ impl ServiceManager {
             match serde_json::to_string(&enriched_entry) {
                 Ok(json_line) => ndjson_lines.push(json_line),
                 Err(e) => {
-                    error!("Failed to serialize log entry: {}", e);
+                    error!("Failed to serialize log entry: {e}");
                     continue;
                 }
             }
@@ -497,7 +422,7 @@ impl ServiceManager {
                 }
             }
             Err(e) => {
-                error!("Failed to send logs: {}", e);
+                error!("Failed to send logs: {e}");
                 // Here we could add retry logic via reliability_manager
             }
         }
@@ -642,9 +567,9 @@ impl SignalHandler {
 }
 
 // Helper: remove ANSI escape sequences for easier log parsing
-fn strip_ansi_codes(input: &str) -> String {
-    lazy_static! {
-        static ref ANSI_RE: Regex = Regex::new(r"\x1B\[[0-9;?]*[ -/]*[@-~]").unwrap();
-    }
-    ANSI_RE.replace_all(input, "").to_string()
-}
+// fn strip_ansi_codes(input: &str) -> String {
+//     lazy_static! {
+//         static ref ANSI_RE: Regex = Regex::new(r"\x1B\[[0-9;?]*[ -/]*[@-~]").unwrap();
+//     }
+//     ANSI_RE.replace_all(input, "").to_string()
+// }

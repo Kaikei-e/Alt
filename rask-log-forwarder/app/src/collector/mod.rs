@@ -3,7 +3,10 @@ pub mod docker;
 
 use thiserror::Error;
 use tokio::sync::mpsc;
+// Ensure zero-copy processing by using Bytes throughout
+use bytes::Bytes;
 
+pub type LogBytes = Bytes;
 pub use discovery::{ContainerInfo, DiscoveryError, ServiceDiscovery, ServiceDiscoveryTrait};
 pub use docker::{
     CollectorError as DockerError, ContainerInfo as DockerContainerInfo, DockerCollector,
@@ -25,6 +28,9 @@ pub struct LogEntry {
     pub log: String,
     pub stream: String,
     pub time: String,
+    pub id: String,
+    pub container_id: String,
+    pub raw_bytes: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -124,11 +130,12 @@ impl LogCollector {
             CollectorError::DiscoveryError(discovery::DiscoveryError::DockerError(e))
         })?;
 
+        // IMPORTANT: Set timestamps to false to avoid Docker adding timestamps to log messages
         let options = LogsOptions {
             follow: true,
             stdout: true,
             stderr: true,
-            timestamps: true,
+            timestamps: false, // Changed from true to false
             tail: "all".to_string(),
             ..Default::default()
         };
@@ -141,15 +148,22 @@ impl LogCollector {
                     // Convert Docker log output to LogEntry
                     let log_bytes = log_chunk.into_bytes();
 
-                    // Parse Docker JSON log format
-                    if let Ok(entry) = self.parse_docker_log(log_bytes) {
-                        if tx.send(entry).is_err() {
-                            return Err(CollectorError::CollectionStopped);
-                        }
+                    // Create LogEntry with raw bytes - let the parser handle the actual parsing
+                    let entry = LogEntry {
+                        log: String::new(),                    // Will be filled by the parser
+                        stream: "stdout".to_string(), // Default, will be overridden by parser
+                        time: chrono::Utc::now().to_rfc3339(), // Default timestamp
+                        id: container_id.to_string(),
+                        container_id: container_id.to_string(),
+                        raw_bytes: log_bytes.to_vec(),
+                    };
+
+                    if tx.send(entry).is_err() {
+                        return Err(CollectorError::CollectionStopped);
                     }
                 }
                 Err(e) => {
-                    tracing::error!("Docker log stream error: {}", e);
+                    tracing::error!("Docker log stream error: {e}");
                     return Err(CollectorError::DiscoveryError(
                         discovery::DiscoveryError::DockerError(e),
                     ));
@@ -160,24 +174,7 @@ impl LogCollector {
         Ok(())
     }
 
-    fn parse_docker_log(&self, log_bytes: bytes::Bytes) -> Result<LogEntry, serde_json::Error> {
-        // For now, convert raw bytes to string and create a basic LogEntry
-        // In production, you'd want to parse the Docker JSON log format properly
-        let log_str = String::from_utf8_lossy(&log_bytes);
-
-        Ok(LogEntry {
-            log: log_str.trim().to_string(),
-            stream: "stdout".to_string(),
-            time: chrono::Utc::now().to_rfc3339(),
-        })
-    }
-
     pub fn get_container_info(&self) -> Option<&discovery::ContainerInfo> {
         self.container_info.as_ref()
     }
 }
-
-// Ensure zero-copy processing by using Bytes throughout
-use bytes::Bytes;
-
-pub type LogBytes = Bytes;
