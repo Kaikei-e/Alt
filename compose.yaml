@@ -16,6 +16,16 @@ x-rask-env: &rask-env
       buffer_capacity = 100000
       log_level = "info"
 
+x-rask-forwarder-env: &rask-forwarder-env
+  environment:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+    LOG_LEVEL: "info"
+    RUST_LOG: "info"
+    RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+    BATCH_SIZE: "1000"
+    FLUSH_INTERVAL_MS: "500"
+    BUFFER_CAPACITY: "100000"
+
 services:
   nginx:
     image: nginx:latest
@@ -166,7 +176,7 @@ services:
       start_period: 60s
     tty: true
     labels:
-      - rask.group=alt-backend
+      - rask.group=news-creator
     logging:
       driver: "json-file"
       options:
@@ -196,7 +206,7 @@ services:
       - alt-network
     tty: true
     labels:
-      - rask.group=alt-backend
+      - rask.group=pre-processor
     logging:
       driver: "json-file"
       options:
@@ -225,7 +235,7 @@ services:
       - "9300:9300"
     tty: true
     labels:
-      - rask.group=alt-backend
+      - rask.group=search-indexer
     logging:
       driver: "json-file"
       options:
@@ -253,14 +263,14 @@ services:
         condition: service_healthy
     restart: unless-stopped
     labels:
-      - rask.group=alt-backend
+      - rask.group=tag-generator
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
   meilisearch:
-      image: getmeili/meilisearch:v1.6
+      image: getmeili/meilisearch:v1.15.2
       restart: unless-stopped
       environment:
         MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
@@ -284,7 +294,7 @@ services:
             memory: 8G
       tty: true
       labels:
-        - rask.group=alt-backend
+        - rask.group=meilisearch
       logging:
         driver: "json-file"
         options:
@@ -301,7 +311,7 @@ services:
       - alt-network
     tty: true
     labels:
-      - rask.group=alt-backend
+      - rask.group=rask-log-aggregator
     logging:
       driver: "json-file"
       options:
@@ -317,7 +327,7 @@ services:
       APP_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       APP_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB}
   clickhouse:
-    image: clickhouse/clickhouse-server:23.8
+    image: clickhouse/clickhouse-server:25.6
     restart: unless-stopped
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-rask_logs}
@@ -374,7 +384,7 @@ services:
       - alt-network
     tty: true
     labels:
-      - rask.group=alt-backend
+      - rask.group=db
     logging:
       driver: "json-file"
       options:
@@ -404,10 +414,9 @@ services:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
     network_mode: "service:nginx"
-    <<: *rask-env
+    <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "${NGINX_TARGET:-nginx}"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -422,10 +431,9 @@ services:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
     network_mode: "service:alt-frontend"
-    <<: *rask-env
+    <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "${ALT_FRONTEND_TARGET:-alt-frontend}"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -440,16 +448,9 @@ services:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
     network_mode: "service:alt-backend"
-    <<: *rask-env
+    <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "${ALT_BACKEND_TARGET:-alt-backend}"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -464,14 +465,9 @@ services:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
     network_mode: "service:tag-generator"
-    <<: *rask-env
+    <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "tag-generator"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -486,14 +482,9 @@ services:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
     network_mode: "service:pre-processor"
-    <<: *rask-env
+    <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "pre-processor"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -508,14 +499,9 @@ services:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
     network_mode: "service:search-indexer"
-    <<: *rask-env
+    <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "search-indexer"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -530,14 +516,9 @@ services:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
     network_mode: "service:news-creator"
-    <<: *rask-env
+    <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "news-creator"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -552,14 +533,9 @@ services:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
     network_mode: "service:meilisearch"
-    <<: *rask-env
+    <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "meilisearch"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -572,14 +548,9 @@ services:
       context: ./rask-log-forwarder/app
       dockerfile: Dockerfile.rask-log-forwarder
     network_mode: "service:db"
-    <<: *rask-env
+    <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "db"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
