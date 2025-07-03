@@ -27,8 +27,6 @@ export default function FeedsStatsPage() {
       pt="env(safe-area-inset-top)"
       pb="env(safe-area-inset-bottom)"
     >
-
-
       <Box p={5} maxW="container.sm" mx="auto" pt={8} overflowX="hidden">
         {/* Header */}
         <Box mb={8} textAlign="center">

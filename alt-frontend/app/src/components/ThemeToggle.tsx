@@ -34,7 +34,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   // Always call useEffect in the same order - fix for hooks order error
   React.useEffect(() => {
     setMounted(true);
-    console.log('ThemeToggle mounted, currentTheme:', currentTheme);
+    console.log("ThemeToggle mounted, currentTheme:", currentTheme);
   }, [currentTheme]);
 
   const currentSize =

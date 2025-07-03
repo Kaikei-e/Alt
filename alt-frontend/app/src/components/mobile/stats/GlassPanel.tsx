@@ -37,13 +37,13 @@ export function GlassPanel({
 
   const hoverStyles = enableHover
     ? {
-      _hover: {
-        transform: "translateY(-2px)",
-        background: "var(--alt-glass-hover)",
-        borderColor: "var(--alt-glass-border)",
-        boxShadow: "0 8px 32px var(--accent-secondary)",
-      },
-    }
+        _hover: {
+          transform: "translateY(-2px)",
+          background: "var(--alt-glass-hover)",
+          borderColor: "var(--alt-glass-border)",
+          boxShadow: "0 8px 32px var(--accent-secondary)",
+        },
+      }
     : {};
 
   const content = (

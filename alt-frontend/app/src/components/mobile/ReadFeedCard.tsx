@@ -75,11 +75,7 @@ const ReadFeedCard = memo(function ReadFeedCard({ feed }: ReadFeedCardProps) {
               alignItems="center"
               justifyContent="center"
             >
-              <Text
-                fontSize="sm"
-                color="var(--text-primary)"
-                fontWeight="bold"
-              >
+              <Text fontSize="sm" color="var(--text-primary)" fontWeight="bold">
                 Already Read
               </Text>
             </Box>

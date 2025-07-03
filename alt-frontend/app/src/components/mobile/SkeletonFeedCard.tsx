@@ -6,8 +6,7 @@ const SkeletonFeedCard = memo(function SkeletonFeedCard() {
       style={{
         padding: "2px",
         borderRadius: "18px",
-        background:
-          "var(--accent-gradient)",
+        background: "var(--accent-gradient)",
         marginBottom: "16px",
       }}
       data-testid="skeleton-feed-card"

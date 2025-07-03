@@ -13,19 +13,18 @@
   --alt-blue: #3a86ff;
 
   /* --- Base Brand Colors (Liquid-Beige) --- */
-  --alt-terracotta: #B85450;
-  --alt-sage: #7C9070;
-  --alt-sand: #D4A574;
+  --alt-terracotta: #b85450;
+  --alt-sage: #7c9070;
+  --alt-sand: #d4a574;
 
   /* --- Swappable Theme Colors --- */
-  --alt-primary: #B85450;   /* Defaults to Liquid-Beige */
-  --alt-secondary: #7C9070;
-  --alt-tertiary: #D4A574;
+  --alt-primary: #b85450; /* Defaults to Liquid-Beige */
+  --alt-secondary: #7c9070;
+  --alt-tertiary: #d4a574;
 
-  --alt-success: #00FF00;
-  --alt-error: #FF0000;
-  --alt-warning: #FFFF00;
-
+  --alt-success: #00ff00;
+  --alt-error: #ff0000;
+  --alt-warning: #ffff00;
 
   /* --- Spacing (Fibonacci) --- */
   --space-1: 0.25rem;
@@ -77,7 +76,12 @@
   --surface-blur: 20px;
 
   --app-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
-  --accent-gradient: linear-gradient(45deg, var(--alt-primary), var(--alt-secondary), var(--alt-tertiary));
+  --accent-gradient: linear-gradient(
+    45deg,
+    var(--alt-primary),
+    var(--alt-secondary),
+    var(--alt-tertiary)
+  );
 
   --foreground: #ffffff;
   --background: #1a1a2e;
@@ -109,7 +113,12 @@
 
   /* Backgrounds */
   --app-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
-  --accent-gradient: linear-gradient(45deg, var(--alt-primary), var(--alt-secondary), var(--alt-tertiary));
+  --accent-gradient: linear-gradient(
+    45deg,
+    var(--alt-primary),
+    var(--alt-secondary),
+    var(--alt-tertiary)
+  );
 
   /* Text colors */
   --foreground: #ffffff;
@@ -138,12 +147,17 @@
   --surface-blur: 16px;
 
   /* Backgrounds */
-  --app-bg: linear-gradient(135deg, #E8DED1 0%, #D6C8B9 50%, #C8B8A1 100%);
-  --accent-gradient: linear-gradient(135deg, var(--alt-primary) 0%, var(--alt-secondary) 50%, var(--alt-tertiary) 100%);
+  --app-bg: linear-gradient(135deg, #e8ded1 0%, #d6c8b9 50%, #c8b8a1 100%);
+  --accent-gradient: linear-gradient(
+    135deg,
+    var(--alt-primary) 0%,
+    var(--alt-secondary) 50%,
+    var(--alt-tertiary) 100%
+  );
 
   /* Text colors */
   --foreground: #2c2416;
-  --background: #E8DED1;
+  --background: #e8ded1;
   --text-primary: #2c2416;
   --text-secondary: rgba(44, 36, 22, 0.8);
   --text-muted: rgba(44, 36, 22, 0.6);
@@ -177,11 +191,14 @@ body {
   /* Fallback solid color so `background-color` is never transparent */
   background-color: var(--background);
   color: var(--foreground);
-  font-feature-settings: "rlig" 1, "calt" 1;
+  font-feature-settings:
+    "rlig" 1,
+    "calt" 1;
   background-attachment: fixed;
   position: relative;
-  transition: background var(--transition-smooth) ease,
-              color var(--transition-smooth) ease;
+  transition:
+    background var(--transition-smooth) ease,
+    color var(--transition-smooth) ease;
 
   /* Safe area */
   padding-top: env(safe-area-inset-top);
@@ -258,7 +275,7 @@ body::before {
 .btn-primary:hover {
   background: var(--surface-hover);
   border-color: var(--alt-primary);
-  box-shadow: 0 0 20px var(--alt-primary)33;
+  box-shadow: 0 0 20px var(--alt-primary) 33;
   transform: translateY(-2px);
 }
 
@@ -329,7 +346,12 @@ body::before {
 /* ---------------------------------------------------------------------------
    5.  TYPOGRAPHY
    ---------------------------------------------------------------------------*/
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-display);
   font-weight: 700;
   line-height: 1.2;
@@ -337,12 +359,24 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-primary);
 }
 
-h1 { font-size: var(--text-4xl); }
-h2 { font-size: var(--text-3xl); }
-h3 { font-size: var(--text-2xl); }
-h4 { font-size: var(--text-xl); }
-h5 { font-size: var(--text-lg); }
-h6 { font-size: var(--text-base); }
+h1 {
+  font-size: var(--text-4xl);
+}
+h2 {
+  font-size: var(--text-3xl);
+}
+h3 {
+  font-size: var(--text-2xl);
+}
+h4 {
+  font-size: var(--text-xl);
+}
+h5 {
+  font-size: var(--text-lg);
+}
+h6 {
+  font-size: var(--text-base);
+}
 
 p {
   margin: 0;
@@ -370,29 +404,61 @@ a:hover {
   padding: 0 var(--space-4);
 }
 
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.items-center { align-items: center; }
-.justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
-.gap-1 { gap: var(--space-1); }
-.gap-2 { gap: var(--space-2); }
-.gap-3 { gap: var(--space-3); }
-.gap-4 { gap: var(--space-4); }
-.gap-6 { gap: var(--space-6); }
-.gap-8 { gap: var(--space-8); }
+.flex {
+  display: flex;
+}
+.flex-col {
+  flex-direction: column;
+}
+.items-center {
+  align-items: center;
+}
+.justify-center {
+  justify-content: center;
+}
+.justify-between {
+  justify-content: space-between;
+}
+.gap-1 {
+  gap: var(--space-1);
+}
+.gap-2 {
+  gap: var(--space-2);
+}
+.gap-3 {
+  gap: var(--space-3);
+}
+.gap-4 {
+  gap: var(--space-4);
+}
+.gap-6 {
+  gap: var(--space-6);
+}
+.gap-8 {
+  gap: var(--space-8);
+}
 
 /* ---------------------------------------------------------------------------
    7.  ANIMATIONS
    ---------------------------------------------------------------------------*/
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .animate-fadeIn {
@@ -415,11 +481,15 @@ a:hover {
     padding: 0 var(--space-3);
   }
 
-  .hide-mobile { display: none; }
+  .hide-mobile {
+    display: none;
+  }
 }
 
 @media (min-width: 769px) {
-  .hide-desktop { display: none; }
+  .hide-desktop {
+    display: none;
+  }
 }
 
 /* Reduced motion */

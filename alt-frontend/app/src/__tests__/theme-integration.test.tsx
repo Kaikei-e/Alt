@@ -109,7 +109,7 @@ describe("Theme Integration", () => {
     render(
       <ThemeProvider>
         <ThemeToggle />
-      </ThemeProvider>
+      </ThemeProvider>,
     );
 
     // Wait for component to mount and theme to be resolved

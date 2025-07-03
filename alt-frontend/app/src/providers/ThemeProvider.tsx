@@ -26,8 +26,8 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     if (typeof document !== "undefined")
-      document.body.setAttribute("data-style", currentTheme)
-  }, [currentTheme])
+      document.body.setAttribute("data-style", currentTheme);
+  }, [currentTheme]);
 
   return (
     <ThemeContext.Provider value={contextValue}>
@@ -35,4 +35,3 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     </ThemeContext.Provider>
   );
 };
-

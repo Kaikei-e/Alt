@@ -237,9 +237,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   data-testid={`summary-text-${uniqueId}`}
                   className="summary-text"
                   color={
-                    error
-                      ? "var(--alt-text-secondary)"
-                      : "var(--text-primary)"
+                    error ? "var(--alt-text-secondary)" : "var(--text-primary)"
                   }
                   fontSize="md"
                   lineHeight="1.7"

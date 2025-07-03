@@ -12,7 +12,8 @@ const feeds: Feed[] = [
   },
   {
     id: "2",
-    title: "Very long title that spans multiple lines and should not affect the icon size at all",
+    title:
+      "Very long title that spans multiple lines and should not affect the icon size at all",
     description: "desc",
     link: "https://example.com/long",
     published: "2024-01-02T00:00:00Z",
@@ -25,7 +26,9 @@ test.describe("FeedCard Icon Size", () => {
     await mockApiEndpoints(page, { feeds });
   });
 
-  test("icon size remains consistent for varying title lengths", async ({ page }) => {
+  test("icon size remains consistent for varying title lengths", async ({
+    page,
+  }) => {
     await page.goto("/mobile/feeds");
     await page.waitForLoadState("networkidle");
     const icons = page.locator('[data-testid^="feed-link-icon-"]');

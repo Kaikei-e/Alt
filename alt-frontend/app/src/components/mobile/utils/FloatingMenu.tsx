@@ -20,7 +20,18 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useCallback, useEffect } from "react";
-import { Rss, Search, Plus, Eye, ChartBar, Home, Newspaper, Star, Menu, X } from "lucide-react";
+import {
+  Rss,
+  Search,
+  Plus,
+  Eye,
+  ChartBar,
+  Home,
+  Newspaper,
+  Star,
+  Menu,
+  X,
+} from "lucide-react";
 import { ThemeToggle } from "../../ThemeToggle";
 
 type MenuCategory = "feeds" | "other" | "articles";
@@ -374,7 +385,9 @@ export const FloatingMenu = () => {
                               <AccordionIcon
                                 color="var(--text-primary)"
                                 transition="transform 0.2s"
-                                transform={isExpanded ? "rotate(180deg)" : "rotate(0deg)"}
+                                transform={
+                                  isExpanded ? "rotate(180deg)" : "rotate(0deg)"
+                                }
                               />
                             </AccordionButton>
                           </h2>
@@ -399,10 +412,11 @@ export const FloatingMenu = () => {
                                           : "var(--alt-glass)"
                                       }
                                       borderRadius="10px"
-                                      border={`1px solid ${isActive
-                                        ? "var(--alt-glass-border)"
-                                        : "var(--alt-glass-border)"
-                                        }`}
+                                      border={`1px solid ${
+                                        isActive
+                                          ? "var(--alt-glass-border)"
+                                          : "var(--alt-glass-border)"
+                                      }`}
                                       p={3}
                                       _hover={{
                                         bg: isActive
@@ -450,7 +464,9 @@ export const FloatingMenu = () => {
                                           >
                                             <Text
                                               color={
-                                                isActive ? "var(--text-primary)" : "var(--alt-secondary)"
+                                                isActive
+                                                  ? "var(--text-primary)"
+                                                  : "var(--alt-secondary)"
                                               }
                                               fontWeight={
                                                 isActive ? "semibold" : "medium"
@@ -485,11 +501,7 @@ export const FloatingMenu = () => {
                 </Accordion>
 
                 {/* Theme Toggle */}
-                <Box
-                  mt={6}
-                  pt={4}
-                  borderTop="1px solid var(--accent-primary)"
-                >
+                <Box mt={6} pt={4} borderTop="1px solid var(--accent-primary)">
                   <ThemeToggle size="md" showLabel />
                 </Box>
               </Drawer.Body>

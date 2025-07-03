@@ -210,7 +210,11 @@ export default function Home() {
                   >
                     Browse Feeds
                   </Text>
-                  <Text fontSize="xs" color="var(--text-primary)" fontFamily="body">
+                  <Text
+                    fontSize="xs"
+                    color="var(--text-primary)"
+                    fontFamily="body"
+                  >
                     Explore RSS subscriptions
                   </Text>
                 </VStack>
@@ -260,21 +264,9 @@ export default function Home() {
                   aria-label={`Loading statistic ${i}`}
                 >
                   <Flex direction="column" gap={2}>
-                    <Box
-                      h="12px"
-                      bg="var(--alt-glass)"
-                      borderRadius="xs"
-                    />
-                    <Box
-                      h="24px"
-                      bg="var(--alt-glass)"
-                      borderRadius="sm"
-                    />
-                    <Box
-                      h="10px"
-                      bg="var(--alt-glass)"
-                      borderRadius="xs"
-                    />
+                    <Box h="12px" bg="var(--alt-glass)" borderRadius="xs" />
+                    <Box h="24px" bg="var(--alt-glass)" borderRadius="sm" />
+                    <Box h="10px" bg="var(--alt-glass)" borderRadius="xs" />
                   </Flex>
                 </Box>
               ))}

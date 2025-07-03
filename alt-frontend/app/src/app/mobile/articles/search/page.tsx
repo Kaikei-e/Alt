@@ -73,7 +73,11 @@ export default function SearchPage() {
               borderRadius="lg"
               border="1px solid var(--alt-glass-border)"
             >
-              <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
+              <Text
+                color="var(--alt-text-secondary)"
+                fontSize="sm"
+                textAlign="center"
+              >
                 {query
                   ? `No articles match "${query}". Try different keywords.`
                   : '💡 Try searching for topics like "AI", "technology", or "news"'}

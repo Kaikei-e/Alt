@@ -149,7 +149,6 @@ describe("useSSEFeedsStats Hook", () => {
       expect(result.current.unsummarizedArticlesAmount).toBe(0);
       expect(result.current.totalArticlesAmount).toBe(0);
     });
-
   });
 
   describe("Connection State Management", () => {
@@ -245,7 +244,6 @@ describe("useSSEFeedsStats Hook", () => {
     });
   });
 
-
   describe("Cleanup", () => {
     it("should cleanup SSE connection on unmount", () => {
       const { unmount } = renderHook(() => useSSEFeedsStats());
@@ -270,5 +268,4 @@ describe("useSSEFeedsStats Hook", () => {
       expect(result.current.feedAmount).toBe(0);
     });
   });
-
 });

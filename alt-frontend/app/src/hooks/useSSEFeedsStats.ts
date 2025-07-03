@@ -19,7 +19,6 @@ export const useSSEFeedsStats = () => {
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastDataReceivedRef = useRef<number>(Date.now());
 
-
   // Connection health check
   useEffect(() => {
     const healthCheck = setInterval(() => {

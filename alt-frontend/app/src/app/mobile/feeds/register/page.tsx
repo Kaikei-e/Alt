@@ -44,12 +44,7 @@ export default function RegisterFeedsPage() {
   };
 
   return (
-    <Box
-      minHeight="100vh"
-      bg="var(--alt-gradient-bg)"
-      color="white"
-      p={4}
-    >
+    <Box minHeight="100vh" bg="var(--alt-gradient-bg)" color="white" p={4}>
       <VStack gap={6} align="stretch" maxWidth="500px" mx="auto">
         <Text
           fontSize="2xl"
@@ -61,7 +56,11 @@ export default function RegisterFeedsPage() {
           Register RSS Feed
         </Text>
 
-        <Text textAlign="center" color="var(--alt-text-secondary)" fontSize="sm">
+        <Text
+          textAlign="center"
+          color="var(--alt-text-secondary)"
+          fontSize="sm"
+        >
           Enter the URL of an RSS feed to add it to your collection
         </Text>
 
@@ -124,7 +123,11 @@ export default function RegisterFeedsPage() {
 
               {message && (
                 <Text
-                  color={message.type === "success" ? "var(--alt-success)" : "var(--alt-error)"}
+                  color={
+                    message.type === "success"
+                      ? "var(--alt-success)"
+                      : "var(--alt-error)"
+                  }
                   textAlign="center"
                   fontSize="sm"
                   fontWeight="medium"

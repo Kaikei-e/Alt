@@ -131,7 +131,12 @@ export default function ErrorState({
         maxWidth="400px"
         width="100%"
       >
-        <Text fontSize="xl" fontWeight="bold" color="var(--alt-text-error)" mb={4}>
+        <Text
+          fontSize="xl"
+          fontWeight="bold"
+          color="var(--alt-text-error)"
+          mb={4}
+        >
           Unable to Load Feeds
         </Text>
 

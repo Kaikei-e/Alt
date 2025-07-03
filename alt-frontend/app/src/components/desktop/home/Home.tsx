@@ -45,8 +45,18 @@ export default function DesktopHome() {
 
   const recentActivity = [
     { id: 1, type: "new_feed", title: "TechCrunch added", time: "2 min ago" },
-    { id: 2, type: "ai_summary", title: "5 articles summarized", time: "5 min ago" },
-    { id: 3, type: "bookmark", title: "Article bookmarked", time: "12 min ago" },
+    {
+      id: 2,
+      type: "ai_summary",
+      title: "5 articles summarized",
+      time: "5 min ago",
+    },
+    {
+      id: 3,
+      type: "bookmark",
+      title: "Article bookmarked",
+      time: "12 min ago",
+    },
     { id: 4, type: "read", title: "15 articles read", time: "1 hour ago" },
   ];
 
@@ -58,7 +68,13 @@ export default function DesktopHome() {
   ];
 
   const sidebarNavItems = [
-    { id: 1, label: "Dashboard", icon: Home, href: "/desktop/home", active: true },
+    {
+      id: 1,
+      label: "Dashboard",
+      icon: Home,
+      href: "/desktop/home",
+      active: true,
+    },
     { id: 2, label: "Feeds", icon: Rss, href: "/mobile/feeds" },
     { id: 3, label: "Articles", icon: FileText, href: "/mobile/articles" },
     { id: 4, label: "Search", icon: Search, href: "/mobile/articles/search" },
@@ -123,8 +139,12 @@ export default function DesktopHome() {
                     borderRadius="var(--radius-lg)"
                     bg={item.active ? "var(--surface-hover)" : "transparent"}
                     border="1px solid"
-                    borderColor={item.active ? "var(--alt-primary)" : "transparent"}
-                    color={item.active ? "var(--alt-primary)" : "var(--text-primary)"}
+                    borderColor={
+                      item.active ? "var(--alt-primary)" : "transparent"
+                    }
+                    color={
+                      item.active ? "var(--alt-primary)" : "var(--text-primary)"
+                    }
                     transition="all var(--transition-speed) ease"
                     _hover={{
                       bg: "var(--surface-hover)",
@@ -148,7 +168,11 @@ export default function DesktopHome() {
               borderRadius="var(--radius-lg)"
               border="1px solid var(--surface-border)"
             >
-              <Text fontSize="sm" fontWeight="medium" color="var(--text-primary)">
+              <Text
+                fontSize="sm"
+                fontWeight="medium"
+                color="var(--text-primary)"
+              >
                 Welcome back!
               </Text>
               <Text fontSize="xs" color="var(--text-muted)" mt={1}>
@@ -269,7 +293,11 @@ export default function DesktopHome() {
                   transition="all var(--transition-speed) ease"
                 >
                   <HStack justify="space-between" mb={4}>
-                    <Icon as={FileText} color="var(--alt-tertiary)" boxSize={6} />
+                    <Icon
+                      as={FileText}
+                      color="var(--alt-tertiary)"
+                      boxSize={6}
+                    />
                     <Box
                       bg="var(--alt-tertiary)"
                       borderRadius="full"
@@ -309,8 +337,16 @@ export default function DesktopHome() {
                 >
                   <HStack justify="space-between" mb={6}>
                     <HStack>
-                      <Icon as={Activity} color="var(--alt-primary)" boxSize={5} />
-                      <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">
+                      <Icon
+                        as={Activity}
+                        color="var(--alt-primary)"
+                        boxSize={5}
+                      />
+                      <Text
+                        fontSize="lg"
+                        fontWeight="semibold"
+                        color="var(--text-primary)"
+                      >
                         Recent Activity
                       </Text>
                     </HStack>
@@ -353,7 +389,11 @@ export default function DesktopHome() {
                           />
                         </Box>
                         <Box flex="1">
-                          <Text fontSize="sm" color="var(--text-primary)" fontWeight="medium">
+                          <Text
+                            fontSize="sm"
+                            color="var(--text-primary)"
+                            fontWeight="medium"
+                          >
                             {activity.title}
                           </Text>
                           <Text fontSize="xs" color="var(--text-muted)">
@@ -380,13 +420,23 @@ export default function DesktopHome() {
                   <HStack justify="space-between" mb={6}>
                     <HStack>
                       <Icon as={Zap} color="var(--alt-secondary)" boxSize={5} />
-                      <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">
+                      <Text
+                        fontSize="lg"
+                        fontWeight="semibold"
+                        color="var(--text-primary)"
+                      >
                         Quick Actions
                       </Text>
                     </HStack>
                   </HStack>
 
-                  <Grid templateColumns="repeat(2, 1fr)" gap={4} mb={6} flex="1" alignItems="stretch">
+                  <Grid
+                    templateColumns="repeat(2, 1fr)"
+                    gap={4}
+                    mb={6}
+                    flex="1"
+                    alignItems="stretch"
+                  >
                     {quickActions.map((action) => (
                       <GridItem key={action.id} display="flex">
                         <ChakraLink
@@ -421,7 +471,11 @@ export default function DesktopHome() {
                             }}
                             transition="all var(--transition-speed) ease"
                           >
-                            <Icon as={action.icon} color="var(--alt-primary)" boxSize={5} />
+                            <Icon
+                              as={action.icon}
+                              color="var(--alt-primary)"
+                              boxSize={5}
+                            />
                             <Text
                               fontSize="sm"
                               fontWeight="medium"
@@ -443,7 +497,11 @@ export default function DesktopHome() {
                       <Text fontSize="sm" color="var(--text-muted)">
                         Weekly reads
                       </Text>
-                      <Text fontSize="sm" fontWeight="bold" color="var(--alt-primary)">
+                      <Text
+                        fontSize="sm"
+                        fontWeight="bold"
+                        color="var(--alt-primary)"
+                      >
                         {stats.weeklyReads}
                       </Text>
                     </Flex>
@@ -451,7 +509,11 @@ export default function DesktopHome() {
                       <Text fontSize="sm" color="var(--text-muted)">
                         AI processed
                       </Text>
-                      <Text fontSize="sm" fontWeight="bold" color="var(--alt-secondary)">
+                      <Text
+                        fontSize="sm"
+                        fontWeight="bold"
+                        color="var(--alt-secondary)"
+                      >
                         {stats.aiProcessed}%
                       </Text>
                     </Flex>
@@ -459,7 +521,11 @@ export default function DesktopHome() {
                       <Text fontSize="sm" color="var(--text-muted)">
                         Bookmarks
                       </Text>
-                      <Text fontSize="sm" fontWeight="bold" color="var(--alt-tertiary)">
+                      <Text
+                        fontSize="sm"
+                        fontWeight="bold"
+                        color="var(--alt-tertiary)"
+                      >
                         {stats.bookmarks}
                       </Text>
                     </Flex>
@@ -478,7 +544,11 @@ export default function DesktopHome() {
               border="1px solid var(--surface-border)"
             >
               <Box>
-                <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">
+                <Text
+                  fontSize="lg"
+                  fontWeight="semibold"
+                  color="var(--text-primary)"
+                >
                   Ready to explore?
                 </Text>
                 <Text fontSize="sm" color="var(--text-muted)">
@@ -486,20 +556,16 @@ export default function DesktopHome() {
                 </Text>
               </Box>
               <HStack gap={4}>
-                <Button
-                  className="btn-primary"
-                >
+                <Button className="btn-primary">
                   <NextLink href="/mobile/feeds">
                     Browse Feeds
-                    <ArrowRight size={16} style={{ marginLeft: '8px' }} />
+                    <ArrowRight size={16} style={{ marginLeft: "8px" }} />
                   </NextLink>
                 </Button>
-                <Button
-                  className="btn-accent"
-                >
+                <Button className="btn-accent">
                   <NextLink href="/mobile/feeds/register">
                     Add New Feed
-                    <Download size={16} style={{ marginLeft: '8px' }} />
+                    <Download size={16} style={{ marginLeft: "8px" }} />
                   </NextLink>
                 </Button>
               </HStack>
