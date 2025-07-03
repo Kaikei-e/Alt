@@ -15,7 +15,7 @@ SUMMARIZATION_SLEEP=10s            # Sleep 10 seconds between summarizations (wa
 QUALITY_CHECK_SLEEP=30s            # Sleep 30 seconds between quality checks (was 60s)
 
 # Model configuration
-MODEL_ID=phi4-mini:3.8b
+MODEL_ID=gemma3:4b
 
 # Future: Concurrency settings (not implemented yet)
 # MAX_CONCURRENT_SUMMARIZATIONS=2

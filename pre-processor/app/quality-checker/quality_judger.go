@@ -22,7 +22,7 @@ import (
 
 const (
 	qualityCheckerAPIURL = "http://news-creator:11434/api/generate"
-	modelName            = "phi4-mini:3.8b"
+	modelName            = "gemma3:4b"
 	lowScoreThreshold    = 7.0
 )
 

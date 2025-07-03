@@ -27,7 +27,7 @@ func GetConfig() *ProcessingConfig {
 		SummarizeInterval:      getEnvDuration("SUMMARIZE_INTERVAL", 5*time.Second),
 		FeedProcessingInterval: getEnvDuration("FEED_PROCESSING_INTERVAL", 3*time.Minute),
 		QualityCheckInterval:   getEnvDuration("QUALITY_CHECK_INTERVAL", 10*time.Minute),
-		ModelID:                getEnvString("MODEL_ID", "phi4-mini:3.8b"),
+		ModelID:                getEnvString("MODEL_ID", "gemma3:4b"),
 
 		FeedFetchSleep:     getEnvDuration("FEED_FETCH_SLEEP", 2*time.Second),
 		SummarizationSleep: getEnvDuration("SUMMARIZATION_SLEEP", 10*time.Second),

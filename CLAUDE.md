@@ -21,7 +21,7 @@ Helper applications are built with different architectures for specific purposes
 - **Frameworks:** Echo (Go), Next.js/React (TypeScript)
 - **Database:** PostgreSQL
 - **Search Engine:** Meilisearch
-- **LLM:** Phi4-mini
+- **LLM:** Gemma3:4b
 
 ### Application Stack Details
 

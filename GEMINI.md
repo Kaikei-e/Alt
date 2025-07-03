@@ -17,7 +17,7 @@ This project follows a containerized, microservices-based architecture orchestra
 
 *   **`pre-processor`**: A Go service for data preprocessing.
 *   **`tag-generator`**: A Python service for ML-based tag generation.
-*   **`news-creator`**: An LLM-based service (using Phi4-mini) for content generation.
+*   **`news-creator`**: An LLM-based service (using Gemma3:4b) for content generation.
 *   **`search-indexer`**: A Go service for managing search indexes.
 
 ### 1.3. Logging Infrastructure

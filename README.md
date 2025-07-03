@@ -30,7 +30,7 @@ The project is built **mobile-first**, 100 % open-source (Apache-2.0), and engin
 - **ClickHouse** for high-performance analytical data storage
 - **PostgreSQL** as the primary data store
 - **Meilisearch** for full-text search
-- **Ollama** with the phi4-mini model for LLM summarization
+- **Ollama** with the gemma3:4b model for LLM summarization
 - **Docker Compose** orchestrates all services
 
 ## Service Overview
@@ -66,7 +66,7 @@ The backend is a pipeline of microservices that work together to fetch, process,
 ```mermaid
 flowchart TD
     Start([Start])
-    
+
     A[User submits RSS feed URL via alt-frontend]
     B[alt-backend saves URL to feed_links table]
     C[pre-processor periodically fetches articles from feed URLs]
@@ -83,9 +83,9 @@ flowchart TD
     N[User searches via frontend]
     O[alt-backend queries Meilisearch]
     P[Return search results to user]
-    
+
     End([End])
-    
+
     Start --> A
     A --> B
     B --> C
@@ -103,7 +103,7 @@ flowchart TD
     N --> O
     O --> P
     P --> End
-    
+
     C -.->|Periodic| C
     H -.->|Continuous| H
     K -.->|Continuous| K
