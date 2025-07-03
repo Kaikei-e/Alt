@@ -63,7 +63,7 @@ export default function Home() {
         top="-40px"
         left="6px"
         bg="var(--gradient-bg)"
-        color="var(--alt-text-primary)"
+        color="var(--text-primary)"
         p={2}
         borderRadius="xs"
         zIndex={1000}
@@ -118,10 +118,8 @@ export default function Home() {
             fontFamily="heading"
             lineHeight="1.2"
             fontWeight="bold"
-            bgGradient="var(--alt-gradient-primary)"
             bgClip="text"
-            color="var(--accent-gradient)"
-            className={css.gradientText}
+            color="var(--alt-primary)"
             mb={1}
           >
             Alt
@@ -232,7 +230,7 @@ export default function Home() {
             as="h2"
             fontSize="lg"
             fontWeight="semibold"
-            color="var(--alt-text-primary)"
+            color="var(--text-primary)"
             fontFamily="heading"
             alignSelf="flex-start"
             mb={1}
@@ -346,7 +344,7 @@ export default function Home() {
                       id="total-feeds-label"
                       fontSize="xs"
                       textTransform="uppercase"
-                      color="var(--alt-text-primary)"
+                      color="var(--text-primary)"
                       letterSpacing="wide"
                       fontFamily="body"
                       fontWeight="medium"
@@ -362,7 +360,7 @@ export default function Home() {
                       textProps={{
                         fontSize: "2xl",
                         fontWeight: "bold",
-                        color: "var(--alt-text-primary)",
+                        color: "var(--text-primary)",
                         fontFamily: "heading",
                       }}
                     />
@@ -370,7 +368,7 @@ export default function Home() {
 
                   <Text
                     fontSize="xs"
-                    color="var(--alt-text-primary)"
+                    color="var(--text-primary)"
                     lineHeight="1.4"
                     fontFamily="body"
                   >
@@ -425,7 +423,7 @@ export default function Home() {
                       id="ai-feeds-label"
                       fontSize="xs"
                       textTransform="uppercase"
-                      color="var(--alt-text-primary)"
+                      color="var(--text-primary)"
                       letterSpacing="wide"
                       fontFamily="body"
                       fontWeight="medium"
@@ -441,7 +439,7 @@ export default function Home() {
                       textProps={{
                         fontSize: "2xl",
                         fontWeight: "bold",
-                        color: "var(--alt-text-primary)",
+                        color: "var(--text-primary)",
                         fontFamily: "heading",
                       }}
                     />
@@ -449,7 +447,7 @@ export default function Home() {
 
                   <Text
                     fontSize="xs"
-                    color="var(--alt-text-primary)"
+                    color="var(--text-primary)"
                     lineHeight="1.4"
                     fontFamily="body"
                   >
