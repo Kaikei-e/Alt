@@ -17,7 +17,6 @@ import { FeedStatsSummary } from "@/schema/feedStats";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import css from "./page.module.css";
 
 export default function Home() {
   const router = useRouter();

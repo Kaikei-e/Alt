@@ -30,7 +30,6 @@ import {
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
-import Link from "next/link";
 
 export default function DesktopHome() {
   // Mock data for dashboard
