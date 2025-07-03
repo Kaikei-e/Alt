@@ -278,9 +278,15 @@ fn test_invalid_batch_size() {
     // Clean environment first
     clean_all_env_vars();
 
+    // Double check that BATCH_SIZE is not set
+    assert!(env::var("BATCH_SIZE").is_err(), "BATCH_SIZE should not be set before test");
+
     unsafe {
         env::set_var("BATCH_SIZE", "not_a_number");
     }
+
+    // Verify the environment variable is set
+    assert_eq!(env::var("BATCH_SIZE").unwrap(), "not_a_number");
 
     let result = Config::from_env();
     // Invalid batch size should cause parsing to fail
@@ -288,6 +294,9 @@ fn test_invalid_batch_size() {
 
     // Clean up after test
     clean_all_env_vars();
+
+    // Double check that BATCH_SIZE is cleaned up
+    assert!(env::var("BATCH_SIZE").is_err(), "BATCH_SIZE should be cleaned up after test");
 }
 
 #[test]
