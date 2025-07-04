@@ -7,6 +7,7 @@ import {
 import { FeedSearchResult } from "@/schema/search";
 import { Article } from "@/schema/article";
 import { FeedStatsSummary } from "@/schema/feedStats";
+import { UnreadCount } from "@/schema/unread";
 import {
   ApiConfig,
   defaultApiConfig,
@@ -427,6 +428,13 @@ export const feedsApi = {
 
   async getFeedStats(): Promise<FeedStatsSummary> {
     return apiClient.get<FeedStatsSummary>("/v1/feeds/stats", 5); // 5 minute cache for stats
+  },
+
+  async getTodayUnreadCount(since: string): Promise<UnreadCount> {
+    return apiClient.get<UnreadCount>(
+      `/v1/feeds/count/unreads?since=${encodeURIComponent(since)}`,
+      1,
+    );
   },
 
   getFavoriteFeedsWithCursor: createCursorApi(

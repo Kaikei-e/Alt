@@ -2,6 +2,7 @@ package feed_stats_port
 
 import (
 	"context"
+	"time"
 )
 
 type FeedAmountPort interface {
@@ -18,4 +19,8 @@ type SummarizedArticlesCountPort interface {
 
 type TotalArticlesCountPort interface {
 	Execute(ctx context.Context) (int, error)
+}
+
+type TodayUnreadArticlesCountPort interface {
+	Execute(ctx context.Context, since time.Time) (int, error)
 }

@@ -498,6 +498,30 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		return c.JSON(http.StatusOK, stats)
 	})
 
+	v1.GET("/feeds/count/unreads", func(c echo.Context) error {
+		sinceStr := c.QueryParam("since")
+		var since time.Time
+		var err error
+		if sinceStr != "" {
+			since, err = time.Parse(time.RFC3339, sinceStr)
+			if err != nil {
+				logger.Logger.Error("Invalid since parameter", "error", err)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid since parameter"})
+			}
+		} else {
+			now := time.Now().UTC()
+			since = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		}
+
+		count, err := container.TodayUnreadArticlesCountUsecase.Execute(c.Request().Context(), since)
+		if err != nil {
+			logger.Logger.Error("Error fetching unread count", "error", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch unread count"})
+		}
+
+		return c.JSON(http.StatusOK, map[string]int{"count": count})
+	})
+
 	v1.POST("/rss-feed-link/register", func(c echo.Context) error {
 		var rssFeedLink RssFeedLink
 		err := c.Bind(&rssFeedLink)

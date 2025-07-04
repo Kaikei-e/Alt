@@ -12,6 +12,7 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -170,4 +171,43 @@ func (m *MockTotalArticlesCountPort) Execute(ctx context.Context) (int, error) {
 func (mr *MockTotalArticlesCountPortMockRecorder) Execute(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockTotalArticlesCountPort)(nil).Execute), ctx)
+}
+
+// MockTodayUnreadArticlesCountPort is a mock of TodayUnreadArticlesCountPort interface.
+type MockTodayUnreadArticlesCountPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockTodayUnreadArticlesCountPortMockRecorder
+	isgomock struct{}
+}
+
+// MockTodayUnreadArticlesCountPortMockRecorder is the mock recorder for MockTodayUnreadArticlesCountPort.
+type MockTodayUnreadArticlesCountPortMockRecorder struct {
+	mock *MockTodayUnreadArticlesCountPort
+}
+
+// NewMockTodayUnreadArticlesCountPort creates a new mock instance.
+func NewMockTodayUnreadArticlesCountPort(ctrl *gomock.Controller) *MockTodayUnreadArticlesCountPort {
+	mock := &MockTodayUnreadArticlesCountPort{ctrl: ctrl}
+	mock.recorder = &MockTodayUnreadArticlesCountPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockTodayUnreadArticlesCountPort) EXPECT() *MockTodayUnreadArticlesCountPortMockRecorder {
+	return m.recorder
+}
+
+// Execute mocks base method.
+func (m *MockTodayUnreadArticlesCountPort) Execute(ctx context.Context, since time.Time) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Execute", ctx, since)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Execute indicates an expected call of Execute.
+func (mr *MockTodayUnreadArticlesCountPortMockRecorder) Execute(ctx, since any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockTodayUnreadArticlesCountPort)(nil).Execute), ctx, since)
 }
