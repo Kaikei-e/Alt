@@ -19,12 +19,21 @@ test.describe("DesktopHome Unread Count", () => {
         body: JSON.stringify({ count: 5 }),
       });
     });
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], next_cursor: null }),
+      });
+    });
     await page.goto("/desktop/home");
     await page.waitForLoadState("networkidle");
   });
 
   test("should display unread count", async ({ page }) => {
     await expect(page.getByText("Unread Articles")).toBeVisible();
-    await expect(page.getByText("5")).toBeVisible();
+
+    const unreadSection = page.locator('text="Unread Articles"').locator("..");
+    await expect(unreadSection.getByText("5").first()).toBeVisible();
   });
 });

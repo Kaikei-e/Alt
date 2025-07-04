@@ -62,6 +62,22 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       });
     });
 
+    await page.route("**/api/v1/feeds/count/unreads**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ count: 0 }),
+      });
+    });
+
+    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], next_cursor: null }),
+      });
+    });
+
     // Navigate to the page that has the FloatingMenu component
     await page.goto("/");
 

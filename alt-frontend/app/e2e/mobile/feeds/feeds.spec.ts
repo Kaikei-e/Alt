@@ -897,7 +897,9 @@ test.describe("Mobile Feeds Page", () => {
 
       // Should show detailed error message
       await expect(
-        page.getByText("We're having some trouble on our end. Please try again later."),
+        page.getByText(
+          "We're having some trouble on our end. Please try again later.",
+        ),
       ).toBeVisible();
 
       const retryButton = page.getByRole("button", { name: /retry/i });
@@ -953,7 +955,9 @@ test.describe("Mobile Feeds Page", () => {
 
       // Should show rate limit specific message
       await expect(
-        page.getByText("You're making requests too quickly. Please wait a moment and try again."),
+        page.getByText(
+          "You're making requests too quickly. Please wait a moment and try again.",
+        ),
       ).toBeVisible();
 
       const retryButton = page.locator('button:has-text("Retry")');
