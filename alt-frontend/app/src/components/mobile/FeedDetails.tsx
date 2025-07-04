@@ -290,9 +290,9 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   minWidth="80px"
                   fontSize="sm"
                   border="1px solid rgba(255, 255, 255, 0.2)"
-                  leftIcon={<Star size={16} />}
-                  isDisabled={isFavoriting}
+                  disabled={isFavoriting}
                 >
+                  <Star size={16} style={{ marginRight: 4 }} />
                   {isFavoriting ? "Saving" : "Fave"}
                 </Button>
                 <Button
