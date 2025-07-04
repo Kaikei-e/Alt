@@ -26,13 +26,16 @@ test.describe("DesktopHome Unread Count", () => {
         body: JSON.stringify({ data: [], next_cursor: null }),
       });
     });
-    await page.goto("/desktop/home");
-    await page.waitForLoadState("networkidle");
   });
 
   test("should display unread count", async ({ page }) => {
+    await page.goto("/desktop/home");
+    await page.waitForLoadState("networkidle");
+
+    // Wait for the unread count to be visible
     await expect(page.getByText("Unread Articles")).toBeVisible();
 
+    // Find the unread count by locating the number near "Unread Articles" text
     const unreadSection = page.locator('text="Unread Articles"').locator("..");
     await expect(unreadSection.getByText("5").first()).toBeVisible();
   });
