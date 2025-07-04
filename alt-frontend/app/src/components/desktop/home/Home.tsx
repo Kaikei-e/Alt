@@ -13,6 +13,9 @@ import {
   Icon,
   Link as ChakraLink,
 } from "@chakra-ui/react";
+import { useEffect, useState } from "react";
+import { feedsApi } from "@/lib/api";
+import type { FeedStatsSummary } from "@/schema/feedStats";
 import {
   Home,
   Rss,
@@ -32,15 +35,33 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 
 export default function DesktopHome() {
-  // Mock data for dashboard
-  const stats = {
-    totalFeeds: 1234,
-    summarizedFeeds: 567,
+  const [feedStats, setFeedStats] = useState<FeedStatsSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const extraStats = {
     unreadArticles: 89,
     weeklyReads: 156,
     aiProcessed: 78,
     bookmarks: 42,
   };
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setIsLoading(true);
+        const data = await feedsApi.getFeedStats();
+        setFeedStats(data);
+      } catch (err) {
+        setError("Unable to load statistics");
+        console.error("Error fetching stats:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
 
   const recentActivity = [
     { id: 1, type: "new_feed", title: "TechCrunch added", time: "2 min ago" },
@@ -223,7 +244,7 @@ export default function DesktopHome() {
                     />
                   </HStack>
                   <AnimatedNumber
-                    value={stats.totalFeeds}
+                    value={feedStats?.feed_amount?.amount || 0}
                     duration={1000}
                     textProps={{
                       fontSize: "2xl",
@@ -262,7 +283,7 @@ export default function DesktopHome() {
                     />
                   </HStack>
                   <AnimatedNumber
-                    value={stats.summarizedFeeds}
+                    value={feedStats?.summarized_feed?.amount || 0}
                     duration={1200}
                     textProps={{
                       fontSize: "2xl",
@@ -305,7 +326,7 @@ export default function DesktopHome() {
                     />
                   </HStack>
                   <AnimatedNumber
-                    value={stats.unreadArticles}
+                    value={extraStats.unreadArticles}
                     duration={800}
                     textProps={{
                       fontSize: "2xl",
@@ -501,7 +522,7 @@ export default function DesktopHome() {
                         fontWeight="bold"
                         color="var(--alt-primary)"
                       >
-                        {stats.weeklyReads}
+                        {extraStats.weeklyReads}
                       </Text>
                     </Flex>
                     <Flex justify="space-between" align="center">
@@ -513,7 +534,7 @@ export default function DesktopHome() {
                         fontWeight="bold"
                         color="var(--alt-secondary)"
                       >
-                        {stats.aiProcessed}%
+                        {extraStats.aiProcessed}%
                       </Text>
                     </Flex>
                     <Flex justify="space-between" align="center">
@@ -525,7 +546,7 @@ export default function DesktopHome() {
                         fontWeight="bold"
                         color="var(--alt-tertiary)"
                       >
-                        {stats.bookmarks}
+                        {extraStats.bookmarks}
                       </Text>
                     </Flex>
                   </VStack>
