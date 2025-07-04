@@ -386,10 +386,15 @@ test.describe("FeedCard Component - Functionality Tests", () => {
       await page.goto("/mobile/feeds");
       await page.waitForLoadState("networkidle");
 
-      // Should show error state - updated to match actual ErrorState component text
-      await expect(page.getByText("Unable to Load Feeds")).toBeVisible({
+      // FIX: Update the expected text to match the new ErrorState component's title
+      await expect(page.getByText("Server Error")).toBeVisible({
         timeout: 10000,
       });
+
+      // Also verify the detailed message for robustness
+      await expect(
+        page.getByText("We're having some trouble on our end. Please try again later.")
+      ).toBeVisible();
     });
   });
 

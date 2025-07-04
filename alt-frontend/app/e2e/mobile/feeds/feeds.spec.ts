@@ -891,13 +891,13 @@ test.describe("Mobile Feeds Page", () => {
       await page.waitForLoadState("networkidle");
 
       // Should show error state
-      await expect(page.getByText("Unable to Load Feeds")).toBeVisible({
+      await expect(page.getByText("Server Error")).toBeVisible({
         timeout: 15000,
       });
 
       // Should show detailed error message
       await expect(
-        page.getByText("Server error - please try again later"),
+        page.getByText("We're having some trouble on our end. Please try again later."),
       ).toBeVisible();
 
       const retryButton = page.getByRole("button", { name: /retry/i });
@@ -947,14 +947,14 @@ test.describe("Mobile Feeds Page", () => {
       await page.waitForLoadState("networkidle");
 
       // Should show error state with specific error message
-      await expect(page.getByText("Unable to Load Feeds")).toBeVisible({
-        timeout: 10000,
+      await expect(page.getByText("Rate Limit Exceeded")).toBeVisible({
+        timeout: 15000,
       });
 
       // Should show rate limit specific message
-      await expect(page.getByText("Rate limit exceeded")).toBeVisible({
-        timeout: 5000,
-      });
+      await expect(
+        page.getByText("You're making requests too quickly. Please wait a moment and try again."),
+      ).toBeVisible();
 
       const retryButton = page.locator('button:has-text("Retry")');
       await expect(retryButton).toBeVisible({ timeout: 5000 });

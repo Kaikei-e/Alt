@@ -289,6 +289,14 @@ function createCursorApi<BackendType, FrontendType>(
       cacheTtl,
     );
 
+    // Guard against null or malformed responses
+    if (!response || !Array.isArray(response.data)) {
+      return {
+        data: [],
+        next_cursor: null,
+      };
+    }
+
     // Transform backend items to frontend format
     const transformedData = response.data.map(transformer);
 
