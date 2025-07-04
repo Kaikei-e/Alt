@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import NextLink from "next/link";
 import {
   Box,
@@ -34,14 +35,16 @@ import {
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import Loading from "@/components/mobile/utils/Loading";
+import { useTodayUnreadCount } from "@/hooks/useTodayUnreadCount";
 
 export default function DesktopHome() {
   const [feedStats, setFeedStats] = useState<FeedStatsSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const { count: unreadArticles } = useTodayUnreadCount();
   const extraStats = {
-    unreadArticles: 89,
+    unreadArticles,
     weeklyReads: 156,
     aiProcessed: 78,
     bookmarks: 42,
@@ -244,9 +247,7 @@ export default function DesktopHome() {
                       opacity={0.1}
                     />
                   </HStack>
-                  {isLoading && !error && (
-                    <Loading isLoading={isLoading} />
-                  )}
+                  {isLoading && !error && <Loading isLoading={isLoading} />}
                   {!isLoading && !error && (
                     <AnimatedNumber
                       value={feedStats?.feed_amount?.amount || 0}
@@ -293,9 +294,7 @@ export default function DesktopHome() {
                       opacity={0.1}
                     />
                   </HStack>
-                  {isLoading && !error && (
-                    <Loading isLoading={isLoading} />
-                  )}
+                  {isLoading && !error && <Loading isLoading={isLoading} />}
                   {!isLoading && !error && (
                     <AnimatedNumber
                       value={feedStats?.summarized_feed?.amount || 0}
@@ -346,9 +345,7 @@ export default function DesktopHome() {
                       opacity={0.1}
                     />
                   </HStack>
-                  {isLoading && !error && (
-                    <Loading isLoading={isLoading} />
-                  )}
+                  {isLoading && !error && <Loading isLoading={isLoading} />}
                   {!isLoading && !error && (
                     <AnimatedNumber
                       value={extraStats.unreadArticles}

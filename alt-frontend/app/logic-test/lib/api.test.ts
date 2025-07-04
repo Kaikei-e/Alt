@@ -565,4 +565,44 @@ describe("feedsApi", () => {
       await expect(feedsApi.prefetchFeeds([0, 1])).resolves.toBeUndefined();
     });
   });
+
+  describe("getTodayUnreadCount", () => {
+    it("should fetch unread count with since parameter", async () => {
+      const mockResponse = { count: 5 };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue(mockResponse),
+      });
+
+      const since = "2024-05-26T15:00:00.000Z";
+      const result = await feedsApi.getTodayUnreadCount(since);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `http://localhost/api/v1/feeds/count/unreads?since=${encodeURIComponent(since)}`,
+        expect.objectContaining({
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "max-age=300",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          keepalive: true,
+          signal: expect.any(AbortSignal),
+        }),
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("should handle API errors", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      });
+
+      await expect(
+        feedsApi.getTodayUnreadCount("2024-05-26T00:00:00Z"),
+      ).rejects.toThrow("API request failed: 500 Internal Server Error");
+    });
+  });
 });
