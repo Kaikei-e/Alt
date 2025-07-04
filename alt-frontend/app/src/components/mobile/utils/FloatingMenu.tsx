@@ -113,6 +113,13 @@ export const FloatingMenu = () => {
       description: "Previously read feeds",
     },
     {
+      label: "Favorite Feeds",
+      href: "/mobile/feeds/favorites",
+      category: "feeds",
+      icon: <Star size={18} />,
+      description: "Favorited articles",
+    },
+    {
       label: "Register Feed",
       href: "/mobile/feeds/register",
       category: "feeds",

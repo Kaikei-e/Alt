@@ -1,6 +1,6 @@
 import { HStack, Text, Box, Portal, Button } from "@chakra-ui/react";
 import { useState, useEffect, useCallback } from "react";
-import { X } from "lucide-react";
+import { X, Star } from "lucide-react";
 import { FeedDetails as FeedDetailsType, FeedURLPayload } from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
 
@@ -8,6 +8,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
   const [feedDetails, setFeedDetails] = useState<FeedDetailsType | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFavoriting, setIsFavoriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleHideDetails = useCallback(() => {
@@ -252,7 +253,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 </Text>
               </Box>
 
-              {/* Modal Footer with Hide Details button */}
+              {/* Modal Footer with Fave and Hide Details buttons */}
               <Box
                 position="sticky"
                 bottom="0"
@@ -265,9 +266,35 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                 borderBottomRadius="20px"
                 display="flex"
                 alignItems="center"
-                justifyContent="flex-end"
+                justifyContent="space-between"
                 minHeight="50px"
               >
+                <Button
+                  onClick={async () => {
+                    try {
+                      setIsFavoriting(true);
+                      await feedsApi.registerFavoriteFeed(feedURL);
+                    } catch (e) {
+                      console.error("Failed to favorite feed", e);
+                    } finally {
+                      setIsFavoriting(false);
+                    }
+                  }}
+                  size="sm"
+                  borderRadius="full"
+                  bg="var(--alt-primary)"
+                  color="var(--text-primary)"
+                  fontWeight="bold"
+                  px={4}
+                  minHeight="36px"
+                  minWidth="80px"
+                  fontSize="sm"
+                  border="1px solid rgba(255, 255, 255, 0.2)"
+                  disabled={isFavoriting}
+                >
+                  <Star size={16} style={{ marginRight: 4 }} />
+                  {isFavoriting ? "Saving" : "Fave"}
+                </Button>
                 <Button
                   onClick={handleHideDetails}
                   data-testid={`hide-details-button-${uniqueId}`}
