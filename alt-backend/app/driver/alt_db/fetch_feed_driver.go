@@ -253,3 +253,49 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 
 	return feeds, nil
 }
+
+func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	var query string
+	var args []interface{}
+
+	if cursor == nil {
+		query = `
+                       SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+                       FROM feeds f
+                       INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
+                       ORDER BY ff.created_at DESC, f.id DESC
+                       LIMIT $1
+               `
+		args = []interface{}{limit}
+	} else {
+		query = `
+                       SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+                       FROM feeds f
+                       INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
+                       WHERE ff.created_at < $1
+                       ORDER BY ff.created_at DESC, f.id DESC
+                       LIMIT $2
+               `
+		args = []interface{}{cursor, limit}
+	}
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		logger.Logger.Error("error fetching favorite feeds with cursor", "error", err, "cursor", cursor)
+		return nil, errors.New("error fetching favorite feeds list")
+	}
+	defer rows.Close()
+
+	var feeds []*models.Feed
+	for rows.Next() {
+		var feed models.Feed
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		if err != nil {
+			logger.Logger.Error("error scanning favorite feeds with cursor", "error", err)
+			return nil, errors.New("error scanning favorite feeds list")
+		}
+		feeds = append(feeds, &feed)
+	}
+
+	return feeds, nil
+}

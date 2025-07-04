@@ -19,4 +19,5 @@ type FetchFeedsPort interface {
 	FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error)
 	FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error)
 	FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error)
+	FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error)
 }

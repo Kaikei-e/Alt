@@ -81,6 +81,21 @@ func (m *MockFetchFeedsPort) EXPECT() *MockFetchFeedsPortMockRecorder {
 	return m.recorder
 }
 
+// FetchFavoriteFeedsListCursor mocks base method.
+func (m *MockFetchFeedsPort) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFavoriteFeedsListCursor", ctx, cursor, limit)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFavoriteFeedsListCursor indicates an expected call of FetchFavoriteFeedsListCursor.
+func (mr *MockFetchFeedsPortMockRecorder) FetchFavoriteFeedsListCursor(ctx, cursor, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFavoriteFeedsListCursor", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchFavoriteFeedsListCursor), ctx, cursor, limit)
+}
+
 // FetchFeeds mocks base method.
 func (m *MockFetchFeedsPort) FetchFeeds(ctx context.Context, link string) ([]*domain.FeedItem, error) {
 	m.ctrl.T.Helper()

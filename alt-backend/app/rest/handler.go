@@ -314,6 +314,65 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		return c.JSON(http.StatusOK, response)
 	})
 
+	v1.GET("/feeds/fetch/favorites/cursor", func(c echo.Context) error {
+		limitStr := c.QueryParam("limit")
+		cursorStr := c.QueryParam("cursor")
+
+		limit := 20
+		if limitStr != "" {
+			parsedLimit, err := strconv.Atoi(limitStr)
+			if err != nil {
+				logger.Logger.Error("Invalid limit parameter", "error", err, "limit", limitStr)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid limit parameter"})
+			}
+			if parsedLimit > 0 && parsedLimit <= 100 {
+				limit = parsedLimit
+			} else if parsedLimit > 100 {
+				limit = 100
+			} else {
+				logger.Logger.Error("Invalid limit value", "limit", parsedLimit)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Limit must be between 1 and 100"})
+			}
+		}
+
+		var cursor *time.Time
+		if cursorStr != "" {
+			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
+			if err != nil {
+				logger.Logger.Error("Invalid cursor parameter", "error", err, "cursor", cursorStr)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
+			}
+			cursor = &parsedCursor
+		}
+
+		if cursor == nil {
+			c.Response().Header().Set("Cache-Control", "public, max-age=900")
+		} else {
+			c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+		}
+
+		logger.Logger.Info("Fetching favorite feeds with cursor", "cursor", cursor, "limit", limit)
+		feeds, err := container.FetchFavoriteFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
+		if err != nil {
+			logger.Logger.Error("Error fetching favorite feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch favorite feeds with cursor"})
+		}
+
+		optimizedFeeds := optimizeFeedsResponse(feeds)
+		response := map[string]interface{}{
+			"data": optimizedFeeds,
+		}
+
+		if len(optimizedFeeds) > 0 {
+			lastFeed := optimizedFeeds[len(optimizedFeeds)-1]
+			if lastPublished, err := time.Parse(time.RFC3339, lastFeed.Published); err == nil {
+				response["next_cursor"] = lastPublished.Format(time.RFC3339)
+			}
+		}
+
+		return c.JSON(http.StatusOK, response)
+	})
+
 	v1.POST("/feeds/read", func(c echo.Context) error {
 		var readStatus ReadStatus
 		err := c.Bind(&readStatus)

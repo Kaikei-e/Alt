@@ -30,6 +30,19 @@ func TestFetchFeedsPortContract(t *testing.T) {
 				reflect.TypeOf((*error)(nil)).Elem(),
 			},
 		},
+		{
+			name:       "FetchFavoriteFeedsListCursor method exists",
+			methodName: "FetchFavoriteFeedsListCursor",
+			expectedParams: []reflect.Type{
+				reflect.TypeOf((*context.Context)(nil)).Elem(),
+				reflect.TypeOf((*time.Time)(nil)),
+				reflect.TypeOf(int(0)),
+			},
+			expectedReturn: []reflect.Type{
+				reflect.TypeOf([]*domain.FeedItem(nil)),
+				reflect.TypeOf((*error)(nil)).Elem(),
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -111,5 +124,9 @@ func (m *mockFetchFeedsPort) FetchFeedsListCursor(ctx context.Context, cursor *t
 }
 
 func (m *mockFetchFeedsPort) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	return nil, nil
+}
+
+func (m *mockFetchFeedsPort) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
 	return nil, nil
 }
