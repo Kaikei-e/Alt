@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
+import Loading from "@/components/mobile/utils/Loading";
 
 export default function DesktopHome() {
   const [feedStats, setFeedStats] = useState<FeedStatsSummary | null>(null);
@@ -243,15 +244,25 @@ export default function DesktopHome() {
                       opacity={0.1}
                     />
                   </HStack>
-                  <AnimatedNumber
-                    value={feedStats?.feed_amount?.amount || 0}
-                    duration={1000}
-                    textProps={{
-                      fontSize: "2xl",
-                      fontWeight: "bold",
-                      color: "var(--text-primary)",
-                    }}
-                  />
+                  {isLoading && !error && (
+                    <Loading isLoading={isLoading} />
+                  )}
+                  {!isLoading && !error && (
+                    <AnimatedNumber
+                      value={feedStats?.feed_amount?.amount || 0}
+                      duration={1000}
+                      textProps={{
+                        fontSize: "2xl",
+                        fontWeight: "bold",
+                        color: "var(--text-primary)",
+                      }}
+                    />
+                  )}
+                  {error && (
+                    <Text fontSize="sm" color="var(--text-muted)" mt={1}>
+                      {error}
+                    </Text>
+                  )}
                   <Text fontSize="sm" color="var(--text-muted)" mt={1}>
                     Total RSS Feeds
                   </Text>
@@ -282,15 +293,25 @@ export default function DesktopHome() {
                       opacity={0.1}
                     />
                   </HStack>
-                  <AnimatedNumber
-                    value={feedStats?.summarized_feed?.amount || 0}
-                    duration={1200}
-                    textProps={{
-                      fontSize: "2xl",
-                      fontWeight: "bold",
-                      color: "var(--text-primary)",
-                    }}
-                  />
+                  {isLoading && !error && (
+                    <Loading isLoading={isLoading} />
+                  )}
+                  {!isLoading && !error && (
+                    <AnimatedNumber
+                      value={feedStats?.summarized_feed?.amount || 0}
+                      duration={1200}
+                      textProps={{
+                        fontSize: "2xl",
+                        fontWeight: "bold",
+                        color: "var(--text-primary)",
+                      }}
+                    />
+                  )}
+                  {error && (
+                    <Text fontSize="sm" color="var(--text-muted)" mt={1}>
+                      {error}
+                    </Text>
+                  )}
                   <Text fontSize="sm" color="var(--text-muted)" mt={1}>
                     AI Summarized
                   </Text>
@@ -325,15 +346,25 @@ export default function DesktopHome() {
                       opacity={0.1}
                     />
                   </HStack>
-                  <AnimatedNumber
-                    value={extraStats.unreadArticles}
-                    duration={800}
-                    textProps={{
-                      fontSize: "2xl",
-                      fontWeight: "bold",
-                      color: "var(--text-primary)",
-                    }}
-                  />
+                  {isLoading && !error && (
+                    <Loading isLoading={isLoading} />
+                  )}
+                  {!isLoading && !error && (
+                    <AnimatedNumber
+                      value={extraStats.unreadArticles}
+                      duration={800}
+                      textProps={{
+                        fontSize: "2xl",
+                        fontWeight: "bold",
+                        color: "var(--text-primary)",
+                      }}
+                    />
+                  )}
+                  {error && (
+                    <Text fontSize="sm" color="var(--text-muted)" mt={1}>
+                      {error}
+                    </Text>
+                  )}
                   <Text fontSize="sm" color="var(--text-muted)" mt={1}>
                     Unread Articles
                   </Text>
