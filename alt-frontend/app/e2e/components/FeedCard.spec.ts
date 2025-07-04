@@ -393,7 +393,9 @@ test.describe("FeedCard Component - Functionality Tests", () => {
 
       // Also verify the detailed message for robustness
       await expect(
-        page.getByText("We're having some trouble on our end. Please try again later.")
+        page.getByText(
+          "We're having some trouble on our end. Please try again later.",
+        ),
       ).toBeVisible();
     });
   });

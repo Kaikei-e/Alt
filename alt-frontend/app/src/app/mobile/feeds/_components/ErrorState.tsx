@@ -8,7 +8,9 @@ type ErrorStateProps = {
   isLoading: boolean;
 };
 
-const getErrorDetails = (error: Error | null): { title: string; message: string; icon: React.ElementType } => {
+const getErrorDetails = (
+  error: Error | null,
+): { title: string; message: string; icon: React.ElementType } => {
   if (!error) {
     return {
       title: "An Unknown Error Occurred",
@@ -19,42 +21,64 @@ const getErrorDetails = (error: Error | null): { title: string; message: string;
 
   const errorMessage = (error.message || String(error)).toLowerCase();
 
-  if (errorMessage.includes("network") || errorMessage.includes("fetch") || errorMessage.includes("connection")) {
+  if (
+    errorMessage.includes("network") ||
+    errorMessage.includes("fetch") ||
+    errorMessage.includes("connection")
+  ) {
     return {
       title: "Network Error",
       message: "Please check your internet connection and try again.",
       icon: WifiOff,
     };
   }
-  if (errorMessage.includes("timeout") || error.name === "AbortError" || errorMessage.includes("408")) {
+  if (
+    errorMessage.includes("timeout") ||
+    error.name === "AbortError" ||
+    errorMessage.includes("408")
+  ) {
     return {
       title: "Request Timeout",
       message: "The request took too long to complete. Please try again.",
       icon: Clock,
     };
   }
-  if (errorMessage.includes("429") || errorMessage.includes("rate limit") || errorMessage.includes("too many requests")) {
+  if (
+    errorMessage.includes("429") ||
+    errorMessage.includes("rate limit") ||
+    errorMessage.includes("too many requests")
+  ) {
     return {
       title: "Rate Limit Exceeded",
-      message: "You're making requests too quickly. Please wait a moment and try again.",
+      message:
+        "You're making requests too quickly. Please wait a moment and try again.",
       icon: Clock,
     };
   }
-  if (errorMessage.includes("server error") || errorMessage.includes("500") || errorMessage.includes("503") || errorMessage.includes("502") || errorMessage.includes("bad gateway")) {
+  if (
+    errorMessage.includes("server error") ||
+    errorMessage.includes("500") ||
+    errorMessage.includes("503") ||
+    errorMessage.includes("502") ||
+    errorMessage.includes("bad gateway")
+  ) {
     return {
       title: "Server Error",
       message: "We're having some trouble on our end. Please try again later.",
       icon: Server,
     };
   }
-  if (error instanceof TypeError || errorMessage.includes("null is not an object")) {
+  if (
+    error instanceof TypeError ||
+    errorMessage.includes("null is not an object")
+  ) {
     return {
-        title: "Application Error",
-        message: "An unexpected application error occurred. We've been notified and are looking into it.",
-        icon: AlertTriangle,
+      title: "Application Error",
+      message:
+        "An unexpected application error occurred. We've been notified and are looking into it.",
+      icon: AlertTriangle,
     };
   }
-
 
   return {
     title: "Unable to Load Feeds",
@@ -62,7 +86,6 @@ const getErrorDetails = (error: Error | null): { title: string; message: string;
     icon: AlertTriangle,
   };
 };
-
 
 export default function ErrorState({
   error,
@@ -78,7 +101,7 @@ export default function ErrorState({
     try {
       await onRetry();
     } catch (e) {
-      console.error("Retry attempt failed", e)
+      console.error("Retry attempt failed", e);
     } finally {
       setIsRetrying(false);
     }
@@ -104,7 +127,7 @@ export default function ErrorState({
         border="1px solid var(--alt-glass-border)"
       >
         <Flex justify="center" align="center" mb={5}>
-            <Icon as={icon} boxSize="40px" color="var(--alt-text-error)" />
+          <Icon as={icon} boxSize="40px" color="var(--alt-text-error)" />
         </Flex>
 
         <Text

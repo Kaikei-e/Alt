@@ -96,7 +96,9 @@ export default function FavoriteFeedsPage() {
   }
 
   if (error) {
-    return <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />;
+    return (
+      <ErrorState error={error} onRetry={retryFetch} isLoading={isRetrying} />
+    );
   }
 
   return (

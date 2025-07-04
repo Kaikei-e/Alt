@@ -610,7 +610,7 @@ export default function DesktopHome() {
                     <ArrowRight size={16} style={{ marginLeft: "8px" }} />
                   </NextLink>
                 </Button>
-                <Button className="btn-accent">
+                <Button className="btn-primary">
                   <NextLink href="/mobile/feeds/register">
                     Add New Feed
                     <Download size={16} style={{ marginLeft: "8px" }} />
