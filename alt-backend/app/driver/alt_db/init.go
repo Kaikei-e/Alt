@@ -20,7 +20,13 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 	var err error
 
 	for i := 0; i < maxRetries; i++ {
-		pool, err = pgxpool.New(ctx, getDBConnectionString())
+		connStr, err := getDBConnectionString()
+		if err != nil {
+			logger.Logger.Error("Failed to get database connection string", "error", err)
+			return nil, fmt.Errorf("failed to get database connection string: %w", err)
+		}
+		
+		pool, err = pgxpool.New(ctx, connStr)
 		if err == nil {
 			// Test the connection pool
 			err = pool.Ping(ctx)
@@ -52,18 +58,33 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 	return nil, fmt.Errorf("failed to connect to database after %d retries: %w", maxRetries, err)
 }
 
-func getDBConnectionString() string {
+func getDBConnectionString() (string, error) {
 	err := godotenv.Load()
 	if err != nil {
 		logger.Logger.Error("Failed to load .env file", "error", err)
-		os.Exit(1)
+		return "", fmt.Errorf("failed to load .env file: %w", err)
 	}
 
-	host := envChecker(os.Getenv("DB_HOST"), "DB_HOST")
-	port := envChecker(os.Getenv("DB_PORT"), "DB_PORT")
-	user := envChecker(os.Getenv("DB_USER"), "DB_USER")
-	password := envChecker(os.Getenv("DB_PASSWORD"), "DB_PASSWORD")
-	dbname := envChecker(os.Getenv("DB_NAME"), "DB_NAME")
+	host, err := envChecker(os.Getenv("DB_HOST"), "DB_HOST")
+	if err != nil {
+		return "", err
+	}
+	port, err := envChecker(os.Getenv("DB_PORT"), "DB_PORT")
+	if err != nil {
+		return "", err
+	}
+	user, err := envChecker(os.Getenv("DB_USER"), "DB_USER")
+	if err != nil {
+		return "", err
+	}
+	password, err := envChecker(os.Getenv("DB_PASSWORD"), "DB_PASSWORD")
+	if err != nil {
+		return "", err
+	}
+	dbname, err := envChecker(os.Getenv("DB_NAME"), "DB_NAME")
+	if err != nil {
+		return "", err
+	}
 
 	// Connection pool configuration with optimal settings
 	connectionString := fmt.Sprintf(
@@ -75,13 +96,13 @@ func getDBConnectionString() string {
 			" pool_health_check_period=1m", // How often to check connection health
 		host, port, user, password, dbname)
 
-	return connectionString
+	return connectionString, nil
 }
 
-func envChecker(env string, variable string) string {
+func envChecker(env string, variable string) (string, error) {
 	if env == "" {
 		logger.Logger.Error("Environment variable is not set", "variable", variable)
-		os.Exit(1)
+		return "", fmt.Errorf("environment variable is not set: %s", variable)
 	}
-	return env
+	return env, nil
 }

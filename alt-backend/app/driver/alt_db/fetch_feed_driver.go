@@ -268,6 +268,8 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
                `
 		args = []interface{}{limit}
 	} else {
+		// Fixed: Use proper cursor-based pagination that handles edge cases
+		// Order by ff.created_at since that's what we're using for the cursor
 		query = `
                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
                        FROM feeds f
