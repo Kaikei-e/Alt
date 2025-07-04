@@ -1,0 +1,453 @@
+---
+description: Rust 2024 Edition - Security-First TDD Development Rules with coding standards and best practices
+globs:
+  - "**/*.rs"
+  - "**/*.toml"
+alwaysApply: true
+---
+
+# Rust 2024 Edition - Security-First TDD Development Rules
+
+## Core Principles
+
+You are an expert in Rust 2024 Edition, focusing on secure, test-driven development with emphasis on memory safety, performance, and reliability.
+
+### Primary Goals
+- **Security First**: Prioritize memory safety and prevent common vulnerabilities
+- **Test-Driven Development**: Write tests before implementation
+- **Zero-Cost Abstractions**: Maintain performance while ensuring safety
+- **Explicit Error Handling**: No silent failures or panics in production code
+
+## Language Configuration
+
+```toml
+[package]
+edition = "2024"
+rust-version = "1.79.0"
+
+[profile.release]
+overflow-checks = true
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+overflow-checks = true
+debug = true
+```
+
+## Code Style Guidelines
+
+### Naming Conventions
+- Use `snake_case` for variables, functions, and modules
+- Use `PascalCase` for types, traits, and enums
+- Use `SCREAMING_SNAKE_CASE` for constants
+- Prefix unsafe functions with `unsafe_`
+- Use descriptive names: `is_ready`, `has_data`, `can_proceed`
+
+### Module Organization
+```rust
+// Follow this structure for all modules
+mod tests;  // Test module at the top
+mod error;  // Error types
+mod types;  // Type definitions
+
+use crate::prelude::*;  // Project prelude
+
+// Public API
+pub use error::{Error, Result};
+pub use types::*;
+
+// Implementation
+```
+
+## Security Best Practices
+
+### Memory Safety Rules
+1. **Minimize `unsafe` blocks**
+   ```rust
+   // AVOID: Unchecked unsafe code
+   unsafe {
+       *ptr = value;
+   }
+
+   // PREFER: Documented and validated unsafe code
+   /// SAFETY: ptr must be valid and aligned, caller ensures exclusive access
+   unsafe {
+       debug_assert!(!ptr.is_null());
+       debug_assert!(ptr as usize % align_of::<T>() == 0);
+       ptr.write(value);
+   }
+   ```
+
+2. **Use safe alternatives**
+   - Replace raw pointers with `NonNull<T>`, `Pin<T>`, or safe wrappers
+   - Use `Arc<Mutex<T>>` or `Arc<RwLock<T>>` for shared state
+   - Prefer `Cow<'a, T>` for potentially-owned data
+
+### Input Validation
+```rust
+// Always validate and sanitize inputs
+pub fn process_user_input(input: &str) -> Result<ProcessedData> {
+    // Validate length
+    ensure!(input.len() <= MAX_INPUT_LENGTH, Error::InputTooLong);
+
+    // Sanitize content
+    let sanitized = input
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>();
+
+    // Parse with explicit error handling
+    sanitized.parse()
+        .map_err(|e| Error::ParseError(e.to_string()))
+}
+```
+
+### Cryptography and Secrets
+- Use audited crates: `ring`, `rustls`, `argon2`, `chacha20poly1305`
+- Never implement crypto algorithms yourself
+- Zero out sensitive data:
+  ```rust
+  use zeroize::{Zeroize, ZeroizeOnDrop};
+
+  #[derive(Zeroize, ZeroizeOnDrop)]
+  struct SecretKey([u8; 32]);
+  ```
+
+## Test-Driven Development
+
+### Test Structure
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    // Property-based tests
+    proptest! {
+        #[test]
+        fn test_invariant_holds(input in any::<ValidInput>()) {
+            let result = function_under_test(input);
+            prop_assert!(check_invariant(&result));
+        }
+    }
+
+    // Unit tests with descriptive names
+    #[test]
+    fn empty_input_returns_default_value() {
+        // Arrange
+        let input = "";
+
+        // Act
+        let result = process(input);
+
+        // Assert
+        assert_eq!(result, ProcessResult::default());
+    }
+
+    // Integration tests
+    #[test]
+    #[should_panic(expected = "specific error message")]
+    fn invalid_state_panics_with_clear_message() {
+        let invalid = create_invalid_state();
+        process_state(invalid); // Should panic
+    }
+}
+```
+
+### Testing Best Practices
+1. **Write tests first**: Define behavior before implementation
+2. **Test edge cases**: Empty inputs, maximum values, boundary conditions
+3. **Use property-based testing**: `proptest` or `quickcheck` for invariants
+4. **Mock external dependencies**: Use trait objects for testability
+5. **Benchmark critical paths**: Use `criterion` for performance regression tests
+
+## Error Handling
+
+### Custom Error Types
+```rust
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    #[error("Operation timed out after {0:?}")]
+    Timeout(Duration),
+
+    #[error("Internal error: {0}")]
+    Internal(#[from] anyhow::Error),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
+### Error Propagation
+```rust
+// Use ? operator with context
+pub fn complex_operation() -> Result<Output> {
+    let step1 = first_step()
+        .context("Failed to complete first step")?;
+
+    let step2 = second_step(&step1)
+        .map_err(|e| Error::ProcessingError(format!("Step 2 failed: {}", e)))?;
+
+    Ok(final_step(step2)?)
+}
+```
+
+## Async Programming
+
+### Tokio Best Practices
+```rust
+use tokio::time::{timeout, Duration};
+use tokio::sync::{mpsc, RwLock};
+
+// Always set timeouts for async operations
+pub async fn fetch_data(url: &str) -> Result<Data> {
+    timeout(Duration::from_secs(30), async {
+        // Implementation
+    })
+    .await
+    .map_err(|_| Error::Timeout)?
+}
+
+// Use structured concurrency
+pub async fn parallel_processing(items: Vec<Item>) -> Result<Vec<Output>> {
+    use futures::stream::{self, StreamExt};
+
+    stream::iter(items)
+        .map(|item| tokio::spawn(process_item(item)))
+        .buffer_unordered(10) // Limit concurrency
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?
+}
+```
+
+### Async Safety Rules
+1. Avoid holding locks across await points
+2. Use `tokio::select!` for cancellation
+3. Implement graceful shutdown with `CancellationToken`
+4. Always use `timeout` for network operations
+
+## Performance Optimization
+
+### Profiling and Benchmarking
+```rust
+// Use criterion for benchmarks
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
+fn benchmark_critical_path(c: &mut Criterion) {
+    c.bench_function("critical operation", |b| {
+        b.iter(|| {
+            critical_operation(black_box(test_input()))
+        });
+    });
+}
+```
+
+### Optimization Guidelines
+1. **Profile first**: Use `cargo-flamegraph` or `perf`
+2. **Optimize algorithms**: Better algorithm > micro-optimizations
+3. **Use appropriate data structures**: `SmallVec`, `FxHashMap`, `Cow`
+4. **Minimize allocations**: Reuse buffers, use arena allocators
+5. **Enable compiler optimizations**: LTO, PGO for release builds
+
+## Dependency Management
+
+### Security Audit
+```toml
+# In .cargo/config.toml
+[alias]
+audit = "audit --deny warnings"
+outdated = "outdated --depth 1"
+```
+
+### Approved Crates
+- **Async Runtime**: `tokio` (with minimal features)
+- **Serialization**: `serde`, `serde_json`, `bincode`
+- **Error Handling**: `thiserror`, `anyhow`
+- **Logging**: `tracing`, `tracing-subscriber`
+- **Testing**: `proptest`, `criterion`, `mockall`
+- **Security**: `ring`, `rustls`, `zeroize`
+
+## CI/CD Integration
+
+### Required Checks
+```yaml
+# Example GitHub Actions workflow
+- cargo fmt -- --check
+- cargo clippy -- -D warnings
+- cargo test --all-features
+- cargo audit
+- cargo tarpaulin --out Xml  # Code coverage
+```
+
+### Linting Configuration
+```toml
+# In clippy.toml
+avoid-breaking-exported-api = false
+msrv = "1.79.0"
+
+# In .cargo/config.toml
+[target.'cfg(all())']
+rustflags = [
+    "-D", "clippy::all",
+    "-D", "clippy::pedantic",
+    "-D", "clippy::nursery",
+    "-D", "clippy::cargo",
+    "-W", "clippy::module_name_repetitions",
+    "-W", "clippy::must_use_candidate",
+]
+```
+
+## Documentation Standards
+
+### API Documentation
+```rust
+/// Processes user input according to business rules.
+///
+/// # Arguments
+///
+/// * `input` - The raw user input to process
+///
+/// # Returns
+///
+/// Returns `Ok(ProcessedData)` on success, or an error if:
+/// - Input validation fails
+/// - Processing timeout occurs
+/// - Internal error happens
+///
+/// # Example
+///
+/// ```
+/// # use crate::{process_input, ProcessedData};
+/// let input = "valid input";
+/// let result = process_input(input)?;
+/// assert_eq!(result.status(), Status::Success);
+/// # Ok::<(), crate::Error>(())
+/// ```
+///
+/// # Panics
+///
+/// This function will never panic.
+pub fn process_input(input: &str) -> Result<ProcessedData> {
+    // Implementation
+}
+```
+
+## Architecture Patterns
+
+### Repository Pattern
+```rust
+#[async_trait]
+pub trait Repository<T> {
+    type Error;
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<T>, Self::Error>;
+    async fn save(&self, entity: &T) -> Result<(), Self::Error>;
+    async fn delete(&self, id: Uuid) -> Result<(), Self::Error>;
+}
+```
+
+### Builder Pattern with Validation
+```rust
+#[derive(Default)]
+pub struct ConfigBuilder {
+    timeout: Option<Duration>,
+    max_retries: Option<u32>,
+}
+
+impl ConfigBuilder {
+    pub fn timeout(mut self, timeout: Duration) -> Result<Self> {
+        ensure!(timeout > Duration::ZERO, "Timeout must be positive");
+        self.timeout = Some(timeout);
+        Ok(self)
+    }
+
+    pub fn build(self) -> Result<Config> {
+        Ok(Config {
+            timeout: self.timeout.unwrap_or(DEFAULT_TIMEOUT),
+            max_retries: self.max_retries.unwrap_or(DEFAULT_RETRIES),
+        })
+    }
+}
+```
+
+## Common Patterns
+
+### Result Chaining
+```rust
+// Chain operations with early returns
+fn process_pipeline(input: Input) -> Result<Output> {
+    input
+        .validate()
+        .and_then(|valid| transform(valid))
+        .and_then(|transformed| enrich(transformed))
+        .map(|enriched| Output::from(enriched))
+}
+```
+
+### Resource Management
+```rust
+// RAII pattern for resources
+pub struct Connection {
+    inner: TcpStream,
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        // Cleanup code
+        let _ = self.inner.shutdown(Shutdown::Both);
+    }
+}
+```
+
+## Anti-Patterns to Avoid
+
+1. **Never use `unwrap()` in production code** - Use `expect()` with context or proper error handling
+2. **Avoid `clone()` without justification** - Document why cloning is necessary
+3. **Don't ignore `must_use` results** - Handle all Results and Options explicitly
+4. **Minimize string allocations** - Use `&str` where possible, `Cow<str>` for flexibility
+5. **Avoid nested Results** - Flatten with custom error types
+
+## Project Structure
+
+```
+project/
+├── Cargo.toml
+├── .cursorrules          # This file
+├── src/
+│   ├── lib.rs           # Library root
+│   ├── main.rs          # Binary root (if applicable)
+│   ├── error.rs         # Error types
+│   ├── prelude.rs       # Common imports
+│   └── domain/          # Domain modules
+│       ├── mod.rs
+│       └── entity.rs
+├── tests/               # Integration tests
+│   └── integration.rs
+├── benches/            # Benchmarks
+│   └── performance.rs
+└── examples/           # Usage examples
+    └── basic.rs
+```
+
+## Review Checklist
+
+Before committing code, ensure:
+- [ ] All tests pass (`cargo test --all-features`)
+- [ ] No clippy warnings (`cargo clippy -- -D warnings`)
+- [ ] Code is formatted (`cargo fmt`)
+- [ ] Documentation is complete (`cargo doc --no-deps`)
+- [ ] Security audit passes (`cargo audit`)
+- [ ] Benchmarks show no regression (`cargo bench`)
+- [ ] Unsafe code is justified and documented
+- [ ] Error messages are helpful and actionable
+- [ ] No sensitive data in logs or error messages
+- [ ] Dependencies are minimal and audited

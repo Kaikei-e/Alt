@@ -1,0 +1,374 @@
+---
+description: For TypeScript projects, use the following rules
+globs: "**/*.ts"
+alwaysApply: true
+---
+
+# TypeScript - Security-First TDD Development Rules 2025
+
+## Core Principles
+
+You are a Senior TypeScript Developer expert in type safety, security, and Test-Driven Development. Write clean, functional code with zero runtime errors.
+
+### Primary Goals
+- **Type Safety**: Never use `any`, leverage TypeScript's type system fully
+- **Test First**: Write tests before implementation (Jest/Vitest)
+- **Security**: Validate all inputs, prevent XSS/injection attacks
+- **Functional**: Prefer immutability and pure functions
+- **Performance**: Optimize bundle size and runtime
+
+## Essential Configuration
+
+### tsconfig.json
+```json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
+```
+
+## Type Safety Patterns
+
+### Never Use `any`
+```typescript
+// ❌ BAD
+function process(data: any) { return data.value; }
+
+// ✅ GOOD - Use unknown with type guards
+function process(data: unknown): string {
+  if (isValidData(data)) return data.value;
+  throw new Error("Invalid data");
+}
+
+function isValidData(data: unknown): data is { value: string } {
+  return typeof data === "object" && data !== null && "value" in data;
+}
+```
+
+### Branded Types
+```typescript
+type UserId = string & { __brand: "UserId" };
+type Email = string & { __brand: "Email" };
+
+// Enforce validation
+function createUserId(id: string): UserId {
+  if (!isValidUuid(id)) throw new Error("Invalid UUID");
+  return id as UserId;
+}
+
+// Type-safe usage
+function getUser(id: UserId) { /* ... */ }
+// getUser("123"); // ❌ Type error
+// getUser(createUserId("123")); // ✅ OK
+```
+
+### Result Type for Error Handling
+```typescript
+type Result<T, E = Error> =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
+
+async function fetchUser(id: string): Promise<Result<User>> {
+  try {
+    const user = await api.get(`/users/${id}`);
+    return { ok: true, value: user };
+  } catch (error) {
+    return { ok: false, error: error as Error };
+  }
+}
+
+// Usage
+const result = await fetchUser("123");
+if (result.ok) {
+  console.log(result.value); // TypeScript knows value exists
+} else {
+  console.error(result.error); // TypeScript knows error exists
+}
+```
+
+## Security Patterns
+
+### Input Validation with Zod
+```typescript
+import { z } from "zod";
+
+const UserSchema = z.object({
+  email: z.string().email().max(255),
+  username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/),
+  age: z.number().int().min(18).max(120),
+});
+
+type User = z.infer<typeof UserSchema>;
+
+export function validateUser(input: unknown): User {
+  return UserSchema.parse(input); // Throws on invalid input
+}
+```
+
+### XSS Prevention
+```typescript
+// Safe DOM manipulation
+element.textContent = userInput; // ✅ Safe
+element.innerHTML = DOMPurify.sanitize(userInput); // ✅ Sanitized
+
+// React - safe by default
+<div>{userInput}</div> // ✅ Auto-escaped
+```
+
+### Secure API Calls
+```typescript
+class API {
+  private static headers = {
+    "Content-Type": "application/json",
+    "X-CSRF-Token": getCsrfToken(),
+  };
+
+  static async get<T>(endpoint: string): Promise<T> {
+    const response = await fetch(endpoint, {
+      headers: this.headers,
+      credentials: "same-origin",
+    });
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
+}
+```
+
+## TDD Patterns
+
+### Test Structure
+```typescript
+import { describe, it, expect, beforeEach } from "vitest";
+
+describe("UserService", () => {
+  let service: UserService;
+
+  beforeEach(() => {
+    service = new UserService();
+  });
+
+  describe("createUser", () => {
+    it("should create valid user", async () => {
+      // Arrange
+      const input = { email: "test@test.com", name: "Test" };
+
+      // Act
+      const user = await service.createUser(input);
+
+      // Assert
+      expect(user.id).toBeDefined();
+      expect(user.email).toBe(input.email);
+    });
+
+    it("should reject invalid email", async () => {
+      // Arrange
+      const input = { email: "invalid", name: "Test" };
+
+      // Act & Assert
+      await expect(service.createUser(input))
+        .rejects.toThrow("Invalid email");
+    });
+  });
+});
+```
+
+### Component Testing
+```typescript
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+describe("LoginForm", () => {
+  it("should submit valid credentials", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+
+    render(<LoginForm onSubmit={onSubmit} />);
+
+    await user.type(screen.getByLabelText(/email/i), "test@test.com");
+    await user.type(screen.getByLabelText(/password/i), "password123");
+    await user.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({
+        email: "test@test.com",
+        password: "password123",
+      });
+    });
+  });
+});
+```
+
+## Error Handling
+
+### Custom Error Classes
+```typescript
+class ValidationError extends Error {
+  constructor(
+    message: string,
+    public errors: Record<string, string>
+  ) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+class NotFoundError extends Error {
+  constructor(resource: string) {
+    super(`${resource} not found`);
+    this.name = "NotFoundError";
+  }
+}
+
+// Global error handler
+function handleError(error: unknown): ErrorResponse {
+  if (error instanceof ValidationError) {
+    return { status: 400, message: error.message, errors: error.errors };
+  }
+  if (error instanceof NotFoundError) {
+    return { status: 404, message: error.message };
+  }
+
+  console.error("Unexpected error:", error);
+  return { status: 500, message: "Internal server error" };
+}
+```
+
+## React Patterns
+
+### Custom Hooks
+```typescript
+// Debounced search
+export function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+}
+
+// Async state management
+export function useAsync<T>(fn: () => Promise<T>) {
+  const [state, setState] = useState<{
+    data?: T;
+    error?: Error;
+    loading: boolean;
+  }>({ loading: true });
+
+  useEffect(() => {
+    fn()
+      .then(data => setState({ data, loading: false }))
+      .catch(error => setState({ error, loading: false }));
+  }, []);
+
+  return state;
+}
+```
+
+### State Management (Zustand)
+```typescript
+import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
+
+interface AuthState {
+  user: User | null;
+  login: (user: User) => void;
+  logout: () => void;
+}
+
+export const useAuth = create<AuthState>()(
+  immer((set) => ({
+    user: null,
+    login: (user) => set(state => { state.user = user }),
+    logout: () => set(state => { state.user = null }),
+  }))
+);
+```
+
+## Performance
+
+### Code Splitting
+```typescript
+const Dashboard = lazy(() => import("./Dashboard"));
+
+function App() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <Routes>
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </Suspense>
+  );
+}
+```
+
+### Memoization
+```typescript
+const ExpensiveList = memo(({ items }: Props) => {
+  const total = useMemo(
+    () => items.reduce((sum, item) => sum + item.value, 0),
+    [items]
+  );
+
+  return <div>Total: {total}</div>;
+});
+```
+
+## Code Style
+
+### Naming Conventions
+- Variables/functions: `camelCase`
+- Types/interfaces: `PascalCase`
+- Constants: `SCREAMING_SNAKE_CASE`
+- Booleans: `isActive`, `hasPermission`, `canEdit`
+
+### Prefer Functional
+```typescript
+// ❌ Classes
+class UserService {
+  getUser(id: string) { /* ... */ }
+}
+
+// ✅ Functions
+export const getUser = (id: string) => { /* ... */ };
+```
+
+### Early Returns
+```typescript
+function processUser(user: User | null): string {
+  if (!user) return "No user";
+  if (!user.isActive) return "User inactive";
+  if (!user.hasPermission) return "No permission";
+
+  // Happy path
+  return `Welcome ${user.name}`;
+}
+```
+
+## Checklist
+
+Before committing:
+- [ ] No `any` types
+- [ ] All inputs validated
+- [ ] Tests written and passing
+- [ ] No console.logs
+- [ ] Error boundaries in place
+- [ ] Loading states handled
+- [ ] Accessibility checked
+- [ ] Bundle size checked
+- [ ] Security headers configured
+- [ ] Environment variables typed
