@@ -477,6 +477,38 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		return c.JSON(http.StatusOK, map[string]string{"message": "RSS feed link registered"})
 	})
 
+	v1.POST("/feeds/register/favorite", func(c echo.Context) error {
+		var payload RssFeedLink
+		if err := c.Bind(&payload); err != nil {
+			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
+		}
+
+		if strings.TrimSpace(payload.URL) == "" {
+			return handleValidationError(c, "URL is required and cannot be empty", "url", payload.URL)
+		}
+
+		parsedURL, err := url.Parse(payload.URL)
+		if err != nil {
+			return handleValidationError(c, "Invalid URL format", "url", payload.URL)
+		}
+
+		if err = isAllowedURL(parsedURL); err != nil {
+			securityErr := errors.ValidationError("URL not allowed for security reasons", map[string]interface{}{
+				"url":    payload.URL,
+				"reason": err.Error(),
+			})
+			errors.LogError(logger.Logger, securityErr, "url_validation")
+			return c.JSON(securityErr.HTTPStatusCode(), securityErr.ToHTTPResponse())
+		}
+
+		if err = container.RegisterFavoriteFeedUsecase.Execute(c.Request().Context(), payload.URL); err != nil {
+			return handleError(c, err, "register_favorite_feed")
+		}
+
+		c.Response().Header().Set("Cache-Control", "no-cache")
+		return c.JSON(http.StatusOK, map[string]string{"message": "favorite feed registered"})
+	})
+
 	// Add SSE endpoint with proper Echo SSE handling
 	v1.GET("/sse/feeds/stats", func(c echo.Context) error {
 		// Set SSE headers using Echo's response
