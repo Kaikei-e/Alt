@@ -369,6 +369,10 @@ export const feedsApi = {
     return apiClient.post("/v1/rss-feed-link/register", { url });
   },
 
+  async registerFavoriteFeed(url: string): Promise<MessageResponse> {
+    return apiClient.post("/v1/feeds/register/favorite", { url });
+  },
+
   async updateFeedReadStatus(url: string): Promise<MessageResponse> {
     return apiClient.post("/v1/feeds/read", { feed_url: url });
   },
@@ -417,11 +421,24 @@ export const feedsApi = {
     return apiClient.get<FeedStatsSummary>("/v1/feeds/stats", 5); // 5 minute cache for stats
   },
 
+  getFavoriteFeedsWithCursor: createCursorApi(
+    "/v1/feeds/fetch/favorites/cursor",
+    transformFeedItem,
+    10, // 10 minute cache for favorite feeds
+  ),
+
   getReadFeedsWithCursor: createCursorApi(
     "/v1/feeds/fetch/viewed/cursor",
     transformFeedItem,
     10, // 10 minute cache for read feeds
   ),
+
+  async prefetchFavoriteFeeds(cursors: string[]): Promise<void> {
+    const prefetchPromises = cursors.map((cursor) =>
+      this.getFavoriteFeedsWithCursor(cursor).catch(() => {}),
+    );
+    await Promise.all(prefetchPromises);
+  },
 
   async prefetchReadFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
