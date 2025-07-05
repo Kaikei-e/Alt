@@ -40,7 +40,7 @@ const ErrorFallback = ({ error }: { error: Error }) => (
 
 // スケルトンローダー
 const SkeletonLoader = () => (
-  <VStack spacing={4}>
+  <VStack gap={4}>
     {Array.from({ length: 3 }).map((_, i) => (
       <Box
         key={i}
@@ -124,13 +124,30 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({
     }
   }, [feeds]);
 
+  // Header props
+  const totalUnread = useMemo(() => feeds.filter(f => !f.isRead).length, [feeds]);
+  const handleSearchChange = useCallback((query: string) => {
+    console.log('Search:', query);
+  }, []);
+  const currentTheme = 'vaporwave' as const;
+  const handleThemeToggle = useCallback(() => {
+    console.log('Theme toggle');
+  }, []);
+
   return (
     <ErrorBoundary
       FallbackComponent={ErrorFallback}
       onError={(error) => console.error('Desktop feeds error:', error)}
     >
       <DesktopFeedsLayout
-        header={<DesktopHeader />}
+        header={
+          <DesktopHeader
+            totalUnread={totalUnread}
+            onSearchChange={handleSearchChange}
+            currentTheme={currentTheme}
+            onThemeToggle={handleThemeToggle}
+          />
+        }
         sidebar={
           <Suspense fallback={<SkeletonLoader />}>
             <DesktopSidebar
@@ -143,7 +160,7 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({
           </Suspense>
         }
       >
-        <VStack spacing="6" align="stretch">
+        <VStack gap="6" align="stretch">
           {filteredFeeds.map((feed) => (
             <MemoizedFeedCard
               key={feed.id}
