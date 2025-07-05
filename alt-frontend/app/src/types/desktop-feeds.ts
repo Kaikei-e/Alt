@@ -8,6 +8,7 @@ export interface DesktopFeedsLayoutProps {
 
 export interface DesktopHeaderProps {
   totalUnread: number;
+  searchQuery?: string;
   onSearchChange: (query: string) => void;
   currentTheme: 'vaporwave' | 'liquid-beige';
   onThemeToggle: () => void;
@@ -26,6 +27,7 @@ export interface DesktopSidebarProps {
 
   activeFilters?: FilterState;
   onFilterChange?: (filters: FilterState) => void;
+  onClearAll?: () => void;
   feedSources?: FeedSource[];
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;

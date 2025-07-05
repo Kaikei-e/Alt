@@ -5,7 +5,8 @@ import { DesktopFeedsLayout } from '@/components/desktop/layout/DesktopFeedsLayo
 import { DesktopHeader } from '@/components/desktop/layout/DesktopHeader';
 import { DesktopSidebar } from '@/components/desktop/layout/DesktopSidebar';
 import { DesktopTimeline } from '@/components/desktop/timeline/DesktopTimeline';
-import { FilterState } from '@/types/desktop-feeds';
+import { FilterState } from '@/types/desktop-feed';
+import { useURLFilters } from '@/hooks/useURLFilters';
 
 // モックデータ
 const mockFeedSources = [
@@ -37,12 +38,21 @@ export default function DesktopFeedsPage() {
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // URL filter state management
+  const { clearAllFilters: clearAllFromURL } = useURLFilters(
+    activeFilters,
+    setActiveFilters,
+    searchQuery,
+    setSearchQuery
+  );
+
 
   return (
     <DesktopFeedsLayout
       header={
         <DesktopHeader
           totalUnread={mockStats.totalUnread}
+          searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           currentTheme={'vaporwave'}
           onThemeToggle={() => {}}
@@ -53,6 +63,7 @@ export default function DesktopFeedsPage() {
           mode="feeds-filter"
           activeFilters={activeFilters}
           onFilterChange={setActiveFilters}
+          onClearAll={clearAllFromURL}
           feedSources={mockFeedSources}
           isCollapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -62,6 +73,7 @@ export default function DesktopFeedsPage() {
       <DesktopTimeline
         searchQuery={searchQuery}
         filters={activeFilters}
+        onFilterChange={setActiveFilters}
       />
     </DesktopFeedsLayout>
   );

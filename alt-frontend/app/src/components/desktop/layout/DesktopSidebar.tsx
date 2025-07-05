@@ -44,6 +44,7 @@ interface DesktopSidebarProps {
   // Feeds filtering props
   activeFilters?: FilterState;
   onFilterChange?: (filters: FilterState) => void;
+  onClearAll?: () => void;
   feedSources?: FeedSource[];
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -58,6 +59,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   logoSubtext = 'Feed Reader',
   activeFilters,
   onFilterChange,
+  onClearAll,
   feedSources = [],
   isCollapsed = false,
   onToggleCollapse,
@@ -338,19 +340,19 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
             {/* Clear Filters Button */}
             <Button
-              onClick={() => onFilterChange?.({
+              onClick={onClearAll || (() => onFilterChange?.({
                 sources: [],
                 timeRange: 'all',
                 readStatus: 'all',
                 tags: [],
                 priority: 'all'
-              })}
+              }))}
               variant="outline"
               size="sm"
               colorScheme="red"
               data-testid="filter-clear-button"
             >
-              Clear Filters
+              Clear All
             </Button>
           </VStack>
         )}

@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 
 export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   totalUnread,
+  searchQuery = '',
   onSearchChange
 }) => {
   return (
@@ -59,6 +60,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
           </Box>
           <Input
             placeholder="Search feeds..."
+            value={searchQuery}
             className="glass"
             border="1px solid var(--surface-border)"
             bg="var(--surface-bg)"
