@@ -6,25 +6,19 @@ test.describe('Desktop Feeds Performance', () => {
     await page.goto('/desktop/feeds', { waitUntil: 'networkidle' });
 
     // Core Web Vitalsの測定
-    const metrics = await page.evaluate(() => {
-      return new Promise<{ fcp?: number; lcp?: number }>((resolve) => {
-        new PerformanceObserver((list) => {
-          const entries = list.getEntries();
-          const vitals: { fcp?: number; lcp?: number } = {};
+  const metrics = await page.evaluate(() => {
+    const fcpEntry = performance
+      .getEntriesByName('first-contentful-paint')
+      .at(0) as PerformanceEntry | undefined;
+    const lcpEntry = performance
+      .getEntriesByName('largest-contentful-paint')
+      .at(0) as PerformanceEntry | undefined;
 
-          entries.forEach((entry) => {
-            if (entry.name === 'first-contentful-paint') {
-              vitals.fcp = entry.startTime;
-            }
-            if (entry.name === 'largest-contentful-paint') {
-              vitals.lcp = entry.startTime;
-            }
-          });
-
-          resolve(vitals);
-        }).observe({ entryTypes: ['paint', 'largest-contentful-paint'] });
-      });
-    });
+    return {
+      fcp: fcpEntry?.startTime,
+      lcp: lcpEntry?.startTime,
+    };
+  });
 
     // パフォーマンス要件の確認
     if (metrics.fcp) expect(metrics.fcp).toBeLessThan(1500); // FCP < 1.5s
