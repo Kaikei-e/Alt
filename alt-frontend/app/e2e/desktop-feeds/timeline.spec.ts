@@ -188,4 +188,73 @@ test.describe('DesktopTimeline Independent Scroll - PROTECTED', () => {
     const newRenderedItems = await virtualContainer.locator('[data-testid^="feed-item-"]').count();
     expect(newRenderedItems).toBeLessThan(100);
   });
+
+  test('should integrate all features seamlessly (INTEGRATION TEST)', async ({ page }) => {
+    // Mock API with realistic data
+    await page.route('**/v1/feeds/fetch/cursor*', async (route) => {
+      const feeds = Array.from({ length: 50 }, (_, i) => ({
+        id: `feed-${i}`,
+        title: `Feed Title ${i}`,
+        description: `Description for feed ${i}`,
+        link: `https://example.com/feed-${i}`,
+        published: new Date(Date.now() - i * 86400000).toISOString(), // Different dates
+        tags: i % 3 === 0 ? ['tech'] : ['news'],
+      }));
+
+      await route.fulfill({
+        json: { 
+          data: feeds,
+          next_cursor: feeds.length > 0 ? "next-cursor" : null
+        }
+      });
+    });
+
+    await page.goto('/desktop/feeds');
+    await page.waitForSelector('[data-testid="desktop-timeline"]', { timeout: 10000 });
+
+    // Test 1: Timeline loads with filters
+    const timeline = page.locator('[data-testid="desktop-timeline"]');
+    const filterBar = page.locator('[data-testid="filter-bar"]');
+    
+    await expect(timeline).toBeVisible();
+    await expect(filterBar).toBeVisible();
+
+    // Test 2: Search functionality integration
+    const searchInput = page.locator('input[placeholder*="検索"]');
+    if (await searchInput.count() > 0) {
+      await searchInput.fill('Feed Title 1');
+      await page.waitForTimeout(500); // Wait for debounce
+      
+      // Verify search results
+      const searchHeader = page.locator('text=/検索:/');
+      await expect(searchHeader).toBeVisible();
+    }
+
+    // Test 3: Filter integration
+    const timeFilter = page.locator('[data-testid="time-filter"]');
+    if (await timeFilter.count() > 0) {
+      await timeFilter.click();
+      const todayOption = page.locator('text=今日');
+      if (await todayOption.count() > 0) {
+        await todayOption.click();
+        await page.waitForTimeout(300);
+      }
+    }
+
+    // Test 4: Virtualization works with filters
+    const virtualContainer = page.locator('[data-testid="virtual-container"]');
+    await expect(virtualContainer).toBeVisible();
+    
+    const feedItems = virtualContainer.locator('[data-testid^="feed-item-"]');
+    const itemCount = await feedItems.count();
+    expect(itemCount).toBeGreaterThan(0);
+    expect(itemCount).toBeLessThan(50); // Should be virtualized
+
+    // Test 5: Scroll behavior integration
+    await timeline.evaluate(el => el.scrollTo(0, 200));
+    await page.waitForTimeout(200);
+    
+    const scrollTop = await timeline.evaluate(el => el.scrollTop);
+    expect(scrollTop).toBeGreaterThan(100);
+  });
 });
