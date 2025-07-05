@@ -140,14 +140,21 @@
   --alt-secondary: var(--alt-sage);
   --alt-tertiary: var(--alt-sand);
 
-  /* Glass properties */
-  --surface-bg: rgba(255, 255, 255, 0.08);
-  --surface-border: rgba(160, 129, 108, 0.15);
-  --surface-hover: rgba(255, 255, 255, 0.05);
-  --surface-blur: 16px;
+  /* Glass properties - 視認性を向上 */
+  --surface-bg: rgba(255, 253, 250, 0.4); /* より明確な背景 */
+  --surface-border: rgba(139, 119, 101, 0.3); /* ボーダーを濃く */
+  --surface-hover: rgba(255, 253, 250, 0.6); /* hover時の変化を明確に */
+  --surface-blur: 12px; /* ブラーを調整 */
 
-  /* Backgrounds */
-  --app-bg: linear-gradient(135deg, #e8ded1 0%, #d6c8b9 50%, #c8b8a1 100%);
+  /* Backgrounds - より洗練されたグラデーション */
+  --app-bg: linear-gradient(
+    135deg,
+    #e8ded1 0%,
+    #dfd4c5 25%,
+    #d6c8b9 50%,
+    #cdbaa8 75%,
+    #c8b8a1 100%
+  );
   --accent-gradient: linear-gradient(
     135deg,
     var(--alt-primary) 0%,
@@ -155,17 +162,22 @@
     var(--alt-tertiary) 100%
   );
 
-  /* Text colors */
+  /* Text colors - コントラストを強化 */
   --foreground: #2c2416;
   --background: #e8ded1;
-  --text-primary: #2c2416;
-  --text-secondary: rgba(44, 36, 22, 0.8);
-  --text-muted: rgba(44, 36, 22, 0.6);
+  --text-primary: #1a1611; /* より濃い黒 */
+  --text-secondary: rgba(26, 22, 17, 0.85); /* 視認性向上 */
+  --text-muted: rgba(44, 36, 22, 0.65);
 
   /* Accent colors */
   --accent-primary: var(--alt-primary);
   --accent-secondary: var(--alt-secondary);
   --accent-tertiary: var(--alt-tertiary);
+
+  /* 追加のシャドウ変数 */
+  --shadow-sm: 0 1px 3px rgba(139, 119, 101, 0.12);
+  --shadow-md: 0 4px 6px rgba(139, 119, 101, 0.15);
+  --shadow-lg: 0 10px 15px rgba(139, 119, 101, 0.2);
 }
 
 /* ---------------------------------------------------------------------------
@@ -577,4 +589,60 @@ input::placeholder {
 [data-style="liquid-beige"] ::selection {
   background: var(--alt-primary);
   color: var(--background);
+}
+
+[data-style="liquid-beige"] .glass {
+  box-shadow: var(--shadow-sm);
+}
+
+[data-style="liquid-beige"] .glass:hover {
+  box-shadow: var(--shadow-md);
+  border-color: rgba(139, 119, 101, 0.4);
+}
+
+[data-style="liquid-beige"] .card {
+  box-shadow: var(--shadow-md);
+  background: rgba(255, 253, 250, 0.5);
+}
+
+[data-style="liquid-beige"] .card:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: rgba(139, 119, 101, 0.45);
+}
+
+[data-style="liquid-beige"] .btn-primary {
+  background: rgba(255, 253, 250, 0.6);
+  border: 1px solid rgba(139, 119, 101, 0.35);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-style="liquid-beige"] .btn-primary:hover {
+  background: rgba(255, 253, 250, 0.8);
+  border-color: var(--alt-primary);
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 3px rgba(184, 84, 80, 0.1); /* focus ring風の効果 */
+}
+
+[data-style="liquid-beige"] .theme-toggle {
+  box-shadow: var(--shadow-md);
+  background: rgba(255, 253, 250, 0.7);
+  border: 1px solid rgba(139, 119, 101, 0.4);
+}
+
+[data-style="liquid-beige"] .theme-toggle:hover {
+  box-shadow: var(--shadow-lg);
+  background: rgba(255, 253, 250, 0.9);
+}
+
+/* アクセントカラーの調整 */
+[data-style="liquid-beige"] a {
+  font-weight: 500;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+[data-style="liquid-beige"] a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--alt-secondary);
 }
