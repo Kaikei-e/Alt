@@ -239,7 +239,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
               onClick={fetchNextPage}
               _hover={{ textDecoration: 'underline' }}
             >
-              さらに読み込む
+              Load more...
             </Text>
           </Flex>
         )}

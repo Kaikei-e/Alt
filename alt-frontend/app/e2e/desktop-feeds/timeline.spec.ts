@@ -71,7 +71,7 @@ test.describe('DesktopTimeline Independent Scroll - PROTECTED', () => {
       await timeline.evaluate(el => el.scrollTo(0, el.scrollHeight - el.clientHeight));
 
       // Check for load more functionality
-      const loadMoreButton = page.locator('text=さらに読み込む');
+      const loadMoreButton = page.locator('text=Load more...');
       const placeholderMessage = page.getByText('フィードカードはTASK2で実装されます');
       const feedCards = page.locator('[data-testid^="desktop-feed-card-"]');
 
