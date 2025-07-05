@@ -9,8 +9,10 @@ import (
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
 	"alt/gateway/feed_url_link_gateway"
+	"alt/gateway/feed_url_to_id_gateway"
 	"alt/gateway/fetch_feed_detail_gateway"
 	"alt/gateway/fetch_feed_gateway"
+	"alt/gateway/fetch_feed_tags_gateway"
 	"alt/gateway/rate_limiter_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
@@ -20,6 +22,7 @@ import (
 	"alt/port/rate_limiter_port"
 	"alt/usecase/fetch_feed_details_usecase"
 	"alt/usecase/fetch_feed_stats_usecase"
+	"alt/usecase/fetch_feed_tags_usecase"
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/reading_status"
 	"alt/usecase/register_favorite_feed_usecase"
@@ -55,6 +58,7 @@ type ApplicationComponents struct {
 	TotalArticlesCountUsecase           *fetch_feed_stats_usecase.TotalArticlesCountUsecase
 	TodayUnreadArticlesCountUsecase     *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
 	FeedSearchUsecase                   *search_feed_usecase.SearchFeedMeilisearchUsecase
+	FetchFeedTagsUsecase                *fetch_feed_tags_usecase.FetchFeedTagsUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -117,6 +121,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	feedURLLinkGatewayImpl := feed_url_link_gateway.NewFeedURLLinkGateway(altDBRepository)
 	feedSearchUsecase := search_feed_usecase.NewSearchFeedMeilisearchUsecase(feedSearchMeilisearchGatewayImpl, feedURLLinkGatewayImpl)
 
+	feedURLToIDGatewayImpl := feed_url_to_id_gateway.NewFeedURLToIDGateway(altDBRepository)
+	fetchFeedTagsGatewayImpl := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDBRepository)
+	fetchFeedTagsUsecase := fetch_feed_tags_usecase.NewFetchFeedTagsUsecase(feedURLToIDGatewayImpl, fetchFeedTagsGatewayImpl)
+
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
@@ -142,5 +150,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		TotalArticlesCountUsecase:           totalArticlesCountUsecase,
 		TodayUnreadArticlesCountUsecase:     todayUnreadArticlesCountUsecase,
 		FeedSearchUsecase:                   feedSearchUsecase,
+		FetchFeedTagsUsecase:                fetchFeedTagsUsecase,
 	}
 }

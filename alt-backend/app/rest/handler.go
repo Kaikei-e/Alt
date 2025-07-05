@@ -498,6 +498,87 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		return c.JSON(http.StatusOK, stats)
 	})
 
+	v1.POST("/feeds/tags", func(c echo.Context) error {
+		// Parse request body
+		var req FeedTagsPayload
+		if err := c.Bind(&req); err != nil {
+			logger.Logger.Error("Failed to bind request body", "error", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request format"})
+		}
+
+		// Validate request using built-in validation
+		if err := c.Validate(&req); err != nil {
+			logger.Logger.Error("Request validation failed", "error", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request data"})
+		}
+
+		// Parse and validate feed URL
+		parsedFeedURL, err := url.Parse(req.FeedURL)
+		if err != nil {
+			logger.Logger.Error("Invalid feed_url format", "error", err, "feed_url", req.FeedURL)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid feed_url format"})
+		}
+
+		// Apply URL security validation (same as other endpoints)
+		err = isAllowedURL(parsedFeedURL)
+		if err != nil {
+			logger.Logger.Error("Feed URL not allowed", "error", err, "feed_url", req.FeedURL)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Feed URL not allowed for security reasons"})
+		}
+
+		// Set default limit if not provided
+		limit := 20 // Default limit as per TASK2.md
+		if req.Limit > 0 {
+			limit = req.Limit
+		}
+
+		// Parse cursor if provided (same pattern as existing cursor endpoints)
+		var cursor *time.Time
+		if req.Cursor != "" {
+			parsedCursor, err := time.Parse(time.RFC3339, req.Cursor)
+			if err != nil {
+				logger.Logger.Error("Invalid cursor parameter", "error", err, "cursor", req.Cursor)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
+			}
+			cursor = &parsedCursor
+		}
+
+		// Add caching headers as per TASK2.md (tags update infrequently)
+		c.Response().Header().Set("Cache-Control", "public, max-age=3600") // 1 hour
+
+		logger.Logger.Info("Fetching feed tags", "feed_url", req.FeedURL, "cursor", cursor, "limit", limit)
+		tags, err := container.FetchFeedTagsUsecase.Execute(c.Request().Context(), req.FeedURL, cursor, limit)
+		if err != nil {
+			logger.Logger.Error("Error fetching feed tags", "error", err, "feed_url", req.FeedURL, "limit", limit)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed tags"})
+		}
+
+		// Convert domain tags to response format
+		tagResponses := make([]FeedTagResponse, len(tags))
+		for i, tag := range tags {
+			tagResponses[i] = FeedTagResponse{
+				ID:        tag.ID,
+				Name:      tag.Name,
+				CreatedAt: tag.CreatedAt.Format(time.RFC3339),
+			}
+		}
+
+		// Create response with next_cursor for pagination (same pattern as other cursor endpoints)
+		response := map[string]interface{}{
+			"feed_url": req.FeedURL,
+			"tags":     tagResponses,
+		}
+
+		// Add next cursor if there are results
+		if len(tags) > 0 {
+			lastTag := tags[len(tags)-1]
+			response["next_cursor"] = lastTag.CreatedAt.Format(time.RFC3339)
+		}
+
+		logger.Logger.Info("Feed tags retrieved successfully", "feed_url", req.FeedURL, "count", len(tags))
+		return c.JSON(http.StatusOK, response)
+	})
+
 	v1.GET("/feeds/count/unreads", func(c echo.Context) error {
 		sinceStr := c.QueryParam("since")
 		var since time.Time
