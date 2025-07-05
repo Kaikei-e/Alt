@@ -85,7 +85,7 @@ export default function DesktopSidebarTest() {
       </div>
 
       {/* Sidebar */}
-      <div data-testid="desktop-sidebar">
+      <div>
         {mode === 'navigation' ? (
           <DesktopSidebar
             navItems={mockNavItems}

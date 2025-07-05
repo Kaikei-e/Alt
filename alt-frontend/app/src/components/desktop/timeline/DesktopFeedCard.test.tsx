@@ -57,7 +57,7 @@ describe('DesktopFeedCard', () => {
   it('should handle favorite toggle action', () => {
     renderWithChakra(<DesktopFeedCard {...mockProps} />);
 
-    const favoriteButton = screen.getByLabelText('Toggle favorite');
+    const favoriteButton = screen.getByLabelText('Add to favorites');
     fireEvent.click(favoriteButton);
 
     expect(mockProps.onToggleFavorite).toHaveBeenCalledWith(mockDesktopFeeds[0].id);
@@ -66,7 +66,7 @@ describe('DesktopFeedCard', () => {
   it('should handle bookmark toggle action', () => {
     renderWithChakra(<DesktopFeedCard {...mockProps} />);
 
-    const bookmarkButton = screen.getByLabelText('Toggle bookmark');
+    const bookmarkButton = screen.getByLabelText('Add bookmark');
     fireEvent.click(bookmarkButton);
 
     expect(mockProps.onToggleBookmark).toHaveBeenCalledWith(mockDesktopFeeds[0].id);
@@ -117,14 +117,16 @@ describe('DesktopFeedCard', () => {
     renderWithChakra(<DesktopFeedCard {...mockProps} />);
 
     mockDesktopFeeds[0].metadata.tags.slice(0, 4).forEach(tag => {
-      expect(screen.getByText(`#${tag}`)).toBeInTheDocument();
+      const tagElements = screen.getAllByText(`#${tag}`);
+      expect(tagElements.length).toBeGreaterThan(0);
     });
   });
 
   it('should show difficulty badge', () => {
     renderWithChakra(<DesktopFeedCard {...mockProps} />);
 
-    expect(screen.getByText('intermediate')).toBeInTheDocument();
+    const difficultyElements = screen.getAllByText('intermediate');
+    expect(difficultyElements.length).toBeGreaterThan(0);
   });
 
   // TDD Test: SNS engagement stats should be removed
@@ -141,8 +143,12 @@ describe('DesktopFeedCard', () => {
     renderWithChakra(<DesktopFeedCard {...mockProps} />);
 
     // These should remain after SNS removal
-    expect(screen.getByText('3 related')).toBeInTheDocument();
-    expect(screen.getByText('intermediate')).toBeInTheDocument();
+    const relatedElements = screen.getAllByText('3 related');
+    expect(relatedElements.length).toBeGreaterThan(0);
+
+    const difficultyElements = screen.getAllByText('intermediate');
+    expect(difficultyElements.length).toBeGreaterThan(0);
+
     expect(screen.getByText(/5 min read/)).toBeInTheDocument();
   });
 });

@@ -9,28 +9,33 @@ export const useDesktopFeeds = () => {
   const [hasMore, setHasMore] = useState(true);
   const [cursor, setCursor] = useState<string | null>(null);
 
-  const fetchFeeds = useCallback(async (reset = false) => {
+
+
+  const fetchNextPage = useCallback(async () => {
+    if (!hasMore || isLoading || !cursor) {
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const result = await feedsApi.getDesktopFeeds(reset ? null : cursor);
-      
-      setFeeds(prev => reset ? result.feeds : [...prev, ...result.feeds]);
-      setCursor(result.nextCursor);
-      setHasMore(result.hasMore);
+      const result = await feedsApi.getDesktopFeeds(cursor);
+
+      if (!result) {
+        throw new Error('No data received from API');
+      }
+
+      setFeeds(prev => [...prev, ...(result.feeds || [])]);
+      setCursor(result.nextCursor || null);
+      setHasMore(result.hasMore || false);
     } catch (err) {
       setError(err as Error);
+      setHasMore(false);
     } finally {
       setIsLoading(false);
     }
-  }, [cursor]);
-
-  const fetchNextPage = useCallback(() => {
-    if (hasMore && !isLoading) {
-      fetchFeeds(false);
-    }
-  }, [hasMore, isLoading, fetchFeeds]);
+  }, [hasMore, isLoading, cursor]);
 
   const markAsRead = useCallback(async (feedId: string) => {
     try {
@@ -72,8 +77,32 @@ export const useDesktopFeeds = () => {
   }, [feeds]);
 
   useEffect(() => {
-    fetchFeeds(true);
-  }, [fetchFeeds]);
+    // Initial fetch on mount
+    const initialFetch = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const result = await feedsApi.getDesktopFeeds(null);
+
+        if (!result) {
+          throw new Error('No data received from API');
+        }
+
+        setFeeds(result.feeds || []);
+        setCursor(result.nextCursor || null);
+        setHasMore(result.hasMore || false);
+      } catch (err) {
+        setError(err as Error);
+        setHasMore(false);
+        setFeeds([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initialFetch();
+  }, []); // Only run on mount
 
   return {
     feeds,
@@ -84,6 +113,29 @@ export const useDesktopFeeds = () => {
     markAsRead,
     toggleFavorite,
     toggleBookmark,
-    refresh: () => fetchFeeds(true)
+    refresh: useCallback(async () => {
+      setIsLoading(true);
+      setError(null);
+      setCursor(null);
+      setHasMore(true);
+
+      try {
+        const result = await feedsApi.getDesktopFeeds(null);
+
+        if (!result) {
+          throw new Error('No data received from API');
+        }
+
+        setFeeds(result.feeds || []);
+        setCursor(result.nextCursor || null);
+        setHasMore(result.hasMore || false);
+      } catch (err) {
+        setError(err as Error);
+        setHasMore(false);
+        setFeeds([]);
+      } finally {
+        setIsLoading(false);
+      }
+    }, [])
   };
 };

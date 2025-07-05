@@ -476,19 +476,18 @@ export const feedsApi = {
     // For now, return mock data with pagination simulation
     // TODO: Replace with actual API call when backend is ready
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const pageSize = 5;
-        const startIndex = cursor ? parseInt(cursor) : 0;
-        const endIndex = startIndex + pageSize;
-        const paginatedFeeds = mockDesktopFeeds.slice(startIndex, endIndex);
-        
-        resolve({
-          feeds: paginatedFeeds,
-          nextCursor: endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
-          hasMore: endIndex < mockDesktopFeeds.length,
-          totalCount: mockDesktopFeeds.length
-        });
-      }, 500); // Simulate network delay
+      // Remove timeout for faster test execution
+      const pageSize = 5;
+      const startIndex = cursor ? parseInt(cursor) : 0;
+      const endIndex = startIndex + pageSize;
+      const paginatedFeeds = mockDesktopFeeds.slice(startIndex, endIndex);
+
+      resolve({
+        feeds: paginatedFeeds,
+        nextCursor: endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
+        hasMore: endIndex < mockDesktopFeeds.length,
+        totalCount: mockDesktopFeeds.length
+      });
     });
   },
 
@@ -545,7 +544,7 @@ export const feedsApi = {
             timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString() // 2 days ago
           }
         ];
-        
+
         resolve(mockActivities.slice(0, limit));
       }, 300); // Simulate network delay
     });

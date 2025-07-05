@@ -17,7 +17,7 @@ vi.mock('@/lib/api', () => ({
 describe('useDesktopFeeds', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Default mock implementation
     vi.mocked(feedsApi.getDesktopFeeds).mockResolvedValue({
       feeds: mockDesktopFeeds,
@@ -25,15 +25,15 @@ describe('useDesktopFeeds', () => {
       hasMore: false,
       totalCount: mockDesktopFeeds.length
     });
-    
+
     vi.mocked(feedsApi.updateFeedReadStatus).mockResolvedValue({
       message: 'Feed marked as read'
     });
-    
+
     vi.mocked(feedsApi.toggleFavorite).mockResolvedValue({
       message: 'Favorite toggled'
     });
-    
+
     vi.mocked(feedsApi.toggleBookmark).mockResolvedValue({
       message: 'Bookmark toggled'
     });
@@ -63,7 +63,7 @@ describe('useDesktopFeeds', () => {
     await result.current.markAsRead('1');
 
     expect(feedsApi.updateFeedReadStatus).toHaveBeenCalledWith('1');
-    
+
     // Wait for state update
     await waitFor(() => {
       const updatedFeed = result.current.feeds.find(f => f.id === '1');
@@ -84,7 +84,7 @@ describe('useDesktopFeeds', () => {
     await result.current.toggleFavorite(feedId);
 
     expect(feedsApi.toggleFavorite).toHaveBeenCalledWith(feedId, !originalFavoriteStatus);
-    
+
     // Wait for state update
     await waitFor(() => {
       const updatedFeed = result.current.feeds.find(f => f.id === feedId);
@@ -105,7 +105,7 @@ describe('useDesktopFeeds', () => {
     await result.current.toggleBookmark(feedId);
 
     expect(feedsApi.toggleBookmark).toHaveBeenCalledWith(feedId, !originalBookmarkStatus);
-    
+
     // Wait for state update
     await waitFor(() => {
       const updatedFeed = result.current.feeds.find(f => f.id === feedId);
@@ -114,36 +114,64 @@ describe('useDesktopFeeds', () => {
   });
 
   it('should handle fetch next page', async () => {
-    vi.mocked(feedsApi.getDesktopFeeds).mockResolvedValueOnce({
-      feeds: mockDesktopFeeds.slice(0, 3),
-      nextCursor: 'cursor-1',
-      hasMore: true,
-      totalCount: mockDesktopFeeds.length
+    // Clear all mocks
+    vi.clearAllMocks();
+
+    // Mock consecutive calls - first call (initial fetch), second call (next page)
+    const mockApiCall = vi.mocked(feedsApi.getDesktopFeeds);
+
+    mockApiCall
+      .mockResolvedValueOnce({
+        feeds: mockDesktopFeeds.slice(0, 3),
+        nextCursor: 'cursor-1',
+        hasMore: true,
+        totalCount: mockDesktopFeeds.length
+      })
+      .mockResolvedValueOnce({
+        feeds: mockDesktopFeeds.slice(3),
+        nextCursor: null,
+        hasMore: false,
+        totalCount: mockDesktopFeeds.length
+      });
+
+    // Setup other mocks
+    vi.mocked(feedsApi.updateFeedReadStatus).mockResolvedValue({
+      message: 'Feed marked as read'
+    });
+
+    vi.mocked(feedsApi.toggleFavorite).mockResolvedValue({
+      message: 'Favorite toggled'
+    });
+
+    vi.mocked(feedsApi.toggleBookmark).mockResolvedValue({
+      message: 'Bookmark toggled'
     });
 
     const { result } = renderHook(() => useDesktopFeeds());
 
+    // Wait for the initial fetch to complete
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
-    });
+      expect(result.current.error).toBeNull();
+    }, { timeout: 3000 });
 
+    // Verify initial state
     expect(result.current.hasMore).toBe(true);
+    expect(result.current.feeds).toHaveLength(3);
+    expect(mockApiCall).toHaveBeenCalledTimes(1);
+    expect(mockApiCall).toHaveBeenCalledWith(null);
 
-    // Mock next page response
-    vi.mocked(feedsApi.getDesktopFeeds).mockResolvedValueOnce({
-      feeds: mockDesktopFeeds.slice(3),
-      nextCursor: null,
-      hasMore: false,
-      totalCount: mockDesktopFeeds.length
-    });
-
+    // Fetch next page
     await result.current.fetchNextPage();
 
+    // Wait for the second fetch to complete
     await waitFor(() => {
-      expect(feedsApi.getDesktopFeeds).toHaveBeenCalledWith('cursor-1');
       expect(result.current.feeds).toHaveLength(mockDesktopFeeds.length);
       expect(result.current.hasMore).toBe(false);
-    });
+    }, { timeout: 3000 });
+
+    expect(mockApiCall).toHaveBeenCalledTimes(2);
+    expect(mockApiCall).toHaveBeenLastCalledWith('cursor-1');
   });
 
   it('should handle API errors gracefully', async () => {

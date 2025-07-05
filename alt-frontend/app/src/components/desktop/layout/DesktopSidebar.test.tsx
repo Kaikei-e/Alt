@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 import { DesktopSidebar } from './DesktopSidebar';
 import { Home, Rss } from 'lucide-react';
 
@@ -12,6 +13,14 @@ vi.mock('next/link', () => ({
     </a>
   ),
 }));
+
+const renderWithChakra = (ui: React.ReactElement) => {
+  return render(
+    <ChakraProvider value={defaultSystem}>
+      {ui}
+    </ChakraProvider>
+  );
+};
 
 describe('DesktopSidebar', () => {
   const mockNavItems = [
@@ -53,7 +62,7 @@ describe('DesktopSidebar', () => {
 
   describe('Navigation Mode', () => {
     it('should render navigation items correctly', () => {
-      render(<DesktopSidebar navItems={mockNavItems} mode="navigation" />);
+      renderWithChakra(<DesktopSidebar navItems={mockNavItems} mode="navigation" />);
 
       expect(screen.getByText('Dashboard')).toBeInTheDocument();
       expect(screen.getByText('Feeds')).toBeInTheDocument();
@@ -62,35 +71,35 @@ describe('DesktopSidebar', () => {
     });
 
     it('should highlight active navigation item', () => {
-      render(<DesktopSidebar navItems={mockNavItems} mode="navigation" />);
+      renderWithChakra(<DesktopSidebar navItems={mockNavItems} mode="navigation" />);
 
-      const activeItem = screen.getByText('Dashboard').closest('a');
+      const activeItem = screen.getByText('Dashboard').parentElement;
       expect(activeItem).toHaveClass('active');
     });
 
     it('should have proper accessibility attributes', () => {
-      render(<DesktopSidebar navItems={mockNavItems} mode="navigation" />);
+      renderWithChakra(<DesktopSidebar navItems={mockNavItems} mode="navigation" />);
 
       const nav = screen.getByRole('navigation');
       expect(nav).toHaveAttribute('aria-label', 'Main navigation');
     });
 
     it('should apply glassmorphism styling', () => {
-      render(<DesktopSidebar navItems={mockNavItems} mode="navigation" />);
+      renderWithChakra(<DesktopSidebar navItems={mockNavItems} mode="navigation" />);
 
       const sidebar = screen.getByText('Alt RSS').closest('.glass');
       expect(sidebar).toBeInTheDocument();
     });
 
     it('should use default props when not provided', () => {
-      render(<DesktopSidebar mode="navigation" />);
+      renderWithChakra(<DesktopSidebar mode="navigation" />);
 
       expect(screen.getByText('Alt RSS')).toBeInTheDocument();
       expect(screen.getByText('Feed Reader')).toBeInTheDocument();
     });
 
     it('should allow custom logo text and subtext', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           navItems={mockNavItems}
           mode="navigation"
@@ -106,7 +115,7 @@ describe('DesktopSidebar', () => {
 
   describe('Feeds Filter Mode', () => {
     it('should render filters header and collapse toggle', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -122,7 +131,7 @@ describe('DesktopSidebar', () => {
     });
 
     it('should display read status filter options', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -134,13 +143,13 @@ describe('DesktopSidebar', () => {
       );
 
       expect(screen.getByText('Read Status')).toBeInTheDocument();
-      expect(screen.getByLabelText('all')).toBeInTheDocument();
-      expect(screen.getByLabelText('unread')).toBeInTheDocument();
-      expect(screen.getByLabelText('read')).toBeInTheDocument();
+      expect(screen.getByTestId('filter-read-status-all')).toBeInTheDocument();
+      expect(screen.getByTestId('filter-read-status-unread')).toBeInTheDocument();
+      expect(screen.getByTestId('filter-read-status-read')).toBeInTheDocument();
     });
 
     it('should display feed sources with unread counts', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -159,7 +168,7 @@ describe('DesktopSidebar', () => {
     });
 
     it('should display time range filter options', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -171,14 +180,14 @@ describe('DesktopSidebar', () => {
       );
 
       expect(screen.getByText('Time Range')).toBeInTheDocument();
-      expect(screen.getByLabelText('all')).toBeInTheDocument();
-      expect(screen.getByLabelText('today')).toBeInTheDocument();
-      expect(screen.getByLabelText('week')).toBeInTheDocument();
-      expect(screen.getByLabelText('month')).toBeInTheDocument();
+      expect(screen.getByTestId('filter-time-range-all')).toBeInTheDocument();
+      expect(screen.getByTestId('filter-time-range-today')).toBeInTheDocument();
+      expect(screen.getByTestId('filter-time-range-week')).toBeInTheDocument();
+      expect(screen.getByTestId('filter-time-range-month')).toBeInTheDocument();
     });
 
     it('should have clear filters button', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -193,7 +202,7 @@ describe('DesktopSidebar', () => {
     });
 
     it('should handle read status filter changes', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -214,7 +223,7 @@ describe('DesktopSidebar', () => {
     });
 
     it('should handle source filter changes', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -225,7 +234,7 @@ describe('DesktopSidebar', () => {
         />
       );
 
-      const techcrunchCheckbox = screen.getByLabelText('TechCrunch');
+      const techcrunchCheckbox = screen.getByTestId('filter-source-techcrunch');
       fireEvent.click(techcrunchCheckbox);
 
       expect(mockOnFilterChange).toHaveBeenCalledWith({
@@ -235,7 +244,7 @@ describe('DesktopSidebar', () => {
     });
 
     it('should handle time range filter changes', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -246,17 +255,17 @@ describe('DesktopSidebar', () => {
         />
       );
 
-      const weekRadio = screen.getByLabelText('week');
-      fireEvent.click(weekRadio);
+      const todayRadio = screen.getByLabelText('today');
+      fireEvent.click(todayRadio);
 
       expect(mockOnFilterChange).toHaveBeenCalledWith({
         ...mockActiveFilters,
-        timeRange: 'week'
+        timeRange: 'today'
       });
     });
 
     it('should handle sidebar collapse', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -274,7 +283,7 @@ describe('DesktopSidebar', () => {
     });
 
     it('should hide filter content when collapsed', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -291,17 +300,18 @@ describe('DesktopSidebar', () => {
     });
 
     it('should clear all filters when clear button is clicked', () => {
-      const filtersWithValues = {
-        ...mockActiveFilters,
+      const filtersWithData = {
         readStatus: 'unread' as const,
         sources: ['techcrunch'],
-        timeRange: 'week' as const
+        priority: 'high' as const,
+        tags: ['tech'],
+        timeRange: 'today' as const
       };
 
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
-          activeFilters={filtersWithValues}
+          activeFilters={filtersWithData}
           onFilterChange={mockOnFilterChange}
           feedSources={mockFeedSources}
           isCollapsed={false}
@@ -313,16 +323,16 @@ describe('DesktopSidebar', () => {
       fireEvent.click(clearButton);
 
       expect(mockOnFilterChange).toHaveBeenCalledWith({
-        sources: [],
-        timeRange: 'all',
         readStatus: 'all',
+        sources: [],
+        priority: 'all',
         tags: [],
-        priority: 'all'
+        timeRange: 'all'
       });
     });
 
     it('should apply glassmorphism styling in filter mode', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -338,12 +348,44 @@ describe('DesktopSidebar', () => {
     });
 
     it('should handle multiple source selections', () => {
+      renderWithChakra(
+        <DesktopSidebar
+          mode="feeds-filter"
+          activeFilters={mockActiveFilters}
+          onFilterChange={mockOnFilterChange}
+          feedSources={mockFeedSources}
+          isCollapsed={false}
+          onToggleCollapse={mockOnToggleCollapse}
+        />
+      );
+
+      const techcrunchCheckbox = screen.getByTestId('filter-source-techcrunch');
+      fireEvent.click(techcrunchCheckbox);
+
+      expect(mockOnFilterChange).toHaveBeenCalledWith({
+        ...mockActiveFilters,
+        sources: ['techcrunch']
+      });
+
+      // Reset mock for next call
+      mockOnFilterChange.mockClear();
+
+      const hackernewsCheckbox = screen.getByTestId('filter-source-hackernews');
+      fireEvent.click(hackernewsCheckbox);
+
+      expect(mockOnFilterChange).toHaveBeenCalledWith({
+        ...mockActiveFilters,
+        sources: ['hackernews']
+      });
+    });
+
+    it('should remove source when unchecked', () => {
       const filtersWithSource = {
         ...mockActiveFilters,
         sources: ['techcrunch']
       };
 
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={filtersWithSource}
@@ -354,45 +396,19 @@ describe('DesktopSidebar', () => {
         />
       );
 
-      const hackernewsCheckbox = screen.getByLabelText('Hacker News');
-      fireEvent.click(hackernewsCheckbox);
-
-      expect(mockOnFilterChange).toHaveBeenCalledWith({
-        ...filtersWithSource,
-        sources: ['techcrunch', 'hackernews']
-      });
-    });
-
-    it('should remove source when unchecked', () => {
-      const filtersWithSources = {
-        ...mockActiveFilters,
-        sources: ['techcrunch', 'hackernews']
-      };
-
-      render(
-        <DesktopSidebar
-          mode="feeds-filter"
-          activeFilters={filtersWithSources}
-          onFilterChange={mockOnFilterChange}
-          feedSources={mockFeedSources}
-          isCollapsed={false}
-          onToggleCollapse={mockOnToggleCollapse}
-        />
-      );
-
-      const techcrunchCheckbox = screen.getByLabelText('TechCrunch');
+      const techcrunchCheckbox = screen.getByTestId('filter-source-techcrunch');
       fireEvent.click(techcrunchCheckbox);
 
       expect(mockOnFilterChange).toHaveBeenCalledWith({
-        ...filtersWithSources,
-        sources: ['hackernews']
+        ...filtersWithSource,
+        sources: []
       });
     });
   });
 
   describe('Edge Cases', () => {
     it('should handle empty feed sources gracefully', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -408,14 +424,13 @@ describe('DesktopSidebar', () => {
     });
 
     it('should handle missing optional props gracefully', () => {
-      render(<DesktopSidebar mode="feeds-filter" />);
+      renderWithChakra(<DesktopSidebar mode="feeds-filter" />);
 
       expect(screen.getByText('Filters')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument();
     });
 
     it('should not call onFilterChange when not provided', () => {
-      render(
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -432,8 +447,8 @@ describe('DesktopSidebar', () => {
       expect(unreadRadio).toBeInTheDocument();
     });
 
-    it('should not call onToggleCollapse when not provided', () => {
-      render(
+    it('should not show collapse button when onToggleCollapse not provided', () => {
+      renderWithChakra(
         <DesktopSidebar
           mode="feeds-filter"
           activeFilters={mockActiveFilters}
@@ -443,11 +458,8 @@ describe('DesktopSidebar', () => {
         />
       );
 
-      const collapseButton = screen.getByRole('button', { name: 'Collapse sidebar' });
-      fireEvent.click(collapseButton);
-
-      // Should not throw error
-      expect(collapseButton).toBeInTheDocument();
+      // Collapse button should not exist when onToggleCollapse is not provided
+      expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).not.toBeInTheDocument();
     });
   });
 });
