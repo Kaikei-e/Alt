@@ -16,5 +16,5 @@ clickhouse client -n --database "${CLICKHOUSE_DB:-rask_logs}" <<-EOSQL
     ) ENGINE = MergeTree()
     PARTITION BY (service_group, service_name)
     ORDER BY (timestamp)
-    TTL timestamp + INTERVAL 3 DAY DELETE;
+    TTL timestamp + INTERVAL 2 DAY DELETE;
 EOSQL
