@@ -26,7 +26,7 @@ export default function DesktopFeedsPage() {
     priority: 'all'
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  
+
 
   return (
     <DesktopFeedsLayout
@@ -40,6 +40,7 @@ export default function DesktopFeedsPage() {
       }
       sidebar={
         <DesktopSidebar
+          mode="feeds-filter"
           activeFilters={activeFilters}
           onFilterChange={setActiveFilters}
           feedSources={mockFeedSources}

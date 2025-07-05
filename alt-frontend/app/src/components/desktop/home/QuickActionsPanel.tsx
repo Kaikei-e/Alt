@@ -34,7 +34,7 @@ export const QuickActionsPanel: React.FC<QuickActionsPanelProps> = ({
       display="flex"
       flexDirection="column"
     >
-      <VStack spacing={4} flex="1">
+      <VStack gap={4} flex="1">
         <Grid
           data-testid="actions-grid"
           templateColumns="repeat(2, 1fr)"
@@ -51,7 +51,7 @@ export const QuickActionsPanel: React.FC<QuickActionsPanelProps> = ({
             />
           ))}
         </Grid>
-        
+
         {additionalStats && (
           <StatsFooter stats={additionalStats} />
         )}

@@ -14,11 +14,23 @@ export interface DesktopHeaderProps {
 }
 
 export interface DesktopSidebarProps {
-  activeFilters: FilterState;
-  onFilterChange: (filters: FilterState) => void;
-  feedSources: FeedSource[];
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
+  navItems?: Array<{
+    id: number;
+    label: string;
+    icon: React.ComponentType<{ size?: number }>;
+    href: string;
+    active?: boolean;
+  }>;
+  logoText?: string;
+  logoSubtext?: string;
+
+  activeFilters?: FilterState;
+  onFilterChange?: (filters: FilterState) => void;
+  feedSources?: FeedSource[];
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
+
+  mode?: 'navigation' | 'feeds-filter';
 }
 
 export interface FilterState {

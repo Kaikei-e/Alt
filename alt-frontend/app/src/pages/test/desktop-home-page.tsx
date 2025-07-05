@@ -1,10 +1,10 @@
 import { DesktopHomePage } from '../../components/desktop/home/DesktopHomePage';
 import { ThemeProvider } from '../../providers/ThemeProvider';
-import { ChakraProvider } from '@chakra-ui/react';
+import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 
 export default function DesktopHomePageTest() {
   return (
-    <ChakraProvider>
+    <ChakraProvider value={defaultSystem}>
       <ThemeProvider>
         <DesktopHomePage />
       </ThemeProvider>

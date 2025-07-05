@@ -30,6 +30,8 @@ export const SearchArticles = ({
 
   // Handle URL query parameter on mount
   useEffect(() => {
+    if (!searchParams) return;
+
     const urlQuery = searchParams.get("q");
     if (urlQuery) {
       setQuery(urlQuery);

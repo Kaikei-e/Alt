@@ -2,7 +2,7 @@ import { DesktopLayout } from '../../components/desktop/layout/DesktopLayout';
 import { PageHeader } from '../../components/desktop/home/PageHeader';
 import { CallToActionBar } from '../../components/desktop/home/CallToActionBar';
 import { ThemeProvider } from '../../providers/ThemeProvider';
-import { Home, Rss, BarChart3, Settings, ArrowRight, Download } from 'lucide-react';
+import { Home, Rss, ArrowRight, Download } from 'lucide-react';
 
 export default function DesktopHomePageSimpleTest() {
   const sidebarProps = {
@@ -40,7 +40,7 @@ export default function DesktopHomePageSimpleTest() {
   return (
     <ThemeProvider>
       <DesktopLayout sidebarProps={sidebarProps}>
-        <div 
+        <div
           className="flex flex-col gap-8"
           data-testid="desktop-home-container"
         >
@@ -48,7 +48,7 @@ export default function DesktopHomePageSimpleTest() {
             title="Dashboard Overview"
             description="Monitor your RSS feeds and AI-powered content insights"
           />
-          
+
           {/* Mock StatsGrid */}
           <div data-testid="stats-grid" className="grid grid-cols-3 gap-6">
             <div className="glass p-4 rounded-lg">
@@ -61,7 +61,7 @@ export default function DesktopHomePageSimpleTest() {
               <div>Reading Time: 45m</div>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-2 gap-8">
             <div>
               {/* Mock ActivityFeed */}
@@ -78,7 +78,7 @@ export default function DesktopHomePageSimpleTest() {
               </div>
             </div>
           </div>
-          
+
           <CallToActionBar
             title="Ready to explore?"
             description="Discover new content and manage your feeds"

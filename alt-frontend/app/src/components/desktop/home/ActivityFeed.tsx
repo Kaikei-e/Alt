@@ -32,7 +32,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       display="flex"
       flexDirection="column"
     >
-      <HStack 
+      <HStack
         data-testid="activity-header"
         mb={4}
         align="center"
@@ -45,7 +45,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
           </Text>
         </HStack>
       </HStack>
-      
+
       <Box flex="1" overflow="auto">
         {isLoading ? (
           <Box
@@ -64,7 +64,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
             <Text color="var(--text-muted)">No recent activity</Text>
           </Box>
         ) : (
-          <VStack spacing={2} align="stretch">
+          <VStack gap={2} align="stretch">
             {activities.map((activity) => (
               <ActivityItem
                 key={activity.id}

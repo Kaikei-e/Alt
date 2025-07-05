@@ -19,8 +19,8 @@ export const StatsFooter: React.FC<StatsFooterProps> = ({ stats }) => {
       borderTop="1px solid var(--surface-border)"
       mt={4}
     >
-      <HStack spacing={6} justify="space-between">
-        <VStack spacing={1} align="start">
+      <HStack gap={6} justify="space-between">
+        <VStack gap={1} align="start">
           <Text fontSize="xs" color="var(--text-muted)">
             Weekly Reads
           </Text>
@@ -28,8 +28,8 @@ export const StatsFooter: React.FC<StatsFooterProps> = ({ stats }) => {
             {stats.weeklyReads}
           </Text>
         </VStack>
-        
-        <VStack spacing={1} align="start">
+
+        <VStack gap={1} align="start">
           <Text fontSize="xs" color="var(--text-muted)">
             AI Processed
           </Text>
@@ -37,8 +37,8 @@ export const StatsFooter: React.FC<StatsFooterProps> = ({ stats }) => {
             {stats.aiProcessed}
           </Text>
         </VStack>
-        
-        <VStack spacing={1} align="start">
+
+        <VStack gap={1} align="start">
           <Text fontSize="xs" color="var(--text-muted)">
             Bookmarks
           </Text>
