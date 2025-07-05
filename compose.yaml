@@ -96,13 +96,6 @@ services:
       retries: 3
       start_period: 30s
     tty: true
-    labels:
-      - rask.group=alt-frontend
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   alt-backend:
     build:
@@ -417,23 +410,6 @@ services:
     <<: *rask-forwarder-env
     environment:
       TARGET_SERVICE: "${NGINX_TARGET:-nginx}"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"  # docker group (fallback to 984)
-    restart: unless-stopped
-    profiles:
-      - logging
-
-  alt-frontend-logs:
-    build:
-      context: ./rask-log-forwarder/app
-      dockerfile: Dockerfile.rask-log-forwarder
-    network_mode: "service:alt-frontend"
-    <<: *rask-forwarder-env
-    environment:
-      TARGET_SERVICE: "${ALT_FRONTEND_TARGET:-alt-frontend}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
