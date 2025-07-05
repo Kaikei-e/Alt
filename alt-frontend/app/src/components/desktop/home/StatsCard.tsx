@@ -41,6 +41,7 @@ export const StatsCard: React.FC<StatsCardProps> = ({
 
   return (
     <Box
+      data-testid="stats-card"
       className="glass"
       p={6}
       borderRadius="var(--radius-xl)"
