@@ -99,10 +99,10 @@ export default function DesktopHome() {
       href: "/desktop/home",
       active: true,
     },
-    { id: 2, label: "Feeds", icon: Rss, href: "/mobile/feeds" },
-    { id: 3, label: "Articles", icon: FileText, href: "/mobile/articles" },
-    { id: 4, label: "Search", icon: Search, href: "/mobile/articles/search" },
-    { id: 5, label: "Settings", icon: Settings, href: "/settings" },
+    { id: 2, label: "Feeds", icon: Rss, href: "/desktop/feeds" },
+    { id: 3, label: "Articles", icon: FileText, href: "/desktop/articles" },
+    { id: 4, label: "Search", icon: Search, href: "/desktop/articles/search" },
+    { id: 5, label: "Settings", icon: Settings, href: "/desktop/settings" },
   ];
 
   return (
