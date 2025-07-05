@@ -9,12 +9,11 @@ import (
 
 func (r *AltDBRepository) FetchTodayUnreadArticlesCount(ctx context.Context, since time.Time) (int, error) {
 	query := `
-        SELECT COUNT(*) FROM feeds f
-        WHERE f.created_at >= $1
-        AND NOT EXISTS (
-            SELECT 1 FROM read_status rs
-            WHERE rs.feed_id = f.id AND rs.is_read = TRUE
-        )
+			SELECT COUNT(*)
+			FROM feeds f
+							LEFT JOIN read_status rs ON rs.feed_id = f.id
+			WHERE f.created_at >= $1
+			AND rs.feed_id IS NULL
     `
 
 	var count int
