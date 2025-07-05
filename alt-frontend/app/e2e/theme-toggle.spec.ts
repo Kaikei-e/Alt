@@ -183,8 +183,8 @@ test.describe("Theme Toggle - PROTECTED", () => {
       await page.goto(testPage);
       await page.waitForLoadState("networkidle");
 
-      // Wait a bit for theme to be applied
-      await page.waitForTimeout(1000);
+      // Wait for theme to be applied (reduce timeout for parallel execution)
+      await page.waitForTimeout(500);
 
       // Verify consistent theme application
       const body = page.locator("body");

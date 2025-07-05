@@ -15,7 +15,7 @@ import {
   defaultCacheConfig,
 } from "@/lib/config";
 import { CursorResponse, MessageResponse } from "@/schema/common";
-import { DesktopFeedsResponse } from "@/types/desktop-feed";
+import { DesktopFeedsResponse, DesktopFeed } from "@/types/desktop-feed";
 import { ActivityResponse, WeeklyStats } from "@/types/desktop";
 import { mockDesktopFeeds } from "@/data/mockDesktopFeeds";
 
@@ -477,7 +477,7 @@ export const feedsApi = {
     // TODO: Replace with actual API call when backend is ready
     return new Promise((resolve) => {
       // Remove timeout for faster test execution
-      const pageSize = 5;
+      const pageSize = 20;
       const startIndex = cursor ? parseInt(cursor) : 0;
       const endIndex = startIndex + pageSize;
       const paginatedFeeds = mockDesktopFeeds.slice(startIndex, endIndex);
@@ -487,6 +487,22 @@ export const feedsApi = {
         nextCursor: endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
         hasMore: endIndex < mockDesktopFeeds.length,
         totalCount: mockDesktopFeeds.length
+      });
+    });
+  },
+
+  // Test-compatible cursor API for E2E tests
+  // This method is designed to match the expectations of E2E tests that mock cursor endpoints
+  async getTestFeeds(cursor?: string | null): Promise<{ data: DesktopFeed[], next_cursor: string | null }> {
+    return new Promise((resolve) => {
+      const pageSize = 20;
+      const startIndex = cursor ? parseInt(cursor) : 0;
+      const endIndex = startIndex + pageSize;
+      const paginatedFeeds = mockDesktopFeeds.slice(startIndex, endIndex);
+
+      resolve({
+        data: paginatedFeeds,
+        next_cursor: endIndex < mockDesktopFeeds.length ? endIndex.toString() : null
       });
     });
   },

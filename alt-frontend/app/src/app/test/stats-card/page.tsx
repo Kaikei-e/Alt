@@ -2,7 +2,7 @@
 
 import { Box } from "@chakra-ui/react";
 import { Rss } from "lucide-react";
-import StatsCard from "@/components/desktop/home/StatsCard";
+import { StatsCard } from "@/components/desktop/home/StatsCard";
 
 export default function StatsCardTestPage() {
   return (

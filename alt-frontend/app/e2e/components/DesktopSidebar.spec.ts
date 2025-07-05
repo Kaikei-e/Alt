@@ -72,9 +72,9 @@ test.describe('DesktopSidebar Component', () => {
 
       test('should display read status filter options', async ({ page }) => {
     await expect(page.getByText('Read Status')).toBeVisible();
-    await expect(page.getByTestId('filter-read-status-all')).toBeVisible();
-    await expect(page.getByTestId('filter-read-status-unread')).toBeVisible();
-    await expect(page.getByTestId('filter-read-status-read')).toBeVisible();
+    await expect(page.getByTestId('sidebar-filter-read-status-all')).toBeVisible();
+    await expect(page.getByTestId('sidebar-filter-read-status-unread')).toBeVisible();
+    await expect(page.getByTestId('sidebar-filter-read-status-read')).toBeVisible();
   });
 
     test('should display feed sources with unread counts', async ({ page }) => {
@@ -87,10 +87,10 @@ test.describe('DesktopSidebar Component', () => {
 
       test('should display time range filter options', async ({ page }) => {
     await expect(page.getByText('Time Range')).toBeVisible();
-    await expect(page.getByTestId('filter-time-range-all')).toBeVisible();
-    await expect(page.getByTestId('filter-time-range-today')).toBeVisible();
-    await expect(page.getByTestId('filter-time-range-week')).toBeVisible();
-    await expect(page.getByTestId('filter-time-range-month')).toBeVisible();
+    await expect(page.getByTestId('sidebar-filter-time-range-all')).toBeVisible();
+    await expect(page.getByTestId('sidebar-filter-time-range-today')).toBeVisible();
+    await expect(page.getByTestId('sidebar-filter-time-range-week')).toBeVisible();
+    await expect(page.getByTestId('sidebar-filter-time-range-month')).toBeVisible();
   });
 
     test('should handle filter interactions', async ({ page }) => {

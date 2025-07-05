@@ -30,7 +30,7 @@ const MemoizedFeedCard = memo(DesktopFeedCard);
 const ErrorFallback = ({ error }: { error: Error }) => (
   <Box className="glass" p={8} borderRadius="var(--radius-xl)" textAlign="center">
     <Text color="var(--alt-error)" fontWeight="bold" mb={2}>
-      エラーが発生しました
+      An error occurred
     </Text>
     <Text color="var(--text-secondary)" fontSize="sm">
       {error.message}
@@ -178,7 +178,7 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({
             <Box className="glass" p={8} borderRadius="var(--radius-xl)" textAlign="center">
               <Text fontSize="2xl" mb={2}>📭</Text>
               <Text color="var(--text-secondary)">
-                フィードがありません
+                No feeds available
               </Text>
             </Box>
           )}

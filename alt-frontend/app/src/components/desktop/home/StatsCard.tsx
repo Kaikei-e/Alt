@@ -1,9 +1,8 @@
 "use client";
 
 import React from "react";
-import { Box, HStack, Text, Icon } from "@chakra-ui/react";
+import { Box, HStack, Text, Icon, Spinner } from "@chakra-ui/react";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
-import Loading from "@/components/mobile/utils/Loading";
 
 interface StatsCardProps {
   icon: React.ComponentType<{ size?: number }>;
@@ -39,6 +38,9 @@ export const StatsCard: React.FC<StatsCardProps> = ({
 
   const colorVar = getColorVariable(color);
 
+  // Debug logging
+  console.log('StatsCard props:', { trend, trendLabel, isLoading });
+
   return (
     <Box
       data-testid="stats-card"
@@ -62,9 +64,11 @@ export const StatsCard: React.FC<StatsCardProps> = ({
           opacity={0.1}
         />
       </HStack>
-      
+
       {isLoading ? (
-        <Loading isLoading={isLoading} />
+        <Box data-testid="loading" display="flex" alignItems="center" justifyContent="center" minH="60px">
+          <Spinner size="md" color={colorVar} />
+        </Box>
       ) : (
         <AnimatedNumber
           value={value}
@@ -76,18 +80,19 @@ export const StatsCard: React.FC<StatsCardProps> = ({
           }}
         />
       )}
-      
+
       <Text fontSize="sm" color="var(--text-muted)" mt={1}>
         {label}
       </Text>
-      
-      {trend && (
-        <Text fontSize="xs" color={colorVar} mt={2}>
-          {trend} {trendLabel && trendLabel}
+
+      {trend && trend.length > 0 && (
+        <Text fontSize="xs" color={colorVar} mt={2} data-testid="trend-text">
+          {trend} {trendLabel}
         </Text>
       )}
     </Box>
   );
 };
 
+// Export both named and default
 export default StatsCard;

@@ -73,6 +73,7 @@ function DesktopFeedsContent() {
         searchQuery={searchQuery}
         filters={activeFilters}
         onFilterChange={setActiveFilters}
+        onSearchClear={() => setSearchQuery('')}
       />
     </DesktopFeedsLayout>
   );

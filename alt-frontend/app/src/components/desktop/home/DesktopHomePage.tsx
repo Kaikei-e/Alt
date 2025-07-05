@@ -12,22 +12,22 @@ import { Home, Rss, BarChart3, Settings, ArrowRight, Download, Plus, Search, Boo
 
 export const DesktopHomePage: React.FC = () => {
   // Fetch real data from hooks
-  const { 
-    feedStats, 
-    isLoadingStats, 
+  const {
+    feedStats,
+    isLoadingStats,
     statsError,
     unreadCount,
-    refreshStats 
+    refreshStats
   } = useHomeStats();
-  
-  const { 
-    activities, 
+
+  const {
+    activities,
     isLoading: isLoadingActivity,
     error: activityError
   } = useRecentActivity();
 
   // Transform feed stats to stats card format
-  const statsData = useMemo(() => 
+  const statsData = useMemo(() =>
     transformFeedStats(feedStats, unreadCount),
     [feedStats, unreadCount]
   );
@@ -112,7 +112,7 @@ export const DesktopHomePage: React.FC = () => {
   if (statsError || activityError) {
     return (
       <DesktopLayout sidebarProps={sidebarProps}>
-        <div 
+        <div
           className="flex flex-col gap-8"
           data-testid="desktop-home-container"
         >
@@ -120,12 +120,12 @@ export const DesktopHomePage: React.FC = () => {
             title="Dashboard Overview"
             description="Monitor your RSS feeds and AI-powered content insights"
           />
-          
+
           <div className="text-center py-8">
             <p className="text-red-500">
               {statsError || activityError}
             </p>
-            <button 
+            <button
               onClick={refreshStats}
               className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
             >
@@ -139,7 +139,7 @@ export const DesktopHomePage: React.FC = () => {
 
   return (
     <DesktopLayout sidebarProps={sidebarProps}>
-      <div 
+      <div
         className="flex flex-col gap-8"
         data-testid="desktop-home-container"
       >
@@ -147,16 +147,16 @@ export const DesktopHomePage: React.FC = () => {
           title="Dashboard Overview"
           description="Monitor your RSS feeds and AI-powered content insights"
         />
-        
-        <StatsGrid 
-          stats={isLoadingStats ? [] : statsData} 
+
+        <StatsGrid
+          stats={statsData}
           isLoading={isLoadingStats}
         />
-        
+
         <div className="grid grid-cols-2 gap-8">
           <div>
-            <ActivityFeed 
-              activities={isLoadingActivity ? [] : activities} 
+            <ActivityFeed
+              activities={isLoadingActivity ? [] : activities}
               isLoading={isLoadingActivity}
             />
           </div>
@@ -164,7 +164,7 @@ export const DesktopHomePage: React.FC = () => {
             <QuickActionsPanel actions={mockQuickActions} />
           </div>
         </div>
-        
+
         <CallToActionBar
           title="Ready to explore?"
           description="Discover new content and manage your feeds"

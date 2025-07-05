@@ -39,8 +39,9 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
           }}
           gap={{ base: 4, md: 6, lg: 8 }}
           p={{ base: 4, md: 6, lg: 8 }}
-          maxW="1600px"
-          mx="auto"
+          h="calc(100vh - 80px)"
+          maxW="none"
+          mx={0}
         >
           {/* サイドバー */}
           <GridItem
@@ -55,7 +56,12 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
           </GridItem>
 
           {/* タイムライン */}
-          <GridItem maxW="800px" mx="auto" data-testid="main-content">
+          <GridItem 
+            display="flex" 
+            alignItems="stretch" 
+            px={{ base: 4, md: 6, lg: 8 }}
+            data-testid="main-content"
+          >
             {children}
           </GridItem>
 

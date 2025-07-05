@@ -22,24 +22,24 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
   });
 
   test('should handle theme switching between vaporwave and liquid-beige (PROTECTED)', async ({ page }) => {
-    // Check initial vaporwave theme
-    await expect(page.locator('html')).toHaveAttribute('data-style', 'vaporwave');
-    
-    // Verify vaporwave theme styling
+    // Check initial liquid-beige theme (default)
+    await expect(page.locator('html')).toHaveAttribute('data-style', 'liquid-beige');
+
+    // Verify liquid-beige theme styling
     const body = page.locator('body');
     const bodyStyles = await body.evaluate(el => getComputedStyle(el));
     expect(bodyStyles.background).toContain('linear-gradient');
 
-    // Switch to liquid-beige theme
+    // Switch to vaporwave theme
     await page.locator('[data-testid="theme-toggle"]').click();
-    await expect(page.locator('html')).toHaveAttribute('data-style', 'liquid-beige');
+    await expect(page.locator('html')).toHaveAttribute('data-style', 'vaporwave');
 
-    // Verify liquid-beige theme styling
+    // Verify vaporwave theme styling
     const newBodyStyles = await body.evaluate(el => getComputedStyle(el));
     expect(newBodyStyles.background).toContain('linear-gradient');
     expect(newBodyStyles.background).not.toBe(bodyStyles.background);
 
-    // Verify glass components have different styling in liquid-beige
+    // Verify glass components have different styling in vaporwave
     const sidebar = page.locator('[data-testid="desktop-sidebar-filters"]');
     const sidebarStyles = await sidebar.evaluate(el => getComputedStyle(el));
     expect(sidebarStyles.boxShadow).toBeTruthy();
@@ -90,7 +90,7 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
     await page.waitForTimeout(300);
 
     // Test clear filters
-    await page.locator('[data-testid="filter-clear-button"]').click();
+    await page.locator('[data-testid="sidebar-filter-clear-button"]').click();
     await page.waitForTimeout(300);
 
     // Verify filters are cleared
@@ -100,11 +100,11 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
 
   test('should handle independent timeline scrolling (PROTECTED)', async ({ page }) => {
     const timeline = page.locator('[data-testid="desktop-timeline"]');
-    
+
     // Verify timeline has scrollable content
     const scrollHeight = await timeline.evaluate(el => el.scrollHeight);
     const clientHeight = await timeline.evaluate(el => el.clientHeight);
-    
+
     if (scrollHeight > clientHeight) {
       // Test scrolling functionality
       await timeline.hover();
@@ -117,19 +117,19 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
   });
 
   test('should maintain visual consistency across themes (PROTECTED)', async ({ page }) => {
-    // Check vaporwave theme contrast
+    // Check liquid-beige theme contrast (default)
     const filterLabel = page.locator('[data-testid="filter-read-status-label"]');
-    const vaporwaveColor = await filterLabel.evaluate(el => getComputedStyle(el).color);
+    const liquidBeigeColor = await filterLabel.evaluate(el => getComputedStyle(el).color);
 
-    // Switch to liquid-beige
+    // Switch to vaporwave
     await page.locator('[data-testid="theme-toggle"]').click();
     await page.waitForTimeout(500);
 
-    // Check liquid-beige theme contrast
-    const liquidBeigeColor = await filterLabel.evaluate(el => getComputedStyle(el).color);
-    
+    // Check vaporwave theme contrast
+    const vaporwaveColor = await filterLabel.evaluate(el => getComputedStyle(el).color);
+
     // Colors should be different for proper contrast
-    expect(vaporwaveColor).not.toBe(liquidBeigeColor);
+    expect(liquidBeigeColor).not.toBe(vaporwaveColor);
 
     // Verify glass effects are present in both themes
     const sidebar = page.locator('[data-testid="desktop-sidebar-filters"]');
@@ -140,7 +140,7 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
   test('should handle sidebar collapse functionality (PROTECTED)', async ({ page }) => {
     // Only test if collapse toggle exists
     const collapseToggle = page.locator('[data-testid="sidebar-collapse-toggle"]');
-    
+
     if (await collapseToggle.count() > 0) {
       // Test sidebar collapse
       await collapseToggle.click();

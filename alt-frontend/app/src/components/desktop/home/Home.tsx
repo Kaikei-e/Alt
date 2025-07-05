@@ -605,7 +605,7 @@ export default function DesktopHome() {
               </Box>
               <HStack gap={4}>
                 <Button className="btn-primary">
-                  <NextLink href="/mobile/feeds">
+                  <NextLink href="/desktop/feeds">
                     Browse Feeds
                     <ArrowRight size={16} style={{ marginLeft: "8px" }} />
                   </NextLink>

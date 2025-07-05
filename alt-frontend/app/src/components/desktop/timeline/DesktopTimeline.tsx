@@ -15,6 +15,7 @@ interface DesktopTimelineProps {
   searchQuery: string;
   filters: FilterState;
   onFilterChange: (filters: FilterState) => void;
+  onSearchClear?: () => void;
   variant?: 'default' | 'compact' | 'detailed';
 }
 
@@ -22,6 +23,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
   searchQuery,
   filters,
   onFilterChange,
+  onSearchClear,
   // variant は将来の実装用に残す
 }) => {
   const {
@@ -32,7 +34,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
     fetchNextPage,
     markAsRead,
     toggleFavorite,
-    // toggleBookmark は将来の実装用に残す
+    toggleBookmark,
   } = useDesktopFeeds();
 
   // Debounced search query for performance optimization
@@ -49,9 +51,9 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
     debouncedSetSearch(searchQuery);
   }, [searchQuery, debouncedSetSearch]);
 
-  // フィルタリングされたフィード（高度な検索機能対応）
+    // フィルタリングされたフィード（高度な検索機能対応）
   const { filteredFeeds, searchResults } = useMemo(() => {
-    let filtered = feeds;
+    let filtered = feeds as any[];
     let results: SearchResult[] = [];
 
     // 高度な検索機能（複数キーワード対応、デバウンス済み）
@@ -127,7 +129,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
     return { filteredFeeds: filtered, searchResults: results };
   }, [feeds, debouncedSearchQuery, filters]);
 
-  // Setup virtualizer
+  // Setup virtualizer and infinite scroll
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: filteredFeeds.length,
@@ -135,6 +137,24 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
     estimateSize: () => 200, // Estimated height for each feed item
     overscan: 10, // Render 10 items outside visible area for smooth scrolling
   });
+
+  // Infinite scroll implementation
+  useEffect(() => {
+    const container = parentRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100;
+
+      if (isNearBottom && hasMore && !isLoading) {
+        fetchNextPage();
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [hasMore, isLoading, fetchNextPage]);
 
   // const handleReadLater = (feedId: string) => {
   //   // 後で読む機能の実装（ローカルストレージやAPI経由）
@@ -156,26 +176,20 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
     toggleFavorite(feedId);
   }, [toggleFavorite]);
 
-  if (error) {
-    return (
-      <Box
-        bg="var(--alt-error)"
-        color="white"
-        p={4}
-        borderRadius="var(--radius-lg)"
-        className="glass"
-      >
-        フィードの読み込みに失敗しました。
-      </Box>
-    );
-  }
+  const handleToggleBookmark = useCallback((feedId: string) => {
+    toggleBookmark(feedId);
+  }, [toggleBookmark]);
+
+  // Remove early return for error to allow component to render
 
   return (
-    <VStack gap={4} align="stretch">
+    <VStack gap={4} align="stretch" flex={1} h="100%">
       {/* Filter Bar */}
       <FilterBar
+        data-testid="filter-bar"
         filters={filters}
         onFilterChange={onFilterChange}
+        onSearchClear={onSearchClear}
         availableTags={['tech', 'development', 'news', 'science']}
         availableSources={[
           { id: 'techcrunch', name: 'TechCrunch', icon: '📰' },
@@ -195,15 +209,15 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
           justify="space-between"
         >
           <Text color="var(--text-primary)" fontWeight="medium">
-            検索: &quot;{debouncedSearchQuery}&quot;
+            Search: &quot;{debouncedSearchQuery}&quot;
           </Text>
           <VStack align="end" gap={1}>
             <Text fontSize="sm" color="var(--text-muted)">
-              {filteredFeeds.length}件の結果
+              {filteredFeeds.length} results
             </Text>
             {searchResults.length > 0 && (
               <Text fontSize="xs" color="var(--text-muted)">
-                複数キーワード検索対応
+                Multi-keyword search enabled
               </Text>
             )}
           </VStack>
@@ -214,11 +228,8 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
       <Box
         data-testid="desktop-timeline"
         ref={parentRef}
-        maxH={{
-          base: "100vh",
-          md: "calc(100vh - 140px)",
-          lg: "calc(100vh - 180px)"
-        }}
+        flex={1}
+        minH={0}
         overflowY="auto"
         overflowX="hidden"
         className="glass"
@@ -244,16 +255,23 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
         }}
       >
         {/* Error State */}
-        {error && (
-          <Box
-            bg="var(--alt-error)"
-            color="white"
-            p={4}
-            borderRadius="var(--radius-lg)"
+        {error && filteredFeeds.length === 0 && (
+          <Flex
             className="glass"
+            p={8}
+            borderRadius="var(--radius-xl)"
+            direction="column"
+            align="center"
+            gap={4}
           >
-            フィードの読み込みに失敗しました。
-          </Box>
+            <Text fontSize="2xl">⚠️</Text>
+            <Text color="var(--text-secondary)">
+              Failed to load feeds.
+            </Text>
+            <Text fontSize="sm" color="var(--text-muted)">
+              {error.message}
+            </Text>
+          </Flex>
         )}
 
         {/* Loading State */}
@@ -271,7 +289,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
               color="var(--accent-primary)"
             />
             <Text color="var(--text-secondary)">
-              フィードを読み込み中...
+              Loading feeds...
             </Text>
           </Flex>
         )}
@@ -288,7 +306,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
           >
             <Text fontSize="2xl">📭</Text>
             <Text color="var(--text-secondary)">
-              {debouncedSearchQuery ? '検索結果が見つかりませんでした' : 'フィードが見つかりませんでした'}
+              {debouncedSearchQuery ? 'No search results found' : 'No feeds found'}
             </Text>
           </Flex>
         )}
@@ -303,10 +321,11 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
             {virtualizer.getVirtualItems().map((virtualItem) => (
               <VirtualizedFeedItem
                 key={virtualItem.key}
-                feed={filteredFeeds[virtualItem.index]}
+                feed={filteredFeeds[virtualItem.index] as any}
                 index={virtualItem.index}
                 onMarkAsRead={handleMarkAsRead}
                 onToggleFavorite={handleToggleFavorite}
+                onToggleBookmark={handleToggleBookmark}
                 onViewArticle={handleViewArticle}
                 style={{
                   position: 'absolute',
@@ -321,8 +340,8 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
           </Box>
         )}
 
-        {/* Infinite Scroll Trigger */}
-        {hasMore && !isLoading && filteredFeeds.length > 0 && (
+        {/* Loading indicator for infinite scroll */}
+        {isLoading && filteredFeeds.length > 0 && (
           <Flex
             className="glass"
             p={4}
@@ -330,14 +349,12 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
             justify="center"
             mt={4}
           >
-            <Text
+            <Spinner
+              size="sm"
               color="var(--accent-primary)"
-              fontWeight="medium"
-              cursor="pointer"
-              onClick={fetchNextPage}
-              _hover={{ textDecoration: 'underline' }}
-            >
-              Load more...
+            />
+            <Text ml={2} color="var(--text-secondary)">
+              Loading more feeds...
             </Text>
           </Flex>
         )}

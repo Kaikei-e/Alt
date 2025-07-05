@@ -9,6 +9,8 @@ interface FilterBarProps {
   onFilterChange: (filters: FilterState) => void;
   availableTags?: string[];
   availableSources?: Array<{ id: string; name: string; icon: string }>;
+  onSearchClear?: () => void;
+  'data-testid'?: string;
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -16,28 +18,14 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onFilterChange,
   availableTags = [],
   availableSources = [],
+  onSearchClear,
+  'data-testid': dataTestId = 'filter-bar',
 }) => {
-  const handleReadStatusChange = () => {
-    const nextValue = filters.readStatus === 'all' ? 'unread' : 'all';
-    onFilterChange({
-      ...filters,
-      readStatus: nextValue,
-    });
-  };
-
   const handlePriorityChange = () => {
     const nextValue = filters.priority === 'all' ? 'high' : 'all';
     onFilterChange({
       ...filters,
       priority: nextValue,
-    });
-  };
-
-  const handleTimeRangeChange = () => {
-    const nextValue = filters.timeRange === 'all' ? 'today' : 'all';
-    onFilterChange({
-      ...filters,
-      timeRange: nextValue,
     });
   };
 
@@ -75,6 +63,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
       tags: [],
       timeRange: 'all',
     });
+    onSearchClear?.();
   };
 
   const hasActiveFilters =
@@ -86,7 +75,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
   return (
     <Box
-      data-testid="filter-bar"
+      data-testid={dataTestId}
       className="glass"
       p={4}
       borderRadius="var(--radius-lg)"
@@ -100,13 +89,14 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           </Text>
           {hasActiveFilters && (
             <Button
+              data-testid="filter-clear-button"
               size="sm"
               variant="ghost"
               color="var(--text-muted)"
               onClick={clearAllFilters}
               _hover={{ color: 'var(--alt-primary)' }}
             >
-              Clear All
+              Clear Filters
             </Button>
           )}
         </Flex>
@@ -118,23 +108,47 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <Text fontSize="xs" color="var(--text-muted)" mb={2}>
               Read Status
             </Text>
-            <Button
-              data-testid="read-status-filter"
-              size="sm"
-              variant={filters.readStatus !== 'all' ? 'solid' : 'outline'}
-              colorScheme={filters.readStatus !== 'all' ? 'blue' : 'gray'}
-              onClick={handleReadStatusChange}
-              bg={filters.readStatus !== 'all' ? 'var(--alt-primary)' : 'transparent'}
-              color={filters.readStatus !== 'all' ? 'white' : 'var(--text-secondary)'}
-              borderColor="var(--surface-border)"
-              _hover={
-                filters.readStatus !== 'all'
-                  ? { bg: 'var(--alt-primary)', opacity: 0.8 }
-                  : { borderColor: 'var(--alt-primary)', color: 'var(--alt-primary)' }
-              }
-            >
-              {filters.readStatus}
-            </Button>
+            <HStack gap={2}>
+              <Button
+                data-testid="filter-read-status-all"
+                role="radio"
+                aria-checked={filters.readStatus === 'all'}
+                size="sm"
+                variant={filters.readStatus === 'all' ? 'solid' : 'outline'}
+                onClick={() => onFilterChange({ ...filters, readStatus: 'all' })}
+                bg={filters.readStatus === 'all' ? 'var(--alt-primary)' : 'transparent'}
+                color={filters.readStatus === 'all' ? 'white' : 'var(--text-secondary)'}
+                borderColor="var(--surface-border)"
+              >
+                All
+              </Button>
+              <Button
+                data-testid="filter-read-status-unread"
+                role="radio"
+                aria-checked={filters.readStatus === 'unread'}
+                size="sm"
+                variant={filters.readStatus === 'unread' ? 'solid' : 'outline'}
+                onClick={() => onFilterChange({ ...filters, readStatus: 'unread' })}
+                bg={filters.readStatus === 'unread' ? 'var(--alt-primary)' : 'transparent'}
+                color={filters.readStatus === 'unread' ? 'white' : 'var(--text-secondary)'}
+                borderColor="var(--surface-border)"
+              >
+                Unread
+              </Button>
+              <Button
+                data-testid="filter-read-status-read"
+                role="radio"
+                aria-checked={filters.readStatus === 'read'}
+                size="sm"
+                variant={filters.readStatus === 'read' ? 'solid' : 'outline'}
+                onClick={() => onFilterChange({ ...filters, readStatus: 'read' })}
+                bg={filters.readStatus === 'read' ? 'var(--alt-primary)' : 'transparent'}
+                color={filters.readStatus === 'read' ? 'white' : 'var(--text-secondary)'}
+                borderColor="var(--surface-border)"
+              >
+                Read
+              </Button>
+            </HStack>
           </Box>
 
           {/* Priority Filter */}
@@ -162,27 +176,64 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           </Box>
 
           {/* Time Range Filter */}
-          <Box>
+          <Box data-testid="time-filter">
             <Text fontSize="xs" color="var(--text-muted)" mb={2}>
               Time Range
             </Text>
-            <Button
-              data-testid="time-range-filter"
-              size="sm"
-              variant={filters.timeRange !== 'all' ? 'solid' : 'outline'}
-              colorScheme={filters.timeRange !== 'all' ? 'green' : 'gray'}
-              onClick={handleTimeRangeChange}
-              bg={filters.timeRange !== 'all' ? 'var(--accent-primary)' : 'transparent'}
-              color={filters.timeRange !== 'all' ? 'white' : 'var(--text-secondary)'}
-              borderColor="var(--surface-border)"
-              _hover={
-                filters.timeRange !== 'all'
-                  ? { bg: 'var(--accent-primary)', opacity: 0.8 }
-                  : { borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }
-              }
-            >
-              {filters.timeRange}
-            </Button>
+            <HStack gap={2} wrap="wrap">
+              <Button
+                data-testid="filter-time-range-all"
+                role="radio"
+                aria-checked={filters.timeRange === 'all'}
+                size="sm"
+                variant={filters.timeRange === 'all' ? 'solid' : 'outline'}
+                onClick={() => onFilterChange({ ...filters, timeRange: 'all' })}
+                bg={filters.timeRange === 'all' ? 'var(--accent-primary)' : 'transparent'}
+                color={filters.timeRange === 'all' ? 'white' : 'var(--text-secondary)'}
+                borderColor="var(--surface-border)"
+              >
+                All
+              </Button>
+              <Button
+                data-testid="filter-time-range-today"
+                role="radio"
+                aria-checked={filters.timeRange === 'today'}
+                size="sm"
+                variant={filters.timeRange === 'today' ? 'solid' : 'outline'}
+                onClick={() => onFilterChange({ ...filters, timeRange: 'today' })}
+                bg={filters.timeRange === 'today' ? 'var(--accent-primary)' : 'transparent'}
+                color={filters.timeRange === 'today' ? 'white' : 'var(--text-secondary)'}
+                borderColor="var(--surface-border)"
+              >
+                Today
+              </Button>
+              <Button
+                data-testid="filter-time-range-week"
+                role="radio"
+                aria-checked={filters.timeRange === 'week'}
+                size="sm"
+                variant={filters.timeRange === 'week' ? 'solid' : 'outline'}
+                onClick={() => onFilterChange({ ...filters, timeRange: 'week' })}
+                bg={filters.timeRange === 'week' ? 'var(--accent-primary)' : 'transparent'}
+                color={filters.timeRange === 'week' ? 'white' : 'var(--text-secondary)'}
+                borderColor="var(--surface-border)"
+              >
+                Week
+              </Button>
+              <Button
+                data-testid="filter-time-range-month"
+                role="radio"
+                aria-checked={filters.timeRange === 'month'}
+                size="sm"
+                variant={filters.timeRange === 'month' ? 'solid' : 'outline'}
+                onClick={() => onFilterChange({ ...filters, timeRange: 'month' })}
+                bg={filters.timeRange === 'month' ? 'var(--accent-primary)' : 'transparent'}
+                color={filters.timeRange === 'month' ? 'white' : 'var(--text-secondary)'}
+                borderColor="var(--surface-border)"
+              >
+                Month
+              </Button>
+            </HStack>
           </Box>
         </HStack>
 

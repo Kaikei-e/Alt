@@ -165,7 +165,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           height: '100%',
                           cursor: 'pointer'
                         }}
-                        data-testid={`filter-read-status-${status}`}
+                        data-testid={`sidebar-filter-read-status-${status}`}
                       />
                     </Box>
                     <Text
@@ -213,6 +213,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       border="2px solid var(--surface-border)"
                       bg="var(--surface-bg)"
                       transition="all var(--transition-speed) ease"
+                      data-testid="filter-source-checkbox"
                       css={{
                         ...(activeFilters?.sources.includes(source.id) && {
                           background: 'var(--alt-primary)',
@@ -241,6 +242,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           cursor: 'pointer'
                         }}
                         data-testid={`filter-source-${source.id}`}
+                        className="filter-source-checkbox"
                       />
                     </Box>
                     <Flex align="center" gap={1} flex={1}>
@@ -322,7 +324,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           height: '100%',
                           cursor: 'pointer'
                         }}
-                        data-testid={`filter-time-range-${range}`}
+                        data-testid={`sidebar-filter-time-range-${range}`}
                       />
                     </Box>
                     <Text
@@ -350,9 +352,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               variant="outline"
               size="sm"
               colorScheme="red"
-              data-testid="filter-clear-button"
+              data-testid="sidebar-filter-clear-button"
             >
-              Clear All
+              Clear Filters
             </Button>
           </VStack>
         )}

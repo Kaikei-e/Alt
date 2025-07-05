@@ -36,7 +36,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
     return (
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
         <Text color="var(--text-secondary)" textAlign="center">
-          データがありません
+          No data available
         </Text>
       </Box>
     );
@@ -56,7 +56,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
         >
           📈 Today&apos;s Reading
         </Text>
-        
+
         <SimpleGrid columns={2} gap={3}>
           <VStack gap={1}>
             <Text
@@ -70,7 +70,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               Articles
             </Text>
           </VStack>
-          
+
           <VStack gap={1}>
             <Text
               fontSize="xl"
@@ -83,7 +83,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               Time
             </Text>
           </VStack>
-          
+
           <VStack gap={1}>
             <Text
               fontSize="xl"
@@ -96,7 +96,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               Favorites
             </Text>
           </VStack>
-          
+
           <VStack gap={1}>
             <Box position="relative" w="40px" h="40px">
               <Progress
@@ -149,8 +149,8 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
             <Text
               fontSize="xs"
               color={
-                week.trendDirection === 'up' 
-                  ? 'var(--alt-success)' 
+                week.trendDirection === 'up'
+                  ? 'var(--alt-success)'
                   : week.trendDirection === 'down'
                   ? 'var(--alt-error)'
                   : 'var(--text-secondary)'
@@ -161,7 +161,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
             </Text>
           </HStack>
         </HStack>
-        
+
         <VStack gap={2} align="stretch">
           <HStack justify="space-between">
             <Text fontSize="lg" fontWeight="bold" color="var(--text-primary)">
@@ -171,7 +171,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               articles this week
             </Text>
           </HStack>
-          
+
           {/* 簡易チャート */}
           <HStack gap={1} h="30px" align="end">
             {week.dailyBreakdown.map((day) => (
@@ -199,7 +199,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
         >
           🔥 Reading Streak
         </Text>
-        
+
         <VStack gap={3}>
           <HStack gap={2}>
             <Text
@@ -213,7 +213,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               days
             </Text>
           </HStack>
-          
+
           <VStack gap={1}>
             <HStack justify="space-between" w="full">
               <Text fontSize="xs" color="var(--text-secondary)">
@@ -245,7 +245,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
         >
           🎯 Categories
         </Text>
-        
+
         <VStack gap={2}>
           {today.topCategories.slice(0, 4).map((category) => (
             <HStack key={category.category} justify="space-between" w="full">

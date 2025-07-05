@@ -2,7 +2,7 @@
 
 import { Box } from "@chakra-ui/react";
 import { Plus } from "lucide-react";
-import ActionButton from "@/components/desktop/home/ActionButton";
+import { ActionButton } from "@/components/desktop/home/ActionButton";
 
 export default function ActionButtonTestPage() {
   return (
@@ -10,7 +10,7 @@ export default function ActionButtonTestPage() {
       <ActionButton
         icon={Plus}
         label="Add Feed"
-        href="/desktop/feeds/register"
+        href="/desktop/feeds"
       />
     </Box>
   );

@@ -19,12 +19,34 @@ export const useURLFilters = (
   useEffect(() => {
     if (!searchParams) return;
 
+    // Helper function to validate enum values
+    const validateReadStatus = (value: string | null): FilterState['readStatus'] => {
+      const validValues: FilterState['readStatus'][] = ['all', 'read', 'unread'];
+      return validValues.includes(value as FilterState['readStatus'])
+        ? (value as FilterState['readStatus'])
+        : 'all';
+    };
+
+    const validatePriority = (value: string | null): FilterState['priority'] => {
+      const validValues: FilterState['priority'][] = ['all', 'high', 'medium', 'low'];
+      return validValues.includes(value as FilterState['priority'])
+        ? (value as FilterState['priority'])
+        : 'all';
+    };
+
+    const validateTimeRange = (value: string | null): FilterState['timeRange'] => {
+      const validValues: FilterState['timeRange'][] = ['all', 'today', 'week', 'month'];
+      return validValues.includes(value as FilterState['timeRange'])
+        ? (value as FilterState['timeRange'])
+        : 'all';
+    };
+
     const urlFilters: FilterState = {
-      readStatus: (searchParams.get('readStatus') as FilterState['readStatus']) || 'all',
+      readStatus: validateReadStatus(searchParams.get('readStatus')),
       sources: searchParams.get('sources')?.split(',').filter(Boolean) || [],
-      priority: (searchParams.get('priority') as FilterState['priority']) || 'all',
+      priority: validatePriority(searchParams.get('priority')),
       tags: searchParams.get('tags')?.split(',').filter(Boolean) || [],
-      timeRange: (searchParams.get('timeRange') as FilterState['timeRange']) || 'all',
+      timeRange: validateTimeRange(searchParams.get('timeRange')),
     };
 
     const urlSearch = searchParams.get('search') || '';

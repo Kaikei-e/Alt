@@ -2,13 +2,14 @@
 
 import React, { memo } from 'react';
 import { Box, VStack, Text, Flex } from '@chakra-ui/react';
-import { Feed } from '@/schema/feed';
+import { DesktopFeed } from '@/types/desktop-feed';
 
 interface VirtualizedFeedItemProps {
-  feed: Feed;
+  feed: DesktopFeed;
   index: number;
   onMarkAsRead: (feedId: string) => void;
   onToggleFavorite: (feedId: string) => void;
+  onToggleBookmark?: (feedId: string) => void;
   onViewArticle: (feedId: string) => void;
   style?: React.CSSProperties;
 }
@@ -18,6 +19,7 @@ export const VirtualizedFeedItem: React.FC<VirtualizedFeedItemProps> = memo(({
   index,
   onMarkAsRead,
   onToggleFavorite,
+  onToggleBookmark,
   onViewArticle,
   style,
 }) => {
@@ -33,6 +35,11 @@ export const VirtualizedFeedItem: React.FC<VirtualizedFeedItemProps> = memo(({
   const handleToggleFavorite = (e: React.MouseEvent) => {
     e.stopPropagation();
     onToggleFavorite(feed.id);
+  };
+
+  const handleToggleBookmark = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleBookmark?.(feed.id);
   };
 
   return (
@@ -58,14 +65,24 @@ export const VirtualizedFeedItem: React.FC<VirtualizedFeedItemProps> = memo(({
         onClick={handleViewArticle}
       >
         <VStack align="stretch" gap={3}>
-          <Text
-            fontSize="lg"
-            fontWeight="bold"
-            color="var(--text-primary)"
-            lineHeight="1.4"
-          >
-            {feed.title}
-          </Text>
+          {/* Title with Priority Indicator */}
+          <Flex align="center" gap={2}>
+            <Text
+              fontSize="lg"
+              fontWeight="bold"
+              color="var(--text-primary)"
+              lineHeight="1.4"
+              flex={1}
+            >
+              {feed.title}
+            </Text>
+            <Text fontSize="sm">
+              {feed.metadata?.priority === 'high' ? '🔥' :
+               feed.metadata?.priority === 'medium' ? '📈' : '📄'}
+            </Text>
+          </Flex>
+
+          {/* Description */}
           <Text
             fontSize="sm"
             color="var(--text-secondary)"
@@ -79,32 +96,96 @@ export const VirtualizedFeedItem: React.FC<VirtualizedFeedItemProps> = memo(({
           >
             {feed.description}
           </Text>
+
+                    {/* Tags */}
+          <Flex gap={2} flexWrap="wrap">
+            {feed.metadata?.tags?.slice(0, 2).map((tag, index) => (
+              <Text key={index} fontSize="xs" color="var(--alt-primary)" fontWeight="medium">
+                #{tag.toLowerCase()}
+              </Text>
+            ))}
+          </Flex>
+
+          {/* Engagement Stats */}
           <Flex justify="space-between" align="center">
+            <Flex gap={4}>
+              <Text fontSize="xs" color="var(--text-muted)">
+                {feed.metadata?.engagement?.likes || 0} likes
+              </Text>
+              <Text fontSize="xs" color="var(--text-muted)">
+                {feed.metadata?.engagement?.bookmarks || 0} bookmarks
+              </Text>
+            </Flex>
             <Text fontSize="xs" color="var(--text-muted)">
               {new Date(feed.published).toLocaleDateString()}
             </Text>
+          </Flex>
+
+          {/* Action Buttons */}
+          <Flex justify="space-between" align="center">
             <Flex gap={2}>
-              <Text
-                fontSize="xs"
-                color="var(--alt-primary)"
-                fontWeight="medium"
-                cursor="pointer"
+              <button
+                aria-label="Mark as Read"
                 onClick={handleMarkAsRead}
-                _hover={{ textDecoration: 'underline' }}
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--alt-primary)',
+                  fontWeight: 'medium',
+                  cursor: 'pointer',
+                  background: 'none',
+                  border: 'none',
+                  textDecoration: 'underline'
+                }}
               >
                 Mark as Read
-              </Text>
-              <Text
-                fontSize="xs"
-                color="var(--alt-secondary)"
-                fontWeight="medium"
-                cursor="pointer"
+              </button>
+              <button
+                aria-label="Toggle favorite"
+                title="Favorite"
                 onClick={handleToggleFavorite}
-                _hover={{ textDecoration: 'underline' }}
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--alt-secondary)',
+                  fontWeight: 'medium',
+                  cursor: 'pointer',
+                  background: 'none',
+                  border: 'none',
+                  textDecoration: 'underline'
+                }}
               >
-                Favorite
-              </Text>
+                Toggle favorite
+              </button>
+              <button
+                aria-label="Toggle bookmark"
+                title="Bookmark"
+                onClick={handleToggleBookmark}
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--alt-tertiary)',
+                  fontWeight: 'medium',
+                  cursor: 'pointer',
+                  background: 'none',
+                  border: 'none',
+                  textDecoration: 'underline'
+                }}
+              >
+                Toggle bookmark
+              </button>
             </Flex>
+            <button
+              onClick={handleViewArticle}
+              style={{
+                fontSize: '12px',
+                color: 'var(--alt-primary)',
+                fontWeight: 'medium',
+                cursor: 'pointer',
+                background: 'none',
+                border: 'none',
+                textDecoration: 'underline'
+              }}
+            >
+              View Article
+            </button>
           </Flex>
         </VStack>
       </Box>

@@ -21,26 +21,20 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
     >
       {/* 左側：ロゴと統計 */}
       <Flex align="center" gap={6}>
-        <Heading 
-          size="lg" 
+        <Heading
+          size="lg"
           color="var(--text-primary)"
           fontFamily="var(--font-display)"
         >
-          📰 Alt Feeds
+          Alt / Feeds
         </Heading>
         <Flex align="center" gap={2}>
-          <Text 
-            fontSize="sm" 
+          <Text
+            fontSize="sm"
             color="var(--text-secondary)"
             fontWeight="medium"
           >
             {totalUnread} unread
-          </Text>
-          <Text 
-            fontSize="xs" 
-            color="var(--text-muted)"
-          >
-            Desktop
           </Text>
         </Flex>
       </Flex>
@@ -79,7 +73,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
 
       {/* 右側：テーマトグル */}
       <Flex align="center">
-        <ThemeToggle 
+        <ThemeToggle
           size="md"
           showLabel={false}
         />

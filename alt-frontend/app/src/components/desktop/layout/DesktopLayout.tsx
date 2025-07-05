@@ -1,6 +1,6 @@
 import React from 'react';
 import { DesktopSidebar } from './DesktopSidebar';
-// import { ThemeToggle } from '../../ThemeToggle';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 interface DesktopLayoutProps {
   children: React.ReactNode;
@@ -28,9 +28,8 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
     >
       {/* Theme Toggle - Fixed Top Right */}
       <div className="fixed top-4 right-4 z-50">
-        {/* <ThemeToggle /> */}
-        <div data-testid="theme-toggle-button" className="w-10 h-10 bg-purple-100 rounded-lg">
-          Toggle
+        <div data-testid="theme-toggle-button" className="w-10 h-10 bg-purple-100">
+          <ThemeToggle />
         </div>
       </div>
 
@@ -47,7 +46,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
 
         {/* Main Content */}
         <div
-          className="flex-1 overflow-auto p-8"
+          className="flex-1 p-8"
           data-testid="main-content"
         >
           {children}

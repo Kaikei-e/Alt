@@ -1,7 +1,7 @@
 "use client";
 
 import { Box } from "@chakra-ui/react";
-import ActivityItem from "@/components/desktop/home/ActivityItem";
+import { ActivityItem } from "@/components/desktop/home/ActivityItem";
 
 export default function ActivityItemTestPage() {
   return (

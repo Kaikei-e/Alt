@@ -61,6 +61,6 @@ describe('ReadingAnalytics', () => {
       <ReadingAnalytics analytics={null} isLoading={false} />
     );
 
-    expect(screen.getByText('データがありません')).toBeInTheDocument();
+    expect(screen.getByText('No data available')).toBeInTheDocument();
   });
 });
