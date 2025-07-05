@@ -17,4 +17,7 @@ clickhouse client -n --database "${CLICKHOUSE_DB:-rask_logs}" <<-EOSQL
     PARTITION BY (service_group, service_name)
     ORDER BY (timestamp)
     TTL timestamp + INTERVAL 2 DAY DELETE;
+
+    ALTER TABLE logs MODIFY TTL timestamp + INTERVAL 2 DAY DELETE;
+    OPTIMIZE TABLE logs FINAL;
 EOSQL
