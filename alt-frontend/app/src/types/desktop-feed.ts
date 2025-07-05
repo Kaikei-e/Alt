@@ -23,8 +23,9 @@ export interface FeedMetadata {
 }
 
 export interface EngagementStats {
-  views: number;
-  comments: number;
+  // RSS-specific engagement stats only
+  // views: number;     // Removed: SNS element
+  // comments: number;  // Removed: SNS element
   likes: number;
   bookmarks: number;
 }
