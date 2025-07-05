@@ -19,8 +19,8 @@ export const mockDesktopFeeds: DesktopFeed[] = [
       },
       readingTime: 5,
       engagement: {
-        views: 100,
-        comments: 10,
+        // views: 100,    // Removed: SNS element
+        // comments: 10,  // Removed: SNS element
         likes: 20,
         bookmarks: 5
       },
@@ -56,8 +56,8 @@ export const mockDesktopFeeds: DesktopFeed[] = [
       },
       readingTime: 7,
       engagement: {
-        views: 50,
-        comments: 5,
+        // views: 50,     // Removed: SNS element
+        // comments: 5,   // Removed: SNS element
         likes: 10,
         bookmarks: 2
       },
@@ -93,8 +93,8 @@ export const mockDesktopFeeds: DesktopFeed[] = [
       },
       readingTime: 3,
       engagement: {
-        views: 200,
-        comments: 25,
+        // views: 200,    // Removed: SNS element
+        // comments: 25,  // Removed: SNS element
         likes: 50,
         bookmarks: 15
       },

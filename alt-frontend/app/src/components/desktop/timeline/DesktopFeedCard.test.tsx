@@ -42,7 +42,7 @@ describe('DesktopFeedCard', () => {
     expect(screen.getByText(mockDesktopFeeds[0].title)).toBeInTheDocument();
     expect(screen.getByText(mockDesktopFeeds[0].metadata.source.name)).toBeInTheDocument();
     expect(screen.getByText(/5 min read/)).toBeInTheDocument();
-    expect(screen.getByText(/245 views/)).toBeInTheDocument();
+    // No longer expecting views/comments to be displayed
   });
 
   it('should handle mark as read action', async () => {
@@ -125,5 +125,24 @@ describe('DesktopFeedCard', () => {
     renderWithChakra(<DesktopFeedCard {...mockProps} />);
     
     expect(screen.getByText('intermediate')).toBeInTheDocument();
+  });
+
+  // TDD Test: SNS engagement stats should be removed
+  it('should not display SNS engagement stats (views and comments)', () => {
+    renderWithChakra(<DesktopFeedCard {...mockProps} />);
+    
+    // These SNS elements should no longer be present
+    expect(screen.queryByText(/views/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/comments/)).not.toBeInTheDocument();
+  });
+
+  // TDD Test: RSS-specific elements should remain after SNS removal
+  it('should preserve RSS-specific elements after SNS removal', () => {
+    renderWithChakra(<DesktopFeedCard {...mockProps} />);
+    
+    // These should remain after SNS removal
+    expect(screen.getByText('3 related')).toBeInTheDocument();
+    expect(screen.getByText('intermediate')).toBeInTheDocument();
+    expect(screen.getByText(/5 min read/)).toBeInTheDocument();
   });
 });

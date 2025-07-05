@@ -123,95 +123,127 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
   }
 
   return (
-    <VStack gap={6} align="stretch">
-      {/* 検索結果ヘッダー */}
-      {searchQuery && (
-        <Flex 
-          className="glass" 
-          p={4} 
-          borderRadius="var(--radius-lg)"
-          align="center"
-          justify="space-between"
-        >
-          <Text color="var(--text-primary)" fontWeight="medium">
-            検索: &quot;{searchQuery}&quot;
-          </Text>
-          <Text fontSize="sm" color="var(--text-muted)">
-            {filteredFeeds.length}件の結果
-          </Text>
-        </Flex>
-      )}
-
-      {/* フィードカード一覧 */}
-      {filteredFeeds.map((feed) => (
-        <DesktopFeedCard
-          key={feed.id}
-          feed={feed}
-          variant={variant}
-          onMarkAsRead={markAsRead}
-          onToggleFavorite={toggleFavorite}
-          onToggleBookmark={toggleBookmark}
-          onReadLater={handleReadLater}
-          onViewArticle={handleViewArticle}
-        />
-      ))}
-
-      {/* ローディング状態 */}
-      {isLoading && (
-        <Flex 
-          className="glass" 
-          p={8} 
-          borderRadius="var(--radius-xl)"
-          direction="column"
-          align="center"
-          gap={4}
-        >
-          <Spinner 
-            size="lg" 
-            color="var(--accent-primary)"
-          />
-          <Text color="var(--text-secondary)">
-            フィードを読み込み中...
-          </Text>
-        </Flex>
-      )}
-
-      {/* 空の状態 */}
-      {filteredFeeds.length === 0 && !isLoading && (
-        <Flex 
-          className="glass" 
-          p={8} 
-          borderRadius="var(--radius-xl)"
-          direction="column"
-          align="center"
-          gap={4}
-        >
-          <Text fontSize="2xl">📭</Text>
-          <Text color="var(--text-secondary)">
-            {searchQuery ? '検索結果が見つかりませんでした' : 'フィードがありません'}
-          </Text>
-        </Flex>
-      )}
-
-      {/* 無限スクロール用トリガー */}
-      {hasMore && !isLoading && filteredFeeds.length > 0 && (
-        <Flex 
-          className="glass" 
-          p={4} 
-          borderRadius="var(--radius-lg)"
-          justify="center"
-        >
-          <Text 
-            color="var(--accent-primary)" 
-            fontWeight="medium"
-            cursor="pointer"
-            onClick={fetchNextPage}
-            _hover={{ textDecoration: 'underline' }}
+    <Box
+      data-testid="desktop-timeline"
+      maxH={{
+        base: "100vh",
+        md: "calc(100vh - 140px)",
+        lg: "calc(100vh - 180px)"
+      }}
+      overflowY="auto"
+      overflowX="hidden"
+      className="glass"
+      p={4}
+      borderRadius="var(--radius-lg)"
+      css={{
+        scrollBehavior: 'smooth',
+        '&::-webkit-scrollbar': {
+          width: '8px',
+        },
+        '&::-webkit-scrollbar-track': {
+          background: 'var(--surface-secondary)',
+          borderRadius: '4px',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: 'var(--accent-primary)',
+          borderRadius: '4px',
+          opacity: 0.6,
+        },
+        '&::-webkit-scrollbar-thumb:hover': {
+          opacity: 1,
+        },
+      }}
+    >
+      <VStack gap={4} align="stretch">
+        {/* 検索結果ヘッダー */}
+        {searchQuery && (
+          <Flex 
+            className="glass" 
+            p={4} 
+            borderRadius="var(--radius-lg)"
+            align="center"
+            justify="space-between"
           >
-            さらに読み込む
-          </Text>
-        </Flex>
-      )}
-    </VStack>
+            <Text color="var(--text-primary)" fontWeight="medium">
+              検索: &quot;{searchQuery}&quot;
+            </Text>
+            <Text fontSize="sm" color="var(--text-muted)">
+              {filteredFeeds.length}件の結果
+            </Text>
+          </Flex>
+        )}
+
+        {/* フィードカード一覧 */}
+        {filteredFeeds.map((feed) => (
+          <DesktopFeedCard
+            key={feed.id}
+            feed={feed}
+            variant={variant}
+            onMarkAsRead={markAsRead}
+            onToggleFavorite={toggleFavorite}
+            onToggleBookmark={toggleBookmark}
+            onReadLater={handleReadLater}
+            onViewArticle={handleViewArticle}
+          />
+        ))}
+
+        {/* ローディング状態 */}
+        {isLoading && (
+          <Flex 
+            className="glass" 
+            p={8} 
+            borderRadius="var(--radius-xl)"
+            direction="column"
+            align="center"
+            gap={4}
+          >
+            <Spinner 
+              size="lg" 
+              color="var(--accent-primary)"
+            />
+            <Text color="var(--text-secondary)">
+              フィードを読み込み中...
+            </Text>
+          </Flex>
+        )}
+
+        {/* 空の状態 */}
+        {filteredFeeds.length === 0 && !isLoading && (
+          <Flex 
+            className="glass" 
+            p={8} 
+            borderRadius="var(--radius-xl)"
+            direction="column"
+            align="center"
+            gap={4}
+          >
+            <Text fontSize="2xl">📭</Text>
+            <Text color="var(--text-secondary)">
+              {searchQuery ? '検索結果が見つかりませんでした' : 'フィードがありません'}
+            </Text>
+          </Flex>
+        )}
+
+        {/* 無限スクロール用トリガー */}
+        {hasMore && !isLoading && filteredFeeds.length > 0 && (
+          <Flex 
+            className="glass" 
+            p={4} 
+            borderRadius="var(--radius-lg)"
+            justify="center"
+          >
+            <Text 
+              color="var(--accent-primary)" 
+              fontWeight="medium"
+              cursor="pointer"
+              onClick={fetchNextPage}
+              _hover={{ textDecoration: 'underline' }}
+            >
+              さらに読み込む
+            </Text>
+          </Flex>
+        )}
+      </VStack>
+    </Box>
   );
 };

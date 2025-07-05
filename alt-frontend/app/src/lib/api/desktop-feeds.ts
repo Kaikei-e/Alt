@@ -77,8 +77,8 @@ export class DesktopFeedsApi {
         },
         readingTime: this.estimateReadingTime(String(apiData.description || '')),
         engagement: {
-          views: Number(engagement.views) || 0,
-          comments: Number(engagement.comments) || 0,
+          // views: Number(engagement.views) || 0,      // Removed: SNS element
+          // comments: Number(engagement.comments) || 0,// Removed: SNS element
           likes: Number(engagement.likes) || 0,
           bookmarks: Number(engagement.bookmarks) || 0
         },
@@ -119,11 +119,12 @@ export class DesktopFeedsApi {
 
   private calculatePriority(feedData: Record<string, unknown>): 'high' | 'medium' | 'low' {
     const engagement = (feedData.engagement as Record<string, unknown>) || {};
-    const score = (Number(engagement.views) || 0) * 0.3 +
-                  (Number(engagement.comments) || 0) * 2;
+    // Calculate priority based on RSS-specific engagement (likes, bookmarks)
+    const score = (Number(engagement.likes) || 0) * 0.5 +
+                  (Number(engagement.bookmarks) || 0) * 2;
 
-    if (score > 100) return 'high';
-    if (score > 20) return 'medium';
+    if (score > 50) return 'high';
+    if (score > 10) return 'medium';
     return 'low';
   }
 

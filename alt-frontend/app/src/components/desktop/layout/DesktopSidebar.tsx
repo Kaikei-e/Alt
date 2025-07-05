@@ -68,7 +68,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       <Box 
         className="glass" 
         h="full" 
-        p="var(--space-6)"
+        p="var(--space-4)"
         data-testid="desktop-sidebar-filters"
       >
         {/* Header with collapse toggle */}
@@ -387,7 +387,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
   // Default navigation mode
   return (
-    <Box className="glass" h="full" p="var(--space-6)">
+    <Box className="glass" h="full" p="var(--space-4)">
       {/* Logo Section */}
       <Box mb={8}>
         <Text 

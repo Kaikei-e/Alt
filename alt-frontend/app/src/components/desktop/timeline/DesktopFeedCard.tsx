@@ -16,7 +16,6 @@ import {
   Heart, 
   Bookmark, 
   Clock, 
-  Eye, 
   ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
@@ -103,13 +102,6 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
     }
   };
 
-  const formatEngagementStats = () => {
-    const { views, comments } = feed.metadata.engagement;
-    return [
-      views > 0 && `${views} views`,
-      comments > 0 && `${comments} comments`
-    ].filter(Boolean).join(' • ');
-  };
 
   return (
     <Box
@@ -236,12 +228,8 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
           </Box>
         )}
 
-        {/* エンゲージメント統計 */}
+        {/* RSS統計 */}
         <HStack gap={4} fontSize="sm" color="var(--text-secondary)">
-          <HStack gap={1}>
-            <Eye size={14} />
-            <Text>{formatEngagementStats()}</Text>
-          </HStack>
           {feed.metadata.relatedCount > 0 && (
             <HStack gap={1}>
               <Text>📈</Text>

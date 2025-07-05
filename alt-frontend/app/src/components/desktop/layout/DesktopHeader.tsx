@@ -16,6 +16,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
       align="center"
       p={{ base: 4, md: 6 }}
       h="80px"
+      data-testid="desktop-header"
     >
       {/* 左側：ロゴと統計 */}
       <Flex align="center" gap={6}>

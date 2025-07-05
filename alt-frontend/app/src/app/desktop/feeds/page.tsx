@@ -13,8 +13,18 @@ const mockFeedSources = [
   { id: 'hackernews', name: 'Hacker News', icon: '🔥', unreadCount: 8, category: 'tech' },
   { id: 'medium', name: 'Medium', icon: '📝', unreadCount: 15, category: 'general' },
   { id: 'devto', name: 'Dev.to', icon: '💻', unreadCount: 6, category: 'development' },
-  { id: 'github', name: 'GitHub', icon: '🐙', unreadCount: 4, category: 'development' }
+  { id: 'github', name: 'GitHub', icon: '🐙', unreadCount: 4, category: 'development' },
+  { id: 'verge', name: 'The Verge', icon: '📱', unreadCount: 23, category: 'tech' },
+  { id: 'wired', name: 'Wired', icon: '🔬', unreadCount: 7, category: 'science' },
+  { id: 'bbc', name: 'BBC Tech', icon: '📺', unreadCount: 11, category: 'news' }
 ];
+
+const mockStats = {
+  totalUnread: 86,
+  totalFeeds: 8,
+  readToday: 12,
+  weeklyAverage: 45
+};
 
 export default function DesktopFeedsPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,7 +42,7 @@ export default function DesktopFeedsPage() {
     <DesktopFeedsLayout
       header={
         <DesktopHeader
-          totalUnread={42}
+          totalUnread={mockStats.totalUnread}
           onSearchChange={setSearchQuery}
           currentTheme={'vaporwave'}
           onThemeToggle={() => {}}
