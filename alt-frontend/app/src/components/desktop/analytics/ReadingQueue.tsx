@@ -3,13 +3,13 @@
 import React from 'react';
 import {
   Box,
-  Stack,
+  VStack,
   HStack,
   Text,
   Button,
-  Progress,
   Badge
 } from '@chakra-ui/react';
+import { Progress } from '@chakra-ui/progress';
 
 export const ReadingQueue: React.FC = () => {
   // Mock data for reading queue
@@ -78,7 +78,7 @@ export const ReadingQueue: React.FC = () => {
         </Badge>
       </HStack>
       
-      <Stack gap={3} align="stretch">
+      <VStack gap={3} align="stretch">
         {queueItems.map((item) => (
           <Box
             key={item.id}
@@ -93,7 +93,7 @@ export const ReadingQueue: React.FC = () => {
             transition="all var(--transition-speed) ease"
             cursor="pointer"
           >
-            <Stack gap={2} align="start">
+            <VStack gap={2} align="start">
               <HStack justify="space-between" w="full">
                 <Text
                   fontSize="xs"
@@ -126,7 +126,7 @@ export const ReadingQueue: React.FC = () => {
               </HStack>
               
               {item.progress > 0 && (
-                <Stack gap={1} w="full">
+                <VStack gap={1} w="full">
                   <HStack justify="space-between" w="full">
                     <Text fontSize="xs" color="var(--text-secondary)">
                       Progress:
@@ -135,20 +135,21 @@ export const ReadingQueue: React.FC = () => {
                       {item.progress}%
                     </Text>
                   </HStack>
-                  <Progress.Root
+                  <Progress
                     value={item.progress}
                     size="sm"
                     w="full"
                     bg="var(--surface-border)"
+                    sx={{
+                      '& > div': {
+                        bg: 'var(--accent-primary)'
+                      }
+                    }}
                     borderRadius="var(--radius-full)"
-                  >
-                    <Progress.Track>
-                      <Progress.Range bg="var(--accent-primary)" />
-                    </Progress.Track>
-                  </Progress.Root>
-                </Stack>
+                  />
+                </VStack>
               )}
-            </Stack>
+            </VStack>
           </Box>
         ))}
 
@@ -162,7 +163,7 @@ export const ReadingQueue: React.FC = () => {
         >
           Manage Queue
         </Button>
-      </Stack>
+      </VStack>
     </Box>
   );
 };

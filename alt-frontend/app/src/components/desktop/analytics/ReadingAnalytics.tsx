@@ -3,14 +3,14 @@
 import React from 'react';
 import {
   Box,
-  Stack,
+  VStack,
   HStack,
   Text,
   SimpleGrid,
   Spinner,
-  Flex,
-  Progress
+  Flex
 } from '@chakra-ui/react';
+import { Progress } from '@chakra-ui/progress';
 import { ReadingAnalytics as IReadingAnalytics } from '@/types/analytics';
 
 interface ReadingAnalyticsProps {
@@ -45,7 +45,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
   const { today, week, streak } = analytics;
 
   return (
-    <Stack gap={4} align="stretch">
+    <VStack gap={4} align="stretch">
       {/* 今日の統計 */}
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
         <Text
@@ -58,7 +58,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
         </Text>
         
         <SimpleGrid columns={2} gap={3}>
-          <Stack gap={1}>
+          <VStack gap={1}>
             <Text
               fontSize="xl"
               fontWeight="bold"
@@ -69,9 +69,9 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
             <Text fontSize="xs" color="var(--text-secondary)">
               Articles
             </Text>
-          </Stack>
+          </VStack>
           
-          <Stack gap={1}>
+          <VStack gap={1}>
             <Text
               fontSize="xl"
               fontWeight="bold"
@@ -82,9 +82,9 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
             <Text fontSize="xs" color="var(--text-secondary)">
               Time
             </Text>
-          </Stack>
+          </VStack>
           
-          <Stack gap={1}>
+          <VStack gap={1}>
             <Text
               fontSize="xl"
               fontWeight="bold"
@@ -95,20 +95,22 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
             <Text fontSize="xs" color="var(--text-secondary)">
               Favorites
             </Text>
-          </Stack>
+          </VStack>
           
-          <Stack gap={1}>
+          <VStack gap={1}>
             <Box position="relative" w="40px" h="40px">
-              <Progress.Root
+              <Progress
                 value={today.completionRate}
                 size="lg"
+                colorScheme="purple"
                 borderRadius="var(--radius-full)"
                 bg="var(--surface-border)"
-              >
-                <Progress.Track>
-                  <Progress.Range bg="purple.400" />
-                </Progress.Track>
-              </Progress.Root>
+                sx={{
+                  '& > div': {
+                    bg: 'var(--accent-primary)'
+                  }
+                }}
+              />
               <Text
                 position="absolute"
                 top="50%"
@@ -124,7 +126,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
             <Text fontSize="xs" color="var(--text-secondary)">
               Completion
             </Text>
-          </Stack>
+          </VStack>
         </SimpleGrid>
       </Box>
 
@@ -160,7 +162,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
           </HStack>
         </HStack>
         
-        <Stack gap={2} align="stretch">
+        <VStack gap={2} align="stretch">
           <HStack justify="space-between">
             <Text fontSize="lg" fontWeight="bold" color="var(--text-primary)">
               {week.totalArticles}
@@ -184,7 +186,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               />
             ))}
           </HStack>
-        </Stack>
+        </VStack>
       </Box>
 
       {/* 読書ストリーク */}
@@ -198,7 +200,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
           🔥 Reading Streak
         </Text>
         
-        <Stack gap={3}>
+        <VStack gap={3}>
           <HStack gap={2}>
             <Text
               fontSize="2xl"
@@ -212,7 +214,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
             </Text>
           </HStack>
           
-          <Stack gap={1}>
+          <VStack gap={1}>
             <HStack justify="space-between" w="full">
               <Text fontSize="xs" color="var(--text-secondary)">
                 Best:
@@ -229,8 +231,8 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
                 {new Date(streak.lastReadDate).toLocaleDateString()}
               </Text>
             </HStack>
-          </Stack>
-        </Stack>
+          </VStack>
+        </VStack>
       </Box>
 
       {/* カテゴリ分布 */}
@@ -244,7 +246,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
           🎯 Categories
         </Text>
         
-        <Stack gap={2}>
+        <VStack gap={2}>
           {today.topCategories.slice(0, 4).map((category) => (
             <HStack key={category.category} justify="space-between" w="full">
               <HStack gap={2}>
@@ -268,8 +270,8 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               </HStack>
             </HStack>
           ))}
-        </Stack>
+        </VStack>
       </Box>
-    </Stack>
+    </VStack>
   );
 };

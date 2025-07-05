@@ -3,7 +3,7 @@
 import React from 'react';
 import {
   Box,
-  Stack,
+  VStack,
   HStack,
   Text,
   Spinner,
@@ -62,7 +62,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
         🔥 Trending Topics
       </Text>
       
-      <Stack gap={2} align="stretch">
+      <VStack gap={2} align="stretch">
         {topics.slice(0, 6).map((topic, index) => (
           <HStack
             key={topic.tag}
@@ -87,7 +87,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
               >
                 #{index + 1}
               </Text>
-              <Stack gap={0} align="start">
+              <VStack gap={0} align="start">
                 <HStack gap={1}>
                   <Box
                     w="6px"
@@ -106,7 +106,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
                 <Text fontSize="xs" color="var(--text-muted)">
                   {topic.count} articles
                 </Text>
-              </Stack>
+              </VStack>
             </HStack>
 
             <HStack gap={1}>
@@ -123,7 +123,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
             </HStack>
           </HStack>
         ))}
-      </Stack>
+      </VStack>
     </Box>
   );
 };

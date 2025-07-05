@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ReadingAnalytics } from '@/types/analytics';
+import { mockAnalytics } from '@/data/mockAnalyticsData';
 
 export const useReadingAnalytics = () => {
   const [analytics, setAnalytics] = useState<ReadingAnalytics | null>(null);
@@ -10,10 +11,9 @@ export const useReadingAnalytics = () => {
     const fetchAnalytics = async () => {
       try {
         setIsLoading(true);
-        // 既存のSSE統計APIを活用
-        const response = await fetch('/api/analytics/reading-stats');
-        const data = await response.json();
-        setAnalytics(data);
+        // Use mock data for now - can be replaced with real API later
+        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate loading
+        setAnalytics(mockAnalytics);
       } catch (err) {
         setError(err as Error);
       } finally {
@@ -23,21 +23,21 @@ export const useReadingAnalytics = () => {
 
     fetchAnalytics();
 
-    // SSEリアルタイム更新
-    const eventSource = new EventSource('/api/analytics/sse');
-    
-    eventSource.onmessage = (event) => {
-      const updatedData = JSON.parse(event.data);
-      setAnalytics(updatedData);
-    };
-
-    eventSource.onerror = (error) => {
-      console.error('SSE connection error:', error);
-    };
-
-    return () => {
-      eventSource.close();
-    };
+    // TODO: SSEリアルタイム更新 - will be implemented when API is ready
+    // const eventSource = new EventSource('/api/analytics/sse');
+    // 
+    // eventSource.onmessage = (event) => {
+    //   const updatedData = JSON.parse(event.data);
+    //   setAnalytics(updatedData);
+    // };
+    //
+    // eventSource.onerror = (error) => {
+    //   console.error('SSE connection error:', error);
+    // };
+    //
+    // return () => {
+    //   eventSource.close();
+    // };
   }, []);
 
   return { analytics, isLoading, error };

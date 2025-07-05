@@ -3,7 +3,7 @@
 import React from 'react';
 import {
   Box,
-  Stack,
+  VStack,
   HStack,
   Text,
   Button,
@@ -16,7 +16,7 @@ export const QuickActions: React.FC = () => {
   const { actions, counters } = useQuickActions();
 
   return (
-    <Stack gap={4} align="stretch">
+    <VStack gap={4} align="stretch">
       {/* 統計サマリー */}
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
         <Text
@@ -29,7 +29,7 @@ export const QuickActions: React.FC = () => {
         </Text>
         
         <SimpleGrid columns={3} gap={3} mb={4}>
-          <Stack gap={1}>
+          <VStack gap={1}>
             <Text
               fontSize="lg"
               fontWeight="bold"
@@ -40,9 +40,9 @@ export const QuickActions: React.FC = () => {
             <Text fontSize="xs" color="var(--text-secondary)">
               Unread
             </Text>
-          </Stack>
+          </VStack>
           
-          <Stack gap={1}>
+          <VStack gap={1}>
             <Text
               fontSize="lg"
               fontWeight="bold"
@@ -53,9 +53,9 @@ export const QuickActions: React.FC = () => {
             <Text fontSize="xs" color="var(--text-secondary)">
               Bookmarks
             </Text>
-          </Stack>
+          </VStack>
           
-          <Stack gap={1}>
+          <VStack gap={1}>
             <Text
               fontSize="lg"
               fontWeight="bold"
@@ -66,10 +66,10 @@ export const QuickActions: React.FC = () => {
             <Text fontSize="xs" color="var(--text-secondary)">
               Queue
             </Text>
-          </Stack>
+          </VStack>
         </SimpleGrid>
 
-        <Stack gap={2}>
+        <VStack gap={2}>
           {actions.map((action) => (
             <Button
               key={action.id}
@@ -112,8 +112,8 @@ export const QuickActions: React.FC = () => {
               </HStack>
             </Button>
           ))}
-        </Stack>
+        </VStack>
       </Box>
-    </Stack>
+    </VStack>
   );
 };

@@ -3,16 +3,14 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Stack,
+  VStack,
   HStack,
   Text,
-  Progress,
   Spinner,
   Flex,
-  Button,
-  Select,
-  createListCollection
+  Button
 } from '@chakra-ui/react';
+import { Progress } from '@chakra-ui/progress';
 import { SourceAnalytic } from '@/types/analytics';
 
 interface SourceAnalyticsProps {
@@ -26,14 +24,6 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
 }) => {
   const [sortBy, setSortBy] = useState<'articles' | 'reliability' | 'engagement'>('articles');
   const [showAll, setShowAll] = useState(false);
-
-  const sortOptions = createListCollection({
-    items: [
-      { label: 'Articles', value: 'articles' },
-      { label: 'Reliability', value: 'reliability' },
-      { label: 'Engagement', value: 'engagement' }
-    ]
-  });
 
   if (isLoading) {
     return (
@@ -73,36 +63,38 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
         >
           📰 Source Analytics
         </Text>
-        <Select.Root
-          collection={sortOptions}
-          value={[sortBy]}
-          onValueChange={(details) => setSortBy(details.value[0] as 'articles' | 'reliability' | 'engagement')}
-          size="xs"
-          w="auto"
-        >
-          <Select.Trigger
-            bg="var(--surface-bg)"
-            borderColor="var(--surface-border)"
-            color="var(--text-primary)"
+        <HStack gap={1}>
+          <Button
+            size="xs"
+            variant={sortBy === 'articles' ? 'solid' : 'ghost'}
+            colorScheme={sortBy === 'articles' ? 'purple' : 'gray'}
+            onClick={() => setSortBy('articles')}
             fontSize="xs"
           >
-            <Select.ValueText placeholder="Sort by" />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Positioner>
-            <Select.Content>
-              {sortOptions.items.map((option) => (
-                <Select.Item key={option.value} item={option}>
-                  <Select.ItemText>{option.label}</Select.ItemText>
-                  <Select.ItemIndicator />
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Positioner>
-        </Select.Root>
+            Articles
+          </Button>
+          <Button
+            size="xs"
+            variant={sortBy === 'reliability' ? 'solid' : 'ghost'}
+            colorScheme={sortBy === 'reliability' ? 'purple' : 'gray'}
+            onClick={() => setSortBy('reliability')}
+            fontSize="xs"
+          >
+            Reliability
+          </Button>
+          <Button
+            size="xs"
+            variant={sortBy === 'engagement' ? 'solid' : 'ghost'}
+            colorScheme={sortBy === 'engagement' ? 'purple' : 'gray'}
+            onClick={() => setSortBy('engagement')}
+            fontSize="xs"
+          >
+            Engagement
+          </Button>
+        </HStack>
       </HStack>
 
-      <Stack gap={3} align="stretch">
+      <VStack gap={3} align="stretch">
         {displaySources.map((source, index) => (
           <Box
             key={source.id}
@@ -117,7 +109,7 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
                   #{index + 1}
                 </Text>
                 <Text fontSize="sm">{source.icon}</Text>
-                <Stack gap={0} align="start">
+                <VStack gap={0} align="start">
                   <Text
                     fontSize="xs"
                     color="var(--text-primary)"
@@ -128,11 +120,11 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
                   <Text fontSize="xs" color="var(--text-muted)">
                     {source.category}
                   </Text>
-                </Stack>
+                </VStack>
               </HStack>
             </HStack>
 
-            <Stack gap={2} align="stretch">
+            <VStack gap={2} align="stretch">
               <HStack justify="space-between">
                 <Text fontSize="xs" color="var(--text-secondary)">
                   Articles:
@@ -147,17 +139,18 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
                   Reliability:
                 </Text>
                 <HStack gap={1}>
-                  <Progress.Root
+                  <Progress
                     value={(source.reliability / 10) * 100}
                     size="sm"
                     w="40px"
                     bg="var(--surface-border)"
+                    sx={{
+                      '& > div': {
+                        bg: 'var(--alt-success)'
+                      }
+                    }}
                     borderRadius="var(--radius-full)"
-                  >
-                    <Progress.Track>
-                      <Progress.Range bg="var(--alt-success)" />
-                    </Progress.Track>
-                  </Progress.Root>
+                  />
                   <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
                     {source.reliability}/10
                   </Text>
@@ -169,23 +162,24 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
                   Engagement:
                 </Text>
                 <HStack gap={1}>
-                  <Progress.Root
+                  <Progress
                     value={source.engagement}
                     size="sm"
                     w="40px"
                     bg="var(--surface-border)"
+                    sx={{
+                      '& > div': {
+                        bg: 'var(--accent-primary)'
+                      }
+                    }}
                     borderRadius="var(--radius-full)"
-                  >
-                    <Progress.Track>
-                      <Progress.Range bg="var(--accent-primary)" />
-                    </Progress.Track>
-                  </Progress.Root>
+                  />
                   <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
                     {source.engagement}%
                   </Text>
                 </HStack>
               </HStack>
-            </Stack>
+            </VStack>
           </Box>
         ))}
 
@@ -202,7 +196,7 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
             {showAll ? 'Show Less' : `Show All (${sources.length})`}
           </Button>
         )}
-      </Stack>
+      </VStack>
     </Box>
   );
 };

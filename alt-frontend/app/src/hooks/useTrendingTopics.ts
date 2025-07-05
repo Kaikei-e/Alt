@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TrendingTopic } from '@/types/analytics';
+import { mockTrendingTopics } from '@/data/mockAnalyticsData';
 
 export const useTrendingTopics = () => {
   const [topics, setTopics] = useState<TrendingTopic[]>([]);
@@ -10,9 +11,9 @@ export const useTrendingTopics = () => {
     const fetchTopics = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch('/api/analytics/trending-topics');
-        const data = await response.json();
-        setTopics(data);
+        // Use mock data for now - can be replaced with real API later
+        await new Promise(resolve => setTimeout(resolve, 300)); // Simulate loading
+        setTopics(mockTrendingTopics);
       } catch (err) {
         setError(err as Error);
       } finally {
@@ -22,21 +23,21 @@ export const useTrendingTopics = () => {
 
     fetchTopics();
 
-    // リアルタイム更新のためのSSE接続
-    const eventSource = new EventSource('/api/analytics/trending-topics-sse');
-    
-    eventSource.onmessage = (event) => {
-      const updatedTopics = JSON.parse(event.data);
-      setTopics(updatedTopics);
-    };
-
-    eventSource.onerror = (error) => {
-      console.error('SSE connection error for trending topics:', error);
-    };
-
-    return () => {
-      eventSource.close();
-    };
+    // TODO: リアルタイム更新のためのSSE接続 - will be implemented when API is ready
+    // const eventSource = new EventSource('/api/analytics/trending-topics-sse');
+    // 
+    // eventSource.onmessage = (event) => {
+    //   const updatedTopics = JSON.parse(event.data);
+    //   setTopics(updatedTopics);
+    // };
+    //
+    // eventSource.onerror = (error) => {
+    //   console.error('SSE connection error for trending topics:', error);
+    // };
+    //
+    // return () => {
+    //   eventSource.close();
+    // };
   }, []);
 
   return { topics, isLoading, error };

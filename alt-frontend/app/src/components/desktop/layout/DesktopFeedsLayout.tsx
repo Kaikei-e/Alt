@@ -3,6 +3,7 @@
 import React from 'react';
 import { Grid, GridItem } from '@chakra-ui/react';
 import { DesktopFeedsLayoutProps } from '@/types/desktop-feeds';
+import { RightPanel } from '@/components/desktop/analytics/RightPanel';
 
 export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
   children,
@@ -57,7 +58,7 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
             {children}
           </GridItem>
 
-          {/* 右パネル（TASK3で実装） */}
+          {/* 右パネル（Analytics） */}
           <GridItem
             position="sticky"
             top="120px"
@@ -66,7 +67,7 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
             overflowY="auto"
             display={{ base: "none", lg: "block" }}
           >
-            {/* 右パネルコンテンツは TASK3 で実装 */}
+            <RightPanel />
           </GridItem>
         </Grid>
       </GridItem>

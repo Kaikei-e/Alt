@@ -3,7 +3,7 @@
 import React from 'react';
 import {
   Box,
-  Stack,
+  VStack,
   HStack,
   Text,
   Button
@@ -46,7 +46,7 @@ export const BookmarksList: React.FC = () => {
         🔖 Recent Bookmarks
       </Text>
       
-      <Stack gap={3} align="stretch">
+      <VStack gap={3} align="stretch">
         {bookmarks.map((bookmark) => (
           <Box
             key={bookmark.id}
@@ -61,7 +61,7 @@ export const BookmarksList: React.FC = () => {
             transition="all var(--transition-speed) ease"
             cursor="pointer"
           >
-            <Stack gap={2} align="start">
+            <VStack gap={2} align="start">
               <Text
                 fontSize="xs"
                 color="var(--text-primary)"
@@ -90,7 +90,7 @@ export const BookmarksList: React.FC = () => {
               <Text fontSize="xs" color="var(--text-secondary)">
                 Added {new Date(bookmark.addedDate).toLocaleDateString()}
               </Text>
-            </Stack>
+            </VStack>
           </Box>
         ))}
 
@@ -104,7 +104,7 @@ export const BookmarksList: React.FC = () => {
         >
           View All Bookmarks
         </Button>
-      </Stack>
+      </VStack>
     </Box>
   );
 };
