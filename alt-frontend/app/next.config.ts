@@ -37,7 +37,9 @@ const nextConfig = {
   },
 
   // Use stable turbopack
-  turbopack: {},
+  turbopack: {
+    resolveExtensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
+  },
 
   // Enhanced webpack optimization for performance
   webpack: (

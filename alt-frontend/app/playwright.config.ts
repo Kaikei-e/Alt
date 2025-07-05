@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const isCI = !!process.env.CI;
 
 export default defineConfig({
-  testDir: "./e2e",
+  testMatch: /.*\.spec\.ts/,
 
   // ローカルでは並列、CIでは安定重視でシリアル実行
   fullyParallel: !isCI,
