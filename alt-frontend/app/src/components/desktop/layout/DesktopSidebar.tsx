@@ -65,17 +65,17 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 }) => {
   if (mode === 'feeds-filter') {
     return (
-      <Box 
-        className="glass" 
-        h="full" 
+      <Box
+        className="glass"
+        h="full"
         p="var(--space-4)"
         data-testid="desktop-sidebar-filters"
       >
         {/* Header with collapse toggle */}
         <Flex justify="space-between" align="center" mb={6}>
-          <Text 
-            fontSize="lg" 
-            fontWeight="bold" 
+          <Text
+            fontSize="lg"
+            fontWeight="bold"
             color="var(--text-primary)"
             data-testid="filter-header-title"
           >
@@ -109,10 +109,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           <VStack gap={6} align="stretch" flex={1}>
             {/* Read Status Filter */}
             <Box>
-              <Text 
-                fontSize="sm" 
-                fontWeight="medium" 
-                color="var(--text-primary)" 
+              <Text
+                fontSize="sm"
+                fontWeight="medium"
+                color="var(--text-primary)"
                 mb={3}
                 data-testid="filter-read-status-label"
               >
@@ -120,17 +120,14 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               </Text>
               <VStack gap={2} align="start">
                 {['all', 'unread', 'read'].map((status) => (
-                  <Box
+                  <label
                     key={status}
-                    as="label"
-                    display="flex"
-                    alignItems="center"
-                    gap={2}
-                    cursor="pointer"
-                    css={{
-                      '&:hover .radio-custom': {
-                        borderColor: 'var(--alt-primary)',
-                      }
+                    htmlFor={`read-status-${status}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer'
                     }}
                   >
                     <Box
@@ -153,6 +150,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         type="radio"
                         name="readStatus"
                         value={status}
+                        id={`read-status-${status}`}
                         checked={activeFilters?.readStatus === status}
                         onChange={() => onFilterChange?.({
                           ...activeFilters!,
@@ -168,141 +166,125 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         data-testid={`filter-read-status-${status}`}
                       />
                     </Box>
-                    <Text 
-                      fontSize="sm" 
-                      color="var(--text-secondary)" 
+                    <Text
+                      fontSize="sm"
+                      color="var(--text-secondary)"
+                      cursor="pointer"
                       textTransform="capitalize"
                     >
                       {status}
                     </Text>
-                  </Box>
+                  </label>
                 ))}
               </VStack>
             </Box>
 
-            {/* Feed Sources */}
+            {/* Feed Sources Filter */}
             <Box>
-              <Text 
-                fontSize="sm" 
-                fontWeight="medium" 
-                color="var(--text-primary)" 
+              <Text
+                fontSize="sm"
+                fontWeight="medium"
+                color="var(--text-primary)"
                 mb={3}
+                data-testid="filter-sources-label"
               >
                 Sources
               </Text>
-              <Box 
-                maxH="160px" 
-                overflowY="auto"
-                css={{
-                  '&::-webkit-scrollbar': {
-                    width: '4px',
-                  },
-                  '&::-webkit-scrollbar-track': {
-                    background: 'var(--surface-bg)',
-                  },
-                  '&::-webkit-scrollbar-thumb': {
-                    background: 'var(--surface-border)',
-                    borderRadius: 'var(--radius-full)',
-                  },
-                }}
-              >
-                <VStack gap={2} align="stretch">
-                  {feedSources.map((source) => (
-                    <Flex key={source.id} justify="space-between" align="center">
-                      <Box
-                        as="label"
-                        display="flex"
-                        alignItems="center"
-                        gap={2}
-                        cursor="pointer"
-                        css={{
-                          '&:hover .checkbox-custom': {
-                            borderColor: 'var(--alt-primary)',
-                          }
+              <VStack gap={2} align="start" maxH="200px" overflowY="auto">
+                {feedSources.map((source) => (
+                  <label
+                    key={source.id}
+                    htmlFor={`source-${source.id}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Box
+                      className="checkbox-custom"
+                      position="relative"
+                      w="16px"
+                      h="16px"
+                      borderRadius="4px"
+                      border="2px solid var(--surface-border)"
+                      bg="var(--surface-bg)"
+                      transition="all var(--transition-speed) ease"
+                      css={{
+                        ...(activeFilters?.sources.includes(source.id) && {
+                          background: 'var(--alt-primary)',
+                          borderColor: 'var(--alt-primary)',
+                        })
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        id={`source-${source.id}`}
+                        checked={activeFilters?.sources.includes(source.id)}
+                        onChange={() => {
+                          const newSources = activeFilters?.sources.includes(source.id)
+                            ? activeFilters.sources.filter(id => id !== source.id)
+                            : [...(activeFilters?.sources || []), source.id];
+                          onFilterChange?.({
+                            ...activeFilters!,
+                            sources: newSources
+                          });
                         }}
-                      >
-                        <Box
-                          className="checkbox-custom"
-                          position="relative"
-                          w="16px"
-                          h="16px"
-                          borderRadius="var(--radius-xs)"
-                          border="2px solid var(--surface-border)"
-                          bg="var(--surface-bg)"
-                          transition="all var(--transition-speed) ease"
-                          css={{
-                            ...(activeFilters?.sources.includes(source.id) && {
-                              background: 'var(--alt-primary)',
-                              borderColor: 'var(--alt-primary)',
-                            })
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={activeFilters?.sources.includes(source.id)}
-                            onChange={(e) => {
-                              const newSources = e.target.checked
-                                ? [...(activeFilters?.sources || []), source.id]
-                                : (activeFilters?.sources || []).filter(id => id !== source.id);
-                              onFilterChange?.({
-                                ...activeFilters!,
-                                sources: newSources
-                              });
-                            }}
-                            style={{
-                              opacity: 0,
-                              position: 'absolute',
-                              width: '100%',
-                              height: '100%',
-                              cursor: 'pointer'
-                            }}
-                            data-testid="filter-source-checkbox"
-                          />
-                        </Box>
-                        <Text fontSize="sm" color="var(--text-secondary)">
-                          {source.name}
-                        </Text>
-                      </Box>
+                        style={{
+                          opacity: 0,
+                          position: 'absolute',
+                          width: '100%',
+                          height: '100%',
+                          cursor: 'pointer'
+                        }}
+                        data-testid={`filter-source-${source.id}`}
+                      />
+                    </Box>
+                    <Flex align="center" gap={1} flex={1}>
+                      <Text fontSize="sm" color="var(--text-secondary)">
+                        {source.icon}
+                      </Text>
+                      <Text fontSize="sm" color="var(--text-secondary)" flex={1}>
+                        {source.name}
+                      </Text>
                       <Badge
-                        bg="var(--surface-bg)"
-                        color="var(--text-muted)"
+                        bg="var(--alt-primary)"
+                        color="white"
                         fontSize="xs"
+                        borderRadius="full"
                         px={2}
                         py={1}
-                        borderRadius="var(--radius-sm)"
-                        border="1px solid var(--surface-border)"
                       >
                         {source.unreadCount}
                       </Badge>
                     </Flex>
-                  ))}
-                </VStack>
-              </Box>
+                  </label>
+                ))}
+              </VStack>
             </Box>
 
             {/* Time Range Filter */}
             <Box>
-              <Text 
-                fontSize="sm" 
-                fontWeight="medium" 
-                color="var(--text-primary)" 
+              <Text
+                fontSize="sm"
+                fontWeight="medium"
+                color="var(--text-primary)"
                 mb={3}
+                data-testid="filter-time-range-label"
               >
                 Time Range
               </Text>
               <VStack gap={2} align="start">
                 {['all', 'today', 'week', 'month'].map((range) => (
-                  <Box
+                  <label
                     key={range}
-                    as="label"
-                    display="flex"
-                    alignItems="center"
-                    gap={2}
-                    cursor="pointer"
-                    css={{
-                      '&:hover .radio-custom': {
-                        borderColor: 'var(--alt-primary)',
-                      }
+                    htmlFor={`time-range-${range}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer'
                     }}
                   >
                     <Box
@@ -325,6 +307,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         type="radio"
                         name="timeRange"
                         value={range}
+                        id={`time-range-${range}`}
                         checked={activeFilters?.timeRange === range}
                         onChange={() => onFilterChange?.({
                           ...activeFilters!,
@@ -340,14 +323,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         data-testid={`filter-time-range-${range}`}
                       />
                     </Box>
-                    <Text 
-                      fontSize="sm" 
-                      color="var(--text-secondary)" 
+                    <Text
+                      fontSize="sm"
+                      color="var(--text-secondary)"
+                      cursor="pointer"
                       textTransform="capitalize"
                     >
                       {range}
                     </Text>
-                  </Box>
+                  </label>
                 ))}
               </VStack>
             </Box>
@@ -361,20 +345,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 tags: [],
                 priority: 'all'
               })}
-              w="full"
-              bg="var(--surface-bg)"
-              color="var(--text-primary)"
-              borderColor="var(--surface-border)"
-              borderWidth="1px"
-              borderRadius="var(--radius-md)"
-              fontSize="sm"
-              fontWeight="medium"
-              _hover={{
-                bg: 'var(--surface-hover)',
-                borderColor: 'var(--alt-primary)',
-                transform: 'translateY(-2px)'
-              }}
-              transition="all var(--transition-speed) ease"
+              variant="outline"
+              size="sm"
+              colorScheme="red"
               data-testid="filter-clear-button"
             >
               Clear Filters
@@ -387,19 +360,19 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
   // Default navigation mode
   return (
-    <Box className="glass" h="full" p="var(--space-4)">
+    <Box className="glass" h="full" p="var(--space-4)" data-testid="desktop-sidebar">
       {/* Logo Section */}
       <Box mb={8}>
-        <Text 
-          fontSize="2xl" 
-          fontWeight="bold" 
-          color="var(--text-primary)" 
+        <Text
+          fontSize="2xl"
+          fontWeight="bold"
+          color="var(--text-primary)"
           mb={1}
         >
           {logoText}
         </Text>
-        <Text 
-          fontSize="sm" 
+        <Text
+          fontSize="sm"
           color="var(--text-secondary)"
         >
           {logoSubtext}
@@ -420,6 +393,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   borderRadius="var(--radius-md)"
                   bg={item.active ? 'var(--surface-hover)' : 'transparent'}
                   color={item.active ? 'var(--alt-primary)' : 'var(--text-secondary)'}
+                  className={item.active ? 'active' : ''}
                   _hover={{
                     bg: 'var(--surface-hover)',
                     color: 'var(--alt-primary)',

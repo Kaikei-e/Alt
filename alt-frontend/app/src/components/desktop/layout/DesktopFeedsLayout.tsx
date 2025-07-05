@@ -11,10 +11,11 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
   header
 }) => {
   return (
-    <Grid 
-      templateRows="auto 1fr" 
+    <Grid
+      templateRows="auto 1fr"
       minH="100vh"
       bg="var(--app-bg)"
+      data-testid="desktop-layout"
     >
       {/* ヘッダー */}
       <GridItem
@@ -54,7 +55,7 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
           </GridItem>
 
           {/* タイムライン */}
-          <GridItem maxW="800px" mx="auto">
+          <GridItem maxW="800px" mx="auto" data-testid="main-content">
             {children}
           </GridItem>
 

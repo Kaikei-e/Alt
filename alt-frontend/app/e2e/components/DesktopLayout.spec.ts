@@ -8,9 +8,9 @@ test.describe('DesktopLayout Component', () => {
   });
 
   test('should render sidebar and main content areas', async ({ page }) => {
-    const sidebar = page.locator('[data-testid="desktop-sidebar"]');
+    const sidebar = page.locator('[data-testid="desktop-sidebar"]').first();
     const mainContent = page.locator('[data-testid="main-content"]');
-    
+
     await expect(sidebar).toBeVisible();
     await expect(mainContent).toBeVisible();
   });
@@ -23,9 +23,9 @@ test.describe('DesktopLayout Component', () => {
   test('should have proper layout structure', async ({ page }) => {
     const layoutContainer = page.locator('[data-testid="desktop-layout"]');
     await expect(layoutContainer).toBeVisible();
-    
+
     // Check if sidebar has correct width
-    const sidebar = page.locator('[data-testid="desktop-sidebar"]');
+    const sidebar = page.locator('[data-testid="desktop-sidebar"]').first();
     const sidebarStyles = await sidebar.evaluate(el => getComputedStyle(el));
     expect(sidebarStyles.width).toBe('250px');
   });

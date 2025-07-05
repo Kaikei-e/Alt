@@ -37,7 +37,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
       filtered = filtered.filter(feed =>
         feed.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         feed.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        feed.metadata.tags.some(tag => 
+        feed.metadata.tags.some(tag =>
           tag.toLowerCase().includes(searchQuery.toLowerCase())
         )
       );
@@ -45,7 +45,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
 
     // 読書状態フィルター
     if (filters.readStatus !== 'all') {
-      filtered = filtered.filter(feed => 
+      filtered = filtered.filter(feed =>
         filters.readStatus === 'read' ? feed.isRead : !feed.isRead
       );
     }
@@ -75,7 +75,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
     if (filters.timeRange !== 'all') {
       const now = new Date();
       const filterDate = new Date();
-      
+
       switch (filters.timeRange) {
         case 'today':
           filterDate.setDate(now.getDate());
@@ -87,7 +87,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
           filterDate.setMonth(now.getMonth() - 1);
           break;
       }
-      
+
       filtered = filtered.filter(feed =>
         new Date(feed.published) >= filterDate
       );
@@ -110,11 +110,11 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
 
   if (error) {
     return (
-      <Box 
-        bg="var(--alt-error)" 
-        color="white" 
-        p={4} 
-        borderRadius="var(--radius-lg)" 
+      <Box
+        bg="var(--alt-error)"
+        color="white"
+        p={4}
+        borderRadius="var(--radius-lg)"
         className="glass"
       >
         フィードの読み込みに失敗しました。
@@ -157,9 +157,9 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
       <VStack gap={4} align="stretch">
         {/* 検索結果ヘッダー */}
         {searchQuery && (
-          <Flex 
-            className="glass" 
-            p={4} 
+          <Flex
+            className="glass"
+            p={4}
             borderRadius="var(--radius-lg)"
             align="center"
             justify="space-between"
@@ -189,16 +189,16 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
 
         {/* ローディング状態 */}
         {isLoading && (
-          <Flex 
-            className="glass" 
-            p={8} 
+          <Flex
+            className="glass"
+            p={8}
             borderRadius="var(--radius-xl)"
             direction="column"
             align="center"
             gap={4}
           >
-            <Spinner 
-              size="lg" 
+            <Spinner
+              size="lg"
               color="var(--accent-primary)"
             />
             <Text color="var(--text-secondary)">
@@ -209,9 +209,9 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
 
         {/* 空の状態 */}
         {filteredFeeds.length === 0 && !isLoading && (
-          <Flex 
-            className="glass" 
-            p={8} 
+          <Flex
+            className="glass"
+            p={8}
             borderRadius="var(--radius-xl)"
             direction="column"
             align="center"
@@ -219,21 +219,21 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
           >
             <Text fontSize="2xl">📭</Text>
             <Text color="var(--text-secondary)">
-              {searchQuery ? '検索結果が見つかりませんでした' : 'フィードがありません'}
+              {searchQuery ? '検索結果が見つかりませんでした' : 'フィードカードはTASK2で実装されます'}
             </Text>
           </Flex>
         )}
 
         {/* 無限スクロール用トリガー */}
         {hasMore && !isLoading && filteredFeeds.length > 0 && (
-          <Flex 
-            className="glass" 
-            p={4} 
+          <Flex
+            className="glass"
+            p={4}
             borderRadius="var(--radius-lg)"
             justify="center"
           >
-            <Text 
-              color="var(--accent-primary)" 
+            <Text
+              color="var(--accent-primary)"
               fontWeight="medium"
               cursor="pointer"
               onClick={fetchNextPage}

@@ -12,35 +12,29 @@ import {
   IconButton,
   Spinner
 } from '@chakra-ui/react';
-import { 
-  Heart, 
-  Bookmark, 
-  Clock, 
+import {
+  Heart,
+  Bookmark,
+  Clock,
   ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
 import { DesktopFeedCardProps } from '@/types/desktop-feed';
 
-const formatTimeAgo = (publishedDate: string): string => {
+const formatTimeAgo = (dateString: string) => {
   const now = new Date();
-  const published = new Date(publishedDate);
-  const diffMs = now.getTime() - published.getTime();
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffHours / 24);
+  const date = new Date(dateString);
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-  if (diffHours < 1) {
-    return 'つい今';
-  } else if (diffHours < 24) {
-    return `${diffHours}時間前`;
-  } else if (diffDays < 7) {
-    return `${diffDays}日前`;
-  } else {
-    return `${Math.floor(diffDays / 7)}週間前`;
-  }
+  if (diffInSeconds < 60) return 'just now';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+  return `${Math.floor(diffInSeconds / 86400)}d ago`;
 };
 
 export const DesktopFeedCard = memo(function DesktopFeedCard({
   feed,
+  variant = 'default',
   onMarkAsRead,
   onToggleFavorite,
   onToggleBookmark,
@@ -52,7 +46,7 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
 
   const handleMarkAsRead = useCallback(async () => {
     if (feed.isRead) return;
-    
+
     setIsLoading(true);
     try {
       await onMarkAsRead(feed.id);
@@ -102,11 +96,23 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
     }
   };
 
+  const getVariantStyles = () => {
+    switch (variant) {
+      case 'compact':
+        return { p: 4, fontSize: 'sm' };
+      case 'detailed':
+        return { p: 8, fontSize: 'md' };
+      default:
+        return { p: 6, fontSize: 'sm' };
+    }
+  };
+
+  const styles = getVariantStyles();
 
   return (
     <Box
       className="glass"
-      p={6}
+      p={styles.p}
       borderRadius="var(--radius-xl)"
       border="1px solid var(--surface-border)"
       borderLeftWidth="4px"
@@ -153,8 +159,8 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
         </HStack>
 
         {/* クイックアクション */}
-        <HStack 
-          gap={1} 
+        <HStack
+          gap={1}
           opacity={isHovered ? 1 : 0}
           transition="opacity var(--transition-speed) ease"
         >
@@ -228,8 +234,16 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
           </Box>
         )}
 
-        {/* RSS統計 */}
+        {/* エンゲージメント統計 */}
         <HStack gap={4} fontSize="sm" color="var(--text-secondary)">
+          <HStack gap={1}>
+            <Text>❤️</Text>
+            <Text>{feed.metadata.engagement.likes} likes</Text>
+          </HStack>
+          <HStack gap={1}>
+            <Text>🔖</Text>
+            <Text>{feed.metadata.engagement.bookmarks} bookmarks</Text>
+          </HStack>
           {feed.metadata.relatedCount > 0 && (
             <HStack gap={1}>
               <Text>📈</Text>
@@ -282,9 +296,9 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
       </VStack>
 
       {/* カードフッター */}
-      <Flex 
-        justify="space-between" 
-        align="center" 
+      <Flex
+        justify="space-between"
+        align="center"
         mt={6}
         pt={4}
         borderTop="1px solid var(--surface-border)"

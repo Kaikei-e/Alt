@@ -22,7 +22,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
   sidebarProps,
 }) => {
   return (
-    <div 
+    <div
       className="min-h-screen bg-var(--app-bg)"
       data-testid="desktop-layout"
     >
@@ -37,9 +37,8 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
       <div className="flex h-screen">
         {/* Sidebar */}
         {showSidebar && sidebarProps && (
-          <div 
+          <div
             className="w-64 flex-shrink-0"
-            data-testid="desktop-sidebar"
             style={{ width: '250px' }}
           >
             <DesktopSidebar navItems={sidebarProps.navItems} />
@@ -47,7 +46,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
         )}
 
         {/* Main Content */}
-        <div 
+        <div
           className="flex-1 overflow-auto p-8"
           data-testid="main-content"
         >
