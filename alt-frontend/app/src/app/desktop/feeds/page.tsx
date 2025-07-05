@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { DesktopFeedsLayout } from '@/components/desktop/layout/DesktopFeedsLayout';
 import { DesktopHeader } from '@/components/desktop/layout/DesktopHeader';
 import { DesktopSidebar } from '@/components/desktop/layout/DesktopSidebar';
@@ -27,7 +27,7 @@ const mockStats = {
   weeklyAverage: 45
 };
 
-export default function DesktopFeedsPage() {
+function DesktopFeedsContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilters, setActiveFilters] = useState<FilterState>({
     sources: [],
@@ -45,7 +45,6 @@ export default function DesktopFeedsPage() {
     searchQuery,
     setSearchQuery
   );
-
 
   return (
     <DesktopFeedsLayout
@@ -76,5 +75,13 @@ export default function DesktopFeedsPage() {
         onFilterChange={setActiveFilters}
       />
     </DesktopFeedsLayout>
+  );
+}
+
+export default function DesktopFeedsPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <DesktopFeedsContent />
+    </Suspense>
   );
 }

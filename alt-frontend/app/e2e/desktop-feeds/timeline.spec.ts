@@ -2,24 +2,20 @@ import { test, expect } from '@playwright/test';
 
 test.describe('DesktopTimeline Independent Scroll - PROTECTED', () => {
   test.beforeEach(async ({ page }) => {
-    // Mock feed data for testing
-    await page.route('**/api/feeds*', async (route) => {
+    // Mock feed data for testing - use the correct cursor API format
+    await page.route('**/v1/feeds/fetch/cursor*', async (route) => {
       const feeds = Array.from({ length: 20 }, (_, i) => ({
-        id: `feed-${i}`,
         title: `Feed Title ${i}`,
         description: `Description for feed ${i}`,
         link: `https://example.com/feed-${i}`,
         published: new Date().toISOString(),
-        isRead: i % 3 === 0,
-        metadata: {
-          source: { id: `source-${i}`, name: `Source ${i}` },
-          tags: [`tag-${i}`],
-          priority: 'medium'
-        }
       }));
 
       await route.fulfill({
-        json: { feeds, hasMore: true }
+        json: { 
+          data: feeds,
+          next_cursor: "next-page-cursor"
+        }
       });
     });
 
@@ -70,27 +66,27 @@ test.describe('DesktopTimeline Independent Scroll - PROTECTED', () => {
       // Test infinite scroll trigger
       await timeline.evaluate(el => el.scrollTo(0, el.scrollHeight - el.clientHeight));
 
-      // Check for load more functionality
+      // Check for load more functionality or virtualized content
       const loadMoreButton = page.locator('text=Load more...');
-      const placeholderMessage = page.getByText('フィードカードはTASK2で実装されます');
-      const feedCards = page.locator('[data-testid^="desktop-feed-card-"]');
+      const virtualContainer = page.locator('[data-testid="virtual-container"]');
+      const feedItems = page.locator('[data-testid^="feed-item-"]');
 
       const hasLoadMore = await loadMoreButton.isVisible().catch(() => false);
-      const hasPlaceholder = await placeholderMessage.isVisible().catch(() => false);
-      const hasFeedCards = await feedCards.first().isVisible().catch(() => false);
+      const hasVirtualContainer = await virtualContainer.isVisible().catch(() => false);
+      const hasFeedItems = await feedItems.first().isVisible().catch(() => false);
 
-      // Either load more button should appear, placeholder message is shown, or feed cards are present
-      expect(hasLoadMore || hasPlaceholder || hasFeedCards).toBeTruthy();
+      // Either load more button should appear or virtualized content is present
+      expect(hasLoadMore || hasVirtualContainer || hasFeedItems).toBeTruthy();
     } else {
-      // Content doesn't scroll (placeholder or limited content) - verify it's handled gracefully
-      const placeholderMessage = page.getByText('フィードカードはTASK2で実装されます');
-      const feedCards = page.locator('[data-testid^="desktop-feed-card-"]');
+      // Content doesn't scroll (limited content) - verify it's handled gracefully
+      const virtualContainer = page.locator('[data-testid="virtual-container"]');
+      const feedItems = page.locator('[data-testid^="feed-item-"]');
 
-      const hasPlaceholder = await placeholderMessage.isVisible().catch(() => false);
-      const hasFeedCards = await feedCards.first().isVisible().catch(() => false);
+      const hasVirtualContainer = await virtualContainer.isVisible().catch(() => false);
+      const hasFeedItems = await feedItems.first().isVisible().catch(() => false);
 
-      // Either placeholder or feed cards should be present
-      expect(hasPlaceholder || hasFeedCards).toBeTruthy();
+      // Either virtual container or feed items should be present
+      expect(hasVirtualContainer || hasFeedItems).toBeTruthy();
     }
   });
 
@@ -102,17 +98,17 @@ test.describe('DesktopTimeline Independent Scroll - PROTECTED', () => {
     const hasContent = await timeline.textContent();
     expect(hasContent).toBeTruthy();
 
-    // Look for loading indicators or content
+    // Look for loading indicators or virtualized content
     const loadingSpinner = page.locator('text=/Loading|読み込み中|Spinner/');
-    const placeholderMessage = page.getByText('フィードカードはTASK2で実装されます');
-    const feedCards = page.locator('[data-testid^="desktop-feed-card-"]');
+    const virtualContainer = page.locator('[data-testid="virtual-container"]');
+    const feedItems = page.locator('[data-testid^="feed-item-"]');
 
     const hasLoading = await loadingSpinner.isVisible().catch(() => false);
-    const hasPlaceholder = await placeholderMessage.isVisible().catch(() => false);
-    const hasFeedCards = await feedCards.first().isVisible().catch(() => false);
+    const hasVirtualContainer = await virtualContainer.isVisible().catch(() => false);
+    const hasFeedItems = await feedItems.first().isVisible().catch(() => false);
 
-    // At least one of these should be true
-    expect(hasLoading || hasPlaceholder || hasFeedCards).toBeTruthy();
+    // At least one of these should be true (loading, virtual container, or feed items)
+    expect(hasLoading || hasVirtualContainer || hasFeedItems).toBeTruthy();
   });
 
   test('should be responsive across viewports (PROTECTED)', async ({ page }) => {
@@ -143,5 +139,53 @@ test.describe('DesktopTimeline Independent Scroll - PROTECTED', () => {
     maxHeightValue = parseFloat(maxHeight);
     expect(maxHeightValue).toBeGreaterThan(400); // More flexible range
     expect(maxHeightValue).toBeLessThan(800);
+  });
+
+  test('should render efficiently with virtualized scrolling', async ({ page }) => {
+    // Mock large dataset for virtualization testing - match the expected API format
+    await page.route('**/v1/feeds/fetch/cursor*', async (route) => {
+      const feeds = Array.from({ length: 1000 }, (_, i) => ({
+        title: `Feed Title ${i}`,
+        description: `Description for feed ${i}`,
+        link: `https://example.com/feed-${i}`,
+        published: new Date().toISOString(),
+      }));
+
+      await route.fulfill({
+        json: { 
+          data: feeds,
+          next_cursor: null
+        }
+      });
+    });
+
+    await page.goto('/desktop/feeds');
+    await page.waitForSelector('[data-testid="desktop-timeline"]', { timeout: 10000 });
+
+    const timeline = page.locator('[data-testid="desktop-timeline"]');
+    const virtualContainer = timeline.locator('[data-testid="virtual-container"]');
+
+    // Verify virtual container exists
+    await expect(virtualContainer).toBeVisible();
+
+    // Check that only visible items are rendered (not all 1000)
+    const renderedItems = await virtualContainer.locator('[data-testid^="feed-item-"]').count();
+    expect(renderedItems).toBeLessThan(100); // Should render much less than total
+    expect(renderedItems).toBeGreaterThan(0); // But should render something
+
+    // Test virtual scrolling performance - scroll to bottom
+    await timeline.evaluate(el => {
+      const maxScrollTop = el.scrollHeight - el.clientHeight;
+      el.scrollTo(0, Math.max(100, maxScrollTop / 2)); // Scroll to middle or at least 100px
+    });
+    await page.waitForTimeout(200);
+
+    // Verify scroll position updated
+    const scrollTop = await timeline.evaluate(el => el.scrollTop);
+    expect(scrollTop).toBeGreaterThan(50); // More reasonable expectation
+
+    // Check that items are still efficiently rendered
+    const newRenderedItems = await virtualContainer.locator('[data-testid^="feed-item-"]').count();
+    expect(newRenderedItems).toBeLessThan(100);
   });
 });

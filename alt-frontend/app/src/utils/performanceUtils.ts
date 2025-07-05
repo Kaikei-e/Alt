@@ -3,12 +3,12 @@
  */
 
 // Debounce function to limit expensive operations
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
-  
+
   return function executedFunction(...args: Parameters<T>) {
     const later = () => {
       if (timeout) {
@@ -17,7 +17,7 @@ export function debounce<T extends (...args: any[]) => any>(
       }
       func(...args);
     };
-    
+
     if (timeout) {
       clearTimeout(timeout);
     }
@@ -26,12 +26,12 @@ export function debounce<T extends (...args: any[]) => any>(
 }
 
 // Throttle function to limit frequency of expensive operations
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
   let inThrottle: boolean = false;
-  
+
   return function executedFunction(...args: Parameters<T>) {
     if (!inThrottle) {
       func(...args);
@@ -49,11 +49,11 @@ export function measurePerformance<T>(
   const startTime = performance.now();
   const result = operation();
   const endTime = performance.now();
-  
+
   if (label) {
     console.log(`${label} took ${endTime - startTime} milliseconds`);
   }
-  
+
   return result;
 }
 
@@ -64,30 +64,30 @@ export function batchOperations<T, R>(
   operation: (batch: T[]) => R[]
 ): R[] {
   const results: R[] = [];
-  
+
   for (let i = 0; i < items.length; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
     const batchResults = operation(batch);
     results.push(...batchResults);
   }
-  
+
   return results;
 }
 
 // Simple memoization for expensive computations
-export function memoize<T extends (...args: any[]) => any>(
+export function memoize<T extends (...args: unknown[]) => unknown>(
   fn: T,
   getKey?: (...args: Parameters<T>) => string
 ): T {
-  const cache = new Map<string, ReturnType<T>>();
-  
-  return ((...args: Parameters<T>): ReturnType<T> => {
+  const cache = new Map<string, unknown>();
+
+  return ((...args: Parameters<T>): unknown => {
     const key = getKey ? getKey(...args) : JSON.stringify(args);
-    
+
     if (cache.has(key)) {
       return cache.get(key)!;
     }
-    
+
     const result = fn(...args);
     cache.set(key, result);
     return result;

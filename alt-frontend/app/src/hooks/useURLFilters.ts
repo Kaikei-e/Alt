@@ -17,6 +17,8 @@ export const useURLFilters = (
 
   // Load filters from URL on mount
   useEffect(() => {
+    if (!searchParams) return;
+
     const urlFilters: FilterState = {
       readStatus: (searchParams.get('readStatus') as FilterState['readStatus']) || 'all',
       sources: searchParams.get('sources')?.split(',').filter(Boolean) || [],
@@ -28,7 +30,7 @@ export const useURLFilters = (
     const urlSearch = searchParams.get('search') || '';
 
     // Only update if URL has different values
-    const filtersChanged = 
+    const filtersChanged =
       urlFilters.readStatus !== filters.readStatus ||
       JSON.stringify(urlFilters.sources) !== JSON.stringify(filters.sources) ||
       urlFilters.priority !== filters.priority ||
@@ -92,7 +94,7 @@ export const useURLFilters = (
   // Function to share current filter state
   const shareFilters = useCallback(() => {
     const currentURL = window.location.href;
-    
+
     if (navigator.share) {
       navigator.share({
         title: 'Filtered Feeds',

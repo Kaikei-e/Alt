@@ -47,7 +47,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     const newSources = isSelected
       ? currentSources.filter(id => id !== sourceId)
       : [...currentSources, sourceId];
-    
+
     onFilterChange({
       ...filters,
       sources: newSources,
@@ -60,7 +60,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     const newTags = isSelected
       ? currentTags.filter(t => t !== tag)
       : [...currentTags, tag];
-    
+
     onFilterChange({
       ...filters,
       tags: newTags,
@@ -77,7 +77,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     });
   };
 
-  const hasActiveFilters = 
+  const hasActiveFilters =
     filters.readStatus !== 'all' ||
     filters.sources.length > 0 ||
     filters.priority !== 'all' ||
@@ -92,7 +92,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
       borderRadius="var(--radius-lg)"
       mb={4}
     >
-      <VStack align="stretch" spacing={4}>
+      <VStack align="stretch" gap={4}>
         {/* Filter Status Header */}
         <Flex justify="space-between" align="center">
           <Text fontSize="sm" color="var(--text-primary)" fontWeight="medium">
@@ -112,7 +112,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </Flex>
 
         {/* Main Filter Controls */}
-        <HStack spacing={4} wrap="wrap">
+        <HStack gap={4} wrap="wrap">
           {/* Read Status Filter */}
           <Box>
             <Text fontSize="xs" color="var(--text-muted)" mb={2}>
@@ -192,7 +192,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <Text fontSize="xs" color="var(--text-muted)" mb={2}>
               Sources ({filters.sources.length} selected)
             </Text>
-            <HStack spacing={2} wrap="wrap">
+            <HStack gap={2} wrap="wrap">
               {availableSources.map(source => (
                 <Button
                   key={source.id}
@@ -221,7 +221,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <Text fontSize="xs" color="var(--text-muted)" mb={2}>
               Tags ({filters.tags.length} selected)
             </Text>
-            <HStack spacing={2} wrap="wrap">
+            <HStack gap={2} wrap="wrap">
               {availableTags.map(tag => (
                 <Button
                   key={tag}

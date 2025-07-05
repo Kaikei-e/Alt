@@ -65,6 +65,19 @@ export const useDesktopFeeds = () => {
     }
   }, []);
 
+  // Preload next page for better performance
+  const preloadNextPage = useCallback(async () => {
+    if (cursor && hasMore) {
+      try {
+        // Preload in background without affecting UI state
+        await feedsApi.getFeedsWithCursor(cursor, 20);
+      } catch (err) {
+        // Silently fail preloading to not affect main functionality
+        console.warn('Failed to preload next page:', err);
+      }
+    }
+  }, [cursor, hasMore]);
+
   useEffect(() => {
     // Initial fetch on mount
     const initialFetch = async () => {
@@ -81,6 +94,13 @@ export const useDesktopFeeds = () => {
         setFeeds(result.data || []);
         setCursor(result.next_cursor || undefined);
         setHasMore(result.next_cursor !== null);
+
+        // Preload next page after initial load for better UX
+        if (result.next_cursor) {
+          setTimeout(() => {
+            feedsApi.getFeedsWithCursor(result.next_cursor || undefined, 20).catch(() => {});
+          }, 1000); // Preload after 1 second
+        }
       } catch (err) {
         setError(err as Error);
         setHasMore(false);
@@ -92,6 +112,13 @@ export const useDesktopFeeds = () => {
 
     initialFetch();
   }, []); // Only run on mount
+
+  // Preload next page when getting close to the current page end
+  useEffect(() => {
+    if (feeds.length > 0 && feeds.length % 15 === 0) { // Every 15 items
+      preloadNextPage();
+    }
+  }, [feeds.length, preloadNextPage]);
 
   return {
     feeds,

@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { VStack, Text, Spinner, Flex, Box } from '@chakra-ui/react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { FilterState } from '@/types/desktop-feed';
 import { useDesktopFeeds } from '@/hooks/useDesktopFeeds';
 import { FilterBar } from './FilterBar';
+import { VirtualizedFeedItem } from './VirtualizedFeedItem';
 import { searchFeeds, SearchResult } from '@/utils/searchUtils';
 import { debounce } from '@/utils/performanceUtils';
+import { Feed } from '@/schema/feed';
 
 interface DesktopTimelineProps {
   searchQuery: string;
@@ -15,7 +18,7 @@ interface DesktopTimelineProps {
   variant?: 'default' | 'compact' | 'detailed';
 }
 
-export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
+export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
   searchQuery,
   filters,
   onFilterChange,
@@ -36,8 +39,8 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
 
   const debouncedSetSearch = useCallback(
-    debounce((query: string) => {
-      setDebouncedSearchQuery(query);
+    debounce((query: unknown) => {
+      setDebouncedSearchQuery(query as string);
     }, 300),
     []
   );
@@ -65,7 +68,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
     // 時間範囲フィルター
     if (filters.timeRange !== 'all') {
       const now = new Date();
-      let filterDate = new Date();
+      const filterDate = new Date();
 
       switch (filters.timeRange) {
         case 'today':
@@ -95,28 +98,28 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
     // これらのフィルターは機能しない。テスト用に保持。
     if (filters.readStatus !== 'all') {
       filtered = filtered.filter(feed => {
-        const feedData = feed as any;
+        const feedData = feed as Feed & { isRead?: boolean };
         return filters.readStatus === 'read' ? feedData.isRead : !feedData.isRead;
       });
     }
 
     if (filters.sources.length > 0) {
       filtered = filtered.filter(feed => {
-        const feedData = feed as any;
+        const feedData = feed as Feed & { metadata?: { source?: { id: string } } };
         return feedData.metadata?.source?.id && filters.sources.includes(feedData.metadata.source.id);
       });
     }
 
     if (filters.priority !== 'all') {
       filtered = filtered.filter(feed => {
-        const feedData = feed as any;
+        const feedData = feed as Feed & { metadata?: { priority?: string } };
         return feedData.metadata?.priority === filters.priority;
       });
     }
 
     if (filters.tags.length > 0) {
       filtered = filtered.filter(feed => {
-        const feedData = feed as any;
+        const feedData = feed as Feed & { metadata?: { tags?: string[] } };
         return feedData.metadata?.tags?.some((tag: string) => filters.tags.includes(tag));
       });
     }
@@ -124,17 +127,34 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
     return { filteredFeeds: filtered, searchResults: results };
   }, [feeds, debouncedSearchQuery, filters]);
 
+  // Setup virtualizer
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: filteredFeeds.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 200, // Estimated height for each feed item
+    overscan: 10, // Render 10 items outside visible area for smooth scrolling
+  });
+
   // const handleReadLater = (feedId: string) => {
   //   // 後で読む機能の実装（ローカルストレージやAPI経由）
   //   // 将来の実装用に保持
   // };
 
-  const handleViewArticle = (feedId: string) => {
+  const handleViewArticle = useCallback((feedId: string) => {
     const feed = feeds.find(f => f.id === feedId);
     if (feed) {
       window.open(feed.link, '_blank');
     }
-  };
+  }, [feeds]);
+
+  const handleMarkAsRead = useCallback((feedId: string) => {
+    markAsRead(feedId);
+  }, [markAsRead]);
+
+  const handleToggleFavorite = useCallback((feedId: string) => {
+    toggleFavorite(feedId);
+  }, [toggleFavorite]);
 
   if (error) {
     return (
@@ -151,152 +171,93 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
   }
 
   return (
-    <Box
-      data-testid="desktop-timeline"
-      maxH={{
-        base: "100vh",
-        md: "calc(100vh - 140px)",
-        lg: "calc(100vh - 180px)"
-      }}
-      overflowY="auto"
-      overflowX="hidden"
-      className="glass"
-      p={4}
-      borderRadius="var(--radius-lg)"
-      css={{
-        scrollBehavior: 'smooth',
-        '&::-webkit-scrollbar': {
-          width: '8px',
-        },
-        '&::-webkit-scrollbar-track': {
-          background: 'var(--surface-secondary)',
-          borderRadius: '4px',
-        },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'var(--accent-primary)',
-          borderRadius: '4px',
-          opacity: 0.6,
-        },
-        '&::-webkit-scrollbar-thumb:hover': {
-          opacity: 1,
-        },
-      }}
-    >
-      <VStack gap={4} align="stretch">
-        {/* Filter Bar */}
-        <FilterBar
-          filters={filters}
-          onFilterChange={onFilterChange}
-          availableTags={['tech', 'development', 'news', 'science']}
-          availableSources={[
-            { id: 'techcrunch', name: 'TechCrunch', icon: '📰' },
-            { id: 'hackernews', name: 'Hacker News', icon: '🔥' },
-            { id: 'medium', name: 'Medium', icon: '📝' },
-            { id: 'devto', name: 'Dev.to', icon: '💻' },
-          ]}
-        />
+    <VStack gap={4} align="stretch">
+      {/* Filter Bar */}
+      <FilterBar
+        filters={filters}
+        onFilterChange={onFilterChange}
+        availableTags={['tech', 'development', 'news', 'science']}
+        availableSources={[
+          { id: 'techcrunch', name: 'TechCrunch', icon: '📰' },
+          { id: 'hackernews', name: 'Hacker News', icon: '🔥' },
+          { id: 'medium', name: 'Medium', icon: '📝' },
+          { id: 'devto', name: 'Dev.to', icon: '💻' },
+        ]}
+      />
 
-        {/* 検索結果ヘッダー */}
-        {debouncedSearchQuery && (
-          <Flex
-            className="glass"
+      {/* 検索結果ヘッダー */}
+      {debouncedSearchQuery && (
+        <Flex
+          className="glass"
+          p={4}
+          borderRadius="var(--radius-lg)"
+          align="center"
+          justify="space-between"
+        >
+          <Text color="var(--text-primary)" fontWeight="medium">
+            検索: &quot;{debouncedSearchQuery}&quot;
+          </Text>
+          <VStack align="end" gap={1}>
+            <Text fontSize="sm" color="var(--text-muted)">
+              {filteredFeeds.length}件の結果
+            </Text>
+            {searchResults.length > 0 && (
+              <Text fontSize="xs" color="var(--text-muted)">
+                複数キーワード検索対応
+              </Text>
+            )}
+          </VStack>
+        </Flex>
+      )}
+
+      {/* Virtualized Timeline Container */}
+      <Box
+        data-testid="desktop-timeline"
+        ref={parentRef}
+        maxH={{
+          base: "100vh",
+          md: "calc(100vh - 140px)",
+          lg: "calc(100vh - 180px)"
+        }}
+        overflowY="auto"
+        overflowX="hidden"
+        className="glass"
+        p={4}
+        borderRadius="var(--radius-lg)"
+        css={{
+          scrollBehavior: 'smooth',
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: 'var(--surface-secondary)',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'var(--accent-primary)',
+            borderRadius: '4px',
+            opacity: 0.6,
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            opacity: 1,
+          },
+        }}
+      >
+        {/* Error State */}
+        {error && (
+          <Box
+            bg="var(--alt-error)"
+            color="white"
             p={4}
             borderRadius="var(--radius-lg)"
-            align="center"
-            justify="space-between"
+            className="glass"
           >
-            <Text color="var(--text-primary)" fontWeight="medium">
-              検索: &quot;{debouncedSearchQuery}&quot;
-            </Text>
-            <VStack align="end" gap={1}>
-              <Text fontSize="sm" color="var(--text-muted)">
-                {filteredFeeds.length}件の結果
-              </Text>
-              {searchResults.length > 0 && (
-                <Text fontSize="xs" color="var(--text-muted)">
-                  複数キーワード検索対応
-                </Text>
-              )}
-            </VStack>
-          </Flex>
+            フィードの読み込みに失敗しました。
+          </Box>
         )}
 
-        {/* フィードカード一覧（Feed型対応の簡易表示） */}
-        {filteredFeeds.map((feed) => (
-          <Box
-            key={feed.id}
-            className="glass"
-            p={5}
-            borderRadius="var(--radius-lg)"
-            _hover={{
-              transform: 'translateY(-2px)',
-              borderColor: 'var(--alt-primary)'
-            }}
-            transition="all 0.2s ease"
-            cursor="pointer"
-            onClick={() => handleViewArticle(feed.id)}
-          >
-            <VStack align="stretch" gap={3}>
-              <Text
-                fontSize="lg"
-                fontWeight="bold"
-                color="var(--text-primary)"
-                lineHeight="1.4"
-              >
-                {feed.title}
-              </Text>
-              <Text
-                fontSize="sm"
-                color="var(--text-secondary)"
-                lineHeight="1.5"
-                css={{
-                  display: '-webkit-box',
-                  WebkitLineClamp: 3,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden'
-                }}
-              >
-                {feed.description}
-              </Text>
-              <Flex justify="space-between" align="center">
-                <Text fontSize="xs" color="var(--text-muted)">
-                  {new Date(feed.published).toLocaleDateString()}
-                </Text>
-                <Flex gap={2}>
-                  <Text
-                    fontSize="xs"
-                    color="var(--alt-primary)"
-                    fontWeight="medium"
-                    cursor="pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      markAsRead(feed.id);
-                    }}
-                    _hover={{ textDecoration: 'underline' }}
-                  >
-                    Mark as Read
-                  </Text>
-                  <Text
-                    fontSize="xs"
-                    color="var(--alt-secondary)"
-                    fontWeight="medium"
-                    cursor="pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFavorite(feed.id);
-                    }}
-                    _hover={{ textDecoration: 'underline' }}
-                  >
-                    Favorite
-                  </Text>
-                </Flex>
-              </Flex>
-            </VStack>
-          </Box>
-        ))}
-
-        {/* ローディング状態 */}
-        {isLoading && (
+        {/* Loading State */}
+        {isLoading && filteredFeeds.length === 0 && (
           <Flex
             className="glass"
             p={8}
@@ -315,8 +276,8 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
           </Flex>
         )}
 
-        {/* 空の状態 */}
-        {filteredFeeds.length === 0 && !isLoading && (
+        {/* Empty State */}
+        {filteredFeeds.length === 0 && !isLoading && !error && (
           <Flex
             className="glass"
             p={8}
@@ -332,13 +293,42 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
           </Flex>
         )}
 
-        {/* 無限スクロール用トリガー */}
+        {/* Virtualized Feed Items */}
+        {filteredFeeds.length > 0 && (
+          <Box
+            data-testid="virtual-container"
+            position="relative"
+            height={`${virtualizer.getTotalSize()}px`}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => (
+              <VirtualizedFeedItem
+                key={virtualItem.key}
+                feed={filteredFeeds[virtualItem.index]}
+                index={virtualItem.index}
+                onMarkAsRead={handleMarkAsRead}
+                onToggleFavorite={handleToggleFavorite}
+                onViewArticle={handleViewArticle}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualItem.size}px`,
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
+              />
+            ))}
+          </Box>
+        )}
+
+        {/* Infinite Scroll Trigger */}
         {hasMore && !isLoading && filteredFeeds.length > 0 && (
           <Flex
             className="glass"
             p={4}
             borderRadius="var(--radius-lg)"
             justify="center"
+            mt={4}
           >
             <Text
               color="var(--accent-primary)"
@@ -351,7 +341,9 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = ({
             </Text>
           </Flex>
         )}
-      </VStack>
-    </Box>
+      </Box>
+    </VStack>
   );
-};
+});
+
+DesktopTimeline.displayName = 'DesktopTimeline';

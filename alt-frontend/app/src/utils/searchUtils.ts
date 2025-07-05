@@ -33,8 +33,8 @@ function getCachedRegex(keyword: string): RegExp {
  * Optimized for performance with caching and early exits
  */
 export function searchFeeds(
-  feeds: Feed[], 
-  query: string, 
+  feeds: Feed[],
+  query: string,
   options: SearchOptions = {}
 ): SearchResult[] {
   if (!query.trim()) {
@@ -53,7 +53,7 @@ export function searchFeeds(
   } = options;
 
   // Split query into keywords and normalize
-  const keywords = multiKeyword 
+  const keywords = multiKeyword
     ? query.toLowerCase().split(/\s+/).filter(k => k.length > 0)
     : [query.toLowerCase().trim()];
 
@@ -81,7 +81,7 @@ export function searchFeeds(
           break;
         case 'tags':
           // Handle tags if available in metadata
-          const metadata = (feed as any).metadata;
+          const metadata = (feed as Feed & { metadata?: { tags?: string[] } }).metadata;
           if (metadata?.tags) {
             fieldContent = metadata.tags.join(' ').toLowerCase();
             fieldWeight = 1.5;
@@ -151,12 +151,12 @@ export function searchFeeds(
  */
 function highlightText(text: string, keywords: string[]): string {
   let highlighted = text;
-  
+
   for (const keyword of keywords) {
     const regex = new RegExp(`(${escapeRegExp(keyword)})`, 'gi');
     highlighted = highlighted.replace(regex, '<mark>$1</mark>');
   }
-  
+
   return highlighted;
 }
 
@@ -172,7 +172,7 @@ function escapeRegExp(string: string): string {
  */
 export function simpleSearch(feeds: Feed[], query: string): Feed[] {
   if (!query.trim()) return feeds;
-  
+
   const lowercaseQuery = query.toLowerCase();
   return feeds.filter(feed =>
     feed.title.toLowerCase().includes(lowercaseQuery) ||
