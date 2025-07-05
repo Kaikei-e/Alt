@@ -21,8 +21,8 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["node", "@vitest/browser/providers/playwright"]
+    "types": ["node", "@vitest/browser/providers/playwright", "vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": ["next-env.d.ts", "vitest.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }
