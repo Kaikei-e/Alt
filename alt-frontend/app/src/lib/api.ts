@@ -15,6 +15,8 @@ import {
   defaultCacheConfig,
 } from "@/lib/config";
 import { CursorResponse, MessageResponse } from "@/schema/common";
+import { DesktopFeedsResponse } from "@/types/desktop-feed";
+import { mockDesktopFeeds } from "@/data/mockDesktopFeeds";
 
 // Re-export types for external use
 export type { CursorResponse } from "@/schema/common";
@@ -466,5 +468,48 @@ export const feedsApi = {
   // Clear cache method
   clearCache(): void {
     apiClient.clearCache();
+  },
+
+  // Desktop Feed Methods
+  async getDesktopFeeds(cursor?: string | null): Promise<DesktopFeedsResponse> {
+    // For now, return mock data with pagination simulation
+    // TODO: Replace with actual API call when backend is ready
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const pageSize = 5;
+        const startIndex = cursor ? parseInt(cursor) : 0;
+        const endIndex = startIndex + pageSize;
+        const paginatedFeeds = mockDesktopFeeds.slice(startIndex, endIndex);
+        
+        resolve({
+          feeds: paginatedFeeds,
+          nextCursor: endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
+          hasMore: endIndex < mockDesktopFeeds.length,
+          totalCount: mockDesktopFeeds.length
+        });
+      }, 500); // Simulate network delay
+    });
+  },
+
+  async toggleFavorite(feedId: string, isFavorited: boolean): Promise<MessageResponse> {
+    // Mock API call for favorite toggle
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          message: isFavorited ? 'Added to favorites' : 'Removed from favorites'
+        });
+      }, 200);
+    });
+  },
+
+  async toggleBookmark(feedId: string, isBookmarked: boolean): Promise<MessageResponse> {
+    // Mock API call for bookmark toggle
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          message: isBookmarked ? 'Added to bookmarks' : 'Removed from bookmarks'
+        });
+      }, 200);
+    });
   },
 };
