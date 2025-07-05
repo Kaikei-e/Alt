@@ -142,8 +142,8 @@
 
   /* Glass properties */
   --surface-bg: rgba(255, 255, 255, 0.08);
-  --surface-border: rgba(160, 129, 108, 0.25);
-  --surface-hover: rgba(255, 255, 255, 0.12);
+  --surface-border: rgba(160, 129, 108, 0.15);
+  --surface-hover: rgba(255, 255, 255, 0.05);
   --surface-blur: 16px;
 
   /* Backgrounds */
