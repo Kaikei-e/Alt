@@ -270,6 +270,18 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await page.getByTestId("floating-menu-button").click();
       const bottomSheet = page.getByTestId("bottom-sheet-menu");
       await expect(bottomSheet).toBeVisible({ timeout: 10000 });
+
+      // Wait for animations/transitions to complete and element to be stable
+      await page.waitForFunction(
+        () => {
+          const element = document.querySelector('[data-testid="bottom-sheet-menu"]');
+          if (!element) return false;
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        },
+        { timeout: 5000 }
+      );
+
       const boundingBox = await bottomSheet.boundingBox();
       if (boundingBox) {
         expect(boundingBox.width).toBe(375);

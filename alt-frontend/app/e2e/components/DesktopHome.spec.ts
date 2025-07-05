@@ -30,7 +30,6 @@ test.describe("DesktopHome Unread Count", () => {
 
   test("should display unread count", async ({ page }) => {
     await page.goto("/desktop/home");
-    await page.waitForLoadState("networkidle");
 
     // Wait for the unread count to be visible
     await expect(page.getByText("Unread Articles")).toBeVisible();
