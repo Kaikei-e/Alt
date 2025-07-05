@@ -16,6 +16,7 @@ import {
 } from "@/lib/config";
 import { CursorResponse, MessageResponse } from "@/schema/common";
 import { DesktopFeedsResponse } from "@/types/desktop-feed";
+import { ActivityResponse, WeeklyStats } from "@/types/desktop";
 import { mockDesktopFeeds } from "@/data/mockDesktopFeeds";
 
 // Re-export types for external use
@@ -508,6 +509,57 @@ export const feedsApi = {
       setTimeout(() => {
         resolve({
           message: isBookmarked ? 'Added to bookmarks' : 'Removed from bookmarks'
+        });
+      }, 200);
+    });
+  },
+
+  async getRecentActivity(limit: number = 10): Promise<ActivityResponse[]> {
+    // Mock API call for recent activity
+    // TODO: Replace with actual API call when backend is ready
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const mockActivities: ActivityResponse[] = [
+          {
+            id: 1,
+            type: 'new_feed',
+            title: 'Added TechCrunch RSS feed',
+            timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() // 2 hours ago
+          },
+          {
+            id: 2,
+            type: 'ai_summary',
+            title: 'AI summary generated for 5 articles',
+            timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString() // 4 hours ago
+          },
+          {
+            id: 3,
+            type: 'bookmark',
+            title: 'Bookmarked "Introduction to React 19"',
+            timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() // 1 day ago
+          },
+          {
+            id: 4,
+            type: 'read',
+            title: 'Read "Modern JavaScript Features"',
+            timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString() // 2 days ago
+          }
+        ];
+        
+        resolve(mockActivities.slice(0, limit));
+      }, 300); // Simulate network delay
+    });
+  },
+
+  async getWeeklyStats(): Promise<WeeklyStats> {
+    // Mock API call for weekly stats
+    // TODO: Replace with actual API call when backend is ready
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          weeklyReads: 45,
+          aiProcessed: 18,
+          bookmarks: 12
         });
       }, 200);
     });

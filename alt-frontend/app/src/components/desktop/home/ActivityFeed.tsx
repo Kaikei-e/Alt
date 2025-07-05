@@ -13,11 +13,13 @@ interface ActivityFeedProps {
     time: string;
   }>;
   maxHeight?: string;
+  isLoading?: boolean;
 }
 
 export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   activities,
   maxHeight = "400px",
+  isLoading = false,
 }) => {
   return (
     <Box
@@ -45,7 +47,15 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       </HStack>
       
       <Box flex="1" overflow="auto">
-        {activities.length === 0 ? (
+        {isLoading ? (
+          <Box
+            data-testid="loading-state"
+            textAlign="center"
+            py={8}
+          >
+            <Text color="var(--text-muted)">Loading activities...</Text>
+          </Box>
+        ) : activities.length === 0 ? (
           <Box
             data-testid="empty-state"
             textAlign="center"

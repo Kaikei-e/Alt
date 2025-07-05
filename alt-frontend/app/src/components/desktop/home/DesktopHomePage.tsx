@@ -1,14 +1,38 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { DesktopLayout } from '../layout/DesktopLayout';
 import { PageHeader } from './PageHeader';
 import { StatsGrid } from './StatsGrid';
 import { ActivityFeed } from './ActivityFeed';
 import { QuickActionsPanel } from './QuickActionsPanel';
 import { CallToActionBar } from './CallToActionBar';
-import { Home, Rss, BarChart3, Settings, ArrowRight, Download, Users, Eye, Clock, Plus, Search, Bookmark, Filter } from 'lucide-react';
+import { useHomeStats } from '@/hooks/useHomeStats';
+import { useRecentActivity } from '@/hooks/useRecentActivity';
+import { transformFeedStats } from '@/utils/dataTransformers';
+import { Home, Rss, BarChart3, Settings, ArrowRight, Download, Plus, Search, Bookmark, Filter } from 'lucide-react';
 
 export const DesktopHomePage: React.FC = () => {
-  // Mock sidebar navigation items
+  // Fetch real data from hooks
+  const { 
+    feedStats, 
+    isLoadingStats, 
+    statsError,
+    unreadCount,
+    refreshStats 
+  } = useHomeStats();
+  
+  const { 
+    activities, 
+    isLoading: isLoadingActivity,
+    error: activityError
+  } = useRecentActivity();
+
+  // Transform feed stats to stats card format
+  const statsData = useMemo(() => 
+    transformFeedStats(feedStats, unreadCount),
+    [feedStats, unreadCount]
+  );
+
+  // Mock sidebar navigation items (keep as before since this doesn't come from API)
   const sidebarProps = {
     navItems: [
       {
@@ -41,59 +65,6 @@ export const DesktopHomePage: React.FC = () => {
       }
     ]
   };
-
-  // Mock stats data
-  const mockStats = [
-    {
-      id: 'total-feeds',
-      icon: Rss,
-      label: 'Total Feeds',
-      value: 24,
-      trend: '+12%',
-      trendLabel: 'vs last month',
-      color: 'primary' as const
-    },
-    {
-      id: 'unread-articles',
-      icon: Eye,
-      label: 'Unread Articles',
-      value: 156,
-      trend: '+5%',
-      trendLabel: 'vs yesterday',
-      color: 'secondary' as const
-    },
-    {
-      id: 'reading-time',
-      icon: Clock,
-      label: 'Reading Time',
-      value: 45,
-      trend: '+2h',
-      trendLabel: 'this week',
-      color: 'tertiary' as const
-    }
-  ];
-
-  // Mock activity data
-  const mockActivities = [
-    {
-      id: 1,
-      type: 'new_feed' as const,
-      title: 'Added TechCrunch RSS feed',
-      time: '2 hours ago'
-    },
-    {
-      id: 2,
-      type: 'ai_summary' as const,
-      title: 'AI summary generated for 5 articles',
-      time: '4 hours ago'
-    },
-    {
-      id: 3,
-      type: 'bookmark' as const,
-      title: 'Bookmarked "Introduction to React 19"',
-      time: '1 day ago'
-    }
-  ];
 
   // Mock quick actions
   const mockQuickActions = [
@@ -137,6 +108,35 @@ export const DesktopHomePage: React.FC = () => {
     }
   ];
 
+  // Handle error states
+  if (statsError || activityError) {
+    return (
+      <DesktopLayout sidebarProps={sidebarProps}>
+        <div 
+          className="flex flex-col gap-8"
+          data-testid="desktop-home-container"
+        >
+          <PageHeader
+            title="Dashboard Overview"
+            description="Monitor your RSS feeds and AI-powered content insights"
+          />
+          
+          <div className="text-center py-8">
+            <p className="text-red-500">
+              {statsError || activityError}
+            </p>
+            <button 
+              onClick={refreshStats}
+              className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </DesktopLayout>
+    );
+  }
+
   return (
     <DesktopLayout sidebarProps={sidebarProps}>
       <div 
@@ -148,11 +148,17 @@ export const DesktopHomePage: React.FC = () => {
           description="Monitor your RSS feeds and AI-powered content insights"
         />
         
-        <StatsGrid stats={mockStats} />
+        <StatsGrid 
+          stats={isLoadingStats ? [] : statsData} 
+          isLoading={isLoadingStats}
+        />
         
         <div className="grid grid-cols-2 gap-8">
           <div>
-            <ActivityFeed activities={mockActivities} />
+            <ActivityFeed 
+              activities={isLoadingActivity ? [] : activities} 
+              isLoading={isLoadingActivity}
+            />
           </div>
           <div>
             <QuickActionsPanel actions={mockQuickActions} />
