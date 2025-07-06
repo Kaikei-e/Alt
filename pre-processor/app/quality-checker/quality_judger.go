@@ -57,37 +57,20 @@ type Score struct {
 
 const JudgeTemplate = `
 <start_of_turn>user
-You are a precise quality evaluation system for Japanese text summarization. Analyze the Japanese summary against the original English article and provide numerical scores.
-
-EVALUATION CRITERIA:
-- Coherence: Logical flow and structure (1-10)
-- Relevancy: Coverage of key information (1-10)
-- Fluency: Natural Japanese expression (1-10)
-- Overall: Comprehensive quality (1-10)
-
-SCORING RULES:
-- Use ONLY integers 1-10
-- Empty/missing = all scores 1
-- Very short (<10 chars) = max overall 3
-- Broken/garbled text = max overall 2
-- Off-topic content = max overall 3
-
-OUTPUT FORMAT (EXACT):
+OUTPUT ONLY THIS EXACT FORMAT - NO OTHER TEXT:
 <score>coherence:X;relevancy:Y;fluency:Z;overall:W</score>
 
-No explanations. Only the score line.
+Where X,Y,Z,W are single digits 1-10.
+
+Rate this Japanese summary of the English article:
 
 ARTICLE:
----
 %s
----
 
 SUMMARY:
----
 %s
----
 
-Evaluate now.
+NOW OUTPUT THE SCORE LINE ONLY.
 <end_of_turn>
 <start_of_turn>model
 `
