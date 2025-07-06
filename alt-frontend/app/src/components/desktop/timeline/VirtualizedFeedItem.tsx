@@ -46,11 +46,9 @@ export const VirtualizedFeedItem: React.FC<VirtualizedFeedItemProps> = memo(({
     <Box
       data-testid={`feed-item-${index}`}
       style={style}
-      position="absolute"
-      top={0}
-      left={0}
-      right={0}
       p={2}
+      w="100%"
+      minH="220px"
     >
       <Box
         className="glass"

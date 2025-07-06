@@ -473,22 +473,25 @@ export const feedsApi = {
 
   // Desktop Feed Methods
   async getDesktopFeeds(cursor?: string | null): Promise<DesktopFeedsResponse> {
-    // For now, return mock data with pagination simulation
-    // TODO: Replace with actual API call when backend is ready
-    return new Promise((resolve) => {
-      // Remove timeout for faster test execution
-      const pageSize = 20;
-      const startIndex = cursor ? parseInt(cursor) : 0;
-      const endIndex = startIndex + pageSize;
-      const paginatedFeeds = mockDesktopFeeds.slice(startIndex, endIndex);
+    const params = new URLSearchParams();
+    params.set("limit", "20");
+    if (cursor) {
+      params.set("cursor", cursor);
+    }
+    
+    const response = await apiClient.get<{
+      data: BackendFeedItem[];
+      next_cursor: string | null;
+    }>(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
 
-      resolve({
-        feeds: paginatedFeeds,
-        nextCursor: endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
-        hasMore: endIndex < mockDesktopFeeds.length,
-        totalCount: mockDesktopFeeds.length
-      });
-    });
+    const transformedFeeds = response.data.map(transformFeedItem);
+
+    return {
+      feeds: transformedFeeds,
+      nextCursor: response.next_cursor,
+      hasMore: response.next_cursor !== null,
+      totalCount: response.data.length
+    };
   },
 
   // Test-compatible cursor API for E2E tests

@@ -59,7 +59,7 @@ export interface FilterState {
 }
 
 export interface DesktopFeedsResponse {
-  feeds: DesktopFeed[];
+  feeds: Feed[];
   nextCursor: string | null;
   hasMore: boolean;
   totalCount: number;

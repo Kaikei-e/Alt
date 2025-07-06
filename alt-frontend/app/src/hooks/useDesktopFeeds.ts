@@ -102,14 +102,12 @@ export const useDesktopFeeds = () => {
       console.warn('API call failed, using mock data:', err);
 
       try {
-        const mockResult = await feedsApi.getDesktopFeeds(nextCursor);
-        // Ensure mock data is also properly formatted
-        const convertedFeeds = mockResult.feeds.map(convertToDesktopFeed);
+        const result = await feedsApi.getDesktopFeeds(nextCursor);
 
         return {
-          feeds: convertedFeeds,
-          nextCursor: mockResult.nextCursor,
-          hasMore: mockResult.hasMore
+          feeds: result.feeds,
+          nextCursor: result.nextCursor,
+          hasMore: result.hasMore
         };
       } catch (fallbackErr) {
         // Last resort: return empty data to prevent complete failure

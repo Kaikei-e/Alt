@@ -34,6 +34,13 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
     toggleBookmark,
   } = useDesktopFeeds();
 
+  // Initialize feeds on component mount
+  useEffect(() => {
+    if (feeds.length === 0 && !isLoading) {
+      fetchNextPage();
+    }
+  }, [feeds.length, isLoading, fetchNextPage]);
+
   // Debounced search query for performance optimization
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
 
@@ -125,8 +132,9 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
   const virtualizer = useVirtualizer({
     count: filteredFeeds.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 200, // Estimated height for each feed item
-    overscan: 10, // Render 10 items outside visible area for smooth scrolling
+    estimateSize: useCallback(() => 280, []), // Increased estimated height for each feed item
+    overscan: 3, // Render 3 items outside visible area for smooth scrolling
+    measureElement: (el) => el?.getBoundingClientRect().height ?? 280, // Dynamic height measurement
   });
 
   // Infinite scroll implementation
@@ -136,15 +144,29 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
 
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
-      const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100;
+      const scrollPosition = scrollTop + clientHeight;
+      const threshold = Math.max(200, clientHeight * 0.1); // Dynamic threshold
+      const isNearBottom = scrollPosition >= scrollHeight - threshold;
 
       if (isNearBottom && hasMore && !isLoading) {
         fetchNextPage();
       }
     };
 
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
+    // Add scroll event listener
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    
+    // Also trigger on resize
+    const resizeObserver = new ResizeObserver(() => {
+      handleScroll();
+    });
+    
+    resizeObserver.observe(container);
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      resizeObserver.disconnect();
+    };
   }, [hasMore, isLoading, fetchNextPage]);
 
   // const handleReadLater = (feedId: string) => {
@@ -174,14 +196,14 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
   // Remove early return for error to allow component to render
 
   return (
-    <VStack gap={4} align="stretch" flex={1} h="stretch">
+    <VStack gap={4} align="stretch" flex={1} w="100%" h="100%">
       {/* Virtualized Timeline Container */}
       <Box
         data-testid="desktop-timeline"
         ref={parentRef}
         flex={1}
-        minH="stretch"
-        overflowY="scroll"
+        h="calc(100vh - 120px)"
+        overflowY="auto"
         overflowX="hidden"
         className="glass"
         p={4}
@@ -268,25 +290,28 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
             data-testid="virtual-container"
             position="relative"
             height={`${virtualizer.getTotalSize()}px`}
+            minH="100%"
+            w="100%"
           >
             {virtualizer.getVirtualItems().map((virtualItem) => (
-              <VirtualizedFeedItem
+              <Box
                 key={virtualItem.key}
-                feed={filteredFeeds[virtualItem.index]}
-                index={virtualItem.index}
-                onMarkAsRead={handleMarkAsRead}
-                onToggleFavorite={handleToggleFavorite}
-                onToggleBookmark={handleToggleBookmark}
-                onViewArticle={handleViewArticle}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${virtualItem.size}px`,
-                  transform: `translateY(${virtualItem.start}px)`,
-                }}
-              />
+                position="absolute"
+                top={0}
+                left={0}
+                width="100%"
+                height={`${virtualItem.size}px`}
+                transform={`translateY(${virtualItem.start}px)`}
+              >
+                <VirtualizedFeedItem
+                  feed={filteredFeeds[virtualItem.index]}
+                  index={virtualItem.index}
+                  onMarkAsRead={handleMarkAsRead}
+                  onToggleFavorite={handleToggleFavorite}
+                  onToggleBookmark={handleToggleBookmark}
+                  onViewArticle={handleViewArticle}
+                />
+              </Box>
             ))}
           </Box>
         )}
