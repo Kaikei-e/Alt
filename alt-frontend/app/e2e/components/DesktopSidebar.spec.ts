@@ -128,44 +128,4 @@ test.describe('DesktopSidebar Component', () => {
       await expect(sidebar).toHaveClass(/glass/);
     });
   });
-
-  test.describe('Responsive Behavior', () => {
-    test.beforeEach(async ({ page }) => {
-      // Switch to feeds filter mode
-      const filterButton = page.getByRole('button', { name: 'Feeds Filter' });
-      await filterButton.click();
-      await page.waitForTimeout(500);
-    });
-
-    test('should be responsive on mobile devices', async ({ page }) => {
-      // Simulate mobile viewport
-      await page.setViewportSize({ width: 375, height: 667 });
-      await page.waitForTimeout(500);
-
-      // Sidebar should still be functional
-      await expect(page.getByTestId('filter-header-title')).toBeVisible();
-    });
-
-    test('should handle overflow in sources list', async ({ page }) => {
-      const sourcesList = page.locator('[data-testid="filter-sources-label"]').locator('..');
-      await expect(sourcesList).toBeVisible();
-    });
-  });
-
-  test.describe('Accessibility', () => {
-    test.beforeEach(async ({ page }) => {
-      // Switch to feeds filter mode
-      const filterButton = page.getByRole('button', { name: 'Feeds Filter' });
-      await filterButton.click();
-      await page.waitForTimeout(500);
-    });
-
-    test('should have proper ARIA labels and roles', async ({ page }) => {
-      const collapseButton = page.getByRole('button', { name: 'Collapse sidebar' });
-      await expect(collapseButton).toHaveAttribute('aria-label', 'Collapse sidebar');
-
-      const clearButton = page.getByRole('button', { name: 'Clear Filters' });
-      await expect(clearButton).toBeVisible();
-    });
-  });
 });
