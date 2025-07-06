@@ -11,6 +11,23 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+func GetFeedID(ctx context.Context, db *pgxpool.Pool, feedURL string) (string, error) {
+
+	query := `
+		SELECT id FROM feeds WHERE link = $1
+	`
+
+	var id string
+
+	err := db.QueryRow(ctx, query, feedURL).Scan(&id)
+	if err != nil {
+		logger.Logger.Error("Failed to get feed ID", "error", err)
+		return "", err
+	}
+
+	return id, nil
+}
+
 func GetSourceURLs(lastCreatedAt *time.Time, lastID string, ctx context.Context, db *pgxpool.Pool) ([]url.URL, *time.Time, string, error) {
 	// Handle nil database
 	if db == nil {

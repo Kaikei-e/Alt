@@ -31,6 +31,14 @@ func NewArticleRepository(db *pgxpool.Pool, logger *slog.Logger) ArticleReposito
 func (r *articleRepository) Create(ctx context.Context, article *models.Article) error {
 	r.logger.Info("creating article", "url", article.URL)
 
+	feedID, err := driver.GetFeedID(ctx, r.db, article.URL)
+	if err != nil {
+		r.logger.Error("failed to get feed ID", "error", err, "url", article.URL)
+		return fmt.Errorf("failed to get feed ID: %w", err)
+	}
+
+	article.FeedID = feedID
+
 	// Use existing driver function
 	if err := driver.CreateArticle(ctx, r.db, article); err != nil {
 		r.logger.Error("failed to create article", "error", err, "url", article.URL)

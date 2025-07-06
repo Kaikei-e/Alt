@@ -51,9 +51,13 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 	}
 
 	query := `
-		INSERT INTO articles (title, content, url)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (url) DO NOTHING
+		INSERT INTO articles (title, content, url, feed_id)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (url) DO UPDATE SET
+			title = EXCLUDED.title,
+			content = EXCLUDED.content,
+			url = EXCLUDED.url,
+			feed_id = EXCLUDED.feed_id
 	`
 
 	logger.Logger.Info("Creating article", "article link", article.URL)

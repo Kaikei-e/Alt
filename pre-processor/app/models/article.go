@@ -10,4 +10,5 @@ type Article struct {
 	Title     string    `db:"title"`
 	Content   string    `db:"content"`
 	URL       string    `db:"url"`
+	FeedID    string    `db:"feed_id"`
 }
