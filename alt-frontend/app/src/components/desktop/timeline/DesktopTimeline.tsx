@@ -5,7 +5,6 @@ import { VStack, Text, Spinner, Flex, Box } from '@chakra-ui/react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FilterState } from '@/types/desktop-feed';
 import { useDesktopFeeds } from '@/hooks/useDesktopFeeds';
-import { FilterBar } from './FilterBar';
 import { VirtualizedFeedItem } from './VirtualizedFeedItem';
 import { searchFeeds, SearchResult } from '@/utils/searchUtils';
 import { debounce } from '@/utils/performanceUtils';
@@ -22,8 +21,6 @@ interface DesktopTimelineProps {
 export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
   searchQuery,
   filters,
-  onFilterChange,
-  onSearchClear,
   // variant は将来の実装用に残す
 }) => {
   const {
@@ -52,7 +49,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
   }, [searchQuery, debouncedSetSearch]);
 
     // フィルタリングされたフィード（高度な検索機能対応）
-  const { filteredFeeds, searchResults } = useMemo(() => {
+  const { filteredFeeds } = useMemo(() => {
     let filtered = feeds;
     let results: SearchResult[] = [];
 
@@ -178,46 +175,6 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
 
   return (
     <VStack gap={4} align="stretch" flex={1} h="stretch">
-      {/* Filter Bar */}
-      <FilterBar
-        data-testid="filter-bar"
-        filters={filters}
-        onFilterChange={onFilterChange}
-        onSearchClear={onSearchClear}
-        availableTags={['tech', 'development', 'news', 'science']}
-        availableSources={[
-          { id: 'techcrunch', name: 'TechCrunch', icon: '📰' },
-          { id: 'hackernews', name: 'Hacker News', icon: '🔥' },
-          { id: 'medium', name: 'Medium', icon: '📝' },
-          { id: 'devto', name: 'Dev.to', icon: '💻' },
-        ]}
-      />
-
-      {/* 検索結果ヘッダー */}
-      {debouncedSearchQuery && (
-        <Flex
-          className="glass"
-          p={4}
-          borderRadius="var(--radius-lg)"
-          align="center"
-          justify="space-between"
-        >
-          <Text color="var(--text-primary)" fontWeight="medium">
-            Search: &quot;{debouncedSearchQuery}&quot;
-          </Text>
-          <VStack align="end" gap={1}>
-            <Text fontSize="sm" color="var(--text-muted)">
-              {filteredFeeds.length} results
-            </Text>
-            {searchResults.length > 0 && (
-              <Text fontSize="xs" color="var(--text-muted)">
-                Multi-keyword search enabled
-              </Text>
-            )}
-          </VStack>
-        </Flex>
-      )}
-
       {/* Virtualized Timeline Container */}
       <Box
         data-testid="desktop-timeline"
