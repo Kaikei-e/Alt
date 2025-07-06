@@ -14,8 +14,10 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
     <Grid
       templateRows="auto 1fr"
       minH="100vh"
+      maxH="100vh"
       bg="var(--app-bg)"
       data-testid="desktop-layout"
+      overflow="hidden"
     >
       {/* ヘッダー */}
       <GridItem
@@ -29,27 +31,24 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
       </GridItem>
 
       {/* メインコンテンツ */}
-      <GridItem>
+      <GridItem overflow="hidden">
         <Grid
           templateColumns={{
             base: "1fr",
             md: "240px 1fr",
-            lg: "280px 1fr 320px",
-            xl: "300px 1fr 340px"
+            lg: "260px 1fr 300px",
+            xl: "280px 1fr 320px"
           }}
-          gap={{ base: 4, md: 6, lg: 8 }}
-          p={{ base: 4, md: 6, lg: 8 }}
-          h="calc(100vh - 80px)"
+          gap={{ base: 4, md: 4, lg: 6 }}
+          p={{ base: 4, md: 4, lg: 6 }}
+          h="100%"
           maxW="none"
           mx={0}
         >
           {/* サイドバー */}
           <GridItem
-            position="sticky"
-            top="120px"
-            h="fit-content"
-            maxH="calc(100vh - 140px)"
             overflowY="auto"
+            overflowX="hidden"
             display={{ base: "none", md: "block" }}
           >
             {sidebar}
@@ -59,7 +58,9 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
           <GridItem 
             display="flex" 
             alignItems="stretch" 
-            px={{ base: 4, md: 6, lg: 8 }}
+            bg="var(--app-bg)"
+            px={{ base: 2, md: 3, lg: 4 }}
+            overflow="hidden"
             data-testid="main-content"
           >
             {children}
@@ -67,11 +68,8 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
 
           {/* 右パネル（Analytics） */}
           <GridItem
-            position="sticky"
-            top="120px"
-            h="fit-content"
-            maxH="calc(100vh - 140px)"
             overflowY="auto"
+            overflowX="hidden"
             display={{ base: "none", lg: "block" }}
           >
             <RightPanel />

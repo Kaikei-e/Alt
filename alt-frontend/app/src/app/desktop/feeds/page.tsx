@@ -1,25 +1,13 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { Suspense } from 'react';
+import { Box, Text } from '@chakra-ui/react';
 import { DesktopFeedsLayout } from '@/components/desktop/layout/DesktopFeedsLayout';
 import { DesktopHeader } from '@/components/desktop/layout/DesktopHeader';
 import { DesktopSidebar } from '@/components/desktop/layout/DesktopSidebar';
-import { DesktopTimeline } from '@/components/desktop/timeline/DesktopTimeline';
-import { FilterState } from '@/types/desktop-feed';
-import { useURLFilters } from '@/hooks/useURLFilters';
+import DesktopTimeline from '@/components/desktop/timeline/DesktopTimeline';
 
-// モックデータ
-const mockFeedSources = [
-  { id: 'techcrunch', name: 'TechCrunch', icon: '📰', unreadCount: 12, category: 'tech' },
-  { id: 'hackernews', name: 'Hacker News', icon: '🔥', unreadCount: 8, category: 'tech' },
-  { id: 'medium', name: 'Medium', icon: '📝', unreadCount: 15, category: 'general' },
-  { id: 'devto', name: 'Dev.to', icon: '💻', unreadCount: 6, category: 'development' },
-  { id: 'github', name: 'GitHub', icon: '🐙', unreadCount: 4, category: 'development' },
-  { id: 'verge', name: 'The Verge', icon: '📱', unreadCount: 23, category: 'tech' },
-  { id: 'wired', name: 'Wired', icon: '🔬', unreadCount: 7, category: 'science' },
-  { id: 'bbc', name: 'BBC Tech', icon: '📺', unreadCount: 11, category: 'news' }
-];
-
+// Basic stats for header
 const mockStats = {
   totalUnread: 86,
   totalFeeds: 8,
@@ -27,32 +15,45 @@ const mockStats = {
   weeklyAverage: 45
 };
 
+// Loading fallback
+const LoadingFallback = () => (
+  <Box 
+    h="100vh" 
+    display="flex" 
+    alignItems="center" 
+    justifyContent="center"
+    bg="var(--app-bg)"
+  >
+    <Box
+      className="glass"
+      p={8}
+      borderRadius="var(--radius-xl)"
+      textAlign="center"
+    >
+      <div style={{
+        width: "32px",
+        height: "32px",
+        border: "3px solid var(--surface-border)",
+        borderTop: "3px solid var(--accent-primary)",
+        borderRadius: "50%",
+        animation: "spin 1s linear infinite",
+        margin: "0 auto 16px",
+      }} />
+      <Text color="var(--text-primary)" fontSize="lg">
+        Loading Alt Feeds...
+      </Text>
+    </Box>
+  </Box>
+);
+
 function DesktopFeedsContent() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilters, setActiveFilters] = useState<FilterState>({
-    sources: [],
-    timeRange: 'all',
-    readStatus: 'all',
-    tags: [],
-    priority: 'all'
-  });
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  // URL filter state management
-  const { clearAllFilters: clearAllFromURL } = useURLFilters(
-    activeFilters,
-    setActiveFilters,
-    searchQuery,
-    setSearchQuery
-  );
-
   return (
     <DesktopFeedsLayout
       header={
         <DesktopHeader
           totalUnread={mockStats.totalUnread}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          searchQuery=""
+          onSearchChange={() => {}}
           currentTheme={'vaporwave'}
           onThemeToggle={() => {}}
         />
@@ -60,28 +61,29 @@ function DesktopFeedsContent() {
       sidebar={
         <DesktopSidebar
           mode="feeds-filter"
-          activeFilters={activeFilters}
-          onFilterChange={setActiveFilters}
-          onClearAll={clearAllFromURL}
-          feedSources={mockFeedSources}
-          isCollapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          activeFilters={{
+            sources: [],
+            timeRange: 'all',
+            readStatus: 'all',
+            tags: [],
+            priority: 'all'
+          }}
+          onFilterChange={() => {}}
+          onClearAll={() => {}}
+          feedSources={[]}
+          isCollapsed={false}
+          onToggleCollapse={() => {}}
         />
       }
     >
-      <DesktopTimeline
-        searchQuery={searchQuery}
-        filters={activeFilters}
-        onFilterChange={setActiveFilters}
-        onSearchClear={() => setSearchQuery('')}
-      />
+      <DesktopTimeline />
     </DesktopFeedsLayout>
   );
 }
 
 export default function DesktopFeedsPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<LoadingFallback />}>
       <DesktopFeedsContent />
     </Suspense>
   );

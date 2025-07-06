@@ -473,25 +473,36 @@ export const feedsApi = {
 
   // Desktop Feed Methods
   async getDesktopFeeds(cursor?: string | null): Promise<DesktopFeedsResponse> {
-    const params = new URLSearchParams();
-    params.set("limit", "20");
-    if (cursor) {
-      params.set("cursor", cursor);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "20");
+      if (cursor) {
+        params.set("cursor", cursor);
+      }
+      
+      const response = await apiClient.get<{
+        data: BackendFeedItem[];
+        next_cursor: string | null;
+      }>(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
+
+      const transformedFeeds = (response.data || []).map(transformFeedItem);
+
+      return {
+        feeds: transformedFeeds,
+        nextCursor: response.next_cursor,
+        hasMore: response.next_cursor !== null,
+        totalCount: transformedFeeds.length
+      };
+    } catch (error) {
+      console.error('getDesktopFeeds error:', error);
+      // Return empty response on error to prevent crashes
+      return {
+        feeds: [],
+        nextCursor: null,
+        hasMore: false,
+        totalCount: 0
+      };
     }
-    
-    const response = await apiClient.get<{
-      data: BackendFeedItem[];
-      next_cursor: string | null;
-    }>(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
-
-    const transformedFeeds = response.data.map(transformFeedItem);
-
-    return {
-      feeds: transformedFeeds,
-      nextCursor: response.next_cursor,
-      hasMore: response.next_cursor !== null,
-      totalCount: response.data.length
-    };
   },
 
   // Test-compatible cursor API for E2E tests
