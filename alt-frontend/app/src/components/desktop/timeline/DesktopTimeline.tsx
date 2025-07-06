@@ -9,7 +9,7 @@ import { FilterBar } from './FilterBar';
 import { VirtualizedFeedItem } from './VirtualizedFeedItem';
 import { searchFeeds, SearchResult } from '@/utils/searchUtils';
 import { debounce } from '@/utils/performanceUtils';
-import { Feed } from '@/schema/feed';
+import { DesktopFeed } from '@/types/desktop-feed';
 
 interface DesktopTimelineProps {
   searchQuery: string;
@@ -53,7 +53,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
 
     // フィルタリングされたフィード（高度な検索機能対応）
   const { filteredFeeds, searchResults } = useMemo(() => {
-    let filtered = feeds as any[];
+    let filtered = feeds;
     let results: SearchResult[] = [];
 
     // 高度な検索機能（複数キーワード対応、デバウンス済み）
@@ -64,7 +64,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
         fuzzyMatch: false,
         minimumScore: 0.1
       });
-      filtered = results.map(result => result.feed);
+      filtered = results.map(result => result.feed as DesktopFeed);
     }
 
     // 時間範囲フィルター
@@ -95,34 +95,28 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
       });
     }
 
-    // その他のフィルター適用（readStatus, sources, priority, tags等）
-    // Note: Feed型にはisReadやmetadataがないため、実際の実装では
-    // これらのフィルターは機能しない。テスト用に保持。
+    // その他のフィルター適用
     if (filters.readStatus !== 'all') {
       filtered = filtered.filter(feed => {
-        const feedData = feed as Feed & { isRead?: boolean };
-        return filters.readStatus === 'read' ? feedData.isRead : !feedData.isRead;
+        return filters.readStatus === 'read' ? feed.isRead : !feed.isRead;
       });
     }
 
     if (filters.sources.length > 0) {
       filtered = filtered.filter(feed => {
-        const feedData = feed as Feed & { metadata?: { source?: { id: string } } };
-        return feedData.metadata?.source?.id && filters.sources.includes(feedData.metadata.source.id);
+        return feed.metadata?.source?.id && filters.sources.includes(feed.metadata.source.id);
       });
     }
 
     if (filters.priority !== 'all') {
       filtered = filtered.filter(feed => {
-        const feedData = feed as Feed & { metadata?: { priority?: string } };
-        return feedData.metadata?.priority === filters.priority;
+        return feed.metadata?.priority === filters.priority;
       });
     }
 
     if (filters.tags.length > 0) {
       filtered = filtered.filter(feed => {
-        const feedData = feed as Feed & { metadata?: { tags?: string[] } };
-        return feedData.metadata?.tags?.some((tag: string) => filters.tags.includes(tag));
+        return feed.metadata?.tags?.some((tag: string) => filters.tags.includes(tag));
       });
     }
 
@@ -321,7 +315,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
             {virtualizer.getVirtualItems().map((virtualItem) => (
               <VirtualizedFeedItem
                 key={virtualItem.key}
-                feed={filteredFeeds[virtualItem.index] as any}
+                feed={filteredFeeds[virtualItem.index]}
                 index={virtualItem.index}
                 onMarkAsRead={handleMarkAsRead}
                 onToggleFavorite={handleToggleFavorite}
