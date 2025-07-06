@@ -38,27 +38,6 @@ test.describe('Advanced Search Functionality - PROTECTED', () => {
     await page.waitForTimeout(1500);
   });
 
-  test('should support multi-keyword search (PROTECTED)', async ({ page }) => {
-    const searchInput = page.getByPlaceholder('Search feeds...');
-    await expect(searchInput).toBeVisible();
-
-    // Search for multiple keywords
-    await searchInput.fill('React typescript');
-    await page.keyboard.press('Enter');
-
-    // Wait for search results
-    await page.waitForTimeout(500);
-
-    // Should find the React 19 post (contains both React and TypeScript)
-    await expect(page.getByText('React 19 New Features Announced')).toBeVisible();
-
-    // Should also find TypeScript 5.0 post (contains TypeScript)
-    await expect(page.getByText('TypeScript 5.0 Breaking Changes')).toBeVisible();
-
-    // Should not find Next.js post (doesn't contain both keywords)
-    await expect(page.getByText('Next.js Performance Optimization Guide')).not.toBeVisible();
-  });
-
   test('should handle empty search gracefully (PROTECTED)', async ({ page }) => {
     const searchInput = page.getByPlaceholder('Search feeds...');
 

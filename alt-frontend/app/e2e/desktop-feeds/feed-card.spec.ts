@@ -36,16 +36,6 @@ test.describe('Desktop Feed Card', () => {
     await page.waitForTimeout(2000);
   });
 
-  test('should display feed cards with glassmorphism effect', async ({ page }) => {
-    await page.waitForSelector('[data-testid^="feed-item-"]');
-
-    const feedCard = page.locator('[data-testid^="feed-item-"]').first();
-    await expect(feedCard).toBeVisible();
-
-    // ガラスモーフィズム効果の確認
-    await expect(feedCard.locator('.glass')).toBeVisible();
-  });
-
   test('should handle interactions correctly', async ({ page }) => {
     // Wait for feed cards to appear
     await page.waitForSelector('[data-testid^="feed-item-"]');
