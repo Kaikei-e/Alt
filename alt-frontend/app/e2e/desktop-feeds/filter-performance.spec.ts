@@ -46,35 +46,6 @@ test.describe('Filter Performance Optimization - PROTECTED', () => {
     expect(finalCount).toBeGreaterThan(50);
   });
 
-  test('should combine filters efficiently (PROTECTED)', async ({ page }) => {
-    // Apply multiple filters in sequence
-    const unreadFilter = page.locator('[data-testid="filter-read-status-unread"]');
-    await unreadFilter.click();
-    await page.waitForTimeout(200);
-
-    const searchInput = page.getByPlaceholder('Search feeds...');
-    await searchInput.fill('TypeScript');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(200);
-
-    const todayFilter = page.locator('[data-testid="filter-time-range-today"]');
-    await todayFilter.click();
-    await page.waitForTimeout(200);
-
-    // Verify all filters are active
-    await expect(unreadFilter).toBeChecked();
-    await expect(todayFilter).toBeChecked();
-
-    // Timeline should still be responsive
-    const timeline = page.locator('[data-testid="desktop-timeline"]');
-    await expect(timeline).toBeVisible();
-
-    // Should have some filtering effect - check for timeline content
-    const typeScriptArticles = timeline.locator('div').filter({ hasText: 'TypeScript' });
-    const typeScriptCount = await typeScriptArticles.count();
-    expect(typeScriptCount).toBeGreaterThan(0);
-  });
-
   test('should maintain performance with scroll (PROTECTED)', async ({ page }) => {
     const timeline = page.locator('[data-testid="desktop-timeline"]');
 

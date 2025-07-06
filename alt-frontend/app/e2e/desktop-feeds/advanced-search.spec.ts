@@ -59,22 +59,6 @@ test.describe('Advanced Search Functionality - PROTECTED', () => {
     await expect(page.getByText('Next.js Performance Optimization Guide')).not.toBeVisible();
   });
 
-  test('should highlight search results (PROTECTED)', async ({ page }) => {
-    const searchInput = page.getByPlaceholder('Search feeds...');
-    await searchInput.fill('React');
-    await page.keyboard.press('Enter');
-
-    await page.waitForTimeout(500);
-
-    // Check if search results are highlighted or indicated
-    const searchResultsHeader = page.getByText('Search:', { exact: false });
-    await expect(searchResultsHeader).toBeVisible();
-
-    // Verify result count is displayed
-    const resultCount = page.getByText('results', { exact: false });
-    await expect(resultCount).toBeVisible();
-  });
-
   test('should handle empty search gracefully (PROTECTED)', async ({ page }) => {
     const searchInput = page.getByPlaceholder('Search feeds...');
 

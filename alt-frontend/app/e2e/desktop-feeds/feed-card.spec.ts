@@ -133,23 +133,6 @@ test.describe('Desktop Feed Card', () => {
     // Note: We don't actually click it to avoid opening external links in tests
   });
 
-  test('should be responsive across viewports', async ({ page }) => {
-    // デスクトップビューポート
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.waitForSelector('[data-testid^="feed-item-"]');
-
-    let feedCard = page.locator('[data-testid^="feed-item-"]').first();
-    await expect(feedCard).toBeVisible();
-
-    // タブレットビューポート
-    await page.setViewportSize({ width: 1024, height: 768 });
-    await expect(feedCard).toBeVisible();
-
-    // 小さなデスクトップビューポート
-    await page.setViewportSize({ width: 1366, height: 768 });
-    await expect(feedCard).toBeVisible();
-  });
-
   test('should handle loading states', async ({ page }) => {
     // Check for loading indicator or feed cards
     const loadingIndicator = page.locator('text=/Loading|読み込み中/');

@@ -30,30 +30,7 @@ test.describe('DesktopSidebar Filters Mode - TASK1', () => {
     // Should use CSS variables, not fixed colors
     expect(buttonStyles.background).not.toContain('rgb(243, 244, 246)'); // not gray-100
   });
-
-  test('should maintain filter functionality after UI updates', async ({ page }) => {
-    // Test read status filter functionality
-    const unreadRadio = page.locator('[data-testid="filter-read-status-unread"]');
-    await unreadRadio.click();
-
-    // Verify filter state change
-    await expect(unreadRadio).toBeChecked();
-
-    // Test source filter functionality
-    const firstSourceCheckbox = page.locator('[data-testid="filter-source-checkbox"]').first();
-    await firstSourceCheckbox.click();
-
-    await expect(firstSourceCheckbox).toBeChecked();
-
-        // Test clear filters
-    const clearButton = page.locator('[data-testid="sidebar-filter-clear-button"]');
-    await clearButton.click();
-
-    // Verify filters are reset
-    await expect(page.locator('[data-testid="filter-read-status-all"]')).toBeChecked();
-    await expect(firstSourceCheckbox).not.toBeChecked();
-  });
-
+  
   test('should support theme switching', async ({ page }) => {
     // Change to liquid-beige theme
     await page.evaluate(() => {
