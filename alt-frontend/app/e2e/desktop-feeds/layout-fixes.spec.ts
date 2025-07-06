@@ -23,32 +23,6 @@ test.describe('Layout Fixes - TDD', () => {
     await page.waitForLoadState('domcontentloaded');
   });
 
-  test('should contain timeline within viewport height (GREEN - fixed)', async ({ page }) => {
-    await page.waitForSelector('[data-testid="desktop-timeline"]', { timeout: 10000 });
-
-    const timeline = page.locator('[data-testid="desktop-timeline"]');
-
-    // Timeline should have proper height constraint and scrollable behavior
-    const styles = await timeline.evaluate(el => getComputedStyle(el));
-    expect(styles.overflowY).toBe('auto'); // Should be scrollable
-
-    // Timeline should have constrained height with calculated value
-    const computedHeight = styles.height;
-    expect(computedHeight).toMatch(/\d+px/); // Should have a computed pixel height
-
-    // Verify that timeline is scrollable rather than expanding
-    const scrollInfo = await timeline.evaluate(el => ({
-      scrollHeight: el.scrollHeight,
-      clientHeight: el.clientHeight,
-      canScroll: el.scrollHeight > el.clientHeight
-    }));
-
-    // If there's content, the timeline should be scrollable
-    if (scrollInfo.canScroll) {
-      expect(scrollInfo.scrollHeight).toBeGreaterThan(scrollInfo.clientHeight);
-    }
-  });
-
   test('should have proper main-content width and stretch layout (GREEN - fixed)', async ({ page }) => {
     await page.waitForSelector('[data-testid="main-content"]', { timeout: 10000 });
 

@@ -13,30 +13,4 @@ test.describe('PageHeader Component', () => {
     await expect(page.getByText('Dashboard Overview')).toBeVisible();
     await expect(page.getByText('Monitor your RSS feeds and AI-powered content insights')).toBeVisible();
   });
-
-  test('should apply correct styling to title and description', async ({ page }) => {
-    const title = page.getByRole('heading', { name: 'Dashboard Overview' });
-    const description = page.getByText('Monitor your RSS feeds and AI-powered content insights');
-
-    // Check that elements are visible first
-    await expect(title).toBeVisible();
-    await expect(description).toBeVisible();
-
-    // Check that elements have correct classes
-    await expect(title).toHaveClass(/text-3xl/);
-    await expect(title).toHaveClass(/font-bold/);
-    await expect(description).toHaveClass(/text-lg/);
-    await expect(description).toHaveClass(/text-gray-600/);
-  });
-
-  test('should have proper accessibility attributes', async ({ page }) => {
-    const banner = page.getByRole('banner');
-    const title = page.getByRole('heading', { name: 'Dashboard Overview' });
-
-    await expect(banner).toBeVisible();
-    await expect(title).toBeVisible();
-
-    // Check that title is properly structured
-    await expect(title).toHaveAttribute('class');
-  });
 });

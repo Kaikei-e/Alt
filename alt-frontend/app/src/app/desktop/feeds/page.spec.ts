@@ -76,26 +76,39 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
   });
 
   test('should handle filter interactions correctly (PROTECTED)', async ({ page }) => {
-    // Test read status filter
-    await page.locator('[data-testid="filter-read-status-unread"]').click();
-    await page.waitForTimeout(300);
+    // Wait for sidebar to be fully loaded
+    await page.waitForSelector('[data-testid="desktop-sidebar-filters"]', { timeout: 10000 });
 
-    // Test feed source filter
+    // Test read status filter using correct selector
+    const unreadFilter = page.locator('[data-testid="sidebar-filter-read-status-unread"]');
+    await expect(unreadFilter).toBeVisible({ timeout: 5000 });
+    await unreadFilter.click();
+    await page.waitForTimeout(500);
+
+    // Test feed source filter using correct selector
     const firstCheckbox = page.locator('[data-testid="filter-source-checkbox"]').first();
+    await expect(firstCheckbox).toBeVisible({ timeout: 5000 });
     await firstCheckbox.click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
 
-    // Test time range filter
-    await page.locator('[data-testid="filter-time-range-today"]').click();
-    await page.waitForTimeout(300);
+    // Test time range filter using correct selector
+    const todayFilter = page.locator('[data-testid="sidebar-filter-time-range-today"]');
+    await expect(todayFilter).toBeVisible({ timeout: 5000 });
+    await todayFilter.click();
+    await page.waitForTimeout(500);
 
-    // Test clear filters
-    await page.locator('[data-testid="sidebar-filter-clear-button"]').click();
-    await page.waitForTimeout(300);
+    // Test clear filters using correct selector
+    const clearButton = page.locator('[data-testid="sidebar-filter-clear-button"]');
+    await expect(clearButton).toBeVisible({ timeout: 5000 });
+    await clearButton.click();
+    await page.waitForTimeout(500);
 
-    // Verify filters are cleared
-    await expect(page.locator('[data-testid="filter-read-status-all"]')).toBeChecked();
-    await expect(page.locator('[data-testid="filter-time-range-all"]')).toBeChecked();
+    // Verify filters are cleared using correct selectors
+    const allReadStatus = page.locator('[data-testid="sidebar-filter-read-status-all"]');
+    const allTimeRange = page.locator('[data-testid="sidebar-filter-time-range-all"]');
+
+    await expect(allReadStatus).toBeChecked();
+    await expect(allTimeRange).toBeChecked();
   });
 
   test('should handle independent timeline scrolling (PROTECTED)', async ({ page }) => {

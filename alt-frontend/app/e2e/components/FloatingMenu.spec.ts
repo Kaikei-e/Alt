@@ -519,7 +519,7 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
       const viewFeedsItem = page
         .getByTestId("bottom-sheet-menu")
-        .getByText("View Feeds");
+        .getByText("Home");
       await viewFeedsItem.click();
 
       await expect(page).toHaveURL("/");

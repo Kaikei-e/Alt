@@ -183,7 +183,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
   // Remove early return for error to allow component to render
 
   return (
-    <VStack gap={4} align="stretch" flex={1} h="100%">
+    <VStack gap={4} align="stretch" flex={1} h="stretch">
       {/* Filter Bar */}
       <FilterBar
         data-testid="filter-bar"
@@ -229,7 +229,7 @@ export const DesktopTimeline: React.FC<DesktopTimelineProps> = React.memo(({
         data-testid="desktop-timeline"
         ref={parentRef}
         flex={1}
-        minH={0}
+        minH="stretch"
         overflowY="scroll"
         overflowX="hidden"
         className="glass"

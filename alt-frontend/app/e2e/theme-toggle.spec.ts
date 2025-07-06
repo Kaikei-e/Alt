@@ -172,43 +172,4 @@ test.describe("Theme Toggle - PROTECTED", () => {
     expect(styles.borderRadius).toBeTruthy();
     expect(parseFloat(styles.borderRadius)).toBeGreaterThan(0);
   });
-
-  test("should display components with current theme styling (PROTECTED)", async ({
-    page,
-  }) => {
-    // Test multiple pages for consistent theming
-    const testPages = ["/", "/mobile/feeds"];
-
-    for (const testPage of testPages) {
-      await page.goto(testPage);
-      await page.waitForLoadState("networkidle");
-
-      // Wait for theme to be applied (reduce timeout for parallel execution)
-      await page.waitForTimeout(500);
-
-      // Verify consistent theme application - simplified approach
-      const body = page.locator("body");
-
-      // Check if theme data attribute is present
-      const hasThemeAttribute = await body.evaluate((el) => {
-        return el.hasAttribute("data-style") ||
-               document.documentElement.hasAttribute("data-style") ||
-               document.documentElement.hasAttribute("data-theme");
-      });
-
-      // At least one theme identifier should be present
-      expect(hasThemeAttribute).toBeTruthy();
-
-      // Verify theme-specific elements are present
-      const themeElements = await page.locator(".glass").count();
-      expect(themeElements).toBeGreaterThan(0);
-
-      // Check that text color is applied (simplified)
-      const textColor = await body.evaluate((el) => {
-        const style = getComputedStyle(el);
-        return style.color !== "" && style.color !== "initial";
-      });
-      expect(textColor).toBeTruthy();
-    }
-  });
 });

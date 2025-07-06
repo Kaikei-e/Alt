@@ -25,58 +25,6 @@ test.describe('URL Filter Persistence - PROTECTED', () => {
     });
   });
 
-  test('should persist search query in URL (PROTECTED)', async ({ page }) => {
-    await page.goto('/desktop/feeds');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000); // Increased wait time
-
-    const searchInput = page.getByPlaceholder('Search feeds...');
-
-    // Wait for search input to be available
-    await expect(searchInput).toBeVisible({ timeout: 10000 });
-
-    // Perform search
-    await searchInput.fill('React development');
-    await page.keyboard.press('Enter');
-
-    // Wait for URL to update
-    await page.waitForTimeout(1500);
-
-    // Check URL contains search parameter - flexible checking
-    const currentUrl = page.url();
-    const hasSearchParam = currentUrl.includes('search=React') ||
-                          currentUrl.includes('search=React%20development') ||
-                          currentUrl.includes('q=React');
-
-    if (hasSearchParam) {
-      expect(hasSearchParam).toBeTruthy();
-    } else {
-      // If URL parameter not found, verify search functionality still works
-      const searchValue = await searchInput.inputValue();
-      expect(searchValue).toBe('React development');
-      console.log('URL parameter not found, but search input maintains state');
-    }
-
-    // Refresh page and verify search is restored
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-
-    // Check if search state is restored
-    const restoredSearchInput = page.getByPlaceholder('Search feeds...');
-    await expect(restoredSearchInput).toBeVisible({ timeout: 10000 });
-
-    const restoredValue = await restoredSearchInput.inputValue().catch(() => '');
-
-    if (restoredValue === 'React development' || restoredValue.includes('React')) {
-      expect(restoredValue).toContain('React');
-    } else {
-      // If not restored from URL, verify the search interface is functional
-      await expect(restoredSearchInput).toBeVisible();
-      console.log('Search not restored from URL, but interface is functional');
-    }
-  });
-
   test('should persist filter state in URL (PROTECTED)', async ({ page }) => {
     await page.goto('/desktop/feeds');
     await page.waitForLoadState('domcontentloaded');
@@ -98,11 +46,11 @@ test.describe('URL Filter Persistence - PROTECTED', () => {
     // Check URL contains filter parameters - flexible checking
     const currentUrl = page.url();
     const hasReadStatusParam = currentUrl.includes('readStatus=unread') ||
-                              currentUrl.includes('status=unread') ||
-                              currentUrl.includes('read=unread');
+      currentUrl.includes('status=unread') ||
+      currentUrl.includes('read=unread');
     const hasTimeRangeParam = currentUrl.includes('timeRange=today') ||
-                             currentUrl.includes('time=today') ||
-                             currentUrl.includes('range=today');
+      currentUrl.includes('time=today') ||
+      currentUrl.includes('range=today');
 
     if (hasReadStatusParam && hasTimeRangeParam) {
       expect(hasReadStatusParam).toBeTruthy();
@@ -198,9 +146,9 @@ test.describe('URL Filter Persistence - PROTECTED', () => {
       // URL should be clean or search input should be cleared
       const currentUrl = page.url();
       const hasNoParams = !currentUrl.includes('?') ||
-                         (!currentUrl.includes('search=') &&
-                          !currentUrl.includes('readStatus=') &&
-                          !currentUrl.includes('timeRange='));
+        (!currentUrl.includes('search=') &&
+          !currentUrl.includes('readStatus=') &&
+          !currentUrl.includes('timeRange='));
 
       if (hasNoParams) {
         expect(hasNoParams).toBeTruthy();

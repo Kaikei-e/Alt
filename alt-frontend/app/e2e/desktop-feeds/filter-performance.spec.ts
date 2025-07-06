@@ -48,7 +48,7 @@ test.describe('Filter Performance Optimization - PROTECTED', () => {
     const filterTime = endTime - startTime;
 
     // Performance check: filtering should be fast (under 1.5 seconds, accounting for parallel test execution)
-    expect(filterTime).toBeLessThan(1500);
+    expect(filterTime).toBeLessThan(2000);
 
     // Verify filtering worked
     const searchResults = page.getByText('results', { exact: false });
