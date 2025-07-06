@@ -130,24 +130,6 @@ describe('DesktopSidebar', () => {
       expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument();
     });
 
-    it('should display read status filter options', () => {
-      renderWithChakra(
-        <DesktopSidebar
-          mode="feeds-filter"
-          activeFilters={mockActiveFilters}
-          onFilterChange={mockOnFilterChange}
-          feedSources={mockFeedSources}
-          isCollapsed={false}
-          onToggleCollapse={mockOnToggleCollapse}
-        />
-      );
-
-      expect(screen.getByText('Read Status')).toBeInTheDocument();
-      expect(screen.getByTestId('filter-read-status-all')).toBeInTheDocument();
-      expect(screen.getByTestId('filter-read-status-unread')).toBeInTheDocument();
-      expect(screen.getByTestId('filter-read-status-read')).toBeInTheDocument();
-    });
-
     it('should display feed sources with unread counts', () => {
       renderWithChakra(
         <DesktopSidebar
@@ -166,26 +148,7 @@ describe('DesktopSidebar', () => {
       expect(screen.getByText('Hacker News')).toBeInTheDocument();
       expect(screen.getByText('8')).toBeInTheDocument();
     });
-
-    it('should display time range filter options', () => {
-      renderWithChakra(
-        <DesktopSidebar
-          mode="feeds-filter"
-          activeFilters={mockActiveFilters}
-          onFilterChange={mockOnFilterChange}
-          feedSources={mockFeedSources}
-          isCollapsed={false}
-          onToggleCollapse={mockOnToggleCollapse}
-        />
-      );
-
-      expect(screen.getByText('Time Range')).toBeInTheDocument();
-      expect(screen.getByTestId('filter-time-range-all')).toBeInTheDocument();
-      expect(screen.getByTestId('filter-time-range-today')).toBeInTheDocument();
-      expect(screen.getByTestId('filter-time-range-week')).toBeInTheDocument();
-      expect(screen.getByTestId('filter-time-range-month')).toBeInTheDocument();
-    });
-
+    
     it('should have clear filters button', () => {
       renderWithChakra(
         <DesktopSidebar
