@@ -4,7 +4,6 @@ import { Box, Flex, Text, HStack, VStack, IconButton, Badge } from "@chakra-ui/r
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { Heart, Bookmark, Clock, ExternalLink, Eye } from "lucide-react";
 import { feedsApi } from "@/lib/api";
-import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 import { Feed } from "@/schema/feed";
 import { DesktopFeed } from "@/types/desktop-feed";
@@ -759,7 +758,7 @@ export default function DesktopTimeline() {
                   fontSize="sm"
                   fontWeight="medium"
                 >
-                  You've reached the end of your feed
+                  You have reached the end of your feed
                 </Text>
               </Box>
             )}
