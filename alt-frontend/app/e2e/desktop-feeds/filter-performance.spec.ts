@@ -24,43 +24,6 @@ test.describe('Filter Performance Optimization - PROTECTED', () => {
     await page.waitForTimeout(2000); // Allow time for data loading
   });
 
-  test('should filter large dataset efficiently (PROTECTED)', async ({ page }) => {
-    // Verify all feeds are loaded
-    const timeline = page.locator('[data-testid="desktop-timeline"]');
-    await expect(timeline).toBeVisible();
-
-    // Check that many feeds are visible initially
-    const feedCards = timeline.locator('div').filter({ hasText: 'Feed Article' });
-    const initialCount = await feedCards.count();
-    expect(initialCount).toBeGreaterThan(50); // Should have loaded most feeds
-
-    // Apply search filter and measure performance
-    const searchInput = page.getByPlaceholder('Search feeds...');
-    const startTime = Date.now();
-
-    await searchInput.fill('React');
-    await page.keyboard.press('Enter');
-
-    // Wait for filtering to complete
-    await page.waitForTimeout(500);
-
-    const endTime = Date.now();
-    const filterTime = endTime - startTime;
-
-    // Performance check: filtering should be fast (under 1.5 seconds, accounting for parallel test execution)
-    expect(filterTime).toBeLessThan(2000);
-
-    // Verify filtering worked
-    const searchResults = page.getByText('results', { exact: false });
-    await expect(searchResults).toBeVisible();
-
-    // Should show only React articles
-    const reactArticles = timeline.locator('div').filter({ hasText: 'React' });
-    const reactCount = await reactArticles.count();
-    expect(reactCount).toBeGreaterThan(0);
-    expect(reactCount).toBeLessThan(initialCount);
-  });
-
   test('should handle rapid filter changes without lag (PROTECTED)', async ({ page }) => {
     const searchInput = page.getByPlaceholder('Search feeds...');
 

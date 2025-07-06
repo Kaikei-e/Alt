@@ -1,4 +1,7 @@
-import { DesktopSidebar } from '../../components/desktop/layout/DesktopSidebar';
+'use client';
+
+import { DesktopSidebar } from '@/components/desktop/layout/DesktopSidebar';
+import { ThemeProvider } from '@/providers/ThemeProvider';
 import { Home, Rss, BarChart3, Settings } from 'lucide-react';
 import { useState } from 'react';
 
@@ -61,47 +64,49 @@ export default function DesktopSidebarTest() {
   ];
 
   return (
-    <div className="h-screen w-64 bg-gray-50">
-      {/* Mode Toggle for Testing */}
-      <div className="p-4 bg-white border-b">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setMode('navigation')}
-            className={`px-3 py-1 rounded text-sm ${
-              mode === 'navigation' ? 'bg-blue-500 text-white' : 'bg-gray-200'
-            }`}
-          >
-            Navigation
-          </button>
-          <button
-            onClick={() => setMode('feeds-filter')}
-            className={`px-3 py-1 rounded text-sm ${
-              mode === 'feeds-filter' ? 'bg-blue-500 text-white' : 'bg-gray-200'
-            }`}
-          >
-            Feeds Filter
-          </button>
+    <ThemeProvider>
+      <div className="h-screen w-64 bg-gray-50">
+        {/* Mode Toggle for Testing */}
+        <div className="p-4 bg-white border-b">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setMode('navigation')}
+              className={`px-3 py-1 rounded text-sm ${
+                mode === 'navigation' ? 'bg-blue-500 text-white' : 'bg-gray-200'
+              }`}
+            >
+              Navigation
+            </button>
+            <button
+              onClick={() => setMode('feeds-filter')}
+              className={`px-3 py-1 rounded text-sm ${
+                mode === 'feeds-filter' ? 'bg-blue-500 text-white' : 'bg-gray-200'
+              }`}
+            >
+              Feeds Filter
+            </button>
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <div>
+          {mode === 'navigation' ? (
+            <DesktopSidebar
+              navItems={mockNavItems}
+              mode="navigation"
+            />
+          ) : (
+            <DesktopSidebar
+              mode="feeds-filter"
+              activeFilters={activeFilters}
+              onFilterChange={setActiveFilters}
+              feedSources={mockFeedSources}
+              isCollapsed={sidebarCollapsed}
+              onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+            />
+          )}
         </div>
       </div>
-
-      {/* Sidebar */}
-      <div>
-        {mode === 'navigation' ? (
-          <DesktopSidebar
-            navItems={mockNavItems}
-            mode="navigation"
-          />
-        ) : (
-          <DesktopSidebar
-            mode="feeds-filter"
-            activeFilters={activeFilters}
-            onFilterChange={setActiveFilters}
-            feedSources={mockFeedSources}
-            isCollapsed={sidebarCollapsed}
-            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          />
-        )}
-      </div>
-    </div>
+    </ThemeProvider>
   );
-}
+} 

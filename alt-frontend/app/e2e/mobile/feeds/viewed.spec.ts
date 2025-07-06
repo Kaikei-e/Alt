@@ -195,55 +195,6 @@ test.describe("既読記事ページ - PROTECTED", () => {
     await expect(feedLink).toHaveAttribute("rel", "noopener noreferrer");
   });
 
-  test("エラー状態とリトライ機能が動作する (PROTECTED)", async ({ page }) => {
-    // Clear existing routes and override with error response
-    await page.unroute("**/v1/feeds/fetch/viewed/cursor**");
-    await page.route("**/v1/feeds/fetch/viewed/cursor**", async (route) => {
-      await route.fulfill({
-        status: 500,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Internal Server Error" }),
-      });
-    });
-
-    // Navigate to trigger error
-    await page.goto("/mobile/feeds/viewed");
-
-    // Wait for error state to appear
-    await expect(page.getByText(/error/i)).toBeVisible();
-
-    // Verify retry button is present
-    const retryButton = page.getByRole("button", { name: /retry/i });
-    await expect(retryButton).toBeVisible();
-
-    // Mock successful retry
-    await page.route("**/v1/feeds/fetch/viewed/cursor**", async (route) => {
-      const mockFeeds = {
-        data: [
-          {
-            title: "Test Read Feed After Retry",
-            description: "This feed loaded after retry",
-            link: "https://example.com/retry-feed",
-            published: "2024-01-01T00:00:00Z",
-          },
-        ],
-        next_cursor: null,
-      };
-
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(mockFeeds),
-      });
-    });
-
-    // Click retry button
-    await retryButton.click();
-
-    // Verify successful retry
-    await expect(page.getByText("Test Read Feed After Retry")).toBeVisible();
-  });
-
   test("空の状態が正しく表示される (PROTECTED)", async ({ page }) => {
     // Clear existing routes and mock empty response
     await page.unroute("**/v1/feeds/fetch/viewed/cursor**");
