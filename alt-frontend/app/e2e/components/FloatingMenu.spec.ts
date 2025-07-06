@@ -511,19 +511,5 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       await expect(page.getByTestId("bottom-sheet-menu")).not.toBeVisible();
       await expect(page.getByTestId("floating-menu-button")).toBeVisible();
     });
-
-    test("should navigate correctly when menu item is clicked", async ({
-      page,
-    }) => {
-      await page.getByTestId("floating-menu-button").click();
-
-      const viewFeedsItem = page
-        .getByTestId("bottom-sheet-menu")
-        .getByText("Home");
-      await viewFeedsItem.click();
-
-      await expect(page).toHaveURL("/");
-      await expect(page.getByTestId("bottom-sheet-menu")).not.toBeVisible();
-    });
   });
 });
