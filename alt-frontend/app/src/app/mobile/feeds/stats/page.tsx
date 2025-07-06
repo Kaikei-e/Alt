@@ -76,7 +76,7 @@ export default function FeedsStatsPage() {
         </Box>
 
         {/* Statistics Cards */}
-        <Flex direction="column" gap={6}>
+        <Flex direction="column" gap={6} overflowY="scroll">
           <StatCard
             label="TOTAL FEEDS"
             value={feedAmount}
