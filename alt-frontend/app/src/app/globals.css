@@ -191,7 +191,6 @@ html {
   -moz-osx-font-smoothing: grayscale;
   height: 100%;
   height: 100dvh;
-  overflow: hidden;
 }
 
 body {
@@ -203,7 +202,6 @@ body {
   background: var(--app-bg);
   /* Fallback solid color so `background-color` is never transparent */
   background-color: var(--background);
-  overflow: hidden;
   color: var(--foreground);
   font-feature-settings:
     "rlig" 1,
