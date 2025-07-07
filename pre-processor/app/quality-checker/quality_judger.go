@@ -57,7 +57,8 @@ type Score struct {
 
 const JudgeTemplate = `
 <start_of_turn>user
-Evaluate how well the Japanese summary captures the English article.
+**CRITICAL**: Output MUST start with "<score>" and end with "</score>"
+**Evaluate how well the Japanese summary captures the Original article. And output the score in the format of <score>coherence:_;relevancy:_;fluency:_;overall:_</score>**
 
 Complete this pattern with scores 1-10:
 <score>coherence:_;relevancy:_;fluency:_;overall:_</score>
