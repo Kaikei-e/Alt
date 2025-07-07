@@ -55,21 +55,29 @@ type Score struct {
 	Overall   float64 `json:"overall"`
 }
 
-const JudgeTemplate = `<start_of_turn>user
-CRITICAL: Output MUST start with "<score>" and end with "</score>"
-NO other text allowed. Format: <score>coherence:X;relevancy:Y;fluency:Z;overall:W</score>
-Range: 1-10 each
-<article>
-%s
-</article>
-<summary>
-%s
-</summary>
+const JudgeTemplate = `
+<start_of_turn>user
+Evaluate how well the Japanese summary captures the English article.
 
-Begin with <score>:
+Complete this pattern with scores 1-10:
+<score>coherence:_;relevancy:_;fluency:_;overall:_</score>
+
+Scoring criteria:
+- coherence: logical flow and structure
+- relevancy: coverage of key information
+- fluency: natural Japanese expression
+- overall: comprehensive quality
+
+ORIGINAL ARTICLE:
+%s
+
+SUMMARIZED TEXT:
+%s
+
+EVALUATE AND COMPLETE:
+<score>coherence:
 <end_of_turn>
 <start_of_turn>model
-<score>
 `
 
 func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
