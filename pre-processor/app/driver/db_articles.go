@@ -68,7 +68,7 @@ func CreateArticle(ctx context.Context, db *pgxpool.Pool, article *models.Articl
 		return err
 	}
 
-	_, err = tx.Exec(ctx, query, article.Title, article.Content, article.URL)
+	_, err = tx.Exec(ctx, query, article.Title, article.Content, article.URL, article.FeedID)
 	if err != nil {
 		err = tx.Rollback(ctx)
 		if err != nil {
@@ -147,8 +147,8 @@ func GetArticlesForSummarization(ctx context.Context, db *pgxpool.Pool, lastCrea
 				FROM   articles a
 				WHERE  NOT EXISTS (
 						SELECT 1
-						FROM   article_summaries s
-						WHERE  s.article_id = a.id
+						FROM article_summaries s
+						WHERE s.article_id = a.id
 				       )
 				ORDER BY a.created_at DESC, a.id DESC
 				LIMIT $1

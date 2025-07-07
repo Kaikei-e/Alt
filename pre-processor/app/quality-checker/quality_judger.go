@@ -55,24 +55,21 @@ type Score struct {
 	Overall   float64 `json:"overall"`
 }
 
-const JudgeTemplate = `
-<start_of_turn>user
-OUTPUT ONLY THIS EXACT FORMAT - NO OTHER TEXT:
-<score>coherence:X;relevancy:Y;fluency:Z;overall:W</score>
-
-Where X,Y,Z,W are single digits 1-10.
-
-Rate this Japanese summary of the English article:
-
-ARTICLE:
+const JudgeTemplate = `<start_of_turn>user
+CRITICAL: Output MUST start with "<score>" and end with "</score>"
+NO other text allowed. Format: <score>coherence:X;relevancy:Y;fluency:Z;overall:W</score>
+Range: 1-10 each
+<article>
 %s
-
-SUMMARY:
+</article>
+<summary>
 %s
+</summary>
 
-NOW OUTPUT THE SCORE LINE ONLY.
+Begin with <score>:
 <end_of_turn>
 <start_of_turn>model
+<score>
 `
 
 func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
