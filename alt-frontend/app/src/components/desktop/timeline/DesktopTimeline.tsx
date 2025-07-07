@@ -535,12 +535,17 @@ export default function DesktopTimeline() {
   );
 
   // Handle marking feed as read
-  const handleMarkAsRead = useCallback((feedId: string) => {
+  const handleMarkAsRead = useCallback(async (feedId: string) => {
     setReadFeeds((prev) => {
       const newSet = new Set(prev);
       newSet.add(feedId);
       return newSet;
     });
+    try {
+      await feedsApi.updateFeedReadStatus(feedId);
+    } catch (err) {
+      console.error('Failed to update feed read status:', err);
+    }
   }, []);
 
   // Retry functionality
