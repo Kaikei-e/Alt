@@ -42,7 +42,7 @@ test:
 # Test with race detection
 test-race:
 	@echo "🏃 Running tests with race detection..."
-	$(GOTEST) -race -v ./...
+	$(GOTEST) -race ./...
 
 # Integration tests (requires real database)
 test-integration:

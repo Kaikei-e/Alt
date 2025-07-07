@@ -31,6 +31,12 @@ func NewArticleRepository(db *pgxpool.Pool, logger *slog.Logger) ArticleReposito
 func (r *articleRepository) Create(ctx context.Context, article *models.Article) error {
 	r.logger.Info("creating article", "url", article.URL)
 
+	// Check for nil database
+	if r.db == nil {
+		r.logger.Error("database connection is nil")
+		return fmt.Errorf("failed to create article: database connection is nil")
+	}
+
 	feedID, err := driver.GetFeedID(ctx, r.db, article.URL)
 	if err != nil {
 		r.logger.Error("failed to get feed ID", "error", err, "url", article.URL)
@@ -53,6 +59,12 @@ func (r *articleRepository) Create(ctx context.Context, article *models.Article)
 // CheckExists checks if articles exist for the given URLs.
 func (r *articleRepository) CheckExists(ctx context.Context, urls []string) (bool, error) {
 	r.logger.Info("checking if articles exist", "count", len(urls))
+
+	// Check for nil database
+	if r.db == nil {
+		r.logger.Error("database connection is nil")
+		return false, fmt.Errorf("failed to check article existence: database connection is nil")
+	}
 
 	// Convert strings to url.URL
 	urlObjs := make([]url.URL, len(urls))
@@ -82,6 +94,12 @@ func (r *articleRepository) CheckExists(ctx context.Context, urls []string) (boo
 // FindForSummarization finds articles that need summarization.
 func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *Cursor, limit int) ([]*models.Article, *Cursor, error) {
 	r.logger.Info("finding articles for summarization", "limit", limit)
+
+	// Check for nil database
+	if r.db == nil {
+		r.logger.Error("database connection is nil")
+		return nil, nil, fmt.Errorf("failed to find articles for summarization: database connection is nil")
+	}
 
 	var lastCreatedAt *time.Time
 
@@ -113,6 +131,12 @@ func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *Cu
 // HasUnsummarizedArticles checks if there are articles without summaries.
 func (r *articleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
 	r.logger.Info("checking for unsummarized articles")
+
+	// Check for nil database
+	if r.db == nil {
+		r.logger.Error("database connection is nil")
+		return false, fmt.Errorf("failed to check for unsummarized articles: database connection is nil")
+	}
 
 	// Use existing driver function
 	hasUnsummarized, err := driver.HasUnsummarizedArticles(ctx, r.db)
