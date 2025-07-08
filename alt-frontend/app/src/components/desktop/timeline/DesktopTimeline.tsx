@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Flex, Text, HStack, VStack, IconButton, Badge } from "@chakra-ui/react";
+import { Box, Flex, Text, HStack, VStack, IconButton, Badge, Toast } from "@chakra-ui/react";
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { Heart, Bookmark, Clock, ExternalLink, Eye } from "lucide-react";
 import { feedsApi } from "@/lib/api";
@@ -71,10 +71,16 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
     window.open(feed.link, '_blank');
   }, [feed.link, isRead, onMarkAsRead]);
 
-  const handleToggleFavorite = useCallback((e: React.MouseEvent) => {
+  const handleToggleFavorite = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsFavorited(!isFavorited);
-  }, [isFavorited]);
+
+    const res = await feedsApi.registerFavoriteFeed(feed.link);
+    if (res.message !== "favorite feed registered") {
+      console.error(res.message);
+      return;
+    }
+    setIsFavorited(true);
+  }, [feed.link]);
 
   const handleToggleBookmark = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -104,7 +110,6 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
       transition="all var(--transition-smooth) ease"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={handleViewArticle}
       opacity={isRead ? 0.7 : 1}
       _hover={{
         transform: 'translateY(-2px)',
@@ -150,19 +155,13 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
             variant="ghost"
             color={isFavorited ? 'var(--accent-primary)' : 'var(--text-secondary)'}
             bg={isFavorited ? 'var(--surface-bg)' : 'transparent'}
-            onClick={handleToggleFavorite}
+            fill={isFavorited ? 'var(--accent-primary)' : 'var(--text-secondary)'}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleToggleFavorite(e);
+            }}
           >
             <Heart size={16} />
-          </IconButton>
-          <IconButton
-            aria-label={isBookmarked ? 'Remove bookmark' : 'Add bookmark'}
-            size="sm"
-            variant="ghost"
-            color={isBookmarked ? 'var(--accent-secondary)' : 'var(--text-secondary)'}
-            bg={isBookmarked ? 'var(--surface-bg)' : 'transparent'}
-            onClick={handleToggleBookmark}
-          >
-            <Bookmark size={16} />
           </IconButton>
         </HStack>
       </Flex>
@@ -170,7 +169,9 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
       {/* Card Main Content */}
       <VStack gap={4} align="stretch">
         {/* Title */}
-        <HStack gap={3} align="flex-start">
+        <HStack gap={3} align="flex-start" outline={isHovered ? '1px solid var(--accent-primary)' : 'none'}
+          rounded={isHovered ? 'var(--radius-lg)' : 'none'}
+        >
           <Text fontSize="lg" color={getPriorityColor(feed.metadata.priority)}>
             {feed.metadata.priority === 'high' && '🔥'}
             {feed.metadata.priority === 'medium' && '📈'}
@@ -182,6 +183,7 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
             color="var(--text-primary)"
             lineHeight="1.4"
             flex={1}
+            onClick={handleViewArticle}
           >
             {feed.title}
           </Text>
