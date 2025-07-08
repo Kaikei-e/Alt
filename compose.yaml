@@ -282,7 +282,7 @@ services:
       deploy:
         resources:
           limits:
-            memory: 10G
+            memory: 15G
           reservations:
             memory: 8G
       tty: true
