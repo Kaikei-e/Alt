@@ -57,26 +57,18 @@ type Score struct {
 
 const JudgeTemplate = `
 <start_of_turn>user
-**CRITICAL**: Output MUST start with "<score>" and end with "</score>"
-**Evaluate how well the Japanese summary captures the Original article. And output the score in the format of <score>coherence:_;relevancy:_;fluency:_;overall:_</score>**
+**FORBIDDEN: Any text except the score pattern**
+**REQUIRED THIS SCORE PATTERN: <score>coherence:X;relevancy:X;fluency:X;overall:X</score>**
+**X is a number between 1 and 10**
 
-Complete this pattern with scores 1-10:
-<score>coherence:_;relevancy:_;fluency:_;overall:_</score>
+**DO NOT write "Okay" or any explanation.**
+**ONLY output the score pattern.**
 
-Scoring criteria:
-- coherence: logical flow and structure
-- relevancy: coverage of key information
-- fluency: natural Japanese expression
-- overall: comprehensive quality
+Article: %s
+Summary: %s
 
-ORIGINAL ARTICLE:
-%s
-
-SUMMARIZED TEXT:
-%s
-
-EVALUATE AND COMPLETE THE PATTERN:
-<score>coherence:
+OUTPUT ONLY THIS:
+<score>coherence:X;relevancy:X;fluency:X;overall:X</score>
 <end_of_turn>
 <start_of_turn>model
 `
@@ -86,7 +78,7 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 	opts := optionsModel{
 		Temperature: 0.0,  // Very low temperature for more deterministic output
 		TopP:        0.5,  // More restrictive sampling
-		NumPredict:  80,   // Shorter to force concise responses
+		NumPredict:  60,   // Shorter to force concise responses
 		NumCtx:      2048, // Smaller context to focus on the task
 		Stop:        []string{"</score>", "\n\n", "ARTICLE:", "SUMMARY:", "<|user|>", "<|assistant|>"},
 	}
@@ -151,16 +143,23 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 	if err != nil {
 		logger.Logger.Error("Failed to parse score, attempting fallback", "error", err, "response", responseText)
 
-		// Fallback: if the model is consistently failing, assign low scores
-		fallbackScore := &Score{
+		// Try emergency fallback parsing strategies
+		fallbackScore := attemptEmergencyParsing(responseText)
+		if fallbackScore != nil {
+			logger.Logger.Info("Successfully parsed scores using emergency fallback", "scores", fallbackScore)
+			return fallbackScore, nil
+		}
+
+		// Final fallback: if the model is consistently failing, assign low scores
+		finalFallbackScore := &Score{
 			Coherence: 1.0,
 			Relevan:   1.0,
 			Fluency:   1.0,
 			Overall:   1.0,
 		}
-		logger.Logger.Warn("Using fallback scores due to parsing failure", "scores", fallbackScore)
+		logger.Logger.Warn("Using final fallback scores due to parsing failure", "scores", finalFallbackScore)
 
-		return fallbackScore, nil
+		return finalFallbackScore, nil
 	}
 
 	// Try to parse the extracted JSON
@@ -174,34 +173,86 @@ func parseScore(response string) (Score, error) {
 	logger.Logger.Info("Parsing response", "original_response", response)
 
 	// Try extraction strategies in order of preference
-	extractors := []func(string) (Score, bool){
-		extractFromScoreTags,
-		extractFromNamedFormat,
-		extractFromNumberSequence,
-		extractFromAnyNumbers,
+	extractors := []struct {
+		name string
+		fn   func(string) (Score, bool)
+	}{
+		{"score_tags", extractFromScoreTags},
+		{"named_format", extractFromNamedFormat},
+		{"json_format", extractFromJSONFormat},
+		{"number_sequence", extractFromNumberSequence},
+		{"line_by_line", extractFromLineByLine},
+		{"bracketed_numbers", extractFromBracketedNumbers},
+		{"flexible_delimiters", extractFromFlexibleDelimiters},
+		{"any_numbers", extractFromAnyNumbers},
 	}
 
-	for i, extractor := range extractors {
-		if score, ok := extractor(response); ok {
-			logger.Logger.Info("Successfully extracted scores", "strategy", i, "scores", score)
+	for _, extractor := range extractors {
+		if score, ok := extractor.fn(response); ok {
+			logger.Logger.Info("Successfully extracted scores", "strategy", extractor.name, "scores", score)
 			return score, nil
 		}
+		logger.Logger.Debug("Failed to extract scores", "strategy", extractor.name, "response", response)
 	}
 
 	logger.Logger.Error("Could not extract scores from response", "response", response)
-
 	return Score{}, fmt.Errorf("could not extract scores from response: %s", response)
+}
+
+// attemptEmergencyParsing tries very aggressive parsing strategies as a last resort
+func attemptEmergencyParsing(response string) *Score {
+	// Remove all non-alphanumeric characters except dots and spaces
+	cleaned := regexp.MustCompile(`[^\w\s\.]`).ReplaceAllString(response, " ")
+
+	// Find all decimal numbers in the response
+	re := regexp.MustCompile(`\b(\d+(?:\.\d+)?)\b`)
+	numbers := re.FindAllString(cleaned, -1)
+
+	// If we have at least 4 numbers, use the first 4
+	if len(numbers) >= 4 {
+		if score, ok := buildScore(numbers[0], numbers[1], numbers[2], numbers[3]); ok {
+			logger.Logger.Info("Emergency parsing successful", "numbers", numbers[:4], "scores", score)
+			return &score
+		}
+	}
+
+	// If we have at least 1 number, use it for all scores
+	if len(numbers) >= 1 {
+		score := numbers[0]
+		if builtScore, ok := buildScore(score, score, score, score); ok {
+			logger.Logger.Info("Emergency parsing with single score", "score", score, "scores", builtScore)
+			return &builtScore
+		}
+	}
+
+	// Try to find any single digit that could be a score
+	singleDigitRe := regexp.MustCompile(`\b([1-9])\b`)
+	singleDigits := singleDigitRe.FindAllString(response, -1)
+	if len(singleDigits) >= 1 {
+		score := singleDigits[0]
+		if builtScore, ok := buildScore(score, score, score, score); ok {
+			logger.Logger.Info("Emergency parsing with single digit", "digit", score, "scores", builtScore)
+			return &builtScore
+		}
+	}
+
+	logger.Logger.Warn("All emergency parsing strategies failed", "response", response)
+	return nil
 }
 
 // extractFromScoreTags tries to extract scores from <score>...</score> tags.
 func extractFromScoreTags(response string) (Score, bool) {
 	patterns := []string{
-		`<score>(.*?)</score>`, // With closing tag
-		`<score>([^<\n]+)`,     // Without closing tag
+		`<score>(.*?)</score>`,        // With closing tag
+		`<score>([^<\n]+)`,            // Without closing tag
+		`\*\*score\*\*[:\s]*([^\n]+)`, // **score**: format
+		`score\s*:\s*([^\n]+)`,        // score: format
+		`\[score\]([^\n]+)`,           // [score] format
+		`(?i)score\s*=\s*([^\n]+)`,    // score = format
 	}
 
 	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
+		re := regexp.MustCompile(`(?i)` + pattern)
 		if matches := re.FindStringSubmatch(response); len(matches) > 1 {
 			content := strings.TrimSpace(matches[1])
 			if score, ok := parseScoreContent(content); ok {
@@ -216,11 +267,78 @@ func extractFromScoreTags(response string) (Score, bool) {
 // extractFromNamedFormat tries to extract from named format like "coherence:5;relevancy:6...".
 func extractFromNamedFormat(response string) (Score, bool) {
 	// Look for named scores with flexible separators and spacing
-	pattern := `coherence\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,]*relevancy\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,]*fluency\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,]*overall\s*[:=]\s*(\d+(?:\.\d+)?)`
-	re := regexp.MustCompile(`(?i)` + pattern) // Case insensitive
+	patterns := []string{
+		`coherence\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,]*relevancy\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,]*fluency\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,]*overall\s*[:=]\s*(\d+(?:\.\d+)?)`,
+		`coherence\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,|/\-_]*relevancy\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,|/\-_]*fluency\s*[:=]\s*(\d+(?:\.\d+)?)[;\s,|/\-_]*overall\s*[:=]\s*(\d+(?:\.\d+)?)`,
+		`coherence[:\s]*(\d+(?:\.\d+)?)[^0-9]*relevancy[:\s]*(\d+(?:\.\d+)?)[^0-9]*fluency[:\s]*(\d+(?:\.\d+)?)[^0-9]*overall[:\s]*(\d+(?:\.\d+)?)`,
+		`(\d+(?:\.\d+)?)[^\d]*coherence[^0-9]*(\d+(?:\.\d+)?)[^\d]*relevancy[^0-9]*(\d+(?:\.\d+)?)[^\d]*fluency[^0-9]*(\d+(?:\.\d+)?)[^\d]*overall`,
+	}
 
-	if matches := re.FindStringSubmatch(response); len(matches) == 5 {
-		return buildScore(matches[1], matches[2], matches[3], matches[4])
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern) // Case insensitive
+		if matches := re.FindStringSubmatch(response); len(matches) == 5 {
+			return buildScore(matches[1], matches[2], matches[3], matches[4])
+		}
+	}
+
+	// Try alternative approach - find all named scores separately
+	return extractNamedScoresFlexible(response)
+}
+
+// extractNamedScoresFlexible tries to find each named score separately with flexible matching
+func extractNamedScoresFlexible(response string) (Score, bool) {
+	scoreMap := make(map[string]string)
+
+	// Define patterns for each score type with very flexible matching
+	scorePatterns := map[string][]string{
+		"coherence": {
+			`(?i)coherence\s*[:=]\s*(\d+(?:\.\d+)?)`,
+			`(?i)coherence\s*[:=]?\s*(\d+(?:\.\d+)?)`,
+			`(?i)coherence[^\d]*(\d+(?:\.\d+)?)`,
+		},
+		"relevancy": {
+			`(?i)relevancy\s*[:=]\s*(\d+(?:\.\d+)?)`,
+			`(?i)relevancy\s*[:=]?\s*(\d+(?:\.\d+)?)`,
+			`(?i)relevancy[^\d]*(\d+(?:\.\d+)?)`,
+			`(?i)relevance\s*[:=]\s*(\d+(?:\.\d+)?)`,
+		},
+		"fluency": {
+			`(?i)fluency\s*[:=]\s*(\d+(?:\.\d+)?)`,
+			`(?i)fluency\s*[:=]?\s*(\d+(?:\.\d+)?)`,
+			`(?i)fluency[^\d]*(\d+(?:\.\d+)?)`,
+		},
+		"overall": {
+			`(?i)overall\s*[:=]\s*(\d+(?:\.\d+)?)`,
+			`(?i)overall\s*[:=]?\s*(\d+(?:\.\d+)?)`,
+			`(?i)overall[^\d]*(\d+(?:\.\d+)?)`,
+			`(?i)total\s*[:=]\s*(\d+(?:\.\d+)?)`,
+		},
+	}
+
+	// Try to find each score
+	for scoreName, patterns := range scorePatterns {
+		for _, pattern := range patterns {
+			re := regexp.MustCompile(pattern)
+			if matches := re.FindStringSubmatch(response); len(matches) > 1 {
+				key := scoreName
+				if key == "relevancy" {
+					key = "relevan" // Match struct field name
+				}
+				scoreMap[key] = matches[1]
+				break
+			}
+		}
+	}
+
+	// Check if we have all required scores
+	if coherence, ok1 := scoreMap["coherence"]; ok1 {
+		if relevan, ok2 := scoreMap["relevan"]; ok2 {
+			if fluency, ok3 := scoreMap["fluency"]; ok3 {
+				if overall, ok4 := scoreMap["overall"]; ok4 {
+					return buildScore(coherence, relevan, fluency, overall)
+				}
+			}
+		}
 	}
 
 	return Score{}, false
@@ -246,6 +364,111 @@ func extractFromAnyNumbers(response string) (Score, bool) {
 
 	if len(numbers) >= 4 {
 		return buildScore(numbers[0], numbers[1], numbers[2], numbers[3])
+	}
+
+	return Score{}, false
+}
+
+// extractFromJSONFormat tries to extract scores from JSON format
+func extractFromJSONFormat(response string) (Score, bool) {
+	// Look for JSON-like patterns
+	patterns := []string{
+		`\{[^}]*"coherence"\s*:\s*(\d+(?:\.\d+)?)[^}]*"relevancy"\s*:\s*(\d+(?:\.\d+)?)[^}]*"fluency"\s*:\s*(\d+(?:\.\d+)?)[^}]*"overall"\s*:\s*(\d+(?:\.\d+)?)[^}]*\}`,
+		`\{[^}]*coherence[^:]*:\s*(\d+(?:\.\d+)?)[^}]*relevancy[^:]*:\s*(\d+(?:\.\d+)?)[^}]*fluency[^:]*:\s*(\d+(?:\.\d+)?)[^}]*overall[^:]*:\s*(\d+(?:\.\d+)?)[^}]*\}`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if matches := re.FindStringSubmatch(response); len(matches) == 5 {
+			return buildScore(matches[1], matches[2], matches[3], matches[4])
+		}
+	}
+
+	return Score{}, false
+}
+
+// extractFromLineByLine tries to extract scores from line-by-line format
+func extractFromLineByLine(response string) (Score, bool) {
+	lines := strings.Split(response, "\n")
+	scoreMap := make(map[string]string)
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Try to match patterns like "Coherence: 5" or "- Coherence: 5"
+		patterns := []string{
+			`(?i)^\s*-?\s*coherence\s*[:=]\s*(\d+(?:\.\d+)?)`,
+			`(?i)^\s*-?\s*relevancy\s*[:=]\s*(\d+(?:\.\d+)?)`,
+			`(?i)^\s*-?\s*fluency\s*[:=]\s*(\d+(?:\.\d+)?)`,
+			`(?i)^\s*-?\s*overall\s*[:=]\s*(\d+(?:\.\d+)?)`,
+		}
+
+		keys := []string{"coherence", "relevancy", "fluency", "overall"}
+
+		for i, pattern := range patterns {
+			re := regexp.MustCompile(pattern)
+			if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+				key := keys[i]
+				if key == "relevancy" {
+					key = "relevan" // Match struct field name
+				}
+				scoreMap[key] = matches[1]
+			}
+		}
+	}
+
+	// Check if we have all required scores
+	if coherence, ok1 := scoreMap["coherence"]; ok1 {
+		if relevan, ok2 := scoreMap["relevan"]; ok2 {
+			if fluency, ok3 := scoreMap["fluency"]; ok3 {
+				if overall, ok4 := scoreMap["overall"]; ok4 {
+					return buildScore(coherence, relevan, fluency, overall)
+				}
+			}
+		}
+	}
+
+	return Score{}, false
+}
+
+// extractFromBracketedNumbers tries to extract numbers from various bracket formats
+func extractFromBracketedNumbers(response string) (Score, bool) {
+	// Look for numbers in brackets, parentheses, or other containers
+	patterns := []string{
+		`\[(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\]`,
+		`\((\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\)`,
+		`\{(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\}`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		if matches := re.FindStringSubmatch(response); len(matches) == 5 {
+			return buildScore(matches[1], matches[2], matches[3], matches[4])
+		}
+	}
+
+	return Score{}, false
+}
+
+// extractFromFlexibleDelimiters tries to extract with very flexible delimiter handling
+func extractFromFlexibleDelimiters(response string) (Score, bool) {
+	// Remove common noise words and characters
+	cleaned := regexp.MustCompile(`(?i)(score|scores|result|results|analysis|evaluation)[:=]?\s*`).ReplaceAllString(response, "")
+
+	// Look for any 4 numbers with very flexible delimiters
+	patterns := []string{
+		`(\d+(?:\.\d+)?)\s*[;\s,|/\-_]+\s*(\d+(?:\.\d+)?)\s*[;\s,|/\-_]+\s*(\d+(?:\.\d+)?)\s*[;\s,|/\-_]+\s*(\d+(?:\.\d+)?)`,
+		`(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		if matches := re.FindStringSubmatch(cleaned); len(matches) == 5 {
+			return buildScore(matches[1], matches[2], matches[3], matches[4])
+		}
 	}
 
 	return Score{}, false
