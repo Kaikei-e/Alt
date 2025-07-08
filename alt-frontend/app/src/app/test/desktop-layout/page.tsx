@@ -1,3 +1,5 @@
+"use client";
+
 import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import { Home, Rss, BarChart3, Settings } from "lucide-react";

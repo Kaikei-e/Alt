@@ -42,7 +42,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
     );
   }
 
-  const { today, week, streak } = analytics;
+  const { today, week } = analytics;
 
   return (
     <VStack gap={4} align="stretch">
@@ -167,7 +167,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
                   0.3 +
                   (day.articles /
                     Math.max(...week.dailyBreakdown.map((d) => d.articles))) *
-                    0.7
+                  0.7
                 }
                 borderRadius="var(--radius-xs)"
                 h={`${(day.articles / Math.max(...week.dailyBreakdown.map((d) => d.articles))) * 100}%`}
@@ -175,60 +175,6 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               />
             ))}
           </HStack>
-        </VStack>
-      </Box>
-
-      {/* 読書ストリーク */}
-      <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-        <Text
-          fontSize="sm"
-          fontWeight="bold"
-          color="var(--text-primary)"
-          mb={3}
-        >
-          🔥 Reading Streak
-        </Text>
-
-        <VStack gap={3}>
-          <HStack gap={2}>
-            <Text
-              fontSize="2xl"
-              fontWeight="bold"
-              color="var(--accent-primary)"
-            >
-              {streak.current}
-            </Text>
-            <Text fontSize="sm" color="var(--text-secondary)">
-              days
-            </Text>
-          </HStack>
-
-          <VStack gap={1}>
-            <HStack justify="space-between" w="full">
-              <Text fontSize="xs" color="var(--text-secondary)">
-                Best:
-              </Text>
-              <Text
-                fontSize="xs"
-                color="var(--text-primary)"
-                fontWeight="medium"
-              >
-                {streak.longest} days
-              </Text>
-            </HStack>
-            <HStack justify="space-between" w="full">
-              <Text fontSize="xs" color="var(--text-secondary)">
-                Last read:
-              </Text>
-              <Text
-                fontSize="xs"
-                color="var(--text-primary)"
-                fontWeight="medium"
-              >
-                {new Date(streak.lastReadDate).toLocaleDateString()}
-              </Text>
-            </HStack>
-          </VStack>
         </VStack>
       </Box>
 

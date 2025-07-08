@@ -87,7 +87,7 @@ export default function DesktopHome() {
   const quickActions = [
     { id: 1, label: "Add Feed", icon: Plus, href: "/mobile/feeds/register" },
     { id: 2, label: "Search", icon: Search, href: "/mobile/articles/search" },
-    { id: 3, label: "Browse", icon: Rss, href: "/mobile/feeds" },
+    { id: 3, label: "Browse", icon: Rss, href: "/desktop/feeds" },
     { id: 4, label: "Bookmarks", icon: Bookmark, href: "/mobile/bookmarks" },
   ];
 
@@ -184,25 +184,6 @@ export default function DesktopHome() {
                 </ChakraLink>
               ))}
             </VStack>
-
-            {/* User Profile Section */}
-            <Box
-              p={4}
-              className="glass"
-              borderRadius="var(--radius-lg)"
-              border="1px solid var(--surface-border)"
-            >
-              <Text
-                fontSize="sm"
-                fontWeight="medium"
-                color="var(--text-primary)"
-              >
-                Welcome back!
-              </Text>
-              <Text fontSize="xs" color="var(--text-muted)" mt={1}>
-                Dashboard v2.0
-              </Text>
-            </Box>
           </VStack>
         </Box>
 

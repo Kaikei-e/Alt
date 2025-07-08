@@ -1,6 +1,5 @@
 import React from "react";
-import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, Rss, FileText, Search, Settings } from "lucide-react";
 import {
   Box,
   VStack,
@@ -9,7 +8,10 @@ import {
   Flex,
   IconButton,
   Badge,
+  Link as ChakraLink,
+  Icon,
 } from "@chakra-ui/react";
+import NextLink from "next/link";
 
 interface NavItem {
   id: number;
@@ -35,6 +37,8 @@ interface FilterState {
   timeRange: "all" | "today" | "week" | "month";
 }
 
+type mode = "navigation" | "feeds-filter";
+
 interface DesktopSidebarProps {
   // Navigation props
   navItems?: NavItem[];
@@ -50,8 +54,31 @@ interface DesktopSidebarProps {
   onToggleCollapse?: () => void;
 
   // Mode prop to determine which interface to use
-  mode?: "navigation" | "feeds-filter";
+  mode?: mode;
 }
+
+const defaultSidebarNavItems = [
+  {
+    id: 1,
+    label: "Dashboard",
+    icon: Home,
+    href: "/desktop/home",
+    active: true,
+  },
+  { id: 2, label: "Feeds", icon: Rss, href: "/desktop/feeds" },
+  { id: 3, label: "Articles", icon: FileText, href: "/desktop/articles" },
+  { id: 4, label: "Search", icon: Search, href: "/desktop/articles/search" },
+  { id: 5, label: "Settings", icon: Settings, href: "/desktop/settings" },
+];
+
+export const DefaultSidebarProps: DesktopSidebarProps = {
+  navItems: defaultSidebarNavItems,
+  logoText: "Alt RSS",
+  logoSubtext: "Feed Reader",
+  isCollapsed: false,
+  onToggleCollapse: () => { },
+  mode: "navigation",
+};
 
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   navItems = [],
@@ -232,8 +259,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                             source.id,
                           )
                             ? activeFilters.sources.filter(
-                                (id) => id !== source.id,
-                              )
+                              (id) => id !== source.id,
+                            )
                             : [...(activeFilters?.sources || []), source.id];
                           onFilterChange?.({
                             ...activeFilters!,
@@ -384,59 +411,83 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
   // Default navigation mode
   return (
-    <Box
-      className="glass"
-      h="full"
-      p="var(--space-4)"
-      data-testid="desktop-sidebar"
-    >
-      {/* Logo Section */}
-      <Box mb={8}>
-        <Text
-          fontSize="2xl"
-          fontWeight="bold"
-          color="var(--text-primary)"
-          mb={1}
-        >
-          {logoText}
-        </Text>
-        <Text fontSize="sm" color="var(--text-secondary)">
-          {logoSubtext}
-        </Text>
-      </Box>
+    <Flex minH="100vh">
+      <Box
+        w="250px"
+        minH="100vh"
+        p={6}
+        className="glass"
+        h="full"
+        borderRadius="0"
+        borderRight="1px solid var(--surface-border)"
+        position="fixed"
+        left={0}
+        top={0}
+        bg="var(--surface-bg)"
+        backdropFilter="blur(var(--surface-blur))"
+        data-testid="desktop-sidebar"
+      >
+        {/* Logo Section */}
+        <VStack align="stretch" gap={8} h="full">
+          <Box py={4}>
+            <Text
+              fontSize="xl"
+              fontWeight="bold"
+              bgGradient="var(--accent-gradient)"
+              bgClip="text"
+              className="gradient-text"
+            >
+              {logoText}
+            </Text>
+            <Text fontSize="sm" color="var(--text-muted)" mt={1}>
+              {logoSubtext}
+            </Text>
+          </Box>
 
-      {/* Navigation */}
-      <Box as="nav" flex={1} aria-label="Main navigation">
-        <VStack gap={2} align="stretch">
-          {navItems.map((item) => (
-            <Box key={item.id}>
-              <Link href={item.href} style={{ textDecoration: "none" }}>
-                <Flex
-                  align="center"
-                  gap={3}
-                  px={4}
-                  py={3}
-                  borderRadius="var(--radius-md)"
-                  bg={item.active ? "var(--surface-hover)" : "transparent"}
-                  color={
-                    item.active ? "var(--alt-primary)" : "var(--text-secondary)"
-                  }
-                  className={item.active ? "active" : ""}
-                  _hover={{
-                    bg: "var(--surface-hover)",
-                    color: "var(--alt-primary)",
-                    transform: "translateY(-2px)",
-                  }}
-                  transition="all var(--transition-speed) ease"
+          {/* Navigation */}
+          <VStack gap={2} align="stretch" aria-label="Main navigation">
+            {navItems.map((item) => (
+              <Box key={item.id}>
+                <ChakraLink
+                  as={NextLink}
+                  href={item.href}
+                  textDecoration="none"
+                  _hover={{ textDecoration: "none" }}
                 >
-                  <item.icon size={20} />
-                  <Text fontWeight="medium">{item.label}</Text>
-                </Flex>
-              </Link>
-            </Box>
-          ))}
+                  <Flex
+                    align="center"
+                    gap={3}
+                    p={4}
+                    h="52px"
+                    w="full"
+                    borderRadius="var(--radius-md)"
+                    bg={item.active ? "var(--surface-hover)" : "transparent"}
+                    border="1px solid"
+                    borderColor={
+                      item.active ? "var(--alt-primary)" : "transparent"
+                    }
+                    color={
+                      item.active ? "var(--alt-primary)" : "var(--text-secondary)"
+                    }
+                    transition="all var(--transition-speed) ease"
+                    className={item.active ? "active" : ""}
+                    _hover={{
+                      bg: "var(--surface-hover)",
+                      transform: "translateX(4px)",
+                      borderColor: "var(--alt-primary)",
+                    }}
+                  >
+                    <Icon as={item.icon} boxSize={5} />
+                    <Text fontSize="sm" fontWeight="medium">
+                      {item.label}
+                    </Text>
+                  </Flex>
+                </ChakraLink>
+              </Box>
+            ))}
+          </VStack>
         </VStack>
       </Box>
-    </Box>
+    </Flex>
   );
 };
