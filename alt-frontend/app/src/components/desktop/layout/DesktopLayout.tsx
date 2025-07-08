@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Flex, Grid, GridItem } from "@chakra-ui/react";
+import { Box, Flex } from "@chakra-ui/react";
 import { DesktopSidebar } from "./DesktopSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
