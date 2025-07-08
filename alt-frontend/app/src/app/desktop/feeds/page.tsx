@@ -15,6 +15,11 @@ const mockStats = {
   weeklyAverage: 45
 };
 
+const mockFeedSources = [
+  { id: 'techcrunch', name: 'TechCrunch', icon: '📰', unreadCount: 12, category: 'tech' },
+  { id: 'hackernews', name: 'Hacker News', icon: '🔥', unreadCount: 8, category: 'tech' }
+];
+
 // Loading fallback
 const LoadingFallback = () => (
   <Box 
@@ -70,7 +75,7 @@ function DesktopFeedsContent() {
           }}
           onFilterChange={() => {}}
           onClearAll={() => {}}
-          feedSources={[]}
+          feedSources={mockFeedSources}
           isCollapsed={false}
           onToggleCollapse={() => {}}
         />
