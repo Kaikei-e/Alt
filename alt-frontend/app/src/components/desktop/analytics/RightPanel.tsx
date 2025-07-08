@@ -67,11 +67,13 @@ export const RightPanel: React.FC = () => {
           fontSize="sm"
           fontWeight="medium"
           onClick={() => setActiveTab("analytics")}
+          transition="all 0.2s ease"
           _hover={{
             bg:
               activeTab === "analytics"
                 ? "var(--accent-primary)"
-                : "var(--surface-hover)",
+                : "var(--surface-bg)",
+            opacity: activeTab === "analytics" ? 1 : 0.8,
           }}
         >
           📊 Analytics
@@ -90,11 +92,13 @@ export const RightPanel: React.FC = () => {
           fontSize="sm"
           fontWeight="medium"
           onClick={() => setActiveTab("actions")}
+          transition="all 0.2s ease"
           _hover={{
             bg:
               activeTab === "actions"
                 ? "var(--accent-primary)"
-                : "var(--surface-hover)",
+                : "var(--surface-bg)",
+            opacity: activeTab === "actions" ? 1 : 0.8,
           }}
         >
           ⚡ Actions
