@@ -22,7 +22,13 @@ export const RightPanel: React.FC = () => {
   const { sources, isLoading: sourcesLoading } = useSourceAnalytics();
 
   return (
-    <Box className="glass" borderRadius="var(--radius-xl)" overflow="hidden">
+    <Flex
+      direction="column"
+      h="100vh"
+      className="glass"
+      borderRadius="var(--radius-xl)"
+      overflow="hidden"
+    >
       {/* Header with Theme Toggle */}
       <Flex
         justify="space-between"
@@ -30,6 +36,7 @@ export const RightPanel: React.FC = () => {
         p={3}
         bg="var(--surface-bg)"
         borderBottom="1px solid var(--surface-border)"
+        flexShrink={0}
       >
         <Box fontSize="sm" color="var(--text-muted)" fontWeight="medium">
           Analytics
@@ -42,6 +49,7 @@ export const RightPanel: React.FC = () => {
         bg="var(--surface-bg)"
         borderBottom="1px solid var(--surface-border)"
         gap={0}
+        flexShrink={0}
       >
         <Button
           flex={1}
@@ -93,8 +101,29 @@ export const RightPanel: React.FC = () => {
         </Button>
       </HStack>
 
-      {/* Tab Content */}
-      <Box overflowY="scroll">
+      {/* Tab Content - Scrollable */}
+      <Box
+        flex={1}
+        overflowY="auto"
+        overflowX="hidden"
+        css={{
+          "&::-webkit-scrollbar": {
+            width: "6px",
+          },
+          "&::-webkit-scrollbar-track": {
+            background: "var(--surface-secondary)",
+            borderRadius: "3px",
+          },
+          "&::-webkit-scrollbar-thumb": {
+            background: "var(--accent-primary)",
+            borderRadius: "3px",
+            opacity: 0.7,
+          },
+          "&::-webkit-scrollbar-thumb:hover": {
+            opacity: 1,
+          },
+        }}
+      >
         {activeTab === "analytics" && (
           <VStack gap={4} p={4} align="stretch">
             <ReadingAnalytics
@@ -116,6 +145,6 @@ export const RightPanel: React.FC = () => {
           </VStack>
         )}
       </Box>
-    </Box>
+    </Flex>
   );
 };
