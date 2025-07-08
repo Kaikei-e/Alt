@@ -94,11 +94,8 @@ const DesktopStyledFeedCard = ({
 
 
   const handleViewArticle = useCallback(() => {
-    if (!isRead) {
-      onMarkAsRead();
-    }
     window.open(feed.link, "_blank");
-  }, [feed.link, isRead, onMarkAsRead]);
+  }, [feed.link]);
 
   const handleToggleFavorite = useCallback(
     async (e: React.MouseEvent) => {
