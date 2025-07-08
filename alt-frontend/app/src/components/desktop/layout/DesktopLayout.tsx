@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Flex } from "@chakra-ui/react";
+import { Box, Flex, Grid, GridItem } from "@chakra-ui/react";
 import { DesktopSidebar } from "./DesktopSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -68,7 +68,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
         )}
 
         {/* Main Content Area */}
-        <Box flex="1" ml={showSidebar ? "250px" : "0"} mr={showRightPanel ? "320px" : "0"}>
+        <Box flex="1" ml={showSidebar ? "250px" : "0"} mr={showRightPanel ? "400px" : "0"}>
           {children}
         </Box>
 
