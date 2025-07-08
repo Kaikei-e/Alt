@@ -75,7 +75,7 @@ ORIGINAL ARTICLE:
 SUMMARIZED TEXT:
 %s
 
-EVALUATE AND COMPLETE:
+EVALUATE AND COMPLETE THE PATTERN:
 <score>coherence:
 <end_of_turn>
 <start_of_turn>model
