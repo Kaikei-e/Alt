@@ -2,7 +2,6 @@ export interface ReadingAnalytics {
   today: DailyStats;
   week: WeeklyStats;
   month: MonthlyStats;
-  streak: ReadingStreak;
 }
 
 export interface DailyStats {

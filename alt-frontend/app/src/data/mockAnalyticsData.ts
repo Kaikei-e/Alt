@@ -54,11 +54,6 @@ export const mockAnalytics: ReadingAnalytics = {
     monthlyGoal: 300,
     progress: 78,
   },
-  streak: {
-    current: 7,
-    longest: 23,
-    lastReadDate: "2024-01-15T10:30:00Z",
-  },
 };
 
 export const mockTrendingTopics: TrendingTopic[] = [

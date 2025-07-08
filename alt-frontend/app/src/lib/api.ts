@@ -18,6 +18,7 @@ import { CursorResponse, MessageResponse } from "@/schema/common";
 import { DesktopFeedsResponse, DesktopFeed } from "@/types/desktop-feed";
 import { ActivityResponse, WeeklyStats } from "@/types/desktop";
 import { mockDesktopFeeds } from "@/data/mockDesktopFeeds";
+import { FeedTags } from "@/types/feed-tags";
 
 // Re-export types for external use
 export type { CursorResponse } from "@/schema/common";
@@ -402,7 +403,7 @@ export const feedsApi = {
   // Method to prefetch data for performance
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
     const prefetchPromises = pages.map((page) =>
-      this.getFeedsPage(page).catch(() => {}),
+      this.getFeedsPage(page).catch(() => { }),
     );
     await Promise.all(prefetchPromises);
   },
@@ -454,14 +455,14 @@ export const feedsApi = {
 
   async prefetchFavoriteFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getFavoriteFeedsWithCursor(cursor).catch(() => {}),
+      this.getFavoriteFeedsWithCursor(cursor).catch(() => { }),
     );
     await Promise.all(prefetchPromises);
   },
 
   async prefetchReadFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getReadFeedsWithCursor(cursor).catch(() => {}),
+      this.getReadFeedsWithCursor(cursor).catch(() => { }),
     );
     await Promise.all(prefetchPromises);
   },
@@ -521,6 +522,12 @@ export const feedsApi = {
         next_cursor:
           endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
       });
+    });
+  },
+
+  async fetchFeedTags(feedUrl: string): Promise<FeedTags> {
+    return apiClient.post<FeedTags>(`/v1/feeds/tags`, {
+      feed_url: feedUrl,
     });
   },
 

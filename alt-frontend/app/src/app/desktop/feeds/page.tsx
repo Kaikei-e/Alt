@@ -3,34 +3,8 @@
 import React, { Suspense } from "react";
 import { Box, Text } from "@chakra-ui/react";
 import { DesktopFeedsLayout } from "@/components/desktop/layout/DesktopFeedsLayout";
-import { DesktopHeader } from "@/components/desktop/layout/DesktopHeader";
-import { DesktopSidebar } from "@/components/desktop/layout/DesktopSidebar";
+import { DesktopSidebar, DefaultSidebarProps } from "@/components/desktop/layout/DesktopSidebar";
 import DesktopTimeline from "@/components/desktop/timeline/DesktopTimeline";
-
-// Basic stats for header
-const mockStats = {
-  totalUnread: 86,
-  totalFeeds: 8,
-  readToday: 12,
-  weeklyAverage: 45,
-};
-
-const mockFeedSources = [
-  {
-    id: "techcrunch",
-    name: "TechCrunch",
-    icon: "📰",
-    unreadCount: 12,
-    category: "tech",
-  },
-  {
-    id: "hackernews",
-    name: "Hacker News",
-    icon: "🔥",
-    unreadCount: 8,
-    category: "tech",
-  },
-];
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -68,30 +42,11 @@ const LoadingFallback = () => (
 function DesktopFeedsContent() {
   return (
     <DesktopFeedsLayout
-      header={
-        <DesktopHeader
-          totalUnread={mockStats.totalUnread}
-          searchQuery=""
-          onSearchChange={() => {}}
-          currentTheme={"vaporwave"}
-          onThemeToggle={() => {}}
-        />
-      }
       sidebar={
         <DesktopSidebar
-          mode="feeds-filter"
-          activeFilters={{
-            sources: [],
-            timeRange: "all",
-            readStatus: "all",
-            tags: [],
-            priority: "all",
-          }}
-          onFilterChange={() => {}}
-          onClearAll={() => {}}
-          feedSources={mockFeedSources}
+          {...DefaultSidebarProps}
           isCollapsed={false}
-          onToggleCollapse={() => {}}
+          onToggleCollapse={() => { }}
         />
       }
     >

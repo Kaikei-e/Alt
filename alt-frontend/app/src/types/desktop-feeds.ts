@@ -3,11 +3,9 @@ import React from "react";
 export interface DesktopFeedsLayoutProps {
   children: React.ReactNode;
   sidebar: React.ReactNode;
-  header: React.ReactNode;
 }
 
 export interface DesktopHeaderProps {
-  totalUnread: number;
   searchQuery?: string;
   onSearchChange: (query: string) => void;
   currentTheme: "vaporwave" | "liquid-beige";

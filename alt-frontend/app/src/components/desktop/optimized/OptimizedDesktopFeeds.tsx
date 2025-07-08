@@ -6,8 +6,7 @@ import { ErrorBoundary } from "react-error-boundary";
 import { DesktopFeedsLayout } from "@/components/desktop/layout/DesktopFeedsLayout";
 import { DesktopFeedCard } from "@/components/desktop/timeline/DesktopFeedCard";
 import { RightPanel } from "@/components/desktop/analytics/RightPanel";
-import { DesktopHeader } from "@/components/desktop/layout/DesktopHeader";
-import { DesktopSidebar } from "@/components/desktop/layout/DesktopSidebar";
+import { DesktopSidebar, DefaultSidebarProps } from "@/components/desktop/layout/DesktopSidebar";
 import { FilterState, DesktopFeed } from "@/types/desktop-feed";
 import { desktopFeedsApi } from "@/lib/api/desktop-feeds";
 
@@ -76,7 +75,6 @@ const SkeletonLoader = () => (
 export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({
   feeds,
   filters,
-  onFilterChange,
 }) => {
   // レスポンシブ値
   const feedCardVariant = useBreakpointValue({
@@ -152,41 +150,18 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({
     [feeds],
   );
 
-  // Header props
-  const totalUnread = useMemo(
-    () => feeds.filter((f) => !f.isRead).length,
-    [feeds],
-  );
-  const handleSearchChange = useCallback((query: string) => {
-    console.log("Search:", query);
-  }, []);
-  const currentTheme = "vaporwave" as const;
-  const handleThemeToggle = useCallback(() => {
-    console.log("Theme toggle");
-  }, []);
-
   return (
     <ErrorBoundary
       FallbackComponent={ErrorFallback}
       onError={(error) => console.error("Desktop feeds error:", error)}
     >
       <DesktopFeedsLayout
-        header={
-          <DesktopHeader
-            totalUnread={totalUnread}
-            onSearchChange={handleSearchChange}
-            currentTheme={currentTheme}
-            onThemeToggle={handleThemeToggle}
-          />
-        }
         sidebar={
           <Suspense fallback={<SkeletonLoader />}>
             <DesktopSidebar
-              activeFilters={filters}
-              onFilterChange={onFilterChange}
-              feedSources={[]} // データを実際のAPIから取得
+              {...DefaultSidebarProps}
               isCollapsed={false}
-              onToggleCollapse={() => {}}
+              onToggleCollapse={() => { }}
             />
           </Suspense>
         }

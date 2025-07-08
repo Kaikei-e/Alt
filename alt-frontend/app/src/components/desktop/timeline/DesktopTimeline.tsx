@@ -8,7 +8,6 @@ import {
   VStack,
   IconButton,
   Badge,
-  Toast,
 } from "@chakra-ui/react";
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { Heart, Bookmark, Clock, ExternalLink, Eye } from "lucide-react";
@@ -16,7 +15,7 @@ import { feedsApi } from "@/lib/api";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 import { Feed } from "@/schema/feed";
 import { DesktopFeed } from "@/types/desktop-feed";
-
+import { FeedTag } from "@/types/feed-tags";
 const PAGE_SIZE = 20;
 
 // Transform Feed to DesktopFeed
@@ -75,7 +74,24 @@ const DesktopStyledFeedCard = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isFavorited, setIsFavorited] = useState(feed.isFavorited);
-  const [isBookmarked, setIsBookmarked] = useState(feed.isBookmarked);
+  const [tags, setTags] = useState<FeedTag[]>([]);
+  const [showAllTags, setShowAllTags] = useState(false);
+
+  useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        const response = await feedsApi.fetchFeedTags(feed.link);
+        setTags(response.tags);
+      } catch (error) {
+        console.error("Failed to fetch tags for feed:", feed.link, error);
+        // Set empty tags on error to prevent UI issues
+        setTags([]);
+      }
+    };
+    fetchTags();
+  }, [feed.link]);
+
+
 
   const handleViewArticle = useCallback(() => {
     if (!isRead) {
@@ -96,14 +112,6 @@ const DesktopStyledFeedCard = ({
       setIsFavorited(true);
     },
     [feed.link],
-  );
-
-  const handleToggleBookmark = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setIsBookmarked(!isBookmarked);
-    },
-    [isBookmarked],
   );
 
   const getPriorityColor = (priority: string) => {
@@ -131,8 +139,6 @@ const DesktopStyledFeedCard = ({
       role="article"
       tabIndex={0}
       transition="all var(--transition-smooth) ease"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       opacity={isRead ? 0.7 : 1}
       _hover={{
         transform: "translateY(-2px)",
@@ -199,13 +205,22 @@ const DesktopStyledFeedCard = ({
         <HStack
           gap={3}
           align="flex-start"
-          outline={isHovered ? "1px solid var(--accent-primary)" : "none"}
-          rounded={isHovered ? "var(--radius-lg)" : "none"}
+          outline={isHovered ? "2px solid var(--accent-primary)" : "none"}
+          rounded={isHovered ? "var(--radius-md)" : "none"}
+          p={isHovered ? "2px" : "0"}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
         >
           <Text fontSize="lg" color={getPriorityColor(feed.metadata.priority)}>
-            {feed.metadata.priority === "high" && "🔥"}
-            {feed.metadata.priority === "medium" && "📈"}
-            {feed.metadata.priority === "low" && "📄"}
+            <IconButton
+              aria-label="Open article"
+              size="sm"
+              variant="ghost"
+              color="var(--text-primary)"
+              onClick={handleViewArticle}
+            >
+              <ExternalLink size={16} />
+            </IconButton>
           </Text>
           <Text
             fontSize="lg"
@@ -236,27 +251,41 @@ const DesktopStyledFeedCard = ({
 
         {/* Tags and Metadata */}
         <HStack justify="space-between" align="center" wrap="wrap">
-          <HStack gap={3}>
-            <Badge
-              bg="var(--surface-bg)"
-              color="var(--text-secondary)"
-              fontSize="xs"
-              px={3}
-              py={1}
-              borderRadius="md"
-            >
-              {feed.metadata.category}
-            </Badge>
-            <Badge
-              bg="var(--surface-bg)"
-              color="var(--text-secondary)"
-              fontSize="xs"
-              px={3}
-              py={1}
-              borderRadius="md"
-            >
-              {feed.metadata.difficulty}
-            </Badge>
+          <HStack gap={2} wrap="wrap">
+            {(showAllTags ? tags : tags.slice(0, 5)).map((tag) => (
+              <Badge
+                key={tag.id}
+                bg="var(--accent-tertiary)"
+                color="white"
+                fontSize="xs"
+                px={2}
+                py={1}
+                borderRadius="md"
+              >
+                {tag.name}
+              </Badge>
+            ))}
+            {tags.length > 5 && (
+              <Badge
+                bg="var(--surface-border)"
+                color="var(--text-muted)"
+                fontSize="xs"
+                px={2}
+                py={1}
+                borderRadius="md"
+                cursor="pointer"
+                _hover={{
+                  bg: "var(--accent-secondary)",
+                  color: "white",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAllTags(!showAllTags);
+                }}
+              >
+                {showAllTags ? "Show Less" : `+${tags.length - 5}`}
+              </Badge>
+            )}
           </HStack>
 
           <HStack gap={4} fontSize="xs" color="var(--text-muted)">
