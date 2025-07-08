@@ -668,11 +668,11 @@ export default function DesktopTimeline() {
         <Box
           overflowY="auto"
           overflowX="hidden"
-          h="100%"
-          p={3}
+          h="100vh"
+          p={6}
           data-testid="desktop-timeline-skeleton"
         >
-          <Flex direction="column" gap={5} maxW="900px" mx="auto">
+          <Flex direction="column" gap={6} maxW="1000px" mx="auto">
             {Array.from({ length: 3 }).map((_, index) => (
               <DesktopSkeletonCard key={`skeleton-${index}`} />
             ))}
@@ -739,8 +739,8 @@ export default function DesktopTimeline() {
         ref={scrollContainerRef}
         overflowY="auto"
         overflowX="hidden"
-        h="100%"
-        p={3}
+        h="100vh"
+        p={6}
         data-testid="desktop-timeline-container"
         css={{
           scrollBehavior: "smooth",
@@ -764,7 +764,7 @@ export default function DesktopTimeline() {
         {visibleFeeds.length > 0 ? (
           <>
             {/* Feed Cards - Wide desktop styling */}
-            <Flex direction="column" gap={5} maxW="900px" mx="auto">
+            <Flex direction="column" gap={6} maxW="1000px" mx="auto">
               {visibleFeeds.map((feed) => (
                 <DesktopStyledFeedCard
                   key={feed.id}
@@ -827,7 +827,7 @@ export default function DesktopTimeline() {
                 className="glass"
                 p={4}
                 borderRadius="var(--radius-lg)"
-                maxW="900px"
+                maxW="1000px"
                 mx="auto"
                 mt={4}
                 textAlign="center"
@@ -847,7 +847,7 @@ export default function DesktopTimeline() {
           </>
         ) : (
           /* Enhanced empty state */
-          <Flex justify="center" align="center" py={16} maxW="900px" mx="auto">
+          <Flex justify="center" align="center" py={16} maxW="1000px" mx="auto">
             <Box
               className="glass"
               p={6}

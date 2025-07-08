@@ -411,83 +411,63 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
   // Default navigation mode
   return (
-    <Flex minH="100vh">
-      <Box
-        w="250px"
-        minH="100vh"
-        p={6}
-        className="glass"
-        h="full"
-        borderRadius="0"
-        borderRight="1px solid var(--surface-border)"
-        position="fixed"
-        left={0}
-        top={0}
-        bg="var(--surface-bg)"
-        backdropFilter="blur(var(--surface-blur))"
-        data-testid="desktop-sidebar"
-      >
-        {/* Logo Section */}
-        <VStack align="stretch" gap={8} h="full">
-          <Box py={4}>
-            <Text
-              fontSize="xl"
-              fontWeight="bold"
-              bgGradient="var(--accent-gradient)"
-              bgClip="text"
-              className="gradient-text"
-            >
-              {logoText}
-            </Text>
-            <Text fontSize="sm" color="var(--text-muted)" mt={1}>
-              {logoSubtext}
-            </Text>
-          </Box>
-
-          {/* Navigation */}
-          <VStack gap={2} align="stretch" aria-label="Main navigation">
-            {navItems.map((item) => (
-              <Box key={item.id}>
-                <ChakraLink
-                  as={NextLink}
-                  href={item.href}
-                  textDecoration="none"
-                  _hover={{ textDecoration: "none" }}
-                >
-                  <Flex
-                    align="center"
-                    gap={3}
-                    p={4}
-                    h="52px"
-                    w="full"
-                    borderRadius="var(--radius-md)"
-                    bg={item.active ? "var(--surface-hover)" : "transparent"}
-                    border="1px solid"
-                    borderColor={
-                      item.active ? "var(--alt-primary)" : "transparent"
-                    }
-                    color={
-                      item.active ? "var(--alt-primary)" : "var(--text-secondary)"
-                    }
-                    transition="all var(--transition-speed) ease"
-                    className={item.active ? "active" : ""}
-                    _hover={{
-                      bg: "var(--surface-hover)",
-                      transform: "translateX(4px)",
-                      borderColor: "var(--alt-primary)",
-                    }}
-                  >
-                    <Icon as={item.icon} boxSize={5} />
-                    <Text fontSize="sm" fontWeight="medium">
-                      {item.label}
-                    </Text>
-                  </Flex>
-                </ChakraLink>
-              </Box>
-            ))}
-          </VStack>
-        </VStack>
+    <VStack align="stretch" gap={8} h="full">
+      {/* Logo Section */}
+      <Box py={4}>
+        <Text
+          fontSize="xl"
+          fontWeight="bold"
+          bgGradient="var(--accent-gradient)"
+          bgClip="text"
+          className="gradient-text"
+        >
+          {logoText}
+        </Text>
+        <Text fontSize="sm" color="var(--text-muted)" mt={1}>
+          {logoSubtext}
+        </Text>
       </Box>
-    </Flex>
+
+      {/* Navigation */}
+      <VStack gap={2} align="stretch" flex="1" aria-label="Main navigation">
+        {navItems.map((item) => (
+          <ChakraLink
+            key={item.id}
+            as={NextLink}
+            href={item.href}
+            textDecoration="none"
+            _hover={{ textDecoration: "none" }}
+          >
+            <Flex
+              align="center"
+              gap={3}
+              p={4}
+              h="52px"
+              w="full"
+              borderRadius="var(--radius-lg)"
+              bg={item.active ? "var(--surface-hover)" : "transparent"}
+              border="1px solid"
+              borderColor={
+                item.active ? "var(--alt-primary)" : "transparent"
+              }
+              color={
+                item.active ? "var(--alt-primary)" : "var(--text-primary)"
+              }
+              transition="all var(--transition-speed) ease"
+              _hover={{
+                bg: "var(--surface-hover)",
+                transform: "translateX(4px)",
+                borderColor: "var(--alt-primary)",
+              }}
+            >
+              <Icon as={item.icon} boxSize={5} />
+              <Text fontSize="sm" fontWeight="medium">
+                {item.label}
+              </Text>
+            </Flex>
+          </ChakraLink>
+        ))}
+      </VStack>
+    </VStack>
   );
 };

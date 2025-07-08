@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { Box, VStack, HStack, Button } from "@chakra-ui/react";
+import { Box, VStack, HStack, Button, Flex } from "@chakra-ui/react";
 import { ReadingAnalytics } from "./ReadingAnalytics";
 import { TrendingTopics } from "./TrendingTopics";
 import { QuickActions } from "./QuickActions";
 import { SourceAnalytics } from "./SourceAnalytics";
 import { BookmarksList } from "./BookmarksList";
 import { ReadingQueue } from "./ReadingQueue";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useReadingAnalytics } from "@/hooks/useReadingAnalytics";
 import { useTrendingTopics } from "@/hooks/useTrendingTopics";
 import { useSourceAnalytics } from "@/hooks/useSourceAnalytics";
@@ -22,6 +23,20 @@ export const RightPanel: React.FC = () => {
 
   return (
     <Box className="glass" borderRadius="var(--radius-xl)" overflow="hidden">
+      {/* Header with Theme Toggle */}
+      <Flex
+        justify="space-between"
+        align="center"
+        p={3}
+        bg="var(--surface-bg)"
+        borderBottom="1px solid var(--surface-border)"
+      >
+        <Box fontSize="sm" color="var(--text-muted)" fontWeight="medium">
+          Analytics
+        </Box>
+        <ThemeToggle size="sm" />
+      </Flex>
+
       {/* Tab Headers */}
       <HStack
         bg="var(--surface-bg)"
@@ -79,7 +94,7 @@ export const RightPanel: React.FC = () => {
       </HStack>
 
       {/* Tab Content */}
-      <Box>
+      <Box overflowY="scroll">
         {activeTab === "analytics" && (
           <VStack gap={4} p={4} align="stretch">
             <ReadingAnalytics

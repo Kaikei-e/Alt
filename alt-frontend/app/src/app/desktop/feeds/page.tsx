@@ -2,9 +2,16 @@
 
 import React, { Suspense } from "react";
 import { Box, Text } from "@chakra-ui/react";
-import { DesktopFeedsLayout } from "@/components/desktop/layout/DesktopFeedsLayout";
-import { DesktopSidebar, DefaultSidebarProps } from "@/components/desktop/layout/DesktopSidebar";
+import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import DesktopTimeline from "@/components/desktop/timeline/DesktopTimeline";
+import { RightPanel } from "@/components/desktop/analytics/RightPanel";
+import {
+  Home,
+  Rss,
+  FileText,
+  Search,
+  Settings,
+} from "lucide-react";
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -40,18 +47,32 @@ const LoadingFallback = () => (
 );
 
 function DesktopFeedsContent() {
+  const sidebarNavItems = [
+    {
+      id: 1,
+      label: "Dashboard",
+      icon: Home,
+      href: "/desktop/home",
+      active: false,
+    },
+    { id: 2, label: "Feeds", icon: Rss, href: "/desktop/feeds", active: true },
+    { id: 3, label: "Articles", icon: FileText, href: "/desktop/articles" },
+    { id: 4, label: "Search", icon: Search, href: "/desktop/articles/search" },
+    { id: 5, label: "Settings", icon: Settings, href: "/desktop/settings" },
+  ];
+
   return (
-    <DesktopFeedsLayout
-      sidebar={
-        <DesktopSidebar
-          {...DefaultSidebarProps}
-          isCollapsed={false}
-          onToggleCollapse={() => { }}
-        />
-      }
+    <DesktopLayout
+      showRightPanel={true}
+      rightPanel={<RightPanel />}
+      sidebarProps={{
+        navItems: sidebarNavItems,
+        logoText: "Alt Dashboard",
+        logoSubtext: "RSS Management Hub",
+      }}
     >
       <DesktopTimeline />
-    </DesktopFeedsLayout>
+    </DesktopLayout>
   );
 }
 
