@@ -479,7 +479,7 @@ export const feedsApi = {
       if (cursor) {
         params.set("cursor", cursor);
       }
-      
+
       const response = await apiClient.get<{
         data: BackendFeedItem[];
         next_cursor: string | null;
@@ -491,23 +491,25 @@ export const feedsApi = {
         feeds: transformedFeeds,
         nextCursor: response.next_cursor,
         hasMore: response.next_cursor !== null,
-        totalCount: transformedFeeds.length
+        totalCount: transformedFeeds.length,
       };
     } catch (error) {
-      console.error('getDesktopFeeds error:', error);
+      console.error("getDesktopFeeds error:", error);
       // Return empty response on error to prevent crashes
       return {
         feeds: [],
         nextCursor: null,
         hasMore: false,
-        totalCount: 0
+        totalCount: 0,
       };
     }
   },
 
   // Test-compatible cursor API for E2E tests
   // This method is designed to match the expectations of E2E tests that mock cursor endpoints
-  async getTestFeeds(cursor?: string | null): Promise<{ data: DesktopFeed[], next_cursor: string | null }> {
+  async getTestFeeds(
+    cursor?: string | null,
+  ): Promise<{ data: DesktopFeed[]; next_cursor: string | null }> {
     return new Promise((resolve) => {
       const pageSize = 20;
       const startIndex = cursor ? parseInt(cursor) : 0;
@@ -516,28 +518,39 @@ export const feedsApi = {
 
       resolve({
         data: paginatedFeeds,
-        next_cursor: endIndex < mockDesktopFeeds.length ? endIndex.toString() : null
+        next_cursor:
+          endIndex < mockDesktopFeeds.length ? endIndex.toString() : null,
       });
     });
   },
 
-  async toggleFavorite(feedId: string, isFavorited: boolean): Promise<MessageResponse> {
+  async toggleFavorite(
+    feedId: string,
+    isFavorited: boolean,
+  ): Promise<MessageResponse> {
     // Mock API call for favorite toggle
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
-          message: isFavorited ? 'Added to favorites' : 'Removed from favorites'
+          message: isFavorited
+            ? "Added to favorites"
+            : "Removed from favorites",
         });
       }, 200);
     });
   },
 
-  async toggleBookmark(feedId: string, isBookmarked: boolean): Promise<MessageResponse> {
+  async toggleBookmark(
+    feedId: string,
+    isBookmarked: boolean,
+  ): Promise<MessageResponse> {
     // Mock API call for bookmark toggle
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
-          message: isBookmarked ? 'Added to bookmarks' : 'Removed from bookmarks'
+          message: isBookmarked
+            ? "Added to bookmarks"
+            : "Removed from bookmarks",
         });
       }, 200);
     });
@@ -551,28 +564,28 @@ export const feedsApi = {
         const mockActivities: ActivityResponse[] = [
           {
             id: 1,
-            type: 'new_feed',
-            title: 'Added TechCrunch RSS feed',
-            timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() // 2 hours ago
+            type: "new_feed",
+            title: "Added TechCrunch RSS feed",
+            timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
           },
           {
             id: 2,
-            type: 'ai_summary',
-            title: 'AI summary generated for 5 articles',
-            timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString() // 4 hours ago
+            type: "ai_summary",
+            title: "AI summary generated for 5 articles",
+            timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), // 4 hours ago
           },
           {
             id: 3,
-            type: 'bookmark',
+            type: "bookmark",
             title: 'Bookmarked "Introduction to React 19"',
-            timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() // 1 day ago
+            timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
           },
           {
             id: 4,
-            type: 'read',
+            type: "read",
             title: 'Read "Modern JavaScript Features"',
-            timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString() // 2 days ago
-          }
+            timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(), // 2 days ago
+          },
         ];
 
         resolve(mockActivities.slice(0, limit));
@@ -588,7 +601,7 @@ export const feedsApi = {
         resolve({
           weeklyReads: 45,
           aiProcessed: 18,
-          bookmarks: 12
+          bookmarks: 12,
         });
       }, 200);
     });

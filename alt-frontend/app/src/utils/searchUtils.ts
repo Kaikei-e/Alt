@@ -1,8 +1,8 @@
-import { Feed } from '@/schema/feed';
+import { Feed } from "@/schema/feed";
 
 export interface SearchOptions {
   multiKeyword?: boolean;
-  searchFields?: ('title' | 'description' | 'tags')[];
+  searchFields?: ("title" | "description" | "tags")[];
   fuzzyMatch?: boolean;
   minimumScore?: number;
 }
@@ -23,7 +23,7 @@ const regexCache = new Map<string, RegExp>();
  */
 function getCachedRegex(keyword: string): RegExp {
   if (!regexCache.has(keyword)) {
-    regexCache.set(keyword, new RegExp(`\\b${escapeRegExp(keyword)}\\b`, 'i'));
+    regexCache.set(keyword, new RegExp(`\\b${escapeRegExp(keyword)}\\b`, "i"));
   }
   return regexCache.get(keyword)!;
 }
@@ -35,26 +35,29 @@ function getCachedRegex(keyword: string): RegExp {
 export function searchFeeds(
   feeds: Feed[],
   query: string,
-  options: SearchOptions = {}
+  options: SearchOptions = {},
 ): SearchResult[] {
   if (!query.trim()) {
-    return feeds.map(feed => ({
+    return feeds.map((feed) => ({
       feed,
       score: 1,
-      matchedFields: []
+      matchedFields: [],
     }));
   }
 
   const {
     multiKeyword = true,
-    searchFields = ['title', 'description'],
+    searchFields = ["title", "description"],
     fuzzyMatch = false,
-    minimumScore = 0.1
+    minimumScore = 0.1,
   } = options;
 
   // Split query into keywords and normalize
   const keywords = multiKeyword
-    ? query.toLowerCase().split(/\s+/).filter(k => k.length > 0)
+    ? query
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((k) => k.length > 0)
     : [query.toLowerCase().trim()];
 
   const results: SearchResult[] = [];
@@ -67,23 +70,24 @@ export function searchFeeds(
 
     // Score calculation for each field
     for (const field of searchFields) {
-      let fieldContent = '';
+      let fieldContent = "";
       let fieldWeight = 1;
 
       switch (field) {
-        case 'title':
+        case "title":
           fieldContent = feed.title.toLowerCase();
           fieldWeight = 2; // Title matches are more important
           break;
-        case 'description':
+        case "description":
           fieldContent = feed.description.toLowerCase();
           fieldWeight = 1;
           break;
-        case 'tags':
+        case "tags":
           // Handle tags if available in metadata
-          const metadata = (feed as Feed & { metadata?: { tags?: string[] } }).metadata;
+          const metadata = (feed as Feed & { metadata?: { tags?: string[] } })
+            .metadata;
           if (metadata?.tags) {
-            fieldContent = metadata.tags.join(' ').toLowerCase();
+            fieldContent = metadata.tags.join(" ").toLowerCase();
             fieldWeight = 1.5;
           }
           break;
@@ -122,9 +126,9 @@ export function searchFeeds(
         totalScore += normalizedScore;
 
         // Generate highlights for title and description
-        if (field === 'title') {
+        if (field === "title") {
           highlightedTitle = highlightText(feed.title, keywords);
-        } else if (field === 'description') {
+        } else if (field === "description") {
           highlightedDescription = highlightText(feed.description, keywords);
         }
       }
@@ -137,7 +141,7 @@ export function searchFeeds(
         score: totalScore,
         matchedFields,
         highlightedTitle,
-        highlightedDescription
+        highlightedDescription,
       });
     }
   }
@@ -153,8 +157,8 @@ function highlightText(text: string, keywords: string[]): string {
   let highlighted = text;
 
   for (const keyword of keywords) {
-    const regex = new RegExp(`(${escapeRegExp(keyword)})`, 'gi');
-    highlighted = highlighted.replace(regex, '<mark>$1</mark>');
+    const regex = new RegExp(`(${escapeRegExp(keyword)})`, "gi");
+    highlighted = highlighted.replace(regex, "<mark>$1</mark>");
   }
 
   return highlighted;
@@ -164,7 +168,7 @@ function highlightText(text: string, keywords: string[]): string {
  * Escape special regex characters
  */
 function escapeRegExp(string: string): string {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -174,8 +178,9 @@ export function simpleSearch(feeds: Feed[], query: string): Feed[] {
   if (!query.trim()) return feeds;
 
   const lowercaseQuery = query.toLowerCase();
-  return feeds.filter(feed =>
-    feed.title.toLowerCase().includes(lowercaseQuery) ||
-    feed.description.toLowerCase().includes(lowercaseQuery)
+  return feeds.filter(
+    (feed) =>
+      feed.title.toLowerCase().includes(lowercaseQuery) ||
+      feed.description.toLowerCase().includes(lowercaseQuery),
   );
 }

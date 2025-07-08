@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React, { useState, useCallback, memo, KeyboardEvent } from 'react';
+import React, { useState, useCallback, memo, KeyboardEvent } from "react";
 import {
   Box,
   Flex,
@@ -10,23 +10,18 @@ import {
   HStack,
   Badge,
   IconButton,
-  Spinner
-} from '@chakra-ui/react';
-import {
-  Heart,
-  Bookmark,
-  Clock,
-  ExternalLink
-} from 'lucide-react';
-import Link from 'next/link';
-import { DesktopFeedCardProps } from '@/types/desktop-feed';
+  Spinner,
+} from "@chakra-ui/react";
+import { Heart, Bookmark, Clock, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { DesktopFeedCardProps } from "@/types/desktop-feed";
 
 const formatTimeAgo = (dateString: string) => {
   const now = new Date();
   const date = new Date(dateString);
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-  if (diffInSeconds < 60) return 'just now';
+  if (diffInSeconds < 60) return "just now";
   if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
   if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
   return `${Math.floor(diffInSeconds / 86400)}d ago`;
@@ -34,12 +29,12 @@ const formatTimeAgo = (dateString: string) => {
 
 export const DesktopFeedCard = memo(function DesktopFeedCard({
   feed,
-  variant = 'default',
+  variant = "default",
   onMarkAsRead,
   onToggleFavorite,
   onToggleBookmark,
   onReadLater,
-  onViewArticle
+  onViewArticle,
 }: DesktopFeedCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -62,48 +57,63 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
     onViewArticle(feed.id);
   }, [feed.id, feed.isRead, handleMarkAsRead, onViewArticle]);
 
-  const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      handleViewArticle();
-    }
-  }, [handleViewArticle]);
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        handleViewArticle();
+      }
+    },
+    [handleViewArticle],
+  );
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'var(--accent-primary)';
-      case 'medium': return 'var(--accent-secondary)';
-      case 'low': return 'var(--text-muted)';
-      default: return 'var(--text-muted)';
+      case "high":
+        return "var(--accent-primary)";
+      case "medium":
+        return "var(--accent-secondary)";
+      case "low":
+        return "var(--text-muted)";
+      default:
+        return "var(--text-muted)";
     }
   };
 
   const getPriorityIcon = (priority: string) => {
     switch (priority) {
-      case 'high': return '🔥';
-      case 'medium': return '📈';
-      case 'low': return '📄';
-      default: return '📄';
+      case "high":
+        return "🔥";
+      case "medium":
+        return "📈";
+      case "low":
+        return "📄";
+      default:
+        return "📄";
     }
   };
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
-      case 'beginner': return 'var(--alt-success)';
-      case 'intermediate': return 'var(--alt-warning)';
-      case 'advanced': return 'var(--alt-error)';
-      default: return 'var(--text-muted)';
+      case "beginner":
+        return "var(--alt-success)";
+      case "intermediate":
+        return "var(--alt-warning)";
+      case "advanced":
+        return "var(--alt-error)";
+      default:
+        return "var(--text-muted)";
     }
   };
 
   const getVariantStyles = () => {
     switch (variant) {
-      case 'compact':
-        return { p: 4, fontSize: 'sm' };
-      case 'detailed':
-        return { p: 8, fontSize: 'md' };
+      case "compact":
+        return { p: 4, fontSize: "sm" };
+      case "detailed":
+        return { p: 8, fontSize: "md" };
       default:
-        return { p: 6, fontSize: 'sm' };
+        return { p: 6, fontSize: "sm" };
     }
   };
 
@@ -128,9 +138,9 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
       data-testid={`desktop-feed-card-${feed.id}`}
       opacity={feed.isRead ? 0.7 : 1}
       _hover={{
-        transform: 'translateY(-4px)',
-        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)',
-        borderColor: 'var(--accent-primary)'
+        transform: "translateY(-4px)",
+        boxShadow: "0 12px 40px rgba(0, 0, 0, 0.15)",
+        borderColor: "var(--accent-primary)",
       }}
     >
       {/* カードヘッダー */}
@@ -146,9 +156,7 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
               {feed.metadata.source.name}
             </Text>
             <HStack gap={2} fontSize="xs" color="var(--text-secondary)">
-              <Text>
-                {formatTimeAgo(feed.published)}
-              </Text>
+              <Text>{formatTimeAgo(feed.published)}</Text>
               <Text>•</Text>
               <HStack gap={1}>
                 <Clock size={12} />
@@ -165,11 +173,17 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
           transition="opacity var(--transition-speed) ease"
         >
           <IconButton
-            aria-label={feed.isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+            aria-label={
+              feed.isFavorited ? "Remove from favorites" : "Add to favorites"
+            }
             size="sm"
             variant="ghost"
-            color={feed.isFavorited ? 'var(--accent-primary)' : 'var(--text-secondary)'}
-            bg={feed.isFavorited ? 'var(--surface-bg)' : 'transparent'}
+            color={
+              feed.isFavorited
+                ? "var(--accent-primary)"
+                : "var(--text-secondary)"
+            }
+            bg={feed.isFavorited ? "var(--surface-bg)" : "transparent"}
             onClick={(e) => {
               e.stopPropagation();
               onToggleFavorite(feed.id);
@@ -178,11 +192,15 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
             <Heart size={16} />
           </IconButton>
           <IconButton
-            aria-label={feed.isBookmarked ? 'Remove bookmark' : 'Add bookmark'}
+            aria-label={feed.isBookmarked ? "Remove bookmark" : "Add bookmark"}
             size="sm"
             variant="ghost"
-            color={feed.isBookmarked ? 'var(--accent-secondary)' : 'var(--text-secondary)'}
-            bg={feed.isBookmarked ? 'var(--surface-bg)' : 'transparent'}
+            color={
+              feed.isBookmarked
+                ? "var(--accent-secondary)"
+                : "var(--text-secondary)"
+            }
+            bg={feed.isBookmarked ? "var(--surface-bg)" : "transparent"}
             onClick={(e) => {
               e.stopPropagation();
               onToggleBookmark(feed.id);
@@ -206,7 +224,7 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
               fontWeight="bold"
               color="var(--text-primary)"
               lineHeight="1.4"
-              _hover={{ color: 'var(--accent-primary)' }}
+              _hover={{ color: "var(--accent-primary)" }}
               transition="color var(--transition-speed) ease"
             >
               {feed.title}
@@ -267,7 +285,9 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
         {/* タグ */}
         {feed.metadata.tags.length > 0 && (
           <HStack gap={2} flexWrap="wrap">
-            <Text fontSize="sm" color="var(--text-secondary)">🏷️</Text>
+            <Text fontSize="sm" color="var(--text-secondary)">
+              🏷️
+            </Text>
             {feed.metadata.tags.slice(0, 4).map((tag, index) => (
               <Badge
                 key={index}
@@ -278,8 +298,8 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
                 py={1}
                 borderRadius="var(--radius-full)"
                 _hover={{
-                  transform: 'translateY(-1px)',
-                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)'
+                  transform: "translateY(-1px)",
+                  boxShadow: "0 4px 8px rgba(0, 0, 0, 0.1)",
                 }}
                 transition="all var(--transition-speed) ease"
               >
@@ -306,7 +326,7 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
         <HStack gap={3}>
           <Button
             size="sm"
-            bg={feed.isRead ? 'var(--text-muted)' : 'var(--accent-primary)'}
+            bg={feed.isRead ? "var(--text-muted)" : "var(--accent-primary)"}
             color="white"
             fontWeight="bold"
             borderRadius="var(--radius-full)"
@@ -316,20 +336,20 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
               handleMarkAsRead();
             }}
             _hover={{
-              bg: feed.isRead ? 'var(--text-muted)' : 'var(--accent-secondary)',
-              transform: 'scale(1.05)'
+              bg: feed.isRead ? "var(--text-muted)" : "var(--accent-secondary)",
+              transform: "scale(1.05)",
             }}
             _disabled={{
               opacity: 0.6,
-              cursor: 'not-allowed'
+              cursor: "not-allowed",
             }}
           >
             {isLoading ? (
               <Spinner size="xs" />
             ) : feed.isRead ? (
-              'Read'
+              "Read"
             ) : (
-              'Mark as Read'
+              "Mark as Read"
             )}
           </Button>
 
@@ -344,8 +364,8 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
               onReadLater(feed.id);
             }}
             _hover={{
-              bg: 'var(--surface-hover)',
-              borderColor: 'var(--accent-secondary)'
+              bg: "var(--surface-hover)",
+              borderColor: "var(--accent-secondary)",
             }}
           >
             Read Later
@@ -363,11 +383,11 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
             handleViewArticle();
           }}
           _hover={{
-            transform: 'scale(1.05)',
-            filter: 'brightness(1.1)'
+            transform: "scale(1.05)",
+            filter: "brightness(1.1)",
           }}
         >
-          View Article <ExternalLink size={14} style={{ marginLeft: '4px' }} />
+          View Article <ExternalLink size={14} style={{ marginLeft: "4px" }} />
         </Button>
       </Flex>
 

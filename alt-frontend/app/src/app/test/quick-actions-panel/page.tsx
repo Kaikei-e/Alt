@@ -11,47 +11,46 @@ function QuickActionsPanelTestContent() {
   if (!searchParams) {
     return <Text>No search params</Text>;
   }
-  const noStats = searchParams.get('noStats') === 'true';
+  const noStats = searchParams.get("noStats") === "true";
 
   const mockActions = [
     {
       id: 1,
-      label: 'Add Feed',
+      label: "Add Feed",
       icon: Plus,
-      href: '/desktop/feeds/register'
+      href: "/desktop/feeds/register",
     },
     {
       id: 2,
-      label: 'Search',
+      label: "Search",
       icon: Search,
-      href: '/desktop/search'
+      href: "/desktop/search",
     },
     {
       id: 3,
-      label: 'Bookmarks',
+      label: "Bookmarks",
       icon: Bookmark,
-      href: '/desktop/bookmarks'
+      href: "/desktop/bookmarks",
     },
     {
       id: 4,
-      label: 'Filter',
+      label: "Filter",
       icon: Filter,
-      href: '/desktop/feeds?filter=unread'
-    }
+      href: "/desktop/feeds?filter=unread",
+    },
   ];
 
-  const mockStats = noStats ? undefined : {
-    weeklyReads: 156,
-    aiProcessed: 78,
-    bookmarks: 42,
-  };
+  const mockStats = noStats
+    ? undefined
+    : {
+        weeklyReads: 156,
+        aiProcessed: 78,
+        bookmarks: 42,
+      };
 
   return (
     <Box p={8} minH="100vh" bg="var(--app-bg)">
-      <QuickActionsPanel
-        actions={mockActions}
-        additionalStats={mockStats}
-      />
+      <QuickActionsPanel actions={mockActions} additionalStats={mockStats} />
     </Box>
   );
 }

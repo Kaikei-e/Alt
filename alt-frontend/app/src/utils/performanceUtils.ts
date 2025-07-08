@@ -5,7 +5,7 @@
 // Debounce function to limit expensive operations
 export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
-  wait: number
+  wait: number,
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
 
@@ -28,7 +28,7 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
 // Throttle function to limit frequency of expensive operations
 export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
-  limit: number
+  limit: number,
 ): (...args: Parameters<T>) => void {
   let inThrottle: boolean = false;
 
@@ -36,16 +36,13 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
     if (!inThrottle) {
       func(...args);
       inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
+      setTimeout(() => (inThrottle = false), limit);
     }
   };
 }
 
 // Measure performance of operations
-export function measurePerformance<T>(
-  operation: () => T,
-  label?: string
-): T {
+export function measurePerformance<T>(operation: () => T, label?: string): T {
   const startTime = performance.now();
   const result = operation();
   const endTime = performance.now();
@@ -61,7 +58,7 @@ export function measurePerformance<T>(
 export function batchOperations<T, R>(
   items: T[],
   batchSize: number,
-  operation: (batch: T[]) => R[]
+  operation: (batch: T[]) => R[],
 ): R[] {
   const results: R[] = [];
 
@@ -77,7 +74,7 @@ export function batchOperations<T, R>(
 // Simple memoization for expensive computations
 export function memoize<T extends (...args: unknown[]) => unknown>(
   fn: T,
-  getKey?: (...args: Parameters<T>) => string
+  getKey?: (...args: Parameters<T>) => string,
 ): T {
   const cache = new Map<string, unknown>();
 
@@ -97,5 +94,5 @@ export function memoize<T extends (...args: unknown[]) => unknown>(
 // Clear memoization cache when needed
 export function clearMemoCache() {
   // This would clear any global caches if implemented
-  console.log('Memoization caches cleared');
+  console.log("Memoization caches cleared");
 }

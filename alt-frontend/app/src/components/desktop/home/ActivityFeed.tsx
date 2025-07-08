@@ -8,7 +8,7 @@ import { ActivityItem } from "./ActivityItem";
 interface ActivityFeedProps {
   activities: Array<{
     id: number;
-    type: 'new_feed' | 'ai_summary' | 'bookmark' | 'read';
+    type: "new_feed" | "ai_summary" | "bookmark" | "read";
     title: string;
     time: string;
   }>;
@@ -48,19 +48,11 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
 
       <Box flex="1" overflow="auto">
         {isLoading ? (
-          <Box
-            data-testid="loading-state"
-            textAlign="center"
-            py={8}
-          >
+          <Box data-testid="loading-state" textAlign="center" py={8}>
             <Text color="var(--text-muted)">Loading activities...</Text>
           </Box>
         ) : activities.length === 0 ? (
-          <Box
-            data-testid="empty-state"
-            textAlign="center"
-            py={8}
-          >
+          <Box data-testid="empty-state" textAlign="center" py={8}>
             <Text color="var(--text-muted)">No recent activity</Text>
           </Box>
         ) : (

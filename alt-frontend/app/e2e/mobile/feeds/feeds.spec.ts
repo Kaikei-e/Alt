@@ -1161,9 +1161,9 @@ test.describe("Mobile Feeds Page", () => {
       page,
     }) => {
       // Mock feeds API to provide sufficient data
-      await page.route('**/v1/feeds/fetch/cursor*', async (route) => {
+      await page.route("**/v1/feeds/fetch/cursor*", async (route) => {
         const url = route.request().url();
-        const isInitialLoad = !url.includes('cursor=');
+        const isInitialLoad = !url.includes("cursor=");
 
         const feeds = Array.from({ length: 10 }, (_, i) => ({
           id: `feed-${isInitialLoad ? i : i + 20}`,
@@ -1171,20 +1171,20 @@ test.describe("Mobile Feeds Page", () => {
           description: `Description for test feed ${isInitialLoad ? i : i + 20}`,
           link: `https://example.com/feed-${isInitialLoad ? i : i + 20}`,
           published: new Date().toISOString(),
-          source: 'TechCrunch'
+          source: "TechCrunch",
         }));
 
         await route.fulfill({
           json: {
             data: feeds,
-            next_cursor: isInitialLoad ? 'cursor-1' : null,
-            has_more: isInitialLoad
-          }
+            next_cursor: isInitialLoad ? "cursor-1" : null,
+            has_more: isInitialLoad,
+          },
         });
       });
 
-      await page.goto('/mobile/feeds');
-      await page.waitForLoadState('domcontentloaded');
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("domcontentloaded");
       await page.waitForTimeout(1000);
 
       // Find scrollable container
@@ -1192,21 +1192,21 @@ test.describe("Mobile Feeds Page", () => {
         '[data-testid="feeds-container"]',
         '[data-testid="mobile-feeds-container"]',
         '[class*="scroll"]',
-        '.feed-list',
-        'main'
+        ".feed-list",
+        "main",
       ];
 
       let scrollContainer = null;
       for (const selector of scrollableSelectors) {
         const element = page.locator(selector);
-        if (await element.count() > 0) {
+        if ((await element.count()) > 0) {
           scrollContainer = element;
           break;
         }
       }
 
       if (!scrollContainer) {
-        scrollContainer = page.locator('body');
+        scrollContainer = page.locator("body");
       }
 
       // Count initial feed cards
@@ -1214,7 +1214,7 @@ test.describe("Mobile Feeds Page", () => {
         '[data-testid^="feed-item"]',
         '[data-testid^="article-card"]',
         '[class*="feed-item"]',
-        '[class*="article-card"]'
+        '[class*="article-card"]',
       ];
 
       let initialCardCount = 0;
@@ -1247,8 +1247,8 @@ test.describe("Mobile Feeds Page", () => {
         expect(finalCardCount).toBeGreaterThanOrEqual(initialCardCount);
       } else {
         // If no cards found, verify page structure
-        const pageContent = await page.locator('body').textContent();
-        expect(pageContent || '').toBeTruthy();
+        const pageContent = await page.locator("body").textContent();
+        expect(pageContent || "").toBeTruthy();
       }
     });
 
@@ -1256,27 +1256,27 @@ test.describe("Mobile Feeds Page", () => {
       page,
     }) => {
       // Mock feeds API
-      await page.route('**/v1/feeds/fetch/cursor*', async (route) => {
+      await page.route("**/v1/feeds/fetch/cursor*", async (route) => {
         const feeds = Array.from({ length: 15 }, (_, i) => ({
           id: `feed-${i}`,
           title: `Feed ${i}`,
           description: `Description ${i}`,
           link: `https://example.com/feed-${i}`,
           published: new Date().toISOString(),
-          source: 'TechCrunch'
+          source: "TechCrunch",
         }));
 
         await route.fulfill({
           json: {
             data: feeds,
             next_cursor: null,
-            has_more: false
-          }
+            has_more: false,
+          },
         });
       });
 
-      await page.goto('/mobile/feeds');
-      await page.waitForLoadState('domcontentloaded');
+      await page.goto("/mobile/feeds");
+      await page.waitForLoadState("domcontentloaded");
       await page.waitForTimeout(1000);
 
       // Count initial cards
@@ -1284,7 +1284,7 @@ test.describe("Mobile Feeds Page", () => {
         '[data-testid^="feed-item"]',
         '[data-testid^="article-card"]',
         '[class*="feed-item"]',
-        '[class*="article-card"]'
+        '[class*="article-card"]',
       ];
 
       let initialCardCount = 0;
@@ -1316,11 +1316,13 @@ test.describe("Mobile Feeds Page", () => {
         }
 
         // Should not lose any cards
-        expect(finalCardCount).toBeGreaterThanOrEqual(Math.min(initialCardCount, 5));
+        expect(finalCardCount).toBeGreaterThanOrEqual(
+          Math.min(initialCardCount, 5),
+        );
       } else {
         // Alternative verification
-        const hasContent = await page.locator('body').textContent();
-        expect(hasContent || '').toBeTruthy();
+        const hasContent = await page.locator("body").textContent();
+        expect(hasContent || "").toBeTruthy();
       }
     });
   });

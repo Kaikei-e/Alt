@@ -5,7 +5,7 @@ import { Flex, Box, Text, Icon } from "@chakra-ui/react";
 import { Plus, Zap, Bookmark, TrendingUp } from "lucide-react";
 
 interface ActivityItemProps {
-  type: 'new_feed' | 'ai_summary' | 'bookmark' | 'read';
+  type: "new_feed" | "ai_summary" | "bookmark" | "read";
   title: string;
   time: string;
 }
@@ -15,15 +15,15 @@ export const ActivityItem: React.FC<ActivityItemProps> = ({
   title,
   time,
 }) => {
-  const getActivityIcon = (activityType: ActivityItemProps['type']) => {
+  const getActivityIcon = (activityType: ActivityItemProps["type"]) => {
     switch (activityType) {
-      case 'new_feed':
+      case "new_feed":
         return Plus;
-      case 'ai_summary':
+      case "ai_summary":
         return Zap;
-      case 'bookmark':
+      case "bookmark":
         return Bookmark;
-      case 'read':
+      case "read":
         return TrendingUp;
       default:
         return Plus;
@@ -53,18 +53,10 @@ export const ActivityItem: React.FC<ActivityItemProps> = ({
         alignItems="center"
         justifyContent="center"
       >
-        <Icon
-          as={ActivityIcon}
-          color="var(--alt-primary)"
-          boxSize={4}
-        />
+        <Icon as={ActivityIcon} color="var(--alt-primary)" boxSize={4} />
       </Box>
       <Box flex="1">
-        <Text
-          fontSize="sm"
-          color="var(--text-primary)"
-          fontWeight="medium"
-        >
+        <Text fontSize="sm" color="var(--text-primary)" fontWeight="medium">
           {title}
         </Text>
         <Text fontSize="xs" color="var(--text-muted)">

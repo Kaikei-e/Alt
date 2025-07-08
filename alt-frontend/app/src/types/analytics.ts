@@ -18,7 +18,7 @@ export interface WeeklyStats {
   totalArticles: number;
   totalTime: number;
   dailyBreakdown: DailyBreakdown[];
-  trendDirection: 'up' | 'down' | 'stable';
+  trendDirection: "up" | "down" | "stable";
   weekOverWeek: number; // percentage change
 }
 
@@ -52,7 +52,7 @@ export interface CategoryStat {
 export interface TrendingTopic {
   tag: string;
   count: number;
-  trend: 'up' | 'down' | 'stable';
+  trend: "up" | "down" | "stable";
   trendValue: number; // percentage change
   category: string;
   color: string;

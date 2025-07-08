@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { ReadingAnalytics } from '@/types/analytics';
-import { mockAnalytics } from '@/data/mockAnalyticsData';
+import { useState, useEffect } from "react";
+import { ReadingAnalytics } from "@/types/analytics";
+import { mockAnalytics } from "@/data/mockAnalyticsData";
 
 export const useReadingAnalytics = () => {
   const [analytics, setAnalytics] = useState<ReadingAnalytics | null>(null);
@@ -12,7 +12,7 @@ export const useReadingAnalytics = () => {
       try {
         setIsLoading(true);
         // Use mock data for now - can be replaced with real API later
-        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate loading
+        await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate loading
         setAnalytics(mockAnalytics);
       } catch (err) {
         setError(err as Error);
@@ -25,7 +25,7 @@ export const useReadingAnalytics = () => {
 
     // TODO: SSEリアルタイム更新 - will be implemented when API is ready
     // const eventSource = new EventSource('/api/analytics/sse');
-    // 
+    //
     // eventSource.onmessage = (event) => {
     //   const updatedData = JSON.parse(event.data);
     //   setAnalytics(updatedData);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 // 統計カード用の型
 export interface StatsCardData {
@@ -8,13 +8,13 @@ export interface StatsCardData {
   value: number;
   trend?: string;
   trendLabel?: string;
-  color: 'primary' | 'secondary' | 'tertiary';
+  color: "primary" | "secondary" | "tertiary";
 }
 
 // アクティビティ用の型
 export interface ActivityData {
   id: number;
-  type: 'new_feed' | 'ai_summary' | 'bookmark' | 'read';
+  type: "new_feed" | "ai_summary" | "bookmark" | "read";
   title: string;
   time: string;
 }
@@ -30,7 +30,7 @@ export interface QuickActionData {
 // API Activity Response 用の型
 export interface ActivityResponse {
   id: number;
-  type: 'new_feed' | 'ai_summary' | 'bookmark' | 'read';
+  type: "new_feed" | "ai_summary" | "bookmark" | "read";
   title: string;
   timestamp: string;
 }

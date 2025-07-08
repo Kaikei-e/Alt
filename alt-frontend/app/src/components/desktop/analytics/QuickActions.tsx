@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 import {
   Box,
   VStack,
@@ -8,9 +8,9 @@ import {
   Text,
   Button,
   SimpleGrid,
-  Badge
-} from '@chakra-ui/react';
-import { useQuickActions } from '@/hooks/useQuickActions';
+  Badge,
+} from "@chakra-ui/react";
+import { useQuickActions } from "@/hooks/useQuickActions";
 
 export const QuickActions: React.FC = () => {
   const { actions, counters } = useQuickActions();
@@ -27,21 +27,17 @@ export const QuickActions: React.FC = () => {
         >
           ⚡ Quick Actions
         </Text>
-        
+
         <SimpleGrid columns={3} gap={3} mb={4}>
           <VStack gap={1}>
-            <Text
-              fontSize="lg"
-              fontWeight="bold"
-              color="var(--accent-primary)"
-            >
+            <Text fontSize="lg" fontWeight="bold" color="var(--accent-primary)">
               {counters.unread}
             </Text>
             <Text fontSize="xs" color="var(--text-secondary)">
               Unread
             </Text>
           </VStack>
-          
+
           <VStack gap={1}>
             <Text
               fontSize="lg"
@@ -54,7 +50,7 @@ export const QuickActions: React.FC = () => {
               Bookmarks
             </Text>
           </VStack>
-          
+
           <VStack gap={1}>
             <Text
               fontSize="lg"
@@ -78,7 +74,7 @@ export const QuickActions: React.FC = () => {
               borderColor="var(--surface-border)"
               color="var(--text-secondary)"
               borderLeftWidth="3px"
-              borderLeftColor={action.color || 'var(--accent-primary)'}
+              borderLeftColor={action.color || "var(--accent-primary)"}
               borderRadius="var(--radius-md)"
               justifyContent="flex-start"
               w="full"
@@ -86,9 +82,9 @@ export const QuickActions: React.FC = () => {
               p={3}
               onClick={action.action}
               _hover={{
-                bg: 'var(--surface-hover)',
-                borderColor: action.color || 'var(--accent-primary)',
-                transform: 'translateX(2px)'
+                bg: "var(--surface-hover)",
+                borderColor: action.color || "var(--accent-primary)",
+                transform: "translateX(2px)",
               }}
               transition="all var(--transition-speed) ease"
             >

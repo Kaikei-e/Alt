@@ -1,6 +1,6 @@
-import React from 'react';
-import { DesktopSidebar } from './DesktopSidebar';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import React from "react";
+import { DesktopSidebar } from "./DesktopSidebar";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface DesktopLayoutProps {
   children: React.ReactNode;
@@ -22,13 +22,13 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
   sidebarProps,
 }) => {
   return (
-    <div
-      className="min-h-screen bg-var(--app-bg)"
-      data-testid="desktop-layout"
-    >
+    <div className="min-h-screen bg-var(--app-bg)" data-testid="desktop-layout">
       {/* Theme Toggle - Fixed Top Right */}
       <div className="fixed top-4 right-4 z-50">
-        <div data-testid="theme-toggle-button" className="w-10 h-10 bg-purple-100">
+        <div
+          data-testid="theme-toggle-button"
+          className="w-10 h-10 bg-purple-100"
+        >
           <ThemeToggle />
         </div>
       </div>
@@ -36,19 +36,13 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
       <div className="flex h-screen">
         {/* Sidebar */}
         {showSidebar && sidebarProps && (
-          <div
-            className="w-64 flex-shrink-0"
-            style={{ width: '250px' }}
-          >
+          <div className="w-64 flex-shrink-0" style={{ width: "250px" }}>
             <DesktopSidebar navItems={sidebarProps.navItems} />
           </div>
         )}
 
         {/* Main Content */}
-        <div
-          className="flex-1 p-8"
-          data-testid="main-content"
-        >
+        <div className="flex-1 p-8" data-testid="main-content">
           {children}
         </div>
       </div>

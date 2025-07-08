@@ -1,6 +1,6 @@
-import React from 'react';
-import Link from 'next/link';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React from "react";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Box,
   VStack,
@@ -8,8 +8,8 @@ import {
   Button,
   Flex,
   IconButton,
-  Badge
-} from '@chakra-ui/react';
+  Badge,
+} from "@chakra-ui/react";
 
 interface NavItem {
   id: number;
@@ -28,11 +28,11 @@ interface FeedSource {
 }
 
 interface FilterState {
-  readStatus: 'all' | 'read' | 'unread';
+  readStatus: "all" | "read" | "unread";
   sources: string[];
-  priority: 'all' | 'high' | 'medium' | 'low';
+  priority: "all" | "high" | "medium" | "low";
   tags: string[];
-  timeRange: 'all' | 'today' | 'week' | 'month';
+  timeRange: "all" | "today" | "week" | "month";
 }
 
 interface DesktopSidebarProps {
@@ -50,22 +50,22 @@ interface DesktopSidebarProps {
   onToggleCollapse?: () => void;
 
   // Mode prop to determine which interface to use
-  mode?: 'navigation' | 'feeds-filter';
+  mode?: "navigation" | "feeds-filter";
 }
 
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   navItems = [],
-  logoText = 'Alt RSS',
-  logoSubtext = 'Feed Reader',
+  logoText = "Alt RSS",
+  logoSubtext = "Feed Reader",
   activeFilters,
   onFilterChange,
   onClearAll,
   feedSources = [],
   isCollapsed = false,
   onToggleCollapse,
-  mode = 'navigation'
+  mode = "navigation",
 }) => {
-  if (mode === 'feeds-filter') {
+  if (mode === "feeds-filter") {
     return (
       <Box
         className="glass"
@@ -92,8 +92,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               size="sm"
               aria-label="Collapse sidebar"
               _hover={{
-                bg: 'var(--surface-hover)',
-                transform: 'translateY(-2px)'
+                bg: "var(--surface-hover)",
+                transform: "translateY(-2px)",
               }}
               transition="all var(--transition-speed) ease"
               data-testid="sidebar-collapse-toggle"
@@ -121,15 +121,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 Read Status
               </Text>
               <VStack gap={2} align="start">
-                {['all', 'unread', 'read'].map((status) => (
+                {["all", "unread", "read"].map((status) => (
                   <label
                     key={status}
                     htmlFor={`read-status-${status}`}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      cursor: 'pointer'
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      cursor: "pointer",
                     }}
                   >
                     <Box
@@ -143,9 +143,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       transition="all var(--transition-speed) ease"
                       css={{
                         ...(activeFilters?.readStatus === status && {
-                          background: 'var(--alt-primary)',
-                          borderColor: 'var(--alt-primary)',
-                        })
+                          background: "var(--alt-primary)",
+                          borderColor: "var(--alt-primary)",
+                        }),
                       }}
                     >
                       <input
@@ -154,16 +154,18 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         value={status}
                         id={`read-status-${status}`}
                         checked={activeFilters?.readStatus === status}
-                        onChange={() => onFilterChange?.({
-                          ...activeFilters!,
-                          readStatus: status as 'all' | 'read' | 'unread'
-                        })}
+                        onChange={() =>
+                          onFilterChange?.({
+                            ...activeFilters!,
+                            readStatus: status as "all" | "read" | "unread",
+                          })
+                        }
                         style={{
                           opacity: 0,
-                          position: 'absolute',
-                          width: '100%',
-                          height: '100%',
-                          cursor: 'pointer'
+                          position: "absolute",
+                          width: "100%",
+                          height: "100%",
+                          cursor: "pointer",
                         }}
                         data-testid={`sidebar-filter-read-status-${status}`}
                       />
@@ -198,10 +200,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                     key={source.id}
                     htmlFor={`source-${source.id}`}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      cursor: 'pointer'
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      cursor: "pointer",
                     }}
                   >
                     <Box
@@ -216,9 +218,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       data-testid="filter-source-checkbox"
                       css={{
                         ...(activeFilters?.sources.includes(source.id) && {
-                          background: 'var(--alt-primary)',
-                          borderColor: 'var(--alt-primary)',
-                        })
+                          background: "var(--alt-primary)",
+                          borderColor: "var(--alt-primary)",
+                        }),
                       }}
                     >
                       <input
@@ -226,20 +228,24 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         id={`source-${source.id}`}
                         checked={activeFilters?.sources.includes(source.id)}
                         onChange={() => {
-                          const newSources = activeFilters?.sources.includes(source.id)
-                            ? activeFilters.sources.filter(id => id !== source.id)
+                          const newSources = activeFilters?.sources.includes(
+                            source.id,
+                          )
+                            ? activeFilters.sources.filter(
+                                (id) => id !== source.id,
+                              )
                             : [...(activeFilters?.sources || []), source.id];
                           onFilterChange?.({
                             ...activeFilters!,
-                            sources: newSources
+                            sources: newSources,
                           });
                         }}
                         style={{
                           opacity: 0,
-                          position: 'absolute',
-                          width: '100%',
-                          height: '100%',
-                          cursor: 'pointer'
+                          position: "absolute",
+                          width: "100%",
+                          height: "100%",
+                          cursor: "pointer",
                         }}
                         data-testid={`filter-source-${source.id}`}
                         className="filter-source-checkbox"
@@ -249,7 +255,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       <Text fontSize="sm" color="var(--text-secondary)">
                         {source.icon}
                       </Text>
-                      <Text fontSize="sm" color="var(--text-secondary)" flex={1}>
+                      <Text
+                        fontSize="sm"
+                        color="var(--text-secondary)"
+                        flex={1}
+                      >
                         {source.name}
                       </Text>
                       <Badge
@@ -280,15 +290,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 Time Range
               </Text>
               <VStack gap={2} align="start">
-                {['all', 'today', 'week', 'month'].map((range) => (
+                {["all", "today", "week", "month"].map((range) => (
                   <label
                     key={range}
                     htmlFor={`time-range-${range}`}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      cursor: 'pointer'
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      cursor: "pointer",
                     }}
                   >
                     <Box
@@ -302,9 +312,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       transition="all var(--transition-speed) ease"
                       css={{
                         ...(activeFilters?.timeRange === range && {
-                          background: 'var(--alt-primary)',
-                          borderColor: 'var(--alt-primary)',
-                        })
+                          background: "var(--alt-primary)",
+                          borderColor: "var(--alt-primary)",
+                        }),
                       }}
                     >
                       <input
@@ -313,16 +323,22 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         value={range}
                         id={`time-range-${range}`}
                         checked={activeFilters?.timeRange === range}
-                        onChange={() => onFilterChange?.({
-                          ...activeFilters!,
-                          timeRange: range as 'all' | 'today' | 'week' | 'month'
-                        })}
+                        onChange={() =>
+                          onFilterChange?.({
+                            ...activeFilters!,
+                            timeRange: range as
+                              | "all"
+                              | "today"
+                              | "week"
+                              | "month",
+                          })
+                        }
                         style={{
                           opacity: 0,
-                          position: 'absolute',
-                          width: '100%',
-                          height: '100%',
-                          cursor: 'pointer'
+                          position: "absolute",
+                          width: "100%",
+                          height: "100%",
+                          cursor: "pointer",
                         }}
                         data-testid={`sidebar-filter-time-range-${range}`}
                       />
@@ -342,13 +358,17 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
             {/* Clear Filters Button */}
             <Button
-              onClick={onClearAll || (() => onFilterChange?.({
-                sources: [],
-                timeRange: 'all',
-                readStatus: 'all',
-                tags: [],
-                priority: 'all'
-              }))}
+              onClick={
+                onClearAll ||
+                (() =>
+                  onFilterChange?.({
+                    sources: [],
+                    timeRange: "all",
+                    readStatus: "all",
+                    tags: [],
+                    priority: "all",
+                  }))
+              }
               variant="outline"
               size="sm"
               colorScheme="red"
@@ -364,7 +384,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
   // Default navigation mode
   return (
-    <Box className="glass" h="full" p="var(--space-4)" data-testid="desktop-sidebar">
+    <Box
+      className="glass"
+      h="full"
+      p="var(--space-4)"
+      data-testid="desktop-sidebar"
+    >
       {/* Logo Section */}
       <Box mb={8}>
         <Text
@@ -375,10 +400,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         >
           {logoText}
         </Text>
-        <Text
-          fontSize="sm"
-          color="var(--text-secondary)"
-        >
+        <Text fontSize="sm" color="var(--text-secondary)">
           {logoSubtext}
         </Text>
       </Box>
@@ -388,20 +410,22 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         <VStack gap={2} align="stretch">
           {navItems.map((item) => (
             <Box key={item.id}>
-              <Link href={item.href} style={{ textDecoration: 'none' }}>
+              <Link href={item.href} style={{ textDecoration: "none" }}>
                 <Flex
                   align="center"
                   gap={3}
                   px={4}
                   py={3}
                   borderRadius="var(--radius-md)"
-                  bg={item.active ? 'var(--surface-hover)' : 'transparent'}
-                  color={item.active ? 'var(--alt-primary)' : 'var(--text-secondary)'}
-                  className={item.active ? 'active' : ''}
+                  bg={item.active ? "var(--surface-hover)" : "transparent"}
+                  color={
+                    item.active ? "var(--alt-primary)" : "var(--text-secondary)"
+                  }
+                  className={item.active ? "active" : ""}
                   _hover={{
-                    bg: 'var(--surface-hover)',
-                    color: 'var(--alt-primary)',
-                    transform: 'translateY(-2px)'
+                    bg: "var(--surface-hover)",
+                    color: "var(--alt-primary)",
+                    transform: "translateY(-2px)",
                   }}
                   transition="all var(--transition-speed) ease"
                 >

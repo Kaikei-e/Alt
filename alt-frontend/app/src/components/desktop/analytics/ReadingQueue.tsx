@@ -1,83 +1,75 @@
-'use client';
+"use client";
 
-import React from 'react';
-import {
-  Box,
-  VStack,
-  HStack,
-  Text,
-  Button,
-  Badge
-} from '@chakra-ui/react';
-import { Progress } from '@chakra-ui/progress';
+import React from "react";
+import { Box, VStack, HStack, Text, Button, Badge } from "@chakra-ui/react";
+import { Progress } from "@chakra-ui/progress";
 
 export const ReadingQueue: React.FC = () => {
   // Mock data for reading queue
   const queueItems = [
     {
-      id: '1',
-      title: 'Advanced TypeScript Patterns',
-      source: 'TypeScript Weekly',
-      readTime: '10 min read',
+      id: "1",
+      title: "Advanced TypeScript Patterns",
+      source: "TypeScript Weekly",
+      readTime: "10 min read",
       progress: 60,
-      priority: 'high' as const
+      priority: "high" as const,
     },
     {
-      id: '2',
-      title: 'Optimizing React Performance',
-      source: 'React Newsletter',
-      readTime: '7 min read',
+      id: "2",
+      title: "Optimizing React Performance",
+      source: "React Newsletter",
+      readTime: "7 min read",
       progress: 0,
-      priority: 'medium' as const
+      priority: "medium" as const,
     },
     {
-      id: '3',
-      title: 'Database Design Best Practices',
-      source: 'Dev Database',
-      readTime: '20 min read',
+      id: "3",
+      title: "Database Design Best Practices",
+      source: "Dev Database",
+      readTime: "20 min read",
       progress: 25,
-      priority: 'low' as const
-    }
+      priority: "low" as const,
+    },
   ];
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'var(--alt-error)';
-      case 'medium': return 'var(--alt-warning)';
-      case 'low': return 'var(--alt-success)';
-      default: return 'var(--text-secondary)';
+      case "high":
+        return "var(--alt-error)";
+      case "medium":
+        return "var(--alt-warning)";
+      case "low":
+        return "var(--alt-success)";
+      default:
+        return "var(--text-secondary)";
     }
   };
 
   const getPriorityLabel = (priority: string) => {
     switch (priority) {
-      case 'high': return '🔴';
-      case 'medium': return '🟡';
-      case 'low': return '🟢';
-      default: return '⚪';
+      case "high":
+        return "🔴";
+      case "medium":
+        return "🟡";
+      case "low":
+        return "🟢";
+      default:
+        return "⚪";
     }
   };
 
   return (
     <Box className="glass" p={4} borderRadius="var(--radius-lg)">
       <HStack justify="space-between" mb={3}>
-        <Text
-          fontSize="sm"
-          fontWeight="bold"
-          color="var(--text-primary)"
-        >
+        <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)">
           📚 Reading Queue
         </Text>
-        <Badge
-          size="sm"
-          bg="var(--accent-primary)"
-          color="white"
-          fontSize="xs"
-        >
+        <Badge size="sm" bg="var(--accent-primary)" color="white" fontSize="xs">
           {queueItems.length} items
         </Badge>
       </HStack>
-      
+
       <VStack gap={3} align="stretch">
         {queueItems.map((item) => (
           <Box
@@ -87,8 +79,8 @@ export const ReadingQueue: React.FC = () => {
             borderRadius="var(--radius-md)"
             border="1px solid var(--surface-border)"
             _hover={{
-              bg: 'var(--surface-hover)',
-              transform: 'translateX(2px)'
+              bg: "var(--surface-hover)",
+              transform: "translateX(2px)",
             }}
             transition="all var(--transition-speed) ease"
             cursor="pointer"
@@ -105,7 +97,7 @@ export const ReadingQueue: React.FC = () => {
                   display="-webkit-box"
                   css={{
                     WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical'
+                    WebkitBoxOrient: "vertical",
                   }}
                   flex={1}
                 >
@@ -115,7 +107,7 @@ export const ReadingQueue: React.FC = () => {
                   {getPriorityLabel(item.priority)}
                 </Text>
               </HStack>
-              
+
               <HStack justify="space-between" w="full">
                 <Text fontSize="xs" color="var(--text-muted)">
                   {item.source}
@@ -124,14 +116,18 @@ export const ReadingQueue: React.FC = () => {
                   {item.readTime}
                 </Text>
               </HStack>
-              
+
               {item.progress > 0 && (
                 <VStack gap={1} w="full">
                   <HStack justify="space-between" w="full">
                     <Text fontSize="xs" color="var(--text-secondary)">
                       Progress:
                     </Text>
-                    <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                    <Text
+                      fontSize="xs"
+                      color="var(--text-primary)"
+                      fontWeight="medium"
+                    >
                       {item.progress}%
                     </Text>
                   </HStack>
@@ -141,9 +137,9 @@ export const ReadingQueue: React.FC = () => {
                     w="full"
                     bg="var(--surface-border)"
                     sx={{
-                      '& > div': {
-                        bg: 'var(--accent-primary)'
-                      }
+                      "& > div": {
+                        bg: "var(--accent-primary)",
+                      },
                     }}
                     borderRadius="var(--radius-full)"
                   />
@@ -158,7 +154,7 @@ export const ReadingQueue: React.FC = () => {
           variant="ghost"
           color="var(--accent-primary)"
           _hover={{
-            bg: 'var(--surface-hover)'
+            bg: "var(--surface-hover)",
           }}
         >
           Manage Queue

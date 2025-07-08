@@ -1,4 +1,4 @@
-import { Feed } from '@/schema/feed';
+import { Feed } from "@/schema/feed";
 
 export interface DesktopFeed extends Feed {
   metadata: FeedMetadata;
@@ -17,9 +17,9 @@ export interface FeedMetadata {
   publishedAt: string;
   author?: string;
   summary?: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: "high" | "medium" | "low";
   category: string;
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  difficulty: "beginner" | "intermediate" | "advanced";
 }
 
 export interface EngagementStats {
@@ -42,7 +42,7 @@ export interface FeedSource {
 
 export interface DesktopFeedCardProps {
   feed: DesktopFeed;
-  variant?: 'default' | 'compact' | 'detailed';
+  variant?: "default" | "compact" | "detailed";
   onMarkAsRead: (feedId: string) => void;
   onToggleFavorite: (feedId: string) => void;
   onToggleBookmark: (feedId: string) => void;
@@ -51,11 +51,11 @@ export interface DesktopFeedCardProps {
 }
 
 export interface FilterState {
-  readStatus: 'all' | 'read' | 'unread';
+  readStatus: "all" | "read" | "unread";
   sources: string[];
-  priority: 'all' | 'high' | 'medium' | 'low';
+  priority: "all" | "high" | "medium" | "low";
   tags: string[];
-  timeRange: 'all' | 'today' | 'week' | 'month';
+  timeRange: "all" | "today" | "week" | "month";
 }
 
 export interface DesktopFeedsResponse {

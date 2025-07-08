@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Flex, Heading, Text, Input, Box } from '@chakra-ui/react';
-import { Search } from 'lucide-react';
-import { DesktopHeaderProps } from '@/types/desktop-feeds';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import React from "react";
+import { Flex, Heading, Text, Input, Box } from "@chakra-ui/react";
+import { Search } from "lucide-react";
+import { DesktopHeaderProps } from "@/types/desktop-feeds";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   totalUnread,
-  searchQuery = '',
-  onSearchChange
+  searchQuery = "",
+  onSearchChange,
 }) => {
   return (
     <Flex
@@ -29,11 +29,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
           Alt / Feeds
         </Heading>
         <Flex align="center" gap={2}>
-          <Text
-            fontSize="sm"
-            color="var(--text-secondary)"
-            fontWeight="medium"
-          >
+          <Text fontSize="sm" color="var(--text-secondary)" fontWeight="medium">
             {totalUnread} unread
           </Text>
         </Flex>
@@ -62,7 +58,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
             _placeholder={{ color: "var(--text-muted)" }}
             _focus={{
               borderColor: "var(--accent-primary)",
-              boxShadow: "0 0 0 1px var(--accent-primary)"
+              boxShadow: "0 0 0 1px var(--accent-primary)",
             }}
             borderRadius="var(--radius-full)"
             pl={10}
@@ -73,10 +69,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
 
       {/* 右側：テーマトグル */}
       <Flex align="center">
-        <ThemeToggle
-          size="md"
-          showLabel={false}
-        />
+        <ThemeToggle size="md" showLabel={false} />
       </Flex>
     </Flex>
   );

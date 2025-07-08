@@ -1,21 +1,21 @@
-'use client';
+"use client";
 
-import { CallToActionBar } from '@/components/desktop/home/CallToActionBar';
-import { ThemeProvider } from '@/providers/ThemeProvider';
-import { ArrowRight, Download } from 'lucide-react';
+import { CallToActionBar } from "@/components/desktop/home/CallToActionBar";
+import { ThemeProvider } from "@/providers/ThemeProvider";
+import { ArrowRight, Download } from "lucide-react";
 
 export default function CallToActionBarTest() {
   const ctaActions = [
     {
       label: "Browse Feeds",
       href: "/desktop/feeds",
-      icon: ArrowRight
+      icon: ArrowRight,
     },
     {
       label: "Add New Feed",
       href: "/desktop/feeds/register",
-      icon: Download
-    }
+      icon: Download,
+    },
   ];
 
   return (
@@ -29,4 +29,4 @@ export default function CallToActionBarTest() {
       </div>
     </ThemeProvider>
   );
-} 
+}

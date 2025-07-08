@@ -1,51 +1,40 @@
-'use client';
+"use client";
 
-import React from 'react';
-import {
-  Box,
-  VStack,
-  HStack,
-  Text,
-  Button
-} from '@chakra-ui/react';
+import React from "react";
+import { Box, VStack, HStack, Text, Button } from "@chakra-ui/react";
 
 export const BookmarksList: React.FC = () => {
   // Mock data for bookmarks
   const bookmarks = [
     {
-      id: '1',
-      title: 'Understanding React Server Components',
-      source: 'React Blog',
-      readTime: '8 min read',
-      addedDate: '2024-01-15'
+      id: "1",
+      title: "Understanding React Server Components",
+      source: "React Blog",
+      readTime: "8 min read",
+      addedDate: "2024-01-15",
     },
     {
-      id: '2',
-      title: 'Modern CSS Techniques for 2024',
-      source: 'CSS Tricks',
-      readTime: '12 min read',
-      addedDate: '2024-01-14'
+      id: "2",
+      title: "Modern CSS Techniques for 2024",
+      source: "CSS Tricks",
+      readTime: "12 min read",
+      addedDate: "2024-01-14",
     },
     {
-      id: '3',
-      title: 'Building Scalable APIs with Node.js',
-      source: 'Node.js Weekly',
-      readTime: '15 min read',
-      addedDate: '2024-01-13'
-    }
+      id: "3",
+      title: "Building Scalable APIs with Node.js",
+      source: "Node.js Weekly",
+      readTime: "15 min read",
+      addedDate: "2024-01-13",
+    },
   ];
 
   return (
     <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-      <Text
-        fontSize="sm"
-        fontWeight="bold"
-        color="var(--text-primary)"
-        mb={3}
-      >
+      <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)" mb={3}>
         🔖 Recent Bookmarks
       </Text>
-      
+
       <VStack gap={3} align="stretch">
         {bookmarks.map((bookmark) => (
           <Box
@@ -55,8 +44,8 @@ export const BookmarksList: React.FC = () => {
             borderRadius="var(--radius-md)"
             border="1px solid var(--surface-border)"
             _hover={{
-              bg: 'var(--surface-hover)',
-              transform: 'translateX(2px)'
+              bg: "var(--surface-hover)",
+              transform: "translateX(2px)",
             }}
             transition="all var(--transition-speed) ease"
             cursor="pointer"
@@ -72,12 +61,12 @@ export const BookmarksList: React.FC = () => {
                 display="-webkit-box"
                 css={{
                   WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical'
+                  WebkitBoxOrient: "vertical",
                 }}
               >
                 {bookmark.title}
               </Text>
-              
+
               <HStack justify="space-between" w="full">
                 <Text fontSize="xs" color="var(--text-muted)">
                   {bookmark.source}
@@ -86,7 +75,7 @@ export const BookmarksList: React.FC = () => {
                   {bookmark.readTime}
                 </Text>
               </HStack>
-              
+
               <Text fontSize="xs" color="var(--text-secondary)">
                 Added {new Date(bookmark.addedDate).toLocaleDateString()}
               </Text>
@@ -99,7 +88,7 @@ export const BookmarksList: React.FC = () => {
           variant="ghost"
           color="var(--accent-primary)"
           _hover={{
-            bg: 'var(--surface-hover)'
+            bg: "var(--surface-hover)",
           }}
         >
           View All Bookmarks

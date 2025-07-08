@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Grid, GridItem } from '@chakra-ui/react';
-import { DesktopFeedsLayoutProps } from '@/types/desktop-feeds';
-import { RightPanel } from '@/components/desktop/analytics/RightPanel';
+import React from "react";
+import { Grid, GridItem } from "@chakra-ui/react";
+import { DesktopFeedsLayoutProps } from "@/types/desktop-feeds";
+import { RightPanel } from "@/components/desktop/analytics/RightPanel";
 
 export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
   children,
   sidebar,
-  header
+  header,
 }) => {
   return (
     <Grid
@@ -37,7 +37,7 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
             base: "1fr",
             md: "240px 1fr",
             lg: "260px 1fr 300px",
-            xl: "280px 1fr 320px"
+            xl: "280px 1fr 320px",
           }}
           gap={{ base: 4, md: 4, lg: 6 }}
           p={{ base: 4, md: 4, lg: 6 }}
@@ -55,9 +55,9 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
           </GridItem>
 
           {/* タイムライン */}
-          <GridItem 
-            display="flex" 
-            alignItems="stretch" 
+          <GridItem
+            display="flex"
+            alignItems="stretch"
             bg="var(--app-bg)"
             px={{ base: 2, md: 3, lg: 4 }}
             overflow="hidden"

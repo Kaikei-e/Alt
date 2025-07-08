@@ -1,41 +1,41 @@
-import { FeedStatsSummary } from '@/schema/feedStats';
-import { StatsCardData } from '@/types/desktop';
-import { Rss, Eye, Clock } from 'lucide-react';
+import { FeedStatsSummary } from "@/schema/feedStats";
+import { StatsCardData } from "@/types/desktop";
+import { Rss, Eye, Clock } from "lucide-react";
 
 /**
  * Transform feed stats and unread count to stats card data format
  */
 export const transformFeedStats = (
   feedStats: FeedStatsSummary | null,
-  unreadCount: number
+  unreadCount: number,
 ): StatsCardData[] => {
   return [
     {
-      id: 'total-feeds',
+      id: "total-feeds",
       icon: Rss,
-      label: 'Total Feeds',
+      label: "Total Feeds",
       value: feedStats?.feed_amount?.amount || 0,
-      trend: '+12%',
-      trendLabel: 'vs last month',
-      color: 'primary'
+      trend: "+12%",
+      trendLabel: "vs last month",
+      color: "primary",
     },
     {
-      id: 'unread-articles',
+      id: "unread-articles",
       icon: Eye,
-      label: 'Unread Articles',
+      label: "Unread Articles",
       value: unreadCount,
-      trend: '+5%',
-      trendLabel: 'vs yesterday',
-      color: 'secondary'
+      trend: "+5%",
+      trendLabel: "vs yesterday",
+      color: "secondary",
     },
     {
-      id: 'reading-time',
+      id: "reading-time",
       icon: Clock,
-      label: 'Reading Time',
+      label: "Reading Time",
       value: 45, // Mock value - in real implementation this would be calculated
-      trend: '+2h',
-      trendLabel: 'this week',
-      color: 'tertiary'
-    }
+      trend: "+2h",
+      trendLabel: "this week",
+      color: "tertiary",
+    },
   ];
 };

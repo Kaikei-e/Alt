@@ -1,6 +1,15 @@
 "use client";
 
-import { Box, Flex, Text, HStack, VStack, IconButton, Badge, Toast } from "@chakra-ui/react";
+import {
+  Box,
+  Flex,
+  Text,
+  HStack,
+  VStack,
+  IconButton,
+  Badge,
+  Toast,
+} from "@chakra-ui/react";
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { Heart, Bookmark, Clock, ExternalLink, Eye } from "lucide-react";
 import { feedsApi } from "@/lib/api";
@@ -48,14 +57,18 @@ const formatTimeAgo = (dateString: string) => {
   const date = new Date(dateString);
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-  if (diffInSeconds < 60) return 'just now';
+  if (diffInSeconds < 60) return "just now";
   if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
   if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
   return `${Math.floor(diffInSeconds / 86400)}d ago`;
 };
 
 // Desktop-styled Feed Card
-const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
+const DesktopStyledFeedCard = ({
+  feed,
+  isRead,
+  onMarkAsRead,
+}: {
   feed: DesktopFeed;
   isRead: boolean;
   onMarkAsRead: () => void;
@@ -68,31 +81,41 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
     if (!isRead) {
       onMarkAsRead();
     }
-    window.open(feed.link, '_blank');
+    window.open(feed.link, "_blank");
   }, [feed.link, isRead, onMarkAsRead]);
 
-  const handleToggleFavorite = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggleFavorite = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
 
-    const res = await feedsApi.registerFavoriteFeed(feed.link);
-    if (res.message !== "favorite feed registered") {
-      console.error(res.message);
-      return;
-    }
-    setIsFavorited(true);
-  }, [feed.link]);
+      const res = await feedsApi.registerFavoriteFeed(feed.link);
+      if (res.message !== "favorite feed registered") {
+        console.error(res.message);
+        return;
+      }
+      setIsFavorited(true);
+    },
+    [feed.link],
+  );
 
-  const handleToggleBookmark = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsBookmarked(!isBookmarked);
-  }, [isBookmarked]);
+  const handleToggleBookmark = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setIsBookmarked(!isBookmarked);
+    },
+    [isBookmarked],
+  );
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'var(--accent-primary)';
-      case 'medium': return 'var(--accent-secondary)';
-      case 'low': return 'var(--text-muted)';
-      default: return 'var(--text-muted)';
+      case "high":
+        return "var(--accent-primary)";
+      case "medium":
+        return "var(--accent-secondary)";
+      case "low":
+        return "var(--text-muted)";
+      default:
+        return "var(--text-muted)";
     }
   };
 
@@ -112,9 +135,9 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
       onMouseLeave={() => setIsHovered(false)}
       opacity={isRead ? 0.7 : 1}
       _hover={{
-        transform: 'translateY(-2px)',
-        boxShadow: '0 8px 25px rgba(0, 0, 0, 0.1)',
-        borderColor: 'var(--accent-primary)'
+        transform: "translateY(-2px)",
+        boxShadow: "0 8px 25px rgba(0, 0, 0, 0.1)",
+        borderColor: "var(--accent-primary)",
       }}
       data-testid={`desktop-feed-card-${feed.id}`}
     >
@@ -131,9 +154,7 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
               {feed.metadata.source.name}
             </Text>
             <HStack gap={2} fontSize="xs" color="var(--text-secondary)">
-              <Text>
-                {formatTimeAgo(feed.published)}
-              </Text>
+              <Text>{formatTimeAgo(feed.published)}</Text>
               <Text>•</Text>
               <HStack gap={1}>
                 <Clock size={12} />
@@ -150,12 +171,18 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
           transition="opacity var(--transition-speed) ease"
         >
           <IconButton
-            aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+            aria-label={
+              isFavorited ? "Remove from favorites" : "Add to favorites"
+            }
             size="sm"
             variant="ghost"
-            color={isFavorited ? 'var(--accent-primary)' : 'var(--text-secondary)'}
-            bg={isFavorited ? 'var(--surface-bg)' : 'transparent'}
-            fill={isFavorited ? 'var(--accent-primary)' : 'var(--text-secondary)'}
+            color={
+              isFavorited ? "var(--accent-primary)" : "var(--text-secondary)"
+            }
+            bg={isFavorited ? "var(--surface-bg)" : "transparent"}
+            fill={
+              isFavorited ? "var(--accent-primary)" : "var(--text-secondary)"
+            }
             onClick={(e) => {
               e.stopPropagation();
               handleToggleFavorite(e);
@@ -169,13 +196,16 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
       {/* Card Main Content */}
       <VStack gap={4} align="stretch">
         {/* Title */}
-        <HStack gap={3} align="flex-start" outline={isHovered ? '1px solid var(--accent-primary)' : 'none'}
-          rounded={isHovered ? 'var(--radius-lg)' : 'none'}
+        <HStack
+          gap={3}
+          align="flex-start"
+          outline={isHovered ? "1px solid var(--accent-primary)" : "none"}
+          rounded={isHovered ? "var(--radius-lg)" : "none"}
         >
           <Text fontSize="lg" color={getPriorityColor(feed.metadata.priority)}>
-            {feed.metadata.priority === 'high' && '🔥'}
-            {feed.metadata.priority === 'medium' && '📈'}
-            {feed.metadata.priority === 'low' && '📄'}
+            {feed.metadata.priority === "high" && "🔥"}
+            {feed.metadata.priority === "medium" && "📈"}
+            {feed.metadata.priority === "low" && "📄"}
           </Text>
           <Text
             fontSize="lg"
@@ -195,10 +225,10 @@ const DesktopStyledFeedCard = ({ feed, isRead, onMarkAsRead }: {
           color="var(--text-secondary)"
           lineHeight="1.6"
           css={{
-            display: '-webkit-box',
+            display: "-webkit-box",
             WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
           }}
         >
           {feed.description}
@@ -461,37 +491,37 @@ const useEnhancedInfiniteScroll = (
       const scrollContainer = scrollContainerRef.current;
 
       if (!sentinelElement) {
-        console.log('🔍 Sentinel element not found, retrying...');
+        console.log("🔍 Sentinel element not found, retrying...");
         setTimeout(setupObserver, 100);
         return;
       }
 
-      console.log('🚀 Setting up IntersectionObserver for infinite scroll');
+      console.log("🚀 Setting up IntersectionObserver for infinite scroll");
 
       observer = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
-            console.log('👀 Intersection observed:', {
+            console.log("👀 Intersection observed:", {
               isIntersecting: entry.isIntersecting,
               intersectionRatio: entry.intersectionRatio,
               boundingClientRect: entry.boundingClientRect,
             });
 
             if (entry.isIntersecting) {
-              console.log('✅ Sentinel is visible, triggering callback');
+              console.log("✅ Sentinel is visible, triggering callback");
               callback();
             }
           });
         },
         {
           root: scrollContainer, // 明示的にスクロールコンテナを指定
-          rootMargin: '200px 0px', // より早めにトリガー
+          rootMargin: "200px 0px", // より早めにトリガー
           threshold: 0.1,
         },
       );
 
       observer.observe(sentinelElement);
-      console.log('👁️ Observer started watching sentinel element');
+      console.log("👁️ Observer started watching sentinel element");
     };
 
     setupObserver();
@@ -499,7 +529,7 @@ const useEnhancedInfiniteScroll = (
     return () => {
       if (observer) {
         observer.disconnect();
-        console.log('🛑 IntersectionObserver disconnected');
+        console.log("🛑 IntersectionObserver disconnected");
       }
     };
   }, [callback, sentinelRef, scrollContainerRef, resetKey]);
@@ -546,7 +576,7 @@ export default function DesktopTimeline() {
     try {
       await feedsApi.updateFeedReadStatus(feedId);
     } catch (err) {
-      console.error('Failed to update feed read status:', err);
+      console.error("Failed to update feed read status:", err);
     }
   }, []);
 
@@ -564,12 +594,16 @@ export default function DesktopTimeline() {
 
   // Handle infinite scroll
   const handleLoadMore = useCallback(() => {
-    console.log('🔄 Load more triggered:', { hasMore, isLoading, feedCount: feeds?.length });
+    console.log("🔄 Load more triggered:", {
+      hasMore,
+      isLoading,
+      feedCount: feeds?.length,
+    });
     if (hasMore && !isLoading) {
-      console.log('✅ Conditions met, calling loadMore');
+      console.log("✅ Conditions met, calling loadMore");
       loadMore();
     } else {
-      console.log('❌ Conditions not met:', { hasMore, isLoading });
+      console.log("❌ Conditions not met:", { hasMore, isLoading });
     }
   }, [hasMore, isLoading, loadMore, feeds?.length]);
 
@@ -578,19 +612,25 @@ export default function DesktopTimeline() {
     handleLoadMore,
     sentinelRef,
     scrollContainerRef,
-    feeds?.length || 0
+    feeds?.length || 0,
   );
 
   // Debug effect
   useEffect(() => {
-    console.log('📊 Timeline state:', {
+    console.log("📊 Timeline state:", {
       feedsCount: feeds?.length || 0,
       visibleFeedsCount: visibleFeeds.length,
       hasMore,
       isLoading,
       isInitialLoading,
     });
-  }, [feeds?.length, visibleFeeds.length, hasMore, isLoading, isInitialLoading]);
+  }, [
+    feeds?.length,
+    visibleFeeds.length,
+    hasMore,
+    isLoading,
+    isInitialLoading,
+  ]);
 
   // Show skeleton loading state
   if (isInitialLoading) {
@@ -631,7 +671,9 @@ export default function DesktopTimeline() {
             textAlign="center"
             maxW="400px"
           >
-            <Text fontSize="2xl" mb={3}>⚠️</Text>
+            <Text fontSize="2xl" mb={3}>
+              ⚠️
+            </Text>
             <Text color="var(--text-primary)" fontSize="lg" mb={3}>
               Failed to load feeds
             </Text>
@@ -672,20 +714,20 @@ export default function DesktopTimeline() {
         p={3}
         data-testid="desktop-timeline-container"
         css={{
-          scrollBehavior: 'smooth',
-          '&::-webkit-scrollbar': {
-            width: '6px',
+          scrollBehavior: "smooth",
+          "&::-webkit-scrollbar": {
+            width: "6px",
           },
-          '&::-webkit-scrollbar-track': {
-            background: 'var(--surface-secondary)',
-            borderRadius: '3px',
+          "&::-webkit-scrollbar-track": {
+            background: "var(--surface-secondary)",
+            borderRadius: "3px",
           },
-          '&::-webkit-scrollbar-thumb': {
-            background: 'var(--accent-primary)',
-            borderRadius: '3px',
+          "&::-webkit-scrollbar-thumb": {
+            background: "var(--accent-primary)",
+            borderRadius: "3px",
             opacity: 0.7,
           },
-          '&::-webkit-scrollbar-thumb:hover': {
+          "&::-webkit-scrollbar-thumb:hover": {
             opacity: 1,
           },
         }}
@@ -727,14 +769,16 @@ export default function DesktopTimeline() {
                     alignItems="center"
                     gap={2}
                   >
-                    <div style={{
-                      width: "14px",
-                      height: "14px",
-                      border: "2px solid var(--surface-border)",
-                      borderTop: "2px solid var(--accent-primary)",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite",
-                    }} />
+                    <div
+                      style={{
+                        width: "14px",
+                        height: "14px",
+                        border: "2px solid var(--surface-border)",
+                        borderTop: "2px solid var(--accent-primary)",
+                        borderRadius: "50%",
+                        animation: "spin 1s linear infinite",
+                      }}
+                    />
                     <Text color="var(--text-secondary)" fontSize="sm">
                       Loading more...
                     </Text>
@@ -759,7 +803,9 @@ export default function DesktopTimeline() {
                 mt={4}
                 textAlign="center"
               >
-                <Text fontSize="lg" mb={1}>📭</Text>
+                <Text fontSize="lg" mb={1}>
+                  📭
+                </Text>
                 <Text
                   color="var(--text-secondary)"
                   fontSize="sm"
@@ -772,20 +818,16 @@ export default function DesktopTimeline() {
           </>
         ) : (
           /* Enhanced empty state */
-          <Flex
-            justify="center"
-            align="center"
-            py={16}
-            maxW="900px"
-            mx="auto"
-          >
+          <Flex justify="center" align="center" py={16} maxW="900px" mx="auto">
             <Box
               className="glass"
               p={6}
               borderRadius="var(--radius-lg)"
               textAlign="center"
             >
-              <Text fontSize="2xl" mb={3}>📰</Text>
+              <Text fontSize="2xl" mb={3}>
+                📰
+              </Text>
               <Text color="var(--text-primary)" fontSize="md" mb={2}>
                 No feeds available
               </Text>

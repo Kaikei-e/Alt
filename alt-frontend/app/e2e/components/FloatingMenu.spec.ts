@@ -266,9 +266,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
 
       // Navigate with better error handling and timeout management
       try {
-        await page.goto("/", { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.goto("/", { waitUntil: "domcontentloaded", timeout: 60000 });
       } catch (error) {
-        console.log('Navigation timeout, proceeding with test');
+        console.log("Navigation timeout, proceeding with test");
         // Continue test even if navigation times out
       }
 
@@ -279,9 +279,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
         await expect(floatingMenuButton).toBeVisible({ timeout: 15000 });
       } catch {
         // If floating menu button not found, try alternative selectors
-        const alternativeButton = page.locator('button[aria-label*="menu"]').or(
-          page.locator('[data-testid*="menu"]')
-        );
+        const alternativeButton = page
+          .locator('button[aria-label*="menu"]')
+          .or(page.locator('[data-testid*="menu"]'));
         await expect(alternativeButton.first()).toBeVisible({ timeout: 10000 });
         await alternativeButton.first().click();
       }
@@ -296,9 +296,9 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
       // Check for bottom sheet menu or any drawer content - flexible approach
       const bottomSheetSelectors = [
         page.getByTestId("bottom-sheet-menu"),
-        page.locator('.chakra-drawer__content'),
+        page.locator(".chakra-drawer__content"),
         page.locator('[role="dialog"]'),
-        page.locator('.drawer-content'),
+        page.locator(".drawer-content"),
         page.locator('[data-testid*="drawer"]'),
         page.locator('[data-testid*="menu-content"]'),
       ];
@@ -317,10 +317,10 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
         expect(bottomSheetFound).toBe(true);
       } else {
         // If no bottom sheet, verify the menu functionality still works
-        const menuItems = page.locator('a[href]').or(page.locator('button'));
-        const hasMenuItems = await menuItems.count() > 0;
+        const menuItems = page.locator("a[href]").or(page.locator("button"));
+        const hasMenuItems = (await menuItems.count()) > 0;
         expect(hasMenuItems).toBeTruthy();
-        console.log('Bottom sheet not found, but menu functionality present');
+        console.log("Bottom sheet not found, but menu functionality present");
       }
     });
   });

@@ -10,7 +10,7 @@ interface StatsCardProps {
   value: number;
   trend?: string;
   trendLabel?: string;
-  color: 'primary' | 'secondary' | 'tertiary';
+  color: "primary" | "secondary" | "tertiary";
   isLoading?: boolean;
 }
 
@@ -23,23 +23,25 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   color,
   isLoading = false,
 }) => {
-  const getColorVariable = (colorType: 'primary' | 'secondary' | 'tertiary') => {
+  const getColorVariable = (
+    colorType: "primary" | "secondary" | "tertiary",
+  ) => {
     switch (colorType) {
-      case 'primary':
-        return 'var(--alt-primary)';
-      case 'secondary':
-        return 'var(--alt-secondary)';
-      case 'tertiary':
-        return 'var(--alt-tertiary)';
+      case "primary":
+        return "var(--alt-primary)";
+      case "secondary":
+        return "var(--alt-secondary)";
+      case "tertiary":
+        return "var(--alt-tertiary)";
       default:
-        return 'var(--alt-primary)';
+        return "var(--alt-primary)";
     }
   };
 
   const colorVar = getColorVariable(color);
 
   // Debug logging
-  console.log('StatsCard props:', { trend, trendLabel, isLoading });
+  console.log("StatsCard props:", { trend, trendLabel, isLoading });
 
   return (
     <Box
@@ -57,16 +59,17 @@ export const StatsCard: React.FC<StatsCardProps> = ({
     >
       <HStack justify="space-between" mb={4}>
         <Icon as={icon} color={colorVar} boxSize={6} />
-        <Box
-          bg={colorVar}
-          borderRadius="full"
-          p={1}
-          opacity={0.1}
-        />
+        <Box bg={colorVar} borderRadius="full" p={1} opacity={0.1} />
       </HStack>
 
       {isLoading ? (
-        <Box data-testid="loading" display="flex" alignItems="center" justifyContent="center" minH="60px">
+        <Box
+          data-testid="loading"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          minH="60px"
+        >
           <Spinner size="md" color={colorVar} />
         </Box>
       ) : (

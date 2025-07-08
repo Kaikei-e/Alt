@@ -1,35 +1,41 @@
-import React, { useMemo } from 'react';
-import { DesktopLayout } from '../layout/DesktopLayout';
-import { PageHeader } from './PageHeader';
-import { StatsGrid } from './StatsGrid';
-import { ActivityFeed } from './ActivityFeed';
-import { QuickActionsPanel } from './QuickActionsPanel';
-import { CallToActionBar } from './CallToActionBar';
-import { useHomeStats } from '@/hooks/useHomeStats';
-import { useRecentActivity } from '@/hooks/useRecentActivity';
-import { transformFeedStats } from '@/utils/dataTransformers';
-import { Home, Rss, BarChart3, Settings, ArrowRight, Download, Plus, Search, Bookmark, Filter } from 'lucide-react';
+import React, { useMemo } from "react";
+import { DesktopLayout } from "../layout/DesktopLayout";
+import { PageHeader } from "./PageHeader";
+import { StatsGrid } from "./StatsGrid";
+import { ActivityFeed } from "./ActivityFeed";
+import { QuickActionsPanel } from "./QuickActionsPanel";
+import { CallToActionBar } from "./CallToActionBar";
+import { useHomeStats } from "@/hooks/useHomeStats";
+import { useRecentActivity } from "@/hooks/useRecentActivity";
+import { transformFeedStats } from "@/utils/dataTransformers";
+import {
+  Home,
+  Rss,
+  BarChart3,
+  Settings,
+  ArrowRight,
+  Download,
+  Plus,
+  Search,
+  Bookmark,
+  Filter,
+} from "lucide-react";
 
 export const DesktopHomePage: React.FC = () => {
   // Fetch real data from hooks
-  const {
-    feedStats,
-    isLoadingStats,
-    statsError,
-    unreadCount,
-    refreshStats
-  } = useHomeStats();
+  const { feedStats, isLoadingStats, statsError, unreadCount, refreshStats } =
+    useHomeStats();
 
   const {
     activities,
     isLoading: isLoadingActivity,
-    error: activityError
+    error: activityError,
   } = useRecentActivity();
 
   // Transform feed stats to stats card format
-  const statsData = useMemo(() =>
-    transformFeedStats(feedStats, unreadCount),
-    [feedStats, unreadCount]
+  const statsData = useMemo(
+    () => transformFeedStats(feedStats, unreadCount),
+    [feedStats, unreadCount],
   );
 
   // Mock sidebar navigation items (keep as before since this doesn't come from API)
@@ -37,61 +43,61 @@ export const DesktopHomePage: React.FC = () => {
     navItems: [
       {
         id: 1,
-        label: 'Dashboard',
+        label: "Dashboard",
         icon: Home,
-        href: '/desktop',
-        active: true
+        href: "/desktop",
+        active: true,
       },
       {
         id: 2,
-        label: 'Feeds',
+        label: "Feeds",
         icon: Rss,
-        href: '/desktop/feeds',
-        active: false
+        href: "/desktop/feeds",
+        active: false,
       },
       {
         id: 3,
-        label: 'Statistics',
+        label: "Statistics",
         icon: BarChart3,
-        href: '/desktop/stats',
-        active: false
+        href: "/desktop/stats",
+        active: false,
       },
       {
         id: 4,
-        label: 'Settings',
+        label: "Settings",
         icon: Settings,
-        href: '/desktop/settings',
-        active: false
-      }
-    ]
+        href: "/desktop/settings",
+        active: false,
+      },
+    ],
   };
 
   // Mock quick actions
   const mockQuickActions = [
     {
       id: 1,
-      label: 'Add Feed',
+      label: "Add Feed",
       icon: Plus,
-      href: '/desktop/feeds/register'
+      href: "/desktop/feeds/register",
     },
     {
       id: 2,
-      label: 'Search',
+      label: "Search",
       icon: Search,
-      href: '/desktop/search'
+      href: "/desktop/search",
     },
     {
       id: 3,
-      label: 'Bookmarks',
+      label: "Bookmarks",
       icon: Bookmark,
-      href: '/desktop/bookmarks'
+      href: "/desktop/bookmarks",
     },
     {
       id: 4,
-      label: 'Filter',
+      label: "Filter",
       icon: Filter,
-      href: '/desktop/feeds?filter=unread'
-    }
+      href: "/desktop/feeds?filter=unread",
+    },
   ];
 
   // Mock CTA actions
@@ -99,13 +105,13 @@ export const DesktopHomePage: React.FC = () => {
     {
       label: "Browse Feeds",
       href: "/desktop/feeds",
-      icon: ArrowRight
+      icon: ArrowRight,
     },
     {
       label: "Add New Feed",
       href: "/desktop/feeds/register",
-      icon: Download
-    }
+      icon: Download,
+    },
   ];
 
   // Handle error states
@@ -122,9 +128,7 @@ export const DesktopHomePage: React.FC = () => {
           />
 
           <div className="text-center py-8">
-            <p className="text-red-500">
-              {statsError || activityError}
-            </p>
+            <p className="text-red-500">{statsError || activityError}</p>
             <button
               onClick={refreshStats}
               className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -139,19 +143,13 @@ export const DesktopHomePage: React.FC = () => {
 
   return (
     <DesktopLayout sidebarProps={sidebarProps}>
-      <div
-        className="flex flex-col gap-8"
-        data-testid="desktop-home-container"
-      >
+      <div className="flex flex-col gap-8" data-testid="desktop-home-container">
         <PageHeader
           title="Dashboard Overview"
           description="Monitor your RSS feeds and AI-powered content insights"
         />
 
-        <StatsGrid
-          stats={statsData}
-          isLoading={isLoadingStats}
-        />
+        <StatsGrid stats={statsData} isLoading={isLoadingStats} />
 
         <div className="grid grid-cols-2 gap-8">
           <div>

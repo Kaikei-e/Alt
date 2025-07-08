@@ -1,39 +1,39 @@
-import { DesktopLayout } from '@/components/desktop/layout/DesktopLayout';
-import { ThemeProvider } from '@/providers/ThemeProvider';
-import { Home, Rss, BarChart3, Settings } from 'lucide-react';
+import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
+import { ThemeProvider } from "@/providers/ThemeProvider";
+import { Home, Rss, BarChart3, Settings } from "lucide-react";
 
 export default function DesktopLayoutTest() {
   const mockSidebarProps = {
     navItems: [
       {
         id: 1,
-        label: 'Dashboard',
+        label: "Dashboard",
         icon: Home,
-        href: '/desktop',
-        active: true
+        href: "/desktop",
+        active: true,
       },
       {
         id: 2,
-        label: 'Feeds',
+        label: "Feeds",
         icon: Rss,
-        href: '/desktop/feeds',
-        active: false
+        href: "/desktop/feeds",
+        active: false,
       },
       {
         id: 3,
-        label: 'Statistics',
+        label: "Statistics",
         icon: BarChart3,
-        href: '/desktop/stats',
-        active: false
+        href: "/desktop/stats",
+        active: false,
       },
       {
         id: 4,
-        label: 'Settings',
+        label: "Settings",
         icon: Settings,
-        href: '/desktop/settings',
-        active: false
-      }
-    ]
+        href: "/desktop/settings",
+        active: false,
+      },
+    ],
   };
 
   return (
@@ -41,7 +41,10 @@ export default function DesktopLayoutTest() {
       <DesktopLayout sidebarProps={mockSidebarProps}>
         <div>
           <h1>Test Content</h1>
-          <p>This is the main content area for testing the DesktopLayout component.</p>
+          <p>
+            This is the main content area for testing the DesktopLayout
+            component.
+          </p>
         </div>
       </DesktopLayout>
     </ThemeProvider>

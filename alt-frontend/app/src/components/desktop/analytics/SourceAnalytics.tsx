@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Box,
   VStack,
@@ -8,10 +8,10 @@ import {
   Text,
   Spinner,
   Flex,
-  Button
-} from '@chakra-ui/react';
-import { Progress } from '@chakra-ui/progress';
-import { SourceAnalytic } from '@/types/analytics';
+  Button,
+} from "@chakra-ui/react";
+import { Progress } from "@chakra-ui/progress";
+import { SourceAnalytic } from "@/types/analytics";
 
 interface SourceAnalyticsProps {
   sources: SourceAnalytic[];
@@ -20,15 +20,22 @@ interface SourceAnalyticsProps {
 
 export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
   sources,
-  isLoading
+  isLoading,
 }) => {
-  const [sortBy, setSortBy] = useState<'articles' | 'reliability' | 'engagement'>('articles');
+  const [sortBy, setSortBy] = useState<
+    "articles" | "reliability" | "engagement"
+  >("articles");
   const [showAll, setShowAll] = useState(false);
 
   if (isLoading) {
     return (
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-        <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)" mb={3}>
+        <Text
+          fontSize="sm"
+          fontWeight="bold"
+          color="var(--text-primary)"
+          mb={3}
+        >
           📰 Source Analytics
         </Text>
         <Flex justify="center" align="center" h="80px">
@@ -40,11 +47,11 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
 
   const sortedSources = [...sources].sort((a, b) => {
     switch (sortBy) {
-      case 'articles':
+      case "articles":
         return b.totalArticles - a.totalArticles;
-      case 'reliability':
+      case "reliability":
         return b.reliability - a.reliability;
-      case 'engagement':
+      case "engagement":
         return b.engagement - a.engagement;
       default:
         return 0;
@@ -56,37 +63,33 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
   return (
     <Box className="glass" p={4} borderRadius="var(--radius-lg)">
       <HStack justify="space-between" mb={3}>
-        <Text
-          fontSize="sm"
-          fontWeight="bold"
-          color="var(--text-primary)"
-        >
+        <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)">
           📰 Source Analytics
         </Text>
         <HStack gap={1}>
           <Button
             size="xs"
-            variant={sortBy === 'articles' ? 'solid' : 'ghost'}
-            colorScheme={sortBy === 'articles' ? 'purple' : 'gray'}
-            onClick={() => setSortBy('articles')}
+            variant={sortBy === "articles" ? "solid" : "ghost"}
+            colorScheme={sortBy === "articles" ? "purple" : "gray"}
+            onClick={() => setSortBy("articles")}
             fontSize="xs"
           >
             Articles
           </Button>
           <Button
             size="xs"
-            variant={sortBy === 'reliability' ? 'solid' : 'ghost'}
-            colorScheme={sortBy === 'reliability' ? 'purple' : 'gray'}
-            onClick={() => setSortBy('reliability')}
+            variant={sortBy === "reliability" ? "solid" : "ghost"}
+            colorScheme={sortBy === "reliability" ? "purple" : "gray"}
+            onClick={() => setSortBy("reliability")}
             fontSize="xs"
           >
             Reliability
           </Button>
           <Button
             size="xs"
-            variant={sortBy === 'engagement' ? 'solid' : 'ghost'}
-            colorScheme={sortBy === 'engagement' ? 'purple' : 'gray'}
-            onClick={() => setSortBy('engagement')}
+            variant={sortBy === "engagement" ? "solid" : "ghost"}
+            colorScheme={sortBy === "engagement" ? "purple" : "gray"}
+            onClick={() => setSortBy("engagement")}
             fontSize="xs"
           >
             Engagement
@@ -129,11 +132,15 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
                 <Text fontSize="xs" color="var(--text-secondary)">
                   Articles:
                 </Text>
-                <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                <Text
+                  fontSize="xs"
+                  color="var(--text-primary)"
+                  fontWeight="medium"
+                >
                   {source.totalArticles}
                 </Text>
               </HStack>
-              
+
               <HStack justify="space-between">
                 <Text fontSize="xs" color="var(--text-secondary)">
                   Reliability:
@@ -145,18 +152,22 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
                     w="40px"
                     bg="var(--surface-border)"
                     sx={{
-                      '& > div': {
-                        bg: 'var(--alt-success)'
-                      }
+                      "& > div": {
+                        bg: "var(--alt-success)",
+                      },
                     }}
                     borderRadius="var(--radius-full)"
                   />
-                  <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                  <Text
+                    fontSize="xs"
+                    color="var(--text-primary)"
+                    fontWeight="medium"
+                  >
                     {source.reliability}/10
                   </Text>
                 </HStack>
               </HStack>
-              
+
               <HStack justify="space-between">
                 <Text fontSize="xs" color="var(--text-secondary)">
                   Engagement:
@@ -168,13 +179,17 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
                     w="40px"
                     bg="var(--surface-border)"
                     sx={{
-                      '& > div': {
-                        bg: 'var(--accent-primary)'
-                      }
+                      "& > div": {
+                        bg: "var(--accent-primary)",
+                      },
                     }}
                     borderRadius="var(--radius-full)"
                   />
-                  <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                  <Text
+                    fontSize="xs"
+                    color="var(--text-primary)"
+                    fontWeight="medium"
+                  >
                     {source.engagement}%
                   </Text>
                 </HStack>
@@ -190,10 +205,10 @@ export const SourceAnalytics: React.FC<SourceAnalyticsProps> = ({
             color="var(--accent-primary)"
             onClick={() => setShowAll(!showAll)}
             _hover={{
-              bg: 'var(--surface-hover)'
+              bg: "var(--surface-hover)",
             }}
           >
-            {showAll ? 'Show Less' : `Show All (${sources.length})`}
+            {showAll ? "Show Less" : `Show All (${sources.length})`}
           </Button>
         )}
       </VStack>

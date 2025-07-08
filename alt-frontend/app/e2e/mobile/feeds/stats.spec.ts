@@ -178,7 +178,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
         window.dispatchEvent(
           new MessageEvent("message", {
             data: JSON.stringify(newData),
-          })
+          }),
         );
       });
 
@@ -258,7 +258,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForTimeout(2000);
 
       // Simulate connection issue and recovery by reloading stats
-      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.reload({ waitUntil: "domcontentloaded" });
 
       // Instead of reloading, just wait for the connection to stabilize
       await page.waitForTimeout(3000); // Wait for reconnection attempts
@@ -334,10 +334,12 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
       // Check if page is still active before proceeding
       try {
-        await expect(page.getByText("Feeds Statistics")).toBeVisible({ timeout: 5000 });
+        await expect(page.getByText("Feeds Statistics")).toBeVisible({
+          timeout: 5000,
+        });
       } catch {
         // If page is closed or unresponsive, skip this test
-        test.skip(true, 'Page is not responsive, skipping reconnection test');
+        test.skip(true, "Page is not responsive, skipping reconnection test");
         return;
       }
 
@@ -381,7 +383,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       // Should show reconnection status (more flexible)
       try {
         // Check if page is still active
-        await expect(page.getByText("Feeds Statistics")).toBeVisible({ timeout: 10000 });
+        await expect(page.getByText("Feeds Statistics")).toBeVisible({
+          timeout: 10000,
+        });
 
         const reconnectingText = page
           .getByText(/Reconnecting/)
@@ -390,13 +394,15 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       } catch {
         // Fallback: just verify the page structure is intact
         try {
-          await expect(page.getByText("Feeds Statistics")).toBeVisible({ timeout: 5000 });
+          await expect(page.getByText("Feeds Statistics")).toBeVisible({
+            timeout: 5000,
+          });
           console.log(
             "Connection status not found, but page structure is intact",
           );
         } catch {
           // If even the basic structure is not visible, the page might be closed
-          test.skip(true, 'Page appears to be closed or unresponsive');
+          test.skip(true, "Page appears to be closed or unresponsive");
         }
       }
     });

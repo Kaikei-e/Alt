@@ -1,26 +1,26 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { feedsApi } from '@/lib/api';
-import { useTodayUnreadCount } from './useTodayUnreadCount';
-import { FeedStatsSummary } from '@/schema/feedStats';
+import { useState, useEffect, useCallback } from "react";
+import { feedsApi } from "@/lib/api";
+import { useTodayUnreadCount } from "./useTodayUnreadCount";
+import { FeedStatsSummary } from "@/schema/feedStats";
 
 export interface UseHomeStatsReturn {
   // 基本統計
   feedStats: FeedStatsSummary | null;
   isLoadingStats: boolean;
   statsError: string | null;
-  
+
   // 未読記事数
   unreadCount: number;
-  
+
   // 追加統計（計算値）
   extraStats: {
     weeklyReads: number;
     aiProcessed: number;
     bookmarks: number;
   };
-  
+
   // リフレッシュ関数
   refreshStats: () => Promise<void>;
 }
@@ -29,7 +29,7 @@ export const useHomeStats = (): UseHomeStatsReturn => {
   const [feedStats, setFeedStats] = useState<FeedStatsSummary | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [statsError, setStatsError] = useState<string | null>(null);
-  
+
   const { count: unreadCount } = useTodayUnreadCount();
 
   const fetchStats = useCallback(async () => {
@@ -39,7 +39,7 @@ export const useHomeStats = (): UseHomeStatsReturn => {
       const stats = await feedsApi.getFeedStats();
       setFeedStats(stats);
     } catch {
-      setStatsError('Failed to fetch feed stats');
+      setStatsError("Failed to fetch feed stats");
       setFeedStats(null);
     } finally {
       setIsLoadingStats(false);
@@ -58,7 +58,7 @@ export const useHomeStats = (): UseHomeStatsReturn => {
   const extraStats = {
     weeklyReads: 45, // Mock calculation - will be replaced with real logic
     aiProcessed: feedStats?.summarized_feed?.amount || 0,
-    bookmarks: 12 // Mock calculation - will be replaced with real logic
+    bookmarks: 12, // Mock calculation - will be replaced with real logic
   };
 
   return {
@@ -67,6 +67,6 @@ export const useHomeStats = (): UseHomeStatsReturn => {
     statsError,
     unreadCount,
     extraStats,
-    refreshStats
+    refreshStats,
   };
 };

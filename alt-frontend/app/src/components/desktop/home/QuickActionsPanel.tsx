@@ -52,9 +52,7 @@ export const QuickActionsPanel: React.FC<QuickActionsPanelProps> = ({
           ))}
         </Grid>
 
-        {additionalStats && (
-          <StatsFooter stats={additionalStats} />
-        )}
+        {additionalStats && <StatsFooter stats={additionalStats} />}
       </VStack>
     </Box>
   );

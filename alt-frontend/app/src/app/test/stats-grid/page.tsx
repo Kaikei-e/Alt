@@ -12,36 +12,36 @@ function StatsGridTestContent() {
     return <Text>No search params</Text>;
   }
 
-  const isLoading = searchParams.get('loading') === 'true';
-  const hasError = searchParams.get('error') === 'true';
+  const isLoading = searchParams.get("loading") === "true";
+  const hasError = searchParams.get("error") === "true";
 
   const mockStats = [
     {
-      id: 'total-feeds',
+      id: "total-feeds",
       icon: Rss,
-      label: 'Total Feeds',
+      label: "Total Feeds",
       value: 42,
-      trend: '+12%',
-      trendLabel: 'from last week',
-      color: 'primary' as const,
+      trend: "+12%",
+      trendLabel: "from last week",
+      color: "primary" as const,
     },
     {
-      id: 'ai-processed',
+      id: "ai-processed",
       icon: Zap,
-      label: 'AI Processed',
+      label: "AI Processed",
       value: 156,
-      trend: '+89%',
-      trendLabel: 'efficiency boost',
-      color: 'secondary' as const,
+      trend: "+89%",
+      trendLabel: "efficiency boost",
+      color: "secondary" as const,
     },
     {
-      id: 'unread-articles',
+      id: "unread-articles",
       icon: FileText,
-      label: 'Unread Articles',
+      label: "Unread Articles",
       value: 23,
-      trend: '+5%',
-      trendLabel: 'new today',
-      color: 'tertiary' as const,
+      trend: "+5%",
+      trendLabel: "new today",
+      color: "tertiary" as const,
     },
   ];
 
@@ -50,7 +50,7 @@ function StatsGridTestContent() {
       <StatsGrid
         stats={mockStats}
         isLoading={isLoading}
-        error={hasError ? 'Test error message' : null}
+        error={hasError ? "Test error message" : null}
       />
     </Box>
   );

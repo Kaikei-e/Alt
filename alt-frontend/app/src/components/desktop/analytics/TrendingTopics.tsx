@@ -1,15 +1,8 @@
-'use client';
+"use client";
 
-import React from 'react';
-import {
-  Box,
-  VStack,
-  HStack,
-  Text,
-  Spinner,
-  Flex
-} from '@chakra-ui/react';
-import { TrendingTopic } from '@/types/analytics';
+import React from "react";
+import { Box, VStack, HStack, Text, Spinner, Flex } from "@chakra-ui/react";
+import { TrendingTopic } from "@/types/analytics";
 
 interface TrendingTopicsProps {
   topics: TrendingTopic[];
@@ -18,12 +11,17 @@ interface TrendingTopicsProps {
 
 export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
   topics,
-  isLoading
+  isLoading,
 }) => {
   if (isLoading) {
     return (
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-        <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)" mb={3}>
+        <Text
+          fontSize="sm"
+          fontWeight="bold"
+          color="var(--text-primary)"
+          mb={3}
+        >
           🔥 Trending Topics
         </Text>
         <Flex justify="center" align="center" h="60px">
@@ -35,33 +33,36 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
 
   const getTrendColor = (trend: string) => {
     switch (trend) {
-      case 'up': return 'var(--alt-success)';
-      case 'down': return 'var(--alt-error)';
-      case 'stable': return 'var(--alt-warning)';
-      default: return 'var(--text-secondary)';
+      case "up":
+        return "var(--alt-success)";
+      case "down":
+        return "var(--alt-error)";
+      case "stable":
+        return "var(--alt-warning)";
+      default:
+        return "var(--text-secondary)";
     }
   };
 
   const getTrendIcon = (trend: string) => {
     switch (trend) {
-      case 'up': return '📈';
-      case 'down': return '📉';
-      case 'stable': return '➡️';
-      default: return '⚪';
+      case "up":
+        return "📈";
+      case "down":
+        return "📉";
+      case "stable":
+        return "➡️";
+      default:
+        return "⚪";
     }
   };
 
   return (
     <Box className="glass" p={4} borderRadius="var(--radius-lg)">
-      <Text
-        fontSize="sm"
-        fontWeight="bold"
-        color="var(--text-primary)"
-        mb={3}
-      >
+      <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)" mb={3}>
         🔥 Trending Topics
       </Text>
-      
+
       <VStack gap={2} align="stretch">
         {topics.slice(0, 6).map((topic, index) => (
           <HStack
@@ -72,8 +73,8 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
             borderRadius="var(--radius-md)"
             border="1px solid var(--surface-border)"
             _hover={{
-              bg: 'var(--surface-hover)',
-              transform: 'translateX(2px)'
+              bg: "var(--surface-hover)",
+              transform: "translateX(2px)",
             }}
             transition="all var(--transition-speed) ease"
             cursor="pointer"
@@ -118,7 +119,8 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({
                 color={getTrendColor(topic.trend)}
                 fontWeight="medium"
               >
-                {topic.trendValue > 0 ? '+' : ''}{topic.trendValue}%
+                {topic.trendValue > 0 ? "+" : ""}
+                {topic.trendValue}%
               </Text>
             </HStack>
           </HStack>

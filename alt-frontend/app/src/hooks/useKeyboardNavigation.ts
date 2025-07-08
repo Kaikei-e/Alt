@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect } from "react";
 
 interface KeyboardNavigationOptions {
   onArrowUp: () => void;
@@ -13,33 +13,33 @@ export function useKeyboardNavigation({
   onArrowDown,
   onEnter,
   onSpace,
-  element
+  element,
 }: KeyboardNavigationOptions) {
   useEffect(() => {
     if (!element) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       switch (event.key) {
-        case 'ArrowUp':
+        case "ArrowUp":
           event.preventDefault();
           onArrowUp();
           break;
-        case 'ArrowDown':
+        case "ArrowDown":
           event.preventDefault();
           onArrowDown();
           break;
-        case 'Enter':
+        case "Enter":
           event.preventDefault();
           onEnter();
           break;
-        case ' ':
+        case " ":
           event.preventDefault();
           onSpace();
           break;
       }
     };
 
-    element.addEventListener('keydown', handleKeyDown);
-    return () => element.removeEventListener('keydown', handleKeyDown);
+    element.addEventListener("keydown", handleKeyDown);
+    return () => element.removeEventListener("keydown", handleKeyDown);
   }, [element, onArrowUp, onArrowDown, onEnter, onSpace]);
 }

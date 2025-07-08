@@ -1,24 +1,21 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import {
-  Box,
-  VStack,
-  HStack,
-  Button
-} from '@chakra-ui/react';
-import { ReadingAnalytics } from './ReadingAnalytics';
-import { TrendingTopics } from './TrendingTopics';
-import { QuickActions } from './QuickActions';
-import { SourceAnalytics } from './SourceAnalytics';
-import { BookmarksList } from './BookmarksList';
-import { ReadingQueue } from './ReadingQueue';
-import { useReadingAnalytics } from '@/hooks/useReadingAnalytics';
-import { useTrendingTopics } from '@/hooks/useTrendingTopics';
-import { useSourceAnalytics } from '@/hooks/useSourceAnalytics';
+import React, { useState } from "react";
+import { Box, VStack, HStack, Button } from "@chakra-ui/react";
+import { ReadingAnalytics } from "./ReadingAnalytics";
+import { TrendingTopics } from "./TrendingTopics";
+import { QuickActions } from "./QuickActions";
+import { SourceAnalytics } from "./SourceAnalytics";
+import { BookmarksList } from "./BookmarksList";
+import { ReadingQueue } from "./ReadingQueue";
+import { useReadingAnalytics } from "@/hooks/useReadingAnalytics";
+import { useTrendingTopics } from "@/hooks/useTrendingTopics";
+import { useSourceAnalytics } from "@/hooks/useSourceAnalytics";
 
 export const RightPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'actions'>('analytics');
+  const [activeTab, setActiveTab] = useState<"analytics" | "actions">(
+    "analytics",
+  );
   const { analytics, isLoading: analyticsLoading } = useReadingAnalytics();
   const { topics, isLoading: topicsLoading } = useTrendingTopics();
   const { sources, isLoading: sourcesLoading } = useSourceAnalytics();
@@ -36,13 +33,22 @@ export const RightPanel: React.FC = () => {
           variant="ghost"
           size="sm"
           borderRadius={0}
-          color={activeTab === 'analytics' ? 'var(--text-primary)' : 'var(--text-secondary)'}
-          bg={activeTab === 'analytics' ? 'var(--accent-primary)' : 'transparent'}
+          color={
+            activeTab === "analytics"
+              ? "var(--text-primary)"
+              : "var(--text-secondary)"
+          }
+          bg={
+            activeTab === "analytics" ? "var(--accent-primary)" : "transparent"
+          }
           fontSize="sm"
           fontWeight="medium"
-          onClick={() => setActiveTab('analytics')}
+          onClick={() => setActiveTab("analytics")}
           _hover={{
-            bg: activeTab === 'analytics' ? 'var(--accent-primary)' : 'var(--surface-hover)'
+            bg:
+              activeTab === "analytics"
+                ? "var(--accent-primary)"
+                : "var(--surface-hover)",
           }}
         >
           📊 Analytics
@@ -52,13 +58,20 @@ export const RightPanel: React.FC = () => {
           variant="ghost"
           size="sm"
           borderRadius={0}
-          color={activeTab === 'actions' ? 'var(--text-primary)' : 'var(--text-secondary)'}
-          bg={activeTab === 'actions' ? 'var(--accent-primary)' : 'transparent'}
+          color={
+            activeTab === "actions"
+              ? "var(--text-primary)"
+              : "var(--text-secondary)"
+          }
+          bg={activeTab === "actions" ? "var(--accent-primary)" : "transparent"}
           fontSize="sm"
           fontWeight="medium"
-          onClick={() => setActiveTab('actions')}
+          onClick={() => setActiveTab("actions")}
           _hover={{
-            bg: activeTab === 'actions' ? 'var(--accent-primary)' : 'var(--surface-hover)'
+            bg:
+              activeTab === "actions"
+                ? "var(--accent-primary)"
+                : "var(--surface-hover)",
           }}
         >
           ⚡ Actions
@@ -67,26 +80,20 @@ export const RightPanel: React.FC = () => {
 
       {/* Tab Content */}
       <Box>
-        {activeTab === 'analytics' && (
+        {activeTab === "analytics" && (
           <VStack gap={4} p={4} align="stretch">
-            <ReadingAnalytics 
-              analytics={analytics} 
-              isLoading={analyticsLoading} 
+            <ReadingAnalytics
+              analytics={analytics}
+              isLoading={analyticsLoading}
             />
-            
-            <TrendingTopics 
-              topics={topics} 
-              isLoading={topicsLoading} 
-            />
-            
-            <SourceAnalytics 
-              sources={sources} 
-              isLoading={sourcesLoading} 
-            />
+
+            <TrendingTopics topics={topics} isLoading={topicsLoading} />
+
+            <SourceAnalytics sources={sources} isLoading={sourcesLoading} />
           </VStack>
         )}
 
-        {activeTab === 'actions' && (
+        {activeTab === "actions" && (
           <VStack gap={4} p={4} align="stretch">
             <QuickActions />
             <BookmarksList />

@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 import {
   Box,
   VStack,
@@ -8,10 +8,10 @@ import {
   Text,
   SimpleGrid,
   Spinner,
-  Flex
-} from '@chakra-ui/react';
-import { Progress } from '@chakra-ui/progress';
-import { ReadingAnalytics as IReadingAnalytics } from '@/types/analytics';
+  Flex,
+} from "@chakra-ui/react";
+import { Progress } from "@chakra-ui/progress";
+import { ReadingAnalytics as IReadingAnalytics } from "@/types/analytics";
 
 interface ReadingAnalyticsProps {
   analytics: IReadingAnalytics | null;
@@ -20,7 +20,7 @@ interface ReadingAnalyticsProps {
 
 export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
   analytics,
-  isLoading
+  isLoading,
 }) => {
   if (isLoading) {
     return (
@@ -59,11 +59,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
 
         <SimpleGrid columns={2} gap={3}>
           <VStack gap={1}>
-            <Text
-              fontSize="xl"
-              fontWeight="bold"
-              color="var(--accent-primary)"
-            >
+            <Text fontSize="xl" fontWeight="bold" color="var(--accent-primary)">
               {today.articlesRead}
             </Text>
             <Text fontSize="xs" color="var(--text-secondary)">
@@ -72,11 +68,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
           </VStack>
 
           <VStack gap={1}>
-            <Text
-              fontSize="xl"
-              fontWeight="bold"
-              color="var(--accent-primary)"
-            >
+            <Text fontSize="xl" fontWeight="bold" color="var(--accent-primary)">
               {today.timeSpent}m
             </Text>
             <Text fontSize="xs" color="var(--text-secondary)">
@@ -85,11 +77,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
           </VStack>
 
           <VStack gap={1}>
-            <Text
-              fontSize="xl"
-              fontWeight="bold"
-              color="var(--accent-primary)"
-            >
+            <Text fontSize="xl" fontWeight="bold" color="var(--accent-primary)">
               {today.favoriteCount}
             </Text>
             <Text fontSize="xs" color="var(--text-secondary)">
@@ -106,9 +94,9 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
                 borderRadius="var(--radius-full)"
                 bg="var(--surface-border)"
                 sx={{
-                  '& > div': {
-                    bg: 'var(--accent-primary)'
-                  }
+                  "& > div": {
+                    bg: "var(--accent-primary)",
+                  },
                 }}
               />
               <Text
@@ -133,27 +121,23 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
       {/* 週間トレンド */}
       <Box className="glass" p={4} borderRadius="var(--radius-lg)">
         <HStack justify="space-between" mb={3}>
-          <Text
-            fontSize="sm"
-            fontWeight="bold"
-            color="var(--text-primary)"
-          >
+          <Text fontSize="sm" fontWeight="bold" color="var(--text-primary)">
             📊 Weekly Trend
           </Text>
           <HStack gap={1}>
             <Text fontSize="xs" color="var(--text-secondary)">
-              {week.trendDirection === 'up' && '📈'}
-              {week.trendDirection === 'down' && '📉'}
-              {week.trendDirection === 'stable' && '➡️'}
+              {week.trendDirection === "up" && "📈"}
+              {week.trendDirection === "down" && "📉"}
+              {week.trendDirection === "stable" && "➡️"}
             </Text>
             <Text
               fontSize="xs"
               color={
-                week.trendDirection === 'up'
-                  ? 'var(--alt-success)'
-                  : week.trendDirection === 'down'
-                  ? 'var(--alt-error)'
-                  : 'var(--text-secondary)'
+                week.trendDirection === "up"
+                  ? "var(--alt-success)"
+                  : week.trendDirection === "down"
+                    ? "var(--alt-error)"
+                    : "var(--text-secondary)"
               }
               fontWeight="medium"
             >
@@ -179,9 +163,14 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
                 key={day.day}
                 flex={1}
                 bg="var(--accent-primary)"
-                opacity={0.3 + (day.articles / Math.max(...week.dailyBreakdown.map(d => d.articles))) * 0.7}
+                opacity={
+                  0.3 +
+                  (day.articles /
+                    Math.max(...week.dailyBreakdown.map((d) => d.articles))) *
+                    0.7
+                }
                 borderRadius="var(--radius-xs)"
-                h={`${(day.articles / Math.max(...week.dailyBreakdown.map(d => d.articles))) * 100}%`}
+                h={`${(day.articles / Math.max(...week.dailyBreakdown.map((d) => d.articles))) * 100}%`}
                 minH="4px"
               />
             ))}
@@ -219,7 +208,11 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               <Text fontSize="xs" color="var(--text-secondary)">
                 Best:
               </Text>
-              <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+              <Text
+                fontSize="xs"
+                color="var(--text-primary)"
+                fontWeight="medium"
+              >
                 {streak.longest} days
               </Text>
             </HStack>
@@ -227,7 +220,11 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
               <Text fontSize="xs" color="var(--text-secondary)">
                 Last read:
               </Text>
-              <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+              <Text
+                fontSize="xs"
+                color="var(--text-primary)"
+                fontWeight="medium"
+              >
                 {new Date(streak.lastReadDate).toLocaleDateString()}
               </Text>
             </HStack>
@@ -261,7 +258,11 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
                 </Text>
               </HStack>
               <HStack gap={2}>
-                <Text fontSize="xs" color="var(--text-primary)" fontWeight="medium">
+                <Text
+                  fontSize="xs"
+                  color="var(--text-primary)"
+                  fontWeight="medium"
+                >
                   {category.count}
                 </Text>
                 <Text fontSize="xs" color="var(--text-muted)">

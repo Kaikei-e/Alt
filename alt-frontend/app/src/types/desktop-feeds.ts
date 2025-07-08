@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 export interface DesktopFeedsLayoutProps {
   children: React.ReactNode;
@@ -10,7 +10,7 @@ export interface DesktopHeaderProps {
   totalUnread: number;
   searchQuery?: string;
   onSearchChange: (query: string) => void;
-  currentTheme: 'vaporwave' | 'liquid-beige';
+  currentTheme: "vaporwave" | "liquid-beige";
   onThemeToggle: () => void;
 }
 
@@ -32,15 +32,15 @@ export interface DesktopSidebarProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 
-  mode?: 'navigation' | 'feeds-filter';
+  mode?: "navigation" | "feeds-filter";
 }
 
 export interface FilterState {
   sources: string[];
-  timeRange: 'today' | 'week' | 'month' | 'all';
-  readStatus: 'all' | 'unread' | 'read';
+  timeRange: "today" | "week" | "month" | "all";
+  readStatus: "all" | "unread" | "read";
   tags: string[];
-  priority: 'all' | 'high' | 'medium' | 'low';
+  priority: "all" | "high" | "medium" | "low";
 }
 
 export interface FeedSource {
