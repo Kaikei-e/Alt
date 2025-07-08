@@ -178,7 +178,7 @@ const DesktopStyledFeedCard = ({
               isFavorited ? "Remove from favorites" : "Add to favorites"
             }
             size="sm"
-            variant="ghost"
+            variant="outline"
             color={
               isFavorited ? "var(--accent-primary)" : "var(--text-secondary)"
             }
