@@ -470,6 +470,7 @@ const DesktopSummaryDialog = ({ isOpen, onClose, feedTitle, summary }: { isOpen:
               <Dialog.ActionTrigger asChild>
                 <Button
                   size="md"
+                  p={4}
                   variant="outline"
                   color="var(--text-secondary)"
                   bg="var(--alt-secondary)"
