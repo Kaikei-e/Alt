@@ -8,6 +8,9 @@ import {
   VStack,
   IconButton,
   Badge,
+  Button,
+  Dialog,
+  Portal,
 } from "@chakra-ui/react";
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { Heart, Bookmark, Clock, ExternalLink, Eye } from "lucide-react";
@@ -76,6 +79,8 @@ const DesktopStyledFeedCard = ({
   const [isFavorited, setIsFavorited] = useState(feed.isFavorited);
   const [tags, setTags] = useState<FeedTag[]>([]);
   const [showAllTags, setShowAllTags] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isOpenSummary, setIsOpenSummary] = useState(false);
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -90,8 +95,6 @@ const DesktopStyledFeedCard = ({
     };
     fetchTags();
   }, [feed.link]);
-
-
 
   const handleViewArticle = useCallback(() => {
     window.open(feed.link, "_blank");
@@ -110,6 +113,19 @@ const DesktopStyledFeedCard = ({
     },
     [feed.link],
   );
+
+  const handleOpenSummary = useCallback(async (link: string) => {
+    const res = await feedsApi.getFeedDetails(
+      {
+        feed_url: link,
+      }
+    );
+    if (res.summary) {
+      setAiSummary(res.summary);
+    } else {
+      setAiSummary("No summary available");
+    }
+  }, []);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -319,26 +335,52 @@ const DesktopStyledFeedCard = ({
 
           <HStack gap={2}>
             {!isRead && (
-              <button
+              <Button
+                size="md"
+                variant="outline"
+                color="var(--text-primary)"
+                bg="var(--alt-secondary)"
+                border="1px solid var(--surface-border)"
+                borderRadius="var(--radius-md)"
+                p={4}
+                _hover={{
+                  bg: "var(--alt-secondary)",
+                  color: "var(--text-primary)",
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onMarkAsRead();
                 }}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: "8px",
-                  backgroundColor: "var(--accent-primary)",
-                  color: "var(--text-primary)",
-                  border: "none",
-                  fontSize: "12px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  transition: "all 0.2s ease",
-                }}
               >
-                Mark as Read
-              </button>
+                <Text fontSize="sm" fontWeight="semibold" color="var(--text-primary)">Mark as Read</Text>
+              </Button>
             )}
+            <Button
+              size="md"
+              variant="outline"
+              color="var(--text-primary)"
+              bg="var(--alt-secondary)"
+              border="1px solid var(--surface-border)"
+              borderRadius="var(--radius-md)"
+              p={4}
+              _hover={{
+                bg: "var(--alt-secondary)",
+                color: "var(--text-primary)",
+              }}
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (!aiSummary) {
+                  await handleOpenSummary(feed.link);
+                }
+                setIsOpenSummary(true);
+              }}
+            >
+              <Text
+                fontSize="sm"
+                fontWeight="semibold"
+                color="var(--text-primary)"
+              >AI Summary</Text>
+            </Button>
             <IconButton
               aria-label="Open article"
               size="sm"
@@ -353,8 +395,94 @@ const DesktopStyledFeedCard = ({
             </IconButton>
           </HStack>
         </HStack>
-      </VStack>
-    </Box>
+
+        {/* AI Summary Dialog */}
+        <DesktopSummaryDialog
+          isOpen={isOpenSummary}
+          onClose={() => setIsOpenSummary(false)}
+          feedTitle={feed.title}
+          summary={aiSummary || "Loading summary..."}
+        />
+      </VStack >
+    </Box >
+  );
+};
+
+const DesktopSummaryDialog = ({ isOpen, onClose, feedTitle, summary }: { isOpen: boolean, onClose: () => void, feedTitle: string, summary: string }) => {
+  return (
+    <Dialog.Root
+      open={isOpen}
+      onOpenChange={(details) => {
+        if (!details.open) {
+          onClose();
+        }
+      }}
+      size="lg"
+      placement="center"
+    >
+      <Portal>
+        <Dialog.Backdrop
+          bg="var(--surface-primary)"
+          backdropFilter="blur(4px)"
+        />
+        <Dialog.Positioner>
+          <Dialog.Content
+            bg="var(--app-bg)"
+            borderRadius="var(--radius-lg)"
+            border="1px solid var(--surface-border)"
+            boxShadow="0 25px 50px rgba(0, 0, 0, 0.25)"
+            maxW="800px"
+            mx={4}
+            p={4}
+          >
+            <Dialog.Header>
+              <Dialog.Title
+                fontSize="lg"
+                textAlign="center"
+                fontWeight="semibold"
+                color="var(--text-primary)"
+                p={4}
+              >
+                {feedTitle}
+              </Dialog.Title>
+              <Dialog.CloseTrigger asChild>
+                <IconButton
+                  aria-label="Close dialog"
+                  size="sm"
+                  variant="ghost"
+                  color="var(--text-secondary)"
+                >
+                  ✕
+                </IconButton>
+              </Dialog.CloseTrigger>
+            </Dialog.Header>
+            <Dialog.Body p={6}>
+              <Text
+                color="var(--text-secondary)"
+                lineHeight="1.6"
+                fontSize="md"
+                whiteSpace="pre-wrap"
+              >
+                {summary}
+              </Text>
+            </Dialog.Body>
+            <Dialog.Footer p={4}>
+              <Dialog.ActionTrigger asChild>
+                <Button
+                  size="md"
+                  variant="outline"
+                  color="var(--text-secondary)"
+                  bg="var(--alt-secondary)"
+                  onClick={onClose}
+                >
+                  Close
+                </Button>
+              </Dialog.ActionTrigger>
+            </Dialog.Footer>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Portal>
+    </Dialog.Root>
   );
 };
 
