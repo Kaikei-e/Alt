@@ -11,7 +11,7 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
     // Verify main layout components are present
     await expect(page.locator('[data-testid="desktop-header"]')).toBeVisible();
     await expect(page.locator('[data-testid="desktop-sidebar-filters"]')).toBeVisible();
-    await expect(page.locator('[data-testid="desktop-timeline"]')).toBeVisible();
+    await expect(page.locator('[data-testid="desktop-timeline-container"]')).toBeVisible();
 
     // Verify header shows correct unread count (86 from mock stats)
     await expect(page.locator('text=86')).toBeVisible();
@@ -52,7 +52,7 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
 
     // Verify 3-column layout is visible
     await expect(page.locator('[data-testid="desktop-sidebar-filters"]')).toBeVisible();
-    await expect(page.locator('[data-testid="desktop-timeline"]')).toBeVisible();
+    await expect(page.locator('[data-testid="desktop-timeline-container"]')).toBeVisible();
     const rightPanel = page.locator('[data-testid="right-panel"]');
     if (await rightPanel.count() > 0) {
       await expect(rightPanel).toBeVisible();
@@ -64,7 +64,7 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
 
     // Verify 2-column layout
     await expect(page.locator('[data-testid="desktop-sidebar-filters"]')).toBeVisible();
-    await expect(page.locator('[data-testid="desktop-timeline"]')).toBeVisible();
+    await expect(page.locator('[data-testid="desktop-timeline-container"]')).toBeVisible();
 
     // Mobile layout (sm)
     await page.setViewportSize({ width: 480, height: 800 });
@@ -72,7 +72,7 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
 
     // Verify 1-column layout (sidebar hidden on mobile)
     await expect(page.locator('[data-testid="desktop-sidebar-filters"]')).toBeHidden();
-    await expect(page.locator('[data-testid="desktop-timeline"]')).toBeVisible();
+    await expect(page.locator('[data-testid="desktop-timeline-container"]')).toBeVisible();
   });
 
   test('should handle filter interactions correctly (PROTECTED)', async ({ page }) => {
@@ -135,7 +135,7 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
 
-    const timeline = page.locator('[data-testid="desktop-timeline"]');
+    const timeline = page.locator('[data-testid="desktop-timeline-container"]');
     await expect(timeline).toBeVisible({ timeout: 10000 });
 
     // Verify timeline has scrollable content
@@ -154,7 +154,7 @@ test.describe('Desktop Feeds Page - PROTECTED', () => {
       // If no scrollable content, just verify the timeline is functional
       // This ensures the test doesn't fail when there's not enough content
       await expect(timeline).toBeVisible();
-      const hasContent = await timeline.locator('[data-testid^="feed-item-"]').count();
+      const hasContent = await timeline.locator('[data-testid^="desktop-feed-card-"]').count();
       expect(hasContent).toBeGreaterThanOrEqual(0);
     }
   });
