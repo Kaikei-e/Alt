@@ -506,28 +506,22 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request format"})
 		}
 
-		// Validate request using built-in validation
-		if err := c.Validate(&req); err != nil {
-			logger.Logger.Error("Request validation failed", "error", err)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request data"})
-		}
-
-		// Parse and validate feed URL
-		parsedFeedURL, err := url.Parse(req.FeedURL)
+		// Parse and validate the article url
+		parsedArticleURL, err := url.Parse(req.FeedURL)
 		if err != nil {
-			logger.Logger.Error("Invalid feed_url format", "error", err, "feed_url", req.FeedURL)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid feed_url format"})
+			logger.Logger.Error("Invalid the url format", "error", err.Error(), "article_url", req.FeedURL)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid article url format"})
 		}
 
 		// Apply URL security validation (same as other endpoints)
-		err = isAllowedURL(parsedFeedURL)
+		err = isAllowedURL(parsedArticleURL)
 		if err != nil {
-			logger.Logger.Error("Feed URL not allowed", "error", err, "feed_url", req.FeedURL)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Feed URL not allowed for security reasons"})
+			logger.Logger.Error("Article URL not allowed", "error", err, "article_url", req.FeedURL)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Article URL not allowed for security reasons"})
 		}
 
 		// Set default limit if not provided
-		limit := 20 // Default limit as per TASK2.md
+		limit := 20 // Default limit
 		if req.Limit > 0 {
 			limit = req.Limit
 		}
@@ -543,7 +537,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 			cursor = &parsedCursor
 		}
 
-		// Add caching headers as per TASK2.md (tags update infrequently)
+		// Add caching headers (tags update infrequently)
 		c.Response().Header().Set("Cache-Control", "public, max-age=3600") // 1 hour
 
 		logger.Logger.Info("Fetching feed tags", "feed_url", req.FeedURL, "cursor", cursor, "limit", limit)

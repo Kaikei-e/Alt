@@ -44,7 +44,7 @@ type FeedSearchPayload struct {
 }
 
 type FeedTagsPayload struct {
-	FeedURL string `json:"feed_url" validate:"required,url"`
+	FeedURL string `json:"feed_url" validate:"required,uri"`
 	Limit   int    `json:"limit,omitempty" validate:"omitempty,min=1,max=100"`
 	Cursor  string `json:"cursor,omitempty"` // RFC3339 format timestamp
 }

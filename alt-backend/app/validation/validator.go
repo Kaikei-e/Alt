@@ -82,7 +82,19 @@ func (v *FeedURLValidator) Validate(ctx context.Context, value interface{}) Vali
 	return result
 }
 
-// Global validation functions for convenience (used by integration tests)
+func ValidateFeedTags(ctx context.Context, feedUrl string) error {
+	validator := &FeedURLValidator{}
+	result := validator.Validate(ctx, feedUrl)
+
+	if !result.Valid {
+		return &ValidationErrorType{
+			Type:   "feed_tags_validation",
+			Fields: map[string]interface{}{"feed_url": feedUrl, "validation_type": "feed_tags"},
+			Errors: result.Errors,
+		}
+	}
+	return nil
+}
 
 // ValidateFeedURL validates a feed URL using the FeedRegistrationValidator (includes SSRF protection)
 func ValidateFeedURL(ctx context.Context, url string) error {

@@ -3,6 +3,7 @@ package middleware
 import (
 	"alt/validation"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -34,6 +35,8 @@ func validateRoute(c echo.Context) error {
 		return validateFeedSearch(c)
 	case method == "POST" && strings.Contains(path, "/feeds/fetch/details"):
 		return validateFeedDetails(c)
+	case method == "POST" && strings.Contains(path, "/feeds/tags"):
+		return validateFeedTags(c)
 	case method == "GET" && strings.Contains(path, "/articles/search"):
 		return validateArticleSearch(c)
 	case method == "GET" && (strings.Contains(path, "/feeds/fetch/cursor") ||
@@ -74,6 +77,59 @@ func validateFeedRegistration(c echo.Context) error {
 			"error":   "validation_failed",
 			"message": "Validation failed",
 			"details": result.Errors,
+		})
+	}
+
+	return nil
+}
+
+func validateFeedTags(c echo.Context) error {
+	// Read and parse request body
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+			"error":   "validation_failed",
+			"message": "Failed to read request body",
+		})
+	}
+
+	// Reset body for further processing
+	c.Request().Body = io.NopCloser(strings.NewReader(string(body)))
+
+	var requestData map[string]interface{}
+	if err := json.Unmarshal(body, &requestData); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+			"error":   "validation_failed",
+			"message": "Invalid JSON format",
+		})
+	}
+
+	// Extract feed_url from request body
+	feedURL, exists := requestData["feed_url"]
+	if !exists {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+			"error":   "validation_failed",
+			"message": "feed_url is required",
+		})
+	}
+
+	// Validate that feed_url is a string
+	feedURLStr, ok := feedURL.(string)
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+			"error":   "validation_failed",
+			"message": "Validation failed",
+			"details": fmt.Sprintf("URL must be a string, got %T", feedURL),
+		})
+	}
+
+	result := validation.ValidateFeedTags(c.Request().Context(), feedURLStr)
+
+	if result != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+			"error":   "validation_failed",
+			"message": "Validation failed",
+			"details": result,
 		})
 	}
 
