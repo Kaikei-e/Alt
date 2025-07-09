@@ -118,10 +118,8 @@ export const SearchArticles = ({
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     // Always validate on form submit, regardless of button state
     const validationResult = validateQuery(query);
-
     if (validationResult) {
       setValidationError(validationResult);
       return;
