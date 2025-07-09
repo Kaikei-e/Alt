@@ -12,13 +12,27 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// Input validation constants
+const MAX_LOG_LINE_SIZE: usize = 10 * 1024 * 1024; // 10MB per log line
+const MAX_LOG_LINES_PER_BATCH: usize = 100_000; // Maximum lines per batch
+const MAX_FIELD_SIZE: usize = 64 * 1024; // 64KB per field
+
 lazy_static! {
     // More flexible pattern to match Docker native timestamps
     // Matches: 2025-07-03T18:53:46.741706684Z (with Z)
     // Also matches: 2025-07-03T18:53:46.741706684 (without Z)
     // Also matches: 2025-07-03T18:53:46Z (without microseconds)
-    static ref DOCKER_NATIVE_TIMESTAMP_PATTERN: Regex =
-        Regex::new(r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+"#).unwrap();
+    static ref DOCKER_NATIVE_TIMESTAMP_PATTERN: Regex = {
+        // Use a fallback pattern if the primary pattern fails to compile
+        match Regex::new(r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+"#) {
+            Ok(regex) => regex,
+            Err(_) => {
+                // Fallback to a simpler pattern if the complex one fails
+                Regex::new(r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#)
+                    .expect("Fallback regex pattern is invalid")
+            }
+        }
+    };
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,21 +159,76 @@ impl UniversalParser {
         }
     }
 
+    /// Validate input size to prevent DoS attacks and memory exhaustion
+    fn validate_input_size(&self, log_bytes: &[u8]) -> Result<(), ParseError> {
+        if log_bytes.len() > MAX_LOG_LINE_SIZE {
+            return Err(ParseError::InvalidFormat(format!(
+                "Log line too large: {} bytes (max: {})",
+                log_bytes.len(),
+                MAX_LOG_LINE_SIZE
+            )));
+        }
+        Ok(())
+    }
+
+    /// Validate UTF-8 and handle invalid sequences gracefully
+    fn validate_utf8(&self, log_bytes: &[u8]) -> Result<String, ParseError> {
+        if log_bytes.is_empty() {
+            return Err(ParseError::InvalidFormat("Empty log line".to_string()));
+        }
+
+        // Use lossy conversion to handle invalid UTF-8 gracefully
+        let raw_str = String::from_utf8_lossy(log_bytes);
+        
+        // Check for null bytes or control characters that might indicate malformed input
+        if raw_str.contains('\0') {
+            return Err(ParseError::InvalidFormat("Log contains null bytes".to_string()));
+        }
+
+        Ok(raw_str.into_owned())
+    }
+
+    /// Validate field size to prevent excessive memory usage
+    fn validate_field_size(&self, field: &str, field_name: &str) -> Result<(), ParseError> {
+        if field.len() > MAX_FIELD_SIZE {
+            return Err(ParseError::InvalidFormat(format!(
+                "Field '{}' too large: {} bytes (max: {})",
+                field_name,
+                field.len(),
+                MAX_FIELD_SIZE
+            )));
+        }
+        Ok(())
+    }
+
     pub async fn parse_docker_log(
         &self,
         log_bytes: &[u8],
         container_info: &ContainerInfo,
     ) -> Result<EnrichedLogEntry, ParseError> {
-        let raw_str = String::from_utf8_lossy(log_bytes);
-        // let log_content = self.trim_docker_native_timestamp(raw_str.to_string());
+        // Validate input size first
+        self.validate_input_size(log_bytes)?;
+        
+        // Validate UTF-8 and get string representation
+        let raw_str = self.validate_utf8(log_bytes)?;
+        
+        // Validate field sizes
+        self.validate_field_size(&raw_str, "log_line")?;
+        
         // Check if this is already a Docker JSON format or raw application log
         let (log_content, stream, timestamp) = if raw_str.trim_start().starts_with("{\"log\":") {
             // This is Docker JSON format
-            let bytes = Bytes::from(raw_str.into_owned());
+            let bytes = Bytes::from(raw_str);
             let docker_entry = self.docker_parser.parse(bytes)?;
 
             // Remove trailing newline from log content
             let log = docker_entry.log.trim_end_matches('\n').to_string();
+            
+            // Validate extracted fields
+            self.validate_field_size(&log, "log_content")?;
+            self.validate_field_size(&docker_entry.stream, "stream")?;
+            self.validate_field_size(&docker_entry.time, "timestamp")?;
+            
             (log, docker_entry.stream, docker_entry.time)
         } else {
             // This is raw application log (when timestamps: false in Docker API)

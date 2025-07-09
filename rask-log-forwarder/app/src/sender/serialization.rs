@@ -5,6 +5,12 @@ use serde_json;
 use std::io::Write;
 use thiserror::Error;
 
+// Maximum safe buffer size to prevent memory allocation issues
+const MAX_SAFE_BUFFER_SIZE: usize = 100 * 1024 * 1024; // 100MB
+const MAX_SAFE_BATCH_SIZE: usize = 1_000_000; // 1M entries
+const ESTIMATED_ENTRY_SIZE: usize = 500; // bytes per entry
+const METADATA_OVERHEAD: usize = 1024; // bytes
+
 #[derive(Error, Debug)]
 pub enum SerializationError {
     #[error("JSON serialization failed: {0}")]
@@ -48,7 +54,14 @@ impl BatchSerializer {
             return Err(SerializationError::EmptyBatch);
         }
 
-        let mut buffer = Vec::with_capacity(self.estimate_serialized_size(batch));
+        let estimated_size = self.estimate_serialized_size(batch);
+        let safe_capacity = if estimated_size > MAX_SAFE_BUFFER_SIZE {
+            MAX_SAFE_BUFFER_SIZE
+        } else {
+            estimated_size
+        };
+
+        let mut buffer = Vec::with_capacity(safe_capacity);
 
         for entry in batch.entries() {
             serde_json::to_writer(&mut buffer, entry)?;
@@ -74,7 +87,15 @@ impl BatchSerializer {
             return Err(SerializationError::EmptyBatch);
         }
 
-        let mut buffer = Vec::with_capacity(self.estimate_serialized_size(batch) + 1024);
+        let estimated_size = self.estimate_serialized_size(batch);
+        let safe_capacity = estimated_size.saturating_add(METADATA_OVERHEAD);
+        let safe_capacity = if safe_capacity > MAX_SAFE_BUFFER_SIZE {
+            MAX_SAFE_BUFFER_SIZE
+        } else {
+            safe_capacity
+        };
+
+        let mut buffer = Vec::with_capacity(safe_capacity);
 
         // Write batch metadata as first line
         let metadata = BatchMetadata {
@@ -119,8 +140,15 @@ impl BatchSerializer {
     }
 
     pub fn estimate_serialized_size(&self, batch: &Batch) -> usize {
-        // Rough estimation: each entry ~500 bytes in JSON + metadata overhead
-        batch.size() * 500 + 1024
+        // Validate batch size to prevent overflow
+        let batch_size = batch.size();
+        if batch_size > MAX_SAFE_BATCH_SIZE {
+            return MAX_SAFE_BUFFER_SIZE;
+        }
+        
+        // Use checked arithmetic to prevent overflow
+        let entry_size = batch_size.saturating_mul(ESTIMATED_ENTRY_SIZE);
+        entry_size.saturating_add(METADATA_OVERHEAD)
     }
 }
 
