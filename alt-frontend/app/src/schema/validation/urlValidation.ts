@@ -5,6 +5,9 @@ export const safeUrlSchema = v.pipe(
   v.check(isValidAndSafeUrl, "Invalid or unsafe URL"),
 );
 
+// セキュリティテスト用にexport
+export const validateUrl = isValidAndSafeUrl;
+
 function isValidAndSafeUrl(url: string): boolean {
   if (!url || typeof url !== "string") {
     return false;

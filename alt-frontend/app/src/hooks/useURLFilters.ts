@@ -88,7 +88,7 @@ export const useURLFilters = (
     if (searchChanged) {
       onSearchChange(urlSearch);
     }
-  }, []); // Only run on mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- Only run on mount
 
   // Update URL when filters change
   const updateURL = useCallback(
