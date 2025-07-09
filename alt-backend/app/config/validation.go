@@ -82,6 +82,11 @@ func validateRateLimitConfig(config *RateLimitConfig) error {
 		return fmt.Errorf("feed fetch limit must be at least 1, got %d", config.FeedFetchLimit)
 	}
 
+	// Validate DOS protection configuration
+	if err := validateDOSProtectionConfig(&config.DOSProtection); err != nil {
+		return fmt.Errorf("DOS protection config validation failed: %w", err)
+	}
+
 	return nil
 }
 
@@ -152,6 +157,76 @@ func validateHTTPConfig(config *HTTPConfig) error {
 
 	if config.IdleConnTimeout <= 0 {
 		return fmt.Errorf("idle connection timeout must be positive, got %v", config.IdleConnTimeout)
+	}
+
+	return nil
+}
+
+func validateDOSProtectionConfig(config *DOSProtectionConfig) error {
+	// Skip validation if DOS protection is disabled
+	if !config.Enabled {
+		return nil
+	}
+
+	// Validate rate limit
+	if config.RateLimit <= 0 {
+		return fmt.Errorf("rate limit must be greater than 0, got %d", config.RateLimit)
+	}
+
+	// Validate burst limit
+	if config.BurstLimit <= 0 {
+		return fmt.Errorf("burst limit must be greater than 0, got %d", config.BurstLimit)
+	}
+
+	// Validate that burst limit is >= rate limit
+	if config.BurstLimit < config.RateLimit {
+		return fmt.Errorf("burst limit must be >= rate limit, got burst: %d, rate: %d",
+			config.BurstLimit, config.RateLimit)
+	}
+
+	// Validate window size
+	if config.WindowSize <= 0 {
+		return fmt.Errorf("window size must be positive, got %v", config.WindowSize)
+	}
+
+	// Validate block duration
+	if config.BlockDuration <= 0 {
+		return fmt.Errorf("block duration must be positive, got %v", config.BlockDuration)
+	}
+
+	// Validate circuit breaker configuration
+	if err := validateCircuitBreakerConfig(&config.CircuitBreaker); err != nil {
+		return fmt.Errorf("circuit breaker config validation failed: %w", err)
+	}
+
+	return nil
+}
+
+func validateCircuitBreakerConfig(config *CircuitBreakerConfig) error {
+	// Skip validation if circuit breaker is disabled
+	if !config.Enabled {
+		return nil
+	}
+
+	// Validate failure threshold
+	if config.FailureThreshold <= 0 {
+		return fmt.Errorf("failure threshold must be greater than 0, got %d", config.FailureThreshold)
+	}
+
+	// Validate timeout duration
+	if config.TimeoutDuration <= 0 {
+		return fmt.Errorf("timeout duration must be positive, got %v", config.TimeoutDuration)
+	}
+
+	// Validate recovery timeout
+	if config.RecoveryTimeout <= 0 {
+		return fmt.Errorf("recovery timeout must be positive, got %v", config.RecoveryTimeout)
+	}
+
+	// Validate that recovery timeout is reasonable compared to timeout duration
+	if config.RecoveryTimeout < config.TimeoutDuration {
+		return fmt.Errorf("recovery timeout should be >= timeout duration, got recovery: %v, timeout: %v",
+			config.RecoveryTimeout, config.TimeoutDuration)
 	}
 
 	return nil

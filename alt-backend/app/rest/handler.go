@@ -61,13 +61,10 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		},
 	}))
 
-	// Add rate limiting middleware (skip for SSE endpoints)
-	e.Use(middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
-		Store: middleware.NewRateLimiterMemoryStore(rate.Limit(cfg.RateLimit.FeedFetchLimit)),
-		Skipper: func(c echo.Context) bool {
-			return strings.Contains(c.Path(), "/sse/")
-		},
-	}))
+	// Add DOS protection middleware with IP-based rate limiting
+	dosConfig := cfg.RateLimit.DOSProtection
+	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/"}
+	e.Use(middleware_custom.DOSProtectionMiddleware(dosConfig))
 
 	// Add security headers
 	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
