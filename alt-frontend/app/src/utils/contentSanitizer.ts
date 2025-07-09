@@ -32,7 +32,6 @@ export function sanitizeContent(
 
   const {
     allowedTags,
-    allowedAttributes,
     maxLength
   } = { ...DEFAULT_OPTIONS, ...options };
 
@@ -43,7 +42,7 @@ export function sanitizeContent(
   sanitized = removeDangerousTags(sanitized, allowedTags);
 
   // Remove dangerous attributes
-  sanitized = removeDangerousAttributes(sanitized, allowedAttributes);
+  sanitized = removeDangerousAttributes(sanitized);
 
   // Remove XSS attack patterns
   sanitized = removeXssPatterns(sanitized);
@@ -91,7 +90,7 @@ function removeDangerousTags(html: string, allowedTags: string[]): string {
  * @param allowedAttributes - Map of allowed attributes per tag
  * @returns HTML with dangerous attributes removed
  */
-function removeDangerousAttributes(html: string, allowedAttributes: Record<string, string[]>): string {
+function removeDangerousAttributes(html: string): string {
   // Remove event handlers and dangerous attributes
   let cleaned = html.replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, '');
   
@@ -158,19 +157,19 @@ function sanitizeUrl(url: string): string {
  * @param feed - Feed object to sanitize
  * @returns Sanitized feed object
  */
-export function sanitizeFeedContent(feed: any): {
+export function sanitizeFeedContent(feed: { title?: string; description?: string; author?: string; link?: string }): {
   title: string;
   description: string;
   author: string;
   link: string;
 } {
   return {
-    title: sanitizeContent(feed.title, { maxLength: 200 }),
-    description: sanitizeContent(feed.description, { maxLength: 500 }),
-    author: sanitizeContent(feed.author, { 
+    title: sanitizeContent(feed.title || '', { maxLength: 200 }),
+    description: sanitizeContent(feed.description || '', { maxLength: 500 }),
+    author: sanitizeContent(feed.author || '', { 
       maxLength: 100, 
       allowedTags: [] // Remove all HTML tags from author names
     }),
-    link: sanitizeUrl(feed.link)
+    link: sanitizeUrl(feed.link || '')
   };
 }

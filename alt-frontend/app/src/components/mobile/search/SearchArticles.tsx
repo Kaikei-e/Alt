@@ -7,7 +7,7 @@ import { Input, Box, VStack, Text } from "@chakra-ui/react";
 import { articleSearchQuerySchema } from "@/schema/validation/articleSearchQuery";
 import * as v from "valibot";
 import { useSearchParams } from "next/navigation";
-import { escapeForDisplay } from "@/utils/htmlEscape";
+// import { escapeForDisplay } from "@/utils/htmlEscape";
 
 interface SearchArticlesProps {
   articles: Article[];
