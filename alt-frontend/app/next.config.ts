@@ -1,4 +1,5 @@
 import { createRequire } from "module";
+import { securityHeaders } from "./src/config/security";
 
 // Node ESM files (package.json has "type":"module") don’t have the CommonJS
 // `require` function.  We recreate it via `createRequire` so the conditional
@@ -29,6 +30,29 @@ const nextConfig = {
   // Essential optimizations
   compress: true,
   poweredByHeader: false,
+  
+  // Security headers configuration
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: Object.entries(securityHeaders()).map(([key, value]) => ({
+          key,
+          value
+        }))
+      }
+    ];
+  },
+  
+  // CSP violations reporting endpoint
+  async rewrites() {
+    return [
+      {
+        source: '/api/csp-report',
+        destination: '/api/security/csp-report'
+      }
+    ];
+  },
 
   // Experimental optimizations
   experimental: {
@@ -111,4 +135,4 @@ const nextConfig = {
   },
 };
 
-module.exports = withBundleAnalyzer(nextConfig);
+export default withBundleAnalyzer(nextConfig);
