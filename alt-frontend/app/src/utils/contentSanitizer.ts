@@ -32,7 +32,6 @@ export function sanitizeContent(
   if (!content) return '';
 
   const {
-    allowedTags,
     maxLength
   } = { ...DEFAULT_OPTIONS, ...options };
 
@@ -69,9 +68,7 @@ function removeDangerousTags(html: string): string {
  */
 function removeDangerousAttributes(html: string): string {
   // Remove event handlers and dangerous attributes
-  let cleaned = sanitizeHtml(html);
-
-  return cleaned;
+  return sanitizeHtml(html);
 }
 
 /**
