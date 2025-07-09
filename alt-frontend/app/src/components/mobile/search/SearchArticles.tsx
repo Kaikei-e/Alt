@@ -124,7 +124,6 @@ export const SearchArticles = ({
       setValidationError(validationResult);
       return;
     }
-
     // Only proceed with search if validation passes
     handleSearch();
   };
@@ -132,15 +131,16 @@ export const SearchArticles = ({
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      // Trigger form submission which will handle validation
-      const form = e.currentTarget.closest("form");
-      if (form) {
-        const submitEvent = new Event("submit", {
-          bubbles: true,
-          cancelable: true,
-        });
-        form.dispatchEvent(submitEvent);
+      // Directly call the form submission logic
+      const validationResult = validateQuery(query);
+
+      if (validationResult) {
+        setValidationError(validationResult);
+        return;
       }
+
+      // Only proceed with search if validation passes
+      handleSearch();
     }
   };
 
@@ -158,12 +158,12 @@ export const SearchArticles = ({
   };
 
   // Enhanced button click handler that always validates
-  const handleButtonClick = () => {
+  const handleButtonClick = (e: React.MouseEvent) => {
     // Always validate when button is clicked
     const validationResult = validateQuery(query);
     if (validationResult) {
+      e.preventDefault();
       setValidationError(validationResult);
-      // Don't prevent default - let form submission handle it
       return;
     }
   };
