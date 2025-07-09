@@ -3,8 +3,10 @@ package di
 import (
 	"alt/config"
 	"alt/driver/alt_db"
+	"alt/driver/csrf_token_driver"
 	"alt/driver/search_indexer"
 	"alt/gateway/config_gateway"
+	"alt/gateway/csrf_token_gateway"
 	"alt/gateway/error_handler_gateway"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
@@ -20,6 +22,7 @@ import (
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/rate_limiter_port"
+	"alt/usecase/csrf_token_usecase"
 	"alt/usecase/fetch_feed_details_usecase"
 	"alt/usecase/fetch_feed_stats_usecase"
 	"alt/usecase/fetch_feed_tags_usecase"
@@ -59,6 +62,7 @@ type ApplicationComponents struct {
 	TodayUnreadArticlesCountUsecase     *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
 	FeedSearchUsecase                   *search_feed_usecase.SearchFeedMeilisearchUsecase
 	FetchFeedTagsUsecase                *fetch_feed_tags_usecase.FetchFeedTagsUsecase
+	CSRFTokenUsecase                    *csrf_token_usecase.CSRFTokenUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -125,6 +129,11 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchFeedTagsGatewayImpl := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDBRepository)
 	fetchFeedTagsUsecase := fetch_feed_tags_usecase.NewFetchFeedTagsUsecase(feedURLToIDGatewayImpl, fetchFeedTagsGatewayImpl)
 
+	// CSRF token components
+	csrfTokenDriver := csrf_token_driver.NewInMemoryCSRFTokenDriver()
+	csrfTokenGateway := csrf_token_gateway.NewCSRFTokenGateway(csrfTokenDriver)
+	csrfTokenUsecase := csrf_token_usecase.NewCSRFTokenUsecase(csrfTokenGateway)
+
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
@@ -151,5 +160,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		TodayUnreadArticlesCountUsecase:     todayUnreadArticlesCountUsecase,
 		FeedSearchUsecase:                   feedSearchUsecase,
 		FetchFeedTagsUsecase:                fetchFeedTagsUsecase,
+		CSRFTokenUsecase:                    csrfTokenUsecase,
 	}
 }

@@ -36,6 +36,9 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	// Add validation middleware
 	e.Use(middleware_custom.ValidationMiddleware())
 
+	// Add CSRF protection middleware
+	e.Use(middleware_custom.CSRFMiddleware(container.CSRFTokenUsecase))
+
 	// Add recovery middleware
 	e.Use(middleware.Recover())
 
@@ -79,11 +82,14 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://curionoah.com"},
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, "Cache-Control", "Authorization", "X-Requested-With"},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, "Cache-Control", "Authorization", "X-Requested-With", "X-CSRF-Token"},
 		MaxAge:       86400, // Cache preflight for 24 hours
 	}))
 
 	v1 := e.Group("/v1")
+
+	// CSRF token generation endpoint
+	v1.GET("/csrf-token", middleware_custom.CSRFTokenHandler(container.CSRFTokenUsecase))
 
 	// Health check with database connectivity test
 	v1.GET("/health", func(c echo.Context) error {
