@@ -1,4 +1,10 @@
 name: Pre-processor Quality Gates
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  actions: read
+  id-token: write
 
 on:
   push:
