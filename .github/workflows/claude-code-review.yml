@@ -38,6 +38,7 @@ jobs:
 
             Review this PR focusing on:
             - For TypeScript files: Type safety and proper interface usage
+            - For Go files: Code quality, best practices, error handling and security
             - For API endpoints: Security, input validation, and error handling
             - For React components: Performance, accessibility, and best practices
             - For tests: Coverage, edge cases, and test quality
