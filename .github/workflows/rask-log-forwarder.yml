@@ -33,7 +33,7 @@ jobs:
           primary-runner: "m222"
           fallback-runner: "ubuntu-latest"
           min-available-runners: 2
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.RUNNER_TOKEN }}
   test:
     needs: determine-runner-integration
     runs-on: ${{ needs.determine-runner-integration.outputs.runner }}
