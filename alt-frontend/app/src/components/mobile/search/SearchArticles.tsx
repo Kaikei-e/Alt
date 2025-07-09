@@ -39,6 +39,7 @@ export const SearchArticles = ({
       const result = v.safeParse(articleSearchQuerySchema, { query: urlQuery });
       if (result.success) {
         setError(null);
+        setValidationError(null);
         setIsLoading(true);
         feedsApi
           .searchArticles(urlQuery)
@@ -54,44 +55,47 @@ export const SearchArticles = ({
     }
   }, [searchParams, setQuery, setError, setArticles]);
 
-  // Real-time validation
+  // Validate query function
   const validateQuery = (queryText: string) => {
-    const validationResult = v.safeParse(articleSearchQuerySchema, {
-      query: queryText,
-    });
-    if (!validationResult.success) {
-      const firstError =
-        validationResult.issues?.[0]?.message ||
-        "Please enter a valid search query";
-      setValidationError(firstError);
-      return false;
+    const trimmed = queryText.trim();
+
+    if (!trimmed) {
+      return "Please enter a search query";
     }
-    setValidationError(null);
-    return true;
+
+    if (trimmed.length < 2) {
+      return "Search query must be at least 2 characters";
+    }
+
+    const result = v.safeParse(articleSearchQuerySchema, { query: trimmed });
+    if (!result.success) {
+      return result.issues?.[0]?.message || "Please enter a valid search query";
+    }
+
+    return null;
   };
 
   const handleSearch = async () => {
+    console.log("handleSearch called with query:", query);
+
     if (isLoading) return;
 
-    setIsLoading(true);
+    const validationResult = validateQuery(query);
+    console.log("Validation result:", validationResult);
+
+    if (validationResult) {
+      console.log("Setting validation error:", validationResult);
+      setValidationError(validationResult);
+      return;
+    }
+
     setError(null);
     setValidationError(null);
+    setIsLoading(true);
 
     try {
-      // Clear previous results
       setArticles([]);
-
-      // Validate input
-      const result = v.safeParse(articleSearchQuerySchema, { query });
-      if (!result.success) {
-        const firstError =
-          result.issues?.[0]?.message || "Please enter a valid search query";
-        setValidationError(firstError);
-        return;
-      }
-
-      // Call API
-      const response = await feedsApi.searchArticles(query);
+      const response = await feedsApi.searchArticles(query.trim());
       setArticles(response);
     } catch (err) {
       console.error("Search error:", err);
@@ -104,31 +108,83 @@ export const SearchArticles = ({
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
+    console.log("Form submitted with query:", query);
     e.preventDefault();
+
+    // Always validate on form submit, regardless of button state
+    const validationResult = validateQuery(query);
+    console.log("Form validation result:", validationResult);
+
+    if (validationResult) {
+      console.log("Setting validation error from form:", validationResult);
+      setValidationError(validationResult);
+      return;
+    }
+
+    // Only proceed with search if validation passes
     handleSearch();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
+      console.log("Enter key pressed");
       e.preventDefault();
-      handleSearch();
+      // Trigger form submission which will handle validation
+      const form = e.currentTarget.closest('form');
+      if (form) {
+        const submitEvent = new Event('submit', {
+          bubbles: true,
+          cancelable: true
+        });
+        form.dispatchEvent(submitEvent);
+      }
     }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newQuery = e.target.value;
+    console.log("Input changed to:", newQuery);
     setQuery(newQuery);
 
-    // Clear errors when user starts typing
+    // Clear API errors when user starts typing
     if (error) setError(null);
 
-    // Real-time validation for better UX
-    if (newQuery.trim()) {
-      validateQuery(newQuery);
-    } else {
+    // Clear validation error when user types enough characters
+    if (newQuery.trim().length >= 2) {
+      console.log("Clearing validation error because length >= 2");
       setValidationError(null);
     }
   };
+
+  // Enhanced button click handler that always validates
+  const handleButtonClick = (e: React.MouseEvent) => {
+    console.log("Button clicked, query:", query);
+
+    // Always validate when button is clicked
+    const validationResult = validateQuery(query);
+    if (validationResult) {
+      console.log("Button click validation error:", validationResult);
+      setValidationError(validationResult);
+      // Don't prevent default - let form submission handle it
+      return;
+    }
+
+    // Let form submission handle the rest
+    console.log("Button click: allowing form submission");
+  };
+
+  // Button disabled logic
+  const isButtonDisabled = isLoading || query.trim().length < 2;
+
+  console.log("Component render:", {
+    query,
+    queryLength: query.length,
+    trimmedLength: query.trim().length,
+    isLoading,
+    isButtonDisabled,
+    validationError,
+    error
+  });
 
   return (
     <Box width="100%" maxWidth="500px" mb={6} data-testid="search-window">
@@ -160,36 +216,48 @@ export const SearchArticles = ({
                 boxShadow: `0 0 0 1px ${validationError ? "#f87171" : "#ff006e"}`,
               }}
               borderRadius="15px"
-              py={6}
+              p={4}
               data-testid="search-input"
             />
           </Box>
 
-          <Button
+          {/* Use native button for more control */}
+          <button
             type="submit"
-            loading={isLoading}
-            bg="linear-gradient(45deg, #ff006e, #8338ec)"
-            color="white"
-            fontWeight="bold"
-            px={8}
-            py={6}
-            borderRadius="full"
-            _hover={{
-              bg: "linear-gradient(45deg, #e6005c, #7129d4)",
-              transform: "translateY(-2px)",
+            disabled={isButtonDisabled}
+            onClick={handleButtonClick}
+            style={{
+              background: isButtonDisabled
+                ? "rgba(255, 255, 255, 0.3)"
+                : "linear-gradient(45deg, #ff006e, #8338ec)",
+              color: "white",
+              fontWeight: "bold",
+              padding: "16px 32px",
+              borderRadius: "9999px",
+              border: "1px solid rgba(255, 255, 255, 0.2)",
+              width: "100%",
+              cursor: isButtonDisabled ? "not-allowed" : "pointer",
+              opacity: isButtonDisabled ? 0.6 : 1,
+              transition: "all 0.2s ease",
+              fontSize: "16px",
             }}
-            _active={{
-              transform: "translateY(0px)",
+            onMouseEnter={(e) => {
+              if (!isButtonDisabled) {
+                e.currentTarget.style.background = "linear-gradient(45deg, #e6005c, #7129d4)";
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }
             }}
-            transition="all 0.2s ease"
-            border="1px solid rgba(255, 255, 255, 0.2)"
-            width="full"
-            disabled={isLoading || !!validationError}
-            opacity={validationError ? 0.6 : 1}
+            onMouseLeave={(e) => {
+              if (!isButtonDisabled) {
+                e.currentTarget.style.background = "linear-gradient(45deg, #ff006e, #8338ec)";
+                e.currentTarget.style.transform = "translateY(0px)";
+              }
+            }}
           >
             {isLoading ? "Searching..." : "Search"}
-          </Button>
+          </button>
 
+          {/* Always show validation error when present */}
           {validationError && (
             <Text
               color="#f87171"
@@ -202,7 +270,8 @@ export const SearchArticles = ({
             </Text>
           )}
 
-          {error && (
+          {/* Show API error when present */}
+          {error && !validationError && (
             <Text
               color="#f87171"
               textAlign="center"

@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { RightPanel } from "@/components/desktop/analytics/RightPanel";
+import { ThemeProvider } from "@/providers/ThemeProvider";
 import { describe, it, expect, vi } from "vitest";
 
 // Mock the custom hooks
@@ -34,20 +35,26 @@ vi.mock("@/hooks/useQuickActions", () => ({
   }),
 }));
 
-const renderWithChakra = (ui: React.ReactElement) => {
-  return render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
+const renderWithProviders = (ui: React.ReactElement) => {
+  return render(
+    <ThemeProvider>
+      <ChakraProvider value={defaultSystem}>
+        {ui}
+      </ChakraProvider>
+    </ThemeProvider>
+  );
 };
 
 describe("RightPanel", () => {
   it("should render with glass effect", () => {
-    renderWithChakra(<RightPanel />);
+    renderWithProviders(<RightPanel />);
 
     const glassElements = document.querySelectorAll(".glass");
     expect(glassElements.length).toBeGreaterThan(0);
   });
 
   it("should show Analytics tab as active by default", () => {
-    renderWithChakra(<RightPanel />);
+    renderWithProviders(<RightPanel />);
 
     const analyticsTab = screen.getByRole("button", { name: /analytics/i });
     expect(analyticsTab).toBeInTheDocument();
@@ -55,7 +62,7 @@ describe("RightPanel", () => {
 
   it("should switch between tabs", async () => {
     const user = userEvent.setup();
-    renderWithChakra(<RightPanel />);
+    renderWithProviders(<RightPanel />);
 
     // Click on Actions tab
     const actionsTab = screen.getByRole("button", { name: /actions/i });
@@ -71,7 +78,7 @@ describe("RightPanel", () => {
   });
 
   it("should use CSS variables for styling", () => {
-    renderWithChakra(<RightPanel />);
+    renderWithProviders(<RightPanel />);
 
     const buttons = screen.getAllByRole("button");
     const buttonElement = buttons[0];

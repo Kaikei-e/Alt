@@ -99,7 +99,6 @@ test.describe("Mobile Feeds Page", () => {
 
     // Add error handling for any unmatched routes
     await page.route("**/api/**", async (route) => {
-      console.log(`Unmatched API route: ${route.request().url()}`);
       await route.fallback();
     });
   });
