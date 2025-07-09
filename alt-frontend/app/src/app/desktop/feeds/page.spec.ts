@@ -92,11 +92,20 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
       });
     });
 
+    // Mock SSE endpoints that may be causing networkidle issues
+    await page.route("**/api/v1/sse/**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: `data: {"status": "connected"}\n\n`,
+      });
+    });
+
     await page.goto("/desktop/feeds");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Wait for components to load
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(5000);
   });
 
   test("should render feeds page with all components (PROTECTED)", async ({
