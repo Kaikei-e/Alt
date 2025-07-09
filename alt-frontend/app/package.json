@@ -18,7 +18,7 @@
   "dependencies": {
     "@chakra-ui/accordion": "^2.3.1",
     "@chakra-ui/progress": "^2.2.0",
-    "@chakra-ui/react": "^3.21.0",
+    "@chakra-ui/react": "^3.22.0",
     "@chakra-ui/transition": "^2.1.0",
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
-    "@next/bundle-analyzer": "^15.3.4",
+    "@next/bundle-analyzer": "^15.3.5",
     "@playwright/test": "^1.53.2",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -47,9 +47,9 @@
     "eslint": "^9.30.1",
     "eslint-config-next": "15.3.3",
     "jsdom": "^26.1.0",
+    "playwright": "^1.53.2",
     "prettier": "3.5.3",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4",
-    "playwright": "^1.53.2"
+    "vitest": "^3.2.4"
   }
 }
