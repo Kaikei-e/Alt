@@ -215,7 +215,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForSelector('[data-testid="stat-card"], .glass', { timeout: 10000 });
       
       // Check for zero values in the formatted number displays
-      await expect(page.locator('text="0"').first()).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("0")).toBeVisible({ timeout: 10000 });
     });
 
     test("should update values when SSE sends new data", async ({ page }) => {
