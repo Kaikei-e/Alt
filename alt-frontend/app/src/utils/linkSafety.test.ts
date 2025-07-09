@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeUrl, addSecurityAttributes, isExternalLink } from "./linkSafety";
+import {
+  sanitizeUrl,
+  addSecurityAttributes,
+  isExternalLink,
+} from "./linkSafety";
 
 // Mock window.location for testing
-Object.defineProperty(window, 'location', {
+Object.defineProperty(window, "location", {
   value: {
-    origin: 'https://example.com'
+    origin: "https://example.com",
   },
-  writable: true
+  writable: true,
 });
 
 describe("Link Safety Utilities", () => {
@@ -37,12 +41,7 @@ describe("Link Safety Utilities", () => {
     });
 
     it("should return # for malformed URLs", () => {
-      const malformedUrls = [
-        "not-a-url",
-        "http://",
-        "",
-        "   ",
-      ];
+      const malformedUrls = ["not-a-url", "http://", "", "   "];
 
       malformedUrls.forEach((url) => {
         expect(sanitizeUrl(url)).toBe("#");
@@ -58,7 +57,7 @@ describe("Link Safety Utilities", () => {
       expect(result).toEqual({
         href: externalUrl,
         rel: "noopener noreferrer",
-        target: "_blank"
+        target: "_blank",
       });
     });
 
@@ -67,7 +66,7 @@ describe("Link Safety Utilities", () => {
       const result = addSecurityAttributes(internalUrl);
 
       expect(result).toEqual({
-        href: internalUrl
+        href: internalUrl,
       });
     });
 
@@ -105,11 +104,7 @@ describe("Link Safety Utilities", () => {
     });
 
     it("should return false for malformed URLs", () => {
-      const malformedUrls = [
-        "not-a-url",
-        "http://",
-        "",
-      ];
+      const malformedUrls = ["not-a-url", "http://", ""];
 
       malformedUrls.forEach((url) => {
         expect(isExternalLink(url)).toBe(false);

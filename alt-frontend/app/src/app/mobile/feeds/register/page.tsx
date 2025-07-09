@@ -32,10 +32,10 @@ export default function RegisterFeedsPage() {
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setFeedUrl(value);
-    
+
     // Clear previous validation error
     setValidationError(null);
-    
+
     // Real-time validation for better UX
     if (value.trim()) {
       const error = validateUrl(value);
@@ -128,16 +128,14 @@ export default function RegisterFeedsPage() {
                   color="var(--text-primary)"
                   _placeholder={{ color: "var(--text-muted)" }}
                   _focus={{
-                    borderColor: validationError ? "var(--alt-error)" : "var(--alt-primary)",
+                    borderColor: validationError
+                      ? "var(--alt-error)"
+                      : "var(--alt-primary)",
                     boxShadow: `0 0 0 1px ${validationError ? "var(--alt-error)" : "var(--alt-primary)"}`,
                   }}
                 />
                 {validationError && (
-                  <Text
-                    color="var(--alt-error)"
-                    fontSize="sm"
-                    mt={1}
-                  >
+                  <Text color="var(--alt-error)" fontSize="sm" mt={1}>
                     {validationError}
                   </Text>
                 )}

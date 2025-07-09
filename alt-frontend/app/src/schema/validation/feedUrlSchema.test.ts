@@ -36,7 +36,9 @@ describe("Feed URL Schema", () => {
         const result = v.safeParse(feedUrlSchema, feedUrl);
         expect(result.success).toBe(false);
         if (!result.success) {
-          expect(result.issues[0].message).toBe("URL does not appear to be a valid RSS or Atom feed");
+          expect(result.issues[0].message).toBe(
+            "URL does not appear to be a valid RSS or Atom feed",
+          );
         }
       });
     });

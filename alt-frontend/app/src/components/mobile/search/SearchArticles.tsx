@@ -37,7 +37,9 @@ export const SearchArticles = ({
     if (urlQuery) {
       try {
         // URLパラメータを厳密に検証
-        const result = v.safeParse(articleSearchQuerySchema, { query: urlQuery });
+        const result = v.safeParse(articleSearchQuerySchema, {
+          query: urlQuery,
+        });
         if (result.success) {
           // 検証に成功した場合のみ、クエリを設定
           setQuery(urlQuery);
@@ -56,11 +58,11 @@ export const SearchArticles = ({
             });
         } else {
           // 無効なURLクエリの場合は警告を記録し、無視
-          console.warn('Invalid URL query parameter detected:', urlQuery);
+          console.warn("Invalid URL query parameter detected:", urlQuery);
           setValidationError("Invalid search query from URL");
         }
       } catch (error) {
-        console.warn('Error processing URL query parameter:', error);
+        console.warn("Error processing URL query parameter:", error);
         setValidationError("Invalid search query from URL");
       }
     }

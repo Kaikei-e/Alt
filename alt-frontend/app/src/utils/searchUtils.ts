@@ -180,7 +180,10 @@ function escapeRegExp(string: string): string {
 /**
  * Simple search that maintains backward compatibility
  */
-export function simpleSearch(feeds: (Feed | SanitizedFeed)[], query: string): (Feed | SanitizedFeed)[] {
+export function simpleSearch(
+  feeds: (Feed | SanitizedFeed)[],
+  query: string,
+): (Feed | SanitizedFeed)[] {
   if (!query.trim()) return feeds;
 
   const lowercaseQuery = query.toLowerCase();

@@ -30,27 +30,27 @@ const nextConfig = {
   // Essential optimizations
   compress: true,
   poweredByHeader: false,
-  
+
   // Security headers configuration
   async headers() {
     return [
       {
-        source: '/(.*)',
+        source: "/(.*)",
         headers: Object.entries(securityHeaders()).map(([key, value]) => ({
           key,
-          value
-        }))
-      }
+          value,
+        })),
+      },
     ];
   },
-  
+
   // CSP violations reporting endpoint
   async rewrites() {
     return [
       {
-        source: '/api/csp-report',
-        destination: '/api/security/csp-report'
-      }
+        source: "/api/csp-report",
+        destination: "/api/security/csp-report",
+      },
     ];
   },
 

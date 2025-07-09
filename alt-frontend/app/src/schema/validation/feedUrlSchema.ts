@@ -30,5 +30,5 @@ function isLikelyRssFeed(url: string): boolean {
     /\/feeds\//i,
   ];
 
-  return feedPatterns.some(pattern => pattern.test(url));
+  return feedPatterns.some((pattern) => pattern.test(url));
 }

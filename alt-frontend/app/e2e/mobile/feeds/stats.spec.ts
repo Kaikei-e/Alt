@@ -291,9 +291,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             }, 100);
           }
 
-          close() { }
-          addEventListener() { }
-          removeEventListener() { }
+          close() {}
+          addEventListener() {}
+          removeEventListener() {}
         };
       });
 

@@ -52,18 +52,18 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       }
 
       // Create the error message element
-      const errorElement = document.createElement('div');
-      errorElement.setAttribute('data-testid', 'error-message');
-      errorElement.textContent = 'Search query must be at least 2 characters';
-      errorElement.style.color = '#f87171';
-      errorElement.style.textAlign = 'center';
-      errorElement.style.fontSize = '14px';
-      errorElement.style.fontWeight = '500';
-      errorElement.style.display = 'block';
-      errorElement.style.marginTop = '16px';
+      const errorElement = document.createElement("div");
+      errorElement.setAttribute("data-testid", "error-message");
+      errorElement.textContent = "Search query must be at least 2 characters";
+      errorElement.style.color = "#f87171";
+      errorElement.style.textAlign = "center";
+      errorElement.style.fontSize = "14px";
+      errorElement.style.fontWeight = "500";
+      errorElement.style.display = "block";
+      errorElement.style.marginTop = "16px";
 
       // Add to the form
-      const form = document.querySelector('form');
+      const form = document.querySelector("form");
       if (form) {
         form.appendChild(errorElement);
       }
@@ -76,8 +76,12 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       timeout: 5000,
     });
 
-    const errorMessage = await page.textContent("[data-testid='error-message']");
-    expect(errorMessage).toContain("Search query must be at least 2 characters");
+    const errorMessage = await page.textContent(
+      "[data-testid='error-message']",
+    );
+    expect(errorMessage).toContain(
+      "Search query must be at least 2 characters",
+    );
   });
 
   test("should display error message when query is empty", async ({ page }) => {
@@ -113,18 +117,18 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       }
 
       // Create the error message element
-      const errorElement = document.createElement('div');
-      errorElement.setAttribute('data-testid', 'error-message');
-      errorElement.textContent = 'Please enter a search query';
-      errorElement.style.color = '#f87171';
-      errorElement.style.textAlign = 'center';
-      errorElement.style.fontSize = '14px';
-      errorElement.style.fontWeight = '500';
-      errorElement.style.display = 'block';
-      errorElement.style.marginTop = '16px';
+      const errorElement = document.createElement("div");
+      errorElement.setAttribute("data-testid", "error-message");
+      errorElement.textContent = "Please enter a search query";
+      errorElement.style.color = "#f87171";
+      errorElement.style.textAlign = "center";
+      errorElement.style.fontSize = "14px";
+      errorElement.style.fontWeight = "500";
+      errorElement.style.display = "block";
+      errorElement.style.marginTop = "16px";
 
       // Add to the form
-      const form = document.querySelector('form');
+      const form = document.querySelector("form");
       if (form) {
         form.appendChild(errorElement);
       }
@@ -137,7 +141,9 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       timeout: 5000,
     });
 
-    const errorMessage = await page.textContent("[data-testid='error-message']");
+    const errorMessage = await page.textContent(
+      "[data-testid='error-message']",
+    );
     expect(errorMessage).toContain("Please enter a search query");
   });
 });

@@ -22,7 +22,7 @@ function isValidAndSafeUrl(url: string): boolean {
 
   try {
     const parsedUrl = new URL(url);
-    
+
     // Only allow HTTP and HTTPS protocols
     if (!["http:", "https:"].includes(parsedUrl.protocol)) {
       return false;
@@ -53,20 +53,20 @@ function isValidAndSafeUrl(url: string): boolean {
 
     // Check for localhost in production
     if (process.env.NODE_ENV === "production") {
-      const localhostPatterns = [
-        "localhost",
-        "127.0.0.1",
-        "0.0.0.0",
-        "::1",
-      ];
-      
-      if (localhostPatterns.some(pattern => parsedUrl.hostname.includes(pattern))) {
+      const localhostPatterns = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
+
+      if (
+        localhostPatterns.some((pattern) =>
+          parsedUrl.hostname.includes(pattern),
+        )
+      ) {
         return false;
       }
     }
 
     // Check for proper domain format
-    const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
+    const domainPattern =
+      /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
     if (!domainPattern.test(parsedUrl.hostname)) {
       return false;
     }

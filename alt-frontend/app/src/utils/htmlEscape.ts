@@ -9,15 +9,15 @@
  * @returns エスケープされた安全な文字列
  */
 export function escapeHtml(text: string | null | undefined): string {
-  if (!text) return '';
-  
+  if (!text) return "";
+
   return text
-    .replace(/&/g, '&amp;')    // & を最初に処理（二重エスケープ防止）
-    .replace(/</g, '&lt;')     // < をエスケープ
-    .replace(/>/g, '&gt;')     // > をエスケープ
-    .replace(/"/g, '&quot;')   // " をエスケープ
-    .replace(/'/g, '&#x27;')   // ' をエスケープ
-    .replace(/=/g, '&#x3D;');  // = をエスケープ（XSS攻撃防止）
+    .replace(/&/g, "&amp;") // & を最初に処理（二重エスケープ防止）
+    .replace(/</g, "&lt;") // < をエスケープ
+    .replace(/>/g, "&gt;") // > をエスケープ
+    .replace(/"/g, "&quot;") // " をエスケープ
+    .replace(/'/g, "&#x27;") // ' をエスケープ
+    .replace(/=/g, "&#x3D;"); // = をエスケープ（XSS攻撃防止）
 }
 
 /**

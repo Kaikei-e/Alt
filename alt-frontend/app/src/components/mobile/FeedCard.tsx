@@ -115,7 +115,11 @@ const FeedCard = memo(function FeedCard({
 
           {/* Author name (if available) */}
           {feed.author && (
-            <Text fontSize="xs" color="var(--text-secondary)" fontStyle="italic">
+            <Text
+              fontSize="xs"
+              color="var(--text-secondary)"
+              fontStyle="italic"
+            >
               by {feed.author}
             </Text>
           )}

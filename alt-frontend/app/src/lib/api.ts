@@ -331,7 +331,10 @@ export const feedsApi = {
     5, // 5 minute cache for regular feeds
   ),
 
-  async getFeeds(page: number = 1, pageSize: number = 10): Promise<SanitizedFeed[]> {
+  async getFeeds(
+    page: number = 1,
+    pageSize: number = 10,
+  ): Promise<SanitizedFeed[]> {
     const limit = page * pageSize;
     const response = await apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/limit/${limit}`,
@@ -372,7 +375,10 @@ export const feedsApi = {
   },
 
   async getSingleFeed(): Promise<SanitizedFeed> {
-    const response = await apiClient.get<BackendFeedItem>("/v1/feeds/fetch/single", 5);
+    const response = await apiClient.get<BackendFeedItem>(
+      "/v1/feeds/fetch/single",
+      5,
+    );
     return transformFeedItem(response);
   },
 

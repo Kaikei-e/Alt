@@ -18,7 +18,7 @@ export function sanitizeUrl(url: string): string {
 
 export function addSecurityAttributes(url: string): LinkAttributes {
   const sanitizedUrl = sanitizeUrl(url);
-  
+
   if (sanitizedUrl === "#") {
     return { href: "#" };
   }
@@ -31,8 +31,8 @@ export function addSecurityAttributes(url: string): LinkAttributes {
       href: sanitizedUrl,
       ...(isExternal && {
         rel: "noopener noreferrer",
-        target: "_blank"
-      })
+        target: "_blank",
+      }),
     };
   } catch {
     return { href: "#" };

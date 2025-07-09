@@ -2,7 +2,7 @@
  * Content sanitization utilities for XSS prevention
  * Provides safe HTML content processing for external data
  */
-import sanitizeHtml from 'sanitize-html';
+import sanitizeHtml from "sanitize-html";
 
 export interface SanitizerOptions {
   allowedTags?: string[];
@@ -11,12 +11,12 @@ export interface SanitizerOptions {
 }
 
 const DEFAULT_OPTIONS: Required<SanitizerOptions> = {
-  allowedTags: ['b', 'i', 'em', 'strong', 'p', 'br', 'a'],
+  allowedTags: ["b", "i", "em", "strong", "p", "br", "a"],
   allowedAttributes: {
-    'a': ['href'],
-    'img': ['src', 'alt']
+    a: ["href"],
+    img: ["src", "alt"],
   },
-  maxLength: 1000
+  maxLength: 1000,
 };
 
 /**
@@ -27,13 +27,11 @@ const DEFAULT_OPTIONS: Required<SanitizerOptions> = {
  */
 export function sanitizeContent(
   content: string | null | undefined,
-  options: SanitizerOptions = {}
+  options: SanitizerOptions = {},
 ): string {
-  if (!content) return '';
+  if (!content) return "";
 
-  const {
-    maxLength
-  } = { ...DEFAULT_OPTIONS, ...options };
+  const { maxLength } = { ...DEFAULT_OPTIONS, ...options };
 
   // Truncate content if too long
   let sanitized = content.slice(0, maxLength);
@@ -86,18 +84,18 @@ function removeXssPatterns(html: string): string {
  * @returns Safe URL or empty string if invalid
  */
 function sanitizeUrl(url: string): string {
-  if (!url) return '';
+  if (!url) return "";
 
   // Allow only http and https protocols
   const urlPattern = /^https?:\/\//i;
   if (!urlPattern.test(url)) {
-    return '';
+    return "";
   }
 
   // Remove javascript: and other dangerous protocols
   const dangerousProtocols = /^(javascript|vbscript|data|ftp|file):/i;
   if (dangerousProtocols.test(url)) {
-    return '';
+    return "";
   }
 
   return url;
@@ -108,19 +106,24 @@ function sanitizeUrl(url: string): string {
  * @param feed - Feed object to sanitize
  * @returns Sanitized feed object
  */
-export function sanitizeFeedContent(feed: { title?: string; description?: string; author?: string; link?: string }): {
+export function sanitizeFeedContent(feed: {
+  title?: string;
+  description?: string;
+  author?: string;
+  link?: string;
+}): {
   title: string;
   description: string;
   author: string;
   link: string;
 } {
   return {
-    title: sanitizeContent(feed.title || '', { maxLength: 200 }),
-    description: sanitizeContent(feed.description || '', { maxLength: 500 }),
-    author: sanitizeContent(feed.author || '', {
+    title: sanitizeContent(feed.title || "", { maxLength: 200 }),
+    description: sanitizeContent(feed.description || "", { maxLength: 500 }),
+    author: sanitizeContent(feed.author || "", {
       maxLength: 100,
-      allowedTags: [] // Remove all HTML tags from author names
+      allowedTags: [], // Remove all HTML tags from author names
     }),
-    link: sanitizeUrl(feed.link || '')
+    link: sanitizeUrl(feed.link || ""),
   };
 }

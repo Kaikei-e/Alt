@@ -1,17 +1,17 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test.describe('Feed Registration URL Validation', () => {
+test.describe("Feed Registration URL Validation", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/mobile/feeds/register');
+    await page.goto("/mobile/feeds/register");
   });
 
-  test('should accept valid RSS feed URLs', async ({ page }) => {
+  test("should accept valid RSS feed URLs", async ({ page }) => {
     const validUrls = [
-      'https://example.com/rss.xml',
-      'https://example.com/feed.xml',
-      'https://example.com/atom.xml',
-      'https://example.com/feed',
-      'https://example.com/rss',
+      "https://example.com/rss.xml",
+      "https://example.com/feed.xml",
+      "https://example.com/atom.xml",
+      "https://example.com/feed",
+      "https://example.com/rss",
     ];
 
     for (const url of validUrls) {
@@ -27,16 +27,16 @@ test.describe('Feed Registration URL Validation', () => {
       await expect(submitButton).toBeEnabled();
 
       // Clear field for next test
-      await page.fill('input[type="url"]', '');
+      await page.fill('input[type="url"]', "");
     }
   });
 
-  test('should reject dangerous URLs', async ({ page }) => {
+  test("should reject dangerous URLs", async ({ page }) => {
     const dangerousUrls = [
       'javascript:alert("XSS")',
       'data:text/html,<script>alert("XSS")</script>',
       'vbscript:alert("XSS")',
-      'file:///etc/passwd',
+      "file:///etc/passwd",
     ];
 
     for (const url of dangerousUrls) {
@@ -52,16 +52,16 @@ test.describe('Feed Registration URL Validation', () => {
       await expect(submitButton).toBeDisabled();
 
       // Clear field for next test
-      await page.fill('input[type="url"]', '');
+      await page.fill('input[type="url"]', "");
     }
   });
 
-  test('should reject non-RSS URLs', async ({ page }) => {
+  test("should reject non-RSS URLs", async ({ page }) => {
     const nonRssUrls = [
-      'https://example.com',
-      'https://example.com/about',
-      'https://example.com/blog',
-      'https://example.com/page.html',
+      "https://example.com",
+      "https://example.com/about",
+      "https://example.com/blog",
+      "https://example.com/page.html",
     ];
 
     for (const url of nonRssUrls) {
@@ -69,7 +69,9 @@ test.describe('Feed Registration URL Validation', () => {
       await page.locator('input[type="url"]').blur();
 
       // Check that validation error is shown
-      const errorMessage = page.locator('text="URL does not appear to be a valid RSS or Atom feed"');
+      const errorMessage = page.locator(
+        'text="URL does not appear to be a valid RSS or Atom feed"',
+      );
       await expect(errorMessage).toBeVisible();
 
       // Check that submit button is disabled
@@ -77,13 +79,13 @@ test.describe('Feed Registration URL Validation', () => {
       await expect(submitButton).toBeDisabled();
 
       // Clear field for next test
-      await page.fill('input[type="url"]', '');
+      await page.fill('input[type="url"]', "");
     }
   });
 
-  test('should show validation error in real-time', async ({ page }) => {
+  test("should show validation error in real-time", async ({ page }) => {
     // Start typing a dangerous URL
-    await page.fill('input[type="url"]', 'javascript:alert');
+    await page.fill('input[type="url"]', "javascript:alert");
     await page.locator('input[type="url"]').blur();
 
     // Error should appear immediately
@@ -96,10 +98,12 @@ test.describe('Feed Registration URL Validation', () => {
 
     // Input border should be red
     const input = page.locator('input[type="url"]');
-    await expect(input).toHaveCSS('border-color', 'rgb(255, 0, 0)'); // Assuming red color
+    await expect(input).toHaveCSS("border-color", "rgb(255, 0, 0)"); // Assuming red color
   });
 
-  test('should clear validation error when input is cleared', async ({ page }) => {
+  test("should clear validation error when input is cleared", async ({
+    page,
+  }) => {
     // Enter invalid URL
     await page.fill('input[type="url"]', 'javascript:alert("XSS")');
     await page.locator('input[type="url"]').blur();
@@ -109,7 +113,7 @@ test.describe('Feed Registration URL Validation', () => {
     await expect(errorMessage).toBeVisible();
 
     // Clear the input
-    await page.fill('input[type="url"]', '');
+    await page.fill('input[type="url"]', "");
 
     // Error should be gone
     await expect(errorMessage).not.toBeVisible();
@@ -119,23 +123,23 @@ test.describe('Feed Registration URL Validation', () => {
     await expect(submitButton).toBeEnabled();
   });
 
-  test('should handle edge cases correctly', async ({ page }) => {
+  test("should handle edge cases correctly", async ({ page }) => {
     const edgeCases = [
       {
-        url: 'https://example.com/feed.xml?format=rss',
+        url: "https://example.com/feed.xml?format=rss",
         shouldBeValid: true,
-        description: 'RSS URL with query parameters'
+        description: "RSS URL with query parameters",
       },
       {
-        url: 'https://example.com/rss#latest',
+        url: "https://example.com/rss#latest",
         shouldBeValid: true,
-        description: 'RSS URL with fragment'
+        description: "RSS URL with fragment",
       },
       {
-        url: 'https://subdomain.example.com/feeds/all',
+        url: "https://subdomain.example.com/feeds/all",
         shouldBeValid: true,
-        description: 'RSS URL with subdomain'
-      }
+        description: "RSS URL with subdomain",
+      },
     ];
 
     for (const testCase of edgeCases) {
@@ -151,7 +155,7 @@ test.describe('Feed Registration URL Validation', () => {
       }
 
       // Clear field for next test
-      await page.fill('input[type="url"]', '');
+      await page.fill('input[type="url"]', "");
     }
   });
 });
