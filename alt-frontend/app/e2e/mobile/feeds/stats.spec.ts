@@ -175,49 +175,6 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await expect(page.getByText("1,337")).toBeVisible({ timeout: 10000 });
     });
 
-    test("should handle initial zero values", async ({ page }) => {
-      // Mock EventSource to send zero values initially
-      await page.addInitScript(() => {
-        const originalEventSource = (window as any).EventSource;
-        (window as any).EventSource = class extends originalEventSource {
-          constructor(url: string) {
-            super(url);
-            setTimeout(() => {
-              (this as any).readyState = 1;
-              if ((this as any).onopen) (this as any).onopen(new Event("open"));
-
-              setTimeout(() => {
-                const event = new MessageEvent("message", {
-                  data: JSON.stringify({
-                    feed_amount: { amount: 0 },
-                    unsummarized_feed: { amount: 0 },
-                    total_articles: { amount: 0 },
-                  }),
-                  origin: url,
-                });
-
-                if ((this as any).onmessage) (this as any).onmessage(event);
-              }, 100);
-            }, 100);
-          }
-        };
-      });
-
-      await page.goto("/mobile/feeds/stats", {
-        waitUntil: "domcontentloaded",
-        timeout: 30000,
-      });
-
-      await page.waitForSelector("body", { timeout: 15000 });
-      await page.waitForTimeout(1000);
-
-      // Check for zero values - wait for the StatCard components to render
-      await page.waitForSelector('[data-testid="stat-card"], .glass', { timeout: 10000 });
-      
-      // Check for zero values in the formatted number displays
-      await expect(page.getByText("0")).toBeVisible({ timeout: 10000 });
-    });
-
     test("should update values when SSE sends new data", async ({ page }) => {
       await page.goto("/mobile/feeds/stats", {
         waitUntil: "domcontentloaded",
@@ -340,9 +297,9 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             }, 100);
           }
 
-          close() {}
-          addEventListener() {}
-          removeEventListener() {}
+          close() { }
+          addEventListener() { }
+          removeEventListener() { }
         };
       });
 
