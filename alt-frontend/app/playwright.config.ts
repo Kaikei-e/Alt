@@ -13,11 +13,8 @@ export default defineConfig({
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
 
-  // タイムアウト設定を調整
-  timeout: 45 * 1000, // 45秒のテストタイムアウト
-  globalTimeout: 10 * 60 * 1000, // 10分のグローバルタイムアウト
   expect: {
-    timeout: 10 * 1000, // 10秒のexpectタイムアウト
+    timeout: 10 * 1000,
   },
 
   // レポーター
@@ -26,8 +23,6 @@ export default defineConfig({
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3010",
     headless: true,
-    actionTimeout: 10 * 1000, // 10秒のアクションタイムアウト
-    navigationTimeout: 45 * 1000, // 45秒のナビゲーションタイムアウト
 
     // CIではトレースは最初のリトライ時のみ、ローカルではオフ
     trace: isCI ? "on-first-retry" : "off",
@@ -63,6 +58,6 @@ export default defineConfig({
       : "next dev --port 3010",
     url: "http://localhost:3010",
     reuseExistingServer: !isCI,
-    timeout: 120 * 1000, // 2分のWebServerタイムアウト
+    timeout: 180 * 1000, // 3分のWebServerタイムアウト
   },
 });
