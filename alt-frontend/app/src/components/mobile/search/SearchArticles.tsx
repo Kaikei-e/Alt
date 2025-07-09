@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Article } from "@/schema/article";
 import { feedsApi } from "@/lib/api";
-import { Button, Input, Box, VStack, Text } from "@chakra-ui/react";
+import { Input, Box, VStack, Text } from "@chakra-ui/react";
 import { articleSearchQuerySchema } from "@/schema/validation/articleSearchQuery";
 import * as v from "valibot";
 import { useSearchParams } from "next/navigation";
@@ -76,15 +76,11 @@ export const SearchArticles = ({
   };
 
   const handleSearch = async () => {
-    console.log("handleSearch called with query:", query);
-
     if (isLoading) return;
 
     const validationResult = validateQuery(query);
-    console.log("Validation result:", validationResult);
 
     if (validationResult) {
-      console.log("Setting validation error:", validationResult);
       setValidationError(validationResult);
       return;
     }
@@ -108,15 +104,12 @@ export const SearchArticles = ({
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
-    console.log("Form submitted with query:", query);
     e.preventDefault();
 
     // Always validate on form submit, regardless of button state
     const validationResult = validateQuery(query);
-    console.log("Form validation result:", validationResult);
 
     if (validationResult) {
-      console.log("Setting validation error from form:", validationResult);
       setValidationError(validationResult);
       return;
     }
@@ -127,7 +120,6 @@ export const SearchArticles = ({
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      console.log("Enter key pressed");
       e.preventDefault();
       // Trigger form submission which will handle validation
       const form = e.currentTarget.closest('form');
@@ -143,7 +135,6 @@ export const SearchArticles = ({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newQuery = e.target.value;
-    console.log("Input changed to:", newQuery);
     setQuery(newQuery);
 
     // Clear API errors when user starts typing
@@ -151,40 +142,23 @@ export const SearchArticles = ({
 
     // Clear validation error when user types enough characters
     if (newQuery.trim().length >= 2) {
-      console.log("Clearing validation error because length >= 2");
       setValidationError(null);
     }
   };
 
   // Enhanced button click handler that always validates
-  const handleButtonClick = (e: React.MouseEvent) => {
-    console.log("Button clicked, query:", query);
-
+  const handleButtonClick = () => {
     // Always validate when button is clicked
     const validationResult = validateQuery(query);
     if (validationResult) {
-      console.log("Button click validation error:", validationResult);
       setValidationError(validationResult);
       // Don't prevent default - let form submission handle it
       return;
     }
-
-    // Let form submission handle the rest
-    console.log("Button click: allowing form submission");
   };
 
   // Button disabled logic
   const isButtonDisabled = isLoading || query.trim().length < 2;
-
-  console.log("Component render:", {
-    query,
-    queryLength: query.length,
-    trimmedLength: query.trim().length,
-    isLoading,
-    isButtonDisabled,
-    validationError,
-    error
-  });
 
   return (
     <Box width="100%" maxWidth="500px" mb={6} data-testid="search-window">

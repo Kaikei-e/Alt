@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { DesktopSidebar } from "./DesktopSidebar";
-import { Home, Rss, FileText, Search, Settings } from "lucide-react";
+import { Home, Rss } from "lucide-react";
 
 // Mock Next.js Link component
 vi.mock("next/link", () => ({
