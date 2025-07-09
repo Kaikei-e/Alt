@@ -262,7 +262,7 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     const errorMessage = await page.textContent(
       "[data-testid='error-message']",
     );
-    expect(errorMessage).toContain("Please enter a search query");
+    expect(errorMessage).toContain("Search query must be at least 2 characters");
   });
 
   test("should display error message when query is empty", async ({ page }) => {
