@@ -34,7 +34,7 @@ jobs:
         with:
           primary-runner: "m222"
           fallback-runner: "ubuntu-latest"
-          min-available-runners: 2
+          min-available-runners: 1
           github-token: ${{ secrets.RUNNER_TOKEN }}
   test:
     timeout-minutes: 60
