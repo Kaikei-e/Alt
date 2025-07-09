@@ -4,39 +4,76 @@ import { Box, Button, Input, VStack, Text } from "@chakra-ui/react";
 import { useState } from "react";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { feedsApi } from "@/lib/api";
+import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
+import * as v from "valibot";
 
 export default function RegisterFeedsPage() {
   const [feedUrl, setFeedUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
 
+  const validateUrl = (url: string): string | null => {
+    if (!url.trim()) {
+      return "Please enter a feed URL";
+    }
+
+    const result = v.safeParse(feedUrlSchema, { feed_url: url.trim() });
+    if (!result.success) {
+      return result.issues[0].message;
+    }
+
+    return null;
+  };
+
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFeedUrl(value);
+    
+    // Clear previous validation error
+    setValidationError(null);
+    
+    // Real-time validation for better UX
+    if (value.trim()) {
+      const error = validateUrl(value);
+      setValidationError(error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!feedUrl.trim()) {
-      setMessage({
-        type: "error",
-        text: "Please enter a feed URL",
-      });
+    const error = validateUrl(feedUrl);
+    if (error) {
+      setValidationError(error);
       return;
     }
 
     setIsLoading(true);
     setMessage(null);
+    setValidationError(null);
 
-    const response = await feedsApi.registerRssFeed(feedUrl);
-    if (response.message) {
-      setMessage({
-        type: "success",
-        text: "Feed registered successfully!",
-      });
-    } else {
+    try {
+      const response = await feedsApi.registerRssFeed(feedUrl.trim());
+      if (response.message) {
+        setMessage({
+          type: "success",
+          text: "Feed registered successfully!",
+        });
+        setFeedUrl(""); // Clear form on success
+      } else {
+        setMessage({
+          type: "error",
+          text: "Failed to register feed. Please try again.",
+        });
+      }
+    } catch {
       setMessage({
         type: "error",
-        text: "Failed to register feed. Please try again.",
+        text: "Failed to register feed. Please check the URL and try again.",
       });
     }
 
@@ -84,17 +121,26 @@ export default function RegisterFeedsPage() {
                 <Input
                   type="url"
                   value={feedUrl}
-                  onChange={(e) => setFeedUrl(e.target.value)}
+                  onChange={handleUrlChange}
                   placeholder="https://example.com/feed.xml"
                   bg="var(--surface-bg)"
-                  border="1px solid var(--alt-primary)"
+                  border={`1px solid ${validationError ? "var(--alt-error)" : "var(--alt-primary)"}`}
                   color="var(--text-primary)"
                   _placeholder={{ color: "var(--text-muted)" }}
                   _focus={{
-                    borderColor: "var(--alt-primary)",
-                    boxShadow: "0 0 0 1px var(--alt-primary)",
+                    borderColor: validationError ? "var(--alt-error)" : "var(--alt-primary)",
+                    boxShadow: `0 0 0 1px ${validationError ? "var(--alt-error)" : "var(--alt-primary)"}`,
                   }}
                 />
+                {validationError && (
+                  <Text
+                    color="var(--alt-error)"
+                    fontSize="sm"
+                    mt={1}
+                  >
+                    {validationError}
+                  </Text>
+                )}
               </Box>
 
               <Button
@@ -116,7 +162,7 @@ export default function RegisterFeedsPage() {
                 transition="all 0.2s ease"
                 border="1px solid var(--alt-glass-border)"
                 width="full"
-                disabled={isLoading}
+                disabled={isLoading || !!validationError}
               >
                 {isLoading ? "Registering..." : "Register Feed"}
               </Button>

@@ -1,8 +1,9 @@
 import {
   BackendFeedItem,
-  Feed,
+  SanitizedFeed,
   FeedDetails,
   FeedURLPayload,
+  sanitizeFeed,
 } from "@/schema/feed";
 import { FeedSearchResult } from "@/schema/search";
 import { Article } from "@/schema/article";
@@ -312,14 +313,10 @@ function createCursorApi<BackendType, FrontendType>(
   };
 }
 
-// Transform function to reduce data processing overhead
-const transformFeedItem = (item: BackendFeedItem): Feed => ({
-  id: item.link || "",
-  title: item.title || "",
-  description: item.description || "",
-  link: item.link || "",
-  published: item.published || "",
-});
+// Transform function to reduce data processing overhead with sanitization
+const transformFeedItem = (item: BackendFeedItem): SanitizedFeed => {
+  return sanitizeFeed(item);
+};
 
 // Remove duplicate CursorResponse - use from common
 
@@ -334,7 +331,7 @@ export const feedsApi = {
     5, // 5 minute cache for regular feeds
   ),
 
-  async getFeeds(page: number = 1, pageSize: number = 10): Promise<Feed[]> {
+  async getFeeds(page: number = 1, pageSize: number = 10): Promise<SanitizedFeed[]> {
     const limit = page * pageSize;
     const response = await apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/limit/${limit}`,
@@ -348,7 +345,7 @@ export const feedsApi = {
     return [];
   },
 
-  async getFeedsPage(page: number = 0): Promise<Feed[]> {
+  async getFeedsPage(page: number = 0): Promise<SanitizedFeed[]> {
     const response = await apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/page/${page}`,
       10, // 10 minute cache for paginated data
@@ -361,7 +358,7 @@ export const feedsApi = {
     return [];
   },
 
-  async getAllFeeds(): Promise<Feed[]> {
+  async getAllFeeds(): Promise<SanitizedFeed[]> {
     const response = await apiClient.get<BackendFeedItem[]>(
       "/v1/feeds/fetch/list",
       15, // 15 minute cache for all feeds
@@ -374,8 +371,9 @@ export const feedsApi = {
     return [];
   },
 
-  async getSingleFeed(): Promise<Feed> {
-    return apiClient.get("/v1/feeds/fetch/single", 5);
+  async getSingleFeed(): Promise<SanitizedFeed> {
+    const response = await apiClient.get<BackendFeedItem>("/v1/feeds/fetch/single", 5);
+    return transformFeedItem(response);
   },
 
   async registerRssFeed(url: string): Promise<MessageResponse> {
@@ -532,7 +530,7 @@ export const feedsApi = {
   },
 
   async toggleFavorite(
-    feedId: string,
+    _feedId: string,
     isFavorited: boolean,
   ): Promise<MessageResponse> {
     // Mock API call for favorite toggle
@@ -548,7 +546,7 @@ export const feedsApi = {
   },
 
   async toggleBookmark(
-    feedId: string,
+    _feedId: string,
     isBookmarked: boolean,
   ): Promise<MessageResponse> {
     // Mock API call for bookmark toggle

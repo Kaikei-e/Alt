@@ -1,4 +1,5 @@
-import { Feed } from "@/schema/feed";
+import { Feed, SanitizedFeed } from "@/schema/feed";
+import { escapeHtml } from "@/utils/htmlEscape";
 
 export interface SearchOptions {
   multiKeyword?: boolean;
@@ -8,7 +9,7 @@ export interface SearchOptions {
 }
 
 export interface SearchResult {
-  feed: Feed;
+  feed: Feed | SanitizedFeed;
   score: number;
   matchedFields: string[];
   highlightedTitle?: string;
@@ -33,7 +34,7 @@ function getCachedRegex(keyword: string): RegExp {
  * Optimized for performance with caching and early exits
  */
 export function searchFeeds(
-  feeds: Feed[],
+  feeds: (Feed | SanitizedFeed)[],
   query: string,
   options: SearchOptions = {},
 ): SearchResult[] {
@@ -152,12 +153,17 @@ export function searchFeeds(
 
 /**
  * Highlight matching keywords in text
+ * XSS攻撃防止のため、テキストを事前にエスケープしてからハイライトを適用
  */
 function highlightText(text: string, keywords: string[]): string {
-  let highlighted = text;
+  // テキストを事前にエスケープしてXSS攻撃を防止
+  const escapedText = escapeHtml(text);
+  let highlighted = escapedText;
 
   for (const keyword of keywords) {
-    const regex = new RegExp(`(${escapeRegExp(keyword)})`, "gi");
+    // キーワードもエスケープして安全なパターンを作成
+    const escapedKeyword = escapeRegExp(escapeHtml(keyword));
+    const regex = new RegExp(`(${escapedKeyword})`, "gi");
     highlighted = highlighted.replace(regex, "<mark>$1</mark>");
   }
 
@@ -174,7 +180,7 @@ function escapeRegExp(string: string): string {
 /**
  * Simple search that maintains backward compatibility
  */
-export function simpleSearch(feeds: Feed[], query: string): Feed[] {
+export function simpleSearch(feeds: (Feed | SanitizedFeed)[], query: string): (Feed | SanitizedFeed)[] {
   if (!query.trim()) return feeds;
 
   const lowercaseQuery = query.toLowerCase();

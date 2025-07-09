@@ -1,6 +1,6 @@
-import { Feed } from "@/schema/feed";
+import { SanitizedFeed } from "@/schema/feed";
 
-export interface DesktopFeed extends Feed {
+export interface DesktopFeed extends SanitizedFeed {
   metadata: FeedMetadata;
   isRead: boolean;
   isFavorited: boolean;
@@ -59,7 +59,7 @@ export interface FilterState {
 }
 
 export interface DesktopFeedsResponse {
-  feeds: Feed[];
+  feeds: SanitizedFeed[];
   nextCursor: string | null;
   hasMore: boolean;
   totalCount: number;

@@ -1,5 +1,5 @@
 import { Button, Flex, Spinner, Text, Box } from "@chakra-ui/react";
-import { Feed } from "@/schema/feed";
+import { SanitizedFeed } from "@/schema/feed";
 import Link from "next/link";
 import { feedsApi } from "@/lib/api";
 import { useState, useCallback, memo, KeyboardEvent } from "react";
@@ -8,7 +8,7 @@ import { truncateFeedDescription } from "@/lib/utils/textUtils";
 import { SquareArrowOutUpRight } from "lucide-react";
 
 type FeedCardProps = {
-  feed: Feed;
+  feed: SanitizedFeed;
   isReadStatus: boolean;
   setIsReadStatus: (isReadStatus: boolean) => void;
 };
@@ -112,6 +112,13 @@ const FeedCard = memo(function FeedCard({
           <Text fontSize="sm" color="var(--text-primary)" lineHeight="1.5">
             {truncatedDescription}
           </Text>
+
+          {/* Author name (if available) */}
+          {feed.author && (
+            <Text fontSize="xs" color="var(--text-secondary)" fontStyle="italic">
+              by {feed.author}
+            </Text>
+          )}
 
           {/* Bottom section with button and details */}
           <Flex justify="space-between" align="center" mt={2}>

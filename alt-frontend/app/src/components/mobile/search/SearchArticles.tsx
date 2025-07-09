@@ -7,6 +7,7 @@ import { Input, Box, VStack, Text } from "@chakra-ui/react";
 import { articleSearchQuerySchema } from "@/schema/validation/articleSearchQuery";
 import * as v from "valibot";
 import { useSearchParams } from "next/navigation";
+import { escapeForDisplay } from "@/utils/htmlEscape";
 
 interface SearchArticlesProps {
   articles: Article[];
@@ -34,23 +35,33 @@ export const SearchArticles = ({
 
     const urlQuery = searchParams.get("q");
     if (urlQuery) {
-      setQuery(urlQuery);
-      // Auto-search if there's a query in the URL
-      const result = v.safeParse(articleSearchQuerySchema, { query: urlQuery });
-      if (result.success) {
-        setError(null);
-        setValidationError(null);
-        setIsLoading(true);
-        feedsApi
-          .searchArticles(urlQuery)
-          .then((response) => {
-            setArticles(response);
-            setIsLoading(false);
-          })
-          .catch((err) => {
-            setError(err.message || "Search failed. Please try again.");
-            setIsLoading(false);
-          });
+      try {
+        // URLパラメータを厳密に検証
+        const result = v.safeParse(articleSearchQuerySchema, { query: urlQuery });
+        if (result.success) {
+          // 検証に成功した場合のみ、クエリを設定
+          setQuery(urlQuery);
+          setError(null);
+          setValidationError(null);
+          setIsLoading(true);
+          feedsApi
+            .searchArticles(urlQuery)
+            .then((response) => {
+              setArticles(response);
+              setIsLoading(false);
+            })
+            .catch((err) => {
+              setError(err.message || "Search failed. Please try again.");
+              setIsLoading(false);
+            });
+        } else {
+          // 無効なURLクエリの場合は警告を記録し、無視
+          console.warn('Invalid URL query parameter detected:', urlQuery);
+          setValidationError("Invalid search query from URL");
+        }
+      } catch (error) {
+        console.warn('Error processing URL query parameter:', error);
+        setValidationError("Invalid search query from URL");
       }
     }
   }, [searchParams, setQuery, setError, setArticles]);

@@ -1,6 +1,7 @@
 import { DesktopFeed } from "@/types/desktop-feed";
 import { feedsApi } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
+import { sanitizeFeedContent } from "@/utils/contentSanitizer";
 
 export class DesktopFeedsApi {
   private baseUrl: string;
@@ -65,11 +66,19 @@ export class DesktopFeedsApi {
     const source = (apiData.source as Record<string, unknown>) || {};
     const engagement = (apiData.engagement as Record<string, unknown>) || {};
 
-    return {
-      id: String(apiData.id || ""),
+    // Sanitize content before processing
+    const sanitizedContent = sanitizeFeedContent({
       title: String(apiData.title || ""),
       description: String(apiData.description || ""),
+      author: String(apiData.author || ""),
       link: String(apiData.link || ""),
+    });
+
+    return {
+      id: String(apiData.id || ""),
+      title: sanitizedContent.title,
+      description: sanitizedContent.description,
+      link: sanitizedContent.link,
       published: String(apiData.published || ""),
       metadata: {
         source: {
@@ -93,10 +102,15 @@ export class DesktopFeedsApi {
         tags: Array.isArray(apiData.tags) ? (apiData.tags as string[]) : [],
         relatedCount: Number(apiData.relatedCount) || 0,
         publishedAt: this.formatRelativeTime(String(apiData.published || "")),
-        author: apiData.author ? String(apiData.author) : undefined,
+        author: sanitizedContent.author || undefined,
         summary: apiData.summary
-          ? String(apiData.summary)
-          : this.generateSummary(String(apiData.description || "")),
+          ? sanitizeFeedContent({
+              title: "",
+              description: String(apiData.summary),
+              author: "",
+              link: "",
+            }).description
+          : this.generateSummary(sanitizedContent.description),
         priority: this.calculatePriority(apiData),
         category: String(apiData.category || "general"),
         difficulty: String(apiData.difficulty || "intermediate") as
