@@ -5,6 +5,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -66,6 +67,13 @@ func setFieldValue(field reflect.Value, value, envName string) error {
 	case reflect.String:
 		field.SetString(value)
 
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid boolean value for %s: %s", envName, value)
+		}
+		field.SetBool(boolVal)
+
 	case reflect.Int:
 		intVal, err := strconv.Atoi(value)
 		if err != nil {
@@ -87,6 +95,19 @@ func setFieldValue(field reflect.Value, value, envName string) error {
 				return fmt.Errorf("invalid integer value for %s: %s", envName, value)
 			}
 			field.SetInt(intVal)
+		}
+
+	case reflect.Slice:
+		// Handle []string type
+		if field.Type().Elem().Kind() == reflect.String {
+			// Split by comma and trim whitespace
+			strSlice := strings.Split(value, ",")
+			for i, s := range strSlice {
+				strSlice[i] = strings.TrimSpace(s)
+			}
+			field.Set(reflect.ValueOf(strSlice))
+		} else {
+			return fmt.Errorf("unsupported slice type for %s", envName)
 		}
 
 	default:

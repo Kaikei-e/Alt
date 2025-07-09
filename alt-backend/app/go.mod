@@ -7,13 +7,13 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
-	github.com/labstack/echo/v4 v4.13.4
+	github.com/labstack/echo/v4 v4.14.0
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/pashagolub/pgxmock/v3 v3.4.0
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/mock v0.5.2
-	golang.org/x/net v0.41.0
+	golang.org/x/net v0.42.0
 	golang.org/x/time v0.12.0
 )
 

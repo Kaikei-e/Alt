@@ -32,6 +32,26 @@ type ServerConfig struct {
 type RateLimitConfig struct {
 	ExternalAPIInterval time.Duration `json:"external_api_interval" env:"RATE_LIMIT_EXTERNAL_API_INTERVAL" default:"5s"`
 	FeedFetchLimit      int           `json:"feed_fetch_limit" env:"RATE_LIMIT_FEED_FETCH_LIMIT" default:"100"`
+	
+	// DOS Protection Configuration
+	DOSProtection DOSProtectionConfig `json:"dos_protection"`
+}
+
+type DOSProtectionConfig struct {
+	Enabled          bool          `json:"enabled" env:"DOS_PROTECTION_ENABLED" default:"true"`
+	RateLimit        int           `json:"rate_limit" env:"DOS_PROTECTION_RATE_LIMIT" default:"100"`
+	BurstLimit       int           `json:"burst_limit" env:"DOS_PROTECTION_BURST_LIMIT" default:"200"`
+	WindowSize       time.Duration `json:"window_size" env:"DOS_PROTECTION_WINDOW_SIZE" default:"1m"`
+	BlockDuration    time.Duration `json:"block_duration" env:"DOS_PROTECTION_BLOCK_DURATION" default:"5m"`
+	WhitelistedPaths []string      `json:"whitelisted_paths"`
+	CircuitBreaker   CircuitBreakerConfig `json:"circuit_breaker"`
+}
+
+type CircuitBreakerConfig struct {
+	Enabled          bool          `json:"enabled" env:"CIRCUIT_BREAKER_ENABLED" default:"true"`
+	FailureThreshold int           `json:"failure_threshold" env:"CIRCUIT_BREAKER_FAILURE_THRESHOLD" default:"10"`
+	TimeoutDuration  time.Duration `json:"timeout_duration" env:"CIRCUIT_BREAKER_TIMEOUT_DURATION" default:"30s"`
+	RecoveryTimeout  time.Duration `json:"recovery_timeout" env:"CIRCUIT_BREAKER_RECOVERY_TIMEOUT" default:"60s"`
 }
 
 type DatabaseConfig struct {
