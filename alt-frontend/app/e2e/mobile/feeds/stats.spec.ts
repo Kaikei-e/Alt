@@ -211,8 +211,11 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForSelector("body", { timeout: 15000 });
       await page.waitForTimeout(1000);
 
-      // Check for zero values - only check first occurrence to avoid strict mode violation
-      await expect(page.getByText("0").first()).toBeVisible({ timeout: 10000 });
+      // Check for zero values - wait for the StatCard components to render
+      await page.waitForSelector('[data-testid="stat-card"], .glass', { timeout: 10000 });
+      
+      // Check for zero values in the formatted number displays
+      await expect(page.locator('text="0"').first()).toBeVisible({ timeout: 10000 });
     });
 
     test("should update values when SSE sends new data", async ({ page }) => {
