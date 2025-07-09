@@ -22,7 +22,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"golang.org/x/time/rate"
 )
 
 func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *config.Config) {
@@ -64,7 +63,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	// Add DOS protection middleware with IP-based rate limiting
 	dosConfig := cfg.RateLimit.DOSProtection
 	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/"}
-	e.Use(middleware_custom.DOSProtectionMiddleware(dosConfig))
+	e.Use(middleware_custom.DOSProtectionMiddleware(middleware_custom.ConvertConfigDOSProtection(dosConfig)))
 
 	// Add security headers
 	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{

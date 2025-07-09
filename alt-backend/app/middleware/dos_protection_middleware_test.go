@@ -1,11 +1,8 @@
 package middleware
 
 import (
-	"alt/config"
-	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -25,10 +22,10 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 		{
 			name: "basic_ip_rate_limiting",
 			config: DOSProtectionConfig{
-				Enabled:     true,
-				RateLimit:   5,
-				BurstLimit:  10,
-				WindowSize:  time.Minute,
+				Enabled:       true,
+				RateLimit:     5,
+				BurstLimit:    5,
+				WindowSize:    time.Minute,
 				BlockDuration: 5 * time.Minute,
 			},
 			requests: []testRequest{
@@ -45,10 +42,10 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 		{
 			name: "different_ips_not_affected",
 			config: DOSProtectionConfig{
-				Enabled:     true,
-				RateLimit:   2,
-				BurstLimit:  2,
-				WindowSize:  time.Minute,
+				Enabled:       true,
+				RateLimit:     2,
+				BurstLimit:    2,
+				WindowSize:    time.Minute,
 				BlockDuration: 5 * time.Minute,
 			},
 			requests: []testRequest{
@@ -64,10 +61,10 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 		{
 			name: "burst_protection",
 			config: DOSProtectionConfig{
-				Enabled:     true,
-				RateLimit:   1,
-				BurstLimit:  3,
-				WindowSize:  time.Minute,
+				Enabled:       true,
+				RateLimit:     1,
+				BurstLimit:    3,
+				WindowSize:    time.Minute,
 				BlockDuration: 5 * time.Minute,
 			},
 			requests: []testRequest{
@@ -95,11 +92,11 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 		{
 			name: "whitelisted_paths",
 			config: DOSProtectionConfig{
-				Enabled:     true,
-				RateLimit:   1,
-				BurstLimit:  1,
-				WindowSize:  time.Minute,
-				BlockDuration: 5 * time.Minute,
+				Enabled:          true,
+				RateLimit:        1,
+				BurstLimit:       1,
+				WindowSize:       time.Minute,
+				BlockDuration:    5 * time.Minute,
 				WhitelistedPaths: []string{"/v1/health"},
 			},
 			requests: []testRequest{
@@ -115,26 +112,35 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			middleware := DOSProtectionMiddleware(tt.config)
-			
+
 			handler := middleware(func(c echo.Context) error {
 				return c.String(http.StatusOK, "OK")
 			})
 
+			// Use a single Echo instance for all requests in the test
+			e := echo.New()
+
 			for i, req := range tt.requests {
-				e := echo.New()
 				httpReq := httptest.NewRequest(req.method, req.path, nil)
 				httpReq.Header.Set("X-Real-IP", req.ip)
 				rec := httptest.NewRecorder()
 				c := e.NewContext(httpReq, rec)
 
 				err := handler(c)
-				
-				if tt.expectedStatus[i] != 429 {
+
+				if tt.expectedStatus[i] == 429 {
+					require.Error(t, err)
+					if httpErr, ok := err.(*echo.HTTPError); ok {
+						assert.Equal(t, tt.expectedStatus[i], httpErr.Code,
+							"Request %d failed: %s", i+1, tt.description)
+					} else {
+						t.Errorf("Request %d: expected echo.HTTPError, got %T", i+1, err)
+					}
+				} else {
 					require.NoError(t, err)
+					assert.Equal(t, tt.expectedStatus[i], rec.Code,
+						"Request %d failed: %s", i+1, tt.description)
 				}
-				
-				assert.Equal(t, tt.expectedStatus[i], rec.Code,
-					"Request %d failed: %s", i+1, tt.description)
 			}
 		})
 	}
@@ -142,13 +148,13 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 
 func TestDOSProtectionMiddleware_CircuitBreaker(t *testing.T) {
 	config := DOSProtectionConfig{
-		Enabled:         true,
-		RateLimit:       10,
-		BurstLimit:      10,
-		WindowSize:      time.Minute,
-		BlockDuration:   5 * time.Minute,
+		Enabled:       true,
+		RateLimit:     10,
+		BurstLimit:    10,
+		WindowSize:    time.Minute,
+		BlockDuration: 5 * time.Minute,
 		CircuitBreaker: CircuitBreakerConfig{
-			Enabled:         true,
+			Enabled:          true,
 			FailureThreshold: 5,
 			TimeoutDuration:  time.Second,
 			RecoveryTimeout:  30 * time.Second,
@@ -194,10 +200,10 @@ func TestDOSProtectionMiddleware_CircuitBreaker(t *testing.T) {
 
 func TestDOSProtectionMiddleware_ConcurrentRequests(t *testing.T) {
 	config := DOSProtectionConfig{
-		Enabled:     true,
-		RateLimit:   10,
-		BurstLimit:  10,
-		WindowSize:  time.Minute,
+		Enabled:       true,
+		RateLimit:     10,
+		BurstLimit:    10,
+		WindowSize:    time.Minute,
 		BlockDuration: 5 * time.Minute,
 	}
 
@@ -206,23 +212,33 @@ func TestDOSProtectionMiddleware_ConcurrentRequests(t *testing.T) {
 		return c.String(http.StatusOK, "OK")
 	})
 
+	// Use a single Echo instance for all requests
+	e := echo.New()
+
 	// Test concurrent requests from same IP
 	const numGoroutines = 20
 	const requestsPerGoroutine = 5
-	
+
 	results := make(chan int, numGoroutines*requestsPerGoroutine)
-	
+
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			for j := 0; j < requestsPerGoroutine; j++ {
-				e := echo.New()
 				req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
 				req.Header.Set("X-Real-IP", "192.168.1.1")
 				rec := httptest.NewRecorder()
 				c := e.NewContext(req, rec)
 
-				handler(c)
-				results <- rec.Code
+				err := handler(c)
+				if err != nil {
+					if httpErr, ok := err.(*echo.HTTPError); ok {
+						results <- httpErr.Code
+					} else {
+						results <- 500 // Unexpected error type
+					}
+				} else {
+					results <- rec.Code
+				}
 			}
 		}()
 	}
@@ -295,10 +311,10 @@ func TestDOSProtectionMiddleware_EdgeCases(t *testing.T) {
 	}
 
 	config := DOSProtectionConfig{
-		Enabled:     true,
-		RateLimit:   10,
-		BurstLimit:  10,
-		WindowSize:  time.Minute,
+		Enabled:       true,
+		RateLimit:     10,
+		BurstLimit:    10,
+		WindowSize:    time.Minute,
 		BlockDuration: 5 * time.Minute,
 	}
 
@@ -310,9 +326,9 @@ func TestDOSProtectionMiddleware_EdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, rec := tt.setupFunc()
-			
+
 			err := handler(c)
-			
+
 			if tt.expectError {
 				assert.Error(t, err, tt.description)
 			} else {
@@ -332,18 +348,18 @@ type testRequest struct {
 
 func TestDOSProtectionConfig_Validation(t *testing.T) {
 	tests := []struct {
-		name          string
-		config        DOSProtectionConfig
-		expectValid   bool
-		description   string
+		name        string
+		config      DOSProtectionConfig
+		expectValid bool
+		description string
 	}{
 		{
 			name: "valid_config",
 			config: DOSProtectionConfig{
-				Enabled:     true,
-				RateLimit:   10,
-				BurstLimit:  20,
-				WindowSize:  time.Minute,
+				Enabled:       true,
+				RateLimit:     10,
+				BurstLimit:    20,
+				WindowSize:    time.Minute,
 				BlockDuration: 5 * time.Minute,
 			},
 			expectValid: true,
@@ -352,10 +368,10 @@ func TestDOSProtectionConfig_Validation(t *testing.T) {
 		{
 			name: "invalid_rate_limit",
 			config: DOSProtectionConfig{
-				Enabled:     true,
-				RateLimit:   0,
-				BurstLimit:  10,
-				WindowSize:  time.Minute,
+				Enabled:       true,
+				RateLimit:     0,
+				BurstLimit:    10,
+				WindowSize:    time.Minute,
 				BlockDuration: 5 * time.Minute,
 			},
 			expectValid: false,
@@ -364,10 +380,10 @@ func TestDOSProtectionConfig_Validation(t *testing.T) {
 		{
 			name: "invalid_burst_limit",
 			config: DOSProtectionConfig{
-				Enabled:     true,
-				RateLimit:   10,
-				BurstLimit:  0,
-				WindowSize:  time.Minute,
+				Enabled:       true,
+				RateLimit:     10,
+				BurstLimit:    0,
+				WindowSize:    time.Minute,
 				BlockDuration: 5 * time.Minute,
 			},
 			expectValid: false,
@@ -376,10 +392,10 @@ func TestDOSProtectionConfig_Validation(t *testing.T) {
 		{
 			name: "burst_less_than_rate",
 			config: DOSProtectionConfig{
-				Enabled:     true,
-				RateLimit:   10,
-				BurstLimit:  5,
-				WindowSize:  time.Minute,
+				Enabled:       true,
+				RateLimit:     10,
+				BurstLimit:    5,
+				WindowSize:    time.Minute,
 				BlockDuration: 5 * time.Minute,
 			},
 			expectValid: false,

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,21 +18,21 @@ import (
 func TestDOSProtectionIntegration(t *testing.T) {
 	tests := []struct {
 		name              string
-		config            config.DOSProtectionConfig
+		config            middleware.DOSProtectionConfig
 		requests          []IntegrationRequest
 		expectedResponses []IntegrationResponse
 		description       string
 	}{
 		{
 			name: "basic_dos_protection_flow",
-			config: config.DOSProtectionConfig{
-				Enabled:       true,
-				RateLimit:     3,
-				BurstLimit:    5,
-				WindowSize:    time.Minute,
-				BlockDuration: 2 * time.Minute,
+			config: middleware.DOSProtectionConfig{
+				Enabled:          true,
+				RateLimit:        3,
+				BurstLimit:       5,
+				WindowSize:       time.Minute,
+				BlockDuration:    2 * time.Minute,
 				WhitelistedPaths: []string{"/v1/health"},
-				CircuitBreaker: config.CircuitBreakerConfig{
+				CircuitBreaker: middleware.CircuitBreakerConfig{
 					Enabled:          false,
 					FailureThreshold: 10,
 					TimeoutDuration:  30 * time.Second,
@@ -46,8 +45,8 @@ func TestDOSProtectionIntegration(t *testing.T) {
 				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0},
 				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0},
 				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0},
-				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0}, // Should be blocked
-				{ip: "192.168.1.2", path: "/v1/feeds", method: "GET", delay: 0}, // Different IP
+				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0},  // Should be blocked
+				{ip: "192.168.1.2", path: "/v1/feeds", method: "GET", delay: 0},  // Different IP
 				{ip: "192.168.1.1", path: "/v1/health", method: "GET", delay: 0}, // Whitelisted
 			},
 			expectedResponses: []IntegrationResponse{
@@ -64,13 +63,13 @@ func TestDOSProtectionIntegration(t *testing.T) {
 		},
 		{
 			name: "circuit_breaker_integration",
-			config: config.DOSProtectionConfig{
+			config: middleware.DOSProtectionConfig{
 				Enabled:       true,
 				RateLimit:     100,
 				BurstLimit:    100,
 				WindowSize:    time.Minute,
 				BlockDuration: 5 * time.Minute,
-				CircuitBreaker: config.CircuitBreakerConfig{
+				CircuitBreaker: middleware.CircuitBreakerConfig{
 					Enabled:          true,
 					FailureThreshold: 3,
 					TimeoutDuration:  30 * time.Second,
@@ -95,7 +94,7 @@ func TestDOSProtectionIntegration(t *testing.T) {
 		},
 		{
 			name: "disabled_dos_protection",
-			config: config.DOSProtectionConfig{
+			config: middleware.DOSProtectionConfig{
 				Enabled: false,
 			},
 			requests: []IntegrationRequest{
@@ -120,12 +119,11 @@ func TestDOSProtectionIntegration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create Echo instance with DOS protection middleware
 			e := echo.New()
-			
+
 			// Add the DOS protection middleware
 			e.Use(middleware.DOSProtectionMiddleware(tt.config))
 
 			// Create test handlers
-			errorCount := 0
 			e.GET("/v1/feeds", func(c echo.Context) error {
 				// Check if this request should force an error
 				reqIndex := getRequestIndex(c.Request())
@@ -148,7 +146,7 @@ func TestDOSProtectionIntegration(t *testing.T) {
 				httpReq := httptest.NewRequest(req.method, req.path, nil)
 				httpReq.Header.Set("X-Real-IP", req.ip)
 				httpReq.Header.Set("X-Request-Index", fmt.Sprintf("%d", i))
-				
+
 				rec := httptest.NewRecorder()
 				e.ServeHTTP(rec, httpReq)
 
@@ -171,20 +169,20 @@ func TestDOSProtectionIntegration(t *testing.T) {
 func TestDOSProtectionConfigValidation(t *testing.T) {
 	tests := []struct {
 		name          string
-		config        config.DOSProtectionConfig
+		config        middleware.DOSProtectionConfig
 		expectError   bool
 		errorContains string
 		description   string
 	}{
 		{
 			name: "valid_config",
-			config: config.DOSProtectionConfig{
+			config: middleware.DOSProtectionConfig{
 				Enabled:       true,
 				RateLimit:     10,
 				BurstLimit:    20,
 				WindowSize:    time.Minute,
 				BlockDuration: 5 * time.Minute,
-				CircuitBreaker: config.CircuitBreakerConfig{
+				CircuitBreaker: middleware.CircuitBreakerConfig{
 					Enabled:          true,
 					FailureThreshold: 5,
 					TimeoutDuration:  30 * time.Second,
@@ -196,7 +194,7 @@ func TestDOSProtectionConfigValidation(t *testing.T) {
 		},
 		{
 			name: "invalid_rate_limit",
-			config: config.DOSProtectionConfig{
+			config: middleware.DOSProtectionConfig{
 				Enabled:       true,
 				RateLimit:     0,
 				BurstLimit:    10,
@@ -209,7 +207,7 @@ func TestDOSProtectionConfigValidation(t *testing.T) {
 		},
 		{
 			name: "burst_less_than_rate",
-			config: config.DOSProtectionConfig{
+			config: middleware.DOSProtectionConfig{
 				Enabled:       true,
 				RateLimit:     10,
 				BurstLimit:    5,
@@ -222,7 +220,7 @@ func TestDOSProtectionConfigValidation(t *testing.T) {
 		},
 		{
 			name: "disabled_config",
-			config: config.DOSProtectionConfig{
+			config: middleware.DOSProtectionConfig{
 				Enabled: false,
 				// Other fields can be invalid when disabled
 				RateLimit:     0,
@@ -238,7 +236,7 @@ func TestDOSProtectionConfigValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
-			
+
 			if tt.expectError {
 				require.Error(t, err, tt.description)
 				assert.Contains(t, err.Error(), tt.errorContains, tt.description)
@@ -252,15 +250,15 @@ func TestDOSProtectionConfigValidation(t *testing.T) {
 func TestDOSProtectionEnvironmentConfiguration(t *testing.T) {
 	// Test environment variable loading
 	originalEnv := map[string]string{
-		"DOS_PROTECTION_ENABLED":              "true",
-		"DOS_PROTECTION_RATE_LIMIT":           "50",
-		"DOS_PROTECTION_BURST_LIMIT":          "100",
-		"DOS_PROTECTION_WINDOW_SIZE":          "2m",
-		"DOS_PROTECTION_BLOCK_DURATION":       "10m",
-		"CIRCUIT_BREAKER_ENABLED":             "true",
-		"CIRCUIT_BREAKER_FAILURE_THRESHOLD":   "15",
-		"CIRCUIT_BREAKER_TIMEOUT_DURATION":    "45s",
-		"CIRCUIT_BREAKER_RECOVERY_TIMEOUT":    "2m",
+		"DOS_PROTECTION_ENABLED":            "true",
+		"DOS_PROTECTION_RATE_LIMIT":         "50",
+		"DOS_PROTECTION_BURST_LIMIT":        "100",
+		"DOS_PROTECTION_WINDOW_SIZE":        "2m",
+		"DOS_PROTECTION_BLOCK_DURATION":     "10m",
+		"CIRCUIT_BREAKER_ENABLED":           "true",
+		"CIRCUIT_BREAKER_FAILURE_THRESHOLD": "15",
+		"CIRCUIT_BREAKER_TIMEOUT_DURATION":  "45s",
+		"CIRCUIT_BREAKER_RECOVERY_TIMEOUT":  "2m",
 	}
 
 	// Set environment variables
@@ -289,7 +287,7 @@ func TestDOSProtectionEnvironmentConfiguration(t *testing.T) {
 }
 
 func TestDOSProtectionPerformance(t *testing.T) {
-	config := config.DOSProtectionConfig{
+	config := middleware.DOSProtectionConfig{
 		Enabled:       true,
 		RateLimit:     1000,
 		BurstLimit:    2000,
@@ -306,24 +304,24 @@ func TestDOSProtectionPerformance(t *testing.T) {
 	// Benchmark the middleware performance
 	start := time.Now()
 	const numRequests = 1000
-	
+
 	for i := 0; i < numRequests; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
 		req.Header.Set("X-Real-IP", fmt.Sprintf("192.168.1.%d", i%100)) // Simulate 100 different IPs
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
-		
+
 		// All requests should succeed due to high limits
 		assert.Equal(t, http.StatusOK, rec.Code)
 	}
-	
+
 	duration := time.Since(start)
 	requestsPerSecond := float64(numRequests) / duration.Seconds()
-	
+
 	// Should handle at least 1000 requests per second
-	assert.Greater(t, requestsPerSecond, 1000.0, 
+	assert.Greater(t, requestsPerSecond, 1000.0,
 		"DOS protection middleware should handle at least 1000 requests/second, got %.2f", requestsPerSecond)
-	
+
 	t.Logf("DOS protection middleware performance: %.2f requests/second", requestsPerSecond)
 }
 
@@ -346,11 +344,11 @@ func getRequestIndex(req *http.Request) int {
 	if indexStr == "" {
 		return -1
 	}
-	
+
 	var index int
 	if err := json.Unmarshal([]byte(indexStr), &index); err != nil {
 		return -1
 	}
-	
+
 	return index
 }

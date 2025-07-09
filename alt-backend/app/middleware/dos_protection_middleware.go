@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"alt/config"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,13 +15,13 @@ import (
 
 // DOSProtectionConfig defines configuration for DoS protection middleware
 type DOSProtectionConfig struct {
-	Enabled          bool                  `json:"enabled"`
-	RateLimit        int                   `json:"rate_limit"`        // Requests per window
-	BurstLimit       int                   `json:"burst_limit"`       // Burst capacity
-	WindowSize       time.Duration         `json:"window_size"`       // Rate limit window
-	BlockDuration    time.Duration         `json:"block_duration"`    // How long to block after rate limit
-	WhitelistedPaths []string              `json:"whitelisted_paths"` // Paths to skip rate limiting
-	CircuitBreaker   CircuitBreakerConfig  `json:"circuit_breaker"`   // Circuit breaker configuration
+	Enabled          bool                 `json:"enabled"`
+	RateLimit        int                  `json:"rate_limit"`        // Requests per window
+	BurstLimit       int                  `json:"burst_limit"`       // Burst capacity
+	WindowSize       time.Duration        `json:"window_size"`       // Rate limit window
+	BlockDuration    time.Duration        `json:"block_duration"`    // How long to block after rate limit
+	WhitelistedPaths []string             `json:"whitelisted_paths"` // Paths to skip rate limiting
+	CircuitBreaker   CircuitBreakerConfig `json:"circuit_breaker"`   // Circuit breaker configuration
 }
 
 // CircuitBreakerConfig defines circuit breaker configuration
@@ -38,23 +39,23 @@ func (c *DOSProtectionConfig) Validate() error {
 	}
 
 	if c.RateLimit <= 0 {
-		return fmt.Errorf("rate_limit must be greater than 0")
+		return fmt.Errorf("rate limit must be greater than 0")
 	}
 
 	if c.BurstLimit <= 0 {
-		return fmt.Errorf("burst_limit must be greater than 0")
+		return fmt.Errorf("burst limit must be greater than 0")
 	}
 
 	if c.BurstLimit < c.RateLimit {
-		return fmt.Errorf("burst_limit must be >= rate_limit")
+		return fmt.Errorf("burst limit must be >= rate limit")
 	}
 
 	if c.WindowSize <= 0 {
-		return fmt.Errorf("window_size must be greater than 0")
+		return fmt.Errorf("window size must be greater than 0")
 	}
 
 	if c.BlockDuration <= 0 {
-		return fmt.Errorf("block_duration must be greater than 0")
+		return fmt.Errorf("block duration must be greater than 0")
 	}
 
 	return nil
@@ -68,11 +69,11 @@ type rateLimiter struct {
 
 // circuitBreaker implements circuit breaker pattern
 type circuitBreaker struct {
-	config           CircuitBreakerConfig
-	failures         int
-	lastFailureTime  time.Time
-	state            circuitState
-	mu               sync.RWMutex
+	config          CircuitBreakerConfig
+	failures        int
+	lastFailureTime time.Time
+	state           circuitState
+	mu              sync.RWMutex
 }
 
 type circuitState int
@@ -197,11 +198,11 @@ func checkRateLimit(clientIP string, config DOSProtectionConfig, limiters map[st
 		mu.Lock()
 		// Double-check pattern
 		if limiter, exists = limiters[clientIP]; !exists {
+			// Calculate rate as requests per second based on RateLimit and WindowSize
+			// For example: 5 requests per minute = 5/60 = 0.083 requests per second
+			ratePerSecond := rate.Limit(float64(config.RateLimit) / config.WindowSize.Seconds())
 			limiter = &rateLimiter{
-				limiter: rate.NewLimiter(
-					rate.Every(config.WindowSize/time.Duration(config.RateLimit)),
-					config.BurstLimit,
-				),
+				limiter: rate.NewLimiter(ratePerSecond, config.BurstLimit),
 			}
 			limiters[clientIP] = limiter
 		}
@@ -306,5 +307,23 @@ func CleanupExpiredLimiters(limiters map[string]*rateLimiter, mu *sync.RWMutex, 
 		if !limiter.blockedAt.IsZero() && limiter.blockedAt.Before(cutoff) {
 			delete(limiters, ip)
 		}
+	}
+}
+
+// ConvertConfigDOSProtection converts config package DOSProtectionConfig to middleware package DOSProtectionConfig
+func ConvertConfigDOSProtection(configDOS config.DOSProtectionConfig) DOSProtectionConfig {
+	return DOSProtectionConfig{
+		Enabled:          configDOS.Enabled,
+		RateLimit:        configDOS.RateLimit,
+		BurstLimit:       configDOS.BurstLimit,
+		WindowSize:       configDOS.WindowSize,
+		BlockDuration:    configDOS.BlockDuration,
+		WhitelistedPaths: configDOS.WhitelistedPaths,
+		CircuitBreaker: CircuitBreakerConfig{
+			Enabled:          configDOS.CircuitBreaker.Enabled,
+			FailureThreshold: configDOS.CircuitBreaker.FailureThreshold,
+			TimeoutDuration:  configDOS.CircuitBreaker.TimeoutDuration,
+			RecoveryTimeout:  configDOS.CircuitBreaker.RecoveryTimeout,
+		},
 	}
 }
