@@ -69,16 +69,7 @@ function removeDangerousTags(html: string): string {
  */
 function removeDangerousAttributes(html: string): string {
   // Remove event handlers and dangerous attributes
-  let cleaned = html.replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, '');
-
-  // Remove javascript:, vbscript:, data: protocols
-  cleaned = cleaned.replace(/\s*href\s*=\s*["'](?:javascript|vbscript|data):[^"']*["']/gi, '');
-
-  // Remove style attributes that could contain expressions
-  cleaned = cleaned.replace(/\s*style\s*=\s*["'][^"']*["']/gi, '');
-
-  // For now, keep only safe href attributes for links
-  // More sophisticated attribute filtering could be added here
+  let cleaned = sanitizeHtml(html);
 
   return cleaned;
 }
