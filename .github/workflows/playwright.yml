@@ -37,7 +37,7 @@ jobs:
       # Node.js セットアップ（pnpm キャッシュを有効に）
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 20
           cache: "pnpm"                                 # node_modules のキャッシュ
           cache-dependency-path: "alt-frontend/app/pnpm-lock.yaml"
 
