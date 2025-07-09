@@ -81,13 +81,16 @@ impl LogBuffer {
 
     pub fn metrics(&self) -> BufferMetrics {
         let len = self.len();
+        let memory_usage_bytes = len
+            .saturating_mul(std::mem::size_of::<Arc<NginxLogEntry>>());
+        
         BufferMetrics {
             capacity: self.capacity,
             len,
             pushed: self.pushed.load(Ordering::Relaxed),
             popped: self.popped.load(Ordering::Relaxed),
             dropped: self.dropped.load(Ordering::Relaxed),
-            memory_usage_bytes: len * std::mem::size_of::<Arc<NginxLogEntry>>(),
+            memory_usage_bytes,
         }
     }
 
@@ -172,9 +175,17 @@ impl LogBuffer {
     }
 
     pub fn pop_batch(&mut self, max_size: usize) -> Vec<Arc<NginxLogEntry>> {
-        let mut batch = Vec::with_capacity(max_size);
+        // Validate max_size to prevent excessive memory allocation
+        const MAX_BATCH_SIZE: usize = 1_000_000; // 1M entries max
+        let safe_max_size = if max_size > MAX_BATCH_SIZE {
+            MAX_BATCH_SIZE
+        } else {
+            max_size
+        };
 
-        for _ in 0..max_size {
+        let mut batch = Vec::with_capacity(safe_max_size);
+
+        for _ in 0..safe_max_size {
             if let Ok(entry) = self.pop() {
                 batch.push(entry);
             } else {
@@ -312,12 +323,15 @@ impl LogBuffer {
     }
 }
 
-// SAFETY: LogBuffer uses lock-free atomics and tokio::sync::broadcast is designed to be thread-safe
-// The underlying tokio::sync::broadcast uses lock-free data structures but doesn't implement
-// Send/Sync due to raw pointer usage. Since we're only using it for single-producer
-// single-consumer operations with proper synchronization via atomics, this is safe.
-unsafe impl Send for LogBuffer {}
-unsafe impl Sync for LogBuffer {}
+// SAFE: LogBuffer is automatically Send+Sync because:
+// - BroadcastSender<Arc<NginxLogEntry>> is Send+Sync (tokio guarantees this)
+// - BroadcastReceiver<Arc<NginxLogEntry>> is Send+Sync (tokio guarantees this)
+// - Arc<NginxLogEntry> is Send+Sync (Arc provides this for thread-safe contents)
+// - AtomicU64 and AtomicUsize are Send+Sync (std guarantees this)
+// - usize and Instant are Send+Sync (std guarantees this)
+// 
+// No unsafe implementations needed - Rust's type system automatically derives
+// Send+Sync for this type based on its components.
 
 impl std::fmt::Debug for LogBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

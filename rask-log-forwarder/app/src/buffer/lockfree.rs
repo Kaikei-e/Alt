@@ -338,13 +338,17 @@ impl LogBuffer {
         let elapsed = self.metrics.start_time.elapsed();
         let elapsed_secs = elapsed.as_secs_f64();
 
+        // Use safe arithmetic to prevent overflow
+        let memory_usage_bytes = snapshot.queue_depth
+            .saturating_mul(std::mem::size_of::<EnrichedLogEntry>());
+
         DetailedMetrics {
             capacity: self.config.capacity,
             len: snapshot.queue_depth,
             pushed: snapshot.messages_sent,
             popped: snapshot.messages_received,
             dropped: snapshot.messages_dropped,
-            memory_usage_bytes: std::mem::size_of::<EnrichedLogEntry>() * snapshot.queue_depth,
+            memory_usage_bytes,
             throughput_per_second: if elapsed_secs > 0.0 {
                 snapshot.messages_sent as f64 / elapsed_secs
             } else {
@@ -441,23 +445,12 @@ impl LogBuffer {
     }
 }
 
-// SAFETY: LogBufferSender uses lock-free atomics and multiqueue is designed to be thread-safe
-// The underlying multiqueue uses lock-free data structures but doesn't implement
-// Send/Sync due to raw pointer usage. Since we're only using it for multi-producer
-// operations with proper synchronization via atomics, this is safe.
-unsafe impl Send for LogBufferSender {}
-unsafe impl Sync for LogBufferSender {}
-
-// SAFETY: LogBufferReceiver uses lock-free atomics and multiqueue is designed to be thread-safe
-// The underlying multiqueue uses lock-free data structures but doesn't implement
-// Send/Sync due to raw pointer usage. Since we're only using it for single-consumer
-// operations with proper synchronization via atomics, this is safe.
-unsafe impl Send for LogBufferReceiver {}
-unsafe impl Sync for LogBufferReceiver {}
-
-// SAFETY: LogBuffer is safe to send between threads as it only contains thread-safe components:
-// - Arc<BufferMetricsCollector> which is already Send+Sync
-// - BufferConfig which is a simple struct with primitive types
-// - BroadcastSender/Receiver wrapped in Option, which we've already declared as Send+Sync above
-unsafe impl Send for LogBuffer {}
-unsafe impl Sync for LogBuffer {}
+// SAFE: These types are automatically Send+Sync because:
+// - BroadcastSender<EnrichedLogEntry> is Send+Sync (tokio guarantees this)
+// - BroadcastReceiver<EnrichedLogEntry> is Send+Sync (tokio guarantees this)
+// - Arc<BufferMetricsCollector> is Send+Sync (Arc provides this for thread-safe contents)
+// - BufferConfig contains only primitive types which are Send+Sync
+// - Option<T> is Send+Sync when T is Send+Sync
+// 
+// No unsafe implementations needed - Rust's type system automatically derives
+// Send+Sync for these types based on their components.

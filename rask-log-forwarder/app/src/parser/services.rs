@@ -47,13 +47,27 @@ pub struct NginxParser {
 }
 
 lazy_static! {
-    static ref NGINX_ACCESS_PATTERN: Regex = Regex::new(
-        r#"^(\S+) \S+ \S+ \[([^\]]+)\] "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)(?: "([^"]*)" "([^"]*)")?.*$"#
-    ).unwrap();
+    static ref NGINX_ACCESS_PATTERN: Regex = {
+        match Regex::new(r#"^(\S+) \S+ \S+ \[([^\]]+)\] "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)(?: "([^"]*)" "([^"]*)")?.*$"#) {
+            Ok(regex) => regex,
+            Err(_) => {
+                // Fallback to a simpler pattern for nginx access logs
+                Regex::new(r#"^(\S+) .+ "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)"#)
+                    .expect("Fallback nginx access regex pattern is invalid")
+            }
+        }
+    };
 
-    static ref NGINX_ERROR_PATTERN: Regex = Regex::new(
-        r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \d+#\d+: (.+)"#
-    ).unwrap();
+    static ref NGINX_ERROR_PATTERN: Regex = {
+        match Regex::new(r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \d+#\d+: (.+)"#) {
+            Ok(regex) => regex,
+            Err(_) => {
+                // Fallback to a simpler pattern for nginx error logs
+                Regex::new(r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)"#)
+                    .expect("Fallback nginx error regex pattern is invalid")
+            }
+        }
+    };
 }
 
 impl Default for NginxParser {
@@ -309,9 +323,16 @@ pub struct PostgresParser {
 }
 
 lazy_static! {
-    static ref POSTGRES_LOG_PATTERN: Regex =
-        Regex::new(r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) \w+ \[\d+\] (\w+):\s+(.+)"#)
-            .unwrap();
+    static ref POSTGRES_LOG_PATTERN: Regex = {
+        match Regex::new(r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) \w+ \[\d+\] (\w+):\s+(.+)"#) {
+            Ok(regex) => regex,
+            Err(_) => {
+                // Fallback to a simpler pattern for postgres logs
+                Regex::new(r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) .+ (\w+):\s+(.+)"#)
+                    .expect("Fallback postgres regex pattern is invalid")
+            }
+        }
+    };
 }
 
 impl Default for PostgresParser {

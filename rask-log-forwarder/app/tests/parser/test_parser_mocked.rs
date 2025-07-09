@@ -36,7 +36,7 @@ impl MockLogParser {
 
     pub fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
         if self.should_fail {
-            return Err(ParseError::InvalidFormat);
+            return Err(ParseError::InvalidFormat("Mock parser failure".to_string()));
         }
 
         // Simple JSON parsing simulation
@@ -76,7 +76,7 @@ impl MockLogParser {
                 fields,
             })
         } else {
-            Err(ParseError::InvalidFormat)
+            Err(ParseError::InvalidFormat("Mock parser failure".to_string()))
         }
     }
 
@@ -121,7 +121,7 @@ fn test_mock_parser_parsing_error() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        ParseError::InvalidFormat => {
+        ParseError::InvalidFormat(_) => {
             // Expected error
         }
         _ => panic!("Expected InvalidFormat error"),

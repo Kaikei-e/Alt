@@ -8,19 +8,40 @@ use simd_json::{OwnedValue, from_slice};
 
 lazy_static! {
     // Common Log Format: IP - user [timestamp] "METHOD path HTTP/version" status size
-    static ref NGINX_ACCESS_REGEX: Regex = Regex::new(
-        r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+)"#
-    ).unwrap();
+    static ref NGINX_ACCESS_REGEX: Regex = {
+        match Regex::new(r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+)"#) {
+            Ok(regex) => regex,
+            Err(_) => {
+                // Fallback to a simpler pattern for nginx access logs
+                Regex::new(r#"^(\S+) .+ "(\S+) ([^"]*)" (\d+) (\d+)"#)
+                    .expect("Fallback nginx access regex pattern is invalid")
+            }
+        }
+    };
 
     // Combined Log Format includes referer and user-agent
-    static ref NGINX_ACCESS_COMBINED_REGEX: Regex = Regex::new(
-        r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+) "([^"]*)" "([^"]*)""#
-    ).unwrap();
+    static ref NGINX_ACCESS_COMBINED_REGEX: Regex = {
+        match Regex::new(r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+) "([^"]*)" "([^"]*)""#) {
+            Ok(regex) => regex,
+            Err(_) => {
+                // Fallback to a simpler pattern for nginx combined logs
+                Regex::new(r#"^(\S+) .+ "(\S+) ([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)""#)
+                    .expect("Fallback nginx combined regex pattern is invalid")
+            }
+        }
+    };
 
     // Nginx Error Log Format: timestamp [level] pid#tid: *cid message
-    static ref NGINX_ERROR_REGEX: Regex = Regex::new(
-        r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (\d+)#(\d+): (.*?)(?:\n)?$"#
-    ).unwrap();
+    static ref NGINX_ERROR_REGEX: Regex = {
+        match Regex::new(r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (\d+)#(\d+): (.*?)(?:\n)?$"#) {
+            Ok(regex) => regex,
+            Err(_) => {
+                // Fallback to a simpler pattern for nginx error logs
+                Regex::new(r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)$"#)
+                    .expect("Fallback nginx error regex pattern is invalid")
+            }
+        }
+    };
 }
 
 pub struct SimdParser {
