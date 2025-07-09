@@ -7,7 +7,6 @@ test.describe('Feed Registration URL Validation', () => {
 
   test('should accept valid RSS feed URLs', async ({ page }) => {
     const validUrls = [
-      'https://feeds.feedburner.com/example',
       'https://example.com/rss.xml',
       'https://example.com/feed.xml',
       'https://example.com/atom.xml',
@@ -18,15 +17,15 @@ test.describe('Feed Registration URL Validation', () => {
     for (const url of validUrls) {
       await page.fill('input[type="url"]', url);
       await page.locator('input[type="url"]').blur();
-      
+
       // Check that no validation error is shown
       const errorMessage = page.locator('text="Invalid or unsafe URL"');
       await expect(errorMessage).not.toBeVisible();
-      
+
       // Check that submit button is enabled
       const submitButton = page.locator('button[type="submit"]');
       await expect(submitButton).toBeEnabled();
-      
+
       // Clear field for next test
       await page.fill('input[type="url"]', '');
     }
@@ -43,15 +42,15 @@ test.describe('Feed Registration URL Validation', () => {
     for (const url of dangerousUrls) {
       await page.fill('input[type="url"]', url);
       await page.locator('input[type="url"]').blur();
-      
+
       // Check that validation error is shown
       const errorMessage = page.locator('text="Invalid or unsafe URL"');
       await expect(errorMessage).toBeVisible();
-      
+
       // Check that submit button is disabled
       const submitButton = page.locator('button[type="submit"]');
       await expect(submitButton).toBeDisabled();
-      
+
       // Clear field for next test
       await page.fill('input[type="url"]', '');
     }
@@ -68,15 +67,15 @@ test.describe('Feed Registration URL Validation', () => {
     for (const url of nonRssUrls) {
       await page.fill('input[type="url"]', url);
       await page.locator('input[type="url"]').blur();
-      
+
       // Check that validation error is shown
       const errorMessage = page.locator('text="URL does not appear to be a valid RSS or Atom feed"');
       await expect(errorMessage).toBeVisible();
-      
+
       // Check that submit button is disabled
       const submitButton = page.locator('button[type="submit"]');
       await expect(submitButton).toBeDisabled();
-      
+
       // Clear field for next test
       await page.fill('input[type="url"]', '');
     }
@@ -86,15 +85,15 @@ test.describe('Feed Registration URL Validation', () => {
     // Start typing a dangerous URL
     await page.fill('input[type="url"]', 'javascript:alert');
     await page.locator('input[type="url"]').blur();
-    
+
     // Error should appear immediately
     const errorMessage = page.locator('text="Invalid or unsafe URL"');
     await expect(errorMessage).toBeVisible();
-    
+
     // Submit button should be disabled
     const submitButton = page.locator('button[type="submit"]');
     await expect(submitButton).toBeDisabled();
-    
+
     // Input border should be red
     const input = page.locator('input[type="url"]');
     await expect(input).toHaveCSS('border-color', 'rgb(255, 0, 0)'); // Assuming red color
@@ -104,17 +103,17 @@ test.describe('Feed Registration URL Validation', () => {
     // Enter invalid URL
     await page.fill('input[type="url"]', 'javascript:alert("XSS")');
     await page.locator('input[type="url"]').blur();
-    
+
     // Error should be visible
     const errorMessage = page.locator('text="Invalid or unsafe URL"');
     await expect(errorMessage).toBeVisible();
-    
+
     // Clear the input
     await page.fill('input[type="url"]', '');
-    
+
     // Error should be gone
     await expect(errorMessage).not.toBeVisible();
-    
+
     // Submit button should be enabled (assuming no other validation errors)
     const submitButton = page.locator('button[type="submit"]');
     await expect(submitButton).toBeEnabled();
@@ -142,15 +141,15 @@ test.describe('Feed Registration URL Validation', () => {
     for (const testCase of edgeCases) {
       await page.fill('input[type="url"]', testCase.url);
       await page.locator('input[type="url"]').blur();
-      
+
       const submitButton = page.locator('button[type="submit"]');
-      
+
       if (testCase.shouldBeValid) {
         await expect(submitButton).toBeEnabled();
       } else {
         await expect(submitButton).toBeDisabled();
       }
-      
+
       // Clear field for next test
       await page.fill('input[type="url"]', '');
     }

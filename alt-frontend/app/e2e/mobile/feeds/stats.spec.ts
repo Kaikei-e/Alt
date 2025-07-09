@@ -20,7 +20,6 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
         constructor(url: string) {
           this.url = url;
           this.callbacks = {};
-          console.log("EventSource mock created for:", url);
 
           // Immediately set to connecting state
           this.readyState = 0;
@@ -28,7 +27,6 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
           // Simulate connection opening
           setTimeout(() => {
             this.readyState = 1;
-            console.log("EventSource mock opened");
             if (this.onopen) {
               this.onopen(new Event("open"));
             }
@@ -54,8 +52,6 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             origin: this.url,
           });
 
-          console.log("Sending SSE data:", statsData);
-
           if (this.onmessage) {
             this.onmessage(event);
           }
@@ -78,8 +74,6 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             data: JSON.stringify(updatedData),
             origin: this.url,
           });
-
-          console.log("Sending SSE update data:", updatedData);
 
           if (this.onmessage) {
             this.onmessage(event);

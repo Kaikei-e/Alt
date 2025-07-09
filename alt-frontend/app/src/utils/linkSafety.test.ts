@@ -82,9 +82,9 @@ describe("Link Safety Utilities", () => {
   describe("isExternalLink", () => {
     it("should return true for external URLs", () => {
       const externalUrls = [
-        "https://external.com",
-        "http://another.com",
-        "https://different.org/path",
+        "https://external.example.com",
+        "http://another.example.com",
+        "https://different.example.org/path",
       ];
 
       externalUrls.forEach((url) => {

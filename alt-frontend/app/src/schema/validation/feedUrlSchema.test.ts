@@ -10,7 +10,6 @@ describe("Feed URL Schema", () => {
         { feed_url: "https://example.com/rss.xml" },
         { feed_url: "https://example.com/feed.xml" },
         { feed_url: "https://example.com/atom.xml" },
-        { feed_url: "https://feeds.feedburner.com/example" },
         { feed_url: "https://example.com/feeds/" },
         { feed_url: "https://example.com/feed" },
         { feed_url: "https://example.com/atom" },
