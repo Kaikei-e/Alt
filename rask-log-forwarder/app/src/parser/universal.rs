@@ -338,6 +338,15 @@ impl UniversalParser {
         log_lines: Vec<&[u8]>,
         container_info: &ContainerInfo,
     ) -> Vec<Result<EnrichedLogEntry, ParseError>> {
+        // Validate batch size to prevent memory exhaustion attacks
+        if log_lines.len() > MAX_LOG_LINES_PER_BATCH {
+            return vec![Err(ParseError::InvalidFormat(format!(
+                "Batch too large: {} lines (max: {})",
+                log_lines.len(),
+                MAX_LOG_LINES_PER_BATCH
+            )))];
+        }
+
         let mut results = Vec::with_capacity(log_lines.len());
 
         for log_line in log_lines {
@@ -507,5 +516,45 @@ mod tests {
             "2025-07-03T17:35:01.856438308 {\"level\": \"info\", \"msg\": \"test\"}";
         let trimmed_log_no_z = parser.trim_docker_native_timestamp(native_log_no_z.to_string());
         assert_eq!(trimmed_log_no_z, "{\"level\": \"info\", \"msg\": \"test\"}");
+    }
+
+    #[tokio::test]
+    async fn test_parse_batch_size_validation() {
+        let container_info = create_go_backend_container_info();
+        let parser = UniversalParser::new();
+
+        // Create a batch that exceeds MAX_LOG_LINES_PER_BATCH
+        let docker_log = r#"{"log":"test log\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
+        let log_lines: Vec<&[u8]> = vec![docker_log.as_bytes(); MAX_LOG_LINES_PER_BATCH + 1];
+
+        let results = parser.parse_batch(log_lines, &container_info).await;
+
+        // Should return a single error for the entire batch
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_err());
+        
+        if let Err(ParseError::InvalidFormat(msg)) = &results[0] {
+            assert!(msg.contains("Batch too large"));
+            assert!(msg.contains("100001 lines"));
+            assert!(msg.contains("max: 100000"));
+        } else {
+            panic!("Expected InvalidFormat error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_parse_batch_normal_size() {
+        let container_info = create_go_backend_container_info();
+        let parser = UniversalParser::new();
+
+        // Create a normal-sized batch
+        let docker_log = r#"{"log":"test log\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
+        let log_lines: Vec<&[u8]> = vec![docker_log.as_bytes(); 10];
+
+        let results = parser.parse_batch(log_lines, &container_info).await;
+
+        // Should return results for all lines
+        assert_eq!(results.len(), 10);
+        assert!(results.iter().all(|r| r.is_ok()));
     }
 }
