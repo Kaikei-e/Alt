@@ -18,8 +18,24 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  determine-runner-integration:
+    name: Determine which runner to use for integration tests
     runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.set-runner.outputs.runner }}
+    steps:
+      - name: Determine which runner to use
+        id: set-runner
+        uses: benjaminmichaelis/get-soonest-available-runner@v1.1.0
+        with:
+          primary-runner: "m222"
+          fallback-runner: "ubuntu-latest"
+          min-available-runners: 2
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    needs: determine-runner-integration
+    runs-on: ${{ needs.determine-runner-integration.outputs.runner }}
     strategy:
       matrix:
         node: ["20"]
