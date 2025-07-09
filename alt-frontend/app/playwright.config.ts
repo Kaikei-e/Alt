@@ -16,6 +16,7 @@ export default defineConfig({
   expect: {
     timeout: 10 * 1000,
   },
+  globalTimeout: 1200 * 1000, // 20分
 
   // レポーター
   reporter: "html",
