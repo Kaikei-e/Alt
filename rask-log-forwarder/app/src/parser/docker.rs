@@ -11,8 +11,8 @@ pub enum ParseError {
     MissingField(String),
     #[error("Invalid field type: {0}")]
     InvalidFieldType(String),
-    #[error("Invalid log format")]
-    InvalidFormat,
+    #[error("Invalid log format: {0}")]
+    InvalidFormat(String),
 }
 
 #[derive(Debug, Clone)]
@@ -40,7 +40,7 @@ impl DockerJsonParser {
         let mut data = bytes.to_vec();
         let json: OwnedValue = simd_json::from_slice(&mut data)?;
 
-        let obj = json.as_object().ok_or(ParseError::InvalidFormat)?;
+        let obj = json.as_object().ok_or_else(|| ParseError::InvalidFormat("Log is not a JSON object".to_string()))?;
 
         // Extract required fields
         let log = obj
