@@ -32,12 +32,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
     <Box minH="100vh" bg="var(--app-bg)" position="relative">
       {/* Theme Toggle - only show when no right panel */}
       {!showRightPanel && (
-        <Box
-          position="fixed"
-          top={4}
-          right={4}
-          zIndex={1000}
-        >
+        <Box position="fixed" top={4} right={4} zIndex={1000}>
           <ThemeToggle size="md" />
         </Box>
       )}
@@ -68,7 +63,11 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
         )}
 
         {/* Main Content Area */}
-        <Box flex="1" ml={showSidebar ? "250px" : "0"} mr={showRightPanel ? "400px" : "0"}>
+        <Box
+          flex="1"
+          ml={showSidebar ? "250px" : "0"}
+          mr={showRightPanel ? "400px" : "0"}
+        >
           {children}
         </Box>
 

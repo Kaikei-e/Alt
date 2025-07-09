@@ -11,19 +11,18 @@ export const DesktopFeedsLayout: React.FC<DesktopFeedsLayoutProps> = ({
   sidebar,
 }) => {
   return (
-    <Box minH="100vh" bg="var(--app-bg)"
+    <Box
+      minH="100vh"
+      bg="var(--app-bg)"
       data-testid="desktop-layout"
-      position="relative">
+      position="relative"
+    >
       {/* Theme Toggle */}
       <Box position="fixed" top={4} right={4} zIndex={1000}>
         <ThemeToggle size="md" />
       </Box>
 
-      <Grid
-        templateRows="auto 1fr"
-        maxH="100vh"
-        overflow="hidden"
-      >
+      <Grid templateRows="auto 1fr" maxH="100vh" overflow="hidden">
         {/* メインコンテンツ */}
         <GridItem overflow="hidden">
           <Grid

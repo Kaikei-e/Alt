@@ -5,13 +5,7 @@ import { Box, Text } from "@chakra-ui/react";
 import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import DesktopTimeline from "@/components/desktop/timeline/DesktopTimeline";
 import { RightPanel } from "@/components/desktop/analytics/RightPanel";
-import {
-  Home,
-  Rss,
-  FileText,
-  Search,
-  Settings,
-} from "lucide-react";
+import { Home, Rss, FileText, Search, Settings } from "lucide-react";
 
 // Loading fallback
 const LoadingFallback = () => (

@@ -38,10 +38,8 @@ vi.mock("@/hooks/useQuickActions", () => ({
 const renderWithProviders = (ui: React.ReactElement) => {
   return render(
     <ThemeProvider>
-      <ChakraProvider value={defaultSystem}>
-        {ui}
-      </ChakraProvider>
-    </ThemeProvider>
+      <ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>
+    </ThemeProvider>,
   );
 };
 

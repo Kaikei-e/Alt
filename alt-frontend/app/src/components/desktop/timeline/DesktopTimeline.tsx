@@ -115,11 +115,9 @@ const DesktopStyledFeedCard = ({
   );
 
   const handleOpenSummary = useCallback(async (link: string) => {
-    const res = await feedsApi.getFeedDetails(
-      {
-        feed_url: link,
-      }
-    );
+    const res = await feedsApi.getFeedDetails({
+      feed_url: link,
+    });
     if (res.summary) {
       setAiSummary(res.summary);
     } else {
@@ -352,7 +350,13 @@ const DesktopStyledFeedCard = ({
                   onMarkAsRead();
                 }}
               >
-                <Text fontSize="sm" fontWeight="semibold" color="var(--text-primary)">Mark as Read</Text>
+                <Text
+                  fontSize="sm"
+                  fontWeight="semibold"
+                  color="var(--text-primary)"
+                >
+                  Mark as Read
+                </Text>
               </Button>
             )}
             <Button
@@ -379,7 +383,9 @@ const DesktopStyledFeedCard = ({
                 fontSize="sm"
                 fontWeight="semibold"
                 color="var(--text-primary)"
-              >AI Summary</Text>
+              >
+                AI Summary
+              </Text>
             </Button>
             <IconButton
               aria-label="Open article"
@@ -403,12 +409,22 @@ const DesktopStyledFeedCard = ({
           feedTitle={feed.title}
           summary={aiSummary || "Loading summary..."}
         />
-      </VStack >
-    </Box >
+      </VStack>
+    </Box>
   );
 };
 
-const DesktopSummaryDialog = ({ isOpen, onClose, feedTitle, summary }: { isOpen: boolean, onClose: () => void, feedTitle: string, summary: string }) => {
+const DesktopSummaryDialog = ({
+  isOpen,
+  onClose,
+  feedTitle,
+  summary,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  feedTitle: string;
+  summary: string;
+}) => {
   return (
     <Dialog.Root
       open={isOpen}

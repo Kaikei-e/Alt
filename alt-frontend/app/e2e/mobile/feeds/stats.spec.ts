@@ -20,7 +20,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
         constructor(url: string) {
           this.url = url;
           this.callbacks = {};
-          console.log('EventSource mock created for:', url);
+          console.log("EventSource mock created for:", url);
 
           // Immediately set to connecting state
           this.readyState = 0;
@@ -28,11 +28,11 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
           // Simulate connection opening
           setTimeout(() => {
             this.readyState = 1;
-            console.log('EventSource mock opened');
+            console.log("EventSource mock opened");
             if (this.onopen) {
-              this.onopen(new Event('open'));
+              this.onopen(new Event("open"));
             }
-            this.dispatchEvent(new Event('open'));
+            this.dispatchEvent(new Event("open"));
 
             // Send initial data after connection opens
             setTimeout(() => {
@@ -46,23 +46,23 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
           const statsData = {
             feed_amount: { amount: 25 },
             unsummarized_feed: { amount: 18 },
-            total_articles: { amount: 1337 }
+            total_articles: { amount: 1337 },
           };
 
-          const event = new MessageEvent('message', {
+          const event = new MessageEvent("message", {
             data: JSON.stringify(statsData),
-            origin: this.url
+            origin: this.url,
           });
 
-          console.log('Sending SSE data:', statsData);
+          console.log("Sending SSE data:", statsData);
 
           if (this.onmessage) {
             this.onmessage(event);
           }
 
           // Trigger any registered message listeners
-          if (this.callbacks['message']) {
-            this.callbacks['message'].forEach(callback => callback(event));
+          if (this.callbacks["message"]) {
+            this.callbacks["message"].forEach((callback) => callback(event));
           }
         }
 
@@ -71,22 +71,22 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
           const updatedData = {
             feed_amount: { amount: 30 },
             unsummarized_feed: { amount: 22 },
-            total_articles: { amount: 1500 }
+            total_articles: { amount: 1500 },
           };
 
-          const event = new MessageEvent('message', {
+          const event = new MessageEvent("message", {
             data: JSON.stringify(updatedData),
-            origin: this.url
+            origin: this.url,
           });
 
-          console.log('Sending SSE update data:', updatedData);
+          console.log("Sending SSE update data:", updatedData);
 
           if (this.onmessage) {
             this.onmessage(event);
           }
 
-          if (this.callbacks['message']) {
-            this.callbacks['message'].forEach(callback => callback(event));
+          if (this.callbacks["message"]) {
+            this.callbacks["message"].forEach((callback) => callback(event));
           }
         }
 
@@ -99,30 +99,38 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
         removeEventListener(type: string, listener: Function) {
           if (this.callbacks[type]) {
-            this.callbacks[type] = this.callbacks[type].filter(l => l !== listener);
+            this.callbacks[type] = this.callbacks[type].filter(
+              (l) => l !== listener,
+            );
           }
         }
 
         dispatchEvent(event: Event) {
           const type = event.type;
           if (this.callbacks[type]) {
-            this.callbacks[type].forEach(callback => callback(event));
+            this.callbacks[type].forEach((callback) => callback(event));
           }
           return true;
         }
 
         close() {
           this.readyState = 2;
-          console.log('EventSource mock closed');
+          console.log("EventSource mock closed");
         }
 
-        get CONNECTING() { return 0; }
-        get OPEN() { return 1; }
-        get CLOSED() { return 2; }
+        get CONNECTING() {
+          return 0;
+        }
+        get OPEN() {
+          return 1;
+        }
+        get CLOSED() {
+          return 2;
+        }
       };
 
       // Store reference for tests to trigger updates
-      (window as any).triggerSSEUpdate = function() {
+      (window as any).triggerSSEUpdate = function () {
         const connections = (window as any).eventSourceConnections || [];
         connections.forEach((connection: any) => {
           if (connection.sendUpdateData) {
@@ -151,7 +159,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
     test("should display correct feed amounts from SSE", async ({ page }) => {
       await page.goto("/mobile/feeds/stats", {
         waitUntil: "domcontentloaded",
-        timeout: 30000
+        timeout: 30000,
       });
 
       // Wait for page to load
@@ -176,16 +184,16 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             super(url);
             setTimeout(() => {
               (this as any).readyState = 1;
-              if ((this as any).onopen) (this as any).onopen(new Event('open'));
+              if ((this as any).onopen) (this as any).onopen(new Event("open"));
 
               setTimeout(() => {
-                const event = new MessageEvent('message', {
+                const event = new MessageEvent("message", {
                   data: JSON.stringify({
                     feed_amount: { amount: 0 },
                     unsummarized_feed: { amount: 0 },
-                    total_articles: { amount: 0 }
+                    total_articles: { amount: 0 },
                   }),
-                  origin: url
+                  origin: url,
                 });
 
                 if ((this as any).onmessage) (this as any).onmessage(event);
@@ -197,7 +205,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
       await page.goto("/mobile/feeds/stats", {
         waitUntil: "domcontentloaded",
-        timeout: 30000
+        timeout: 30000,
       });
 
       await page.waitForSelector("body", { timeout: 15000 });
@@ -210,7 +218,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
     test("should update values when SSE sends new data", async ({ page }) => {
       await page.goto("/mobile/feeds/stats", {
         waitUntil: "domcontentloaded",
-        timeout: 30000
+        timeout: 30000,
       });
 
       // Wait for page to load and initial data
@@ -248,27 +256,30 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
           constructor(url: string) {
             this.url = url;
-            console.log('Different data scenario EventSource created for:', url);
+            console.log(
+              "Different data scenario EventSource created for:",
+              url,
+            );
 
             // Simulate connection opening
             setTimeout(() => {
               this.readyState = 1;
-              console.log('Different data scenario EventSource opened');
-              if (this.onopen) this.onopen(new Event('open'));
+              console.log("Different data scenario EventSource opened");
+              if (this.onopen) this.onopen(new Event("open"));
 
               // Send the specific data for this test
               setTimeout(() => {
                 const data = {
                   feed_amount: { amount: 15 },
                   unsummarized_feed: { amount: 8 },
-                  total_articles: { amount: 456 }
+                  total_articles: { amount: 456 },
                 };
 
-                console.log('Sending different data scenario data:', data);
+                console.log("Sending different data scenario data:", data);
 
-                const event = new MessageEvent('message', {
+                const event = new MessageEvent("message", {
                   data: JSON.stringify(data),
-                  origin: this.url
+                  origin: this.url,
                 });
 
                 if (this.onmessage) this.onmessage(event);
@@ -278,18 +289,24 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
           close() {
             this.readyState = 2;
-            console.log('Different data scenario EventSource closed');
+            console.log("Different data scenario EventSource closed");
           }
 
-          get CONNECTING() { return 0; }
-          get OPEN() { return 1; }
-          get CLOSED() { return 2; }
+          get CONNECTING() {
+            return 0;
+          }
+          get OPEN() {
+            return 1;
+          }
+          get CLOSED() {
+            return 2;
+          }
         };
       });
 
       await page.goto("/mobile/feeds/stats", {
         waitUntil: "domcontentloaded",
-        timeout: 30000
+        timeout: 30000,
       });
 
       await page.waitForSelector("body", { timeout: 15000 });
@@ -298,8 +315,8 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
       await page.waitForTimeout(2000);
 
       // Debug: Check current page content
-      const bodyText = await page.textContent('body');
-      console.log('Page content for different data scenario:', bodyText);
+      const bodyText = await page.textContent("body");
+      console.log("Page content for different data scenario:", bodyText);
 
       // Check the different values (all should display without commas since < 1000)
       await expect(page.getByText("15")).toBeVisible({ timeout: 10000 });
@@ -315,7 +332,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
             setTimeout(() => {
               (this as any).readyState = 2;
               if ((this as any).onerror) {
-                (this as any).onerror(new Event('error'));
+                (this as any).onerror(new Event("error"));
               }
             }, 100);
           }
@@ -328,7 +345,7 @@ test.describe("Feeds Stats Page - Comprehensive Tests", () => {
 
       await page.goto("/mobile/feeds/stats", {
         waitUntil: "domcontentloaded",
-        timeout: 30000
+        timeout: 30000,
       });
 
       await page.waitForSelector("body", { timeout: 15000 });

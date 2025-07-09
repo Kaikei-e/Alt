@@ -122,11 +122,11 @@ export const SearchArticles = ({
     if (e.key === "Enter") {
       e.preventDefault();
       // Trigger form submission which will handle validation
-      const form = e.currentTarget.closest('form');
+      const form = e.currentTarget.closest("form");
       if (form) {
-        const submitEvent = new Event('submit', {
+        const submitEvent = new Event("submit", {
           bubbles: true,
-          cancelable: true
+          cancelable: true,
         });
         form.dispatchEvent(submitEvent);
       }
@@ -217,13 +217,15 @@ export const SearchArticles = ({
             }}
             onMouseEnter={(e) => {
               if (!isButtonDisabled) {
-                e.currentTarget.style.background = "linear-gradient(45deg, #e6005c, #7129d4)";
+                e.currentTarget.style.background =
+                  "linear-gradient(45deg, #e6005c, #7129d4)";
                 e.currentTarget.style.transform = "translateY(-2px)";
               }
             }}
             onMouseLeave={(e) => {
               if (!isButtonDisabled) {
-                e.currentTarget.style.background = "linear-gradient(45deg, #ff006e, #8338ec)";
+                e.currentTarget.style.background =
+                  "linear-gradient(45deg, #ff006e, #8338ec)";
                 e.currentTarget.style.transform = "translateY(0px)";
               }
             }}

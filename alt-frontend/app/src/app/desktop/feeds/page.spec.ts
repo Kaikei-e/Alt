@@ -107,42 +107,60 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     await page.waitForTimeout(1000);
 
     // Verify main layout components are present with increased timeout
-    await expect(page.locator('[data-testid="desktop-timeline-container"]')).toBeVisible({
+    await expect(
+      page.locator('[data-testid="desktop-timeline-container"]'),
+    ).toBeVisible({
       timeout: 10000,
     });
 
     // Check if desktop header exists, if not, skip this assertion
-    const headerExists = await page.locator('[data-testid="desktop-header"]').count();
+    const headerExists = await page
+      .locator('[data-testid="desktop-header"]')
+      .count();
     if (headerExists > 0) {
-      await expect(page.locator('[data-testid="desktop-header"]')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="desktop-header"]'),
+      ).toBeVisible();
     }
 
     // Check if desktop sidebar filters exist
-    const sidebarFiltersExists = await page.locator('[data-testid="desktop-sidebar-filters"]').count();
+    const sidebarFiltersExists = await page
+      .locator('[data-testid="desktop-sidebar-filters"]')
+      .count();
     if (sidebarFiltersExists > 0) {
-      await expect(page.locator('[data-testid="desktop-sidebar-filters"]')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="desktop-sidebar-filters"]'),
+      ).toBeVisible();
     }
 
     // Verify that the page has loaded successfully (no error messages)
-    const hasErrorMessage = await page.locator('text=Failed to load feeds').count();
+    const hasErrorMessage = await page
+      .locator("text=Failed to load feeds")
+      .count();
     expect(hasErrorMessage).toBe(0);
 
     // Verify some content is present
-    const hasContent = await page.locator('body').textContent();
+    const hasContent = await page.locator("body").textContent();
     expect(hasContent).toBeTruthy();
 
     // Look for unread count or other indicators that the page loaded correctly
     // Use regex for exact match to avoid strict mode violations
-    const hasUnreadCount = await page.locator('text=/^86$/').count();
+    const hasUnreadCount = await page.locator("text=/^86$/").count();
     if (hasUnreadCount > 0) {
       await expect(page.locator("text=/^86$/")).toBeVisible();
     }
 
     // Check for filter sections if they exist
-    const filterHeaderExists = await page.locator('[data-testid="filter-header-title"]').count();
+    const filterHeaderExists = await page
+      .locator('[data-testid="filter-header-title"]')
+      .count();
     if (filterHeaderExists > 0) {
-      await expect(page.locator('[data-testid="filter-header-title"]')).toHaveText("Filters");
-      await expect(page.locator('[data-testid="filter-read-status-label"]')).toHaveText("Read Status");
+      await expect(
+        page.locator('[data-testid="filter-header-title"]'),
+      ).toHaveText("Filters");
+      await expect(
+        page.locator('[data-testid="filter-read-status-label"]'),
+      ).toHaveText("Read Status");
     }
   });
 

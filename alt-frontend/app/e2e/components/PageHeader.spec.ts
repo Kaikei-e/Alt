@@ -19,21 +19,27 @@ test.describe("PageHeader Component", () => {
       await expect(page.getByRole("banner")).toBeVisible({ timeout: 15000 });
     } catch {
       // Fallback: look for the title text
-      await expect(page.getByText("Dashboard Overview")).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText("Dashboard Overview")).toBeVisible({
+        timeout: 15000,
+      });
     }
 
     // Check for the title
-    await expect(page.getByText("Dashboard Overview")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Dashboard Overview")).toBeVisible({
+      timeout: 10000,
+    });
 
     // Check for the description
     await expect(
-      page.getByText("Monitor your RSS feeds and AI-powered content insights")
+      page.getByText("Monitor your RSS feeds and AI-powered content insights"),
     ).toBeVisible({ timeout: 10000 });
 
     // Basic layout check
     const pageContent = await page.textContent("body");
     expect(pageContent).toContain("Dashboard Overview");
-    expect(pageContent).toContain("Monitor your RSS feeds and AI-powered content insights");
+    expect(pageContent).toContain(
+      "Monitor your RSS feeds and AI-powered content insights",
+    );
   });
 
   test("should have proper structure and styling", async ({ page }) => {
@@ -45,9 +51,11 @@ test.describe("PageHeader Component", () => {
     await expect(body).toBeVisible({ timeout: 10000 });
 
     // Check for text content
-    await expect(page.getByText("Dashboard Overview")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Dashboard Overview")).toBeVisible({
+      timeout: 10000,
+    });
     await expect(
-      page.getByText("Monitor your RSS feeds and AI-powered content insights")
+      page.getByText("Monitor your RSS feeds and AI-powered content insights"),
     ).toBeVisible({ timeout: 10000 });
   });
 
@@ -64,9 +72,13 @@ test.describe("PageHeader Component", () => {
       await page.waitForTimeout(500);
 
       // Content should remain visible
-      await expect(page.getByText("Dashboard Overview")).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText("Dashboard Overview")).toBeVisible({
+        timeout: 10000,
+      });
       await expect(
-        page.getByText("Monitor your RSS feeds and AI-powered content insights")
+        page.getByText(
+          "Monitor your RSS feeds and AI-powered content insights",
+        ),
       ).toBeVisible({ timeout: 10000 });
     }
   });
@@ -79,6 +91,8 @@ test.describe("PageHeader Component", () => {
     await page.waitForSelector("body", { timeout: 15000 });
 
     // Content should eventually appear
-    await expect(page.getByText("Dashboard Overview")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Dashboard Overview")).toBeVisible({
+      timeout: 15000,
+    });
   });
 });

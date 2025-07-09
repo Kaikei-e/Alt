@@ -167,7 +167,7 @@ export const ReadingAnalytics: React.FC<ReadingAnalyticsProps> = ({
                   0.3 +
                   (day.articles /
                     Math.max(...week.dailyBreakdown.map((d) => d.articles))) *
-                  0.7
+                    0.7
                 }
                 borderRadius="var(--radius-xs)"
                 h={`${(day.articles / Math.max(...week.dailyBreakdown.map((d) => d.articles))) * 100}%`}

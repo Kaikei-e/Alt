@@ -8,19 +8,19 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     await mockApiEndpoints(page, { articles: mockArticles });
 
     // Add comprehensive error handling
-    page.on('pageerror', (error) => {
-      console.error('Page error:', error);
+    page.on("pageerror", (error) => {
+      console.error("Page error:", error);
     });
 
-    page.on('requestfailed', (request) => {
-      console.error('Request failed:', request.url(), request.failure());
+    page.on("requestfailed", (request) => {
+      console.error("Request failed:", request.url(), request.failure());
     });
   });
 
   test("should display articles", async ({ page }) => {
     await page.goto("/mobile/articles/search", {
       waitUntil: "domcontentloaded",
-      timeout: 30000
+      timeout: 30000,
     });
 
     // Wait for React components to render
@@ -29,14 +29,14 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     // Wait for the search window container to be visible
     await page.waitForSelector("[data-testid='search-window']", {
       timeout: 15000,
-      state: "visible"
+      state: "visible",
     });
 
     // Wait for the search input to be available and interactable
     const searchInput = page.locator("[data-testid='search-input']");
     await searchInput.waitFor({
       state: "visible",
-      timeout: 15000
+      timeout: 15000,
     });
 
     // Ensure the input is enabled and ready for interaction
@@ -44,7 +44,7 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
 
     // Check initial button state
     const submitButton = page.locator("button[type='submit']");
-    const initialButtonState = await submitButton.getAttribute('disabled');
+    const initialButtonState = await submitButton.getAttribute("disabled");
 
     // Clear any existing value and fill with valid input (4 characters = should enable button)
     await searchInput.clear();
@@ -52,30 +52,32 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     // Type character by character and check state
     await searchInput.type("T");
     await page.waitForTimeout(500);
-    let buttonState = await submitButton.getAttribute('disabled');
+    let buttonState = await submitButton.getAttribute("disabled");
 
     await searchInput.type("e");
     await page.waitForTimeout(500);
-    buttonState = await submitButton.getAttribute('disabled');
+    buttonState = await submitButton.getAttribute("disabled");
 
     await searchInput.type("st");
     await page.waitForTimeout(1000);
-    buttonState = await submitButton.getAttribute('disabled');
+    buttonState = await submitButton.getAttribute("disabled");
 
     // Check the actual input value
     const inputValue = await searchInput.inputValue();
 
     // Check if there are any validation errors displayed
-    const errorMessages = await page.locator("[data-testid='error-message']").count();
+    const errorMessages = await page
+      .locator("[data-testid='error-message']")
+      .count();
 
     // Try to get the button text and classes
     const buttonText = await submitButton.textContent();
-    const buttonClasses = await submitButton.getAttribute('class');
+    const buttonClasses = await submitButton.getAttribute("class");
 
     // If button is still disabled, wait a bit more and check again
     if (buttonState !== null) {
       await page.waitForTimeout(2000);
-      buttonState = await submitButton.getAttribute('disabled');
+      buttonState = await submitButton.getAttribute("disabled");
     }
 
     // Verify the value was set correctly
@@ -93,7 +95,9 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       await page.waitForTimeout(1000);
 
       // Check if anything changed
-      const newErrorMessages = await page.locator("[data-testid='error-message']").count();
+      const newErrorMessages = await page
+        .locator("[data-testid='error-message']")
+        .count();
 
       return; // Exit early for debugging
     }
@@ -104,22 +108,32 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     await submitButton.click();
 
     // Wait for search to complete using a more robust approach
-    await page.waitForFunction(() => {
-      const searchWindow = document.querySelector("[data-testid='search-window']");
-      if (!searchWindow) return false;
+    await page.waitForFunction(
+      () => {
+        const searchWindow = document.querySelector(
+          "[data-testid='search-window']",
+        );
+        if (!searchWindow) return false;
 
-      const content = searchWindow.textContent || '';
-      return content.includes("Test Article") ||
-        content.includes("No articles match") ||
-        content.includes("Try different keywords") ||
-        content.includes("💡 Try searching for topics") ||
-        !content.includes("Searching...");
-    }, {}, { timeout: 15000 });
+        const content = searchWindow.textContent || "";
+        return (
+          content.includes("Test Article") ||
+          content.includes("No articles match") ||
+          content.includes("Try different keywords") ||
+          content.includes("💡 Try searching for topics") ||
+          !content.includes("Searching...")
+        );
+      },
+      {},
+      { timeout: 15000 },
+    );
 
     // Check if articles are displayed or if there's a "no results" message
     try {
       // First, check if we have any article cards
-      const articleCards = await page.locator("[data-testid='article-card']").count();
+      const articleCards = await page
+        .locator("[data-testid='article-card']")
+        .count();
 
       if (articleCards > 0) {
         // If we have articles, verify they're visible
@@ -131,23 +145,26 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
         ).toBeVisible({ timeout: 5000 });
       } else {
         // If no articles, check if there's a "no results" message or default state
-        const bodyText = await page.textContent('body');
+        const bodyText = await page.textContent("body");
 
         // Check if the search actually happened and returned empty results or if it's showing the default state
-        const hasNoResultsMessage = bodyText?.includes("No articles match") ||
+        const hasNoResultsMessage =
+          bodyText?.includes("No articles match") ||
           bodyText?.includes("Try different keywords") ||
           bodyText?.includes("💡 Try searching for topics");
 
         if (hasNoResultsMessage) {
           // This is acceptable - either no results or the default empty state
         } else {
-          throw new Error("Expected either article cards or appropriate empty state message");
+          throw new Error(
+            "Expected either article cards or appropriate empty state message",
+          );
         }
       }
     } catch (error) {
       // Enhanced debugging
       // Log the actual page content for debugging
-      const bodyText = await page.textContent('body');
+      const bodyText = await page.textContent("body");
 
       throw error;
     }
@@ -158,20 +175,20 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
   }) => {
     await page.goto("/mobile/articles/search", {
       waitUntil: "domcontentloaded",
-      timeout: 30000
+      timeout: 30000,
     });
 
     // Wait for the search window container to be visible
     await page.waitForSelector("[data-testid='search-window']", {
       timeout: 15000,
-      state: "visible"
+      state: "visible",
     });
 
     // Wait for the search input to be available and interactable
     const searchInput = page.locator("[data-testid='search-input']");
     await searchInput.waitFor({
       state: "visible",
-      timeout: 15000
+      timeout: 15000,
     });
     await expect(searchInput).toBeEnabled({ timeout: 10000 });
 
@@ -187,17 +204,21 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     // Try multiple approaches to trigger validation
 
     // Approach 1: Direct form submission
-    await page.locator('form').dispatchEvent('submit');
+    await page.locator("form").dispatchEvent("submit");
     await page.waitForTimeout(1000);
 
-    let errorMessageCount = await page.locator("[data-testid='error-message']").count();
+    let errorMessageCount = await page
+      .locator("[data-testid='error-message']")
+      .count();
 
     if (errorMessageCount === 0) {
       // Approach 2: Enter key press
-      await searchInput.press('Enter');
+      await searchInput.press("Enter");
       await page.waitForTimeout(1000);
 
-      errorMessageCount = await page.locator("[data-testid='error-message']").count();
+      errorMessageCount = await page
+        .locator("[data-testid='error-message']")
+        .count();
     }
 
     if (errorMessageCount === 0) {
@@ -206,23 +227,32 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       await submitButton.click({ force: true });
       await page.waitForTimeout(1000);
 
-      errorMessageCount = await page.locator("[data-testid='error-message']").count();
+      errorMessageCount = await page
+        .locator("[data-testid='error-message']")
+        .count();
     }
 
     if (errorMessageCount === 0) {
       // Approach 4: Manual validation trigger via JavaScript
       await page.evaluate(() => {
-        const input = document.querySelector('[data-testid="search-input"]') as HTMLInputElement;
-        const form = document.querySelector('form') as HTMLFormElement;
+        const input = document.querySelector(
+          '[data-testid="search-input"]',
+        ) as HTMLInputElement;
+        const form = document.querySelector("form") as HTMLFormElement;
         if (input && form) {
           // Manually trigger form submission
-          const event = new Event('submit', { bubbles: true, cancelable: true });
+          const event = new Event("submit", {
+            bubbles: true,
+            cancelable: true,
+          });
           form.dispatchEvent(event);
         }
       });
       await page.waitForTimeout(1000);
 
-      errorMessageCount = await page.locator("[data-testid='error-message']").count();
+      errorMessageCount = await page
+        .locator("[data-testid='error-message']")
+        .count();
     }
 
     // Wait for error message to appear
@@ -232,28 +262,26 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     const errorMessage = await page.textContent(
       "[data-testid='error-message']",
     );
-    expect(errorMessage).toContain(
-      "Please enter a search query",
-    );
+    expect(errorMessage).toContain("Please enter a search query");
   });
 
   test("should display error message when query is empty", async ({ page }) => {
     await page.goto("/mobile/articles/search", {
       waitUntil: "domcontentloaded",
-      timeout: 30000
+      timeout: 30000,
     });
 
     // Wait for the search window container to be visible
     await page.waitForSelector("[data-testid='search-window']", {
       timeout: 15000,
-      state: "visible"
+      state: "visible",
     });
 
     // Wait for the search input to be available and interactable
     const searchInput = page.locator("[data-testid='search-input']");
     await searchInput.waitFor({
       state: "visible",
-      timeout: 15000
+      timeout: 15000,
     });
     await expect(searchInput).toBeEnabled({ timeout: 10000 });
 
@@ -264,17 +292,21 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
     await page.waitForTimeout(1000);
 
     // Approach 1: Direct form submission
-    await page.locator('form').dispatchEvent('submit');
+    await page.locator("form").dispatchEvent("submit");
     await page.waitForTimeout(1000);
 
-    let errorMessageCount = await page.locator("[data-testid='error-message']").count();
+    let errorMessageCount = await page
+      .locator("[data-testid='error-message']")
+      .count();
 
     if (errorMessageCount === 0) {
       // Approach 2: Enter key press
-      await searchInput.press('Enter');
+      await searchInput.press("Enter");
       await page.waitForTimeout(1000);
 
-      errorMessageCount = await page.locator("[data-testid='error-message']").count();
+      errorMessageCount = await page
+        .locator("[data-testid='error-message']")
+        .count();
     }
 
     if (errorMessageCount === 0) {
@@ -283,23 +315,32 @@ test.describe("SearchArticles Component - Functionality Tests", () => {
       await submitButton.click({ force: true });
       await page.waitForTimeout(1000);
 
-      errorMessageCount = await page.locator("[data-testid='error-message']").count();
+      errorMessageCount = await page
+        .locator("[data-testid='error-message']")
+        .count();
     }
 
     if (errorMessageCount === 0) {
       // Approach 4: Manual validation trigger via JavaScript
       await page.evaluate(() => {
-        const input = document.querySelector('[data-testid="search-input"]') as HTMLInputElement;
-        const form = document.querySelector('form') as HTMLFormElement;
+        const input = document.querySelector(
+          '[data-testid="search-input"]',
+        ) as HTMLInputElement;
+        const form = document.querySelector("form") as HTMLFormElement;
         if (input && form) {
           // Manually trigger form submission
-          const event = new Event('submit', { bubbles: true, cancelable: true });
+          const event = new Event("submit", {
+            bubbles: true,
+            cancelable: true,
+          });
           form.dispatchEvent(event);
         }
       });
       await page.waitForTimeout(1000);
 
-      errorMessageCount = await page.locator("[data-testid='error-message']").count();
+      errorMessageCount = await page
+        .locator("[data-testid='error-message']")
+        .count();
     }
 
     await expect(page.locator("[data-testid='error-message']")).toBeVisible({

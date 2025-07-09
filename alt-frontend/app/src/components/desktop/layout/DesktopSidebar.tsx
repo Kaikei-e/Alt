@@ -1,5 +1,13 @@
 import React from "react";
-import { ChevronLeft, ChevronRight, Home, Rss, FileText, Search, Settings } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Home,
+  Rss,
+  FileText,
+  Search,
+  Settings,
+} from "lucide-react";
 import {
   Box,
   VStack,
@@ -76,7 +84,7 @@ export const DefaultSidebarProps: DesktopSidebarProps = {
   logoText: "Alt RSS",
   logoSubtext: "Feed Reader",
   isCollapsed: false,
-  onToggleCollapse: () => { },
+  onToggleCollapse: () => {},
   mode: "navigation",
 };
 
@@ -259,8 +267,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                             source.id,
                           )
                             ? activeFilters.sources.filter(
-                              (id) => id !== source.id,
-                            )
+                                (id) => id !== source.id,
+                              )
                             : [...(activeFilters?.sources || []), source.id];
                           onFilterChange?.({
                             ...activeFilters!,
@@ -447,12 +455,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               borderRadius="var(--radius-lg)"
               bg={item.active ? "var(--surface-hover)" : "transparent"}
               border="1px solid"
-              borderColor={
-                item.active ? "var(--alt-primary)" : "transparent"
-              }
-              color={
-                item.active ? "var(--alt-primary)" : "var(--text-primary)"
-              }
+              borderColor={item.active ? "var(--alt-primary)" : "transparent"}
+              color={item.active ? "var(--alt-primary)" : "var(--text-primary)"}
               transition="all var(--transition-speed) ease"
               _hover={{
                 bg: "var(--surface-hover)",

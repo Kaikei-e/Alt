@@ -6,7 +6,10 @@ import { ErrorBoundary } from "react-error-boundary";
 import { DesktopFeedsLayout } from "@/components/desktop/layout/DesktopFeedsLayout";
 import { DesktopFeedCard } from "@/components/desktop/timeline/DesktopFeedCard";
 import { RightPanel } from "@/components/desktop/analytics/RightPanel";
-import { DesktopSidebar, DefaultSidebarProps } from "@/components/desktop/layout/DesktopSidebar";
+import {
+  DesktopSidebar,
+  DefaultSidebarProps,
+} from "@/components/desktop/layout/DesktopSidebar";
 import { FilterState, DesktopFeed } from "@/types/desktop-feed";
 import { desktopFeedsApi } from "@/lib/api/desktop-feeds";
 
@@ -161,7 +164,7 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({
             <DesktopSidebar
               {...DefaultSidebarProps}
               isCollapsed={false}
-              onToggleCollapse={() => { }}
+              onToggleCollapse={() => {}}
             />
           </Suspense>
         }
