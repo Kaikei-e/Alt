@@ -13,7 +13,12 @@
     "analyze": "ANALYZE=true next build",
     "test:e2e": "npx playwright test",
     "test:logic": "vitest",
-    "test:all": "npx playwright test && vitest"
+    "test:all": "npx playwright test && vitest",
+    "test:security": "vitest src/tests/security/",
+    "test:performance:security": "vitest src/tests/performance/security-impact.test.ts",
+    "test:security:scan": "vitest src/tests/security/automated-scan.test.ts",
+    "test:security:e2e": "npx playwright test e2e/security/",
+    "security:report": "node scripts/generate-security-report.js"
   },
   "dependencies": {
     "@chakra-ui/accordion": "^2.3.1",
