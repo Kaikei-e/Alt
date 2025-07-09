@@ -18,10 +18,10 @@ type InMemoryCSRFTokenDriver struct {
 // NewInMemoryCSRFTokenDriver creates a new in-memory CSRF token driver
 func NewInMemoryCSRFTokenDriver() *InMemoryCSRFTokenDriver {
 	driver := &InMemoryCSRFTokenDriver{}
-	
+
 	// Start cleanup goroutine to remove expired tokens
 	go driver.cleanupExpiredTokens()
-	
+
 	return driver
 }
 
@@ -30,7 +30,7 @@ func (d *InMemoryCSRFTokenDriver) StoreToken(ctx context.Context, token string, 
 	if token == "" {
 		return fmt.Errorf("token cannot be empty")
 	}
-	
+
 	d.tokens.Store(token, expiration)
 	return nil
 }
@@ -40,12 +40,12 @@ func (d *InMemoryCSRFTokenDriver) GetToken(ctx context.Context, token string) (t
 	if token == "" {
 		return time.Time{}, fmt.Errorf("token cannot be empty")
 	}
-	
+
 	expiration, exists := d.tokens.Load(token)
 	if !exists {
 		return time.Time{}, fmt.Errorf("token not found")
 	}
-	
+
 	return expiration.(time.Time), nil
 }
 
@@ -54,7 +54,7 @@ func (d *InMemoryCSRFTokenDriver) DeleteToken(ctx context.Context, token string)
 	if token == "" {
 		return fmt.Errorf("token cannot be empty")
 	}
-	
+
 	d.tokens.Delete(token)
 	return nil
 }
@@ -67,7 +67,7 @@ func (d *InMemoryCSRFTokenDriver) GenerateRandomToken() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
-	
+
 	// Encode to base64 for safe URL/header transmission
 	token := base64.URLEncoding.EncodeToString(bytes)
 	return token, nil
@@ -77,7 +77,7 @@ func (d *InMemoryCSRFTokenDriver) GenerateRandomToken() (string, error) {
 func (d *InMemoryCSRFTokenDriver) cleanupExpiredTokens() {
 	ticker := time.NewTicker(10 * time.Minute) // Cleanup every 10 minutes
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -85,11 +85,11 @@ func (d *InMemoryCSRFTokenDriver) cleanupExpiredTokens() {
 			d.tokens.Range(func(key, value interface{}) bool {
 				token := key.(string)
 				expiration := value.(time.Time)
-				
+
 				if now.After(expiration) {
 					d.tokens.Delete(token)
 				}
-				
+
 				return true // Continue iteration
 			})
 		}

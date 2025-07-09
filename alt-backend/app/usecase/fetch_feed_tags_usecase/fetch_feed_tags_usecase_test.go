@@ -103,11 +103,11 @@ func TestFetchFeedTagsUsecase_Execute(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "invalid feed_url - empty",
-			ctx:       context.Background(),
-			feedURL:   "",
-			cursor:    nil,
-			limit:     20,
+			name:    "invalid feed_url - empty",
+			ctx:     context.Background(),
+			feedURL: "",
+			cursor:  nil,
+			limit:   20,
 			mockSetup: func() {
 				// Should not call any gateway for invalid feedURL
 			},
@@ -115,11 +115,11 @@ func TestFetchFeedTagsUsecase_Execute(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:      "invalid limit - zero",
-			ctx:       context.Background(),
-			feedURL:   feedURL,
-			cursor:    nil,
-			limit:     0,
+			name:    "invalid limit - zero",
+			ctx:     context.Background(),
+			feedURL: feedURL,
+			cursor:  nil,
+			limit:   0,
 			mockSetup: func() {
 				// Should not call any gateway for invalid limit
 			},
@@ -127,11 +127,11 @@ func TestFetchFeedTagsUsecase_Execute(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:      "invalid limit - negative",
-			ctx:       context.Background(),
-			feedURL:   feedURL,
-			cursor:    nil,
-			limit:     -1,
+			name:    "invalid limit - negative",
+			ctx:     context.Background(),
+			feedURL: feedURL,
+			cursor:  nil,
+			limit:   -1,
 			mockSetup: func() {
 				// Should not call any gateway for invalid limit
 			},
@@ -139,11 +139,11 @@ func TestFetchFeedTagsUsecase_Execute(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:      "invalid limit - too large",
-			ctx:       context.Background(),
-			feedURL:   feedURL,
-			cursor:    nil,
-			limit:     101,
+			name:    "invalid limit - too large",
+			ctx:     context.Background(),
+			feedURL: feedURL,
+			cursor:  nil,
+			limit:   101,
 			mockSetup: func() {
 				// Should not call any gateway for limit > 100
 			},

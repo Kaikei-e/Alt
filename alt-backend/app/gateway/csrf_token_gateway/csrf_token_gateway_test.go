@@ -147,8 +147,8 @@ func TestCSRFTokenGateway_ValidateToken(t *testing.T) {
 			setupMock: func(m *MockCSRFTokenDriver) {
 				m.On("GetToken", mock.Anything, "some-token").Return(time.Time{}, errors.New("driver error"))
 			},
-			expectValid:    false,
-			expectError:    false, // Gateway should handle driver errors gracefully
+			expectValid: false,
+			expectError: false, // Gateway should handle driver errors gracefully
 		},
 		{
 			name:       "empty token",
@@ -254,10 +254,10 @@ func TestCSRFTokenGateway_InvalidateToken(t *testing.T) {
 
 func TestCSRFTokenGateway_TokenExpiration(t *testing.T) {
 	tests := []struct {
-		name           string
-		tokenAge       time.Duration
-		expectValid    bool
-		expectDeleted  bool
+		name          string
+		tokenAge      time.Duration
+		expectValid   bool
+		expectDeleted bool
 	}{
 		{
 			name:          "token within 1 hour should be valid",
@@ -289,10 +289,10 @@ func TestCSRFTokenGateway_TokenExpiration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup mock driver
 			mockDriver := &MockCSRFTokenDriver{}
-			
+
 			tokenTime := time.Now().Add(tt.tokenAge)
 			mockDriver.On("GetToken", mock.Anything, "test-token").Return(tokenTime, nil)
-			
+
 			if tt.expectDeleted {
 				mockDriver.On("DeleteToken", mock.Anything, "test-token").Return(nil)
 			}

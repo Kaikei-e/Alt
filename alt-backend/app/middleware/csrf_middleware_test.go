@@ -110,19 +110,19 @@ func TestCSRFMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup Echo instance
 			e := echo.New()
-			
+
 			// Setup mock usecase
 			mockUsecase := &MockCSRFTokenUsecase{}
 			tt.setupMock(mockUsecase)
-			
+
 			// Create CSRF middleware
 			middleware := CSRFMiddleware(mockUsecase)
-			
+
 			// Create test handler
 			handler := func(c echo.Context) error {
 				return c.JSON(http.StatusOK, map[string]string{"message": "success"})
 			}
-			
+
 			// Create request
 			var req *http.Request
 			if tt.method == "POST" {
@@ -132,23 +132,23 @@ func TestCSRFMiddleware(t *testing.T) {
 			} else {
 				req = httptest.NewRequest(tt.method, tt.path, nil)
 			}
-			
+
 			// Add CSRF token to header if provided
 			if tt.headerToken != "" {
 				req.Header.Set("X-CSRF-Token", tt.headerToken)
 			}
-			
+
 			// Create response recorder
 			rec := httptest.NewRecorder()
-			
+
 			// Create Echo context
 			c := e.NewContext(req, rec)
 			c.SetPath(tt.path)
-			
+
 			// Apply middleware and handler
 			middlewareHandler := middleware(handler)
 			err := middlewareHandler(c)
-			
+
 			// Check response
 			if tt.expectedStatus == http.StatusOK {
 				assert.NoError(t, err)
@@ -160,7 +160,7 @@ func TestCSRFMiddleware(t *testing.T) {
 					assert.Equal(t, tt.expectedStatus, httpErr.Code)
 				}
 			}
-			
+
 			// Verify mock expectations
 			mockUsecase.AssertExpectations(t)
 		})
@@ -199,30 +199,30 @@ func TestCSRFTokenGeneration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup Echo instance
 			e := echo.New()
-			
+
 			// Setup mock usecase
 			mockUsecase := &MockCSRFTokenUsecase{}
 			tt.setupMock(mockUsecase)
-			
+
 			// Create CSRF token handler
 			handler := CSRFTokenHandler(mockUsecase)
-			
+
 			// Create request
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			rec := httptest.NewRecorder()
-			
+
 			// Create Echo context
 			c := e.NewContext(req, rec)
 			c.SetPath(tt.path)
-			
+
 			// Apply handler
 			err := handler(c)
-			
+
 			// Check response
 			if tt.expectedStatus == http.StatusOK {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedStatus, rec.Code)
-				
+
 				// Verify response contains token
 				assert.Contains(t, rec.Body.String(), "csrf_token")
 			} else {
@@ -232,7 +232,7 @@ func TestCSRFTokenGeneration(t *testing.T) {
 					assert.Equal(t, tt.expectedStatus, httpErr.Code)
 				}
 			}
-			
+
 			// Verify mock expectations
 			mockUsecase.AssertExpectations(t)
 		})

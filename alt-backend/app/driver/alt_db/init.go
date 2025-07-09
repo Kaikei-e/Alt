@@ -25,7 +25,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 			logger.Logger.Error("Failed to get database connection string", "error", err)
 			return nil, fmt.Errorf("failed to get database connection string: %w", err)
 		}
-		
+
 		pool, err = pgxpool.New(ctx, connStr)
 		if err == nil {
 			// Test the connection pool

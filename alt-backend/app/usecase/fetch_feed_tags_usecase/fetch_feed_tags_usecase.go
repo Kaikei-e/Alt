@@ -29,12 +29,12 @@ func (u *FetchFeedTagsUsecase) Execute(ctx context.Context, feedURL string, curs
 		logger.Logger.Error("invalid feed_url: must not be empty", "feedURL", feedURL)
 		return nil, errors.New("feed_url must not be empty")
 	}
-	
+
 	if limit <= 0 {
 		logger.Logger.Error("invalid limit: must be greater than 0", "limit", limit)
 		return nil, errors.New("limit must be greater than 0")
 	}
-	
+
 	if limit > 100 {
 		logger.Logger.Error("invalid limit: cannot exceed 100", "limit", limit)
 		return nil, errors.New("limit cannot exceed 100")
