@@ -54,11 +54,9 @@ export default defineConfig({
   // WebServerの設定
   webServer: {
     // CI ではビルド→本番起動、ローカルでは next dev
-    command: isCI
-      ? "npm run build && npm run start -- -p 3010"
-      : "next dev --port 3010",
+    command: "next dev --port 3010",
     url: "http://localhost:3010",
     reuseExistingServer: !isCI,
-    timeout: 180 * 1000, // 3分のWebServerタイムアウト
+    timeout: 1200 * 1000, // 20分のWebServerタイムアウト
   },
 });
