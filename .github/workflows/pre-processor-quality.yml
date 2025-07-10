@@ -15,6 +15,7 @@ on:
     branches: [ main, develop ]
     paths:
       - 'pre-processor/**'
+  workflow_dispatch:
 
 # 同一ブランチ/PR の古い実行をキャンセル
 concurrency:
@@ -27,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       runner: ${{ steps.set-runner.outputs.runner }}
+      runner-json: ${{ steps.format-runner.outputs.runner-json }}
     steps:
       - name: Determine which runner to use
         id: set-runner
@@ -36,10 +38,22 @@ jobs:
           fallback-runner: "ubuntu-latest"
           min-available-runners: 1
           github-token: ${{ secrets.RUNNER_TOKEN }}
+      - name: Format runner output
+        id: format-runner
+        run: |
+          RUNNER="${{ steps.set-runner.outputs.runner }}"
+          if [ "$RUNNER" = "m222" ]; then
+            # セルフホストランナーの場合はラベルの配列として出力
+            echo 'runner-json=["self-hosted", "macOS", "ARM64"]' >> $GITHUB_OUTPUT
+          else
+            # ubuntu-latestの場合は文字列として出力
+            echo 'runner-json="ubuntu-latest"' >> $GITHUB_OUTPUT
+          fi
+
   quality-check:
     name: Quality Gates
     needs: determine-runner-integration
-    runs-on: ${{ needs.determine-runner-integration.outputs.runner }}
+    runs-on: ${{ fromJSON(needs.determine-runner-integration.outputs.runner-json) }}
     strategy:
       matrix:
         go: ["1.24"]
@@ -51,9 +65,25 @@ jobs:
       run:
         working-directory: ./pre-processor/app
 
-    # No real database - using mocks only for fast CI
-
     steps:
+    - name: Configure logging
+      if: runner.environment == 'self-hosted'
+      run: |
+        # GitHubのログ機能を使って、特定のセクションを非表示に
+        echo "::group::Masking Configuration"
+
+        # ここでマスキング設定（この部分は折りたたまれる）
+        PARTS=($(echo $HOME | tr '/' ' '))
+        for part in "${PARTS[@]}"; do
+          [ ! -z "$part" ] && echo "::add-mask::$part"
+        done
+
+        echo "::endgroup::"
+
+        # 以降のコマンドでデバッグ出力を抑制
+        echo "::debug::Masking completed"
+      working-directory: .  # デフォルトの working-directory を上書き
+
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -72,6 +102,9 @@ jobs:
         key: ${{ runner.os }}-go-${{ hashFiles('pre-processor/app/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
+      env:
+        # キャッシュの詳細ログを抑制
+        ACTIONS_STEP_DEBUG: false
 
     - name: Install development tools
       run: |
@@ -116,6 +149,7 @@ jobs:
         file: ./pre-processor/app/coverage.out
         flags: pre-processor
         name: pre-processor-coverage
+        verbose: false  # 詳細ログを無効化
 
     - name: Build application
       run: make build
@@ -126,9 +160,6 @@ jobs:
         name: pre-processor-binary
         path: pre-processor/app/bin/pre-processor
         retention-days: 7
-
-  # Integration tests removed from CI - run locally with real DB
-  # CI focuses on unit tests with mocks for speed and reliability
 
   security-audit:
     name: Security Audit
@@ -152,7 +183,6 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: 1.24
-
         cache-dependency-path: pre-processor/app/go.sum
 
     - name: Download dependencies
