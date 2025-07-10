@@ -8,6 +8,7 @@ on:
     branches: [ main, master ]
     paths:
       - 'alt-backend/**'
+  workflow_dispatch:
 
 # 同一ブランチ/PR の古い実行をキャンセル
 concurrency:
@@ -33,6 +34,9 @@ jobs:
           fallback-runner: "ubuntu-latest"
           min-available-runners: 1
           github-token: ${{ secrets.RUNNER_TOKEN }}
+      - name: Debug output
+        run: |
+          echo "Selected runner: ${{ steps.set-runner.outputs.runner }}"
   test:
     needs: determine-runner-integration
     runs-on: ${{ needs.determine-runner-integration.outputs.runner }}
