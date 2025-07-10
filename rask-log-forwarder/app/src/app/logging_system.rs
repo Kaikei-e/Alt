@@ -177,18 +177,30 @@ pub fn setup_logging_safe(config_level: ConfigLogLevel) -> Result<(), Initializa
         })();
 
         if result.is_ok() {
-            *INIT_SUCCESS.lock().unwrap() = true;
+            if let Ok(mut success) = INIT_SUCCESS.lock() {
+                *success = true;
+            }
         }
     });
 
     // Return the initialization result
-    if *INIT_SUCCESS.lock().unwrap() {
-        Ok(())
-    } else {
-        Err(InitializationError::LoggingInitFailed {
-            details: "Logging system initialization failed".to_string(),
-            source: Box::new(std::io::Error::other("Logging initialization error")),
-        })
+    match INIT_SUCCESS.lock() {
+        Ok(success) => {
+            if *success {
+                Ok(())
+            } else {
+                Err(InitializationError::LoggingInitFailed {
+                    details: "Logging system initialization failed".to_string(),
+                    source: Box::new(std::io::Error::other("Logging initialization error")),
+                })
+            }
+        }
+        Err(_) => {
+            Err(InitializationError::LoggingInitFailed {
+                details: "Mutex poisoned during initialization check".to_string(),
+                source: Box::new(std::io::Error::other("Mutex poisoning error")),
+            })
+        }
     }
 }
 
