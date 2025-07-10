@@ -32,45 +32,94 @@ jobs:
           done
           echo "::endgroup::"
 
+      - name: Clean workspace
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Rustキャッシュディレクトリの権限を修正
+          sudo chown -R $(whoami):staff ~/.cargo || true
+          sudo chown -R $(whoami):staff ~/Library/Caches/cargo-target || true
+          # ワークスペースをクリーン
+          rm -rf ${{ github.workspace }}/target || true
+
       - uses: actions/checkout@v4
 
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          profile: minimal
+      - name: Install Rust toolchain
+        run: |
+          # 公式のRustupを使用（actions-rs は非推奨）
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=${{ inputs.toolchain }}
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          source "$HOME/.cargo/env"
+          rustup default ${{ inputs.toolchain }}
+          rustup component add clippy
 
-      - uses: swatinem/rust-cache@v2
+      - name: Rust version info
+        run: |
+          rustc --version
+          cargo --version
+          cargo clippy --version
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v3
         with:
-          workspaces: |
-            ${{ inputs.working-directory }}
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ inputs.working-directory }}/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles(format('{0}/Cargo.lock', inputs.working-directory)) }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles(format('{0}/Cargo.lock', inputs.working-directory)) }}-
+            ${{ runner.os }}-cargo-
         env:
           ACTIONS_STEP_DEBUG: false
+        continue-on-error: true
 
       - name: Build (release)
         working-directory: ${{ inputs.working-directory }}
-        run: cargo build --release
+        run: |
+          cargo build --release --verbose
+        env:
+          RUST_BACKTRACE: 1
 
       - name: Run clippy
         working-directory: ${{ inputs.working-directory }}
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: |
+          cargo clippy --all-targets --all-features -- -D warnings
+        continue-on-error: false
 
       - name: Run unit tests
         working-directory: ${{ inputs.working-directory }}
-        run: cargo test --all --verbose
+        run: |
+          cargo test --all --verbose -- --nocapture
+        env:
+          RUST_BACKTRACE: full
 
       - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
+        if: inputs.upload-coverage
+        run: |
+          # tarpaulinのインストール（キャッシュ済みかチェック）
+          if ! command -v cargo-tarpaulin &> /dev/null; then
+            cargo install cargo-tarpaulin
+          fi
 
       - name: Generate coverage report
+        if: inputs.upload-coverage
         working-directory: ${{ inputs.working-directory }}
-        run: cargo tarpaulin --out Xml
+        run: |
+          cargo tarpaulin --out Xml --verbose
+        continue-on-error: true  # カバレッジが失敗してもビルドは成功とする
 
       - name: Upload coverage to Codecov
-        if: inputs.upload-coverage
+        if: inputs.upload-coverage && success()
         uses: codecov/codecov-action@v3
         with:
           file: ${{ inputs.working-directory }}/tarpaulin-report.xml
           flags: ${{ inputs.coverage-flags }}
           name: ${{ inputs.coverage-flags }}-coverage
           verbose: false
+
+      - name: Post-job cleanup
+        if: always() && runner.environment == 'self-hosted'
+        run: |
+          # ビルドキャッシュのクリーンアップ（サイズ削減）
+          cargo clean || true
