@@ -61,7 +61,7 @@ jobs:
           echo "GOCACHE=$GOCACHE" >> $GITHUB_ENV
           echo "GOMODCACHE=$GOMODCACHE" >> $GITHUB_ENV
 
-          # 権限を修正
+          # 権限を修正（書き込み可能に）
           chmod -R 755 "$GOCACHE" "$GOMODCACHE" || true
 
       - uses: actions/checkout@v4
@@ -106,8 +106,12 @@ jobs:
       - name: Download dependencies
         working-directory: ${{ inputs.working-directory }}
         run: |
+          # 権限を確保しながらダウンロード
           go mod download
           go mod verify
+
+          # ダウンロード後に権限を修正
+          chmod -R u+w "${{ runner.temp }}/go-mod" || true
 
       - name: Verify go.mod is tidy
         working-directory: ${{ inputs.working-directory }}
@@ -176,11 +180,31 @@ jobs:
 
       - name: Cleanup
         if: always()
+        continue-on-error: true  # エラーでも続行
         run: |
-          # 一時ファイルをクリーンアップ
-          rm -rf "${{ runner.temp }}/go-cache" || true
-          rm -rf "${{ runner.temp }}/go-mod" || true
-          rm -rf "${{ runner.temp }}/go-tools" || true
+          echo "Cleaning up temporary files..."
+
+          # Goのクリーンコマンドを使用（より安全）
+          go clean -cache || true
+          go clean -modcache || true
+
+          # 権限を修正してから削除を試みる
+          if [ -d "${{ runner.temp }}/go-mod" ]; then
+            chmod -R u+w "${{ runner.temp }}/go-mod" 2>/dev/null || true
+            rm -rf "${{ runner.temp }}/go-mod" || echo "Failed to remove go-mod"
+          fi
+
+          if [ -d "${{ runner.temp }}/go-cache" ]; then
+            chmod -R u+w "${{ runner.temp }}/go-cache" 2>/dev/null || true
+            rm -rf "${{ runner.temp }}/go-cache" || echo "Failed to remove go-cache"
+          fi
+
+          if [ -d "${{ runner.temp }}/go-tools" ]; then
+            chmod -R u+w "${{ runner.temp }}/go-tools" 2>/dev/null || true
+            rm -rf "${{ runner.temp }}/go-tools" || echo "Failed to remove go-tools"
+          fi
+
+          echo "Cleanup completed (with possible errors ignored)"
 
   security-audit:
     name: Security Audit
