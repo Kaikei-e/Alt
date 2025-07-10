@@ -82,6 +82,7 @@ func isCSRFProtectedEndpoint(method, path string) bool {
 	exemptEndpoints := []string{
 		"/v1/health",
 		"/v1/csrf-token",
+		"/security/csp-report",
 	}
 
 	for _, exempt := range exemptEndpoints {

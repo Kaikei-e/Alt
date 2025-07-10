@@ -104,6 +104,15 @@ func TestCSRFMiddleware(t *testing.T) {
 				// No mock setup needed for health check
 			},
 		},
+		{
+			name:           "CSP report endpoint should be exempt from CSRF protection",
+			method:         "POST",
+			path:           "/security/csp-report",
+			expectedStatus: http.StatusOK,
+			setupMock: func(m *MockCSRFTokenUsecase) {
+				// No mock setup needed for CSP report endpoint
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -298,6 +307,12 @@ func TestIsCSRFProtectedEndpoint(t *testing.T) {
 			name:   "GET /v1/csrf-token should not be protected",
 			method: "GET",
 			path:   "/v1/csrf-token",
+			want:   false,
+		},
+		{
+			name:   "POST /security/csp-report should not be protected",
+			method: "POST",
+			path:   "/security/csp-report",
 			want:   false,
 		},
 	}
