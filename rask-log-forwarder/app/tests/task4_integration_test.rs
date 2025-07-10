@@ -52,7 +52,7 @@ fn test_task4_memory_safe_initialization() {
             println!("✓ Logging already initialized (expected in test environment)");
         }
         Err(e) => {
-            panic!("Unexpected initialization error: {:?}", e);
+            panic!("Unexpected initialization error: {e:?}");
         }
     }
 }
