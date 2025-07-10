@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   test:
-    uses: ./.github/workflows/reusable-go-test.yaml
+    uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: 'search-indexer/app'
       go-version: '1.24'
