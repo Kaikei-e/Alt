@@ -36,7 +36,7 @@ jobs:
           github-token: ${{ secrets.RUNNER_TOKEN }}
   test:
     needs: determine-runner-integration
-    runs-on: ${{ needs.determine-runner-integration.outputs.runner }}
+    runs-on: ${{ fromJSON(needs.determine-runner-integration.outputs.runner) }}
     defaults:
       run:
         working-directory: rask-log-forwarder/app
