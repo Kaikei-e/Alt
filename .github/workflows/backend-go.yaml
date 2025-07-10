@@ -46,6 +46,7 @@ jobs:
             # ubuntu-latestの場合は文字列として出力
             echo 'runner-json="ubuntu-latest"' >> $GITHUB_OUTPUT
           fi
+
   test:
     needs: determine-runner-integration
     runs-on: ${{ fromJSON(needs.determine-runner-integration.outputs.runner-json) }}
@@ -53,56 +54,59 @@ jobs:
       matrix:
         go: ["1.24"]
     steps:
-    - name: Setup security measures
+    - name: Mask sensitive paths
+      if: runner.environment == 'self-hosted'
       run: |
-        # パスマスキング
+        # パスマスキング - より包括的に
         echo "::add-mask::$HOME"
         echo "::add-mask::$USER"
-        echo "::add-mask::/Users/"
-
-        # 一時的な作業ディレクトリを作成
-        export WORK_DIR="/tmp/gh-runner-${{ github.run_id }}"
-        mkdir -p "$WORK_DIR"
-        echo "WORK_DIR=$WORK_DIR" >> $GITHUB_ENV
+        echo "::add-mask::$(whoami)"
+        echo "::add-mask::actions-runner"
+        echo "::add-mask::${{ runner.workspace }}"
 
     - uses: actions/checkout@v4
-      with:
-        path: ${{ env.WORK_DIR }}/repo
 
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.24
-        cache-dependency-path: ${{ env.WORK_DIR }}/repo/alt-backend/app/go.sum
+        go-version: ${{ matrix.go }}
+        cache-dependency-path: alt-backend/app/go.sum
 
     - name: Cache Go modules
       uses: actions/cache@v3
       with:
         path: |
-          ${{ env.WORK_DIR }}/repo/go/pkg/mod
-          ${{ env.WORK_DIR }}/repo/.cache/go-build
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: ${{ runner.os }}-go-${{ hashFiles('alt-backend/app/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
+      env:
+        # キャッシュの詳細ログを抑制
+        ACTIONS_STEP_DEBUG: false
+
     - name: Install dependencies
-      run: |
-        cd alt-backend/app
-        go mod tidy
+      working-directory: alt-backend/app
+      run: go mod tidy
+
     - name: Run go vet
-      run: |
-        cd alt-backend/app
-        go vet ./...
+      working-directory: alt-backend/app
+      run: go vet ./...
+
     - name: Run tests with coverage
-      run: |
-        cd alt-backend/app
-        go test -coverprofile=coverage.out ./...
+      working-directory: alt-backend/app
+      run: go test -coverprofile=coverage.out ./...
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
         file: ./alt-backend/app/coverage.out
         flags: alt-backend
         name: alt-backend-coverage
+        verbose: false  # 詳細ログを無効化
+
     - name: Upload test results
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: go-test-results
