@@ -14,3 +14,4 @@ rask-log-aggregator/logs/*
 __pycache__
 .vscode/settings.json
 .idea/
+error.json
