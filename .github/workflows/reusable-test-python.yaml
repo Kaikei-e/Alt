@@ -48,19 +48,19 @@ jobs:
 
           # 依存関係のインストール（出力を最小限に）
           echo "Installing dependencies..."
-          python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet psycopg2-binary pytest pytest-cov
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet psycopg2-binary pytest pytest-cov
 
           if [ -f "requirements.txt" ]; then
-              python -m pip install --quiet -r requirements.txt
+              python3 -m pip install --quiet -r requirements.txt
           elif [ -f "pyproject.toml" ]; then
-              python -m pip install --quiet -e .
+              python3 -m pip install --quiet -e .
           fi
 
           # テスト実行
           echo "Running tests..."
           mkdir -p tests
-          python -m pytest test_unit.py -v --junit-xml=tests/results.xml 2>&1 | \
+          python3 -m pytest test_unit.py -v --junit-xml=tests/results.xml 2>&1 | \
             grep -v "/Users/" | grep -v "/opt/homebrew" || true
 
           # 結果確認（パスを表示しない）
