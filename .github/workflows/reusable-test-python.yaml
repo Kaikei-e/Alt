@@ -1,4 +1,8 @@
 name: Reusable Python Test Workflow
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
 on:
   workflow_call:
     inputs:
