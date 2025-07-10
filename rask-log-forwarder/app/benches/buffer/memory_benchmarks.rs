@@ -46,7 +46,7 @@ fn bench_memory_efficiency(c: &mut Criterion) {
                         let fill_count = (capacity as f64 * fill_ratio) as usize;
 
                         // Fill to target ratio
-                        let (sender, _receiver) = buffer.split();
+                        let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
                         let rt = tokio::runtime::Runtime::new()
                             .expect("Failed to create Tokio runtime for benchmark");
                         for i in 0..fill_count {
@@ -104,7 +104,7 @@ fn bench_memory_growth_pattern(c: &mut Criterion) {
                 let batch_size = 10000;
 
                 // Add batch
-                let (sender, _receiver) = buffer.split();
+                let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
                 for i in 0..batch_size {
                     let log_entry = create_test_enriched_log(batch * batch_size + i);
                     rt.block_on(sender.send(log_entry))
@@ -158,7 +158,7 @@ fn bench_memory_overhead(c: &mut Criterion) {
 
             // Add single item
             let log_entry = create_test_enriched_log(0);
-            let (sender, _receiver) = buffer.split();
+            let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
             rt.block_on(sender.send(log_entry))
                 .expect("Failed to send log entry in benchmark");
 
@@ -198,7 +198,7 @@ fn bench_memory_fragmentation(c: &mut Criterion) {
             // Pattern: fill, empty, fill again to test fragmentation
             for cycle in 0..5 {
                 // Fill buffer
-                let (sender, _receiver) = buffer.split();
+                let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
                 for i in 0..25000 {
                     let log_entry = create_test_enriched_log(cycle * 25000 + i);
                     rt.block_on(sender.send(log_entry))
@@ -239,7 +239,7 @@ fn bench_memory_target_validation(c: &mut Criterion) {
                 .expect("Failed to create LogBuffer for benchmark");
 
             // Fill to capacity
-            let (sender, _receiver) = buffer.split();
+            let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
             for i in 0..1_000_000 {
                 let log_entry = create_test_enriched_log(i);
                 rt.block_on(sender.send(log_entry))

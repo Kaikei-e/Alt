@@ -59,6 +59,10 @@ impl StaticRegexSet {
         self.patterns.len()
     }
     
+    pub fn is_empty(&self) -> bool {
+        self.patterns.is_empty()
+    }
+    
     pub fn pattern_names(&self) -> Vec<&'static str> {
         self.patterns.iter().map(|(_, name)| *name).collect()
     }
@@ -129,7 +133,7 @@ impl SimplePatternParser {
                         
                         // Try to find status and size after the quote
                         let after_quote = &line[quote_start + 1 + quote_end + 1..];
-                        let status_size_parts: Vec<&str> = after_quote.trim().split_whitespace().collect();
+                        let status_size_parts: Vec<&str> = after_quote.split_whitespace().collect();
                         
                         if status_size_parts.len() >= 2 {
                             let status = status_size_parts[0].parse().unwrap_or(0);

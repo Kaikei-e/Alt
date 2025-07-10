@@ -1,7 +1,6 @@
 use super::{
     docker::{DockerJsonParser, ParseError},
     generated::{VALIDATED_PATTERNS, pattern_index},
-    regex_patterns::SimplePatternParser,
     schema::NginxLogEntry,
     services::{
         GoStructuredParser, LogLevel, NginxParser, ParsedLogEntry, PostgresParser, ServiceParser,
@@ -17,50 +16,6 @@ const MAX_LOG_LINE_SIZE: usize = 10 * 1024 * 1024; // 10MB per log line
 const MAX_LOG_LINES_PER_BATCH: usize = 100_000; // Maximum lines per batch
 const MAX_FIELD_SIZE: usize = 64 * 1024; // 64KB per field
 
-// Memory-safe timestamp parsing with fallback support
-fn parse_docker_timestamp(log_line: &str) -> Result<Option<String>, ParseError> {
-    // Try with the docker native timestamp pattern first
-    match VALIDATED_PATTERNS.get(pattern_index::DOCKER_NATIVE_TIMESTAMP) {
-        Ok(regex) => {
-            if let Some(captures) = regex.captures(log_line) {
-                if let Some(timestamp) = captures.get(0) {
-                    return Ok(Some(timestamp.as_str().trim().to_string()));
-                }
-            }
-        }
-        Err(regex_error) => {
-            tracing::warn!("Primary timestamp pattern failed: {}, trying fallback", regex_error);
-        }
-    }
-    
-    // Fallback to simple timestamp pattern
-    match VALIDATED_PATTERNS.get(pattern_index::ISO_TIMESTAMP_FALLBACK) {
-        Ok(regex) => {
-            if let Some(captures) = regex.captures(log_line) {
-                if let Some(timestamp) = captures.get(0) {
-                    return Ok(Some(timestamp.as_str().to_string()));
-                }
-            }
-        }
-        Err(regex_error) => {
-            tracing::warn!("Fallback timestamp pattern failed: {}, using simple parser", regex_error);
-            
-            // Use simple pattern parser as last resort
-            let simple_parser = SimplePatternParser::new();
-            if let Ok(_) = simple_parser.parse_timestamp(log_line) {
-                // Extract timestamp from the beginning of the line using string operations
-                if log_line.len() >= 19 {
-                    let potential_timestamp = &log_line[..19];
-                    if potential_timestamp.chars().nth(4) == Some('-') {
-                        return Ok(Some(potential_timestamp.to_string()));
-                    }
-                }
-            }
-        }
-    }
-    
-    Ok(None)
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnrichedLogEntry {
@@ -166,7 +121,6 @@ pub struct UniversalParser {
     nginx_parser: NginxParser,
     go_parser: GoStructuredParser,
     postgres_parser: PostgresParser,
-    fallback_parser: SimplePatternParser,
 }
 
 impl Default for UniversalParser {
@@ -182,7 +136,6 @@ impl UniversalParser {
             nginx_parser: NginxParser::new(),
             go_parser: GoStructuredParser::new(),
             postgres_parser: PostgresParser::new(),
-            fallback_parser: SimplePatternParser::new(),
         }
     }
 

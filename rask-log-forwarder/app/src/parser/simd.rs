@@ -2,62 +2,13 @@ use super::{
     schema::{LogEntry, NginxLogEntry, ParseError},
     generated::{VALIDATED_PATTERNS, pattern_index},
     regex_patterns::SimplePatternParser,
+    zero_alloc_parser::ImprovedNginxParser,
 };
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use simd_json::prelude::{ValueAsObject, ValueAsScalar};
 use simd_json::{OwnedValue, from_slice};
 
-// Memory-safe nginx pattern parsing for SIMD parser
-fn parse_nginx_access_simd(log_line: &str) -> Result<Option<(String, String, String, u16, u64)>, ParseError> {
-    // Try with the SIMD nginx access pattern first
-    match VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS) {
-        Ok(regex) => {
-            if let Some(captures) = regex.captures(log_line) {
-                let ip = captures.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-                let method = captures.get(3).map(|m| m.as_str()).unwrap_or("").to_string();
-                let path = captures.get(4).map(|m| m.as_str()).unwrap_or("").to_string();
-                let status = captures.get(5).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-                let size = captures.get(6).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-                return Ok(Some((ip, method, path, status, size)));
-            }
-        }
-        Err(regex_error) => {
-            tracing::debug!("SIMD nginx access pattern failed: {}, trying fallback", regex_error);
-        }
-    }
-    
-    // Try fallback pattern
-    match VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS_FALLBACK) {
-        Ok(regex) => {
-            if let Some(captures) = regex.captures(log_line) {
-                let ip = captures.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-                let method = captures.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
-                let path = captures.get(3).map(|m| m.as_str()).unwrap_or("").to_string();
-                let status = captures.get(4).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-                let size = captures.get(5).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-                return Ok(Some((ip, method, path, status, size)));
-            }
-        }
-        Err(regex_error) => {
-            tracing::debug!("SIMD nginx access fallback pattern failed: {}, using simple parser", regex_error);
-            
-            // Use simple pattern parser as last resort
-            let simple_parser = SimplePatternParser::new();
-            if let Ok(access_match) = simple_parser.parse_nginx_access(log_line) {
-                return Ok(Some((
-                    access_match.ip.to_string(),
-                    access_match.method.to_string(), 
-                    access_match.path.to_string(),
-                    access_match.status,
-                    access_match.size
-                )));
-            }
-        }
-    }
-    
-    Ok(None)
-}
 
 pub struct SimdParser {
     #[allow(dead_code)]
@@ -188,8 +139,20 @@ impl SimdParser {
                     ip_address: captures.get(1).map(|m| m.as_str().to_string()),
                     method: captures.get(3).map(|m| m.as_str().to_string()),
                     path: captures.get(4).map(|m| m.as_str().to_string()),
-                    status_code: captures.get(5).and_then(|m| m.as_str().parse().ok()),
-                    response_size: captures.get(6).and_then(|m| m.as_str().parse().ok()),
+                    status_code: {
+                        let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
+                            captures.get(5).map(|m| m.as_str()),
+                            None
+                        );
+                        status
+                    },
+                    response_size: {
+                        let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
+                            None,
+                            captures.get(6).map(|m| m.as_str())
+                        );
+                        size
+                    },
                     user_agent: captures.get(8).map(|m| m.as_str().to_string()),
                     level: None,
                 });
@@ -209,8 +172,20 @@ impl SimdParser {
                     ip_address: captures.get(1).map(|m| m.as_str().to_string()),
                     method: captures.get(3).map(|m| m.as_str().to_string()),
                     path: captures.get(4).map(|m| m.as_str().to_string()),
-                    status_code: captures.get(5).and_then(|m| m.as_str().parse().ok()),
-                    response_size: captures.get(6).and_then(|m| m.as_str().parse().ok()),
+                    status_code: {
+                        let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
+                            captures.get(5).map(|m| m.as_str()),
+                            None
+                        );
+                        status
+                    },
+                    response_size: {
+                        let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
+                            None,
+                            captures.get(6).map(|m| m.as_str())
+                        );
+                        size
+                    },
                     user_agent: None,
                     level: None,
                 });
@@ -230,8 +205,20 @@ impl SimdParser {
                     ip_address: captures.get(1).map(|m| m.as_str().to_string()),
                     method: captures.get(2).map(|m| m.as_str().to_string()),
                     path: captures.get(3).map(|m| m.as_str().to_string()),
-                    status_code: captures.get(4).and_then(|m| m.as_str().parse().ok()),
-                    response_size: captures.get(5).and_then(|m| m.as_str().parse().ok()),
+                    status_code: {
+                        let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
+                            captures.get(4).map(|m| m.as_str()),
+                            None
+                        );
+                        status
+                    },
+                    response_size: {
+                        let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
+                            None,
+                            captures.get(5).map(|m| m.as_str())
+                        );
+                        size
+                    },
                     user_agent: captures.get(7).map(|m| m.as_str().to_string()),
                     level: None,
                 });
@@ -250,8 +237,20 @@ impl SimdParser {
                     ip_address: captures.get(1).map(|m| m.as_str().to_string()),
                     method: captures.get(2).map(|m| m.as_str().to_string()),
                     path: captures.get(3).map(|m| m.as_str().to_string()),
-                    status_code: captures.get(4).and_then(|m| m.as_str().parse().ok()),
-                    response_size: captures.get(5).and_then(|m| m.as_str().parse().ok()),
+                    status_code: {
+                        let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
+                            captures.get(4).map(|m| m.as_str()),
+                            None
+                        );
+                        status
+                    },
+                    response_size: {
+                        let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
+                            None,
+                            captures.get(5).map(|m| m.as_str())
+                        );
+                        size
+                    },
                     user_agent: None,
                     level: None,
                 });

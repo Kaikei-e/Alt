@@ -70,7 +70,7 @@ fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn s
     
     writeln!(file, "// Auto-generated regex patterns (validated by build.rs)")?;
     writeln!(file, "use crate::parser::regex_patterns::StaticRegexSet;")?;
-    writeln!(file, "")?;
+    writeln!(file)?;
     writeln!(file, "/// All validated regex patterns used in the codebase")?;
     writeln!(file, "pub static VALIDATED_PATTERNS: StaticRegexSet = StaticRegexSet::new(&[")?;
     
@@ -79,7 +79,7 @@ fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn s
     }
     
     writeln!(file, "]);")?;
-    writeln!(file, "")?;
+    writeln!(file)?;
     
     // Generate pattern index constants
     writeln!(file, "/// Pattern indices for type-safe access")?;
@@ -90,7 +90,7 @@ fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn s
     }
     writeln!(file, "}}")?;
     
-    writeln!(file, "")?;
+    writeln!(file)?;
     writeln!(file, "/// Pattern name lookup")?;
     writeln!(file, "pub fn get_pattern_name(index: usize) -> Option<&'static str> {{")?;
     writeln!(file, "    match index {{")?;

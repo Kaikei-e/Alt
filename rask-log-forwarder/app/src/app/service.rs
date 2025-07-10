@@ -593,9 +593,10 @@ mod tests {
     use crate::app::Config;
 
     fn create_test_config() -> Config {
-        let mut config = Config::default();
-        config.target_service = Some("test-service".to_string());
-        config
+        Config {
+            target_service: Some("test-service".to_string()),
+            ..Default::default()
+        }
     }
 
     #[tokio::test]

@@ -15,7 +15,7 @@ async fn test_memory_leak_prevention_with_repeated_parsing() {
     container_info.labels.insert("rask.group".to_string(), "test-group".to_string());
 
     // Sample logs that will trigger different regex patterns
-    let test_logs = vec![
+    let test_logs = [
         r#"{"log":"192.168.1.1 - - [01/Jan/2024:12:00:00 +0000] \"GET /api/health HTTP/1.1\" 200 1024 \"-\" \"curl/7.68.0\"\n","stream":"stdout","time":"2024-01-01T12:00:00Z"}"#,
         r#"{"log":"2024/01/01 12:00:00 [error] 123#0: *456 connect() failed while connecting to upstream\n","stream":"stderr","time":"2024-01-01T12:00:00Z"}"#,
         r#"{"log":"2025-07-03T18:53:46.741706684Z {\"level\":\"info\",\"msg\":\"processing request\",\"service\":\"alt-backend\"}\n","stream":"stdout","time":"2025-07-03T18:53:46.741Z"}"#,
@@ -68,7 +68,7 @@ async fn test_memory_safety_with_malformed_regex_fallback() {
     };
 
     // Malformed logs that should trigger fallback patterns
-    let malformed_logs = vec![
+    let malformed_logs = [
         r#"{"log":"malformed nginx log without proper format\n","stream":"stdout","time":"2024-01-01T12:00:00Z"}"#,
         r#"{"log":"partially valid 192.168.1.1 log but missing HTTP\n","stream":"stdout","time":"2024-01-01T12:00:00Z"}"#,
         r#"{"log":"2024/01/01 [error] without proper nginx format\n","stream":"stderr","time":"2024-01-01T12:00:00Z"}"#,

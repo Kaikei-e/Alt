@@ -10,7 +10,7 @@ async fn test_metrics_collection() {
         collection_interval: Duration::from_secs(10),
     };
 
-    let mut collector = MetricsCollector::new(config);
+    let mut collector = MetricsCollector::new(config).expect("Failed to create metrics collector");
 
     // Record some metrics
     collector
@@ -42,7 +42,7 @@ async fn test_prometheus_exposition() {
         collection_interval: Duration::from_secs(1),
     };
 
-    let mut collector = MetricsCollector::new(config.clone());
+    let mut collector = MetricsCollector::new(config.clone()).expect("Failed to create metrics collector");
     let exporter = PrometheusExporter::new(config, collector.clone())
         .await
         .unwrap();
@@ -64,7 +64,7 @@ async fn test_prometheus_exposition() {
 #[test]
 fn test_metrics_labels() {
     let config = MetricsConfig::default();
-    let collector = MetricsCollector::new(config);
+    let collector = MetricsCollector::new(config).expect("Failed to create metrics collector");
 
     // Test metric name generation
     assert_eq!(
@@ -77,7 +77,7 @@ fn test_metrics_labels() {
 #[tokio::test]
 async fn test_health_check_metrics() {
     let config = MetricsConfig::default();
-    let collector = MetricsCollector::new(config);
+    let collector = MetricsCollector::new(config).expect("Failed to create metrics collector");
 
     // Record health check results using async version for tests
     collector.record_health_check_async(true).await;
@@ -93,7 +93,7 @@ async fn test_health_check_metrics() {
 #[tokio::test]
 async fn test_metrics_reset() {
     let config = MetricsConfig::default();
-    let mut collector = MetricsCollector::new(config);
+    let mut collector = MetricsCollector::new(config).expect("Failed to create metrics collector");
 
     // Record some metrics
     collector

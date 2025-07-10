@@ -84,7 +84,6 @@ async fn test_concurrent_parsing_thread_safety() {
 #[tokio::test]
 async fn test_concurrent_regex_pattern_access() {
     use rask_log_forwarder::parser::generated::{VALIDATED_PATTERNS, pattern_index};
-    use std::sync::Arc;
     
     let mut join_set = JoinSet::new();
     let num_threads = 20;

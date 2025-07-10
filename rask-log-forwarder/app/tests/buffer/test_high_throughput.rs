@@ -14,7 +14,7 @@ async fn test_high_throughput_single_producer() {
         backpressure_delay: Duration::from_micros(100),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send 1000 log entries
     for i in 0..1000 {
@@ -45,7 +45,7 @@ async fn test_high_throughput_multiple_producers() {
         backpressure_delay: Duration::from_micros(100),
     };
     let buffer = Arc::new(LogBuffer::new_with_config(config).await.unwrap());
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
     let sender = Arc::new(sender);
 
     let mut handles = vec![];
@@ -92,7 +92,7 @@ async fn test_throughput_with_backpressure() {
         backpressure_delay: Duration::from_millis(1),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send many entries quickly
     for i in 0..1000 {
@@ -117,7 +117,7 @@ async fn test_memory_usage_under_load() {
         backpressure_delay: Duration::from_micros(10),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send large log entries
     for i in 0..100 {
@@ -149,7 +149,7 @@ async fn test_burst_handling() {
         backpressure_delay: Duration::from_micros(0),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap(); // Small buffer
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send a burst of entries
     for i in 0..20 {

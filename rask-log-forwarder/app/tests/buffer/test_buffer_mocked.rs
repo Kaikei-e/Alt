@@ -157,7 +157,7 @@ async fn test_buffer_with_mock_memory_pressure() {
     };
 
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Simulate sending logs under various memory pressures
     for i in 0..10 {

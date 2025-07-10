@@ -375,9 +375,7 @@ impl ServiceParser for GoStructuredParser {
 }
 
 // PostgreSQL Log Parser - Now uses memory-safe patterns
-pub struct PostgresParser {
-    fallback_parser: SimplePatternParser,
-}
+pub struct PostgresParser;
 
 impl Default for PostgresParser {
     fn default() -> Self {
@@ -387,9 +385,7 @@ impl Default for PostgresParser {
 
 impl PostgresParser {
     pub fn new() -> Self {
-        Self {
-            fallback_parser: SimplePatternParser::new(),
-        }
+        Self
     }
     
     /// Parse postgres log with memory-safe patterns

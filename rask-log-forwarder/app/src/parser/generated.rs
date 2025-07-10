@@ -8,7 +8,7 @@ mod tests {
     #[test]
     fn test_generated_patterns_exist() {
         // Verify that patterns were generated
-        assert!(VALIDATED_PATTERNS.len() > 0);
+        assert!(!VALIDATED_PATTERNS.is_empty());
         
         // Test that we can access patterns
         let pattern_names = VALIDATED_PATTERNS.pattern_names();

@@ -6,6 +6,7 @@ pub mod schema;
 pub mod services;
 pub mod simd;
 pub mod universal;
+pub mod zero_alloc_parser;
 
 // Legacy exports (keep for compatibility)
 pub use schema::{LogEntry, NginxLogEntry};
@@ -21,6 +22,9 @@ pub use universal::{EnrichedLogEntry, UniversalParser};
 // TASK3 exports - Memory-safe regex patterns
 pub use regex_error::{RegexError, FallbackStrategy};
 pub use regex_patterns::{StaticRegexSet, SimplePatternParser, NginxAccessMatch};
+
+// TASK5 exports - Zero-allocation parsing
+pub use zero_alloc_parser::{ZeroAllocParser, ImprovedNginxParser};
 
 #[cfg(test)]
 mod tests {

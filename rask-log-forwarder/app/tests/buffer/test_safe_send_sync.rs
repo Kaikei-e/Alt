@@ -8,7 +8,7 @@ use tokio::task::JoinHandle;
 async fn test_log_buffer_sender_is_send_and_sync() {
     // This test verifies that LogBufferSender can be safely used across threads
     let buffer = LogBuffer::new(1000).unwrap();
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
     
     // Test Send trait by moving sender to different thread
     let handle: JoinHandle<()> = tokio::spawn(async move {
@@ -23,7 +23,7 @@ async fn test_log_buffer_sender_is_send_and_sync() {
 async fn test_log_buffer_receiver_is_send_and_sync() {
     // This test verifies that LogBufferReceiver can be safely used across threads
     let buffer = LogBuffer::new(1000).unwrap();
-    let (_sender, mut receiver) = buffer.split();
+    let (_sender, mut receiver) = buffer.split().expect("Failed to split buffer");
     
     // Test Send trait by moving receiver to different thread
     let handle: JoinHandle<()> = tokio::spawn(async move {

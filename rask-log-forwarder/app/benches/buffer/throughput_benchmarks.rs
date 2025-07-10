@@ -37,7 +37,7 @@ fn bench_single_threaded_push(c: &mut Criterion) {
                         ..Default::default()
                     }))
                     .expect("Failed to create LogBuffer for benchmark");
-                let (sender, _receiver) = buffer.split();
+                let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
                 for i in 0..size {
                     let log_entry = create_test_enriched_log(i);
                     rt.block_on(sender.send(std::hint::black_box(log_entry)))
@@ -66,7 +66,7 @@ fn bench_single_threaded_push_pop(c: &mut Criterion) {
                     .expect("Failed to create LogBuffer for benchmark");
 
                 // Push phase
-                let (sender, _receiver) = buffer.split();
+                let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
                 for i in 0..size {
                     let log_entry = create_test_enriched_log(i);
                     rt.block_on(sender.send(std::hint::black_box(log_entry)))
@@ -74,7 +74,7 @@ fn bench_single_threaded_push_pop(c: &mut Criterion) {
                 }
 
                 // Receive phase
-                let (_sender2, mut receiver) = buffer.split();
+                let (_sender2, mut receiver) = buffer.split().expect("Failed to split buffer");
                 for _ in 0..size {
                     std::hint::black_box(
                         rt.block_on(receiver.recv())
@@ -109,7 +109,7 @@ fn bench_batch_operations(c: &mut Criterion) {
                         .expect("Failed to create LogBuffer for benchmark");
                     let batch: Vec<_> = (0..batch_size).map(create_test_enriched_log).collect();
 
-                    let (sender, _receiver) = buffer.split();
+                    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
                     for log_entry in std::hint::black_box(batch) {
                         rt.block_on(sender.send(log_entry))
                             .expect("Failed to send log entry in benchmark");
@@ -134,7 +134,7 @@ fn bench_batch_operations(c: &mut Criterion) {
                         .expect("Failed to create LogBuffer for benchmark");
 
                     // Fill buffer first
-                    let (sender, mut receiver) = buffer.split();
+                    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
                     for i in 0..batch_size {
                         let log_entry = create_test_enriched_log(i);
                         rt.block_on(sender.send(log_entry))
@@ -169,7 +169,7 @@ fn bench_memory_usage(c: &mut Criterion) {
                     .expect("Failed to create LogBuffer for benchmark");
 
                 // Fill buffer
-                let (sender, _receiver) = buffer.split();
+                let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
                 for i in 0..size {
                     let log_entry = create_test_enriched_log(i);
                     rt.block_on(sender.send(log_entry))
@@ -208,7 +208,7 @@ fn bench_concurrent_access(c: &mut Criterion) {
                 .expect("Failed to create LogBuffer for benchmark");
 
             std::thread::scope(|s| {
-                let (sender, _receiver) = buffer.split();
+                let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
                 let handles: Vec<_> = (0..4)
                     .map(|thread_id| {
                         let sender_clone = sender.clone();
@@ -259,7 +259,7 @@ fn bench_high_throughput_target(c: &mut Criterion) {
                 .expect("Failed to create LogBuffer for benchmark");
             let target_messages = 1_000_000;
 
-            let (sender, _receiver) = buffer.split();
+            let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
             for i in 0..target_messages {
                 let log_entry = create_test_enriched_log(i);
                 rt.block_on(sender.send(std::hint::black_box(log_entry)))

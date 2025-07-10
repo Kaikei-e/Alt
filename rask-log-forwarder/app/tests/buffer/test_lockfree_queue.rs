@@ -13,7 +13,7 @@ async fn test_basic_queue_operations() {
     };
 
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Create test log entry
     let log_entry = create_test_log_entry("test message");
@@ -40,7 +40,7 @@ async fn test_high_throughput_operations() {
     };
 
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     let sender = Arc::new(sender);
 
@@ -84,7 +84,7 @@ async fn test_buffer_capacity_limits() {
     };
 
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     // Fill buffer to capacity
     for i in 0..10 {
@@ -111,7 +111,7 @@ async fn test_buffer_metrics() {
 
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
     let metrics = buffer.metrics();
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send some messages
     for i in 0..5 {

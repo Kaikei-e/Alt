@@ -230,7 +230,7 @@ async fn test_backpressure_triggers_correctly() {
         backpressure_delay: Duration::from_millis(10),
     };
     let buffer = Arc::new(LogBuffer::new_with_config(config).await.unwrap()); // Small buffer
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     let mut success_count = 0;
     let mut backpressure_count = 0;
@@ -278,7 +278,7 @@ async fn test_backpressure_delays_under_load() {
         backpressure_delay: Duration::from_millis(50), // Significant delay
     };
     let buffer = Arc::new(LogBuffer::new_with_config(config).await.unwrap());
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     let start_time = std::time::Instant::now();
 
@@ -309,7 +309,7 @@ async fn test_no_backpressure_when_disabled() {
         backpressure_delay: Duration::from_millis(100),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     let start_time = std::time::Instant::now();
 
@@ -348,7 +348,7 @@ async fn test_backpressure_recovery() {
         backpressure_delay: Duration::from_millis(1),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Fill buffer to trigger backpressure
     for i in 0..80 {

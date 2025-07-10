@@ -1,25 +1,12 @@
-use crate::buffer::DetailedMetrics;
+use crate::buffer::{DetailedMetrics, BufferError, safe_buffer_operation};
 use crate::parser::EnrichedLogEntry;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-use thiserror::Error;
 use tokio::sync::broadcast::{self, Receiver as BroadcastReceiver, Sender as BroadcastSender};
 use tokio::time::{sleep, timeout};
 
-#[derive(Error, Debug)]
-pub enum BufferError {
-    #[error("Buffer is full")]
-    BufferFull,
-    #[error("Buffer is closed")]
-    BufferClosed,
-    #[error("Send timeout")]
-    SendTimeout,
-    #[error("Receive timeout")]
-    ReceiveTimeout,
-    #[error("Concurrency error: {0}")]
-    ConcurrencyError(String),
-}
+// BufferError is now imported from crate::buffer::error
 
 #[derive(Debug, Clone)]
 pub struct BufferConfig {
@@ -246,20 +233,48 @@ impl LogBuffer {
         })
     }
 
-    pub fn split(&self) -> (LogBufferSender, LogBufferReceiver) {
-        // Clone the existing sender/receiver instead of creating new ones
-        let buffer_sender = LogBufferSender {
-            sender: self.sender.as_ref().expect("Buffer closed").clone(),
-            config: self.config.clone(),
-            metrics: self.metrics.clone(),
-        };
+    /// TASK5: Memory-safe buffer split with zero expect() calls
+    pub fn split(&self) -> Result<(LogBufferSender, LogBufferReceiver), BufferError> {
+        safe_buffer_operation(|| {
+            // Safe sender access with explicit error handling
+            let sender = self.sender.as_ref().ok_or(BufferError::BufferClosed)?;
+            
+            let buffer_sender = LogBufferSender {
+                sender: sender.clone(),
+                config: self.config.clone(),
+                metrics: self.metrics.clone(),
+            };
 
-        let buffer_receiver = LogBufferReceiver {
-            receiver: self.sender.as_ref().expect("Buffer closed").subscribe(),
-            metrics: self.metrics.clone(),
-        };
+            let buffer_receiver = LogBufferReceiver {
+                receiver: sender.subscribe(),
+                metrics: self.metrics.clone(),
+            };
 
-        (buffer_sender, buffer_receiver)
+            Ok((buffer_sender, buffer_receiver))
+        })
+    }
+    
+    /// Legacy split method for backward compatibility - logs errors instead of panicking
+    pub fn split_legacy(&self) -> (LogBufferSender, LogBufferReceiver) {
+        match self.split() {
+            Ok((sender, receiver)) => (sender, receiver),
+            Err(e) => {
+                tracing::error!("Buffer split failed: {}, creating empty buffers", e);
+                // Return empty/closed buffers instead of panicking
+                let (empty_sender, empty_receiver) = broadcast::channel(1);
+                (
+                    LogBufferSender {
+                        sender: empty_sender,
+                        config: self.config.clone(),
+                        metrics: self.metrics.clone(),
+                    },
+                    LogBufferReceiver {
+                        receiver: empty_receiver,
+                        metrics: self.metrics.clone(),
+                    },
+                )
+            }
+        }
     }
 
     pub fn push(&self, entry: impl Into<EnrichedLogEntry>) -> Result<(), BufferError> {

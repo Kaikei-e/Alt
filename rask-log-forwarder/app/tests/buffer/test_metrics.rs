@@ -19,7 +19,7 @@ async fn test_buffer_metrics_tracking() {
     .unwrap();
 
     // Fill buffer to capacity
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
     for i in 0..15 {
         let log_entry = create_test_enriched_log(i);
         sender.send(log_entry).await.ok(); // Some will fail due to capacity
@@ -42,7 +42,7 @@ async fn test_memory_usage_calculation() {
     .unwrap();
 
     // Add some entries
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
     for i in 0..100 {
         let log_entry = create_test_enriched_log(i);
         sender.send(log_entry).await.unwrap();
@@ -215,7 +215,7 @@ async fn test_basic_metrics_tracking() {
         backpressure_delay: Duration::from_micros(100),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send some entries
     for i in 0..5 {
@@ -248,7 +248,7 @@ async fn test_dropped_messages_tracking() {
         backpressure_delay: Duration::from_micros(0),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     let mut sent_count = 0;
     let mut dropped_count = 0;
@@ -319,7 +319,7 @@ async fn test_async_throughput_metrics() {
         backpressure_delay: Duration::from_micros(10),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     let start = std::time::Instant::now();
 
@@ -362,14 +362,14 @@ async fn test_concurrent_metrics_accuracy() {
         backpressure_delay: Duration::from_micros(100),
     };
     let buffer = Arc::new(LogBuffer::new_with_config(config).await.unwrap());
-    let (sender, mut receiver) = buffer.split();
+    let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
     let sender = Arc::new(sender);
 
     let mut handles = vec![];
 
     // Spawn multiple senders
     for producer_id in 0..5 {
-        let sender_clone = Arc::clone(&sender);
+        let sender_clone = sender.clone();
         let handle = tokio::spawn(async move {
             for i in 0..100 {
                 let entry = create_test_enriched_log(producer_id * 100 + i);
@@ -422,7 +422,7 @@ async fn test_backpressure_metrics() {
         backpressure_delay: Duration::from_millis(1),
     };
     let buffer = LogBuffer::new_with_config(config).await.unwrap();
-    let (sender, _receiver) = buffer.split();
+    let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send enough to trigger backpressure
     for i in 0..80 {

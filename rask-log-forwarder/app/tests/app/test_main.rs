@@ -1,4 +1,4 @@
-use rask_log_forwarder::app::{App, Config, LogLevel, get_version, setup_logging};
+use rask_log_forwarder::app::{App, Config, LogLevel, get_version, setup_logging_safe};
 use serial_test::serial;
 use std::env;
 use std::path::PathBuf;
@@ -122,7 +122,7 @@ fn test_logging_setup() {
 
     let result = SETUP_RESULT.get_or_init(|| {
         // Capture the result of the first setup attempt
-        let result = panic::catch_unwind(|| setup_logging(LogLevel::Info));
+        let result = panic::catch_unwind(|| setup_logging_safe(LogLevel::Info));
 
         let setup_result = match result {
             Ok(setup_result) => setup_result.map_err(|e| e.to_string()),

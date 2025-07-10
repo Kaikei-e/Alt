@@ -36,7 +36,7 @@ async fn test_buffer_manager_integration() {
     );
 
     // Test buffer splitting
-    let (_sender, _receiver) = manager.split();
+    let (_sender, _receiver) = manager.split().expect("Failed to split buffer");
 
     // Test that components are accessible
     assert!(!manager.batch_former().has_ready_batch().await);

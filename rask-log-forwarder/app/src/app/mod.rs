@@ -1,17 +1,19 @@
 pub mod config;
 pub mod docker;
 pub mod service;
+pub mod initialization;
+pub mod logging_system;
+pub mod application_initializer;
 
 pub use config::{Config, ConfigError, LogLevel};
 pub use service::{ServiceError, ServiceManager, ShutdownHandle};
+pub use initialization::InitializationError;
+pub use logging_system::{LoggingSystem, setup_logging_safe};
+pub use application_initializer::{ApplicationInitializer, InitializationResult, InitializationStrategy};
 
 use clap::Parser;
 use std::process;
-use std::sync::Once;
 use tracing::{error, info};
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
-
-static INIT: Once = Once::new();
 
 pub struct App {
     service_manager: ServiceManager,
@@ -30,22 +32,31 @@ impl App {
     pub async fn from_config(
         config: Config,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Setup logging first
-        setup_logging(config.log_level)?;
-
-        info!("Starting rask-log-forwarder v{}", env!("CARGO_PKG_VERSION"));
-        info!(
-            "Configuration: target_service={:?}, endpoint={}, batch_size={}",
-            config.target_service, config.endpoint, config.batch_size
-        );
-
+        // Use the comprehensive ApplicationInitializer for memory-safe initialization
+        let initializer = ApplicationInitializer::new();
+        
         // Load config file if specified
         let final_config = if let Some(config_file) = &config.config_file {
-            info!("Loading configuration from file: {}", config_file.display());
+            eprintln!("Loading configuration from file: {}", config_file.display());
             Config::from_file(config_file)?
         } else {
             config
         };
+
+        // Initialize application with comprehensive validation
+        let init_result = initializer.initialize(&final_config)
+            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
+
+        info!("Starting rask-log-forwarder v{}", env!("CARGO_PKG_VERSION"));
+        info!(
+            "Configuration: target_service={:?}, endpoint={}, batch_size={}",
+            final_config.target_service, final_config.endpoint, final_config.batch_size
+        );
+        info!(
+            "Initialization completed in {}ms (strategy: {:?})",
+            init_result.initialization_time_ms,
+            initializer.determine_initialization_strategy(&final_config)
+        );
 
         // Initialize service manager
         let service_manager = ServiceManager::new(final_config).await?;
@@ -75,31 +86,8 @@ impl App {
     }
 }
 
-pub fn setup_logging(log_level: LogLevel) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    INIT.call_once(|| {
-        let level: tracing::Level = log_level.into();
-
-        let filter = EnvFilter::builder()
-            .with_default_directive(level.into())
-            .from_env_lossy()
-            .add_directive("hyper=warn".parse().expect("Failed to parse hyper log directive"))
-            .add_directive("reqwest=warn".parse().expect("Failed to parse reqwest log directive"))
-            .add_directive("h2=warn".parse().expect("Failed to parse h2 log directive"));
-
-        let _ = tracing_subscriber::registry()
-            .with(
-                fmt::layer()
-                    .with_target(true)
-                    .with_thread_ids(true)
-                    .with_level(true)
-                    .with_ansi(true),
-            )
-            .with(filter)
-            .try_init();
-    });
-
-    Ok(())
-}
+// Note: setup_logging has been replaced with setup_logging_safe in logging_system.rs
+// This eliminates all expect() calls and provides memory-safe initialization
 
 pub fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
