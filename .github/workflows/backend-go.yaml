@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       runner: ${{ steps.set-runner.outputs.runner }}
+      runner-json: ${{ steps.format-runner.outputs.runner-json }}
     steps:
       - name: Determine which runner to use
         id: set-runner
