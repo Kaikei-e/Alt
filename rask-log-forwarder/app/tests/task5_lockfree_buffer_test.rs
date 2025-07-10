@@ -63,8 +63,7 @@ async fn test_task5_lock_free_buffer_creation() {
         if should_fail {
             assert!(
                 result.is_err(),
-                "Buffer creation with capacity {} should fail",
-                capacity
+                "Buffer creation with capacity {capacity} should fail"
             );
             if let Err(BufferError::BufferClosed) = result {
                 // Expected for capacity 0
@@ -74,8 +73,7 @@ async fn test_task5_lock_free_buffer_creation() {
         } else {
             assert!(
                 result.is_ok(),
-                "Buffer creation with capacity {} should succeed",
-                capacity
+                "Buffer creation with capacity {capacity} should succeed"
             );
 
             if let Ok(buffer) = result {
@@ -127,11 +125,11 @@ async fn test_task5_zero_expect_buffer_operations() {
 
     // Fill buffer to capacity
     for i in 0..10 {
-        let entry = create_test_entry(&format!("message {}", i));
+        let entry = create_test_entry(&format!("message {i}"));
         match sender.send(entry).await {
             Ok(()) => continue,
             Err(BufferError::BufferFull) => break, // Expected when full
-            Err(e) => panic!("Unexpected error: {:?}", e),
+            Err(e) => panic!("Unexpected error: {e:?}"),
         }
     }
 
@@ -143,7 +141,7 @@ async fn test_task5_zero_expect_buffer_operations() {
         Err(BufferError::BufferFull) => {
             // Expected behavior - no panic
         }
-        Err(e) => panic!("Unexpected error: {:?}", e),
+        Err(e) => panic!("Unexpected error: {e:?}"),
     }
 
     // Receive all messages
@@ -156,14 +154,11 @@ async fn test_task5_zero_expect_buffer_operations() {
             }
             Ok(Err(BufferError::BufferClosed)) => break,
             Err(_timeout) => break, // No more messages
-            Ok(Err(e)) => panic!("Unexpected receive error: {:?}", e),
+            Ok(Err(e)) => panic!("Unexpected receive error: {e:?}"),
         }
     }
 
-    println!(
-        "✓ Zero expect buffer operations test passed (received {} messages)",
-        received_count
-    );
+    println!("✓ Zero expect buffer operations test passed (received {received_count} messages)");
 }
 
 #[tokio::test]
@@ -182,7 +177,7 @@ async fn test_task5_concurrent_buffer_safety() {
         let sender = sender.clone();
         let handle = tokio::spawn(async move {
             for i in 0..messages_per_producer {
-                let entry = create_test_entry(&format!("producer {} message {}", producer_id, i));
+                let entry = create_test_entry(&format!("producer {producer_id} message {i}"));
 
                 // Keep trying until we succeed or get a permanent error
                 let mut attempts = 0;
@@ -194,10 +189,10 @@ async fn test_task5_concurrent_buffer_safety() {
                             tokio::time::sleep(Duration::from_micros(10)).await;
                             attempts += 1;
                             if attempts > 1000 {
-                                panic!("Too many failed attempts for producer {}", producer_id);
+                                panic!("Too many failed attempts for producer {producer_id}");
                             }
                         }
-                        Err(e) => panic!("Unexpected send error: {:?}", e),
+                        Err(e) => panic!("Unexpected send error: {e:?}"),
                     }
                 }
             }
@@ -218,19 +213,17 @@ async fn test_task5_concurrent_buffer_safety() {
                 }
                 Ok(Err(BufferError::BufferClosed)) => {
                     println!(
-                        "Buffer closed, received {} of {} messages",
-                        received, total_expected
+                        "Buffer closed, received {received} of {total_expected} messages"
                     );
                     break;
                 }
                 Err(_timeout) => {
                     println!(
-                        "Timeout waiting for message, received {} of {} messages",
-                        received, total_expected
+                        "Timeout waiting for message, received {received} of {total_expected} messages"
                     );
                     break;
                 }
-                Ok(Err(e)) => panic!("Unexpected receive error: {:?}", e),
+                Ok(Err(e)) => panic!("Unexpected receive error: {e:?}"),
             }
         }
 
@@ -243,9 +236,9 @@ async fn test_task5_concurrent_buffer_safety() {
         match handle.await {
             Ok(producer_id) => {
                 completed_producers += 1;
-                println!("Producer {} completed", producer_id);
+                println!("Producer {producer_id} completed");
             }
-            Err(e) => panic!("Producer task failed: {:?}", e),
+            Err(e) => panic!("Producer task failed: {e:?}"),
         }
     }
 
@@ -255,8 +248,8 @@ async fn test_task5_concurrent_buffer_safety() {
         .expect("Consumer task should complete");
 
     println!("✓ Concurrent buffer safety test passed");
-    println!("  - {} producers completed", completed_producers);
-    println!("  - {} messages received", received_count);
+    println!("  - {completed_producers} producers completed");
+    println!("  - {received_count} messages received");
 
     assert_eq!(completed_producers, num_producers);
     // Allow for some message loss due to buffer full conditions in high contention
@@ -284,7 +277,7 @@ async fn test_task5_buffer_edge_cases() {
         Err(BufferError::BufferFull) => {
             // Expected behavior
         }
-        Err(e) => panic!("Unexpected error: {:?}", e),
+        Err(e) => panic!("Unexpected error: {e:?}"),
     }
 
     // Receive the message
@@ -292,7 +285,7 @@ async fn test_task5_buffer_edge_cases() {
         Ok(_) => {
             // Success
         }
-        Err(e) => panic!("Unexpected receive error: {:?}", e),
+        Err(e) => panic!("Unexpected receive error: {e:?}"),
     }
 
     // Test 2: Large buffer with rapid operations
@@ -302,12 +295,12 @@ async fn test_task5_buffer_edge_cases() {
 
     // Rapid send/receive operations
     for i in 0..1000 {
-        let entry = create_test_entry(&format!("rapid test {}", i));
+        let entry = create_test_entry(&format!("rapid test {i}"));
 
         // Send
         match large_sender.send(entry).await {
             Ok(()) => {}
-            Err(e) => panic!("Unexpected send error on iteration {}: {:?}", i, e),
+            Err(e) => panic!("Unexpected send error on iteration {i}: {e:?}"),
         }
 
         // Immediate receive
@@ -315,7 +308,7 @@ async fn test_task5_buffer_edge_cases() {
             Ok(Ok(_)) => {
                 // Success
             }
-            Ok(Err(e)) => panic!("Unexpected receive error on iteration {}: {:?}", i, e),
+            Ok(Err(e)) => panic!("Unexpected receive error on iteration {i}: {e:?}"),
             Err(_) => {
                 // Timeout is OK for this test
             }
