@@ -59,9 +59,6 @@ jobs:
           # uvをインストール
           python3 -m pip install --user uv
 
-          # PATHを更新
-          export PATH="$HOME/.local/bin:$PATH"
-
           # 依存関係をインストール
           if [ -f "requirements.txt" ]; then
             python3 -m pip install -r requirements.txt --user
@@ -76,9 +73,6 @@ jobs:
       - name: Run tests
         working-directory: ${{ inputs.working-directory }}
         run: |
-          # PATHを更新
-          export PATH="$HOME/.local/bin:$PATH"
-
           # テストを実行
           python3 -m pytest test_unit.py -v --junit-xml=tests/results.xml || true
 
