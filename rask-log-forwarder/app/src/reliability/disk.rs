@@ -84,7 +84,7 @@ impl DiskFallback {
 
         let stored_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| DiskError::SystemTimeError(format!("Invalid system time: {}", e)))?
+            .map_err(|e| DiskError::SystemTimeError(format!("Invalid system time: {e}")))?
             .as_secs();
 
         let stored_batch = StoredBatch {
@@ -148,7 +148,7 @@ impl DiskFallback {
         let (stored_batch, _): (StoredBatch, usize) =
             bincode::serde::decode_from_slice(&deserialized_data, bincode::config::standard())?;
 
-        tracing::debug!("Retrieved batch {} from disk", batch_id);
+        tracing::debug!("Retrieved batch {batch_id} from disk");
 
         // Reconstruct the Batch with original ID
         let batch = Batch::with_id(
@@ -180,7 +180,7 @@ impl DiskFallback {
 
         self.current_usage = self.current_usage.saturating_sub(file_size);
 
-        tracing::debug!("Deleted batch {} from disk", batch_id);
+        tracing::debug!("Deleted batch {batch_id} from disk");
         Ok(())
     }
 
@@ -222,7 +222,7 @@ impl DiskFallback {
         }
 
         if deleted_count > 0 {
-            tracing::info!("Cleaned up {} old batches from disk", deleted_count);
+            tracing::info!("Cleaned up {deleted_count} old batches from disk");
         }
 
         Ok(deleted_count)

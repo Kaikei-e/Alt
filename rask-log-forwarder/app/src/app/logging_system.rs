@@ -1,4 +1,3 @@
-// TASK4: Memory-safe logging system implementation
 use super::config::LogLevel as ConfigLogLevel;
 use super::initialization::{FallbackStrategy, InitializationError, LogDirective, LogLevel};
 use parking_lot::RwLock;
@@ -30,11 +29,11 @@ impl LoggingSystem {
                 // エラーログ出力（fallback戦略適用）
                 match e.fallback_strategy() {
                     FallbackStrategy::UseDefaultLevel => {
-                        eprintln!("Warning: {}, using default level", e);
+                        eprintln!("Warning: {e}, using default level");
                         self.add_default_directive(directive_str)
                     }
                     FallbackStrategy::SkipDirective => {
-                        eprintln!("Warning: {}, skipping directive", e);
+                        eprintln!("Warning: {e}, skipping directive");
                         Ok(())
                     }
                     _ => Err(e),
@@ -78,7 +77,7 @@ impl LoggingSystem {
 
         let env_filter = EnvFilter::try_new(&filter_string).map_err(|e| {
             InitializationError::LoggingInitFailed {
-                details: format!("Failed to create EnvFilter with '{}'", filter_string),
+                details: format!("Failed to create EnvFilter with '{filter_string}'"),
                 source: Box::new(e),
             }
         })?;
@@ -264,7 +263,7 @@ mod tests {
             .map(|i| {
                 let logging_system = logging_system.clone();
                 thread::spawn(move || {
-                    let directive = format!("target{}=info", i);
+                    let directive = format!("target{i}=info");
                     logging_system.add_directive(&directive)
                 })
             })
@@ -347,12 +346,11 @@ mod tests {
 
         for (directive, should_succeed, expected_count) in test_cases {
             let result = logging_system.add_directive(directive);
-            assert_eq!(result.is_ok(), should_succeed, "Directive: {}", directive);
+            assert_eq!(result.is_ok(), should_succeed, "Directive: {directive}");
             assert_eq!(
                 logging_system.directive_count(),
                 expected_count,
-                "Directive: {}",
-                directive
+                "Directive: {directive}"
             );
         }
     }
@@ -397,7 +395,7 @@ mod tests {
                 // Expected when tracing is already initialized
             }
             Err(e) => {
-                panic!("Unexpected error type: {:?}", e);
+                panic!("Unexpected error type: {e:?}");
             }
         }
     }

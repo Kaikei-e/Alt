@@ -1,4 +1,3 @@
-// TASK4: Memory-safe application initialization error types
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -213,7 +212,7 @@ mod tests {
 
         for (input, expected_level) in valid_cases {
             let result = LogDirective::parse(input);
-            assert!(result.is_ok(), "Should parse successfully: {}", input);
+            assert!(result.is_ok(), "Should parse successfully: {input}");
 
             let directive = result.unwrap();
             let expected_target = input.split('=').next().unwrap();
@@ -239,9 +238,7 @@ mod tests {
             let result = LogDirective::parse(input);
             assert!(
                 result.is_err(),
-                "Should fail for {}: {}",
-                description,
-                input
+                "Should fail for {description}: {input}"
             );
         }
     }
@@ -275,7 +272,7 @@ mod tests {
         ];
 
         for error in recoverable_errors {
-            assert!(error.is_recoverable(), "Should be recoverable: {:?}", error);
+            assert!(error.is_recoverable(), "Should be recoverable: {error:?}");
         }
 
         let non_recoverable_errors = [
@@ -292,8 +289,7 @@ mod tests {
         for error in non_recoverable_errors {
             assert!(
                 !error.is_recoverable(),
-                "Should not be recoverable: {:?}",
-                error
+                "Should not be recoverable: {error:?}"
             );
         }
     }

@@ -23,18 +23,18 @@ impl ApplicationInitializer {
 
         // Phase 1: ログシステムの初期化
         self.initialize_logging(config.log_level).map_err(|e| {
-            eprintln!("Failed to initialize logging: {}", e);
+            eprintln!("Failed to initialize logging: {e}");
             e
         })?;
 
         // Phase 2: 設定検証
         self.validate_configuration(config).map_err(|e| {
-            tracing::error!("Configuration validation failed: {}", e);
+            tracing::error!("Configuration validation failed: {e}");
             e
         })?;
 
         let elapsed = start_time.elapsed();
-        tracing::info!("Application initialization completed in {:?}", elapsed);
+        tracing::info!("Application initialization completed in {elapsed:?}");
 
         Ok(InitializationResult {
             logging_initialized: true,
@@ -48,8 +48,7 @@ impl ApplicationInitializer {
         setup_logging_safe(log_level)?;
 
         tracing::info!(
-            "Logging system initialized successfully with level: {:?}",
-            log_level
+            "Logging system initialized successfully with level: {log_level:?}"
         );
         Ok(())
     }
@@ -125,7 +124,7 @@ impl ApplicationInitializer {
                 // Try to create the directory
                 if let Err(e) = std::fs::create_dir_all(&config.disk_fallback_path) {
                     return Err(InitializationError::ConfigValidationFailed {
-                        reason: format!("Cannot create disk fallback directory: {}", e),
+                        reason: format!("Cannot create disk fallback directory: {e}"),
                     });
                 }
             }
@@ -344,7 +343,7 @@ mod tests {
                 // Expected when tracing is already initialized in other tests
             }
             Err(e) => {
-                panic!("Unexpected error: {:?}", e);
+                panic!("Unexpected error: {e:?}");
             }
         }
     }

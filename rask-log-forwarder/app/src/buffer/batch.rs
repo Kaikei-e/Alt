@@ -143,8 +143,7 @@ impl BatchFormer {
         {
             let mut inner = self.inner.write_safe().await.map_err(|e| {
                 crate::buffer::BufferError::ConcurrencyError(format!(
-                    "Failed to acquire write lock: {}",
-                    e
+                    "Failed to acquire write lock: {e}"
                 ))
             })?;
 

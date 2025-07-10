@@ -103,13 +103,13 @@ impl MetricsCollector {
                     &["status"], // success, failure
                 )
                 .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create batches_sent counter: {}", e),
+                    reason: format!("Failed to create batches_sent counter: {e}"),
                 })?;
 
                 registry
                     .register(Box::new(batches_sent.clone()))
                     .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register batches_sent metric: {}", e),
+                        details: format!("Failed to register batches_sent metric: {e}"),
                     })?;
 
                 let entries_sent = Counter::new(
@@ -117,13 +117,13 @@ impl MetricsCollector {
                     "Total number of log entries sent",
                 )
                 .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create entries_sent counter: {}", e),
+                    reason: format!("Failed to create entries_sent counter: {e}"),
                 })?;
 
                 registry
                     .register(Box::new(entries_sent.clone()))
                     .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register entries_sent metric: {}", e),
+                        details: format!("Failed to register entries_sent metric: {e}"),
                     })?;
 
                 let transmission_latency = HistogramVec::new(
@@ -134,13 +134,13 @@ impl MetricsCollector {
                     &["batch_size_range"], // small, medium, large
                 )
                 .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create transmission_latency histogram: {}", e),
+                    reason: format!("Failed to create transmission_latency histogram: {e}"),
                 })?;
 
                 registry
                     .register(Box::new(transmission_latency.clone()))
                     .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register transmission_latency metric: {}", e),
+                        details: format!("Failed to register transmission_latency metric: {e}"),
                     })?;
 
                 let disk_fallback_counter = Counter::new(
@@ -148,13 +148,13 @@ impl MetricsCollector {
                     "Total number of batches stored to disk",
                 )
                 .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create disk_fallback_counter: {}", e),
+                    reason: format!("Failed to create disk_fallback_counter: {e}"),
                 })?;
 
                 registry
                     .register(Box::new(disk_fallback_counter.clone()))
                     .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register disk_fallback_counter metric: {}", e),
+                        details: format!("Failed to register disk_fallback_counter metric: {e}"),
                     })?;
 
                 let retry_attempts = CounterVec::new(
@@ -165,13 +165,13 @@ impl MetricsCollector {
                     &["attempt_number"],
                 )
                 .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create retry_attempts counter: {}", e),
+                    reason: format!("Failed to create retry_attempts counter: {e}"),
                 })?;
 
                 registry
                     .register(Box::new(retry_attempts.clone()))
                     .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register retry_attempts metric: {}", e),
+                        details: format!("Failed to register retry_attempts metric: {e}"),
                     })?;
 
                 let health_checks = CounterVec::new(
@@ -182,25 +182,25 @@ impl MetricsCollector {
                     &["status"], // success, failure
                 )
                 .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create health_checks counter: {}", e),
+                    reason: format!("Failed to create health_checks counter: {e}"),
                 })?;
 
                 registry
                     .register(Box::new(health_checks.clone()))
                     .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register health_checks metric: {}", e),
+                        details: format!("Failed to register health_checks metric: {e}"),
                     })?;
 
                 let memory_usage =
                     Gauge::new("rask_memory_usage_bytes", "Current memory usage in bytes")
                         .map_err(|e| MetricsError::InitializationFailed {
-                            reason: format!("Failed to create memory_usage gauge: {}", e),
+                            reason: format!("Failed to create memory_usage gauge: {e}"),
                         })?;
 
                 registry
                     .register(Box::new(memory_usage.clone()))
                     .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register memory_usage metric: {}", e),
+                        details: format!("Failed to register memory_usage metric: {e}"),
                     })?;
 
                 let active_connections = Gauge::new(
@@ -208,13 +208,13 @@ impl MetricsCollector {
                     "Number of active HTTP connections",
                 )
                 .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create active_connections gauge: {}", e),
+                    reason: format!("Failed to create active_connections gauge: {e}"),
                 })?;
 
                 registry
                     .register(Box::new(active_connections.clone()))
                     .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register active_connections metric: {}", e),
+                        details: format!("Failed to register active_connections metric: {e}"),
                     })?;
 
                 Ok(Self {

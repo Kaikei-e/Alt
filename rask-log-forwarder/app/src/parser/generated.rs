@@ -45,8 +45,7 @@ mod tests {
             let result = VALIDATED_PATTERNS.get(i);
             assert!(
                 result.is_ok(),
-                "Pattern at index {} should compile successfully",
-                i
+                "Pattern at index {i} should compile successfully"
             );
         }
     }

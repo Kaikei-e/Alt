@@ -96,7 +96,7 @@ impl SimplePatternParser {
             let with_z = if text.ends_with('Z') {
                 text.to_string()
             } else {
-                format!("{}Z", text)
+                format!("{text}Z")
             };
 
             if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&with_z) {
@@ -165,7 +165,7 @@ impl SimplePatternParser {
         }
 
         Err(RegexError::ExecutionFailed {
-            details: format!("Failed to parse nginx access log: {}", line),
+            details: format!("Failed to parse nginx access log: {line}"),
         })
     }
 }
@@ -205,8 +205,7 @@ mod tests {
         for i in 0..TEST_PATTERNS.len() {
             assert!(
                 TEST_PATTERNS.get(i).is_ok(),
-                "Pattern at index {} should compile",
-                i
+                "Pattern at index {i} should compile"
             );
         }
     }
