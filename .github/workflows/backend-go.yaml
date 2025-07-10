@@ -53,20 +53,35 @@ jobs:
       matrix:
         go: ["1.24"]
     steps:
+    - name: Setup security measures
+      run: |
+        # パスマスキング
+        echo "::add-mask::$HOME"
+        echo "::add-mask::$USER"
+        echo "::add-mask::/Users/"
+
+        # 一時的な作業ディレクトリを作成
+        export WORK_DIR="/tmp/gh-runner-${{ github.run_id }}"
+        mkdir -p "$WORK_DIR"
+        echo "WORK_DIR=$WORK_DIR" >> $GITHUB_ENV
+
     - uses: actions/checkout@v4
+      with:
+        path: ${{ env.WORK_DIR }}/repo
+
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: ${{ matrix.go }}
-        cache-dependency-path: alt-backend/app/go.sum
+        go-version: 1.24
+        cache-dependency-path: ${{ env.WORK_DIR }}/repo/alt-backend/app/go.sum
 
     - name: Cache Go modules
       uses: actions/cache@v3
       with:
         path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('alt-backend/app/go.sum') }}
+          ${{ env.WORK_DIR }}/repo/go/pkg/mod
+          ${{ env.WORK_DIR }}/repo/.cache/go-build
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
         restore-keys: |
           ${{ runner.os }}-go-
     - name: Install dependencies
