@@ -28,11 +28,6 @@ func (m *mockArticleRepo) GetArticlesWithTags(ctx context.Context, lastCreatedAt
 	return m.articles, &createdAt, lastArticle.ID(), nil
 }
 
-type mockSearchEngine struct {
-	indexedDocs []domain.SearchDocument
-	err         error
-}
-
 func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
 	if m.err != nil {
 		return m.err

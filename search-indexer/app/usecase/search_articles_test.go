@@ -14,29 +14,6 @@ type mockSearchEngine struct {
 	err         error
 }
 
-func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
-	if m.err != nil {
-		return m.err
-	}
-	m.indexedDocs = append(m.indexedDocs, docs...)
-	return nil
-}
-
-func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.indexedDocs, nil
-}
-
-func (m *mockSearchEngine) EnsureIndex(ctx context.Context) error {
-	return nil
-}
-
-func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
-	return nil
-}
-
 func TestSearchArticlesUsecase_Execute(t *testing.T) {
 	now := time.Now()
 	article, _ := domain.NewArticle("1", "Test Title", "Test Content", []string{"tag1"}, now)
@@ -185,30 +162,30 @@ func TestSearchArticlesUsecase_ExecuteWithSecurityValidation(t *testing.T) {
 		{"img tag with onerror", "<img src=x onerror=alert('xss')>", 10, true},
 		{"iframe injection", "<iframe src=javascript:alert('xss')></iframe>", 10, true},
 		{"svg with script", "<svg onload=alert('xss')>", 10, true},
-		
+
 		// SQL Injection Prevention Tests
 		{"sql injection single quote", "'; DROP TABLE articles; --", 10, true},
 		{"sql injection union", "test' UNION SELECT * FROM users--", 10, true},
 		{"sql injection comment", "test/* comment */", 10, true},
 		{"sql injection with semicolon", "test; DELETE FROM articles;", 10, true},
-		
+
 		// Command Injection Prevention Tests
 		{"command injection pipe", "test | rm -rf /", 10, true},
 		{"command injection semicolon", "test; cat /etc/passwd", 10, true},
 		{"command injection backtick", "test`whoami`", 10, true},
 		{"command injection dollar", "test$(whoami)", 10, true},
-		
+
 		// Control Character Tests
 		{"null byte injection", "test\x00", 10, true},
 		{"carriage return", "test\r\n", 10, true},
 		{"vertical tab", "test\v", 10, true},
 		{"form feed", "test\f", 10, true},
-		
+
 		// Unicode and Encoding Tests
 		{"url encoded script", "%3Cscript%3Ealert%28%27xss%27%29%3C%2Fscript%3E", 10, true},
 		{"double url encoded", "%253Cscript%253E", 10, true},
 		{"zero width characters", "test\u200B\u200C\u200D", 10, true},
-		
+
 		// Valid queries that should pass
 		{"normal search", "golang programming", 10, false},
 		{"search with numbers", "python 3.11", 10, false},
