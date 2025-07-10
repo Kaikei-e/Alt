@@ -107,6 +107,24 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 			expectedStatus: []int{200, 200, 200},
 			description:    "Whitelisted paths should not be rate limited",
 		},
+		{
+			name: "csp_report_whitelisted",
+			config: DOSProtectionConfig{
+				Enabled:          true,
+				RateLimit:        1,
+				BurstLimit:       1,
+				WindowSize:       time.Minute,
+				BlockDuration:    5 * time.Minute,
+				WhitelistedPaths: []string{"/security/csp-report"},
+			},
+			requests: []testRequest{
+				{ip: "192.168.1.1", path: "/security/csp-report", method: "POST"},
+				{ip: "192.168.1.1", path: "/security/csp-report", method: "POST"},
+				{ip: "192.168.1.1", path: "/security/csp-report", method: "POST"},
+			},
+			expectedStatus: []int{200, 200, 200},
+			description:    "CSP report endpoint should not be rate limited",
+		},
 	}
 
 	for _, tt := range tests {

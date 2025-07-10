@@ -62,7 +62,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 	// Add DOS protection middleware with IP-based rate limiting
 	dosConfig := cfg.RateLimit.DOSProtection
-	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/"}
+	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/", "/security/csp-report"}
 	e.Use(middleware_custom.DOSProtectionMiddleware(middleware_custom.ConvertConfigDOSProtection(dosConfig)))
 
 	// Add security headers

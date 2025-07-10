@@ -31,7 +31,7 @@ func TestDOSProtectionIntegration(t *testing.T) {
 				BurstLimit:       5,
 				WindowSize:       time.Minute,
 				BlockDuration:    2 * time.Minute,
-				WhitelistedPaths: []string{"/v1/health"},
+				WhitelistedPaths: []string{"/v1/health", "/security/csp-report"},
 				CircuitBreaker: middleware.CircuitBreakerConfig{
 					Enabled:          false,
 					FailureThreshold: 10,
@@ -45,9 +45,10 @@ func TestDOSProtectionIntegration(t *testing.T) {
 				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0},
 				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0},
 				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0},
-				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0},  // Should be blocked
-				{ip: "192.168.1.2", path: "/v1/feeds", method: "GET", delay: 0},  // Different IP
-				{ip: "192.168.1.1", path: "/v1/health", method: "GET", delay: 0}, // Whitelisted
+				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0},             // Should be blocked
+				{ip: "192.168.1.2", path: "/v1/feeds", method: "GET", delay: 0},             // Different IP
+				{ip: "192.168.1.1", path: "/v1/health", method: "GET", delay: 0},            // Whitelisted
+				{ip: "192.168.1.1", path: "/security/csp-report", method: "POST", delay: 0}, // CSP report whitelisted
 			},
 			expectedResponses: []IntegrationResponse{
 				{statusCode: 200, body: "OK"},
@@ -58,8 +59,9 @@ func TestDOSProtectionIntegration(t *testing.T) {
 				{statusCode: 429, body: "Too many requests"},
 				{statusCode: 200, body: "OK"},
 				{statusCode: 200, body: "OK"},
+				{statusCode: 200, body: "OK"},
 			},
-			description: "Should allow burst of 5 requests, then block except for different IPs and whitelisted paths",
+			description: "Should allow burst of 5 requests, then block except for different IPs and whitelisted paths (health and CSP report)",
 		},
 		{
 			name: "circuit_breaker_integration",
@@ -134,6 +136,10 @@ func TestDOSProtectionIntegration(t *testing.T) {
 			})
 
 			e.GET("/v1/health", func(c echo.Context) error {
+				return c.String(http.StatusOK, "OK")
+			})
+
+			e.POST("/security/csp-report", func(c echo.Context) error {
 				return c.String(http.StatusOK, "OK")
 			})
 
