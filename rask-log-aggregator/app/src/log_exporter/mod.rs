@@ -1,7 +1,7 @@
 pub mod clickhouse_exporter;
 
-use async_trait::async_trait;
 use crate::domain::EnrichedLogEntry;
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait LogExporter: Send + Sync {

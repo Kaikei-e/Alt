@@ -1,5 +1,5 @@
-use tracing::{info, error};
-use tracing_test::{traced_test, logs_assert};
+use tracing::{error, info};
+use tracing_test::{logs_assert, traced_test};
 
 #[traced_test]
 #[test]

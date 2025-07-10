@@ -62,17 +62,18 @@ async fn aggregate_handler(
     State(exporter): State<Arc<dyn LogExporter>>,
     body: String,
 ) -> &'static str {
-    info!("Received aggregate request with body length: {}", body.len());
+    info!(
+        "Received aggregate request with body length: {}",
+        body.len()
+    );
 
     let logs: Vec<EnrichedLogEntry> = body
         .lines()
-        .filter_map(|line| {
-            match serde_json::from_str(line) {
-                Ok(entry) => Some(entry),
-                Err(e) => {
-                    error!("Failed to parse log entry: {e} - Line: {line}");
-                    None
-                }
+        .filter_map(|line| match serde_json::from_str(line) {
+            Ok(entry) => Some(entry),
+            Err(e) => {
+                error!("Failed to parse log entry: {e} - Line: {line}");
+                None
             }
         })
         .collect();
