@@ -11,12 +11,12 @@ export default defineConfig({
 
   // CI で .only が残っていると失敗
   forbidOnly: isCI,
-  retries: isCI ? 2 : 0,
+  retries: isCI ? 1 : 0,
 
   expect: {
     timeout: 10 * 1000,
   },
-  globalTimeout: 1200 * 1000, // 20分
+  globalTimeout: 900 * 1000, // 15分
 
   // レポーター
   reporter: "html",
