@@ -41,6 +41,21 @@ jobs:
           done
           echo "::endgroup::"
 
+      - name: Clean workspace
+        if: runner.environment == 'self-hosted'
+        run: |
+          # pnpmのキャッシュとsetupディレクトリをクリーンアップ
+          echo "Cleaning pnpm directories..."
+          rm -rf "${{ runner.temp }}/setup-pnpm" || true
+          rm -rf "$HOME/.pnpm-store" || true
+          rm -rf "$HOME/.cache/pnpm" || true
+          rm -rf "${{ github.workspace }}/node_modules" || true
+
+          # 権限を修正
+          if [ -d "${{ runner.temp }}" ]; then
+            chmod -R 755 "${{ runner.temp }}" || true
+          fi
+
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
