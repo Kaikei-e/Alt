@@ -260,16 +260,14 @@ fn test_task4_memory_safety() {
         let result = initializer.validate_configuration(&config);
         assert!(
             result.is_ok(),
-            "Validation should be consistent on iteration {}",
-            i
+            "Validation should be consistent on iteration {i}"
         );
 
         let strategy = initializer.determine_initialization_strategy(&config);
         assert_eq!(
             strategy,
             InitializationStrategy::Basic,
-            "Strategy should be consistent on iteration {}",
-            i
+            "Strategy should be consistent on iteration {i}"
         );
     }
 

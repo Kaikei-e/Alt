@@ -112,7 +112,7 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
 
     // Verify it's valid data (could be Docker json-file format or raw bytes)
     let log_str =
-        std::str::from_utf8(&bytes).map_err(|e| format!("Invalid UTF-8 in log data: {}", e))?;
+        std::str::from_utf8(&bytes).map_err(|e| format!("Invalid UTF-8 in log data: {e}"))?;
     println!("Received log data: {log_str}");
 
     // Basic assertion that we received some log data

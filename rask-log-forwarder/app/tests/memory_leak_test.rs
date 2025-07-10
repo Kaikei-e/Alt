@@ -43,15 +43,11 @@ async fn test_memory_leak_prevention_with_repeated_parsing() {
             let entry = result.unwrap();
             assert!(
                 !entry.message.is_empty(),
-                "Empty message at iteration {} for log {}",
-                iteration,
-                log_idx
+                "Empty message at iteration {iteration} for log {log_idx}"
             );
             assert!(
                 !entry.service_name.is_empty(),
-                "Empty service name at iteration {} for log {}",
-                iteration,
-                log_idx
+                "Empty service name at iteration {iteration} for log {log_idx}"
             );
 
             // Change service name to trigger different code paths
@@ -71,8 +67,7 @@ async fn test_memory_leak_prevention_with_repeated_parsing() {
             assert_eq!(batch_results.len(), test_logs.len());
             assert!(
                 batch_results.iter().all(|r| r.is_ok()),
-                "Batch parse failed at iteration {}",
-                iteration
+                "Batch parse failed at iteration {iteration}"
             );
         }
     }
@@ -120,9 +115,7 @@ async fn test_memory_safety_with_malformed_regex_fallback() {
             let entry = result.unwrap();
             assert!(
                 !entry.message.is_empty(),
-                "Empty message in fallback at iteration {} for log {}",
-                iteration,
-                log_idx
+                "Empty message in fallback at iteration {iteration} for log {log_idx}"
             );
         }
     }
