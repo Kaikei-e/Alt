@@ -1,6 +1,6 @@
 // TASK4: Memory-safe application initialization error types
-use thiserror::Error;
 use std::str::FromStr;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum InitializationError {
@@ -9,30 +9,23 @@ pub enum InitializationError {
         input: String,
         valid_levels: Vec<String>,
     },
-    
+
     #[error("Invalid directive format '{input}'. Expected: '{expected}'")]
-    InvalidDirectiveFormat {
-        input: String,
-        expected: String,
-    },
-    
+    InvalidDirectiveFormat { input: String, expected: String },
+
     #[error("Empty target in directive '{input}'")]
-    EmptyTarget {
-        input: String,
-    },
-    
+    EmptyTarget { input: String },
+
     #[error("Logging system initialization failed: {details}")]
     LoggingInitFailed {
         details: String,
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
-    
+
     #[error("Configuration validation failed: {reason}")]
-    ConfigValidationFailed {
-        reason: String,
-    },
-    
+    ConfigValidationFailed { reason: String },
+
     #[error("Resource initialization failed: {resource}")]
     ResourceInitFailed {
         resource: String,
@@ -53,7 +46,7 @@ impl InitializationError {
             InitializationError::ResourceInitFailed { .. } => false,
         }
     }
-    
+
     /// フォールバック戦略
     pub fn fallback_strategy(&self) -> FallbackStrategy {
         match self {
@@ -87,7 +80,7 @@ pub enum LogLevel {
 
 impl FromStr for LogLevel {
     type Err = InitializationError;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "error" => Ok(LogLevel::Error),
@@ -146,32 +139,32 @@ impl LogDirective {
             level,
         }
     }
-    
+
     /// メモリセーフなパース（unwrap一切なし）
     pub fn parse(directive: &str) -> Result<Self, InitializationError> {
         let parts: Vec<&str> = directive.split('=').collect();
-        
+
         if parts.len() != 2 {
             return Err(InitializationError::InvalidDirectiveFormat {
                 input: directive.to_string(),
                 expected: "target=level".to_string(),
             });
         }
-        
+
         let target = parts[0].trim();
         let level = parts[1].trim();
-        
+
         if target.is_empty() {
             return Err(InitializationError::EmptyTarget {
                 input: directive.to_string(),
             });
         }
-        
+
         let parsed_level = LogLevel::from_str(level)?;
-        
+
         Ok(LogDirective::new(target, parsed_level))
     }
-    
+
     /// tracing_subscriber::EnvFilter用の文字列変換
     pub fn to_filter_string(&self) -> String {
         format!("{}={}", self.target, self.level.as_str())
@@ -190,11 +183,11 @@ mod tests {
         assert_eq!(LogLevel::from_str("info").unwrap(), LogLevel::Info);
         assert_eq!(LogLevel::from_str("debug").unwrap(), LogLevel::Debug);
         assert_eq!(LogLevel::from_str("trace").unwrap(), LogLevel::Trace);
-        
+
         // Case insensitive
         assert_eq!(LogLevel::from_str("ERROR").unwrap(), LogLevel::Error);
         assert_eq!(LogLevel::from_str("WARN").unwrap(), LogLevel::Warn);
-        
+
         // Invalid level
         assert!(LogLevel::from_str("invalid").is_err());
     }
@@ -217,11 +210,11 @@ mod tests {
             ("tower=info", LogLevel::Info),
             ("tonic=trace", LogLevel::Trace),
         ];
-        
+
         for (input, expected_level) in valid_cases {
             let result = LogDirective::parse(input);
             assert!(result.is_ok(), "Should parse successfully: {}", input);
-            
+
             let directive = result.unwrap();
             let expected_target = input.split('=').next().unwrap();
             assert_eq!(directive.target, expected_target);
@@ -241,10 +234,15 @@ mod tests {
             ("  =warn", "empty target with spaces"),
             ("hyper=  ", "empty level with spaces"),
         ];
-        
+
         for (input, description) in invalid_cases {
             let result = LogDirective::parse(input);
-            assert!(result.is_err(), "Should fail for {}: {}", description, input);
+            assert!(
+                result.is_err(),
+                "Should fail for {}: {}",
+                description,
+                input
+            );
         }
     }
 
@@ -252,7 +250,7 @@ mod tests {
     fn test_log_directive_to_filter_string() {
         let directive = LogDirective::new("hyper", LogLevel::Warn);
         assert_eq!(directive.to_filter_string(), "hyper=warn");
-        
+
         let directive = LogDirective::new("reqwest", LogLevel::Error);
         assert_eq!(directive.to_filter_string(), "reqwest=error");
     }
@@ -275,11 +273,11 @@ mod tests {
                 reason: "test".to_string(),
             },
         ];
-        
+
         for error in recoverable_errors {
             assert!(error.is_recoverable(), "Should be recoverable: {:?}", error);
         }
-        
+
         let non_recoverable_errors = [
             InitializationError::LoggingInitFailed {
                 details: "test".to_string(),
@@ -290,9 +288,13 @@ mod tests {
                 source: Box::new(std::io::Error::other("test")),
             },
         ];
-        
+
         for error in non_recoverable_errors {
-            assert!(!error.is_recoverable(), "Should not be recoverable: {:?}", error);
+            assert!(
+                !error.is_recoverable(),
+                "Should not be recoverable: {:?}",
+                error
+            );
         }
     }
 
@@ -302,18 +304,27 @@ mod tests {
             input: "test".to_string(),
             valid_levels: vec!["info".to_string()],
         };
-        assert!(matches!(error.fallback_strategy(), FallbackStrategy::UseDefaultLevel));
-        
+        assert!(matches!(
+            error.fallback_strategy(),
+            FallbackStrategy::UseDefaultLevel
+        ));
+
         let error = InitializationError::InvalidDirectiveFormat {
             input: "test".to_string(),
             expected: "target=level".to_string(),
         };
-        assert!(matches!(error.fallback_strategy(), FallbackStrategy::SkipDirective));
-        
+        assert!(matches!(
+            error.fallback_strategy(),
+            FallbackStrategy::SkipDirective
+        ));
+
         let error = InitializationError::LoggingInitFailed {
             details: "test".to_string(),
             source: Box::new(std::io::Error::other("test")),
         };
-        assert!(matches!(error.fallback_strategy(), FallbackStrategy::UseStdoutLogging));
+        assert!(matches!(
+            error.fallback_strategy(),
+            FallbackStrategy::UseStdoutLogging
+        ));
     }
 }

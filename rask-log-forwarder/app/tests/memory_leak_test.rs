@@ -1,6 +1,6 @@
 // Memory leak test for TASK3 validation
-use rask_log_forwarder::parser::universal::UniversalParser;
 use rask_log_forwarder::collector::ContainerInfo;
+use rask_log_forwarder::parser::universal::UniversalParser;
 use std::collections::HashMap;
 
 #[tokio::test]
@@ -12,7 +12,9 @@ async fn test_memory_leak_prevention_with_repeated_parsing() {
         labels: HashMap::new(),
         group: Some("test-group".to_string()),
     };
-    container_info.labels.insert("rask.group".to_string(), "test-group".to_string());
+    container_info
+        .labels
+        .insert("rask.group".to_string(), "test-group".to_string());
 
     // Sample logs that will trigger different regex patterns
     let test_logs = [
@@ -25,15 +27,33 @@ async fn test_memory_leak_prevention_with_repeated_parsing() {
     // Parse each log many times to check for memory leaks
     for iteration in 0..1000 {
         for (log_idx, log_data) in test_logs.iter().enumerate() {
-            let result = parser.parse_docker_log(log_data.as_bytes(), &container_info).await;
-            
+            let result = parser
+                .parse_docker_log(log_data.as_bytes(), &container_info)
+                .await;
+
             // Verify parsing still works correctly
-            assert!(result.is_ok(), "Parse failed at iteration {} for log {}: {:?}", iteration, log_idx, result.err());
-            
+            assert!(
+                result.is_ok(),
+                "Parse failed at iteration {} for log {}: {:?}",
+                iteration,
+                log_idx,
+                result.err()
+            );
+
             let entry = result.unwrap();
-            assert!(!entry.message.is_empty(), "Empty message at iteration {} for log {}", iteration, log_idx);
-            assert!(!entry.service_name.is_empty(), "Empty service name at iteration {} for log {}", iteration, log_idx);
-            
+            assert!(
+                !entry.message.is_empty(),
+                "Empty message at iteration {} for log {}",
+                iteration,
+                log_idx
+            );
+            assert!(
+                !entry.service_name.is_empty(),
+                "Empty service name at iteration {} for log {}",
+                iteration,
+                log_idx
+            );
+
             // Change service name to trigger different code paths
             container_info.service_name = match log_idx {
                 0 => "nginx".to_string(),
@@ -43,18 +63,25 @@ async fn test_memory_leak_prevention_with_repeated_parsing() {
                 _ => "unknown".to_string(),
             };
         }
-        
+
         // Every 100 iterations, also test batch parsing
         if iteration % 100 == 0 {
             let batch: Vec<&[u8]> = test_logs.iter().map(|log| log.as_bytes()).collect();
             let batch_results = parser.parse_batch(batch, &container_info).await;
             assert_eq!(batch_results.len(), test_logs.len());
-            assert!(batch_results.iter().all(|r| r.is_ok()), "Batch parse failed at iteration {}", iteration);
+            assert!(
+                batch_results.iter().all(|r| r.is_ok()),
+                "Batch parse failed at iteration {}",
+                iteration
+            );
         }
     }
-    
+
     // If we get here without panic or excessive memory usage, memory leak test passed
-    println!("✓ Memory leak test completed successfully: parsed {} log entries", 1000 * test_logs.len());
+    println!(
+        "✓ Memory leak test completed successfully: parsed {} log entries",
+        1000 * test_logs.len()
+    );
 }
 
 #[tokio::test]
@@ -77,15 +104,31 @@ async fn test_memory_safety_with_malformed_regex_fallback() {
     // Parse malformed logs many times to ensure fallback paths are memory-safe
     for iteration in 0..500 {
         for (log_idx, log_data) in malformed_logs.iter().enumerate() {
-            let result = parser.parse_docker_log(log_data.as_bytes(), &container_info).await;
-            
+            let result = parser
+                .parse_docker_log(log_data.as_bytes(), &container_info)
+                .await;
+
             // Should still succeed (with fallback parsing)
-            assert!(result.is_ok(), "Fallback parse failed at iteration {} for log {}: {:?}", iteration, log_idx, result.err());
-            
+            assert!(
+                result.is_ok(),
+                "Fallback parse failed at iteration {} for log {}: {:?}",
+                iteration,
+                log_idx,
+                result.err()
+            );
+
             let entry = result.unwrap();
-            assert!(!entry.message.is_empty(), "Empty message in fallback at iteration {} for log {}", iteration, log_idx);
+            assert!(
+                !entry.message.is_empty(),
+                "Empty message in fallback at iteration {} for log {}",
+                iteration,
+                log_idx
+            );
         }
     }
-    
-    println!("✓ Memory safety test with fallback patterns completed successfully: parsed {} malformed log entries", 500 * malformed_logs.len());
+
+    println!(
+        "✓ Memory safety test with fallback patterns completed successfully: parsed {} malformed log entries",
+        500 * malformed_logs.len()
+    );
 }

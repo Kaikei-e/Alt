@@ -10,23 +10,60 @@ fn main() {
     // All regex patterns used in the codebase
     let patterns = &[
         // From universal.rs
-        (r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+"#, "docker_native_timestamp"),
-        (r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#, "iso_timestamp_fallback"),
-
+        (
+            r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+"#,
+            "docker_native_timestamp",
+        ),
+        (
+            r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#,
+            "iso_timestamp_fallback",
+        ),
         // From services.rs
-        (r#"^(\S+) \S+ \S+ \[([^\]]+)\] "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)(?: "([^"]*)" "([^"]*)")?.*$"#, "nginx_access_full"),
-        (r#"^(\S+) .+ "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)"#, "nginx_access_fallback"),
-        (r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \d+#\d+: (.+)"#, "nginx_error_full"),
-        (r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)"#, "nginx_error_fallback"),
-        (r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) .+ (\w+):\s+(.+)"#, "postgres_log"),
-
+        (
+            r#"^(\S+) \S+ \S+ \[([^\]]+)\] "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)(?: "([^"]*)" "([^"]*)")?.*$"#,
+            "nginx_access_full",
+        ),
+        (
+            r#"^(\S+) .+ "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)"#,
+            "nginx_access_fallback",
+        ),
+        (
+            r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \d+#\d+: (.+)"#,
+            "nginx_error_full",
+        ),
+        (
+            r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)"#,
+            "nginx_error_fallback",
+        ),
+        (
+            r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) .+ (\w+):\s+(.+)"#,
+            "postgres_log",
+        ),
         // From simd.rs
-        (r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+)"#, "simd_nginx_access"),
-        (r#"^(\S+) .+ "(\S+) ([^"]*)" (\d+) (\d+)"#, "simd_nginx_access_fallback"),
-        (r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+) "([^"]*)" "([^"]*)""#, "simd_nginx_combined"),
-        (r#"^(\S+) .+ "(\S+) ([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)""#, "simd_nginx_combined_fallback"),
-        (r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (\d+)#(\d+): (.*?)(?:\n)?$"#, "simd_nginx_error"),
-        (r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)$"#, "simd_nginx_error_fallback"),
+        (
+            r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+)"#,
+            "simd_nginx_access",
+        ),
+        (
+            r#"^(\S+) .+ "(\S+) ([^"]*)" (\d+) (\d+)"#,
+            "simd_nginx_access_fallback",
+        ),
+        (
+            r#"^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^"]*) HTTP/[^"]*" (\d+) (\d+) "([^"]*)" "([^"]*)""#,
+            "simd_nginx_combined",
+        ),
+        (
+            r#"^(\S+) .+ "(\S+) ([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)""#,
+            "simd_nginx_combined_fallback",
+        ),
+        (
+            r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (\d+)#(\d+): (.*?)(?:\n)?$"#,
+            "simd_nginx_error",
+        ),
+        (
+            r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)$"#,
+            "simd_nginx_error_fallback",
+        ),
     ];
 
     println!("cargo:info=Starting regex pattern validation...");
@@ -60,7 +97,10 @@ fn main() {
         panic!("❌ Failed to generate regex patterns: {e}");
     }
 
-    println!("cargo:info=✓ All {} regex patterns validated successfully", valid_patterns.len());
+    println!(
+        "cargo:info=✓ All {} regex patterns validated successfully",
+        valid_patterns.len()
+    );
 }
 
 fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> {
@@ -68,11 +108,20 @@ fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn s
     let dest_path = std::path::Path::new(&out_dir).join("validated_regexes.rs");
     let mut file = File::create(dest_path)?;
 
-    writeln!(file, "// Auto-generated regex patterns (validated by build.rs)")?;
+    writeln!(
+        file,
+        "// Auto-generated regex patterns (validated by build.rs)"
+    )?;
     writeln!(file, "use crate::parser::regex_patterns::StaticRegexSet;")?;
     writeln!(file)?;
-    writeln!(file, "/// All validated regex patterns used in the codebase")?;
-    writeln!(file, "pub static VALIDATED_PATTERNS: StaticRegexSet = StaticRegexSet::new(&[")?;
+    writeln!(
+        file,
+        "/// All validated regex patterns used in the codebase"
+    )?;
+    writeln!(
+        file,
+        "pub static VALIDATED_PATTERNS: StaticRegexSet = StaticRegexSet::new(&["
+    )?;
 
     for (pattern, name) in patterns {
         writeln!(file, "    (r#\"{}\"#, \"{}\"),", pattern, name)?;
@@ -92,7 +141,10 @@ fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn s
 
     writeln!(file)?;
     writeln!(file, "/// Pattern name lookup")?;
-    writeln!(file, "pub fn get_pattern_name(index: usize) -> Option<&'static str> {{")?;
+    writeln!(
+        file,
+        "pub fn get_pattern_name(index: usize) -> Option<&'static str> {{"
+    )?;
     writeln!(file, "    match index {{")?;
     for (i, (_, name)) in patterns.iter().enumerate() {
         writeln!(file, "        {i} => Some(\"{name}\"),")?;
@@ -112,12 +164,20 @@ mod tests {
     fn test_all_patterns_compile() {
         let patterns = &[
             (r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#, "iso_timestamp"),
-            (r#"^(\S+) .+ "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)"#, "nginx_access"),
+            (
+                r#"^(\S+) .+ "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)"#,
+                "nginx_access",
+            ),
         ];
 
         for (pattern, name) in patterns {
             let result = Regex::new(pattern);
-            assert!(result.is_ok(), "Pattern '{}' should compile: {:?}", name, result.err());
+            assert!(
+                result.is_ok(),
+                "Pattern '{}' should compile: {:?}",
+                name,
+                result.err()
+            );
         }
     }
 }

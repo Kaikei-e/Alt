@@ -1,14 +1,13 @@
 use super::{
-    schema::{LogEntry, NginxLogEntry, ParseError},
     generated::{VALIDATED_PATTERNS, pattern_index},
     regex_patterns::SimplePatternParser,
+    schema::{LogEntry, NginxLogEntry, ParseError},
     zero_alloc_parser::ImprovedNginxParser,
 };
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use simd_json::prelude::{ValueAsObject, ValueAsScalar};
 use simd_json::{OwnedValue, from_slice};
-
 
 pub struct SimdParser {
     #[allow(dead_code)]
@@ -101,7 +100,7 @@ impl SimdParser {
                 return true;
             }
         }
-        
+
         // Simple heuristic as final fallback
         message.contains("HTTP/") && message.contains("\"")
     }
@@ -118,7 +117,7 @@ impl SimdParser {
                 return true;
             }
         }
-        
+
         // Simple heuristic as final fallback
         message.contains("[error]") || message.contains("[warn]") || message.contains("[info]")
     }
@@ -142,14 +141,14 @@ impl SimdParser {
                     status_code: {
                         let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
                             captures.get(5).map(|m| m.as_str()),
-                            None
+                            None,
                         );
                         status
                     },
                     response_size: {
                         let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
                             None,
-                            captures.get(6).map(|m| m.as_str())
+                            captures.get(6).map(|m| m.as_str()),
                         );
                         size
                     },
@@ -158,7 +157,7 @@ impl SimdParser {
                 });
             }
         }
-        
+
         // Try regular access format
         if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS) {
             if let Some(captures) = regex.captures(&message_clone) {
@@ -175,14 +174,14 @@ impl SimdParser {
                     status_code: {
                         let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
                             captures.get(5).map(|m| m.as_str()),
-                            None
+                            None,
                         );
                         status
                     },
                     response_size: {
                         let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
                             None,
-                            captures.get(6).map(|m| m.as_str())
+                            captures.get(6).map(|m| m.as_str()),
                         );
                         size
                     },
@@ -191,7 +190,7 @@ impl SimdParser {
                 });
             }
         }
-        
+
         // Try fallback patterns
         if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_COMBINED_FALLBACK) {
             if let Some(captures) = regex.captures(&message_clone) {
@@ -208,14 +207,14 @@ impl SimdParser {
                     status_code: {
                         let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
                             captures.get(4).map(|m| m.as_str()),
-                            None
+                            None,
                         );
                         status
                     },
                     response_size: {
                         let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
                             None,
-                            captures.get(5).map(|m| m.as_str())
+                            captures.get(5).map(|m| m.as_str()),
                         );
                         size
                     },
@@ -224,7 +223,7 @@ impl SimdParser {
                 });
             }
         }
-        
+
         if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ACCESS_FALLBACK) {
             if let Some(captures) = regex.captures(&message_clone) {
                 return Ok(NginxLogEntry {
@@ -240,14 +239,14 @@ impl SimdParser {
                     status_code: {
                         let (status, _) = ImprovedNginxParser::parse_status_and_size_safe(
                             captures.get(4).map(|m| m.as_str()),
-                            None
+                            None,
                         );
                         status
                     },
                     response_size: {
                         let (_, size) = ImprovedNginxParser::parse_status_and_size_safe(
                             None,
-                            captures.get(5).map(|m| m.as_str())
+                            captures.get(5).map(|m| m.as_str()),
                         );
                         size
                     },
@@ -256,7 +255,7 @@ impl SimdParser {
                 });
             }
         }
-        
+
         // Use simple parser as final fallback
         let simple_parser = SimplePatternParser::new();
         if let Ok(access_match) = simple_parser.parse_nginx_access(&message_clone) {
@@ -305,7 +304,7 @@ impl SimdParser {
                 });
             }
         }
-        
+
         // Try fallback error pattern
         if let Ok(regex) = VALIDATED_PATTERNS.get(pattern_index::SIMD_NGINX_ERROR_FALLBACK) {
             if let Some(captures) = regex.captures(&message_clone) {
@@ -326,7 +325,7 @@ impl SimdParser {
                 });
             }
         }
-        
+
         // Simple heuristic fallback
         let level = if message_clone.contains("[error]") {
             Some("error".to_string())
@@ -337,7 +336,7 @@ impl SimdParser {
         } else {
             Some("unknown".to_string())
         };
-        
+
         Ok(NginxLogEntry {
             service_type: "nginx".to_string(),
             log_type: "error".to_string(),

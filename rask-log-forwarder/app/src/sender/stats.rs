@@ -3,9 +3,9 @@
 // This module provides high-performance statistics collection without
 // the risk of mutex poisoning or deadlocks.
 
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 
 /// Lock-free connection statistics using atomic operations
 #[derive(Debug)]
@@ -44,12 +44,12 @@ impl AtomicConnectionStats {
     pub fn record_request(&self, bytes: u64) {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
         self.bytes_sent.fetch_add(bytes, Ordering::Relaxed);
-        
+
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         self.last_request_time.store(now, Ordering::Relaxed);
     }
 
@@ -103,7 +103,7 @@ impl AtomicConnectionStats {
         if total == 0 {
             return 1.0;
         }
-        
+
         let failed = self.failed_requests.load(Ordering::Relaxed);
         (total.saturating_sub(failed) as f64) / (total as f64)
     }
@@ -114,7 +114,7 @@ impl AtomicConnectionStats {
         if total == 0 {
             return 0.0;
         }
-        
+
         let reused = self.reused_connections.load(Ordering::Relaxed);
         (reused as f64) / (total as f64)
     }
@@ -151,8 +151,8 @@ impl ConnectionStatsSnapshot {
         if self.total_requests == 0 {
             return 1.0;
         }
-        
-        (self.total_requests.saturating_sub(self.failed_requests) as f64) 
+
+        (self.total_requests.saturating_sub(self.failed_requests) as f64)
             / (self.total_requests as f64)
     }
 
@@ -161,7 +161,7 @@ impl ConnectionStatsSnapshot {
         if self.total_requests == 0 {
             return 0.0;
         }
-        
+
         (self.reused_connections as f64) / (self.total_requests as f64)
     }
 
@@ -181,11 +181,11 @@ mod tests {
     #[test]
     fn test_basic_operations() {
         let stats = AtomicConnectionStats::new();
-        
+
         // Test recording requests
         stats.record_request(1024);
         stats.record_request(2048);
-        
+
         let snapshot = stats.get_snapshot();
         assert_eq!(snapshot.total_requests, 2);
         assert_eq!(snapshot.bytes_sent, 3072);
@@ -223,7 +223,7 @@ mod tests {
         assert_eq!(snapshot.total_requests, 1000);
         assert_eq!(snapshot.reused_connections, 500);
         assert_eq!(snapshot.failed_requests, 100);
-        
+
         // Verify calculations
         assert!((snapshot.success_rate() - 0.9).abs() < 0.01); // ~90% success rate
         assert!((snapshot.connection_reuse_rate() - 0.5).abs() < 0.01); // 50% reuse rate
@@ -232,11 +232,11 @@ mod tests {
     #[test]
     fn test_connection_management() {
         let stats = AtomicConnectionStats::new();
-        
+
         stats.increment_active_connections();
         stats.increment_active_connections();
         assert_eq!(stats.get_snapshot().active_connections, 2);
-        
+
         stats.decrement_active_connections();
         assert_eq!(stats.get_snapshot().active_connections, 1);
     }
@@ -244,11 +244,11 @@ mod tests {
     #[test]
     fn test_error_tracking() {
         let stats = AtomicConnectionStats::new();
-        
+
         stats.record_connection_error();
         stats.record_timeout_error();
         stats.record_timeout_error();
-        
+
         let snapshot = stats.get_snapshot();
         assert_eq!(snapshot.connection_errors, 1);
         assert_eq!(snapshot.timeout_errors, 2);
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn test_health_check() {
         let stats = AtomicConnectionStats::new();
-        
+
         // Healthy scenario
         for _ in 0..100 {
             stats.record_request(1024);
@@ -265,17 +265,17 @@ mod tests {
         for _ in 0..2 {
             stats.record_failed_request();
         }
-        
+
         let snapshot = stats.get_snapshot();
         assert!(snapshot.is_healthy());
-        
+
         // Unhealthy scenario
         stats.reset();
         for _ in 0..10 {
             stats.record_request(1024);
             stats.record_failed_request();
         }
-        
+
         let snapshot = stats.get_snapshot();
         assert!(!snapshot.is_healthy());
     }
@@ -283,13 +283,13 @@ mod tests {
     #[test]
     fn test_reset() {
         let stats = AtomicConnectionStats::new();
-        
+
         stats.record_request(1024);
         stats.record_failed_request();
         stats.increment_active_connections();
-        
+
         assert!(stats.get_snapshot().total_requests > 0);
-        
+
         stats.reset();
         let snapshot = stats.get_snapshot();
         assert_eq!(snapshot.total_requests, 0);

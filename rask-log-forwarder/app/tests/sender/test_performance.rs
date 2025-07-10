@@ -59,14 +59,14 @@ async fn test_metrics_collection() {
     // Record test transmissions with realistic latency distribution
     // Use more samples for statistically meaningful percentiles
     let test_latencies = vec![
-        (true, 100, 5000, 45),   // Fast successful transmission
-        (true, 200, 8000, 52),   // Normal successful transmission
-        (true, 150, 6000, 68),   // Slightly slower successful transmission
-        (true, 120, 4500, 71),   // Another successful transmission
-        (true, 180, 7200, 85),   // Slower but still successful
-        (false, 50, 0, 200),     // Failed transmission (higher latency but not extreme)
-        (true, 140, 5800, 89),   // Successful transmission
-        (true, 160, 6400, 95),   // Another successful transmission
+        (true, 100, 5000, 45), // Fast successful transmission
+        (true, 200, 8000, 52), // Normal successful transmission
+        (true, 150, 6000, 68), // Slightly slower successful transmission
+        (true, 120, 4500, 71), // Another successful transmission
+        (true, 180, 7200, 85), // Slower but still successful
+        (false, 50, 0, 200),   // Failed transmission (higher latency but not extreme)
+        (true, 140, 5800, 89), // Successful transmission
+        (true, 160, 6400, 95), // Another successful transmission
     ];
 
     for (success, entries, bytes, latency_ms) in test_latencies {

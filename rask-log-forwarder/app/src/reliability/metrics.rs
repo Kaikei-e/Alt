@@ -1,6 +1,6 @@
+use crate::buffer::{MetricsError, safe_metrics_operation};
 #[cfg(feature = "metrics")]
 use prometheus::{Counter, CounterVec, Encoder, Gauge, HistogramVec, Registry, TextEncoder};
-use crate::buffer::{MetricsError, safe_metrics_operation};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -96,29 +96,34 @@ impl MetricsCollector {
 
                 // Initialize Prometheus metrics with safe error handling
                 let batches_sent = CounterVec::new(
-                    prometheus::Opts::new("rask_batches_sent_total", "Total number of batches sent"),
+                    prometheus::Opts::new(
+                        "rask_batches_sent_total",
+                        "Total number of batches sent",
+                    ),
                     &["status"], // success, failure
                 )
-                .map_err(|e| MetricsError::InitializationFailed { 
-                    reason: format!("Failed to create batches_sent counter: {}", e) 
+                .map_err(|e| MetricsError::InitializationFailed {
+                    reason: format!("Failed to create batches_sent counter: {}", e),
                 })?;
-                
-                registry.register(Box::new(batches_sent.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed { 
-                        details: format!("Failed to register batches_sent metric: {}", e) 
+
+                registry
+                    .register(Box::new(batches_sent.clone()))
+                    .map_err(|e| MetricsError::RegistrationFailed {
+                        details: format!("Failed to register batches_sent metric: {}", e),
                     })?;
 
                 let entries_sent = Counter::new(
                     "rask_entries_sent_total",
                     "Total number of log entries sent",
                 )
-                .map_err(|e| MetricsError::InitializationFailed { 
-                    reason: format!("Failed to create entries_sent counter: {}", e) 
+                .map_err(|e| MetricsError::InitializationFailed {
+                    reason: format!("Failed to create entries_sent counter: {}", e),
                 })?;
-                
-                registry.register(Box::new(entries_sent.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed { 
-                        details: format!("Failed to register entries_sent metric: {}", e) 
+
+                registry
+                    .register(Box::new(entries_sent.clone()))
+                    .map_err(|e| MetricsError::RegistrationFailed {
+                        details: format!("Failed to register entries_sent metric: {}", e),
                     })?;
 
                 let transmission_latency = HistogramVec::new(
@@ -128,26 +133,28 @@ impl MetricsCollector {
                     ),
                     &["batch_size_range"], // small, medium, large
                 )
-                .map_err(|e| MetricsError::InitializationFailed { 
-                    reason: format!("Failed to create transmission_latency histogram: {}", e) 
+                .map_err(|e| MetricsError::InitializationFailed {
+                    reason: format!("Failed to create transmission_latency histogram: {}", e),
                 })?;
-                
-                registry.register(Box::new(transmission_latency.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed { 
-                        details: format!("Failed to register transmission_latency metric: {}", e) 
+
+                registry
+                    .register(Box::new(transmission_latency.clone()))
+                    .map_err(|e| MetricsError::RegistrationFailed {
+                        details: format!("Failed to register transmission_latency metric: {}", e),
                     })?;
 
                 let disk_fallback_counter = Counter::new(
                     "rask_disk_fallback_total",
                     "Total number of batches stored to disk",
                 )
-                .map_err(|e| MetricsError::InitializationFailed { 
-                    reason: format!("Failed to create disk_fallback_counter: {}", e) 
+                .map_err(|e| MetricsError::InitializationFailed {
+                    reason: format!("Failed to create disk_fallback_counter: {}", e),
                 })?;
-                
-                registry.register(Box::new(disk_fallback_counter.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed { 
-                        details: format!("Failed to register disk_fallback_counter metric: {}", e) 
+
+                registry
+                    .register(Box::new(disk_fallback_counter.clone()))
+                    .map_err(|e| MetricsError::RegistrationFailed {
+                        details: format!("Failed to register disk_fallback_counter metric: {}", e),
                     })?;
 
                 let retry_attempts = CounterVec::new(
@@ -157,49 +164,57 @@ impl MetricsCollector {
                     ),
                     &["attempt_number"],
                 )
-                .map_err(|e| MetricsError::InitializationFailed { 
-                    reason: format!("Failed to create retry_attempts counter: {}", e) 
+                .map_err(|e| MetricsError::InitializationFailed {
+                    reason: format!("Failed to create retry_attempts counter: {}", e),
                 })?;
-                
-                registry.register(Box::new(retry_attempts.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed { 
-                        details: format!("Failed to register retry_attempts metric: {}", e) 
+
+                registry
+                    .register(Box::new(retry_attempts.clone()))
+                    .map_err(|e| MetricsError::RegistrationFailed {
+                        details: format!("Failed to register retry_attempts metric: {}", e),
                     })?;
 
                 let health_checks = CounterVec::new(
-                    prometheus::Opts::new("rask_health_checks_total", "Total number of health checks"),
+                    prometheus::Opts::new(
+                        "rask_health_checks_total",
+                        "Total number of health checks",
+                    ),
                     &["status"], // success, failure
                 )
-                .map_err(|e| MetricsError::InitializationFailed { 
-                    reason: format!("Failed to create health_checks counter: {}", e) 
+                .map_err(|e| MetricsError::InitializationFailed {
+                    reason: format!("Failed to create health_checks counter: {}", e),
                 })?;
-                
-                registry.register(Box::new(health_checks.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed { 
-                        details: format!("Failed to register health_checks metric: {}", e) 
+
+                registry
+                    .register(Box::new(health_checks.clone()))
+                    .map_err(|e| MetricsError::RegistrationFailed {
+                        details: format!("Failed to register health_checks metric: {}", e),
                     })?;
 
-                let memory_usage = Gauge::new("rask_memory_usage_bytes", "Current memory usage in bytes")
-                    .map_err(|e| MetricsError::InitializationFailed { 
-                        reason: format!("Failed to create memory_usage gauge: {}", e) 
-                    })?;
-                
-                registry.register(Box::new(memory_usage.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed { 
-                        details: format!("Failed to register memory_usage metric: {}", e) 
+                let memory_usage =
+                    Gauge::new("rask_memory_usage_bytes", "Current memory usage in bytes")
+                        .map_err(|e| MetricsError::InitializationFailed {
+                            reason: format!("Failed to create memory_usage gauge: {}", e),
+                        })?;
+
+                registry
+                    .register(Box::new(memory_usage.clone()))
+                    .map_err(|e| MetricsError::RegistrationFailed {
+                        details: format!("Failed to register memory_usage metric: {}", e),
                     })?;
 
                 let active_connections = Gauge::new(
                     "rask_active_connections",
                     "Number of active HTTP connections",
                 )
-                .map_err(|e| MetricsError::InitializationFailed { 
-                    reason: format!("Failed to create active_connections gauge: {}", e) 
+                .map_err(|e| MetricsError::InitializationFailed {
+                    reason: format!("Failed to create active_connections gauge: {}", e),
                 })?;
-                
-                registry.register(Box::new(active_connections.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed { 
-                        details: format!("Failed to register active_connections metric: {}", e) 
+
+                registry
+                    .register(Box::new(active_connections.clone()))
+                    .map_err(|e| MetricsError::RegistrationFailed {
+                        details: format!("Failed to register active_connections metric: {}", e),
                     })?;
 
                 Ok(Self {
@@ -242,13 +257,16 @@ impl MetricsCollector {
             })
         }
     }
-    
+
     /// Legacy constructor for backward compatibility - logs errors instead of panicking
     pub fn new_legacy(config: MetricsConfig) -> Self {
         match Self::new(config.clone()) {
             Ok(collector) => collector,
             Err(e) => {
-                tracing::error!("Failed to initialize metrics collector: {}, disabling metrics", e);
+                tracing::error!(
+                    "Failed to initialize metrics collector: {}, disabling metrics",
+                    e
+                );
                 // Return a disabled metrics collector - metrics will be no-ops
                 #[cfg(feature = "metrics")]
                 {
@@ -257,12 +275,16 @@ impl MetricsCollector {
                     // Use the non-feature version structure but with empty prometheus metrics
                     // This will effectively disable all metrics collection
                     Self {
-                        config: MetricsConfig { enabled: false, ..config },
+                        config: MetricsConfig {
+                            enabled: false,
+                            ..config
+                        },
                         registry,
                         batches_sent: prometheus::CounterVec::new(
                             prometheus::Opts::new("disabled_batches", "Disabled"),
-                            &["status"]
-                        ).unwrap_or_else(|_| {
+                            &["status"],
+                        )
+                        .unwrap_or_else(|_| {
                             // This should not fail with simple names, but if it does, panic is acceptable in fallback
                             panic!("Failed to create even fallback metrics");
                         }),
@@ -270,22 +292,31 @@ impl MetricsCollector {
                             .unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
                         transmission_latency: prometheus::HistogramVec::new(
                             prometheus::HistogramOpts::new("disabled_latency", "Disabled"),
-                            &["range"]
-                        ).unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
-                        disk_fallback_counter: prometheus::Counter::new("disabled_disk", "Disabled")
-                            .unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
+                            &["range"],
+                        )
+                        .unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
+                        disk_fallback_counter: prometheus::Counter::new(
+                            "disabled_disk",
+                            "Disabled",
+                        )
+                        .unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
                         retry_attempts: prometheus::CounterVec::new(
                             prometheus::Opts::new("disabled_retry", "Disabled"),
-                            &["attempt"]
-                        ).unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
+                            &["attempt"],
+                        )
+                        .unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
                         health_checks: prometheus::CounterVec::new(
                             prometheus::Opts::new("disabled_health", "Disabled"),
-                            &["status"]
-                        ).unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
+                            &["status"],
+                        )
+                        .unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
                         memory_usage: prometheus::Gauge::new("disabled_memory", "Disabled")
                             .unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
-                        active_connections: prometheus::Gauge::new("disabled_connections", "Disabled")
-                            .unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
+                        active_connections: prometheus::Gauge::new(
+                            "disabled_connections",
+                            "Disabled",
+                        )
+                        .unwrap_or_else(|_| panic!("Failed to create fallback metrics")),
                         state: Arc::new(RwLock::new(MetricsState {
                             total_batches_sent: 0,
                             successful_batches: 0,
@@ -300,7 +331,10 @@ impl MetricsCollector {
                 #[cfg(not(feature = "metrics"))]
                 {
                     Self {
-                        config: MetricsConfig { enabled: false, ..config },
+                        config: MetricsConfig {
+                            enabled: false,
+                            ..config
+                        },
                         state: Arc::new(RwLock::new(MetricsState {
                             total_batches_sent: 0,
                             successful_batches: 0,

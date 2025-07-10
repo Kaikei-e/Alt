@@ -124,7 +124,7 @@ impl MetricsCollector {
         }
     }
 
-        pub fn snapshot(&self) -> PerformanceMetrics {
+    pub fn snapshot(&self) -> PerformanceMetrics {
         let total_batches = self.total_batches.load(Ordering::Relaxed);
 
         // Calculate average and percentiles from the same sample set for consistency

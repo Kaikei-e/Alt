@@ -67,7 +67,9 @@ async fn test_payload_preparation() {
             let batch = Batch::new(entries, BatchType::SizeBased);
 
             // Test uncompressed payload
-            let payload = transmitter.prepare_payload(&batch, false).expect("Failed to prepare payload");
+            let payload = transmitter
+                .prepare_payload(&batch, false)
+                .expect("Failed to prepare payload");
             assert!(!payload.is_empty());
 
             // Verify it's valid NDJSON
@@ -104,8 +106,12 @@ async fn test_compression() {
             let batch = Batch::new(entries, BatchType::SizeBased);
 
             // Test both compressed and uncompressed
-            let uncompressed = transmitter.prepare_payload(&batch, false).expect("Failed to prepare uncompressed payload");
-            let compressed = transmitter.prepare_payload(&batch, true).expect("Failed to prepare compressed payload");
+            let uncompressed = transmitter
+                .prepare_payload(&batch, false)
+                .expect("Failed to prepare uncompressed payload");
+            let compressed = transmitter
+                .prepare_payload(&batch, true)
+                .expect("Failed to prepare compressed payload");
 
             // Compressed should be smaller
             assert!(compressed.len() < uncompressed.len());
@@ -133,18 +139,57 @@ async fn test_header_building() {
             let entries = vec![create_test_entry("Header test")];
             let batch = Batch::new(entries, BatchType::TimeBased);
 
-            let headers = transmitter.build_headers(&batch, false).expect("Failed to build headers");
+            let headers = transmitter
+                .build_headers(&batch, false)
+                .expect("Failed to build headers");
 
             // Check required headers
-            assert_eq!(headers.get("content-type").expect("Missing content-type header").to_str().expect("Invalid header value"), "application/x-ndjson");
-            assert_eq!(headers.get("x-batch-id").expect("Missing batch-id header").to_str().expect("Invalid header value"), batch.id());
-            assert_eq!(headers.get("x-batch-size").expect("Missing batch-size header").to_str().expect("Invalid header value"), "1");
-            assert!(headers.get("user-agent").expect("Missing user-agent header").to_str().expect("Invalid header value").contains("test-forwarder"));
+            assert_eq!(
+                headers
+                    .get("content-type")
+                    .expect("Missing content-type header")
+                    .to_str()
+                    .expect("Invalid header value"),
+                "application/x-ndjson"
+            );
+            assert_eq!(
+                headers
+                    .get("x-batch-id")
+                    .expect("Missing batch-id header")
+                    .to_str()
+                    .expect("Invalid header value"),
+                batch.id()
+            );
+            assert_eq!(
+                headers
+                    .get("x-batch-size")
+                    .expect("Missing batch-size header")
+                    .to_str()
+                    .expect("Invalid header value"),
+                "1"
+            );
+            assert!(
+                headers
+                    .get("user-agent")
+                    .expect("Missing user-agent header")
+                    .to_str()
+                    .expect("Invalid header value")
+                    .contains("test-forwarder")
+            );
             assert!(headers.contains_key("x-forwarder-version"));
 
             // Test with compression
-            let headers_compressed = transmitter.build_headers(&batch, true).expect("Failed to build compressed headers");
-            assert_eq!(headers_compressed.get("content-encoding").expect("Missing content-encoding header").to_str().expect("Invalid header value"), "gzip");
+            let headers_compressed = transmitter
+                .build_headers(&batch, true)
+                .expect("Failed to build compressed headers");
+            assert_eq!(
+                headers_compressed
+                    .get("content-encoding")
+                    .expect("Missing content-encoding header")
+                    .to_str()
+                    .expect("Invalid header value"),
+                "gzip"
+            );
         }
         Err(_) => {
             // Expected when server is not available
@@ -174,7 +219,9 @@ async fn test_large_batch_payload() {
             let batch = Batch::new(entries, BatchType::SizeBased);
 
             // Test payload preparation for large batch
-            let payload = transmitter.prepare_payload(&batch, false).expect("Failed to prepare large payload");
+            let payload = transmitter
+                .prepare_payload(&batch, false)
+                .expect("Failed to prepare large payload");
 
             // Should handle large payloads efficiently
             assert!(payload.len() > 1_000_000); // >1MB
@@ -203,10 +250,19 @@ async fn test_batch_metadata_headers() {
             let entries = vec![create_test_entry("Metadata test")];
             let batch = Batch::new(entries, BatchType::MemoryBased);
 
-            let headers = transmitter.build_headers(&batch, false).expect("Failed to build metadata headers");
+            let headers = transmitter
+                .build_headers(&batch, false)
+                .expect("Failed to build metadata headers");
 
             // Check batch metadata headers
-            assert_eq!(headers.get("x-batch-type").expect("Missing batch-type header").to_str().expect("Invalid header value"), "MemoryBased");
+            assert_eq!(
+                headers
+                    .get("x-batch-type")
+                    .expect("Missing batch-type header")
+                    .to_str()
+                    .expect("Invalid header value"),
+                "MemoryBased"
+            );
             assert!(headers.get("x-batch-id").is_some());
             assert!(headers.get("x-forwarder-version").is_some());
         }

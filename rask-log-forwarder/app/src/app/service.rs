@@ -102,15 +102,17 @@ impl ServiceManager {
 
         // Start main processing loop
         let running = self.running.clone();
-        let collector = Arc::new(tokio::sync::Mutex::new(self.collector.take()
-            .ok_or_else(|| ServiceError::ComponentNotInitialized {
+        let collector = Arc::new(tokio::sync::Mutex::new(self.collector.take().ok_or_else(
+            || ServiceError::ComponentNotInitialized {
                 component: "collector".to_string(),
-            })?));
+            },
+        )?));
         let _parser = self.parser.clone();
-        let reliability_manager = Arc::new(self.reliability_manager.take()
-            .ok_or_else(|| ServiceError::ComponentNotInitialized {
+        let reliability_manager = Arc::new(self.reliability_manager.take().ok_or_else(|| {
+            ServiceError::ComponentNotInitialized {
                 component: "reliability_manager".to_string(),
-            })?);
+            }
+        })?);
         let target_service = self.target_service.clone();
 
         tokio::spawn(async move {
@@ -224,10 +226,13 @@ impl ServiceManager {
                 disk_config,
                 metrics_config,
                 health_config,
-                (*self.sender.as_ref()
+                (*self
+                    .sender
+                    .as_ref()
                     .ok_or_else(|| ServiceError::ComponentNotInitialized {
                         component: "sender".to_string(),
-                    })?).clone(),
+                    })?)
+                .clone(),
             )
             .await
             .map_err(|e| {
@@ -604,37 +609,37 @@ mod tests {
         // Test that our error handling works correctly by testing a successful case
         let config = create_test_config();
         let mut service = ServiceManager::new(config).await.unwrap();
-        
+
         // Test successful component initialization
         let result = service.initialize_components().await;
         assert!(result.is_ok());
-        
+
         // Verify all components are initialized
         assert!(service.is_initialized());
     }
-    
+
     #[tokio::test]
     async fn test_service_error_types() {
         // Test that our error types work correctly
         let error = ServiceError::ComponentNotInitialized {
             component: "test_component".to_string(),
         };
-        
+
         assert_eq!(
             error.to_string(),
             "Service component not initialized: test_component"
         );
     }
-    
+
     #[tokio::test]
     async fn test_service_initialization_state() {
         // Test the initialization state checking
         let config = create_test_config();
         let mut service = ServiceManager::new(config).await.unwrap();
-        
+
         // Should not be initialized initially
         assert!(!service.is_initialized());
-        
+
         // After initialization, should be initialized
         service.initialize_components().await.unwrap();
         assert!(service.is_initialized());

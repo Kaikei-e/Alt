@@ -1,15 +1,17 @@
+pub mod application_initializer;
 pub mod config;
 pub mod docker;
-pub mod service;
 pub mod initialization;
 pub mod logging_system;
-pub mod application_initializer;
+pub mod service;
 
+pub use application_initializer::{
+    ApplicationInitializer, InitializationResult, InitializationStrategy,
+};
 pub use config::{Config, ConfigError, LogLevel};
-pub use service::{ServiceError, ServiceManager, ShutdownHandle};
 pub use initialization::InitializationError;
 pub use logging_system::{LoggingSystem, setup_logging_safe};
-pub use application_initializer::{ApplicationInitializer, InitializationResult, InitializationStrategy};
+pub use service::{ServiceError, ServiceManager, ShutdownHandle};
 
 use clap::Parser;
 use std::process;
@@ -34,7 +36,7 @@ impl App {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Use the comprehensive ApplicationInitializer for memory-safe initialization
         let initializer = ApplicationInitializer::new();
-        
+
         // Load config file if specified
         let final_config = if let Some(config_file) = &config.config_file {
             eprintln!("Loading configuration from file: {}", config_file.display());
@@ -44,7 +46,8 @@ impl App {
         };
 
         // Initialize application with comprehensive validation
-        let init_result = initializer.initialize(&final_config)
+        let init_result = initializer
+            .initialize(&final_config)
             .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
 
         info!("Starting rask-log-forwarder v{}", env!("CARGO_PKG_VERSION"));

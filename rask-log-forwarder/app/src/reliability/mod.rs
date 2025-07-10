@@ -3,12 +3,10 @@ pub mod health;
 pub mod metrics;
 pub mod retry;
 
+pub use crate::buffer::MetricsError;
 pub use disk::{DiskConfig, DiskError, DiskFallback};
 pub use health::{ComponentHealth, HealthConfig, HealthMonitor, HealthReport, HealthStatus};
-pub use metrics::{
-    MetricsCollector, MetricsConfig, MetricsSnapshot, PrometheusExporter,
-};
-pub use crate::buffer::MetricsError;
+pub use metrics::{MetricsCollector, MetricsConfig, MetricsSnapshot, PrometheusExporter};
 pub use retry::{RetryConfig, RetryError, RetryManager, RetryStrategy};
 
 use crate::buffer::Batch;
@@ -37,11 +35,13 @@ impl ReliabilityManager {
         let retry_manager = Arc::new(Mutex::new(RetryManager::new(retry_config)));
         let disk_fallback = Arc::new(Mutex::new(DiskFallback::new(disk_config).await?));
         let metrics_collector = Arc::new(Mutex::new(
-            MetricsCollector::new(metrics_config)
-                .unwrap_or_else(|e| {
-                    tracing::error!("Failed to create metrics collector: {}, using legacy fallback", e);
-                    MetricsCollector::new_legacy(MetricsConfig::default())
-                })
+            MetricsCollector::new(metrics_config).unwrap_or_else(|e| {
+                tracing::error!(
+                    "Failed to create metrics collector: {}, using legacy fallback",
+                    e
+                );
+                MetricsCollector::new_legacy(MetricsConfig::default())
+            }),
         ));
         let health_monitor = Arc::new(HealthMonitor::new(health_config));
 

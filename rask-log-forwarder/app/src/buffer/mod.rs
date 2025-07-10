@@ -10,7 +10,10 @@ pub mod queue;
 // New TASK3 exports
 pub use batch::{Batch, BatchConfig, BatchFormer, BatchType};
 pub use concurrency::{ConcurrencyError, RecoveryStrategy, RobustMutex, RobustRwLock};
-pub use error::{BufferError, MetricsError, ParseError, ErrorRecovery, safe_buffer_operation, safe_metrics_operation, safe_parse_operation};
+pub use error::{
+    BufferError, ErrorRecovery, MetricsError, ParseError, safe_buffer_operation,
+    safe_metrics_operation, safe_parse_operation,
+};
 pub use lockfree::{
     BufferConfig, BufferMetrics, BufferMetricsCollector, LogBuffer, LogBufferReceiver,
     LogBufferSender,
@@ -40,7 +43,7 @@ impl BufferManager {
     pub fn split(&self) -> Result<(LogBufferSender, LogBufferReceiver), BufferError> {
         self.buffer.split()
     }
-    
+
     /// Legacy split method for backward compatibility
     pub fn split_legacy(&self) -> (LogBufferSender, LogBufferReceiver) {
         self.buffer.split_legacy()

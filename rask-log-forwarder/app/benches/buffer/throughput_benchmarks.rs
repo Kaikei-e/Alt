@@ -78,7 +78,7 @@ fn bench_single_threaded_push_pop(c: &mut Criterion) {
                 for _ in 0..size {
                     std::hint::black_box(
                         rt.block_on(receiver.recv())
-                            .expect("Failed to receive log entry in benchmark")
+                            .expect("Failed to receive log entry in benchmark"),
                     );
                 }
             });
@@ -232,8 +232,7 @@ fn bench_concurrent_access(c: &mut Criterion) {
                     .collect();
 
                 for handle in handles {
-                    handle.join()
-                        .expect("Thread join failed in benchmark");
+                    handle.join().expect("Thread join failed in benchmark");
                 }
             });
         });

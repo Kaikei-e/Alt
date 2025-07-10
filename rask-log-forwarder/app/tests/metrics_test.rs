@@ -42,7 +42,8 @@ async fn test_prometheus_exposition() {
         collection_interval: Duration::from_secs(1),
     };
 
-    let mut collector = MetricsCollector::new(config.clone()).expect("Failed to create metrics collector");
+    let mut collector =
+        MetricsCollector::new(config.clone()).expect("Failed to create metrics collector");
     let exporter = PrometheusExporter::new(config, collector.clone())
         .await
         .unwrap();

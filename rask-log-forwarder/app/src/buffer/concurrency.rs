@@ -5,24 +5,24 @@
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
-use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ConcurrencyError {
     #[error("Mutex poisoned during operation: {operation}")]
     MutexPoisoned { operation: String },
-    
+
     #[error("Lock acquisition timeout after {timeout_ms}ms")]
     LockTimeout { timeout_ms: u64 },
-    
+
     #[error("Deadlock detected in operation: {operation}")]
     DeadlockDetected { operation: String },
-    
+
     #[error("Concurrent access violation: {details}")]
     ConcurrentAccessViolation { details: String },
-    
+
     #[error("Resource exhaustion: {resource}")]
     ResourceExhaustion { resource: String },
 }
@@ -73,12 +73,12 @@ impl<T> RobustMutex<T> {
             timeout_duration: Duration::from_millis(100),
         }
     }
-    
+
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout_duration = timeout;
         self
     }
-    
+
     /// Memory-safe lock acquisition with automatic recovery from poisoned state
     pub fn lock_safe(&self) -> Result<std::sync::MutexGuard<'_, T>, ConcurrencyError> {
         match self.inner.lock() {
@@ -88,13 +88,13 @@ impl<T> RobustMutex<T> {
                     operation = %self.operation_name,
                     "Mutex poisoned, attempting automatic recovery"
                 );
-                
+
                 // Automatic recovery: extract poisoned data
                 Ok(poisoned.into_inner())
             }
         }
     }
-    
+
     /// Non-blocking lock attempt with automatic poisoning recovery
     pub fn try_lock_safe(&self) -> Result<std::sync::MutexGuard<'_, T>, ConcurrencyError> {
         match self.inner.try_lock() {
@@ -143,47 +143,49 @@ impl<T> RobustRwLock<T> {
             write_timeout: Duration::from_millis(100),
         }
     }
-    
+
     pub fn with_timeouts(mut self, read_timeout: Duration, write_timeout: Duration) -> Self {
         self.read_timeout = read_timeout;
         self.write_timeout = write_timeout;
         self
     }
-    
+
     /// High-performance read lock with timeout protection
     pub async fn read_safe(&self) -> Result<tokio::sync::RwLockReadGuard<'_, T>, ConcurrencyError> {
         timeout(self.read_timeout, self.inner.read())
             .await
-            .map_err(|_| ConcurrencyError::LockTimeout { 
-                timeout_ms: self.read_timeout.as_millis() as u64 
+            .map_err(|_| ConcurrencyError::LockTimeout {
+                timeout_ms: self.read_timeout.as_millis() as u64,
             })
     }
-    
+
     /// Write lock for mutations with timeout protection
-    pub async fn write_safe(&self) -> Result<tokio::sync::RwLockWriteGuard<'_, T>, ConcurrencyError> {
+    pub async fn write_safe(
+        &self,
+    ) -> Result<tokio::sync::RwLockWriteGuard<'_, T>, ConcurrencyError> {
         timeout(self.write_timeout, self.inner.write())
             .await
-            .map_err(|_| ConcurrencyError::LockTimeout { 
-                timeout_ms: self.write_timeout.as_millis() as u64 
+            .map_err(|_| ConcurrencyError::LockTimeout {
+                timeout_ms: self.write_timeout.as_millis() as u64,
             })
     }
-    
+
     /// Non-blocking read attempt
     pub fn try_read(&self) -> Result<tokio::sync::RwLockReadGuard<'_, T>, ConcurrencyError> {
-        self.inner.try_read().map_err(|_| {
-            ConcurrencyError::ConcurrentAccessViolation {
+        self.inner
+            .try_read()
+            .map_err(|_| ConcurrencyError::ConcurrentAccessViolation {
                 details: format!("Read operation {} would block", self.operation_name),
-            }
-        })
+            })
     }
-    
+
     /// Non-blocking write attempt
     pub fn try_write(&self) -> Result<tokio::sync::RwLockWriteGuard<'_, T>, ConcurrencyError> {
-        self.inner.try_write().map_err(|_| {
-            ConcurrencyError::ConcurrentAccessViolation {
+        self.inner
+            .try_write()
+            .map_err(|_| ConcurrencyError::ConcurrentAccessViolation {
                 details: format!("Write operation {} would block", self.operation_name),
-            }
-        })
+            })
     }
 }
 
@@ -194,12 +196,12 @@ mod tests {
     #[tokio::test]
     async fn test_robust_mutex_basic_operations() {
         let mutex = RobustMutex::new(42u32, "test_basic");
-        
+
         // Test successful lock
         let guard = mutex.lock_safe().unwrap();
         assert_eq!(*guard, 42);
         drop(guard);
-        
+
         // Test try_lock
         let guard = mutex.try_lock_safe().unwrap();
         assert_eq!(*guard, 42);
@@ -208,12 +210,12 @@ mod tests {
     #[tokio::test]
     async fn test_robust_rwlock_basic_operations() {
         let rwlock = RobustRwLock::new(vec![1, 2, 3], "test_rwlock");
-        
+
         // Test read lock
         let read_guard = rwlock.read_safe().await.unwrap();
         assert_eq!(read_guard.len(), 3);
         drop(read_guard);
-        
+
         // Test write lock
         let mut write_guard = rwlock.write_safe().await.unwrap();
         write_guard.push(4);
@@ -223,7 +225,7 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_read_access() {
         let rwlock = RobustRwLock::new(vec![1, 2, 3], "concurrent_read_test");
-        
+
         // Multiple concurrent readers should work
         let handles: Vec<_> = (0..10)
             .map(|_| {
@@ -235,7 +237,7 @@ mod tests {
                 })
             })
             .collect();
-        
+
         for handle in handles {
             handle.await.unwrap().unwrap();
         }
@@ -244,17 +246,17 @@ mod tests {
     #[test]
     fn test_mutex_poisoning_recovery() {
         let mutex = RobustMutex::new(42u32, "poisoning_test");
-        
+
         // Create a scope where we intentionally poison the mutex
         let mutex_clone = mutex.clone();
         let result = std::panic::catch_unwind(|| {
             let _guard = mutex_clone.lock_safe().unwrap();
             panic!("Intentional panic to poison mutex");
         });
-        
+
         // Verify the panic occurred
         assert!(result.is_err());
-        
+
         // The mutex should still be usable due to automatic recovery
         let guard = mutex.lock_safe().unwrap();
         assert_eq!(*guard, 42);

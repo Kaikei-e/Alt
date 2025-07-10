@@ -10,13 +10,13 @@ pub enum RegexError {
         #[source]
         source: regex::Error,
     },
-    
+
     #[error("Regex index out of bounds: {index} >= {max}")]
     IndexOutOfBounds { index: usize, max: usize },
-    
+
     #[error("Regex pattern not found: {name}")]
     PatternNotFound { name: String },
-    
+
     #[error("Regex execution failed: {details}")]
     ExecutionFailed { details: String },
 }
@@ -50,24 +50,24 @@ mod tests {
         let invalid_pattern = r#"[invalid regex pattern"#;
         let result = Regex::new(invalid_pattern);
         assert!(result.is_err());
-        
+
         let error = RegexError::CompilationFailed {
             pattern: invalid_pattern.to_string(),
             name: "test_pattern".to_string(),
             source: result.unwrap_err(),
         };
-        
+
         assert_eq!(error.fallback_strategy(), FallbackStrategy::UseSimpleParser);
     }
 
     #[test]
     fn test_index_out_of_bounds_fallback_strategy() {
-        let error = RegexError::IndexOutOfBounds {
-            index: 5,
-            max: 3,
-        };
-        
-        assert_eq!(error.fallback_strategy(), FallbackStrategy::UseDefaultPattern);
+        let error = RegexError::IndexOutOfBounds { index: 5, max: 3 };
+
+        assert_eq!(
+            error.fallback_strategy(),
+            FallbackStrategy::UseDefaultPattern
+        );
     }
 
     #[test]
@@ -75,8 +75,11 @@ mod tests {
         let error = RegexError::PatternNotFound {
             name: "nonexistent_pattern".to_string(),
         };
-        
-        assert_eq!(error.fallback_strategy(), FallbackStrategy::UseDefaultPattern);
+
+        assert_eq!(
+            error.fallback_strategy(),
+            FallbackStrategy::UseDefaultPattern
+        );
     }
 
     #[test]
@@ -84,7 +87,7 @@ mod tests {
         let error = RegexError::ExecutionFailed {
             details: "regex timeout".to_string(),
         };
-        
+
         assert_eq!(error.fallback_strategy(), FallbackStrategy::SkipEntry);
     }
 }

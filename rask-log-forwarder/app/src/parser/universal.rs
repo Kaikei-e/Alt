@@ -16,7 +16,6 @@ const MAX_LOG_LINE_SIZE: usize = 10 * 1024 * 1024; // 10MB per log line
 const MAX_LOG_LINES_PER_BATCH: usize = 100_000; // Maximum lines per batch
 const MAX_FIELD_SIZE: usize = 64 * 1024; // 64KB per field
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnrichedLogEntry {
     // From parsed log
@@ -349,10 +348,13 @@ impl UniversalParser {
                 }
             }
             Err(regex_error) => {
-                tracing::debug!("Docker native timestamp pattern failed: {}, trying fallback", regex_error);
+                tracing::debug!(
+                    "Docker native timestamp pattern failed: {}, trying fallback",
+                    regex_error
+                );
             }
         }
-        
+
         // Try fallback pattern
         match VALIDATED_PATTERNS.get(pattern_index::ISO_TIMESTAMP_FALLBACK) {
             Ok(regex) => {
@@ -362,7 +364,10 @@ impl UniversalParser {
                 }
             }
             Err(regex_error) => {
-                tracing::debug!("ISO timestamp fallback pattern failed: {}, using simple parsing", regex_error);
+                tracing::debug!(
+                    "ISO timestamp fallback pattern failed: {}, using simple parsing",
+                    regex_error
+                );
             }
         }
 
@@ -374,7 +379,7 @@ impl UniversalParser {
                 return native_log[pos..].to_string();
             }
         }
-        
+
         // If no JSON braces found, try to find where the timestamp ends
         // Look for common patterns after timestamps
         for &separator in &[" {", " [", " \"", "  "] {

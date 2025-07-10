@@ -20,11 +20,11 @@ pub use services::{
 pub use universal::{EnrichedLogEntry, UniversalParser};
 
 // TASK3 exports - Memory-safe regex patterns
-pub use regex_error::{RegexError, FallbackStrategy};
-pub use regex_patterns::{StaticRegexSet, SimplePatternParser, NginxAccessMatch};
+pub use regex_error::{FallbackStrategy, RegexError};
+pub use regex_patterns::{NginxAccessMatch, SimplePatternParser, StaticRegexSet};
 
 // TASK5 exports - Zero-allocation parsing
-pub use zero_alloc_parser::{ZeroAllocParser, ImprovedNginxParser};
+pub use zero_alloc_parser::{ImprovedNginxParser, ZeroAllocParser};
 
 #[cfg(test)]
 mod tests {

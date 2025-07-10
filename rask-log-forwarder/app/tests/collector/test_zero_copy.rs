@@ -19,9 +19,7 @@ async fn start_test_nginx_container() -> Result<String, Box<dyn std::error::Erro
         .stdout(Stdio::piped())
         .output()?;
 
-    let container_id = String::from_utf8(output.stdout)?
-        .trim()
-        .to_string();
+    let container_id = String::from_utf8(output.stdout)?.trim().to_string();
 
     // Wait for container to be ready
     sleep(Duration::from_secs(2)).await;
@@ -30,7 +28,10 @@ async fn start_test_nginx_container() -> Result<String, Box<dyn std::error::Erro
 }
 
 #[allow(dead_code)]
-async fn generate_test_nginx_logs(container_id: &str, count: usize) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_test_nginx_logs(
+    container_id: &str,
+    count: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..count {
         // Use simple echo to stdout which will be captured by Docker logs
         Command::new("docker")
@@ -79,9 +80,7 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
         .stdout(Stdio::piped())
         .output()?;
 
-    let test_container = String::from_utf8(output.stdout)?
-        .trim()
-        .to_string();
+    let test_container = String::from_utf8(output.stdout)?.trim().to_string();
 
     // Wait for container to start and generate log
     sleep(Duration::from_secs(2)).await;
@@ -112,8 +111,8 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
     assert!(!bytes.is_empty(), "Should have non-empty log data");
 
     // Verify it's valid data (could be Docker json-file format or raw bytes)
-    let log_str = std::str::from_utf8(&bytes)
-        .map_err(|e| format!("Invalid UTF-8 in log data: {}", e))?;
+    let log_str =
+        std::str::from_utf8(&bytes).map_err(|e| format!("Invalid UTF-8 in log data: {}", e))?;
     println!("Received log data: {log_str}");
 
     // Basic assertion that we received some log data

@@ -1,4 +1,4 @@
-use crate::buffer::{DetailedMetrics, BufferError, safe_buffer_operation};
+use crate::buffer::{BufferError, DetailedMetrics, safe_buffer_operation};
 use crate::parser::EnrichedLogEntry;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -238,7 +238,7 @@ impl LogBuffer {
         safe_buffer_operation(|| {
             // Safe sender access with explicit error handling
             let sender = self.sender.as_ref().ok_or(BufferError::BufferClosed)?;
-            
+
             let buffer_sender = LogBufferSender {
                 sender: sender.clone(),
                 config: self.config.clone(),
@@ -253,7 +253,7 @@ impl LogBuffer {
             Ok((buffer_sender, buffer_receiver))
         })
     }
-    
+
     /// Legacy split method for backward compatibility - logs errors instead of panicking
     pub fn split_legacy(&self) -> (LogBufferSender, LogBufferReceiver) {
         match self.split() {

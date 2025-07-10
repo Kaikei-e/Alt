@@ -1,7 +1,7 @@
 // TASK4: Complete memory-safe application initialization system
+use super::config::{Config, LogLevel};
 use super::initialization::InitializationError;
 use super::logging_system::setup_logging_safe;
-use super::config::{Config, LogLevel};
 
 #[derive(Debug)]
 pub struct InitializationResult {
@@ -16,43 +16,44 @@ impl ApplicationInitializer {
     pub fn new() -> Self {
         Self
     }
-    
+
     /// 段階的初期化（失敗時の詳細情報提供）
     pub fn initialize(&self, config: &Config) -> Result<InitializationResult, InitializationError> {
         let start_time = std::time::Instant::now();
-        
+
         // Phase 1: ログシステムの初期化
-        self.initialize_logging(config.log_level)
-            .map_err(|e| {
-                eprintln!("Failed to initialize logging: {}", e);
-                e
-            })?;
-        
+        self.initialize_logging(config.log_level).map_err(|e| {
+            eprintln!("Failed to initialize logging: {}", e);
+            e
+        })?;
+
         // Phase 2: 設定検証
-        self.validate_configuration(config)
-            .map_err(|e| {
-                tracing::error!("Configuration validation failed: {}", e);
-                e
-            })?;
-        
+        self.validate_configuration(config).map_err(|e| {
+            tracing::error!("Configuration validation failed: {}", e);
+            e
+        })?;
+
         let elapsed = start_time.elapsed();
         tracing::info!("Application initialization completed in {:?}", elapsed);
-        
+
         Ok(InitializationResult {
             logging_initialized: true,
             config_validated: true,
             initialization_time_ms: elapsed.as_millis() as u64,
         })
     }
-    
+
     fn initialize_logging(&self, log_level: LogLevel) -> Result<(), InitializationError> {
         // Use the memory-safe logging setup
         setup_logging_safe(log_level)?;
-        
-        tracing::info!("Logging system initialized successfully with level: {:?}", log_level);
+
+        tracing::info!(
+            "Logging system initialized successfully with level: {:?}",
+            log_level
+        );
         Ok(())
     }
-    
+
     pub fn validate_configuration(&self, config: &Config) -> Result<(), InitializationError> {
         // Validate endpoint
         if config.endpoint.is_empty() {
@@ -60,62 +61,66 @@ impl ApplicationInitializer {
                 reason: "Endpoint cannot be empty".to_string(),
             });
         }
-        
+
         if !config.endpoint.starts_with("http://") && !config.endpoint.starts_with("https://") {
             return Err(InitializationError::ConfigValidationFailed {
                 reason: format!("Invalid endpoint URL: {}", config.endpoint),
             });
         }
-        
+
         // Validate batch size
         if config.batch_size == 0 {
             return Err(InitializationError::ConfigValidationFailed {
                 reason: "Batch size must be greater than 0".to_string(),
             });
         }
-        
+
         if config.batch_size > 100_000 {
             return Err(InitializationError::ConfigValidationFailed {
                 reason: format!("Batch size too large: {} (max: 100,000)", config.batch_size),
             });
         }
-        
+
         // Validate buffer capacity
         if config.buffer_capacity == 0 {
             return Err(InitializationError::ConfigValidationFailed {
                 reason: "Buffer capacity must be greater than 0".to_string(),
             });
         }
-        
+
         // Validate flush interval
         if config.flush_interval_ms == 0 {
             return Err(InitializationError::ConfigValidationFailed {
                 reason: "Flush interval must be greater than 0".to_string(),
             });
         }
-        
+
         // Validate connection timeout
         if config.connection_timeout_secs == 0 {
             return Err(InitializationError::ConfigValidationFailed {
                 reason: "Connection timeout must be greater than 0".to_string(),
             });
         }
-        
+
         // Validate metrics port if metrics are enabled
         if config.enable_metrics && config.metrics_port == 0 {
             return Err(InitializationError::ConfigValidationFailed {
-                reason: format!("Invalid metrics port: {} (must be > 0)", config.metrics_port),
+                reason: format!(
+                    "Invalid metrics port: {} (must be > 0)",
+                    config.metrics_port
+                ),
             });
         }
-        
+
         // Validate disk fallback settings
         if config.enable_disk_fallback {
             if config.max_disk_usage_mb == 0 {
                 return Err(InitializationError::ConfigValidationFailed {
-                    reason: "Max disk usage must be greater than 0 when disk fallback is enabled".to_string(),
+                    reason: "Max disk usage must be greater than 0 when disk fallback is enabled"
+                        .to_string(),
                 });
             }
-            
+
             if !config.disk_fallback_path.exists() {
                 // Try to create the directory
                 if let Err(e) = std::fs::create_dir_all(&config.disk_fallback_path) {
@@ -125,11 +130,11 @@ impl ApplicationInitializer {
                 }
             }
         }
-        
+
         tracing::info!("Configuration validation passed");
         Ok(())
     }
-    
+
     /// 設定に基づく初期化戦略の決定
     pub fn determine_initialization_strategy(&self, config: &Config) -> InitializationStrategy {
         if config.target_service.is_none() {
@@ -194,7 +199,7 @@ mod tests {
     fn test_application_initializer_creation() {
         let initializer = ApplicationInitializer::new();
         let config = create_valid_config();
-        
+
         let strategy = initializer.determine_initialization_strategy(&config);
         assert_eq!(strategy, InitializationStrategy::Basic);
     }
@@ -202,14 +207,14 @@ mod tests {
     #[test]
     fn test_initialization_strategy_determination() {
         let initializer = ApplicationInitializer::new();
-        
+
         // Basic strategy
         let config = create_valid_config();
         assert_eq!(
             initializer.determine_initialization_strategy(&config),
             InitializationStrategy::Basic
         );
-        
+
         // Auto-detection strategy
         let mut config = create_valid_config();
         config.target_service = None;
@@ -217,7 +222,7 @@ mod tests {
             initializer.determine_initialization_strategy(&config),
             InitializationStrategy::AutoDetection
         );
-        
+
         // With metrics strategy
         let mut config = create_valid_config();
         config.enable_metrics = true;
@@ -225,7 +230,7 @@ mod tests {
             initializer.determine_initialization_strategy(&config),
             InitializationStrategy::WithMetrics
         );
-        
+
         // Full features strategy
         let mut config = create_valid_config();
         config.enable_metrics = true;
@@ -240,7 +245,7 @@ mod tests {
     fn test_config_validation_valid_config() {
         let initializer = ApplicationInitializer::new();
         let config = create_valid_config();
-        
+
         let result = initializer.validate_configuration(&config);
         assert!(result.is_ok(), "Valid config should pass validation");
     }
@@ -248,12 +253,12 @@ mod tests {
     #[test]
     fn test_config_validation_invalid_endpoint() {
         let initializer = ApplicationInitializer::new();
-        
+
         // Empty endpoint
         let mut config = create_valid_config();
         config.endpoint = "".to_string();
         assert!(initializer.validate_configuration(&config).is_err());
-        
+
         // Invalid URL scheme
         let mut config = create_valid_config();
         config.endpoint = "ftp://invalid.com".to_string();
@@ -263,12 +268,12 @@ mod tests {
     #[test]
     fn test_config_validation_invalid_batch_size() {
         let initializer = ApplicationInitializer::new();
-        
+
         // Zero batch size
         let mut config = create_valid_config();
         config.batch_size = 0;
         assert!(initializer.validate_configuration(&config).is_err());
-        
+
         // Too large batch size
         let mut config = create_valid_config();
         config.batch_size = 200_000;
@@ -278,7 +283,7 @@ mod tests {
     #[test]
     fn test_config_validation_invalid_buffer_capacity() {
         let initializer = ApplicationInitializer::new();
-        
+
         let mut config = create_valid_config();
         config.buffer_capacity = 0;
         assert!(initializer.validate_configuration(&config).is_err());
@@ -287,12 +292,12 @@ mod tests {
     #[test]
     fn test_config_validation_invalid_timing_params() {
         let initializer = ApplicationInitializer::new();
-        
+
         // Zero flush interval
         let mut config = create_valid_config();
         config.flush_interval_ms = 0;
         assert!(initializer.validate_configuration(&config).is_err());
-        
+
         // Zero connection timeout
         let mut config = create_valid_config();
         config.connection_timeout_secs = 0;
@@ -302,7 +307,7 @@ mod tests {
     #[test]
     fn test_config_validation_invalid_metrics_port() {
         let initializer = ApplicationInitializer::new();
-        
+
         let mut config = create_valid_config();
         config.enable_metrics = true;
         config.metrics_port = 0; // Invalid port (must be > 0)
@@ -312,7 +317,7 @@ mod tests {
     #[test]
     fn test_config_validation_disk_fallback() {
         let initializer = ApplicationInitializer::new();
-        
+
         // Invalid disk usage
         let mut config = create_valid_config();
         config.enable_disk_fallback = true;
@@ -324,10 +329,10 @@ mod tests {
     fn test_initialization_with_valid_config() {
         let initializer = ApplicationInitializer::new();
         let config = create_valid_config();
-        
+
         // Initialize with valid config
         let result = initializer.initialize(&config);
-        
+
         // The result depends on whether tracing is already initialized
         match result {
             Ok(init_result) => {
@@ -347,13 +352,13 @@ mod tests {
     #[test]
     fn test_initialization_with_invalid_config() {
         let initializer = ApplicationInitializer::new();
-        
+
         let mut config = create_valid_config();
         config.endpoint = "".to_string(); // Invalid
-        
+
         let result = initializer.initialize(&config);
         assert!(result.is_err(), "Should fail with invalid config");
-        
+
         if let Err(InitializationError::ConfigValidationFailed { reason }) = result {
             assert!(reason.contains("Endpoint cannot be empty"));
         } else {

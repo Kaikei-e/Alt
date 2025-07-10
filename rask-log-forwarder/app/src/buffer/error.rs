@@ -5,43 +5,43 @@ use thiserror::Error;
 pub enum BufferError {
     #[error("Buffer is closed")]
     BufferClosed,
-    
+
     #[error("Buffer is full")]
     BufferFull,
-    
+
     #[error("Invalid buffer capacity: {capacity}")]
     InvalidCapacity { capacity: usize },
-    
+
     #[error("Buffer operation failed: {details}")]
     OperationFailed { details: String },
-    
+
     #[error("Send timeout")]
     SendTimeout,
-    
+
     #[error("Receive timeout")]
     ReceiveTimeout,
-    
+
     #[error("Concurrency error: {0}")]
     ConcurrencyError(String),
-    
+
     #[error("Buffer poisoned: {reason}")]
     BufferPoisoned { reason: String },
-    
+
     #[error("Buffer initialization failed: {reason}")]
     InitializationFailed { reason: String },
-    
+
     #[error("Buffer disconnected: {reason}")]
     Disconnected { reason: String },
-    
+
     #[error("Channel configuration error: {reason}")]
     ChannelConfigError { reason: String },
-    
+
     #[error("Memory allocation failed: {bytes_requested}")]
     MemoryAllocationFailed { bytes_requested: usize },
-    
+
     #[error("Buffer overflow: attempted to write {attempted} bytes, capacity {capacity}")]
     BufferOverflow { attempted: usize, capacity: usize },
-    
+
     #[error("Buffer underflow: attempted to read {attempted} bytes, available {available}")]
     BufferUnderflow { attempted: usize, available: usize },
 }
@@ -50,41 +50,49 @@ pub enum BufferError {
 pub enum MetricsError {
     #[error("Metric '{name}' already registered as {metric_type}")]
     AlreadyRegistered { name: String, metric_type: String },
-    
+
     #[error("Invalid metric name '{name}': {reason}")]
     InvalidName { name: String, reason: String },
-    
+
     #[error("Metric registration failed: {details}")]
     RegistrationFailed { details: String },
-    
+
     #[error("Metric initialization failed: {reason}")]
     InitializationFailed { reason: String },
-    
+
     #[error("Metric collection failed: {reason}")]
     CollectionFailed { reason: String },
-    
+
     #[error("Metric update failed: {metric_name} - {reason}")]
     UpdateFailed { metric_name: String, reason: String },
-    
+
     #[error("Metric export failed: {format} - {reason}")]
     ExportFailed { format: String, reason: String },
-    
+
     #[error("Metric configuration error: {reason}")]
     ConfigurationError { reason: String },
-    
+
     #[error("Metric validation failed: {metric_name} - {reason}")]
     ValidationFailed { metric_name: String, reason: String },
-    
+
     #[error("Metric overflow: {metric_name} - value {value} exceeds max {max}")]
-    Overflow { metric_name: String, value: u64, max: u64 },
-    
+    Overflow {
+        metric_name: String,
+        value: u64,
+        max: u64,
+    },
+
     #[error("Metric underflow: {metric_name} - value {value} below min {min}")]
-    Underflow { metric_name: String, value: u64, min: u64 },
-    
+    Underflow {
+        metric_name: String,
+        value: u64,
+        min: u64,
+    },
+
     #[cfg(feature = "metrics")]
     #[error("Prometheus error: {0}")]
     PrometheusError(#[from] prometheus::Error),
-    
+
     #[error("HTTP server error: {0}")]
     HttpError(String),
 }
@@ -93,31 +101,39 @@ pub enum MetricsError {
 pub enum ParseError {
     #[error("Empty input")]
     EmptyInput,
-    
+
     #[error("Input too long: '{input}' (max length: {max_len})")]
     TooLong { input: String, max_len: usize },
-    
+
     #[error("Invalid character '{character}' at position {position} in '{input}'")]
-    InvalidCharacter { input: String, position: usize, character: char },
-    
+    InvalidCharacter {
+        input: String,
+        position: usize,
+        character: char,
+    },
+
     #[error("Overflow in '{input}' (max value: {max_value})")]
     Overflow { input: String, max_value: u64 },
-    
+
     #[error("Underflow in '{input}' (min value: {min_value})")]
     Underflow { input: String, min_value: u64 },
-    
+
     #[error("Invalid format: {reason}")]
     InvalidFormat { reason: String },
-    
+
     #[error("Missing field: {field}")]
     MissingField { field: String },
-    
+
     #[error("Type conversion error: {from_type} to {to_type} - {reason}")]
-    ConversionError { from_type: String, to_type: String, reason: String },
-    
+    ConversionError {
+        from_type: String,
+        to_type: String,
+        reason: String,
+    },
+
     #[error("Parse timeout: {timeout_ms}ms")]
     ParseTimeout { timeout_ms: u64 },
-    
+
     #[error("Parser initialization failed: {reason}")]
     InitializationFailed { reason: String },
 }
@@ -156,7 +172,7 @@ impl BufferError {
             | BufferError::OperationFailed { .. } => false,
         }
     }
-    
+
     pub fn recovery_strategy(&self) -> ErrorRecovery {
         match self {
             BufferError::BufferFull => ErrorRecovery::RetryWithFallback,
@@ -194,7 +210,7 @@ impl MetricsError {
             MetricsError::HttpError(_) => true,
         }
     }
-    
+
     pub fn recovery_strategy(&self) -> ErrorRecovery {
         match self {
             MetricsError::UpdateFailed { .. } => ErrorRecovery::Skip,
@@ -230,7 +246,7 @@ impl ParseError {
             ParseError::InitializationFailed { .. } => false,
         }
     }
-    
+
     pub fn recovery_strategy(&self) -> ErrorRecovery {
         match self {
             ParseError::EmptyInput => ErrorRecovery::UseFallback,
@@ -353,47 +369,77 @@ mod tests {
 
     #[test]
     fn test_buffer_error_recovery_strategies() {
-        assert_eq!(BufferError::BufferFull.recovery_strategy(), ErrorRecovery::RetryWithFallback);
+        assert_eq!(
+            BufferError::BufferFull.recovery_strategy(),
+            ErrorRecovery::RetryWithFallback
+        );
         assert!(BufferError::BufferFull.is_recoverable());
-        
-        assert_eq!(BufferError::BufferClosed.recovery_strategy(), ErrorRecovery::Fail);
+
+        assert_eq!(
+            BufferError::BufferClosed.recovery_strategy(),
+            ErrorRecovery::Fail
+        );
         assert!(!BufferError::BufferClosed.is_recoverable());
-        
-        assert_eq!(BufferError::SendTimeout.recovery_strategy(), ErrorRecovery::Retry);
+
+        assert_eq!(
+            BufferError::SendTimeout.recovery_strategy(),
+            ErrorRecovery::Retry
+        );
         assert!(BufferError::SendTimeout.is_recoverable());
     }
 
     #[test]
     fn test_metrics_error_recovery_strategies() {
-        assert_eq!(MetricsError::UpdateFailed { 
-            metric_name: "test".to_string(), 
-            reason: "test".to_string() 
-        }.recovery_strategy(), ErrorRecovery::Skip);
-        
-        assert_eq!(MetricsError::AlreadyRegistered { 
-            name: "test".to_string(), 
-            metric_type: "counter".to_string() 
-        }.recovery_strategy(), ErrorRecovery::UseFallback);
-        
-        assert!(!MetricsError::InvalidName { 
-            name: "".to_string(), 
-            reason: "empty".to_string() 
-        }.is_recoverable());
+        assert_eq!(
+            MetricsError::UpdateFailed {
+                metric_name: "test".to_string(),
+                reason: "test".to_string()
+            }
+            .recovery_strategy(),
+            ErrorRecovery::Skip
+        );
+
+        assert_eq!(
+            MetricsError::AlreadyRegistered {
+                name: "test".to_string(),
+                metric_type: "counter".to_string()
+            }
+            .recovery_strategy(),
+            ErrorRecovery::UseFallback
+        );
+
+        assert!(
+            !MetricsError::InvalidName {
+                name: "".to_string(),
+                reason: "empty".to_string()
+            }
+            .is_recoverable()
+        );
     }
 
     #[test]
     fn test_parse_error_recovery_strategies() {
-        assert_eq!(ParseError::EmptyInput.recovery_strategy(), ErrorRecovery::UseFallback);
+        assert_eq!(
+            ParseError::EmptyInput.recovery_strategy(),
+            ErrorRecovery::UseFallback
+        );
         assert!(ParseError::EmptyInput.is_recoverable());
-        
-        assert_eq!(ParseError::Overflow { 
-            input: "999999".to_string(), 
-            max_value: 65535 
-        }.recovery_strategy(), ErrorRecovery::UseFallback);
-        
-        assert!(!ParseError::InitializationFailed { 
-            reason: "system failure".to_string() 
-        }.is_recoverable());
+
+        assert_eq!(
+            ParseError::Overflow {
+                input: "999999".to_string(),
+                max_value: 65535
+            }
+            .recovery_strategy(),
+            ErrorRecovery::UseFallback
+        );
+
+        assert!(
+            !ParseError::InitializationFailed {
+                reason: "system failure".to_string()
+            }
+            .is_recoverable()
+        );
     }
 
     #[test]
@@ -401,9 +447,10 @@ mod tests {
         // Test successful operation
         let result: Result<i32, BufferError> = safe_buffer_operation(|| Ok(42));
         assert_eq!(result, Ok(42));
-        
+
         // Test failing operation
-        let result: Result<i32, BufferError> = safe_buffer_operation(|| Err(BufferError::BufferClosed));
+        let result: Result<i32, BufferError> =
+            safe_buffer_operation(|| Err(BufferError::BufferClosed));
         assert_eq!(result, Err(BufferError::BufferClosed));
     }
 
@@ -415,12 +462,14 @@ mod tests {
         if let Ok(value) = result {
             assert_eq!(value, "success");
         }
-        
+
         // Test failing operation
-        let result: Result<&str, MetricsError> = safe_metrics_operation(|| Err(MetricsError::InvalidName { 
-            name: "".to_string(), 
-            reason: "empty".to_string() 
-        }));
+        let result: Result<&str, MetricsError> = safe_metrics_operation(|| {
+            Err(MetricsError::InvalidName {
+                name: "".to_string(),
+                reason: "empty".to_string(),
+            })
+        });
         assert!(result.is_err());
     }
 
@@ -429,7 +478,7 @@ mod tests {
         // Test successful operation
         let result: Result<u16, ParseError> = safe_parse_operation(|| Ok(123u16));
         assert_eq!(result, Ok(123));
-        
+
         // Test failing operation
         let result: Result<u16, ParseError> = safe_parse_operation(|| Err(ParseError::EmptyInput));
         assert_eq!(result, Err(ParseError::EmptyInput));

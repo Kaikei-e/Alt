@@ -1,7 +1,6 @@
 // TASK4 integration test - verify memory-safe application initialization
 use rask_log_forwarder::app::{
-    ApplicationInitializer, Config, LogLevel, 
-    InitializationError, InitializationStrategy
+    ApplicationInitializer, Config, InitializationError, InitializationStrategy, LogLevel,
 };
 use std::path::PathBuf;
 use std::time::Duration;
@@ -36,10 +35,10 @@ fn create_test_config() -> Config {
 fn test_task4_memory_safe_initialization() {
     let initializer = ApplicationInitializer::new();
     let config = create_test_config();
-    
+
     // Test successful initialization
     let result = initializer.initialize(&config);
-    
+
     match result {
         Ok(init_result) => {
             // Verify initialization completed successfully
@@ -61,44 +60,60 @@ fn test_task4_memory_safe_initialization() {
 #[test]
 fn test_task4_initialization_strategies() {
     let initializer = ApplicationInitializer::new();
-    
+
     // Test different initialization strategies
     let test_cases = vec![
         (create_test_config(), InitializationStrategy::Basic),
-        ({
-            let mut config = create_test_config();
-            config.target_service = None;
-            config
-        }, InitializationStrategy::AutoDetection),
-        ({
-            let mut config = create_test_config();
-            config.enable_metrics = true;
-            config
-        }, InitializationStrategy::WithMetrics),
-        ({
-            let mut config = create_test_config();
-            config.enable_metrics = true;
-            config.enable_disk_fallback = true;
-            config
-        }, InitializationStrategy::FullFeatures),
+        (
+            {
+                let mut config = create_test_config();
+                config.target_service = None;
+                config
+            },
+            InitializationStrategy::AutoDetection,
+        ),
+        (
+            {
+                let mut config = create_test_config();
+                config.enable_metrics = true;
+                config
+            },
+            InitializationStrategy::WithMetrics,
+        ),
+        (
+            {
+                let mut config = create_test_config();
+                config.enable_metrics = true;
+                config.enable_disk_fallback = true;
+                config
+            },
+            InitializationStrategy::FullFeatures,
+        ),
     ];
-    
+
     for (config, expected_strategy) in test_cases {
         let strategy = initializer.determine_initialization_strategy(&config);
-        assert_eq!(strategy, expected_strategy, "Strategy mismatch for config: {:?}", config.target_service);
+        assert_eq!(
+            strategy, expected_strategy,
+            "Strategy mismatch for config: {:?}",
+            config.target_service
+        );
     }
-    
+
     println!("✓ All initialization strategies work correctly");
 }
 
 #[test]
 fn test_task4_configuration_validation() {
     let initializer = ApplicationInitializer::new();
-    
+
     // Test valid configuration
     let config = create_test_config();
-    assert!(initializer.validate_configuration(&config).is_ok(), "Valid config should pass");
-    
+    assert!(
+        initializer.validate_configuration(&config).is_ok(),
+        "Valid config should pass"
+    );
+
     // Test invalid configurations
     let invalid_cases = vec![
         // Empty endpoint
@@ -158,18 +173,26 @@ fn test_task4_configuration_validation() {
             config
         },
     ];
-    
+
     for (i, config) in invalid_cases.into_iter().enumerate() {
         let result = initializer.validate_configuration(&config);
-        assert!(result.is_err(), "Invalid config case {} should fail validation", i + 1);
-        
+        assert!(
+            result.is_err(),
+            "Invalid config case {} should fail validation",
+            i + 1
+        );
+
         if let Err(InitializationError::ConfigValidationFailed { reason }) = result {
-            println!("✓ Config validation case {} failed as expected: {}", i + 1, reason);
+            println!(
+                "✓ Config validation case {} failed as expected: {}",
+                i + 1,
+                reason
+            );
         } else {
             panic!("Expected ConfigValidationFailed error for case {}", i + 1);
         }
     }
-    
+
     println!("✓ All configuration validation tests passed");
 }
 
@@ -177,9 +200,9 @@ fn test_task4_configuration_validation() {
 fn test_task4_zero_expect_calls() {
     // This test verifies that the TASK4 implementation eliminates expect() calls
     // by ensuring that all the initialization paths handle errors gracefully
-    
+
     let initializer = ApplicationInitializer::new();
-    
+
     // Test with edge case configurations that would previously cause expect() panics
     let edge_cases = vec![
         // Configuration with unusual but valid values
@@ -201,24 +224,27 @@ fn test_task4_zero_expect_calls() {
             config
         },
     ];
-    
+
     for (i, config) in edge_cases.into_iter().enumerate() {
         // This should not panic - all error paths should be handled gracefully
         let result = initializer.initialize(&config);
-        
+
         match result {
             Ok(_) => {
                 println!("✓ Edge case {} handled successfully", i + 1);
             }
             Err(InitializationError::LoggingInitFailed { .. }) => {
-                println!("✓ Edge case {} handled gracefully (logging already initialized)", i + 1);
+                println!(
+                    "✓ Edge case {} handled gracefully (logging already initialized)",
+                    i + 1
+                );
             }
             Err(e) => {
                 println!("✓ Edge case {} failed gracefully with: {}", i + 1, e);
             }
         }
     }
-    
+
     println!("✓ No expect() calls - all errors handled gracefully");
 }
 
@@ -226,64 +252,73 @@ fn test_task4_zero_expect_calls() {
 fn test_task4_memory_safety() {
     // Test memory safety by running initialization multiple times
     // This verifies that there are no memory leaks or unsafe operations
-    
+
     let initializer = ApplicationInitializer::new();
     let config = create_test_config();
-    
+
     for i in 0..100 {
         let result = initializer.validate_configuration(&config);
-        assert!(result.is_ok(), "Validation should be consistent on iteration {}", i);
-        
+        assert!(
+            result.is_ok(),
+            "Validation should be consistent on iteration {}",
+            i
+        );
+
         let strategy = initializer.determine_initialization_strategy(&config);
-        assert_eq!(strategy, InitializationStrategy::Basic, "Strategy should be consistent on iteration {}", i);
+        assert_eq!(
+            strategy,
+            InitializationStrategy::Basic,
+            "Strategy should be consistent on iteration {}",
+            i
+        );
     }
-    
+
     println!("✓ Memory safety verified - no issues after 100 iterations");
 }
 
 #[test]
 fn test_task4_error_recovery() {
     // Test that the initialization system can recover from various error conditions
-    
+
     let initializer = ApplicationInitializer::new();
-    
+
     // Test recovery from invalid to valid configuration
     let mut config = create_test_config();
     config.batch_size = 0; // Invalid
-    
+
     let result = initializer.validate_configuration(&config);
     assert!(result.is_err(), "Should fail with invalid config");
-    
+
     // Fix the configuration
     config.batch_size = 1000; // Valid
-    
+
     let result = initializer.validate_configuration(&config);
     assert!(result.is_ok(), "Should succeed with fixed config");
-    
+
     println!("✓ Error recovery tested successfully");
 }
 
 #[test]
 fn test_task4_comprehensive_safety() {
     // Comprehensive test combining all safety aspects
-    
+
     println!("🔍 Running comprehensive TASK4 safety verification...");
-    
+
     // 1. Memory safety
     test_task4_memory_safety();
-    
+
     // 2. Zero expect() calls
     test_task4_zero_expect_calls();
-    
+
     // 3. Error recovery
     test_task4_error_recovery();
-    
+
     // 4. Configuration validation
     test_task4_configuration_validation();
-    
+
     // 5. Initialization strategies
     test_task4_initialization_strategies();
-    
+
     println!("✅ TASK4 comprehensive safety verification completed successfully!");
     println!("   ✓ Memory-safe initialization implemented");
     println!("   ✓ All expect() calls eliminated");

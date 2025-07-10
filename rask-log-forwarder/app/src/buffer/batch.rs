@@ -141,8 +141,12 @@ impl BatchFormer {
         let batch_type;
 
         {
-            let mut inner = self.inner.write_safe().await
-                .map_err(|e| crate::buffer::BufferError::ConcurrencyError(format!("Failed to acquire write lock: {}", e)))?;
+            let mut inner = self.inner.write_safe().await.map_err(|e| {
+                crate::buffer::BufferError::ConcurrencyError(format!(
+                    "Failed to acquire write lock: {}",
+                    e
+                ))
+            })?;
 
             // Set batch start time if this is the first entry
             if inner.pending_entries.is_empty() {

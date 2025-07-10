@@ -36,14 +36,14 @@ fn test_task5_buffer_error_handling() {
         BufferError::ReceiveTimeout,
         BufferError::ConcurrencyError("test".to_string()),
     ];
-    
+
     for error in errors {
         // These should not panic
         let _ = error.to_string();
         let _ = error.is_recoverable();
         let _ = error.recovery_strategy();
     }
-    
+
     println!("✓ Buffer error handling works correctly");
 }
 
@@ -51,25 +51,33 @@ fn test_task5_buffer_error_handling() {
 async fn test_task5_lock_free_buffer_creation() {
     // Test buffer creation with various capacities
     let test_cases = vec![
-        (0, true),      // Should fail
-        (1, false),     // Should succeed
-        (100, false),   // Should succeed
+        (0, true),       // Should fail
+        (1, false),      // Should succeed
+        (100, false),    // Should succeed
         (100000, false), // Should succeed
     ];
-    
+
     for (capacity, should_fail) in test_cases {
         let result = LogBuffer::new(capacity);
-        
+
         if should_fail {
-            assert!(result.is_err(), "Buffer creation with capacity {} should fail", capacity);
+            assert!(
+                result.is_err(),
+                "Buffer creation with capacity {} should fail",
+                capacity
+            );
             if let Err(BufferError::BufferClosed) = result {
                 // Expected for capacity 0
             } else {
                 panic!("Expected BufferClosed error for capacity 0");
             }
         } else {
-            assert!(result.is_ok(), "Buffer creation with capacity {} should succeed", capacity);
-            
+            assert!(
+                result.is_ok(),
+                "Buffer creation with capacity {} should succeed",
+                capacity
+            );
+
             if let Ok(buffer) = result {
                 assert_eq!(buffer.capacity(), capacity);
                 assert_eq!(buffer.len(), 0);
@@ -78,7 +86,7 @@ async fn test_task5_lock_free_buffer_creation() {
             }
         }
     }
-    
+
     println!("✓ Lock-free buffer creation tests passed");
 }
 
@@ -86,26 +94,26 @@ async fn test_task5_lock_free_buffer_creation() {
 async fn test_task5_safe_buffer_split() {
     // Test that buffer split operations handle closed buffers safely
     let buffer = LogBuffer::new(100).expect("Should create buffer");
-    
+
     // Test normal split
     let (sender, mut receiver) = buffer.split().expect("Should split buffer");
-    
+
     // Test that split doesn't panic even when buffer is in various states
     let test_entry = create_test_entry("test message");
-    
+
     // Send some data
     assert!(sender.send(test_entry.clone()).await.is_ok());
-    
+
     // Receive some data
     assert!(receiver.recv().await.is_ok());
-    
+
     // Multiple splits should work
     let (sender2, _receiver2) = buffer.split().expect("Should split buffer again");
-    
+
     // Both senders should work
     assert!(sender.send(test_entry.clone()).await.is_ok());
     assert!(sender2.send(test_entry.clone()).await.is_ok());
-    
+
     println!("✓ Safe buffer split tests passed");
 }
 
@@ -114,9 +122,9 @@ async fn test_task5_zero_expect_buffer_operations() {
     // This test specifically verifies that buffer operations don't use expect()
     let buffer = LogBuffer::new(10).expect("Should create buffer");
     let (sender, mut receiver) = buffer.split().expect("Should split buffer");
-    
+
     let test_entry = create_test_entry("zero expect test");
-    
+
     // Fill buffer to capacity
     for i in 0..10 {
         let entry = create_test_entry(&format!("message {}", i));
@@ -126,7 +134,7 @@ async fn test_task5_zero_expect_buffer_operations() {
             Err(e) => panic!("Unexpected error: {:?}", e),
         }
     }
-    
+
     // Try to send one more (should handle full buffer gracefully)
     match sender.send(test_entry.clone()).await {
         Ok(()) => {
@@ -137,10 +145,11 @@ async fn test_task5_zero_expect_buffer_operations() {
         }
         Err(e) => panic!("Unexpected error: {:?}", e),
     }
-    
+
     // Receive all messages
     let mut received_count = 0;
-    while received_count < 20 { // Safety limit
+    while received_count < 20 {
+        // Safety limit
         match timeout(Duration::from_millis(100), receiver.recv()).await {
             Ok(Ok(_entry)) => {
                 received_count += 1;
@@ -150,8 +159,11 @@ async fn test_task5_zero_expect_buffer_operations() {
             Ok(Err(e)) => panic!("Unexpected receive error: {:?}", e),
         }
     }
-    
-    println!("✓ Zero expect buffer operations test passed (received {} messages)", received_count);
+
+    println!(
+        "✓ Zero expect buffer operations test passed (received {} messages)",
+        received_count
+    );
 }
 
 #[tokio::test]
@@ -159,11 +171,11 @@ async fn test_task5_concurrent_buffer_safety() {
     // Test high-concurrency operations to ensure no expect() panics occur
     let buffer = Arc::new(LogBuffer::new(1000).expect("Should create buffer"));
     let (sender, mut receiver) = buffer.split().expect("Should split buffer");
-    
+
     let sender = Arc::new(sender);
     let num_producers = 10;
     let messages_per_producer = 100;
-    
+
     // Start producer tasks
     let mut producer_handles = Vec::new();
     for producer_id in 0..num_producers {
@@ -171,7 +183,7 @@ async fn test_task5_concurrent_buffer_safety() {
         let handle = tokio::spawn(async move {
             for i in 0..messages_per_producer {
                 let entry = create_test_entry(&format!("producer {} message {}", producer_id, i));
-                
+
                 // Keep trying until we succeed or get a permanent error
                 let mut attempts = 0;
                 loop {
@@ -193,32 +205,38 @@ async fn test_task5_concurrent_buffer_safety() {
         });
         producer_handles.push(handle);
     }
-    
+
     // Start consumer task
     let consumer_handle = tokio::spawn(async move {
         let mut received = 0;
         let total_expected = num_producers * messages_per_producer;
-        
+
         while received < total_expected {
             match timeout(Duration::from_secs(5), receiver.recv()).await {
                 Ok(Ok(_entry)) => {
                     received += 1;
                 }
                 Ok(Err(BufferError::BufferClosed)) => {
-                    println!("Buffer closed, received {} of {} messages", received, total_expected);
+                    println!(
+                        "Buffer closed, received {} of {} messages",
+                        received, total_expected
+                    );
                     break;
                 }
                 Err(_timeout) => {
-                    println!("Timeout waiting for message, received {} of {} messages", received, total_expected);
+                    println!(
+                        "Timeout waiting for message, received {} of {} messages",
+                        received, total_expected
+                    );
                     break;
                 }
                 Ok(Err(e)) => panic!("Unexpected receive error: {:?}", e),
             }
         }
-        
+
         received
     });
-    
+
     // Wait for all producers to complete
     let mut completed_producers = 0;
     for handle in producer_handles {
@@ -230,14 +248,16 @@ async fn test_task5_concurrent_buffer_safety() {
             Err(e) => panic!("Producer task failed: {:?}", e),
         }
     }
-    
+
     // Wait for consumer to complete
-    let received_count = consumer_handle.await.expect("Consumer task should complete");
-    
+    let received_count = consumer_handle
+        .await
+        .expect("Consumer task should complete");
+
     println!("✓ Concurrent buffer safety test passed");
     println!("  - {} producers completed", completed_producers);
     println!("  - {} messages received", received_count);
-    
+
     assert_eq!(completed_producers, num_producers);
     // Allow for some message loss due to buffer full conditions in high contention
     assert!(received_count > 0, "Should receive at least some messages");
@@ -246,16 +266,16 @@ async fn test_task5_concurrent_buffer_safety() {
 #[tokio::test]
 async fn test_task5_buffer_edge_cases() {
     // Test various edge cases that might trigger expect() calls
-    
+
     // Test 1: Very small buffer
     let buffer = LogBuffer::new(1).expect("Should create tiny buffer");
     let (sender, mut receiver) = buffer.split().expect("Should split buffer");
-    
+
     let entry = create_test_entry("edge case test");
-    
+
     // Fill the tiny buffer
     assert!(sender.send(entry.clone()).await.is_ok());
-    
+
     // Try to overfill
     match sender.send(entry.clone()).await {
         Ok(()) => {
@@ -266,7 +286,7 @@ async fn test_task5_buffer_edge_cases() {
         }
         Err(e) => panic!("Unexpected error: {:?}", e),
     }
-    
+
     // Receive the message
     match receiver.recv().await {
         Ok(_) => {
@@ -274,21 +294,22 @@ async fn test_task5_buffer_edge_cases() {
         }
         Err(e) => panic!("Unexpected receive error: {:?}", e),
     }
-    
+
     // Test 2: Large buffer with rapid operations
     let large_buffer = LogBuffer::new(100000).expect("Should create large buffer");
-    let (large_sender, mut large_receiver) = large_buffer.split().expect("Should split large buffer");
-    
+    let (large_sender, mut large_receiver) =
+        large_buffer.split().expect("Should split large buffer");
+
     // Rapid send/receive operations
     for i in 0..1000 {
         let entry = create_test_entry(&format!("rapid test {}", i));
-        
+
         // Send
         match large_sender.send(entry).await {
             Ok(()) => {}
             Err(e) => panic!("Unexpected send error on iteration {}: {:?}", i, e),
         }
-        
+
         // Immediate receive
         match timeout(Duration::from_millis(10), large_receiver.recv()).await {
             Ok(Ok(_)) => {
@@ -300,7 +321,7 @@ async fn test_task5_buffer_edge_cases() {
             }
         }
     }
-    
+
     println!("✓ Buffer edge cases test passed");
 }
 
@@ -308,7 +329,7 @@ async fn test_task5_buffer_edge_cases() {
 fn test_task5_buffer_metrics_safety() {
     // Test that buffer metrics operations don't panic
     let buffer = LogBuffer::new(100).expect("Should create buffer");
-    
+
     // These operations should not panic
     let _ = buffer.metrics();
     let _ = buffer.config();
@@ -320,16 +341,16 @@ fn test_task5_buffer_metrics_safety() {
     let _ = buffer.fill_ratio();
     let _ = buffer.needs_backpressure();
     let _ = buffer.backpressure_level();
-    
+
     // Reset metrics should not panic
     buffer.reset_metrics();
-    
+
     println!("✓ Buffer metrics safety test passed");
 }
 
 // Note: Individual test functions above test all TASK5 requirements:
 // ✓ Lock-free buffer operations implemented
-// ✓ All expect() calls eliminated  
+// ✓ All expect() calls eliminated
 // ✓ Comprehensive error handling added
 // ✓ High-concurrency safety verified
 // ✓ Edge cases handled gracefully
