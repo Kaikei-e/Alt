@@ -3,8 +3,13 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
+	"regexp"
 	"search-indexer/domain"
 	"search-indexer/port"
+	"strings"
+	"unicode"
 )
 
 type SearchArticlesUsecase struct {
@@ -21,6 +26,98 @@ func NewSearchArticlesUsecase(searchEngine port.SearchEngine) *SearchArticlesUse
 	return &SearchArticlesUsecase{
 		searchEngine: searchEngine,
 	}
+}
+
+// Security validation patterns
+var (
+	// XSS prevention patterns
+	scriptTagPattern     = regexp.MustCompile(`(?i)<script[^>]*>.*?</script>`)
+	htmlTagPattern       = regexp.MustCompile(`(?i)<[^>]*>`)
+	javascriptProtocol   = regexp.MustCompile(`(?i)javascript:`)
+	eventHandlerPattern  = regexp.MustCompile(`(?i)on\w+\s*=`)
+	
+	// SQL injection prevention patterns
+	sqlInjectionPattern = regexp.MustCompile(`(?i)(union|select|insert|update|delete|drop|create|alter|exec|execute|\-\-|\/\*|\*\/|;|'|")`)
+	
+	// Command injection prevention patterns
+	commandInjectionPattern = regexp.MustCompile(`[|;&$\x60]`)
+	
+	// Control character patterns
+	controlCharPattern = regexp.MustCompile(`[\x00-\x1F\x7F]`)
+	
+	// Zero-width character patterns
+	zeroWidthPattern = regexp.MustCompile(`[\u200B-\u200D\uFEFF]`)
+)
+
+// validateQuerySecurity performs comprehensive security validation on search queries
+func (u *SearchArticlesUsecase) validateQuerySecurity(query string) error {
+	// Check for null bytes and control characters
+	if controlCharPattern.MatchString(query) {
+		return errors.New("query contains invalid control characters")
+	}
+	
+	// Check for zero-width characters
+	if zeroWidthPattern.MatchString(query) {
+		return errors.New("query contains zero-width characters")
+	}
+	
+	// URL decode the query to check for encoded attacks
+	decoded, err := url.QueryUnescape(query)
+	if err == nil {
+		// Check the decoded version for attacks
+		if scriptTagPattern.MatchString(decoded) || 
+		   htmlTagPattern.MatchString(decoded) || 
+		   javascriptProtocol.MatchString(decoded) ||
+		   eventHandlerPattern.MatchString(decoded) {
+			return errors.New("query contains potential XSS attack vectors")
+		}
+		
+		if sqlInjectionPattern.MatchString(decoded) {
+			return errors.New("query contains potential SQL injection patterns")
+		}
+		
+		if commandInjectionPattern.MatchString(decoded) {
+			return errors.New("query contains potential command injection patterns")
+		}
+	}
+	
+	// Check the original query as well
+	if scriptTagPattern.MatchString(query) || 
+	   htmlTagPattern.MatchString(query) || 
+	   javascriptProtocol.MatchString(query) ||
+	   eventHandlerPattern.MatchString(query) {
+		return errors.New("query contains potential XSS attack vectors")
+	}
+	
+	if sqlInjectionPattern.MatchString(query) {
+		return errors.New("query contains potential SQL injection patterns")
+	}
+	
+	if commandInjectionPattern.MatchString(query) {
+		return errors.New("query contains potential command injection patterns")
+	}
+	
+	return nil
+}
+
+// sanitizeQuery cleans and normalizes the query string
+func (u *SearchArticlesUsecase) sanitizeQuery(query string) string {
+	// Remove zero-width characters
+	query = zeroWidthPattern.ReplaceAllString(query, "")
+	
+	// Normalize whitespace
+	query = strings.TrimSpace(query)
+	query = regexp.MustCompile(`\s+`).ReplaceAllString(query, " ")
+	
+	// Remove any remaining control characters except newlines and tabs
+	result := ""
+	for _, r := range query {
+		if unicode.IsGraphic(r) || unicode.IsSpace(r) {
+			result += string(r)
+		}
+	}
+	
+	return result
 }
 
 func (u *SearchArticlesUsecase) Execute(ctx context.Context, query string, limit int) (*SearchResult, error) {
@@ -40,13 +137,26 @@ func (u *SearchArticlesUsecase) Execute(ctx context.Context, query string, limit
 		return nil, errors.New("limit too large")
 	}
 
-	documents, err := u.searchEngine.Search(ctx, query, limit)
+	// Perform security validation
+	if err := u.validateQuerySecurity(query); err != nil {
+		return nil, fmt.Errorf("security validation failed: %w", err)
+	}
+
+	// Sanitize the query
+	sanitizedQuery := u.sanitizeQuery(query)
+	
+	// Final check after sanitization
+	if sanitizedQuery == "" {
+		return nil, errors.New("query became empty after sanitization")
+	}
+
+	documents, err := u.searchEngine.Search(ctx, sanitizedQuery, limit)
 	if err != nil {
 		return nil, err
 	}
 
 	return &SearchResult{
-		Query:     query,
+		Query:     sanitizedQuery,
 		Documents: documents,
 		Total:     len(documents),
 	}, nil
