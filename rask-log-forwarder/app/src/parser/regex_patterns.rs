@@ -115,8 +115,7 @@ impl SimplePatternParser {
         }
 
         Err(crate::parser::docker::ParseError::InvalidFormat(format!(
-            "Invalid timestamp format: {} (expected ISO 8601)",
-            text
+            "Invalid timestamp format: {text} (expected ISO 8601)"
         )))
     }
 

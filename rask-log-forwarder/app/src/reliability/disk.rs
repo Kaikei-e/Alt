@@ -203,7 +203,7 @@ impl DiskFallback {
     pub async fn cleanup_old_batches(&mut self) -> Result<u32, DiskError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| DiskError::SystemTimeError(format!("Invalid system time: {}", e)))?
+            .map_err(|e| DiskError::SystemTimeError(format!("Invalid system time: {e}")))?
             .as_secs();
 
         let batch_ids = self.list_stored_batches().await?;
