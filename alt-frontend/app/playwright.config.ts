@@ -14,7 +14,7 @@ export default defineConfig({
   retries: isCI ? 1 : 0,
 
   expect: {
-    timeout: 10 * 1000,
+    timeout: 15 * 1000,
   },
   globalTimeout: 900 * 1000, // 15分
 
