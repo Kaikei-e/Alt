@@ -1,7 +1,6 @@
 name: Reusable Python Test Workflow
 permissions:
   contents: read
-  actions: read
 on:
   workflow_call:
     inputs:
@@ -29,7 +28,6 @@ jobs:
           echo "::add-mask::$HOME"
           echo "::add-mask::$USER"
           echo "::add-mask::$(whoami)"
-          echo "::add-mask::runner"
           echo "::add-mask::actions-runner"
           echo "::add-mask::/opt/homebrew"
           echo "::add-mask::/Users"
