@@ -1,4 +1,4 @@
-name: Reusable Python Test Workflow (Colima)
+name: Reusable Python Test Workflow
 permissions:
   contents: read
 on:
@@ -11,39 +11,90 @@ on:
         required: false
         type: string
         default: "3.13"
+      test-command:
+        required: false
+        type: string
+        default: "pytest test_unit.py -v --junit-xml=tests/results.xml"
 
 jobs:
   test:
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
-    services:
-      # Dockerサービスが利用可能か確認
-      docker:
-        image: docker:dind
-        options: --privileged
     steps:
-      - name: Check Docker/Colima
+      - name: Security setup
         run: |
-          if ! docker version >/dev/null 2>&1; then
-            echo "Starting Colima..."
-            colima start || echo "Colima already running"
-          fi
+          # パスマスキング
+          echo "::add-mask::$HOME"
+          echo "::add-mask::$USER"
+          echo "::add-mask::/Users"
+          echo "::add-mask::/opt/homebrew"
 
       - uses: actions/checkout@v4
 
-      - name: Run Python tests in container
+      - name: Setup isolated Python environment
+        id: setup
         run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -w "/workspace/${{ inputs.working-directory }}" \
-            --user $(id -u):$(id -g) \
-            python:${{ inputs.python-version }}-slim \
-            /bin/bash -c "
-              pip install --quiet pytest pytest-cov psycopg2-binary &&
-              pip install --quiet -r requirements.txt || true &&
-              mkdir -p tests &&
-              pytest test_unit.py -v --junit-xml=tests/results.xml || true
-            "
+          # 一時的な作業ディレクトリ
+          WORK_DIR="${{ runner.temp }}/python-env-${{ github.run_id }}"
+          mkdir -p "$WORK_DIR"
+
+          # 仮想環境を作成（Homebrewのpythonを使用）
+          /opt/homebrew/bin/python3 -m venv "$WORK_DIR/venv" >/dev/null 2>&1
+
+          # 出力用に短縮パスを作成
+          echo "venv=$WORK_DIR/venv" >> $GITHUB_OUTPUT
+          echo "::notice::Python environment ready"
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          # 仮想環境を有効化
+          source "${{ steps.setup.outputs.venv }}/bin/activate"
+
+          # 静かにインストール
+          pip install --quiet --upgrade pip wheel setuptools
+          pip install --quiet pytest pytest-cov psycopg2-binary
+
+          # プロジェクトの依存関係
+          if [ -f "requirements.txt" ]; then
+              pip install --quiet -r requirements.txt
+          elif [ -f "pyproject.toml" ]; then
+              pip install --quiet -e .
+          fi
+
+          echo "::notice::Dependencies installed"
+
+      - name: Run tests
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          # 仮想環境を有効化
+          source "${{ steps.setup.outputs.venv }}/bin/activate"
+
+          # テストディレクトリを準備
+          mkdir -p tests
+
+          # テスト実行（パスを含む出力をフィルタ）
+          set +e
+          ${{ inputs.test-command }} 2>&1 | \
+            sed -E 's|/Users/[^/]+|/***|g; s|/opt/[^/]+|/***|g' | \
+            grep -v "runner-" | \
+            grep -v "actions-runner"
+          TEST_EXIT=${PIPESTATUS[0]}
+
+          # 結果確認
+          if [ ! -f "tests/results.xml" ]; then
+              echo '<?xml version="1.0" encoding="UTF-8"?><testsuites></testsuites>' > tests/results.xml
+          fi
+
+          exit $TEST_EXIT
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # 仮想環境を削除
+          rm -rf "${{ steps.setup.outputs.venv }}" 2>/dev/null || true
 
       - name: Upload test results
         if: always()
