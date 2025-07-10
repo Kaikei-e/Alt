@@ -54,15 +54,22 @@ jobs:
       matrix:
         go: ["1.24"]
     steps:
-    - name: Mask sensitive paths
+    - name: Configure logging
       if: runner.environment == 'self-hosted'
       run: |
-        # パスマスキング - より包括的に
-        echo "::add-mask::$HOME"
-        echo "::add-mask::$USER"
-        echo "::add-mask::$(whoami)"
-        echo "::add-mask::actions-runner"
-        echo "::add-mask::${{ runner.workspace }}"
+        # GitHubのログ機能を使って、特定のセクションを非表示に
+        echo "::group::Masking Configuration"
+
+        # ここでマスキング設定（この部分は折りたたまれる）
+        PARTS=($(echo $HOME | tr '/' ' '))
+        for part in "${PARTS[@]}"; do
+          [ ! -z "$part" ] && echo "::add-mask::$part"
+        done
+
+        echo "::endgroup::"
+
+        # 以降のコマンドでデバッグ出力を抑制
+        echo "::debug::Masking completed"
 
     - uses: actions/checkout@v4
 
