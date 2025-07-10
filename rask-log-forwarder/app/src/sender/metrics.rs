@@ -3,6 +3,45 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+/// Safely calculate percentile from sorted samples with bounds checking
+fn calculate_percentile(sorted_samples: &[Duration], percentile: f64) -> Duration {
+    if sorted_samples.is_empty() {
+        return Duration::ZERO;
+    }
+
+    if sorted_samples.len() == 1 {
+        return sorted_samples[0];
+    }
+
+    // Clamp percentile to valid range [0.0, 1.0]
+    let percentile = percentile.clamp(0.0, 1.0);
+
+    // Use safer calculation that avoids floating point precision issues
+    let len = sorted_samples.len();
+    let index_f64 = percentile * (len.saturating_sub(1)) as f64;
+
+    // Convert to usize with proper bounds checking
+    let index = if index_f64.is_finite() && index_f64 >= 0.0 {
+        let index_usize = index_f64.floor() as usize;
+        index_usize.min(len.saturating_sub(1))
+    } else {
+        0 // Fallback to first element if floating point calculation fails
+    };
+
+    // Safe array access with explicit bounds checking
+    match sorted_samples.get(index) {
+        Some(&duration) => duration,
+        None => {
+            // This should never happen due to our bounds checking above,
+            // but provide a safe fallback anyway
+            match sorted_samples.last() {
+                Some(&last_duration) => last_duration,
+                None => Duration::ZERO,
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PerformanceMetrics {
     pub total_batches_sent: u64,
@@ -85,39 +124,45 @@ impl MetricsCollector {
         }
     }
 
-    pub fn snapshot(&self) -> PerformanceMetrics {
+        pub fn snapshot(&self) -> PerformanceMetrics {
         let total_batches = self.total_batches.load(Ordering::Relaxed);
-        let total_latency = self.total_latency.load(Ordering::Relaxed);
 
-        let average_latency = if total_batches > 0 {
-            Duration::from_millis(total_latency / total_batches)
-        } else {
-            Duration::ZERO
-        };
-
-        // Calculate percentiles from samples
-        let (p95_latency, p99_latency) = {
+        // Calculate average and percentiles from the same sample set for consistency
+        let (average_latency, p95_latency, p99_latency) = {
             let mut samples = self.latency_samples.lock();
             if samples.is_empty() {
-                (Duration::ZERO, Duration::ZERO)
+                (Duration::ZERO, Duration::ZERO, Duration::ZERO)
             } else {
                 samples.sort();
-                let p95_idx = ((samples.len() - 1) as f64 * 0.95) as usize;
-                let p99_idx = ((samples.len() - 1) as f64 * 0.99) as usize;
 
-                let p95 = if p95_idx < samples.len() {
-                    samples[p95_idx]
-                } else {
-                    samples[samples.len() - 1]
+                // Calculate average from samples with overflow protection
+                let average = {
+                    let mut total_millis: u128 = 0;
+                    for sample in samples.iter() {
+                        // Use saturating_add to prevent overflow
+                        total_millis = total_millis.saturating_add(sample.as_millis());
+                    }
+
+                    let samples_count = samples.len();
+                    if samples_count > 0 {
+                        // Safe division and conversion back to u64 with bounds checking
+                        let avg_millis = total_millis / samples_count as u128;
+                        let avg_millis_u64 = if avg_millis > u64::MAX as u128 {
+                            u64::MAX
+                        } else {
+                            avg_millis as u64
+                        };
+                        Duration::from_millis(avg_millis_u64)
+                    } else {
+                        Duration::ZERO
+                    }
                 };
 
-                let p99 = if p99_idx < samples.len() {
-                    samples[p99_idx]
-                } else {
-                    samples[samples.len() - 1]
-                };
+                // Calculate percentiles with safe bounds checking
+                let p95 = calculate_percentile(&samples, 0.95);
+                let p99 = calculate_percentile(&samples, 0.99);
 
-                (p95, p99)
+                (average, p95, p99)
             }
         };
 

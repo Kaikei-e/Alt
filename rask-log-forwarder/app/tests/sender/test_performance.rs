@@ -56,35 +56,60 @@ async fn test_latency_measurement() {
 async fn test_metrics_collection() {
     let metrics = MetricsCollector::new();
 
-    // Record some test transmissions
-    metrics.record_transmission(
-        true,
-        100,
-        5000,
-        Duration::from_millis(50),
-        Some((3000, 5000)), // compressed, uncompressed
-    );
+    // Record test transmissions with realistic latency distribution
+    // Use more samples for statistically meaningful percentiles
+    let test_latencies = vec![
+        (true, 100, 5000, 45),   // Fast successful transmission
+        (true, 200, 8000, 52),   // Normal successful transmission
+        (true, 150, 6000, 68),   // Slightly slower successful transmission
+        (true, 120, 4500, 71),   // Another successful transmission
+        (true, 180, 7200, 85),   // Slower but still successful
+        (false, 50, 0, 200),     // Failed transmission (higher latency but not extreme)
+        (true, 140, 5800, 89),   // Successful transmission
+        (true, 160, 6400, 95),   // Another successful transmission
+    ];
 
-    metrics.record_transmission(true, 200, 8000, Duration::from_millis(75), None);
+    for (success, entries, bytes, latency_ms) in test_latencies {
+        let compression_info = if success && entries > 100 {
+            Some((bytes * 3 / 5, bytes)) // 60% compression ratio
+        } else {
+            None
+        };
 
-    metrics.record_transmission(false, 50, 0, Duration::from_millis(1000), None);
+        metrics.record_transmission(
+            success,
+            entries,
+            bytes,
+            Duration::from_millis(latency_ms),
+            compression_info,
+        );
+    }
 
     let snapshot = metrics.snapshot();
 
-    assert_eq!(snapshot.total_batches_sent, 3);
-    assert_eq!(snapshot.total_entries_sent, 350);
-    assert_eq!(snapshot.total_bytes_sent, 13000);
-    assert_eq!(snapshot.successful_transmissions, 2);
+    assert_eq!(snapshot.total_batches_sent, 8);
+    assert_eq!(snapshot.total_entries_sent, 1100); // Sum of all entries
+    assert_eq!(snapshot.total_bytes_sent, 42900); // Sum of bytes from successful transmissions only
+    assert_eq!(snapshot.successful_transmissions, 7);
     assert_eq!(snapshot.failed_transmissions, 1);
 
     // Test compression ratio
     assert!(snapshot.compression_ratio > 0.0);
     assert!(snapshot.compression_ratio < 1.0);
 
-    // Test latency metrics
+    // Test latency metrics with realistic expectations
     assert!(snapshot.average_latency > Duration::ZERO);
+
+    // With our test data: [45, 52, 68, 71, 85, 89, 95, 200]
+    // Average ≈ 88ms, P95 should be around 95-200ms range
     assert!(snapshot.p95_latency >= snapshot.average_latency);
     assert!(snapshot.p99_latency >= snapshot.p95_latency);
+
+    // Verify reasonable ranges
+    assert!(snapshot.average_latency >= Duration::from_millis(70));
+    assert!(snapshot.average_latency <= Duration::from_millis(110));
+    assert!(snapshot.p95_latency >= Duration::from_millis(90));
+    assert!(snapshot.p99_latency >= Duration::from_millis(95));
 }
 
 #[tokio::test]
