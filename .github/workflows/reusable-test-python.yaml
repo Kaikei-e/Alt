@@ -15,7 +15,7 @@ on:
       test-command:
         required: false
         type: string
-        default: "uv run python -m pytest test_unit.py -v --junit-xml=tests/results.xml"
+        default: "uv run python3 -m pytest test_unit.py -v --junit-xml=tests/results.xml"
 
 jobs:
   test:
@@ -54,21 +54,21 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           # pipをアップグレード
-          python -m pip install --upgrade pip --user
+          python3 -m pip install --upgrade pip --user
 
           # uvをインストール
-          python -m pip install --user uv
+          python3 -m pip install --user uv
 
           # PATHを更新
           export PATH="$HOME/.local/bin:$PATH"
 
           # 依存関係をインストール
           if [ -f "requirements.txt" ]; then
-            python -m pip install -r requirements.txt --user
+            python3 -m pip install -r requirements.txt --user
           fi
 
           # pytestをインストール
-          python -m pip install --user pytest pytest-cov
+          python3 -m pip install --user pytest pytest-cov
 
           # テストディレクトリを作成
           mkdir -p tests
@@ -80,7 +80,7 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
 
           # テストを実行
-          python -m pytest test_unit.py -v --junit-xml=tests/results.xml || true
+          python3 -m pytest test_unit.py -v --junit-xml=tests/results.xml || true
 
           # 結果を確認
           if [ ! -f "tests/results.xml" ]; then
