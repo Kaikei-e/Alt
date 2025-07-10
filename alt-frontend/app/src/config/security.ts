@@ -5,18 +5,18 @@ export interface SecurityConfig {
   referrerPolicy: string;
 }
 
-export function getSecurityConfig(): SecurityConfig {
+export function getSecurityConfig(nonce: string): SecurityConfig {
   const isDevelopment = process.env.NODE_ENV === "development";
 
   return {
-    contentSecurityPolicy: buildCSPHeader(isDevelopment),
+    contentSecurityPolicy: buildCSPHeader(isDevelopment, nonce),
     frameOptions: "DENY",
     contentTypeOptions: "nosniff",
     referrerPolicy: "strict-origin-when-cross-origin",
   };
 }
 
-function buildCSPHeader(isDevelopment: boolean): string {
+function buildCSPHeader(isDevelopment: boolean, nonce: string): string {
   const baseDirectives = [
     "default-src 'self'",
     "img-src 'self' data: https:",
@@ -34,8 +34,8 @@ function buildCSPHeader(isDevelopment: boolean): string {
         "script-src-elem 'self' 'unsafe-inline'",
       ]
     : [
-        "script-src 'self' 'strict-dynamic'", // React 19のstrictモードに対応
-        "script-src-elem 'self'",
+        `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`, // React 19のstrictモードに対応
+        `script-src-elem 'self' 'nonce-${nonce}'`,
       ];
 
   // Chakra UI + Emotion に最適化されたスタイル設定
@@ -55,7 +55,10 @@ function buildCSPHeader(isDevelopment: boolean): string {
     ...scriptDirectives,
     ...styleDirectives,
     ...connectDirectives,
-  ].join("; ");
+  ]
+    .join("; ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function getBackendApiUrl(): string {
@@ -66,8 +69,8 @@ function getWebSocketUrl(): string {
   return process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
 }
 
-export function securityHeaders(): Record<string, string> {
-  const config = getSecurityConfig();
+export function securityHeaders(nonce: string): Record<string, string> {
+  const config = getSecurityConfig(nonce);
 
   return {
     "Content-Security-Policy": config.contentSecurityPolicy,

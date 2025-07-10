@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { Providers } from "./providers";
 import "./globals.css";
+import { headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "Alt - AI-powered RSS reader",
@@ -19,15 +20,18 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const headersList = await headers();
+  const nonce = headersList.get("x-nonce") || "";
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <Providers>{children}</Providers>
+        <Providers nonce={nonce}>{children}</Providers>
       </body>
     </html>
   );
