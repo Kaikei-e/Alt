@@ -14,7 +14,7 @@ async fn test_docker_client_connection() {
         }
         Err(e) => {
             // If Docker is not available, that's also a valid test case
-            println!("Docker not available (expected in some environments): {}", e);
+            println!("Docker not available (expected in some environments): {e}");
         }
     }
     

@@ -32,7 +32,7 @@ async fn test_integration_with_env_var() {
             println!("Discovery error expected when Docker is unavailable");
         }
         Err(e) => {
-            println!("Other error (may be expected): {}", e);
+            println!("Other error (may be expected): {e}");
         }
     }
 
@@ -76,7 +76,7 @@ async fn test_integration_explicit_service() {
             println!("Discovery error expected when Docker is unavailable");
         }
         Err(e) => {
-            println!("Other error (may be expected): {}", e);
+            println!("Other error (may be expected): {e}");
         }
     }
 }

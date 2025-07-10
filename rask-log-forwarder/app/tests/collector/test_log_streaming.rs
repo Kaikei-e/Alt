@@ -4,6 +4,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use tokio::time::sleep;
 
+#[allow(dead_code)]
 async fn start_test_nginx_container() -> String {
     let output = Command::new("docker")
         .args([
@@ -85,7 +86,7 @@ async fn test_nginx_log_stream_initialization() {
                             println!("Log streaming started successfully");
                         }
                         Err(e) => {
-                            println!("Log streaming failed: {}", e);
+                            println!("Log streaming failed: {e}");
                         }
                     }
 
@@ -97,7 +98,7 @@ async fn test_nginx_log_stream_initialization() {
             }
         }
         Err(e) => {
-            println!("Docker not available: {}", e);
+            println!("Docker not available: {e}");
         }
     }
 }
@@ -131,7 +132,7 @@ async fn test_log_stream_with_options() {
                             println!("Log streaming with options started successfully");
                         }
                         Err(e) => {
-                            println!("Log streaming with options failed: {}", e);
+                            println!("Log streaming with options failed: {e}");
                         }
                     }
 
@@ -143,7 +144,7 @@ async fn test_log_stream_with_options() {
             }
         }
         Err(e) => {
-            println!("Docker not available: {}", e);
+            println!("Docker not available: {e}");
         }
     }
 }

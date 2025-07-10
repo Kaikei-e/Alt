@@ -3,6 +3,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use tokio::time::sleep;
 
+#[allow(dead_code)]
 async fn start_test_nginx_container() -> String {
     let output = Command::new("docker")
         .args([
@@ -29,6 +30,7 @@ async fn start_test_nginx_container() -> String {
     container_id
 }
 
+#[allow(dead_code)]
 async fn start_test_container_without_label() -> String {
     let output = Command::new("docker")
         .args(["run", "-d", "--name", "test-nginx-no-label", "nginx:alpine"])
@@ -128,7 +130,7 @@ async fn test_find_nginx_containers_with_label() {
                             }
                         }
                         Err(e) => {
-                            println!("Container discovery failed: {}", e);
+                            println!("Container discovery failed: {e}");
                         }
                     }
                     
@@ -140,7 +142,7 @@ async fn test_find_nginx_containers_with_label() {
             }
         }
         Err(e) => {
-            println!("Docker not available: {}", e);
+            println!("Docker not available: {e}");
         }
     }
 }
@@ -170,7 +172,7 @@ async fn test_filter_containers_without_label() {
                             println!("Container filtering test passed");
                         }
                         Err(e) => {
-                            println!("Container discovery failed: {}", e);
+                            println!("Container discovery failed: {e}");
                         }
                     }
                     
@@ -182,7 +184,7 @@ async fn test_filter_containers_without_label() {
             }
         }
         Err(e) => {
-            println!("Docker not available: {}", e);
+            println!("Docker not available: {e}");
         }
     }
 }

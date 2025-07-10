@@ -120,7 +120,7 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
                             }
                         }
                         Err(e) => {
-                            println!("Failed to start log tailing: {}", e);
+                            println!("Failed to start log tailing: {e}");
                         }
                     }
 
@@ -132,7 +132,7 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
             }
         }
         Err(e) => {
-            println!("Docker not available: {}", e);
+            println!("Docker not available: {e}");
         }
     }
 
