@@ -1,4 +1,4 @@
-name: Reusable Python Test Workflow
+name: Reusable Python Test Workflow (Colima)
 permissions:
   contents: read
 on:
@@ -11,64 +11,39 @@ on:
         required: false
         type: string
         default: "3.13"
-      test-command:
-        required: false
-        type: string
-        default: "python -m pytest test_unit.py -v --junit-xml=tests/results.xml"
 
 jobs:
   test:
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
+    services:
+      # Dockerサービスが利用可能か確認
+      docker:
+        image: docker:dind
+        options: --privileged
     steps:
-      - name: Configure security
-        if: runner.environment == 'self-hosted'
+      - name: Check Docker/Colima
         run: |
-          # すべての出力をマスク
-          echo "::add-mask::$HOME"
-          echo "::add-mask::$USER"
-          echo "::add-mask::$(whoami)"
-          echo "::add-mask::actions-runner"
-          echo "::add-mask::/opt/homebrew"
-          echo "::add-mask::/Users"
-
-          # デバッグ出力を無効化
-          echo "::debug::Security configured"
+          if ! docker version >/dev/null 2>&1; then
+            echo "Starting Colima..."
+            colima start || echo "Colima already running"
+          fi
 
       - uses: actions/checkout@v4
 
-      - name: Setup and run tests
-        working-directory: ${{ inputs.working-directory }}
+      - name: Run Python tests in container
         run: |
-          # エラー出力のみ、詳細情報は表示しない
-          set +x
-
-          # 環境設定（出力なし）
-          export PATH="/opt/homebrew/opt/python@3.13/bin:/opt/homebrew/bin:$PATH" 2>/dev/null
-
-          # 依存関係のインストール（出力を最小限に）
-          echo "Installing dependencies..."
-          python3 -m pip install --quiet --upgrade pip
-          python3 -m pip install --quiet psycopg2-binary pytest pytest-cov
-
-          if [ -f "requirements.txt" ]; then
-              python3 -m pip install --quiet -r requirements.txt
-          elif [ -f "pyproject.toml" ]; then
-              python3 -m pip install --quiet -e .
-          fi
-
-          # テスト実行
-          echo "Running tests..."
-          mkdir -p tests
-          python3 -m pytest test_unit.py -v --junit-xml=tests/results.xml 2>&1 | \
-            grep -v "/Users/" | grep -v "/opt/homebrew" || true
-
-          # 結果確認（パスを表示しない）
-          if [ -f "tests/results.xml" ]; then
-              echo "Tests completed"
-          else
-              echo '<?xml version="1.0" encoding="UTF-8"?><testsuites></testsuites>' > tests/results.xml
-          fi
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w "/workspace/${{ inputs.working-directory }}" \
+            --user $(id -u):$(id -g) \
+            python:${{ inputs.python-version }}-slim \
+            /bin/bash -c "
+              pip install --quiet pytest pytest-cov psycopg2-binary &&
+              pip install --quiet -r requirements.txt || true &&
+              mkdir -p tests &&
+              pytest test_unit.py -v --junit-xml=tests/results.xml || true
+            "
 
       - name: Upload test results
         if: always()
