@@ -32,29 +32,43 @@ jobs:
           done
           echo "::endgroup::"
 
+      - name: Clean workspace
+        if: runner.environment == 'self-hosted'
+        run: |
+          # キャッシュディレクトリの権限を修正
+          sudo chown -R $(whoami):staff ~/go || true
+          sudo chown -R $(whoami):staff ~/.cache || true
+          # 古いキャッシュをクリーンアップ（オプション）
+          find ~/go/pkg/mod -type d -name ".git" -exec rm -rf {} + 2>/dev/null || true
+          find ~/.cache/go-build -type f -atime +7 -delete 2>/dev/null || true
+
       - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: ${{ inputs.go-version }}
-          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+          cache: false  # 手動でキャッシュを管理
 
-      - name: Cache Go modules
+      - name: Manual Go cache handling
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-test-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go-test-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}-
+            ${{ runner.os }}-go-test-
         env:
           ACTIONS_STEP_DEBUG: false
+        continue-on-error: true  # キャッシュエラーでも継続
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
-        run: go mod tidy
+        run: |
+          go mod download
+          go mod tidy
 
       - name: Run go vet
         working-directory: ${{ inputs.working-directory }}
@@ -72,3 +86,10 @@ jobs:
           flags: ${{ inputs.coverage-flags }}
           name: ${{ inputs.coverage-flags }}-coverage
           verbose: false
+
+      - name: Post-job cleanup
+        if: always() && runner.environment == 'self-hosted'
+        run: |
+          # ジョブ終了後のクリーンアップ
+          go clean -cache || true
+          go clean -modcache || true
