@@ -31,19 +31,6 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
 
-  // Security headers configuration
-  async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: Object.entries(securityHeaders()).map(([key, value]) => ({
-          key,
-          value,
-        })),
-      },
-    ];
-  },
-
   // CSP violations reporting endpoint
   async rewrites() {
     return [
