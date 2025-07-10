@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   test:
-    uses: ./.github/workflows/reusable-rust-test.yaml
+    uses: ./.github/workflows/reusable-test-rust.yaml
     with:
       working-directory: 'rask-log-forwarder/app'
       toolchain: 'stable'
