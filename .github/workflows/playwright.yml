@@ -39,7 +39,7 @@ jobs:
   test:
     timeout-minutes: 60
     needs: determine-runner-integration
-    runs-on: ${{ fromJSON(needs.determine-runner-integration.outputs.runner) }}
+    runs-on: ${{ needs.determine-runner-integration.outputs.runner }}
     steps:
       # コード取得
       - uses: actions/checkout@v4

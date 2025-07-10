@@ -39,7 +39,7 @@ jobs:
   quality-check:
     name: Quality Gates
     needs: determine-runner-integration
-    runs-on: ${{ fromJSON(needs.determine-runner-integration.outputs.runner) }}
+    runs-on: ${{ needs.determine-runner-integration.outputs.runner }}
     strategy:
       matrix:
         go: ["1.24"]
