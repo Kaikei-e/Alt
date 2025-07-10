@@ -1,7 +1,9 @@
-use super::docker::ParseError;
+use super::{
+    docker::ParseError,
+    generated::{VALIDATED_PATTERNS, pattern_index},
+    regex_patterns::SimplePatternParser,
+};
 use chrono::{DateTime, Utc};
-use lazy_static::lazy_static;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -40,34 +42,9 @@ pub trait ServiceParser {
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError>;
 }
 
-// Nginx Access Log Parser
+// Nginx Access Log Parser - Now uses memory-safe patterns
 pub struct NginxParser {
-    access_regex: Regex,
-    error_regex: Regex,
-}
-
-lazy_static! {
-    static ref NGINX_ACCESS_PATTERN: Regex = {
-        match Regex::new(r#"^(\S+) \S+ \S+ \[([^\]]+)\] "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)(?: "([^"]*)" "([^"]*)")?.*$"#) {
-            Ok(regex) => regex,
-            Err(_) => {
-                // Fallback to a simpler pattern for nginx access logs
-                Regex::new(r#"^(\S+) .+ "([A-Z]+) ([^"]*) HTTP/[^"]*" (\d+) (\d+|-)"#)
-                    .expect("Fallback nginx access regex pattern is invalid")
-            }
-        }
-    };
-
-    static ref NGINX_ERROR_PATTERN: Regex = {
-        match Regex::new(r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \d+#\d+: (.+)"#) {
-            Ok(regex) => regex,
-            Err(_) => {
-                // Fallback to a simpler pattern for nginx error logs
-                Regex::new(r#"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)"#)
-                    .expect("Fallback nginx error regex pattern is invalid")
-            }
-        }
-    };
+    fallback_parser: SimplePatternParser,
 }
 
 impl Default for NginxParser {
@@ -79,9 +56,165 @@ impl Default for NginxParser {
 impl NginxParser {
     pub fn new() -> Self {
         Self {
-            access_regex: NGINX_ACCESS_PATTERN.clone(),
-            error_regex: NGINX_ERROR_PATTERN.clone(),
+            fallback_parser: SimplePatternParser::new(),
         }
+    }
+    
+    /// Parse nginx access log with memory-safe patterns
+    fn parse_nginx_access(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
+        // Try with the full nginx access pattern first
+        match VALIDATED_PATTERNS.get(pattern_index::NGINX_ACCESS_FULL) {
+            Ok(regex) => {
+                if let Some(captures) = regex.captures(log) {
+                    return self.extract_access_log_data(captures, log);
+                }
+            }
+            Err(regex_error) => {
+                tracing::debug!("Full nginx access pattern failed: {}, trying fallback", regex_error);
+            }
+        }
+        
+        // Try fallback pattern
+        match VALIDATED_PATTERNS.get(pattern_index::NGINX_ACCESS_FALLBACK) {
+            Ok(regex) => {
+                if let Some(captures) = regex.captures(log) {
+                    return self.extract_access_log_data(captures, log);
+                }
+            }
+            Err(regex_error) => {
+                tracing::debug!("Fallback nginx access pattern failed: {}, using simple parser", regex_error);
+                
+                // Use simple pattern parser as last resort
+                return self.fallback_parser.parse_nginx_access(log)
+                    .map(|access_match| ParsedLogEntry {
+                        service_type: "nginx".to_string(),
+                        log_type: "access".to_string(),
+                        message: log.to_string(),
+                        level: Some(LogLevel::Info),
+                        timestamp: None,
+                        stream: "stdout".to_string(),
+                        method: Some(access_match.method.to_string()),
+                        path: Some(access_match.path.to_string()),
+                        status_code: Some(access_match.status),
+                        response_size: Some(access_match.size),
+                        ip_address: Some(access_match.ip.to_string()),
+                        user_agent: None,
+                        fields: std::collections::HashMap::new(),
+                    })
+                    .map_err(|_| ParseError::InvalidFormat("Failed to parse nginx access log".to_string()));
+            }
+        }
+        
+        Err(ParseError::InvalidFormat("Not a valid nginx access log".to_string()))
+    }
+    
+    /// Parse nginx error log with memory-safe patterns
+    fn parse_nginx_error(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
+        // Try with the full nginx error pattern first
+        match VALIDATED_PATTERNS.get(pattern_index::NGINX_ERROR_FULL) {
+            Ok(regex) => {
+                if let Some(captures) = regex.captures(log) {
+                    return self.extract_error_log_data(captures, log);
+                }
+            }
+            Err(regex_error) => {
+                tracing::debug!("Full nginx error pattern failed: {}, trying fallback", regex_error);
+            }
+        }
+        
+        // Try fallback pattern
+        match VALIDATED_PATTERNS.get(pattern_index::NGINX_ERROR_FALLBACK) {
+            Ok(regex) => {
+                if let Some(captures) = regex.captures(log) {
+                    return self.extract_error_log_data(captures, log);
+                }
+            }
+            Err(regex_error) => {
+                tracing::debug!("Fallback nginx error pattern failed: {}, using simple parsing", regex_error);
+                
+                // Simple parsing for nginx error logs
+                if log.contains("[error]") || log.contains("[warn]") || log.contains("[info]") {
+                    let level = if log.contains("[error]") {
+                        LogLevel::Error
+                    } else if log.contains("[warn]") {
+                        LogLevel::Warn
+                    } else {
+                        LogLevel::Info
+                    };
+                    
+                    return Ok(ParsedLogEntry {
+                        service_type: "nginx".to_string(),
+                        log_type: "error".to_string(),
+                        message: log.to_string(),
+                        level: Some(level),
+                        timestamp: None,
+                        stream: "stderr".to_string(),
+                        method: None,
+                        path: None,
+                        status_code: None,
+                        response_size: None,
+                        ip_address: None,
+                        user_agent: None,
+                        fields: std::collections::HashMap::new(),
+                    });
+                }
+            }
+        }
+        
+        Err(ParseError::InvalidFormat("Not a valid nginx error log".to_string()))
+    }
+    
+    /// Extract data from access log regex captures
+    fn extract_access_log_data(&self, captures: regex::Captures<'_>, full_log: &str) -> Result<ParsedLogEntry, ParseError> {
+        let ip = captures.get(1).map(|m| m.as_str()).unwrap_or("");
+        let method = captures.get(3).map(|m| m.as_str()).unwrap_or("");
+        let path = captures.get(4).map(|m| m.as_str()).unwrap_or("");
+        let status = captures.get(5).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+        let size_str = captures.get(6).map(|m| m.as_str()).unwrap_or("0");
+        let size = if size_str == "-" { 0 } else { size_str.parse().unwrap_or(0) };
+        
+        Ok(ParsedLogEntry {
+            service_type: "nginx".to_string(),
+            log_type: "access".to_string(),
+            message: full_log.to_string(),
+            level: Some(LogLevel::Info),
+            timestamp: None,
+            stream: "stdout".to_string(),
+            method: Some(method.to_string()),
+            path: Some(path.to_string()),
+            status_code: Some(status),
+            response_size: Some(size),
+            ip_address: Some(ip.to_string()),
+            user_agent: captures.get(8).map(|m| m.as_str().to_string()),
+            fields: std::collections::HashMap::new(),
+        })
+    }
+    
+    /// Extract data from error log regex captures
+    fn extract_error_log_data(&self, captures: regex::Captures<'_>, full_log: &str) -> Result<ParsedLogEntry, ParseError> {
+        let level_str = captures.get(2).map(|m| m.as_str()).unwrap_or("info");
+        let level = match level_str.to_lowercase().as_str() {
+            "error" => LogLevel::Error,
+            "warn" | "warning" => LogLevel::Warn,
+            "debug" => LogLevel::Debug,
+            _ => LogLevel::Info,
+        };
+        
+        Ok(ParsedLogEntry {
+            service_type: "nginx".to_string(),
+            log_type: "error".to_string(),
+            message: full_log.to_string(),
+            level: Some(level),
+            timestamp: None,
+            stream: "stderr".to_string(),
+            method: None,
+            path: None,
+            status_code: None,
+            response_size: None,
+            ip_address: None,
+            user_agent: None,
+            fields: std::collections::HashMap::new(),
+        })
     }
 }
 
@@ -92,92 +225,16 @@ impl ServiceParser for NginxParser {
 
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
         // Try access log format first
-        if let Some(captures) = self.access_regex.captures(log) {
-            let ip = captures.get(1).map(|m| m.as_str().to_string());
-            let method = captures.get(3).map(|m| m.as_str().to_string());
-            let path = captures.get(4).map(|m| m.as_str().to_string());
-            let status = captures.get(5).and_then(|m| m.as_str().parse().ok());
-            let size = captures.get(6).and_then(|m| {
-                if m.as_str() == "-" {
-                    None
-                } else {
-                    m.as_str().parse().ok()
-                }
-            });
-            let user_agent = captures.get(8).map(|m| m.as_str().to_string());
-
-            return Ok(ParsedLogEntry {
-                service_type: "nginx".to_string(),
-                log_type: "access".to_string(),
-                message: log.to_string(),
-                level: Some(LogLevel::Info),
-                timestamp: None, // TODO: parse timestamp
-                stream: "stdout".to_string(),
-                method,
-                path,
-                status_code: status,
-                response_size: size,
-                ip_address: ip,
-                user_agent,
-                fields: std::collections::HashMap::new(),
-            });
+        if let Ok(result) = self.parse_nginx_access(log) {
+            return Ok(result);
         }
-
+        
         // Try error log format
-        if let Some(captures) = self.error_regex.captures(log) {
-            let level_str = captures.get(2).map(|m| m.as_str()).unwrap_or("info");
-            let level = match level_str {
-                "debug" => LogLevel::Debug,
-                "info" => LogLevel::Info,
-                "warn" | "warning" => LogLevel::Warn,
-                "error" => LogLevel::Error,
-                "crit" | "critical" => LogLevel::Fatal,
-                _ => LogLevel::Info,
-            };
-
-            let message = captures
-                .get(3)
-                .map(|m| m.as_str())
-                .unwrap_or(log)
-                .to_string();
-
-            return Ok(ParsedLogEntry {
-                service_type: "nginx".to_string(),
-                log_type: "error".to_string(),
-                message,
-                level: Some(level),
-                timestamp: None,
-                stream: "stderr".to_string(),
-                method: None,
-                path: None,
-                status_code: None,
-                response_size: None,
-                ip_address: None,
-                user_agent: None,
-                fields: std::collections::HashMap::new(),
-            });
+        if let Ok(result) = self.parse_nginx_error(log) {
+            return Ok(result);
         }
-
-        // Fallback - but first check if it looks like an access log
-        if log.contains("HTTP/") && log.contains("\"") {
-            return Ok(ParsedLogEntry {
-                service_type: "nginx".to_string(),
-                log_type: "access".to_string(),
-                message: log.to_string(),
-                level: Some(LogLevel::Info),
-                timestamp: None,
-                stream: "stdout".to_string(),
-                method: None,
-                path: None,
-                status_code: None,
-                response_size: None,
-                ip_address: None,
-                user_agent: None,
-                fields: std::collections::HashMap::new(),
-            });
-        }
-
-        // Final fallback to plain text
+        
+        // Final fallback for unrecognized nginx logs
         Ok(ParsedLogEntry {
             service_type: "nginx".to_string(),
             log_type: "unknown".to_string(),
@@ -317,22 +374,9 @@ impl ServiceParser for GoStructuredParser {
     }
 }
 
-// PostgreSQL Log Parser
+// PostgreSQL Log Parser - Now uses memory-safe patterns
 pub struct PostgresParser {
-    log_regex: Regex,
-}
-
-lazy_static! {
-    static ref POSTGRES_LOG_PATTERN: Regex = {
-        match Regex::new(r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) \w+ \[\d+\] (\w+):\s+(.+)"#) {
-            Ok(regex) => regex,
-            Err(_) => {
-                // Fallback to a simpler pattern for postgres logs
-                Regex::new(r#"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) .+ (\w+):\s+(.+)"#)
-                    .expect("Fallback postgres regex pattern is invalid")
-            }
-        }
-    };
+    fallback_parser: SimplePatternParser,
 }
 
 impl Default for PostgresParser {
@@ -344,8 +388,78 @@ impl Default for PostgresParser {
 impl PostgresParser {
     pub fn new() -> Self {
         Self {
-            log_regex: POSTGRES_LOG_PATTERN.clone(),
+            fallback_parser: SimplePatternParser::new(),
         }
+    }
+    
+    /// Parse postgres log with memory-safe patterns
+    fn parse_postgres_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
+        // Try with the validated postgres log pattern
+        match VALIDATED_PATTERNS.get(pattern_index::POSTGRES_LOG) {
+            Ok(regex) => {
+                if let Some(captures) = regex.captures(log) {
+                    let level_str = captures.get(2).map(|m| m.as_str()).unwrap_or("LOG");
+                    let level = match level_str {
+                        "DEBUG" | "DEBUG1" | "DEBUG2" | "DEBUG3" | "DEBUG4" | "DEBUG5" => LogLevel::Debug,
+                        "LOG" | "INFO" => LogLevel::Info,
+                        "NOTICE" | "WARNING" => LogLevel::Warn,
+                        "ERROR" => LogLevel::Error,
+                        "FATAL" | "PANIC" => LogLevel::Fatal,
+                        _ => LogLevel::Info,
+                    };
+                    
+                    let message = captures.get(3).map(|m| m.as_str()).unwrap_or(log).to_string();
+                    
+                    return Ok(ParsedLogEntry {
+                        service_type: "postgres".to_string(),
+                        log_type: "database".to_string(),
+                        message,
+                        level: Some(level),
+                        timestamp: None,
+                        stream: "stdout".to_string(),
+                        method: None,
+                        path: None,
+                        status_code: None,
+                        response_size: None,
+                        ip_address: None,
+                        user_agent: None,
+                        fields: std::collections::HashMap::new(),
+                    });
+                }
+            }
+            Err(regex_error) => {
+                tracing::debug!("Postgres pattern failed: {}, using simple parsing", regex_error);
+                
+                // Simple parsing for postgres logs
+                let level = if log.contains("ERROR") {
+                    LogLevel::Error
+                } else if log.contains("WARNING") || log.contains("NOTICE") {
+                    LogLevel::Warn
+                } else if log.contains("DEBUG") {
+                    LogLevel::Debug
+                } else {
+                    LogLevel::Info
+                };
+                
+                return Ok(ParsedLogEntry {
+                    service_type: "postgres".to_string(),
+                    log_type: "database".to_string(),
+                    message: log.to_string(),
+                    level: Some(level),
+                    timestamp: None,
+                    stream: "stdout".to_string(),
+                    method: None,
+                    path: None,
+                    status_code: None,
+                    response_size: None,
+                    ip_address: None,
+                    user_agent: None,
+                    fields: std::collections::HashMap::new(),
+                });
+            }
+        }
+        
+        Err(ParseError::InvalidFormat("Not a valid postgres log".to_string()))
     }
 }
 
@@ -355,40 +469,9 @@ impl ServiceParser for PostgresParser {
     }
 
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
-        if let Some(captures) = self.log_regex.captures(log) {
-            let level_str = captures.get(2).map(|m| m.as_str()).unwrap_or("LOG");
-            let level = match level_str {
-                "DEBUG" | "DEBUG1" | "DEBUG2" | "DEBUG3" | "DEBUG4" | "DEBUG5" => LogLevel::Debug,
-                "LOG" | "INFO" => LogLevel::Info,
-                "NOTICE" | "WARNING" => LogLevel::Warn,
-                "ERROR" => LogLevel::Error,
-                "FATAL" | "PANIC" => LogLevel::Fatal,
-                _ => LogLevel::Info,
-            };
-
-            let message = captures
-                .get(3)
-                .map(|m| m.as_str())
-                .unwrap_or(log)
-                .to_string();
-
-            Ok(ParsedLogEntry {
-                service_type: "postgres".to_string(),
-                log_type: "database".to_string(),
-                message,
-                level: Some(level),
-                timestamp: None,
-                stream: "stdout".to_string(),
-                method: None,
-                path: None,
-                status_code: None,
-                response_size: None,
-                ip_address: None,
-                user_agent: None,
-                fields: std::collections::HashMap::new(),
-            })
-        } else {
-            // Fallback
+        // Use the memory-safe postgres parser
+        self.parse_postgres_log(log).or_else(|_| {
+            // Final fallback for unrecognized postgres logs
             Ok(ParsedLogEntry {
                 service_type: "postgres".to_string(),
                 log_type: "unknown".to_string(),
@@ -404,7 +487,7 @@ impl ServiceParser for PostgresParser {
                 user_agent: None,
                 fields: std::collections::HashMap::new(),
             })
-        }
+        })
     }
 }
 

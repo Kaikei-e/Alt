@@ -1,5 +1,7 @@
 use super::{
     docker::{DockerJsonParser, ParseError},
+    generated::{VALIDATED_PATTERNS, pattern_index},
+    regex_patterns::SimplePatternParser,
     schema::NginxLogEntry,
     services::{
         GoStructuredParser, LogLevel, NginxParser, ParsedLogEntry, PostgresParser, ServiceParser,
@@ -7,8 +9,6 @@ use super::{
 };
 use crate::collector::ContainerInfo;
 use bytes::Bytes;
-use lazy_static::lazy_static;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -17,22 +17,49 @@ const MAX_LOG_LINE_SIZE: usize = 10 * 1024 * 1024; // 10MB per log line
 const MAX_LOG_LINES_PER_BATCH: usize = 100_000; // Maximum lines per batch
 const MAX_FIELD_SIZE: usize = 64 * 1024; // 64KB per field
 
-lazy_static! {
-    // More flexible pattern to match Docker native timestamps
-    // Matches: 2025-07-03T18:53:46.741706684Z (with Z)
-    // Also matches: 2025-07-03T18:53:46.741706684 (without Z)
-    // Also matches: 2025-07-03T18:53:46Z (without microseconds)
-    static ref DOCKER_NATIVE_TIMESTAMP_PATTERN: Regex = {
-        // Use a fallback pattern if the primary pattern fails to compile
-        match Regex::new(r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+"#) {
-            Ok(regex) => regex,
-            Err(_) => {
-                // Fallback to a simpler pattern if the complex one fails
-                Regex::new(r#"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"#)
-                    .expect("Fallback regex pattern is invalid")
+// Memory-safe timestamp parsing with fallback support
+fn parse_docker_timestamp(log_line: &str) -> Result<Option<String>, ParseError> {
+    // Try with the docker native timestamp pattern first
+    match VALIDATED_PATTERNS.get(pattern_index::DOCKER_NATIVE_TIMESTAMP) {
+        Ok(regex) => {
+            if let Some(captures) = regex.captures(log_line) {
+                if let Some(timestamp) = captures.get(0) {
+                    return Ok(Some(timestamp.as_str().trim().to_string()));
+                }
             }
         }
-    };
+        Err(regex_error) => {
+            tracing::warn!("Primary timestamp pattern failed: {}, trying fallback", regex_error);
+        }
+    }
+    
+    // Fallback to simple timestamp pattern
+    match VALIDATED_PATTERNS.get(pattern_index::ISO_TIMESTAMP_FALLBACK) {
+        Ok(regex) => {
+            if let Some(captures) = regex.captures(log_line) {
+                if let Some(timestamp) = captures.get(0) {
+                    return Ok(Some(timestamp.as_str().to_string()));
+                }
+            }
+        }
+        Err(regex_error) => {
+            tracing::warn!("Fallback timestamp pattern failed: {}, using simple parser", regex_error);
+            
+            // Use simple pattern parser as last resort
+            let simple_parser = SimplePatternParser::new();
+            if let Ok(_) = simple_parser.parse_timestamp(log_line) {
+                // Extract timestamp from the beginning of the line using string operations
+                if log_line.len() >= 19 {
+                    let potential_timestamp = &log_line[..19];
+                    if potential_timestamp.chars().nth(4) == Some('-') {
+                        return Ok(Some(potential_timestamp.to_string()));
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(None)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,7 +166,7 @@ pub struct UniversalParser {
     nginx_parser: NginxParser,
     go_parser: GoStructuredParser,
     postgres_parser: PostgresParser,
-    native_timestamp_pattern: Regex,
+    fallback_parser: SimplePatternParser,
 }
 
 impl Default for UniversalParser {
@@ -155,7 +182,7 @@ impl UniversalParser {
             nginx_parser: NginxParser::new(),
             go_parser: GoStructuredParser::new(),
             postgres_parser: PostgresParser::new(),
-            native_timestamp_pattern: DOCKER_NATIVE_TIMESTAMP_PATTERN.clone(),
+            fallback_parser: SimplePatternParser::new(),
         }
     }
 
@@ -360,25 +387,55 @@ impl UniversalParser {
     // AS-IS: 2025-07-03T17:35:01.856438308Z {"char_count": 6281, "level": "info", ...}
     // TO-BE: {"char_count": 6281, "level": "info", ...}
     pub fn trim_docker_native_timestamp(&self, native_log: String) -> String {
-        // First try the regex pattern
-        let result = self
-            .native_timestamp_pattern
-            .replace(&native_log, "")
-            .to_string();
+        // Try using the validated regex patterns first
+        match VALIDATED_PATTERNS.get(pattern_index::DOCKER_NATIVE_TIMESTAMP) {
+            Ok(regex) => {
+                let result = regex.replace(&native_log, "").to_string();
+                if result != native_log {
+                    return result;
+                }
+            }
+            Err(regex_error) => {
+                tracing::debug!("Docker native timestamp pattern failed: {}, trying fallback", regex_error);
+            }
+        }
+        
+        // Try fallback pattern
+        match VALIDATED_PATTERNS.get(pattern_index::ISO_TIMESTAMP_FALLBACK) {
+            Ok(regex) => {
+                let result = regex.replace(&native_log, "").to_string();
+                if result != native_log {
+                    return result;
+                }
+            }
+            Err(regex_error) => {
+                tracing::debug!("ISO timestamp fallback pattern failed: {}, using simple parsing", regex_error);
+            }
+        }
 
-        // If no change, try a more aggressive approach
-        if result == native_log {
-            // Look for the first '{' and return everything from there
-            if let Some(pos) = native_log.find('{') {
-                // Check if there's a timestamp-like pattern before the '{'
+        // If regex patterns fail, use simple string parsing
+        if let Some(pos) = native_log.find('{') {
+            // Check if there's a timestamp-like pattern before the '{'
+            let prefix = &native_log[..pos];
+            if prefix.contains("T") && prefix.contains(":") && prefix.contains("-") {
+                return native_log[pos..].to_string();
+            }
+        }
+        
+        // If no JSON braces found, try to find where the timestamp ends
+        // Look for common patterns after timestamps
+        for &separator in &[" {", " [", " \"", "  "] {
+            if let Some(pos) = native_log.find(separator) {
                 let prefix = &native_log[..pos];
-                if prefix.contains("T") && prefix.contains(":") && prefix.contains("-") {
-                    return native_log[pos..].to_string();
+                // Basic timestamp validation
+                if prefix.len() >= 19 && prefix.chars().nth(4) == Some('-') {
+                    return native_log[pos + separator.len()..].to_string();
                 }
             }
         }
 
-        result
+        // Return as-is if no pattern matches
+        native_log
     }
 }
 

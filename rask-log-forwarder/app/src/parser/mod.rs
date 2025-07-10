@@ -1,4 +1,7 @@
 pub mod docker;
+pub mod generated;
+pub mod regex_error;
+pub mod regex_patterns;
 pub mod schema;
 pub mod services;
 pub mod simd;
@@ -14,6 +17,10 @@ pub use services::{
     GoStructuredParser, LogLevel, NginxParser, ParsedLogEntry, PostgresParser, ServiceParser,
 };
 pub use universal::{EnrichedLogEntry, UniversalParser};
+
+// TASK3 exports - Memory-safe regex patterns
+pub use regex_error::{RegexError, FallbackStrategy};
+pub use regex_patterns::{StaticRegexSet, SimplePatternParser, NginxAccessMatch};
 
 #[cfg(test)]
 mod tests {

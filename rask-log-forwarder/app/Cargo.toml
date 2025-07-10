@@ -99,6 +99,9 @@ async-trait = "0.1.88"
 chrono = { version = "0.4.41", features = ["serde"] }
 serial_test = "3.2.0"
 
+[build-dependencies]
+regex = "1.11.1"
+
 [features]
 default = ["disk-fallback", "metrics"]
 disk-fallback = ["sled"]
