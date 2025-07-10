@@ -1,13 +1,13 @@
-name: Tag Generator Tests
+name: Playwright Tests
 on:
   push:
     branches: [ main, master ]
     paths:
-      - 'tag-generator/**'
+      - 'alt-frontend/**'
   pull_request:
     branches: [ main, master ]
     paths:
-      - 'tag-generator/**'
+      - 'alt-frontend/**'
   workflow_dispatch:
 
 concurrency:
@@ -20,7 +20,8 @@ permissions:
 
 jobs:
   test:
-    uses: ./.github/workflows/reusable-test-frontend.yaml
+    uses: ./.github/workflows/reusable-frontend-test.yaml
     with:
-      working-directory: 'tag-generator/app'
-      python-version: '3.13'
+      working-directory: 'alt-frontend/app'
+      test-type: 'playwright'
+      node-version: '20'
