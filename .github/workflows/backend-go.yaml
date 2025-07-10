@@ -34,12 +34,20 @@ jobs:
           fallback-runner: "ubuntu-latest"
           min-available-runners: 1
           github-token: ${{ secrets.RUNNER_TOKEN }}
-      - name: Debug output
+      - name: Format runner output
+        id: format-runner
         run: |
-          echo "Selected runner: ${{ steps.set-runner.outputs.runner }}"
+          RUNNER="${{ steps.set-runner.outputs.runner }}"
+          if [ "$RUNNER" = "m222" ]; then
+            # セルフホストランナーの場合はラベルの配列として出力
+            echo 'runner-json=["self-hosted", "macOS", "ARM64"]' >> $GITHUB_OUTPUT
+          else
+            # ubuntu-latestの場合は文字列として出力
+            echo 'runner-json="ubuntu-latest"' >> $GITHUB_OUTPUT
+          fi
   test:
     needs: determine-runner-integration
-    runs-on: ${{ needs.determine-runner-integration.outputs.runner }}
+    runs-on: ${{ fromJSON(needs.determine-runner-integration.outputs.runner-json) }}
     strategy:
       matrix:
         go: ["1.24"]
