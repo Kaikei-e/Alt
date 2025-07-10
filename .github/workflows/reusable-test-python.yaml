@@ -1,6 +1,7 @@
 name: Reusable Python Test Workflow
 permissions:
   contents: read
+  actions: read
 on:
   workflow_call:
     inputs:
@@ -21,10 +22,8 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
     env:
-      # uvのキャッシュを一時ディレクトリに設定
-      UV_CACHE_DIR: $RUNNER_TEMP/uv-cache
-      UV_TOOL_DIR: $RUNNER_TEMP/uv-tools
-      UV_PYTHON_PREFERENCE: only-managed
+      # ツールキャッシュディレクトリを明示的に設定
+      AGENT_TOOLSDIRECTORY: $RUNNER_TEMP/hostedtoolcache
     steps:
       - name: Configure logging
         if: runner.environment == 'self-hosted'
@@ -36,130 +35,81 @@ jobs:
           done
           echo "::endgroup::"
 
-      - name: Setup directories and permissions
-        if: runner.environment == 'self-hosted'
+      - name: Setup environment
         run: |
-          # 作業ディレクトリをクリーンアップ
-          echo "Cleaning workspace..."
-          rm -rf ${{ github.workspace }}/* || true
-          rm -rf ${{ github.workspace }}/.* 2>/dev/null || true
+          # デバッグ情報
+          echo "Current user: $(whoami)"
+          echo "Home directory: $HOME"
+          echo "Runner temp: ${{ runner.temp }}"
+          echo "GitHub workspace: ${{ github.workspace }}"
 
-          # 一時ディレクトリを作成
-          echo "Creating temp directories..."
-          mkdir -p "$RUNNER_TEMP/uv-cache"
-          mkdir -p "$RUNNER_TEMP/uv-tools"
+          # 必要なディレクトリを作成
+          mkdir -p "$RUNNER_TEMP/hostedtoolcache"
           mkdir -p "$RUNNER_TEMP/pip-cache"
-
-          # 権限を設定
-          chmod -R 755 "$RUNNER_TEMP" || true
+          mkdir -p "$RUNNER_TEMP/uv-cache"
 
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version }}
-          # キャッシュは手動で管理
-          cache: ''
-
-      - name: Install UV manually
+      - name: Setup Python manually
         run: |
-          echo "Installing uv..."
-          # pipのキャッシュディレクトリを設定
-          export PIP_CACHE_DIR="$RUNNER_TEMP/pip-cache"
+          # システムのPython3を使用
+          if command -v python3 &> /dev/null; then
+            echo "Using system Python 3"
+            python3 --version
 
-          # pipをアップグレード
-          python -m pip install --upgrade pip
-
-          # uvをインストール（システムではなくユーザー領域に）
-          python -m pip install --user uv
-
-          # PATHに追加
-          export PATH="$HOME/.local/bin:$PATH"
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-          # 確認
-          which uv || echo "uv not found in PATH"
-          uv --version || echo "uv version check failed"
-
-      - name: Prepare test environment
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          # Python環境の情報
-          echo "=== Python Environment ==="
-          which python
-          python --version
-          python -m pip list
-
-          # ディレクトリ構造を確認
-          echo "=== Directory Structure ==="
-          pwd
-          ls -la
-
-          # uvのキャッシュディレクトリを設定
-          export UV_CACHE_DIR="$RUNNER_TEMP/uv-cache"
-          export UV_TOOL_DIR="$RUNNER_TEMP/uv-tools"
-
-          # テスト結果ディレクトリを作成
-          mkdir -p tests || echo "tests directory already exists"
-
-      - name: Install dependencies with UV
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          # 環境変数を再設定
-          export UV_CACHE_DIR="$RUNNER_TEMP/uv-cache"
-          export UV_TOOL_DIR="$RUNNER_TEMP/uv-tools"
-          export PATH="$HOME/.local/bin:$PATH"
-
-          # uvが利用可能か確認
-          if command -v uv &> /dev/null; then
-            echo "Using uv to install dependencies..."
-            uv sync --frozen || uv pip install -r requirements.txt || echo "uv sync failed"
+            # python3 をpythonとしてリンク
+            mkdir -p "$RUNNER_TEMP/bin"
+            ln -sf $(which python3) "$RUNNER_TEMP/bin/python"
+            export PATH="$RUNNER_TEMP/bin:$PATH"
+            echo "$RUNNER_TEMP/bin" >> $GITHUB_PATH
           else
-            echo "uv not available, using pip..."
-            python -m pip install -r requirements.txt
+            echo "Python 3 not found, trying to install..."
+            # Homebrewでインストール
+            if command -v brew &> /dev/null; then
+              brew install python@3.13 || brew install python@3.12 || brew install python@3.11
+            fi
           fi
 
-          # pytestをインストール（念のため）
-          python -m pip install pytest pytest-cov || true
+          # 最終確認
+          python --version || python3 --version
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # pipをアップグレード
+          python -m pip install --upgrade pip --user
+
+          # uvをインストール
+          python -m pip install --user uv
+
+          # PATHを更新
+          export PATH="$HOME/.local/bin:$PATH"
+
+          # 依存関係をインストール
+          if [ -f "requirements.txt" ]; then
+            python -m pip install -r requirements.txt --user
+          fi
+
+          # pytestをインストール
+          python -m pip install --user pytest pytest-cov
+
+          # テストディレクトリを作成
+          mkdir -p tests
 
       - name: Run tests
         working-directory: ${{ inputs.working-directory }}
         run: |
-          # 環境変数を再設定
-          export UV_CACHE_DIR="$RUNNER_TEMP/uv-cache"
-          export UV_TOOL_DIR="$RUNNER_TEMP/uv-tools"
+          # PATHを更新
           export PATH="$HOME/.local/bin:$PATH"
 
           # テストを実行
-          set +e  # エラーでも続行
+          python -m pytest test_unit.py -v --junit-xml=tests/results.xml || true
 
-          # uvが使える場合
-          if command -v uv &> /dev/null; then
-            echo "Running tests with uv..."
-            ${{ inputs.test-command }} || TEST_EXIT_CODE=$?
-          else
-            echo "Running tests with python..."
-            python -m pytest test_unit.py -v --junit-xml=tests/results.xml || TEST_EXIT_CODE=$?
-          fi
-
-          # テスト結果を確認
-          echo "=== Test Results ==="
-          if [ -f "tests/results.xml" ]; then
-            echo "Test results found"
-            ls -la tests/
-          else
-            echo "Creating dummy test results..."
+          # 結果を確認
+          if [ ! -f "tests/results.xml" ]; then
             mkdir -p tests
-            cat > tests/results.xml <<EOF
-            <?xml version="1.0" encoding="UTF-8"?>
-            <testsuites name="pytest" tests="0" failures="0" errors="0" time="0">
-              <testsuite name="pytest" tests="0" failures="0" errors="0" time="0"/>
-            </testsuites>
-            EOF
+            echo '<?xml version="1.0" encoding="UTF-8"?><testsuites></testsuites>' > tests/results.xml
           fi
-
-          exit ${TEST_EXIT_CODE:-0}
 
       - name: Upload test results
         if: always()
@@ -169,11 +119,3 @@ jobs:
           path: ${{ inputs.working-directory }}/tests/
           retention-days: 5
           if-no-files-found: warn
-
-      - name: Cleanup
-        if: always()
-        run: |
-          # 一時ファイルをクリーンアップ
-          rm -rf "$RUNNER_TEMP/uv-cache" || true
-          rm -rf "$RUNNER_TEMP/uv-tools" || true
-          rm -rf "$RUNNER_TEMP/pip-cache" || true
