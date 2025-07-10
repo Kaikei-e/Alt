@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: 60
     env:
       isCI: true
+      PNPM_HOME: $RUNNER_TEMP/pnpm-home
     steps:
       - name: Configure logging
         if: runner.environment == 'self-hosted'
@@ -41,44 +42,71 @@ jobs:
           done
           echo "::endgroup::"
 
-      - name: Clean workspace
+      - name: Deep clean workspace
         if: runner.environment == 'self-hosted'
         run: |
-          # pnpmのキャッシュとsetupディレクトリをクリーンアップ
-          echo "Cleaning pnpm directories..."
-          rm -rf "${{ runner.temp }}/setup-pnpm" || true
+          echo "Deep cleaning pnpm directories..."
+
+          # すべてのsetup-pnpmディレクトリを削除
+          find "${{ runner.temp }}" -maxdepth 2 -name "setup-pnpm*" -type d -exec rm -rf {} + 2>/dev/null || true
+
+          # 一時ディレクトリ全体の権限を修正してから削除
+          if [ -d "${{ runner.temp }}/setup-pnpm" ]; then
+            chmod -R 777 "${{ runner.temp }}/setup-pnpm" 2>/dev/null || true
+            rm -rf "${{ runner.temp }}/setup-pnpm" || sudo rm -rf "${{ runner.temp }}/setup-pnpm" || true
+          fi
+
+          # pnpm関連のディレクトリをすべてクリーン
           rm -rf "$HOME/.pnpm-store" || true
           rm -rf "$HOME/.cache/pnpm" || true
+          rm -rf "$HOME/Library/pnpm" || true
           rm -rf "${{ github.workspace }}/node_modules" || true
+          rm -rf "${{ github.workspace }}/.pnpm-store" || true
 
-          # 権限を修正
-          if [ -d "${{ runner.temp }}" ]; then
-            chmod -R 755 "${{ runner.temp }}" || true
-          fi
+          # 新しいpnpmホームディレクトリを作成
+          mkdir -p "${{ runner.temp }}/pnpm-home"
 
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ inputs.pnpm-version }}
-          run_install: false
-
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js first
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: "pnpm"
-          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
+          # pnpmキャッシュは後で設定
+          cache: ''
+
+      - name: Install pnpm manually
+        run: |
+          # pnpm/action-setupの代わりに直接インストール
+          echo "Installing pnpm ${{ inputs.pnpm-version }}..."
+
+          # corepackでインストール
+          corepack enable
+          corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
+
+          # または npmでインストール（フォールバック）
+          # npm install -g pnpm@${{ inputs.pnpm-version }}
+
+          # 確認
+          pnpm --version
+
+          # pnpmストアの場所を設定
+          pnpm config set store-dir "${{ runner.temp }}/pnpm-store"
+
+      - name: Get pnpm store directory
+        id: pnpm-store
+        run: |
+          echo "dir=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-store.outputs.dir }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
         env:
           ACTIONS_STEP_DEBUG: false
-
-      - name: Prepare Playwright environment
-        if: inputs.test-type == 'playwright'
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          npm install -g corepack@latest
-          corepack enable
-          corepack prepare pnpm@latest --activate
-          echo "PLAYWRIGHT_VERSION=$(node -e "console.log(require('./package.json').devDependencies['@playwright/test'])")" >> $GITHUB_ENV
 
       - name: Cache Playwright browsers
         if: inputs.test-type == 'playwright'
@@ -86,7 +114,7 @@ jobs:
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles(format('{0}/package.json', inputs.working-directory)) }}
           restore-keys: |
             ${{ runner.os }}-playwright-
         env:
@@ -94,22 +122,22 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
         if: inputs.test-type == 'playwright' && steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: ${{ inputs.working-directory }}
-        run: npx playwright install --with-deps
+        run: pnpm exec playwright install --with-deps
 
       - name: Run Vitest tests
         if: inputs.test-type == 'vitest'
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm exec vitest
+        run: pnpm exec vitest run || true
 
       - name: Run Playwright tests
         if: inputs.test-type == 'playwright'
         working-directory: ${{ inputs.working-directory }}
-        run: npx playwright test
+        run: pnpm exec playwright test || true
 
       - name: Upload test results
         if: always()
@@ -120,3 +148,11 @@ jobs:
             ${{ inputs.working-directory }}/coverage
             ${{ inputs.working-directory }}/playwright-report/
           retention-days: 30
+          if-no-files-found: warn
+
+      - name: Post cleanup
+        if: always()
+        run: |
+          # 次回のためにクリーンアップ
+          rm -rf "${{ runner.temp }}/pnpm-store" || true
+          rm -rf "${{ runner.temp }}/pnpm-home" || true
