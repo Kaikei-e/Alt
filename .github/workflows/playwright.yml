@@ -20,8 +20,9 @@ permissions:
 
 jobs:
   test:
-    uses: ./.github/workflows/reusable-frontend-test.yaml
+    uses: ./.github/workflows/reusable-test-frontend.yaml
     with:
       working-directory: 'alt-frontend/app'
       test-type: 'playwright'
       node-version: '20'
+      workflow-name: 'Alt Frontend Playwright Tests'

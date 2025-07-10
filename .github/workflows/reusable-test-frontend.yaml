@@ -17,6 +17,10 @@ on:
         required: false
         type: string
         default: "10"
+      workflow-name:
+        required: false
+        type: string
+        default: "Playwright Tests"
 
 jobs:
   test:
