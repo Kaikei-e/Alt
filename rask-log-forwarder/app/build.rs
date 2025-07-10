@@ -124,7 +124,7 @@ fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn s
     )?;
 
     for (pattern, name) in patterns {
-        writeln!(file, "    (r#\"{}\"#, \"{}\"),", pattern, name)?;
+        writeln!(file, "    (r#\"{pattern}\"#, \"{name}\"),")?;
     }
 
     writeln!(file, "]);")?;
