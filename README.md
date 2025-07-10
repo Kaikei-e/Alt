@@ -64,49 +64,102 @@ Each service runs in its own container so components can be scaled or swapped in
 The backend is a pipeline of microservices that work together to fetch, process, and index content from RSS feeds. Each service is a container that communicates with others over the network.
 
 ```mermaid
-flowchart TD
-    Start([Start])
+graph TB
+    %% Style definitions
+    classDef frontend fill:#4a90e2,stroke:#2e5aa8,stroke-width:3px,color:#fff
+    classDef backend fill:#50c878,stroke:#3aa860,stroke-width:3px,color:#fff
+    classDef helper fill:#f39c12,stroke:#d68910,stroke-width:3px,color:#fff
+    classDef database fill:#e74c3c,stroke:#c0392b,stroke-width:3px,color:#fff
+    classDef logging fill:#9b59b6,stroke:#7d3c98,stroke-width:3px,color:#fff
+    classDef external fill:#34495e,stroke:#2c3e50,stroke-width:3px,color:#fff
+    classDef layer fill:#ecf0f1,stroke:#bdc3c7,stroke-width:2px,color:#2c3e50
 
-    A[User submits RSS feed URL via alt-frontend]
-    B[alt-backend saves URL to feed_links table]
-    C[pre-processor periodically fetches articles from feed URLs]
-    D[Parse and store articles in articles table]
-    E[pre-processor sends article content to news-creator]
-    F[news-creator generates summary using LLM]
-    G[pre-processor saves summary to article_summaries table]
-    H[tag-generator fetches untagged articles]
-    I[Generate tags using ML model]
-    J[Save tags to article_tags and feed_tags tables]
-    K[search-indexer fetches new/updated articles]
-    L[Send article data to Meilisearch for indexing]
-    M[alt-backend provides REST API for frontend]
-    N[User searches via frontend]
-    O[alt-backend queries Meilisearch]
-    P[Return search results to user]
+    %% User Interface Layer
+    subgraph UI["User Interface"]
+        User[👤 User]
+        Mobile[📱 Mobile Device]
+        Desktop[💻 Desktop]
+    end
 
-    End([End])
+    %% Nginx Reverse Proxy
+    Nginx[nginx<br/>Reverse Proxy]:::external
 
-    Start --> A
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    E --> F
-    F --> G
-    G --> H
-    H --> I
-    I --> J
-    J --> K
-    K --> L
-    L --> M
-    M --> N
-    N --> O
-    O --> P
-    P --> End
+    %% Frontend
+    subgraph FE["Frontend Layer"]
+        Frontend[alt-frontend<br/>TypeScript/React/Next.js<br/>Mobile-first Design]:::frontend
+    end
 
-    C -.->|Periodic| C
-    H -.->|Continuous| H
-    K -.->|Continuous| K
+    %% Main Backend - 5-Layer Clean Architecture
+    subgraph Backend["alt-backend - 5-Layer Clean Architecture"]
+        REST[REST Handler<br/>HTTP Handling]:::layer
+        Usecase[Usecase<br/>Business Logic]:::layer
+        Port[Port<br/>Interface Definitions]:::layer
+        Gateway[Gateway ACL<br/>Anti-Corruption Layer]:::layer
+        Driver[Driver<br/>External Integrations]:::layer
+        
+        REST --> Usecase
+        Usecase --> Port
+        Port --> Gateway
+        Gateway --> Driver
+    end
+
+    %% Data Processing Pipeline
+    subgraph Pipeline["Data Processing Pipeline"]
+        PreProcessor[pre-processor<br/>Go<br/>Data Preprocessing<br/>Language Detection<br/>Auto-scoring]:::helper
+        TagGenerator[tag-generator<br/>Python<br/>ML-based Tag Generation]:::helper
+        NewsCreator[news-creator<br/>LLM Gemma3:4b<br/>Content Generation<br/>Summarization]:::helper
+        SearchIndexer[search-indexer<br/>Go<br/>Search Index Management]:::helper
+    end
+
+    %% Logging Infrastructure
+    subgraph LogInfra["Logging Infrastructure"]
+        LogForwarder[rask-log-forwarder<br/>Rust<br/>Log Forwarding]:::logging
+        LogAggregator[rask-log-aggregator<br/>Rust<br/>Log Aggregation<br/>Analytics]:::logging
+    end
+
+    %% Data Stores
+    subgraph DataStore["Data Store Layer"]
+        PostgreSQL[(PostgreSQL<br/>Primary Data Store)]:::database
+        Meilisearch[(Meilisearch<br/>Full-text Search Engine)]:::database
+        ClickHouse[(ClickHouse<br/>Analytics Database)]:::database
+    end
+
+    %% External Services
+    Ollama[Ollama<br/>LLM Runtime]:::external
+    RSSFeeds[RSS Feeds<br/>External RSS Sources]:::external
+
+    %% Connection Relationships - User Flow
+    User --> Mobile
+    User --> Desktop
+    Mobile --> Nginx
+    Desktop --> Nginx
+    Nginx --> Frontend
+    Frontend --> REST
+
+    %% Backend Internal Flow
+    Driver --> PostgreSQL
+    Driver --> PreProcessor
+    Driver --> SearchIndexer
+
+    %% Data Processing Flow
+    PreProcessor --> TagGenerator
+    PreProcessor --> NewsCreator
+    TagGenerator --> PostgreSQL
+    NewsCreator --> PostgreSQL
+    NewsCreator -.-> Ollama
+    SearchIndexer --> Meilisearch
+
+    %% Logging Flow
+    REST -.-> LogForwarder
+    PreProcessor -.-> LogForwarder
+    TagGenerator -.-> LogForwarder
+    NewsCreator -.-> LogForwarder
+    SearchIndexer -.-> LogForwarder
+    LogForwarder --> LogAggregator
+    LogAggregator --> ClickHouse
+
+    %% External Data Sources
+    Driver --> RSSFeeds
 ```
 
 ### Flow Description
