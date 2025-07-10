@@ -7,13 +7,13 @@ import (
 
 // SearchIndexerConfig represents the configuration for the search indexer service
 type SearchIndexerConfig struct {
-	databaseURL        string
-	meilisearchHost    string
-	meilisearchAPIKey  string
-	indexInterval      time.Duration
-	batchSize          int
-	retryInterval      time.Duration
-	httpAddr           string
+	databaseURL       string
+	meilisearchHost   string
+	meilisearchAPIKey string
+	indexInterval     time.Duration
+	batchSize         int
+	retryInterval     time.Duration
+	httpAddr          string
 }
 
 // NewSearchIndexerConfig creates a new SearchIndexerConfig
@@ -21,7 +21,7 @@ func NewSearchIndexerConfig(databaseURL, meilisearchHost, meilisearchAPIKey stri
 	if databaseURL == "" {
 		return nil, fmt.Errorf("database URL cannot be empty")
 	}
-	
+
 	if meilisearchHost == "" {
 		return nil, fmt.Errorf("meilisearch host cannot be empty")
 	}
@@ -30,7 +30,7 @@ func NewSearchIndexerConfig(databaseURL, meilisearchHost, meilisearchAPIKey stri
 		databaseURL:       databaseURL,
 		meilisearchHost:   meilisearchHost,
 		meilisearchAPIKey: meilisearchAPIKey,
-		indexInterval:     1 * time.Minute,  // default values
+		indexInterval:     1 * time.Minute, // default values
 		batchSize:         200,
 		retryInterval:     1 * time.Minute,
 		httpAddr:          ":9300",

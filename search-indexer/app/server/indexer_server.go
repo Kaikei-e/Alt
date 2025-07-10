@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 	"search-indexer/port"
 	"search-indexer/usecase"
+	"time"
 )
 
 type IndexerServer struct {
@@ -17,12 +17,12 @@ type IndexerServer struct {
 }
 
 type Config struct {
-	HTTPAddr         string
-	IndexInterval    time.Duration
-	IndexBatchSize   int
-	IndexRetryDelay  time.Duration
-	DBTimeout        time.Duration
-	MeiliTimeout     time.Duration
+	HTTPAddr        string
+	IndexInterval   time.Duration
+	IndexBatchSize  int
+	IndexRetryDelay time.Duration
+	DBTimeout       time.Duration
+	MeiliTimeout    time.Duration
 }
 
 func NewIndexerServer(

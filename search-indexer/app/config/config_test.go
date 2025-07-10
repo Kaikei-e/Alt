@@ -15,13 +15,13 @@ func TestLoad(t *testing.T) {
 		{
 			name: "valid configuration",
 			envVars: map[string]string{
-				"DB_HOST":                     "localhost",
-				"DB_PORT":                     "5432",
-				"DB_NAME":                     "testdb",
-				"SEARCH_INDEXER_DB_USER":      "user",
-				"SEARCH_INDEXER_DB_PASSWORD":  "pass",
-				"MEILISEARCH_HOST":            "http://localhost:7700",
-				"MEILISEARCH_API_KEY":         "key",
+				"DB_HOST":                    "localhost",
+				"DB_PORT":                    "5432",
+				"DB_NAME":                    "testdb",
+				"SEARCH_INDEXER_DB_USER":     "user",
+				"SEARCH_INDEXER_DB_PASSWORD": "pass",
+				"MEILISEARCH_HOST":           "http://localhost:7700",
+				"MEILISEARCH_API_KEY":        "key",
 			},
 			wantErr: false,
 		},
@@ -38,7 +38,7 @@ func TestLoad(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear environment
 			clearEnv()
-			
+
 			// Set test environment variables
 			for k, v := range tt.envVars {
 				os.Setenv(k, v)
@@ -54,7 +54,7 @@ func TestLoad(t *testing.T) {
 			}
 
 			cfg, err := Load()
-			
+
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)

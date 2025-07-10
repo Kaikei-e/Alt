@@ -2,10 +2,10 @@ package usecase
 
 import (
 	"context"
-	"testing"
-	"time"
 	"search-indexer/domain"
 	"search-indexer/port"
+	"testing"
+	"time"
 )
 
 func TestSearchArticlesUsecase_Execute(t *testing.T) {
@@ -77,7 +77,7 @@ func TestSearchArticlesUsecase_Execute(t *testing.T) {
 			}
 
 			usecase := NewSearchArticlesUsecase(searchEngine)
-			
+
 			result, err := usecase.Execute(context.Background(), tt.query, tt.limit)
 
 			if tt.wantErr {

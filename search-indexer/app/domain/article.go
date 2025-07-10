@@ -54,7 +54,7 @@ func (a *Article) HasTag(tag string) bool {
 	if tag == "" {
 		return false
 	}
-	
+
 	for _, t := range a.tags {
 		if t == tag {
 			return true

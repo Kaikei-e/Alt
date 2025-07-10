@@ -27,15 +27,15 @@ func (u *SearchArticlesUsecase) Execute(ctx context.Context, query string, limit
 	if query == "" {
 		return nil, errors.New("query cannot be empty")
 	}
-	
+
 	if limit <= 0 {
 		return nil, errors.New("limit must be greater than 0")
 	}
-	
+
 	if len(query) > 1000 {
 		return nil, errors.New("query too long")
 	}
-	
+
 	if limit > 1000 {
 		return nil, errors.New("limit too large")
 	}

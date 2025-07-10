@@ -2,10 +2,10 @@ package usecase
 
 import (
 	"context"
-	"testing"
-	"time"
 	"search-indexer/domain"
 	"search-indexer/port"
+	"testing"
+	"time"
 )
 
 // Mock config repository for testing
@@ -29,11 +29,11 @@ func TestLoadConfigUsecase_Execute(t *testing.T) {
 	)
 
 	tests := []struct {
-		name         string
-		mockConfig   *domain.SearchIndexerConfig
-		mockError    error
-		wantErr      bool
-		validateCfg  func(*domain.SearchIndexerConfig) bool
+		name        string
+		mockConfig  *domain.SearchIndexerConfig
+		mockError   error
+		wantErr     bool
+		validateCfg func(*domain.SearchIndexerConfig) bool
 	}{
 		{
 			name:       "successful config loading",
@@ -42,10 +42,10 @@ func TestLoadConfigUsecase_Execute(t *testing.T) {
 			wantErr:    false,
 			validateCfg: func(cfg *domain.SearchIndexerConfig) bool {
 				return cfg.DatabaseURL() == "postgresql://user:pass@localhost:5432/testdb" &&
-					   cfg.MeilisearchHost() == "http://localhost:7700" &&
-					   cfg.MeilisearchAPIKey() == "test-key" &&
-					   cfg.IndexInterval() == 1*time.Minute &&
-					   cfg.BatchSize() == 200
+					cfg.MeilisearchHost() == "http://localhost:7700" &&
+					cfg.MeilisearchAPIKey() == "test-key" &&
+					cfg.IndexInterval() == 1*time.Minute &&
+					cfg.BatchSize() == 200
 			},
 		},
 		{
@@ -64,7 +64,7 @@ func TestLoadConfigUsecase_Execute(t *testing.T) {
 			}
 
 			usecase := NewLoadConfigUsecase(repo)
-			
+
 			result, err := usecase.Execute(context.Background())
 
 			if tt.wantErr {

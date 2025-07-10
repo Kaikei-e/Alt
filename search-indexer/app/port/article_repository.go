@@ -2,8 +2,8 @@ package port
 
 import (
 	"context"
-	"time"
 	"search-indexer/domain"
+	"time"
 )
 
 type ArticleRepository interface {

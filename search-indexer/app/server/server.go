@@ -2,11 +2,11 @@ package server
 
 import (
 	"context"
+	"github.com/meilisearch/meilisearch-go"
 	"net/http"
 	"search-indexer/config"
 	"search-indexer/logger"
 	"search-indexer/rest"
-	"github.com/meilisearch/meilisearch-go"
 )
 
 type Server struct {

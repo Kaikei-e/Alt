@@ -2,9 +2,9 @@ package gateway
 
 import (
 	"os"
+	"search-indexer/domain"
 	"testing"
 	"time"
-	"search-indexer/domain"
 )
 
 // Mock config driver for testing
@@ -41,10 +41,10 @@ func TestConfigGateway_LoadSearchIndexerConfig(t *testing.T) {
 			wantErr: false,
 			validateCfg: func(cfg *domain.SearchIndexerConfig) bool {
 				return cfg.DatabaseURL() == "postgresql://user:pass@localhost:5432/testdb" &&
-					   cfg.MeilisearchHost() == "http://localhost:7700" &&
-					   cfg.MeilisearchAPIKey() == "test-key" &&
-					   cfg.IndexInterval() == 1*time.Minute &&
-					   cfg.BatchSize() == 200
+					cfg.MeilisearchHost() == "http://localhost:7700" &&
+					cfg.MeilisearchAPIKey() == "test-key" &&
+					cfg.IndexInterval() == 1*time.Minute &&
+					cfg.BatchSize() == 200
 			},
 		},
 		{
@@ -98,7 +98,7 @@ func TestConfigGateway_LoadSearchIndexerConfig(t *testing.T) {
 			}
 
 			gateway := NewConfigGateway(driver)
-			
+
 			config, err := gateway.LoadSearchIndexerConfig()
 
 			if tt.wantErr {
@@ -122,12 +122,12 @@ func TestConfigGateway_LoadSearchIndexerConfig(t *testing.T) {
 
 func TestConfigGateway_ConvertToDomain(t *testing.T) {
 	tests := []struct {
-		name        string
-		databaseURL string
+		name            string
+		databaseURL     string
 		meilisearchHost string
-		meilisearchKey string
-		wantErr     bool
-		validateCfg func(*domain.SearchIndexerConfig) bool
+		meilisearchKey  string
+		wantErr         bool
+		validateCfg     func(*domain.SearchIndexerConfig) bool
 	}{
 		{
 			name:            "valid configuration conversion",
@@ -137,8 +137,8 @@ func TestConfigGateway_ConvertToDomain(t *testing.T) {
 			wantErr:         false,
 			validateCfg: func(cfg *domain.SearchIndexerConfig) bool {
 				return cfg.DatabaseURL() == "postgresql://user:pass@localhost:5432/testdb" &&
-					   cfg.MeilisearchHost() == "http://localhost:7700" &&
-					   cfg.MeilisearchAPIKey() == "test-key"
+					cfg.MeilisearchHost() == "http://localhost:7700" &&
+					cfg.MeilisearchAPIKey() == "test-key"
 			},
 		},
 		{
@@ -158,7 +158,7 @@ func TestConfigGateway_ConvertToDomain(t *testing.T) {
 	}
 
 	gateway := &ConfigGateway{}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config, err := gateway.convertToDomain(tt.databaseURL, tt.meilisearchHost, tt.meilisearchKey)
