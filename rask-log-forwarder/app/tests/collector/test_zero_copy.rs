@@ -5,7 +5,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 #[allow(dead_code)]
-async fn start_test_nginx_container() -> String {
+async fn start_test_nginx_container() -> Result<String, Box<dyn std::error::Error>> {
     let output = Command::new("docker")
         .args([
             "run",
@@ -17,22 +17,20 @@ async fn start_test_nginx_container() -> String {
             "nginx:alpine",
         ])
         .stdout(Stdio::piped())
-        .output()
-        .expect("Failed to start test container");
+        .output()?;
 
-    let container_id = String::from_utf8(output.stdout)
-        .expect("Invalid UTF-8 in container ID")
+    let container_id = String::from_utf8(output.stdout)?
         .trim()
         .to_string();
 
     // Wait for container to be ready
     sleep(Duration::from_secs(2)).await;
 
-    container_id
+    Ok(container_id)
 }
 
 #[allow(dead_code)]
-async fn generate_test_nginx_logs(container_id: &str, count: usize) {
+async fn generate_test_nginx_logs(container_id: &str, count: usize) -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..count {
         // Use simple echo to stdout which will be captured by Docker logs
         Command::new("docker")
@@ -43,25 +41,25 @@ async fn generate_test_nginx_logs(container_id: &str, count: usize) {
                 "-c",
                 &format!("echo 'Test log message {i}'"),
             ])
-            .output()
-            .expect("Failed to generate log");
+            .output()?;
     }
 
     // Wait for logs to be written
     sleep(Duration::from_millis(500)).await;
+    Ok(())
 }
 
-async fn cleanup_test_container(container_id: String) {
+async fn cleanup_test_container(container_id: String) -> Result<(), Box<dyn std::error::Error>> {
     Command::new("docker")
         .args(["rm", "-f", &container_id])
-        .output()
-        .expect("Failed to cleanup test container");
+        .output()?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_zero_copy_bytes_from_docker_logs() {
+async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::error::Error>> {
     // Simplified test that verifies the basic functionality
-    let collector = DockerCollector::new().await.unwrap();
+    let collector = DockerCollector::new().await?;
     let (tx, mut rx) = tokio::sync::broadcast::channel::<Bytes>(1000);
 
     // Test with a simple busybox container that generates logs
@@ -79,11 +77,9 @@ async fn test_zero_copy_bytes_from_docker_logs() {
             "echo 'Test log message' && sleep 30",
         ])
         .stdout(Stdio::piped())
-        .output()
-        .expect("Failed to start test container");
+        .output()?;
 
-    let test_container = String::from_utf8(output.stdout)
-        .expect("Invalid UTF-8 in container ID")
+    let test_container = String::from_utf8(output.stdout)?
         .trim()
         .to_string();
 
@@ -93,8 +89,7 @@ async fn test_zero_copy_bytes_from_docker_logs() {
     // Start tailing logs
     collector
         .start_tailing_logs(tx, "com.alt.log-forward=true")
-        .await
-        .unwrap();
+        .await?;
 
     // Wait for logs to be captured
     let timeout_duration = Duration::from_secs(10);
@@ -108,8 +103,8 @@ async fn test_zero_copy_bytes_from_docker_logs() {
             // This test may fail if Docker daemon isn't available - mark as successful
             // since the main functionality (Docker client connection, log streaming setup) works
             println!("Timeout reached - Docker daemon may not be available or no logs generated");
-            cleanup_test_container(test_container).await;
-            return; // Exit gracefully
+            cleanup_test_container(test_container).await?;
+            return Ok(()); // Exit gracefully
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     };
@@ -117,19 +112,21 @@ async fn test_zero_copy_bytes_from_docker_logs() {
     assert!(!bytes.is_empty(), "Should have non-empty log data");
 
     // Verify it's valid data (could be Docker json-file format or raw bytes)
-    let log_str = std::str::from_utf8(&bytes).expect("Should be valid UTF-8");
+    let log_str = std::str::from_utf8(&bytes)
+        .map_err(|e| format!("Invalid UTF-8 in log data: {}", e))?;
     println!("Received log data: {log_str}");
 
     // Basic assertion that we received some log data
     assert!(!log_str.is_empty(), "Should have log content");
 
-    cleanup_test_container(test_container).await;
+    cleanup_test_container(test_container).await?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_zero_copy_performance() {
+async fn test_zero_copy_performance() -> Result<(), Box<dyn std::error::Error>> {
     // Simplified performance test that validates the throughput architecture
-    let _collector = DockerCollector::new().await.unwrap();
+    let _collector = DockerCollector::new().await?;
     let (tx, mut rx) = tokio::sync::broadcast::channel::<Bytes>(10000);
 
     // Mock performance test - validate that the queue can handle high throughput
@@ -168,4 +165,5 @@ async fn test_zero_copy_performance() {
     );
 
     println!("Queue performance: {throughput} msgs/sec, {received_count} messages processed");
+    Ok(())
 }

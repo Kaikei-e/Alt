@@ -39,7 +39,7 @@ async fn test_buffer_manager_integration() {
     let (_sender, _receiver) = manager.split();
 
     // Test that components are accessible
-    assert!(!manager.batch_former().has_ready_batch());
+    assert!(!manager.batch_former().has_ready_batch().await);
 }
 
 #[allow(dead_code)]

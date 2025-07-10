@@ -1,5 +1,6 @@
 pub mod backpressure;
 pub mod batch;
+pub mod concurrency;
 pub mod lockfree;
 pub mod memory;
 pub mod metrics;
@@ -7,6 +8,7 @@ pub mod queue;
 
 // New TASK3 exports
 pub use batch::{Batch, BatchConfig, BatchFormer, BatchType};
+pub use concurrency::{ConcurrencyError, RecoveryStrategy, RobustMutex, RobustRwLock};
 pub use lockfree::{
     BufferConfig, BufferError, BufferMetrics, BufferMetricsCollector, LogBuffer, LogBufferReceiver,
     LogBufferSender,

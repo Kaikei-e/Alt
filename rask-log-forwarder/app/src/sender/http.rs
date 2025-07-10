@@ -1,3 +1,4 @@
+use crate::sender::stats::AtomicConnectionStats;
 use bytes::Bytes;
 use http_body_util::Empty;
 use hyper::{Method, Request, Uri};
@@ -61,7 +62,7 @@ pub struct BatchSender {
     client: Client<HttpConnector, http_body_util::Empty<Bytes>>,
     config: SenderConfig,
     endpoint_uri: Uri,
-    stats: Arc<std::sync::Mutex<ConnectionStats>>,
+    stats: Arc<AtomicConnectionStats>,
 }
 
 impl BatchSender {
@@ -84,12 +85,7 @@ impl BatchSender {
             client,
             config,
             endpoint_uri,
-            stats: Arc::new(std::sync::Mutex::new(ConnectionStats {
-                active_connections: 0,
-                total_requests: 0,
-                reused_connections: 0,
-                failed_requests: 0,
-            })),
+            stats: Arc::new(AtomicConnectionStats::new()),
         };
 
         // Test initial connection
@@ -121,14 +117,12 @@ impl BatchSender {
             .map_err(|_| SenderError::Timeout("Health check timeout".to_string()))?
             .map_err(|e| SenderError::NetworkError(e.to_string()))?;
 
-        self.update_stats(|stats| {
-            stats.total_requests += 1;
-            if response.status().is_success() {
-                stats.reused_connections += 1;
-            } else {
-                stats.failed_requests += 1;
-            }
-        });
+        self.stats.record_request(0); // Health check has no meaningful byte count
+        if response.status().is_success() {
+            self.stats.record_connection_reuse();
+        } else {
+            self.stats.record_failed_request();
+        }
 
         if response.status().is_success() {
             Ok(())
@@ -140,15 +134,12 @@ impl BatchSender {
     }
 
     pub async fn connection_stats(&self) -> ConnectionStats {
-        self.stats.lock().unwrap().clone()
-    }
-
-    fn update_stats<F>(&self, f: F)
-    where
-        F: FnOnce(&mut ConnectionStats),
-    {
-        if let Ok(mut stats) = self.stats.lock() {
-            f(&mut stats);
+        let snapshot = self.stats.get_snapshot();
+        ConnectionStats {
+            active_connections: snapshot.active_connections as usize,
+            total_requests: snapshot.total_requests,
+            reused_connections: snapshot.reused_connections,
+            failed_requests: snapshot.failed_requests,
         }
     }
 }

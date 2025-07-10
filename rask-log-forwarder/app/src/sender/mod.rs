@@ -2,10 +2,12 @@ pub mod client;
 pub mod http;
 pub mod metrics;
 pub mod serialization;
+pub mod stats;
 pub mod transmission;
 
 // Export old interface for compatibility
 pub use http::{BatchSender, ConnectionStats, SenderConfig, SenderError};
+pub use stats::{AtomicConnectionStats, ConnectionStatsSnapshot};
 
 // Export new TASK4 interface
 pub use client::{ClientConfig, ClientError, ConnectionStats as NewConnectionStats, HttpClient};

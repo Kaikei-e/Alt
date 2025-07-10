@@ -82,9 +82,9 @@ pub fn setup_logging(log_level: LogLevel) -> Result<(), Box<dyn std::error::Erro
         let filter = EnvFilter::builder()
             .with_default_directive(level.into())
             .from_env_lossy()
-            .add_directive("hyper=warn".parse().unwrap())
-            .add_directive("reqwest=warn".parse().unwrap())
-            .add_directive("h2=warn".parse().unwrap());
+            .add_directive("hyper=warn".parse().expect("Failed to parse hyper log directive"))
+            .add_directive("reqwest=warn".parse().expect("Failed to parse reqwest log directive"))
+            .add_directive("h2=warn".parse().expect("Failed to parse h2 log directive"));
 
         let _ = tracing_subscriber::registry()
             .with(

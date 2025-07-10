@@ -24,6 +24,8 @@ pub enum DiskError {
     DiskSpaceExceeded,
     #[error("Invalid storage path: {0}")]
     InvalidStoragePath(String),
+    #[error("System time error: {0}")]
+    SystemTimeError(String),
 }
 
 #[derive(Debug, Clone)]
@@ -80,15 +82,17 @@ impl DiskFallback {
         let estimated_size = batch.estimated_memory_size();
         let entries = batch.into_entries();
 
+        let stored_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| DiskError::SystemTimeError(format!("Invalid system time: {}", e)))?
+            .as_secs();
+
         let stored_batch = StoredBatch {
             id: batch_id.clone(),
             entries,
             batch_type,
             estimated_size,
-            stored_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            stored_at,
             compressed: self.config.compression,
         };
 
@@ -199,7 +203,7 @@ impl DiskFallback {
     pub async fn cleanup_old_batches(&mut self) -> Result<u32, DiskError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .map_err(|e| DiskError::SystemTimeError(format!("Invalid system time: {}", e)))?
             .as_secs();
 
         let batch_ids = self.list_stored_batches().await?;

@@ -102,13 +102,22 @@ impl MetricsCollector {
                 (Duration::ZERO, Duration::ZERO)
             } else {
                 samples.sort();
-                let p95_idx = (samples.len() as f64 * 0.95) as usize;
-                let p99_idx = (samples.len() as f64 * 0.99) as usize;
+                let p95_idx = ((samples.len() - 1) as f64 * 0.95) as usize;
+                let p99_idx = ((samples.len() - 1) as f64 * 0.99) as usize;
 
-                (
-                    samples.get(p95_idx).copied().unwrap_or(Duration::ZERO),
-                    samples.get(p99_idx).copied().unwrap_or(Duration::ZERO),
-                )
+                let p95 = if p95_idx < samples.len() {
+                    samples[p95_idx]
+                } else {
+                    samples[samples.len() - 1]
+                };
+
+                let p99 = if p99_idx < samples.len() {
+                    samples[p99_idx]
+                } else {
+                    samples[samples.len() - 1]
+                };
+
+                (p95, p99)
             }
         };
 

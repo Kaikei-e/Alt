@@ -31,6 +31,8 @@ pub enum ServiceError {
     AlreadyRunning,
     #[error("Shutdown timeout")]
     ShutdownTimeout,
+    #[error("Service component not initialized: {component}")]
+    ComponentNotInitialized { component: String },
 }
 
 pub struct ServiceManager {
@@ -100,9 +102,15 @@ impl ServiceManager {
 
         // Start main processing loop
         let running = self.running.clone();
-        let collector = Arc::new(tokio::sync::Mutex::new(self.collector.take().unwrap()));
+        let collector = Arc::new(tokio::sync::Mutex::new(self.collector.take()
+            .ok_or_else(|| ServiceError::ComponentNotInitialized {
+                component: "collector".to_string(),
+            })?));
         let _parser = self.parser.clone();
-        let reliability_manager = Arc::new(self.reliability_manager.take().unwrap());
+        let reliability_manager = Arc::new(self.reliability_manager.take()
+            .ok_or_else(|| ServiceError::ComponentNotInitialized {
+                component: "reliability_manager".to_string(),
+            })?);
         let target_service = self.target_service.clone();
 
         tokio::spawn(async move {
@@ -216,7 +224,10 @@ impl ServiceManager {
                 disk_config,
                 metrics_config,
                 health_config,
-                (*self.sender.as_ref().unwrap()).clone(),
+                (*self.sender.as_ref()
+                    .ok_or_else(|| ServiceError::ComponentNotInitialized {
+                        component: "sender".to_string(),
+                    })?).clone(),
             )
             .await
             .map_err(|e| {
@@ -478,6 +489,7 @@ impl ServiceManager {
 // Note: Clone implementations would be added to the respective modules
 // For now, we'll use Arc to share instances instead of cloning
 
+#[derive(Debug)]
 pub struct ShutdownHandle {
     shutdown_tx: mpsc::UnboundedSender<()>,
     signal_handler: SignalHandler,
@@ -518,6 +530,7 @@ impl ShutdownHandle {
     }
 }
 
+#[derive(Debug)]
 pub struct SignalHandler {
     shutdown_tx: mpsc::UnboundedSender<()>,
     active: Arc<RwLock<bool>>,
@@ -573,3 +586,56 @@ impl SignalHandler {
 //     }
 //     ANSI_RE.replace_all(input, "").to_string()
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::Config;
+
+    fn create_test_config() -> Config {
+        let mut config = Config::default();
+        config.target_service = Some("test-service".to_string());
+        config
+    }
+
+    #[tokio::test]
+    async fn test_component_initialization_error_handling() {
+        // Test that our error handling works correctly by testing a successful case
+        let config = create_test_config();
+        let mut service = ServiceManager::new(config).await.unwrap();
+        
+        // Test successful component initialization
+        let result = service.initialize_components().await;
+        assert!(result.is_ok());
+        
+        // Verify all components are initialized
+        assert!(service.is_initialized());
+    }
+    
+    #[tokio::test]
+    async fn test_service_error_types() {
+        // Test that our error types work correctly
+        let error = ServiceError::ComponentNotInitialized {
+            component: "test_component".to_string(),
+        };
+        
+        assert_eq!(
+            error.to_string(),
+            "Service component not initialized: test_component"
+        );
+    }
+    
+    #[tokio::test]
+    async fn test_service_initialization_state() {
+        // Test the initialization state checking
+        let config = create_test_config();
+        let mut service = ServiceManager::new(config).await.unwrap();
+        
+        // Should not be initialized initially
+        assert!(!service.is_initialized());
+        
+        // After initialization, should be initialized
+        service.initialize_components().await.unwrap();
+        assert!(service.is_initialized());
+    }
+}

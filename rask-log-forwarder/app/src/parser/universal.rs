@@ -421,7 +421,7 @@ mod tests {
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
             .await
-            .unwrap();
+            .expect("Failed to parse nginx docker log");
 
         assert_eq!(entry.service_type, "nginx");
         assert_eq!(entry.log_type, "access");
@@ -440,7 +440,7 @@ mod tests {
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
             .await
-            .unwrap();
+            .expect("Failed to parse go backend docker log");
 
         assert_eq!(entry.service_type, "alt-backend");
         assert_eq!(entry.log_type, "structured");
@@ -464,7 +464,7 @@ mod tests {
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
             .await
-            .unwrap();
+            .expect("Failed to parse unknown service docker log");
 
         assert_eq!(entry.service_type, "unknown-service");
         assert_eq!(entry.log_type, "plain");
@@ -482,7 +482,7 @@ mod tests {
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
             .await
-            .unwrap();
+            .expect("Failed to parse docker log with native timestamp");
 
         assert_eq!(entry.service_type, "alt-backend");
         assert_eq!(entry.log_type, "structured");

@@ -1,7 +1,8 @@
+use crate::buffer::concurrency::RobustRwLock;
 use crate::parser::EnrichedLogEntry;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 use tokio::time::{Instant as TokioInstant, sleep_until};
@@ -103,7 +104,7 @@ impl Batch {
 
 #[derive(Clone)]
 pub struct BatchFormer {
-    inner: Arc<Mutex<BatchFormerInner>>,
+    inner: RobustRwLock<BatchFormerInner>,
     config: BatchConfig,
     notify: Arc<Notify>,
 }
@@ -125,7 +126,7 @@ impl BatchFormer {
         };
 
         Self {
-            inner: Arc::new(Mutex::new(inner)),
+            inner: RobustRwLock::new(inner, "batch_former"),
             config,
             notify: Arc::new(Notify::new()),
         }
@@ -140,7 +141,8 @@ impl BatchFormer {
         let batch_type;
 
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.write_safe().await
+                .map_err(|e| crate::buffer::BufferError::ConcurrencyError(format!("Failed to acquire write lock: {}", e)))?;
 
             // Set batch start time if this is the first entry
             if inner.pending_entries.is_empty() {
@@ -174,42 +176,55 @@ impl BatchFormer {
     pub async fn next_batch(&mut self) -> Option<Batch> {
         // Check for ready batches first
         {
-            let mut inner = self.inner.lock().unwrap();
-            if let Some(batch) = inner.ready_batches.pop_front() {
-                return Some(batch);
+            if let Ok(mut inner) = self.inner.write_safe().await {
+                if let Some(batch) = inner.ready_batches.pop_front() {
+                    return Some(batch);
+                }
             }
         }
 
         // Wait for batch to be ready
         self.notify.notified().await;
 
-        let mut inner = self.inner.lock().unwrap();
-        inner.ready_batches.pop_front()
+        if let Ok(mut inner) = self.inner.write_safe().await {
+            inner.ready_batches.pop_front()
+        } else {
+            None
+        }
     }
 
-    pub fn has_ready_batch(&self) -> bool {
-        let inner = self.inner.lock().unwrap();
-        !inner.ready_batches.is_empty()
+    pub async fn has_ready_batch(&self) -> bool {
+        if let Ok(inner) = self.inner.read_safe().await {
+            !inner.ready_batches.is_empty()
+        } else {
+            false
+        }
     }
 
     async fn create_batch(&self, batch_type: BatchType) {
         let entries: Vec<EnrichedLogEntry>;
         {
-            let mut inner = self.inner.lock().unwrap();
-            entries = inner.pending_entries.drain(..).collect();
-            inner.current_memory_size = 0;
-            inner.batch_start_time = None;
+            if let Ok(mut inner) = self.inner.write_safe().await {
+                entries = inner.pending_entries.drain(..).collect();
+                inner.current_memory_size = 0;
+                inner.batch_start_time = None;
+            } else {
+                tracing::error!("Failed to acquire write lock for creating batch");
+                return;
+            }
         }
 
         if !entries.is_empty() {
             let batch = Batch::new(entries, batch_type);
 
             {
-                let mut inner = self.inner.lock().unwrap();
-                inner.ready_batches.push_back(batch);
+                if let Ok(mut inner) = self.inner.write_safe().await {
+                    inner.ready_batches.push_back(batch);
+                    self.notify.notify_one();
+                } else {
+                    tracing::error!("Failed to acquire write lock for storing ready batch");
+                }
             }
-
-            self.notify.notify_one();
         }
     }
 
@@ -218,11 +233,15 @@ impl BatchFormer {
         let deadline;
 
         {
-            let inner = self.inner.lock().unwrap();
-            should_start_timer =
-                inner.batch_start_time.is_some() && !inner.pending_entries.is_empty();
-            deadline = inner.batch_start_time.unwrap_or_else(TokioInstant::now)
-                + self.config.max_wait_time;
+            if let Ok(inner) = self.inner.read_safe().await {
+                should_start_timer =
+                    inner.batch_start_time.is_some() && !inner.pending_entries.is_empty();
+                deadline = inner.batch_start_time.unwrap_or_else(TokioInstant::now)
+                    + self.config.max_wait_time;
+            } else {
+                tracing::error!("Failed to acquire read lock for timeout timer check");
+                return;
+            }
         }
 
         if should_start_timer {

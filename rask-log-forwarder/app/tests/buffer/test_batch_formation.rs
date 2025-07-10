@@ -77,7 +77,7 @@ async fn test_batch_formation_by_memory() {
         former.add_entry(entry).await.unwrap();
 
         // Should trigger memory limit around 5-6 entries
-        if former.has_ready_batch() {
+        if former.has_ready_batch().await {
             break;
         }
     }

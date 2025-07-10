@@ -32,13 +32,14 @@ fn bench_memory_efficiency(c: &mut Criterion) {
             &capacity,
             |b, &capacity| {
                 b.iter(|| {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let rt = tokio::runtime::Runtime::new()
+                        .expect("Failed to create Tokio runtime for benchmark");
                     let buffer = rt
                         .block_on(LogBuffer::new_with_config(BufferConfig {
                             capacity,
                             ..Default::default()
                         }))
-                        .unwrap();
+                        .expect("Failed to create LogBuffer for benchmark");
 
                     // Fill buffer to various levels
                     for fill_ratio in [0.25, 0.5, 0.75, 1.0] {
@@ -46,7 +47,8 @@ fn bench_memory_efficiency(c: &mut Criterion) {
 
                         // Fill to target ratio
                         let (sender, _receiver) = buffer.split();
-                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let rt = tokio::runtime::Runtime::new()
+                            .expect("Failed to create Tokio runtime for benchmark");
                         for i in 0..fill_count {
                             let log_entry = create_test_enriched_log(i);
                             if rt.block_on(sender.send(log_entry)).is_err() {
@@ -87,13 +89,14 @@ fn bench_memory_growth_pattern(c: &mut Criterion) {
 
     group.bench_function("linear_memory_growth", |b| {
         b.iter(|| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Runtime::new()
+                .expect("Failed to create Tokio runtime for benchmark");
             let buffer = rt
                 .block_on(LogBuffer::new_with_config(BufferConfig {
                     capacity: 100000,
                     ..Default::default()
                 }))
-                .unwrap();
+                .expect("Failed to create LogBuffer for benchmark");
             let mut memory_readings = Vec::new();
 
             // Add items in batches and measure memory growth
@@ -104,7 +107,8 @@ fn bench_memory_growth_pattern(c: &mut Criterion) {
                 let (sender, _receiver) = buffer.split();
                 for i in 0..batch_size {
                     let log_entry = create_test_enriched_log(batch * batch_size + i);
-                    rt.block_on(sender.send(log_entry)).unwrap();
+                    rt.block_on(sender.send(log_entry))
+                        .expect("Failed to send log entry in benchmark");
                 }
 
                 let metrics = buffer.metrics().snapshot();
@@ -140,13 +144,14 @@ fn bench_memory_overhead(c: &mut Criterion) {
 
     group.bench_function("buffer_overhead", |b| {
         b.iter(|| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Runtime::new()
+                .expect("Failed to create Tokio runtime for benchmark");
             let buffer = rt
                 .block_on(LogBuffer::new_with_config(BufferConfig {
                     capacity: 100000,
                     ..Default::default()
                 }))
-                .unwrap();
+                .expect("Failed to create LogBuffer for benchmark");
 
             // Measure empty buffer overhead
             let _empty_metrics = buffer.metrics().snapshot();
@@ -154,7 +159,8 @@ fn bench_memory_overhead(c: &mut Criterion) {
             // Add single item
             let log_entry = create_test_enriched_log(0);
             let (sender, _receiver) = buffer.split();
-            rt.block_on(sender.send(log_entry)).unwrap();
+            rt.block_on(sender.send(log_entry))
+                .expect("Failed to send log entry in benchmark");
 
             let _single_item_metrics = buffer.metrics().snapshot();
 
@@ -180,13 +186,14 @@ fn bench_memory_fragmentation(c: &mut Criterion) {
 
     group.bench_function("fragmentation_resistance", |b| {
         b.iter(|| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Runtime::new()
+                .expect("Failed to create Tokio runtime for benchmark");
             let buffer = rt
                 .block_on(LogBuffer::new_with_config(BufferConfig {
                     capacity: 50000,
                     ..Default::default()
                 }))
-                .unwrap();
+                .expect("Failed to create LogBuffer for benchmark");
 
             // Pattern: fill, empty, fill again to test fragmentation
             for cycle in 0..5 {
@@ -194,7 +201,8 @@ fn bench_memory_fragmentation(c: &mut Criterion) {
                 let (sender, _receiver) = buffer.split();
                 for i in 0..25000 {
                     let log_entry = create_test_enriched_log(cycle * 25000 + i);
-                    rt.block_on(sender.send(log_entry)).unwrap();
+                    rt.block_on(sender.send(log_entry))
+                        .expect("Failed to send log entry in benchmark");
                 }
 
                 let full_metrics = buffer.metrics().snapshot();
@@ -221,19 +229,21 @@ fn bench_memory_target_validation(c: &mut Criterion) {
     group.bench_function("128MB_limit_validation", |b| {
         b.iter(|| {
             // Test with maximum expected buffer size
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Runtime::new()
+                .expect("Failed to create Tokio runtime for benchmark");
             let buffer = rt
                 .block_on(LogBuffer::new_with_config(BufferConfig {
                     capacity: 1_000_000,
                     ..Default::default()
                 }))
-                .unwrap();
+                .expect("Failed to create LogBuffer for benchmark");
 
             // Fill to capacity
             let (sender, _receiver) = buffer.split();
             for i in 0..1_000_000 {
                 let log_entry = create_test_enriched_log(i);
-                rt.block_on(sender.send(log_entry)).unwrap();
+                rt.block_on(sender.send(log_entry))
+                    .expect("Failed to send log entry in benchmark");
             }
 
             let _metrics = buffer.metrics().snapshot();

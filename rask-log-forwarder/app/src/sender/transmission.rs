@@ -20,6 +20,8 @@ pub enum TransmissionError {
     Timeout,
     #[error("Invalid response: {0}")]
     InvalidResponse(String),
+    #[error("Invalid header value: {0}")]
+    InvalidHeaderValue(String),
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +75,7 @@ impl BatchTransmitter {
         let bytes_sent = payload.len();
 
         // Build headers
-        let headers = self.build_headers(&batch, use_compression);
+        let headers = self.build_headers(&batch, use_compression)?;
 
         // Send request
         let mut request_builder = self
@@ -133,7 +135,7 @@ impl BatchTransmitter {
         }
     }
 
-    pub fn build_headers(&self, batch: &Batch, compressed: bool) -> HeaderMap {
+    pub fn build_headers(&self, batch: &Batch, compressed: bool) -> Result<HeaderMap, TransmissionError> {
         let mut headers = HeaderMap::new();
 
         // Content type
@@ -150,31 +152,36 @@ impl BatchTransmitter {
         // Batch metadata
         headers.insert(
             HeaderName::from_static("x-batch-id"),
-            HeaderValue::from_str(batch.id()).unwrap(),
+            HeaderValue::from_str(batch.id())
+                .map_err(|e| TransmissionError::InvalidHeaderValue(format!("Invalid batch ID: {}", e)))?,
         );
 
         headers.insert(
             HeaderName::from_static("x-batch-size"),
-            HeaderValue::from_str(&batch.size().to_string()).unwrap(),
+            HeaderValue::from_str(&batch.size().to_string())
+                .map_err(|e| TransmissionError::InvalidHeaderValue(format!("Invalid batch size: {}", e)))?,
         );
 
         headers.insert(
             HeaderName::from_static("x-batch-type"),
-            HeaderValue::from_str(&format!("{:?}", batch.batch_type())).unwrap(),
+            HeaderValue::from_str(&format!("{:?}", batch.batch_type()))
+                .map_err(|e| TransmissionError::InvalidHeaderValue(format!("Invalid batch type: {}", e)))?,
         );
 
         // Forwarder info
         headers.insert(
             HeaderName::from_static("x-forwarder-version"),
-            HeaderValue::from_str(env!("CARGO_PKG_VERSION")).unwrap(),
+            HeaderValue::from_str(env!("CARGO_PKG_VERSION"))
+                .map_err(|e| TransmissionError::InvalidHeaderValue(format!("Invalid version: {}", e)))?,
         );
 
         headers.insert(
             USER_AGENT,
-            HeaderValue::from_str(&self.client.config.user_agent).unwrap(),
+            HeaderValue::from_str(&self.client.config.user_agent)
+                .map_err(|e| TransmissionError::InvalidHeaderValue(format!("Invalid user agent: {}", e)))?,
         );
 
-        headers
+        Ok(headers)
     }
 
     pub async fn send_batch_streaming(

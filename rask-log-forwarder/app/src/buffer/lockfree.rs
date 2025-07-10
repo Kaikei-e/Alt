@@ -17,6 +17,8 @@ pub enum BufferError {
     SendTimeout,
     #[error("Receive timeout")]
     ReceiveTimeout,
+    #[error("Concurrency error: {0}")]
+    ConcurrencyError(String),
 }
 
 #[derive(Debug, Clone)]

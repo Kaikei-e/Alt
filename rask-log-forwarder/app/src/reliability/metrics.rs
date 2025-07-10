@@ -105,15 +105,17 @@ impl MetricsCollector {
                 prometheus::Opts::new("rask_batches_sent_total", "Total number of batches sent"),
                 &["status"], // success, failure
             )
-            .unwrap();
-            registry.register(Box::new(batches_sent.clone())).unwrap();
+            .expect("Failed to create batches_sent counter metric");
+            registry.register(Box::new(batches_sent.clone()))
+                .expect("Failed to register batches_sent metric");
 
             let entries_sent = Counter::new(
                 "rask_entries_sent_total",
                 "Total number of log entries sent",
             )
-            .unwrap();
-            registry.register(Box::new(entries_sent.clone())).unwrap();
+            .expect("Failed to create entries_sent counter metric");
+            registry.register(Box::new(entries_sent.clone()))
+                .expect("Failed to register entries_sent metric");
 
             let transmission_latency = HistogramVec::new(
                 prometheus::HistogramOpts::new(
@@ -122,19 +124,19 @@ impl MetricsCollector {
                 ),
                 &["batch_size_range"], // small, medium, large
             )
-            .unwrap();
+            .expect("Failed to create transmission_latency histogram metric");
             registry
                 .register(Box::new(transmission_latency.clone()))
-                .unwrap();
+                .expect("Failed to register transmission_latency metric");
 
             let disk_fallback_counter = Counter::new(
                 "rask_disk_fallback_total",
                 "Total number of batches stored to disk",
             )
-            .unwrap();
+            .expect("Failed to create disk_fallback_counter metric");
             registry
                 .register(Box::new(disk_fallback_counter.clone()))
-                .unwrap();
+                .expect("Failed to register disk_fallback_counter metric");
 
             let retry_attempts = CounterVec::new(
                 prometheus::Opts::new(
@@ -143,28 +145,32 @@ impl MetricsCollector {
                 ),
                 &["attempt_number"],
             )
-            .unwrap();
-            registry.register(Box::new(retry_attempts.clone())).unwrap();
+            .expect("Failed to create retry_attempts counter metric");
+            registry.register(Box::new(retry_attempts.clone()))
+                .expect("Failed to register retry_attempts metric");
 
             let health_checks = CounterVec::new(
                 prometheus::Opts::new("rask_health_checks_total", "Total number of health checks"),
                 &["status"], // success, failure
             )
-            .unwrap();
-            registry.register(Box::new(health_checks.clone())).unwrap();
+            .expect("Failed to create health_checks counter metric");
+            registry.register(Box::new(health_checks.clone()))
+                .expect("Failed to register health_checks metric");
 
             let memory_usage =
-                Gauge::new("rask_memory_usage_bytes", "Current memory usage in bytes").unwrap();
-            registry.register(Box::new(memory_usage.clone())).unwrap();
+                Gauge::new("rask_memory_usage_bytes", "Current memory usage in bytes")
+                    .expect("Failed to create memory_usage gauge metric");
+            registry.register(Box::new(memory_usage.clone()))
+                .expect("Failed to register memory_usage metric");
 
             let active_connections = Gauge::new(
                 "rask_active_connections",
                 "Number of active HTTP connections",
             )
-            .unwrap();
+            .expect("Failed to create active_connections gauge metric");
             registry
                 .register(Box::new(active_connections.clone()))
-                .unwrap();
+                .expect("Failed to register active_connections metric");
 
             Self {
                 config,
