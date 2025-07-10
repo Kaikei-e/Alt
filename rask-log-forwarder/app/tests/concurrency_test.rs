@@ -59,17 +59,11 @@ async fn test_concurrent_parsing_thread_safety() {
                     let entry = result.unwrap();
                     assert!(
                         !entry.message.is_empty(),
-                        "Thread {} empty message at iteration {} for log {}",
-                        thread_id,
-                        iteration,
-                        log_idx
+                        "Thread {thread_id} empty message at iteration {iteration} for log {log_idx}"
                     );
                     assert!(
                         !entry.service_name.is_empty(),
-                        "Thread {} empty service name at iteration {} for log {}",
-                        thread_id,
-                        iteration,
-                        log_idx
+                        "Thread {thread_id} empty service name at iteration {iteration} for log {log_idx}"
                     );
 
                     results.push(entry);
@@ -96,25 +90,22 @@ async fn test_concurrent_parsing_thread_safety() {
                 for entry in results {
                     assert!(
                         !entry.message.is_empty(),
-                        "Thread {} produced empty message",
-                        thread_id
+                        "Thread {thread_id} produced empty message"
                     );
                     assert!(
                         !entry.container_id.is_empty(),
-                        "Thread {} produced empty container ID",
-                        thread_id
+                        "Thread {thread_id} produced empty container ID"
                     );
                 }
             }
             Err(e) => {
-                panic!("Thread failed: {:?}", e);
+                panic!("Thread failed: {e:?}");
             }
         }
     }
 
     println!(
-        "✓ Concurrency test completed successfully: {} threads parsed {} total log entries",
-        num_threads, total_parsed
+        "✓ Concurrency test completed successfully: {num_threads} threads parsed {total_parsed} total log entries"
     );
     assert_eq!(
         total_parsed,
@@ -150,9 +141,7 @@ async fn test_concurrent_regex_pattern_access() {
                     let pattern_result = VALIDATED_PATTERNS.get(pattern_idx);
                     assert!(
                         pattern_result.is_ok(),
-                        "Thread {} failed to access pattern {}",
-                        thread_id,
-                        pattern_idx
+                        "Thread {thread_id} failed to access pattern {pattern_idx}"
                     );
                     pattern_access_count += 1;
                 }
@@ -169,19 +158,17 @@ async fn test_concurrent_regex_pattern_access() {
             Ok((thread_id, access_count)) => {
                 total_accesses += access_count;
                 println!(
-                    "✓ Thread {} completed: {} pattern accesses",
-                    thread_id, access_count
+                    "✓ Thread {thread_id} completed: {access_count} pattern accesses"
                 );
             }
             Err(e) => {
-                panic!("Thread failed: {:?}", e);
+                panic!("Thread failed: {e:?}");
             }
         }
     }
 
     println!(
-        "✓ Concurrent regex pattern access test completed: {} threads made {} total pattern accesses",
-        num_threads, total_accesses
+        "✓ Concurrent regex pattern access test completed: {num_threads} threads made {total_accesses} total pattern accesses"
     );
     assert_eq!(total_accesses, num_threads * iterations_per_thread * 6); // 6 patterns per iteration
 }
@@ -223,15 +210,11 @@ async fn test_concurrent_batch_parsing() {
                 assert_eq!(
                     batch_results.len(),
                     test_logs_clone.len(),
-                    "Thread {} batch {} wrong length",
-                    thread_id,
-                    batch_idx
+                    "Thread {thread_id} batch {batch_idx} wrong length"
                 );
                 assert!(
                     batch_results.iter().all(|r| r.is_ok()),
-                    "Thread {} batch {} had parsing errors",
-                    thread_id,
-                    batch_idx
+                    "Thread {thread_id} batch {batch_idx} had parsing errors"
                 );
 
                 total_entries += batch_results.len();
@@ -248,19 +231,17 @@ async fn test_concurrent_batch_parsing() {
             Ok((thread_id, entry_count)) => {
                 total_parsed += entry_count;
                 println!(
-                    "✓ Thread {} completed: parsed {} log entries in batches",
-                    thread_id, entry_count
+                    "✓ Thread {thread_id} completed: parsed {entry_count} log entries in batches"
                 );
             }
             Err(e) => {
-                panic!("Thread failed: {:?}", e);
+                panic!("Thread failed: {e:?}");
             }
         }
     }
 
     println!(
-        "✓ Concurrent batch parsing test completed: {} threads parsed {} total log entries",
-        num_threads, total_parsed
+        "✓ Concurrent batch parsing test completed: {num_threads} threads parsed {total_parsed} total log entries"
     );
     assert_eq!(
         total_parsed,
