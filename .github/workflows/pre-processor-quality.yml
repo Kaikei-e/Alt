@@ -17,190 +17,20 @@ on:
       - 'pre-processor/**'
   workflow_dispatch:
 
-# 同一ブランチ/PR の古い実行をキャンセル
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  determine-runner-integration:
-    name: Determine which runner to use for integration tests
-    runs-on: ubuntu-latest
-    outputs:
-      runner: ${{ steps.set-runner.outputs.runner }}
-      runner-json: ${{ steps.format-runner.outputs.runner-json }}
-    steps:
-      - name: Determine which runner to use
-        id: set-runner
-        uses: benjaminmichaelis/get-soonest-available-runner@v1.1.0
-        with:
-          primary-runner: "m222"
-          fallback-runner: "ubuntu-latest"
-          min-available-runners: 1
-          github-token: ${{ secrets.RUNNER_TOKEN }}
-      - name: Format runner output
-        id: format-runner
-        run: |
-          RUNNER="${{ steps.set-runner.outputs.runner }}"
-          if [ "$RUNNER" = "m222" ]; then
-            # セルフホストランナーの場合はラベルの配列として出力
-            echo 'runner-json=["self-hosted", "macOS", "ARM64"]' >> $GITHUB_OUTPUT
-          else
-            # ubuntu-latestの場合は文字列として出力
-            echo 'runner-json="ubuntu-latest"' >> $GITHUB_OUTPUT
-          fi
-
-  quality-check:
-    name: Quality Gates
-    needs: determine-runner-integration
-    runs-on: ${{ fromJSON(needs.determine-runner-integration.outputs.runner-json) }}
-    strategy:
-      matrix:
-        go: ["1.24"]
+  quality-gates:
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: 'pre-processor/app'
+      go-version: '1.24'
+      coverage-flags: 'pre-processor'
+      run-security-audit: true
+      build-artifact-name: 'pre-processor-binary'
+      build-artifact-path: 'pre-processor/app/bin/pre-processor'
     permissions:
       contents: read
       security-events: write
-
-    defaults:
-      run:
-        working-directory: ./pre-processor/app
-
-    steps:
-    - name: Configure logging
-      if: runner.environment == 'self-hosted'
-      run: |
-        # GitHubのログ機能を使って、特定のセクションを非表示に
-        echo "::group::Masking Configuration"
-
-        # ここでマスキング設定（この部分は折りたたまれる）
-        PARTS=($(echo $HOME | tr '/' ' '))
-        for part in "${PARTS[@]}"; do
-          [ ! -z "$part" ] && echo "::add-mask::$part"
-        done
-
-        echo "::endgroup::"
-
-        # 以降のコマンドでデバッグ出力を抑制
-        echo "::debug::Masking completed"
-      working-directory: .  # デフォルトの working-directory を上書き
-
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: 1.24
-        cache-dependency-path: pre-processor/app/go.sum
-
-    - name: Cache Go modules
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('pre-processor/app/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
-      env:
-        # キャッシュの詳細ログを抑制
-        ACTIONS_STEP_DEBUG: false
-
-    - name: Install development tools
-      run: |
-        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-        go install github.com/securego/gosec/v2/cmd/gosec@latest
-        go install go.uber.org/mock/mockgen@latest
-        go install golang.org/x/tools/cmd/goimports@latest
-
-    - name: Download dependencies
-      run: go mod download
-
-    - name: Verify go.mod is tidy
-      run: |
-        go mod tidy
-        if [ ! -z "$(git status --porcelain go.mod go.sum)" ]; then
-          echo "go.mod or go.sum is not tidy"
-          git diff go.mod go.sum
-          exit 1
-        fi
-
-    - name: Generate mocks
-      run: make mocks
-
-    - name: Format code
-      run: make format
-
-    - name: Lint code
-      run: make lint
-
-    - name: Security scan
-      run: make security
-
-    - name: Run tests with race detection (mocks only)
-      run: make test-race
-
-    - name: Generate coverage report (mocks only)
-      run: make coverage
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./pre-processor/app/coverage.out
-        flags: pre-processor
-        name: pre-processor-coverage
-        verbose: false  # 詳細ログを無効化
-
-    - name: Build application
-      run: make build
-
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: pre-processor-binary
-        path: pre-processor/app/bin/pre-processor
-        retention-days: 7
-
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go: ["1.24"]
-    permissions:
-      contents: read
-      security-events: write
-
-    defaults:
-      run:
-        working-directory: ./pre-processor/app
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: 1.24
-        cache-dependency-path: pre-processor/app/go.sum
-
-    - name: Download dependencies
-      run: go mod download
-
-    - name: Install Gosec Security Scanner
-      run: go install github.com/securego/gosec/v2/cmd/gosec@latest
-
-    - name: Run Gosec Security Scanner
-      run: |
-        gosec -fmt sarif -out gosec-results.sarif ./...
-
-    - name: Upload SARIF file
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: ./pre-processor/app/gosec-results.sarif
-
-    - name: Run vulnerability check
-      run: |
-        go install golang.org/x/vuln/cmd/govulncheck@latest
-        govulncheck ./...

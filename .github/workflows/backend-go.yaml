@@ -10,7 +10,6 @@ on:
       - 'alt-backend/**'
   workflow_dispatch:
 
-# 同一ブランチ/PR の古い実行をキャンセル
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -20,102 +19,9 @@ permissions:
   actions: read
 
 jobs:
-  determine-runner-integration:
-    name: Determine which runner to use for integration tests
-    runs-on: ubuntu-latest
-    outputs:
-      runner: ${{ steps.set-runner.outputs.runner }}
-      runner-json: ${{ steps.format-runner.outputs.runner-json }}
-    steps:
-      - name: Determine which runner to use
-        id: set-runner
-        uses: benjaminmichaelis/get-soonest-available-runner@v1.1.0
-        with:
-          primary-runner: "m222"
-          fallback-runner: "ubuntu-latest"
-          min-available-runners: 1
-          github-token: ${{ secrets.RUNNER_TOKEN }}
-      - name: Format runner output
-        id: format-runner
-        run: |
-          RUNNER="${{ steps.set-runner.outputs.runner }}"
-          if [ "$RUNNER" = "m222" ]; then
-            # セルフホストランナーの場合はラベルの配列として出力
-            echo 'runner-json=["self-hosted", "macOS", "ARM64"]' >> $GITHUB_OUTPUT
-          else
-            # ubuntu-latestの場合は文字列として出力
-            echo 'runner-json="ubuntu-latest"' >> $GITHUB_OUTPUT
-          fi
-
   test:
-    needs: determine-runner-integration
-    runs-on: ${{ fromJSON(needs.determine-runner-integration.outputs.runner-json) }}
-    strategy:
-      matrix:
-        go: ["1.24"]
-    steps:
-    - name: Configure logging
-      if: runner.environment == 'self-hosted'
-      run: |
-        # GitHubのログ機能を使って、特定のセクションを非表示に
-        echo "::group::Masking Configuration"
-
-        # ここでマスキング設定（この部分は折りたたまれる）
-        PARTS=($(echo $HOME | tr '/' ' '))
-        for part in "${PARTS[@]}"; do
-          [ ! -z "$part" ] && echo "::add-mask::$part"
-        done
-
-        echo "::endgroup::"
-
-        # 以降のコマンドでデバッグ出力を抑制
-        echo "::debug::Masking completed"
-
-    - uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ matrix.go }}
-        cache-dependency-path: alt-backend/app/go.sum
-
-    - name: Cache Go modules
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/go/pkg/mod
-          ~/.cache/go-build
-        key: ${{ runner.os }}-go-${{ hashFiles('alt-backend/app/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
-      env:
-        # キャッシュの詳細ログを抑制
-        ACTIONS_STEP_DEBUG: false
-
-    - name: Install dependencies
-      working-directory: alt-backend/app
-      run: go mod tidy
-
-    - name: Run go vet
-      working-directory: alt-backend/app
-      run: go vet ./...
-
-    - name: Run tests with coverage
-      working-directory: alt-backend/app
-      run: go test -coverprofile=coverage.out ./...
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./alt-backend/app/coverage.out
-        flags: alt-backend
-        name: alt-backend-coverage
-        verbose: false  # 詳細ログを無効化
-
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: go-test-results
-        path: alt-backend/test-results/
-        retention-days: 30
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'alt-backend/app'
+      go-version: '1.24'
+      coverage-flags: 'alt-backend'

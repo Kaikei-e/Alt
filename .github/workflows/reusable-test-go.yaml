@@ -1,0 +1,74 @@
+name: Reusable Go Test Workflow
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      go-version:
+        required: false
+        type: string
+        default: "1.24"
+      upload-coverage:
+        required: false
+        type: boolean
+        default: true
+      coverage-flags:
+        required: false
+        type: string
+
+jobs:
+  test:
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
+    steps:
+      - name: Configure logging
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::group::Masking Configuration"
+          PARTS=($(echo $HOME | tr '/' ' '))
+          for part in "${PARTS[@]}"; do
+            [ ! -z "$part" ] && echo "::add-mask::$part"
+          done
+          echo "::endgroup::"
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+        env:
+          ACTIONS_STEP_DEBUG: false
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: go mod tidy
+
+      - name: Run go vet
+        working-directory: ${{ inputs.working-directory }}
+        run: go vet ./...
+
+      - name: Run tests with coverage
+        working-directory: ${{ inputs.working-directory }}
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Upload coverage to Codecov
+        if: inputs.upload-coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ${{ inputs.working-directory }}/coverage.out
+          flags: ${{ inputs.coverage-flags }}
+          name: ${{ inputs.coverage-flags }}-coverage
+          verbose: false

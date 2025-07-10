@@ -1,0 +1,169 @@
+name: Reusable Go Quality Gates Workflow
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      go-version:
+        required: false
+        type: string
+        default: "1.24"
+      coverage-flags:
+        required: false
+        type: string
+      run-security-audit:
+        required: false
+        type: boolean
+        default: true
+      build-artifact-name:
+        required: false
+        type: string
+      build-artifact-path:
+        required: false
+        type: string
+
+jobs:
+  quality-check:
+    name: Quality Gates
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Configure logging
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::group::Masking Configuration"
+          PARTS=($(echo $HOME | tr '/' ' '))
+          for part in "${PARTS[@]}"; do
+            [ ! -z "$part" ] && echo "::add-mask::$part"
+          done
+          echo "::endgroup::"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+        env:
+          ACTIONS_STEP_DEBUG: false
+
+      - name: Install development tools
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install go.uber.org/mock/mockgen@latest
+          go install golang.org/x/tools/cmd/goimports@latest
+
+      - name: Download dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: go mod download
+
+      - name: Verify go.mod is tidy
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          go mod tidy
+          if [ ! -z "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "go.mod or go.sum is not tidy"
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: Generate mocks
+        working-directory: ${{ inputs.working-directory }}
+        run: make mocks
+
+      - name: Format code
+        working-directory: ${{ inputs.working-directory }}
+        run: make format
+
+      - name: Lint code
+        working-directory: ${{ inputs.working-directory }}
+        run: make lint
+
+      - name: Security scan
+        working-directory: ${{ inputs.working-directory }}
+        run: make security
+
+      - name: Run tests with race detection
+        working-directory: ${{ inputs.working-directory }}
+        run: make test-race
+
+      - name: Generate coverage report
+        working-directory: ${{ inputs.working-directory }}
+        run: make coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ${{ inputs.working-directory }}/coverage.out
+          flags: ${{ inputs.coverage-flags }}
+          name: ${{ inputs.coverage-flags }}-coverage
+          verbose: false
+
+      - name: Build application
+        working-directory: ${{ inputs.working-directory }}
+        run: make build
+
+      - name: Upload build artifacts
+        if: inputs.build-artifact-name != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.build-artifact-name }}
+          path: ${{ inputs.build-artifact-path }}
+          retention-days: 7
+
+  security-audit:
+    name: Security Audit
+    if: inputs.run-security-audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      - name: Download dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: go mod download
+
+      - name: Install Gosec Security Scanner
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run Gosec Security Scanner
+        working-directory: ${{ inputs.working-directory }}
+        run: gosec -fmt sarif -out gosec-results.sarif ./...
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ inputs.working-directory }}/gosec-results.sarif
+
+      - name: Run vulnerability check
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

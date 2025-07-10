@@ -1,0 +1,63 @@
+name: Reusable Python Test Workflow
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      python-version:
+        required: false
+        type: string
+        default: "3.13"
+      test-command:
+        required: false
+        type: string
+        default: "uv run python -m pytest test_unit.py -v --junit-xml=tests/results.xml"
+
+jobs:
+  test:
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
+    steps:
+      - name: Configure logging
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::group::Masking Configuration"
+          PARTS=($(echo $HOME | tr '/' ' '))
+          for part in "${PARTS[@]}"; do
+            [ ! -z "$part" ] && echo "::add-mask::$part"
+          done
+          echo "::endgroup::"
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            ${{ inputs.working-directory }}/pyproject.toml
+            ${{ inputs.working-directory }}/uv.lock
+        env:
+          ACTIONS_STEP_DEBUG: false
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: uv sync --frozen
+
+      - name: Run tests
+        working-directory: ${{ inputs.working-directory }}
+        run: ${{ inputs.test-command }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-results-${{ github.run_id }}
+          path: ${{ inputs.working-directory }}/tests/results.xml
+          retention-days: 5

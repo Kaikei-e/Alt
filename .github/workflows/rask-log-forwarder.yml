@@ -1,5 +1,4 @@
 name: Rask Log Forwarder Tests
-
 on:
   push:
     branches: [ main, master ]
@@ -11,7 +10,6 @@ on:
       - 'rask-log-forwarder/**'
   workflow_dispatch:
 
-# 同一ブランチ/PR の古い実行をキャンセル
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,94 +19,9 @@ permissions:
   actions: read
 
 jobs:
-  determine-runner-integration:
-    name: Determine which runner to use for integration tests
-    runs-on: ubuntu-latest
-    outputs:
-      runner: ${{ steps.set-runner.outputs.runner }}
-      runner-json: ${{ steps.format-runner.outputs.runner-json }}
-    steps:
-      - name: Determine which runner to use
-        id: set-runner
-        uses: benjaminmichaelis/get-soonest-available-runner@v1.1.0
-        with:
-          primary-runner: "m222"
-          fallback-runner: "ubuntu-latest"
-          min-available-runners: 1
-          github-token: ${{ secrets.RUNNER_TOKEN }}
-      - name: Format runner output
-        id: format-runner
-        run: |
-          RUNNER="${{ steps.set-runner.outputs.runner }}"
-          if [ "$RUNNER" = "m222" ]; then
-            # セルフホストランナーの場合はラベルの配列として出力
-            echo 'runner-json=["self-hosted", "macOS", "ARM64"]' >> $GITHUB_OUTPUT
-          else
-            # ubuntu-latestの場合は文字列として出力
-            echo 'runner-json="ubuntu-latest"' >> $GITHUB_OUTPUT
-          fi
-
   test:
-    needs: determine-runner-integration
-    runs-on: ${{ fromJSON(needs.determine-runner-integration.outputs.runner-json) }}
-    defaults:
-      run:
-        working-directory: rask-log-forwarder/app
-
-    steps:
-    - name: Configure logging
-      if: runner.environment == 'self-hosted'
-      run: |
-        # GitHubのログ機能を使って、特定のセクションを非表示に
-        echo "::group::Masking Configuration"
-
-        # ここでマスキング設定（この部分は折りたたまれる）
-        PARTS=($(echo $HOME | tr '/' ' '))
-        for part in "${PARTS[@]}"; do
-          [ ! -z "$part" ] && echo "::add-mask::$part"
-        done
-
-        echo "::endgroup::"
-
-        # 以降のコマンドでデバッグ出力を抑制
-        echo "::debug::Masking completed"
-      working-directory: .  # デフォルトの working-directory を上書き
-
-    - uses: actions/checkout@v4
-
-    - name: Set up Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        profile: minimal
-
-    - uses: swatinem/rust-cache@v2
-      with:
-        workspaces: |
-          rask-log-forwarder/app
-      env:
-        # キャッシュの詳細ログを抑制
-        ACTIONS_STEP_DEBUG: false
-
-    - name: Build (release)
-      run: cargo build --release
-
-    - name: Run clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
-
-    - name: Run unit tests
-      run: cargo test --all --verbose
-
-    - name: Install cargo-tarpaulin
-      run: cargo install cargo-tarpaulin
-
-    - name: Generate coverage report
-      run: cargo tarpaulin --out Xml
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./rask-log-forwarder/app/tarpaulin-report.xml
-        flags: rask-log-forwarder
-        name: rask-log-forwarder-coverage
-        verbose: false  # 詳細ログを無効化
+    uses: ./.github/workflows/reusable-rust-test.yaml
+    with:
+      working-directory: 'rask-log-forwarder/app'
+      toolchain: 'stable'
+      coverage-flags: 'rask-log-forwarder'

@@ -1,0 +1,101 @@
+name: Reusable Frontend Test Workflow
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      node-version:
+        required: false
+        type: string
+        default: "20"
+      test-type:
+        required: true
+        type: string
+        description: 'vitest or playwright'
+      pnpm-version:
+        required: false
+        type: string
+        default: "10"
+
+jobs:
+  test:
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 60
+    env:
+      isCI: true
+    steps:
+      - name: Configure logging
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::group::Masking Configuration"
+          PARTS=($(echo $HOME | tr '/' ' '))
+          for part in "${PARTS[@]}"; do
+            [ ! -z "$part" ] && echo "::add-mask::$part"
+          done
+          echo "::endgroup::"
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "pnpm"
+          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
+        env:
+          ACTIONS_STEP_DEBUG: false
+
+      - name: Prepare Playwright environment
+        if: inputs.test-type == 'playwright'
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          npm install -g corepack@latest
+          corepack enable
+          corepack prepare pnpm@latest --activate
+          echo "PLAYWRIGHT_VERSION=$(node -e "console.log(require('./package.json').devDependencies['@playwright/test'])")" >> $GITHUB_ENV
+
+      - name: Cache Playwright browsers
+        if: inputs.test-type == 'playwright'
+        uses: actions/cache@v3
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+        env:
+          ACTIONS_STEP_DEBUG: false
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        if: inputs.test-type == 'playwright' && steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ inputs.working-directory }}
+        run: npx playwright install --with-deps
+
+      - name: Run Vitest tests
+        if: inputs.test-type == 'vitest'
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm exec vitest
+
+      - name: Run Playwright tests
+        if: inputs.test-type == 'playwright'
+        working-directory: ${{ inputs.working-directory }}
+        run: npx playwright test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.test-type }}-report-${{ github.run_id }}
+          path: |
+            ${{ inputs.working-directory }}/coverage
+            ${{ inputs.working-directory }}/playwright-report/
+          retention-days: 30
