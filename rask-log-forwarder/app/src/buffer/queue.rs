@@ -81,9 +81,8 @@ impl LogBuffer {
 
     pub fn metrics(&self) -> BufferMetrics {
         let len = self.len();
-        let memory_usage_bytes = len
-            .saturating_mul(std::mem::size_of::<Arc<NginxLogEntry>>());
-        
+        let memory_usage_bytes = len.saturating_mul(std::mem::size_of::<Arc<NginxLogEntry>>());
+
         BufferMetrics {
             capacity: self.capacity,
             len,
@@ -329,7 +328,7 @@ impl LogBuffer {
 // - Arc<NginxLogEntry> is Send+Sync (Arc provides this for thread-safe contents)
 // - AtomicU64 and AtomicUsize are Send+Sync (std guarantees this)
 // - usize and Instant are Send+Sync (std guarantees this)
-// 
+//
 // No unsafe implementations needed - Rust's type system automatically derives
 // Send+Sync for this type based on its components.
 

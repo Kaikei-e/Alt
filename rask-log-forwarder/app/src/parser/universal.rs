@@ -179,10 +179,12 @@ impl UniversalParser {
 
         // Use lossy conversion to handle invalid UTF-8 gracefully
         let raw_str = String::from_utf8_lossy(log_bytes);
-        
+
         // Check for null bytes or control characters that might indicate malformed input
         if raw_str.contains('\0') {
-            return Err(ParseError::InvalidFormat("Log contains null bytes".to_string()));
+            return Err(ParseError::InvalidFormat(
+                "Log contains null bytes".to_string(),
+            ));
         }
 
         Ok(raw_str.into_owned())
@@ -208,13 +210,13 @@ impl UniversalParser {
     ) -> Result<EnrichedLogEntry, ParseError> {
         // Validate input size first
         self.validate_input_size(log_bytes)?;
-        
+
         // Validate UTF-8 and get string representation
         let raw_str = self.validate_utf8(log_bytes)?;
-        
+
         // Validate field sizes
         self.validate_field_size(&raw_str, "log_line")?;
-        
+
         // Check if this is already a Docker JSON format or raw application log
         let (log_content, stream, timestamp) = if raw_str.trim_start().starts_with("{\"log\":") {
             // This is Docker JSON format
@@ -223,12 +225,12 @@ impl UniversalParser {
 
             // Remove trailing newline from log content
             let log = docker_entry.log.trim_end_matches('\n').to_string();
-            
+
             // Validate extracted fields
             self.validate_field_size(&log, "log_content")?;
             self.validate_field_size(&docker_entry.stream, "stream")?;
             self.validate_field_size(&docker_entry.time, "timestamp")?;
-            
+
             (log, docker_entry.stream, docker_entry.time)
         } else {
             // This is raw application log (when timestamps: false in Docker API)
@@ -272,9 +274,7 @@ impl UniversalParser {
         let parser: &dyn ServiceParser = match service_name {
             "nginx" => &self.nginx_parser,
             "alt-backend" | "alt-frontend" | "pre-processor" | "search-indexer"
-            | "tag-generator" => {
-                &self.go_parser
-            }
+            | "tag-generator" => &self.go_parser,
             "db" | "postgres" | "postgresql" => &self.postgres_parser,
             _ => {
                 // Try to auto-detect format
@@ -532,7 +532,7 @@ mod tests {
         // Should return a single error for the entire batch
         assert_eq!(results.len(), 1);
         assert!(results[0].is_err());
-        
+
         if let Err(ParseError::InvalidFormat(msg)) = &results[0] {
             assert!(msg.contains("Batch too large"));
             assert!(msg.contains("100001 lines"));

@@ -265,11 +265,9 @@ async fn test_dropped_messages_tracking() {
     let metrics = buffer.metrics().snapshot();
 
     // Print for debugging
+    println!("Sent count: {sent_count}, Dropped count: {dropped_count}");
     println!(
-        "Sent count: {sent_count}, Dropped count: {dropped_count}"
-    );
-    println!(
-            "Metrics - sent: {}, dropped: {}, queue_depth: {}",
+        "Metrics - sent: {}, dropped: {}, queue_depth: {}",
         metrics.messages_sent, metrics.messages_dropped, metrics.queue_depth
     );
 

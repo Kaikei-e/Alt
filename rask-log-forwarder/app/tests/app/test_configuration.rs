@@ -184,7 +184,10 @@ fn test_config_auto_detect_service() {
     clean_all_env_vars();
 
     // Verify environment is clean
-    assert!(env::var("TARGET_SERVICE").is_err(), "TARGET_SERVICE should not be set before test");
+    assert!(
+        env::var("TARGET_SERVICE").is_err(),
+        "TARGET_SERVICE should not be set before test"
+    );
 
     let mut config = Config::default();
 
@@ -194,7 +197,11 @@ fn test_config_auto_detect_service() {
     }
 
     // Verify environment variable is set
-    assert_eq!(env::var("TARGET_SERVICE").unwrap(), "test-service", "TARGET_SERVICE should be set");
+    assert_eq!(
+        env::var("TARGET_SERVICE").unwrap(),
+        "test-service",
+        "TARGET_SERVICE should be set"
+    );
 
     // Test auto-detection with environment variable
     config.auto_detect_service().unwrap();
@@ -204,7 +211,10 @@ fn test_config_auto_detect_service() {
     clean_all_env_vars();
 
     // Verify cleanup
-    assert!(env::var("TARGET_SERVICE").is_err(), "TARGET_SERVICE should be cleaned up after test");
+    assert!(
+        env::var("TARGET_SERVICE").is_err(),
+        "TARGET_SERVICE should be cleaned up after test"
+    );
 
     // Test auto-detection without environment variable (should fail or use hostname)
     let mut config2 = Config::default();
@@ -215,12 +225,18 @@ fn test_config_auto_detect_service() {
     match result {
         Ok(()) => {
             // Auto-detection succeeded (probably from hostname)
-            assert!(config2.target_service.is_some(), "Target service should be set after successful auto-detection");
+            assert!(
+                config2.target_service.is_some(),
+                "Target service should be set after successful auto-detection"
+            );
         }
         Err(e) => {
             // Auto-detection failed (expected in some environments)
-            assert!(e.to_string().contains("Could not auto-detect target service"),
-                   "Error should be about auto-detection failure: {e}");
+            assert!(
+                e.to_string()
+                    .contains("Could not auto-detect target service"),
+                "Error should be about auto-detection failure: {e}"
+            );
         }
     }
 }
@@ -307,7 +323,10 @@ fn test_invalid_batch_size() {
     clean_all_env_vars();
 
     // Double check that BATCH_SIZE is not set
-    assert!(env::var("BATCH_SIZE").is_err(), "BATCH_SIZE should not be set before test");
+    assert!(
+        env::var("BATCH_SIZE").is_err(),
+        "BATCH_SIZE should not be set before test"
+    );
 
     unsafe {
         env::set_var("BATCH_SIZE", "not_a_number");
@@ -324,7 +343,10 @@ fn test_invalid_batch_size() {
     clean_all_env_vars();
 
     // Double check that BATCH_SIZE is cleaned up
-    assert!(env::var("BATCH_SIZE").is_err(), "BATCH_SIZE should be cleaned up after test");
+    assert!(
+        env::var("BATCH_SIZE").is_err(),
+        "BATCH_SIZE should be cleaned up after test"
+    );
 }
 
 #[test]

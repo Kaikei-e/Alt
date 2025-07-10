@@ -115,9 +115,10 @@ impl ClientStats {
 impl HttpClient {
     pub async fn new(config: ClientConfig) -> Result<Self, ClientError> {
         // Validate endpoint URL
-        let endpoint_url: Url = config.endpoint.parse().map_err(|e| {
-            ClientError::InvalidConfiguration(format!("Invalid endpoint URL: {e}"))
-        })?;
+        let endpoint_url: Url = config
+            .endpoint
+            .parse()
+            .map_err(|e| ClientError::InvalidConfiguration(format!("Invalid endpoint URL: {e}")))?;
 
         // Construct aggregate URL
         let aggregate_url = if config.endpoint.ends_with("/v1/aggregate") {

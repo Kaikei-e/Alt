@@ -145,7 +145,7 @@ impl BatchSerializer {
         if batch_size > MAX_SAFE_BATCH_SIZE {
             return MAX_SAFE_BUFFER_SIZE;
         }
-        
+
         // Use checked arithmetic to prevent overflow
         let entry_size = batch_size.saturating_mul(ESTIMATED_ENTRY_SIZE);
         entry_size.saturating_add(METADATA_OVERHEAD)

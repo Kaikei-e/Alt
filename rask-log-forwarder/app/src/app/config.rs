@@ -278,7 +278,9 @@ impl Config {
                 "debug" => LogLevel::Debug,
                 "trace" => LogLevel::Trace,
                 _ => {
-                    return Err(ConfigError::EnvError(format!("Invalid LOG_LEVEL: {log_level}")));
+                    return Err(ConfigError::EnvError(format!(
+                        "Invalid LOG_LEVEL: {log_level}"
+                    )));
                 }
             };
         }
@@ -312,9 +314,9 @@ impl Config {
         }
 
         if let Ok(connection_timeout_secs) = std::env::var("CONNECTION_TIMEOUT_SECS") {
-            config.connection_timeout_secs = connection_timeout_secs
-                .parse()
-                .map_err(|e| ConfigError::EnvError(format!("Invalid CONNECTION_TIMEOUT_SECS: {e}")))?;
+            config.connection_timeout_secs = connection_timeout_secs.parse().map_err(|e| {
+                ConfigError::EnvError(format!("Invalid CONNECTION_TIMEOUT_SECS: {e}"))
+            })?;
         }
 
         if let Ok(max_connections) = std::env::var("MAX_CONNECTIONS") {

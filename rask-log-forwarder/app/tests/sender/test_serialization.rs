@@ -42,8 +42,8 @@ fn test_ndjson_serialization() {
     assert_eq!(lines.len(), 3);
 
     for (i, line) in lines.iter().enumerate() {
-        let parsed: serde_json::Value = serde_json::from_str(line)
-            .unwrap_or_else(|_| panic!("Line {i} should be valid JSON"));
+        let parsed: serde_json::Value =
+            serde_json::from_str(line).unwrap_or_else(|_| panic!("Line {i} should be valid JSON"));
 
         assert!(
             parsed["message"]

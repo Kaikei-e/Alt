@@ -176,7 +176,9 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
 
         if let Some(container) = best_match {
             let id = container.id.ok_or_else(|| {
-                DiscoveryError::ContainerNotFound(format!("Container ID missing for {service_name}"))
+                DiscoveryError::ContainerNotFound(format!(
+                    "Container ID missing for {service_name}"
+                ))
             })?;
 
             let labels = container.labels.unwrap_or_default();

@@ -164,10 +164,8 @@ async fn test_zero_copy_performance() {
     );
     assert!(
         received_count > 500,
-            "Should process substantial number of messages, got: {received_count}"
+        "Should process substantial number of messages, got: {received_count}"
     );
 
-    println!(
-        "Queue performance: {throughput} msgs/sec, {received_count} messages processed"
-    );
+    println!("Queue performance: {throughput} msgs/sec, {received_count} messages processed");
 }

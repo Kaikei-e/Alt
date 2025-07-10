@@ -339,7 +339,8 @@ impl LogBuffer {
         let elapsed_secs = elapsed.as_secs_f64();
 
         // Use safe arithmetic to prevent overflow
-        let memory_usage_bytes = snapshot.queue_depth
+        let memory_usage_bytes = snapshot
+            .queue_depth
             .saturating_mul(std::mem::size_of::<EnrichedLogEntry>());
 
         DetailedMetrics {
@@ -451,6 +452,6 @@ impl LogBuffer {
 // - Arc<BufferMetricsCollector> is Send+Sync (Arc provides this for thread-safe contents)
 // - BufferConfig contains only primitive types which are Send+Sync
 // - Option<T> is Send+Sync when T is Send+Sync
-// 
+//
 // No unsafe implementations needed - Rust's type system automatically derives
 // Send+Sync for these types based on their components.

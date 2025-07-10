@@ -40,7 +40,9 @@ impl DockerJsonParser {
         let mut data = bytes.to_vec();
         let json: OwnedValue = simd_json::from_slice(&mut data)?;
 
-        let obj = json.as_object().ok_or_else(|| ParseError::InvalidFormat("Log is not a JSON object".to_string()))?;
+        let obj = json
+            .as_object()
+            .ok_or_else(|| ParseError::InvalidFormat("Log is not a JSON object".to_string()))?;
 
         // Extract required fields
         let log = obj
