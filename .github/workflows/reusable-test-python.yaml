@@ -15,71 +15,61 @@ on:
       test-command:
         required: false
         type: string
-        default: "uv run python3 -m pytest test_unit.py -v --junit-xml=tests/results.xml"
+        default: "python -m pytest test_unit.py -v --junit-xml=tests/results.xml"
 
 jobs:
   test:
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
-    env:
-      # ツールキャッシュディレクトリを明示的に設定
-      AGENT_TOOLSDIRECTORY: $RUNNER_TEMP/hostedtoolcache
     steps:
-      - name: Configure logging
+      - name: Configure security
         if: runner.environment == 'self-hosted'
         run: |
-          echo "::group::Masking Configuration"
-          PARTS=($(echo $HOME | tr '/' ' '))
-          for part in "${PARTS[@]}"; do
-            [ ! -z "$part" ] && echo "::add-mask::$part"
-          done
-          echo "::endgroup::"
+          # すべての出力をマスク
+          echo "::add-mask::$HOME"
+          echo "::add-mask::$USER"
+          echo "::add-mask::$(whoami)"
+          echo "::add-mask::runner"
+          echo "::add-mask::actions-runner"
+          echo "::add-mask::/opt/homebrew"
+          echo "::add-mask::/Users"
 
-      - name: Setup environment
-        run: |
-          # デバッグ情報
-          echo "Current user: $(whoami)"
-          echo "Home directory: $HOME"
-          echo "Runner temp: ${{ runner.temp }}"
-          echo "GitHub workspace: ${{ github.workspace }}"
-
-          # 必要なディレクトリを作成
-          mkdir -p "$RUNNER_TEMP/hostedtoolcache"
-          mkdir -p "$RUNNER_TEMP/pip-cache"
-          mkdir -p "$RUNNER_TEMP/uv-cache"
+          # デバッグ出力を無効化
+          echo "::debug::Security configured"
 
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Setup and run tests
         working-directory: ${{ inputs.working-directory }}
         run: |
-          # pipをアップグレード
-          python3 -m pip install --upgrade pip --user
+          # エラー出力のみ、詳細情報は表示しない
+          set +x
 
-          # uvをインストール
-          python3 -m pip install --user uv
+          # 環境設定（出力なし）
+          export PATH="/opt/homebrew/opt/python@3.13/bin:/opt/homebrew/bin:$PATH" 2>/dev/null
 
-          # 依存関係をインストール
+          # 依存関係のインストール（出力を最小限に）
+          echo "Installing dependencies..."
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet psycopg2-binary pytest pytest-cov
+
           if [ -f "requirements.txt" ]; then
-            python3 -m pip install -r requirements.txt --user
+              python -m pip install --quiet -r requirements.txt
+          elif [ -f "pyproject.toml" ]; then
+              python -m pip install --quiet -e .
           fi
 
-          # pytestをインストール
-          python3 -m pip install --user pytest pytest-cov
-
-          # テストディレクトリを作成
+          # テスト実行
+          echo "Running tests..."
           mkdir -p tests
+          python -m pytest test_unit.py -v --junit-xml=tests/results.xml 2>&1 | \
+            grep -v "/Users/" | grep -v "/opt/homebrew" || true
 
-      - name: Run tests
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          # テストを実行
-          python3 -m pytest test_unit.py -v --junit-xml=tests/results.xml || true
-
-          # 結果を確認
-          if [ ! -f "tests/results.xml" ]; then
-            mkdir -p tests
-            echo '<?xml version="1.0" encoding="UTF-8"?><testsuites></testsuites>' > tests/results.xml
+          # 結果確認（パスを表示しない）
+          if [ -f "tests/results.xml" ]; then
+              echo "Tests completed"
+          else
+              echo '<?xml version="1.0" encoding="UTF-8"?><testsuites></testsuites>' > tests/results.xml
           fi
 
       - name: Upload test results
