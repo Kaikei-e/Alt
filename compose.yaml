@@ -155,8 +155,8 @@ services:
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
-      - OLLAMA_HOME=/home/appuser/.ollama
-      - OLLAMA_MODELS=/home/appuser/.ollama
+      - OLLAMA_HOME=/home/ollama-user/.ollama
+      - OLLAMA_MODELS=/home/ollama-user/.ollama
     volumes:
       - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped

@@ -13,8 +13,10 @@ export OLLAMA_LOG_LEVEL=ERROR
 export LLAMA_LOG_LEVEL=0
 export LLAMA_LOG_VERBOSITY=0
 
-# Ensure model directory exists
-export OLLAMA_HOME="${HOME}/.ollama"
+# Ensure HOME points to the current user's actual home directory and configure model cache
+export HOME="$(getent passwd $(id -u) | cut -d: -f6)"
+export OLLAMA_HOME="${OLLAMA_HOME:-${HOME}/.ollama}"
+export OLLAMA_MODELS="$OLLAMA_HOME"
 mkdir -p "$OLLAMA_HOME"
 
 echo "Starting Ollama server with configuration:"

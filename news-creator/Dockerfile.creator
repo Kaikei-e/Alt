@@ -25,10 +25,11 @@ ENV OLLAMA_ORIGINS=*
 ENV OLLAMA_KEEP_ALIVE=24h
 ENV OLLAMA_NUM_PARALLEL=4
 ENV OLLAMA_MAX_LOADED_MODELS=1
-ENV OLLAMA_HOME=/root/.ollama
+ENV HOME=/home/ollama-user
+ENV OLLAMA_HOME=/home/ollama-user/.ollama
 
 # ---- Model cache persistence ---------------------------------------------
-VOLUME ["$OLLAMA_HOME"]
+VOLUME ["/home/ollama-user/.ollama"]
 
 # ---- Copy entrypoint and set permissions --------------------------------
 COPY --chown=ollama-user:ollama-user entrypoint.sh /usr/local/bin/entrypoint.sh
