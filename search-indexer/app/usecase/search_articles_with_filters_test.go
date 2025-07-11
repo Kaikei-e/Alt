@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"search-indexer/domain"
-	"search-indexer/port"
 	"testing"
 )
 

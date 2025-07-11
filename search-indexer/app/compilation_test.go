@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"search-indexer/domain"
 	"search-indexer/driver"
 	"search-indexer/gateway"
@@ -14,7 +13,6 @@ import (
 
 func TestCompilation(t *testing.T) {
 	// Test basic compilation by creating instances
-	ctx := context.Background()
 	
 	// Test search_engine functions
 	filters := []string{"test", "programming"}
