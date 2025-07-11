@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -140,7 +139,7 @@ type DurationStats struct {
 	total   atomic.Int64 // microseconds
 	min     atomic.Int64
 	max     atomic.Int64
-	buckets []int64       // microsecond boundaries
+	buckets []int64 // microsecond boundaries
 	counts  []atomic.Int64
 }
 
@@ -245,8 +244,8 @@ func (d *DurationStats) approximatePercentile(percentile float64) float64 {
 	target := int64(float64(count) * percentile)
 	cumulative := int64(0)
 
-	for i, bucketCount := range d.counts {
-		cumulative += bucketCount.Load()
+	for i := range d.counts {
+		cumulative += d.counts[i].Load()
 		if cumulative >= target {
 			if i < len(d.buckets) {
 				return float64(d.buckets[i]) / 1000.0 // Convert to milliseconds
@@ -507,8 +506,8 @@ func NewPerformanceReporter(metrics *AppMetrics, runtime *RuntimeMetrics, custom
 
 // PerformanceReport represents a performance report
 type PerformanceReport struct {
-	Timestamp time.Time      `json:"timestamp"`
-	Metrics   MetricsSummary `json:"metrics"`
+	Timestamp time.Time       `json:"timestamp"`
+	Metrics   MetricsSummary  `json:"metrics"`
 	Runtime   RuntimeSnapshot `json:"runtime"`
 }
 
@@ -604,11 +603,4 @@ func generateSpanID() string {
 		return fmt.Sprintf("%x", time.Now().UnixNano()&0xFFFFFFFF)
 	}
 	return fmt.Sprintf("%x", bytes)
-}
-
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }
