@@ -33,6 +33,9 @@ jobs:
 
     env:
       isCI: true
+      # ランダムポートを使用してポート競合を回避
+      PORT: ${{ github.run_id }}
+      FORCE_COLOR: 1
 
     steps:
       - name: Configure logging
@@ -45,21 +48,67 @@ jobs:
           done
           echo "::endgroup::"
 
+      - name: Pre-cleanup processes and ports
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::group::Pre-cleanup processes and ports"
+
+          # Kill existing Node.js processes
+          echo "Killing existing Node.js processes..."
+          pkill -9 node || true
+          pkill -9 npm || true
+          pkill -9 pnpm || true
+
+          # Kill processes using common test ports
+          echo "Checking and killing processes on common ports..."
+          for port in 3000 3001 3010 4173 5173 8080; do
+            pid=$(lsof -ti:$port 2>/dev/null || true)
+            if [ ! -z "$pid" ]; then
+              echo "Killing process $pid on port $port"
+              kill -9 $pid 2>/dev/null || true
+            fi
+          done
+
+          # Wait for processes to terminate
+          sleep 2
+
+          # Verify ports are free
+          echo "Verifying ports are free..."
+          netstat -an | grep LISTEN | grep -E ':(3000|3001|3010|4173|5173|8080) ' || echo "Ports appear to be free"
+
+          echo "::endgroup::"
+
       - name: Deep clean workspace
         if: runner.environment == 'self-hosted'
         run: |
+          echo "::group::Deep cleaning workspace"
+
+          # Clean pnpm directories
           echo "Deep cleaning pnpm directories..."
           find "${{ runner.temp }}" -maxdepth 2 -name "setup-pnpm*" -type d -exec rm -rf {} + 2>/dev/null || true
           if [ -d "${{ runner.temp }}/setup-pnpm" ]; then
             chmod -R 777 "${{ runner.temp }}/setup-pnpm" 2>/dev/null || true
             rm -rf "${{ runner.temp }}/setup-pnpm" || sudo rm -rf "${{ runner.temp }}/setup-pnpm" || true
           fi
+
+          # Clean all pnpm and node related caches
           rm -rf "$HOME/.pnpm-store" || true
           rm -rf "$HOME/.cache/pnpm" || true
           rm -rf "$HOME/Library/pnpm" || true
+          rm -rf "$HOME/.npm" || true
+          rm -rf "$HOME/.cache/ms-playwright" || true
+
+          # Clean workspace
           rm -rf "${{ github.workspace }}/node_modules" || true
           rm -rf "${{ github.workspace }}/.pnpm-store" || true
+          rm -rf "${{ github.workspace }}/dist" || true
+          rm -rf "${{ github.workspace }}/build" || true
+
+          # Create fresh directories
           mkdir -p "${{ runner.temp }}/pnpm-home"
+          mkdir -p "${{ runner.temp }}/pnpm-store"
+
+          echo "::endgroup::"
 
       - uses: actions/checkout@v4
 
@@ -71,11 +120,12 @@ jobs:
 
       - name: Install pnpm manually
         run: |
-          echo "Installing pnpm ${{ inputs.pnpm-version }}..."
+          echo "::group::Installing pnpm ${{ inputs.pnpm-version }}"
           corepack enable
           corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
           pnpm --version
           pnpm config set store-dir "${{ runner.temp }}/pnpm-store"
+          echo "::endgroup::"
 
       - name: Get pnpm store directory
         id: pnpm-store
@@ -105,39 +155,142 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm install --frozen-lockfile
+        run: |
+          echo "::group::Installing dependencies"
+          pnpm install --frozen-lockfile
+          echo "::endgroup::"
 
       - name: Install Playwright browsers
         if: inputs.test-type == 'playwright' && steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm exec playwright install --with-deps
+        run: |
+          echo "::group::Installing Playwright browsers"
+          pnpm exec playwright install --with-deps
+          echo "::endgroup::"
+
+      - name: Pre-test port check
+        if: inputs.test-type == 'playwright'
+        run: |
+          echo "::group::Pre-test port availability check"
+
+          # Generate dynamic port based on run ID
+          DYNAMIC_PORT=$((3000 + (${{ github.run_id }} % 1000)))
+          echo "Using dynamic port: $DYNAMIC_PORT"
+          echo "PLAYWRIGHT_TEST_PORT=$DYNAMIC_PORT" >> $GITHUB_ENV
+
+          # Verify port is available
+          if lsof -i:$DYNAMIC_PORT >/dev/null 2>&1; then
+            echo "Port $DYNAMIC_PORT is in use, finding alternative..."
+            for i in {1..10}; do
+              ALT_PORT=$((DYNAMIC_PORT + i))
+              if ! lsof -i:$ALT_PORT >/dev/null 2>&1; then
+                echo "Using alternative port: $ALT_PORT"
+                echo "PLAYWRIGHT_TEST_PORT=$ALT_PORT" >> $GITHUB_ENV
+                break
+              fi
+            done
+          fi
+
+          echo "Final port: ${PLAYWRIGHT_TEST_PORT:-$DYNAMIC_PORT}"
+          echo "::endgroup::"
 
       - name: Run Vitest tests
         if: inputs.test-type == 'vitest'
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm exec vitest run
+        run: |
+          echo "::group::Running Vitest tests"
+          pnpm exec vitest run
+          echo "::endgroup::"
 
       - name: Run Playwright tests
         if: inputs.test-type == 'playwright'
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm exec playwright test
+        run: |
+          echo "::group::Running Playwright tests"
+
+          # Set timeout and other environment variables
+          export PLAYWRIGHT_TIMEOUT=30000
+          export PLAYWRIGHT_RETRIES=2
+
+          # Run tests with retry mechanism
+          set +e  # Don't exit on first failure
+
+          for attempt in 1 2 3; do
+            echo "Attempt $attempt/3..."
+
+            # Kill any stray processes before attempt
+            pkill -f "vite.*preview" || true
+            pkill -f "vite.*dev" || true
+            sleep 2
+
+            pnpm exec playwright test
+            exit_code=$?
+
+            if [ $exit_code -eq 0 ]; then
+              echo "Tests passed on attempt $attempt"
+              break
+            else
+              echo "Tests failed on attempt $attempt (exit code: $exit_code)"
+              if [ $attempt -lt 3 ]; then
+                echo "Waiting before retry..."
+                sleep 5
+
+                # Clean up any remaining processes
+                pkill -f "node.*vite" || true
+                pkill -f "playwright" || true
+                sleep 2
+              fi
+            fi
+          done
+
+          set -e  # Re-enable exit on error
+          exit $exit_code
+          echo "::endgroup::"
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.test-type }}-report-${{ github.run_id }}
+          name: ${{ inputs.test-type }}-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ inputs.working-directory }}/coverage
             ${{ inputs.working-directory }}/playwright-report/
+            ${{ inputs.working-directory }}/test-results/
           retention-days: 30
           if-no-files-found: warn
 
       - name: Post cleanup
         if: always()
         run: |
-          echo ">>> Killing stray Node processes"
+          echo "::group::Post cleanup"
+
+          echo ">>> Killing all Node.js related processes"
           pkill -9 node || true
+          pkill -9 npm || true
+          pkill -9 pnpm || true
+          pkill -f "vite" || true
+          pkill -f "playwright" || true
+
+          # Force kill processes on test ports
+          echo ">>> Force killing processes on test ports"
+          for port in 3000 3001 3010 4173 5173 8080; do
+            pid=$(lsof -ti:$port 2>/dev/null || true)
+            if [ ! -z "$pid" ]; then
+              echo "Force killing process $pid on port $port"
+              kill -9 $pid 2>/dev/null || true
+            fi
+          done
+
+          # Clean up temporary directories
+          echo ">>> Cleaning temporary directories"
           rm -rf "${{ runner.temp }}/pnpm-store"       || true
           rm -rf "${{ runner.temp }}/pnpm-home"        || true
           rm -rf "${{ runner.temp }}/playwright-browsers" || true
+
+          # Wait for cleanup to complete
+          sleep 2
+
+          echo ">>> Final port check"
+          netstat -an | grep LISTEN | grep -E ':(3000|3001|3010|4173|5173|8080) ' || echo "All test ports are now free"
+
+          echo "::endgroup::"
