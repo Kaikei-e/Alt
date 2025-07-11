@@ -3,8 +3,8 @@
 import React, { Suspense } from "react";
 import { Box, Text } from "@chakra-ui/react";
 import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
-import DesktopTimeline from "@/components/desktop/timeline/DesktopTimeline";
-import { RightPanel } from "@/components/desktop/analytics/RightPanel";
+import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeline";
+import LazyRightPanel from "@/components/desktop/analytics/LazyRightPanel";
 import { Home, Rss, FileText, Search, Settings } from "lucide-react";
 
 // Loading fallback
@@ -58,14 +58,14 @@ function DesktopFeedsContent() {
   return (
     <DesktopLayout
       showRightPanel={true}
-      rightPanel={<RightPanel />}
+      rightPanel={<LazyRightPanel />}
       sidebarProps={{
         navItems: sidebarNavItems,
         logoText: "Alt Dashboard",
         logoSubtext: "RSS Management Hub",
       }}
     >
-      <DesktopTimeline />
+      <LazyDesktopTimeline />
     </DesktopLayout>
   );
 }

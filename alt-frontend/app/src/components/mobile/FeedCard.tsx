@@ -2,7 +2,7 @@ import { Button, Flex, Spinner, Text, Box } from "@chakra-ui/react";
 import { SanitizedFeed } from "@/schema/feed";
 import Link from "next/link";
 import { feedsApi } from "@/lib/api";
-import { useState, useCallback, memo, KeyboardEvent } from "react";
+import { useState, useCallback, useMemo, KeyboardEvent } from "react";
 import { FeedDetails } from "./FeedDetails";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";
 import { SquareArrowOutUpRight } from "lucide-react";
@@ -13,7 +13,7 @@ type FeedCardProps = {
   setIsReadStatus: (isReadStatus: boolean) => void;
 };
 
-const FeedCard = memo(function FeedCard({
+const FeedCard = function FeedCard({
   feed,
   isReadStatus,
   setIsReadStatus,
@@ -50,8 +50,11 @@ const FeedCard = memo(function FeedCard({
     return null;
   }
 
-  // Truncate description for better UX
-  const truncatedDescription = truncateFeedDescription(feed.description);
+  // Memoize expensive description truncation calculation
+  const truncatedDescription = useMemo(() => 
+    truncateFeedDescription(feed.description), 
+    [feed.description]
+  );
 
   return (
     // Gradient border container with hover effects

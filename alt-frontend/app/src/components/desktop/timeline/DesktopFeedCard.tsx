@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, memo, KeyboardEvent } from "react";
+import React, { useState, useCallback, useMemo, KeyboardEvent } from "react";
 import {
   Box,
   Flex,
@@ -27,7 +27,7 @@ const formatTimeAgo = (dateString: string) => {
   return `${Math.floor(diffInSeconds / 86400)}d ago`;
 };
 
-export const DesktopFeedCard = memo(function DesktopFeedCard({
+export const DesktopFeedCard = function DesktopFeedCard({
   feed,
   variant = "default",
   onMarkAsRead,
@@ -67,8 +67,9 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
     [handleViewArticle],
   );
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
+  // Memoize priority color calculation
+  const priorityColor = useMemo(() => {
+    switch (feed.metadata.priority) {
       case "high":
         return "var(--accent-primary)";
       case "medium":
@@ -78,7 +79,7 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
       default:
         return "var(--text-muted)";
     }
-  };
+  }, [feed.metadata.priority]);
 
   const getPriorityIcon = (priority: string) => {
     switch (priority) {
@@ -126,7 +127,7 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
       borderRadius="var(--radius-xl)"
       border="1px solid var(--surface-border)"
       borderLeftWidth="4px"
-      borderLeftColor={getPriorityColor(feed.metadata.priority)}
+      borderLeftColor={priorityColor}
       cursor="pointer"
       role="article"
       tabIndex={0}
@@ -215,7 +216,7 @@ export const DesktopFeedCard = memo(function DesktopFeedCard({
       <VStack gap={4} align="stretch">
         {/* タイトル */}
         <HStack gap={3} align="flex-start">
-          <Text fontSize="lg" color={getPriorityColor(feed.metadata.priority)}>
+          <Text fontSize="lg" color={priorityColor}>
             {getPriorityIcon(feed.metadata.priority)}
           </Text>
           <Link href={feed.link} target="_blank" rel="noopener noreferrer">
