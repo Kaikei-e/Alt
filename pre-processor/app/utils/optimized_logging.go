@@ -175,8 +175,22 @@ func NewSamplingLogger(logger *OptimizedLogger, samplingRate int) *SamplingLogge
 func (s *SamplingLogger) LogSampled(level string, msg string, args ...interface{}) {
 	count := atomic.AddUint64(&s.counter, 1)
 
-	// Sample based on rate
-	if count%uint64(s.samplingRate) == 0 {
+	// Sample based on rate with safe conversion
+	if s.samplingRate <= 0 {
+		// If sampling rate is invalid, don't log
+		return
+	}
+	
+	// Safe conversion of int to uint64
+	var samplingRate uint64
+	if s.samplingRate > 0 {
+		samplingRate = uint64(s.samplingRate)
+	} else {
+		// If negative, skip sampling
+		return
+	}
+
+	if count%samplingRate == 0 {
 		// Add sampling information
 		sampledArgs := make([]interface{}, 0, len(args)+2)
 		sampledArgs = append(sampledArgs, "sampled_count", count)
@@ -329,4 +343,12 @@ func GetGlobalLoggerFactory() *LoggerFactory {
 func GetOptimizedLogger(component string) *OptimizedLogger {
 	factory := GetGlobalLoggerFactory()
 	return factory.GetLogger(component)
+}
+
+// getEnvOrDefault returns environment variable value or default
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }

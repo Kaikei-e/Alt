@@ -331,6 +331,18 @@ func (r *RuntimeMetrics) Collect() RuntimeSnapshot {
 	runtime.ReadMemStats(&m)
 	r.lastMemStats = m
 
+	// Safe conversion of uint64 to int64 for GC last time
+	var gcLastTime time.Time
+	if m.LastGC > 0 {
+		// Check for potential overflow when converting uint64 to int64
+		if m.LastGC <= math.MaxInt64 {
+			gcLastTime = time.Unix(0, int64(m.LastGC))
+		} else {
+			// If overflow would occur, use current time as fallback
+			gcLastTime = time.Now()
+		}
+	}
+
 	return RuntimeSnapshot{
 		Timestamp:  time.Now(),
 		Goroutines: runtime.NumGoroutine(),
@@ -339,7 +351,7 @@ func (r *RuntimeMetrics) Collect() RuntimeSnapshot {
 		MemHeapMB:  float64(m.HeapAlloc) / (1024 * 1024),
 		GCPauseMs:  float64(m.PauseNs[(m.NumGC+255)%256]) / 1e6,
 		GCCount:    m.NumGC,
-		GCLastTime: time.Unix(0, int64(m.LastGC)),
+		GCLastTime: gcLastTime,
 	}
 }
 
@@ -576,13 +588,21 @@ func getOrGenerateTraceID(ctx context.Context) string {
 
 func generateTraceID() string {
 	bytes := make([]byte, 16)
-	rand.Read(bytes)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		// Fallback to time-based ID if crypto/rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
 	return fmt.Sprintf("%x", bytes)
 }
 
 func generateSpanID() string {
 	bytes := make([]byte, 8)
-	rand.Read(bytes)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		// Fallback to time-based ID if crypto/rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano()&0xFFFFFFFF)
+	}
 	return fmt.Sprintf("%x", bytes)
 }
 

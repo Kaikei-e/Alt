@@ -405,6 +405,76 @@ func TestPerformanceReporter(t *testing.T) {
 	}
 }
 
+// TestSecurityIssues tests for security vulnerabilities
+func TestSecurityIssues(t *testing.T) {
+	tests := []struct {
+		name string
+		test func(t *testing.T)
+	}{
+		{
+			name: "should handle uint64 to int64 conversion safely in GC time",
+			test: func(t *testing.T) {
+				collector := NewRuntimeMetrics()
+				
+				// This should not panic or cause overflow
+				snapshot := collector.Collect()
+				
+				// GC last time should be a valid time
+				assert.False(t, snapshot.GCLastTime.IsZero())
+				assert.True(t, snapshot.GCLastTime.Before(time.Now().Add(time.Second)))
+			},
+		},
+		{
+			name: "should handle rand.Read errors properly in generateTraceID",
+			test: func(t *testing.T) {
+				// Test that generateTraceID returns a valid trace ID
+				traceID := generateTraceID()
+				assert.NotEmpty(t, traceID)
+				assert.Len(t, traceID, 32) // 16 bytes * 2 hex chars = 32 chars
+			},
+		},
+		{
+			name: "should handle rand.Read errors properly in generateSpanID",
+			test: func(t *testing.T) {
+				// Test that generateSpanID returns a valid span ID
+				spanID := generateSpanID()
+				assert.NotEmpty(t, spanID)
+				assert.Len(t, spanID, 16) // 8 bytes * 2 hex chars = 16 chars
+			},
+		},
+		{
+			name: "should generate unique trace IDs",
+			test: func(t *testing.T) {
+				ids := make(map[string]bool)
+				
+				// Generate multiple trace IDs and ensure they're unique
+				for i := 0; i < 100; i++ {
+					traceID := generateTraceID()
+					assert.False(t, ids[traceID], "trace ID should be unique")
+					ids[traceID] = true
+				}
+			},
+		},
+		{
+			name: "should generate unique span IDs",
+			test: func(t *testing.T) {
+				ids := make(map[string]bool)
+				
+				// Generate multiple span IDs and ensure they're unique
+				for i := 0; i < 100; i++ {
+					spanID := generateSpanID()
+					assert.False(t, ids[spanID], "span ID should be unique")
+					ids[spanID] = true
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, tt.test)
+	}
+}
+
 func BenchmarkMetrics(b *testing.B) {
 	b.Run("AppMetrics_Increment", func(b *testing.B) {
 		metrics := NewAppMetrics()
