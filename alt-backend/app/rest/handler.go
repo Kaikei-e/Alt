@@ -27,46 +27,13 @@ import (
 
 func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *config.Config) {
 
-	// Add request ID middleware first to ensure all requests have IDs
+	// 1. Request ID middleware first - すべてのリクエストにIDを付与
 	e.Use(middleware_custom.RequestIDMiddleware())
 
-	// Add custom logging middleware that uses context-aware logging
-	e.Use(middleware_custom.LoggingMiddleware(logger.Logger))
-
-	// Add validation middleware
-	e.Use(middleware_custom.ValidationMiddleware())
-
-	// Add CSRF protection middleware
-	e.Use(middleware_custom.CSRFMiddleware(container.CSRFTokenUsecase))
-
-	// Add recovery middleware
+	// 2. Recovery middleware early - パニックを早期に捕捉
 	e.Use(middleware.Recover())
 
-	// Add compression middleware for better performance
-	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
-		Level: 5, // Balanced compression level
-		Skipper: func(c echo.Context) bool {
-			// Skip compression for already compressed content and SSE endpoints
-			return strings.Contains(c.Request().Header.Get("Accept-Encoding"), "br") ||
-				strings.Contains(c.Path(), "/health") ||
-				strings.Contains(c.Path(), "/sse/")
-		},
-	}))
-
-	// Add request timeout middleware (excluding SSE endpoints)
-	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
-		Timeout: cfg.Server.ReadTimeout,
-		Skipper: func(c echo.Context) bool {
-			return strings.Contains(c.Path(), "/sse/")
-		},
-	}))
-
-	// Add DOS protection middleware with IP-based rate limiting
-	dosConfig := cfg.RateLimit.DOSProtection
-	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/", "/security/csp-report"}
-	e.Use(middleware_custom.DOSProtectionMiddleware(middleware_custom.ConvertConfigDOSProtection(dosConfig)))
-
-	// Add security headers
+	// 3. Security headers - セキュリティ設定を早期に適用
 	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
 		XSSProtection:         "1; mode=block",
 		ContentTypeNosniff:    "nosniff",
@@ -75,12 +42,45 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		ContentSecurityPolicy: "default-src 'self'",
 	}))
 
-	// Add CORS middleware with secure settings - no wildcard origins
+	// 4. CORS middleware - クロスオリジン制御
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://curionoah.com"},
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, "Cache-Control", "Authorization", "X-Requested-With", "X-CSRF-Token"},
 		MaxAge:       86400, // Cache preflight for 24 hours
+	}))
+
+	// 5. DOS protection - 悪意のあるリクエストを早期にブロック
+	dosConfig := cfg.RateLimit.DOSProtection
+	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/", "/security/csp-report"}
+	e.Use(middleware_custom.DOSProtectionMiddleware(middleware_custom.ConvertConfigDOSProtection(dosConfig)))
+
+	// 6. CSRF protection - 認証が必要な場合
+	e.Use(middleware_custom.CSRFMiddleware(container.CSRFTokenUsecase))
+
+	// 7. Request timeout - リクエスト処理時間の制限
+	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
+		Timeout: cfg.Server.ReadTimeout,
+		Skipper: func(c echo.Context) bool {
+			return strings.Contains(c.Path(), "/sse/")
+		},
+	}))
+
+	// 8. Validation middleware - リクエスト内容の検証
+	e.Use(middleware_custom.ValidationMiddleware())
+
+	// 9. Logging middleware - 処理内容をログに記録
+	e.Use(middleware_custom.LoggingMiddleware(logger.Logger))
+
+	// 10. Compression middleware last - レスポンス時の圧縮（最後に実行）
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+		Level: 5, // Balanced compression level
+		Skipper: func(c echo.Context) bool {
+			// Skip compression for already compressed content and SSE endpoints
+			return strings.Contains(c.Request().Header.Get("Accept-Encoding"), "br") ||
+				strings.Contains(c.Path(), "/health") ||
+				strings.Contains(c.Path(), "/sse/")
+		},
 	}))
 
 	v1 := e.Group("/v1")
@@ -867,7 +867,7 @@ func optimizeFeedsResponse(feeds []*domain.FeedItem) []*domain.FeedItem {
 
 	for _, feed := range feeds {
 		feed.Title = strings.TrimSpace(feed.Title)
-		feed.Description = sanitizeAndExtract(ctx, feed.Description) // ★ ここだけ変更
+		feed.Description = sanitizeAndExtract(ctx, feed.Description)
 	}
 	return feeds
 }

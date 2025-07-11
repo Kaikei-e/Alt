@@ -94,7 +94,7 @@ func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedI
 		return nil, errors.New("error fetching feeds list")
 	}
 
-	var feedItems []*domain.FeedItem
+	feedItems := make([]*domain.FeedItem, 0, len(feeds))
 	for _, feed := range feeds {
 		feedItems = append(feedItems, &domain.FeedItem{
 			Title:       feed.Title,
