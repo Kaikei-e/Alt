@@ -104,7 +104,7 @@ describe('Feature Flags', () => {
       const manager = FeatureFlagManager.getInstance();
       const flags = manager.getFlags();
 
-      expect(flags.enableVirtualization).toBe('true');
+      expect(flags.enableVirtualization).toBe(true);
       expect(flags.forceVirtualization).toBe(true);
       expect(flags.virtualizationThreshold).toBe(300);
       expect(flags.debugMode).toBe(true);
