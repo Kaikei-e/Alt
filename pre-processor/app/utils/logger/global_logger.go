@@ -1,5 +1,12 @@
 package logger
 
+import (
+	"log/slog"
+)
+
+// Logger is the global logger instance
+var Logger *slog.Logger
+
 // init sets up a no-op logger for tests to avoid nil-pointer panics when
 // the application code uses logger.Logger before the main package configures
 // it. Production code still overrides this value in main.go.
@@ -12,7 +19,7 @@ func init() {
 }
 
 // InitGlobalLogger updates the global Logger with UnifiedLogger
-func InitGlobalLogger(config *LoggerConfig) {
+func InitGlobalLogger(config *UnifiedLoggerConfig) {
 	unifiedLogger := NewUnifiedLoggerWithLevel(config.ServiceName, config.Level)
 	Logger = unifiedLogger.logger
 }

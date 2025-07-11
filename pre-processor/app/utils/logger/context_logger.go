@@ -10,9 +10,7 @@ import (
 
 type ContextKey string
 
-var (
-	Logger *slog.Logger
-)
+// Logger is imported from global_logger.go
 
 const (
 	RequestIDKey ContextKey = "request_id"
