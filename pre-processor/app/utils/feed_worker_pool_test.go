@@ -3,27 +3,29 @@ package utils
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"log/slog"
 	"os"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pre-processor/models"
 )
 
 // Mock ArticleFetcher for testing
 type MockArticleFetcher struct {
-	fetchCount int
+	fetchCount int64
 	fetchDelay time.Duration
 	shouldFail bool
 }
 
 func (m *MockArticleFetcher) FetchArticle(ctx context.Context, urlStr string) (*models.Article, error) {
-	m.fetchCount++
-	
+	atomic.AddInt64(&m.fetchCount, 1)
+
 	if m.fetchDelay > 0 {
 		select {
 		case <-time.After(m.fetchDelay):
@@ -31,11 +33,11 @@ func (m *MockArticleFetcher) FetchArticle(ctx context.Context, urlStr string) (*
 			return nil, ctx.Err()
 		}
 	}
-	
+
 	if m.shouldFail {
 		return nil, errors.New("fetch failed")
 	}
-	
+
 	return &models.Article{
 		Title:   "Test Article",
 		Content: "Test content",
@@ -49,10 +51,10 @@ func (m *MockArticleFetcher) ValidateURL(urlStr string) error {
 
 func TestFeedWorkerPool_NewFeedWorkerPool(t *testing.T) {
 	tests := []struct {
-		name        string
-		workers     int
-		queueSize   int
-		want        struct {
+		name      string
+		workers   int
+		queueSize int
+		want      struct {
 			workers   int
 			queueSize int
 		}
@@ -97,10 +99,10 @@ func TestFeedWorkerPool_NewFeedWorkerPool(t *testing.T) {
 
 func TestFeedWorkerPool_ProcessFeeds(t *testing.T) {
 	tests := []struct {
-		name     string
-		feeds    []FeedJob
-		fetcher  *MockArticleFetcher
-		want     struct {
+		name    string
+		feeds   []FeedJob
+		fetcher *MockArticleFetcher
+		want    struct {
 			successCount int
 			errorCount   int
 		}
@@ -148,7 +150,7 @@ func TestFeedWorkerPool_ProcessFeeds(t *testing.T) {
 
 			successCount := 0
 			errorCount := 0
-			
+
 			for _, result := range results {
 				if result.Error != nil {
 					errorCount++
@@ -192,9 +194,9 @@ func TestFeedWorkerPool_ParallelExecution(t *testing.T) {
 		expectedMaxTime := fetchDelay + 200*time.Millisecond
 		assert.Less(t, elapsed, expectedMaxTime)
 		assert.Equal(t, 4, len(results))
-		
+
 		// Verify all fetches were made
-		assert.Equal(t, 4, fetcher.fetchCount)
+		assert.Equal(t, int64(4), atomic.LoadInt64(&fetcher.fetchCount))
 	})
 }
 
@@ -222,7 +224,7 @@ func TestFeedWorkerPool_ContextCancellation(t *testing.T) {
 
 		// Should return quickly due to context timeout
 		assert.Less(t, elapsed, 300*time.Millisecond)
-		
+
 		// Some results may be empty due to cancellation
 		assert.LessOrEqual(t, len(results), len(feeds))
 	})

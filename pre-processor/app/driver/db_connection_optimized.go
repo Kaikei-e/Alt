@@ -29,11 +29,11 @@ type PoolStats struct {
 
 // ConnectionPoolManager manages optimized database connection pools
 type ConnectionPoolManager struct {
-	pool            *pgxpool.Pool
-	config          *OptimizedPoolConfig
-	metricsEnabled  bool
-	metricsStop     chan struct{}
-	metricsMutex    sync.RWMutex
+	pool           *pgxpool.Pool
+	config         *OptimizedPoolConfig
+	metricsEnabled bool
+	metricsStop    chan struct{}
+	metricsMutex   sync.RWMutex
 }
 
 // NewOptimizedPoolConfig creates an optimized database connection pool configuration
@@ -54,7 +54,7 @@ func NewOptimizedPoolConfig() *OptimizedPoolConfig {
 			getEnvOrDefault("PRE_PROCESSOR_DB_PASSWORD", "postgres"),
 			getEnvOrDefault("DB_NAME", "pre_processor"),
 		)
-		
+
 		config, err = pgxpool.ParseConfig(basicConnString)
 		if err != nil {
 			logger.Logger.Error("Failed to parse basic database config", "error", err)
@@ -72,9 +72,9 @@ func NewOptimizedPoolConfig() *OptimizedPoolConfig {
 func buildOptimizedConnectionString() string {
 	return fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable "+
-		"pool_max_conns=%s pool_min_conns=%s "+
-		"pool_max_conn_lifetime=%s pool_max_conn_idle_time=%s "+
-		"pool_health_check_period=%s",
+			"pool_max_conns=%s pool_min_conns=%s "+
+			"pool_max_conn_lifetime=%s pool_max_conn_idle_time=%s "+
+			"pool_health_check_period=%s",
 		getEnvOrDefault("DB_HOST", "localhost"),
 		getEnvOrDefault("DB_PORT", "5432"),
 		getEnvOrDefault("PRE_PROCESSOR_DB_USER", "postgres"),
@@ -125,7 +125,7 @@ func applyOptimizedSettings(config *pgxpool.Config) {
 // NewConnectionPoolManager creates a new connection pool manager
 func NewConnectionPoolManager() *ConnectionPoolManager {
 	return &ConnectionPoolManager{
-		metricsStop: make(chan struct{}),
+		metricsStop: nil, // Will be created when metrics collection starts
 	}
 }
 
@@ -165,7 +165,7 @@ func (m *ConnectionPoolManager) GetPoolStats() *PoolStats {
 	}
 
 	stat := m.pool.Stat()
-	
+
 	maxConns := int32(0)
 	minConns := int32(0)
 	if m.config != nil {
@@ -192,6 +192,9 @@ func (m *ConnectionPoolManager) StartMetricsCollection(ctx context.Context) erro
 	}
 
 	m.metricsEnabled = true
+	// Create a new stop channel for this metrics collection session
+	m.metricsStop = make(chan struct{})
+	stopChan := m.metricsStop // Copy the channel reference
 
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
@@ -201,10 +204,15 @@ func (m *ConnectionPoolManager) StartMetricsCollection(ctx context.Context) erro
 			select {
 			case <-ctx.Done():
 				return
-			case <-m.metricsStop:
+			case <-stopChan: // Use the local copy to avoid race condition
 				return
 			case <-ticker.C:
-				if m.pool != nil {
+				// Check if metrics are still enabled before logging
+				m.metricsMutex.RLock()
+				enabled := m.metricsEnabled
+				m.metricsMutex.RUnlock()
+
+				if enabled && m.pool != nil {
 					stats := m.GetPoolStats()
 					logger.Logger.Info("Connection pool metrics",
 						"total_conns", stats.TotalConns,
@@ -230,8 +238,11 @@ func (m *ConnectionPoolManager) StopMetricsCollection() {
 	}
 
 	m.metricsEnabled = false
-	close(m.metricsStop)
-	m.metricsStop = make(chan struct{})
+	// Close the current stop channel to signal goroutine to stop
+	if m.metricsStop != nil {
+		close(m.metricsStop)
+		m.metricsStop = nil
+	}
 
 	logger.Logger.Info("Stopped connection pool metrics collection")
 }

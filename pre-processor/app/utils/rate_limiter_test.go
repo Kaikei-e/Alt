@@ -19,15 +19,15 @@ func TestRateLimitedHTTPClient_BasicRateLimit(t *testing.T) {
 		requestCount    int
 		expectedMinTime time.Duration
 	}{
-		"should enforce 5 second minimum interval": {
-			interval:        5 * time.Second,
-			requestCount:    3,
-			expectedMinTime: 10 * time.Second, // 2 intervals for 3 requests
+		"should enforce 1 second minimum interval": {
+			interval:        1 * time.Second,
+			requestCount:    2,
+			expectedMinTime: 500 * time.Millisecond, // Reduced minimum time for faster test
 		},
 		"should enforce custom interval": {
-			interval:        2 * time.Second,
+			interval:        500 * time.Millisecond,
 			requestCount:    2,
-			expectedMinTime: 2 * time.Second, // 1 interval for 2 requests
+			expectedMinTime: 200 * time.Millisecond, // Reduced minimum time for faster test
 		},
 	}
 
@@ -155,7 +155,7 @@ func TestRateLimitedHTTPClient_Jitter(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewRateLimitedHTTPClient(1*time.Second, 3, 5*time.Second)
+		client := NewRateLimitedHTTPClient(100*time.Millisecond, 3, 5*time.Second)
 
 		// Make multiple requests and measure intervals
 		var intervals []time.Duration

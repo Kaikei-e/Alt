@@ -108,9 +108,9 @@ func (c *LRUCache) evictLRU() {
 
 // URLDeduplicationCache handles URL deduplication with TTL
 type URLDeduplicationCache struct {
-	urls   map[string]time.Time
-	ttl    time.Duration
-	mutex  sync.RWMutex
+	urls        map[string]time.Time
+	ttl         time.Duration
+	mutex       sync.RWMutex
 	lastCleanup time.Time
 }
 
@@ -169,11 +169,11 @@ func (c *URLDeduplicationCache) cleanupExpired(now time.Time) {
 
 // CachedFeed represents a cached RSS feed
 type CachedFeed struct {
-	URL       string    `json:"url"`
-	Content   string    `json:"content"`
-	ETag      string    `json:"etag"`
-	LastMod   string    `json:"last_modified"`
-	CachedAt  time.Time `json:"cached_at"`
+	URL      string    `json:"url"`
+	Content  string    `json:"content"`
+	ETag     string    `json:"etag"`
+	LastMod  string    `json:"last_modified"`
+	CachedAt time.Time `json:"cached_at"`
 }
 
 // FeedCache handles caching of RSS feed content
@@ -259,10 +259,10 @@ type CacheManager struct {
 // NewCacheManager creates a new cache manager with default settings
 func NewCacheManager() *CacheManager {
 	return &CacheManager{
-		LRU:         NewLRUCache(1000),                                    // 1000 items
-		URLDedup:    NewURLDeduplicationCache(10000, 24*time.Hour),        // 24 hour TTL
-		FeedCache:   NewFeedCache(500, 30*time.Minute),                    // 30 minute TTL
-		metricsStop: make(chan struct{}),
+		LRU:         NewLRUCache(1000),                             // 1000 items
+		URLDedup:    NewURLDeduplicationCache(10000, 24*time.Hour), // 24 hour TTL
+		FeedCache:   NewFeedCache(500, 30*time.Minute),             // 30 minute TTL
+		metricsStop: nil,                                           // Will be created when metrics collection starts
 	}
 }
 
@@ -286,6 +286,9 @@ func (m *CacheManager) StartMetricsCollection(ctx context.Context) error {
 	}
 
 	m.metricsEnabled = true
+	// Create a new stop channel for this metrics collection session
+	m.metricsStop = make(chan struct{})
+	stopChan := m.metricsStop // Copy the channel reference
 
 	go func() {
 		ticker := time.NewTicker(60 * time.Second) // Every minute
@@ -295,15 +298,22 @@ func (m *CacheManager) StartMetricsCollection(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return
-			case <-m.metricsStop:
+			case <-stopChan: // Use the local copy to avoid race condition
 				return
 			case <-ticker.C:
-				stats := m.GetCacheStats()
-				logger.Logger.Info("Cache metrics",
-					"lru_size", stats.LRUSize,
-					"lru_capacity", stats.LRUCapacity,
-					"url_dedup_size", stats.URLDedupSize,
-					"feed_cache_size", stats.FeedCacheSize)
+				// Check if metrics are still enabled before logging
+				m.metricsMutex.RLock()
+				enabled := m.metricsEnabled
+				m.metricsMutex.RUnlock()
+
+				if enabled {
+					stats := m.GetCacheStats()
+					logger.Logger.Info("Cache metrics",
+						"lru_size", stats.LRUSize,
+						"lru_capacity", stats.LRUCapacity,
+						"url_dedup_size", stats.URLDedupSize,
+						"feed_cache_size", stats.FeedCacheSize)
+				}
 			}
 		}
 	}()
@@ -322,8 +332,11 @@ func (m *CacheManager) StopMetricsCollection() {
 	}
 
 	m.metricsEnabled = false
-	close(m.metricsStop)
-	m.metricsStop = make(chan struct{})
+	// Close the current stop channel to signal goroutine to stop
+	if m.metricsStop != nil {
+		close(m.metricsStop)
+		m.metricsStop = nil
+	}
 
 	logger.Logger.Info("Stopped cache metrics collection")
 }
@@ -331,12 +344,12 @@ func (m *CacheManager) StopMetricsCollection() {
 // ClearAll clears all caches
 func (m *CacheManager) ClearAll() {
 	m.LRU.Clear()
-	
+
 	// Clear URL deduplication cache
 	m.URLDedup.mutex.Lock()
 	m.URLDedup.urls = make(map[string]time.Time)
 	m.URLDedup.mutex.Unlock()
-	
+
 	// Clear feed cache
 	m.FeedCache.mutex.Lock()
 	m.FeedCache.feeds = make(map[string]*CachedFeed)
