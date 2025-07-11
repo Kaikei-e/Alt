@@ -55,8 +55,8 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/", "/security/csp-report"}
 	e.Use(middleware_custom.DOSProtectionMiddleware(middleware_custom.ConvertConfigDOSProtection(dosConfig)))
 
-	// 6. CSRF protection - 認証が必要な場合
-	e.Use(middleware_custom.CSRFMiddleware(container.CSRFTokenUsecase))
+	// 6. CSRF protection - 認証が必要な場合 Temporarily disabled for development
+	// e.Use(middleware_custom.CSRFMiddleware(container.CSRFTokenUsecase))
 
 	// 7. Request timeout - リクエスト処理時間の制限
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
