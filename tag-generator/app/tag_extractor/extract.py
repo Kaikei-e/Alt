@@ -25,6 +25,7 @@ Tagger = _Tagger  # noqa: N816
 
 # Local imports depending on re-export must come after alias definitions for consistency
 from .model_manager import get_model_manager, ModelConfig
+from .input_sanitizer import InputSanitizer, SanitizationConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -66,10 +67,11 @@ class TagExtractionConfig:
 class TagExtractor:
     """A class for extracting tags from text using KeyBERT and language-specific processing."""
 
-    def __init__(self, config: Optional[TagExtractionConfig] = None):
+    def __init__(self, config: Optional[TagExtractionConfig] = None, sanitizer_config: Optional[SanitizationConfig] = None):
         self.config = config or TagExtractionConfig()
         self._model_manager = get_model_manager()
         self._models_loaded = False
+        self._input_sanitizer = InputSanitizer(sanitizer_config)
 
     def _lazy_load_models(self) -> None:
         """Lazy load models using the singleton model manager."""
@@ -365,14 +367,32 @@ class TagExtractor:
         Returns:
             List of extracted tags
         """
-        raw_text = f"{title}\n{content}"
+        # Sanitize input first
+        sanitization_result = self._input_sanitizer.sanitize(title, content)
+        
+        if not sanitization_result.is_valid:
+            logger.warning("Input sanitization failed", violations=sanitization_result.violations)
+            return []
+        
+        # Use sanitized input
+        sanitized_input = sanitization_result.sanitized_input
+        if sanitized_input is None:
+            logger.error("Sanitized input is None despite valid sanitization")
+            return []
+        
+        sanitized_title = sanitized_input.title
+        sanitized_content = sanitized_input.content
+        raw_text = f"{sanitized_title}\n{sanitized_content}"
 
-        # Validate input
+        # Validate input length
         if len(raw_text.strip()) < self.config.min_text_length:
-            logger.info("Input too short, skipping extraction", char_count=len(raw_text))
+            logger.info("Sanitized input too short, skipping extraction", char_count=len(raw_text))
             return []
 
-        logger.info("Processing text", char_count=len(raw_text))
+        logger.info("Processing sanitized text", 
+                   char_count=len(raw_text),
+                   original_length=sanitized_input.original_length,
+                   sanitized_length=sanitized_input.sanitized_length)
 
         # Detect language
         lang = self._detect_language(raw_text)
@@ -417,6 +437,7 @@ class TagExtractor:
 def extract_tags(title: str, content: str) -> List[str]:
     """
     Legacy function for backward compatibility.
+    Now includes input sanitization by default.
 
     Args:
         title: The title text

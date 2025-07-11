@@ -20,6 +20,9 @@ dependencies = [
     "pytest-mock>=3.14.1",
     "psutil>=7.0.0",
     "structlog>=25.4.0",
+    "pydantic>=2.10.0",
+    "email-validator>=2.2.0",
+    "bleach>=6.1.0",
 ]
 
 [dependency-groups]
