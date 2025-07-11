@@ -6,7 +6,7 @@ volumes:
   meili_data:
   rask_log_aggregator_data:
   clickhouse_data:
-
+  news_creator_models:
 x-rask-env: &rask-env
   environment:
     RASK_CONFIG: |
@@ -147,6 +147,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
   news-creator:
     build:
       context: ./news-creator
@@ -154,20 +155,21 @@ services:
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - OLLAMA_HOME=/home/appuser/.ollama
+      - OLLAMA_MODELS=/home/appuser/.ollama
     volumes:
-      - ./news-creator/models:/root/.ollama/models
+      - news_creator_models:/home/appuser/.ollama
     restart: unless-stopped
     ports:
       - "11434:11434"
     networks:
       - alt-network
     healthcheck:
-      test: ["CMD-SHELL", "curl http://localhost:11434/api/tags || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 60s
-    tty: true
     labels:
       - rask.group=news-creator
     logging:
@@ -175,6 +177,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
   pre-processor:
     build:
       context: ./pre-processor

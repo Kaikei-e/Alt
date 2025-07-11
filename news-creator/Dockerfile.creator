@@ -1,26 +1,42 @@
 # ---- Base image -----------------------------------------------------------
-FROM ollama/ollama:0.9.4
+FROM ollama/ollama:0.9.7-rc0
 
-# ---- OS deps (最小限) ------------------------------------------------------
+# ---- OS deps (bash, curl, netcat for healthchecks) -------------------------
 USER root
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates bash curl libcurl4 libpsl5 librtmp1 \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && apt-get install --no-install-recommends -y \
+    ca-certificates \
+    bash \
+    curl \
+    netcat-openbsd \
+    libcurl4 \
+    libpsl5 \
+    librtmp1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# ---- 非特権ユーザー -------------------------------------------------------
+# ---- 非特権ユーザー作成 (存在しなければ) -------------------------------
 ARG UID=1000
 ARG GID=1000
-RUN groupadd -g ${GID} appuser \
-    && useradd  -m -u ${UID} -g ${GID} appuser
+RUN if ! getent group ${GID} >/dev/null; then \
+    groupadd -g ${GID} appuser; \
+    fi && \
+    if ! id -u ${UID} >/dev/null 2>&1; then \
+    useradd --create-home --shell /bin/bash -u ${UID} -g ${GID} appuser; \
+    fi
 
-# ---- モデルキャッシュを配置 ---------------------------------------------
+# ---- モデルキャッシュ & 永続化ボリューム -----------------------------------
 ENV OLLAMA_HOME=/home/appuser/.ollama
-COPY --chown=appuser:appuser models/ ${OLLAMA_HOME}/
+ENV OLLAMA_MODELS=$OLLAMA_HOME
+VOLUME ["$OLLAMA_HOME"]
 
-# ---- 起動前に library を組み立てるスクリプト ----------------------------
+# ---- スクリプト配置 & 実行権付与 (root) -----------------------------------
 COPY --chown=appuser:appuser entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# ---- ユーザー切り替えと作業ディレクトリ -----------------------------------
 USER appuser
+WORKDIR /home/appuser
+
 EXPOSE 11434
-ENTRYPOINT ["entrypoint.sh"]
+ENTRYPOINT ["bash", "-c", "/usr/local/bin/entrypoint.sh"]
