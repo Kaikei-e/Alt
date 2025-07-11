@@ -78,7 +78,7 @@ func (l *OptimizedLogger) WithContext(ctx context.Context) *OptimizedLogger {
 	defer l.mu.Unlock()
 
 	contextFields := make(map[string]interface{})
-	
+
 	// Copy existing context fields
 	for k, v := range l.contextFields {
 		contextFields[k] = v
@@ -180,7 +180,7 @@ func (s *SamplingLogger) LogSampled(level string, msg string, args ...interface{
 		// If sampling rate is invalid, don't log
 		return
 	}
-	
+
 	// Safe conversion of int to uint64
 	var samplingRate uint64
 	if s.samplingRate > 0 {

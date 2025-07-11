@@ -29,7 +29,7 @@ func TestPreparedStatementsManager(t *testing.T) {
 				ctx := context.Background()
 
 				// Prepare a statement
-				err := manager.PrepareStatement(ctx, mockDB, "insert_article", 
+				err := manager.PrepareStatement(ctx, mockDB, "insert_article",
 					"INSERT INTO articles (title, content, url, feed_id) VALUES ($1, $2, $3, $4)")
 				require.NoError(t, err)
 
@@ -42,7 +42,7 @@ func TestPreparedStatementsManager(t *testing.T) {
 			name: "should return nil for non-existent statement",
 			test: func(t *testing.T) {
 				manager := NewPreparedStatementsManager()
-				
+
 				stmt := manager.GetStatement("non_existent")
 				assert.Nil(t, stmt)
 			},
@@ -150,10 +150,10 @@ func TestPreparedStatements_Integration(t *testing.T) {
 
 		// Prepare common statements
 		commonStatements := map[string]string{
-			"insert_article":   "INSERT INTO articles (title, content, url, feed_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
-			"update_article":   "UPDATE articles SET title = $1, content = $2, updated_at = $3 WHERE id = $4",
-			"select_article":   "SELECT id, title, content, url, feed_id, created_at FROM articles WHERE id = $1",
-			"check_existence":  "SELECT EXISTS(SELECT 1 FROM articles WHERE url = $1)",
+			"insert_article":  "INSERT INTO articles (title, content, url, feed_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
+			"update_article":  "UPDATE articles SET title = $1, content = $2, updated_at = $3 WHERE id = $4",
+			"select_article":  "SELECT id, title, content, url, feed_id, created_at FROM articles WHERE id = $1",
+			"check_existence": "SELECT EXISTS(SELECT 1 FROM articles WHERE url = $1)",
 		}
 
 		for name, query := range commonStatements {

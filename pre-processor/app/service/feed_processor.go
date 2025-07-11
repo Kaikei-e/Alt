@@ -43,7 +43,7 @@ func NewFeedProcessorService(
 			workerCount = count
 		}
 	}
-	
+
 	workerPool := utils.NewFeedWorkerPool(workerCount, 100, logger)
 
 	return &feedProcessorService{
@@ -124,7 +124,7 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 		jobs[i] = utils.FeedJob{URL: url.String()}
 	}
 
-	s.logger.Info("Starting parallel feed processing", 
+	s.logger.Info("Starting parallel feed processing",
 		"feed_count", len(jobs),
 		"worker_count", s.workerPool.Workers())
 

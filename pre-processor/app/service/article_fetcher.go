@@ -137,7 +137,7 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 	s.logger.Info("Rate limiting: checking domain",
 		"domain", domain,
 		"url", url.String())
-	
+
 	domainRateLimiter.Wait(domain)
 
 	// Skip MP3 files

@@ -30,14 +30,14 @@ func TestBatchInsertArticles(t *testing.T) {
 					FeedID:  "1",
 				},
 				{
-					Title:   "Article 2", 
+					Title:   "Article 2",
 					Content: "Content 2",
 					URL:     "https://example.com/2",
 					FeedID:  "1",
 				},
 				{
 					Title:   "Article 3",
-					Content: "Content 3", 
+					Content: "Content 3",
 					URL:     "https://example.com/3",
 					FeedID:  "2",
 				},
@@ -82,7 +82,7 @@ func TestBatchInsertArticles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create mock database interface
 			db := &MockDB{}
-			
+
 			ctx := context.Background()
 			err := BatchInsertArticles(ctx, db, tt.articles)
 
@@ -116,7 +116,7 @@ func TestBatchUpdateArticles(t *testing.T) {
 				{
 					ID:      "2",
 					Title:   "Updated Article 2",
-					Content: "Updated Content 2", 
+					Content: "Updated Content 2",
 					URL:     "https://example.com/2",
 				},
 			},
@@ -131,7 +131,7 @@ func TestBatchUpdateArticles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := &MockDB{}
-			
+
 			ctx := context.Background()
 			err := BatchUpdateArticles(ctx, db, tt.articles)
 
@@ -194,4 +194,3 @@ func TestBatchOperations_Performance(t *testing.T) {
 		assert.Less(t, largeBatchDuration.Milliseconds(), int64(500))
 	})
 }
-

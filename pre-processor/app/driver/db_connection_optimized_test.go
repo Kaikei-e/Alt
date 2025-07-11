@@ -170,7 +170,7 @@ func TestConnectionPoolMetrics(t *testing.T) {
 
 func setTestEnvVars() map[string]string {
 	originalVars := make(map[string]string)
-	
+
 	envVars := map[string]string{
 		"DB_HOST":                   "localhost",
 		"DB_PORT":                   "5432",

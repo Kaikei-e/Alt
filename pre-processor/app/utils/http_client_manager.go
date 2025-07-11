@@ -28,12 +28,12 @@ var (
 func NewHTTPClientManager() *HTTPClientManager {
 	mu.Lock()
 	defer mu.Unlock()
-	
+
 	if instance == nil {
 		instance = &HTTPClientManager{}
 		instance.init()
 	}
-	
+
 	return instance
 }
 

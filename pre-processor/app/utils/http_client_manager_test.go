@@ -12,27 +12,27 @@ func TestHTTPClientManager_GetDefaultClient(t *testing.T) {
 	tests := []struct {
 		name string
 		want struct {
-			timeout              time.Duration
-			maxIdleConns         int
-			maxIdleConnsPerHost  int
-			idleConnTimeout      time.Duration
-			tlsHandshakeTimeout  time.Duration
+			timeout             time.Duration
+			maxIdleConns        int
+			maxIdleConnsPerHost int
+			idleConnTimeout     time.Duration
+			tlsHandshakeTimeout time.Duration
 		}
 	}{
 		{
 			name: "should return optimized default client",
 			want: struct {
-				timeout              time.Duration
-				maxIdleConns         int
-				maxIdleConnsPerHost  int
-				idleConnTimeout      time.Duration
-				tlsHandshakeTimeout  time.Duration
+				timeout             time.Duration
+				maxIdleConns        int
+				maxIdleConnsPerHost int
+				idleConnTimeout     time.Duration
+				tlsHandshakeTimeout time.Duration
 			}{
-				timeout:              30 * time.Second,
-				maxIdleConns:         100,
-				maxIdleConnsPerHost:  10,
-				idleConnTimeout:      90 * time.Second,
-				tlsHandshakeTimeout:  10 * time.Second,
+				timeout:             30 * time.Second,
+				maxIdleConns:        100,
+				maxIdleConnsPerHost: 10,
+				idleConnTimeout:     90 * time.Second,
+				tlsHandshakeTimeout: 10 * time.Second,
 			},
 		},
 	}

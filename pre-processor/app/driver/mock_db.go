@@ -18,7 +18,7 @@ func (m *MockDB) Exec(ctx context.Context, query string, args ...interface{}) (i
 type MockTx struct{}
 
 func (m *MockTx) Exec(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
-	return nil, nil  
+	return nil, nil
 }
 
 func (m *MockTx) Commit(ctx context.Context) error {

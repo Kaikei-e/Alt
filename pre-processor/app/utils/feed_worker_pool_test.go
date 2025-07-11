@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -55,8 +56,7 @@ func TestFeedWorkerPool_NewFeedWorkerPool(t *testing.T) {
 		workers   int
 		queueSize int
 		want      struct {
-			workers   int
-			queueSize int
+			workers int
 		}
 	}{
 		{
@@ -64,11 +64,9 @@ func TestFeedWorkerPool_NewFeedWorkerPool(t *testing.T) {
 			workers:   5,
 			queueSize: 100,
 			want: struct {
-				workers   int
-				queueSize int
+				workers int
 			}{
-				workers:   5,
-				queueSize: 100,
+				workers: 5,
 			},
 		},
 		{
@@ -76,11 +74,9 @@ func TestFeedWorkerPool_NewFeedWorkerPool(t *testing.T) {
 			workers:   1,
 			queueSize: 10,
 			want: struct {
-				workers   int
-				queueSize int
+				workers int
 			}{
-				workers:   1,
-				queueSize: 10,
+				workers: 1,
 			},
 		},
 	}
@@ -92,7 +88,6 @@ func TestFeedWorkerPool_NewFeedWorkerPool(t *testing.T) {
 
 			require.NotNil(t, pool)
 			assert.Equal(t, tt.want.workers, pool.workers)
-			assert.Equal(t, tt.want.queueSize, cap(pool.jobQueue))
 		})
 	}
 }
@@ -227,5 +222,96 @@ func TestFeedWorkerPool_ContextCancellation(t *testing.T) {
 
 		// Some results may be empty due to cancellation
 		assert.LessOrEqual(t, len(results), len(feeds))
+	})
+}
+
+// TestFeedWorkerPool_RaceConditions tests the fix for channel race conditions
+func TestFeedWorkerPool_RaceConditions(t *testing.T) {
+	t.Run("should handle multiple sequential calls without panic", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		pool := NewFeedWorkerPool(2, 10, logger)
+
+		fetcher := &MockArticleFetcher{
+			fetchDelay: 10 * time.Millisecond,
+			shouldFail: false,
+		}
+
+		feeds := []FeedJob{
+			{URL: "https://example.com/feed1"},
+			{URL: "https://example.com/feed2"},
+		}
+
+		ctx := context.Background()
+
+		// Multiple sequential calls should not panic
+		for range 5 {
+			results := pool.ProcessFeeds(ctx, feeds, fetcher)
+			assert.Equal(t, len(feeds), len(results))
+		}
+	})
+
+	t.Run("should handle concurrent calls safely", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		pool := NewFeedWorkerPool(2, 10, logger)
+
+		fetcher := &MockArticleFetcher{
+			fetchDelay: 50 * time.Millisecond,
+			shouldFail: false,
+		}
+
+		feeds := []FeedJob{
+			{URL: "https://example.com/feed1"},
+			{URL: "https://example.com/feed2"},
+		}
+
+		ctx := context.Background()
+		var wg sync.WaitGroup
+		const numConcurrent = 3
+
+		// Multiple concurrent calls should not panic
+		for range numConcurrent {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				results := pool.ProcessFeeds(ctx, feeds, fetcher)
+				assert.Equal(t, len(feeds), len(results))
+			}()
+		}
+
+		wg.Wait()
+	})
+
+	t.Run("should handle empty feeds slice", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		pool := NewFeedWorkerPool(2, 10, logger)
+
+		fetcher := &MockArticleFetcher{shouldFail: false}
+
+		ctx := context.Background()
+		results := pool.ProcessFeeds(ctx, []FeedJob{}, fetcher)
+
+		assert.Equal(t, 0, len(results))
+	})
+
+	t.Run("should handle rapid sequential calls", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		pool := NewFeedWorkerPool(1, 10, logger)
+
+		fetcher := &MockArticleFetcher{
+			fetchDelay: 1 * time.Millisecond,
+			shouldFail: false,
+		}
+
+		feeds := []FeedJob{
+			{URL: "https://example.com/feed1"},
+		}
+
+		ctx := context.Background()
+
+		// Rapid sequential calls to test channel reuse
+		for range 20 {
+			results := pool.ProcessFeeds(ctx, feeds, fetcher)
+			assert.Equal(t, 1, len(results))
+		}
 	})
 }

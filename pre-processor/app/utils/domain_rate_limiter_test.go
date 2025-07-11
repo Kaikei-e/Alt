@@ -61,8 +61,8 @@ func TestDomainRateLimiter_Wait(t *testing.T) {
 		domain   string
 		requests int
 		want     struct {
-			shouldWait    bool
-			minWaitTime   time.Duration
+			shouldWait      bool
+			minWaitTime     time.Duration
 			separateDomains bool
 		}
 	}{
@@ -71,8 +71,8 @@ func TestDomainRateLimiter_Wait(t *testing.T) {
 			domain:   "example.com",
 			requests: 1,
 			want: struct {
-				shouldWait    bool
-				minWaitTime   time.Duration
+				shouldWait      bool
+				minWaitTime     time.Duration
 				separateDomains bool
 			}{
 				shouldWait:  false,
@@ -84,8 +84,8 @@ func TestDomainRateLimiter_Wait(t *testing.T) {
 			domain:   "example.com",
 			requests: 2,
 			want: struct {
-				shouldWait    bool
-				minWaitTime   time.Duration
+				shouldWait      bool
+				minWaitTime     time.Duration
 				separateDomains bool
 			}{
 				shouldWait:  true,
