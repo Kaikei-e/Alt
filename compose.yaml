@@ -158,7 +158,7 @@ services:
       - OLLAMA_HOME=/home/appuser/.ollama
       - OLLAMA_MODELS=/home/appuser/.ollama
     volumes:
-      - news_creator_models:/home/appuser/.ollama
+      - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped
     ports:
       - "11434:11434"

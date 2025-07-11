@@ -1,37 +1,40 @@
 # ---- Base image -----------------------------------------------------------
-FROM ollama/ollama:0.9.7-rc0
+FROM ollama/ollama:latest
 
-# ---- Install dependencies -------------------------------------------------
+# ---- Install additional dependencies --------------------------------------
 USER root
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
     ca-certificates \
     bash \
     curl \
-    netcat-openbsd \
-    libcurl4 \
-    libpsl5 \
-    librtmp1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# ---- Create dedicated appuser and group ----------------------------------
-# Use system user/group to avoid UID/GID conflicts
-RUN groupadd --system appuser \
-    && useradd --system --create-home --shell /bin/bash --gid appuser appuser
+# ---- Create ollama user if it doesn't exist ------------------------------
+# Use a high UID to avoid conflicts
+RUN groupadd -f -g 2000 ollama-user \
+    && useradd -u 2000 -g 2000 -m -s /bin/bash ollama-user || true
 
 # ---- Model cache persistence ---------------------------------------------
-ENV OLLAMA_HOME=/home/appuser/.ollama
-ENV OLLAMA_MODELS=$OLLAMA_HOME
+ENV OLLAMA_HOME=/home/ollama-user/.ollama
+ENV OLLAMA_MODELS=$OLLAMA_HOME/models
+RUN mkdir -p $OLLAMA_HOME $OLLAMA_MODELS \
+    && chown -R ollama-user:ollama-user $OLLAMA_HOME
+
 VOLUME ["$OLLAMA_HOME"]
 
 # ---- Copy entrypoint and set permissions --------------------------------
-COPY --chown=appuser:appuser entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --chown=ollama-user:ollama-user entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # ---- Switch to non-root user ---------------------------------------------
-USER appuser
-WORKDIR /home/appuser
+USER ollama-user
+WORKDIR /home/ollama-user
+
+# Health check to ensure the service is running
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:11434/api/tags || exit 1
 
 EXPOSE 11434
-ENTRYPOINT ["bash", "-c", "/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
