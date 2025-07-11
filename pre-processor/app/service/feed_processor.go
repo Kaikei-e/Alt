@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
 	"time"
 
 	"pre-processor/repository"
+	"pre-processor/utils"
 	utilsLogger "pre-processor/utils/logger"
 )
 
@@ -19,6 +22,7 @@ type feedProcessorService struct {
 	contextLogger     *utilsLogger.ContextLogger
 	performanceLogger *utilsLogger.PerformanceLogger
 	cursor            *repository.Cursor
+	workerPool        *utils.FeedWorkerPool
 }
 
 // NewFeedProcessorService creates a new feed processor service.
@@ -32,6 +36,16 @@ func NewFeedProcessorService(
 	contextLogger := utilsLogger.NewContextLogger("json", "info")
 	performanceLogger := utilsLogger.NewPerformanceLogger(5 * time.Second)
 
+	// Get worker count from environment variable
+	workerCount := 3 // default
+	if envWorkers := os.Getenv("FEED_WORKER_COUNT"); envWorkers != "" {
+		if count, err := strconv.Atoi(envWorkers); err == nil && count > 0 {
+			workerCount = count
+		}
+	}
+	
+	workerPool := utils.NewFeedWorkerPool(workerCount, 100, logger)
+
 	return &feedProcessorService{
 		feedRepo:          feedRepo,
 		articleRepo:       articleRepo,
@@ -40,6 +54,7 @@ func NewFeedProcessorService(
 		contextLogger:     contextLogger,
 		performanceLogger: performanceLogger,
 		cursor:            &repository.Cursor{},
+		workerPool:        workerPool,
 	}
 }
 
@@ -103,45 +118,45 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 		}, nil
 	}
 
-	// Process each URL
-	var successCount, errorCount int
+	// Process URLs in parallel using worker pool
+	jobs := make([]utils.FeedJob, len(urls))
+	for i, url := range urls {
+		jobs[i] = utils.FeedJob{URL: url.String()}
+	}
 
+	s.logger.Info("Starting parallel feed processing", 
+		"feed_count", len(jobs),
+		"worker_count", s.workerPool.Workers())
+
+	results := s.workerPool.ProcessFeeds(ctx, jobs, s.fetcher)
+
+	// Process results and save articles
+	var successCount, errorCount int
 	var errors []error
 
-	for _, url := range urls {
-		s.logger.Info("Processing feed", "url", url.String())
-
-		// Fetch article
-		article, err := s.fetcher.FetchArticle(ctx, url.String())
-		if err != nil {
-			s.logger.Error("Failed to fetch article", "url", url.String(), "error", err)
-
+	for _, result := range results {
+		if result.Error != nil {
+			s.logger.Error("Failed to fetch article", "url", result.Job.URL, "error", result.Error)
 			errorCount++
-
-			errors = append(errors, err)
-
+			errors = append(errors, result.Error)
 			continue
 		}
 
-		if article == nil {
-			s.logger.Info("Article was skipped", "url", url.String())
+		if result.Article == nil {
+			s.logger.Info("Article was skipped", "url", result.Job.URL)
 			continue
 		}
 
 		// Save article
-		if err := s.articleRepo.Create(ctx, article); err != nil {
-			s.logger.Error("Failed to save article", "url", url.String(), "error", err)
-
+		if err := s.articleRepo.Create(ctx, result.Article); err != nil {
+			s.logger.Error("Failed to save article", "url", result.Job.URL, "error", err)
 			errorCount++
-
 			errors = append(errors, err)
-
 			continue
 		}
 
 		successCount++
-
-		s.logger.Info("Successfully processed article", "url", url.String())
+		s.logger.Info("Successfully processed article", "url", result.Job.URL)
 	}
 
 	result := &ProcessingResult{

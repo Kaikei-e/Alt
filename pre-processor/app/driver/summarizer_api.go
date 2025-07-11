@@ -117,7 +117,9 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, lo
 		return nil, err
 	}
 
-	client := &http.Client{}
+	// Use singleton HTTP client manager for better performance
+	clientManager := utils.NewHTTPClientManager()
+	client := clientManager.GetSummaryClient()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", summarizerAPIURL, strings.NewReader(string(jsonData)))
 	if err != nil {

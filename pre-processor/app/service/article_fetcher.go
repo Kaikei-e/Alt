@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"log/slog"
@@ -15,13 +14,12 @@ import (
 	"github.com/go-shiori/go-readability"
 
 	"pre-processor/models"
+	"pre-processor/utils"
 )
 
 var (
-	// Global rate limiter to ensure minimum 5 seconds between requests.
-	lastRequestTime time.Time
-	rateLimitMutex  sync.Mutex
-	minInterval     = 5 * time.Second
+	// Domain-based rate limiter to allow concurrent requests to different domains
+	domainRateLimiter = utils.NewDomainRateLimiter(5*time.Second, 1)
 )
 
 // HTTPClient interface for dependency injection.
@@ -39,7 +37,7 @@ type articleFetcherService struct {
 func NewArticleFetcherService(logger *slog.Logger) ArticleFetcherService {
 	return &articleFetcherService{
 		logger:     logger,
-		httpClient: nil, // Will use createSecureHTTPClient() when nil
+		httpClient: nil, // Will use shared HTTP client when nil
 	}
 }
 
@@ -134,21 +132,13 @@ func (s *articleFetcherService) ValidateURL(urlStr string) error {
 
 // fetchArticleFromURL fetches an article from a URL (moved from article-fetcher package).
 func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Article, error) {
-	// Enforce rate limiting
-	rateLimitMutex.Lock()
-	if !lastRequestTime.IsZero() {
-		elapsed := time.Since(lastRequestTime)
-		if elapsed < minInterval {
-			waitTime := minInterval - elapsed
-			s.logger.Info("Rate limiting: waiting before next request",
-				"wait_time", waitTime,
-				"url", url.String())
-			time.Sleep(waitTime)
-		}
-	}
-
-	lastRequestTime = time.Now()
-	rateLimitMutex.Unlock()
+	// Enforce domain-based rate limiting
+	domain := url.Hostname()
+	s.logger.Info("Rate limiting: checking domain",
+		"domain", domain,
+		"url", url.String())
+	
+	domainRateLimiter.Wait(domain)
 
 	// Skip MP3 files
 	if strings.HasSuffix(url.String(), ".mp3") {
@@ -162,12 +152,14 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 		return nil, err
 	}
 
-	// Use injected client or create secure HTTP client
+	// Use injected client or shared HTTP client manager
 	var client HTTPClient
 	if s.httpClient != nil {
 		client = s.httpClient
 	} else {
-		client = s.createSecureHTTPClient()
+		// Use singleton HTTP client manager for better performance
+		clientManager := utils.NewHTTPClientManager()
+		client = &HTTPClientWrapper{clientManager.GetFeedClient()}
 	}
 
 	// Fetch the page
