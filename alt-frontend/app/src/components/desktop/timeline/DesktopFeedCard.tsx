@@ -417,4 +417,4 @@ export const DesktopFeedCard = function DesktopFeedCard({
       )}
     </Box>
   );
-});
+};

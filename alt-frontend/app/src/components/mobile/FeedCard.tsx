@@ -20,6 +20,12 @@ const FeedCard = function FeedCard({
 }: FeedCardProps) {
   const [isLoading, setIsLoading] = useState(false);
 
+  // Memoize expensive description truncation calculation
+  const truncatedDescription = useMemo(() =>
+    truncateFeedDescription(feed.description),
+    [feed.description]
+  );
+
   const handleReadStatus = useCallback(
     async (url: string) => {
       try {
@@ -50,12 +56,6 @@ const FeedCard = function FeedCard({
     return null;
   }
 
-  // Memoize expensive description truncation calculation
-  const truncatedDescription = useMemo(() => 
-    truncateFeedDescription(feed.description), 
-    [feed.description]
-  );
-
   return (
     // Gradient border container with hover effects
     <Box
@@ -70,7 +70,7 @@ const FeedCard = function FeedCard({
       <Box
         className="glass"
         w="full"
-        p={5}
+        p={4}
         borderRadius="16px"
         data-testid="feed-card"
         role="article"
@@ -105,6 +105,7 @@ const FeedCard = function FeedCard({
                 color="var(--accent-primary)"
                 _hover={{ textDecoration: "underline" }}
                 lineHeight="1.4"
+                wordBreak="break-word"
               >
                 {feed.title}
               </Text>
@@ -112,7 +113,12 @@ const FeedCard = function FeedCard({
           </Flex>
 
           {/* Description */}
-          <Text fontSize="sm" color="var(--text-primary)" lineHeight="1.5">
+          <Text
+            fontSize="sm"
+            color="var(--text-primary)"
+            lineHeight="1.5"
+            wordBreak="break-word"
+          >
             {truncatedDescription}
           </Text>
 
@@ -128,8 +134,9 @@ const FeedCard = function FeedCard({
           )}
 
           {/* Bottom section with button and details */}
-          <Flex justify="space-between" align="center" mt={2}>
+          <Flex justify="space-between" align="center" mt={3} gap={3}>
             <Button
+              flex={1}
               size="sm"
               borderRadius="full"
               bg="var(--alt-primary)"
@@ -137,7 +144,6 @@ const FeedCard = function FeedCard({
               fontWeight="bold"
               px={4}
               minHeight="44px"
-              minWidth="120px"
               fontSize="sm"
               border="1px solid rgba(255, 255, 255, 0.2)"
               disabled={isLoading}
@@ -166,6 +172,6 @@ const FeedCard = function FeedCard({
       </Box>
     </Box>
   );
-});
+};
 
 export default FeedCard;

@@ -6,7 +6,8 @@ import { Feed } from "@/schema/feed";
 import FeedCard from "@/components/mobile/FeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import VirtualFeedList from "@/components/mobile/VirtualFeedList";
-import { useRef, useState, useCallback, useMemo, startTransition, useEffect } from "react";
+import { useRef, useState, useCallback, useMemo, startTransition } from "react";
+import { useEffect } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 import ErrorState from "./_components/ErrorState";
@@ -18,21 +19,16 @@ export default function FeedsPage() {
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [liveRegionMessage, setLiveRegionMessage] = useState<string>("");
   const [isRetrying, setIsRetrying] = useState(false);
-  const [viewportHeight, setViewportHeight] = useState(600);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // Set viewport height safely on client side
+  // Ensure we start at the top of the list on first render (some mobile browsers
+  // restore scroll position across navigations, which can leave us mid-way in
+  // a virtualized list with no items rendered yet).
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setViewportHeight(window.innerHeight - 200);
-      
-      const handleResize = () => {
-        setViewportHeight(window.innerHeight - 200);
-      };
-      
-      window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.scrollTop = 0;
     }
   }, []);
 
@@ -157,27 +153,12 @@ export default function FeedsPage() {
       >
         {visibleFeeds.length > 0 ? (
           <>
-            {/* Use Virtual Scrolling for large lists, regular rendering for small lists */}
-            {visibleFeeds.length > 15 ? (
-              <VirtualFeedList
-                feeds={feeds || []}
-                readFeeds={readFeeds}
-                onMarkAsRead={handleMarkAsRead}
-                height={viewportHeight}
-              />
-            ) : (
-              /* Regular rendering for small lists */
-              <Flex direction="column" gap={4}>
-                {visibleFeeds.map((feed: Feed) => (
-                  <FeedCard
-                    key={feed.link}
-                    feed={feed}
-                    isReadStatus={readFeeds.has(feed.link)}
-                    setIsReadStatus={() => handleMarkAsRead(feed.link)}
-                  />
-                ))}
-              </Flex>
-            )}
+            {/* Feed list rendering */}
+            <VirtualFeedList
+              feeds={visibleFeeds}
+              readFeeds={readFeeds}
+              onMarkAsRead={handleMarkAsRead}
+            />
 
             {/* No more feeds indicator */}
             {!hasMore && visibleFeeds.length > 0 && (

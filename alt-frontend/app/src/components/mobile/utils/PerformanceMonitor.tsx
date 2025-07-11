@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Box, Text, VStack, HStack, Badge, Collapse, IconButton } from '@chakra-ui/react';
+import { Box, Text, VStack, HStack, Badge, IconButton } from '@chakra-ui/react';
 import { ChevronDown, ChevronUp, Activity } from 'lucide-react';
 
 interface PerformanceMetrics {
@@ -12,6 +12,19 @@ interface PerformanceMetrics {
   lastUpdate: number;
 }
 
+interface PerformanceWithMemory extends Performance {
+  memory?: {
+    usedJSHeapSize: number;
+    totalJSHeapSize: number;
+    jsHeapSizeLimit: number;
+  };
+}
+
+interface LayoutShift extends PerformanceEntry {
+  value: number;
+  hadRecentInput: boolean;
+}
+
 interface PerformanceMonitorProps {
   componentName: string;
   enabled?: boolean;
@@ -19,7 +32,7 @@ interface PerformanceMonitorProps {
 }
 
 // Performance monitoring hook
-export const usePerformanceProfiler = (componentName: string) => {
+export const usePerformanceProfiler = () => {
   const [metrics, setMetrics] = useState<PerformanceMetrics>({
     renderTime: 0,
     componentCount: 0,
@@ -33,13 +46,13 @@ export const usePerformanceProfiler = (componentName: string) => {
     return () => {
       const endTime = performance.now();
       const renderTime = endTime - startTime;
-      
+
       // Update metrics
       setMetrics(prev => ({
         ...prev,
         renderTime,
         componentCount: prev.componentCount + 1,
-        memoryUsage: (performance as any).memory?.usedJSHeapSize || 0,
+        memoryUsage: (performance as PerformanceWithMemory).memory?.usedJSHeapSize || 0,
         domNodes: document.querySelectorAll('*').length,
         lastUpdate: Date.now(),
       }));
@@ -67,12 +80,12 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [webVitals, setWebVitals] = useState<{ [key: string]: number }>({});
-  const { metrics, startProfiler, resetMetrics } = usePerformanceProfiler(componentName);
+  const { metrics, startProfiler, resetMetrics } = usePerformanceProfiler();
 
   // Track render performance
   useEffect(() => {
     if (!enabled) return;
-    
+
     const endProfiler = startProfiler();
     return endProfiler;
   });
@@ -88,12 +101,13 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
           setWebVitals(prev => ({ ...prev, LCP: entry.startTime }));
         }
         if (entry.entryType === 'first-input') {
-          setWebVitals(prev => ({ ...prev, FID: entry.processingStart - entry.startTime }));
+          const firstInput = entry as PerformanceEventTiming;
+          setWebVitals(prev => ({ ...prev, FID: firstInput.processingStart - firstInput.startTime }));
         }
         if (entry.entryType === 'layout-shift') {
-          setWebVitals(prev => ({ 
-            ...prev, 
-            CLS: (prev.CLS || 0) + (entry as any).value 
+          setWebVitals(prev => ({
+            ...prev,
+            CLS: (prev.CLS || 0) + (entry as LayoutShift).value
           }));
         }
       });
@@ -118,7 +132,7 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
     const lcp = webVitals.LCP || 0;
     const fid = webVitals.FID || 0;
     const cls = webVitals.CLS || 0;
-    
+
     if (lcp > 4000 || fid > 300 || cls > 0.25) return 'poor';
     if (lcp > 2500 || fid > 100 || cls > 0.1) return 'needs-improvement';
     return 'good';
@@ -133,7 +147,7 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
   return (
     <>
       {children}
-      
+
       {/* Performance Monitor Widget */}
       <Box
         position="fixed"
@@ -181,7 +195,7 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
         </HStack>
 
         {/* Expandable Details */}
-        <Collapse in={isExpanded}>
+        {isExpanded && (
           <VStack p={4} pt={0} align="stretch" gap={3}>
             {/* Component Info */}
             <Box>
@@ -248,11 +262,11 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
                 Reset
               </button>
               <Text fontSize="xs" color="var(--text-muted)">
-                Dev Mode Only
+                Last updated: {new Date(metrics.lastUpdate).toLocaleTimeString()}
               </Text>
             </HStack>
           </VStack>
-        </Collapse>
+        )}
       </Box>
     </>
   );

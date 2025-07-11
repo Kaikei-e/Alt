@@ -2,6 +2,7 @@
 
 import React, { Suspense } from 'react';
 import { Box, Text } from '@chakra-ui/react';
+import { ErrorBoundary } from 'react-error-boundary';
 
 // Lazy load the desktop timeline component
 const DesktopTimeline = React.lazy(() => import('./DesktopTimeline'));
@@ -93,9 +94,11 @@ const DesktopTimelineError = ({ error, resetErrorBoundary }: { error: Error; res
 // Lazy Desktop Timeline component with error boundary
 export const LazyDesktopTimeline: React.FC = () => {
   return (
-    <Suspense fallback={<DesktopTimelineLoading />}>
-      <DesktopTimeline />
-    </Suspense>
+    <ErrorBoundary FallbackComponent={DesktopTimelineError}>
+      <Suspense fallback={<DesktopTimelineLoading />}>
+        <DesktopTimeline />
+      </Suspense>
+    </ErrorBoundary>
   );
 };
 

@@ -2,9 +2,10 @@
 
 import React, { Suspense } from 'react';
 import { Box, Text, VStack, HStack, Skeleton } from '@chakra-ui/react';
+import { ErrorBoundary } from 'react-error-boundary';
 
 // Lazy load the right panel component
-const RightPanel = React.lazy(() => import('./RightPanel'));
+const RightPanel = React.lazy(() => import('./RightPanel').then(module => ({ default: module.RightPanel })));
 
 // Loading fallback component
 const RightPanelLoading = () => (
@@ -127,9 +128,11 @@ const RightPanelError = ({ error, resetErrorBoundary }: { error: Error; resetErr
 // Lazy Right Panel component with error boundary
 export const LazyRightPanel: React.FC = () => {
   return (
-    <Suspense fallback={<RightPanelLoading />}>
-      <RightPanel />
-    </Suspense>
+    <ErrorBoundary FallbackComponent={RightPanelError}>
+      <Suspense fallback={<RightPanelLoading />}>
+        <RightPanel />
+      </Suspense>
+    </ErrorBoundary>
   );
 };
 
