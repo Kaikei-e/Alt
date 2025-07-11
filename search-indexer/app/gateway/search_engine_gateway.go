@@ -10,6 +10,7 @@ import (
 type SearchDriver interface {
 	IndexDocuments(ctx context.Context, docs []driver.SearchDocumentDriver) error
 	Search(ctx context.Context, query string, limit int) ([]driver.SearchDocumentDriver, error)
+	SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]driver.SearchDocumentDriver, error)
 	EnsureIndex(ctx context.Context) error
 	RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error
 }
@@ -55,6 +56,28 @@ func (g *SearchEngineGateway) Search(ctx context.Context, query string, limit in
 	if err != nil {
 		return nil, &port.SearchEngineError{
 			Op:  "Search",
+			Err: err.Error(),
+		}
+	}
+
+	domainResults := make([]domain.SearchDocument, len(driverResults))
+	for i, driverDoc := range driverResults {
+		domainResults[i] = domain.SearchDocument{
+			ID:      driverDoc.ID,
+			Title:   driverDoc.Title,
+			Content: driverDoc.Content,
+			Tags:    driverDoc.Tags,
+		}
+	}
+
+	return domainResults, nil
+}
+
+func (g *SearchEngineGateway) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
+	driverResults, err := g.driver.SearchWithFilters(ctx, query, filters, limit)
+	if err != nil {
+		return nil, &port.SearchEngineError{
+			Op:  "SearchWithFilters",
 			Err: err.Error(),
 		}
 	}
