@@ -465,3 +465,109 @@ func BenchmarkOptimizedLogging(b *testing.B) {
 		})
 	})
 }
+
+// TestSamplingLoggerSecurityIssues tests for security vulnerabilities in sampling logger
+func TestSamplingLoggerSecurityIssues(t *testing.T) {
+	tests := []struct {
+		name string
+		test func(t *testing.T)
+	}{
+		{
+			name: "should handle negative sampling rate safely",
+			test: func(t *testing.T) {
+				config := LogConfig{
+					Level:           "info",
+					Format:          "json",
+					SamplingEnabled: true,
+					SamplingRate:    -1, // negative value
+				}
+				
+				logger := NewOptimizedLogger("test", config)
+				
+				// This should not panic or cause overflow
+				samplingLogger := NewSamplingLogger(logger, -1)
+				assert.NotNil(t, samplingLogger)
+				assert.Equal(t, -1, samplingLogger.samplingRate)
+				
+				// LogSampled should handle negative sampling rate without panic
+				samplingLogger.LogSampled("info", "test message", "key", "value")
+			},
+		},
+		{
+			name: "should handle zero sampling rate safely",
+			test: func(t *testing.T) {
+				config := LogConfig{
+					Level:           "info",
+					Format:          "json",
+					SamplingEnabled: true,
+					SamplingRate:    0,
+				}
+				
+				logger := NewOptimizedLogger("test", config)
+				samplingLogger := NewSamplingLogger(logger, 0)
+				
+				// This should not panic or cause division by zero
+				samplingLogger.LogSampled("info", "test message", "key", "value")
+			},
+		},
+		{
+			name: "should handle large sampling rate safely",
+			test: func(t *testing.T) {
+				config := LogConfig{
+					Level:           "info",
+					Format:          "json",
+					SamplingEnabled: true,
+					SamplingRate:    1000000,
+				}
+				
+				logger := NewOptimizedLogger("test", config)
+				samplingLogger := NewSamplingLogger(logger, 1000000)
+				
+				// This should not cause overflow when converting int to uint64
+				for i := 0; i < 10; i++ {
+					samplingLogger.LogSampled("info", "test message", "key", "value")
+				}
+				
+				assert.Equal(t, uint64(10), samplingLogger.counter)
+			},
+		},
+		{
+			name: "should handle concurrent access with large sampling rate",
+			test: func(t *testing.T) {
+				config := LogConfig{
+					Level:           "info",
+					Format:          "json",
+					SamplingEnabled: true,
+					SamplingRate:    1000000,
+				}
+				
+				logger := NewOptimizedLogger("test", config)
+				samplingLogger := NewSamplingLogger(logger, 1000000)
+				
+				const numGoroutines = 100
+				const logsPerGoroutine = 10
+				
+				var wg sync.WaitGroup
+				wg.Add(numGoroutines)
+				
+				for i := 0; i < numGoroutines; i++ {
+					go func() {
+						defer wg.Done()
+						for j := 0; j < logsPerGoroutine; j++ {
+							samplingLogger.LogSampled("info", "concurrent test", "id", j)
+						}
+					}()
+				}
+				
+				wg.Wait()
+				
+				expected := uint64(numGoroutines * logsPerGoroutine)
+				assert.Equal(t, expected, samplingLogger.counter)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, tt.test)
+	}
+}
