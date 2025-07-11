@@ -66,7 +66,7 @@ test.describe('VirtualFeedList Component - Performance Tests', () => {
     const initialItems = await page.locator('[data-testid="feed-card"]').count();
     
     // Scroll down within the scroll container
-    await page.locator('[data-testid="feeds-scroll-container"]').scrollIntoView();
+    await page.locator('[data-testid="feeds-scroll-container"]').focus();
     await page.keyboard.press('PageDown');
     await page.keyboard.press('PageDown');
     

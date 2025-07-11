@@ -24,13 +24,14 @@ export const VirtualFeedList: React.FC<VirtualFeedListProps> = ({
 
   return (
     <Flex direction="column" gap={4} data-testid="virtual-feed-list">
-      {feeds.map((feed: Feed) => (
-        <FeedCard
-          key={feed.link}
-          feed={feed}
-          isReadStatus={readFeeds.has(feed.link)}
-          setIsReadStatus={() => onMarkAsRead(feed.link)}
-        />
+      {feeds.map((feed: Feed, index: number) => (
+        <div key={feed.link} data-testid={`virtual-feed-item-${index}`}>
+          <FeedCard
+            feed={feed}
+            isReadStatus={readFeeds.has(feed.link)}
+            setIsReadStatus={() => onMarkAsRead(feed.link)}
+          />
+        </div>
       ))}
     </Flex>
   );
