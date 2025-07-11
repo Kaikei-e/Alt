@@ -1,6 +1,8 @@
 name: Reusable Frontend Test Workflow
+
 permissions:
   contents: read
+
 on:
   workflow_call:
     inputs:
@@ -28,9 +30,10 @@ jobs:
   test:
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 60
+
     env:
       isCI: true
-      PNPM_HOME: $RUNNER_TEMP/pnpm-home
+
     steps:
       - name: Configure logging
         if: runner.environment == 'self-hosted'
@@ -46,24 +49,16 @@ jobs:
         if: runner.environment == 'self-hosted'
         run: |
           echo "Deep cleaning pnpm directories..."
-
-          # すべてのsetup-pnpmディレクトリを削除
           find "${{ runner.temp }}" -maxdepth 2 -name "setup-pnpm*" -type d -exec rm -rf {} + 2>/dev/null || true
-
-          # 一時ディレクトリ全体の権限を修正してから削除
           if [ -d "${{ runner.temp }}/setup-pnpm" ]; then
             chmod -R 777 "${{ runner.temp }}/setup-pnpm" 2>/dev/null || true
             rm -rf "${{ runner.temp }}/setup-pnpm" || sudo rm -rf "${{ runner.temp }}/setup-pnpm" || true
           fi
-
-          # pnpm関連のディレクトリをすべてクリーン
           rm -rf "$HOME/.pnpm-store" || true
           rm -rf "$HOME/.cache/pnpm" || true
           rm -rf "$HOME/Library/pnpm" || true
           rm -rf "${{ github.workspace }}/node_modules" || true
           rm -rf "${{ github.workspace }}/.pnpm-store" || true
-
-          # 新しいpnpmホームディレクトリを作成
           mkdir -p "${{ runner.temp }}/pnpm-home"
 
       - uses: actions/checkout@v4
@@ -72,31 +67,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          # pnpmキャッシュは後で設定
           cache: ''
 
       - name: Install pnpm manually
         run: |
-          # pnpm/action-setupの代わりに直接インストール
           echo "Installing pnpm ${{ inputs.pnpm-version }}..."
-
-          # corepackでインストール
           corepack enable
           corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
-
-          # または npmでインストール（フォールバック）
-          # npm install -g pnpm@${{ inputs.pnpm-version }}
-
-          # 確認
           pnpm --version
-
-          # pnpmストアの場所を設定
           pnpm config set store-dir "${{ runner.temp }}/pnpm-store"
 
       - name: Get pnpm store directory
         id: pnpm-store
-        run: |
-          echo "dir=$(pnpm store path)" >> $GITHUB_OUTPUT
+        run: echo "dir=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm store
         uses: actions/cache@v3
@@ -105,20 +88,20 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}
           restore-keys: |
             pnpm-${{ runner.os }}-
-        env:
-          ACTIONS_STEP_DEBUG: false
+
+      - name: Set Playwright browsers path
+        if: inputs.test-type == 'playwright'
+        run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/playwright-browsers" >> $GITHUB_ENV
 
       - name: Cache Playwright browsers
         if: inputs.test-type == 'playwright'
         uses: actions/cache@v3
         id: playwright-cache
         with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles(format('{0}/package.json', inputs.working-directory)) }}
+          path: ${{ runner.temp }}/playwright-browsers
+          key: ${{ runner.os }}-playwright-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}
           restore-keys: |
             ${{ runner.os }}-playwright-
-        env:
-          ACTIONS_STEP_DEBUG: false
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
@@ -153,7 +136,8 @@ jobs:
       - name: Post cleanup
         if: always()
         run: |
-          # 次回のためにクリーンアップ
-          rm -rf "${{ runner.temp }}/pnpm-store" || true
-          rm -rf "${{ runner.temp }}/pnpm-home" || true
-          killall -9 pnpm || true
+          echo ">>> Killing stray Node processes"
+          pkill -9 node || true
+          rm -rf "${{ runner.temp }}/pnpm-store"       || true
+          rm -rf "${{ runner.temp }}/pnpm-home"        || true
+          rm -rf "${{ runner.temp }}/playwright-browsers" || true
