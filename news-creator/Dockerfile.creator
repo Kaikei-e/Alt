@@ -1,12 +1,12 @@
 # ---- Base image -----------------------------------------------------------
 FROM ollama/ollama:latest
 
-# ---- Install additional dependencies --------------------------------------
 USER root
+
+# ---- Install additional dependencies --------------------------------------
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
     ca-certificates \
-    bash \
     curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -15,25 +15,27 @@ RUN apt-get update \
 # Use a high UID to avoid conflicts
 RUN groupadd -f -g 2000 ollama-user \
     && useradd -u 2000 -g 2000 -m -s /bin/bash ollama-user || true
+USER ollama-user
+
+WORKDIR /home/ollama-user
+
+# ---- Environment configuration -------------------------------------------
+ENV OLLAMA_HOST=0.0.0.0:11434
+ENV OLLAMA_ORIGINS=*
+ENV OLLAMA_KEEP_ALIVE=24h
+ENV OLLAMA_NUM_PARALLEL=4
+ENV OLLAMA_MAX_LOADED_MODELS=1
+ENV OLLAMA_HOME=/root/.ollama
 
 # ---- Model cache persistence ---------------------------------------------
-ENV OLLAMA_HOME=/home/ollama-user/.ollama
-ENV OLLAMA_MODELS=$OLLAMA_HOME/models
-RUN mkdir -p $OLLAMA_HOME $OLLAMA_MODELS \
-    && chown -R ollama-user:ollama-user $OLLAMA_HOME
-
 VOLUME ["$OLLAMA_HOME"]
 
 # ---- Copy entrypoint and set permissions --------------------------------
 COPY --chown=ollama-user:ollama-user entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# ---- Switch to non-root user ---------------------------------------------
-USER ollama-user
-WORKDIR /home/ollama-user
-
-# Health check to ensure the service is running
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+# ---- Health check --------------------------------------------------------
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD curl -f http://localhost:11434/api/tags || exit 1
 
 EXPOSE 11434
