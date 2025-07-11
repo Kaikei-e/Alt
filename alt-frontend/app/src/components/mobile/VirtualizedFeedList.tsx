@@ -21,7 +21,7 @@ const VirtualizationErrorFallback: React.FC<{
   feeds: Feed[];
   readFeeds: Set<string>;
   onMarkAsRead: (feedLink: string) => void;
-}> = ({ error, resetErrorBoundary, feeds, readFeeds, onMarkAsRead }) => {
+}> = ({ error, feeds, readFeeds, onMarkAsRead }) => {
   useEffect(() => {
     console.error('Virtualization failed, falling back to simple rendering:', error);
     

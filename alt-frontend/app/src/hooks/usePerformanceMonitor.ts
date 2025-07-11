@@ -15,7 +15,7 @@ export const usePerformanceMonitor = (itemCount: number) => {
     const renderTime = performance.now() - renderStartTime;
     
     // Get memory information if available (Chrome only)
-    const memoryInfo = (performance as any).memory;
+    const memoryInfo = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
     const memoryUsage = memoryInfo?.usedJSHeapSize || 0;
     
     // Count DOM nodes
@@ -51,21 +51,15 @@ export const usePerformanceMonitor = (itemCount: number) => {
       });
     }
 
-    // In production, send performance data to analytics if available
-    if (process.env.NODE_ENV === 'production' && typeof window !== 'undefined') {
-      // Send to analytics service (placeholder)
-      try {
-        if ((window as any).gtag) {
-          (window as any).gtag('event', 'feed_list_performance', {
-            item_count: itemCount,
-            render_time: renderTime,
-            memory_usage_mb: Math.round(memoryUsage / 1024 / 1024),
-            should_virtualize: shouldVirtualize
-          });
-        }
-      } catch (error) {
-        console.warn('Failed to send performance analytics:', error);
-      }
+    // Performance monitoring without external analytics
+    if (process.env.NODE_ENV === 'production') {
+      // Log performance data for internal monitoring only
+      console.log('Performance Data:', {
+        itemCount,
+        renderTime,
+        memoryUsageMB: Math.round(memoryUsage / 1024 / 1024),
+        shouldVirtualize
+      });
     }
   }, [itemCount, renderStartTime]);
 

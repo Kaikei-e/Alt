@@ -85,7 +85,7 @@ describe('Feature Flags', () => {
   describe('FeatureFlagManager', () => {
     beforeEach(() => {
       // Reset singleton instance
-      (FeatureFlagManager as any).instance = undefined;
+      (FeatureFlagManager as Record<string, unknown>).instance = undefined;
     });
 
     it('should create singleton instance', () => {
@@ -145,7 +145,7 @@ describe('Feature Flags', () => {
 
   describe('Integration with shouldUseVirtualization', () => {
     beforeEach(() => {
-      (FeatureFlagManager as any).instance = undefined;
+      (FeatureFlagManager as Record<string, unknown>).instance = undefined;
     });
 
     it('should use FeatureFlagManager when no flags provided', () => {
@@ -174,7 +174,7 @@ describe('Feature Flags', () => {
 
   describe('Error Recovery Integration', () => {
     beforeEach(() => {
-      (FeatureFlagManager as any).instance = undefined;
+      (FeatureFlagManager as Record<string, unknown>).instance = undefined;
     });
 
     it('should disable virtualization after consecutive errors', () => {

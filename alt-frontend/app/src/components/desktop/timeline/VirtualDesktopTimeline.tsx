@@ -1,11 +1,12 @@
 "use client";
 
+import React, { useRef, useCallback, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useRef, useCallback, useMemo } from 'react';
-import { Box, Flex, Text } from '@chakra-ui/react';
+import { Box, Text, VStack } from '@chakra-ui/react';
 import { Feed } from '@/schema/feed';
 import { DesktopFeed } from '@/types/desktop-feed';
 import { DesktopFeedCard } from './DesktopFeedCard';
+import { useVirtualizationMetrics } from '@/hooks/useVirtualizationMetrics';
 
 interface VirtualDesktopTimelineProps {
   feeds: Feed[];
@@ -15,11 +16,24 @@ interface VirtualDesktopTimelineProps {
   onToggleBookmark: (feedId: string) => void;
   onReadLater: (feedId: string) => void;
   onViewArticle: (feedId: string) => void;
-  height?: number;
+  containerHeight: number;
+  enableDynamicSizing?: boolean;
+  overscan?: number;
 }
 
+// Desktop-specific size estimation
+const estimateDesktopItemSize = (feed: Feed): number => {
+  const baseHeight = 280; // Desktop card base height
+  const titleHeight = Math.ceil(feed.title.length / 60) * 24; // 60 chars/line
+  const descriptionHeight = Math.ceil(feed.description.length / 80) * 20; // 80 chars/line
+  const metadataHeight = 60; // Metadata section
+  const actionHeight = 50; // Action buttons
+  
+  return baseHeight + titleHeight + descriptionHeight + metadataHeight + actionHeight;
+};
+
 // Transform Feed to DesktopFeed
-const transformFeedToDesktopFeed = (feed: Feed): DesktopFeed => {
+const transformToDesktopFeed = (feed: Feed): DesktopFeed => {
   return {
     ...feed,
     metadata: {
@@ -59,13 +73,18 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
   onToggleBookmark,
   onReadLater,
   onViewArticle,
-  height = 800,
+  containerHeight,
+  enableDynamicSizing = false,
+  overscan = 2,
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
 
+  // Performance metrics
+  useVirtualizationMetrics(true, feeds.length);
+
   // Transform feeds to desktop format
   const desktopFeeds = useMemo(() => {
-    return feeds?.map(transformFeedToDesktopFeed) || [];
+    return feeds?.map(transformToDesktopFeed) || [];
   }, [feeds]);
 
   // Filter out read feeds
@@ -74,12 +93,30 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
     [desktopFeeds, readFeeds]
   );
 
-  // Create virtualizer with larger estimated size for desktop cards
+  // Dynamic size estimation
+  const estimateSize = useCallback((index: number) => {
+    if (enableDynamicSizing && visibleFeeds[index]) {
+      return estimateDesktopItemSize(visibleFeeds[index]);
+    }
+    return 320; // Default desktop card height
+  }, [visibleFeeds, enableDynamicSizing]);
+
+  // Measurement function for dynamic sizing
+  const measureElement = useCallback((element: Element) => {
+    if (enableDynamicSizing && element instanceof HTMLElement) {
+      // Actual measurement implementation if needed
+      // Currently using estimated values
+    }
+    return 0;
+  }, [enableDynamicSizing]);
+
+  // Create virtualizer with desktop-specific settings
   const virtualizer = useVirtualizer({
     count: visibleFeeds.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 420, // Estimated height of DesktopFeedCard
-    overscan: 3, // Render 3 items outside of visible area (desktop cards are larger)
+    estimateSize,
+    overscan,
+    measureElement: enableDynamicSizing ? measureElement : undefined,
   });
 
   // Handle actions
@@ -103,50 +140,48 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
     onViewArticle(feedId);
   }, [onViewArticle]);
 
-  // Don't render if no feeds
+  // Empty state handling
   if (visibleFeeds.length === 0) {
     return (
-      <Flex justify="center" align="center" py={16} maxW="1000px" mx="auto">
-        <Box
-          className="glass"
-          p={6}
-          borderRadius="var(--radius-lg)"
-          textAlign="center"
-        >
-          <Text fontSize="2xl" mb={3}>
-            📰
-          </Text>
-          <Text color="var(--text-primary)" fontSize="md" mb={2}>
+      <Box
+        height={`${containerHeight}px`}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        data-testid="virtual-desktop-empty-state"
+      >
+        <VStack gap={4}>
+          <Text fontSize="2xl">📰</Text>
+          <Text color="var(--text-primary)" fontSize="lg">
             No feeds available
           </Text>
           <Text color="var(--text-secondary)" fontSize="sm">
             Your feed will appear here once you subscribe to sources
           </Text>
-        </Box>
-      </Flex>
+        </VStack>
+      </Box>
     );
   }
 
   return (
     <Box
       ref={parentRef}
-      data-testid="virtual-desktop-timeline"
-      height={`${height}px`}
+      height={`${containerHeight}px`}
       overflowY="auto"
       overflowX="hidden"
-      px={6}
+      data-testid="virtual-desktop-timeline"
       css={{
-        scrollBehavior: 'smooth',
+        scrollBehavior: enableDynamicSizing ? 'auto' : 'smooth',
         '&::-webkit-scrollbar': {
-          width: '6px',
+          width: '8px',
         },
         '&::-webkit-scrollbar-track': {
           background: 'var(--surface-secondary)',
-          borderRadius: '3px',
+          borderRadius: '4px',
         },
         '&::-webkit-scrollbar-thumb': {
           background: 'var(--accent-primary)',
-          borderRadius: '3px',
+          borderRadius: '4px',
           opacity: 0.7,
         },
         '&::-webkit-scrollbar-thumb:hover': {
@@ -158,8 +193,9 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
         height={`${virtualizer.getTotalSize()}px`}
         width="100%"
         position="relative"
-        maxW="1000px"
+        maxW="1200px"
         mx="auto"
+        px={6}
       >
         {virtualizer.getVirtualItems().map((virtualItem) => {
           const feed = visibleFeeds[virtualItem.index];
@@ -168,6 +204,8 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
             <Box
               key={virtualItem.key}
               data-testid={`virtual-desktop-item-${virtualItem.index}`}
+              data-index={virtualItem.index}
+              ref={enableDynamicSizing ? virtualizer.measureElement : undefined}
               position="absolute"
               top={0}
               left={0}

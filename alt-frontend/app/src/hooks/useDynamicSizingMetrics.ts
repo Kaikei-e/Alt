@@ -50,11 +50,11 @@ export const useDynamicSizingMetrics = (
         });
       }
 
-      // 本番環境での監視
-      if (process.env.NODE_ENV === 'production' && typeof window !== 'undefined') {
-        (window as any).gtag?.('event', 'dynamic_sizing_metrics', {
+      // 本番環境での監視（内部ログのみ）
+      if (process.env.NODE_ENV === 'production') {
+        console.log('Dynamic Sizing Metrics:', {
           ...metrics,
-          item_count: itemCount
+          itemCount
         });
       }
     }, 30000); // 30秒ごと

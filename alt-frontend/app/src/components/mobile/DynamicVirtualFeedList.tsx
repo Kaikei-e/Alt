@@ -1,7 +1,7 @@
 "use client";
 
 import { useVirtualizer } from '@tanstack/react-virtual';
-import React, { useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { Box, Text } from '@chakra-ui/react';
 import { Feed } from '@/schema/feed';
 import { SizeMeasurementManager } from '@/utils/sizeMeasurement';
@@ -37,13 +37,11 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
   }, [feeds]);
 
   // 実際のサイズ測定関数
-  const measureElement = useCallback((element: HTMLElement, index: number) => {
-    const feed = feeds[index];
-    if (!feed) return;
-
-    const key = `feed-${feed.id}-${feed.link}`;
-    measurementManager.current.measureElement(element, key);
-  }, [feeds]);
+  const measureElement = useCallback(() => {
+    // For dynamic sizing, we don't need to return a specific size
+    // The measurement is handled by the measurement manager
+    return 0;
+  }, []);
 
   // 仮想化設定
   const virtualizer = useVirtualizer({
@@ -53,7 +51,7 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
     overscan,
     measureElement: measureElement,
     // スムーズスクロール無効化（Dynamic Sizingでは非対応）
-    scrollToFn: (offset, alignment, instance) => {
+    scrollToFn: (offset) => {
       const element = parentRef.current;
       if (element) {
         element.scrollTop = offset;

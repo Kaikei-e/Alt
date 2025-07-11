@@ -4,6 +4,7 @@ export interface FeatureFlags {
   enableVirtualization: boolean | 'auto';
   forceVirtualization: boolean;
   enableDynamicSizing: boolean | 'auto';
+  enableDesktopVirtualization: boolean | 'auto';
   debugMode: boolean;
   virtualizationThreshold?: number;
 }
@@ -27,10 +28,17 @@ export class FeatureFlagManager {
 
   private loadFlags(): FeatureFlags {
     // Load from environment variables
-    const envFlags = {
-      enableVirtualization: process.env.NEXT_PUBLIC_ENABLE_VIRTUALIZATION || 'auto',
+    const parseFlag = (value: string | undefined): boolean | 'auto' => {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+      return 'auto';
+    };
+
+    const envFlags: FeatureFlags = {
+      enableVirtualization: parseFlag(process.env.NEXT_PUBLIC_ENABLE_VIRTUALIZATION),
       forceVirtualization: process.env.NEXT_PUBLIC_FORCE_VIRTUALIZATION === 'true',
-      enableDynamicSizing: process.env.NEXT_PUBLIC_ENABLE_DYNAMIC_SIZING || 'auto',
+      enableDynamicSizing: parseFlag(process.env.NEXT_PUBLIC_ENABLE_DYNAMIC_SIZING),
+      enableDesktopVirtualization: parseFlag(process.env.NEXT_PUBLIC_ENABLE_DESKTOP_VIRTUALIZATION),
       debugMode: process.env.NODE_ENV === 'development',
       virtualizationThreshold: parseInt(process.env.NEXT_PUBLIC_VIRTUALIZATION_THRESHOLD || '200')
     };
@@ -72,7 +80,10 @@ export class FeatureFlagManager {
     
     // 自動的に仮想化を無効化
     if (this.recovery.shouldDisableVirtualization()) {
-      this.updateFlags({ enableVirtualization: false });
+      this.updateFlags({ 
+        enableVirtualization: false,
+        enableDesktopVirtualization: false
+      });
     }
   }
 
@@ -81,7 +92,10 @@ export class FeatureFlagManager {
     
     // 十分な成功履歴があれば仮想化を再有効化
     if (this.recovery.getSuccessCount() >= 10 && this.recovery.canRetryNow()) {
-      this.updateFlags({ enableVirtualization: 'auto' });
+      this.updateFlags({ 
+        enableVirtualization: 'auto',
+        enableDesktopVirtualization: 'auto'
+      });
     }
   }
 

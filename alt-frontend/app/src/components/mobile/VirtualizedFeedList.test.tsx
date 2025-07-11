@@ -17,7 +17,11 @@ vi.mock('./SimpleFeedList', () => ({
 
 // Mock react-error-boundary
 vi.mock('react-error-boundary', () => ({
-  ErrorBoundary: ({ children, FallbackComponent, onError }: any) => {
+  ErrorBoundary: ({ children, FallbackComponent, onError }: {
+    children: React.ReactNode;
+    FallbackComponent: React.ComponentType<{ error: Error; resetErrorBoundary: () => void }>;
+    onError?: (error: Error) => void;
+  }) => {
     try {
       return children;
     } catch (error) {

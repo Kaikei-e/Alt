@@ -3,7 +3,7 @@ import { SimplePerformanceTracker } from './performanceTracker';
 
 describe('SimplePerformanceTracker', () => {
   let tracker: SimplePerformanceTracker;
-  let consoleLogSpy: any;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     tracker = new SimplePerformanceTracker();

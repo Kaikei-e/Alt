@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 import { DynamicVirtualFeedList } from './DynamicVirtualFeedList';
 import { Feed } from '@/schema/feed';
@@ -17,7 +17,7 @@ vi.mock('./FeedCard', () => ({
 
 // Mock SizeMeasurementManager
 vi.mock('@/utils/sizeMeasurement', () => ({
-  SizeMeasurementManager: vi.fn().mockImplementation((onError) => ({
+  SizeMeasurementManager: vi.fn().mockImplementation(() => ({
     measureElement: vi.fn().mockResolvedValue({ height: 200, width: 100, timestamp: Date.now() }),
     clearCache: vi.fn(),
     getEstimatedSize: vi.fn((contentLength) => 120 + Math.ceil(contentLength / 50) * 24)
