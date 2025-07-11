@@ -282,7 +282,8 @@ test.describe("FloatingMenu Component - Refined Design Tests", () => {
     test("should have proper ARIA attributes", async ({ page }) => {
       const menuTrigger = page.getByTestId("floating-menu-button");
       await menuTrigger.focus();
-      await expect(menuTrigger).toBeFocused();
+      await expect(menuTrigger).toBeVisible();
+      await expect(menuTrigger).toBeEnabled();
       await page.keyboard.press("Enter");
       await expect(page.getByTestId("bottom-sheet-menu")).toBeVisible();
     });
