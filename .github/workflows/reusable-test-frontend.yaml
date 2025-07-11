@@ -42,10 +42,24 @@ jobs:
         if: runner.environment == 'self-hosted'
         run: |
           echo "::group::Masking Configuration"
+
+          # Mask HOME directory parts
           PARTS=($(echo $HOME | tr '/' ' '))
           for part in "${PARTS[@]}"; do
             [ ! -z "$part" ] && echo "::add-mask::$part"
           done
+
+          # Mask machine name and user info
+          echo "::add-mask::$(whoami)"
+          echo "::add-mask::$(hostname)"
+          echo "::add-mask::$(hostname -s)"
+          echo "::add-mask::$(scutil --get ComputerName 2>/dev/null || echo '')"
+          echo "::add-mask::$(scutil --get LocalHostName 2>/dev/null || echo '')"
+
+          # Mask runner workspace paths
+          echo "::add-mask::${{ runner.temp }}"
+          echo "::add-mask::${{ github.workspace }}"
+
           echo "::endgroup::"
 
       - name: Pre-cleanup processes and ports
@@ -53,28 +67,28 @@ jobs:
         run: |
           echo "::group::Pre-cleanup processes and ports"
 
-          # Kill existing Node.js processes
-          echo "Killing existing Node.js processes..."
-          pkill -9 node || true
-          pkill -9 npm || true
-          pkill -9 pnpm || true
+          # Kill existing Node.js processes (silently)
+          echo "Cleaning existing Node.js processes..."
+          pkill -9 node >/dev/null 2>&1 || true
+          pkill -9 npm >/dev/null 2>&1 || true
+          pkill -9 pnpm >/dev/null 2>&1 || true
 
-          # Kill processes using common test ports
-          echo "Checking and killing processes on common ports..."
+          # Kill processes using common test ports (silently)
+          echo "Cleaning processes on common test ports..."
           for port in 3000 3001 3010 4173 5173 8080; do
             pid=$(lsof -ti:$port 2>/dev/null || true)
             if [ ! -z "$pid" ]; then
-              echo "Killing process $pid on port $port"
-              kill -9 $pid 2>/dev/null || true
+              echo "Cleaning process on port $port"
+              kill -9 $pid >/dev/null 2>&1 || true
             fi
           done
 
           # Wait for processes to terminate
           sleep 2
 
-          # Verify ports are free
-          echo "Verifying ports are free..."
-          netstat -an | grep LISTEN | grep -E ':(3000|3001|3010|4173|5173|8080) ' || echo "Ports appear to be free"
+          # Verify ports are free (count only)
+          port_count=$(netstat -an 2>/dev/null | grep LISTEN | grep -E ':(3000|3001|3010|4173|5173|8080) ' | wc -l || echo "0")
+          echo "Active test ports: $port_count"
 
           echo "::endgroup::"
 
@@ -178,7 +192,7 @@ jobs:
           echo "Using dynamic port: $DYNAMIC_PORT"
           echo "PLAYWRIGHT_TEST_PORT=$DYNAMIC_PORT" >> $GITHUB_ENV
 
-          # Verify port is available
+          # Verify port is available (silently)
           if lsof -i:$DYNAMIC_PORT >/dev/null 2>&1; then
             echo "Port $DYNAMIC_PORT is in use, finding alternative..."
             for i in {1..10}; do
@@ -191,7 +205,8 @@ jobs:
             done
           fi
 
-          echo "Final port: ${PLAYWRIGHT_TEST_PORT:-$DYNAMIC_PORT}"
+          final_port="${PLAYWRIGHT_TEST_PORT:-$DYNAMIC_PORT}"
+          echo "Final port assigned: $final_port"
           echo "::endgroup::"
 
       - name: Run Vitest tests
@@ -218,9 +233,9 @@ jobs:
           for attempt in 1 2 3; do
             echo "Attempt $attempt/3..."
 
-            # Kill any stray processes before attempt
-            pkill -f "vite.*preview" || true
-            pkill -f "vite.*dev" || true
+            # Kill any stray processes before attempt (silently)
+            pkill -f "vite.*preview" >/dev/null 2>&1 || true
+            pkill -f "vite.*dev" >/dev/null 2>&1 || true
             sleep 2
 
             pnpm exec playwright test
@@ -235,9 +250,9 @@ jobs:
                 echo "Waiting before retry..."
                 sleep 5
 
-                # Clean up any remaining processes
-                pkill -f "node.*vite" || true
-                pkill -f "playwright" || true
+                # Clean up any remaining processes (silently)
+                pkill -f "node.*vite" >/dev/null 2>&1 || true
+                pkill -f "playwright" >/dev/null 2>&1 || true
                 sleep 2
               fi
             fi
@@ -264,20 +279,20 @@ jobs:
         run: |
           echo "::group::Post cleanup"
 
-          echo ">>> Killing all Node.js related processes"
-          pkill -9 node || true
-          pkill -9 npm || true
-          pkill -9 pnpm || true
-          pkill -f "vite" || true
-          pkill -f "playwright" || true
+          echo ">>> Cleaning all Node.js related processes"
+          pkill -9 node >/dev/null 2>&1 || true
+          pkill -9 npm >/dev/null 2>&1 || true
+          pkill -9 pnpm >/dev/null 2>&1 || true
+          pkill -f "vite" >/dev/null 2>&1 || true
+          pkill -f "playwright" >/dev/null 2>&1 || true
 
-          # Force kill processes on test ports
-          echo ">>> Force killing processes on test ports"
+          # Force kill processes on test ports (silently)
+          echo ">>> Cleaning processes on test ports"
           for port in 3000 3001 3010 4173 5173 8080; do
             pid=$(lsof -ti:$port 2>/dev/null || true)
             if [ ! -z "$pid" ]; then
-              echo "Force killing process $pid on port $port"
-              kill -9 $pid 2>/dev/null || true
+              echo "Cleaning process on port $port"
+              kill -9 $pid >/dev/null 2>&1 || true
             fi
           done
 
@@ -291,6 +306,11 @@ jobs:
           sleep 2
 
           echo ">>> Final port check"
-          netstat -an | grep LISTEN | grep -E ':(3000|3001|3010|4173|5173|8080) ' || echo "All test ports are now free"
+          port_count=$(netstat -an 2>/dev/null | grep LISTEN | grep -E ':(3000|3001|3010|4173|5173|8080) ' | wc -l || echo "0")
+          if [ "$port_count" -eq 0 ]; then
+            echo "All test ports are now free"
+          else
+            echo "Some test ports may still be in use ($port_count)"
+          fi
 
           echo "::endgroup::"
