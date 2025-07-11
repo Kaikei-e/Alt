@@ -1,3 +1,5 @@
+import { ErrorRecoveryManager } from './errorRecovery';
+
 export interface FeatureFlags {
   enableVirtualization: boolean | 'auto';
   forceVirtualization: boolean;
@@ -9,9 +11,11 @@ export interface FeatureFlags {
 export class FeatureFlagManager {
   private static instance: FeatureFlagManager;
   private flags: FeatureFlags;
+  private recovery: ErrorRecoveryManager;
 
   private constructor() {
     this.flags = this.loadFlags();
+    this.recovery = new ErrorRecoveryManager();
   }
 
   static getInstance(): FeatureFlagManager {
@@ -61,6 +65,38 @@ export class FeatureFlagManager {
         console.warn('Failed to save feature flags to localStorage:', error);
       }
     }
+  }
+
+  recordError(errorType: string): void {
+    this.recovery.recordError(errorType);
+    
+    // 自動的に仮想化を無効化
+    if (this.recovery.shouldDisableVirtualization()) {
+      this.updateFlags({ enableVirtualization: false });
+    }
+  }
+
+  recordSuccess(): void {
+    this.recovery.recordSuccess();
+    
+    // 十分な成功履歴があれば仮想化を再有効化
+    if (this.recovery.getSuccessCount() >= 10 && this.recovery.canRetryNow()) {
+      this.updateFlags({ enableVirtualization: 'auto' });
+    }
+  }
+
+  getRecoveryStatus(): {
+    errorCount: number;
+    successCount: number;
+    backoffTime: number;
+    canRetry: boolean;
+  } {
+    return {
+      errorCount: this.recovery.getErrorCount(),
+      successCount: this.recovery.getSuccessCount(),
+      backoffTime: this.recovery.getBackoffTime(),
+      canRetry: this.recovery.canRetryNow()
+    };
   }
 }
 

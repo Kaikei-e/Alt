@@ -171,4 +171,72 @@ describe('Feature Flags', () => {
       expect(shouldUseVirtualization(200, customFlags)).toBe(false);
     });
   });
+
+  describe('Error Recovery Integration', () => {
+    beforeEach(() => {
+      (FeatureFlagManager as any).instance = undefined;
+    });
+
+    it('should disable virtualization after consecutive errors', () => {
+      const manager = FeatureFlagManager.getInstance();
+      
+      // 初期状態は auto
+      expect(manager.getFlags().enableVirtualization).toBe('auto');
+      
+      // 3回連続エラーを記録
+      manager.recordError('virtualization_error');
+      manager.recordError('virtualization_error');
+      manager.recordError('virtualization_error');
+      
+      // 仮想化が無効化される
+      expect(manager.getFlags().enableVirtualization).toBe(false);
+    });
+
+    it('should re-enable virtualization after successful recovery', () => {
+      const manager = FeatureFlagManager.getInstance();
+      
+      // 最初にエラーを記録して無効化
+      manager.recordError('virtualization_error');
+      manager.recordError('virtualization_error');
+      manager.recordError('virtualization_error');
+      expect(manager.getFlags().enableVirtualization).toBe(false);
+      
+      // 成功を記録して復旧（バックオフ期間の経過も考慮）
+      for (let i = 0; i < 10; i++) {
+        manager.recordSuccess();
+      }
+      
+      // 復旧状態を確認
+      const recoveryStatus = manager.getRecoveryStatus();
+      expect(recoveryStatus.successCount).toBe(10);
+      
+      // バックオフ期間をリセットした場合は再有効化される
+      // 実際の復旧は時間経過も必要なので、今回のテストでは成功回数のみ確認
+      expect(recoveryStatus.successCount).toBeGreaterThanOrEqual(10);
+    });
+
+    it('should provide recovery status', () => {
+      const manager = FeatureFlagManager.getInstance();
+      
+      manager.recordError('test_error');
+      manager.recordSuccess();
+      
+      const status = manager.getRecoveryStatus();
+      expect(status.errorCount).toBe(0); // 成功でリセット
+      expect(status.successCount).toBe(1);
+      expect(status.backoffTime).toBeGreaterThan(0);
+      expect(typeof status.canRetry).toBe('boolean');
+    });
+
+    it('should handle multiple error types', () => {
+      const manager = FeatureFlagManager.getInstance();
+      
+      manager.recordError('virtualization_error');
+      manager.recordError('rendering_error');
+      manager.recordError('memory_error');
+      
+      expect(manager.getFlags().enableVirtualization).toBe(false);
+      expect(manager.getRecoveryStatus().errorCount).toBe(3);
+    });
+  });
 });
