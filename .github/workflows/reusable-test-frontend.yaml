@@ -132,12 +132,12 @@ jobs:
       - name: Run Vitest tests
         if: inputs.test-type == 'vitest'
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm exec vitest run || true
+        run: pnpm exec vitest run
 
       - name: Run Playwright tests
         if: inputs.test-type == 'playwright'
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm exec playwright test || true
+        run: pnpm exec playwright test
 
       - name: Upload test results
         if: always()
