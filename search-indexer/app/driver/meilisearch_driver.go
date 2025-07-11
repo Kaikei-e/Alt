@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"search-indexer/search_engine"
 
 	"github.com/meilisearch/meilisearch-go"
 )
@@ -53,6 +54,46 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 	if err != nil {
 		return nil, &DriverError{
 			Op:  "Search",
+			Err: err.Error(),
+		}
+	}
+
+	docs := make([]SearchDocumentDriver, 0, len(result.Hits))
+	for _, hit := range result.Hits {
+		hitMap, ok := hit.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		doc := SearchDocumentDriver{
+			ID:      d.getString(hitMap, "id"),
+			Title:   d.getString(hitMap, "title"),
+			Content: d.getString(hitMap, "content"),
+			Tags:    d.getStringSlice(hitMap, "tags"),
+		}
+		docs = append(docs, doc)
+	}
+
+	return docs, nil
+}
+
+func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]SearchDocumentDriver, error) {
+	filter := d.buildSecureFilter(filters)
+	
+	searchRequest := &meilisearch.SearchRequest{
+		Query: query,
+		Limit: int64(limit),
+	}
+
+	// Only add filter if it's not empty
+	if filter != "" {
+		searchRequest.Filter = filter
+	}
+
+	result, err := d.index.Search(query, searchRequest)
+	if err != nil {
+		return nil, &DriverError{
+			Op:  "SearchWithFilters",
 			Err: err.Error(),
 		}
 	}
@@ -168,4 +209,9 @@ func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[s
 	}
 
 	return nil
+}
+
+// buildSecureFilter creates a secure filter from tag filters
+func (d *MeilisearchDriver) buildSecureFilter(filters []string) string {
+	return search_engine.MakeSecureSearchFilter(filters)
 }

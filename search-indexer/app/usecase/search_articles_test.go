@@ -14,6 +14,33 @@ type mockSearchEngine struct {
 	err         error
 }
 
+func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
+	m.indexedDocs = docs
+	return m.err
+}
+
+func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.indexedDocs, nil
+}
+
+func (m *mockSearchEngine) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.indexedDocs, nil
+}
+
+func (m *mockSearchEngine) EnsureIndex(ctx context.Context) error {
+	return m.err
+}
+
+func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
+	return m.err
+}
+
 func TestSearchArticlesUsecase_Execute(t *testing.T) {
 	now := time.Now()
 	article, _ := domain.NewArticle("1", "Test Title", "Test Content", []string{"tag1"}, now)

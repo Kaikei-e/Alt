@@ -40,6 +40,13 @@ func (m *mockSearchDriver) EnsureIndex(ctx context.Context) error {
 	return nil
 }
 
+func (m *mockSearchDriver) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]driver.SearchDocumentDriver, error) {
+	if m.searchErr != nil {
+		return nil, m.searchErr
+	}
+	return m.searchResults, nil
+}
+
 func (m *mockSearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	if m.synonymsErr != nil {
 		return m.synonymsErr
@@ -203,6 +210,102 @@ func TestSearchEngineGateway_Search(t *testing.T) {
 
 			if len(results) != tt.wantCount {
 				t.Errorf("Search() got %d results, want %d", len(results), tt.wantCount)
+				return
+			}
+
+			if tt.validateFirst != nil && len(results) > 0 {
+				if !tt.validateFirst(results[0]) {
+					t.Errorf("First result validation failed")
+				}
+			}
+		})
+	}
+}
+
+func TestSearchEngineGateway_SearchWithFilters(t *testing.T) {
+	driverDoc := driver.SearchDocumentDriver{
+		ID:      "1",
+		Title:   "Test Title",
+		Content: "Test Content",
+		Tags:    []string{"tag1", "tag2"},
+	}
+
+	tests := []struct {
+		name          string
+		query         string
+		filters       []string
+		limit         int
+		mockResults   []driver.SearchDocumentDriver
+		mockErr       error
+		wantErr       bool
+		wantCount     int
+		validateFirst func(domain.SearchDocument) bool
+	}{
+		{
+			name:        "successful search with filters",
+			query:       "test",
+			filters:     []string{"tag1", "tag2"},
+			limit:       10,
+			mockResults: []driver.SearchDocumentDriver{driverDoc},
+			mockErr:     nil,
+			wantErr:     false,
+			wantCount:   1,
+			validateFirst: func(doc domain.SearchDocument) bool {
+				return doc.ID == "1" &&
+					doc.Title == "Test Title" &&
+					doc.Content == "Test Content" &&
+					len(doc.Tags) == 2 &&
+					doc.Tags[0] == "tag1" &&
+					doc.Tags[1] == "tag2"
+			},
+		},
+		{
+			name:        "driver search error",
+			query:       "test",
+			filters:     []string{"tag1"},
+			limit:       10,
+			mockResults: nil,
+			mockErr:     &driver.DriverError{Op: "SearchWithFilters", Err: "search failed"},
+			wantErr:     true,
+			wantCount:   0,
+		},
+		{
+			name:        "empty results",
+			query:       "nonexistent",
+			filters:     []string{"tag1"},
+			limit:       10,
+			mockResults: []driver.SearchDocumentDriver{},
+			mockErr:     nil,
+			wantErr:     false,
+			wantCount:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			driver := &mockSearchDriver{
+				searchResults: tt.mockResults,
+				searchErr:     tt.mockErr,
+			}
+
+			gateway := NewSearchEngineGateway(driver)
+
+			results, err := gateway.SearchWithFilters(context.Background(), tt.query, tt.filters, tt.limit)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("SearchWithFilters() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("SearchWithFilters() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if len(results) != tt.wantCount {
+				t.Errorf("SearchWithFilters() got %d results, want %d", len(results), tt.wantCount)
 				return
 			}
 
