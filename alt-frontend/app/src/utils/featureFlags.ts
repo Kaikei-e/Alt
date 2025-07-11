@@ -1,6 +1,7 @@
 export interface FeatureFlags {
   enableVirtualization: boolean | 'auto';
   forceVirtualization: boolean;
+  enableDynamicSizing: boolean | 'auto';
   debugMode: boolean;
   virtualizationThreshold?: number;
 }
@@ -25,6 +26,7 @@ export class FeatureFlagManager {
     const envFlags = {
       enableVirtualization: process.env.NEXT_PUBLIC_ENABLE_VIRTUALIZATION || 'auto',
       forceVirtualization: process.env.NEXT_PUBLIC_FORCE_VIRTUALIZATION === 'true',
+      enableDynamicSizing: process.env.NEXT_PUBLIC_ENABLE_DYNAMIC_SIZING || 'auto',
       debugMode: process.env.NODE_ENV === 'development',
       virtualizationThreshold: parseInt(process.env.NEXT_PUBLIC_VIRTUALIZATION_THRESHOLD || '200')
     };
