@@ -28,7 +28,12 @@ func (m *mockArticleRepo) GetArticlesWithTags(ctx context.Context, lastCreatedAt
 	return m.articles, &createdAt, lastArticle.ID(), nil
 }
 
-func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
+type mockSearchEngineForIndexing struct {
+	indexedDocs []domain.SearchDocument
+	err         error
+}
+
+func (m *mockSearchEngineForIndexing) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -36,18 +41,25 @@ func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.Sea
 	return nil
 }
 
-func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
+func (m *mockSearchEngineForIndexing) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.indexedDocs, nil
 }
 
-func (m *mockSearchEngine) EnsureIndex(ctx context.Context) error {
+func (m *mockSearchEngineForIndexing) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.indexedDocs, nil
+}
+
+func (m *mockSearchEngineForIndexing) EnsureIndex(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
+func (m *mockSearchEngineForIndexing) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	return nil
 }
 
@@ -110,7 +122,7 @@ func TestIndexArticlesUsecase_Execute(t *testing.T) {
 				err:      tt.repoErr,
 			}
 
-			searchEngine := &mockSearchEngine{
+			searchEngine := &mockSearchEngineForIndexing{
 				err: tt.searchErr,
 			}
 
