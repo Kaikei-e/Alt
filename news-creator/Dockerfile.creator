@@ -1,7 +1,7 @@
 # ---- Base image -----------------------------------------------------------
 FROM ollama/ollama:0.9.7-rc0
 
-# ---- OS deps (bash, curl, netcat for healthchecks) -------------------------
+# ---- Install dependencies -------------------------------------------------
 USER root
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
@@ -15,26 +15,21 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# ---- 非特権ユーザー作成 (存在しなければ) -------------------------------
-ARG UID=1000
-ARG GID=1000
-RUN if ! getent group ${GID} >/dev/null; then \
-    groupadd -g ${GID} appuser; \
-    fi && \
-    if ! id -u ${UID} >/dev/null 2>&1; then \
-    useradd --create-home --shell /bin/bash -u ${UID} -g ${GID} appuser; \
-    fi
+# ---- Create dedicated appuser and group ----------------------------------
+# Use system user/group to avoid UID/GID conflicts
+RUN groupadd --system appuser \
+    && useradd --system --create-home --shell /bin/bash --gid appuser appuser
 
-# ---- モデルキャッシュ & 永続化ボリューム -----------------------------------
+# ---- Model cache persistence ---------------------------------------------
 ENV OLLAMA_HOME=/home/appuser/.ollama
 ENV OLLAMA_MODELS=$OLLAMA_HOME
 VOLUME ["$OLLAMA_HOME"]
 
-# ---- スクリプト配置 & 実行権付与 (root) -----------------------------------
+# ---- Copy entrypoint and set permissions --------------------------------
 COPY --chown=appuser:appuser entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# ---- ユーザー切り替えと作業ディレクトリ -----------------------------------
+# ---- Switch to non-root user ---------------------------------------------
 USER appuser
 WORKDIR /home/appuser
 
