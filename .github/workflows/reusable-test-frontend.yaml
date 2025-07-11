@@ -156,3 +156,4 @@ jobs:
           # 次回のためにクリーンアップ
           rm -rf "${{ runner.temp }}/pnpm-store" || true
           rm -rf "${{ runner.temp }}/pnpm-home" || true
+          killall -9 pnpm || true
