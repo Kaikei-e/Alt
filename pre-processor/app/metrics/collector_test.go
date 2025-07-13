@@ -1,5 +1,5 @@
 // ABOUTME: This file tests metrics collection system for performance monitoring and SLA tracking
-// ABOUTME: Tests metric aggregation, reporting, and integration with existing service components  
+// ABOUTME: Tests metric aggregation, reporting, and integration with existing service components
 package metrics
 
 import (
@@ -22,7 +22,6 @@ func testLogger() *slog.Logger {
 	}))
 }
 
-// TDD RED PHASE: Test metrics collector creation
 func TestNewMetricsCollector(t *testing.T) {
 	tests := map[string]struct {
 		config      config.MetricsConfig
@@ -105,7 +104,6 @@ func TestNewMetricsCollector(t *testing.T) {
 	}
 }
 
-// TDD RED PHASE: Test metric recording
 func TestMetricsCollector_RecordMetrics(t *testing.T) {
 	t.Run("should record request metrics", func(t *testing.T) {
 		config := config.MetricsConfig{
@@ -272,7 +270,6 @@ func TestMetricsCollector_ConcurrentAccess(t *testing.T) {
 	})
 }
 
-// TDD RED PHASE: Test metrics export
 func TestMetricsCollector_Export(t *testing.T) {
 	t.Run("should export metrics in JSON format", func(t *testing.T) {
 		config := config.MetricsConfig{
@@ -323,7 +320,6 @@ func TestMetricsCollector_Export(t *testing.T) {
 	})
 }
 
-// TDD RED PHASE: Test metric reset and cleanup
 func TestMetricsCollector_Management(t *testing.T) {
 	t.Run("should reset metrics", func(t *testing.T) {
 		config := config.MetricsConfig{
@@ -381,7 +377,6 @@ func TestMetricsCollector_Management(t *testing.T) {
 	})
 }
 
-// TDD RED PHASE: Test HTTP server integration
 func TestMetricsCollector_Server(t *testing.T) {
 	t.Run("should start and stop HTTP server", func(t *testing.T) {
 		config := config.MetricsConfig{
@@ -407,5 +402,79 @@ func TestMetricsCollector_Server(t *testing.T) {
 		// Stop server
 		err = collector.Stop(ctx)
 		require.NoError(t, err)
+	})
+
+	t.Run("should reproduce race condition between Start and Stop", func(t *testing.T) {
+		config := config.MetricsConfig{
+			Enabled:        true,
+			Port:           0, // Use random port for testing
+			Path:           "/metrics",
+			UpdateInterval: 10 * time.Second,
+		}
+
+		collector, err := NewCollector(config, testLogger())
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+
+		// This test should expose the race condition
+		// by repeatedly starting and stopping the server quickly
+		for i := 0; i < 10; i++ {
+			var wg sync.WaitGroup
+
+			// Start server in goroutine
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_ = collector.Start(ctx)
+			}()
+
+			// Stop server immediately in another goroutine
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				time.Sleep(1 * time.Millisecond) // Small delay to create race window
+				_ = collector.Stop(ctx)
+			}()
+
+			wg.Wait()
+		}
+	})
+
+	t.Run("should handle concurrent Start/Stop safely", func(t *testing.T) {
+		config := config.MetricsConfig{
+			Enabled:        true,
+			Port:           0,
+			Path:           "/metrics",
+			UpdateInterval: 10 * time.Second,
+		}
+
+		collector, err := NewCollector(config, testLogger())
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+
+		var wg sync.WaitGroup
+		concurrency := 5
+
+		// Multiple goroutines trying to start/stop concurrently
+		for i := 0; i < concurrency; i++ {
+			wg.Add(2)
+
+			go func() {
+				defer wg.Done()
+				_ = collector.Start(ctx)
+			}()
+
+			go func() {
+				defer wg.Done()
+				time.Sleep(10 * time.Millisecond)
+				_ = collector.Stop(ctx)
+			}()
+		}
+
+		wg.Wait()
 	})
 }

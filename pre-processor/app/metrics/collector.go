@@ -70,6 +70,7 @@ type Collector struct {
 	// HTTP server
 	server   *http.Server
 	serverMu sync.Mutex
+	serverWg sync.WaitGroup
 }
 
 // NewCollector creates a new metrics collector
@@ -119,7 +120,7 @@ func (c *Collector) RecordRequest(domain string, responseTime time.Duration, suc
 	defer c.mu.Unlock()
 
 	now := time.Now()
-	
+
 	domainMetrics, exists := c.metrics[domain]
 	if !exists {
 		domainMetrics = &DomainMetrics{
@@ -272,30 +273,30 @@ func (c *Collector) ExportPrometheus() string {
 	// Write domain-specific metrics
 	for _, domain := range domains {
 		metrics := c.metrics[domain]
-		
-		builder.WriteString(fmt.Sprintf("preprocessor_requests_total{domain=\"%s\"} %d\n", 
+
+		builder.WriteString(fmt.Sprintf("preprocessor_requests_total{domain=\"%s\"} %d\n",
 			domain, metrics.TotalRequests))
-		builder.WriteString(fmt.Sprintf("preprocessor_requests_success_total{domain=\"%s\"} %d\n", 
+		builder.WriteString(fmt.Sprintf("preprocessor_requests_success_total{domain=\"%s\"} %d\n",
 			domain, metrics.SuccessCount))
-		builder.WriteString(fmt.Sprintf("preprocessor_requests_failure_total{domain=\"%s\"} %d\n", 
+		builder.WriteString(fmt.Sprintf("preprocessor_requests_failure_total{domain=\"%s\"} %d\n",
 			domain, metrics.FailureCount))
-		builder.WriteString(fmt.Sprintf("preprocessor_response_time_seconds{domain=\"%s\"} %.6f\n", 
+		builder.WriteString(fmt.Sprintf("preprocessor_response_time_seconds{domain=\"%s\"} %.6f\n",
 			domain, metrics.AvgResponseTime.Seconds()))
-		builder.WriteString(fmt.Sprintf("preprocessor_success_rate{domain=\"%s\"} %.4f\n", 
+		builder.WriteString(fmt.Sprintf("preprocessor_success_rate{domain=\"%s\"} %.4f\n",
 			domain, metrics.SuccessRate))
 	}
 
 	// Write aggregate metrics
 	aggregate := c.GetAggregateMetrics()
-	builder.WriteString(fmt.Sprintf("preprocessor_requests_total{domain=\"_aggregate\"} %d\n", 
+	builder.WriteString(fmt.Sprintf("preprocessor_requests_total{domain=\"_aggregate\"} %d\n",
 		aggregate.TotalRequests))
-	builder.WriteString(fmt.Sprintf("preprocessor_requests_success_total{domain=\"_aggregate\"} %d\n", 
+	builder.WriteString(fmt.Sprintf("preprocessor_requests_success_total{domain=\"_aggregate\"} %d\n",
 		aggregate.SuccessCount))
-	builder.WriteString(fmt.Sprintf("preprocessor_requests_failure_total{domain=\"_aggregate\"} %d\n", 
+	builder.WriteString(fmt.Sprintf("preprocessor_requests_failure_total{domain=\"_aggregate\"} %d\n",
 		aggregate.FailureCount))
-	builder.WriteString(fmt.Sprintf("preprocessor_response_time_seconds{domain=\"_aggregate\"} %.6f\n", 
+	builder.WriteString(fmt.Sprintf("preprocessor_response_time_seconds{domain=\"_aggregate\"} %.6f\n",
 		aggregate.AvgResponseTime.Seconds()))
-	builder.WriteString(fmt.Sprintf("preprocessor_success_rate{domain=\"_aggregate\"} %.4f\n", 
+	builder.WriteString(fmt.Sprintf("preprocessor_success_rate{domain=\"_aggregate\"} %.4f\n",
 		aggregate.SuccessRate))
 
 	return builder.String()
@@ -335,7 +336,7 @@ func (c *Collector) Cleanup() {
 	}
 
 	if removed > 0 {
-		c.logger.Info("metrics cleanup completed", 
+		c.logger.Info("metrics cleanup completed",
 			"removed_domains", removed,
 			"remaining_domains", len(c.metrics))
 	}
@@ -355,18 +356,18 @@ func (c *Collector) Start(ctx context.Context) error {
 	}
 
 	mux := http.NewServeMux()
-	
+
 	// JSON metrics endpoint
 	mux.HandleFunc(c.path, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		jsonData, err := c.ExportJSON()
 		if err != nil {
 			c.logger.Error("failed to export JSON metrics", "error", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		
+
 		if _, err := w.Write(jsonData); err != nil {
 			c.logger.Error("failed to write JSON response", "error", err)
 		}
@@ -388,7 +389,7 @@ func (c *Collector) Start(ctx context.Context) error {
 		}
 	})
 
-	c.server = &http.Server{
+	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", c.port),
 		Handler:           mux,
 		ReadHeaderTimeout: c.readHeaderTimeout,
@@ -397,14 +398,21 @@ func (c *Collector) Start(ctx context.Context) error {
 		IdleTimeout:       c.idleTimeout,
 	}
 
+	c.server = server
+	c.serverWg.Add(1)
+
 	go func() {
-		c.logger.Info("starting metrics server", 
-			"port", c.port, 
+		defer c.serverWg.Done()
+
+		c.logger.Info("starting metrics server",
+			"port", c.port,
 			"path", c.path)
-		
-		if err := c.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			c.logger.Error("metrics server failed", "error", err)
 		}
+
+		c.logger.Info("metrics server stopped")
 	}()
 
 	return nil
