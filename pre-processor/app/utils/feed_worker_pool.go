@@ -132,4 +132,3 @@ func (p *FeedWorkerPool) worker(ctx context.Context, wg *sync.WaitGroup, jobQueu
 		}
 	}
 }
-
