@@ -654,11 +654,21 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		// Apply SSRF protection
 		err = isAllowedURL(parsedURL)
 		if err != nil {
-			securityErr := errors.ValidationError("URL not allowed for security reasons", map[string]interface{}{
-				"url":    rssFeedLink.URL,
-				"reason": err.Error(),
-			})
-			errors.LogError(logger.Logger, securityErr, "url_validation")
+			securityErr := errors.NewValidationContextError(
+				"URL not allowed for security reasons",
+				"rest",
+				"RESTHandler",
+				"register_feed",
+				map[string]interface{}{
+					"url":          rssFeedLink.URL,
+					"reason":       err.Error(),
+					"path":         c.Request().URL.Path,
+					"method":       c.Request().Method,
+					"remote_addr":  c.Request().RemoteAddr,
+					"request_id":   c.Response().Header().Get("X-Request-ID"),
+				},
+			)
+			logger.Logger.Error("URL validation failed", "error", securityErr.Error(), "url", rssFeedLink.URL)
 			return c.JSON(securityErr.HTTPStatusCode(), securityErr.ToHTTPResponse())
 		}
 
@@ -688,11 +698,21 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		}
 
 		if err = isAllowedURL(parsedURL); err != nil {
-			securityErr := errors.ValidationError("URL not allowed for security reasons", map[string]interface{}{
-				"url":    payload.URL,
-				"reason": err.Error(),
-			})
-			errors.LogError(logger.Logger, securityErr, "url_validation")
+			securityErr := errors.NewValidationContextError(
+				"URL not allowed for security reasons",
+				"rest",
+				"RESTHandler",
+				"register_favorite_feed",
+				map[string]interface{}{
+					"url":          payload.URL,
+					"reason":       err.Error(),
+					"path":         c.Request().URL.Path,
+					"method":       c.Request().Method,
+					"remote_addr":  c.Request().RemoteAddr,
+					"request_id":   c.Response().Header().Get("X-Request-ID"),
+				},
+			)
+			logger.Logger.Error("URL validation failed", "error", securityErr.Error(), "url", payload.URL)
 			return c.JSON(securityErr.HTTPStatusCode(), securityErr.ToHTTPResponse())
 		}
 
@@ -827,36 +847,101 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 }
 
-// handleError converts errors to appropriate HTTP responses using structured error handling
+// handleError converts errors to appropriate HTTP responses using enhanced error handling
 func handleError(c echo.Context, err error, operation string) error {
-	// Log the error with context
-	errors.LogError(logger.Logger, err, operation)
+	// Enrich error with REST layer context
+	var enrichedErr *errors.AppContextError
 
-	// Handle AppError types
-	if appErr, ok := err.(*errors.AppError); ok {
-		return c.JSON(appErr.HTTPStatusCode(), appErr.ToHTTPResponse())
+	// Check if it's already an AppContextError and enrich it with REST context
+	if appContextErr, ok := err.(*errors.AppContextError); ok {
+		enrichedErr = errors.EnrichWithContext(
+			appContextErr,
+			"rest",
+			"RESTHandler",
+			operation,
+			map[string]interface{}{
+				"path":         c.Request().URL.Path,
+				"method":       c.Request().Method,
+				"remote_addr":  c.Request().RemoteAddr,
+				"user_agent":   c.Request().UserAgent(),
+				"request_id":   c.Response().Header().Get("X-Request-ID"),
+			},
+		)
+	} else if appErr, ok := err.(*errors.AppError); ok {
+		// Handle legacy AppError by converting to AppContextError
+		enrichedErr = errors.NewAppContextError(
+			string(appErr.Code),
+			appErr.Message,
+			"rest",
+			"RESTHandler",
+			operation,
+			appErr.Cause,
+			map[string]interface{}{
+				"path":         c.Request().URL.Path,
+				"method":       c.Request().Method,
+				"remote_addr":  c.Request().RemoteAddr,
+				"user_agent":   c.Request().UserAgent(),
+				"request_id":   c.Response().Header().Get("X-Request-ID"),
+				"legacy_context": appErr.Context,
+			},
+		)
+	} else {
+		// Handle unknown errors
+		enrichedErr = errors.NewUnknownContextError(
+			"internal server error",
+			"rest",
+			"RESTHandler",
+			operation,
+			err,
+			map[string]interface{}{
+				"path":         c.Request().URL.Path,
+				"method":       c.Request().Method,
+				"remote_addr":  c.Request().RemoteAddr,
+				"user_agent":   c.Request().UserAgent(),
+				"request_id":   c.Response().Header().Get("X-Request-ID"),
+			},
+		)
 	}
 
-	// Handle unknown errors
-	unknownErr := errors.UnknownError("internal server error", err, map[string]interface{}{
-		"operation": operation,
-		"path":      c.Request().URL.Path,
-		"method":    c.Request().Method,
-	})
+	// Log the enriched error with context
+	logger.Logger.Error("REST handler error",
+		"error", enrichedErr.Error(),
+		"error_code", enrichedErr.Code,
+		"layer", enrichedErr.Layer,
+		"component", enrichedErr.Component,
+		"operation", enrichedErr.Operation,
+		"path", c.Request().URL.Path,
+		"method", c.Request().Method,
+		"is_retryable", enrichedErr.IsRetryable(),
+	)
 
-	errors.LogError(logger.Logger, unknownErr, operation)
-	return c.JSON(unknownErr.HTTPStatusCode(), unknownErr.ToHTTPResponse())
+	return c.JSON(enrichedErr.HTTPStatusCode(), enrichedErr.ToHTTPResponse())
 }
 
-// handleValidationError creates a validation error response
+// handleValidationError creates a validation error response with enhanced context
 func handleValidationError(c echo.Context, message string, field string, value interface{}) error {
-	validationErr := errors.ValidationError(message, map[string]interface{}{
-		"field": field,
-		"value": value,
-		"path":  c.Request().URL.Path,
-	})
+	validationErr := errors.NewValidationContextError(
+		message,
+		"rest",
+		"RESTHandler",
+		"validateInput",
+		map[string]interface{}{
+			"field":        field,
+			"value":        value,
+			"path":         c.Request().URL.Path,
+			"method":       c.Request().Method,
+			"remote_addr":  c.Request().RemoteAddr,
+			"user_agent":   c.Request().UserAgent(),
+			"request_id":   c.Response().Header().Get("X-Request-ID"),
+		},
+	)
 
-	errors.LogError(logger.Logger, validationErr, "validation")
+	logger.Logger.Error("REST validation error",
+		"error", validationErr.Error(),
+		"field", field,
+		"value", value,
+		"path", c.Request().URL.Path,
+	)
 	return c.JSON(validationErr.HTTPStatusCode(), validationErr.ToHTTPResponse())
 }
 

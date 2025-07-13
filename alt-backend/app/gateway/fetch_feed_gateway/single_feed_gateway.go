@@ -33,20 +33,32 @@ func NewSingleFeedGatewayWithRateLimiter(pool *pgxpool.Pool, rateLimiter *rate_l
 
 func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFeed, error) {
 	if g.alt_db == nil {
-		dbErr := errors.DatabaseError("database connection not available", nil, map[string]interface{}{
-			"gateway": "SingleFeedGateway",
-			"method":  "FetchSingleFeed",
-		})
+		dbErr := errors.NewDatabaseUnavailableError(
+			"gateway",
+			"SingleFeedGateway", 
+			"FetchSingleFeed",
+			nil,
+			map[string]interface{}{
+				"component": "SingleFeedGateway",
+				"operation": "database_connection_check",
+			},
+		)
 		logger.GlobalContext.LogError(ctx, "database_connection_check", dbErr)
 		return nil, dbErr
 	}
 	// Get RSS feed URLs from the database
 	feedURLs, err := g.alt_db.FetchRSSFeedURLs(ctx)
 	if err != nil {
-		dbErr := errors.DatabaseError("failed to fetch RSS feed URLs", err, map[string]interface{}{
-			"gateway": "SingleFeedGateway",
-			"method":  "FetchRSSFeedURLs",
-		})
+		dbErr := errors.NewDatabaseUnavailableError(
+			"gateway",
+			"SingleFeedGateway", 
+			"FetchRSSFeedURLs",
+			err,
+			map[string]interface{}{
+				"component": "SingleFeedGateway",
+				"operation": "fetch_rss_feed_urls",
+			},
+		)
 		logger.GlobalContext.LogError(ctx, "fetch_rss_feed_urls", dbErr)
 		return nil, dbErr
 	}
@@ -68,11 +80,18 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 	if g.rateLimiter != nil {
 		logger.GlobalContext.WithContext(ctx).Info("Applying rate limiting for external single feed request", "url", feedURL.String())
 		if err := g.rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
-			rateLimitErr := errors.RateLimitError("rate limiting failed for feed fetch", err, map[string]interface{}{
-				"gateway": "SingleFeedGateway",
-				"url":     feedURL.String(),
-				"host":    feedURL.Host,
-			})
+			rateLimitErr := errors.NewRateLimitExceededError(
+				"gateway",
+				"SingleFeedGateway", 
+				"WaitForHost",
+				err,
+				map[string]interface{}{
+					"component": "SingleFeedGateway",
+					"operation": "rate_limit_wait",
+					"url":       feedURL.String(),
+					"host":      feedURL.Host,
+				},
+			)
 			logger.GlobalContext.LogError(ctx, "rate_limit_wait", rateLimitErr)
 			return nil, rateLimitErr
 		}
@@ -83,11 +102,18 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(feedURL.String())
 	if err != nil {
-		apiErr := errors.ExternalAPIError("failed to parse RSS feed", err, map[string]interface{}{
-			"gateway": "SingleFeedGateway",
-			"url":     feedURL.String(),
-			"method":  "ParseURL",
-		})
+		apiErr := errors.NewExternalServiceUnavailableError(
+			"gateway",
+			"SingleFeedGateway", 
+			"ParseURL",
+			err,
+			map[string]interface{}{
+				"component": "SingleFeedGateway",
+				"operation": "external_feed_parse",
+				"url":       feedURL.String(),
+				"parser":    "gofeed",
+			},
+		)
 		logger.GlobalContext.LogError(ctx, "external_feed_parse", apiErr)
 		return nil, apiErr
 	}
