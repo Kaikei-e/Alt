@@ -141,7 +141,7 @@
   --alt-tertiary: var(--alt-sand);
 
   /* Glass properties - 視認性を向上 */
-  --surface-bg: rgba(255, 253, 250, 0.4); /* より明確な背景 */
+  --surface-bg: rgba(255, 253, 250, 0.1); /* より明確な背景 */
   --surface-border: rgba(139, 119, 101, 0.3); /* ボーダーを濃く */
   --surface-hover: rgba(255, 253, 250, 0.6); /* hover時の変化を明確に */
   --surface-blur: 12px; /* ブラーを調整 */
