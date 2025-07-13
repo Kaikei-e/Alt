@@ -43,7 +43,7 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 				"operation": "database_connection_check",
 			},
 		)
-		logger.GlobalContext.LogError(ctx, "database_connection_check", dbErr)
+		logger.SafeLogErrorWithAppContext(ctx, "database_connection_check", dbErr)
 		return nil, dbErr
 	}
 	// Get RSS feed URLs from the database
@@ -59,12 +59,12 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 				"operation": "fetch_rss_feed_urls",
 			},
 		)
-		logger.GlobalContext.LogError(ctx, "fetch_rss_feed_urls", dbErr)
+		logger.SafeLogErrorWithAppContext(ctx, "fetch_rss_feed_urls", dbErr)
 		return nil, dbErr
 	}
 
 	if len(feedURLs) == 0 {
-		logger.GlobalContext.WithContext(ctx).Info("No RSS feed URLs found in database")
+		logger.SafeLogInfo(ctx, "No RSS feed URLs found in database")
 		return &domain.RSSFeed{
 			Title:       "No feeds available",
 			Description: "No RSS feed URLs have been registered",
@@ -74,11 +74,11 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 
 	// Use the first available feed URL
 	feedURL := feedURLs[0]
-	logger.GlobalContext.WithContext(ctx).Info("Fetching RSS feed", "url", feedURL.String())
+	logger.SafeLogInfo(ctx, "Fetching RSS feed", "url", feedURL.String())
 
 	// Apply rate limiting if rate limiter is configured
 	if g.rateLimiter != nil {
-		logger.GlobalContext.WithContext(ctx).Info("Applying rate limiting for external single feed request", "url", feedURL.String())
+		logger.SafeLogInfo(ctx, "Applying rate limiting for external single feed request", "url", feedURL.String())
 		if err := g.rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
 			rateLimitErr := errors.NewRateLimitExceededError(
 				"gateway",
@@ -92,10 +92,10 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 					"host":      feedURL.Host,
 				},
 			)
-			logger.GlobalContext.LogError(ctx, "rate_limit_wait", rateLimitErr)
+			logger.SafeLogErrorWithAppContext(ctx, "rate_limit_wait", rateLimitErr)
 			return nil, rateLimitErr
 		}
-		logger.GlobalContext.WithContext(ctx).Info("Rate limiting passed, proceeding with single feed request", "url", feedURL.String())
+		logger.SafeLogInfo(ctx, "Rate limiting passed, proceeding with single feed request", "url", feedURL.String())
 	}
 
 	// Parse the RSS feed from the URL
@@ -114,14 +114,14 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 				"parser":    "gofeed",
 			},
 		)
-		logger.GlobalContext.LogError(ctx, "external_feed_parse", apiErr)
+		logger.SafeLogErrorWithAppContext(ctx, "external_feed_parse", apiErr)
 		return nil, apiErr
 	}
 
 	// Convert the gofeed.Feed to domain.RSSFeed
 	domainFeed := convertGofeedToDomain(feed)
 
-	logger.GlobalContext.WithContext(ctx).Info("Successfully fetched RSS feed", "title", domainFeed.Title, "items", len(domainFeed.Items))
+	logger.SafeLogInfo(ctx, "Successfully fetched RSS feed", "title", domainFeed.Title, "items", len(domainFeed.Items))
 
 	return domainFeed, nil
 }

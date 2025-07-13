@@ -285,6 +285,63 @@ func TestFetchSingleFeedUsecase_Execute_ContextPropagation(t *testing.T) {
 	}
 }
 
+func TestFetchSingleFeedUsecase_Execute_LoggerNilCase(t *testing.T) {
+	// RED: Test to demonstrate the nil logger.GlobalContext issue
+	// Save original logger
+	originalLogger := logger.Logger
+	originalGlobalContext := logger.GlobalContext
+	
+	// Set logger to nil to simulate uninitialized state
+	logger.Logger = nil
+	logger.GlobalContext = nil
+	
+	// Restore logger after test
+	defer func() {
+		logger.Logger = originalLogger
+		logger.GlobalContext = originalGlobalContext
+	}()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	ctx := context.Background()
+
+	mockPort := mocks.NewMockFetchSingleFeedPort(ctrl)
+	
+	// Setup mock to return an error that will trigger logger.GlobalContext usage
+	dbErr := errors.DatabaseError(
+		"database connection failed",
+		fmt.Errorf("connection refused"),
+		map[string]interface{}{
+			"host": "localhost",
+		},
+	)
+	mockPort.EXPECT().FetchSingleFeed(ctx).Return(nil, dbErr).Times(1)
+
+	usecase := NewFetchSingleFeedUsecase(mockPort)
+	
+	// GREEN: This should no longer panic after the fix
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Unexpected panic occurred: %v", r)
+		}
+	}()
+	
+	// This call should NOT panic after the fix
+	_, err := usecase.Execute(ctx)
+	
+	// We should get an error but no panic
+	if err == nil {
+		t.Error("Expected error but got nil")
+	}
+	
+	// Verify it's an AppContextError
+	if appErr, ok := err.(*errors.AppContextError); ok {
+		t.Logf("Success: Got expected AppContextError: %s", appErr.Message)
+	} else {
+		t.Errorf("Expected AppContextError, got %T", err)
+	}
+}
+
 func TestFetchSingleFeedUsecase_Execute_EdgeCases(t *testing.T) {
 	// Initialize logger
 	logger.InitLogger()

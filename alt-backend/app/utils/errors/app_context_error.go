@@ -118,15 +118,11 @@ func EnrichWithContext(
 ) *AppContextError {
 	// Merge context
 	mergedContext := make(map[string]interface{})
-	if err.Context != nil {
-		for k, v := range err.Context {
-			mergedContext[k] = v
-		}
+	for k, v := range err.Context {
+		mergedContext[k] = v
 	}
-	if additionalContext != nil {
-		for k, v := range additionalContext {
-			mergedContext[k] = v
-		}
+	for k, v := range additionalContext {
+		mergedContext[k] = v
 	}
 
 	return &AppContextError{

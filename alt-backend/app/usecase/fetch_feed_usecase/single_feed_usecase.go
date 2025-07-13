@@ -30,7 +30,7 @@ func (u *FetchSingleFeedUsecase) Execute(ctx context.Context) (*domain.RSSFeed, 
 					"usecase_operation": "execute_fetch_single_feed",
 				},
 			)
-			logger.GlobalContext.LogError(ctx, "fetch_single_feed_usecase", enrichedErr)
+			logger.SafeLogErrorWithAppContext(ctx, "fetch_single_feed_usecase", enrichedErr)
 			return nil, enrichedErr
 		}
 
@@ -49,7 +49,7 @@ func (u *FetchSingleFeedUsecase) Execute(ctx context.Context) (*domain.RSSFeed, 
 					"legacy_context":    appErr.Context,
 				},
 			)
-			logger.GlobalContext.LogError(ctx, "fetch_single_feed_usecase", enrichedErr)
+			logger.SafeLogErrorWithAppContext(ctx, "fetch_single_feed_usecase", enrichedErr)
 			return nil, enrichedErr
 		}
 
@@ -68,7 +68,7 @@ func (u *FetchSingleFeedUsecase) Execute(ctx context.Context) (*domain.RSSFeed, 
 		return nil, unknownErr
 	}
 
-	logger.GlobalContext.WithContext(ctx).Info("successfully executed fetch single feed usecase",
+	logger.SafeLogInfo(ctx, "successfully executed fetch single feed usecase",
 		"usecase", "FetchSingleFeedUsecase",
 		"feed_title", feed.Title,
 		"feed_items", len(feed.Items),
