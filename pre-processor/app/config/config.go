@@ -59,10 +59,14 @@ type DLQConfig struct {
 }
 
 type MetricsConfig struct {
-	Enabled        bool          `json:"enabled" env:"METRICS_ENABLED" default:"true"`
-	Port           int           `json:"port" env:"METRICS_PORT" default:"9201"`
-	Path           string        `json:"path" env:"METRICS_PATH" default:"/metrics"`
-	UpdateInterval time.Duration `json:"update_interval" env:"METRICS_UPDATE_INTERVAL" default:"10s"`
+	Enabled           bool          `json:"enabled" env:"METRICS_ENABLED" default:"true"`
+	Port              int           `json:"port" env:"METRICS_PORT" default:"9201"`
+	Path              string        `json:"path" env:"METRICS_PATH" default:"/metrics"`
+	UpdateInterval    time.Duration `json:"update_interval" env:"METRICS_UPDATE_INTERVAL" default:"10s"`
+	ReadHeaderTimeout time.Duration `json:"read_header_timeout" env:"METRICS_READ_HEADER_TIMEOUT" default:"10s"`
+	ReadTimeout       time.Duration `json:"read_timeout" env:"METRICS_READ_TIMEOUT" default:"30s"`
+	WriteTimeout      time.Duration `json:"write_timeout" env:"METRICS_WRITE_TIMEOUT" default:"30s"`
+	IdleTimeout       time.Duration `json:"idle_timeout" env:"METRICS_IDLE_TIMEOUT" default:"120s"`
 }
 
 func LoadConfig() (*Config, error) {

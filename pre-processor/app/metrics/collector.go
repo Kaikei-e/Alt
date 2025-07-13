@@ -53,11 +53,15 @@ type ExportData struct {
 
 // Collector manages metric collection and aggregation
 type Collector struct {
-	enabled        bool
-	port           int
-	path           string
-	updateInterval time.Duration
-	logger         *slog.Logger
+	enabled           bool
+	port              int
+	path              string
+	updateInterval    time.Duration
+	readHeaderTimeout time.Duration
+	readTimeout       time.Duration
+	writeTimeout      time.Duration
+	idleTimeout       time.Duration
+	logger            *slog.Logger
 
 	// Metrics storage
 	metrics map[string]*DomainMetrics
@@ -80,12 +84,16 @@ func NewCollector(cfg config.MetricsConfig, logger *slog.Logger) (*Collector, er
 	}
 
 	collector := &Collector{
-		enabled:        cfg.Enabled,
-		port:           cfg.Port,
-		path:           cfg.Path,
-		updateInterval: cfg.UpdateInterval,
-		logger:         logger,
-		metrics:        make(map[string]*DomainMetrics),
+		enabled:           cfg.Enabled,
+		port:              cfg.Port,
+		path:              cfg.Path,
+		updateInterval:    cfg.UpdateInterval,
+		readHeaderTimeout: cfg.ReadHeaderTimeout,
+		readTimeout:       cfg.ReadTimeout,
+		writeTimeout:      cfg.WriteTimeout,
+		idleTimeout:       cfg.IdleTimeout,
+		logger:            logger,
+		metrics:           make(map[string]*DomainMetrics),
 	}
 
 	if cfg.Path == "" {
@@ -359,24 +367,34 @@ func (c *Collector) Start(ctx context.Context) error {
 			return
 		}
 		
-		w.Write(jsonData)
+		if _, err := w.Write(jsonData); err != nil {
+			c.logger.Error("failed to write JSON response", "error", err)
+		}
 	})
 
 	// Prometheus metrics endpoint
 	mux.HandleFunc(c.path+"/prometheus", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte(c.ExportPrometheus()))
+		if _, err := w.Write([]byte(c.ExportPrometheus())); err != nil {
+			c.logger.Error("failed to write Prometheus response", "error", err)
+		}
 	})
 
 	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"healthy","service":"pre-processor-metrics"}`))
+		if _, err := w.Write([]byte(`{"status":"healthy","service":"pre-processor-metrics"}`)); err != nil {
+			c.logger.Error("failed to write health response", "error", err)
+		}
 	})
 
 	c.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", c.port),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", c.port),
+		Handler:           mux,
+		ReadHeaderTimeout: c.readHeaderTimeout,
+		ReadTimeout:       c.readTimeout,
+		WriteTimeout:      c.writeTimeout,
+		IdleTimeout:       c.idleTimeout,
 	}
 
 	go func() {

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"math/rand"
+	"crypto/rand"
 	"time"
 )
 
@@ -128,7 +128,18 @@ func (r *Retrier) calculateDelay(attempt int) time.Duration {
 	}
 
 	// ジッター追加（サンダリングハード防止）
-	jitter := 1.0 + (rand.Float64()-0.5)*r.config.JitterFactor
+	jitterBytes := make([]byte, 8)
+	n, err := rand.Read(jitterBytes)
+	if err != nil || n != 8 {
+		r.logger.Error("failed to read random bytes for jitter", "error", err)
+		jitterBytes = []byte{0, 0, 0, 0, 0, 0, 0, 0} // デフォルト値
+	}
+	jitterInt := int64(jitterBytes[0]) | int64(jitterBytes[1])<<8 | int64(jitterBytes[2])<<16 | int64(jitterBytes[3])<<24 |
+		int64(jitterBytes[4])<<32 | int64(jitterBytes[5])<<40 | int64(jitterBytes[6])<<48 | int64(jitterBytes[7])<<56
+	if jitterInt < 0 {
+		jitterInt = -jitterInt
+	}
+	jitter := 1.0 + (float64(jitterInt%1000)/1000.0)*r.config.JitterFactor
 	delay *= jitter
 
 	return time.Duration(delay)

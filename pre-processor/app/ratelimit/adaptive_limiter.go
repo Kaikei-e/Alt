@@ -104,7 +104,9 @@ func NewAdaptiveLimiter(cfg config.RateLimitConfig, logger *slog.Logger) (*Adapt
 
 // Wait blocks until the request can proceed for the given domain
 func (al *AdaptiveLimiter) Wait(domain string) {
-	al.WaitWithContext(context.Background(), domain)
+	if err := al.WaitWithContext(context.Background(), domain); err != nil {
+		al.logger.Error("rate limit wait failed", "domain", domain, "error", err)
+	}
 }
 
 // WaitWithContext blocks until the request can proceed or context is cancelled

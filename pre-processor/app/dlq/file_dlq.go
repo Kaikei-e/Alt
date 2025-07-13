@@ -155,7 +155,7 @@ func (dlq *FileDLQManager) writeMessageToFile(message FailedArticleMessage) erro
 	dir := filepath.Join(dlq.config.BasePath, "failed-articles", dateDir)
 
 	dirStart := time.Now()
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		dirDuration := time.Since(dirStart)
 		dlq.logger.Error("failed to create DLQ directory",
 			"dir", dir,
@@ -191,7 +191,7 @@ func (dlq *FileDLQManager) writeMessageToFile(message FailedArticleMessage) erro
 
 	// 一時ファイルに書き込み（原子性保証）
 	writeStart := time.Now()
-	if err := os.WriteFile(tempFile, messageBytes, 0644); err != nil {
+	if err := os.WriteFile(tempFile, messageBytes, 0600); err != nil {
 		writeDuration := time.Since(writeStart)
 		dlq.logger.Error("failed to write temp DLQ file",
 			"temp_file", tempFile,
@@ -206,7 +206,9 @@ func (dlq *FileDLQManager) writeMessageToFile(message FailedArticleMessage) erro
 	renameStart := time.Now()
 	if err := os.Rename(tempFile, targetPath); err != nil {
 		renameDuration := time.Since(renameStart)
-		os.Remove(tempFile) // クリーンアップ
+		if cleanupErr := os.Remove(tempFile); cleanupErr != nil {
+			dlq.logger.Error("failed to cleanup temp file", "temp_file", tempFile, "error", cleanupErr)
+		} // クリーンアップ
 		dlq.logger.Error("failed to rename DLQ file",
 			"temp_file", tempFile,
 			"target_file", targetPath,
