@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useWindowSize } from '@/hooks/useWindowSize';
-import { FeatureFlagManager } from '@/utils/featureFlags';
-import { VirtualFeedListCore } from './VirtualFeedListCore';
-import { DynamicVirtualFeedList } from './DynamicVirtualFeedList';
-import { Feed } from '@/schema/feed';
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useWindowSize } from "@/hooks/useWindowSize";
+import { FeatureFlagManager } from "@/utils/featureFlags";
+import { VirtualFeedListCore } from "./VirtualFeedListCore";
+import { DynamicVirtualFeedList } from "./DynamicVirtualFeedList";
+import { Feed } from "@/schema/feed";
 
 interface VirtualFeedListImplProps {
   feeds: Feed[];
@@ -16,7 +16,7 @@ interface VirtualFeedListImplProps {
 export const VirtualFeedListImpl: React.FC<VirtualFeedListImplProps> = ({
   feeds,
   readFeeds,
-  onMarkAsRead
+  onMarkAsRead,
 }) => {
   const { height: windowHeight } = useWindowSize();
   const [useDynamicSizing, setUseDynamicSizing] = useState(false);
@@ -25,8 +25,9 @@ export const VirtualFeedListImpl: React.FC<VirtualFeedListImplProps> = ({
   // 動的サイズ調整の有効/無効判定
   useEffect(() => {
     const flags = FeatureFlagManager.getInstance().getFlags();
-    const enableDynamic = flags.enableDynamicSizing !== false && !dynamicSizingError;
-    
+    const enableDynamic =
+      flags.enableDynamicSizing !== false && !dynamicSizingError;
+
     // フィード数が少ない場合は動的サイズ調整を無効化
     if (feeds.length < 100) {
       setUseDynamicSizing(false);
@@ -34,8 +35,8 @@ export const VirtualFeedListImpl: React.FC<VirtualFeedListImplProps> = ({
     }
 
     // コンテンツの変動が大きい場合のみ動的サイズ調整を有効化
-    const hasVariableContent = feeds.some(feed => 
-      feed.description.length > 500 || feed.title.length > 100
+    const hasVariableContent = feeds.some(
+      (feed) => feed.description.length > 500 || feed.title.length > 100,
     );
 
     setUseDynamicSizing(enableDynamic && hasVariableContent);
@@ -43,13 +44,13 @@ export const VirtualFeedListImpl: React.FC<VirtualFeedListImplProps> = ({
 
   // 動的サイズ調整エラー処理
   const handleDynamicSizingError = useCallback((error: Error) => {
-    console.error('Dynamic sizing error:', error);
+    console.error("Dynamic sizing error:", error);
     setDynamicSizingError(true);
     setUseDynamicSizing(false);
-    
+
     // フィーチャーフラグを無効化
     FeatureFlagManager.getInstance().updateFlags({
-      enableDynamicSizing: false
+      enableDynamicSizing: false,
     });
   }, []);
 
@@ -92,12 +93,12 @@ export const VirtualFeedListImpl: React.FC<VirtualFeedListImplProps> = ({
 function estimateItemHeight(feeds: Feed[]): number {
   if (feeds.length === 0) return 200;
 
-  const avgDescriptionLength = feeds.reduce((sum, feed) => 
-    sum + feed.description.length, 0
-  ) / feeds.length;
+  const avgDescriptionLength =
+    feeds.reduce((sum, feed) => sum + feed.description.length, 0) /
+    feeds.length;
 
   const baseHeight = 120;
   const additionalHeight = Math.min(avgDescriptionLength / 4, 100);
-  
+
   return baseHeight + additionalHeight;
 }

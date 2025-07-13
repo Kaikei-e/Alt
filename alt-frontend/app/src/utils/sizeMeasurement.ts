@@ -14,7 +14,7 @@ export class SizeMeasurementManager {
 
   async measureElement(
     element: HTMLElement,
-    key: string
+    key: string,
   ): Promise<MeasurementResult | null> {
     try {
       // 既にキャッシュに存在する場合
@@ -40,23 +40,23 @@ export class SizeMeasurementManager {
       const result: MeasurementResult = {
         height: rect.height,
         width: rect.width,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       this.measurementCache.set(key, result);
       this.pendingMeasurements.delete(key);
-      
+
       return result;
     } catch (error) {
       this.errorCount++;
       this.pendingMeasurements.delete(key);
-      
+
       if (this.errorCount > this.maxErrors) {
-        this.onError?.(new Error('Too many measurement errors'));
+        this.onError?.(new Error("Too many measurement errors"));
         return null;
       }
 
-      console.warn('Size measurement failed:', error);
+      console.warn("Size measurement failed:", error);
       return null;
     }
   }
@@ -72,7 +72,7 @@ export class SizeMeasurementManager {
     const lineHeight = 24;
     const charactersPerLine = 50;
     const estimatedLines = Math.ceil(contentLength / charactersPerLine);
-    
-    return baseHeight + (estimatedLines * lineHeight);
+
+    return baseHeight + estimatedLines * lineHeight;
   }
 }

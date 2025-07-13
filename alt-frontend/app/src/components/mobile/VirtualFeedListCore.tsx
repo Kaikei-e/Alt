@@ -1,10 +1,10 @@
 "use client";
 
-import { useVirtualizer } from '@tanstack/react-virtual';
-import React, { useRef, useCallback, useEffect } from 'react';
-import { Box, Text } from '@chakra-ui/react';
-import { Feed } from '@/schema/feed';
-import FeedCard from './FeedCard';
+import { useVirtualizer } from "@tanstack/react-virtual";
+import React, { useRef, useCallback, useEffect } from "react";
+import { Box, Text } from "@chakra-ui/react";
+import { Feed } from "@/schema/feed";
+import FeedCard from "./FeedCard";
 
 interface VirtualFeedListCoreProps {
   feeds: Feed[];
@@ -21,7 +21,7 @@ export const VirtualFeedListCore: React.FC<VirtualFeedListCoreProps> = ({
   onMarkAsRead,
   estimatedItemHeight,
   containerHeight,
-  overscan = 5
+  overscan = 5,
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -42,9 +42,12 @@ export const VirtualFeedListCore: React.FC<VirtualFeedListCoreProps> = ({
     }
   }, [feeds.length]);
 
-  const handleMarkAsRead = useCallback((feedLink: string) => {
-    onMarkAsRead(feedLink);
-  }, [onMarkAsRead]);
+  const handleMarkAsRead = useCallback(
+    (feedLink: string) => {
+      onMarkAsRead(feedLink);
+    },
+    [onMarkAsRead],
+  );
 
   if (feeds.length === 0) {
     return (
@@ -67,17 +70,17 @@ export const VirtualFeedListCore: React.FC<VirtualFeedListCoreProps> = ({
       overflow="auto"
       data-testid="virtual-scroll-container"
       css={{
-        scrollBehavior: 'smooth',
-        '&::-webkit-scrollbar': {
-          width: '6px',
+        scrollBehavior: "smooth",
+        "&::-webkit-scrollbar": {
+          width: "6px",
         },
-        '&::-webkit-scrollbar-track': {
-          background: 'var(--surface-secondary)',
-          borderRadius: '3px',
+        "&::-webkit-scrollbar-track": {
+          background: "var(--surface-secondary)",
+          borderRadius: "3px",
         },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'var(--accent-primary)',
-          borderRadius: '3px',
+        "&::-webkit-scrollbar-thumb": {
+          background: "var(--accent-primary)",
+          borderRadius: "3px",
           opacity: 0.7,
         },
       }}
@@ -90,7 +93,7 @@ export const VirtualFeedListCore: React.FC<VirtualFeedListCoreProps> = ({
       >
         {virtualizer.getVirtualItems().map((virtualItem) => {
           const feed = feeds[virtualItem.index];
-          
+
           return (
             <Box
               key={virtualItem.key}

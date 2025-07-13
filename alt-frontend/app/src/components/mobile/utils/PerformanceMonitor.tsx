@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { Box, Text, VStack, HStack, Badge, IconButton } from '@chakra-ui/react';
-import { ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from "react";
+import { Box, Text, VStack, HStack, Badge, IconButton } from "@chakra-ui/react";
+import { ChevronDown, ChevronUp, Activity } from "lucide-react";
 
 interface PerformanceMetrics {
   renderTime: number;
@@ -48,12 +48,13 @@ export const usePerformanceProfiler = () => {
       const renderTime = endTime - startTime;
 
       // Update metrics
-      setMetrics(prev => ({
+      setMetrics((prev) => ({
         ...prev,
         renderTime,
         componentCount: prev.componentCount + 1,
-        memoryUsage: (performance as PerformanceWithMemory).memory?.usedJSHeapSize || 0,
-        domNodes: document.querySelectorAll('*').length,
+        memoryUsage:
+          (performance as PerformanceWithMemory).memory?.usedJSHeapSize || 0,
+        domNodes: document.querySelectorAll("*").length,
         lastUpdate: Date.now(),
       }));
     };
@@ -75,7 +76,7 @@ export const usePerformanceProfiler = () => {
 // Performance monitor component
 export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
   componentName,
-  enabled = process.env.NODE_ENV === 'development',
+  enabled = process.env.NODE_ENV === "development",
   children,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -97,34 +98,39 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
     const observer = new PerformanceObserver((list) => {
       const entries = list.getEntries();
       entries.forEach((entry) => {
-        if (entry.entryType === 'largest-contentful-paint') {
-          setWebVitals(prev => ({ ...prev, LCP: entry.startTime }));
+        if (entry.entryType === "largest-contentful-paint") {
+          setWebVitals((prev) => ({ ...prev, LCP: entry.startTime }));
         }
-        if (entry.entryType === 'first-input') {
+        if (entry.entryType === "first-input") {
           const firstInput = entry as PerformanceEventTiming;
-          setWebVitals(prev => ({ ...prev, FID: firstInput.processingStart - firstInput.startTime }));
-        }
-        if (entry.entryType === 'layout-shift') {
-          setWebVitals(prev => ({
+          setWebVitals((prev) => ({
             ...prev,
-            CLS: (prev.CLS || 0) + (entry as LayoutShift).value
+            FID: firstInput.processingStart - firstInput.startTime,
+          }));
+        }
+        if (entry.entryType === "layout-shift") {
+          setWebVitals((prev) => ({
+            ...prev,
+            CLS: (prev.CLS || 0) + (entry as LayoutShift).value,
           }));
         }
       });
     });
 
-    observer.observe({ entryTypes: ['largest-contentful-paint', 'first-input', 'layout-shift'] });
+    observer.observe({
+      entryTypes: ["largest-contentful-paint", "first-input", "layout-shift"],
+    });
 
     return () => observer.disconnect();
   }, [enabled]);
 
   // Format bytes
   const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   // Get performance status
@@ -133,9 +139,9 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
     const fid = webVitals.FID || 0;
     const cls = webVitals.CLS || 0;
 
-    if (lcp > 4000 || fid > 300 || cls > 0.25) return 'poor';
-    if (lcp > 2500 || fid > 100 || cls > 0.1) return 'needs-improvement';
-    return 'good';
+    if (lcp > 4000 || fid > 300 || cls > 0.25) return "poor";
+    if (lcp > 2500 || fid > 100 || cls > 0.1) return "needs-improvement";
+    return "good";
   };
 
   const performanceStatus = getPerformanceStatus();
@@ -171,14 +177,21 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
         >
           <HStack gap={2}>
             <Activity size={16} color="var(--accent-primary)" />
-            <Text fontSize="sm" fontWeight="semibold" color="var(--text-primary)">
+            <Text
+              fontSize="sm"
+              fontWeight="semibold"
+              color="var(--text-primary)"
+            >
               Performance Monitor
             </Text>
             <Badge
               size="sm"
               colorScheme={
-                performanceStatus === 'good' ? 'green' :
-                performanceStatus === 'needs-improvement' ? 'yellow' : 'red'
+                performanceStatus === "good"
+                  ? "green"
+                  : performanceStatus === "needs-improvement"
+                    ? "yellow"
+                    : "red"
               }
             >
               {performanceStatus}
@@ -202,7 +215,11 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
               <Text fontSize="xs" color="var(--text-secondary)" mb={1}>
                 Component: {componentName}
               </Text>
-              <HStack fontSize="xs" color="var(--text-primary)" justify="space-between">
+              <HStack
+                fontSize="xs"
+                color="var(--text-primary)"
+                justify="space-between"
+              >
                 <Text>Renders: {metrics.componentCount}</Text>
                 <Text>Last: {metrics.renderTime.toFixed(2)}ms</Text>
               </HStack>
@@ -210,7 +227,11 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
 
             {/* Memory Usage */}
             <Box>
-              <HStack fontSize="xs" color="var(--text-primary)" justify="space-between">
+              <HStack
+                fontSize="xs"
+                color="var(--text-primary)"
+                justify="space-between"
+              >
                 <Text>Memory: {formatBytes(metrics.memoryUsage)}</Text>
                 <Text>DOM: {metrics.domNodes} nodes</Text>
               </HStack>
@@ -224,20 +245,20 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
               <VStack gap={1} fontSize="xs">
                 <HStack justify="space-between" width="100%">
                   <Text>LCP:</Text>
-                  <Text color={webVitals.LCP > 2500 ? 'red' : 'green'}>
-                    {webVitals.LCP ? `${webVitals.LCP.toFixed(0)}ms` : 'N/A'}
+                  <Text color={webVitals.LCP > 2500 ? "red" : "green"}>
+                    {webVitals.LCP ? `${webVitals.LCP.toFixed(0)}ms` : "N/A"}
                   </Text>
                 </HStack>
                 <HStack justify="space-between" width="100%">
                   <Text>FID:</Text>
-                  <Text color={webVitals.FID > 100 ? 'red' : 'green'}>
-                    {webVitals.FID ? `${webVitals.FID.toFixed(2)}ms` : 'N/A'}
+                  <Text color={webVitals.FID > 100 ? "red" : "green"}>
+                    {webVitals.FID ? `${webVitals.FID.toFixed(2)}ms` : "N/A"}
                   </Text>
                 </HStack>
                 <HStack justify="space-between" width="100%">
                   <Text>CLS:</Text>
-                  <Text color={webVitals.CLS > 0.1 ? 'red' : 'green'}>
-                    {webVitals.CLS ? webVitals.CLS.toFixed(3) : 'N/A'}
+                  <Text color={webVitals.CLS > 0.1 ? "red" : "green"}>
+                    {webVitals.CLS ? webVitals.CLS.toFixed(3) : "N/A"}
                   </Text>
                 </HStack>
               </VStack>
@@ -262,7 +283,8 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
                 Reset
               </button>
               <Text fontSize="xs" color="var(--text-muted)">
-                Last updated: {new Date(metrics.lastUpdate).toLocaleTimeString()}
+                Last updated:{" "}
+                {new Date(metrics.lastUpdate).toLocaleTimeString()}
               </Text>
             </HStack>
           </VStack>

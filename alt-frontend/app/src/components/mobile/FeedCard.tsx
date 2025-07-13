@@ -21,9 +21,9 @@ const FeedCard = function FeedCard({
   const [isLoading, setIsLoading] = useState(false);
 
   // Memoize expensive description truncation calculation
-  const truncatedDescription = useMemo(() =>
-    truncateFeedDescription(feed.description),
-    [feed.description]
+  const truncatedDescription = useMemo(
+    () => truncateFeedDescription(feed.description),
+    [feed.description],
   );
 
   const handleReadStatus = useCallback(

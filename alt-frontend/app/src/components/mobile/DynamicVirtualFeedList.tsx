@@ -1,11 +1,11 @@
 "use client";
 
-import { useVirtualizer } from '@tanstack/react-virtual';
-import React, { useRef, useCallback, useEffect } from 'react';
-import { Box, Text } from '@chakra-ui/react';
-import { Feed } from '@/schema/feed';
-import { SizeMeasurementManager } from '@/utils/sizeMeasurement';
-import FeedCard from './FeedCard';
+import { useVirtualizer } from "@tanstack/react-virtual";
+import React, { useRef, useCallback, useEffect } from "react";
+import { Box, Text } from "@chakra-ui/react";
+import { Feed } from "@/schema/feed";
+import { SizeMeasurementManager } from "@/utils/sizeMeasurement";
+import FeedCard from "./FeedCard";
 
 interface DynamicVirtualFeedListProps {
   feeds: Feed[];
@@ -22,19 +22,24 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
   onMarkAsRead,
   containerHeight,
   overscan = 5,
-  onMeasurementError
+  onMeasurementError,
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
-  const measurementManager = useRef(new SizeMeasurementManager(onMeasurementError));
+  const measurementManager = useRef(
+    new SizeMeasurementManager(onMeasurementError),
+  );
 
   // 動的サイズ推定関数
-  const estimateSize = useCallback((index: number) => {
-    const feed = feeds[index];
-    if (!feed) return 200;
+  const estimateSize = useCallback(
+    (index: number) => {
+      const feed = feeds[index];
+      if (!feed) return 200;
 
-    const contentLength = feed.title.length + feed.description.length;
-    return measurementManager.current.getEstimatedSize(contentLength);
-  }, [feeds]);
+      const contentLength = feed.title.length + feed.description.length;
+      return measurementManager.current.getEstimatedSize(contentLength);
+    },
+    [feeds],
+  );
 
   // 実際のサイズ測定関数
   const measureElement = useCallback(() => {
@@ -56,7 +61,7 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
       if (element) {
         element.scrollTop = offset;
       }
-    }
+    },
   });
 
   // フィードデータが変更された時にキャッシュをクリア
@@ -64,9 +69,12 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
     measurementManager.current.clearCache();
   }, [feeds.length]);
 
-  const handleMarkAsRead = useCallback((feedLink: string) => {
-    onMarkAsRead(feedLink);
-  }, [onMarkAsRead]);
+  const handleMarkAsRead = useCallback(
+    (feedLink: string) => {
+      onMarkAsRead(feedLink);
+    },
+    [onMarkAsRead],
+  );
 
   if (feeds.length === 0) {
     return (
@@ -90,17 +98,17 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
       data-testid="virtual-scroll-container"
       css={{
         // スムーズスクロールを無効化（Dynamic Sizingでは問題が発生する可能性）
-        scrollBehavior: 'auto',
-        '&::-webkit-scrollbar': {
-          width: '6px',
+        scrollBehavior: "auto",
+        "&::-webkit-scrollbar": {
+          width: "6px",
         },
-        '&::-webkit-scrollbar-track': {
-          background: 'var(--surface-secondary)',
-          borderRadius: '3px',
+        "&::-webkit-scrollbar-track": {
+          background: "var(--surface-secondary)",
+          borderRadius: "3px",
         },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'var(--accent-primary)',
-          borderRadius: '3px',
+        "&::-webkit-scrollbar-thumb": {
+          background: "var(--accent-primary)",
+          borderRadius: "3px",
           opacity: 0.7,
         },
       }}
@@ -113,7 +121,7 @@ export const DynamicVirtualFeedList: React.FC<DynamicVirtualFeedListProps> = ({
       >
         {virtualizer.getVirtualItems().map((virtualItem) => {
           const feed = feeds[virtualItem.index];
-          
+
           return (
             <Box
               key={virtualItem.key}

@@ -1,11 +1,11 @@
 "use client";
 
-import React, { Suspense } from 'react';
-import { Box, Text } from '@chakra-ui/react';
-import { ErrorBoundary } from 'react-error-boundary';
+import React, { Suspense } from "react";
+import { Box, Text } from "@chakra-ui/react";
+import { ErrorBoundary } from "react-error-boundary";
 
 // Lazy load the desktop timeline component
-const DesktopTimeline = React.lazy(() => import('./DesktopTimeline'));
+const DesktopTimeline = React.lazy(() => import("./DesktopTimeline"));
 
 // Loading fallback component
 const DesktopTimelineLoading = () => (
@@ -47,7 +47,13 @@ const DesktopTimelineLoading = () => (
 );
 
 // Error boundary fallback component
-const DesktopTimelineError = ({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) => (
+const DesktopTimelineError = ({
+  error,
+  resetErrorBoundary,
+}: {
+  error: Error;
+  resetErrorBoundary: () => void;
+}) => (
   <Box w="100%" minH="0" flex={1} bg="var(--app-bg)">
     <Box
       display="flex"
@@ -63,7 +69,9 @@ const DesktopTimelineError = ({ error, resetErrorBoundary }: { error: Error; res
         textAlign="center"
         maxW="400px"
       >
-        <Text fontSize="2xl" mb={4}>⚠️</Text>
+        <Text fontSize="2xl" mb={4}>
+          ⚠️
+        </Text>
         <Text color="var(--text-primary)" fontSize="lg" mb={2}>
           Failed to load timeline
         </Text>

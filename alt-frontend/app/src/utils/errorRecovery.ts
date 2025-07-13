@@ -13,13 +13,16 @@ export class ErrorRecoveryManager {
   private currentBackoff = 0;
   private timeProvider: () => number;
 
-  constructor(config: Partial<ErrorRecoveryConfig> = {}, timeProvider: () => number = () => Date.now()) {
+  constructor(
+    config: Partial<ErrorRecoveryConfig> = {},
+    timeProvider: () => number = () => Date.now(),
+  ) {
     this.config = {
       initialBackoff: 5000, // 5秒
       maxBackoff: 300000, // 5分
       recoveryThreshold: 10, // 10回連続成功で復旧
       errorThreshold: 3, // 3回連続エラーで無効化
-      ...config
+      ...config,
     };
     this.currentBackoff = this.config.initialBackoff;
     this.timeProvider = timeProvider;
@@ -38,12 +41,12 @@ export class ErrorRecoveryManager {
     // バックオフ時間を増加（エラー毎に）
     this.currentBackoff = Math.min(
       this.currentBackoff * 2,
-      this.config.maxBackoff
+      this.config.maxBackoff,
     );
   }
 
   recordSuccess(): void {
-    this.successHistory.push('success');
+    this.successHistory.push("success");
     this.errorHistory = []; // エラー履歴をリセット
 
     // 履歴サイズ制限
@@ -64,7 +67,10 @@ export class ErrorRecoveryManager {
     }
 
     // バックオフ期間中は無効化（エラーが発生している場合のみ）
-    if (this.lastErrorTime > 0 && this.timeProvider() - this.lastErrorTime < this.currentBackoff) {
+    if (
+      this.lastErrorTime > 0 &&
+      this.timeProvider() - this.lastErrorTime < this.currentBackoff
+    ) {
       return true;
     }
 
@@ -98,7 +104,7 @@ export class ErrorRecoveryManager {
       errorCount: this.getErrorCount(),
       successCount: this.getSuccessCount(),
       backoffTime: this.getBackoffTime(),
-      canRetry: this.canRetryNow()
+      canRetry: this.canRetryNow(),
     };
   }
 

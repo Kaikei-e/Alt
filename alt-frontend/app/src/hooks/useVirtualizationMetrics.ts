@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
 export interface VirtualizationMetrics {
   renderTime: number;
@@ -7,7 +7,10 @@ export interface VirtualizationMetrics {
   scrollPerformance: number;
 }
 
-export const useVirtualizationMetrics = (enabled: boolean = true, itemCount: number = 0) => {
+export const useVirtualizationMetrics = (
+  enabled: boolean = true,
+  itemCount: number = 0,
+) => {
   const metricsRef = useRef<VirtualizationMetrics>({
     renderTime: 0,
     itemCount: 0,
@@ -19,18 +22,20 @@ export const useVirtualizationMetrics = (enabled: boolean = true, itemCount: num
     if (!enabled) return;
 
     const startTime = performance.now();
-    
+
     // Update metrics
     metricsRef.current = {
       renderTime: performance.now() - startTime,
       itemCount,
-      memoryUsage: (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize || 0,
+      memoryUsage:
+        (performance as unknown as { memory?: { usedJSHeapSize?: number } })
+          .memory?.usedJSHeapSize || 0,
       scrollPerformance: 0,
     };
 
     // Log metrics in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Virtualization Metrics:', metricsRef.current);
+    if (process.env.NODE_ENV === "development") {
+      console.log("Virtualization Metrics:", metricsRef.current);
     }
   }, [enabled, itemCount]);
 

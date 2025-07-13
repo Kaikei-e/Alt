@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
 interface DynamicSizingMetrics {
   measurementCount: number;
@@ -9,13 +9,13 @@ interface DynamicSizingMetrics {
 
 export const useDynamicSizingMetrics = (
   isEnabled: boolean,
-  itemCount: number
+  itemCount: number,
 ) => {
   const metricsRef = useRef<DynamicSizingMetrics>({
     measurementCount: 0,
     averageMeasurementTime: 0,
     layoutShiftCount: 0,
-    errorCount: 0
+    errorCount: 0,
   });
 
   useEffect(() => {
@@ -24,13 +24,13 @@ export const useDynamicSizingMetrics = (
     // Layout Shift Observer
     const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
-        if (entry.entryType === 'layout-shift') {
+        if (entry.entryType === "layout-shift") {
           metricsRef.current.layoutShiftCount++;
         }
       }
     });
 
-    observer.observe({ entryTypes: ['layout-shift'] });
+    observer.observe({ entryTypes: ["layout-shift"] });
 
     return () => observer.disconnect();
   }, [isEnabled]);
@@ -41,20 +41,20 @@ export const useDynamicSizingMetrics = (
     // 定期的にメトリクスを報告
     const interval = setInterval(() => {
       const metrics = metricsRef.current;
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Dynamic Sizing Metrics:', {
+
+      if (process.env.NODE_ENV === "development") {
+        console.log("Dynamic Sizing Metrics:", {
           ...metrics,
           itemCount,
-          averageLayoutShiftPerItem: metrics.layoutShiftCount / itemCount
+          averageLayoutShiftPerItem: metrics.layoutShiftCount / itemCount,
         });
       }
 
       // 本番環境での監視（内部ログのみ）
-      if (process.env.NODE_ENV === 'production') {
-        console.log('Dynamic Sizing Metrics:', {
+      if (process.env.NODE_ENV === "production") {
+        console.log("Dynamic Sizing Metrics:", {
           ...metrics,
-          itemCount
+          itemCount,
         });
       }
     }, 30000); // 30秒ごと

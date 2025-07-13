@@ -1,11 +1,13 @@
 "use client";
 
-import React, { Suspense } from 'react';
-import { Box, Text, VStack, HStack, Skeleton } from '@chakra-ui/react';
-import { ErrorBoundary } from 'react-error-boundary';
+import React, { Suspense } from "react";
+import { Box, Text, VStack, HStack, Skeleton } from "@chakra-ui/react";
+import { ErrorBoundary } from "react-error-boundary";
 
 // Lazy load the right panel component
-const RightPanel = React.lazy(() => import('./RightPanel').then(module => ({ default: module.RightPanel })));
+const RightPanel = React.lazy(() =>
+  import("./RightPanel").then((module) => ({ default: module.RightPanel })),
+);
 
 // Loading fallback component
 const RightPanelLoading = () => (
@@ -19,21 +21,13 @@ const RightPanelLoading = () => (
   >
     <VStack gap={4} align="stretch">
       {/* Header skeleton */}
-      <Box
-        className="glass"
-        p={4}
-        borderRadius="var(--radius-lg)"
-      >
+      <Box className="glass" p={4} borderRadius="var(--radius-lg)">
         <Skeleton height="20px" width="60%" mb={2} />
         <Skeleton height="14px" width="80%" />
       </Box>
 
       {/* Analytics skeleton */}
-      <Box
-        className="glass"
-        p={4}
-        borderRadius="var(--radius-lg)"
-      >
+      <Box className="glass" p={4} borderRadius="var(--radius-lg)">
         <Skeleton height="18px" width="50%" mb={3} />
         <VStack gap={2} align="stretch">
           {Array.from({ length: 4 }).map((_, index) => (
@@ -46,11 +40,7 @@ const RightPanelLoading = () => (
       </Box>
 
       {/* Reading queue skeleton */}
-      <Box
-        className="glass"
-        p={4}
-        borderRadius="var(--radius-lg)"
-      >
+      <Box className="glass" p={4} borderRadius="var(--radius-lg)">
         <Skeleton height="18px" width="60%" mb={3} />
         <VStack gap={3} align="stretch">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -63,15 +53,16 @@ const RightPanelLoading = () => (
       </Box>
 
       {/* Trending topics skeleton */}
-      <Box
-        className="glass"
-        p={4}
-        borderRadius="var(--radius-lg)"
-      >
+      <Box className="glass" p={4} borderRadius="var(--radius-lg)">
         <Skeleton height="18px" width="50%" mb={3} />
         <HStack gap={2} wrap="wrap">
           {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} height="24px" width="60px" borderRadius="full" />
+            <Skeleton
+              key={index}
+              height="24px"
+              width="60px"
+              borderRadius="full"
+            />
           ))}
         </HStack>
       </Box>
@@ -80,7 +71,13 @@ const RightPanelLoading = () => (
 );
 
 // Error boundary fallback component
-const RightPanelError = ({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) => (
+const RightPanelError = ({
+  error,
+  resetErrorBoundary,
+}: {
+  error: Error;
+  resetErrorBoundary: () => void;
+}) => (
   <Box
     w="320px"
     h="100vh"
@@ -98,7 +95,9 @@ const RightPanelError = ({ error, resetErrorBoundary }: { error: Error; resetErr
       textAlign="center"
       maxW="280px"
     >
-      <Text fontSize="xl" mb={3}>⚠️</Text>
+      <Text fontSize="xl" mb={3}>
+        ⚠️
+      </Text>
       <Text color="var(--text-primary)" fontSize="md" mb={2}>
         Analytics Unavailable
       </Text>

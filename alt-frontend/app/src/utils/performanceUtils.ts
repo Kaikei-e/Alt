@@ -107,23 +107,26 @@ export interface PerformanceMetrics {
 
 export class PerformanceThresholdAnalyzer {
   private static readonly RENDER_TIME_THRESHOLD = 2000; // 2 seconds
-  private static readonly SCROLL_TIME_THRESHOLD = 500;  // 0.5 seconds
+  private static readonly SCROLL_TIME_THRESHOLD = 500; // 0.5 seconds
   private static readonly MEMORY_GROWTH_THRESHOLD = 1.5; // 1.5x growth rate
 
   static shouldUseVirtualization(
     itemCount: number,
-    metrics: PerformanceMetrics
+    metrics: PerformanceMetrics,
   ): boolean {
     // Basic threshold check - below 100 items, virtualization not needed
     if (itemCount < 100) return false;
-    
+
     // Performance degradation check
     if (metrics.renderTime > this.RENDER_TIME_THRESHOLD) return true;
     if (metrics.scrollTime > this.SCROLL_TIME_THRESHOLD) return true;
-    
+
     // Memory usage check
     const expectedMemoryUsage = this.calculateExpectedMemory(itemCount);
-    if (metrics.memoryUsage > expectedMemoryUsage * this.MEMORY_GROWTH_THRESHOLD) {
+    if (
+      metrics.memoryUsage >
+      expectedMemoryUsage * this.MEMORY_GROWTH_THRESHOLD
+    ) {
       return true;
     }
 
@@ -137,16 +140,18 @@ export class PerformanceThresholdAnalyzer {
     // Empirical calculation: base memory + per-item memory
     const BASE_MEMORY = 1024 * 1024; // 1MB base
     const MEMORY_PER_ITEM = 50 * 1024; // 50KB per item
-    return BASE_MEMORY + (itemCount * MEMORY_PER_ITEM);
+    return BASE_MEMORY + itemCount * MEMORY_PER_ITEM;
   }
 
-  static analyzePerformanceData(results: Array<{
-    itemCount: number;
-    renderTime: number;
-    scrollTime: number;
-    memoryUsage: number;
-    domNodeCount: number;
-  }>): {
+  static analyzePerformanceData(
+    results: Array<{
+      itemCount: number;
+      renderTime: number;
+      scrollTime: number;
+      memoryUsage: number;
+      domNodeCount: number;
+    }>,
+  ): {
     recommendations: string[];
     thresholds: {
       virtualizationRecommended: number;
@@ -154,27 +159,27 @@ export class PerformanceThresholdAnalyzer {
     };
   } {
     const recommendations: string[] = [];
-    
+
     // Analyze trends
     const sortedResults = results.sort((a, b) => a.itemCount - b.itemCount);
-    
+
     // Find performance degradation points
     for (let i = 1; i < sortedResults.length; i++) {
       const current = sortedResults[i];
       const previous = sortedResults[i - 1];
-      
+
       const renderTimeGrowth = current.renderTime / previous.renderTime;
       const memoryGrowth = current.memoryUsage / previous.memoryUsage;
-      
+
       if (renderTimeGrowth > 1.5) {
         recommendations.push(
-          `Render time increases significantly at ${current.itemCount} items (${renderTimeGrowth.toFixed(2)}x)`
+          `Render time increases significantly at ${current.itemCount} items (${renderTimeGrowth.toFixed(2)}x)`,
         );
       }
-      
+
       if (memoryGrowth > 1.5) {
         recommendations.push(
-          `Memory usage increases significantly at ${current.itemCount} items (${memoryGrowth.toFixed(2)}x)`
+          `Memory usage increases significantly at ${current.itemCount} items (${memoryGrowth.toFixed(2)}x)`,
         );
       }
     }
@@ -182,18 +187,22 @@ export class PerformanceThresholdAnalyzer {
     // Find recommended thresholds
     let virtualizationRecommended = 200; // Default
     let virtualizationRequired = 500; // Default
-    
-    const problemPoint = sortedResults.find(result => 
-      result.renderTime > this.RENDER_TIME_THRESHOLD || 
-      result.scrollTime > this.SCROLL_TIME_THRESHOLD
+
+    const problemPoint = sortedResults.find(
+      (result) =>
+        result.renderTime > this.RENDER_TIME_THRESHOLD ||
+        result.scrollTime > this.SCROLL_TIME_THRESHOLD,
     );
-    
+
     if (problemPoint) {
       virtualizationRequired = problemPoint.itemCount;
-      virtualizationRecommended = Math.max(100, Math.floor(problemPoint.itemCount * 0.7));
-      
+      virtualizationRecommended = Math.max(
+        100,
+        Math.floor(problemPoint.itemCount * 0.7),
+      );
+
       recommendations.push(
-        `Performance issues detected at ${problemPoint.itemCount} items - virtualization required`
+        `Performance issues detected at ${problemPoint.itemCount} items - virtualization required`,
       );
     }
 
@@ -201,45 +210,47 @@ export class PerformanceThresholdAnalyzer {
       recommendations,
       thresholds: {
         virtualizationRecommended,
-        virtualizationRequired
-      }
+        virtualizationRequired,
+      },
     };
   }
 
-  static generatePerformanceReport(results: Array<{
-    itemCount: number;
-    renderTime: number;
-    scrollTime: number;
-    memoryUsage: number;
-    domNodeCount: number;
-  }>): string {
+  static generatePerformanceReport(
+    results: Array<{
+      itemCount: number;
+      renderTime: number;
+      scrollTime: number;
+      memoryUsage: number;
+      domNodeCount: number;
+    }>,
+  ): string {
     const analysis = this.analyzePerformanceData(results);
-    
-    let report = 'Performance Analysis Report\n';
-    report += '================================\n\n';
-    
-    report += 'Test Results:\n';
-    results.forEach(result => {
+
+    let report = "Performance Analysis Report\n";
+    report += "================================\n\n";
+
+    report += "Test Results:\n";
+    results.forEach((result) => {
       report += `${result.itemCount} items: `;
       report += `Render ${result.renderTime}ms, `;
       report += `Scroll ${result.scrollTime}ms, `;
       report += `Memory ${Math.round(result.memoryUsage / 1024 / 1024)}MB, `;
       report += `DOM ${result.domNodeCount} nodes\n`;
     });
-    
-    report += '\nRecommendations:\n';
+
+    report += "\nRecommendations:\n";
     if (analysis.recommendations.length === 0) {
-      report += '- Performance is acceptable across all tested item counts\n';
+      report += "- Performance is acceptable across all tested item counts\n";
     } else {
-      analysis.recommendations.forEach(rec => {
+      analysis.recommendations.forEach((rec) => {
         report += `- ${rec}\n`;
       });
     }
-    
-    report += '\nThresholds:\n';
+
+    report += "\nThresholds:\n";
     report += `- Virtualization recommended: ${analysis.thresholds.virtualizationRecommended} items\n`;
     report += `- Virtualization required: ${analysis.thresholds.virtualizationRequired} items\n`;
-    
+
     return report;
   }
 }

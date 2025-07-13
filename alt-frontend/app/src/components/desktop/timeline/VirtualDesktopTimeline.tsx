@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useRef, useCallback, useMemo } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { Box, Text, VStack } from '@chakra-ui/react';
-import { Feed } from '@/schema/feed';
-import { DesktopFeed } from '@/types/desktop-feed';
-import { DesktopFeedCard } from './DesktopFeedCard';
-import { useVirtualizationMetrics } from '@/hooks/useVirtualizationMetrics';
+import React, { useRef, useCallback, useMemo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { Box, Text, VStack } from "@chakra-ui/react";
+import { Feed } from "@/schema/feed";
+import { DesktopFeed } from "@/types/desktop-feed";
+import { DesktopFeedCard } from "./DesktopFeedCard";
+import { useVirtualizationMetrics } from "@/hooks/useVirtualizationMetrics";
 
 interface VirtualDesktopTimelineProps {
   feeds: Feed[];
@@ -28,8 +28,10 @@ const estimateDesktopItemSize = (feed: Feed): number => {
   const descriptionHeight = Math.ceil(feed.description.length / 80) * 20; // 80 chars/line
   const metadataHeight = 60; // Metadata section
   const actionHeight = 50; // Action buttons
-  
-  return baseHeight + titleHeight + descriptionHeight + metadataHeight + actionHeight;
+
+  return (
+    baseHeight + titleHeight + descriptionHeight + metadataHeight + actionHeight
+  );
 };
 
 // Transform Feed to DesktopFeed
@@ -89,26 +91,32 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
 
   // Filter out read feeds
   const visibleFeeds = useMemo(
-    () => desktopFeeds.filter(feed => !readFeeds.has(feed.id)),
-    [desktopFeeds, readFeeds]
+    () => desktopFeeds.filter((feed) => !readFeeds.has(feed.id)),
+    [desktopFeeds, readFeeds],
   );
 
   // Dynamic size estimation
-  const estimateSize = useCallback((index: number) => {
-    if (enableDynamicSizing && visibleFeeds[index]) {
-      return estimateDesktopItemSize(visibleFeeds[index]);
-    }
-    return 320; // Default desktop card height
-  }, [visibleFeeds, enableDynamicSizing]);
+  const estimateSize = useCallback(
+    (index: number) => {
+      if (enableDynamicSizing && visibleFeeds[index]) {
+        return estimateDesktopItemSize(visibleFeeds[index]);
+      }
+      return 320; // Default desktop card height
+    },
+    [visibleFeeds, enableDynamicSizing],
+  );
 
   // Measurement function for dynamic sizing
-  const measureElement = useCallback((element: Element) => {
-    if (enableDynamicSizing && element instanceof HTMLElement) {
-      // Actual measurement implementation if needed
-      // Currently using estimated values
-    }
-    return 0;
-  }, [enableDynamicSizing]);
+  const measureElement = useCallback(
+    (element: Element) => {
+      if (enableDynamicSizing && element instanceof HTMLElement) {
+        // Actual measurement implementation if needed
+        // Currently using estimated values
+      }
+      return 0;
+    },
+    [enableDynamicSizing],
+  );
 
   // Create virtualizer with desktop-specific settings
   const virtualizer = useVirtualizer({
@@ -120,25 +128,40 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
   });
 
   // Handle actions
-  const handleMarkAsRead = useCallback((feedId: string) => {
-    onMarkAsRead(feedId);
-  }, [onMarkAsRead]);
+  const handleMarkAsRead = useCallback(
+    (feedId: string) => {
+      onMarkAsRead(feedId);
+    },
+    [onMarkAsRead],
+  );
 
-  const handleToggleFavorite = useCallback((feedId: string) => {
-    onToggleFavorite(feedId);
-  }, [onToggleFavorite]);
+  const handleToggleFavorite = useCallback(
+    (feedId: string) => {
+      onToggleFavorite(feedId);
+    },
+    [onToggleFavorite],
+  );
 
-  const handleToggleBookmark = useCallback((feedId: string) => {
-    onToggleBookmark(feedId);
-  }, [onToggleBookmark]);
+  const handleToggleBookmark = useCallback(
+    (feedId: string) => {
+      onToggleBookmark(feedId);
+    },
+    [onToggleBookmark],
+  );
 
-  const handleReadLater = useCallback((feedId: string) => {
-    onReadLater(feedId);
-  }, [onReadLater]);
+  const handleReadLater = useCallback(
+    (feedId: string) => {
+      onReadLater(feedId);
+    },
+    [onReadLater],
+  );
 
-  const handleViewArticle = useCallback((feedId: string) => {
-    onViewArticle(feedId);
-  }, [onViewArticle]);
+  const handleViewArticle = useCallback(
+    (feedId: string) => {
+      onViewArticle(feedId);
+    },
+    [onViewArticle],
+  );
 
   // Empty state handling
   if (visibleFeeds.length === 0) {
@@ -171,20 +194,20 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
       overflowX="hidden"
       data-testid="virtual-desktop-timeline"
       css={{
-        scrollBehavior: enableDynamicSizing ? 'auto' : 'smooth',
-        '&::-webkit-scrollbar': {
-          width: '8px',
+        scrollBehavior: enableDynamicSizing ? "auto" : "smooth",
+        "&::-webkit-scrollbar": {
+          width: "8px",
         },
-        '&::-webkit-scrollbar-track': {
-          background: 'var(--surface-secondary)',
-          borderRadius: '4px',
+        "&::-webkit-scrollbar-track": {
+          background: "var(--surface-secondary)",
+          borderRadius: "4px",
         },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'var(--accent-primary)',
-          borderRadius: '4px',
+        "&::-webkit-scrollbar-thumb": {
+          background: "var(--accent-primary)",
+          borderRadius: "4px",
           opacity: 0.7,
         },
-        '&::-webkit-scrollbar-thumb:hover': {
+        "&::-webkit-scrollbar-thumb:hover": {
           opacity: 1,
         },
       }}
@@ -199,7 +222,7 @@ export const VirtualDesktopTimeline: React.FC<VirtualDesktopTimelineProps> = ({
       >
         {virtualizer.getVirtualItems().map((virtualItem) => {
           const feed = visibleFeeds[virtualItem.index];
-          
+
           return (
             <Box
               key={virtualItem.key}
