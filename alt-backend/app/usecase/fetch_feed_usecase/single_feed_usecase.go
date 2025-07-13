@@ -19,24 +19,51 @@ func NewFetchSingleFeedUsecase(fetchSingleFeedPort fetch_feed_port.FetchSingleFe
 func (u *FetchSingleFeedUsecase) Execute(ctx context.Context) (*domain.RSSFeed, error) {
 	feed, err := u.fetchSingleFeedPort.FetchSingleFeed(ctx)
 	if err != nil {
-		// Wrap gateway errors with usecase context
-		if appErr, ok := err.(*errors.AppError); ok {
-			// Add usecase context to existing AppError
-			if appErr.Context == nil {
-				appErr.Context = make(map[string]interface{})
-			}
-			appErr.Context["usecase"] = "FetchSingleFeedUsecase"
-			appErr.Context["operation"] = "Execute"
+		// Check if it's already an AppContextError and enrich it with usecase context
+		if appContextErr, ok := err.(*errors.AppContextError); ok {
+			enrichedErr := errors.EnrichWithContext(
+				appContextErr,
+				"usecase",
+				"FetchSingleFeedUsecase",
+				"Execute",
+				map[string]interface{}{
+					"usecase_operation": "execute_fetch_single_feed",
+				},
+			)
+			logger.GlobalContext.LogError(ctx, "fetch_single_feed_usecase", enrichedErr)
+			return nil, enrichedErr
+		}
 
-			logger.GlobalContext.LogError(ctx, "fetch_single_feed_usecase", appErr)
-			return nil, appErr
+		// Handle legacy AppError (for backward compatibility)
+		if appErr, ok := err.(*errors.AppError); ok {
+			// Convert legacy AppError to AppContextError
+			enrichedErr := errors.NewAppContextError(
+				string(appErr.Code),
+				appErr.Message,
+				"usecase",
+				"FetchSingleFeedUsecase",
+				"Execute",
+				appErr.Cause,
+				map[string]interface{}{
+					"usecase_operation": "execute_fetch_single_feed",
+					"legacy_context":    appErr.Context,
+				},
+			)
+			logger.GlobalContext.LogError(ctx, "fetch_single_feed_usecase", enrichedErr)
+			return nil, enrichedErr
 		}
 
 		// Wrap unknown errors
-		unknownErr := errors.UnknownError("usecase execution failed", err, map[string]interface{}{
-			"usecase":   "FetchSingleFeedUsecase",
-			"operation": "Execute",
-		})
+		unknownErr := errors.NewUnknownContextError(
+			"usecase execution failed",
+			"usecase",
+			"FetchSingleFeedUsecase",
+			"Execute",
+			err,
+			map[string]interface{}{
+				"usecase_operation": "execute_fetch_single_feed",
+			},
+		)
 		logger.GlobalContext.LogError(ctx, "fetch_single_feed_usecase", unknownErr)
 		return nil, unknownErr
 	}
