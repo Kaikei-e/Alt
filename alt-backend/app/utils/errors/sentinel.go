@@ -73,10 +73,13 @@ func NewFeedNotFoundError(layer, component, operation string, context map[string
 
 // NewDatabaseUnavailableError creates an AppContextError that wraps ErrDatabaseUnavailable
 func NewDatabaseUnavailableError(layer, component, operation string, cause error, context map[string]interface{}) *AppContextError {
-	// Create error chain: originalCause -> ErrDatabaseUnavailable -> AppContextError
-	wrappedCause := fmt.Errorf("%w", ErrDatabaseUnavailable)
+	// Create proper error chain that preserves both sentinel error and original cause
+	var wrappedCause error
 	if cause != nil {
-		wrappedCause = fmt.Errorf("%w: %v", ErrDatabaseUnavailable, cause)
+		// Wrap original cause with sentinel error: cause -> ErrDatabaseUnavailable
+		wrappedCause = fmt.Errorf("%w: %w", ErrDatabaseUnavailable, cause)
+	} else {
+		wrappedCause = fmt.Errorf("%w", ErrDatabaseUnavailable)
 	}
 	
 	return NewAppContextError(
@@ -92,9 +95,11 @@ func NewDatabaseUnavailableError(layer, component, operation string, cause error
 
 // NewRateLimitExceededError creates an AppContextError that wraps ErrRateLimitExceeded
 func NewRateLimitExceededError(layer, component, operation string, cause error, context map[string]interface{}) *AppContextError {
-	wrappedCause := fmt.Errorf("%w", ErrRateLimitExceeded)
+	var wrappedCause error
 	if cause != nil {
-		wrappedCause = fmt.Errorf("%w: %v", ErrRateLimitExceeded, cause)
+		wrappedCause = fmt.Errorf("%w: %w", ErrRateLimitExceeded, cause)
+	} else {
+		wrappedCause = fmt.Errorf("%w", ErrRateLimitExceeded)
 	}
 	
 	return NewAppContextError(
@@ -110,9 +115,11 @@ func NewRateLimitExceededError(layer, component, operation string, cause error, 
 
 // NewExternalServiceUnavailableError creates an AppContextError that wraps ErrExternalServiceUnavailable
 func NewExternalServiceUnavailableError(layer, component, operation string, cause error, context map[string]interface{}) *AppContextError {
-	wrappedCause := fmt.Errorf("%w", ErrExternalServiceUnavailable)
+	var wrappedCause error
 	if cause != nil {
-		wrappedCause = fmt.Errorf("%w: %v", ErrExternalServiceUnavailable, cause)
+		wrappedCause = fmt.Errorf("%w: %w", ErrExternalServiceUnavailable, cause)
+	} else {
+		wrappedCause = fmt.Errorf("%w", ErrExternalServiceUnavailable)
 	}
 	
 	return NewAppContextError(
@@ -128,9 +135,11 @@ func NewExternalServiceUnavailableError(layer, component, operation string, caus
 
 // NewOperationTimeoutError creates an AppContextError that wraps ErrOperationTimeout
 func NewOperationTimeoutError(layer, component, operation string, cause error, context map[string]interface{}) *AppContextError {
-	wrappedCause := fmt.Errorf("%w", ErrOperationTimeout)
+	var wrappedCause error
 	if cause != nil {
-		wrappedCause = fmt.Errorf("%w: %v", ErrOperationTimeout, cause)
+		wrappedCause = fmt.Errorf("%w: %w", ErrOperationTimeout, cause)
+	} else {
+		wrappedCause = fmt.Errorf("%w", ErrOperationTimeout)
 	}
 	
 	return NewAppContextError(

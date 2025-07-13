@@ -99,7 +99,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 			},
 			want:      nil,
 			wantErr:   true,
-			errorType: "AppError",
+			errorType: "AppContextError",
 		},
 		{
 			name: "port_returns_validation_error",
@@ -111,7 +111,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 			},
 			want:      nil,
 			wantErr:   true,
-			errorType: "AppError",
+			errorType: "AppContextError",
 		},
 		{
 			name: "port_returns_timeout_error",
@@ -123,7 +123,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 			},
 			want:      nil,
 			wantErr:   true,
-			errorType: "AppError",
+			errorType: "AppContextError",
 		},
 		{
 			name: "port_returns_rate_limit_error",
@@ -136,7 +136,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 			},
 			want:      nil,
 			wantErr:   true,
-			errorType: "AppError",
+			errorType: "AppContextError",
 		},
 		{
 			name: "port_returns_generic_error",
@@ -158,7 +158,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 			},
 			want:      nil,
 			wantErr:   true,
-			errorType: "AppError",
+			errorType: "AppContextError",
 		},
 		{
 			name: "network_error",
@@ -171,7 +171,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 			},
 			want:      nil,
 			wantErr:   true,
-			errorType: "AppError",
+			errorType: "AppContextError",
 		},
 		{
 			name: "parse_error",
@@ -184,7 +184,7 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 			},
 			want:      nil,
 			wantErr:   true,
-			errorType: "AppError",
+			errorType: "AppContextError",
 		},
 	}
 
@@ -205,31 +205,37 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 				// Verify error type when expected
 				if tt.errorType != "" {
 					switch tt.errorType {
-					case "AppError":
-						if _, ok := err.(*errors.AppError); !ok {
-							t.Errorf("Expected AppError, got %T", err)
+					case "AppContextError":
+						if _, ok := err.(*errors.AppContextError); !ok {
+							t.Errorf("Expected AppContextError, got %T", err)
 						}
 					case "UnknownError":
-						if appErr, ok := err.(*errors.AppError); ok {
-							if appErr.Code != errors.ErrCodeUnknown {
-								t.Errorf("Expected UnknownError code, got %v", appErr.Code)
+						if appErr, ok := err.(*errors.AppContextError); ok {
+							if appErr.Code != "UNKNOWN_ERROR" {
+								t.Errorf("Expected UNKNOWN_ERROR code, got %v", appErr.Code)
 							}
 						} else {
-							t.Errorf("Expected AppError with UnknownError code, got %T", err)
+							t.Errorf("Expected AppContextError with UNKNOWN_ERROR code, got %T", err)
 						}
 					}
 				}
 
-				// Verify usecase context is added to AppError
-				if appErr, ok := err.(*errors.AppError); ok {
+				// Verify usecase context is added to AppContextError
+				if appErr, ok := err.(*errors.AppContextError); ok {
+					if appErr.Layer != "usecase" {
+						t.Errorf("Expected layer to be 'usecase', got %s", appErr.Layer)
+					}
+					if appErr.Component != "FetchSingleFeedUsecase" {
+						t.Errorf("Expected component to be 'FetchSingleFeedUsecase', got %s", appErr.Component)
+					}
+					if appErr.Operation != "Execute" {
+						t.Errorf("Expected operation to be 'Execute', got %s", appErr.Operation)
+					}
 					if appErr.Context == nil {
-						t.Error("Expected context to be added to AppError")
+						t.Error("Expected context to be added to AppContextError")
 					} else {
-						if usecase, exists := appErr.Context["usecase"]; !exists || usecase != "FetchSingleFeedUsecase" {
-							t.Error("Expected usecase context to be set")
-						}
-						if operation, exists := appErr.Context["operation"]; !exists || operation != "Execute" {
-							t.Error("Expected operation context to be set")
+						if operation, exists := appErr.Context["usecase_operation"]; !exists || operation != "execute_fetch_single_feed" {
+							t.Error("Expected usecase_operation context to be set")
 						}
 					}
 				}

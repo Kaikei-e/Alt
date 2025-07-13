@@ -3,6 +3,7 @@ package fetch_feed_usecase
 import (
 	"alt/domain"
 	"alt/utils/errors"
+	"alt/utils/logger"
 	"context"
 	stdErrors "errors"
 	"testing"
@@ -22,6 +23,9 @@ func (m *mockFetchSingleFeedPort) FetchSingleFeed(ctx context.Context) (*domain.
 }
 
 func TestFetchSingleFeedUsecase_EnhancedErrorHandling(t *testing.T) {
+	// Initialize logger for testing to prevent nil pointer dereference
+	logger.InitLogger()
+	
 	tests := []struct {
 		name       string
 		portError  error
@@ -178,6 +182,9 @@ func TestFetchSingleFeedUsecase_SuccessfulExecution(t *testing.T) {
 }
 
 func TestErrorContextEnrichment(t *testing.T) {
+	// Initialize logger for testing to prevent nil pointer dereference
+	logger.InitLogger()
+	
 	// Test that errors are properly enriched with usecase context
 	originalErr := errors.NewDatabaseUnavailableError(
 		"gateway",

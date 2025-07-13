@@ -2,18 +2,22 @@ package fetch_feed_gateway
 
 import (
 	"alt/utils/errors"
+	"alt/utils/logger"
 	"context"
 	"testing"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
+	// Add alias for standard errors package to avoid naming conflict
+	stdErrors "errors"
 )
 
 func TestSingleFeedGateway_EnhancedErrorHandling(t *testing.T) {
+	// Initialize logger for testing to prevent nil pointer dereference
+	logger.InitLogger()
+	
 	tests := []struct {
-		name    string
-		setup   func() *SingleFeedGateway
-		wantErr string
+		name       string
+		setup      func() *SingleFeedGateway
+		wantErr    string
 		checkError func(t *testing.T, err error)
 	}{
 		{
@@ -80,10 +84,10 @@ func TestSingleFeedGateway_EnhancedErrorHandling(t *testing.T) {
 	}
 }
 
-// Add alias for standard errors package to avoid naming conflict
-import stdErrors "errors"
-
 func TestSingleFeedGateway_ErrorContextEnrichment(t *testing.T) {
+	// Initialize logger for testing to prevent nil pointer dereference
+	logger.InitLogger()
+	
 	// Test that errors are properly enriched with context as they bubble up through layers
 	gateway := &SingleFeedGateway{
 		alt_db:      nil, // Simulate database unavailability
@@ -139,13 +143,13 @@ func TestSingleFeedGateway_ExternalAPIErrorHandling(t *testing.T) {
 }
 
 func TestErrorContextPreservation(t *testing.T) {
-	// Test that when errors bubble up through layers, context is preserved and enriched
-	ctx := context.Background()
+	// Initialize logger for testing to prevent nil pointer dereference
+	logger.InitLogger()
 
 	// Create an original database error from the driver layer
 	originalErr := errors.NewDatabaseUnavailableError(
 		"driver",
-		"PostgresDriver", 
+		"PostgresDriver",
 		"Connect",
 		stdErrors.New("connection timeout"),
 		map[string]interface{}{
