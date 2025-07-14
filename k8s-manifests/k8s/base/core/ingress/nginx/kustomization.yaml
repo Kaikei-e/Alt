@@ -1,6 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+namespace: alt-ingress
+
 resources:
   - nginx-deployment.yaml
   - nginx-cm0-configmap.yaml

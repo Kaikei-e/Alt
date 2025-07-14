@@ -1,19 +1,18 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
   annotations:
     kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
     kompose.version: 1.36.0 (ae2a39403)
   labels:
     io.kompose.service: migrate
+    app.kubernetes.io/name: migrate
   name: migrate
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      io.kompose.service: migrate
-  strategy:
-    type: Recreate
+  # Job固有の設定
+  backoffLimit: 3  # 失敗時の再試行回数
+  activeDeadlineSeconds: 300  # 5分でタイムアウト
+  ttlSecondsAfterFinished: 86400  # 24時間後に自動削除
   template:
     metadata:
       annotations:
@@ -21,6 +20,9 @@ spec:
         kompose.version: 1.36.0 (ae2a39403)
       labels:
         io.kompose.service: migrate
+        app.kubernetes.io/name: migrate
+        app.kubernetes.io/component: migration
+        app.kubernetes.io/part-of: alt-platform
     spec:
       containers:
         - env:
@@ -38,6 +40,9 @@ spec:
           image: migrate:production
           imagePullPolicy: Never
           name: db-migrator
+          # マイグレーションの成功・失敗を確実に検出するためのコマンド
+          command: ["/bin/sh"]
+          args: ["-c", "echo 'Starting migration...' && migrate -path /migrations -database $DB_URL up && echo 'Migration completed successfully' || (echo 'Migration failed' && exit 1)"]
           resources:
             requests:
               memory: "128Mi"
@@ -51,7 +56,7 @@ spec:
             - mountPath: /etc/postgresql/postgresql.conf
               name: migrate-cm1
               subPath: postgresql.conf
-      restartPolicy: Always
+      restartPolicy: Never  # Jobでは Never または OnFailure のみ使用可能
       volumes:
         - configMap:
             name: migrate-cm0
