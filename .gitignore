@@ -23,3 +23,7 @@ error.json
 k8s-manifests/k8s/backups/*
 x-setup/
 error.txt
+
+# SSL certificates (development)
+docker/postgres/ssl/
+k8s-manifests/scripts/ssl-certs/

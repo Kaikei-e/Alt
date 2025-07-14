@@ -99,4 +99,21 @@ backup-db:
 	@echo "Backing up database..."
 	docker compose exec db pg_dump -U $(POSTGRES_USER) -h localhost -p 5432 $(POSTGRES_DB) > backup.sql
 
-.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db
+dev-ssl-setup:
+	@echo "Generating development SSL certificates..."
+	@chmod +x docker/postgres/generate-dev-certs.sh
+	@./docker/postgres/generate-dev-certs.sh
+	@echo "SSL certificates generated. You can now start the services with SSL."
+
+dev-ssl-test:
+	@echo "Testing SSL connection..."
+	@docker compose exec db psql \
+		-h localhost -U ${POSTGRES_USER:-devuser} -d ${POSTGRES_DB:-devdb} \
+		-c "SELECT ssl_is_used(), version();"
+
+dev-clean-ssl:
+	@echo "Cleaning SSL certificates..."
+	@rm -rf docker/postgres/ssl/
+	@echo "SSL certificates removed."
+
+.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl
