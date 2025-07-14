@@ -27,3 +27,5 @@ error.txt
 # SSL certificates (development)
 docker/postgres/ssl/
 k8s-manifests/scripts/ssl-certs/
+
+k8s-manifests/ssl-certs/*
