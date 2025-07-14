@@ -29,3 +29,4 @@ docker/postgres/ssl/
 k8s-manifests/scripts/ssl-certs/
 
 k8s-manifests/ssl-certs/*
+k8s/base/core/database/postgres/ssl-certs/*
