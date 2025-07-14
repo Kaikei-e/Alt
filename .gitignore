@@ -7,6 +7,8 @@ test-results/.last-run.json
 news-creator/cached_models/*
 news-creator/models/*
 
+*.tar
+
 # real data
 backup.sql
 rask-log-aggregator/logs/*
