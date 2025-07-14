@@ -127,7 +127,7 @@ spec:
               name: postgres-config
               subPath: postgresql.conf
             - mountPath: /etc/postgresql/pg_hba.conf
-              name: postgres-config
+              name: postgres-pg-hba-config
               subPath: pg_hba.conf
       restartPolicy: Always
       volumes:
@@ -144,3 +144,6 @@ spec:
         - name: postgres-config
           configMap:
             name: postgres-ssl-config
+        - name: postgres-pg-hba-config
+          configMap:
+            name: postgres-pg-hba-config

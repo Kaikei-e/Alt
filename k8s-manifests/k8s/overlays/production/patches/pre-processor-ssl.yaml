@@ -12,6 +12,11 @@ spec:
               value: require
             - name: DB_SSL_ROOT_CERT
               value: /app/ssl/ca.crt
+            - name: DB_SSL_CERT
+              value: /app/ssl/server.crt
+            - name: DB_SSL_KEY
+              value: /app/ssl/server.key
+          imagePullPolicy: Never
           volumeMounts:
             - name: ssl-certs
               mountPath: /app/ssl

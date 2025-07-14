@@ -6,13 +6,24 @@ namespace: alt-database
 resources:
   - deployment.yaml
   - secret.yaml
-  - ssl-secret.yaml
   - ssl-configmap.yaml
   - configmap.yaml
   - pvc.yaml
   - service.yaml
 
+secretGenerator:
+  - name: postgres-ssl-certs
+    namespace: alt-database
+    files:
+      - ssl-certs/ca.crt
+      - ssl-certs/server.crt
+      - ssl-certs/server.key
+    options:
+      disableNameSuffixHash: true
+
 labels:
   - pairs:
       app.kubernetes.io/component: database
+      app.kubernetes.io/name: alt
       app.kubernetes.io/part-of: postgres
+      app.kubernetes.io/version: v1.0.0

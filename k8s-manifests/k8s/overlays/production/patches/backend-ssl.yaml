@@ -12,3 +12,9 @@ spec:
               value: require
             - name: DB_SSL_ROOT_CERT
               value: /app/ssl/ca.crt
+            - name: DB_SSL_CERT
+              value: /app/ssl/server.crt
+            - name: DB_SSL_KEY
+              value: /app/ssl/server.key
+            - name: DATABASE_URL
+              value: "postgresql://alt_db_user:$(DB_PASSWORD)@db.alt-database.svc.cluster.local:5432/alt?sslmode=require&sslcert=/app/ssl/server.crt&sslkey=/app/ssl/server.key&sslrootcert=/app/ssl/ca.crt"

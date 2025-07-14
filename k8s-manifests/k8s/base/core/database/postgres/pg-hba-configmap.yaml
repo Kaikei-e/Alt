@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-pg-hba-config
+  namespace: alt-database
+  labels:
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: postgres
+data:
+  pg_hba.conf: |
+    # PostgreSQL Client Authentication Configuration File
+    # ===============================================
+    #
+    # Refer to the "Client Authentication" section in the PostgreSQL
+    # documentation for a complete description of this file.
+
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+    # "local" is for Unix domain socket connections only
+    local   all             all                                     trust
+
+    # IPv4 local connections:
+    host    all             all             127.0.0.1/32            trust
+
+    # IPv6 local connections:
+    host    all             all             ::1/128                 trust
+
+    # Allow replication connections from localhost, by a user with the
+    # replication privilege.
+    local   replication     all                                     trust
+    host    replication     all             127.0.0.1/32            trust
+    host    replication     all             ::1/128                 trust
+
+    # Kubernetes cluster connections - require SSL
+    hostssl all             all             0.0.0.0/0               scram-sha-256 clientcert=verify-ca
+    hostssl all             all             ::/0                    scram-sha-256 clientcert=verify-ca
+
+    # Fallback for non-SSL connections (temporary, for debugging)
+    host    all             all             0.0.0.0/0               scram-sha-256
+    host    all             all             ::/0                    scram-sha-256
