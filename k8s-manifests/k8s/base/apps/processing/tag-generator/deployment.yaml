@@ -39,6 +39,8 @@ spec:
                   key: DB_TAG_GENERATOR_PASSWORD
             - name: DB_TAG_GENERATOR_USER
               value: tag_generator
+            - name: DB_SSL_MODE
+              value: require
           image: tag-generator:production
           imagePullPolicy: Never
           name: tag-generator

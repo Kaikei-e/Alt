@@ -39,6 +39,8 @@ spec:
               value: "5432"
             - name: DB_USER
               value: alt_db_user
+            - name: DB_SSL_MODE
+              value: require
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:

@@ -26,6 +26,19 @@ spec:
       labels:
         io.kompose.service: db
     spec:
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      initContainers:
+        - name: init-db-permissions
+          image: busybox:1.35
+          command: ['sh', '-c', 'chown -R 999:999 /var/lib/postgresql/data && chmod 700 /var/lib/postgresql/data']
+          volumeMounts:
+            - name: db-data
+              mountPath: /var/lib/postgresql/data
+          securityContext:
+            runAsUser: 0
       containers:
         - env:
             - name: DB_HOST
@@ -99,6 +112,9 @@ spec:
             - containerPort: 5432
               protocol: TCP
           tty: true
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
               name: db-data
