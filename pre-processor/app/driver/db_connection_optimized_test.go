@@ -117,7 +117,7 @@ func TestOptimizedConnectionPool(t *testing.T) {
 				connString := buildOptimizedConnectionString()
 				assert.Contains(t, connString, "host=localhost")
 				assert.Contains(t, connString, "dbname=test_db")
-				assert.Contains(t, connString, "sslmode=disable")
+				assert.Contains(t, connString, "sslmode=prefer")
 			},
 		},
 		{
