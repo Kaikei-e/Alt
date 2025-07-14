@@ -31,11 +31,36 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 			// Test the connection pool
 			err = pool.Ping(ctx)
 			if err == nil {
-				logger.Logger.Info("Connected to database with connection pool",
-					"database", os.Getenv("DB_NAME"),
-					"attempt", i+1,
-					"max_conns", pool.Config().MaxConns,
-					"min_conns", pool.Config().MinConns)
+				// SSL接続状況の確認
+				conn, connErr := pool.Acquire(ctx)
+				if connErr != nil {
+					logger.Logger.Warn("Could not acquire connection to check SSL status", "error", connErr)
+				} else {
+					defer conn.Release()
+					
+					var sslUsed bool
+					sslErr := conn.QueryRow(ctx, "SELECT ssl_is_used()").Scan(&sslUsed)
+					if sslErr != nil {
+						logger.Logger.Warn("Could not check SSL status", "error", sslErr)
+					} else {
+						logger.Logger.Info("Database connection established",
+							"ssl_enabled", sslUsed,
+							"database", os.Getenv("DB_NAME"),
+							"attempt", i+1,
+							"max_conns", pool.Config().MaxConns,
+							"min_conns", pool.Config().MinConns)
+					}
+				}
+				
+				if conn == nil {
+					// SSL確認ができなかった場合の従来ログ
+					logger.Logger.Info("Connected to database with connection pool",
+						"database", os.Getenv("DB_NAME"),
+						"attempt", i+1,
+						"max_conns", pool.Config().MaxConns,
+						"min_conns", pool.Config().MinConns)
+				}
+				
 				return pool, nil
 			}
 			// Close the pool if ping failed
@@ -65,36 +90,31 @@ func getDBConnectionString() (string, error) {
 		return "", fmt.Errorf("failed to load .env file: %w", err)
 	}
 
-	host, err := envChecker(os.Getenv("DB_HOST"), "DB_HOST")
-	if err != nil {
-		return "", err
-	}
-	port, err := envChecker(os.Getenv("DB_PORT"), "DB_PORT")
-	if err != nil {
-		return "", err
-	}
-	user, err := envChecker(os.Getenv("DB_USER"), "DB_USER")
-	if err != nil {
-		return "", err
-	}
-	password, err := envChecker(os.Getenv("DB_PASSWORD"), "DB_PASSWORD")
-	if err != nil {
-		return "", err
-	}
-	dbname, err := envChecker(os.Getenv("DB_NAME"), "DB_NAME")
-	if err != nil {
-		return "", err
+	// 新しい設定構造体を使用
+	config := NewDatabaseConfigFromEnv()
+	
+	// SSL設定の検証
+	if err := config.ValidateSSLConfig(); err != nil {
+		logger.Logger.Error("Invalid SSL configuration", "error", err)
+		return "", fmt.Errorf("invalid SSL configuration: %w", err)
 	}
 
-	// Connection pool configuration with optimal settings
-	connectionString := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable"+
-			" pool_max_conns=25"+ // Maximum number of connections in pool
-			" pool_min_conns=5"+ // Minimum number of connections in pool
-			" pool_max_conn_lifetime=30m"+ // Maximum time connection can be reused
-			" pool_max_conn_idle_time=15m"+ // Maximum time connection can be idle
-			" pool_health_check_period=1m", // How often to check connection health
-		host, port, user, password, dbname)
+	// ログで設定内容を出力
+	logger.Logger.Info("Database configuration",
+		"host", config.Host,
+		"port", config.Port,
+		"database", config.DBName,
+		"sslmode", config.SSL.Mode,
+	)
+
+	// 基本接続文字列を構築
+	baseConn := config.BuildConnectionString()
+	
+	// 既存のプール設定を追加
+	connectionString := baseConn +
+		" pool_max_conn_lifetime=30m"+ // Maximum time connection can be reused
+		" pool_max_conn_idle_time=15m"+ // Maximum time connection can be idle
+		" pool_health_check_period=1m" // How often to check connection health
 
 	return connectionString, nil
 }
