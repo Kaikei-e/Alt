@@ -40,11 +40,30 @@ func TestFileDLQManager_PublishFailedArticle(t *testing.T) {
 	err := dlqManager.PublishFailedArticle(context.Background(),
 		"https://example.com/article", 3, testError)
 
+	// Add debug output to see what error is returned
+	if err != nil {
+		t.Logf("PublishFailedArticle returned error: %v", err)
+	}
 	require.NoError(t, err)
 
 	// ファイルが作成されたか確認
-	dateDir := time.Now().Format("2006-01-02")
+	dateDir := time.Now().UTC().Format("2006-01-02")
 	expectedDir := filepath.Join(tempDir, "failed-articles", dateDir)
+
+	// Add debug output to see what directory we're trying to read
+	t.Logf("Trying to read directory: %s", expectedDir)
+
+	// Check if directory exists
+	if _, err := os.Stat(expectedDir); os.IsNotExist(err) {
+		t.Logf("Directory does not exist: %s", expectedDir)
+		// List contents of parent directory
+		parentDir := filepath.Join(tempDir, "failed-articles")
+		if files, err := os.ReadDir(parentDir); err == nil {
+			t.Logf("Parent directory contents: %v", files)
+		} else {
+			t.Logf("Cannot read parent directory: %v", err)
+		}
+	}
 
 	files, err := os.ReadDir(expectedDir)
 	require.NoError(t, err)
@@ -68,7 +87,7 @@ func TestFileDLQManager_PublishFailedArticle(t *testing.T) {
 	assert.False(t, message.Timestamp.IsZero())
 }
 
-// TDD RED PHASE: Test multiple message publishing 
+// TDD RED PHASE: Test multiple message publishing
 func TestFileDLQManager_PublishMultipleMessages(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -94,7 +113,7 @@ func TestFileDLQManager_PublishMultipleMessages(t *testing.T) {
 	}
 
 	// ファイル数を確認
-	dateDir := time.Now().Format("2006-01-02")
+	dateDir := time.Now().UTC().Format("2006-01-02")
 	expectedDir := filepath.Join(tempDir, "failed-articles", dateDir)
 
 	files, err := os.ReadDir(expectedDir)
@@ -176,8 +195,8 @@ func TestFileDLQManager_AnalyzeError(t *testing.T) {
 	dlqManager := NewFileDLQManager(config, testLogger())
 
 	tests := map[string]struct {
-		err      error
-		wantType string
+		err       error
+		wantType  string
 		retryable bool
 	}{
 		"HTTP 500 error": {
