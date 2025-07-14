@@ -3,7 +3,6 @@ package driver
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -50,13 +49,26 @@ func retryDBOperation(ctx context.Context, operation func() error, operationName
 
 // Init initializes a new database connection pool.
 func Init(ctx context.Context) (*pgxpool.Pool, error) {
+	// 新しい設定構造体を使用
+	dbConfig := NewDatabaseConfig()
+	
+	// SSL設定の検証
+	if err := dbConfig.ValidateSSLConfig(); err != nil {
+		logger.Logger.Error("Invalid SSL configuration", "error", err)
+		return nil, fmt.Errorf("invalid SSL configuration: %w", err)
+	}
+
+	// ログで設定内容を出力
+	logger.Logger.Info("Database configuration",
+		"host", dbConfig.Host,
+		"port", dbConfig.Port,
+		"database", dbConfig.DBName,
+		"sslmode", dbConfig.SSL.Mode,
+		"max_conns", dbConfig.MaxConns,
+	)
+
 	// Build connection string
-	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable pool_max_conns=20 pool_min_conns=5 pool_max_conn_lifetime=1h pool_max_conn_idle_time=30m",
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("PRE_PROCESSOR_DB_USER"),
-		os.Getenv("PRE_PROCESSOR_DB_PASSWORD"),
-		os.Getenv("DB_NAME"))
+	connString := dbConfig.BuildConnectionString()
 
 	// Parse the connection string to create pool config
 	config, err := pgxpool.ParseConfig(connString)
@@ -84,10 +96,30 @@ func Init(ctx context.Context) (*pgxpool.Pool, error) {
 	// Test the connection
 	err = dbPool.Ping(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to ping database", "error", err)
+		logger.Logger.Error("Failed to ping database", 
+			"error", err,
+			"sslmode", dbConfig.SSL.Mode)
 		dbPool.Close()
-
 		return nil, err
+	}
+
+	// SSL接続状況確認
+	conn, err := dbPool.Acquire(ctx)
+	if err != nil {
+		logger.Logger.Warn("Could not acquire connection to check SSL status", "error", err)
+	} else {
+		defer conn.Release()
+		
+		var sslUsed bool
+		err := conn.QueryRow(ctx, "SELECT ssl_is_used()").Scan(&sslUsed)
+		if err != nil {
+			logger.Logger.Warn("Could not check SSL status", "error", err)
+		} else {
+			logger.Logger.Info("Database connection established",
+				"ssl_enabled", sslUsed,
+				"sslmode", dbConfig.SSL.Mode,
+			)
+		}
 	}
 
 	logger.Logger.Info("Connected to database pool", "max_conns", config.MaxConns, "min_conns", config.MinConns)

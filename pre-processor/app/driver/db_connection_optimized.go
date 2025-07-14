@@ -45,15 +45,9 @@ func NewOptimizedPoolConfig() *OptimizedPoolConfig {
 	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		logger.Logger.Error("Failed to parse optimized database config", "error", err)
-		// Fall back to basic config with minimal settings
-		basicConnString := fmt.Sprintf(
-			"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-			getEnvOrDefault("DB_HOST", "localhost"),
-			getEnvOrDefault("DB_PORT", "5432"),
-			getEnvOrDefault("PRE_PROCESSOR_DB_USER", "postgres"),
-			getEnvOrDefault("PRE_PROCESSOR_DB_PASSWORD", "postgres"),
-			getEnvOrDefault("DB_NAME", "pre_processor"),
-		)
+		// Fall back to basic config with SSL configuration
+		dbConfig := NewDatabaseConfig()
+		basicConnString := dbConfig.BuildConnectionString()
 
 		config, err = pgxpool.ParseConfig(basicConnString)
 		if err != nil {
@@ -68,24 +62,30 @@ func NewOptimizedPoolConfig() *OptimizedPoolConfig {
 	return &OptimizedPoolConfig{Config: config}
 }
 
-// buildOptimizedConnectionString builds an optimized connection string
+// buildOptimizedConnectionString builds an optimized connection string with SSL
 func buildOptimizedConnectionString() string {
-	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable "+
-			"pool_max_conns=%s pool_min_conns=%s "+
-			"pool_max_conn_lifetime=%s pool_max_conn_idle_time=%s "+
-			"pool_health_check_period=%s",
-		getEnvOrDefault("DB_HOST", "localhost"),
-		getEnvOrDefault("DB_PORT", "5432"),
-		getEnvOrDefault("PRE_PROCESSOR_DB_USER", "postgres"),
-		getEnvOrDefault("PRE_PROCESSOR_DB_PASSWORD", "postgres"),
-		getEnvOrDefault("DB_NAME", "pre_processor"),
-		getEnvOrDefault("DB_POOL_MAX_CONNS", "30"),
-		getEnvOrDefault("DB_POOL_MIN_CONNS", "10"),
-		getEnvOrDefault("DB_POOL_MAX_CONN_LIFETIME", "2h"),
-		getEnvOrDefault("DB_POOL_MAX_CONN_IDLE_TIME", "15m"),
-		getEnvOrDefault("DB_POOL_HEALTH_CHECK_PERIOD", "45s"),
-	)
+	dbConfig := NewDatabaseConfig()
+	
+	// Override with optimized settings from environment
+	if envMaxConns := getEnvOrDefault("DB_POOL_MAX_CONNS", ""); envMaxConns != "" {
+		if maxConns, err := strconv.Atoi(envMaxConns); err == nil {
+			dbConfig.MaxConns = maxConns
+		}
+	}
+	if envMinConns := getEnvOrDefault("DB_POOL_MIN_CONNS", ""); envMinConns != "" {
+		if minConns, err := strconv.Atoi(envMinConns); err == nil {
+			dbConfig.MinConns = minConns
+		}
+	}
+	
+	dbConfig.MaxConnLifetime = getEnvOrDefault("DB_POOL_MAX_CONN_LIFETIME", dbConfig.MaxConnLifetime)
+	dbConfig.MaxConnIdleTime = getEnvOrDefault("DB_POOL_MAX_CONN_IDLE_TIME", dbConfig.MaxConnIdleTime)
+	
+	// Build with additional health check period
+	baseConnString := dbConfig.BuildConnectionString()
+	healthCheckPeriod := getEnvOrDefault("DB_POOL_HEALTH_CHECK_PERIOD", "45s")
+	
+	return baseConnString + " pool_health_check_period=" + healthCheckPeriod
 }
 
 // applyOptimizedSettings applies optimized configuration settings
