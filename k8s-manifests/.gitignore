@@ -1,1 +1,4 @@
 secret.yaml
+
+/k8s/ssl-certs/*
+/k8s/base/core/database/postgres/ssl-certs/*
