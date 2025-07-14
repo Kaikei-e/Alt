@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: migration-ssl-config
+  namespace: alt-database
+data:
+  # SSL設定
+  DB_SSL_MODE: "require"
+  DB_SSL_ROOT_CERT: "/app/ssl/ca.crt"
+  
+  # データベース設定
+  DB_HOST: "postgres.alt-database.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_NAME: "alt"
+  DB_USER: "alt_db_user"
+  
+  # マイグレーション設定
+  MIGRATION_PATH: "/migrations"
+  MIGRATION_TABLE: "schema_migrations"
+  
+  # ログ設定
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"

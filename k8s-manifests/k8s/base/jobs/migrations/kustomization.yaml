@@ -5,9 +5,12 @@ namespace: alt-database
 
 resources:
   - migrate-deployment.yaml
-  - secret.yaml
+  - migrate-rbac.yaml
+  - ssl-configmap.yaml
+  - migrate-env-configmap.yaml
   - migrate-cm0-configmap.yaml
   - migrate-cm1-configmap.yaml
+  - secret.yaml
 
 labels:
   - pairs:

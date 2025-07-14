@@ -1,0 +1,57 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: force-migrate-db
+  namespace: alt-database
+  labels:
+    app: force-migrate
+    component: database
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: force-migrate
+        component: database
+    spec:
+      restartPolicy: Never
+      serviceAccountName: migrate-sa
+      containers:
+      - name: force-migrate
+        image: migrate/migrate:v4.16.2
+        command: ["/bin/sh"]
+        args: ["/scripts/force-migration.sh"]
+        env:
+        # 強制マイグレーション版番号（必須）
+        - name: FORCE_VERSION
+          value: "1"  # 実際の版番号に変更
+        
+        # 通常の環境変数（migration-ssl-configから継承）
+        envFrom:
+        - configMapRef:
+            name: migration-ssl-config
+        - secretRef:
+            name: migrate-secrets
+        
+        volumeMounts:
+        - name: migration-scripts
+          mountPath: /migrations
+          readOnly: true
+        - name: ssl-certs
+          mountPath: /app/ssl
+          readOnly: true
+        - name: migration-env-scripts
+          mountPath: /scripts
+          defaultMode: 0755
+      
+      volumes:
+      - name: migration-scripts
+        configMap:
+          name: migrate-cm0
+      - name: ssl-certs
+        secret:
+          secretName: postgres-ssl-certs
+      - name: migration-env-scripts
+        configMap:
+          name: migration-env-config

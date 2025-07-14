@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tag-generator
+spec:
+  template:
+    spec:
+      containers:
+        - name: tag-generator
+          env:
+            - name: DB_SSL_MODE
+              value: require

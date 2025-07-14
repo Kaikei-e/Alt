@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: migration-env-config
+  namespace: alt-database
+data:
+  # migrate コマンド用の環境設定
+  setup-env.sh: |
+    #!/bin/bash
+    set -e
+    
+    # SSL設定の検証
+    if [ "$DB_SSL_MODE" = "disable" ]; then
+        echo "ERROR: SSL disable mode is not allowed"
+        exit 1
+    fi
+    
+    # SSL証明書ファイルの確認
+    if [ "$DB_SSL_MODE" = "verify-ca" ] || [ "$DB_SSL_MODE" = "verify-full" ]; then
+        if [ ! -f "$DB_SSL_ROOT_CERT" ]; then
+            echo "ERROR: SSL root certificate not found: $DB_SSL_ROOT_CERT"
+            exit 1
+        fi
+        echo "INFO: SSL certificate found: $DB_SSL_ROOT_CERT"
+    fi
+    
+    # データベース接続URL構築
+    DB_URL_BASE="postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    DB_URL_PARAMS="?sslmode=${DB_SSL_MODE}&search_path=public"
+    
+    # SSL証明書パラメータ追加
+    if [ -n "$DB_SSL_ROOT_CERT" ] && [ -f "$DB_SSL_ROOT_CERT" ]; then
+        DB_URL_PARAMS="${DB_URL_PARAMS}&sslrootcert=${DB_SSL_ROOT_CERT}"
+    fi
+    
+    export DATABASE_URL="${DB_URL_BASE}${DB_URL_PARAMS}"
+    
+    echo "INFO: Database URL configured with SSL mode: $DB_SSL_MODE"
+    echo "INFO: Migration path: $MIGRATION_PATH"
+    
+    # 接続テスト
+    echo "INFO: Testing database connection..."
+    if migrate -path $MIGRATION_PATH -database $DATABASE_URL version; then
+        echo "INFO: Database connection successful"
+    else
+        echo "ERROR: Database connection failed"
+        exit 1
+    fi
+  
+  # マイグレーション実行スクリプト
+  run-migration.sh: |
+    #!/bin/bash
+    set -e
+    
+    source /scripts/setup-env.sh
+    
+    echo "INFO: Starting database migration..."
+    echo "INFO: Current migration version:"
+    migrate -path $MIGRATION_PATH -database $DATABASE_URL version
+    
+    echo "INFO: Running migration up..."
+    migrate -path $MIGRATION_PATH -database $DATABASE_URL up
+    
+    echo "INFO: Migration completed successfully"
+    echo "INFO: Final migration version:"
+    migrate -path $MIGRATION_PATH -database $DATABASE_URL version
+  
+  # マイグレーション強制実行スクリプト
+  force-migration.sh: |
+    #!/bin/bash
+    set -e
+    
+    if [ -z "$FORCE_VERSION" ]; then
+        echo "ERROR: FORCE_VERSION environment variable is required"
+        exit 1
+    fi
+    
+    source /scripts/setup-env.sh
+    
+    echo "WARNING: Forcing migration to version: $FORCE_VERSION"
+    migrate -path $MIGRATION_PATH -database $DATABASE_URL force $FORCE_VERSION
+    
+    echo "INFO: Force migration completed"
+    migrate -path $MIGRATION_PATH -database $DATABASE_URL version

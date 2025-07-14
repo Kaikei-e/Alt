@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cilium-config
+  namespace: kube-system
+data:
+  # WireGuard透明暗号化設定
+  enable-wireguard: "true"
+  wireguard-persistent-keepalive: "30"
+  
+  # 基本ネットワーク設定
+  cluster-name: alt-cluster
+  cluster-id: "1"
+  
+  # IPマスカレード設定
+  enable-ipv4-masquerade: "true"
+  enable-ipv6-masquerade: "false"
+  
+  # eBPF最適化
+  enable-bpf-masquerade: "true"
+  enable-xt-socket-fallback: "true"
+  
+  # セキュリティ設定
+  enable-endpoint-health-checking: "true"
+  enable-health-check-nodeport: "true"
+  
+  # ログレベル
+  debug: "false"
+  debug-verbose: ""
+  
+  # ノード暗号化除外設定（コントロールプレーン）
+  node-encryption-opt-out-labels: "node-role.kubernetes.io/control-plane"
+  
+  # ネットワークポリシー
+  enable-policy: "default"
+  policy-enforcement-mode: "default"
+  
+  # Hubble（オプション：ネットワーク可視化）
+  enable-hubble: "true"
+  hubble-listen-address: ":4244"

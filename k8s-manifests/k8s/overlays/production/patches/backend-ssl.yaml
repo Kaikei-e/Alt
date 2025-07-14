@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alt-backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: alt-backend
+          env:
+            - name: DB_SSL_MODE
+              value: require

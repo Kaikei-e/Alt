@@ -1,69 +1,226 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  annotations:
-    kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
-    kompose.version: 1.36.0 (ae2a39403)
+  name: migrate-db
+  namespace: alt-database
   labels:
-    io.kompose.service: migrate
-    app.kubernetes.io/name: migrate
-  name: migrate
+    app: migrate
+    component: database
 spec:
-  # Job固有の設定
-  backoffLimit: 3  # 失敗時の再試行回数
-  activeDeadlineSeconds: 300  # 5分でタイムアウト
-  ttlSecondsAfterFinished: 86400  # 24時間後に自動削除
+  backoffLimit: 3
+  activeDeadlineSeconds: 600  # 10分でタイムアウト
   template:
     metadata:
-      annotations:
-        kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
-        kompose.version: 1.36.0 (ae2a39403)
       labels:
-        io.kompose.service: migrate
-        app.kubernetes.io/name: migrate
-        app.kubernetes.io/component: migration
-        app.kubernetes.io/part-of: alt-platform
+        app: migrate
+        component: database
     spec:
+      restartPolicy: Never
+      serviceAccountName: migrate-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
       containers:
-        - env:
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: migrate-secrets
-                  key: DB_PASSWORD
-            - name: DB_URL
-              value: pgx5://alt_db_user:$(DB_PASSWORD)@db.alt-database.svc.cluster.local:5432/alt?sslmode=disable&search_path=public
-            - name: MIGRATE_MAX_RETRIES
-              value: "12"
-            - name: MIGRATE_RETRY_INTERVAL
-              value: "5"
-          image: migrate:production
-          imagePullPolicy: Never
-          name: db-migrator
-          # マイグレーションの成功・失敗を確実に検出するためのコマンド
-          command: ["/bin/sh"]
-          args: ["-c", "echo 'Starting migration...' && migrate -path /migrations -database $DB_URL up && echo 'Migration completed successfully' || (echo 'Migration failed' && exit 1)"]
-          resources:
-            requests:
-              memory: "128Mi"
-              cpu: "100m"
-            limits:
-              memory: "256Mi"
-              cpu: "200m"
-          volumeMounts:
-            - mountPath: /migrations
-              name: migrate-cm0
-            - mountPath: /etc/postgresql/postgresql.conf
-              name: migrate-cm1
-              subPath: postgresql.conf
-      restartPolicy: Never  # Jobでは Never または OnFailure のみ使用可能
+      - name: migrate
+        image: migrate/migrate:v4.16.2
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh"]
+        args: ["/scripts/run-migration.sh"]
+        env:
+        # データベース接続設定（ConfigMapから）
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: migrate-secrets
+              key: DB_PASSWORD
+        
+        # SSL設定（ConfigMapから）
+        - name: DB_SSL_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_SSL_MODE
+        - name: DB_SSL_ROOT_CERT
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_SSL_ROOT_CERT
+        
+        # マイグレーション設定（ConfigMapから）
+        - name: MIGRATION_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: MIGRATION_PATH
+        - name: MIGRATION_TABLE
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: MIGRATION_TABLE
+        
+        # ログ設定（ConfigMapから）
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: LOG_LEVEL
+        
+        # 強制マイグレーション用（オプション）
+        - name: FORCE_VERSION
+          value: ""  # 必要時のみ設定
+        
+        volumeMounts:
+        # マイグレーションファイル
+        - name: migration-scripts
+          mountPath: /migrations
+          readOnly: true
+        
+        # SSL証明書
+        - name: ssl-certs
+          mountPath: /app/ssl
+          readOnly: true
+        
+        # 実行スクリプト
+        - name: migration-env-scripts
+          mountPath: /scripts
+          defaultMode: 0755
+        
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        
+        # ヘルスチェック（データベース接続確認）
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "source /scripts/setup-env.sh && migrate -path $MIGRATION_PATH -database $DATABASE_URL version"
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+      
       volumes:
-        - configMap:
-            name: migrate-cm0
+      # マイグレーションファイル
+      - name: migration-scripts
+        configMap:
           name: migrate-cm0
-        - configMap:
-            items:
-              - key: postgresql.conf
-                path: postgresql.conf
-            name: migrate-cm1
-          name: migrate-cm1
+      
+      # SSL証明書
+      - name: ssl-certs
+        secret:
+          secretName: postgres-ssl-certs
+          defaultMode: 0600
+      
+      # 実行スクリプト
+      - name: migration-env-scripts
+        configMap:
+          name: migration-env-config
+          defaultMode: 0755
+      
+      # データベース準備待機用のinitContainer
+      initContainers:
+      - name: wait-for-db
+        image: postgres:15
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - |
+          set -e
+          source /scripts/setup-env.sh
+          
+          echo "INFO: Waiting for database to be ready..."
+          until pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER; do
+            echo "INFO: Database not ready, waiting..."
+            sleep 2
+          done
+          echo "INFO: Database is ready"
+          
+          # SSL接続テスト
+          echo "INFO: Testing SSL connection..."
+          PGPASSWORD=$DB_PASSWORD psql \
+            -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME \
+            -c "SELECT ssl_is_used(), version();" \
+            -v ON_ERROR_STOP=1
+          
+          echo "INFO: SSL connection test successful"
+        
+        env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_PORT
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: migrate-secrets
+              key: DB_PASSWORD
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_NAME
+        - name: DB_SSL_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_SSL_MODE
+        - name: DB_SSL_ROOT_CERT
+          valueFrom:
+            configMapKeyRef:
+              name: migration-ssl-config
+              key: DB_SSL_ROOT_CERT
+        
+        volumeMounts:
+        - name: ssl-certs
+          mountPath: /app/ssl
+          readOnly: true
+        - name: migration-env-scripts
+          mountPath: /scripts
+          readOnly: true
+        
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
