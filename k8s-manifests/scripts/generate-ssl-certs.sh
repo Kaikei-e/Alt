@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-CERT_DIR="./ssl-certs"
+CERT_DIR="../k8s/base/core/database/postgres/ssl-certs"
 mkdir -p $CERT_DIR
 
 # CA秘密鍵生成
