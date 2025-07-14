@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"pre-processor/config"
 	"pre-processor/driver"
 	"pre-processor/handler"
 	"pre-processor/repository"
@@ -20,17 +21,17 @@ const (
 
 func main() {
 	// Load logger configuration from environment
-	config := logger.LoadLoggerConfigFromEnv()
+	loggerConfig := logger.LoadLoggerConfigFromEnv()
 
 	// Initialize logger with feature flag support
-	contextLogger := logger.NewContextLoggerWithConfig(config)
+	contextLogger := logger.NewContextLoggerWithConfig(loggerConfig)
 
 	// Use context logger as primary logger
 	logger.Logger = contextLogger.WithContext(context.Background())
 	logger.Logger.Info("Starting pre-processor service",
-		"log_level", config.Level,
-		"log_format", config.Format,
-		"use_rask_logger", config.UseRask)
+		"log_level", loggerConfig.Level,
+		"log_format", loggerConfig.Format,
+		"use_rask_logger", loggerConfig.UseRask)
 
 	// Initialize database
 	ctx := context.Background()
@@ -43,11 +44,18 @@ func main() {
 
 	defer dbPool.Close()
 
+	// Load application config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logger.Logger.Error("Failed to load config", "error", err)
+		panic(err)
+	}
+
 	// Initialize repositories
 	articleRepo := repository.NewArticleRepository(dbPool, logger.Logger)
 	feedRepo := repository.NewFeedRepository(dbPool, logger.Logger)
 	summaryRepo := repository.NewSummaryRepository(dbPool, logger.Logger)
-	apiRepo := repository.NewExternalAPIRepository(logger.Logger)
+	apiRepo := repository.NewExternalAPIRepository(cfg, logger.Logger)
 
 	// Initialize services
 	feedProcessorService := service.NewFeedProcessorService(

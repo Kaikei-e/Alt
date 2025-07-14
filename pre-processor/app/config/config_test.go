@@ -112,6 +112,12 @@ func TestValidateConfig(t *testing.T) {
 				},
 				RateLimit: RateLimitConfig{DefaultInterval: 5 * time.Second},
 				Metrics:   MetricsConfig{Port: 9201},
+				NewsCreator: NewsCreatorConfig{
+					Host:    "http://news-creator:11434",
+					APIPath: "/api/generate",
+					Model:   "gemma3:4b",
+					Timeout: 60 * time.Second,
+				},
 			},
 			expectError: false,
 		},
@@ -199,6 +205,12 @@ func TestConfigManager(t *testing.T) {
 			Retry:  RetryConfig{MaxAttempts: 3, BackoffFactor: 2.0},
 			RateLimit: RateLimitConfig{DefaultInterval: 5 * time.Second},
 			Metrics:   MetricsConfig{Port: 9201},
+			NewsCreator: NewsCreatorConfig{
+				Host:    "http://news-creator:11434",
+				APIPath: "/api/generate",
+				Model:   "gemma3:4b",
+				Timeout: 60 * time.Second,
+			},
 		}
 
 		manager := NewConfigManager(originalConfig, nil)
@@ -209,6 +221,12 @@ func TestConfigManager(t *testing.T) {
 			Retry:  RetryConfig{MaxAttempts: 5, BackoffFactor: 3.0},
 			RateLimit: RateLimitConfig{DefaultInterval: 10 * time.Second},
 			Metrics:   MetricsConfig{Port: 9202},
+			NewsCreator: NewsCreatorConfig{
+				Host:    "http://news-creator:11434",
+				APIPath: "/api/generate",
+				Model:   "gemma3:4b",
+				Timeout: 60 * time.Second,
+			},
 		}
 
 		err := manager.UpdateConfig(newConfig)
@@ -227,6 +245,12 @@ func TestConfigManager(t *testing.T) {
 			Retry:  RetryConfig{MaxAttempts: 3, BackoffFactor: 2.0},
 			RateLimit: RateLimitConfig{DefaultInterval: 5 * time.Second},
 			Metrics:   MetricsConfig{Port: 9201},
+			NewsCreator: NewsCreatorConfig{
+				Host:    "http://news-creator:11434",
+				APIPath: "/api/generate",
+				Model:   "gemma3:4b",
+				Timeout: 60 * time.Second,
+			},
 		}
 
 		manager := NewConfigManager(originalConfig, nil)

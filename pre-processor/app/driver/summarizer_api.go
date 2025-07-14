@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"pre-processor/config"
 	"pre-processor/models"
 	"pre-processor/utils"
 )
@@ -46,9 +47,6 @@ type OllamaResponse struct {
 }
 
 const (
-	summarizerAPIURL = "http://news-creator:11434/api/generate"
-	modelName        = "gemma3:4b"
-
 	// Refined prompt template optimized for gemma3:4b.
 	promptTemplate = `<start_of_turn>user
 You are an expert multilingual journalist specializing in Japanese news summarization. Your task is to analyze English articles and create comprehensive Japanese summaries that capture the essence while being culturally appropriate for Japanese audiences.
@@ -93,11 +91,14 @@ func getHTTPClient() *utils.RateLimitedHTTPClient {
 	return httpClient
 }
 
-func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, logger *slog.Logger) (*SummarizedContent, error) {
+func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger) (*SummarizedContent, error) {
 	prompt := fmt.Sprintf(promptTemplate, article.Content)
 
+	// Construct API URL from config
+	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
+
 	payload := payloadModel{
-		Model:     modelName,
+		Model:     cfg.NewsCreator.Model,
 		Prompt:    prompt,
 		Stream:    false,
 		KeepAlive: -1,
@@ -121,17 +122,26 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, lo
 	clientManager := utils.NewHTTPClientManager()
 	client := clientManager.GetSummaryClient()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", summarizerAPIURL, strings.NewReader(string(jsonData)))
+	// Create context with timeout from config
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, cfg.NewsCreator.Timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctxWithTimeout, "POST", apiURL, strings.NewReader(string(jsonData)))
 	if err != nil {
-		logger.Error("Failed to create request", "error", err)
+		logger.Error("Failed to create request", "error", err, "api_url", apiURL)
 		return nil, err
 	}
+
+	logger.Debug("Making request to news-creator API", 
+		"api_url", apiURL, 
+		"model", cfg.NewsCreator.Model, 
+		"timeout", cfg.NewsCreator.Timeout)
 
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.Error("Failed to send request", "error", err)
+		logger.Error("Failed to send request", "error", err, "api_url", apiURL)
 		return nil, err
 	}
 	defer func() {

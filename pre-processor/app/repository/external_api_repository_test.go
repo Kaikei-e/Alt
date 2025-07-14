@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"pre-processor/config"
 	"pre-processor/models"
 
 	"github.com/stretchr/testify/assert"
@@ -26,10 +27,21 @@ func testLoggerExternalAPI() *slog.Logger {
 	}))
 }
 
+func testConfig() *config.Config {
+	return &config.Config{
+		NewsCreator: config.NewsCreatorConfig{
+			Host:    "http://test-news-creator:11434",
+			APIPath: "/api/generate",
+			Model:   "gemma3:4b",
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
 func TestExternalAPIRepository_InterfaceCompliance(t *testing.T) {
 	t.Run("should implement ExternalAPIRepository interface", func(t *testing.T) {
 		// RED PHASE: Test that repository implements interface
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		// Verify interface compliance at compile time
 		var _ ExternalAPIRepository = repo
@@ -91,7 +103,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation
 
-			repo := NewExternalAPIRepository(testLoggerExternalAPI())
+			repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 			summary, err := repo.SummarizeArticle(context.Background(), tc.article)
 
@@ -187,7 +199,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 				}
 			}
 
-			repo := NewExternalAPIRepository(testLoggerExternalAPI())
+			repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 			err := repo.CheckHealth(context.Background(), serviceURL)
 
@@ -205,7 +217,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 
 	t.Run("should handle connection errors without external calls", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		// Use invalid port that will definitely fail
 		err := repo.CheckHealth(context.Background(), "http://127.0.0.1:99999")
@@ -217,7 +229,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 	t.Run("should handle context cancellation in SummarizeArticle", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel context immediately
@@ -236,7 +248,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 
 	t.Run("should handle context cancellation in CheckHealth", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel context immediately
@@ -254,7 +266,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 
 	t.Run("should handle context timeout", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 		defer cancel()
@@ -274,7 +286,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 	t.Run("should handle very long article content", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		// Create article with very long content
 		longContent := make([]byte, 1024*1024) // 1MB
@@ -297,7 +309,7 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 
 	t.Run("should handle URL with special characters", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		// Test various problematic URLs using mock servers
 		tests := map[string]struct {
@@ -343,8 +355,8 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 // Table-driven tests for comprehensive coverage using mock servers.
 func TestExternalAPIRepository_TableDriven(t *testing.T) {
 	type testCase struct {
-		setup       func() (ExternalAPIRepository, interface{}, *httptest.Server)
-		validate    func(t *testing.T, result interface{}, err error)
+		setup       func() (ExternalAPIRepository, any, *httptest.Server)
+		validate    func(t *testing.T, result any, err error)
 		name        string
 		operation   string
 		setupLogger bool
@@ -355,7 +367,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			name:      "summarize with all fields populated",
 			operation: "summarize",
 			setup: func() (ExternalAPIRepository, interface{}, *httptest.Server) {
-				repo := NewExternalAPIRepository(testLoggerExternalAPI())
+				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 				article := &models.Article{
 					ID:        "article-456",
 					Title:     "Complete Article",
@@ -374,7 +386,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			name:      "health check with mock HTTPS server",
 			operation: "health",
 			setup: func() (ExternalAPIRepository, interface{}, *httptest.Server) {
-				repo := NewExternalAPIRepository(testLoggerExternalAPI())
+				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "/api/tags" {
 						w.WriteHeader(http.StatusOK)
@@ -390,7 +402,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			name:      "summarize with minimal article",
 			operation: "summarize",
 			setup: func() (ExternalAPIRepository, interface{}, *httptest.Server) {
-				repo := NewExternalAPIRepository(testLoggerExternalAPI())
+				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 				article := &models.Article{
 					ID:      "minimal-123",
 					Content: "Minimal content",
@@ -405,7 +417,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			name:      "health check with mock server and port",
 			operation: "health",
 			setup: func() (ExternalAPIRepository, interface{}, *httptest.Server) {
-				repo := NewExternalAPIRepository(testLoggerExternalAPI())
+				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "/api/tags" {
 						w.WriteHeader(http.StatusOK)
@@ -427,7 +439,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 				defer server.Close()
 			}
 
-			var result interface{}
+			var result any
 
 			var err error
 
@@ -446,7 +458,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 // Benchmark tests with mock servers.
 func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 
-	repo := NewExternalAPIRepository(testLoggerExternalAPI())
+	repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 	article := &models.Article{
 		ID:      "bench-test",
@@ -465,7 +477,7 @@ func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 
 func BenchmarkExternalAPIRepository_CheckHealth(b *testing.B) {
 
-	repo := NewExternalAPIRepository(testLoggerExternalAPI())
+	repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -482,12 +494,12 @@ func BenchmarkExternalAPIRepository_CheckHealth(b *testing.B) {
 func TestExternalAPIRepository_HelperFunctions(t *testing.T) {
 	t.Run("should validate constructor parameters", func(t *testing.T) {
 		// Test that NewExternalAPIRepository handles nil logger gracefully
-		repo := NewExternalAPIRepository(nil)
+		repo := NewExternalAPIRepository(testConfig(), nil)
 		assert.NotNil(t, repo)
 	})
 
 	t.Run("should handle HTTP client configuration", func(t *testing.T) {
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		// Test with a mock server that introduces delay
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -504,7 +516,7 @@ func TestExternalAPIRepository_HelperFunctions(t *testing.T) {
 func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 	t.Run("should handle network timeouts gracefully", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		// Use context timeout instead of server sleep to test timeout behavior
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -524,7 +536,7 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 
 	t.Run("should handle malformed response gracefully", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Return malformed response

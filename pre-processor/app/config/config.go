@@ -12,12 +12,13 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig    `json:"server"`
-	HTTP      HTTPConfig      `json:"http"`
-	Retry     RetryConfig     `json:"retry"`
-	RateLimit RateLimitConfig `json:"rate_limit"`
-	DLQ       DLQConfig       `json:"dlq"`
-	Metrics   MetricsConfig   `json:"metrics"`
+	Server      ServerConfig      `json:"server"`
+	HTTP        HTTPConfig        `json:"http"`
+	Retry       RetryConfig       `json:"retry"`
+	RateLimit   RateLimitConfig   `json:"rate_limit"`
+	DLQ         DLQConfig         `json:"dlq"`
+	Metrics     MetricsConfig     `json:"metrics"`
+	NewsCreator NewsCreatorConfig `json:"news_creator"`
 }
 
 type ServerConfig struct {
@@ -67,6 +68,13 @@ type MetricsConfig struct {
 	ReadTimeout       time.Duration `json:"read_timeout" env:"METRICS_READ_TIMEOUT" default:"30s"`
 	WriteTimeout      time.Duration `json:"write_timeout" env:"METRICS_WRITE_TIMEOUT" default:"30s"`
 	IdleTimeout       time.Duration `json:"idle_timeout" env:"METRICS_IDLE_TIMEOUT" default:"120s"`
+}
+
+type NewsCreatorConfig struct {
+	Host    string        `json:"host" env:"NEWS_CREATOR_HOST" default:"http://news-creator:11434"`
+	APIPath string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/generate"`
+	Model   string        `json:"model" env:"NEWS_CREATOR_MODEL" default:"gemma3:4b"`
+	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"60s"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -340,6 +348,35 @@ func loadFromEnv(config *Config) error {
 		config.Metrics.UpdateInterval = 10 * time.Second
 	}
 
+	// NewsCreator config
+	if host := os.Getenv("NEWS_CREATOR_HOST"); host != "" {
+		config.NewsCreator.Host = host
+	} else {
+		config.NewsCreator.Host = "http://news-creator:11434"
+	}
+
+	if apiPath := os.Getenv("NEWS_CREATOR_API_PATH"); apiPath != "" {
+		config.NewsCreator.APIPath = apiPath
+	} else {
+		config.NewsCreator.APIPath = "/api/generate"
+	}
+
+	if model := os.Getenv("NEWS_CREATOR_MODEL"); model != "" {
+		config.NewsCreator.Model = model
+	} else {
+		config.NewsCreator.Model = "gemma3:4b"
+	}
+
+	if timeout := os.Getenv("NEWS_CREATOR_TIMEOUT"); timeout != "" {
+		if t, err := time.ParseDuration(timeout); err == nil {
+			config.NewsCreator.Timeout = t
+		} else {
+			return fmt.Errorf("invalid NEWS_CREATOR_TIMEOUT: %s", timeout)
+		}
+	} else {
+		config.NewsCreator.Timeout = 60 * time.Second
+	}
+
 	return nil
 }
 
@@ -366,6 +403,14 @@ func validateConfig(config *Config) error {
 
 	if config.Metrics.Port <= 0 || config.Metrics.Port > 65535 {
 		return fmt.Errorf("invalid metrics port: %d", config.Metrics.Port)
+	}
+
+	if config.NewsCreator.Host == "" {
+		return fmt.Errorf("news creator host cannot be empty")
+	}
+
+	if config.NewsCreator.Timeout <= 0 {
+		return fmt.Errorf("news creator timeout must be positive: %v", config.NewsCreator.Timeout)
 	}
 
 	return nil

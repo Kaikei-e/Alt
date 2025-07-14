@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"pre-processor/config"
 	"pre-processor/driver"
 	"pre-processor/models"
 )
@@ -17,12 +18,14 @@ import (
 type externalAPIRepository struct {
 	logger *slog.Logger
 	client *http.Client
+	config *config.Config
 }
 
 // NewExternalAPIRepository creates a new external API repository.
-func NewExternalAPIRepository(logger *slog.Logger) ExternalAPIRepository {
+func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger) ExternalAPIRepository {
 	return &externalAPIRepository{
 		logger: logger,
+		config: cfg,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -50,7 +53,7 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 	r.logger.Info("summarizing article", "article_id", article.ID)
 
 	// Use existing driver function
-	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, article, r.logger)
+	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, article, r.config, r.logger)
 	if err != nil {
 		r.logger.Error("failed to summarize article", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to summarize article: %w", err)
