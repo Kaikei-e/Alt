@@ -248,9 +248,12 @@ create_namespaces() {
 validate_secrets() {
     echo -e "${BLUE}シークレットを検証中...${NC}"
 
-    NAMESPACE="alt-${ENVIRONMENT}"
-    if [ "$ENVIRONMENT" = "production" ]; then
+    if [ "$ENVIRONMENT" = "development" ]; then
+        NAMESPACE="alt-dev"
+    elif [ "$ENVIRONMENT" = "production" ]; then
         NAMESPACE="alt-production"
+    else
+        NAMESPACE="alt-${ENVIRONMENT}"
     fi
 
     if [ -f "k8s/scripts/validate-secrets.sh" ]; then
@@ -648,6 +651,15 @@ generate_deployment_summary() {
                 echo -e "${CYAN}  ${ns}: Deployments ${ready_deployments}/${deployments}, Pods ${running_pods}/${total_pods}${NC}"
             fi
         done
+    elif [ "$ENVIRONMENT" = "development" ]; then
+        local ns="alt-dev"
+        local deployments=$(kubectl get deployment -n ${ns} --no-headers 2>/dev/null | wc -l)
+        local ready_deployments=$(kubectl get deployment -n ${ns} --no-headers 2>/dev/null | awk 'split($2, arr, "/") && arr[1] == arr[2] && arr[2] > 0 { print $1 }' | wc -l)
+        local total_pods=$(kubectl get pod -n ${ns} --no-headers 2>/dev/null | wc -l)
+        local running_pods=$(kubectl get pod -n ${ns} --no-headers --field-selector=status.phase=Running 2>/dev/null | wc -l)
+
+        echo -e "${BLUE}環境の状態:${NC}"
+        echo -e "${CYAN}  ${ns}: Deployments ${ready_deployments}/${deployments}, Pods ${running_pods}/${total_pods}${NC}"
     else
         local ns="alt-${ENVIRONMENT}"
         local deployments=$(kubectl get deployment -n ${ns} --no-headers 2>/dev/null | wc -l)
@@ -664,6 +676,9 @@ generate_deployment_summary() {
         echo -e "${CYAN}  1. ./deploy.sh production status でシステム全体の状態を確認${NC}"
         echo -e "${CYAN}  2. ヘルスチェックが失敗した場合はログを確認${NC}"
         echo -e "${CYAN}  3. 問題がある場合は ./deploy.sh production rollback でロールバック${NC}"
+    elif [ "$ENVIRONMENT" = "development" ]; then
+        echo -e "${CYAN}  1. ./deploy.sh development status で状態を確認${NC}"
+        echo -e "${CYAN}  2. アプリケーションの動作テストを実行${NC}"
     else
         echo -e "${CYAN}  1. ./deploy.sh ${ENVIRONMENT} status で状態を確認${NC}"
         echo -e "${CYAN}  2. アプリケーションの動作テストを実行${NC}"
@@ -1535,6 +1550,8 @@ backup_current_state() {
         for ns in alt-apps alt-database alt-search alt-observability alt-ingress; do
             kubectl get all,configmap,secret,pvc -n ${ns} -o yaml > ${BACKUP_DIR}/${ns}-backup.yaml 2>/dev/null || true
         done
+    elif [ "$ENVIRONMENT" = "development" ]; then
+        kubectl get all,configmap,secret,pvc -n alt-dev -o yaml > ${BACKUP_DIR}/alt-dev-backup.yaml 2>/dev/null || true
     else
         kubectl get all,configmap,secret,pvc -n ${NAMESPACE} -o yaml > ${BACKUP_DIR}/${NAMESPACE}-backup.yaml 2>/dev/null || true
     fi
@@ -1546,10 +1563,14 @@ backup_current_state() {
 check_deployment_status() {
     echo -e "${BLUE}デプロイメントの状態を確認中...${NC}"
 
-    NAMESPACE="alt-${ENVIRONMENT}"
-    if [ "$ENVIRONMENT" = "production" ]; then
+    if [ "$ENVIRONMENT" = "development" ]; then
+        NAMESPACE="alt-dev"
+        NAMESPACES=(${NAMESPACE})
+    elif [ "$ENVIRONMENT" = "production" ]; then
+        NAMESPACE="alt-production"
         NAMESPACES=(alt-apps alt-database alt-search alt-observability alt-ingress)
     else
+        NAMESPACE="alt-${ENVIRONMENT}"
         NAMESPACES=(${NAMESPACE})
     fi
 
@@ -1723,7 +1744,9 @@ perform_health_check() {
     echo -e "${BLUE}ヘルスチェックを実行中...${NC}"
 
     NAMESPACE="alt-${ENVIRONMENT}"
-    if [ "$ENVIRONMENT" = "production" ]; then
+    if [ "$ENVIRONMENT" = "development" ]; then
+        NAMESPACE="alt-dev"
+    elif [ "$ENVIRONMENT" = "production" ]; then
         NAMESPACE="alt-apps"
     fi
 
@@ -1849,10 +1872,13 @@ main() {
             deploy_application
             if [ "$DRY_RUN" = "false" ]; then
                 # リアルタイム進捗監視
-                local namespace="alt-${ENVIRONMENT}"
-                if [ "$ENVIRONMENT" = "production" ]; then
-                    namespace="alt-apps"
-                fi
+                    if [ "$ENVIRONMENT" = "development" ]; then
+        local namespace="alt-dev"
+    elif [ "$ENVIRONMENT" = "production" ]; then
+        local namespace="alt-apps"
+    else
+        local namespace="alt-${ENVIRONMENT}"
+    fi
 
                 echo -e "${CYAN}デプロイメント進捗の監視を開始します...${NC}"
                 show_deployment_progress ${namespace} "デプロイメント"
