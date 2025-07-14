@@ -1,12 +1,25 @@
+# ALT Platform Docker Compose Configuration
+#
+# Changes made:
+# - Updated pre-processor to use multi-stage Dockerfile with pre-compiled Go binary
+# - Added comments for volume definitions
+# - Aligned with Kubernetes deployment configuration
+#
+# Usage:
+#   docker-compose up -d                    # Start all services
+#   docker-compose up -d --profile logging  # Start with logging services
+#   docker-compose down --profile logging   # Stop with logging services
+#
 networks:
   alt-network:
 
 volumes:
-  db_data:
-  meili_data:
-  rask_log_aggregator_data:
-  clickhouse_data:
-  news_creator_models:
+  # Persistent storage volumes for data persistence
+  db_data:                    # PostgreSQL database data
+  meili_data:                 # MeiliSearch index data
+  rask_log_aggregator_data:   # Rask log aggregator data
+  clickhouse_data:            # ClickHouse database data
+  news_creator_models:        # Ollama models for news-creator
 x-rask-env: &rask-env
   environment:
     RASK_CONFIG: |
@@ -179,9 +192,10 @@ services:
         max-file: "3"
 
   pre-processor:
+    # Updated to use multi-stage build with pre-compiled Go binary
     build:
       context: ./pre-processor
-      dockerfile: Dockerfile.preprocess
+      dockerfile: Dockerfile
     environment:
       - DB_HOST=db
       - DB_PORT=5432
