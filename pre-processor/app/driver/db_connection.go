@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -51,7 +52,30 @@ func retryDBOperation(ctx context.Context, operation func() error, operationName
 func Init(ctx context.Context) (*pgxpool.Pool, error) {
 	// 新しい設定構造体を使用
 	dbConfig := NewDatabaseConfig()
-	
+
+	// 追加: SSL関連の環境変数をログ出力
+	logger.Logger.Info("SSL ENV",
+		"DB_SSL_MODE", dbConfig.SSL.Mode,
+		"DB_SSL_ROOT_CERT", dbConfig.SSL.RootCert,
+		"DB_SSL_CERT", dbConfig.SSL.Cert,
+		"DB_SSL_KEY", dbConfig.SSL.Key,
+	)
+
+	// 追加: 証明書ファイルの存在チェック
+	for _, path := range []string{dbConfig.SSL.RootCert, dbConfig.SSL.Cert, dbConfig.SSL.Key} {
+		if path != "" {
+			if _, err := os.Stat(path); err != nil {
+				logger.Logger.Error("SSL cert file not found", "path", path, "error", err)
+			} else {
+				logger.Logger.Info("SSL cert file found", "path", path)
+			}
+		}
+	}
+
+	// 追加: 実際の接続文字列をログ出力
+	connString := dbConfig.BuildConnectionString()
+	logger.Logger.Info("DB connection string", "conn", connString)
+
 	// SSL設定の検証
 	if err := dbConfig.ValidateSSLConfig(); err != nil {
 		logger.Logger.Error("Invalid SSL configuration", "error", err)
@@ -66,9 +90,6 @@ func Init(ctx context.Context) (*pgxpool.Pool, error) {
 		"sslmode", dbConfig.SSL.Mode,
 		"max_conns", dbConfig.MaxConns,
 	)
-
-	// Build connection string
-	connString := dbConfig.BuildConnectionString()
 
 	// Parse the connection string to create pool config
 	config, err := pgxpool.ParseConfig(connString)
@@ -96,7 +117,7 @@ func Init(ctx context.Context) (*pgxpool.Pool, error) {
 	// Test the connection
 	err = dbPool.Ping(ctx)
 	if err != nil {
-		logger.Logger.Error("Failed to ping database", 
+		logger.Logger.Error("Failed to ping database",
 			"error", err,
 			"sslmode", dbConfig.SSL.Mode)
 		dbPool.Close()
@@ -109,7 +130,7 @@ func Init(ctx context.Context) (*pgxpool.Pool, error) {
 		logger.Logger.Warn("Could not acquire connection to check SSL status", "error", err)
 	} else {
 		defer conn.Release()
-		
+
 		var sslUsed bool
 		err := conn.QueryRow(ctx, "SELECT ssl_is_used()").Scan(&sslUsed)
 		if err != nil {
