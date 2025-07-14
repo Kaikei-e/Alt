@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 )
@@ -13,6 +14,7 @@ type Config struct {
 	HTTP        HTTPConfig
 }
 
+// Enhanced DatabaseConfig with SSL support
 type DatabaseConfig struct {
 	Host     string
 	Port     string
@@ -20,6 +22,7 @@ type DatabaseConfig struct {
 	User     string
 	Password string
 	Timeout  time.Duration
+	SSL      SSLConfig
 }
 
 type MeilisearchConfig struct {
@@ -42,15 +45,30 @@ type HTTPConfig struct {
 }
 
 func Load() (*Config, error) {
-	cfg := &Config{
-		Database: DatabaseConfig{
-			Host:     getEnvRequired("DB_HOST"),
-			Port:     getEnvRequired("DB_PORT"),
-			Name:     getEnvRequired("DB_NAME"),
-			User:     getEnvRequired("SEARCH_INDEXER_DB_USER"),
-			Password: getEnvRequired("SEARCH_INDEXER_DB_PASSWORD"),
-			Timeout:  10 * time.Second,
+	// Create database config with SSL support
+	dbConfig := &DatabaseConfig{
+		Host:     getEnvRequired("DB_HOST"),
+		Port:     getEnvRequired("DB_PORT"),
+		Name:     getEnvRequired("DB_NAME"),
+		User:     getEnvRequired("SEARCH_INDEXER_DB_USER"),
+		Password: getEnvRequired("SEARCH_INDEXER_DB_PASSWORD"),
+		Timeout:  10 * time.Second,
+		SSL: SSLConfig{
+			Mode:     getEnvOrDefault("DB_SSL_MODE", "prefer"),
+			RootCert: getEnvOrDefault("DB_SSL_ROOT_CERT", ""),
+			Cert:     getEnvOrDefault("DB_SSL_CERT", ""),
+			Key:      getEnvOrDefault("DB_SSL_KEY", ""),
 		},
+	}
+
+	// SSL設定の検証
+	if err := dbConfig.ValidateSSLConfig(); err != nil {
+		slog.Error("Invalid SSL configuration", "error", err)
+		return nil, fmt.Errorf("SSL configuration error: %w", err)
+	}
+
+	cfg := &Config{
+		Database: *dbConfig,
 		Meilisearch: MeilisearchConfig{
 			Host:    getEnvRequired("MEILISEARCH_HOST"),
 			APIKey:  os.Getenv("MEILISEARCH_API_KEY"),
@@ -69,12 +87,80 @@ func Load() (*Config, error) {
 		},
 	}
 
+	slog.Info("Configuration loaded",
+		"db_host", cfg.Database.Host,
+		"db_sslmode", cfg.Database.SSL.Mode,
+		"meilisearch_host", cfg.Meilisearch.Host,
+	)
+
 	return cfg, nil
 }
 
+// 後方互換性のためのメソッド（deprecated）
 func (c *DatabaseConfig) ConnectionString() string {
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		c.Host, c.Port, c.User, c.Password, c.Name)
+	slog.Warn("ConnectionString is deprecated, use GetDatabaseConnectionString()")
+	return c.GetDatabaseConnectionString()
+}
+
+// 新しいメソッド
+func (c *DatabaseConfig) GetDatabaseConnectionString() string {
+	baseConn := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		c.Host, c.Port, c.User, c.Password, c.Name, c.SSL.Mode,
+	)
+
+	if c.SSL.RootCert != "" {
+		baseConn += fmt.Sprintf(" sslrootcert=%s", c.SSL.RootCert)
+	}
+	if c.SSL.Cert != "" {
+		baseConn += fmt.Sprintf(" sslcert=%s", c.SSL.Cert)
+	}
+	if c.SSL.Key != "" {
+		baseConn += fmt.Sprintf(" sslkey=%s", c.SSL.Key)
+	}
+
+	return baseConn
+}
+
+func (c *DatabaseConfig) GetDatabaseURL() string {
+	baseURL := fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s",
+		c.User, c.Password, c.Host, c.Port, c.Name,
+	)
+
+	// SSLパラメータをクエリ文字列として追加
+	params := fmt.Sprintf("?sslmode=%s", c.SSL.Mode)
+
+	if c.SSL.RootCert != "" {
+		params += fmt.Sprintf("&sslrootcert=%s", c.SSL.RootCert)
+	}
+	if c.SSL.Cert != "" {
+		params += fmt.Sprintf("&sslcert=%s", c.SSL.Cert)
+	}
+	if c.SSL.Key != "" {
+		params += fmt.Sprintf("&sslkey=%s", c.SSL.Key)
+	}
+
+	return baseURL + params
+}
+
+func (c *DatabaseConfig) ValidateSSLConfig() error {
+	switch c.SSL.Mode {
+	case "disable":
+		return fmt.Errorf("SSL disable mode is not allowed")
+	case "allow", "prefer":
+		// 警告はログに出力（ここでは省略）
+		return nil
+	case "require":
+		return nil
+	case "verify-ca", "verify-full":
+		if c.SSL.RootCert == "" {
+			return fmt.Errorf("SSL root certificate required for mode %s", c.SSL.Mode)
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid SSL mode: %s", c.SSL.Mode)
+	}
 }
 
 func getEnvRequired(key string) string {
@@ -83,4 +169,11 @@ func getEnvRequired(key string) string {
 		panic(fmt.Sprintf("required environment variable %s is not set", key))
 	}
 	return value
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }

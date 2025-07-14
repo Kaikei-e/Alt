@@ -88,9 +88,10 @@ func TestDatabaseConfig_ConnectionString(t *testing.T) {
 		User:     "user",
 		Password: "pass",
 		Name:     "testdb",
+		SSL:      SSLConfig{Mode: "prefer"}, // SSL設定を追加
 	}
 
-	want := "host=localhost port=5432 user=user password=pass dbname=testdb sslmode=disable"
+	want := "host=localhost port=5432 user=user password=pass dbname=testdb sslmode=prefer"
 	got := cfg.ConnectionString()
 
 	if got != want {
@@ -102,6 +103,7 @@ func clearEnv() {
 	vars := []string{
 		"DB_HOST", "DB_PORT", "DB_NAME", "SEARCH_INDEXER_DB_USER", "SEARCH_INDEXER_DB_PASSWORD",
 		"MEILISEARCH_HOST", "MEILISEARCH_API_KEY",
+		"DB_SSL_MODE", "DB_SSL_ROOT_CERT", "DB_SSL_CERT", "DB_SSL_KEY",
 	}
 	for _, v := range vars {
 		os.Unsetenv(v)
