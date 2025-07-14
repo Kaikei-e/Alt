@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
+	"search-indexer/config"
 	"search-indexer/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,24 +41,38 @@ func NewDatabaseDriverFromConfig(ctx context.Context) (*DatabaseDriver, error) {
 func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		// Construct DATABASE_URL from individual environment variables
-		dbHost := os.Getenv("DB_HOST")
-		dbPort := os.Getenv("DB_PORT")
-		dbName := os.Getenv("DB_NAME")
-		dbUser := os.Getenv("SEARCH_INDEXER_DB_USER")
-		dbPassword := os.Getenv("SEARCH_INDEXER_DB_PASSWORD")
+		// Create database config with SSL support
+		dbConfig := config.NewDatabaseConfigFromEnv()
+		dbConfig.User = os.Getenv("SEARCH_INDEXER_DB_USER")
+		dbConfig.Password = os.Getenv("SEARCH_INDEXER_DB_PASSWORD")
 
-		if dbHost == "" || dbPort == "" || dbName == "" || dbUser == "" || dbPassword == "" {
+		// Validate required parameters
+		if dbConfig.Host == "" || dbConfig.Port == "" || dbConfig.Name == "" || dbConfig.User == "" || dbConfig.Password == "" {
 			return nil, &DriverError{
 				Op:  "initDatabasePool",
 				Err: "database connection parameters are not set. Required: DB_HOST, DB_PORT, DB_NAME, SEARCH_INDEXER_DB_USER, SEARCH_INDEXER_DB_PASSWORD",
 			}
 		}
 
-		dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPassword, dbHost, dbPort, dbName)
+		// SSL設定の検証
+		if err := dbConfig.ValidateSSLConfig(); err != nil {
+			slog.Error("Invalid SSL configuration", "error", err)
+			return nil, &DriverError{
+				Op:  "initDatabasePool",
+				Err: fmt.Sprintf("SSL configuration error: %v", err),
+			}
+		}
+
+		slog.Info("Database configuration",
+			"host", dbConfig.Host,
+			"database", dbConfig.Name,
+			"sslmode", dbConfig.SSL.Mode,
+		)
+
+		dbURL = dbConfig.BuildPostgresURL()
 	}
 
-	config, err := pgxpool.ParseConfig(dbURL)
+	poolConfig, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
 		return nil, &DriverError{
 			Op:  "initDatabasePool",
@@ -64,7 +80,13 @@ func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 		}
 	}
 
-	pool, err := pgxpool.NewWithConfig(ctx, config)
+	// 接続プール設定
+	poolConfig.MaxConns = 10
+	poolConfig.MinConns = 2
+	poolConfig.MaxConnLifetime = time.Hour
+	poolConfig.MaxConnIdleTime = time.Minute * 30
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, &DriverError{
 			Op:  "initDatabasePool",
@@ -76,6 +98,24 @@ func initDatabasePool(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, &DriverError{
 			Op:  "initDatabasePool",
 			Err: "failed to ping database: " + err.Error(),
+		}
+	}
+
+	// SSL接続状況確認
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		slog.Warn("Could not acquire connection to check SSL status", "error", err)
+	} else {
+		defer conn.Release()
+
+		var sslUsed bool
+		err := conn.QueryRow(ctx, "SELECT ssl_is_used()").Scan(&sslUsed)
+		if err != nil {
+			slog.Warn("Could not check SSL status", "error", err)
+		} else {
+			slog.Info("Database connection established",
+				"ssl_enabled", sslUsed,
+			)
 		}
 	}
 
