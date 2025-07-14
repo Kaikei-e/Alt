@@ -29,6 +29,18 @@ patches:
     target:
       kind: Deployment
       name: news-creator
+  - path: patches/pre-processor-ssl.yaml
+    target:
+      kind: Deployment
+      name: pre-processor
+  - path: patches/backend-ssl.yaml
+    target:
+      kind: Deployment
+      name: alt-backend
+  - path: patches/tag-generator-ssl.yaml
+    target:
+      kind: Deployment
+      name: tag-generator
 
 images:
   - name: alt-backend
