@@ -23,10 +23,9 @@ spec:
           value: "all"
         - name: NVIDIA_DRIVER_CAPABILITIES
           value: "compute,utility"
-        - name: OLLAMA_GPU_LAYERS
-          value: "35"  # Gemma3:4bの全35レイヤーをGPUで実行
-        - name: CUDA_VISIBLE_DEVICES
-          value: "0"
+        - name: OLLAMA_NUM_PARALLEL
+          value: "4"
+        - name: OLLAMA_MAX_LOADED_MODELS
+          value: "1"
         - name: OLLAMA_GPU_MEMORY_FRACTION
-          value: "0.8"  # GPU VRAMの80%を使用
-        
+          value: "0.95"
