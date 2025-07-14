@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: alt-development
+
+resources:
+  - ../../base
+
+patches:
+  - path: patches/namespace.yaml
+    target:
+      kind: Namespace
+      name: alt-development
+
+images:
+  - name: alt-backend
+    newTag: latest
+  - name: alt-frontend
+    newTag: latest
+  - name: tag-generator
+    newTag: latest
+  - name: pre-processor
+    newTag: latest
+  - name: search-indexer
+    newTag: latest
+  - name: news-creator
+    newTag: latest
+  - name: rask-log-aggregator
+    newTag: latest
+  - name: migrate
+    newTag: latest

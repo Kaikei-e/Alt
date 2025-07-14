@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+    kompose.version: 1.36.0 (ae2a39403)
+    rask.group: search-indexer
+  labels:
+    io.kompose.service: search-indexer
+  name: search-indexer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: search-indexer
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+        kompose.version: 1.36.0 (ae2a39403)
+        rask.group: search-indexer
+      labels:
+        io.kompose.service: search-indexer
+    spec:
+      containers:
+        - env:
+            - name: DB_HOST
+              value: db.alt-database.svc.cluster.local
+            - name: DB_NAME
+              value: alt
+            - name: DB_PORT
+              value: "5432"
+            - name: MEILISEARCH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: search-indexer-secrets
+                  key: MEILISEARCH_API_KEY
+            - name: MEILISEARCH_HOST
+              value: http://meilisearch.alt-search.svc.cluster.local:7700
+            - name: SEARCH_INDEXER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: search-indexer-secrets
+                  key: SEARCH_INDEXER_DB_PASSWORD
+            - name: SEARCH_INDEXER_DB_USER
+              value: search_indexer_user
+          image: search-indexer:production
+          imagePullPolicy: Never
+          name: search-indexer
+          ports:
+            - containerPort: 9300
+              protocol: TCP
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          tty: true
+      restartPolicy: Always

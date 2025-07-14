@@ -1,0 +1,49 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - path: patches/namespace.yaml
+    target:
+      kind: Namespace
+      name: alt-apps
+  - path: patches/namespace-database.yaml
+    target:
+      kind: Namespace
+      name: alt-database
+  - path: patches/namespace-search.yaml
+    target:
+      kind: Namespace
+      name: alt-search
+  - path: patches/namespace-observability.yaml
+    target:
+      kind: Namespace
+      name: alt-observability
+  - path: patches/namespace-ingress.yaml
+    target:
+      kind: Namespace
+      name: alt-ingress
+  - path: patches/gpu-resource.yaml
+    target:
+      kind: Deployment
+      name: news-creator
+
+images:
+  - name: alt-backend
+    newTag: production
+  - name: alt-frontend
+    newTag: production
+  - name: tag-generator
+    newTag: production
+  - name: pre-processor
+    newTag: production
+  - name: search-indexer
+    newTag: production
+  - name: news-creator
+    newTag: production
+  - name: rask-log-aggregator
+    newTag: production
+  - name: migrate
+    newTag: production

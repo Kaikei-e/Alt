@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+    kompose.version: 1.36.0 (ae2a39403)
+    rask.group: pre-processor
+  labels:
+    io.kompose.service: pre-processor
+  name: pre-processor
+spec:
+  ports:
+    - name: "9200"
+      port: 9200
+      targetPort: 9200
+  selector:
+    io.kompose.service: pre-processor

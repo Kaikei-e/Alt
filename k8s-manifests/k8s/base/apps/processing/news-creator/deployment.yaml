@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+    kompose.version: 1.36.0 (ae2a39403)
+    rask.group: news-creator
+  labels:
+    io.kompose.service: news-creator
+  name: news-creator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: news-creator
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+        kompose.version: 1.36.0 (ae2a39403)
+        rask.group: news-creator
+      labels:
+        io.kompose.service: news-creator
+    spec:
+      containers:
+        - env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: OLLAMA_HOME
+              value: /home/ollama-user/.ollama
+            - name: OLLAMA_MODELS
+              value: /home/ollama-user/.ollama
+          image: news-creator:production
+          imagePullPolicy: Never
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - http://localhost:11434/api/tags
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+          name: news-creator
+          ports:
+            - containerPort: 11434
+              protocol: TCP
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "1000m"
+            limits:
+              memory: "8Gi"
+              cpu: "4000m"
+          volumeMounts:
+            - mountPath: /home/ollama-user/.ollama
+              name: news-creator-models
+      restartPolicy: Always
+      volumes:
+        - name: news-creator-models
+          persistentVolumeClaim:
+            claimName: news-creator-models

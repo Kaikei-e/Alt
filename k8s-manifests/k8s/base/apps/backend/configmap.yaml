@@ -1,0 +1,66 @@
+apiVersion: v1
+data:
+  .env: |
+    # ./.env.template
+
+    # PostgreSQL Database Configuration
+    # These are default values for local development.
+    # IMPORTANT: DO NOT use these default values in production.
+    POSTGRES_DB=alt
+    POSTGRES_USER=alt_db_user
+    POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+
+    # Go Backend Application Database Connection
+    # These are the credentials your Go application will use to connect to PostgreSQL.
+    # In a real application, ensure these are configured securely,
+    # e.g., using environment variables or a secret management system.
+    DB_HOST=db
+    DB_PORT=5432
+    DB_USER=alt_appuser
+    DB_PASSWORD=${DB_APP_PASSWORD}
+    DB_NAME=alt
+
+    # Go Backend Application Configuration
+    GO_ENV=development
+
+    # Next.js Frontend Application Configuration
+    NEXT_PUBLIC_APP_TITLE="Alt is the RSS feed reader app"
+    NEXT_PUBLIC_API_BASE_URL="http://localhost:8080/api"
+
+    # HF Token
+    HF_TOKEN=${HF_TOKEN}
+
+    # MeiliSearch Configuration
+    MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+    MEILISEARCH_HOST=http://meilisearch.alt-search.svc.cluster.local:7700
+    MEILISEARCH_API_KEY=${MEILISEARCH_API_KEY}
+
+    # Pre-Processor Configuration
+    PRE_PROCESSOR_DB_USER=pre_processor_user
+    PRE_PROCESSOR_DB_PASSWORD=${PRE_PROCESSOR_DB_PASSWORD}
+
+    # Tag Generator Configuration
+    DB_TAG_GENERATOR_USER=tag_generator
+    DB_TAG_GENERATOR_PASSWORD=${DB_TAG_GENERATOR_PASSWORD}
+
+    # Search Indexer Configuration
+    SEARCH_INDEXER_DB_USER=search_indexer_user
+    SEARCH_INDEXER_DB_PASSWORD=${SEARCH_INDEXER_DB_PASSWORD}
+
+    CLICKHOUSE_DB=rask_logs
+    CLICKHOUSE_USER=rask_user
+    CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+
+    # ClickHouse for Log Analysis
+    APP_CLICKHOUSE_HOST=clickhouse
+    APP_CLICKHOUSE_PORT=8123
+    APP_CLICKHOUSE_DATABASE=rask_logs
+    APP_CLICKHOUSE_USER=rask_user
+    APP_CLICKHOUSE_PASSWORD=${APP_CLICKHOUSE_PASSWORD}
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: alt-backend
+  name: alt-backend-cm0

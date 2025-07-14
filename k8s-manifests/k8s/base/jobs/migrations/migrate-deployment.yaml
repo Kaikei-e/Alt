@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+    kompose.version: 1.36.0 (ae2a39403)
+  labels:
+    io.kompose.service: migrate
+  name: migrate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: migrate
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+        kompose.version: 1.36.0 (ae2a39403)
+      labels:
+        io.kompose.service: migrate
+    spec:
+      containers:
+        - env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: migrate-secrets
+                  key: DB_PASSWORD
+            - name: DB_URL
+              value: pgx5://alt_db_user:$(DB_PASSWORD)@db.alt-database.svc.cluster.local:5432/alt?sslmode=disable&search_path=public
+            - name: MIGRATE_MAX_RETRIES
+              value: "12"
+            - name: MIGRATE_RETRY_INTERVAL
+              value: "5"
+          image: migrate:production
+          imagePullPolicy: Never
+          name: db-migrator
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          volumeMounts:
+            - mountPath: /migrations
+              name: migrate-cm0
+            - mountPath: /etc/postgresql/postgresql.conf
+              name: migrate-cm1
+              subPath: postgresql.conf
+      restartPolicy: Always
+      volumes:
+        - configMap:
+            name: migrate-cm0
+          name: migrate-cm0
+        - configMap:
+            items:
+              - key: postgresql.conf
+                path: postgresql.conf
+            name: migrate-cm1
+          name: migrate-cm1

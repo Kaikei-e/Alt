@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - meili-data-persistentvolumeclaim.yaml
+  - meilisearch-deployment.yaml
+  - secret.yaml
+  - meilisearch-service.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/component: search
+      app.kubernetes.io/part-of: meilisearch

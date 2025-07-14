@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: alt-staging
+
+resources:
+  - ../../base
+
+patches:
+  - path: patches/namespace.yaml
+    target:
+      kind: Namespace
+      name: alt-staging
+
+images:
+  - name: alt-backend
+    newTag: staging
+  - name: alt-frontend
+    newTag: staging
+  - name: tag-generator
+    newTag: staging
+  - name: pre-processor
+    newTag: staging
+  - name: search-indexer
+    newTag: staging
+  - name: news-creator
+    newTag: staging
+  - name: rask-log-aggregator
+    newTag: staging
+  - name: migrate
+    newTag: staging

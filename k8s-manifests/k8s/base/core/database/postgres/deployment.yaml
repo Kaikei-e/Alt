@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+    kompose.version: 1.36.0 (ae2a39403)
+    rask.group: db
+  labels:
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: postgres
+    io.kompose.service: db
+  name: db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+        kompose.version: 1.36.0 (ae2a39403)
+        rask.group: db
+      labels:
+        io.kompose.service: db
+    spec:
+      containers:
+        - env:
+            - name: DB_HOST
+              value: db
+            - name: DB_NAME
+              value: alt
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: DB_PASSWORD
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_TAG_GENERATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: DB_TAG_GENERATOR_PASSWORD
+            - name: DB_TAG_GENERATOR_USER
+              value: tag_generator
+            - name: DB_USER
+              value: alt_appuser
+            - name: POSTGRES_DB
+              value: alt
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_USER
+              value: alt_db_user
+            - name: PRE_PROCESSOR_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: PRE_PROCESSOR_DB_PASSWORD
+            - name: PRE_PROCESSOR_DB_USER
+              value: pre_processor_user
+            - name: SEARCH_INDEXER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: SEARCH_INDEXER_DB_PASSWORD
+            - name: SEARCH_INDEXER_DB_USER
+              value: search_indexer_user
+          image: postgres:16-alpine
+          imagePullPolicy: Never
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready -U alt_db_user -d alt
+            failureThreshold: 5
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+          name: db
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          tty: true
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: db-data
+            - mountPath: /docker-entrypoint-initdb.d
+              name: db-cm1
+      restartPolicy: Always
+      volumes:
+        - name: db-data
+          persistentVolumeClaim:
+            claimName: db-data
+        - configMap:
+            name: db-cm1
+          name: db-cm1

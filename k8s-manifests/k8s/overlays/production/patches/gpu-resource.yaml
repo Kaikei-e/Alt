@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: news-creator
+spec:
+  template:
+    spec:
+      nodeSelector:
+        nvidia.com/gpu: "true"
+      containers:
+      - name: news-creator
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+            cpu: "4000m"
+            memory: "8Gi"
+          requests:
+            nvidia.com/gpu: "1"
+            cpu: "2000m"
+            memory: "4Gi"
+        env:
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "all"
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: "compute,utility"

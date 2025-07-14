@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+    kompose.version: 1.36.0 (ae2a39403)
+    rask.group: alt-frontend
+  labels:
+    io.kompose.service: nginx
+  name: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: nginx
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f compose.yaml --out ./k8s-manifests/
+        kompose.version: 1.36.0 (ae2a39403)
+        rask.group: alt-frontend
+      labels:
+        io.kompose.service: nginx
+    spec:
+      containers:
+        - image: nginx:latest
+          name: nginx
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+          tty: true
+          volumeMounts:
+            - mountPath: /etc/nginx/nginx.conf
+              name: nginx-cm0
+              readOnly: true
+              subPath: nginx.conf
+            - mountPath: /etc/nginx/conf.d
+              name: nginx-cm1
+              readOnly: true
+      restartPolicy: Always
+      volumes:
+        - configMap:
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+            name: nginx-cm0
+          name: nginx-cm0
+        - configMap:
+            name: nginx-cm1
+          name: nginx-cm1
