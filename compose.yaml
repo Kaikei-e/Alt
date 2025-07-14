@@ -127,6 +127,7 @@ services:
       - DB_USER=${POSTGRES_USER}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_NAME=${POSTGRES_DB}
+      - DB_SSL_MODE=prefer
     depends_on:
       db:
         condition: service_healthy
@@ -202,6 +203,7 @@ services:
       - DB_NAME=${DB_NAME}
       - PRE_PROCESSOR_DB_USER=${PRE_PROCESSOR_DB_USER}
       - PRE_PROCESSOR_DB_PASSWORD=${PRE_PROCESSOR_DB_PASSWORD}
+      - DB_SSL_MODE=prefer
       - LOG_LEVEL=info
       - SERVICE_NAME=pre-processor
     depends_on:
@@ -364,6 +366,10 @@ services:
   db:
     image: postgres:16-alpine
     restart: always
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -382,6 +388,9 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:rw
+      - ./docker/postgres/ssl:/var/lib/postgresql/ssl:ro
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -409,7 +418,7 @@ services:
       - ./db/migrations:/migrations
       - ./db/postgresql.conf:/etc/postgresql/postgresql.conf
     environment:
-      DB_URL: "pgx5://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=disable&search_path=public"
+      DB_URL: "pgx5://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=prefer&search_path=public"
       MIGRATE_MAX_RETRIES: "12"
       MIGRATE_RETRY_INTERVAL: "5"
     depends_on:
