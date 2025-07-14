@@ -10,3 +10,13 @@ spec:
           env:
             - name: DB_SSL_MODE
               value: require
+            - name: DB_SSL_ROOT_CERT
+              value: /app/ssl/ca.crt
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /app/ssl
+              readOnly: true
+      volumes:
+        - name: ssl-certs
+          secret:
+            secretName: postgres-ssl-certs

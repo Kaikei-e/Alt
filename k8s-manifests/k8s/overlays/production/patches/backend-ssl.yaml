@@ -10,3 +10,5 @@ spec:
           env:
             - name: DB_SSL_MODE
               value: require
+            - name: DB_SSL_ROOT_CERT
+              value: /app/ssl/ca.crt
