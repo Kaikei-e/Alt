@@ -9,6 +9,7 @@ resources:
   - core/search/meilisearch/
   - core/search/news-creator/
   - core/ingress/nginx/
+  - core/ingress/nginx-external/
 
   # Applications
   - apps/backend/

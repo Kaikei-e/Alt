@@ -73,6 +73,12 @@ spec:
               value: search_indexer_user
           image: postgres:16-alpine
           imagePullPolicy: Never
+          command:
+            - postgres
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
+            - -c
+            - hba_file=/etc/postgresql/pg_hba.conf
           resources:
             requests:
               memory: "256Mi"
@@ -98,6 +104,15 @@ spec:
               name: db-data
             - mountPath: /docker-entrypoint-initdb.d
               name: db-cm1
+            - mountPath: /var/lib/postgresql/ssl
+              name: ssl-certs
+              readOnly: true
+            - mountPath: /etc/postgresql/postgresql.conf
+              name: postgres-config
+              subPath: postgresql.conf
+            - mountPath: /etc/postgresql/pg_hba.conf
+              name: postgres-config
+              subPath: pg_hba.conf
       restartPolicy: Always
       volumes:
         - name: db-data
@@ -106,3 +121,10 @@ spec:
         - configMap:
             name: db-cm1
           name: db-cm1
+        - name: ssl-certs
+          secret:
+            secretName: postgres-ssl-certs
+            defaultMode: 0600
+        - name: postgres-config
+          configMap:
+            name: postgres-ssl-config

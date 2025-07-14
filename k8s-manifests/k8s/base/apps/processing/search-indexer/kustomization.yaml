@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: alt-apps
 
 resources:
+  - configmap.yaml
   - deployment.yaml
   - secret.yaml
   - service.yaml

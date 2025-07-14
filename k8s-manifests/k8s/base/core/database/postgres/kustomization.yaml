@@ -6,6 +6,8 @@ namespace: alt-database
 resources:
   - deployment.yaml
   - secret.yaml
+  - ssl-secret.yaml
+  - ssl-configmap.yaml
   - configmap.yaml
   - pvc.yaml
   - service.yaml

@@ -14,11 +14,13 @@ data:
     # These are the credentials your Go application will use to connect to PostgreSQL.
     # In a real application, ensure these are configured securely,
     # e.g., using environment variables or a secret management system.
-    DB_HOST=db
+    DB_HOST=postgres.alt-database.svc.cluster.local
     DB_PORT=5432
     DB_USER=alt_appuser
     DB_PASSWORD=${DB_APP_PASSWORD}
     DB_NAME=alt
+    DB_SSL_MODE=require
+    DB_SSL_ROOT_CERT=/app/ssl/ca.crt
 
     # Go Backend Application Configuration
     GO_ENV=development

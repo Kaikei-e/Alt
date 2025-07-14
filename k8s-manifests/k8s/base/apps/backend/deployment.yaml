@@ -115,6 +115,9 @@ spec:
             - mountPath: /app/.env
               name: alt-backend-cm0
               subPath: .env
+            - mountPath: /app/ssl
+              name: ssl-certs
+              readOnly: true
       restartPolicy: Always
       volumes:
         - configMap:
@@ -123,3 +126,6 @@ spec:
                 path: .env
             name: alt-backend-cm0
           name: alt-backend-cm0
+        - name: ssl-certs
+          secret:
+            secretName: postgres-ssl-certs

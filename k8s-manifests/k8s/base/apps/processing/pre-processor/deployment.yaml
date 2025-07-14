@@ -30,6 +30,8 @@ spec:
               value: alt
             - name: DB_PORT
               value: "5432"
+            - name: DB_SSL_MODE
+              value: prefer
             - name: LOG_LEVEL
               value: info
             - name: PRE_PROCESSOR_DB_PASSWORD
