@@ -30,11 +30,7 @@ spec:
     spec:
       # セキュリティコンテキスト（Podレベル）
       securityContext:
-        runAsNonRoot: false
-        runAsUser: 0  # root user for testing
-        runAsGroup: 0
-        fsGroup: 0
-        fsGroupChangePolicy: "OnRootMismatch"
+        runAsUser: 65532
 
       # サービスアカウント（最小権限）
       serviceAccountName: default
@@ -45,10 +41,12 @@ spec:
           image: cloudflare/cloudflared:2025.6.0
           imagePullPolicy: IfNotPresent
           args:
+            - --metrics=0.0.0.0:2000
             - tunnel
             - --no-autoupdate
             - run
             - --url=http://nginx.alt-ingress.svc.cluster.local:80
+
 
           # 環境変数
           env:
@@ -88,8 +86,8 @@ spec:
           # ヘルスチェック
           livenessProbe:
             httpGet:
-              path: /healthz
-              port: 8080
+              path: /ready
+              port: 2000
               scheme: HTTP
             initialDelaySeconds: 30
             periodSeconds: 10
@@ -99,8 +97,8 @@ spec:
 
           readinessProbe:
             httpGet:
-              path: /healthz
-              port: 8080
+              path: /ready
+              port: 2000
               scheme: HTTP
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -111,8 +109,8 @@ spec:
           # 起動プローブ
           startupProbe:
             httpGet:
-              path: /healthz
-              port: 8080
+              path: /ready
+              port: 2000
               scheme: HTTP
             initialDelaySeconds: 10
             periodSeconds: 5
