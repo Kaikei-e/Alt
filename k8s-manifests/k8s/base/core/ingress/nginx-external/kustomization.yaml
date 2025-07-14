@@ -6,12 +6,13 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 
-namespace: default
+namespace: alt-ingress
 
 resources:
   - nginx-external-deployment.yaml
   - nginx-external-service.yaml
   - nginx-external-configmap.yaml
+  - secret.yaml
 
 labels:
   - pairs:

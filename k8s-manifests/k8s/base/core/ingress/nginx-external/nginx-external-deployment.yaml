@@ -25,7 +25,7 @@ spec:
         tier: infrastructure
       annotations:
         # セキュリティ強化アノテーション
-        container.apparmor.security.beta.kubernetes.io/nginx: runtime/default
+        container.apparmor.security.beta.kubernetes.io/cloudflared: runtime/default
         seccomp.security.alpha.kubernetes.io/pod: runtime/default
     spec:
       # セキュリティコンテキスト（Podレベル）
@@ -48,8 +48,7 @@ spec:
             - tunnel
             - --no-autoupdate
             - run
-            - --url=http://nginx.default.svc.cluster.local:8080
-            - --token=${TUNNEL_TOKEN}
+            - --url=http://nginx.alt-ingress.svc.cluster.local:80
 
           # 環境変数
           env:
