@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: nginx-external
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+namespace: default
+
+resources:
+  - nginx-external-deployment.yaml
+  - nginx-external-service.yaml
+  - nginx-external-configmap.yaml
+
+labels:
+  - pairs:
+      app: nginx-external
+      component: ingress
+      tier: infrastructure
+
+images:
+  - name: nginx
+    newTag: "1.27.3-alpine"  # 最新安定版を指定

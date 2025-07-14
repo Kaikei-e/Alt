@@ -1,0 +1,196 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-external
+  labels:
+    app: nginx-external
+    component: ingress
+    tier: infrastructure
+spec:
+  replicas: 2  # HA構成
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: nginx-external
+      component: ingress
+  template:
+    metadata:
+      labels:
+        app: nginx-external
+        component: ingress
+        tier: infrastructure
+      annotations:
+        # セキュリティ強化アノテーション
+        container.apparmor.security.beta.kubernetes.io/nginx: runtime/default
+        seccomp.security.alpha.kubernetes.io/pod: runtime/default
+    spec:
+      # セキュリティコンテキスト（Podレベル）
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0  # root user for testing
+        runAsGroup: 0
+        fsGroup: 0
+        fsGroupChangePolicy: "OnRootMismatch"
+
+      # サービスアカウント（最小権限）
+      serviceAccountName: default
+      automountServiceAccountToken: false
+
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2025.6.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - tunnel
+            - --no-autoupdate
+            - run
+            - --url=http://nginx.default.svc.cluster.local:8080
+            - --token=${TUNNEL_TOKEN}
+
+          # 環境変数
+          env:
+            - name: TZ
+              value: "Asia/Tokyo"
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-token
+                  key: token
+
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # セキュリティコンテキスト（コンテナレベル）
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+
+          # リソース制限
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+              ephemeral-storage: "1Gi"
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+              ephemeral-storage: "512Mi"
+
+          # ヘルスチェック
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+
+          # 起動プローブ
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
+            successThreshold: 1
+
+          # ボリュームマウント
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: nginx-external-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: var-cache-nginx
+              mountPath: /var/cache/nginx
+            - name: var-run
+              mountPath: /var/run
+            - name: var-log-nginx
+              mountPath: /var/log/nginx
+
+      # ボリューム定義
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-external-config
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+                mode: 0644
+        - name: nginx-external-config
+          configMap:
+            name: nginx-external-config
+            defaultMode: 0644
+        - name: tmp-volume
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: var-cache-nginx
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: var-run
+          emptyDir:
+            sizeLimit: 10Mi
+        - name: var-log-nginx
+          emptyDir:
+            sizeLimit: 100Mi
+
+      # DNS設定
+      dnsPolicy: ClusterFirst
+
+      # Pod配置制約
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - nginx-external
+                topologyKey: kubernetes.io/hostname
+
+      # ノード選択
+      nodeSelector:
+        kubernetes.io/os: linux
+
+      # 許容設定
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 300
