@@ -22,3 +22,4 @@ error.json
 # k8s
 k8s-manifests/k8s/backups/*
 x-setup/
+error.txt
