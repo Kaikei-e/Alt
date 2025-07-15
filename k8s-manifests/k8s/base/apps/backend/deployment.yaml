@@ -92,7 +92,7 @@ spec:
                   name: backend-secrets
                   key: APP_CLICKHOUSE_PASSWORD
           image: alt-backend:production
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           livenessProbe:
             httpGet:
               path: /v1/health

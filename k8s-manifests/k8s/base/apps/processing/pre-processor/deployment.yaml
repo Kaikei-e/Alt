@@ -48,7 +48,7 @@ spec:
             - name: NEWS_CREATOR_TIMEOUT
               value: "120s"
           image: pre-processor:production
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           name: pre-processor
           ports:
             - containerPort: 9200

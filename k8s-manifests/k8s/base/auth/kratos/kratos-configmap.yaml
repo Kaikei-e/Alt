@@ -11,7 +11,7 @@ data:
   kratos.yml: |
     version: v1.2.0
 
-    dsn: postgres://kratos_user:password@kratos-postgres.alt-database.svc.cluster.local:5434/kratos_db?sslmode=disable&max_conns=20&max_idle_conns=4
+    dsn: env://DSN
 
     serve:
       public:
@@ -126,9 +126,9 @@ data:
 
     secrets:
       cookie:
-        - youReallyNeedToChangeThis
+        - env://SECRETS_COOKIE
       cipher:
-        - 32-LONG-SECRET-NOT-SECURE-AT-ALL
+        - env://SECRETS_CIPHER
 
     ciphers:
       algorithm: xchacha20-poly1305
