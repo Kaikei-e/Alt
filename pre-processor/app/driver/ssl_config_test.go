@@ -63,18 +63,18 @@ func TestDatabaseConfig_BuildConnectionString(t *testing.T) {
 func TestNewDatabaseConfig(t *testing.T) {
 	// 環境変数をクリア
 	os.Clearenv()
-	
+
 	// テスト用環境変数設定
 	os.Setenv("DB_HOST", "testhost")
 	os.Setenv("DB_SSL_MODE", "require")
 	os.Setenv("DB_MAX_CONNS", "15")
-	
+
 	defer func() {
 		os.Clearenv()
 	}()
 
 	config := NewDatabaseConfig()
-	
+
 	assert.Equal(t, "testhost", config.Host)
 	assert.Equal(t, "require", config.SSL.Mode)
 	assert.Equal(t, 15, config.MaxConns)
@@ -82,6 +82,17 @@ func TestNewDatabaseConfig(t *testing.T) {
 }
 
 func TestDatabaseConfig_SSLValidation(t *testing.T) {
+	// Create temporary certificate file for testing
+	tempCertFile, err := os.CreateTemp("", "test_ca.crt")
+	if err != nil {
+		t.Fatalf("Failed to create temp cert file: %v", err)
+	}
+	defer os.Remove(tempCertFile.Name())
+
+	// Write some dummy content to make it a valid file
+	tempCertFile.WriteString("-----BEGIN CERTIFICATE-----\nDUMMY CERTIFICATE\n-----END CERTIFICATE-----")
+	tempCertFile.Close()
+
 	tests := []struct {
 		name      string
 		sslMode   string
@@ -90,8 +101,8 @@ func TestDatabaseConfig_SSLValidation(t *testing.T) {
 	}{
 		{"prefer mode", "prefer", "", false},
 		{"require mode", "require", "", false},
-		{"verify-ca with cert", "verify-ca", "/path/to/ca.crt", false},
-		{"verify-full with cert", "verify-full", "/path/to/ca.crt", false},
+		{"verify-ca with cert", "verify-ca", tempCertFile.Name(), false},
+		{"verify-full with cert", "verify-full", tempCertFile.Name(), false},
 		{"verify-ca without cert", "verify-ca", "", true},
 		{"invalid mode", "invalid", "", true},
 	}
@@ -104,7 +115,7 @@ func TestDatabaseConfig_SSLValidation(t *testing.T) {
 					RootCert: tt.rootCert,
 				},
 			}
-			
+
 			err := config.ValidateSSLConfig()
 			if tt.expectErr {
 				assert.Error(t, err)
