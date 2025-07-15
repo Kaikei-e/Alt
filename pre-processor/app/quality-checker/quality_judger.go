@@ -55,7 +55,7 @@ type Score struct {
 const JudgeTemplate = `
 <start_of_turn>user
 **FORBIDDEN: Any text except the score pattern**
-**REQUIRED THIS SCORE PATTERN: <score>X</score>**
+**REQUIRED THIS SCORE PATTERN: <score>X</score> LIKE THIS <score>15</score>**
 **X is an integer between 0 and 30 (inclusive), calculated as coherence + relevancy + fluency, each scored 0-10.**
 
 **DO NOT write "Okay" or any explanation.**
