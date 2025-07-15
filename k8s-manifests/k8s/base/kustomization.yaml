@@ -5,11 +5,20 @@ resources:
   # Core infrastructure
   - core/storage/
   - core/database/postgres/
+  - core/database/auth-postgres/
+  - core/database/kratos-postgres/
   - core/database/clickhouse/
   - core/search/meilisearch/
   - core/search/news-creator/
   - core/ingress/nginx/
   - core/ingress/nginx-external/
+
+  # Security & SSL
+  - secrets/auth-secrets.yaml
+  - network/auth-network-policy.yaml
+
+  # Authentication
+  - auth/kratos/
 
   # Applications
   - apps/backend/

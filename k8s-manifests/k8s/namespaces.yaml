@@ -77,3 +77,15 @@ metadata:
     environment: production
     service-type: ingress
     app.kubernetes.io/managed-by: kustomize
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: alt-auth
+  labels:
+    name: alt-auth
+    environment: production
+    service-type: authentication
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: alt
+    app.kubernetes.io/component: authentication
