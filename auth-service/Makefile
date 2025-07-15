@@ -41,7 +41,16 @@ test-coverage: ## Run tests with coverage
 
 test-integration: ## Run integration tests
 	@echo "Running integration tests..."
-	@go test -v -tags=integration ./tests/integration/...
+	@go test -v ./tests/integration/...
+
+test-integration-docker: ## Run integration tests with Docker Compose
+	@echo "Setting up Docker Compose test environment..."
+	@$(MAKE) test-env-up
+	@echo "Waiting for services to be ready..."
+	@sleep 15
+	@echo "Running integration tests..."
+	@go test -v ./tests/integration/... || ($(MAKE) test-env-down && false)
+	@$(MAKE) test-env-down
 
 test-e2e: ## Run end-to-end tests
 	@echo "Running end-to-end tests..."
@@ -114,6 +123,38 @@ docker-build: ## Build Docker image
 docker-run: ## Run Docker container
 	@echo "Running Docker container..."
 	@docker run -p 9500:9500 --env-file .env $(BINARY_NAME):$(VERSION)
+
+# Test environment management
+test-env-up: ## Start test environment with Docker Compose
+	@echo "Starting test environment..."
+	@docker compose -f docker-compose.test.yml up -d test-postgres test-kratos-migrate test-kratos
+	@echo "Test environment started"
+
+test-env-down: ## Stop test environment
+	@echo "Stopping test environment..."
+	@docker compose -f docker-compose.test.yml down -v
+	@echo "Test environment stopped"
+
+test-env-logs: ## Show test environment logs
+	@echo "Showing test environment logs..."
+	@docker compose -f docker-compose.test.yml logs -f
+
+test-env-status: ## Show test environment status
+	@echo "Test environment status:"
+	@docker compose -f docker-compose.test.yml ps
+
+test-env-clean: ## Clean test environment (remove volumes)
+	@echo "Cleaning test environment..."
+	@docker compose -f docker-compose.test.yml down -v --remove-orphans
+	@docker volume prune -f
+	@echo "Test environment cleaned"
+
+test-env-reset: ## Reset test environment (down, clean, up)
+	@echo "Resetting test environment..."
+	@$(MAKE) test-env-down
+	@$(MAKE) test-env-clean
+	@$(MAKE) test-env-up
+	@echo "Test environment reset"
 
 # Development helpers
 dev-setup: ## Set up development environment
