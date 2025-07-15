@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-postgres
+  namespace: alt-database
+  labels:
+    app: kratos-postgres
+    component: database
+    service: kratos
+    app.kubernetes.io/name: kratos-postgres
+    app.kubernetes.io/part-of: alt
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5434
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+  selector:
+    app: kratos-postgres
