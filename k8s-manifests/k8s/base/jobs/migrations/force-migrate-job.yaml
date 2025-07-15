@@ -43,7 +43,7 @@ spec:
           readOnly: true
         - name: migration-env-scripts
           mountPath: /scripts
-          defaultMode: 0755
+          readOnly: true
       
       volumes:
       - name: migration-scripts

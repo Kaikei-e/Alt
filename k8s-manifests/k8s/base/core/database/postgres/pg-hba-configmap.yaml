@@ -32,9 +32,5 @@ data:
     host    replication     all             ::1/128                 trust
 
     # Kubernetes cluster connections - require SSL
-    hostssl all             all             0.0.0.0/0               scram-sha-256 clientcert=verify-ca
-    hostssl all             all             ::/0                    scram-sha-256 clientcert=verify-ca
-
-    # Fallback for non-SSL connections (temporary, for debugging)
-    host    all             all             0.0.0.0/0               scram-sha-256
-    host    all             all             ::/0                    scram-sha-256
+    hostssl all             all             0.0.0.0/0               scram-sha-256
+    hostssl all             all             ::/0                    scram-sha-256

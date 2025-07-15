@@ -41,6 +41,10 @@ patches:
     target:
       kind: Deployment
       name: tag-generator
+  - path: patches/search-indexer-ssl.yaml
+    target:
+      kind: Deployment
+      name: search-indexer
 
 images:
   - name: alt-backend

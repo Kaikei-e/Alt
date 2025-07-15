@@ -105,7 +105,7 @@ spec:
         # 実行スクリプト
         - name: migration-env-scripts
           mountPath: /scripts
-          defaultMode: 0755
+          readOnly: true
         
         resources:
           requests:

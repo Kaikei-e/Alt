@@ -5,8 +5,8 @@ resources:
   # Core infrastructure
   - core/storage/
   - core/database/postgres/
-  - core/database/auth-postgres/
-  - core/database/kratos-postgres/
+  # - core/database/auth-postgres/  # auth実装中なので一時的に除外
+  # - core/database/kratos-postgres/  # auth実装中なので一時的に除外
   - core/database/clickhouse/
   - core/search/meilisearch/
   - core/search/news-creator/
@@ -14,11 +14,11 @@ resources:
   - core/ingress/nginx-external/
 
   # Security & SSL
-  - secrets/auth-secrets.yaml
-  - network/auth-network-policy.yaml
+  # - secrets/auth-secrets.yaml  # auth実装中なので一時的に除外
+  # - network/auth-network-policy.yaml  # auth実装中なので一時的に除外
 
   # Authentication
-  - auth/kratos/
+  # - auth/kratos/  # auth実装中なので一時的に除外
 
   # Applications
   - apps/backend/

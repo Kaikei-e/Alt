@@ -21,7 +21,7 @@ type DatabaseConfig struct {
 	Password string
 	DBName   string
 	SSL      DatabaseSSLConfig
-	
+
 	// 接続プール設定
 	MaxConns        int
 	MinConns        int
@@ -55,15 +55,42 @@ func (dc *DatabaseConfig) BuildConnectionString() string {
 		dc.Host, dc.Port, dc.User, dc.Password, dc.DBName, dc.SSL.Mode,
 	)
 
-	// SSL証明書設定
-	if dc.SSL.RootCert != "" {
-		baseConn += fmt.Sprintf(" sslrootcert=%s", dc.SSL.RootCert)
-	}
-	if dc.SSL.Cert != "" {
-		baseConn += fmt.Sprintf(" sslcert=%s", dc.SSL.Cert)
-	}
-	if dc.SSL.Key != "" {
-		baseConn += fmt.Sprintf(" sslkey=%s", dc.SSL.Key)
+	// SSL証明書設定 - モードに応じて条件付きで設定
+	switch dc.SSL.Mode {
+	case "verify-ca", "verify-full":
+		// 証明書検証モードでは必須
+		if dc.SSL.RootCert != "" {
+			baseConn += fmt.Sprintf(" sslrootcert=%s", dc.SSL.RootCert)
+		}
+		if dc.SSL.Cert != "" {
+			baseConn += fmt.Sprintf(" sslcert=%s", dc.SSL.Cert)
+		}
+		if dc.SSL.Key != "" {
+			baseConn += fmt.Sprintf(" sslkey=%s", dc.SSL.Key)
+		}
+	case "require":
+		// requireモードでも証明書ファイルを指定（PostgreSQLのclientcert=verify-caに対応）
+		if dc.SSL.RootCert != "" {
+			baseConn += fmt.Sprintf(" sslrootcert=%s", dc.SSL.RootCert)
+		}
+		if dc.SSL.Cert != "" {
+			baseConn += fmt.Sprintf(" sslcert=%s", dc.SSL.Cert)
+		}
+		if dc.SSL.Key != "" {
+			baseConn += fmt.Sprintf(" sslkey=%s", dc.SSL.Key)
+		}
+		slog.Info("SSL require mode: using SSL with certificate files")
+	case "prefer", "allow":
+		// 任意で証明書ファイルを指定
+		if dc.SSL.RootCert != "" {
+			baseConn += fmt.Sprintf(" sslrootcert=%s", dc.SSL.RootCert)
+		}
+		if dc.SSL.Cert != "" {
+			baseConn += fmt.Sprintf(" sslcert=%s", dc.SSL.Cert)
+		}
+		if dc.SSL.Key != "" {
+			baseConn += fmt.Sprintf(" sslkey=%s", dc.SSL.Key)
+		}
 	}
 
 	// 接続プール設定
@@ -87,7 +114,11 @@ func (dc *DatabaseConfig) ValidateSSLConfig() error {
 		if dc.SSL.RootCert == "" {
 			return fmt.Errorf("SSL root certificate required for mode %s", dc.SSL.Mode)
 		}
-		slog.Info("SSL with certificate validation enabled")
+		// 証明書ファイルの存在確認
+		if _, err := os.Stat(dc.SSL.RootCert); err != nil {
+			return fmt.Errorf("SSL root certificate file not found: %s", dc.SSL.RootCert)
+		}
+		slog.Info("SSL with certificate validation enabled", "mode", dc.SSL.Mode, "root_cert", dc.SSL.RootCert)
 	default:
 		return fmt.Errorf("invalid SSL mode: %s", dc.SSL.Mode)
 	}

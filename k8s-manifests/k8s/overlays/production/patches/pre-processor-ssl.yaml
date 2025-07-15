@@ -9,7 +9,7 @@ spec:
         - name: pre-processor
           env:
             - name: DB_SSL_MODE
-              value: require
+              value: prefer
             - name: DB_SSL_ROOT_CERT
               value: /app/ssl/ca.crt
             - name: DB_SSL_CERT

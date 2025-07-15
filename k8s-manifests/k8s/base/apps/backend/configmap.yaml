@@ -19,7 +19,7 @@ data:
     DB_USER=alt_appuser
     DB_PASSWORD=${DB_APP_PASSWORD}
     DB_NAME=alt
-    DB_SSL_MODE=require
+    DB_SSL_MODE=prefer
     DB_SSL_ROOT_CERT=/app/ssl/ca.crt
 
     # Go Backend Application Configuration

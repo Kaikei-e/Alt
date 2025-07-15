@@ -7,7 +7,7 @@ data:
   DB_HOST: "postgres.alt-database.svc.cluster.local"
   DB_PORT: "5432"
   DB_NAME: "alt"
-  DB_SSL_MODE: "require"
+  DB_SSL_MODE: "prefer"
   DB_SSL_ROOT_CERT: "/app/ssl/ca.crt"
   MEILISEARCH_HOST: "http://meilisearch.alt-search.svc.cluster.local:7700"
   LOG_LEVEL: "info"
