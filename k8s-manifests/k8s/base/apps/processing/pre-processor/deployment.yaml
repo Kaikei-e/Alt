@@ -45,6 +45,8 @@ spec:
               value: pre-processor
             - name: NEWS_CREATOR_HOST
               value: http://news-creator.alt-apps.svc.cluster.local:11434
+            - name: NEWS_CREATOR_TIMEOUT
+              value: "120s"
           image: pre-processor:production
           imagePullPolicy: Never
           name: pre-processor
