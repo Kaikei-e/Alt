@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kratos-config
+  namespace: alt-auth-dev
+data:
+  kratos.yml: |
+    version: v1.3.1
+
+    dsn: postgres://kratos_user:kratos_password@kratos-postgres:5434/kratos_db?sslmode=require&max_conns=20&max_idle_conns=4
+
+    serve:
+      public:
+        base_url: http://kratos-public.alt-auth-dev.svc.cluster.local:4433/
+        cors:
+          enabled: true
+          allowed_origins:
+            - http://localhost:3000
+            - http://alt-frontend.alt-apps-dev.svc.cluster.local
+            - http://nginx-external.alt-ingress-dev.svc.cluster.local
+          allowed_methods:
+            - POST
+            - GET
+            - PUT
+            - PATCH
+            - DELETE
+          allowed_headers:
+            - Authorization
+            - Content-Type
+            - Cookie
+          exposed_headers:
+            - Content-Type
+            - Set-Cookie
+          allow_credentials: true
+          debug: false
+
+      admin:
+        base_url: http://kratos-admin.alt-auth-dev.svc.cluster.local:4434/
+
+    selfservice:
+      default_browser_return_url: http://localhost:3000/
+      allowed_return_urls:
+        - http://localhost:3000
+        - http://alt-frontend.alt-apps-dev.svc.cluster.local
+        - http://nginx-external.alt-ingress-dev.svc.cluster.local
+
+      methods:
+        password:
+          enabled: true
+          config:
+            haveibeenpwned_enabled: true
+            max_breaches: 0
+            ignore_network_errors: true
+
+        totp:
+          config:
+            issuer: Alt RSS Reader
+          enabled: true
+
+        lookup_secret:
+          enabled: true
+
+        link:
+          enabled: true
+          config:
+            lifespan: 1h
+
+        code:
+          enabled: true
+          config:
+            lifespan: 15m
+
+      flows:
+        error:
+          ui_url: http://localhost:3000/error
+
+        settings:
+          ui_url: http://localhost:3000/settings
+          privileged_session_max_age: 15m
+          required_aal: highest_available
+
+        recovery:
+          enabled: true
+          ui_url: http://localhost:3000/recovery
+          use: code
+
+        verification:
+          enabled: true
+          ui_url: http://localhost:3000/verification
+          use: code
+          after:
+            default_browser_return_url: http://localhost:3000/
+
+        logout:
+          after:
+            default_browser_return_url: http://localhost:3000/
+
+        login:
+          ui_url: http://localhost:3000/login
+          lifespan: 10m
+          after:
+            default_browser_return_url: http://localhost:3000/
+            password:
+              default_browser_return_url: http://localhost:3000/
+
+        registration:
+          lifespan: 10m
+          ui_url: http://localhost:3000/registration
+          after:
+            default_browser_return_url: http://localhost:3000/
+            password:
+              hooks:
+                - hook: session
+                - hook: show_verification_ui
+
+    log:
+      level: info
+      format: json
+      leak_sensitive_values: false
+
+    secrets:
+      cookie:
+        - youReallyNeedToChangeThis
+      cipher:
+        - 32-LONG-SECRET-NOT-SECURE-AT-ALL
+
+    ciphers:
+      algorithm: xchacha20-poly1305
+
+    hashers:
+      algorithm: bcrypt
+      bcrypt:
+        cost: 12
+
+    identity:
+      default_schema_id: default
+      schemas:
+        - id: default
+          url: file:///etc/config/kratos/schemas/identity.schema.json
+
+    courier:
+      smtp:
+        connection_uri: smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+        from_address: noreply@alt.local
+        from_name: Alt RSS Reader
+
+    session:
+      lifespan: 24h
+      cookie:
+        persistent: true
+        same_site: Lax
+        domain: .alt.local

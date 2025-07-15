@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kratos-postgres
+  namespace: alt-auth-dev
+  labels:
+    app: kratos-postgres
+    component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kratos-postgres
+  template:
+    metadata:
+      labels:
+        app: kratos-postgres
+        component: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: kratos-postgres-credentials
+              key: database
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: kratos-postgres-credentials
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kratos-postgres-credentials
+              key: password
+        - name: PGPORT
+          value: "5432"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: kratos-postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
+          runAsGroup: 999
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+              - ALL
+      volumes:
+      - name: kratos-postgres-data
+        persistentVolumeClaim:
+          claimName: kratos-postgres-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kratos-postgres-data
+  namespace: alt-auth-dev
+  labels:
+    app: kratos-postgres
+    component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: local-path
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-postgres
+  namespace: alt-auth-dev
+  labels:
+    app: kratos-postgres
+    component: database
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5434
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+  selector:
+    app: kratos-postgres

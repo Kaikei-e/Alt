@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-public
+  namespace: alt-auth-dev
+  labels:
+    app: kratos
+    component: public-api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4433
+    targetPort: 4433
+    protocol: TCP
+    name: public
+  selector:
+    app: kratos
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-admin
+  namespace: alt-auth-dev
+  labels:
+    app: kratos
+    component: admin-api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4434
+    targetPort: 4434
+    protocol: TCP
+    name: admin
+  selector:
+    app: kratos
