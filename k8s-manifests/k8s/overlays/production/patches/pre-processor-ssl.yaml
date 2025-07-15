@@ -16,6 +16,8 @@ spec:
               value: /app/ssl/server.crt
             - name: DB_SSL_KEY
               value: /app/ssl/server.key
+            - name: NEWS_CREATOR_TIMEOUT
+              value: "180s"
           imagePullPolicy: Never
           volumeMounts:
             - name: ssl-certs
