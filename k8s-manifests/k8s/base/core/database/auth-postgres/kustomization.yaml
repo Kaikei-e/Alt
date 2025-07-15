@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: alt-database
+
+resources:
+  - auth-postgres-statefulset.yaml
+  - auth-postgres-service.yaml
+  - auth-postgres-configmap.yaml
+  - postgres-ssl-configmap.yaml
+
+secretGenerator:
+  - name: postgres-ssl-certs
+    namespace: alt-auth
+    files:
+      - ssl-certs/ca.crt
+      - ssl-certs/server.crt
+      - ssl-certs/server.key
+    options:
+      disableNameSuffixHash: true
+
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/name: auth-postgres
+      app.kubernetes.io/part-of: alt
+      app.kubernetes.io/component: database

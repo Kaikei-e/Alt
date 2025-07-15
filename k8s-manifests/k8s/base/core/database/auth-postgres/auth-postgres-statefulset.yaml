@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: auth-postgres
+  namespace: alt-database
+  labels:
+    app: auth-postgres
+    component: database
+    service: authentication
+    app.kubernetes.io/name: auth-postgres
+    app.kubernetes.io/part-of: alt
+    app.kubernetes.io/component: database
+spec:
+  serviceName: auth-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-postgres
+  template:
+    metadata:
+      labels:
+        app: auth-postgres
+        component: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_DB
+          value: "auth_db"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: auth-postgres-secret
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: auth-postgres-secret
+              key: password
+        - name: POSTGRES_SSL_MODE
+          value: "require"
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: ssl-certs
+          mountPath: /etc/ssl/certs/postgres
+          readOnly: true
+        - name: postgres-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+        - name: postgres-config
+          mountPath: /etc/postgresql/pg_hba.conf
+          subPath: pg_hba.conf
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
+          runAsGroup: 999
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+              - ALL
+      volumes:
+      - name: ssl-certs
+        configMap:
+          name: auth-postgres-ssl-config
+          defaultMode: 0600
+      - name: postgres-config
+        configMap:
+          name: auth-postgres-config
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi
