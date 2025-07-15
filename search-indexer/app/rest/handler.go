@@ -2,6 +2,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"search-indexer/logger"
 	"search-indexer/search_engine"
@@ -34,6 +35,58 @@ type SearchArticlesResponse struct {
 	Hits  []SearchArticlesHit `json:"hits"`
 }
 
+// safeExtractSearchHit safely extracts SearchArticlesHit from interface{}
+func safeExtractSearchHit(hit interface{}) (SearchArticlesHit, error) {
+	hitMap, ok := hit.(map[string]interface{})
+	if !ok {
+		return SearchArticlesHit{}, fmt.Errorf("invalid hit format: expected map[string]interface{}, got %T", hit)
+	}
+
+	// Extract and validate ID
+	idRaw, exists := hitMap["id"]
+	if !exists {
+		return SearchArticlesHit{}, fmt.Errorf("missing required field: id")
+	}
+	id, ok := idRaw.(string)
+	if !ok {
+		return SearchArticlesHit{}, fmt.Errorf("invalid id type: expected string, got %T", idRaw)
+	}
+
+	// Extract and validate Title
+	titleRaw, exists := hitMap["title"]
+	if !exists {
+		return SearchArticlesHit{}, fmt.Errorf("missing required field: title")
+	}
+	title, ok := titleRaw.(string)
+	if !ok {
+		return SearchArticlesHit{}, fmt.Errorf("invalid title type: expected string, got %T", titleRaw)
+	}
+
+	// Extract and validate Content
+	contentRaw, exists := hitMap["content"]
+	if !exists {
+		return SearchArticlesHit{}, fmt.Errorf("missing required field: content")
+	}
+	content, ok := contentRaw.(string)
+	if !ok {
+		return SearchArticlesHit{}, fmt.Errorf("invalid content type: expected string, got %T", contentRaw)
+	}
+
+	// Extract tags (optional field, use existing toStringSlice function)
+	tagsRaw, exists := hitMap["tags"]
+	var tags []string
+	if exists {
+		tags = toStringSlice(tagsRaw)
+	}
+
+	return SearchArticlesHit{
+		ID:      id,
+		Title:   title,
+		Content: content,
+		Tags:    tags,
+	}, nil
+}
+
 func SearchArticles(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -60,12 +113,12 @@ func SearchArticles(
 	}
 
 	for _, h := range raw.Hits {
-		resp.Hits = append(resp.Hits, SearchArticlesHit{
-			ID:      h.(map[string]interface{})["id"].(string),
-			Title:   h.(map[string]interface{})["title"].(string),
-			Content: h.(map[string]interface{})["content"].(string),
-			Tags:    toStringSlice(h.(map[string]interface{})["tags"]),
-		})
+		hit, err := safeExtractSearchHit(h)
+		if err != nil {
+			logger.Logger.Error("failed to extract search hit", "err", err)
+			continue // Skip invalid hits instead of failing the entire request
+		}
+		resp.Hits = append(resp.Hits, hit)
 	}
 
 	logger.Logger.Info("search ok", "query", query, "count", len(resp.Hits))
