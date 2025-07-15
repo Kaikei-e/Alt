@@ -68,7 +68,6 @@ OUTPUT ONLY THIS:
 <score>X</score>
 <end_of_turn>
 <start_of_turn>model
-
 `
 
 func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
