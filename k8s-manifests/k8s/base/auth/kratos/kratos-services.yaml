@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-public
+  namespace: alt-auth
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/part-of: alt
+    app.kubernetes.io/component: authentication
+    service-type: public
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4433
+    targetPort: 4433
+    protocol: TCP
+    name: public
+  selector:
+    app.kubernetes.io/name: kratos
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kratos-admin
+  namespace: alt-auth
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/part-of: alt
+    app.kubernetes.io/component: authentication
+    service-type: admin
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4434
+    targetPort: 4434
+    protocol: TCP
+    name: admin
+  selector:
+    app.kubernetes.io/name: kratos
