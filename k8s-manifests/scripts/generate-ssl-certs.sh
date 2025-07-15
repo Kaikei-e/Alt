@@ -46,3 +46,46 @@ chmod 600 $CERT_DIR/*.key
 chmod 644 $CERT_DIR/*.crt
 
 echo "SSL certificates generated successfully in $CERT_DIR"
+
+# generate auth-postgres-ssl-secret
+AUTH_POSTGRES_SSL_DIR="../k8s/base/core/database/auth-postgres/ssl-certs"
+mkdir -p $AUTH_POSTGRES_SSL_DIR
+
+openssl genrsa -out $AUTH_POSTGRES_SSL_DIR/ca.key 4096
+
+openssl req -new -x509 -days 365 -key $AUTH_POSTGRES_SSL_DIR/ca.key -out $AUTH_POSTGRES_SSL_DIR/ca.crt \
+  -subj "/C=JP/ST=Tokyo/L=Tokyo/O=Alt-Project/OU=Database/CN=Alt-CA"
+
+openssl genrsa -out $AUTH_POSTGRES_SSL_DIR/server.key 4096
+
+openssl req -new -key $AUTH_POSTGRES_SSL_DIR/server.key -out $AUTH_POSTGRES_SSL_DIR/server.csr \
+  -subj "/C=JP/ST=Tokyo/L=Tokyo/O=Alt-Project/OU=Database/CN=postgres"
+
+
+# auth-postgres-ssl-secret
+cat > $AUTH_POSTGRES_SSL_DIR/server.conf <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+
+[req_distinguished_name]
+
+[v3_req]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = auth-postgres
+DNS.2 = auth-postgres.alt-auth.svc.cluster.local
+DNS.3 = auth-postgres.alt-auth.svc.cluster.local
+DNS.4 = localhost
+IP.1 = 127.0.0.1
+EOF
+
+openssl x509 -req -days 365 -in $AUTH_POSTGRES_SSL_DIR/server.csr -CA $AUTH_POSTGRES_SSL_DIR/ca.crt \
+  -CAkey $AUTH_POSTGRES_SSL_DIR/ca.key -CAcreateserial -out $AUTH_POSTGRES_SSL_DIR/server.crt \
+  -extensions v3_req -extfile $AUTH_POSTGRES_SSL_DIR/server.conf
+
+chmod 600 $AUTH_POSTGRES_SSL_DIR/*.key
+chmod 644 $AUTH_POSTGRES_SSL_DIR/*.crt
+
+echo "SSL certificates generated successfully in $AUTH_POSTGRES_SSL_DIR"
