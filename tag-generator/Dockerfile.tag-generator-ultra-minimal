@@ -1,0 +1,108 @@
+# Ultra-minimal Dockerfile - 極限軽量化版 (50-150MB目標)
+# MLパッケージを完全除外、外部モデルストレージ必須
+
+FROM python:3.13-slim AS builder
+
+# 必要最小限のビルド依存関係のみ
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
+
+# Ultra-minimal依存関係をコピー
+COPY app/pyproject.toml.ultra-minimal ./pyproject.toml
+COPY app/uv.lock ./
+
+# 基本パッケージのみインストール（MLパッケージは除外）
+RUN uv sync --frozen --no-dev
+
+# アプリケーションコードをコピー
+COPY app/ .
+
+# Pythonバイトコードのコンパイル
+RUN uv run python -m compileall -f .
+
+# 最終ランタイムステージ - 完全軽量化
+FROM python:3.13-slim AS runtime
+
+# ランタイムに必要な最小限のパッケージのみ
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && rm -rf /tmp/* /var/tmp/*
+
+# 非rootユーザー作成
+RUN useradd --create-home --shell /bin/bash --uid 1000 app
+
+# 外部モデルストレージ用ディレクトリ作成
+RUN mkdir -p /models /cache && chown -R app:app /models /cache
+
+# 非rootユーザーに切り替え
+USER app
+WORKDIR /home/app
+
+# ビルドステージから仮想環境をコピー
+COPY --from=builder --chown=app:app /app/.venv /home/app/.venv
+
+# アプリケーションコードをコピー
+COPY --chown=app:app app/ .
+
+# 外部モデルストレージ用の環境変数設定
+ENV PATH="/home/app/.venv/bin:$PATH" \
+    PYTHONPATH="/home/app" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    NLTK_DATA="/models/nltk_data" \
+    SENTENCE_TRANSFORMERS_HOME="/models/sentence_transformers" \
+    TRANSFORMERS_CACHE="/cache/transformers" \
+    HF_HOME="/cache/huggingface" \
+    MODELS_DIR="/models"
+
+# Ultra-minimalスタートアップスクリプト
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "Starting ultra-minimal tag-generator..."\n\
+\n\
+# 外部モデルストレージの確認\n\
+if [ ! -d "$MODELS_DIR" ]; then\n\
+    echo "ERROR: Models directory $MODELS_DIR not found."\n\
+    echo "Please mount external model storage with: -v /host/models:/models"\n\
+    exit 1\n\
+fi\n\
+\n\
+# MLパッケージの動的インストール確認\n\
+if [ -f "$MODELS_DIR/.ml_packages_installed" ]; then\n\
+    echo "ML packages already installed in external environment"\n\
+else\n\
+    echo "WARNING: ML packages not installed. Some features may not work."\n\
+    echo "Install ML packages with: pip install keybert sentence-transformers transformers"\n\
+fi\n\
+\n\
+# 基本的なモデルファイルの存在確認\n\
+if [ ! -f "$MODELS_DIR/.models_ready" ]; then\n\
+    echo "WARNING: Models not initialized. Some features may not work."\n\
+    echo "Please run model initialization container first."\n\
+fi\n\
+\n\
+# アプリケーション開始\n\
+echo "Starting application..."\n\
+exec python main.py\n' > /home/app/start-ultra-minimal.sh && chmod +x /home/app/start-ultra-minimal.sh
+
+# 極軽量ヘルスチェック
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
+
+# 使用方法のコメント
+# 使用時は外部モデルストレージのマウントが必要：
+# docker run -v /host/models:/models -v /host/cache:/cache tag-generator:ultra-minimal
+# 
+# MLパッケージは外部でインストールするか、runtime時にインストール：
+# pip install keybert sentence-transformers transformers
+
+CMD ["./start-ultra-minimal.sh"]

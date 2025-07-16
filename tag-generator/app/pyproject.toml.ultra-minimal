@@ -43,8 +43,12 @@ dev = [
     "pyright"
 ]
 
-# NOTE: ML dependencies removed from this file to prevent inclusion in lock file
-# If needed, install separately: pip install keybert sentence-transformers transformers
+ml = [
+    # ML dependencies (install only when needed)
+    "keybert>=0.9.0",
+    "sentence-transformers>=4.1.0",
+    "transformers>=4.52.4",
+]
 
 [tool.setuptools.packages]
 find = { include = ["tag_generator", "tag_generator.*", "article_fetcher", "article_fetcher.*", "tag_extractor", "tag_extractor.*", "tag_inserter", "tag_inserter.*"] }
