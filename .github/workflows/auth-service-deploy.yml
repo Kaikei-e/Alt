@@ -1,6 +1,10 @@
 # .github/workflows/auth-service-deploy.yml
 name: Deploy Auth Service
 
+permissions:
+  contents: read
+  deployments: write
+
 on:
   push:
     branches: [main]
