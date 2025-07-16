@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/labstack/echo/v4"
 
-	"github.com/alt/auth-service/app/config"
-	"github.com/alt/auth-service/app/utils/logger"
+	"auth-service/app/config"
+	"auth-service/app/di"
+	"auth-service/app/utils/logger"
 )
 
 func main() {
@@ -42,20 +42,16 @@ func main() {
 		"port", cfg.Port,
 		"log_level", cfg.LogLevel)
 
-	// Initialize Echo server
-	e := echo.New()
-	e.HideBanner = true
-	e.HidePort = true
+	// Initialize dependency injection container
+	container, err := di.NewContainer(cfg, appLogger)
+	if err != nil {
+		appLogger.Error("Failed to initialize dependency container", "error", err)
+		os.Exit(1)
+	}
+	defer container.Close()
 
-	// TODO: Initialize dependencies following Clean Architecture
-	// This will be implemented in the next phases:
-	// 1. Driver layer (database, kratos client)
-	// 2. Gateway layer (adapters)
-	// 3. Usecase layer (business logic)
-	// 4. REST layer (handlers, middleware)
-
-	// For now, setup basic health endpoint
-	setupBasicRoutes(e, appLogger)
+	// Initialize Echo server with full router from container
+	e := container.CreateRouter()
 
 	// Start server
 	server := &http.Server{
@@ -92,33 +88,6 @@ func main() {
 	}
 
 	appLogger.Info("Server exited")
-}
-
-// setupBasicRoutes sets up basic health check routes
-func setupBasicRoutes(e *echo.Echo, logger *slog.Logger) {
-	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"status":    "healthy",
-			"service":   "auth-service",
-			"version":   getVersion(),
-			"timestamp": time.Now().UTC(),
-		})
-	})
-
-	e.GET("/health/ready", func(c echo.Context) error {
-		// TODO: Add readiness checks (database, kratos connectivity)
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"status": "ready",
-		})
-	})
-
-	e.GET("/health/live", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"status": "alive",
-		})
-	})
-
-	logger.Info("Basic health check routes configured")
 }
 
 // getVersion returns the application version
