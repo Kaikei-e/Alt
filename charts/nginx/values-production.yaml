@@ -1,0 +1,114 @@
+# Production values for nginx
+# nginx internal proxy/load balancer production configuration
+
+# Replica configuration for production
+replicaCount: 1
+
+# Image configuration
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.25.3-alpine"
+
+# Pod annotations and labels
+podAnnotations:
+  rask.group: "nginx-proxy"
+  environment: "production"
+  backup: "enabled"
+
+# Resources configuration for production
+resources:
+  limits:
+    cpu: "2"
+    memory: "1Gi"
+  requests:
+    cpu: "500m"
+    memory: "256Mi"
+
+# Autoscaling disabled for single-node setup
+autoscaling:
+  enabled: false
+
+# Production affinity rules (disabled for single-node setup)
+affinity: {}
+
+# Production deployment strategy
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# nginx production configuration
+nginx:
+  # Increased worker settings for production
+  workerConnections: 4096
+  keepaliveTimeout: 75
+
+  # Production logging
+  logLevel: warn
+
+  # Increased client settings
+  clientMaxBodySize: 50m
+
+  # Production rate limiting
+  rateLimitRpm: 1200  # requests per minute for API endpoints
+  rateLimitRps: 50    # requests per second for general endpoints
+
+  # Disable cache directories for non-root user
+  disableCache: true
+
+# Simplified upstream configurations for debugging
+upstreams: []
+
+# Simplified server configurations for debugging
+servers:
+  # Basic HTTP server for testing
+  - listen:
+      - "8080"
+    serverName: "_"
+    locations:
+      - path: "/"
+        extraConfig: |
+          return 200 "nginx is running";
+          add_header Content-Type text/plain;
+
+      - path: "/health"
+        extraConfig: |
+          access_log off;
+          return 200 "OK";
+          add_header Content-Type text/plain;
+
+# Production SSL configuration (disabled for debugging)
+ssl:
+  enabled: false
+  secretName: nginx-ssl-certs-production
+
+# Production monitoring configuration
+monitoring:
+  enabled: true
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/nginx-status"
+    prometheus.io/interval: "15s"
+
+# Production tolerations for single-node setup
+tolerations: []
+
+# Production node selector
+nodeSelector:
+  kubernetes.io/arch: amd64
+  node-role.kubernetes.io/control-plane: ""
+
+# Service configuration for 8080->80 mapping
+service:
+  type: ClusterIP
+  port: 80
+  httpsPort: 443
+  healthPort: 8080
+  annotations: {}
+  clusterIP: ""
+  sessionAffinity: ""
+  sessionAffinityConfig: {}
+  extraPorts: []
