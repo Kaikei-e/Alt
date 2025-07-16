@@ -1,0 +1,154 @@
+{{- if .Values.monitoring.enabled }}
+# ServiceMonitor for Helm Chart metrics collection
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "common-config.fullname" . }}-helm-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "common-config.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitoring
+spec:
+  jobLabel: helm-chart-metrics
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: helm-chart-metrics
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.monitoring.scrapeInterval | default "30s" }}
+      scrapeTimeout: {{ .Values.monitoring.scrapeTimeout | default "10s" }}
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          targetLabel: helm_chart
+          replacement: {{ .Chart.Name }}
+        - sourceLabels: [__name__]
+          targetLabel: helm_version
+          replacement: {{ .Chart.Version }}
+        - sourceLabels: [__name__]
+          targetLabel: helm_release
+          replacement: {{ .Release.Name }}
+        - sourceLabels: [__name__]
+          targetLabel: helm_namespace
+          replacement: {{ .Release.Namespace }}
+---
+# Service for Helm metrics endpoint
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "common-config.fullname" . }}-helm-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "common-config.labels" . | nindent 4 }}
+    app.kubernetes.io/name: helm-chart-metrics
+    app.kubernetes.io/component: monitoring
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: helm-chart-metrics
+---
+# ConfigMap for Helm metrics collection script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "common-config.fullname" . }}-helm-metrics-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "common-config.labels" . | nindent 4 }}
+data:
+  collect-metrics.sh: |
+    #!/bin/bash
+    # Helm Chart metrics collection script
+    
+    # Helm release information
+    helm_release_info() {
+        echo "# HELP helm_release_info Helm release information"
+        echo "# TYPE helm_release_info gauge"
+        
+        # Get all releases in this namespace
+        helm list -n {{ .Release.Namespace }} --output json | jq -r '.[] | 
+        "helm_release_info{" +
+        "release=\"" + .name + "\"," +
+        "chart=\"" + .chart + "\"," +
+        "app_version=\"" + .app_version + "\"," +
+        "status=\"" + .status + "\"," +
+        "namespace=\"" + .namespace + "\"" +
+        "} 1"'
+    }
+    
+    # Helm release status
+    helm_release_status() {
+        echo "# HELP helm_release_status Helm release status (1=deployed, 0=failed)"
+        echo "# TYPE helm_release_status gauge"
+        
+        helm list -n {{ .Release.Namespace }} --output json | jq -r '.[] | 
+        "helm_release_status{release=\"" + .name + "\",namespace=\"" + .namespace + "\"} " +
+        (if .status == "deployed" then "1" else "0" end)'
+    }
+    
+    # Helm chart version info
+    helm_chart_version() {
+        echo "# HELP helm_chart_version_info Helm chart version information"
+        echo "# TYPE helm_chart_version_info gauge"
+        
+        helm list -n {{ .Release.Namespace }} --output json | jq -r '.[] | 
+        "helm_chart_version_info{" +
+        "release=\"" + .name + "\"," +
+        "chart_name=\"" + (.chart | split("-")[0]) + "\"," +
+        "chart_version=\"" + (.chart | split("-")[1:] | join("-")) + "\"" +
+        "} 1"'
+    }
+    
+    # Main execution
+    main() {
+        helm_release_info
+        echo ""
+        helm_release_status  
+        echo ""
+        helm_chart_version
+    }
+    
+    main
+    
+  metrics-server.py: |
+    #!/usr/bin/env python3
+    import subprocess
+    import time
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+    
+    class MetricsHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == '/metrics':
+                try:
+                    result = subprocess.run(['/scripts/collect-metrics.sh'], 
+                                          capture_output=True, text=True, timeout=10)
+                    
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                    self.end_headers()
+                    self.wfile.write(result.stdout.encode('utf-8'))
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'text/plain')
+                    self.end_headers()
+                    self.wfile.write(f'Error collecting metrics: {str(e)}'.encode('utf-8'))
+            elif self.path == '/health':
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'OK')
+            else:
+                self.send_response(404)
+                self.end_headers()
+    
+    if __name__ == '__main__':
+        server = HTTPServer(('0.0.0.0', 8080), MetricsHandler)
+        print("Helm metrics server starting on port 8080...")
+        server.serve_forever()
+{{- end }}

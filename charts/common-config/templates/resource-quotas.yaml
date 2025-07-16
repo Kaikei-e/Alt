@@ -1,0 +1,26 @@
+{{- if .Values.resourceQuotas.enabled }}
+{{- range $envName, $quota := .Values.resourceQuotas }}
+{{- if and (ne $envName "enabled") $.Values.namespaces }}
+{{- $namespace := index $.Values.namespaces $envName }}
+{{- if $namespace.enabled }}
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ $envName }}-quota
+  namespace: {{ $namespace.name }}
+  labels:
+    {{- include "common-config.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: resource-quota
+    environment: {{ $envName }}
+  {{- with $.Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  hard:
+    {{- toYaml $quota | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
