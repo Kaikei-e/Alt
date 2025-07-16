@@ -1,0 +1,128 @@
+# Production environment values for auth-postgres
+
+# Production-specific image settings
+image:
+  repository: postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
+
+# Production namespace
+namespace: alt-auth
+
+# Production resource requirements (optimized for auth service)
+resources:
+  limits:
+    cpu: "1"
+    memory: "2Gi"
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+
+# Auth-specific database configuration
+auth:
+  username: "auth_db_user"
+  database: "auth_db"
+  existingSecret: "auth-postgres-secrets"
+
+# PostgreSQL production configuration (auth-optimized)
+postgres:
+  maxConnections: 100
+  sharedBuffers: "256MB"
+  effectiveCacheSize: "1GB"
+  workMem: "4MB"
+  maintenanceWorkMem: "64MB"
+  walKeepSize: "1GB"
+  loggingCollector: "on"
+  logStatement: "all"
+  logMinDurationStatement: "500"
+  randomPageCost: 1.1
+  effectiveIoConcurrency: 200
+  
+  autovacuum:
+    maxWorkers: 2
+    naptime: "30s"
+
+# SSL configuration
+ssl:
+  enabled: true
+  secretName: postgres-ssl-secret
+  mode: "require"
+
+# Environment variables
+env:
+  POSTGRES_DB: "auth_db"
+  POSTGRES_USER: "auth_db_user"
+  DB_HOST: "auth-postgres.alt-auth.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_SSL_MODE: "require"
+
+# Persistent volume configuration (auth service optimized)
+persistence:
+  enabled: true
+  size: "10Gi"
+  storageClass: "alt-fast-ssd"
+  accessMode: "ReadWriteOnce"
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 3 * * *"
+  retention: "15d"
+  storage:
+    type: "s3"
+    bucket: "alt-backup"
+    path: "auth-postgres"
+
+# Security context
+securityContext:
+  runAsUser: 999
+  runAsGroup: 999
+  fsGroup: 999
+
+# Production-specific tolerations for auth database
+tolerations:
+  - key: "auth-database"
+    operator: "Equal"
+    value: "postgres"
+    effect: "NoSchedule"
+
+# Production-specific affinity for auth database
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: "node-type"
+              operator: "In"
+              values: ["auth-database"]
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: "app.kubernetes.io/name"
+                operator: "In"
+                values: ["postgres"]
+          topologyKey: "kubernetes.io/hostname"
+
+# Enhanced monitoring for production
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: "30s"
+    scrapeTimeout: "10s"
+
+# Network policies for security
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-auth
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: auth-service
