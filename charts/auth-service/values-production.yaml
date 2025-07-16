@@ -1,0 +1,71 @@
+# Production environment values for auth-service
+
+# Production-specific image settings
+image:
+  tag: "production"
+  pullPolicy: IfNotPresent
+
+# Full resource requirements for production
+resources:
+  limits:
+    cpu: "1"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+
+# Production environment variables
+env:
+  LOG_LEVEL: "warn"
+  AUTH_DATABASE_HOST: "auth-postgres.alt-database.svc.cluster.local"
+  KRATOS_ADMIN_URL: "http://kratos.alt-auth.svc.cluster.local:4434"
+  KRATOS_PUBLIC_URL: "http://kratos.alt-auth.svc.cluster.local:4433"
+
+# Production namespace (service-specific)
+namespace: alt-auth
+
+# Multiple replicas for production
+replicaCount: 3
+
+# Enable autoscaling in production
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Production-specific deployment strategy
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+# Production-specific network policy
+networkPolicy:
+  enabled: true
+  allowedNamespaces:
+    - alt-auth
+    - alt-database
+    - alt-apps
+    - alt-ingress
+
+# Production-specific probes (more conservative)
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  failureThreshold: 5
+  initialDelaySeconds: 45
+  periodSeconds: 45
+  timeoutSeconds: 15
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  failureThreshold: 3
+  initialDelaySeconds: 15
+  periodSeconds: 15
+  timeoutSeconds: 10
