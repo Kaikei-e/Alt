@@ -1,0 +1,33 @@
+apiVersion: v2
+name: kratos
+description: A Helm chart for Ory Kratos identity management service
+type: application
+version: 0.1.0
+appVersion: "v1.2.0"
+keywords:
+  - kratos
+  - identity
+  - authentication
+  - ory
+  - oauth2
+  - openid
+home: https://github.com/your-org/Alt
+sources:
+  - https://github.com/your-org/Alt
+  - https://github.com/ory/kratos
+maintainers:
+  - name: Alt Team
+    email: team@alt.local
+dependencies:
+  - name: common-ssl
+    version: "0.1.0"
+    repository: "file://../common-ssl"
+    condition: ssl.enabled
+  - name: common-secrets
+    version: "0.1.0" 
+    repository: "file://../common-secrets"
+    condition: secrets.enabled
+  - name: kratos-postgres
+    version: "0.1.0"
+    repository: "file://../kratos-postgres"
+    condition: database.enabled

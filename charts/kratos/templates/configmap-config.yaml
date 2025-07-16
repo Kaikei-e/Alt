@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kratos.fullname" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kratos.labels" . | nindent 4 }}
+data:
+  kratos.yml: |
+    version: {{ .Chart.AppVersion | replace "v" "" }}
+
+    dsn: postgres://{{ .Values.database.username }}:$(POSTGRES_PASSWORD)@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.database }}?sslmode={{ .Values.database.ssl_mode }}&max_conns={{ .Values.database.max_conns }}&max_idle_conns={{ .Values.database.max_idle_conns }}
+
+    serve:
+      public:
+        base_url: {{ tpl .Values.kratos.publicUrl . }}
+        cors:
+          enabled: {{ .Values.kratos.cors.enabled }}
+          allowed_origins:
+            {{- range .Values.kratos.cors.allowed_origins }}
+            - {{ tpl . $ }}
+            {{- end }}
+          allowed_methods:
+            {{- range .Values.kratos.cors.allowed_methods }}
+            - {{ . }}
+            {{- end }}
+          allowed_headers:
+            {{- range .Values.kratos.cors.allowed_headers }}
+            - {{ . }}
+            {{- end }}
+          exposed_headers:
+            {{- range .Values.kratos.cors.exposed_headers }}
+            - {{ . }}
+            {{- end }}
+          allow_credentials: {{ .Values.kratos.cors.allow_credentials }}
+          debug: {{ .Values.kratos.cors.debug }}
+
+      admin:
+        base_url: {{ tpl .Values.kratos.adminUrl . }}
+
+    selfservice:
+      default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+      allowed_return_urls:
+        - {{ .Values.kratos.frontendUrl }}
+        {{- range .Values.kratos.cors.allowed_origins }}
+        - {{ tpl . $ }}
+        {{- end }}
+
+      methods:
+        password:
+          enabled: {{ .Values.kratos.selfservice.methods.password.enabled }}
+          config:
+            haveibeenpwned_enabled: {{ .Values.kratos.selfservice.methods.password.haveibeenpwned_enabled }}
+            max_breaches: {{ .Values.kratos.selfservice.methods.password.max_breaches }}
+            ignore_network_errors: {{ .Values.kratos.selfservice.methods.password.ignore_network_errors }}
+
+        totp:
+          config:
+            issuer: {{ .Values.kratos.selfservice.methods.totp.issuer }}
+          enabled: {{ .Values.kratos.selfservice.methods.totp.enabled }}
+
+        lookup_secret:
+          enabled: {{ .Values.kratos.selfservice.methods.lookup_secret.enabled }}
+
+        link:
+          enabled: {{ .Values.kratos.selfservice.methods.link.enabled }}
+          config:
+            lifespan: {{ .Values.kratos.selfservice.methods.link.lifespan }}
+
+        code:
+          enabled: {{ .Values.kratos.selfservice.methods.code.enabled }}
+          config:
+            lifespan: {{ .Values.kratos.selfservice.methods.code.lifespan }}
+
+      flows:
+        error:
+          ui_url: {{ .Values.kratos.frontendUrl }}/error
+
+        settings:
+          ui_url: {{ .Values.kratos.frontendUrl }}/settings
+          privileged_session_max_age: {{ .Values.kratos.selfservice.flows.settings.privileged_session_max_age }}
+          required_aal: {{ .Values.kratos.selfservice.flows.settings.required_aal }}
+
+        recovery:
+          enabled: {{ .Values.kratos.selfservice.flows.recovery.enabled }}
+          ui_url: {{ .Values.kratos.frontendUrl }}/recovery
+          use: {{ .Values.kratos.selfservice.flows.recovery.use }}
+
+        verification:
+          enabled: {{ .Values.kratos.selfservice.flows.verification.enabled }}
+          ui_url: {{ .Values.kratos.frontendUrl }}/verification
+          use: {{ .Values.kratos.selfservice.flows.verification.use }}
+          after:
+            default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+
+        logout:
+          after:
+            default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+
+        login:
+          ui_url: {{ .Values.kratos.frontendUrl }}/login
+          lifespan: {{ .Values.kratos.selfservice.flows.login.lifespan }}
+          after:
+            default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+            password:
+              default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+
+        registration:
+          lifespan: {{ .Values.kratos.selfservice.flows.registration.lifespan }}
+          ui_url: {{ .Values.kratos.frontendUrl }}/registration
+          after:
+            default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+            password:
+              hooks:
+                - hook: session
+                - hook: show_verification_ui
+
+    log:
+      level: {{ .Values.kratos.log.level }}
+      format: {{ .Values.kratos.log.format }}
+      leak_sensitive_values: {{ .Values.kratos.log.leak_sensitive_values }}
+
+    secrets:
+      cookie:
+        - $(SECRETS_COOKIE)
+      cipher:
+        - $(SECRETS_CIPHER)
+
+    ciphers:
+      algorithm: {{ .Values.kratos.ciphers.algorithm }}
+
+    hashers:
+      algorithm: {{ .Values.kratos.hashers.algorithm }}
+      bcrypt:
+        cost: {{ .Values.kratos.hashers.bcrypt.cost }}
+
+    identity:
+      default_schema_id: {{ .Values.identitySchema.default.id }}
+      schemas:
+        - id: {{ .Values.identitySchema.default.id }}
+          url: {{ .Values.identitySchema.default.url }}
+
+    courier:
+      smtp:
+        connection_uri: {{ .Values.kratos.courier.smtp.connection_uri }}
+        from_address: {{ .Values.kratos.courier.smtp.from_address }}
+        from_name: {{ .Values.kratos.courier.smtp.from_name }}
+
+    session:
+      lifespan: {{ .Values.kratos.session.lifespan }}
+      cookie:
+        persistent: {{ .Values.kratos.session.cookie.persistent }}
+        same_site: {{ .Values.kratos.session.cookie.same_site }}
+        domain: {{ .Values.kratos.session.cookie.domain }}
