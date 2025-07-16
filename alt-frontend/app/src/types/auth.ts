@@ -1,12 +1,19 @@
 // Auth types for Ory Kratos integration
 
+export interface UserPreferences {
+  theme?: 'light' | 'dark' | 'system';
+  language?: string;
+  notifications?: boolean;
+  [key: string]: unknown;
+}
+
 export interface User {
   id: string;
   tenantId: string;
   email: string;
   name?: string;
   role: 'admin' | 'user' | 'readonly';
-  preferences?: Record<string, any>;
+  preferences?: UserPreferences;
   createdAt: string;
   lastLoginAt?: string;
 }
@@ -37,10 +44,19 @@ export interface UIContainer {
   messages?: Message[];
 }
 
+export interface UINodeAttributes {
+  name?: string;
+  type?: string;
+  value?: string;
+  required?: boolean;
+  disabled?: boolean;
+  [key: string]: unknown;
+}
+
 export interface UINode {
   type: 'input' | 'img' | 'a' | 'script' | 'text';
   group: 'default' | 'password' | 'oidc' | 'lookup_secret';
-  attributes: Record<string, any>;
+  attributes: UINodeAttributes;
   messages?: Message[];
 }
 

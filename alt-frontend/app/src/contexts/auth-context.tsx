@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { authAPI } from '@/lib/api/auth-client';
-import type { User, AuthState } from '@/types/auth';
+import type { AuthState } from '@/types/auth';
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
@@ -38,12 +38,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isLoading: false,
         error: null,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setAuthState({
         user: null,
         isAuthenticated: false,
         isLoading: false,
-        error: error.message || 'Authentication check failed',
+        error: error instanceof Error ? error.message : 'Authentication check failed',
       });
     }
   };
@@ -64,11 +64,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isLoading: false,
         error: null,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setAuthState(prev => ({
         ...prev,
         isLoading: false,
-        error: error.message || 'Login failed',
+        error: error instanceof Error ? error.message : 'Login failed',
       }));
       throw error;
     }
@@ -90,11 +90,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isLoading: false,
         error: null,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setAuthState(prev => ({
         ...prev,
         isLoading: false,
-        error: error.message || 'Registration failed',
+        error: error instanceof Error ? error.message : 'Registration failed',
       }));
       throw error;
     }
@@ -110,10 +110,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isLoading: false,
         error: null,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setAuthState(prev => ({
         ...prev,
-        error: error.message || 'Logout failed',
+        error: error instanceof Error ? error.message : 'Logout failed',
       }));
       throw error;
     }

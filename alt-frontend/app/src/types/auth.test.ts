@@ -4,7 +4,6 @@ import {
   AuthState, 
   LoginFlow, 
   RegistrationFlow, 
-  UIContainer, 
   UINode, 
   Message, 
   CSRFToken 

@@ -25,7 +25,7 @@ function TestComponent() {
   const handleLogin = async () => {
     try {
       await login('test@example.com', 'password123');
-    } catch (error) {
+    } catch {
       // Error is already handled by the auth context
     }
   };
@@ -33,7 +33,7 @@ function TestComponent() {
   const handleRegister = async () => {
     try {
       await register('test@example.com', 'password123', 'Test User');
-    } catch (error) {
+    } catch {
       // Error is already handled by the auth context
     }
   };
@@ -41,7 +41,7 @@ function TestComponent() {
   const handleLogout = async () => {
     try {
       await logout();
-    } catch (error) {
+    } catch {
       // Error is already handled by the auth context
     }
   };
@@ -140,7 +140,9 @@ describe('AuthContext', () => {
   describe('useAuth hook', () => {
     it('should throw error when used outside AuthProvider', () => {
       // Mock console.error to prevent error output in tests
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleError = vi.spyOn(console, 'error').mockImplementation((message, ...args) => {
+        console.log(message, args);
+      });
 
       expect(() => {
         render(<TestComponent />);

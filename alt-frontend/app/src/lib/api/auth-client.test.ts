@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AuthAPIClient } from './auth-client';
-import type { User, LoginFlow, RegistrationFlow, CSRFToken } from '@/types/auth';
+import type { User, LoginFlow, RegistrationFlow } from '@/types/auth';
 
 // Mock fetch globally
 const mockFetch = vi.fn();

@@ -1,4 +1,4 @@
-import type { User, LoginFlow, RegistrationFlow, CSRFToken } from '@/types/auth';
+import type { User, LoginFlow, RegistrationFlow, UserPreferences } from '@/types/auth';
 
 export class AuthAPIClient {
   private baseURL: string;
@@ -9,7 +9,7 @@ export class AuthAPIClient {
 
   async initiateLogin(): Promise<LoginFlow> {
     const response = await this.makeRequest('POST', '/v1/auth/login');
-    return response.data;
+    return response.data as LoginFlow;
   }
 
   async completeLogin(flowId: string, email: string, password: string): Promise<User> {
@@ -17,22 +17,22 @@ export class AuthAPIClient {
       email,
       password,
     });
-    return response.data;
+    return response.data as User;
   }
 
   async initiateRegistration(): Promise<RegistrationFlow> {
     const response = await this.makeRequest('POST', '/v1/auth/register');
-    return response.data;
+    return response.data as RegistrationFlow;
   }
 
   async completeRegistration(flowId: string, email: string, password: string, name?: string): Promise<User> {
-    const payload: any = { email, password };
+    const payload: { email: string; password: string; name?: string } = { email, password };
     if (name) {
       payload.name = name;
     }
 
     const response = await this.makeRequest('POST', `/v1/auth/register/${flowId}`, payload);
-    return response.data;
+    return response.data as User;
   }
 
   async logout(): Promise<void> {
@@ -56,9 +56,9 @@ export class AuthAPIClient {
       }
 
       const data = await response.json();
-      return data.data;
-    } catch (error: any) {
-      if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
+      return data.data as User;
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
         return null; // Not authenticated
       }
       throw error;
@@ -68,8 +68,8 @@ export class AuthAPIClient {
   async getCSRFToken(): Promise<string | null> {
     try {
       const response = await this.makeRequest('POST', '/v1/auth/csrf');
-      return response.data.csrf_token;
-    } catch (error) {
+      return (response.data as { csrf_token: string }).csrf_token;
+    } catch (error: unknown) {
       console.warn('Failed to get CSRF token:', error);
       return null;
     }
@@ -77,19 +77,19 @@ export class AuthAPIClient {
 
   async updateProfile(profile: Partial<User>): Promise<User> {
     const response = await this.makeRequest('PUT', '/v1/user/profile', profile);
-    return response.data;
+    return response.data as User;
   }
 
-  async getUserSettings(): Promise<Record<string, any>> {
+  async getUserSettings(): Promise<UserPreferences> {
     const response = await this.makeRequest('GET', '/v1/user/settings');
-    return response.data;
+    return response.data as UserPreferences;
   }
 
-  async updateUserSettings(settings: Record<string, any>): Promise<void> {
+  async updateUserSettings(settings: UserPreferences): Promise<void> {
     await this.makeRequest('PUT', '/v1/user/settings', settings);
   }
 
-  private async makeRequest(method: string, endpoint: string, body?: any): Promise<any> {
+  private async makeRequest(method: string, endpoint: string, body?: unknown): Promise<{ data: unknown }> {
     const url = `${this.baseURL}${endpoint}`;
     const isUnsafeMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
     const isCsrfEndpoint = endpoint.includes('/csrf');
@@ -142,7 +142,7 @@ export class AuthAPIClient {
 
       const data = await response.json();
       return data.data?.csrf_token || null;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
