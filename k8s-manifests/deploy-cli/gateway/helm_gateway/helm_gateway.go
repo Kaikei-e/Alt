@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"os"
 	
 	"deploy-cli/port/helm_port"
 	"deploy-cli/port/logger_port"
@@ -90,11 +91,21 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		// Continue with deployment - conflicts should be handled by the driver
 	}
 	
+	// Check chart dependencies before deployment
+	if err := g.validateChartDependencies(ctx, chart); err != nil {
+		g.logger.WarnWithContext("chart dependencies validation failed", map[string]interface{}{
+			"chart":     chart.Name,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		// Continue with deployment - Helm will handle dependency resolution
+	}
+	
 	helmOptions := helm_port.HelmUpgradeOptions{
 		ValuesFile:      g.getValuesFile(chart, options.Environment),
 		Namespace:       namespace,
 		CreateNamespace: true,
-		Wait:            chart.ShouldWaitForReadiness(),
+		Wait:            chart.ShouldWaitForReadinessWithOptions(options),
 		Timeout:         options.Timeout,
 		Force:           options.ForceUpdate,
 	}
@@ -418,6 +429,41 @@ func (g *HelmGateway) CleanupStuckOperations(ctx context.Context, chart domain.C
 		"chart":     chart.Name,
 		"namespace": namespace,
 	})
+	
+	return nil
+}
+
+// validateChartDependencies validates chart dependencies before deployment
+func (g *HelmGateway) validateChartDependencies(ctx context.Context, chart domain.Chart) error {
+	g.logger.DebugWithContext("validating chart dependencies", map[string]interface{}{
+		"chart": chart.Name,
+	})
+	
+	// Check if Chart.lock exists (indicates dependencies are resolved)
+	chartLockPath := fmt.Sprintf("%s/Chart.lock", chart.Path)
+	if _, err := os.Stat(chartLockPath); err != nil {
+		if os.IsNotExist(err) {
+			g.logger.DebugWithContext("no Chart.lock found, dependencies may not be resolved", map[string]interface{}{
+				"chart": chart.Name,
+				"path":  chartLockPath,
+			})
+		} else {
+			return fmt.Errorf("failed to check Chart.lock: %w", err)
+		}
+	}
+	
+	// Check if charts/ directory exists (indicates dependencies are downloaded)
+	chartsDir := fmt.Sprintf("%s/charts", chart.Path)
+	if _, err := os.Stat(chartsDir); err != nil {
+		if os.IsNotExist(err) {
+			g.logger.DebugWithContext("no charts directory found, dependencies may not be downloaded", map[string]interface{}{
+				"chart": chart.Name,
+				"path":  chartsDir,
+			})
+		} else {
+			return fmt.Errorf("failed to check charts directory: %w", err)
+		}
+	}
 	
 	return nil
 }

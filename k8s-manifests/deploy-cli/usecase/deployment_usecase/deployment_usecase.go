@@ -227,22 +227,46 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 		"chart_count": len(charts),
 	})
 	
+	var failedCharts []string
+	
 	for _, chart := range charts {
+		// Check if context was cancelled
+		if ctx.Err() != nil {
+			u.logger.WarnWithContext("deployment cancelled", map[string]interface{}{
+				"group": groupName,
+				"chart": chart.Name,
+				"error": ctx.Err().Error(),
+			})
+			return ctx.Err()
+		}
+		
 		progress.CurrentChart = chart.Name
 		progress.CurrentPhase = fmt.Sprintf("Deploying %s charts", groupName)
 		
 		result := u.deploySingleChart(ctx, chart, options)
 		progress.AddResult(result)
 		
-		// Stop on first failure if not dry run
-		if result.Status == domain.DeploymentStatusFailed && !options.DryRun {
-			return fmt.Errorf("chart deployment failed: %s", result.Error)
+		// Collect failed charts but continue if dry run
+		if result.Status == domain.DeploymentStatusFailed {
+			failedCharts = append(failedCharts, chart.Name)
+			u.logger.ErrorWithContext("chart deployment failed", map[string]interface{}{
+				"group": groupName,
+				"chart": chart.Name,
+				"error": result.Error,
+			})
+			
+			// Stop on first failure if not dry run
+			if !options.DryRun {
+				return fmt.Errorf("chart deployment failed: %s", result.Error)
+			}
 		}
 	}
 	
 	u.logger.InfoWithContext("chart group deployment completed", map[string]interface{}{
-		"group":       groupName,
-		"chart_count": len(charts),
+		"group":        groupName,
+		"chart_count":  len(charts),
+		"failed_count": len(failedCharts),
+		"failed_charts": failedCharts,
 	})
 	
 	return nil
@@ -265,6 +289,14 @@ func (u *DeploymentUsecase) deploySingleChart(ctx context.Context, chart domain.
 		Duration:  0,
 	}
 	
+	// Create timeout context for individual chart deployment
+	chartTimeout := options.Timeout
+	if chartTimeout == 0 {
+		chartTimeout = 5 * time.Minute // Default timeout
+	}
+	chartCtx, cancel := context.WithTimeout(ctx, chartTimeout)
+	defer cancel()
+	
 	// Validate chart path
 	if err := u.filesystemGateway.ValidateChartPath(chart); err != nil {
 		result.Error = fmt.Errorf("chart path validation failed: %w", err)
@@ -282,19 +314,27 @@ func (u *DeploymentUsecase) deploySingleChart(ctx context.Context, chart domain.
 		return result
 	}
 	
-	// Deploy or template chart
+	// Deploy or template chart with timeout handling
 	if options.DryRun {
-		_, err = u.helmGateway.TemplateChart(ctx, chart, options)
+		_, err = u.helmGateway.TemplateChart(chartCtx, chart, options)
 		if err != nil {
-			result.Error = fmt.Errorf("chart templating failed: %w", err)
+			if chartCtx.Err() == context.DeadlineExceeded {
+				result.Error = fmt.Errorf("chart templating timed out after %v", chartTimeout)
+			} else {
+				result.Error = fmt.Errorf("chart templating failed: %w", err)
+			}
 		} else {
 			result.Status = domain.DeploymentStatusSuccess
 			result.Message = "Chart templated successfully"
 		}
 	} else {
-		err = u.helmGateway.DeployChart(ctx, chart, options)
+		err = u.helmGateway.DeployChart(chartCtx, chart, options)
 		if err != nil {
-			result.Error = fmt.Errorf("chart deployment failed: %w", err)
+			if chartCtx.Err() == context.DeadlineExceeded {
+				result.Error = fmt.Errorf("chart deployment timed out after %v", chartTimeout)
+			} else {
+				result.Error = fmt.Errorf("chart deployment failed: %w", err)
+			}
 		} else {
 			result.Status = domain.DeploymentStatusSuccess
 			result.Message = "Chart deployed successfully"
@@ -309,6 +349,7 @@ func (u *DeploymentUsecase) deploySingleChart(ctx context.Context, chart domain.
 		"status":    result.Status,
 		"duration":  result.Duration,
 		"values_file": valuesFile,
+		"timeout":   chartTimeout,
 	})
 	
 	return result

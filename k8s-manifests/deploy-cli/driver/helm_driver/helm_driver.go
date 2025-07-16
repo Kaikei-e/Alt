@@ -299,6 +299,10 @@ func (h *HelmDriver) parseHistoryOutput(output string, revisions *[]helm_port.He
 
 // DetectPendingOperation checks for pending Helm operations
 func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, namespace string) (*helm_port.HelmOperation, error) {
+	// Add timeout to prevent hanging
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	
 	// Check if there's a running Helm operation by checking for helm processes
 	pids, err := h.findHelmProcesses(releaseName, namespace)
 	if err != nil {
@@ -310,7 +314,7 @@ func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, na
 		stuckPIDs := h.checkStuckProcesses(pids)
 		if len(stuckPIDs) > 0 {
 			return &helm_port.HelmOperation{
-				Type:        "unknown",
+				Type:        "upgrade",
 				ReleaseName: releaseName,
 				Namespace:   namespace,
 				Status:      "stuck",
@@ -319,7 +323,7 @@ func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, na
 			}, nil
 		} else {
 			return &helm_port.HelmOperation{
-				Type:        "unknown",
+				Type:        "upgrade",
 				ReleaseName: releaseName,
 				Namespace:   namespace,
 				Status:      "running",
@@ -330,15 +334,20 @@ func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, na
 	}
 	
 	// Check for helm lock files or status indicating pending operations
-	if hasLockFiles := h.checkHelmLockFiles(releaseName, namespace); hasLockFiles {
-		return &helm_port.HelmOperation{
-			Type:        "unknown",
-			ReleaseName: releaseName,
-			Namespace:   namespace,
-			Status:      "pending",
-			StartTime:   time.Now().Add(-10 * time.Minute), // Estimate
-			PID:         0,
-		}, nil
+	select {
+	case <-timeoutCtx.Done():
+		return nil, fmt.Errorf("timeout while checking for helm operations")
+	default:
+		if hasLockFiles := h.checkHelmLockFiles(releaseName, namespace); hasLockFiles {
+			return &helm_port.HelmOperation{
+				Type:        "unknown",
+				ReleaseName: releaseName,
+				Namespace:   namespace,
+				Status:      "pending",
+				StartTime:   time.Now().Add(-10 * time.Minute), // Estimate
+				PID:         0,
+			}, nil
+		}
 	}
 	
 	return nil, nil // No pending operations found
@@ -346,8 +355,12 @@ func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, na
 
 // CleanupStuckOperations cleans up stuck Helm operations
 func (h *HelmDriver) CleanupStuckOperations(ctx context.Context, releaseName, namespace string) error {
+	// Add timeout to prevent hanging
+	timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	
 	// First, try to detect any stuck operations
-	operation, err := h.DetectPendingOperation(ctx, releaseName, namespace)
+	operation, err := h.DetectPendingOperation(timeoutCtx, releaseName, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to detect pending operations: %w", err)
 	}
@@ -369,7 +382,12 @@ func (h *HelmDriver) CleanupStuckOperations(ctx context.Context, releaseName, na
 	}
 	
 	// Wait a bit for cleanup to take effect
-	time.Sleep(2 * time.Second)
+	select {
+	case <-timeoutCtx.Done():
+		return fmt.Errorf("timeout during cleanup wait")
+	case <-time.After(2 * time.Second):
+		// Continue
+	}
 	
 	return nil
 }
@@ -417,7 +435,7 @@ func (h *HelmDriver) RetryWithBackoff(ctx context.Context, operation func() erro
 
 // findHelmProcesses finds running helm processes for a specific release
 func (h *HelmDriver) findHelmProcesses(releaseName, namespace string) ([]int, error) {
-	// Use ps to find helm processes
+	// Use ps to find helm processes with more specific matching
 	cmd := exec.Command("ps", "aux")
 	output, err := cmd.Output()
 	if err != nil {
@@ -427,11 +445,17 @@ func (h *HelmDriver) findHelmProcesses(releaseName, namespace string) ([]int, er
 	lines := strings.Split(string(output), "\n")
 	var pids []int
 	
-	// Look for helm processes that match our release and namespace
+	// Look for helm processes that match our release and namespace more specifically
 	for _, line := range lines {
+		// Must contain helm command and either upgrade or install operations
 		if strings.Contains(line, "helm") && 
-		   strings.Contains(line, releaseName) && 
-		   (namespace == "" || strings.Contains(line, namespace)) {
+		   (strings.Contains(line, "upgrade") || strings.Contains(line, "install")) &&
+		   strings.Contains(line, releaseName) {
+			
+			// Additional check for namespace if provided
+			if namespace != "" && !strings.Contains(line, namespace) {
+				continue
+			}
 			
 			// Extract PID from ps output
 			fields := strings.Fields(line)

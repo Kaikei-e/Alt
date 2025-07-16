@@ -274,24 +274,66 @@ func (k *KubectlDriver) GetPersistentVolumes(ctx context.Context) ([]kubectl_por
 
 // CreatePersistentVolume creates a new persistent volume
 func (k *KubectlDriver) CreatePersistentVolume(ctx context.Context, pv kubectl_port.KubernetesPersistentVolume) error {
-	// This would typically create a YAML manifest and apply it
-	// For now, we'll implement basic creation
+	// Check if PV already exists
+	existingPVs, err := k.GetPersistentVolumes(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check existing PVs: %w", err)
+	}
+	
+	for _, existingPV := range existingPVs {
+		if existingPV.Name == pv.Name {
+			// PV already exists, check if it needs to be updated
+			if existingPV.Capacity != pv.Capacity || existingPV.StorageClass != pv.StorageClass {
+				// Delete and recreate with correct configuration
+				if err := k.DeletePersistentVolume(ctx, pv.Name); err != nil {
+					return fmt.Errorf("failed to delete existing PV for recreation: %w", err)
+				}
+				// Wait a moment for deletion to complete
+				time.Sleep(2 * time.Second)
+			} else {
+				// PV exists with correct configuration, skip creation
+				return nil
+			}
+		}
+	}
+	
 	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
 	
-	// Build YAML manifest
+	// Build YAML manifest using local storage instead of hostPath for local-storage class
+	var storageSpec string
+	if pv.StorageClass == "local-storage" {
+		// Use local storage specification with node affinity
+		storageSpec = fmt.Sprintf(`  local:
+    path: %s
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values: ["koko-b"]`, pv.HostPath)
+	} else {
+		// Use hostPath for other storage classes
+		storageSpec = fmt.Sprintf(`  hostPath:
+    path: %s`, pv.HostPath)
+	}
+	
 	yaml := fmt.Sprintf(`apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: %s
+  labels:
+    app.kubernetes.io/name: alt
+    app.kubernetes.io/version: v1.0.0
 spec:
   capacity:
     storage: %s
   accessModes:
     - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
   storageClassName: %s
-  hostPath:
-    path: %s
-`, pv.Name, pv.Capacity, pv.StorageClass, pv.HostPath)
+%s
+`, pv.Name, pv.Capacity, pv.StorageClass, storageSpec)
 	
 	cmd.Stdin = strings.NewReader(yaml)
 	output, err := cmd.CombinedOutput()

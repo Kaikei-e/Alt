@@ -98,6 +98,21 @@ func (c *Chart) ShouldWaitForReadiness() bool {
 	return c.WaitReady
 }
 
+// ShouldWaitForReadinessWithOptions returns true if the chart should wait for readiness based on deployment options
+func (c *Chart) ShouldWaitForReadinessWithOptions(options *DeploymentOptions) bool {
+	// Don't wait for readiness during force updates to prevent hanging
+	if options.ForceUpdate {
+		return false
+	}
+	
+	// Don't wait for readiness during dry run
+	if options.DryRun {
+		return false
+	}
+	
+	return c.WaitReady
+}
+
 // SupportsImageOverride returns true if the chart supports image override
 func (c *Chart) SupportsImageOverride() bool {
 	applicationCharts := map[string]bool{

@@ -130,6 +130,7 @@ func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 	// Set flags
 	options.DryRun, _ = cmd.Flags().GetBool("dry-run")
 	options.DoRestart, _ = cmd.Flags().GetBool("restart")
+	options.ForceUpdate, _ = cmd.Flags().GetBool("force-update")
 	options.TargetNamespace, _ = cmd.Flags().GetString("namespace")
 	options.Timeout, _ = cmd.Flags().GetDuration("timeout")
 	options.ChartsDir, _ = cmd.Flags().GetString("charts-dir")
