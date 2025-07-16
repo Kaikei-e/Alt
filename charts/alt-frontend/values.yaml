@@ -39,3 +39,32 @@ autoscaling:
 env:
   NEXT_PUBLIC_API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
   NEXT_PUBLIC_AUTH_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+configMap:
+  create: false
+  name: ""
+  data: {}
+
+podSecurityContext: {}
+securityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+commonLabels: {}
+commonAnnotations: {}
+podLabels: {}
+podAnnotations: {}
+imagePullSecrets: []
+volumeMounts: []
+volumes: []
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
