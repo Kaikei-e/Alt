@@ -84,6 +84,7 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		CreateNamespace: true,
 		Wait:            chart.ShouldWaitForReadiness(),
 		Timeout:         options.Timeout,
+		Force:           options.ForceUpdate,
 	}
 	
 	// Add image overrides if applicable
@@ -91,6 +92,13 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		helmOptions.ImageOverrides = map[string]string{
 			"image.repository": options.ImagePrefix,
 			"image.tag":        options.GetImageTag(chart.Name),
+		}
+	}
+	
+	// Add force update flag
+	if options.ForceUpdate {
+		helmOptions.SetValues = map[string]string{
+			"forceUpdate": "true",
 		}
 	}
 	

@@ -41,6 +41,7 @@ type HelmUpgradeOptions struct {
 	CreateNamespace bool
 	Wait           bool
 	Timeout        time.Duration
+	Force          bool
 	ImageOverrides map[string]string
 	SetValues      map[string]string
 }

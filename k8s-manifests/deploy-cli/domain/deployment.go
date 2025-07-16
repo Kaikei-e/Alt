@@ -10,6 +10,7 @@ type DeploymentOptions struct {
 	Environment     Environment
 	DryRun          bool
 	DoRestart       bool
+	ForceUpdate     bool
 	TargetNamespace string
 	ImagePrefix     string
 	TagBase         string
@@ -22,6 +23,7 @@ func NewDeploymentOptions() *DeploymentOptions {
 	return &DeploymentOptions{
 		DryRun:      false,
 		DoRestart:   false,
+		ForceUpdate: false,
 		ChartsDir:   "../charts",
 		Timeout:     300 * time.Second,
 	}
@@ -50,12 +52,16 @@ func (o *DeploymentOptions) GetNamespace(chartName string) string {
 
 // ShouldOverrideImage returns true if image should be overridden
 func (o *DeploymentOptions) ShouldOverrideImage() bool {
-	return o.TagBase != ""
+	return o.TagBase != "" || o.ForceUpdate
 }
 
 // GetImageTag returns the image tag for the given chart
 func (o *DeploymentOptions) GetImageTag(chartName string) string {
 	if o.TagBase == "" {
+		if o.ForceUpdate {
+			// Use environment-specific tag for force updates
+			return o.Environment.String()
+		}
 		return ""
 	}
 	return fmt.Sprintf("%s-%s", chartName, o.TagBase)

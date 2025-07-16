@@ -479,3 +479,26 @@ func (g *KubectlGateway) GetDeployments(ctx context.Context, namespace string) (
 	
 	return deployments, nil
 }
+
+// GetStatefulSets returns stateful sets in the specified namespace
+func (g *KubectlGateway) GetStatefulSets(ctx context.Context, namespace string) ([]kubectl_port.KubernetesStatefulSet, error) {
+	g.logger.DebugWithContext("getting statefulsets", map[string]interface{}{
+		"namespace": namespace,
+	})
+	
+	statefulSets, err := g.kubectlPort.GetStatefulSets(ctx, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get statefulsets", map[string]interface{}{
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get statefulsets in namespace %s: %w", namespace, err)
+	}
+	
+	g.logger.DebugWithContext("statefulsets retrieved", map[string]interface{}{
+		"namespace": namespace,
+		"count":     len(statefulSets),
+	})
+	
+	return statefulSets, nil
+}

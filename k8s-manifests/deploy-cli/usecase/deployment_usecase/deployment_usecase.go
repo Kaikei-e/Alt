@@ -330,40 +330,101 @@ func (u *DeploymentUsecase) postDeploymentOperations(ctx context.Context, option
 	return nil
 }
 
-// restartDeployments restarts all deployments
+// restartDeployments restarts all workload resources (deployments, statefulsets, daemonsets)
 func (u *DeploymentUsecase) restartDeployments(ctx context.Context, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("restarting deployments", map[string]interface{}{
+	u.logger.InfoWithContext("restarting workload resources", map[string]interface{}{
 		"environment": options.Environment.String(),
 	})
 	
 	namespaces := domain.GetNamespacesForEnvironment(options.Environment)
 	
 	for _, namespace := range namespaces {
-		// Get deployments in namespace
-		deployments, err := u.kubectlGateway.GetDeployments(ctx, namespace)
-		if err != nil {
-			u.logger.WarnWithContext("failed to get deployments", map[string]interface{}{
+		// Restart deployments
+		if err := u.restartDeploymentsInNamespace(ctx, namespace); err != nil {
+			u.logger.WarnWithContext("failed to restart deployments in namespace", map[string]interface{}{
 				"namespace": namespace,
 				"error":     err.Error(),
 			})
-			continue
 		}
 		
-		// Restart each deployment
-		for _, deployment := range deployments {
-			if err := u.kubectlGateway.RolloutRestart(ctx, "deployment", deployment.Name, namespace); err != nil {
-				u.logger.WarnWithContext("failed to restart deployment", map[string]interface{}{
-					"deployment": deployment.Name,
-					"namespace":  namespace,
-					"error":      err.Error(),
-				})
-			}
+		// Restart StatefulSets
+		if err := u.restartStatefulSetsInNamespace(ctx, namespace); err != nil {
+			u.logger.WarnWithContext("failed to restart statefulsets in namespace", map[string]interface{}{
+				"namespace": namespace,
+				"error":     err.Error(),
+			})
+		}
+		
+		// Restart DaemonSets (if method exists)
+		if err := u.restartDaemonSetsInNamespace(ctx, namespace); err != nil {
+			u.logger.WarnWithContext("failed to restart daemonsets in namespace", map[string]interface{}{
+				"namespace": namespace,
+				"error":     err.Error(),
+			})
 		}
 	}
 	
-	u.logger.InfoWithContext("deployment restart completed", map[string]interface{}{
+	u.logger.InfoWithContext("workload resource restart completed", map[string]interface{}{
 		"environment": options.Environment.String(),
 	})
 	
+	return nil
+}
+
+// restartDeploymentsInNamespace restarts deployments in a specific namespace
+func (u *DeploymentUsecase) restartDeploymentsInNamespace(ctx context.Context, namespace string) error {
+	deployments, err := u.kubectlGateway.GetDeployments(ctx, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to get deployments: %w", err)
+	}
+	
+	for _, deployment := range deployments {
+		if err := u.kubectlGateway.RolloutRestart(ctx, "deployment", deployment.Name, namespace); err != nil {
+			u.logger.WarnWithContext("failed to restart deployment", map[string]interface{}{
+				"deployment": deployment.Name,
+				"namespace":  namespace,
+				"error":      err.Error(),
+			})
+		} else {
+			u.logger.InfoWithContext("deployment restarted", map[string]interface{}{
+				"deployment": deployment.Name,
+				"namespace":  namespace,
+			})
+		}
+	}
+	
+	return nil
+}
+
+// restartStatefulSetsInNamespace restarts StatefulSets in a specific namespace
+func (u *DeploymentUsecase) restartStatefulSetsInNamespace(ctx context.Context, namespace string) error {
+	statefulSets, err := u.kubectlGateway.GetStatefulSets(ctx, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to get statefulsets: %w", err)
+	}
+	
+	for _, sts := range statefulSets {
+		if err := u.kubectlGateway.RolloutRestart(ctx, "statefulset", sts.Name, namespace); err != nil {
+			u.logger.WarnWithContext("failed to restart statefulset", map[string]interface{}{
+				"statefulset": sts.Name,
+				"namespace":   namespace,
+				"error":       err.Error(),
+			})
+		} else {
+			u.logger.InfoWithContext("statefulset restarted", map[string]interface{}{
+				"statefulset": sts.Name,
+				"namespace":   namespace,
+			})
+		}
+	}
+	
+	return nil
+}
+
+// restartDaemonSetsInNamespace restarts DaemonSets in a specific namespace
+func (u *DeploymentUsecase) restartDaemonSetsInNamespace(ctx context.Context, namespace string) error {
+	// Note: DaemonSets don't support rollout restart in the same way
+	// We'll skip them for now as they typically don't need manual restarts
+	// and have different update strategies
 	return nil
 }

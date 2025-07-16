@@ -73,6 +73,10 @@ func (h *HelmDriver) UpgradeInstall(ctx context.Context, releaseName, chartPath 
 		}
 	}
 	
+	if options.Force {
+		args = append(args, "--force")
+	}
+	
 	// Add image overrides
 	for key, value := range options.ImageOverrides {
 		args = append(args, "--set", fmt.Sprintf("%s=%s", key, value))

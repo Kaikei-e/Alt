@@ -63,6 +63,7 @@ Examples:
 	// Add flags
 	cmd.Flags().BoolP("dry-run", "d", false, "Perform dry-run (template charts without deploying)")
 	cmd.Flags().BoolP("restart", "r", false, "Restart deployments after deployment")
+	cmd.Flags().BoolP("force-update", "f", false, "Force pod updates even when manifests are identical")
 	cmd.Flags().StringP("namespace", "n", "", "Override target namespace")
 	cmd.Flags().Duration("timeout", 300*time.Second, "Timeout for deployment operations")
 	cmd.Flags().String("charts-dir", "../charts", "Directory containing Helm charts")
@@ -95,6 +96,7 @@ func (d *DeployCommand) preRun(cmd *cobra.Command, args []string) error {
 	// Set flags
 	options.DryRun, _ = cmd.Flags().GetBool("dry-run")
 	options.DoRestart, _ = cmd.Flags().GetBool("restart")
+	options.ForceUpdate, _ = cmd.Flags().GetBool("force-update")
 	options.TargetNamespace, _ = cmd.Flags().GetString("namespace")
 	options.Timeout, _ = cmd.Flags().GetDuration("timeout")
 	options.ChartsDir, _ = cmd.Flags().GetString("charts-dir")
