@@ -66,6 +66,10 @@ func (c *CLI) setupCommands() {
 	helmStatusCmd := commands.NewHelmStatusCommand(c.logger)
 	c.rootCmd.AddCommand(helmStatusCmd)
 	
+	// Add update command
+	updateCmd := commands.NewUpdateCommand(c.logger)
+	c.rootCmd.AddCommand(updateCmd)
+	
 	// Add version command
 	versionCmd := &cobra.Command{
 		Use:   "version",

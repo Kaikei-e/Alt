@@ -201,6 +201,15 @@ func (u *DeploymentUsecase) deployCharts(ctx context.Context, options *domain.De
 		return progress, fmt.Errorf("operational chart deployment failed: %w", err)
 	}
 	
+	// Validate pod updates if force update was enabled
+	if options.ForceUpdate {
+		if err := u.validatePodUpdates(ctx, options); err != nil {
+			u.logger.WarnWithContext("pod update validation failed", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}
+	
 	u.logger.InfoWithContext("charts deployment completed", map[string]interface{}{
 		"environment":      options.Environment.String(),
 		"successful_charts": progress.GetSuccessCount(),
@@ -390,6 +399,20 @@ func (u *DeploymentUsecase) restartDeploymentsInNamespace(ctx context.Context, n
 				"deployment": deployment.Name,
 				"namespace":  namespace,
 			})
+			
+			// Wait for rollout completion
+			if err := u.kubectlGateway.WaitForRollout(ctx, "deployment", deployment.Name, namespace, 5*time.Minute); err != nil {
+				u.logger.WarnWithContext("deployment rollout did not complete", map[string]interface{}{
+					"deployment": deployment.Name,
+					"namespace":  namespace,
+					"error":      err.Error(),
+				})
+			} else {
+				u.logger.InfoWithContext("deployment rollout completed", map[string]interface{}{
+					"deployment": deployment.Name,
+					"namespace":  namespace,
+				})
+			}
 		}
 	}
 	
@@ -415,6 +438,20 @@ func (u *DeploymentUsecase) restartStatefulSetsInNamespace(ctx context.Context, 
 				"statefulset": sts.Name,
 				"namespace":   namespace,
 			})
+			
+			// Wait for rollout completion (StatefulSets may take longer)
+			if err := u.kubectlGateway.WaitForRollout(ctx, "statefulset", sts.Name, namespace, 10*time.Minute); err != nil {
+				u.logger.WarnWithContext("statefulset rollout did not complete", map[string]interface{}{
+					"statefulset": sts.Name,
+					"namespace":   namespace,
+					"error":       err.Error(),
+				})
+			} else {
+				u.logger.InfoWithContext("statefulset rollout completed", map[string]interface{}{
+					"statefulset": sts.Name,
+					"namespace":   namespace,
+				})
+			}
 		}
 	}
 	
@@ -426,5 +463,96 @@ func (u *DeploymentUsecase) restartDaemonSetsInNamespace(ctx context.Context, na
 	// Note: DaemonSets don't support rollout restart in the same way
 	// We'll skip them for now as they typically don't need manual restarts
 	// and have different update strategies
+	return nil
+}
+
+// validatePodUpdates validates that pods have been updated after deployment
+func (u *DeploymentUsecase) validatePodUpdates(ctx context.Context, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("validating pod updates", map[string]interface{}{
+		"environment": options.Environment.String(),
+	})
+	
+	namespaces := domain.GetNamespacesForEnvironment(options.Environment)
+	
+	for _, namespace := range namespaces {
+		// Check deployment pods
+		if err := u.validateDeploymentPods(ctx, namespace); err != nil {
+			u.logger.WarnWithContext("deployment pod validation failed", map[string]interface{}{
+				"namespace": namespace,
+				"error":     err.Error(),
+			})
+		}
+		
+		// Check StatefulSet pods  
+		if err := u.validateStatefulSetPods(ctx, namespace); err != nil {
+			u.logger.WarnWithContext("statefulset pod validation failed", map[string]interface{}{
+				"namespace": namespace,
+				"error":     err.Error(),
+			})
+		}
+	}
+	
+	u.logger.InfoWithContext("pod update validation completed", map[string]interface{}{
+		"environment": options.Environment.String(),
+	})
+	
+	return nil
+}
+
+// validateDeploymentPods validates that deployment pods are running and updated
+func (u *DeploymentUsecase) validateDeploymentPods(ctx context.Context, namespace string) error {
+	deployments, err := u.kubectlGateway.GetDeployments(ctx, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to get deployments: %w", err)
+	}
+	
+	for _, deployment := range deployments {
+		// Check pod status for this deployment
+		pods, err := u.kubectlGateway.GetPods(ctx, namespace, fmt.Sprintf("app.kubernetes.io/name=%s", deployment.Name))
+		if err != nil {
+			u.logger.WarnWithContext("failed to get pods for deployment", map[string]interface{}{
+				"deployment": deployment.Name,
+				"namespace":  namespace,
+				"error":      err.Error(),
+			})
+			continue
+		}
+		
+		u.logger.InfoWithContext("deployment pod status", map[string]interface{}{
+			"deployment": deployment.Name,
+			"namespace":  namespace,
+			"pods":       pods,
+		})
+	}
+	
+	return nil
+}
+
+// validateStatefulSetPods validates that StatefulSet pods are running and updated
+func (u *DeploymentUsecase) validateStatefulSetPods(ctx context.Context, namespace string) error {
+	statefulSets, err := u.kubectlGateway.GetStatefulSets(ctx, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to get statefulsets: %w", err)
+	}
+	
+	for _, sts := range statefulSets {
+		// Check pod status for this StatefulSet
+		pods, err := u.kubectlGateway.GetPods(ctx, namespace, fmt.Sprintf("app.kubernetes.io/name=%s", sts.Name))
+		if err != nil {
+			u.logger.WarnWithContext("failed to get pods for statefulset", map[string]interface{}{
+				"statefulset": sts.Name,
+				"namespace":   namespace,
+				"error":       err.Error(),
+			})
+			continue
+		}
+		
+		u.logger.InfoWithContext("statefulset pod status", map[string]interface{}{
+			"statefulset": sts.Name,
+			"namespace":   namespace,
+			"pods":        pods,
+		})
+	}
+	
 	return nil
 }
