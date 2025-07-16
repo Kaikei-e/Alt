@@ -5,10 +5,14 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "news-creator.labels" . | nindent 4 }}
-  {{- with .Values.commonAnnotations }}
   annotations:
+    deployment.kubernetes.io/revision: {{ .Release.Revision | quote }}
+    {{- if .Values.forceUpdate }}
+    deployment.alt.rss/force-update-timestamp: {{ now | date "2006-01-02T15:04:05Z" | quote }}
+    {{- end }}
+    {{- with .Values.commonAnnotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
   replicas: {{ .Values.replicaCount | default 1 }}
   selector:
@@ -20,10 +24,13 @@ spec:
   {{- end }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        {{- if .Values.forceUpdate }}
+        pod.alt.rss/force-update-timestamp: {{ now | date "2006-01-02T15:04:05Z" | quote }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "news-creator.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}

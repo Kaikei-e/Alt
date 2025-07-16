@@ -1,0 +1,77 @@
+# Default values for news-creator
+replicaCount: 1
+
+image:
+  repository: news-creator
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 11434
+  targetPort: 11434
+
+resources:
+  limits:
+    cpu: "2000m"
+    memory: "4Gi"
+  requests:
+    cpu: "1000m"
+    memory: "2Gi"
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+env:
+  OLLAMA_NUM_PARALLEL: "1"
+  OLLAMA_MAX_LOADED_MODELS: "1"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+configMap:
+  create: false
+  name: ""
+  data: {}
+
+podSecurityContext: {}
+securityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+commonLabels: {}
+commonAnnotations: {}
+podLabels: {}
+podAnnotations: {}
+imagePullSecrets: []
+volumeMounts: []
+volumes: []
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 11434
+  failureThreshold: 3
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 11434
+  failureThreshold: 3
+  initialDelaySeconds: 15
+  periodSeconds: 15
+  timeoutSeconds: 5
