@@ -1,0 +1,87 @@
+# Production values for common-ssl
+# SSL Certificate configuration for production environment
+
+ssl:
+  # CA Certificate configuration
+  ca:
+    enabled: true
+    secretName: ca-secret
+    # Certificate data (base64 encoded)
+    cert: ""
+    key: ""
+
+  # Server Certificate configuration
+  server:
+    enabled: true
+    secretName: server-ssl-secret
+    # Certificate data (base64 encoded)
+    cert: ""
+    key: ""
+    # Server configuration for certificate generation
+    config: |
+      [req]
+      distinguished_name = req_distinguished_name
+      req_extensions = v3_req
+
+      [req_distinguished_name]
+
+      [v3_req]
+      subjectAltName = @alt_names
+
+      [alt_names]
+      DNS.1 = postgres
+      DNS.2 = postgres.alt-database.svc.cluster.local
+      DNS.3 = db.alt-database.svc.cluster.local
+      DNS.4 = localhost
+      IP.1 = 127.0.0.1
+
+# Namespace configuration
+namespace:
+  create: false
+  name: "default"
+
+# Labels and annotations
+commonLabels:
+  app.kubernetes.io/component: ssl
+  app.kubernetes.io/part-of: alt
+  app.kubernetes.io/environment: production
+
+commonAnnotations: {}
+
+# SSL configuration for different services
+services:
+  postgres:
+    enabled: true
+    secretName: postgres-ssl-secret
+    altNames:
+      - postgres
+      - postgres.alt-database.svc.cluster.local
+      - db.alt-database.svc.cluster.local
+      - localhost
+    ipAddresses:
+      - 127.0.0.1
+
+  backend:
+    enabled: true
+    secretName: backend-ssl-secret
+    altNames:
+      - alt-backend
+      - alt-backend.alt-apps.svc.cluster.local
+      - backend.alt-apps.svc.cluster.local
+
+  frontend:
+    enabled: true
+    secretName: frontend-ssl-secret
+    altNames:
+      - alt-frontend
+      - alt-frontend.alt-apps.svc.cluster.local
+
+  nginx:
+    enabled: true
+    secretName: nginx-ssl-certs-production
+    altNames:
+      - alt.production.local
+      - "*.alt.production.local"
+      - localhost
+    ipAddresses:
+      - 127.0.0.1
