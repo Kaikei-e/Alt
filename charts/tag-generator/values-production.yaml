@@ -1,0 +1,86 @@
+# Production values for tag-generator
+replicaCount: 1
+
+image:
+  repository: tag-generator
+  pullPolicy: IfNotPresent
+  tag: "production"
+
+service:
+  create: true
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+  protocol: TCP
+  name: http
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+configMap:
+  create: true
+  name: tag-generator-config
+  data:
+    LOG_LEVEL: "info"
+    SERVICE_NAME: "tag-generator"
+    MODEL_NAME: "gemma2:2b"
+    BATCH_SIZE: "10"
+
+resources:
+  requests:
+    memory: "1Gi"
+    cpu: "500m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
+
+env:
+  DB_HOST: "db.alt-database.svc.cluster.local"
+  DB_NAME: "alt"
+  DB_PORT: "5432"
+  DB_SSL_MODE: "require"
+  LOG_LEVEL: "info"
+  TAG_GENERATOR_DB_USER: "tag_generator_user"
+  SERVICE_NAME: "tag-generator"
+  MODEL_NAME: "gemma2:2b"
+  BATCH_SIZE: "10"
+  OLLAMA_HOST: "http://ollama.alt-apps.svc.cluster.local:11434"
+  OLLAMA_TIMEOUT: "300s"
+
+envFromSecret:
+  name: tag-generator-secrets
+  keys:
+    - TAG_GENERATOR_DB_PASSWORD
+    - OLLAMA_API_KEY
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 2000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+commonLabels: {}
+commonAnnotations: {}
+podLabels: {}
+podAnnotations: {}
+imagePullSecrets: []
+volumeMounts: []
+volumes: []
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
