@@ -1,0 +1,17 @@
+apiVersion: v2
+name: cloudflare-tunnel
+description: A Helm chart for Cloudflare Tunnel (cloudflared)
+type: application
+version: 0.1.0
+appVersion: "2024.8.3"
+keywords:
+  - cloudflare
+  - tunnel
+  - cloudflared
+  - ingress
+home: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/
+sources:
+  - https://github.com/cloudflare/cloudflared
+maintainers:
+  - name: Alt Team
+    email: team@alt.example.com

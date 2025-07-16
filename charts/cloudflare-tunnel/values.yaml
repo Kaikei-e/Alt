@@ -1,0 +1,104 @@
+# Default values for cloudflare-tunnel
+# This is a YAML-formatted file.
+
+# Cloudflare Tunnel configuration
+tunnel:
+  # Tunnel ID (required)
+  id: ""
+  # Tunnel name (optional, used for display)
+  name: ""
+  # Tunnel token for authentication (preferred over credentials.json)
+  token: ""
+  # Account ID (optional)
+  accountId: ""
+
+# Authentication method
+auth:
+  # Use tunnel token (recommended)
+  useToken: true
+  # Use credentials.json file (alternative)
+  useCredentials: false
+  # Secret name containing credentials (if useCredentials is true)
+  secretName: ""
+
+# Image configuration
+image:
+  repository: cloudflare/cloudflared
+  tag: "2024.8.3"
+  pullPolicy: IfNotPresent
+
+# Replica configuration
+replicaCount: 1
+
+# Pod configuration
+podAnnotations: {}
+podLabels: {}
+
+# Resources
+resources:
+  limits:
+    cpu: "1"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+
+# Ingress rules
+ingress:
+  # Main application ingress
+  - hostname: "example.com"
+    service: "http://service:80"
+  # Health check endpoint
+  - hostname: "health.example.com"
+    service: "http://service:8080/health"
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 2000
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /ready
+    port: 2000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 2000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Node selector and tolerations
+nodeSelector: {}
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
