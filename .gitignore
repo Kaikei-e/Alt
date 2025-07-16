@@ -9,6 +9,14 @@ news-creator/models/*
 
 *.tar
 
+# secrets
+*.crt
+*.key
+*.pem
+*.csr
+*.p8
+*.p12
+
 # real data
 backup.sql
 rask-log-aggregator/logs/*
