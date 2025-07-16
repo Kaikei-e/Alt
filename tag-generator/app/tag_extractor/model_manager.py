@@ -7,9 +7,16 @@ import threading
 from typing import Optional, Set
 from dataclasses import dataclass
 
-from sentence_transformers import SentenceTransformer
-from keybert import KeyBERT
-from fugashi import Tagger  # pyright: ignore
+try:
+    from sentence_transformers import SentenceTransformer
+    from keybert import KeyBERT
+    from fugashi import Tagger  # pyright: ignore
+except ImportError:
+    # Fallback for environments without ML dependencies (e.g., production builds)
+    # These will be mocked in tests
+    SentenceTransformer = None  # type: ignore
+    KeyBERT = None  # type: ignore
+    Tagger = None  # type: ignore
 import structlog
 
 logger = structlog.get_logger(__name__)

@@ -14,14 +14,21 @@ import structlog
 # at import time. This does not load actual model weights because instantiation
 # happens elsewhere; it only brings the symbols into the namespace.
 
-from sentence_transformers import SentenceTransformer as _SentenceTransformer  # type: ignore
-from keybert import KeyBERT as _KeyBERT  # type: ignore
-from fugashi import Tagger as _Tagger  # type: ignore
+try:
+    from sentence_transformers import SentenceTransformer as _SentenceTransformer  # type: ignore
+    from keybert import KeyBERT as _KeyBERT  # type: ignore
+    from fugashi import Tagger as _Tagger  # type: ignore
 
-# Alias for outward exposure
-SentenceTransformer = _SentenceTransformer  # noqa: N816 (keep original casing for patching)
-KeyBERT = _KeyBERT  # noqa: N816
-Tagger = _Tagger  # noqa: N816
+    # Alias for outward exposure
+    SentenceTransformer = _SentenceTransformer  # noqa: N816 (keep original casing for patching)
+    KeyBERT = _KeyBERT  # noqa: N816
+    Tagger = _Tagger  # noqa: N816
+except ImportError:
+    # Fallback for environments without ML dependencies (e.g., production builds)
+    # These will be mocked in tests
+    SentenceTransformer = None  # type: ignore
+    KeyBERT = None  # type: ignore
+    Tagger = None  # type: ignore
 
 # Local imports depending on re-export must come after alias definitions for consistency
 from .model_manager import get_model_manager, ModelConfig
@@ -369,17 +376,17 @@ class TagExtractor:
         """
         # Sanitize input first
         sanitization_result = self._input_sanitizer.sanitize(title, content)
-        
+
         if not sanitization_result.is_valid:
             logger.warning("Input sanitization failed", violations=sanitization_result.violations)
             return []
-        
+
         # Use sanitized input
         sanitized_input = sanitization_result.sanitized_input
         if sanitized_input is None:
             logger.error("Sanitized input is None despite valid sanitization")
             return []
-        
+
         sanitized_title = sanitized_input.title
         sanitized_content = sanitized_input.content
         raw_text = f"{sanitized_title}\n{sanitized_content}"
@@ -389,7 +396,7 @@ class TagExtractor:
             logger.info("Sanitized input too short, skipping extraction", char_count=len(raw_text))
             return []
 
-        logger.info("Processing sanitized text", 
+        logger.info("Processing sanitized text",
                    char_count=len(raw_text),
                    original_length=sanitized_input.original_length,
                    sanitized_length=sanitized_input.sanitized_length)

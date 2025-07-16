@@ -10,21 +10,21 @@ requires-python = ">=3.13"
 dependencies = [
     # Japanese Text Processing (self-contained)
     "fugashi[unidic-lite]>=1.5.1",  # includes unidic-lite, no external MecAB needed
-    
+
     # Language Processing (minimal)
     "nltk>=3.9.1",
     "langdetect>=1.0.9",
-    
+
     # Database
     "psycopg2-binary>=2.9.0",
-    
+
     # Logging and Data Validation
     "structlog>=25.4.0",
     "pydantic>=2.10.0",
-    
+
     # Security
     "bleach>=6.1.0",
-    
+
     # NOTE: Heavy ML packages removed for ultra-minimal build
     # keybert, sentence-transformers, transformers must be installed in external models
     # or use runtime installation with lazy loading
@@ -36,14 +36,23 @@ dev = [
     "pytest>=8.4.1",
     "pytest-mock>=3.14.1",
     "pytest-timeout>=2.4.0",
-    
+
     # Development Tools
     "ruff>=0.12.1",
     "types-psycopg2>=2.9.21.20250516",
     "pyright"
 ]
 
-# NOTE: ML dependencies removed from this file to prevent inclusion in lock file
+# ML dependencies for testing (not included in production builds)
+test-ml = [
+    "sentence-transformers>=3.3.0",
+    "keybert>=0.8.5",
+    "transformers>=4.40.0",
+    "torch>=2.1.0",
+    "scikit-learn>=1.5.2"
+]
+
+# NOTE: ML dependencies removed from core dependencies to prevent inclusion in lock file
 # If needed, install separately: pip install keybert sentence-transformers transformers
 
 [tool.setuptools.packages]
