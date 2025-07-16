@@ -1,0 +1,236 @@
+# =============================================================================
+# Docker Build Context Optimization for tag-generator
+# Target: Reduce build context from 6.26GB to ~200MB
+# =============================================================================
+
+# CRITICAL: Virtual Environment (5.8GB) - Massive CUDA packages
+.venv/
+venv/
+env/
+*.venv
+
+# Development Caches and Build Artifacts (213MB+)
+.mypy_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Package Build Artifacts
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Version Control and Development Tools
+.git/
+.gitignore
+.gitattributes
+.svn/
+.hg/
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Documentation and Development Files
+README*.md
+CHANGELOG*.md
+CONTRIBUTING.md
+docs/
+documentation/
+*.rst
+*.txt
+!requirements*.txt
+
+# Model and Data Directories (Keep external)
+models/
+model_cache/
+data/
+datasets/
+training_data/
+.cache/
+downloads/
+
+# Logs and Temporary Files
+logs/
+*.log
+*.log.*
+tmp/
+temp/
+.tmp/
+
+# Testing and CI/CD
+tests/
+test_*/
+*_test.py
+test_*.py
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+.jenkins/
+
+# Environment and Configuration
+.env
+.env.*
+!.env.example
+.environment
+config.local.*
+secrets/
+*.key
+*.pem
+*.crt
+
+# Language Specific
+# Python
+*.py[cod]
+*$py.class
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.installed.cfg
+*.egg
+MANIFEST
+
+# Node.js (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Jupyter Notebooks (if any)
+.ipynb_checkpoints/
+*.ipynb
+
+# OS Generated
+.directory
+.fuse_hidden*
+.nfs*
+
+# Docker and Container Files
+Dockerfile.*
+!Dockerfile.tag-generator-*
+docker-compose*.yml
+.dockerignore
+
+# Scripts and Utilities (development only)
+scripts/dev/
+scripts/debug/
+scripts/local/
+*.sh
+!scripts/run_*.sh
+
+# Backup and Archive Files
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.tar
+*.tar.gz
+*.zip
+*.rar
+
+# Machine Learning and Model Files (CRITICAL)
+*.bin
+*.safetensors
+*.h5
+*.pb
+*.onnx
+*.tflite
+*.pkl
+*.joblib
+*.pt
+*.pth
+transformers_cache/
+sentence_transformers_cache/
+huggingface_cache/
+torch_cache/
+
+# Large Data Files
+*.csv
+*.json
+*.parquet
+*.arrow
+*.feather
+*.hdf5
+*.h5
+*.sqlite
+*.db
+*.sql
+
+# Media Files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.ico
+*.pdf
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wav
+*.mp3
+
+# Archive and Compressed Files
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.zip
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
+
+# System and Process Files
+*.sock
+*.pid
+*.lock
+*.tmp
+*.temp
+
+# Locale and Translation Files
+locale/
+translations/
+i18n/
+*.po
+*.pot
+*.mo
+
+# Additional Python Caches
+*.whl
+site-packages/
+lib-dynload/
+
+# Additional Development Tools
+.ruff_cache/
+.black_cache/
+.isort_cache/
+.pylint_cache/
+
+# =============================================================================
+# ENHANCED RESULT EXPECTATIONS:
+# - Build context: 6.26GB → ~50-100MB (98.5% reduction)
+# - Build time: Ultra-fast Docker builds
+# - Network transfer: Minimal bandwidth usage
+# - Model files: Completely external (volume mounts)
+# =============================================================================
