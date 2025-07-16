@@ -2,6 +2,7 @@ package helm_driver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -153,6 +154,32 @@ func (h *HelmDriver) Uninstall(ctx context.Context, releaseName, namespace strin
 	return nil
 }
 
+// History returns the history of a Helm release
+func (h *HelmDriver) History(ctx context.Context, releaseName, namespace string) ([]helm_port.HelmRevision, error) {
+	args := []string{"history", releaseName}
+	
+	if namespace != "" {
+		args = append(args, "--namespace", namespace)
+	}
+	
+	// Add output format for easier parsing
+	args = append(args, "--output", "json")
+	
+	cmd := exec.CommandContext(ctx, "helm", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("helm history failed: %w, output: %s", err, string(output))
+	}
+	
+	// Parse the JSON output
+	var revisions []helm_port.HelmRevision
+	if err := h.parseHistoryOutput(string(output), &revisions); err != nil {
+		return nil, fmt.Errorf("failed to parse history output: %w", err)
+	}
+	
+	return revisions, nil
+}
+
 // IsInstalled checks if Helm is installed
 func (h *HelmDriver) IsInstalled() bool {
 	_, err := exec.LookPath("helm")
@@ -207,4 +234,46 @@ func (h *HelmDriver) parseRevision(output string) int {
 		}
 	}
 	return 1
+}
+
+// parseHistoryOutput parses helm history JSON output
+func (h *HelmDriver) parseHistoryOutput(output string, revisions *[]helm_port.HelmRevision) error {
+	// Helm history JSON output structure
+	type helmHistoryItem struct {
+		Revision    int    `json:"revision"`
+		Status      string `json:"status"`
+		Chart       string `json:"chart"`
+		AppVersion  string `json:"app_version"`
+		Updated     string `json:"updated"`
+		Description string `json:"description"`
+	}
+	
+	var items []helmHistoryItem
+	if err := json.Unmarshal([]byte(output), &items); err != nil {
+		return fmt.Errorf("failed to unmarshal history JSON: %w", err)
+	}
+	
+	*revisions = make([]helm_port.HelmRevision, len(items))
+	for i, item := range items {
+		// Parse updated time
+		updatedTime, err := time.Parse("2006-01-02 15:04:05.000000000 -0700 MST", item.Updated)
+		if err != nil {
+			// Try alternative time formats
+			updatedTime, err = time.Parse(time.RFC3339, item.Updated)
+			if err != nil {
+				updatedTime = time.Time{}
+			}
+		}
+		
+		(*revisions)[i] = helm_port.HelmRevision{
+			Revision:    item.Revision,
+			Status:      item.Status,
+			Chart:       item.Chart,
+			AppVersion:  item.AppVersion,
+			Updated:     updatedTime,
+			Description: item.Description,
+		}
+	}
+	
+	return nil
 }

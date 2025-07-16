@@ -3,6 +3,7 @@ package helm_gateway
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 	
 	"deploy-cli/port/helm_port"
@@ -272,4 +273,27 @@ func (g *HelmGateway) GetWaitOptions(chart domain.Chart, options *domain.Deploym
 	})
 	
 	return wait, timeout
+}
+
+
+// GetReleaseHistory returns the history of a Helm release for a chart
+func (g *HelmGateway) GetReleaseHistory(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) (string, error) {
+	namespace := options.GetNamespace(chart.Name)
+	
+	revisions, err := g.helmPort.History(ctx, chart.Name, namespace)
+	if err != nil {
+		return "", fmt.Errorf("failed to get release history for %s: %w", chart.Name, err)
+	}
+	
+	// Format the history output
+	var result strings.Builder
+	for _, rev := range revisions {
+		result.WriteString(fmt.Sprintf("Revision %d: %s - %s (%s)\n", 
+			rev.Revision, rev.Status, rev.Chart, rev.Updated.Format("2006-01-02 15:04:05")))
+		if rev.Description != "" {
+			result.WriteString(fmt.Sprintf("  Description: %s\n", rev.Description))
+		}
+	}
+	
+	return result.String(), nil
 }

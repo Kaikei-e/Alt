@@ -58,6 +58,14 @@ func (c *CLI) setupCommands() {
 	cleanupCmd := commands.NewCleanupCommand(c.logger)
 	c.rootCmd.AddCommand(cleanupCmd)
 	
+	// Add validate-manifests command
+	validateManifestsCmd := commands.NewValidateManifestsCommand(c.logger)
+	c.rootCmd.AddCommand(validateManifestsCmd)
+	
+	// Add helm-status command
+	helmStatusCmd := commands.NewHelmStatusCommand(c.logger)
+	c.rootCmd.AddCommand(helmStatusCmd)
+	
 	// Add version command
 	versionCmd := &cobra.Command{
 		Use:   "version",

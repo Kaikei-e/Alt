@@ -21,6 +21,9 @@ type HelmPort interface {
 	
 	// Uninstall removes a Helm release
 	Uninstall(ctx context.Context, releaseName, namespace string) error
+	
+	// History returns the history of a Helm release
+	History(ctx context.Context, releaseName, namespace string) ([]HelmRevision, error)
 }
 
 // HelmTemplateOptions holds options for helm template command
@@ -60,4 +63,14 @@ type HelmRelease struct {
 	Chart     string
 	AppVersion string
 	Updated   time.Time
+}
+
+// HelmRevision represents a Helm release revision
+type HelmRevision struct {
+	Revision    int
+	Status      string
+	Chart       string
+	AppVersion  string
+	Updated     time.Time
+	Description string
 }
