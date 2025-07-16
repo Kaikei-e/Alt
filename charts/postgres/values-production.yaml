@@ -1,0 +1,131 @@
+# Production environment values for postgres (HA configuration)
+
+# Production-specific image settings
+image:
+  repository: postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
+
+# Production HA configuration (from postgres-ha.yaml overlay)
+# CloudNativePG cluster configuration
+cluster:
+  enabled: true
+  instances: 3
+  
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_preload_libraries: "pg_stat_statements"
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: "all"
+      log_statement: "all"
+      log_min_duration_statement: "1000"
+      
+  bootstrap:
+    initdb:
+      database: "alt"
+      owner: "alt_db_user"
+      secret:
+        name: "postgres-credentials"
+        
+  storage:
+    size: "10Gi"
+    storageClass: "local-storage"
+    
+  monitoring:
+    enabled: true
+    
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: "s3://alt-backup/postgres"
+      s3Credentials:
+        accessKeyId:
+          name: "backup-credentials"
+          key: "ACCESS_KEY_ID"
+        secretAccessKey:
+          name: "backup-credentials"
+          key: "SECRET_ACCESS_KEY"
+        region:
+          name: "backup-credentials"
+          key: "REGION"
+
+# Production namespace
+namespace: alt-database
+
+# Dependency overrides - ensure dependencies use correct namespace
+common-secrets:
+  namespace:
+    name: "alt-database"
+
+common-ssl:
+  namespace:
+    name: "alt-database"
+
+# Production resource requirements
+resources:
+  limits:
+    cpu: "4"
+    memory: "8Gi"
+  requests:
+    cpu: "2"
+    memory: "4Gi"
+
+# SSL configuration
+ssl:
+  enabled: true
+  secretName: postgres-ssl-secret
+
+# Environment variables
+env:
+  POSTGRES_DB: "alt"
+  POSTGRES_USER: "alt_db_user"
+  DB_HOST: "postgres-cluster-rw.alt-database.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_SSL_MODE: "require"
+
+# High availability specific settings
+ha:
+  enabled: true
+  readReplicas: 2
+  
+# Persistent volume configuration
+persistence:
+  enabled: false
+  size: "10Gi"
+  storageClass: "local-storage"
+  accessMode: "ReadWriteOnce"
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retention: "30d"
+  storage:
+    type: "s3"
+    bucket: "alt-backup"
+    path: "postgres"
+
+# Security context
+securityContext:
+  runAsUser: 999
+  runAsGroup: 999
+  fsGroup: 999
+
+# Production-specific tolerations
+tolerations:
+  - key: "database"
+    operator: "Equal"
+    value: "postgres"
+    effect: "NoSchedule"
+
+# Production-specific affinity
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: "node-type"
+              operator: "In"
+              values: ["database"]

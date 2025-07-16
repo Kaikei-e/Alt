@@ -1,0 +1,162 @@
+# Default values for postgres
+# PostgreSQL database for Alt RSS Reader
+
+# Image configuration
+image:
+  repository: postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
+
+# Replica configuration
+replicaCount: 1
+
+# Service account
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+  annotations: {}
+  name: ""
+
+# Pod configuration
+podAnnotations:
+  kompose.cmd: "kompose convert -f compose.yaml --out ./k8s-manifests/"
+  kompose.version: "1.36.0 (ae2a39403)"
+
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 999
+  runAsUser: 999
+  runAsGroup: 999
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 999
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 5432
+  annotations: {}
+  
+  headless:
+    enabled: true
+    annotations: {}
+
+# Authentication
+auth:
+  username: "alt_db_user"
+  password: "alt_secure_password"
+  database: "alt"
+  existingSecret: ""
+  secretKeys:
+    password: "postgres-password"
+    username: "username"
+    database: "database"
+  replicationUser: ""
+  replicationPassword: ""
+
+# PostgreSQL configuration
+postgres:
+  maxConnections: 100
+  sharedBuffers: "256MB"
+  effectiveCacheSize: "1GB"
+  workMem: "4MB"
+  maintenanceWorkMem: "64MB"
+  walKeepSize: "1GB"
+  loggingCollector: "on"
+  logStatement: "mod"
+  logMinDurationStatement: 1000
+  randomPageCost: 1.1
+  effectiveIoConcurrency: 200
+  
+  autovacuum:
+    maxWorkers: 3
+    naptime: "1min"
+  
+  customConfig: ""
+
+# pg_hba.conf configuration
+pgHba:
+  enabled: true
+  localMethod: "trust"
+  hostMethod: "md5"
+  sslMethod: "md5"
+  allowedNetworks:
+    - network: "10.0.0.0/8"
+      method: "md5"
+    - network: "172.16.0.0/12"
+      method: "md5"
+    - network: "192.168.0.0/16"
+      method: "md5"
+  customRules: ""
+
+# SSL configuration
+ssl:
+  enabled: true
+  secretName: "postgres-ssl-secret"
+  mode: "require"
+  certPath: "/ssl/server.crt"
+  keyPath: "/ssl/server.key"
+  caPath: "/ssl/ca.crt"
+
+# Persistence
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 20Gi
+  storageClass: ""
+
+# Health checks
+livenessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+readinessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+# Resources
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# Node selection
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Extra configuration
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
+
+# Common labels and annotations
+commonLabels:
+  app.kubernetes.io/name: postgres
+  app.kubernetes.io/part-of: alt
+  app.kubernetes.io/component: database
+
+commonAnnotations: {}
+
+# Dependencies configuration
+secrets:
+  enabled: true
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
