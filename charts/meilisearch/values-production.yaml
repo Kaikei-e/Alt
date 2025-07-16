@@ -1,0 +1,273 @@
+# Production values for meilisearch
+# MeiliSearch full-text search engine for RSS feeds - Production Environment
+
+# Environment configuration
+environment: "production"
+
+# Replica configuration for high availability
+replicaCount: 3
+
+# Update strategy for zero-downtime deployments
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    partition: 0
+
+# Pod configuration with production annotations
+podAnnotations:
+  app.kubernetes.io/component: "search-engine"
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "7700"
+  prometheus.io/path: "/metrics"
+
+# Security context with stricter settings
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# Service configuration for production
+service:
+  type: ClusterIP
+  port: 7700
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+
+# Authentication with stronger security
+auth:
+  # Use external secrets in production
+  masterKeyEnabled: true
+  existingSecret: "meilisearch-master-key-prod"
+
+  apiKeysEnabled: true
+  existingApiKeySecret: "meilisearch-api-keys-prod"
+
+  secretKeys:
+    masterKey: "master-key"
+    searchApiKey: "search-api-key"
+    adminApiKey: "admin-api-key"
+    rssIndexApiKey: "rss-index-api-key"
+
+# Logging configuration for production
+logging:
+  level: "WARN"
+
+# Analytics disabled for privacy
+analytics:
+  disabled: true
+
+# Search configuration optimized for production workloads
+search:
+  # Increased limits for production RSS indexing
+  maxIndexSize: "10GiB"
+  maxTaskQueueSize: 5000000
+  payloadSizeLimit: "500MB"
+
+  # Production-optimized search settings
+  customSettings:
+    indexing:
+      # Batch size for RSS content indexing
+      batchSize: 1000
+      # Maximum number of concurrent indexing tasks
+      maxConcurrentTasks: 4
+
+    search:
+      # Cache settings for frequent RSS searches
+      cacheSize: "256MB"
+      # Search timeout for complex queries
+      searchTimeoutMs: 5000
+
+    performance:
+      # Memory management for large RSS datasets
+      memoryLimitMb: 3072
+      # Disk usage optimization
+      compactionThreshold: 0.8
+
+# RSS-specific configuration for production
+rssSearch:
+  enabled: true
+
+  contentIndex:
+    name: "rss_content"
+    primaryKey: "id"
+
+  feedsIndex:
+    name: "rss_feeds"
+    primaryKey: "feed_id"
+
+# SSL enabled in production
+ssl:
+  enabled: true
+  secretName: "meilisearch-ssl-certs-prod"
+  certPath: "/ssl/server.crt"
+  keyPath: "/ssl/server.key"
+  caPath: "/ssl/ca.crt"
+  requireAuth: false
+
+# Persistence with production-grade storage
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 100Gi
+  storageClass: "fast-ssd"
+  dataPath: "/meili_data"
+
+# Snapshots configuration for backup
+snapshots:
+  enabled: true
+  path: "/snapshots"
+  schedule: "0 1 * * *"  # Daily at 1 AM
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: "backup-storage"
+    accessModes:
+      - ReadWriteOnce
+
+# Database dumps for disaster recovery
+dumps:
+  enabled: true
+  path: "/dumps"
+  persistence:
+    enabled: true
+    size: 25Gi
+    storageClass: "backup-storage"
+    accessModes:
+      - ReadWriteOnce
+
+# Health checks with tighter intervals
+livenessProbe:
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Production resources for RSS search workloads
+resources:
+  limits:
+    cpu: 4000m
+    memory: 8Gi
+  requests:
+    cpu: 1000m
+    memory: 2Gi
+
+# Node selection for single-node setup
+nodeSelector:
+  kubernetes.io/arch: amd64
+
+# Tolerations for single-node setup
+tolerations: []
+
+# Anti-affinity for high availability
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - meilisearch
+        topologyKey: kubernetes.io/hostname
+
+# Production environment variables
+extraEnv:
+  - name: MEILI_EXPERIMENTAL_ENABLE_METRICS
+    value: "true"
+  - name: MEILI_EXPERIMENTAL_ENABLE_LOGS_ROUTE
+    value: "false"
+  - name: RUST_BACKTRACE
+    value: "0"
+  - name: RUST_LOG
+    value: "warn"
+
+# Extra volumes for monitoring and logging
+extraVolumes:
+  - name: tmp
+    emptyDir:
+      sizeLimit: 1Gi
+  - name: var-tmp
+    emptyDir:
+      sizeLimit: 1Gi
+
+extraVolumeMounts:
+  - name: tmp
+    mountPath: /tmp
+  - name: var-tmp
+    mountPath: /var/tmp
+
+# Production configuration files
+extraConfig:
+  production-tuning.toml: |
+    # Production tuning for MeiliSearch RSS search
+    [performance]
+    # Memory-mapped I/O for large datasets
+    use_mmap = true
+
+    # Optimize for RSS content patterns
+    [indexing]
+    # RSS articles typically have these patterns
+    content_analysis = "enhanced"
+    language_detection = true
+
+    # Search optimization for RSS queries
+    [search]
+    # Common RSS search patterns
+    enable_phrase_search = true
+    enable_fuzzy_search = true
+    max_search_results = 1000
+
+    # Caching for frequent RSS searches
+    [cache]
+    search_cache_size = "128MB"
+    filter_cache_size = "64MB"
+    facet_cache_size = "32MB"
+
+# Common labels for production
+commonLabels:
+  app.kubernetes.io/name: meilisearch
+  app.kubernetes.io/part-of: alt
+  app.kubernetes.io/component: search-engine
+  app.kubernetes.io/environment: production
+  app.kubernetes.io/tier: backend
+
+commonAnnotations:
+  deployment.kubernetes.io/revision: "1"
+  meta.helm.sh/release-namespace: "alt-production"
+
+# Monitoring enabled for production
+monitoring:
+  serviceMonitor:
+    enabled: false  # Disabled until Prometheus Operator is installed
+    namespace: "monitoring"
+    labels:
+      app: meilisearch
+      component: search-engine
+    interval: "15s"
+    scrapeTimeout: "10s"
+    path: "/metrics"
+
+# Dependencies enabled
+secrets:
+  enabled: true

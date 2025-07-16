@@ -1,0 +1,230 @@
+# Default values for meilisearch
+# MeiliSearch full-text search engine for RSS feeds
+
+# Image configuration
+image:
+  repository: getmeili/meilisearch
+  tag: "v1.11.0"
+  pullPolicy: IfNotPresent
+
+# Replica configuration
+replicaCount: 1
+
+# Update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    partition: 0
+
+# Environment configuration
+environment: "development"
+
+# Service account
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+  annotations: {}
+  name: ""
+
+# Pod configuration
+podAnnotations:
+  app.kubernetes.io/component: "search-engine"
+
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 7700
+  annotations: {}
+  
+  # Optional service configurations
+  clusterIP: ""
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  externalIPs: []
+  nodePort: ""
+  sessionAffinity: ""
+  sessionAffinityConfig: {}
+  
+  headless:
+    enabled: true
+    annotations: {}
+
+# Authentication and security
+auth:
+  # Master key configuration
+  masterKeyEnabled: true
+  masterKey: "meilisearch_master_key_change_me"
+  existingSecret: ""
+  
+  # API keys for different access levels
+  apiKeysEnabled: true
+  searchApiKey: "search_api_key_change_me"
+  adminApiKey: "admin_api_key_change_me"
+  rssIndexApiKey: "rss_index_api_key_change_me"
+  existingApiKeySecret: ""
+  
+  secretKeys:
+    masterKey: "master-key"
+    searchApiKey: "search-api-key"
+    adminApiKey: "admin-api-key"
+    rssIndexApiKey: "rss-index-api-key"
+
+# Logging configuration
+logging:
+  level: "INFO"
+
+# Analytics configuration
+analytics:
+  disabled: true
+
+# Search-specific configuration
+search:
+  # Resource limits for search operations
+  maxIndexSize: "4GiB"
+  maxTaskQueueSize: 1000000
+  payloadSizeLimit: "100MB"
+  
+  # Custom search settings
+  customSettings: {}
+
+# RSS-specific search configuration
+rssSearch:
+  enabled: true
+  
+  # RSS content indexing settings
+  contentIndex:
+    name: "rss_content"
+    primaryKey: "id"
+    
+  # RSS feeds metadata index
+  feedsIndex:
+    name: "rss_feeds"
+    primaryKey: "feed_id"
+
+# SSL configuration
+ssl:
+  enabled: false
+  secretName: "meilisearch-ssl-certs"
+  certPath: "/ssl/server.crt"
+  keyPath: "/ssl/server.key"
+  caPath: "/ssl/ca.crt"
+  requireAuth: false
+
+# Persistence configuration
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 20Gi
+  storageClass: ""
+  dataPath: "/meili_data"
+
+# Snapshots configuration
+snapshots:
+  enabled: true
+  path: "/snapshots"
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+
+# Database dumps configuration  
+dumps:
+  enabled: true
+  path: "/dumps"
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+
+# Health checks
+livenessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+readinessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+# Resources (optimized for search workloads)
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# Node selection
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Init containers
+initContainers: []
+
+# Extra configuration
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
+extraConfig: {}
+
+# Common labels and annotations
+commonLabels:
+  app.kubernetes.io/name: meilisearch
+  app.kubernetes.io/part-of: alt
+  app.kubernetes.io/component: search-engine
+
+commonAnnotations: {}
+
+# Monitoring configuration
+monitoring:
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    labels: {}
+    annotations: {}
+    jobLabel: ""
+    selector: {}
+    path: "/metrics"
+    interval: "30s"
+    scrapeTimeout: "10s"
+    tlsConfig: {}
+    relabelings: []
+    metricRelabelings: []
+    targetLabels: []
+    podTargetLabels: []
+    namespaceSelector: {}
+
+# Dependencies configuration
+secrets:
+  enabled: true
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""

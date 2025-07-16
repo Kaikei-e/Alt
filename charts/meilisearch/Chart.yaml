@@ -1,0 +1,28 @@
+apiVersion: v2
+name: meilisearch
+description: A Helm chart for MeiliSearch full-text search engine for RSS feeds
+type: application
+version: 0.1.0
+appVersion: "v1.15.2"
+keywords:
+  - meilisearch
+  - search
+  - full-text
+  - rss
+  - indexing
+home: https://github.com/your-org/Alt
+sources:
+  - https://github.com/your-org/Alt
+  - https://github.com/meilisearch/meilisearch
+maintainers:
+  - name: Alt Team
+    email: team@alt.local
+dependencies:
+  - name: common-ssl
+    version: "0.1.0"
+    repository: "file://../common-ssl"
+    condition: ssl.enabled
+  - name: common-secrets
+    version: "0.1.0"
+    repository: "file://../common-secrets"
+    condition: secrets.enabled
