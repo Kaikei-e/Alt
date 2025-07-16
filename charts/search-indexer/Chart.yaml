@@ -1,0 +1,10 @@
+apiVersion: v2
+name: search-indexer
+description: A Helm chart for Alt Search Indexer service
+type: application
+version: 0.1.0
+appVersion: "production"
+dependencies:
+  - name: common-secrets
+    version: "0.1.0"
+    repository: "file://../common-secrets"

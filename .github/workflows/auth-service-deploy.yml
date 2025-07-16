@@ -23,12 +23,12 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
         go-version: '1.24'
-        
+
     - name: Cache Go modules
       uses: actions/cache@v3
       with:
@@ -36,19 +36,19 @@ jobs:
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
-          
+
     - name: Run tests
       run: |
         cd auth-service
         go test -v -race -coverprofile=coverage.out ./...
         go tool cover -html=coverage.out -o coverage.html
-        
+
     - name: Upload coverage reports
       uses: actions/upload-artifact@v3
       with:
         name: coverage-report
         path: auth-service/coverage.html
-        
+
     - name: Check coverage threshold
       run: |
         cd auth-service
@@ -64,7 +64,7 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
@@ -72,9 +72,9 @@ jobs:
         scan-ref: 'auth-service'
         format: 'sarif'
         output: 'trivy-results.sarif'
-        
+
     - name: Upload Trivy scan results
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'trivy-results.sarif'
 
@@ -87,17 +87,17 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-      
+
     - name: Log in to Container Registry
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-        
+
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -108,7 +108,7 @@ jobs:
           type=ref,event=pr
           type=sha,prefix={{branch}}-
           type=raw,value=latest,enable={{is_default_branch}}
-          
+
     - name: Build and push Docker image
       id: build
       uses: docker/build-push-action@v5
@@ -120,7 +120,7 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
         platforms: linux/amd64,linux/arm64
-        
+
     - name: Output image
       id: image
       run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -133,27 +133,27 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Install Helm
       uses: azure/setup-helm@v3
       with:
         version: v3.14.0
-        
+
     - name: Set up kubectl
       uses: azure/setup-kubectl@v3
-      
+
     - name: Configure kubectl
       run: |
         mkdir -p ~/.kube
         echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
-        
+
     - name: Deploy to staging with Helm
       run: |
         cd k8s-manifests
-        
+
         # Extract image tag from built image
         IMAGE_TAG=$(echo "${{ needs.build.outputs.image }}" | cut -d':' -f2)
-        
+
         # Deploy auth-service with Helm
         helm upgrade --install auth-service ../charts/auth-service \
           -n alt-staging \
@@ -162,11 +162,11 @@ jobs:
           --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
           --create-namespace \
           --wait --timeout=300s
-        
+
     - name: Verify deployment
       run: |
         kubectl rollout status deployment/auth-service -n alt-staging --timeout=300s
-        
+
     - name: Run health check
       run: |
         kubectl run health-check --image=curlimages/curl:8.4.0 --rm -i --restart=Never -- \
@@ -180,27 +180,27 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Install Helm
       uses: azure/setup-helm@v3
       with:
         version: v3.14.0
-        
+
     - name: Set up kubectl
       uses: azure/setup-kubectl@v3
-      
+
     - name: Configure kubectl
       run: |
         mkdir -p ~/.kube
         echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
-        
+
     - name: Deploy to production with Helm
       run: |
         cd k8s-manifests
-        
+
         # Extract image tag from built image
         IMAGE_TAG=$(echo "${{ needs.build.outputs.image }}" | cut -d':' -f2)
-        
+
         # Deploy auth-service to production with Helm
         helm upgrade --install auth-service ../charts/auth-service \
           -n alt-auth \
@@ -209,27 +209,27 @@ jobs:
           --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
           --create-namespace \
           --wait --timeout=600s
-        
+
     - name: Verify production deployment
       run: |
         kubectl rollout status deployment/auth-service -n alt-auth --timeout=300s
-        
+
     - name: Run production health check
       run: |
         kubectl run health-check-prod --image=curlimages/curl:8.4.0 --rm -i --restart=Never -n alt-auth -- \
           curl -f http://auth-service.alt-auth.svc.cluster.local:8080/health
-          
+
     - name: Post-deployment verification
       run: |
         echo "🔍 Verifying deployment..."
-        
+
         # Check Helm release status
         helm status auth-service -n alt-auth
-        
+
         # Check pod status
         kubectl get pods -n alt-auth -l app.kubernetes.io/name=auth-service
-        
+
         # Check service endpoints
         kubectl get endpoints -n alt-auth auth-service
-        
+
         echo "✅ Production deployment completed successfully"

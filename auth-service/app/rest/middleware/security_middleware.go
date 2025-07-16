@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"golang.org/x/time/rate"
 )
 
@@ -199,8 +199,10 @@ func DefaultRateLimitConfig() *RateLimitConfig {
 
 // RateLimitMiddleware provides rate limiting functionality
 type RateLimitMiddleware struct {
-	config *RateLimitConfig
-	logger *slog.Logger
+	config   *RateLimitConfig
+	logger   *slog.Logger
+	limiters map[string]*rate.Limiter
+	mu       sync.RWMutex
 }
 
 // NewRateLimitMiddleware creates a new rate limiting middleware
@@ -210,91 +212,165 @@ func NewRateLimitMiddleware(config *RateLimitConfig, logger *slog.Logger) *RateL
 	}
 	
 	return &RateLimitMiddleware{
-		config: config,
-		logger: logger,
+		config:   config,
+		logger:   logger,
+		limiters: make(map[string]*rate.Limiter),
+		mu:       sync.RWMutex{},
 	}
 }
 
 // Middleware returns the rate limiting middleware function
 func (m *RateLimitMiddleware) Middleware() echo.MiddlewareFunc {
-	return middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
-		Store: middleware.NewRateLimiterMemoryStore(rate.Limit(m.config.Rate)),
-		IdentifierExtractor: func(c echo.Context) (string, error) {
-			// Rate limit by IP + User ID if available
-			ip := c.RealIP()
-			if userID := c.Get("user_id"); userID != nil {
-				return fmt.Sprintf("%s:%s", ip, userID), nil
-			}
-			return ip, nil
-		},
-		ErrorHandler: func(c echo.Context, err error) error {
-			m.logger.Warn("rate limit exceeded", 
-				"ip", c.RealIP(),
-				"path", c.Path(),
-				"method", c.Request().Method,
-				"error", err)
-			
-			// Set rate limit headers
-			c.Response().Header().Set("X-Rate-Limit-Limit", fmt.Sprintf("%.0f", m.config.Rate))
-			c.Response().Header().Set("X-Rate-Limit-Remaining", "0")
-			c.Response().Header().Set("X-Rate-Limit-Reset", fmt.Sprintf("%d", time.Now().Add(time.Minute).Unix()))
-			
-			return c.JSON(http.StatusTooManyRequests, map[string]string{
-				"error": m.config.ErrorMessage,
-			})
-		},
-		Skipper: func(c echo.Context) bool {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
 			// Skip rate limiting for health checks
-			return c.Path() == "/v1/health" || c.Path() == "/v1/ready" || c.Path() == "/v1/live"
-		},
-	})
+			if c.Path() == "/v1/health" || c.Path() == "/v1/ready" || c.Path() == "/v1/live" {
+				return next(c)
+			}
+			
+			// Get identifier for rate limiting
+			identifier := c.RealIP()
+			if userID := c.Get("user_id"); userID != nil {
+				identifier = fmt.Sprintf("%s:%s", identifier, userID)
+			}
+			
+			// Get limiter for this identifier
+			limiter := m.getLimiter(identifier)
+			
+			// Check if request is allowed
+			if !limiter.Allow() {
+				m.logger.Warn("rate limit exceeded", 
+					"ip", c.RealIP(),
+					"path", c.Path(),
+					"method", c.Request().Method,
+					"identifier", identifier)
+				
+				// Set rate limit headers
+				c.Response().Header().Set("X-Rate-Limit-Limit", fmt.Sprintf("%.0f", m.config.Rate))
+				c.Response().Header().Set("X-Rate-Limit-Remaining", "0")
+				c.Response().Header().Set("X-Rate-Limit-Reset", fmt.Sprintf("%d", time.Now().Add(time.Minute).Unix()))
+				
+				return c.JSON(http.StatusTooManyRequests, map[string]string{
+					"error": m.config.ErrorMessage,
+				})
+			}
+			
+			return next(c)
+		}
+	}
+}
+
+// getLimiter returns a rate limiter for the given identifier
+func (m *RateLimitMiddleware) getLimiter(identifier string) *rate.Limiter {
+	m.mu.RLock()
+	limiter, exists := m.limiters[identifier]
+	m.mu.RUnlock()
+	
+	if !exists {
+		m.mu.Lock()
+		// Double-check after acquiring write lock
+		limiter, exists = m.limiters[identifier]
+		if !exists {
+			limiter = rate.NewLimiter(rate.Limit(m.config.Rate), m.config.Burst)
+			m.limiters[identifier] = limiter
+		}
+		m.mu.Unlock()
+	}
+	
+	return limiter
+}
+
+// getAuthLimiter returns a rate limiter for auth endpoints
+func (m *RateLimitMiddleware) getAuthLimiter(identifier string) *rate.Limiter {
+	authKey := "auth:" + identifier
+	m.mu.RLock()
+	limiter, exists := m.limiters[authKey]
+	m.mu.RUnlock()
+	
+	if !exists {
+		m.mu.Lock()
+		limiter, exists = m.limiters[authKey]
+		if !exists {
+			limiter = rate.NewLimiter(rate.Limit(m.config.AuthRate), m.config.Burst)
+			m.limiters[authKey] = limiter
+		}
+		m.mu.Unlock()
+	}
+	
+	return limiter
+}
+
+// getUserLimiter returns a rate limiter for user endpoints
+func (m *RateLimitMiddleware) getUserLimiter(identifier string) *rate.Limiter {
+	userKey := "user:" + identifier
+	m.mu.RLock()
+	limiter, exists := m.limiters[userKey]
+	m.mu.RUnlock()
+	
+	if !exists {
+		m.mu.Lock()
+		limiter, exists = m.limiters[userKey]
+		if !exists {
+			limiter = rate.NewLimiter(rate.Limit(m.config.UserRate), m.config.Burst)
+			m.limiters[userKey] = limiter
+		}
+		m.mu.Unlock()
+	}
+	
+	return limiter
 }
 
 // AuthRateLimit returns rate limiting middleware specifically for auth endpoints
 func (m *RateLimitMiddleware) AuthRateLimit() echo.MiddlewareFunc {
-	return middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
-		Store: middleware.NewRateLimiterMemoryStore(rate.Limit(m.config.AuthRate)),
-		IdentifierExtractor: func(c echo.Context) (string, error) {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
 			// For auth endpoints, rate limit by IP only (no user context yet)
-			return c.RealIP(), nil
-		},
-		ErrorHandler: func(c echo.Context, err error) error {
-			m.logger.Warn("auth rate limit exceeded", 
-				"ip", c.RealIP(),
-				"path", c.Path(),
-				"method", c.Request().Method)
+			identifier := c.RealIP()
+			limiter := m.getAuthLimiter(identifier)
 			
-			return c.JSON(http.StatusTooManyRequests, map[string]string{
-				"error": "Too many authentication attempts. Please try again later.",
-			})
-		},
-	})
+			if !limiter.Allow() {
+				m.logger.Warn("auth rate limit exceeded", 
+					"ip", c.RealIP(),
+					"path", c.Path(),
+					"method", c.Request().Method)
+				
+				return c.JSON(http.StatusTooManyRequests, map[string]string{
+					"error": "Too many authentication attempts. Please try again later.",
+				})
+			}
+			
+			return next(c)
+		}
+	}
 }
 
 // UserRateLimit returns rate limiting middleware for user endpoints
 func (m *RateLimitMiddleware) UserRateLimit() echo.MiddlewareFunc {
-	return middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
-		Store: middleware.NewRateLimiterMemoryStore(rate.Limit(m.config.UserRate)),
-		IdentifierExtractor: func(c echo.Context) (string, error) {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
 			// Rate limit by User ID for authenticated endpoints
+			identifier := c.RealIP()
 			if userID := c.Get("user_id"); userID != nil {
-				return userID.(string), nil
+				identifier = userID.(string)
 			}
-			// Fallback to IP if no user context
-			return c.RealIP(), nil
-		},
-		ErrorHandler: func(c echo.Context, err error) error {
-			m.logger.Warn("user rate limit exceeded", 
-				"ip", c.RealIP(),
-				"user_id", c.Get("user_id"),
-				"path", c.Path(),
-				"method", c.Request().Method)
 			
-			return c.JSON(http.StatusTooManyRequests, map[string]string{
-				"error": "Too many requests. Please slow down.",
-			})
-		},
-	})
+			limiter := m.getUserLimiter(identifier)
+			
+			if !limiter.Allow() {
+				m.logger.Warn("user rate limit exceeded", 
+					"ip", c.RealIP(),
+					"user_id", c.Get("user_id"),
+					"path", c.Path(),
+					"method", c.Request().Method)
+				
+				return c.JSON(http.StatusTooManyRequests, map[string]string{
+					"error": "Too many requests. Please slow down.",
+				})
+			}
+			
+			return next(c)
+		}
+	}
 }
 
 // RequestLoggingMiddleware provides detailed request logging for security monitoring
@@ -354,7 +430,7 @@ func RequestLoggingMiddleware(logger *slog.Logger) echo.MiddlewareFunc {
 // isSuspiciousRequest checks for suspicious request patterns
 func isSuspiciousRequest(c echo.Context) bool {
 	userAgent := c.Request().UserAgent()
-	path := c.Path()
+	path := c.Request().URL.Path
 	
 	// Check for common attack patterns
 	suspiciousUserAgents := []string{
@@ -368,8 +444,7 @@ func isSuspiciousRequest(c echo.Context) bool {
 	}
 	
 	for _, suspicious := range suspiciousUserAgents {
-		if len(userAgent) >= len(suspicious) && 
-		   userAgent[:min(len(userAgent), len(suspicious))] == suspicious {
+		if containsString(toLower(userAgent), suspicious) {
 			return true
 		}
 	}
@@ -392,12 +467,8 @@ func containsPathTraversal(path string) bool {
 	patterns := []string{"../", "..\\", "%2e%2e%2f", "%2e%2e%5c"}
 	
 	for _, pattern := range patterns {
-		if len(path) >= len(pattern) {
-			for i := 0; i <= len(path)-len(pattern); i++ {
-				if path[i:i+len(pattern)] == pattern {
-					return true
-				}
-			}
+		if containsString(path, pattern) {
+			return true
 		}
 	}
 	
@@ -431,13 +502,6 @@ func containsSQLInjection(query string) bool {
 }
 
 // Helper functions
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func toLower(s string) string {
 	result := make([]byte, len(s))
 	for i := 0; i < len(s); i++ {
@@ -448,4 +512,16 @@ func toLower(s string) string {
 		}
 	}
 	return string(result)
+}
+
+func containsString(s, substr string) bool {
+	if len(substr) > len(s) {
+		return false
+	}
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

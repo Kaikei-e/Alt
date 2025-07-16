@@ -85,7 +85,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	defer cancel()
 
 	// Try to get the version from the public API as a health check
-	_, response, err := c.publicAPI.MetadataApi.GetVersion(ctx).Execute()
+	_, response, err := c.publicAPI.MetadataAPI.GetVersion(ctx).Execute()
 	if err != nil {
 		return fmt.Errorf("failed to connect to Kratos public API: %w", err)
 	}
@@ -95,7 +95,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	}
 
 	// Also check admin API
-	_, response, err = c.adminAPI.MetadataApi.GetVersion(ctx).Execute()
+	_, response, err = c.adminAPI.MetadataAPI.GetVersion(ctx).Execute()
 	if err != nil {
 		return fmt.Errorf("failed to connect to Kratos admin API: %w", err)
 	}

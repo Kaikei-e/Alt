@@ -60,7 +60,10 @@ jobs:
           if [ -f "requirements.txt" ]; then
               pip install --quiet -r requirements.txt
           elif [ -f "pyproject.toml" ]; then
+              # Install core dependencies
               pip install --quiet -e .
+              # Install test ML dependencies if available
+              pip install --quiet -e ".[test-ml]" 2>/dev/null || echo "No test-ml group found, continuing..."
           fi
 
           echo "::notice::Dependencies installed"

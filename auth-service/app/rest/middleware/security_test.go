@@ -1,12 +1,10 @@
 package middleware
 
 import (
-	"context"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -16,7 +14,8 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"auth-service/app/domain"
-	"auth-service/app/port"
+	"auth-service/app/mocks"
+	"github.com/google/uuid"
 )
 
 // TestCSRFAttackPrevention tests various CSRF attack scenarios
@@ -24,8 +23,8 @@ func TestCSRFAttackPrevention(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockAuthUsecase := port.NewMockAuthUsecase(ctrl)
-	mockKratosGateway := port.NewMockKratosGateway(ctrl)
+	mockAuthUsecase := mock_port.NewMockAuthUsecase(ctrl)
+	mockAuthGateway := mock_port.NewMockAuthGateway(ctrl)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tests := []struct {
@@ -40,14 +39,25 @@ func TestCSRFAttackPrevention(t *testing.T) {
 			name: "CSRF attack without token",
 			setupRequest: func(req *http.Request, c *echo.Context) {
 				req.Method = http.MethodPost
-				// Set session but no CSRF token
+				// Add session cookie
+				req.AddCookie(&http.Cookie{
+					Name:  "ory_kratos_session",
+					Value: "session-token",
+				})
+				// Set session context in echo context
 				(*c).Set("session_context", &domain.SessionContext{
 					SessionID: "session-123",
 					IsActive:  true,
 				})
 			},
 			setupMocks: func() {
-				// No mocks needed as request should be blocked before validation
+				// Mock session validation
+				mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "session-token").
+					Return(&domain.SessionContext{
+						SessionID: "session-123",
+						IsActive:  true,
+					}, nil)
 			},
 			expectedStatus: http.StatusForbidden,
 			expectBlocked:  true,
@@ -58,12 +68,22 @@ func TestCSRFAttackPrevention(t *testing.T) {
 			setupRequest: func(req *http.Request, c *echo.Context) {
 				req.Method = http.MethodPost
 				req.Header.Set("X-CSRF-Token", "invalid-token")
+				req.AddCookie(&http.Cookie{
+					Name:  "ory_kratos_session",
+					Value: "session-token",
+				})
 				(*c).Set("session_context", &domain.SessionContext{
 					SessionID: "session-123",
 					IsActive:  true,
 				})
 			},
 			setupMocks: func() {
+				mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "session-token").
+					Return(&domain.SessionContext{
+						SessionID: "session-123",
+						IsActive:  true,
+					}, nil)
 				mockAuthUsecase.EXPECT().
 					ValidateCSRFToken(gomock.Any(), "invalid-token", "session-123").
 					Return(domain.ErrInvalidCSRFToken)
@@ -77,12 +97,22 @@ func TestCSRFAttackPrevention(t *testing.T) {
 			setupRequest: func(req *http.Request, c *echo.Context) {
 				req.Method = http.MethodPost
 				req.Header.Set("X-CSRF-Token", "expired-token")
+				req.AddCookie(&http.Cookie{
+					Name:  "ory_kratos_session",
+					Value: "session-token",
+				})
 				(*c).Set("session_context", &domain.SessionContext{
 					SessionID: "session-123",
 					IsActive:  true,
 				})
 			},
 			setupMocks: func() {
+				mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "session-token").
+					Return(&domain.SessionContext{
+						SessionID: "session-123",
+						IsActive:  true,
+					}, nil)
 				mockAuthUsecase.EXPECT().
 					ValidateCSRFToken(gomock.Any(), "expired-token", "session-123").
 					Return(domain.ErrCSRFTokenExpired)
@@ -96,12 +126,22 @@ func TestCSRFAttackPrevention(t *testing.T) {
 			setupRequest: func(req *http.Request, c *echo.Context) {
 				req.Method = http.MethodPost
 				req.Header.Set("X-CSRF-Token", "other-session-token")
+				req.AddCookie(&http.Cookie{
+					Name:  "ory_kratos_session",
+					Value: "session-token",
+				})
 				(*c).Set("session_context", &domain.SessionContext{
 					SessionID: "session-123",
 					IsActive:  true,
 				})
 			},
 			setupMocks: func() {
+				mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "session-token").
+					Return(&domain.SessionContext{
+						SessionID: "session-123",
+						IsActive:  true,
+					}, nil)
 				mockAuthUsecase.EXPECT().
 					ValidateCSRFToken(gomock.Any(), "other-session-token", "session-123").
 					Return(domain.ErrCSRFTokenMismatch)
@@ -115,12 +155,22 @@ func TestCSRFAttackPrevention(t *testing.T) {
 			setupRequest: func(req *http.Request, c *echo.Context) {
 				req.Method = http.MethodPost
 				req.Header.Set("X-CSRF-Token", "valid-token")
+				req.AddCookie(&http.Cookie{
+					Name:  "ory_kratos_session",
+					Value: "session-token",
+				})
 				(*c).Set("session_context", &domain.SessionContext{
 					SessionID: "session-123",
 					IsActive:  true,
 				})
 			},
 			setupMocks: func() {
+				mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "session-token").
+					Return(&domain.SessionContext{
+						SessionID: "session-123",
+						IsActive:  true,
+					}, nil)
 				mockAuthUsecase.EXPECT().
 					ValidateCSRFToken(gomock.Any(), "valid-token", "session-123").
 					Return(nil)
@@ -150,7 +200,7 @@ func TestCSRFAttackPrevention(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			middleware := NewEnhancedCSRFMiddleware(mockAuthUsecase, mockKratosGateway, nil, logger)
+			middleware := NewEnhancedCSRFMiddleware(mockAuthUsecase, mockAuthGateway, nil, logger)
 
 			e := echo.New()
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -247,6 +297,8 @@ func TestRateLimitingAttackPrevention(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Create a new middleware instance for each test to isolate state
+			testMiddleware := NewRateLimitMiddleware(config, logger)
 			passed := 0
 
 			for i := 0; i < tt.requests; i++ {
@@ -263,7 +315,7 @@ func TestRateLimitingAttackPrevention(t *testing.T) {
 				}
 
 				// Apply middleware directly
-				err := middleware.Middleware()(handler)(c)
+				err := testMiddleware.Middleware()(handler)(c)
 
 				if err == nil {
 					// Request passed
@@ -288,7 +340,7 @@ func TestRateLimitingAttackPrevention(t *testing.T) {
 
 // TestSuspiciousRequestDetection tests detection of suspicious patterns
 func TestSuspiciousRequestDetection(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	_ = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tests := []struct {
 		name        string
@@ -360,8 +412,8 @@ func TestSecurityMiddlewareIntegration(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockAuthUsecase := port.NewMockAuthUsecase(ctrl)
-	mockKratosGateway := port.NewMockKratosGateway(ctrl)
+	mockAuthUsecase := mock_port.NewMockAuthUsecase(ctrl)
+	mockAuthGateway := mock_port.NewMockAuthGateway(ctrl)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Setup middleware stack
@@ -379,24 +431,33 @@ func TestSecurityMiddlewareIntegration(t *testing.T) {
 	e.Use(RequestLoggingMiddleware(logger))
 
 	// CSRF protection
-	csrfMiddleware := NewEnhancedCSRFMiddleware(mockAuthUsecase, mockKratosGateway, nil, logger)
+	csrfMiddleware := NewEnhancedCSRFMiddleware(mockAuthUsecase, mockAuthGateway, nil, logger)
 
-	// Mock session validation for CSRF test
-	sessionCtx := &domain.SessionContext{
-		SessionID: "session-123",
-		IsActive:  true,
-		ExpiresAt: time.Now().Add(1 * time.Hour),
-	}
+	// Mock session validation for CSRF test is handled below
 
-	mockKratosGateway.EXPECT().
+	mockAuthGateway.EXPECT().
 		GetSession(gomock.Any(), "session-token").
 		Return(&domain.KratosSession{
 			ID:     "session-123",
 			Active: true,
 			ExpiresAt: time.Now().Add(1 * time.Hour),
-			Identity: domain.KratosIdentity{
+			Identity: &domain.KratosIdentity{
 				ID: "user-123",
 			},
+		}, nil).
+		AnyTimes()
+
+	testUserID, _ := uuid.Parse("550e8400-e29b-41d4-a716-446655440000")
+	testTenantID, _ := uuid.Parse("550e8400-e29b-41d4-a716-446655440001")
+	
+	mockAuthUsecase.EXPECT().
+		ValidateSession(gomock.Any(), "session-token").
+		Return(&domain.SessionContext{
+			UserID:    testUserID,
+			TenantID:  testTenantID,
+			SessionID: "session-123",
+			IsActive:  true,
+			ExpiresAt: time.Now().Add(1 * time.Hour),
 		}, nil).
 		AnyTimes()
 
@@ -509,3 +570,5 @@ func BenchmarkSuspiciousRequestDetection(b *testing.B) {
 		_ = isSuspiciousRequest(c)
 	}
 }
+
+
