@@ -1,24 +1,21 @@
 apiVersion: v2
 name: nginx-external
-description: A Helm chart for nginx external ingress/reverse proxy for Alt RSS Reader external traffic
+description: A Helm chart for external nginx with cloudflare tunnel integration
 type: application
 version: 0.1.0
-appVersion: "1.25.3"
+appVersion: "1.27.0"
 keywords:
   - nginx
-  - ingress
   - external
-  - reverse-proxy
-  - load-balancer
-  - ssl-termination
-home: https://github.com/your-org/Alt
+  - cloudflare
+  - tunnel
+home: https://nginx.org/
 sources:
-  - https://github.com/your-org/Alt
+  - https://github.com/nginx/nginx
 maintainers:
   - name: Alt Team
-    email: team@alt.local
+    email: team@alt.example.com
 dependencies:
-  - name: common-secrets
+  - name: cloudflare-tunnel
     version: "0.1.0"
-    repository: "file://../common-secrets"
-    condition: secrets.enable
+    repository: "file://./charts/cloudflare-tunnel"
