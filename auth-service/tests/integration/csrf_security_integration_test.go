@@ -1,8 +1,6 @@
 package integration
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -18,27 +16,28 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
-	"github.com/alt/auth-service/app/domain"
-	"github.com/alt/auth-service/app/port"
-	"github.com/alt/auth-service/app/rest/middleware"
+	"auth-service/app/domain"
+	"auth-service/app/mocks"
+	"auth-service/app/rest/middleware"
 )
 
 // CSRFSecurityIntegrationTestSuite tests the complete CSRF security integration
 type CSRFSecurityIntegrationTestSuite struct {
 	suite.Suite
 	ctrl              *gomock.Controller
-	mockAuthUsecase   *port.MockAuthUsecase
-	mockKratosGateway *port.MockKratosGateway
+	mockAuthUsecase   *mock_port.MockAuthUsecase
+	mockAuthGateway   *mock_port.MockAuthGateway
 	logger            *slog.Logger
 	echo              *echo.Echo
 	hybridMiddleware  *middleware.HybridCSRFMiddleware
 	migrationController *middleware.MigrationController
+	rateLimitMiddleware *middleware.RateLimitMiddleware
 }
 
 func (suite *CSRFSecurityIntegrationTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.mockAuthUsecase = port.NewMockAuthUsecase(suite.ctrl)
-	suite.mockKratosGateway = port.NewMockKratosGateway(suite.ctrl)
+	suite.mockAuthUsecase = mock_port.NewMockAuthUsecase(suite.ctrl)
+	suite.mockAuthGateway = mock_port.NewMockAuthGateway(suite.ctrl)
 	suite.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Setup Echo with complete security middleware stack
@@ -52,11 +51,11 @@ func (suite *CSRFSecurityIntegrationTestSuite) SetupTest() {
 	suite.echo.Use(securityMiddleware.Middleware())
 
 	// Rate limiting middleware
-	rateLimitMiddleware := middleware.NewRateLimitMiddleware(
+	suite.rateLimitMiddleware = middleware.NewRateLimitMiddleware(
 		middleware.DefaultRateLimitConfig(),
 		suite.logger,
 	)
-	suite.echo.Use(rateLimitMiddleware.Middleware())
+	suite.echo.Use(suite.rateLimitMiddleware.Middleware())
 
 	// Request logging with security monitoring
 	suite.echo.Use(middleware.RequestLoggingMiddleware(suite.logger))
@@ -65,7 +64,7 @@ func (suite *CSRFSecurityIntegrationTestSuite) SetupTest() {
 	legacyCSRF := middleware.NewCSRFMiddleware(suite.mockAuthUsecase, suite.logger)
 	kratosCSRF := middleware.NewEnhancedCSRFMiddleware(
 		suite.mockAuthUsecase,
-		suite.mockKratosGateway,
+		suite.mockAuthGateway,
 		nil,
 		suite.logger,
 	)
@@ -112,8 +111,8 @@ func (suite *CSRFSecurityIntegrationTestSuite) setupRoutes() {
 
 	// Auth endpoints with specific rate limiting
 	authGroup := suite.echo.Group("/auth")
-	authGroup.Use(rateLimitMiddleware.AuthRateLimit())
-	
+	authGroup.Use(suite.rateLimitMiddleware.AuthRateLimit())
+
 	authGroup.POST("/login", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "login successful"})
 	})
@@ -149,13 +148,13 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCompleteCSRFProtectionFlow() 
 			},
 			setupMocks: func() {
 				// Kratos session validation
-				suite.mockKratosGateway.EXPECT().
+				suite.mockAuthGateway.EXPECT().
 					GetSession(gomock.Any(), "kratos-session-123").
 					Return(&domain.KratosSession{
 						ID:     "kratos-session-123",
 						Active: true,
 						ExpiresAt: time.Now().Add(1 * time.Hour),
-						Identity: domain.KratosIdentity{ID: "user-123"},
+						Identity: &domain.KratosIdentity{ID: "user-123"},
 					}, nil)
 
 				// CSRF token validation
@@ -201,13 +200,13 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCompleteCSRFProtectionFlow() 
 				suite.hybridMiddleware.CompleteKratosMigration()
 
 				// Kratos session validation
-				suite.mockKratosGateway.EXPECT().
+				suite.mockAuthGateway.EXPECT().
 					GetSession(gomock.Any(), "kratos-session-123").
 					Return(&domain.KratosSession{
 						ID:     "kratos-session-123",
 						Active: true,
 						ExpiresAt: time.Now().Add(1 * time.Hour),
-						Identity: domain.KratosIdentity{ID: "user-123"},
+						Identity: &domain.KratosIdentity{ID: "user-123"},
 					}, nil)
 
 				// CSRF token validation
@@ -278,13 +277,13 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCSRFAttackScenarios() {
 				// No CSRF token - attack attempt
 			},
 			setupMocks: func() {
-				suite.mockKratosGateway.EXPECT().
+				suite.mockAuthGateway.EXPECT().
 					GetSession(gomock.Any(), "session-123").
 					Return(&domain.KratosSession{
 						ID:     "session-123",
 						Active: true,
 						ExpiresAt: time.Now().Add(1 * time.Hour),
-						Identity: domain.KratosIdentity{ID: "user-123"},
+						Identity: &domain.KratosIdentity{ID: "user-123"},
 					}, nil)
 			},
 			expectedStatus: http.StatusForbidden,
@@ -303,13 +302,13 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCSRFAttackScenarios() {
 				})
 			},
 			setupMocks: func() {
-				suite.mockKratosGateway.EXPECT().
+				suite.mockAuthGateway.EXPECT().
 					GetSession(gomock.Any(), "session-123").
 					Return(&domain.KratosSession{
 						ID:     "session-123",
 						Active: true,
 						ExpiresAt: time.Now().Add(1 * time.Hour),
-						Identity: domain.KratosIdentity{ID: "user-123"},
+						Identity: &domain.KratosIdentity{ID: "user-123"},
 					}, nil)
 
 				suite.mockAuthUsecase.EXPECT().
@@ -332,13 +331,13 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCSRFAttackScenarios() {
 				})
 			},
 			setupMocks: func() {
-				suite.mockKratosGateway.EXPECT().
+				suite.mockAuthGateway.EXPECT().
 					GetSession(gomock.Any(), "session-123").
 					Return(&domain.KratosSession{
 						ID:     "session-123",
 						Active: true,
 						ExpiresAt: time.Now().Add(1 * time.Hour),
-						Identity: domain.KratosIdentity{ID: "user-123"},
+						Identity: &domain.KratosIdentity{ID: "user-123"},
 					}, nil)
 
 				suite.mockAuthUsecase.EXPECT().
@@ -391,7 +390,7 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestMigrationManagement() {
 	// Test disabling migration mode
 	suite.Run("DisableMigrationMode", func() {
 		reqBody := `{"enabled": false}`
-		req := httptest.NewRequest(http.MethodPUT, "/admin/csrf/migration/mode", 
+		req := httptest.NewRequest("PUT", "/admin/csrf/migration/mode",
 			strings.NewReader(reqBody))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
