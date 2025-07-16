@@ -64,6 +64,7 @@ command -v kubectl &>/dev/null || { echo -e "${RED}kubectl missing${NC}"; exit 1
 INFRASTRUCTURE_CHARTS=(
   common-config common-ssl common-secrets
   postgres auth-postgres kratos-postgres kratos clickhouse meilisearch nginx nginx-external
+  monitoring
 )
 
 APPLICATION_CHARTS=(
@@ -72,7 +73,7 @@ APPLICATION_CHARTS=(
 )
 
 OPERATIONAL_CHARTS=(
-  migrate backup monitoring
+  migrate backup
 )
 
 deploy_charts(){
@@ -118,24 +119,58 @@ deploy_single_chart(){
   echo -e "${CYAN}  ↪ $chart → $namespace${NC}"
 
   if $DRY; then
-    helm template "$chart" "$chart_path" \
-      -f "$values_file" \
-      --namespace "$namespace" \
-      $(get_image_overrides "$chart") | less -R
+    local image_args=()
+    get_image_overrides "$chart" image_args
+    if [[ ${#image_args[@]} -gt 0 ]]; then
+      helm template "$chart" "$chart_path" \
+        -f "$values_file" \
+        --namespace "$namespace" \
+        "${image_args[@]}" | less -R
+    else
+      helm template "$chart" "$chart_path" \
+        -f "$values_file" \
+        --namespace "$namespace" | less -R
+    fi
   else
     local wait_args=()
     if should_wait_for_chart "$chart"; then
       wait_args=("--wait" "--timeout=300s")
     fi
 
-    helm upgrade --install "$chart" "$chart_path" \
-      -f "$values_file" \
-      --namespace "$namespace" \
-      --create-namespace \
-      $(get_image_overrides "$chart") \
-      "${wait_args[@]}" || {
-        echo -e "${RED}✗ deploy failed: $chart${NC}"; return 1;
-      }
+    local image_args=()
+    get_image_overrides "$chart" image_args
+    
+    if [[ ${#image_args[@]} -gt 0 ]]; then
+      if [[ ${#wait_args[@]} -gt 0 ]]; then
+        # Both image overrides and wait args
+        helm upgrade --install "$chart" "$chart_path" \
+          -f "$values_file" \
+          --namespace "$namespace" \
+          --create-namespace \
+          "${image_args[@]}" \
+          "${wait_args[@]}" || {
+            echo -e "${RED}✗ deploy failed: $chart${NC}"; return 1;
+          }
+      else
+        # Only image overrides
+        helm upgrade --install "$chart" "$chart_path" \
+          -f "$values_file" \
+          --namespace "$namespace" \
+          --create-namespace \
+          "${image_args[@]}" || {
+            echo -e "${RED}✗ deploy failed: $chart${NC}"; return 1;
+          }
+      fi
+    else
+      # No image overrides
+      helm upgrade --install "$chart" "$chart_path" \
+        -f "$values_file" \
+        --namespace "$namespace" \
+        --create-namespace \
+        "${wait_args[@]}" || {
+          echo -e "${RED}✗ deploy failed: $chart${NC}"; return 1;
+        }
+    fi
     echo -e "${GREEN}✓ $chart deployed${NC}"
   fi
 }
@@ -166,7 +201,7 @@ should_wait_for_chart(){
 
   # インフラストラクチャチャートは--waitを使用しない（大きなイメージのプルで時間がかかるため）
   case "$chart" in
-    clickhouse|meilisearch|postgres|auth-postgres|kratos-postgres|kratos)
+    clickhouse|meilisearch|postgres|auth-postgres|kratos-postgres|kratos|nginx-external|monitoring)
       return 1  # don't wait
       ;;
     *)
@@ -177,6 +212,7 @@ should_wait_for_chart(){
 
 get_image_overrides(){
   local chart="$1"
+  local -n image_args_ref="$2"
 
   [[ -z "$TAG_BASE" ]] && return 0
 
@@ -185,11 +221,12 @@ get_image_overrides(){
   # カスタムタグでのオーバーライドは行わない
   case "$chart" in
     alt-backend|auth-service|pre-processor|search-indexer|tag-generator|news-creator|rask-log-aggregator|alt-frontend)
-      echo "--set image.tag=${TAG_BASE} --set image.repository=${IMAGE_PREFIX}/${chart}"
+      image_args_ref=("--set" "image.tag=${TAG_BASE}" "--set" "image.repository=${IMAGE_PREFIX}/${chart}")
       ;;
     *)
       # インフラストラクチャチャートや共通Chartはイメージオーバーライドなし
       # clickhouse, meilisearch, postgres等は公式の安定版イメージを使用
+      image_args_ref=()
       ;;
   esac
 }
