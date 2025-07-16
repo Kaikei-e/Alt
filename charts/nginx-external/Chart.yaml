@@ -1,0 +1,24 @@
+apiVersion: v2
+name: nginx-external
+description: A Helm chart for nginx external ingress/reverse proxy for Alt RSS Reader external traffic
+type: application
+version: 0.1.0
+appVersion: "1.25.3"
+keywords:
+  - nginx
+  - ingress
+  - external
+  - reverse-proxy
+  - load-balancer
+  - ssl-termination
+home: https://github.com/your-org/Alt
+sources:
+  - https://github.com/your-org/Alt
+maintainers:
+  - name: Alt Team
+    email: team@alt.local
+dependencies:
+  - name: common-secrets
+    version: "0.1.0"
+    repository: "file://../common-secrets"
+    condition: secrets.enable

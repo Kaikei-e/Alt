@@ -1,0 +1,393 @@
+# Default values for nginx-external
+# nginx external ingress/reverse proxy configuration
+
+# Replica configuration
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.25.3-alpine"
+
+# Image pull secrets
+imagePullSecrets: []
+
+# Service account
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+# Pod annotations and labels
+podAnnotations:
+  rask.group: "nginx-external"
+
+podLabels:
+  io.kompose.service: "nginx-external"
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  runAsGroup: 101
+  fsGroup: 101
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 101
+
+# Service configuration - exposed externally
+service:
+  type: LoadBalancer
+  port: 80
+  httpsPort: 443
+  healthPort: 8080
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+  clusterIP: ""
+  sessionAffinity: "ClientIP"
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+  extraPorts: []
+  # External traffic policy for direct source IP preservation
+  externalTrafficPolicy: Local
+
+# Ingress configuration (typically disabled for external-facing nginx)
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+# Resources configuration
+resources:
+  limits:
+    cpu: "2"
+    memory: "1Gi"
+  requests:
+    cpu: "500m"
+    memory: "256Mi"
+
+# Liveness probe
+livenessProbe:
+  httpGet:
+    path: /nginx-health
+    port: 8080
+  failureThreshold: 3
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+# Readiness probe
+readinessProbe:
+  httpGet:
+    path: /nginx-health
+    port: 8080
+  failureThreshold: 3
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Additional volumes
+volumes: []
+
+# Additional volume mounts
+volumeMounts: []
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity (disabled for single-node setup)
+affinity: {}
+
+# Environment variables
+env: {}
+
+# Secret references for environment variables
+envFromSecret:
+  name: ""
+
+# ConfigMap configuration
+configMap:
+  create: true
+  name: ""
+  extraFiles: {}
+
+# Secret configuration
+secret:
+  create: false
+  name: ""
+  data: {}
+  stringData: {}
+
+# SSL configuration
+ssl:
+  enabled: true
+  secretName: nginx-external-ssl-certs
+
+# Secrets configuration
+secrets:
+  enabled: true
+
+# Deployment strategy
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# Common labels
+commonLabels:
+  app.kubernetes.io/name: nginx-external
+  app.kubernetes.io/part-of: alt
+  app.kubernetes.io/component: external-proxy
+
+# Common annotations
+commonAnnotations: {}
+
+# nginx specific configuration for external traffic
+nginx:
+  # Worker settings for external load
+  workerConnections: 2048
+  keepaliveTimeout: 65
+
+  # Logging
+  logLevel: warn
+
+  # Client settings for external traffic
+  clientMaxBodySize: 20m
+
+  # Rate limiting for external traffic (more restrictive)
+  rateLimitRpm: 600    # requests per minute for API endpoints
+  rateLimitRps: 20     # requests per second for general endpoints
+  rateLimitConnections: 50  # concurrent connections per IP
+
+  # DDoS protection settings
+  ddosProtection:
+    enabled: true
+    requestsPerSecond: 20
+    burstSize: 100
+    connectionLimit: 50
+
+  # GeoIP blocking (if enabled)
+  geoBlocking:
+    enabled: false
+    allowedCountries: ["US", "CA", "GB", "DE", "FR", "JP"]
+    blockedCountries: []
+
+# Upstream configurations for internal nginx or services
+upstreams:
+  # Route to internal nginx (recommended approach)
+  - name: nginx-internal
+    servers:
+      - "nginx.nginx.svc.cluster.local:80"
+      - "nginx.nginx.svc.cluster.local:443"
+    loadBalancing: "least_conn"
+    keepalive: 32
+    healthCheck:
+      enabled: true
+      path: "/health"
+      interval: "30s"
+      timeout: "10s"
+
+  # Alternative: Direct routing to services (if needed)
+  - name: alt-frontend-direct
+    servers:
+      - "alt-frontend.alt-frontend.svc.cluster.local:3000"
+    loadBalancing: "least_conn"
+    keepalive: 32
+
+  - name: alt-backend-direct
+    servers:
+      - "alt-backend.alt-backend.svc.cluster.local:9000"
+    loadBalancing: "least_conn"
+    keepalive: 32
+
+# Server configurations for external traffic
+servers:
+  # Main HTTP server (redirect to HTTPS)
+  - listen:
+      - "8080"
+    serverName: "rss.alt.com www.rss.alt.com *.rss.alt.com"
+    extraConfig: |
+      # Security headers even for redirects
+      add_header X-Frame-Options "DENY" always;
+      add_header X-Content-Type-Options "nosniff" always;
+    locations:
+      - path: "/.well-known/acme-challenge/"
+        extraConfig: |
+          # Allow Let's Encrypt challenges
+          root /var/www/certbot;
+          try_files $uri =404;
+      - path: "/"
+        extraConfig: |
+          return 301 https://$host$request_uri;
+
+  # Main HTTPS server for external traffic
+  - listen:
+      - "8443 ssl"
+    http2: true
+    serverName: "rss.alt.com www.rss.alt.com *.rss.alt.com"
+    ssl:
+      certificate: "/etc/nginx/ssl/tls.crt"
+      certificateKey: "/etc/nginx/ssl/tls.key"
+      protocols: "TLSv1.2 TLSv1.3"
+      ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+      sessionCache: "shared:SSL:10m"
+      sessionTimeout: "1d"
+      sessionTickets: "off"
+      ocspStapling: "on"
+      ocspStaplingVerify: "on"
+    locations:
+      # Main application routes - proxy to internal nginx
+      - path: "/"
+        proxyPass: "http://nginx-internal"
+        proxySetHeader:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+          - "X-Forwarded-Proto $scheme"
+          - "X-Forwarded-Host $host"
+          - "X-Forwarded-Port $server_port"
+          - "X-Request-ID $request_id"
+        proxyTimeout: "60s"
+        extraConfig: |
+          # Rate limiting for general traffic
+          limit_req zone=general burst=50 nodelay;
+          limit_conn addr 20;
+
+          # Proxy settings
+          proxy_buffer_size 8k;
+          proxy_buffers 16 8k;
+          proxy_busy_buffers_size 16k;
+
+          # Cache static content
+          location ~* \.(css|js|jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+            add_header X-Cache-Status "STATIC";
+            proxy_pass http://nginx-internal;
+          }
+
+      # API routes with stricter rate limiting
+      - path: "/api/"
+        proxyPass: "http://nginx-internal"
+        proxySetHeader:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+          - "X-Forwarded-Proto $scheme"
+          - "X-Forwarded-Host $host"
+          - "X-Forwarded-Port $server_port"
+          - "X-Request-ID $request_id"
+        proxyTimeout: "60s"
+        extraConfig: |
+          # Stricter rate limiting for API
+          limit_req zone=api burst=20 nodelay;
+          limit_conn addr 10;
+
+          # Proxy settings
+          proxy_buffer_size 8k;
+          proxy_buffers 16 8k;
+          proxy_busy_buffers_size 16k;
+
+      # Health check endpoint (external)
+      - path: "/external-health"
+        extraConfig: |
+          access_log off;
+          return 200 "External nginx OK";
+          add_header Content-Type text/plain;
+          add_header X-Health-Check "external" always;
+
+      # Block common attack paths
+      - path: "~ /\\."
+        extraConfig: |
+          deny all;
+          access_log off;
+          log_not_found off;
+
+      - path: "~ /(wp-admin|wp-login|admin|phpmyadmin)"
+        extraConfig: |
+          deny all;
+          access_log off;
+          log_not_found off;
+    extraConfig: |
+      # Enhanced security headers for external traffic
+      add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'self';" always;
+
+      # Request ID for tracing
+      add_header X-Request-ID $request_id always;
+
+      # Hide nginx version
+      server_tokens off;
+
+      # Real IP configuration for external load balancers
+      real_ip_header X-Forwarded-For;
+      real_ip_recursive on;
+      set_real_ip_from 10.0.0.0/8;
+      set_real_ip_from 172.16.0.0/12;
+      set_real_ip_from 192.168.0.0/16;
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/nginx-status"
+
+# Network policy for external access
+networkPolicy:
+  enabled: true
+  ingress:
+    - from: []
+      ports:
+        - port: 8080
+          protocol: TCP
+        - port: 8443
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: nginx
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  maxUnavailable: ""

@@ -1,0 +1,141 @@
+# Production values for nginx-external
+# nginx external ingress/reverse proxy production configuration
+
+# Replica configuration for production
+replicaCount: 1
+
+# Image configuration (nginxを使用)
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.25.3"
+
+# Pod annotations and labels
+podAnnotations:
+  rask.group: "nginx-external"
+  environment: "production"
+  backup: "enabled"
+
+# Resources configuration for production
+resources:
+  limits:
+    cpu: "2"
+    memory: "1Gi"
+  requests:
+    cpu: "500m"
+    memory: "256Mi"
+
+# Autoscaling disabled for single-node setup
+autoscaling:
+  enabled: false
+
+# Production affinity rules (disabled for single-node setup)
+affinity: {}
+
+# Production deployment strategy
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# Cloudflare Tunnel subchart configuration
+cloudflare-tunnel:
+  cloudflare:
+    tunnelName: "e1c718c5-8d68-4eca-8dcb-c569a2e77a01"
+    tunnelId: "e1c718c5-8d68-4eca-8dcb-c569a2e77a01"
+    secretName: "nginx-external-cloudflare-tunnel"
+    enableWarp: false
+    ingress:
+      - hostname: "curionoah.com"
+        service: "http://nginx-external:8080"
+  image:
+    repository: cloudflare/cloudflared
+    tag: "2024.8.3"
+  replicaCount: 1
+  podAnnotations:
+    rask.group: "cloudflare-tunnel"
+    environment: "production"
+  resources:
+    limits:
+      cpu: "1"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+
+# Note: Cloudflare Tunnel is now handled by the dedicated cloudflare-tunnel chart
+# This chart focuses on nginx external ingress only
+
+# SSL configuration
+ssl:
+  enabled: true
+  secretName: nginx-ssl-certs-production
+
+# Secrets configuration
+secrets:
+  enabled: false
+
+# Monitoring configuration (disabled until monitoring chart is properly implemented)
+monitoring:
+  enabled: false
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "80"
+    prometheus.io/path: "/nginx_status"
+
+# Enhanced network policy for production
+networkPolicy:
+  enabled: true
+  ingress:
+    - from: []
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - port: 80
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: nginx
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+    - to: []
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+# Production pod disruption budget (disabled for single-node setup)
+podDisruptionBudget:
+  enabled: false
+
+# Production tolerations for single-node setup
+tolerations: []
+
+# Production node selector for single-node setup
+nodeSelector:
+  kubernetes.io/arch: amd64
+  node-role.kubernetes.io/control-plane: ""
+
+# Horizontal Pod Autoscaler v2 configuration (disabled for single-node setup)
+horizontalPodAutoscaler:
+  apiVersion: autoscaling/v2
+  enabled: false
+
+upstreams:
+  - name: nginx-internal
+    servers:
+      - "nginx.alt-ingress.svc.cluster.local:8080"
