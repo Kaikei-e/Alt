@@ -1,0 +1,10 @@
+apiVersion: v2
+name: tag-generator
+description: A Helm chart for Alt Tag Generator service  
+type: application
+version: 0.1.0
+appVersion: "production"
+dependencies:
+  - name: common-secrets
+    version: "0.1.0"
+    repository: "file://../common-secrets"
