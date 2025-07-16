@@ -1,5 +1,9 @@
 name: Helm Chart Validation
 
+permissions:
+  contents: read
+  actions: write
+
 on:
   push:
     branches: [ main, develop ]
