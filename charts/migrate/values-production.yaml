@@ -1,0 +1,72 @@
+# Production values for migrate
+image:
+  repository: migrate
+  pullPolicy: IfNotPresent
+  tag: "production"
+
+# Job configuration
+completions: 1
+parallelism: 1
+backoffLimit: 3
+activeDeadlineSeconds: 3600
+restartPolicy: "Never"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+configMap:
+  create: true
+  name: migrate-config
+  data:
+    LOG_LEVEL: "info"
+    MIGRATION_TIMEOUT: "300s"
+    MIGRATION_RETRY_COUNT: "3"
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+env:
+  DB_HOST: "db.alt-database.svc.cluster.local"
+  DB_NAME: "alt"
+  DB_PORT: "5432"
+  DB_SSL_MODE: "require"
+  LOG_LEVEL: "info"
+  MIGRATION_TIMEOUT: "300s"
+  MIGRATION_RETRY_COUNT: "3"
+  SERVICE_NAME: "migrate"
+
+envFromSecret:
+  name: migrate-secrets
+  keys:
+    - MIGRATE_DB_PASSWORD
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 2000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+commonLabels: {}
+commonAnnotations: {}
+podLabels: {}
+podAnnotations: {}
+imagePullSecrets: []
+volumeMounts: []
+volumes: []
