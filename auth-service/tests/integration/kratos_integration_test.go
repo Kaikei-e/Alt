@@ -1,4 +1,4 @@
-package integration
+package integration_test
 
 import (
 	"context"
@@ -89,7 +89,7 @@ func TestKratosAPIAccess(t *testing.T) {
 		publicAPI := client.PublicAPI()
 		
 		// Test version endpoint
-		version, response, err := publicAPI.MetadataApi.GetVersion(ctx).Execute()
+		version, response, err := publicAPI.MetadataAPI.GetVersion(ctx).Execute()
 		require.NoError(t, err, "Should get version from public API")
 		
 		assert.NotNil(t, version, "Version should not be nil")
@@ -102,7 +102,7 @@ func TestKratosAPIAccess(t *testing.T) {
 		adminAPI := client.AdminAPI()
 		
 		// Test version endpoint
-		version, response, err := adminAPI.MetadataApi.GetVersion(ctx).Execute()
+		version, response, err := adminAPI.MetadataAPI.GetVersion(ctx).Execute()
 		require.NoError(t, err, "Should get version from admin API")
 		
 		assert.NotNil(t, version, "Version should not be nil")
@@ -115,7 +115,7 @@ func TestKratosAPIAccess(t *testing.T) {
 		publicAPI := client.PublicAPI()
 		
 		// Create login flow
-		loginFlow, response, err := publicAPI.FrontendApi.CreateNativeLoginFlow(ctx).Execute()
+		loginFlow, response, err := publicAPI.FrontendAPI.CreateNativeLoginFlow(ctx).Execute()
 		require.NoError(t, err, "Should create login flow")
 		
 		assert.NotNil(t, loginFlow, "Login flow should not be nil")
@@ -131,7 +131,7 @@ func TestKratosAPIAccess(t *testing.T) {
 		publicAPI := client.PublicAPI()
 		
 		// Create registration flow
-		registrationFlow, response, err := publicAPI.FrontendApi.CreateNativeRegistrationFlow(ctx).Execute()
+		registrationFlow, response, err := publicAPI.FrontendAPI.CreateNativeRegistrationFlow(ctx).Execute()
 		require.NoError(t, err, "Should create registration flow")
 		
 		assert.NotNil(t, registrationFlow, "Registration flow should not be nil")

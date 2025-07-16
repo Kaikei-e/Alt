@@ -1,4 +1,4 @@
-package integration
+package integration_test
 
 import (
 	"encoding/json"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +18,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"auth-service/app/domain"
-	"auth-service/app/mocks"
+	mock_port "auth-service/app/mocks"
 	"auth-service/app/rest/middleware"
 )
 
@@ -147,6 +148,17 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCompleteCSRFProtectionFlow() 
 				})
 			},
 			setupMocks: func() {
+				// Session validation
+				suite.mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "kratos-session-123").
+					Return(&domain.SessionContext{
+						SessionID: "kratos-session-123",
+						UserID:    uuid.MustParse("770e8400-e29b-41d4-a716-446655440000"),
+						TenantID:  uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+						Email:     "testuser1@example.com",
+						IsActive:  true,
+					}, nil).AnyTimes()
+
 				// Kratos session validation
 				suite.mockAuthGateway.EXPECT().
 					GetSession(gomock.Any(), "kratos-session-123").
@@ -155,12 +167,12 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCompleteCSRFProtectionFlow() 
 						Active: true,
 						ExpiresAt: time.Now().Add(1 * time.Hour),
 						Identity: &domain.KratosIdentity{ID: "user-123"},
-					}, nil)
+					}, nil).AnyTimes()
 
 				// CSRF token validation
 				suite.mockAuthUsecase.EXPECT().
 					ValidateCSRFToken(gomock.Any(), "valid-kratos-token", "kratos-session-123").
-					Return(nil)
+					Return(nil).AnyTimes()
 			},
 			expectedStatus: http.StatusOK,
 			description:    "Kratos session with valid CSRF should pass in migration phase",
@@ -199,6 +211,17 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCompleteCSRFProtectionFlow() 
 				// Complete migration first
 				suite.hybridMiddleware.CompleteKratosMigration()
 
+				// Session validation
+				suite.mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "kratos-session-123").
+					Return(&domain.SessionContext{
+						SessionID: "kratos-session-123",
+						UserID:    uuid.MustParse("770e8400-e29b-41d4-a716-446655440000"),
+						TenantID:  uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+						Email:     "testuser1@example.com",
+						IsActive:  true,
+					}, nil).AnyTimes()
+
 				// Kratos session validation
 				suite.mockAuthGateway.EXPECT().
 					GetSession(gomock.Any(), "kratos-session-123").
@@ -207,12 +230,12 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCompleteCSRFProtectionFlow() 
 						Active: true,
 						ExpiresAt: time.Now().Add(1 * time.Hour),
 						Identity: &domain.KratosIdentity{ID: "user-123"},
-					}, nil)
+					}, nil).AnyTimes()
 
 				// CSRF token validation
 				suite.mockAuthUsecase.EXPECT().
 					ValidateCSRFToken(gomock.Any(), "valid-kratos-token", "kratos-session-123").
-					Return(nil)
+					Return(nil).AnyTimes()
 			},
 			expectedStatus: http.StatusOK,
 			description:    "Kratos session should work after migration complete",
@@ -277,13 +300,15 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCSRFAttackScenarios() {
 				// No CSRF token - attack attempt
 			},
 			setupMocks: func() {
-				suite.mockAuthGateway.EXPECT().
-					GetSession(gomock.Any(), "session-123").
-					Return(&domain.KratosSession{
-						ID:     "session-123",
-						Active: true,
-						ExpiresAt: time.Now().Add(1 * time.Hour),
-						Identity: &domain.KratosIdentity{ID: "user-123"},
+				// Session validation
+				suite.mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "session-123").
+					Return(&domain.SessionContext{
+						SessionID: "session-123",
+						UserID:    uuid.MustParse("770e8400-e29b-41d4-a716-446655440000"),
+						TenantID:  uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+						Email:     "testuser1@example.com",
+						IsActive:  true,
 					}, nil)
 			},
 			expectedStatus: http.StatusForbidden,
@@ -302,15 +327,18 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCSRFAttackScenarios() {
 				})
 			},
 			setupMocks: func() {
-				suite.mockAuthGateway.EXPECT().
-					GetSession(gomock.Any(), "session-123").
-					Return(&domain.KratosSession{
-						ID:     "session-123",
-						Active: true,
-						ExpiresAt: time.Now().Add(1 * time.Hour),
-						Identity: &domain.KratosIdentity{ID: "user-123"},
+				// Session validation
+				suite.mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "session-123").
+					Return(&domain.SessionContext{
+						SessionID: "session-123",
+						UserID:    uuid.MustParse("770e8400-e29b-41d4-a716-446655440000"),
+						TenantID:  uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+						Email:     "testuser1@example.com",
+						IsActive:  true,
 					}, nil)
 
+				// CSRF token validation
 				suite.mockAuthUsecase.EXPECT().
 					ValidateCSRFToken(gomock.Any(), "malicious-token", "session-123").
 					Return(domain.ErrInvalidCSRFToken)
@@ -331,15 +359,18 @@ func (suite *CSRFSecurityIntegrationTestSuite) TestCSRFAttackScenarios() {
 				})
 			},
 			setupMocks: func() {
-				suite.mockAuthGateway.EXPECT().
-					GetSession(gomock.Any(), "session-123").
-					Return(&domain.KratosSession{
-						ID:     "session-123",
-						Active: true,
-						ExpiresAt: time.Now().Add(1 * time.Hour),
-						Identity: &domain.KratosIdentity{ID: "user-123"},
+				// Session validation
+				suite.mockAuthUsecase.EXPECT().
+					ValidateSession(gomock.Any(), "session-123").
+					Return(&domain.SessionContext{
+						SessionID: "session-123",
+						UserID:    uuid.MustParse("770e8400-e29b-41d4-a716-446655440000"),
+						TenantID:  uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+						Email:     "testuser1@example.com",
+						IsActive:  true,
 					}, nil)
 
+				// CSRF token validation
 				suite.mockAuthUsecase.EXPECT().
 					ValidateCSRFToken(gomock.Any(), "other-session-token", "session-123").
 					Return(domain.ErrCSRFTokenMismatch)
