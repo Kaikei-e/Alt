@@ -1,0 +1,9 @@
+dependencies:
+- name: common-ssl
+  repository: file://../common-ssl
+  version: 0.1.0
+- name: common-secrets
+  repository: file://../common-secrets
+  version: 0.1.0
+digest: sha256:471d14b934db7a0ee7bde16629022afe916df5fc9436591b45c4c385cf87d663
+generated: "2025-07-16T09:40:20.99184606+09:00"
