@@ -55,7 +55,7 @@ func (k *KubectlDriver) GetNodes(ctx context.Context) ([]kubectl_port.Kubernetes
 }
 
 // GetPods returns pods in the specified namespace
-func (k *KubectlDriver) GetPods(ctx context.Context, namespace string, fieldSelector string) ([]kubectl_port.KubernetesPod, error) {
+func (k *KubectlDriver) GetPods(ctx context.Context, namespace string, selector string) ([]kubectl_port.KubernetesPod, error) {
 	args := []string{"get", "pods", "--no-headers", "-o", "custom-columns=NAME:.metadata.name,NAMESPACE:.metadata.namespace,STATUS:.status.phase,READY:.status.conditions[-1].status,RESTARTS:.status.containerStatuses[0].restartCount,AGE:.metadata.creationTimestamp"}
 	
 	if namespace != "" {
@@ -64,8 +64,13 @@ func (k *KubectlDriver) GetPods(ctx context.Context, namespace string, fieldSele
 		args = append(args, "--all-namespaces")
 	}
 	
-	if fieldSelector != "" {
-		args = append(args, "--field-selector", fieldSelector)
+	if selector != "" {
+		// Check if it's a field selector or label selector
+		if strings.Contains(selector, "status.phase") || strings.Contains(selector, "metadata.") {
+			args = append(args, "--field-selector", selector)
+		} else {
+			args = append(args, "--selector", selector)
+		}
 	}
 	
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
