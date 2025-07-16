@@ -1,0 +1,142 @@
+# Alt-Frontend 最適化 .dockerignore
+# Docker build時の不要ファイル除外でビルド時間短縮・サイズ削減
+
+# ================================================
+# Development files (ビルド不要)
+# ================================================
+# ソース関連
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/test-results/
+**/coverage/
+**/playwright-report/
+
+# 設定ファイル
+.eslintrc*
+.prettier*
+vitest.config.ts
+vitest.d.ts
+vitest.setup.ts
+playwright.config.ts
+tsconfig.tsbuildinfo
+
+# ドキュメント
+README.md
+CLAUDE.md
+DESIGN_LANGUAGE.md
+GEMINI.md
+docs/
+*.md
+
+# ================================================
+# Build artifacts (重複回避)
+# ================================================
+.next/
+out/
+dist/
+build/
+
+# ================================================
+# Dependencies (管理対象外)
+# ================================================
+node_modules/
+.pnpm-store/
+pnpm-lock.yaml.backup
+
+# ================================================
+# IDE & OS files
+# ================================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ================================================
+# Version control
+# ================================================
+.git/
+.gitignore
+.gitattributes
+
+# ================================================
+# CI/CD & Deployment
+# ================================================
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# ================================================
+# Logs & Runtime
+# ================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ================================================
+# Temporary files
+# ================================================
+.tmp/
+.temp/
+tmp/
+temp/
+
+# ================================================
+# Environment (security)
+# ================================================
+.env
+.env.*
+!.env.example
+
+# ================================================
+# Cache & Storage
+# ================================================
+.cache/
+.parcel-cache/
+.nuxt/
+.vuepress/dist
+.serverless/
+.fusebox/
+.dynamodb/
+
+# ================================================
+# Analysis & Reports
+# ================================================
+ALT_FRONTEND_*.md
+performance_*.js
+bundle-analyzer-*
+*.tgz
+*.tar.gz
+
+# ================================================
+# Mobile development
+# ================================================
+.expo/
+.expo-shared/
+
+# ================================================
+# Next.js specific
+# ================================================
+.next/cache/
+.next/trace
+.next/standalone/
+.next/static/chunks/webpack.js
+
+# Allow essential Next.js files
+!.next/static/
+!.next/server/
+!.next/*.json
+!.next/*.js
