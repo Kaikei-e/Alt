@@ -46,7 +46,7 @@ class TestTagExtractor:
         # Models should not be loaded on initialization
 
         with patch.object(
-            model_manager, "get_models", wraps=model_manager.get_models
+            model_manager, "get_models", return_value=(Mock(), Mock(), Mock())
         ) as mock_get_models:
             # First call should load models
             extractor._lazy_load_models()
