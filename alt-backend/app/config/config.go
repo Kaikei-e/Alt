@@ -11,6 +11,7 @@ type Config struct {
 	Cache     CacheConfig     `json:"cache"`
 	Logging   LoggingConfig   `json:"logging"`
 	HTTP      HTTPConfig      `json:"http"`
+	Auth      AuthConfig      `json:"auth"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -19,6 +20,7 @@ type Config struct {
 	MeilisearchURL     string        `json:"meilisearch_url"`
 	RateLimitInterval  time.Duration `json:"rate_limit_interval"`
 	MaxPaginationLimit int           `json:"max_pagination_limit"`
+	AuthServiceURL     string        `json:"auth_service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service:9500"`
 }
 
 type ServerConfig struct {
@@ -74,6 +76,14 @@ type HTTPConfig struct {
 	DialTimeout         time.Duration `json:"dial_timeout" env:"HTTP_DIAL_TIMEOUT" default:"10s"`
 	TLSHandshakeTimeout time.Duration `json:"tls_handshake_timeout" env:"HTTP_TLS_HANDSHAKE_TIMEOUT" default:"10s"`
 	IdleConnTimeout     time.Duration `json:"idle_conn_timeout" env:"HTTP_IDLE_CONN_TIMEOUT" default:"90s"`
+}
+
+type AuthConfig struct {
+	ServiceURL      string        `json:"service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service:9500"`
+	Timeout         time.Duration `json:"timeout" env:"AUTH_TIMEOUT" default:"30s"`
+	EnableCSRF      bool          `json:"enable_csrf" env:"AUTH_ENABLE_CSRF" default:"true"`
+	RequireAuth     bool          `json:"require_auth" env:"AUTH_REQUIRE_AUTH" default:"true"`
+	SessionCookieName string      `json:"session_cookie_name" env:"AUTH_SESSION_COOKIE_NAME" default:"ory_kratos_session"`
 }
 
 // NewConfig creates a new configuration by loading from environment variables
