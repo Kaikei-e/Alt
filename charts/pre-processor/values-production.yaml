@@ -1,0 +1,81 @@
+# Production values for pre-processor
+replicaCount: 1
+
+image:
+  repository: pre-processor
+  pullPolicy: IfNotPresent
+  tag: "production"
+
+service:
+  create: true
+  type: ClusterIP
+  port: 9200
+  targetPort: 9200
+  protocol: TCP
+  name: http
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+configMap:
+  create: true
+  name: pre-processor-config
+  data:
+    LOG_LEVEL: "info"
+    SERVICE_NAME: "pre-processor"
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+env:
+  DB_HOST: "db.alt-database.svc.cluster.local"
+  DB_NAME: "alt"
+  DB_PORT: "5432"
+  DB_SSL_MODE: "require"
+  LOG_LEVEL: "info"
+  PRE_PROCESSOR_DB_USER: "pre_processor_user"
+  SERVICE_NAME: "pre-processor"
+  NEWS_CREATOR_HOST: "http://news-creator.alt-apps.svc.cluster.local:11434"
+  NEWS_CREATOR_TIMEOUT: "120s"
+
+envFromSecret:
+  name: pre-processor-secrets
+  keys:
+    - PRE_PROCESSOR_DB_PASSWORD
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 2000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+commonLabels: {}
+commonAnnotations: {}
+podLabels: {}
+podAnnotations: {}
+imagePullSecrets: []
+volumeMounts: []
+volumes: []
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
