@@ -3,24 +3,24 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ───────────────────────────────────────────────────────────
-# deploy-opt.sh — apply → image tag patch → (optional) rollout restart → status watch
-# Pattern‑B 対応：単一リポジトリ IMAGE_PREFIX:<service>-<TAG_BASE>
+# deploy-opt.sh — Helm-based deployment for Alt services
+# Pattern‑B 対応：Helm Charts with environment-specific values
 #   TAG_BASE は build-images.sh が出力時に環境変数で渡す想定
 #
 # 使い方例
 #   TAG_BASE=20250715220100-nogit IMAGE_PREFIX=example/project \
 #       ./deploy-opt.sh production -r
-#   （TAG_BASE を渡さなければ従来どおり apply だけ実施）
+#   （TAG_BASE を渡さなければデフォルトタグを使用）
 #
 # 引数
 #   <env>               development | staging | production (必須)
-#   -d / --dry-run      server-side dry‑run (適用せず YAML 出力)
-#   -r / --restart      apply 後に rollout restart
+#   -d / --dry-run      helm template での dry‑run (適用せず YAML 出力)
+#   -r / --restart      deploy 後に rollout restart
 #   -n / --namespace    デフォルト alt-<env> を上書き
 #   -h / --help         ヘルプ
 # 環境変数
 #   IMAGE_PREFIX        プライベートレポ (例 example/project) ※必須
-#   TAG_BASE            <timestamp>-<sha> 形式 (省略時 set image スキップ)
+#   TAG_BASE            <timestamp>-<sha> 形式 (省略時デフォルトタグ)
 # ───────────────────────────────────────────────────────────
 
 # 色
@@ -57,63 +57,196 @@ done
 TARGET_NS="${TARGET_NS:-alt-$ENV}"
 
 # 依存チェック
+command -v helm &>/dev/null || { echo -e "${RED}helm missing${NC}"; exit 1; }
 command -v kubectl &>/dev/null || { echo -e "${RED}kubectl missing${NC}"; exit 1; }
 
-# サービスリスト（Deployment 名 = コンテナ名前提）
-SERVICES=(
-  alt-backend alt-frontend pre-processor news-creator search-indexer tag-generator \
-  migrate clickhouse db nginx nginx-external rask-log-aggregator meilisearch
+# Chart配列（デプロイ順序）
+INFRASTRUCTURE_CHARTS=(
+  common-config common-ssl common-secrets
+  postgres auth-postgres kratos-postgres kratos clickhouse meilisearch nginx nginx-external
 )
 
-apply_overlay(){
-  echo -e "${BLUE}▶ Applying overlay ($ENV)${NC}"
+APPLICATION_CHARTS=(
+  alt-backend auth-service pre-processor search-indexer tag-generator
+  news-creator rask-log-aggregator alt-frontend
+)
+
+OPERATIONAL_CHARTS=(
+  migrate backup monitoring
+)
+
+deploy_charts(){
+  echo -e "${BLUE}▶ Deploying Helm charts ($ENV)${NC}"
+  local charts_dir="../charts"
+
+  # Infrastructure Chartsから順次デプロイ
+  echo -e "${CYAN}▶ Deploying Infrastructure charts${NC}"
+  for chart in "${INFRASTRUCTURE_CHARTS[@]}"; do
+    deploy_single_chart "$chart" "$charts_dir"
+  done
+
+  # Application Charts
+  echo -e "${CYAN}▶ Deploying Application charts${NC}"
+  for chart in "${APPLICATION_CHARTS[@]}"; do
+    deploy_single_chart "$chart" "$charts_dir"
+  done
+
+  # Operational Charts
+  echo -e "${CYAN}▶ Deploying Operational charts${NC}"
+  for chart in "${OPERATIONAL_CHARTS[@]}"; do
+    deploy_single_chart "$chart" "$charts_dir"
+  done
+}
+
+deploy_single_chart(){
+  local chart="$1"
+  local charts_dir="$2"
+  local chart_path="${charts_dir}/${chart}"
+  local values_file="${chart_path}/values-${ENV}.yaml"
+  local namespace
+
+  # Chart が存在するかチェック
+  [[ ! -d "$chart_path" ]] && { echo -e "${YELLOW}⚠ Chart $chart not found (skipped)${NC}"; return; }
+
+  # 環境別values.yamlが存在するかチェック
+  [[ ! -f "$values_file" ]] && values_file="${chart_path}/values.yaml"
+  [[ ! -f "$values_file" ]] && { echo -e "${YELLOW}⚠ Values file not found for $chart (skipped)${NC}"; return; }
+
+  # namespaceを決定
+  namespace=$(determine_namespace "$chart" "$ENV")
+
+  echo -e "${CYAN}  ↪ $chart → $namespace${NC}"
+
   if $DRY; then
-    kubectl apply -k "k8s/overlays/$ENV" --dry-run=server -o yaml | less -R
+    helm template "$chart" "$chart_path" \
+      -f "$values_file" \
+      --namespace "$namespace" \
+      $(get_image_overrides "$chart") | less -R
   else
-    kubectl apply -k "k8s/overlays/$ENV"
-    echo -e "${GREEN}✓ apply complete${NC}"
+    local wait_args=()
+    if should_wait_for_chart "$chart"; then
+      wait_args=("--wait" "--timeout=300s")
+    fi
+
+    helm upgrade --install "$chart" "$chart_path" \
+      -f "$values_file" \
+      --namespace "$namespace" \
+      --create-namespace \
+      $(get_image_overrides "$chart") \
+      "${wait_args[@]}" || {
+        echo -e "${RED}✗ deploy failed: $chart${NC}"; return 1;
+      }
+    echo -e "${GREEN}✓ $chart deployed${NC}"
   fi
 }
 
-patch_images(){
-  $DRY && return 0
-  [[ -z "$TAG_BASE" ]] && { echo -e "${YELLOW}TAG_BASE 未指定 → image patch skip${NC}"; return; }
+determine_namespace(){
+  local chart="$1"
+  local env="$2"
 
-  echo -e "${CYAN}▶ set image to ${IMAGE_PREFIX}:<svc>-${TAG_BASE}${NC}"
-  for svc in "${SERVICES[@]}"; do
-    local img="${IMAGE_PREFIX}:${svc}-${TAG_BASE}"
-    # Deployment が存在する場合のみ更新
-    if kubectl -n "$TARGET_NS" get deployment "$svc" &>/dev/null; then
-      echo -e "${CYAN}  ↪ $svc → $img${NC}"
-      kubectl -n "$TARGET_NS" set image deployment/"$svc" "$svc"="$img" --record=true || {
-        echo -e "${YELLOW}⚠ set image failed on $svc (ignored)${NC}";
-      }
-    fi
-  done
+  case "$env" in
+    development) echo "alt-dev" ;;
+    staging) echo "alt-staging" ;;
+    production)
+      case "$chart" in
+        alt-backend|alt-frontend|pre-processor|search-indexer|tag-generator|news-creator|rask-log-aggregator) echo "alt-apps" ;;
+        postgres|auth-postgres|kratos-postgres|clickhouse) echo "alt-database" ;;
+        meilisearch) echo "alt-search" ;;
+        auth-service|kratos) echo "alt-auth" ;;
+        nginx|nginx-external) echo "alt-ingress" ;;
+        monitoring|rask-log-aggregator) echo "alt-observability" ;;
+        *) echo "alt-production" ;;
+      esac ;;
+    *) echo "alt-$env" ;;
+  esac
+}
+
+should_wait_for_chart(){
+  local chart="$1"
+
+  # インフラストラクチャチャートは--waitを使用しない（大きなイメージのプルで時間がかかるため）
+  case "$chart" in
+    clickhouse|meilisearch|postgres|auth-postgres|kratos-postgres|kratos)
+      return 1  # don't wait
+      ;;
+    *)
+      return 0  # wait for readiness
+      ;;
+  esac
+}
+
+get_image_overrides(){
+  local chart="$1"
+
+  [[ -z "$TAG_BASE" ]] && return 0
+
+  # チャートごとのイメージオーバーライド
+  # インフラストラクチャチャート（clickhouse、meilisearch）は公式イメージを使用するため
+  # カスタムタグでのオーバーライドは行わない
+  case "$chart" in
+    alt-backend|auth-service|pre-processor|search-indexer|tag-generator|news-creator|rask-log-aggregator|alt-frontend)
+      echo "--set image.tag=${TAG_BASE} --set image.repository=${IMAGE_PREFIX}/${chart}"
+      ;;
+    *)
+      # インフラストラクチャチャートや共通Chartはイメージオーバーライドなし
+      # clickhouse, meilisearch, postgres等は公式の安定版イメージを使用
+      ;;
+  esac
 }
 
 rollout_restart_all(){
   $DRY && return 0
   $DO_RESTART || return 0
-  echo -e "${CYAN}▶ rollout restart in $TARGET_NS${NC}"
-  for kind in deployment statefulset daemonset; do
-    mapfile -t res < <(kubectl -n "$TARGET_NS" get "$kind" -o name 2>/dev/null || true)
-    for r in "${res[@]}"; do
-      [[ -z "$r" ]] && continue
-      echo -e "${CYAN}  ↻ restarting $r${NC}"
-      kubectl -n "$TARGET_NS" rollout restart "$r" || echo -e "${YELLOW}⚠ restart failed on $r (ignored)${NC}"
+
+  echo -e "${CYAN}▶ rollout restart for all deployments${NC}"
+
+  # 全namespaceのリソースを再起動
+  local namespaces=()
+  case "$ENV" in
+    development) namespaces=("alt-dev") ;;
+    staging) namespaces=("alt-staging") ;;
+    production) namespaces=("alt-apps" "alt-database" "alt-search" "alt-auth" "alt-ingress" "alt-observability" "alt-production") ;;
+    *) namespaces=("alt-$ENV") ;;
+  esac
+
+  for ns in "${namespaces[@]}"; do
+    echo -e "${CYAN}  ↪ namespace: $ns${NC}"
+    for kind in deployment statefulset daemonset; do
+      mapfile -t res < <(kubectl -n "$ns" get "$kind" -o name 2>/dev/null || true)
+      for r in "${res[@]}"; do
+        [[ -z "$r" ]] && continue
+        echo -e "${CYAN}    ↻ restarting $r${NC}"
+        kubectl -n "$ns" rollout restart "$r" || echo -e "${YELLOW}⚠ restart failed on $r (ignored)${NC}"
+      done
     done
   done
 }
 
 wait_rollout(){
   $DRY && { echo -e "${YELLOW}dry-run: skip rollout status${NC}"; return; }
-  echo -e "${CYAN}▶ waiting rollout status${NC}"
-  for kind in deployment statefulset daemonset; do
-    for r in $(kubectl -n "$TARGET_NS" get "$kind" -o name); do
-      echo -e "${CYAN}  ↪ $r${NC}"
-      kubectl -n "$TARGET_NS" rollout status "$r" --timeout=180s || {
-        echo -e "${RED}✗ rollout failed: $r${NC}"; exit 1; }
+
+  echo -e "${CYAN}▶ waiting for all rollouts to complete${NC}"
+
+  # 全namespaceのロールアウト状況を監視
+  local namespaces=()
+  case "$ENV" in
+    development) namespaces=("alt-dev") ;;
+    staging) namespaces=("alt-staging") ;;
+    production) namespaces=("alt-apps" "alt-database" "alt-search" "alt-auth" "alt-ingress" "alt-observability" "alt-production") ;;
+    *) namespaces=("alt-$ENV") ;;
+  esac
+
+  for ns in "${namespaces[@]}"; do
+    echo -e "${CYAN}  ↪ namespace: $ns${NC}"
+    for kind in deployment statefulset daemonset; do
+      mapfile -t res < <(kubectl -n "$ns" get "$kind" -o name 2>/dev/null || true)
+      for r in "${res[@]}"; do
+        [[ -z "$r" ]] && continue
+        echo -e "${CYAN}    ↪ $r${NC}"
+        kubectl -n "$ns" rollout status "$r" --timeout=300s || {
+          echo -e "${RED}✗ rollout failed: $r${NC}"; exit 1;
+        }
+      done
     done
   done
   echo -e "${GREEN}✓ all rollouts complete${NC}"
@@ -121,11 +254,10 @@ wait_rollout(){
 
 main(){
   local start=$(date +%s)
-  apply_overlay
-  patch_images
+  deploy_charts
   rollout_restart_all
   wait_rollout
-  echo -e "${GREEN}Done in $(( $(date +%s) - start ))s${NC}"
+  echo -e "${GREEN}Helm deployment completed in $(( $(date +%s) - start ))s${NC}"
 }
 
 main "$@"
