@@ -1,0 +1,211 @@
+# Default values for clickhouse
+# ClickHouse database for Analytics and Data Warehousing
+
+# Image configuration
+image:
+  repository: clickhouse/clickhouse-server
+  tag: "24.1-alpine"
+  pullPolicy: IfNotPresent
+
+# Replica configuration
+replicaCount: 1
+
+# Service account
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+  annotations: {}
+  name: ""
+
+# Pod configuration
+podAnnotations:
+  app.kubernetes.io/component: "analytics-database"
+
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 101
+  runAsUser: 101
+  runAsGroup: 101
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 101
+
+# Service configuration
+service:
+  type: ClusterIP
+  httpPort: 8123
+  tcpPort: 9000
+  mysqlPort: 9004
+  postgresqlPort: 9005
+  interserverPort: 9009
+  annotations: {}
+  
+  headless:
+    enabled: true
+    annotations: {}
+
+# Authentication configuration (analytics-specific)
+auth:
+  username: "clickhouse_user"
+  password: "analytics_secure_password"
+  database: "alt_analytics"
+  existingSecret: ""
+  secretKeys:
+    password: "clickhouse-password"
+    username: "username"
+    database: "database"
+  
+  # SHA256 hash of password (optional, for users.xml)
+  passwordSha256: ""
+  
+  # Additional users for analytics
+  additionalUsers: []
+    # - username: "readonly_user"
+    #   password: "readonly_password"
+    #   passwordSha256: ""
+    #   networks: ["10.0.0.0/8", "172.16.0.0/12"]
+    #   profile: "readonly"
+    #   quota: "default"
+    #   databases: ["alt_analytics"]
+    #   grants:
+    #     - "GRANT SELECT ON alt_analytics.* TO readonly_user"
+  
+  # Extra authentication secrets
+  extraSecrets: {}
+
+# ClickHouse configuration optimized for RSS analytics
+clickhouse:
+  # Logger configuration
+  logger:
+    level: "information"
+    size: "1000M"
+    count: 10
+  
+  # Performance settings optimized for analytics workloads
+  performance:
+    maxMemoryUsage: 10000000000  # 10GB
+    maxMemoryUsageForUser: 10000000000  # 10GB
+    maxConcurrentQueries: 100
+    maxServerMemoryUsage: 0  # 0 = auto
+    backgroundPoolSize: 16
+    backgroundMergesConcurrencyRatio: 2
+    backgroundSchedulePoolSize: 16
+  
+  # Compression settings for analytics data
+  compression:
+    method: "lz4"
+    level: 1
+  
+  # MergeTree settings optimized for RSS feed analytics
+  mergeTree:
+    maxSuspiciousBrokenParts: 5
+    partsToDelayInsert: 150
+    partsToThrowInsert: 300
+    maxPartsInTotal: 100000
+    mergeMaxBlockSize: 8192
+    maxBytesToMergeAtMaxSpaceInPool: 1073741824  # 1GB
+  
+  # Query profiles for different workloads
+  profiles:
+    default:
+      maxMemoryUsage: 10000000000  # 10GB
+      useUncompressedCache: 0
+      loadBalancing: "random"
+      maxExecutionTime: 300  # 5 minutes
+      maxBlockSize: 65536
+      maxInsertBlockSize: 1048576
+  
+  # Network settings
+  network:
+    maxConnections: 1024
+    keepAliveTimeout: 10
+    maxConcurrentQueriesForUser: 64
+  
+  # Default table engine for analytics
+  defaultTableEngine: "MergeTree"
+  
+  # Custom configuration (XML)
+  customConfig: ""
+
+# SSL configuration
+ssl:
+  enabled: false
+  secretName: "clickhouse-ssl-certs"
+  verificationMode: "relaxed"
+  certPath: "/ssl/server.crt"
+  keyPath: "/ssl/server.key"
+  caPath: "/ssl/ca.crt"
+
+# Persistence configuration optimized for analytics workloads
+persistence:
+  data:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 100Gi
+    storageClass: ""
+  
+  logs:
+    enabled: false
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    storageClass: ""
+
+# Health checks
+livenessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+readinessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+# Resources optimized for analytics workloads
+resources:
+  limits:
+    cpu: 2
+    memory: 8Gi
+  requests:
+    cpu: 1
+    memory: 4Gi
+
+# Node selection
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Extra configuration
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
+
+# Common labels and annotations
+commonLabels:
+  app.kubernetes.io/name: clickhouse
+  app.kubernetes.io/part-of: alt
+  app.kubernetes.io/component: analytics-database
+
+commonAnnotations: {}
+
+# Dependencies configuration
+secrets:
+  enabled: true
+
+ssl:
+  enabled: false
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""

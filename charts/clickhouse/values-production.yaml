@@ -1,0 +1,254 @@
+# Production environment values for clickhouse
+
+# Production-specific image settings
+image:
+  repository: clickhouse/clickhouse-server
+  tag: "24.1-alpine"
+  pullPolicy: IfNotPresent
+
+# Production namespace
+namespace: alt-analytics
+
+# Production resource requirements (optimized for analytics workloads)
+resources:
+  limits:
+    cpu: "8"
+    memory: "32Gi"
+  requests:
+    cpu: "4"
+    memory: "16Gi"
+
+# Analytics-specific database configuration
+auth:
+  username: "clickhouse_user"
+  database: "alt_analytics"
+  existingSecret: "clickhouse-credentials"
+  
+  # Additional production users
+  additionalUsers:
+    - username: "analytics_readonly"
+      passwordSha256: ""  # Set via external secret
+      networks: 
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+        - "192.168.0.0/16"
+      profile: "readonly"
+      quota: "default"
+      databases: ["alt_analytics", "system"]
+      grants:
+        - "GRANT SELECT ON alt_analytics.* TO analytics_readonly"
+        - "GRANT SELECT ON system.* TO analytics_readonly"
+    
+    - username: "analytics_writer"
+      passwordSha256: ""  # Set via external secret
+      networks:
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+      profile: "default"
+      quota: "default"
+      databases: ["alt_analytics"]
+      grants:
+        - "GRANT INSERT, SELECT ON alt_analytics.* TO analytics_writer"
+
+# ClickHouse production configuration (analytics-optimized)
+clickhouse:
+  # Enhanced logger for production
+  logger:
+    level: "information"
+    size: "5000M"
+    count: 20
+  
+  # Production performance settings optimized for RSS analytics
+  performance:
+    maxMemoryUsage: 26843545600  # 25GB
+    maxMemoryUsageForUser: 21474836480  # 20GB
+    maxConcurrentQueries: 200
+    maxServerMemoryUsage: 0  # Auto-detect
+    backgroundPoolSize: 32
+    backgroundMergesConcurrencyRatio: 4
+    backgroundSchedulePoolSize: 32
+  
+  # Compression optimized for analytics data
+  compression:
+    method: "zstd"
+    level: 3
+  
+  # MergeTree settings optimized for large-scale RSS analytics
+  mergeTree:
+    maxSuspiciousBrokenParts: 10
+    partsToDelayInsert: 300
+    partsToThrowInsert: 600
+    maxPartsInTotal: 200000
+    mergeMaxBlockSize: 16384
+    maxBytesToMergeAtMaxSpaceInPool: 5368709120  # 5GB
+  
+  # Production query profiles
+  profiles:
+    default:
+      maxMemoryUsage: 21474836480  # 20GB
+      useUncompressedCache: 1
+      loadBalancing: "random"
+      maxExecutionTime: 600  # 10 minutes
+      maxBlockSize: 131072
+      maxInsertBlockSize: 2097152
+  
+  # Network settings for production
+  network:
+    maxConnections: 2048
+    keepAliveTimeout: 30
+    maxConcurrentQueriesForUser: 128
+
+# SSL configuration for production
+ssl:
+  enabled: true
+  secretName: server-ssl-secret
+  verificationMode: "strict"
+
+# Environment variables
+env:
+  CLICKHOUSE_DB: "alt_analytics"
+  CLICKHOUSE_USER: "clickhouse_user"
+  CH_HOST: "clickhouse.alt-analytics.svc.cluster.local"
+  CH_HTTP_PORT: "8123"
+  CH_TCP_PORT: "9000"
+  CH_SSL_MODE: "require"
+
+# Persistent volume configuration (analytics workload optimized)
+persistence:
+  data:
+    enabled: true
+    size: "10Gi"
+    storageClass: "local-storage"
+    accessModes: ["ReadWriteOnce"]
+  
+  logs:
+    enabled: false
+    size: "50Gi"
+    storageClass: "local-storage"
+    accessModes: ["ReadWriteOnce"]
+
+# Backup configuration for analytics data
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention: "30d"
+  storage:
+    type: "s3"
+    bucket: "alt-backup"
+    path: "clickhouse-analytics"
+
+# Security context for production
+securityContext:
+  runAsUser: 101
+  runAsGroup: 101
+  fsGroup: 101
+
+# Production-specific tolerations for analytics workloads
+tolerations:
+  - key: "analytics-database"
+    operator: "Equal"
+    value: "clickhouse"
+    effect: "NoSchedule"
+
+# Production-specific affinity for analytics database
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: "node-type"
+              operator: "In"
+              values: ["analytics-database"]
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: "app.kubernetes.io/name"
+                operator: "In"
+                values: ["clickhouse"]
+          topologyKey: "kubernetes.io/hostname"
+
+# Enhanced monitoring for production analytics
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: "30s"
+    scrapeTimeout: "10s"
+    path: "/metrics"
+  
+  # ClickHouse-specific metrics
+  metrics:
+    enabled: true
+    port: 9363
+    path: "/metrics"
+
+# Network policies for security
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-analytics
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: analytics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-backend
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alt-backend
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-monitoring
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: prometheus
+
+# Production-specific pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Analytics-specific configurations
+analytics:
+  # Retention policies for different data types
+  retention:
+    feedMetrics: "90d"      # Feed consumption metrics
+    userActivity: "365d"    # User activity analytics
+    systemMetrics: "30d"    # System performance metrics
+    errorLogs: "14d"        # Error and debug logs
+  
+  # Partitioning strategy for analytics tables
+  partitioning:
+    strategy: "monthly"     # Monthly partitions
+    retentionPolicy: "auto" # Auto-cleanup old partitions
+  
+  # Materialized views for common analytics queries
+  materializedViews:
+    enabled: true
+    feedPopularity: true    # Most popular feeds
+    userEngagement: true    # User engagement metrics
+    contentTrends: true     # Content trending analysis
+
+# Custom ClickHouse configuration for RSS analytics
+clickhouse:
+  customConfig: |
+    <!-- RSS Analytics specific settings -->
+    <dictionaries_config>/etc/clickhouse-server/dictionaries.xml</dictionaries_config>
+    
+    <!-- Custom settings for RSS data ingestion -->
+    <async_insert_threads>8</async_insert_threads>
+    <async_insert_max_data_size>1000000</async_insert_max_data_size>
+    <async_insert_busy_timeout_ms>200</async_insert_busy_timeout_ms>
+    
+    <!-- RSS-specific table defaults -->
+    <default_replica_path>/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
+    <default_replica_name>{replica}</default_replica_name>

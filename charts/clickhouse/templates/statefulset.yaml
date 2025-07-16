@@ -1,0 +1,240 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "clickhouse.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clickhouse.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  serviceName: {{ include "clickhouse.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "clickhouse.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clickhouse.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "clickhouse.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: init-data-dir
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p {{ include "clickhouse.dataDir" . }}
+              mkdir -p {{ include "clickhouse.logDir" . }}
+              chown -R 101:101 {{ include "clickhouse.dataDir" . }}
+              chown -R 101:101 {{ include "clickhouse.logDir" . }}
+              chmod 755 {{ include "clickhouse.dataDir" . }}
+              chmod 755 {{ include "clickhouse.logDir" . }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ include "clickhouse.dataDir" . }}
+            - name: logs
+              mountPath: {{ include "clickhouse.logDir" . }}
+          securityContext:
+            runAsUser: 0
+        {{- if .Values.ssl.enabled }}
+        - name: ssl-cert-setup
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /ssl
+              cp /ssl-certs/* /ssl/
+              chmod 600 /ssl/*.key
+              chmod 644 /ssl/*.crt
+              chown 101:101 /ssl/*
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /ssl-certs
+              readOnly: true
+            - name: ssl-data
+              mountPath: /ssl
+          securityContext:
+            runAsUser: 0
+        {{- end }}
+      containers:
+        - name: clickhouse
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8123
+              protocol: TCP
+            - name: tcp
+              containerPort: 9000
+              protocol: TCP
+            - name: mysql
+              containerPort: 9004
+              protocol: TCP
+            - name: postgresql
+              containerPort: 9005
+              protocol: TCP
+            - name: interserver
+              containerPort: 9009
+              protocol: TCP
+          env:
+            - name: CLICKHOUSE_DB
+              value: {{ .Values.auth.database | quote }}
+            - name: CLICKHOUSE_USER
+              value: {{ .Values.auth.username | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "clickhouse.fullname" .)) }}
+                  key: {{ .Values.auth.secretKeys.password }}
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+            {{- if .Values.ssl.enabled }}
+            - name: CLICKHOUSE_SSL_CERT_FILE
+              value: /ssl/server.crt
+            - name: CLICKHOUSE_SSL_KEY_FILE
+              value: /ssl/server.key
+            - name: CLICKHOUSE_SSL_CA_FILE
+              value: /ssl/ca.crt
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ include "clickhouse.dataDir" . }}
+            - name: logs
+              mountPath: {{ include "clickhouse.logDir" . }}
+            - name: config
+              mountPath: /etc/clickhouse-server/config.xml
+              subPath: config.xml
+              readOnly: true
+            - name: config
+              mountPath: /etc/clickhouse-server/users.xml
+              subPath: users.xml
+              readOnly: true
+            {{- if .Values.ssl.enabled }}
+            - name: ssl-data
+              mountPath: /ssl
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+              {{- if .Values.ssl.enabled }}
+              scheme: HTTPS
+              {{- end }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+              {{- if .Values.ssl.enabled }}
+              scheme: HTTPS
+              {{- end }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "clickhouse.fullname" . }}-config
+        {{- if not .Values.persistence.logs.enabled }}
+        - name: logs
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.ssl.enabled }}
+        - name: ssl-certs
+          secret:
+            secretName: {{ .Values.ssl.secretName }}
+            defaultMode: 0600
+        - name: ssl-data
+          emptyDir: {}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "clickhouse.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- range .Values.persistence.data.accessModes }}
+          - {{ . | quote }}
+          {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.data.size | quote }}
+        {{- if .Values.persistence.data.storageClass }}
+        {{- if (eq "-" .Values.persistence.data.storageClass) }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: {{ .Values.persistence.data.storageClass | quote }}
+        {{- end }}
+        {{- end }}
+    {{- if .Values.persistence.logs.enabled }}
+    - metadata:
+        name: logs
+        labels:
+          {{- include "clickhouse.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- range .Values.persistence.logs.accessModes }}
+          - {{ . | quote }}
+          {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.logs.size | quote }}
+        {{- if .Values.persistence.logs.storageClass }}
+        {{- if (eq "-" .Values.persistence.logs.storageClass) }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: {{ .Values.persistence.logs.storageClass | quote }}
+        {{- end }}
+        {{- end }}
+    {{- end }}

@@ -1,0 +1,220 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "clickhouse.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clickhouse.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  config.xml: |
+    <?xml version="1.0"?>
+    <clickhouse>
+        <!-- Logger -->
+        <logger>
+            <level>{{ .Values.clickhouse.logger.level }}</level>
+            <log>{{ include "clickhouse.logDir" . }}/clickhouse-server.log</log>
+            <errorlog>{{ include "clickhouse.logDir" . }}/clickhouse-server.err.log</errorlog>
+            <size>{{ .Values.clickhouse.logger.size }}</size>
+            <count>{{ .Values.clickhouse.logger.count }}</count>
+        </logger>
+
+        <!-- HTTP and TCP ports -->
+        <http_port>8123</http_port>
+        <tcp_port>9000</tcp_port>
+        <mysql_port>9004</mysql_port>
+        <postgresql_port>9005</postgresql_port>
+        <interserver_http_port>9009</interserver_http_port>
+
+        <!-- Listen on all interfaces -->
+        <listen_host>0.0.0.0</listen_host>
+
+        <!-- Data and temp paths -->
+        <path>{{ include "clickhouse.dataDir" . }}/</path>
+        <tmp_path>{{ include "clickhouse.dataDir" . }}/tmp/</tmp_path>
+        <user_files_path>{{ include "clickhouse.dataDir" . }}/user_files/</user_files_path>
+        <format_schema_path>{{ include "clickhouse.dataDir" . }}/format_schemas/</format_schema_path>
+
+        <!-- Users configuration -->
+        <users_config>users.xml</users_config>
+
+        <!-- Default database -->
+        <default_database>{{ .Values.auth.database }}</default_database>
+
+        <!-- Memory and performance settings optimized for analytics -->
+        <max_memory_usage>{{ .Values.clickhouse.performance.maxMemoryUsage }}</max_memory_usage>
+        <max_memory_usage_for_user>{{ .Values.clickhouse.performance.maxMemoryUsageForUser }}</max_memory_usage_for_user>
+        <max_concurrent_queries>{{ .Values.clickhouse.performance.maxConcurrentQueries }}</max_concurrent_queries>
+        <max_server_memory_usage>{{ .Values.clickhouse.performance.maxServerMemoryUsage }}</max_server_memory_usage>
+        
+        <!-- Background processing pools -->
+        <background_pool_size>{{ .Values.clickhouse.performance.backgroundPoolSize }}</background_pool_size>
+        <background_merges_mutations_concurrency_ratio>{{ .Values.clickhouse.performance.backgroundMergesConcurrencyRatio }}</background_merges_mutations_concurrency_ratio>
+        <background_schedule_pool_size>{{ .Values.clickhouse.performance.backgroundSchedulePoolSize }}</background_schedule_pool_size>
+
+        <!-- Compression settings for analytics workloads -->
+        <compression>
+            <case>
+                <method>{{ .Values.clickhouse.compression.method }}</method>
+                <level>{{ .Values.clickhouse.compression.level }}</level>
+            </case>
+        </compression>
+
+        <!-- MergeTree settings optimized for RSS analytics -->
+        <merge_tree>
+            <max_suspicious_broken_parts>{{ .Values.clickhouse.mergeTree.maxSuspiciousBrokenParts }}</max_suspicious_broken_parts>
+            <parts_to_delay_insert>{{ .Values.clickhouse.mergeTree.partsToDelayInsert }}</parts_to_delay_insert>
+            <parts_to_throw_insert>{{ .Values.clickhouse.mergeTree.partsToThrowInsert }}</parts_to_throw_insert>
+            <max_parts_in_total>{{ .Values.clickhouse.mergeTree.maxPartsInTotal }}</max_parts_in_total>
+            <merge_max_block_size>{{ .Values.clickhouse.mergeTree.mergeMaxBlockSize }}</merge_max_block_size>
+            <max_bytes_to_merge_at_max_space_in_pool>{{ .Values.clickhouse.mergeTree.maxBytesToMergeAtMaxSpaceInPool }}</max_bytes_to_merge_at_max_space_in_pool>
+        </merge_tree>
+
+        <!-- Query settings optimized for analytics -->
+        <profiles>
+            <default>
+                <max_memory_usage>{{ .Values.clickhouse.profiles.default.maxMemoryUsage }}</max_memory_usage>
+                <use_uncompressed_cache>{{ .Values.clickhouse.profiles.default.useUncompressedCache }}</use_uncompressed_cache>
+                <load_balancing>{{ .Values.clickhouse.profiles.default.loadBalancing }}</load_balancing>
+                <max_execution_time>{{ .Values.clickhouse.profiles.default.maxExecutionTime }}</max_execution_time>
+                <max_block_size>{{ .Values.clickhouse.profiles.default.maxBlockSize }}</max_block_size>
+                <max_insert_block_size>{{ .Values.clickhouse.profiles.default.maxInsertBlockSize }}</max_insert_block_size>
+            </default>
+            <readonly>
+                <readonly>1</readonly>
+            </readonly>
+        </profiles>
+
+        <!-- Quotas for resource management -->
+        <quotas>
+            <default>
+                <interval>
+                    <duration>3600</duration>
+                    <queries>0</queries>
+                    <errors>0</errors>
+                    <result_rows>0</result_rows>
+                    <read_rows>0</read_rows>
+                    <execution_time>0</execution_time>
+                </interval>
+            </default>
+        </quotas>
+
+        <!-- Network settings -->
+        <max_connections>{{ .Values.clickhouse.network.maxConnections }}</max_connections>
+        <keep_alive_timeout>{{ .Values.clickhouse.network.keepAliveTimeout }}</keep_alive_timeout>
+        <max_concurrent_queries_for_user>{{ .Values.clickhouse.network.maxConcurrentQueriesForUser }}</max_concurrent_queries_for_user>
+
+        <!-- Database and table engines -->
+        <default_table_engine>{{ .Values.clickhouse.defaultTableEngine }}</default_table_engine>
+
+        <!-- Analytics-specific settings -->
+        <query_log>
+            <database>system</database>
+            <table>query_log</table>
+            <partition_by>toYYYYMM(event_date)</partition_by>
+            <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        </query_log>
+
+        <query_thread_log>
+            <database>system</database>
+            <table>query_thread_log</table>
+            <partition_by>toYYYYMM(event_date)</partition_by>
+            <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        </query_thread_log>
+
+        <part_log>
+            <database>system</database>
+            <table>part_log</table>
+            <partition_by>toYYYYMM(event_date)</partition_by>
+            <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        </part_log>
+
+        {{- if .Values.ssl.enabled }}
+        <!-- SSL Configuration -->
+        <https_port>8443</https_port>
+        <tcp_port_secure>9440</tcp_port_secure>
+        <openSSL>
+            <server>
+                <certificateFile>/ssl/server.crt</certificateFile>
+                <privateKeyFile>/ssl/server.key</privateKeyFile>
+                <caConfig>/ssl/ca.crt</caConfig>
+                <verificationMode>{{ .Values.ssl.verificationMode }}</verificationMode>
+                <loadDefaultCAFile>true</loadDefaultCAFile>
+                <cacheSessions>true</cacheSessions>
+                <disableProtocols>sslv2,sslv3</disableProtocols>
+                <preferServerCiphers>true</preferServerCiphers>
+            </server>
+        </openSSL>
+        {{- end }}
+
+        <!-- Custom configuration -->
+        {{- with .Values.clickhouse.customConfig }}
+        {{ . | nindent 8 }}
+        {{- end }}
+    </clickhouse>
+
+  users.xml: |
+    <?xml version="1.0"?>
+    <clickhouse>
+        <users>
+            <!-- Default user (restricted) -->
+            <default>
+                <password></password>
+                <networks>
+                    <ip>::1</ip>
+                    <ip>127.0.0.1</ip>
+                </networks>
+                <profile>default</profile>
+                <quota>default</quota>
+                <databases>
+                    <database>system</database>
+                </databases>
+            </default>
+
+            <!-- Analytics user for RSS data -->
+            <{{ .Values.auth.username }}>
+                <password_sha256_hex>{{ .Values.auth.passwordSha256 | default "" }}</password_sha256_hex>
+                <networks>
+                    <ip>::/0</ip>
+                </networks>
+                <profile>default</profile>
+                <quota>default</quota>
+                <databases>
+                    <database>{{ .Values.auth.database }}</database>
+                    <database>system</database>
+                </databases>
+                <grants>
+                    <query>GRANT ALL ON {{ .Values.auth.database }}.* TO {{ .Values.auth.username }}</query>
+                    <query>GRANT SELECT ON system.* TO {{ .Values.auth.username }}</query>
+                </grants>
+            </{{ .Values.auth.username }}>
+
+            {{- range .Values.auth.additionalUsers }}
+            <{{ .username }}>
+                <password_sha256_hex>{{ .passwordSha256 }}</password_sha256_hex>
+                <networks>
+                    {{- range .networks }}
+                    <ip>{{ . }}</ip>
+                    {{- end }}
+                </networks>
+                <profile>{{ .profile | default "default" }}</profile>
+                <quota>{{ .quota | default "default" }}</quota>
+                <databases>
+                    {{- range .databases }}
+                    <database>{{ . }}</database>
+                    {{- end }}
+                </databases>
+                {{- if .grants }}
+                <grants>
+                    {{- range .grants }}
+                    <query>{{ . }}</query>
+                    {{- end }}
+                </grants>
+                {{- end }}
+            </{{ .username }}>
+            {{- end }}
+        </users>
+    </clickhouse>

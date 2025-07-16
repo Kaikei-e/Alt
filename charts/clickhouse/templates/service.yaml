@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "clickhouse.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clickhouse.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+    - name: tcp
+      port: {{ .Values.service.tcpPort }}
+      targetPort: tcp
+      protocol: TCP
+    - name: mysql
+      port: {{ .Values.service.mysqlPort }}
+      targetPort: mysql
+      protocol: TCP
+    - name: postgresql
+      port: {{ .Values.service.postgresqlPort }}
+      targetPort: postgresql
+      protocol: TCP
+    - name: interserver
+      port: {{ .Values.service.interserverPort }}
+      targetPort: interserver
+      protocol: TCP
+  selector:
+    {{- include "clickhouse.selectorLabels" . | nindent 4 }}
+---
+{{- if .Values.service.headless.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "clickhouse.fullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clickhouse.labels" . | nindent 4 }}
+    service-type: headless
+  {{- with .Values.service.headless.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: http
+      port: {{ .Values.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+    - name: tcp
+      port: {{ .Values.service.tcpPort }}
+      targetPort: tcp
+      protocol: TCP
+    - name: mysql
+      port: {{ .Values.service.mysqlPort }}
+      targetPort: mysql
+      protocol: TCP
+    - name: postgresql
+      port: {{ .Values.service.postgresqlPort }}
+      targetPort: postgresql
+      protocol: TCP
+    - name: interserver
+      port: {{ .Values.service.interserverPort }}
+      targetPort: interserver
+      protocol: TCP
+  selector:
+    {{- include "clickhouse.selectorLabels" . | nindent 4 }}
+{{- end }}
