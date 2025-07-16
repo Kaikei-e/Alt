@@ -59,8 +59,8 @@ env:
 # Persistent volume configuration (auth service optimized)
 persistence:
   enabled: true
-  size: "10Gi"
-  storageClass: "alt-fast-ssd"
+  size: "5Gi"
+  storageClass: "local-storage"
   accessMode: "ReadWriteOnce"
 
 # Backup configuration

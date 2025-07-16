@@ -25,7 +25,7 @@ env:
   DB_SSL_KEY: "/app/ssl/server.key"
   DATABASE_URL: "postgresql://alt_db_user:$(DB_PASSWORD)@db.alt-database.svc.cluster.local:5432/alt?sslmode=prefer&sslcert=/app/ssl/server.crt&sslkey=/app/ssl/server.key&sslrootcert=/app/ssl/ca.crt"
 
-# Enable SSL for production
+# Enable SSL for production (secure)
 ssl:
   enabled: true
 

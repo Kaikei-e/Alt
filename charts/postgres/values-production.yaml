@@ -29,7 +29,7 @@ cluster:
         name: "postgres-credentials"
         
   storage:
-    size: "10Gi"
+    size: "8Gi"
     storageClass: "local-storage"
     
   monitoring:
@@ -92,7 +92,7 @@ ha:
 # Persistent volume configuration
 persistence:
   enabled: false
-  size: "10Gi"
+  size: "8Gi"
   storageClass: "local-storage"
   accessMode: "ReadWriteOnce"
 

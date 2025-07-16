@@ -4,8 +4,8 @@
 # Environment configuration
 environment: "production"
 
-# Replica configuration for high availability
-replicaCount: 3
+# Replica configuration for OSS single-node deployment
+replicaCount: 1
 
 # Update strategy for zero-downtime deployments
 updateStrategy:
@@ -123,19 +123,19 @@ persistence:
   enabled: true
   accessModes:
     - ReadWriteOnce
-  size: 100Gi
-  storageClass: "fast-ssd"
+  size: 8Gi
+  storageClass: "local-storage"
   dataPath: "/meili_data"
 
 # Snapshots configuration for backup
 snapshots:
   enabled: true
   path: "/snapshots"
-  schedule: "0 1 * * *"  # Daily at 1 AM
+  schedule: "86400"  # Daily (24 hours in seconds)
   persistence:
     enabled: true
-    size: 50Gi
-    storageClass: "backup-storage"
+    size: 3Gi
+    storageClass: "local-storage"
     accessModes:
       - ReadWriteOnce
 
@@ -145,8 +145,8 @@ dumps:
   path: "/dumps"
   persistence:
     enabled: true
-    size: 25Gi
-    storageClass: "backup-storage"
+    size: 3Gi
+    storageClass: "local-storage"
     accessModes:
       - ReadWriteOnce
 

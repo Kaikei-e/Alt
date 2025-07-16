@@ -34,8 +34,8 @@ cluster:
         name: "kratos-postgres-credentials"
         
   storage:
-    size: "20Gi"  # Smaller storage for identity database
-    storageClass: "alt-fast-ssd"
+    size: "5Gi"  # Smaller storage for identity database
+    storageClass: "local-storage"
     
   monitoring:
     enabled: true
@@ -128,8 +128,8 @@ ha:
 # Persistent volume configuration
 persistence:
   enabled: true
-  size: "20Gi"  # Smaller storage for identity data
-  storageClass: "alt-fast-ssd"
+  size: "5Gi"  # Smaller storage for identity data
+  storageClass: "local-storage"
   accessMode: "ReadWriteOnce"
 
 # PostgreSQL configuration for production identity workloads

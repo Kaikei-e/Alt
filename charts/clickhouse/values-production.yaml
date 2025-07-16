@@ -7,28 +7,28 @@ image:
   pullPolicy: IfNotPresent
 
 # Production namespace
-namespace: alt-analytics
+namespace: alt-database
 
-# Production resource requirements (optimized for analytics workloads)
+# OSS resource requirements (minimal for development)
 resources:
   limits:
-    cpu: "8"
-    memory: "32Gi"
+    cpu: "1"
+    memory: "2Gi"
   requests:
-    cpu: "4"
-    memory: "16Gi"
+    cpu: "0.5"
+    memory: "1Gi"
 
 # Analytics-specific database configuration
 auth:
   username: "clickhouse_user"
   database: "alt_analytics"
   existingSecret: "clickhouse-credentials"
-  
+
   # Additional production users
   additionalUsers:
     - username: "analytics_readonly"
       passwordSha256: ""  # Set via external secret
-      networks: 
+      networks:
         - "10.0.0.0/8"
         - "172.16.0.0/12"
         - "192.168.0.0/16"
@@ -38,7 +38,7 @@ auth:
       grants:
         - "GRANT SELECT ON alt_analytics.* TO analytics_readonly"
         - "GRANT SELECT ON system.* TO analytics_readonly"
-    
+
     - username: "analytics_writer"
       passwordSha256: ""  # Set via external secret
       networks:
@@ -57,7 +57,7 @@ clickhouse:
     level: "information"
     size: "5000M"
     count: 20
-  
+
   # Production performance settings optimized for RSS analytics
   performance:
     maxMemoryUsage: 26843545600  # 25GB
@@ -67,12 +67,12 @@ clickhouse:
     backgroundPoolSize: 32
     backgroundMergesConcurrencyRatio: 4
     backgroundSchedulePoolSize: 32
-  
+
   # Compression optimized for analytics data
   compression:
     method: "zstd"
     level: 3
-  
+
   # MergeTree settings optimized for large-scale RSS analytics
   mergeTree:
     maxSuspiciousBrokenParts: 10
@@ -81,7 +81,7 @@ clickhouse:
     maxPartsInTotal: 200000
     mergeMaxBlockSize: 16384
     maxBytesToMergeAtMaxSpaceInPool: 5368709120  # 5GB
-  
+
   # Production query profiles
   profiles:
     default:
@@ -91,7 +91,7 @@ clickhouse:
       maxExecutionTime: 600  # 10 minutes
       maxBlockSize: 131072
       maxInsertBlockSize: 2097152
-  
+
   # Network settings for production
   network:
     maxConnections: 2048
@@ -117,13 +117,13 @@ env:
 persistence:
   data:
     enabled: true
-    size: "10Gi"
+    size: "8Gi"
     storageClass: "local-storage"
     accessModes: ["ReadWriteOnce"]
-  
+
   logs:
     enabled: false
-    size: "50Gi"
+    size: "8Gi"
     storageClass: "local-storage"
     accessModes: ["ReadWriteOnce"]
 
@@ -179,7 +179,7 @@ monitoring:
     interval: "30s"
     scrapeTimeout: "10s"
     path: "/metrics"
-  
+
   # ClickHouse-specific metrics
   metrics:
     enabled: true
@@ -225,12 +225,12 @@ analytics:
     userActivity: "365d"    # User activity analytics
     systemMetrics: "30d"    # System performance metrics
     errorLogs: "14d"        # Error and debug logs
-  
+
   # Partitioning strategy for analytics tables
   partitioning:
     strategy: "monthly"     # Monthly partitions
     retentionPolicy: "auto" # Auto-cleanup old partitions
-  
+
   # Materialized views for common analytics queries
   materializedViews:
     enabled: true
@@ -239,16 +239,15 @@ analytics:
     contentTrends: true     # Content trending analysis
 
 # Custom ClickHouse configuration for RSS analytics
-clickhouse:
   customConfig: |
     <!-- RSS Analytics specific settings -->
     <dictionaries_config>/etc/clickhouse-server/dictionaries.xml</dictionaries_config>
-    
+
     <!-- Custom settings for RSS data ingestion -->
     <async_insert_threads>8</async_insert_threads>
     <async_insert_max_data_size>1000000</async_insert_max_data_size>
     <async_insert_busy_timeout_ms>200</async_insert_busy_timeout_ms>
-    
+
     <!-- RSS-specific table defaults -->
     <default_replica_path>/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
     <default_replica_name>{replica}</default_replica_name>

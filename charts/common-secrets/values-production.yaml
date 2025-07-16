@@ -52,6 +52,11 @@ services:
       HF_TOKEN: "aGZfcHJvZF90b2tlbl9leGFtcGxl"
       MEILI_MASTER_KEY: "bWVpbGlzZWFyY2hfcHJvZF9tYXN0ZXJfa2V5"
       MEILISEARCH_API_KEY: "bWVpbGlzZWFyY2hfcHJvZF9hcGlfa2V5"
+      PRE_PROCESSOR_DB_PASSWORD: "UHJlUHJvY2Vzc29yUHJvZFBhc3N3b3Jk"  # base64: PreProcessorProdPassword
+      DB_TAG_GENERATOR_PASSWORD: "VGFnR2VuZXJhdG9yUHJvZFBhc3N3b3Jk"  # base64: TagGeneratorProdPassword
+      SEARCH_INDEXER_DB_PASSWORD: "U2VhcmNoSW5kZXhlclByb2RQYXNzd29yZA=="  # base64: SearchIndexerProdPassword
+      CLICKHOUSE_PASSWORD: "Q2xpY2tIb3VzZVByb2RQYXNzd29yZA=="  # base64: ClickHouseProdPassword
+      APP_CLICKHOUSE_PASSWORD: "Q2xpY2tIb3VzZUFwcFByb2RQYXNzd29yZA=="  # base64: ClickHouseAppProdPassword
 
   preProcessor:
     secrets:
