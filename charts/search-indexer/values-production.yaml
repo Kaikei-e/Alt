@@ -1,0 +1,86 @@
+# Production values for search-indexer
+replicaCount: 1
+
+image:
+  repository: search-indexer
+  pullPolicy: IfNotPresent
+  tag: "production"
+
+service:
+  create: true
+  type: ClusterIP
+  port: 9100
+  targetPort: 9100
+  protocol: TCP
+  name: http
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+configMap:
+  create: true
+  name: search-indexer-config
+  data:
+    LOG_LEVEL: "info"
+    SERVICE_NAME: "search-indexer"
+    BATCH_SIZE: "1000"
+    INDEX_INTERVAL: "300"
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+env:
+  DB_HOST: "db.alt-database.svc.cluster.local"
+  DB_NAME: "alt"
+  DB_PORT: "5432"
+  DB_SSL_MODE: "require"
+  LOG_LEVEL: "info"
+  SEARCH_INDEXER_DB_USER: "search_indexer_user"
+  SERVICE_NAME: "search-indexer"
+  MEILISEARCH_HOST: "http://meilisearch.alt-search.svc.cluster.local:7700"
+  MEILISEARCH_TIMEOUT: "30s"
+  BATCH_SIZE: "1000"
+  INDEX_INTERVAL: "300"
+
+envFromSecret:
+  name: search-indexer-secrets
+  keys:
+    - SEARCH_INDEXER_DB_PASSWORD
+    - MEILISEARCH_MASTER_KEY
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 2000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+commonLabels: {}
+commonAnnotations: {}
+podLabels: {}
+podAnnotations: {}
+imagePullSecrets: []
+volumeMounts: []
+volumes: []
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
