@@ -73,14 +73,26 @@ func (g *HelmGateway) TemplateChart(ctx context.Context, chart domain.Chart, opt
 
 // DeployChart installs or upgrades a Helm chart
 func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	namespace := options.GetNamespace(chart.Name)
+	
 	g.logger.InfoWithContext("deploying chart", map[string]interface{}{
 		"chart":     chart.Name,
-		"namespace": options.GetNamespace(chart.Name),
+		"namespace": namespace,
 	})
+	
+	// Check for existing operations before starting deployment
+	if err := g.checkAndHandleConflicts(ctx, chart.Name, namespace); err != nil {
+		g.logger.WarnWithContext("conflict detected during deployment", map[string]interface{}{
+			"chart":     chart.Name,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		// Continue with deployment - conflicts should be handled by the driver
+	}
 	
 	helmOptions := helm_port.HelmUpgradeOptions{
 		ValuesFile:      g.getValuesFile(chart, options.Environment),
-		Namespace:       options.GetNamespace(chart.Name),
+		Namespace:       namespace,
 		CreateNamespace: true,
 		Wait:            chart.ShouldWaitForReadiness(),
 		Timeout:         options.Timeout,
@@ -109,7 +121,7 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 	if err != nil {
 		g.logger.ErrorWithContext("chart deployment failed", map[string]interface{}{
 			"chart":       chart.Name,
-			"namespace":   options.GetNamespace(chart.Name),
+			"namespace":   namespace,
 			"chart_path":  chart.Path,
 			"values_file": helmOptions.ValuesFile,
 			"error":       err.Error(),
@@ -122,7 +134,7 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 	
 	g.logger.InfoWithContext("chart deployed successfully", map[string]interface{}{
 		"chart":     chart.Name,
-		"namespace": options.GetNamespace(chart.Name),
+		"namespace": namespace,
 		"duration":  duration,
 	})
 	
@@ -304,4 +316,108 @@ func (g *HelmGateway) GetReleaseHistory(ctx context.Context, chart domain.Chart,
 	}
 	
 	return result.String(), nil
+}
+
+// checkAndHandleConflicts checks for and handles Helm operation conflicts
+func (g *HelmGateway) checkAndHandleConflicts(ctx context.Context, releaseName, namespace string) error {
+	g.logger.DebugWithContext("checking for helm operation conflicts", map[string]interface{}{
+		"release":   releaseName,
+		"namespace": namespace,
+	})
+	
+	// Check if there are any pending operations
+	operation, err := g.helmPort.DetectPendingOperation(ctx, releaseName, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to detect pending operations: %w", err)
+	}
+	
+	if operation != nil {
+		g.logger.WarnWithContext("detected pending helm operation", map[string]interface{}{
+			"release":     releaseName,
+			"namespace":   namespace,
+			"operation":   operation.Type,
+			"status":      operation.Status,
+			"start_time":  operation.StartTime,
+			"pid":         operation.PID,
+		})
+		
+		// Try to cleanup stuck operations
+		if operation.Status == "stuck" {
+			g.logger.InfoWithContext("cleaning up stuck helm operation", map[string]interface{}{
+				"release":   releaseName,
+				"namespace": namespace,
+				"pid":       operation.PID,
+			})
+			
+			if err := g.helmPort.CleanupStuckOperations(ctx, releaseName, namespace); err != nil {
+				return fmt.Errorf("failed to cleanup stuck operations: %w", err)
+			}
+			
+			g.logger.InfoWithContext("stuck helm operation cleaned up", map[string]interface{}{
+				"release":   releaseName,
+				"namespace": namespace,
+			})
+		}
+	}
+	
+	return nil
+}
+
+// DetectPendingOperation checks for pending Helm operations for a chart
+func (g *HelmGateway) DetectPendingOperation(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) (*helm_port.HelmOperation, error) {
+	namespace := options.GetNamespace(chart.Name)
+	
+	g.logger.DebugWithContext("detecting pending operations", map[string]interface{}{
+		"chart":     chart.Name,
+		"namespace": namespace,
+	})
+	
+	operation, err := g.helmPort.DetectPendingOperation(ctx, chart.Name, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to detect pending operations", map[string]interface{}{
+			"chart":     chart.Name,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return nil, fmt.Errorf("failed to detect pending operations for %s: %w", chart.Name, err)
+	}
+	
+	if operation != nil {
+		g.logger.InfoWithContext("pending operation detected", map[string]interface{}{
+			"chart":      chart.Name,
+			"namespace":  namespace,
+			"operation":  operation.Type,
+			"status":     operation.Status,
+			"start_time": operation.StartTime,
+		})
+	}
+	
+	return operation, nil
+}
+
+// CleanupStuckOperations cleans up stuck Helm operations for a chart
+func (g *HelmGateway) CleanupStuckOperations(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	namespace := options.GetNamespace(chart.Name)
+	
+	g.logger.InfoWithContext("cleaning up stuck operations", map[string]interface{}{
+		"chart":     chart.Name,
+		"namespace": namespace,
+	})
+	
+	err := g.helmPort.CleanupStuckOperations(ctx, chart.Name, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to cleanup stuck operations", map[string]interface{}{
+			"chart":     chart.Name,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("failed to cleanup stuck operations for %s: %w", chart.Name, err)
+	}
+	
+	g.logger.InfoWithContext("stuck operations cleaned up", map[string]interface{}{
+		"chart":     chart.Name,
+		"namespace": namespace,
+	})
+	
+	return nil
 }

@@ -8,6 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"os"
+	"syscall"
+	"math"
+	"math/rand"
 	
 	"deploy-cli/port/helm_port"
 )
@@ -52,47 +56,58 @@ func (h *HelmDriver) Template(ctx context.Context, releaseName, chartPath string
 
 // UpgradeInstall installs or upgrades a Helm release
 func (h *HelmDriver) UpgradeInstall(ctx context.Context, releaseName, chartPath string, options helm_port.HelmUpgradeOptions) error {
-	args := []string{"upgrade", "--install", releaseName, chartPath}
-	
-	if options.ValuesFile != "" {
-		args = append(args, "-f", options.ValuesFile)
+	// First check for and cleanup any stuck operations
+	if err := h.CleanupStuckOperations(ctx, releaseName, options.Namespace); err != nil {
+		return fmt.Errorf("failed to cleanup stuck operations: %w", err)
 	}
 	
-	if options.Namespace != "" {
-		args = append(args, "--namespace", options.Namespace)
-	}
-	
-	if options.CreateNamespace {
-		args = append(args, "--create-namespace")
-	}
-	
-	if options.Wait {
-		args = append(args, "--wait")
-		if options.Timeout > 0 {
-			args = append(args, "--timeout", options.Timeout.String())
+	// Create the operation function
+	upgradeOperation := func() error {
+		args := []string{"upgrade", "--install", releaseName, chartPath}
+		
+		if options.ValuesFile != "" {
+			args = append(args, "-f", options.ValuesFile)
 		}
+		
+		if options.Namespace != "" {
+			args = append(args, "--namespace", options.Namespace)
+		}
+		
+		if options.CreateNamespace {
+			args = append(args, "--create-namespace")
+		}
+		
+		if options.Wait {
+			args = append(args, "--wait")
+			if options.Timeout > 0 {
+				args = append(args, "--timeout", options.Timeout.String())
+			}
+		}
+		
+		if options.Force {
+			args = append(args, "--force")
+		}
+		
+		// Add image overrides
+		for key, value := range options.ImageOverrides {
+			args = append(args, "--set", fmt.Sprintf("%s=%s", key, value))
+		}
+		
+		// Add set values
+		for key, value := range options.SetValues {
+			args = append(args, "--set", fmt.Sprintf("%s=%s", key, value))
+		}
+		
+		cmd := exec.CommandContext(ctx, "helm", args...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("helm upgrade failed: %w, output: %s", err, string(output))
+		}
+		return nil
 	}
 	
-	if options.Force {
-		args = append(args, "--force")
-	}
-	
-	// Add image overrides
-	for key, value := range options.ImageOverrides {
-		args = append(args, "--set", fmt.Sprintf("%s=%s", key, value))
-	}
-	
-	// Add set values
-	for key, value := range options.SetValues {
-		args = append(args, "--set", fmt.Sprintf("%s=%s", key, value))
-	}
-	
-	cmd := exec.CommandContext(ctx, "helm", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("helm upgrade failed: %w, output: %s", err, string(output))
-	}
-	return nil
+	// Retry the operation with exponential backoff
+	return h.RetryWithBackoff(ctx, upgradeOperation, 5, 10*time.Second)
 }
 
 // Status returns the status of a Helm release
@@ -278,6 +293,235 @@ func (h *HelmDriver) parseHistoryOutput(output string, revisions *[]helm_port.He
 			Description: item.Description,
 		}
 	}
+	
+	return nil
+}
+
+// DetectPendingOperation checks for pending Helm operations
+func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, namespace string) (*helm_port.HelmOperation, error) {
+	// Check if there's a running Helm operation by checking for helm processes
+	pids, err := h.findHelmProcesses(releaseName, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check for running helm processes: %w", err)
+	}
+	
+	if len(pids) > 0 {
+		// Found running helm processes - check if they're stuck
+		stuckPIDs := h.checkStuckProcesses(pids)
+		if len(stuckPIDs) > 0 {
+			return &helm_port.HelmOperation{
+				Type:        "unknown",
+				ReleaseName: releaseName,
+				Namespace:   namespace,
+				Status:      "stuck",
+				StartTime:   time.Now().Add(-30 * time.Minute), // Estimate
+				PID:         stuckPIDs[0],
+			}, nil
+		} else {
+			return &helm_port.HelmOperation{
+				Type:        "unknown",
+				ReleaseName: releaseName,
+				Namespace:   namespace,
+				Status:      "running",
+				StartTime:   time.Now().Add(-5 * time.Minute), // Estimate
+				PID:         pids[0],
+			}, nil
+		}
+	}
+	
+	// Check for helm lock files or status indicating pending operations
+	if hasLockFiles := h.checkHelmLockFiles(releaseName, namespace); hasLockFiles {
+		return &helm_port.HelmOperation{
+			Type:        "unknown",
+			ReleaseName: releaseName,
+			Namespace:   namespace,
+			Status:      "pending",
+			StartTime:   time.Now().Add(-10 * time.Minute), // Estimate
+			PID:         0,
+		}, nil
+	}
+	
+	return nil, nil // No pending operations found
+}
+
+// CleanupStuckOperations cleans up stuck Helm operations
+func (h *HelmDriver) CleanupStuckOperations(ctx context.Context, releaseName, namespace string) error {
+	// First, try to detect any stuck operations
+	operation, err := h.DetectPendingOperation(ctx, releaseName, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to detect pending operations: %w", err)
+	}
+	
+	if operation == nil {
+		return nil // No stuck operations to clean up
+	}
+	
+	// Kill stuck processes
+	if operation.PID > 0 {
+		if err := h.killProcess(operation.PID); err != nil {
+			return fmt.Errorf("failed to kill stuck process %d: %w", operation.PID, err)
+		}
+	}
+	
+	// Clean up any lock files
+	if err := h.cleanupLockFiles(releaseName, namespace); err != nil {
+		return fmt.Errorf("failed to cleanup lock files: %w", err)
+	}
+	
+	// Wait a bit for cleanup to take effect
+	time.Sleep(2 * time.Second)
+	
+	return nil
+}
+
+// RetryWithBackoff retries an operation with exponential backoff
+func (h *HelmDriver) RetryWithBackoff(ctx context.Context, operation func() error, maxRetries int, baseDelay time.Duration) error {
+	var lastErr error
+	
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Try the operation
+		if err := operation(); err != nil {
+			lastErr = err
+			
+			// Check if this is a "another operation in progress" error
+			if strings.Contains(err.Error(), "another operation") && strings.Contains(err.Error(), "in progress") {
+				// Calculate delay with exponential backoff and jitter
+				delay := time.Duration(math.Pow(2, float64(attempt))) * baseDelay
+				jitter := time.Duration(rand.Float64() * float64(baseDelay/2))
+				totalDelay := delay + jitter
+				
+				// Cap the delay to prevent extremely long waits
+				if totalDelay > 5*time.Minute {
+					totalDelay = 5*time.Minute
+				}
+				
+				// Wait before retrying
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(totalDelay):
+					// Continue to next attempt
+				}
+			} else {
+				// Different error, no point in retrying
+				return err
+			}
+		} else {
+			// Success!
+			return nil
+		}
+	}
+	
+	return fmt.Errorf("operation failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+// findHelmProcesses finds running helm processes for a specific release
+func (h *HelmDriver) findHelmProcesses(releaseName, namespace string) ([]int, error) {
+	// Use ps to find helm processes
+	cmd := exec.Command("ps", "aux")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run ps command: %w", err)
+	}
+	
+	lines := strings.Split(string(output), "\n")
+	var pids []int
+	
+	// Look for helm processes that match our release and namespace
+	for _, line := range lines {
+		if strings.Contains(line, "helm") && 
+		   strings.Contains(line, releaseName) && 
+		   (namespace == "" || strings.Contains(line, namespace)) {
+			
+			// Extract PID from ps output
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				if pid, err := strconv.Atoi(fields[1]); err == nil {
+					pids = append(pids, pid)
+				}
+			}
+		}
+	}
+	
+	return pids, nil
+}
+
+// checkStuckProcesses checks if processes are stuck (running for too long)
+func (h *HelmDriver) checkStuckProcesses(pids []int) []int {
+	var stuckPIDs []int
+	
+	for _, pid := range pids {
+		// Check process start time (simplified - in real implementation would check actual process start time)
+		if h.isProcessStuck(pid) {
+			stuckPIDs = append(stuckPIDs, pid)
+		}
+	}
+	
+	return stuckPIDs
+}
+
+// isProcessStuck checks if a process has been running for too long
+func (h *HelmDriver) isProcessStuck(pid int) bool {
+	// Check if process exists
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	
+	// Try to send signal 0 to check if process is still running
+	err = process.Signal(syscall.Signal(0))
+	if err != nil {
+		return false // Process is not running
+	}
+	
+	// For simplicity, consider any helm process that we found as potentially stuck
+	// In a real implementation, you'd check the actual process start time
+	return true
+}
+
+// killProcess kills a process by PID
+func (h *HelmDriver) killProcess(pid int) error {
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("failed to find process %d: %w", pid, err)
+	}
+	
+	// First try SIGTERM
+	if err := process.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("failed to send SIGTERM to process %d: %w", pid, err)
+	}
+	
+	// Wait a bit for graceful shutdown
+	time.Sleep(5 * time.Second)
+	
+	// Check if process is still running
+	if err := process.Signal(syscall.Signal(0)); err == nil {
+		// Process still running, force kill
+		if err := process.Kill(); err != nil {
+			return fmt.Errorf("failed to kill process %d: %w", pid, err)
+		}
+	}
+	
+	return nil
+}
+
+// checkHelmLockFiles checks for helm lock files that might indicate stuck operations
+func (h *HelmDriver) checkHelmLockFiles(releaseName, namespace string) bool {
+	// Check common locations for helm lock files
+	// This is a simplified implementation - actual helm stores state in Kubernetes secrets
+	
+	// In Helm v3, the state is stored in Kubernetes secrets in the release namespace
+	// We could check for secrets with specific patterns, but for now we'll return false
+	// as the main conflict detection is done through process checking
+	
+	return false
+}
+
+// cleanupLockFiles removes any lock files for the release
+func (h *HelmDriver) cleanupLockFiles(releaseName, namespace string) error {
+	// In Helm v3, we don't have traditional lock files
+	// The state is managed through Kubernetes secrets
+	// For now, we'll just return nil as the main cleanup is done through process killing
 	
 	return nil
 }

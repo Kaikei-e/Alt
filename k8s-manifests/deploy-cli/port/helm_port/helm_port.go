@@ -24,6 +24,15 @@ type HelmPort interface {
 	
 	// History returns the history of a Helm release
 	History(ctx context.Context, releaseName, namespace string) ([]HelmRevision, error)
+	
+	// DetectPendingOperation checks for pending Helm operations
+	DetectPendingOperation(ctx context.Context, releaseName, namespace string) (*HelmOperation, error)
+	
+	// CleanupStuckOperations cleans up stuck Helm operations
+	CleanupStuckOperations(ctx context.Context, releaseName, namespace string) error
+	
+	// RetryWithBackoff retries an operation with exponential backoff
+	RetryWithBackoff(ctx context.Context, operation func() error, maxRetries int, baseDelay time.Duration) error
 }
 
 // HelmTemplateOptions holds options for helm template command
@@ -74,4 +83,14 @@ type HelmRevision struct {
 	AppVersion  string
 	Updated     time.Time
 	Description string
+}
+
+// HelmOperation represents a pending or running Helm operation
+type HelmOperation struct {
+	Type        string    // "install", "upgrade", "rollback", "uninstall"
+	ReleaseName string
+	Namespace   string
+	Status      string    // "pending", "running", "stuck"
+	StartTime   time.Time
+	PID         int       // Process ID if available
 }
