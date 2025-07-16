@@ -1,0 +1,153 @@
+name: Helm Chart Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'charts/**'
+      - 'k8s-manifests/deploy-helm.sh'
+      - 'k8s-manifests/validate-helm.sh'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'charts/**'
+      - 'k8s-manifests/deploy-helm.sh'
+      - 'k8s-manifests/validate-helm.sh'
+
+env:
+  HELM_VERSION: v3.14.0
+
+jobs:
+  helm-lint:
+    runs-on: ubuntu-latest
+    name: Helm Lint and Template Validation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: ${{ env.HELM_VERSION }}
+        
+    - name: Add Helm repositories
+      run: |
+        helm repo add bitnami https://charts.bitnami.com/bitnami
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        helm repo update
+        
+    - name: Lint all Helm charts
+      run: |
+        echo "🔍 Linting all Helm charts..."
+        failed_charts=()
+        
+        for chart_dir in charts/*/; do
+          chart_name=$(basename "$chart_dir")
+          echo "Linting chart: $chart_name"
+          
+          if helm lint "$chart_dir"; then
+            echo "✅ $chart_name: lint passed"
+          else
+            echo "❌ $chart_name: lint failed"
+            failed_charts+=("$chart_name")
+          fi
+        done
+        
+        if [ ${#failed_charts[@]} -gt 0 ]; then
+          echo "Failed charts: ${failed_charts[*]}"
+          exit 1
+        fi
+        
+    - name: Template validation for development environment
+      run: |
+        echo "🔍 Template validation for development environment..."
+        cd k8s-manifests
+        chmod +x validate-helm.sh
+        
+        # Run validation script for development
+        ./validate-helm.sh development --verbose
+        
+    - name: Template validation for staging environment
+      run: |
+        echo "🔍 Template validation for staging environment..."
+        cd k8s-manifests
+        ./validate-helm.sh staging --verbose
+        
+    - name: Template validation for production environment  
+      run: |
+        echo "🔍 Template validation for production environment..."
+        cd k8s-manifests
+        ./validate-helm.sh production --verbose
+        
+    - name: Check Chart dependencies
+      run: |
+        echo "🔗 Checking Chart dependencies..."
+        
+        for chart_dir in charts/*/; do
+          chart_name=$(basename "$chart_dir")
+          
+          if [ -f "$chart_dir/Chart.yaml" ]; then
+            if grep -q "dependencies:" "$chart_dir/Chart.yaml"; then
+              echo "Checking dependencies for $chart_name"
+              
+              # Update dependencies if Chart.lock doesn't exist
+              if [ ! -f "$chart_dir/Chart.lock" ]; then
+                echo "Updating dependencies for $chart_name"
+                helm dependency update "$chart_dir"
+              fi
+              
+              # Verify dependencies
+              helm dependency list "$chart_dir"
+            else
+              echo "$chart_name has no dependencies"
+            fi
+          fi
+        done
+        
+    - name: Dry-run deployment simulation
+      run: |
+        echo "🧪 Simulating deployment with dry-run..."
+        cd k8s-manifests
+        chmod +x deploy-helm.sh
+        
+        # Set required environment variables for simulation
+        export IMAGE_PREFIX="test/alt"
+        export TAG_BASE="test-$(date +%Y%m%d%H%M%S)"
+        
+        # Simulate development deployment
+        ./deploy-helm.sh development --dry-run
+        
+    - name: Generate deployment artifacts
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        echo "📦 Generating deployment artifacts..."
+        mkdir -p artifacts
+        
+        # Generate templates for all environments
+        for env in development staging production; do
+          echo "Generating templates for $env environment"
+          mkdir -p "artifacts/$env"
+          
+          for chart_dir in charts/*/; do
+            chart_name=$(basename "$chart_dir")
+            values_file="$chart_dir/values-$env.yaml"
+            
+            # Use default values if environment-specific doesn't exist
+            [ ! -f "$values_file" ] && values_file="$chart_dir/values.yaml"
+            
+            if [ -f "$values_file" ]; then
+              helm template "$chart_name" "$chart_dir" \
+                -f "$values_file" \
+                --namespace "alt-$env" > "artifacts/$env/$chart_name.yaml"
+            fi
+          done
+        done
+        
+    - name: Upload artifacts
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/upload-artifact@v4
+      with:
+        name: helm-templates
+        path: artifacts/
+        retention-days: 30
