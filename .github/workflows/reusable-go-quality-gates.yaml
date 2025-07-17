@@ -94,9 +94,6 @@ jobs:
           # install tools into the runner's temp folder
           GOBIN: "${{ runner.temp }}/go-tools"
         run: |
-          mkdir -p "$GOBIN"
-          echo "$GOBIN" >> $GITHUB_PATH
-
           echo "Installing mockgen and goimports..."
           # correct mockgen import path and pin to v1.6.0
           go install github.com/golang/mock/mockgen@v1.6.0
@@ -108,6 +105,9 @@ jobs:
           go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5
 
           echo "Verifying installations:"
+      - name: Add Go tools to PATH
+        run: |
+          echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: Verify tool paths
         run: |
