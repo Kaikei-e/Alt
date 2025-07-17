@@ -28,6 +28,12 @@ type KubectlPort interface {
 	// GetSecretsWithMetadata returns secrets with helm metadata across all namespaces
 	GetSecretsWithMetadata(ctx context.Context) ([]KubernetesSecretWithMetadata, error)
 	
+	// GetResourcesWithMetadata returns any resource type with Helm metadata across all namespaces
+	GetResourcesWithMetadata(ctx context.Context, resourceType string) ([]KubernetesResourceWithMetadata, error)
+	
+	// DeleteResource deletes any resource type
+	DeleteResource(ctx context.Context, resourceType, name, namespace string) error
+	
 	// CreateSecret creates a new secret
 	CreateSecret(ctx context.Context, secret KubernetesSecret) error
 	
@@ -129,6 +135,16 @@ type KubernetesSecretWithMetadata struct {
 	Namespace        string
 	Type             string
 	Data             map[string][]byte
+	ReleaseName      string
+	ReleaseNamespace string
+	Age              string
+}
+
+// KubernetesResourceWithMetadata represents any Kubernetes resource with Helm metadata
+type KubernetesResourceWithMetadata struct {
+	ResourceType     string
+	Name             string
+	Namespace        string
 	ReleaseName      string
 	ReleaseNamespace string
 	Age              string

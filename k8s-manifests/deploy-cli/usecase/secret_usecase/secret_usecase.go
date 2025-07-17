@@ -40,12 +40,21 @@ func (u *SecretUsecase) ValidateSecretState(ctx context.Context, environment dom
 		Valid:       true,
 	}
 	
-	// Check for ownership conflicts
+	// Check for ownership conflicts (secrets and resources)
 	conflicts, err := u.detectOwnershipConflicts(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect ownership conflicts: %w", err)
 	}
-	result.Conflicts = conflicts
+	
+	// Check for resource conflicts
+	resourceConflicts, err := u.detectResourceConflicts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect resource conflicts: %w", err)
+	}
+	
+	// Combine all conflicts
+	allConflicts := append(conflicts, resourceConflicts...)
+	result.Conflicts = allConflicts
 	
 	// Check namespace distribution
 	warnings, err := u.validateNamespaceDistribution(ctx, environment)
@@ -156,6 +165,52 @@ func (u *SecretUsecase) detectOwnershipConflicts(ctx context.Context) ([]domain.
 	return conflicts, nil
 }
 
+// detectResourceConflicts identifies Kubernetes resources with cross-namespace ownership issues
+func (u *SecretUsecase) detectResourceConflicts(ctx context.Context) ([]domain.SecretConflict, error) {
+	var conflicts []domain.SecretConflict
+	
+	// List of resource types to check for conflicts
+	resourceTypes := []string{
+		"networkpolicy",
+		"configmap",
+		"service",
+		"serviceaccount",
+		"deployment",
+		"statefulset",
+	}
+	
+	for _, resourceType := range resourceTypes {
+		resources, err := u.kubectlGateway.GetResourcesWithMetadata(ctx, resourceType)
+		if err != nil {
+			// Log warning but continue with other resource types
+			u.logger.WarnWithContext("failed to get resources with metadata", map[string]interface{}{
+				"resource_type": resourceType,
+				"error":        err.Error(),
+			})
+			continue
+		}
+		
+		// Check each resource for cross-namespace ownership conflicts
+		for _, resource := range resources {
+			if resource.Namespace != resource.ReleaseNamespace {
+				conflict := domain.SecretConflict{
+					ResourceType:     resourceType,
+					SecretName:       resource.Name,
+					SecretNamespace:  resource.Namespace,
+					ReleaseName:      resource.ReleaseName,
+					ReleaseNamespace: resource.ReleaseNamespace,
+					ConflictType:     domain.ConflictTypeResourceConflict,
+					Description: fmt.Sprintf("%s %s/%s is owned by Helm release %s in namespace %s (cross-namespace ownership conflict)", 
+						resourceType, resource.Namespace, resource.Name, resource.ReleaseName, resource.ReleaseNamespace),
+				}
+				conflicts = append(conflicts, conflict)
+			}
+		}
+	}
+	
+	return conflicts, nil
+}
+
 // validateNamespaceDistribution checks if secrets are properly distributed
 func (u *SecretUsecase) validateNamespaceDistribution(ctx context.Context, environment domain.Environment) ([]string, error) {
 	var warnings []string
@@ -188,6 +243,47 @@ func (u *SecretUsecase) validateNamespaceDistribution(ctx context.Context, envir
 	}
 	
 	return warnings, nil
+}
+
+// isNamespaceMigrationConflict checks if a conflict is due to namespace migration
+func (u *SecretUsecase) isNamespaceMigrationConflict(conflict domain.SecretConflict, environment domain.Environment) bool {
+	// Only applies to production environment
+	if environment != domain.Production {
+		return false
+	}
+	
+	// Get the current intended namespace for the release
+	intendedNamespace := domain.DetermineNamespace(conflict.ReleaseName, environment)
+	
+	// Check if this is a migration scenario:
+	// 1. Resource is in alt-production (old location)
+	// 2. Release should now deploy to a different namespace (new location)
+	// 3. Release is a common chart that has migrated
+	if conflict.SecretNamespace == "alt-production" && 
+	   intendedNamespace != "alt-production" && 
+	   u.isCommonChart(conflict.ReleaseName) {
+		u.logger.InfoWithContext("detected namespace migration conflict", map[string]interface{}{
+			"release_name":         conflict.ReleaseName,
+			"current_namespace":    conflict.SecretNamespace,
+			"intended_namespace":   intendedNamespace,
+			"resource_name":        conflict.SecretName,
+			"resource_type":        conflict.ResourceType,
+		})
+		return true
+	}
+	
+	return false
+}
+
+// isCommonChart checks if a chart is a common chart that has migrated namespaces
+func (u *SecretUsecase) isCommonChart(chartName string) bool {
+	commonCharts := []string{"common-secrets", "common-config", "common-ssl"}
+	for _, chart := range commonCharts {
+		if chartName == chart {
+			return true
+		}
+	}
+	return false
 }
 
 // getExpectedSecretDistribution returns expected secret distribution for environment
@@ -253,6 +349,8 @@ func (u *SecretUsecase) resolveConflict(ctx context.Context, conflict domain.Sec
 		return u.resolveCrossNamespaceConflict(ctx, conflict, dryRun)
 	case domain.ConflictTypeMetadataConflict:
 		return u.resolveMetadataConflict(ctx, conflict, dryRun)
+	case domain.ConflictTypeResourceConflict:
+		return u.resolveResourceConflict(ctx, conflict, dryRun)
 	default:
 		return fmt.Errorf("unknown conflict type: %s", conflict.ConflictType)
 	}
@@ -308,13 +406,28 @@ func (u *SecretUsecase) resolveMetadataConflict(ctx context.Context, conflict do
 		return nil
 	}
 	
-	// For metadata conflicts, we only delete the secret if it's in the "default" namespace
-	// or if it's clearly orphaned (cross-namespace ownership)
-	if conflict.SecretNamespace == "default" || conflict.SecretNamespace != conflict.ReleaseNamespace {
+	// Check if this is a namespace migration conflict
+	isMigrationConflict := u.isNamespaceMigrationConflict(conflict, domain.Production)
+	
+	// For metadata conflicts, we delete the secret if:
+	// 1. It's in the "default" namespace
+	// 2. It's clearly orphaned (cross-namespace ownership)
+	// 3. It's a namespace migration conflict (resource in old target namespace)
+	shouldDelete := conflict.SecretNamespace == "default" || 
+					conflict.SecretNamespace != conflict.ReleaseNamespace || 
+					isMigrationConflict
+
+	if shouldDelete {
+		reason := "metadata_conflict_safe_to_delete"
+		if isMigrationConflict {
+			reason = "namespace_migration_cleanup"
+		}
+		
 		u.logger.InfoWithContext("deleting secret with Helm metadata conflict", map[string]interface{}{
 			"secret":    conflict.SecretName,
 			"namespace": conflict.SecretNamespace,
-			"reason":    "metadata_conflict_safe_to_delete",
+			"reason":    reason,
+			"is_migration": isMigrationConflict,
 		})
 		
 		err := u.kubectlGateway.DeleteSecret(ctx, conflict.SecretName, conflict.SecretNamespace)
@@ -325,6 +438,7 @@ func (u *SecretUsecase) resolveMetadataConflict(ctx context.Context, conflict do
 		u.logger.InfoWithContext("deleted secret with metadata conflict", map[string]interface{}{
 			"secret":    conflict.SecretName,
 			"namespace": conflict.SecretNamespace,
+			"reason":    reason,
 		})
 	} else {
 		u.logger.WarnWithContext("skipping metadata conflict resolution - not safe to delete", map[string]interface{}{
@@ -334,6 +448,74 @@ func (u *SecretUsecase) resolveMetadataConflict(ctx context.Context, conflict do
 		})
 	}
 	
+	return nil
+}
+
+// resolveResourceConflict resolves Kubernetes resource metadata conflicts
+func (u *SecretUsecase) resolveResourceConflict(ctx context.Context, conflict domain.SecretConflict, dryRun bool) error {
+	u.logger.InfoWithContext("resolving resource metadata conflict", map[string]interface{}{
+		"resource_type":     conflict.ResourceType,
+		"resource":          conflict.SecretName,
+		"resource_namespace": conflict.SecretNamespace,
+		"release_name":      conflict.ReleaseName,
+		"release_namespace": conflict.ReleaseNamespace,
+		"dry_run":           dryRun,
+	})
+
+	if dryRun {
+		u.logger.InfoWithContext("dry-run: would delete resource with metadata conflict", map[string]interface{}{
+			"resource_type": conflict.ResourceType,
+			"resource":      conflict.SecretName,
+			"namespace":     conflict.SecretNamespace,
+		})
+		return nil
+	}
+
+	// Check if this is a namespace migration conflict
+	isMigrationConflict := u.isNamespaceMigrationConflict(conflict, domain.Production)
+	
+	// For resource conflicts, we delete the resource if:
+	// 1. It's in the "default" namespace
+	// 2. It's clearly orphaned (cross-namespace ownership)
+	// 3. It's a namespace migration conflict (resource in old target namespace)
+	shouldDelete := conflict.SecretNamespace == "default" || 
+					conflict.SecretNamespace != conflict.ReleaseNamespace || 
+					isMigrationConflict
+
+	if shouldDelete {
+		reason := "resource_metadata_conflict_safe_to_delete"
+		if isMigrationConflict {
+			reason = "namespace_migration_cleanup"
+		}
+		
+		u.logger.InfoWithContext("deleting resource with metadata conflict", map[string]interface{}{
+			"resource_type": conflict.ResourceType,
+			"resource":      conflict.SecretName,
+			"namespace":     conflict.SecretNamespace,
+			"reason":        reason,
+			"is_migration":  isMigrationConflict,
+		})
+
+		err := u.kubectlGateway.DeleteResource(ctx, conflict.ResourceType, conflict.SecretName, conflict.SecretNamespace)
+		if err != nil {
+			return fmt.Errorf("failed to delete conflicting %s: %w", conflict.ResourceType, err)
+		}
+
+		u.logger.InfoWithContext("deleted resource with metadata conflict", map[string]interface{}{
+			"resource_type": conflict.ResourceType,
+			"resource":      conflict.SecretName,
+			"namespace":     conflict.SecretNamespace,
+			"reason":        reason,
+		})
+	} else {
+		u.logger.WarnWithContext("skipping resource conflict resolution - not safe to delete", map[string]interface{}{
+			"resource_type": conflict.ResourceType,
+			"resource":      conflict.SecretName,
+			"namespace":     conflict.SecretNamespace,
+			"reason":        "same_namespace_as_release",
+		})
+	}
+
 	return nil
 }
 

@@ -371,6 +371,62 @@ func (k *KubectlDriver) DeleteSecret(ctx context.Context, name, namespace string
 	return nil
 }
 
+// GetResourcesWithMetadata returns any resource type with Helm metadata across all namespaces
+func (k *KubectlDriver) GetResourcesWithMetadata(ctx context.Context, resourceType string) ([]kubectl_port.KubernetesResourceWithMetadata, error) {
+	var resources []kubectl_port.KubernetesResourceWithMetadata
+	
+	// Build kubectl command for the specific resource type
+	cmd := exec.CommandContext(ctx, "kubectl", "get", resourceType, "--all-namespaces", "--no-headers", "-o", "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,RELEASE:.metadata.annotations.meta\\.helm\\.sh/release-name,RELEASE_NS:.metadata.annotations.meta\\.helm\\.sh/release-namespace,AGE:.metadata.creationTimestamp")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("kubectl get %s with metadata failed: %w, output: %s", resourceType, err, string(output))
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		
+		fields := strings.Fields(line)
+		if len(fields) >= 5 {
+			namespace := fields[0]
+			name := fields[1]
+			releaseName := fields[2]
+			releaseNamespace := fields[3]
+			age := fields[4]
+			
+			// Skip resources without Helm metadata
+			if releaseName == "<none>" || releaseNamespace == "<none>" {
+				continue
+			}
+			
+			resource := kubectl_port.KubernetesResourceWithMetadata{
+				ResourceType:     resourceType,
+				Name:             name,
+				Namespace:        namespace,
+				ReleaseName:      releaseName,
+				ReleaseNamespace: releaseNamespace,
+				Age:              age,
+			}
+			
+			resources = append(resources, resource)
+		}
+	}
+
+	return resources, nil
+}
+
+// DeleteResource deletes any resource type
+func (k *KubectlDriver) DeleteResource(ctx context.Context, resourceType, name, namespace string) error {
+	cmd := exec.CommandContext(ctx, "kubectl", "delete", resourceType, name, "--namespace", namespace, "--force", "--grace-period=0")
+	output, err := cmd.CombinedOutput()
+	if err != nil && !strings.Contains(string(output), "not found") {
+		return fmt.Errorf("kubectl delete %s failed: %w, output: %s", resourceType, err, string(output))
+	}
+	return nil
+}
+
 // GetPersistentVolumes returns persistent volumes
 func (k *KubectlDriver) GetPersistentVolumes(ctx context.Context) ([]kubectl_port.KubernetesPersistentVolume, error) {
 	cmd := exec.CommandContext(ctx, "kubectl", "get", "pv", "--no-headers", "-o", "custom-columns=NAME:.metadata.name,CAPACITY:.spec.capacity.storage,ACCESS:.spec.accessModes[0],STATUS:.status.phase,STORAGECLASS:.spec.storageClassName")

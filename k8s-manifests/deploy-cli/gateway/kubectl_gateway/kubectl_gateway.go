@@ -535,3 +535,54 @@ func (g *KubectlGateway) GetSecretsWithMetadata(ctx context.Context) ([]kubectl_
 	
 	return secrets, nil
 }
+
+// GetResourcesWithMetadata returns any resource type with helm metadata across all namespaces
+func (g *KubectlGateway) GetResourcesWithMetadata(ctx context.Context, resourceType string) ([]kubectl_port.KubernetesResourceWithMetadata, error) {
+	g.logger.InfoWithContext("getting resources with metadata", map[string]interface{}{
+		"resource_type": resourceType,
+	})
+	
+	resources, err := g.kubectlPort.GetResourcesWithMetadata(ctx, resourceType)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get resources with metadata", map[string]interface{}{
+			"resource_type": resourceType,
+			"error":        err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get %s with metadata: %w", resourceType, err)
+	}
+	
+	g.logger.InfoWithContext("got resources with metadata", map[string]interface{}{
+		"resource_type": resourceType,
+		"count":        len(resources),
+	})
+	
+	return resources, nil
+}
+
+// DeleteResource deletes any resource type
+func (g *KubectlGateway) DeleteResource(ctx context.Context, resourceType, name, namespace string) error {
+	g.logger.InfoWithContext("deleting resource", map[string]interface{}{
+		"resource_type": resourceType,
+		"resource":      name,
+		"namespace":     namespace,
+	})
+	
+	err := g.kubectlPort.DeleteResource(ctx, resourceType, name, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to delete resource", map[string]interface{}{
+			"resource_type": resourceType,
+			"resource":      name,
+			"namespace":     namespace,
+			"error":         err.Error(),
+		})
+		return fmt.Errorf("failed to delete %s %s in namespace %s: %w", resourceType, name, namespace, err)
+	}
+	
+	g.logger.InfoWithContext("resource deleted successfully", map[string]interface{}{
+		"resource_type": resourceType,
+		"resource":      name,
+		"namespace":     namespace,
+	})
+	
+	return nil
+}

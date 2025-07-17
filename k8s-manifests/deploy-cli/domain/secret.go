@@ -221,6 +221,7 @@ type SecretValidationResult struct {
 
 // SecretConflict represents a secret ownership or distribution conflict
 type SecretConflict struct {
+	ResourceType     string      `json:"resource_type,omitempty"`  // Added to support all resource types
 	SecretName       string      `json:"secret_name"`
 	SecretNamespace  string      `json:"secret_namespace"`
 	ReleaseName      string      `json:"release_name"`
@@ -241,6 +242,8 @@ const (
 	ConflictTypeMissingSecret ConflictType = "missing_secret"
 	// ConflictTypeMetadataConflict indicates Helm metadata annotation conflicts
 	ConflictTypeMetadataConflict ConflictType = "metadata_conflict"
+	// ConflictTypeResourceConflict indicates Kubernetes resource metadata conflicts
+	ConflictTypeResourceConflict ConflictType = "resource_conflict"
 )
 
 // String returns the string representation of ConflictType
