@@ -87,20 +87,29 @@ jobs:
 
       - name: Install development tools
         working-directory: ${{ inputs.working-directory }}
+        env:
+          # ensure module downloads are fast and secure
+          GOPROXY: "https://proxy.golang.org,direct"
+          GOSUMDB: "sum.golang.org"
+          # install tools into the runner's temp folder
+          GOBIN: "${{ runner.temp }}/go-tools"
         run: |
-          # ツールを再インストール（キャッシュ問題を回避）
-          export GOBIN="${{ runner.temp }}/go-tools"
           mkdir -p "$GOBIN"
           echo "$GOBIN" >> $GITHUB_PATH
 
-          echo "Installing development tools..."
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
-          go install go.uber.org/mock/mockgen@latest
+          echo "Installing mockgen and goimports..."
+          # correct mockgen import path and pin to v1.6.0
+          go install github.com/golang/mock/mockgen@v1.6.0
+          # official goimports installer
           go install golang.org/x/tools/cmd/goimports@latest
 
-          # ツールの確認
-          which golangci-lint
+          echo "Installing gosec..."
+          # pin gosec to v2.22.5 for reproducibility
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5
+
+          echo "Verifying installations:"
+          which mockgen
+          which goimports
           which gosec
 
       - name: Download dependencies
