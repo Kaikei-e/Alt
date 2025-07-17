@@ -24,70 +24,46 @@ jobs:
     timeout-minutes: 30
 
     steps:
-    - name: Security setup
-      run: |
-        echo "::add-mask::$HOME"
-        echo "::add-mask::$USER"
-        echo "::add-mask::/home"
-        echo "::add-mask::/opt"
+      - name: Security setup
+        run: |
+          echo "::add-mask::$HOME"
+          echo "::add-mask::$USER"
+          echo "::add-mask::/home"
+          echo "::add-mask::/opt"
 
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ inputs.python-version }}
+      - name: Install uv (Rust-based tool)
+        uses: astral-sh/setup-uv@v6
 
-    - name: Install uv (Rust-based tool)
-      run: |
-        pip install --upgrade pip
-        pip install uv
+      - name: Set up Python with uv
+        run: uv python install --version ${{ inputs.python-version }}
 
-    - name: Prepare uv environment
-      working-directory: ${{ inputs.working-directory }}
-      shell: bash
-      run: |
-        # Sync or create virtual environment via uv
-        uv sync 2>/dev/null || uv lock
-        uv sync
-        echo "::notice::uv environment ready"
+      - name: Sync project dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          uv sync --lockfile || uv lock
+          uv sync
 
-    - name: Install dependencies with uv
-      working-directory: ${{ inputs.working-directory }}
-      shell: bash
-      run: |
-        # Install test and project deps in uv-managed venv
-        uv pip install pytest pytest-cov psycopg2-binary langdetect
-        if [ -f "requirements.txt" ]; then
-          uv pip install -r requirements.txt
-        fi
-        echo "::notice::Dependencies installed via uv"
+      - name: Install test dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          uv pip install pytest pytest-cov psycopg2-binary langdetect
 
-    - name: Run tests via uv
-      working-directory: ${{ inputs.working-directory }}
-      shell: bash
-      run: |
-        mkdir -p tests
-        set +e
-        uv run ${inputs.test-command} 2>&1 | \
-          sed -E 's|/home/[^/]+|***|g' | \
-          grep -v "runner-" | \
-          grep -v "actions-runner"
-        exit ${PIPESTATUS[0]}
+      - name: Run tests via uv
+        working-directory: ${{ inputs.working-directory }}
+        run: uv run ${{ inputs.test-command }}
 
-    - name: Cleanup uv environment
-      if: ${{ always() }}
-      working-directory: ${{ inputs.working-directory }}
-      shell: bash
-      run: |
-        # Remove uv created .venv directory
-        rm -rf .venv .uv
+      - name: Cleanup uv environment
+        if: ${{ always() }}
+        working-directory: ${{ inputs.working-directory }}
+        run: rm -rf .venv uv.lock
 
-    - name: Upload test results
-      if: ${{ always() }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: python-test-results-${{ github.run_id }}
-        path: ${{ inputs.working-directory }}/tests/
-        retention-days: 5
-        if-no-files-found: warn
+      - name: Upload test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-results-${{ github.run_id }}
+          path: ${{ inputs.working-directory }}/tests/
+          retention-days: 5
+          if-no-files-found: warn
