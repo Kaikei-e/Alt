@@ -1,5 +1,4 @@
 name: Reusable Go Quality Gates Workflow
-
 permissions:
   contents: read
   security-events: write
@@ -30,23 +29,18 @@ on:
 
 jobs:
   quality-check:
-    name: Quality Gates
     runs-on: [self-hosted, linux, X64]
     timeout-minutes: 30
     env:
-      # モジュール取得の安定化
       GOPROXY: "https://proxy.golang.org,direct"
       GOSUMDB: "sum.golang.org"
-    permissions:
-      contents: read
-      security-events: write
 
     steps:
       - name: Mask Configuration
         if: runner.environment == 'self-hosted'
         run: |
           echo "::group::Masking Configuration"
-          for part in $(echo $HOME | tr '/' ' ' ); do
+          for part in $(echo $HOME | tr '/' ' '); do
             [ -n "$part" ] && echo "::add-mask::$part"
           done
           echo "::endgroup::"
@@ -57,24 +51,19 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: ${{ inputs.go-version }}
-          cache: "modules"
+          cache: "modules"                          # モジュールキャッシュ自動化 :contentReference[oaicite:7]{index=7}
 
       - name: Speed up Go build & module cache
-        uses: magnetikonline/action-golang-cache@v5
-        with:
-          go-version-file: go.mod
+        uses: magnetikonline/action-golang-cache@v5  # ビルドキャッシュ含むモジュールキャッシュ :contentReference[oaicite:8]{index=8}
 
       - name: Lint code with golangci-lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v1.64.8
-        # プリビルド済みアクションで高速実行かつGitHub注釈表示
+        uses: golangci/golangci-lint-action@v8       # プリビルド済みバイナリで高速実行 :contentReference[oaicite:9]{index=9}
 
-      - name: Security scan with Gosec
-        uses: securego/gosec@master
-        with:
-          args: '-fmt sarif -out gosec-results.sarif ./...'
-        # SARIF 出力を GitHub コードスキャンに連携
+      - name: Install gosec binary
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5  # Docker不要 :contentReference[oaicite:10]{index=10}
+
+      - name: Security scan with gosec
+        run: gosec -fmt sarif -out gosec-results.sarif ./...            # SARIF 出力 :contentReference[oaicite:11]{index=11}
 
       - name: Upload Gosec SARIF
         uses: github/codeql-action/upload-sarif@v3
@@ -82,10 +71,7 @@ jobs:
           sarif_file: gosec-results.sarif
 
       - name: Vulnerability check with govulncheck
-        uses: golang/govulncheck-action@v1
-        with:
-          go-version-input: ${{ inputs.go-version }}
-        # 依存脆弱性の静的解析
+        uses: golang/govulncheck-action@v1                          # 非 Docker ベースで実行 :contentReference[oaicite:12]{index=12}
 
       - name: Run tests with race detection
         run: go test -race ./...
@@ -116,4 +102,37 @@ jobs:
         if: always()
         run: |
           go clean -cache -modcache
-          rm -rf ~/.cache/golangci* gosec-results.sarif coverage.out
+          rm -rf gosec-results.sarif coverage.out
+
+  security-audit:
+    name: Security Audit
+    if: inputs.run-security-audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run Gosec Security Scanner
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5 && \
+             gosec -fmt sarif -out gosec-results.sarif ./...
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec-results.sarif
+
+      - name: Run vulnerability check
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: ${{ inputs.go-version }}
