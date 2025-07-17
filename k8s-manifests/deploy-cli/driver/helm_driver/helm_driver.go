@@ -98,16 +98,29 @@ func (h *HelmDriver) UpgradeInstall(ctx context.Context, releaseName, chartPath 
 			args = append(args, "--set", fmt.Sprintf("%s=%s", key, value))
 		}
 		
-		cmd := exec.CommandContext(ctx, "helm", args...)
+		// Create a timeout context for the helm command itself
+		helmTimeout := 3 * time.Minute // Aggressive timeout for each helm command
+		if options.Timeout > 0 && options.Timeout < helmTimeout {
+			helmTimeout = options.Timeout
+		}
+		
+		helmCtx, cancel := context.WithTimeout(ctx, helmTimeout)
+		defer cancel()
+		
+		cmd := exec.CommandContext(helmCtx, "helm", args...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
+			// Check if this is a timeout error
+			if helmCtx.Err() == context.DeadlineExceeded {
+				return fmt.Errorf("helm upgrade timed out after %v: %w", helmTimeout, err)
+			}
 			return fmt.Errorf("helm upgrade failed: %w, output: %s", err, string(output))
 		}
 		return nil
 	}
 	
 	// Retry the operation with exponential backoff
-	return h.RetryWithBackoff(ctx, upgradeOperation, 5, 10*time.Second)
+	return h.RetryWithBackoff(ctx, upgradeOperation, 3, 5*time.Second)
 }
 
 // Status returns the status of a Helm release
@@ -359,7 +372,24 @@ func (h *HelmDriver) CleanupStuckOperations(ctx context.Context, releaseName, na
 	timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	
-	// First, try to detect any stuck operations
+	// First, check the current release status
+	status, err := h.getReleaseStatus(timeoutCtx, releaseName, namespace)
+	if err == nil && status == "pending-upgrade" {
+		// Release is in pending-upgrade state, try to rollback
+		if err := h.rollbackRelease(timeoutCtx, releaseName, namespace); err != nil {
+			return fmt.Errorf("failed to rollback stuck release: %w", err)
+		}
+		
+		// Wait a bit for rollback to complete
+		select {
+		case <-timeoutCtx.Done():
+			return fmt.Errorf("timeout during rollback wait")
+		case <-time.After(5 * time.Second):
+			// Continue
+		}
+	}
+	
+	// Then try to detect any stuck operations
 	operation, err := h.DetectPendingOperation(timeoutCtx, releaseName, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to detect pending operations: %w", err)
@@ -546,6 +576,53 @@ func (h *HelmDriver) cleanupLockFiles(releaseName, namespace string) error {
 	// In Helm v3, we don't have traditional lock files
 	// The state is managed through Kubernetes secrets
 	// For now, we'll just return nil as the main cleanup is done through process killing
+	
+	return nil
+}
+
+// getReleaseStatus gets the current status of a release
+func (h *HelmDriver) getReleaseStatus(ctx context.Context, releaseName, namespace string) (string, error) {
+	args := []string{"status", releaseName}
+	if namespace != "" {
+		args = append(args, "--namespace", namespace)
+	}
+	args = append(args, "--output", "json")
+	
+	cmd := exec.CommandContext(ctx, "helm", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to get release status: %w, output: %s", err, string(output))
+	}
+	
+	// Parse JSON to extract status
+	var statusData struct {
+		Info struct {
+			Status string `json:"status"`
+		} `json:"info"`
+	}
+	
+	if err := json.Unmarshal(output, &statusData); err != nil {
+		return "", fmt.Errorf("failed to parse status JSON: %w", err)
+	}
+	
+	return statusData.Info.Status, nil
+}
+
+// rollbackRelease rolls back a release to the previous revision
+func (h *HelmDriver) rollbackRelease(ctx context.Context, releaseName, namespace string) error {
+	args := []string{"rollback", releaseName}
+	if namespace != "" {
+		args = append(args, "--namespace", namespace)
+	}
+	
+	// Add timeout to prevent hanging
+	args = append(args, "--timeout", "2m")
+	
+	cmd := exec.CommandContext(ctx, "helm", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to rollback release: %w, output: %s", err, string(output))
+	}
 	
 	return nil
 }
