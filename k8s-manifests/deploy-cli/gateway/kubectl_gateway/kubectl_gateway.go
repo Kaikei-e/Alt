@@ -502,3 +502,45 @@ func (g *KubectlGateway) GetStatefulSets(ctx context.Context, namespace string) 
 	
 	return statefulSets, nil
 }
+
+// GetSecrets returns secrets in the specified namespace
+func (g *KubectlGateway) GetSecrets(ctx context.Context, namespace string) ([]kubectl_port.KubernetesSecret, error) {
+	g.logger.DebugWithContext("getting secrets", map[string]interface{}{
+		"namespace": namespace,
+	})
+	
+	secrets, err := g.kubectlPort.GetSecrets(ctx, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get secrets", map[string]interface{}{
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get secrets in namespace %s: %w", namespace, err)
+	}
+	
+	g.logger.DebugWithContext("secrets retrieved", map[string]interface{}{
+		"namespace": namespace,
+		"count":     len(secrets),
+	})
+	
+	return secrets, nil
+}
+
+// GetSecretsWithMetadata returns secrets with helm metadata across all namespaces
+func (g *KubectlGateway) GetSecretsWithMetadata(ctx context.Context) ([]kubectl_port.KubernetesSecretWithMetadata, error) {
+	g.logger.InfoWithContext("getting secrets with metadata", map[string]interface{}{})
+	
+	secrets, err := g.kubectlPort.GetSecretsWithMetadata(ctx)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get secrets with metadata", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get secrets with metadata: %w", err)
+	}
+	
+	g.logger.InfoWithContext("got secrets with metadata", map[string]interface{}{
+		"count": len(secrets),
+	})
+	
+	return secrets, nil
+}

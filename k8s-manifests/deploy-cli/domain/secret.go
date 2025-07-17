@@ -250,6 +250,15 @@ type SecretDistribution struct {
 	Description string   `json:"description"`
 }
 
+// SecretInfo represents information about a Kubernetes secret
+type SecretInfo struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Owner     string `json:"owner,omitempty"`
+	Type      string `json:"type,omitempty"`
+	Age       string `json:"age,omitempty"`
+}
+
 // SecretConfig represents secret configuration for an environment
 type SecretConfig struct {
 	Environment   Environment          `json:"environment"`

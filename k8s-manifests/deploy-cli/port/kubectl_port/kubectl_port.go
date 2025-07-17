@@ -25,6 +25,9 @@ type KubectlPort interface {
 	// GetSecrets returns secrets in the specified namespace
 	GetSecrets(ctx context.Context, namespace string) ([]KubernetesSecret, error)
 	
+	// GetSecretsWithMetadata returns secrets with helm metadata across all namespaces
+	GetSecretsWithMetadata(ctx context.Context) ([]KubernetesSecretWithMetadata, error)
+	
 	// CreateSecret creates a new secret
 	CreateSecret(ctx context.Context, secret KubernetesSecret) error
 	
@@ -107,6 +110,17 @@ type KubernetesSecret struct {
 	Namespace string
 	Type      string
 	Data      map[string][]byte
+}
+
+// KubernetesSecretWithMetadata represents a Kubernetes secret with Helm metadata
+type KubernetesSecretWithMetadata struct {
+	Name             string
+	Namespace        string
+	Type             string
+	Data             map[string][]byte
+	ReleaseName      string
+	ReleaseNamespace string
+	Age              string
 }
 
 // KubernetesPersistentVolume represents a Kubernetes persistent volume

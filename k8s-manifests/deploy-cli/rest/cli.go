@@ -70,6 +70,10 @@ func (c *CLI) setupCommands() {
 	updateCmd := commands.NewUpdateCommand(c.logger)
 	c.rootCmd.AddCommand(updateCmd)
 	
+	// Add secrets command
+	secretsCmd := commands.NewSecretsCommand(c.logger)
+	c.rootCmd.AddCommand(secretsCmd)
+	
 	// Add version command
 	versionCmd := &cobra.Command{
 		Use:   "version",

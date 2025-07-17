@@ -3,7 +3,6 @@ package secret_usecase
 import (
 	"context"
 	"fmt"
-	"strings"
 	
 	"deploy-cli/domain"
 	"deploy-cli/port/logger_port"
@@ -72,31 +71,16 @@ func (u *SecretUsecase) detectOwnershipConflicts(ctx context.Context) ([]domain.
 	var conflicts []domain.SecretConflict
 	
 	// Get all secrets with Helm annotations
-	cmd := []string{
-		"get", "secrets", "--all-namespaces", "-o", 
-		"jsonpath={range .items[*]}{.metadata.namespace}{\"\\t\"}{.metadata.name}{\"\\t\"}{.metadata.annotations.meta\\.helm\\.sh/release-name}{\"\\t\"}{.metadata.annotations.meta\\.helm\\.sh/release-namespace}{\"\\n\"}{end}",
-	}
-	
-	output, err := u.kubectlGateway.ExecuteCommand(ctx, cmd)
+	secrets, err := u.kubectlGateway.GetSecretsWithMetadata(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secrets: %w", err)
 	}
 	
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		
-		parts := strings.Split(line, "\t")
-		if len(parts) < 4 {
-			continue
-		}
-		
-		secretNamespace := parts[0]
-		secretName := parts[1]
-		releaseName := parts[2]
-		releaseNamespace := parts[3]
+	for _, secret := range secrets {
+		secretNamespace := secret.Namespace
+		secretName := secret.Name
+		releaseName := secret.ReleaseName
+		releaseNamespace := secret.ReleaseNamespace
 		
 		// Skip if no Helm annotations
 		if releaseName == "" || releaseNamespace == "" {
@@ -130,10 +114,23 @@ func (u *SecretUsecase) validateNamespaceDistribution(ctx context.Context, envir
 	
 	for secretName, expectedNamespaces := range expectedDistribution {
 		for _, namespace := range expectedNamespaces {
-			// Check if secret exists in expected namespace
-			cmd := []string{"get", "secret", secretName, "-n", namespace}
-			_, err := u.kubectlGateway.ExecuteCommand(ctx, cmd)
+			// Check if secret exists in expected namespace by getting all secrets in that namespace
+			secrets, err := u.kubectlGateway.GetSecrets(ctx, namespace)
 			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("Failed to check secrets in namespace %s: %v", namespace, err))
+				continue
+			}
+			
+			// Check if the expected secret exists
+			found := false
+			for _, secret := range secrets {
+				if secret.Name == secretName {
+					found = true
+					break
+				}
+			}
+			
+			if !found {
 				warnings = append(warnings, fmt.Sprintf("Secret %s not found in expected namespace %s", secretName, namespace))
 			}
 		}
@@ -145,7 +142,7 @@ func (u *SecretUsecase) validateNamespaceDistribution(ctx context.Context, envir
 // getExpectedSecretDistribution returns expected secret distribution for environment
 func (u *SecretUsecase) getExpectedSecretDistribution(environment domain.Environment) map[string][]string {
 	switch environment {
-	case domain.EnvironmentProduction:
+	case domain.Production:
 		return map[string][]string{
 			"huggingface-secret":     {"alt-auth", "alt-apps"},
 			"meilisearch-secrets":    {"alt-search"},
@@ -154,13 +151,13 @@ func (u *SecretUsecase) getExpectedSecretDistribution(environment domain.Environ
 			"auth-service-secrets":   {"alt-auth"},
 			"backend-secrets":        {"alt-apps"},
 		}
-	case domain.EnvironmentStaging:
+	case domain.Staging:
 		return map[string][]string{
 			"huggingface-secret":     {"alt-staging"},
 			"meilisearch-secrets":    {"alt-staging"},
 			"postgres-secrets":       {"alt-staging"},
 		}
-	case domain.EnvironmentDevelopment:
+	case domain.Development:
 		return map[string][]string{
 			"huggingface-secret":     {"alt-dev"},
 			"meilisearch-secrets":    {"alt-dev"},
@@ -227,8 +224,7 @@ func (u *SecretUsecase) resolveCrossNamespaceConflict(ctx context.Context, confl
 	}
 	
 	// Delete the conflicting secret
-	cmd := []string{"delete", "secret", conflict.SecretName, "-n", conflict.SecretNamespace}
-	_, err := u.kubectlGateway.ExecuteCommand(ctx, cmd)
+	err := u.kubectlGateway.DeleteSecret(ctx, conflict.SecretName, conflict.SecretNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to delete conflicting secret: %w", err)
 	}
@@ -237,6 +233,114 @@ func (u *SecretUsecase) resolveCrossNamespaceConflict(ctx context.Context, confl
 		"secret":    conflict.SecretName,
 		"namespace": conflict.SecretNamespace,
 	})
+	
+	return nil
+}
+
+// ListSecrets lists all secrets for an environment
+func (u *SecretUsecase) ListSecrets(ctx context.Context, environment domain.Environment) ([]domain.SecretInfo, error) {
+	u.logger.InfoWithContext("listing secrets", map[string]interface{}{
+		"environment": environment.String(),
+	})
+	
+	var secretInfos []domain.SecretInfo
+	
+	// Get all secrets with Helm annotations
+	secrets, err := u.kubectlGateway.GetSecretsWithMetadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secrets: %w", err)
+	}
+	
+	for _, secret := range secrets {
+		owner := ""
+		if secret.ReleaseName != "" {
+			if secret.ReleaseNamespace != "" {
+				owner = fmt.Sprintf("%s/%s", secret.ReleaseNamespace, secret.ReleaseName)
+			} else {
+				owner = secret.ReleaseName
+			}
+		}
+		
+		secretInfos = append(secretInfos, domain.SecretInfo{
+			Name:      secret.Name,
+			Namespace: secret.Namespace,
+			Owner:     owner,
+			Type:      secret.Type,
+			Age:       secret.Age,
+		})
+	}
+	
+	u.logger.InfoWithContext("listed secrets", map[string]interface{}{
+		"environment": environment.String(),
+		"count":       len(secretInfos),
+	})
+	
+	return secretInfos, nil
+}
+
+// FindOrphanedSecrets finds secrets that are orphaned or have invalid ownership
+func (u *SecretUsecase) FindOrphanedSecrets(ctx context.Context, environment domain.Environment) ([]domain.SecretInfo, error) {
+	u.logger.InfoWithContext("finding orphaned secrets", map[string]interface{}{
+		"environment": environment.String(),
+	})
+	
+	var orphaned []domain.SecretInfo
+	
+	// Get secrets with invalid ownership (cross-namespace ownership)
+	conflicts, err := u.detectOwnershipConflicts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect conflicts: %w", err)
+	}
+	
+	for _, conflict := range conflicts {
+		if conflict.ConflictType == domain.ConflictTypeCrossNamespace {
+			orphaned = append(orphaned, domain.SecretInfo{
+				Name:      conflict.SecretName,
+				Namespace: conflict.SecretNamespace,
+				Owner:     fmt.Sprintf("%s/%s", conflict.ReleaseNamespace, conflict.ReleaseName),
+			})
+		}
+	}
+	
+	u.logger.InfoWithContext("found orphaned secrets", map[string]interface{}{
+		"environment": environment.String(),
+		"count":       len(orphaned),
+	})
+	
+	return orphaned, nil
+}
+
+// DeleteOrphanedSecrets deletes orphaned secrets
+func (u *SecretUsecase) DeleteOrphanedSecrets(ctx context.Context, orphaned []domain.SecretInfo, dryRun bool) error {
+	u.logger.InfoWithContext("deleting orphaned secrets", map[string]interface{}{
+		"count":   len(orphaned),
+		"dry_run": dryRun,
+	})
+	
+	for _, secret := range orphaned {
+		if dryRun {
+			u.logger.InfoWithContext("dry-run: would delete orphaned secret", map[string]interface{}{
+				"secret":    secret.Name,
+				"namespace": secret.Namespace,
+			})
+			continue
+		}
+		
+		err := u.kubectlGateway.DeleteSecret(ctx, secret.Name, secret.Namespace)
+		if err != nil {
+			u.logger.WarnWithContext("failed to delete orphaned secret", map[string]interface{}{
+				"secret":    secret.Name,
+				"namespace": secret.Namespace,
+				"error":     err.Error(),
+			})
+			continue
+		}
+		
+		u.logger.InfoWithContext("deleted orphaned secret", map[string]interface{}{
+			"secret":    secret.Name,
+			"namespace": secret.Namespace,
+		})
+	}
 	
 	return nil
 }

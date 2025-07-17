@@ -11,6 +11,7 @@ import (
 	"deploy-cli/gateway/kubectl_gateway"
 	"deploy-cli/gateway/filesystem_gateway"
 	"deploy-cli/gateway/system_gateway"
+	"deploy-cli/usecase/secret_usecase"
 )
 
 // DeploymentUsecase handles deployment operations
@@ -19,6 +20,7 @@ type DeploymentUsecase struct {
 	kubectlGateway    *kubectl_gateway.KubectlGateway
 	filesystemGateway *filesystem_gateway.FileSystemGateway
 	systemGateway     *system_gateway.SystemGateway
+	secretUsecase     *secret_usecase.SecretUsecase
 	logger            logger_port.LoggerPort
 }
 
@@ -28,6 +30,7 @@ func NewDeploymentUsecase(
 	kubectlGateway *kubectl_gateway.KubectlGateway,
 	filesystemGateway *filesystem_gateway.FileSystemGateway,
 	systemGateway *system_gateway.SystemGateway,
+	secretUsecase *secret_usecase.SecretUsecase,
 	logger logger_port.LoggerPort,
 ) *DeploymentUsecase {
 	return &DeploymentUsecase{
@@ -35,6 +38,7 @@ func NewDeploymentUsecase(
 		kubectlGateway:    kubectlGateway,
 		filesystemGateway: filesystemGateway,
 		systemGateway:     systemGateway,
+		secretUsecase:     secretUsecase,
 		logger:            logger,
 	}
 }
@@ -97,6 +101,11 @@ func (u *DeploymentUsecase) preDeploymentValidation(ctx context.Context, options
 	// Validate cluster access
 	if err := u.kubectlGateway.ValidateClusterAccess(ctx); err != nil {
 		return fmt.Errorf("cluster access validation failed: %w", err)
+	}
+	
+	// Validate secret state and resolve conflicts
+	if err := u.validateAndFixSecrets(ctx, options); err != nil {
+		return fmt.Errorf("secret validation failed: %w", err)
 	}
 	
 	u.logger.InfoWithContext("pre-deployment validation completed", map[string]interface{}{
@@ -592,6 +601,61 @@ func (u *DeploymentUsecase) validateStatefulSetPods(ctx context.Context, namespa
 			"statefulset": sts.Name,
 			"namespace":   namespace,
 			"pods":        pods,
+		})
+	}
+	
+	return nil
+}
+
+// validateAndFixSecrets validates secret state and automatically resolves conflicts
+func (u *DeploymentUsecase) validateAndFixSecrets(ctx context.Context, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("validating secret state", map[string]interface{}{
+		"environment": options.Environment.String(),
+	})
+	
+	// Validate current secret state
+	validationResult, err := u.secretUsecase.ValidateSecretState(ctx, options.Environment)
+	if err != nil {
+		return fmt.Errorf("failed to validate secret state: %w", err)
+	}
+	
+	// Log validation results
+	u.logger.InfoWithContext("secret validation results", map[string]interface{}{
+		"environment":    options.Environment.String(),
+		"conflicts":      len(validationResult.Conflicts),
+		"warnings":       len(validationResult.Warnings),
+		"valid":          validationResult.Valid,
+	})
+	
+	// Handle warnings
+	for _, warning := range validationResult.Warnings {
+		u.logger.WarnWithContext("secret validation warning", map[string]interface{}{
+			"warning": warning,
+		})
+	}
+	
+	// If conflicts exist, attempt to resolve them
+	if len(validationResult.Conflicts) > 0 {
+		u.logger.InfoWithContext("attempting to resolve secret conflicts", map[string]interface{}{
+			"conflict_count": len(validationResult.Conflicts),
+		})
+		
+		for _, conflict := range validationResult.Conflicts {
+			u.logger.WarnWithContext("secret conflict detected", map[string]interface{}{
+				"secret":           conflict.SecretName,
+				"secret_namespace": conflict.SecretNamespace,
+				"conflict_type":    conflict.ConflictType.String(),
+				"description":      conflict.Description,
+			})
+		}
+		
+		// Resolve conflicts automatically (only for specific safe cases)
+		if err := u.secretUsecase.ResolveConflicts(ctx, validationResult.Conflicts, options.DryRun); err != nil {
+			return fmt.Errorf("failed to resolve secret conflicts: %w", err)
+		}
+		
+		u.logger.InfoWithContext("secret conflicts resolved successfully", map[string]interface{}{
+			"resolved_count": len(validationResult.Conflicts),
 		})
 	}
 	

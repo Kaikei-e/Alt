@@ -188,6 +188,48 @@ func (k *KubectlDriver) GetSecrets(ctx context.Context, namespace string) ([]kub
 	return secrets, nil
 }
 
+// GetSecretsWithMetadata returns secrets with helm metadata across all namespaces
+func (k *KubectlDriver) GetSecretsWithMetadata(ctx context.Context) ([]kubectl_port.KubernetesSecretWithMetadata, error) {
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "secrets", "--all-namespaces", "--no-headers", "-o", "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,TYPE:.type,RELEASE:.metadata.annotations.meta\\.helm\\.sh/release-name,RELEASE_NS:.metadata.annotations.meta\\.helm\\.sh/release-namespace,AGE:.metadata.creationTimestamp")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("kubectl get secrets with metadata failed: %w, output: %s", err, string(output))
+	}
+	
+	var secrets []kubectl_port.KubernetesSecretWithMetadata
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			secret := kubectl_port.KubernetesSecretWithMetadata{
+				Namespace: fields[0],
+				Name:      fields[1],
+				Type:      fields[2],
+				Data:      make(map[string][]byte),
+			}
+			
+			// Parse optional fields
+			if len(fields) >= 4 && fields[3] != "<none>" {
+				secret.ReleaseName = fields[3]
+			}
+			if len(fields) >= 5 && fields[4] != "<none>" {
+				secret.ReleaseNamespace = fields[4]
+			}
+			if len(fields) >= 6 && fields[5] != "<none>" {
+				secret.Age = fields[5]
+			}
+			
+			secrets = append(secrets, secret)
+		}
+	}
+	
+	return secrets, nil
+}
+
 // CreateSecret creates a new secret
 func (k *KubectlDriver) CreateSecret(ctx context.Context, secret kubectl_port.KubernetesSecret) error {
 	args := []string{"create", "secret", "generic", secret.Name, "--namespace", secret.Namespace}

@@ -11,6 +11,7 @@ import (
 	"deploy-cli/utils/logger"
 	"deploy-cli/utils/colors"
 	"deploy-cli/usecase/deployment_usecase"
+	"deploy-cli/usecase/secret_usecase"
 	"deploy-cli/driver/helm_driver"
 	"deploy-cli/driver/kubectl_driver"
 	"deploy-cli/driver/filesystem_driver"
@@ -187,11 +188,15 @@ func (u *UpdateCommand) createDeploymentUsecase() *deployment_usecase.Deployment
 	filesystemGateway := filesystem_gateway.NewFileSystemGateway(filesystemDriver, loggerPort)
 	
 	// Create usecase
+	// Create secret usecase
+	secretUsecase := secret_usecase.NewSecretUsecase(kubectlGateway, loggerPort)
+	
 	return deployment_usecase.NewDeploymentUsecase(
 		helmGateway,
 		kubectlGateway,
 		filesystemGateway,
 		systemGateway,
+		secretUsecase,
 		loggerPort,
 	)
 }
