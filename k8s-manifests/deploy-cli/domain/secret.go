@@ -206,3 +206,155 @@ func GetDefaultSSLConfigs(sslDir string) []SSLSecretConfig {
 		},
 	}
 }
+
+// SecretValidationResult represents the result of secret validation
+type SecretValidationResult struct {
+	Environment Environment        `json:"environment"`
+	Conflicts   []SecretConflict   `json:"conflicts"`
+	Warnings    []string           `json:"warnings"`
+	Valid       bool               `json:"valid"`
+}
+
+// SecretConflict represents a secret ownership or distribution conflict
+type SecretConflict struct {
+	SecretName       string      `json:"secret_name"`
+	SecretNamespace  string      `json:"secret_namespace"`
+	ReleaseName      string      `json:"release_name"`
+	ReleaseNamespace string      `json:"release_namespace"`
+	ConflictType     ConflictType `json:"conflict_type"`
+	Description      string      `json:"description"`
+}
+
+// ConflictType represents the type of secret conflict
+type ConflictType string
+
+const (
+	// ConflictTypeCrossNamespace indicates a secret owned by a release in a different namespace
+	ConflictTypeCrossNamespace ConflictType = "cross_namespace"
+	// ConflictTypeDuplicateOwnership indicates multiple releases claiming ownership
+	ConflictTypeDuplicateOwnership ConflictType = "duplicate_ownership"
+	// ConflictTypeMissingSecret indicates an expected secret is missing
+	ConflictTypeMissingSecret ConflictType = "missing_secret"
+)
+
+// String returns the string representation of ConflictType
+func (c ConflictType) String() string {
+	return string(c)
+}
+
+// SecretDistribution defines how secrets should be distributed across namespaces
+type SecretDistribution struct {
+	SecretName  string   `json:"secret_name"`
+	Namespaces  []string `json:"namespaces"`
+	Required    bool     `json:"required"`
+	Description string   `json:"description"`
+}
+
+// SecretConfig represents secret configuration for an environment
+type SecretConfig struct {
+	Environment   Environment          `json:"environment"`
+	Distributions []SecretDistribution `json:"distributions"`
+}
+
+// NewSecretConfig creates a new secret configuration for the given environment
+func NewSecretConfig(environment Environment) *SecretConfig {
+	return &SecretConfig{
+		Environment:   environment,
+		Distributions: getDefaultSecretDistributions(environment),
+	}
+}
+
+// getDefaultSecretDistributions returns default secret distributions for environment
+func getDefaultSecretDistributions(environment Environment) []SecretDistribution {
+	switch environment {
+	case Production:
+		return []SecretDistribution{
+			{
+				SecretName:  "huggingface-secret",
+				Namespaces:  []string{"alt-auth", "alt-apps"},
+				Required:    true,
+				Description: "Hugging Face API token for ML services",
+			},
+			{
+				SecretName:  "meilisearch-secrets",
+				Namespaces:  []string{"alt-search"},
+				Required:    true,
+				Description: "Meilisearch API keys and master key",
+			},
+			{
+				SecretName:  "postgres-secrets",
+				Namespaces:  []string{"alt-database"},
+				Required:    true,
+				Description: "PostgreSQL database credentials",
+			},
+			{
+				SecretName:  "auth-postgres-secrets",
+				Namespaces:  []string{"alt-database"},
+				Required:    true,
+				Description: "Auth service PostgreSQL credentials",
+			},
+			{
+				SecretName:  "auth-service-secrets",
+				Namespaces:  []string{"alt-auth"},
+				Required:    true,
+				Description: "Auth service configuration secrets",
+			},
+			{
+				SecretName:  "backend-secrets",
+				Namespaces:  []string{"alt-apps"},
+				Required:    true,
+				Description: "Backend service configuration secrets",
+			},
+			{
+				SecretName:  "clickhouse-secrets",
+				Namespaces:  []string{"alt-database"},
+				Required:    true,
+				Description: "ClickHouse database credentials",
+			},
+		}
+	case Staging:
+		return []SecretDistribution{
+			{
+				SecretName:  "huggingface-secret",
+				Namespaces:  []string{"alt-staging"},
+				Required:    true,
+				Description: "Hugging Face API token for staging",
+			},
+			{
+				SecretName:  "meilisearch-secrets",
+				Namespaces:  []string{"alt-staging"},
+				Required:    true,
+				Description: "Meilisearch secrets for staging",
+			},
+			{
+				SecretName:  "postgres-secrets",
+				Namespaces:  []string{"alt-staging"},
+				Required:    true,
+				Description: "PostgreSQL secrets for staging",
+			},
+		}
+	case Development:
+		return []SecretDistribution{
+			{
+				SecretName:  "huggingface-secret",
+				Namespaces:  []string{"alt-dev"},
+				Required:    false,
+				Description: "Hugging Face API token for development",
+			},
+			{
+				SecretName:  "meilisearch-secrets",
+				Namespaces:  []string{"alt-dev"},
+				Required:    true,
+				Description: "Meilisearch secrets for development",
+			},
+			{
+				SecretName:  "postgres-secrets",
+				Namespaces:  []string{"alt-dev"},
+				Required:    true,
+				Description: "PostgreSQL secrets for development",
+			},
+		}
+	default:
+		return []SecretDistribution{}
+	}
+}
