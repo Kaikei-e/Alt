@@ -139,10 +139,11 @@ func (s *DependencyScanner) ScanDependencies(ctx context.Context, chartsDir stri
 		"charts": charts,
 	})
 
-	// Scan each chart for dependencies
+	// Scan each chart for dependencies (only Helm dependencies for deployment ordering)
 	var allDependencies []ChartDependency
 	for _, chart := range charts {
-		deps, err := s.scanChartDependencies(ctx, chartsDir, chart)
+		// Only scan Helm dependencies to avoid false positives from service/secret references
+		deps, err := s.scanHelmDependenciesOnly(chartsDir, chart)
 		if err != nil {
 			s.logger.WarnWithContext("failed to scan chart dependencies", map[string]interface{}{
 				"chart": chart,
@@ -296,6 +297,12 @@ func (s *DependencyScanner) scanHelmDependencies(chartPath, chartName string) ([
 	}
 
 	return dependencies, nil
+}
+
+// scanHelmDependenciesOnly scans only Chart.yaml for Helm dependencies (avoids false positives)
+func (s *DependencyScanner) scanHelmDependenciesOnly(chartsDir, chartName string) ([]ChartDependency, error) {
+	chartPath := filepath.Join(chartsDir, chartName)
+	return s.scanHelmDependencies(chartPath, chartName)
 }
 
 // scanValuesDependencies scans values files for dependencies

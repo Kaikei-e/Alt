@@ -169,7 +169,7 @@ func (u *SecretUsecase) detectOwnershipConflicts(ctx context.Context) ([]domain.
 func (u *SecretUsecase) detectResourceConflicts(ctx context.Context) ([]domain.SecretConflict, error) {
 	var conflicts []domain.SecretConflict
 	
-	// List of resource types to check for conflicts
+	// List of resource types to check for conflicts (includes cluster-scoped resources)
 	resourceTypes := []string{
 		"networkpolicy",
 		"configmap",
@@ -177,6 +177,10 @@ func (u *SecretUsecase) detectResourceConflicts(ctx context.Context) ([]domain.S
 		"serviceaccount",
 		"deployment",
 		"statefulset",
+		"resourcequota",      // NEW: ResourceQuota conflicts causing current failure
+		"storageclass",       // Cluster-scoped: Common-config chart creates StorageClass resources
+		"clusterrole",        // Cluster-scoped: Common-config chart creates ClusterRole resources  
+		"clusterrolebinding", // Cluster-scoped: Common-config chart creates ClusterRoleBinding resources
 	}
 	
 	for _, resourceType := range resourceTypes {
@@ -255,7 +259,20 @@ func (u *SecretUsecase) isNamespaceMigrationConflict(conflict domain.SecretConfl
 	// Get the current intended namespace for the release
 	intendedNamespace := domain.DetermineNamespace(conflict.ReleaseName, environment)
 	
-	// Check if this is a migration scenario:
+	// Handle cluster-scoped resources (StorageClass, ClusterRole, ClusterRoleBinding, etc.)
+	isClusterScoped := conflict.SecretNamespace == ""
+	if isClusterScoped && u.isCommonChart(conflict.ReleaseName) {
+		u.logger.InfoWithContext("detected cluster-scoped resource migration conflict", map[string]interface{}{
+			"release_name":         conflict.ReleaseName,
+			"resource_name":        conflict.SecretName,
+			"resource_type":        conflict.ResourceType,
+			"release_namespace":    conflict.ReleaseNamespace,
+			"intended_namespace":   intendedNamespace,
+		})
+		return true
+	}
+	
+	// Handle namespaced resources - Check if this is a migration scenario:
 	// 1. Resource is in alt-production (old location)
 	// 2. Release should now deploy to a different namespace (new location)
 	// 3. Release is a common chart that has migrated
@@ -478,14 +495,20 @@ func (u *SecretUsecase) resolveResourceConflict(ctx context.Context, conflict do
 	// 1. It's in the "default" namespace
 	// 2. It's clearly orphaned (cross-namespace ownership)
 	// 3. It's a namespace migration conflict (resource in old target namespace)
+	// 4. It's a cluster-scoped resource with migration conflict
+	isClusterScoped := conflict.SecretNamespace == ""
 	shouldDelete := conflict.SecretNamespace == "default" || 
-					conflict.SecretNamespace != conflict.ReleaseNamespace || 
+					(!isClusterScoped && conflict.SecretNamespace != conflict.ReleaseNamespace) || 
 					isMigrationConflict
 
 	if shouldDelete {
 		reason := "resource_metadata_conflict_safe_to_delete"
 		if isMigrationConflict {
-			reason = "namespace_migration_cleanup"
+			if isClusterScoped {
+				reason = "cluster_scoped_resource_migration_cleanup"
+			} else {
+				reason = "namespace_migration_cleanup"
+			}
 		}
 		
 		u.logger.InfoWithContext("deleting resource with metadata conflict", map[string]interface{}{
