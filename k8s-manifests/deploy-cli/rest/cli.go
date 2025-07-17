@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	
+
 	"github.com/spf13/cobra"
-	
+
 	"deploy-cli/rest/commands"
 	"deploy-cli/utils/logger"
 	"deploy-cli/utils/colors"
@@ -23,7 +23,7 @@ func NewCLI(logger *logger.Logger) *CLI {
 	cli := &CLI{
 		logger: logger,
 	}
-	
+
 	cli.rootCmd = &cobra.Command{
 		Use:   "deploy-cli",
 		Short: "Kubernetes deployment CLI with automatic secret management for Alt RSS Reader",
@@ -31,15 +31,16 @@ func NewCLI(logger *logger.Logger) *CLI {
 
 Features:
 • Helm-based deployment with environment-specific configurations
-• Automatic secret validation and conflict resolution  
+• Automatic secret validation and conflict resolution
 • Pre-deployment validation and health checking
 • Comprehensive maintenance and cleanup operations
+• Real-time monitoring and observability capabilities
 
 Common Workflows:
   # Deploy with automatic secret validation
   deploy-cli deploy production
 
-  # Check and fix secret conflicts  
+  # Check and fix secret conflicts
   deploy-cli secrets validate production
   deploy-cli secrets fix-conflicts production
 
@@ -51,16 +52,20 @@ Common Workflows:
   deploy-cli troubleshoot diagnose production
   deploy-cli troubleshoot interactive production
 
+  # Monitor deployment health and metrics
+  deploy-cli monitor dashboard production
+  deploy-cli monitor services alt-backend production
+
   # Monitor deployment status
   deploy-cli helm-status production
 
 Supported Environments: development, staging, production`,
 		Version: "1.0.0",
 	}
-	
+
 	cli.setupCommands()
 	cli.setupGlobalFlags()
-	
+
 	return cli
 }
 
@@ -74,35 +79,39 @@ func (c *CLI) setupCommands() {
 	// Add deploy command
 	deployCmd := commands.NewDeployCommand(c.logger)
 	c.rootCmd.AddCommand(deployCmd)
-	
+
 	// Add validate command
 	validateCmd := commands.NewValidateCommand(c.logger)
 	c.rootCmd.AddCommand(validateCmd)
-	
+
 	// Add cleanup command
 	cleanupCmd := commands.NewCleanupCommand(c.logger)
 	c.rootCmd.AddCommand(cleanupCmd)
-	
+
 	// Add validate-manifests command
 	validateManifestsCmd := commands.NewValidateManifestsCommand(c.logger)
 	c.rootCmd.AddCommand(validateManifestsCmd)
-	
+
 	// Add helm-status command
 	helmStatusCmd := commands.NewHelmStatusCommand(c.logger)
 	c.rootCmd.AddCommand(helmStatusCmd)
-	
+
 	// Add update command
 	updateCmd := commands.NewUpdateCommand(c.logger)
 	c.rootCmd.AddCommand(updateCmd)
-	
+
 	// Add secrets command
 	secretsCmd := commands.NewSecretsCommand(c.logger)
 	c.rootCmd.AddCommand(secretsCmd)
-	
+
 	// Add troubleshoot command
 	troubleshootCmd := commands.NewTroubleshootCommand(c.logger)
 	c.rootCmd.AddCommand(troubleshootCmd)
-	
+
+	// Add monitor command
+	monitorCmd := commands.NewMonitorCommand(c.logger)
+	c.rootCmd.AddCommand(monitorCmd)
+
 	// Add version command
 	versionCmd := &cobra.Command{
 		Use:   "version",
@@ -119,14 +128,14 @@ func (c *CLI) setupGlobalFlags() {
 	// Add global flags
 	c.rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Enable verbose logging")
 	c.rootCmd.PersistentFlags().Bool("no-color", false, "Disable colored output")
-	
+
 	// Pre-run hook to handle global flags
 	c.rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		// Handle verbose flag
 		if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
 			c.logger = logger.NewLoggerWithLevel(logger.DebugLevel)
 		}
-		
+
 		// Handle no-color flag
 		if noColor, _ := cmd.Flags().GetBool("no-color"); noColor {
 			colors.DisableColor()
@@ -157,4 +166,9 @@ func (c *CLI) SetArgs(args []string) {
 // SetOutput sets the output writer (useful for testing)
 func (c *CLI) SetOutput(output *os.File) {
 	c.rootCmd.SetOutput(output)
+}
+
+// SetVersion sets the version of the CLI
+func (c *CLI) SetVersion(version string) {
+	c.rootCmd.Version = version
 }

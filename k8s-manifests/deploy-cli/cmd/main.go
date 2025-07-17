@@ -12,6 +12,9 @@ import (
 	"deploy-cli/utils/colors"
 )
 
+// Version is set during build time via ldflags
+var Version = "dev"
+
 func main() {
 	// Create context that can be cancelled
 	ctx, cancel := context.WithCancel(context.Background())
@@ -32,6 +35,7 @@ func main() {
 	
 	// Create and execute CLI
 	cli := rest.NewCLI(log)
+	cli.SetVersion(Version)
 	
 	if err := cli.Execute(ctx); err != nil {
 		log.ErrorWithContext("CLI execution failed", "error", err)
