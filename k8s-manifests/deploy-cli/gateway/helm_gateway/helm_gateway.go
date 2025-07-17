@@ -740,3 +740,95 @@ func (g *HelmGateway) validateStatefulSetChart(ctx context.Context, chart domain
 	
 	return nil
 }
+
+// ForceDeleteRelease forcefully deletes a Helm release with aggressive cleanup
+func (g *HelmGateway) ForceDeleteRelease(ctx context.Context, releaseName, namespace string) error {
+	g.logger.InfoWithContext("force deleting helm release", map[string]interface{}{
+		"release":   releaseName,
+		"namespace": namespace,
+	})
+	
+	// Use the existing Uninstall method from the port
+	err := g.helmPort.Uninstall(ctx, releaseName, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to force delete helm release", map[string]interface{}{
+			"release":   releaseName,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("failed to force delete helm release %s: %w", releaseName, err)
+	}
+	
+	g.logger.InfoWithContext("helm release force deleted", map[string]interface{}{
+		"release":   releaseName,
+		"namespace": namespace,
+	})
+	
+	return nil
+}
+
+// EmergencyCleanupAllReleases performs emergency cleanup of all Helm releases
+func (g *HelmGateway) EmergencyCleanupAllReleases(ctx context.Context) error {
+	g.logger.InfoWithContext("starting emergency cleanup of all helm releases", map[string]interface{}{})
+	
+	// Get all releases across all namespaces
+	releases, err := g.ListReleases(ctx, "")
+	if err != nil {
+		return fmt.Errorf("failed to list releases for emergency cleanup: %w", err)
+	}
+	
+	g.logger.InfoWithContext("found releases for emergency cleanup", map[string]interface{}{
+		"count": len(releases),
+	})
+	
+	// Force delete each release
+	for _, release := range releases {
+		g.logger.InfoWithContext("force deleting release in emergency cleanup", map[string]interface{}{
+			"release":   release.Name,
+			"namespace": release.Namespace,
+			"status":    release.Status,
+		})
+		
+		if err := g.ForceDeleteRelease(ctx, release.Name, release.Namespace); err != nil {
+			g.logger.WarnWithContext("failed to force delete release during emergency cleanup", map[string]interface{}{
+				"release":   release.Name,
+				"namespace": release.Namespace,
+				"error":     err.Error(),
+			})
+			// Continue with other releases even if one fails
+		}
+	}
+	
+	g.logger.InfoWithContext("emergency cleanup of helm releases completed", map[string]interface{}{
+		"releases_processed": len(releases),
+	})
+	
+	return nil
+}
+
+// ValidateReleaseState validates the state of a Helm release
+func (g *HelmGateway) ValidateReleaseState(ctx context.Context, releaseName, namespace string) (*helm_port.HelmStatus, error) {
+	g.logger.InfoWithContext("validating helm release state", map[string]interface{}{
+		"release":   releaseName,
+		"namespace": namespace,
+	})
+	
+	// Use the existing Status method from the port
+	status, err := g.helmPort.Status(ctx, releaseName, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to validate helm release state", map[string]interface{}{
+			"release":   releaseName,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return nil, fmt.Errorf("failed to validate helm release state for %s: %w", releaseName, err)
+	}
+	
+	g.logger.InfoWithContext("helm release state validated", map[string]interface{}{
+		"release":   releaseName,
+		"namespace": namespace,
+		"status":    status.Status,
+	})
+	
+	return &status, nil
+}

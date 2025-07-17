@@ -112,6 +112,10 @@ func (c *CLI) setupCommands() {
 	monitorCmd := commands.NewMonitorCommand(c.logger)
 	c.rootCmd.AddCommand(monitorCmd)
 
+	// Add emergency reset command
+	emergencyResetCmd := commands.NewEmergencyResetCommand(c.logger)
+	c.rootCmd.AddCommand(emergencyResetCmd)
+
 	// Add version command
 	versionCmd := &cobra.Command{
 		Use:   "version",

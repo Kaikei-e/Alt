@@ -3,7 +3,7 @@
 # Build variables
 BINARY_NAME=deploy-cli
 CMD_DIR=./cmd
-BUILD_DIR=./build
+BUILD_DIR=./
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
 
@@ -92,27 +92,27 @@ install: build
 build-cross: clean
 	@echo "Cross-compiling for multiple platforms..."
 	@mkdir -p $(BUILD_DIR)
-	
+
 	# Linux AMD64
 	@echo "Building for Linux AMD64..."
 	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 $(CMD_DIR)
-	
+
 	# Linux ARM64
 	@echo "Building for Linux ARM64..."
 	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 $(CMD_DIR)
-	
+
 	# macOS AMD64
 	@echo "Building for macOS AMD64..."
 	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(CMD_DIR)
-	
+
 	# macOS ARM64
 	@echo "Building for macOS ARM64..."
 	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(CMD_DIR)
-	
+
 	# Windows AMD64
 	@echo "Building for Windows AMD64..."
 	GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe $(CMD_DIR)
-	
+
 	@echo "Cross-compilation complete"
 	@ls -la $(BUILD_DIR)/
 

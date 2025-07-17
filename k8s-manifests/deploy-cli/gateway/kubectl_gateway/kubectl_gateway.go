@@ -98,6 +98,25 @@ func (g *KubectlGateway) EnsureNamespaces(ctx context.Context, env domain.Enviro
 	return nil
 }
 
+// GetNamespaces returns all namespaces in the cluster
+func (g *KubectlGateway) GetNamespaces(ctx context.Context) ([]kubectl_port.KubernetesNamespace, error) {
+	g.logger.InfoWithContext("getting all namespaces", map[string]interface{}{})
+	
+	namespaces, err := g.kubectlPort.GetNamespaces(ctx)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get namespaces", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get namespaces: %w", err)
+	}
+	
+	g.logger.InfoWithContext("got namespaces", map[string]interface{}{
+		"count": len(namespaces),
+	})
+	
+	return namespaces, nil
+}
+
 // CreateSecret creates a Kubernetes secret
 func (g *KubectlGateway) CreateSecret(ctx context.Context, secret domain.Secret) error {
 	g.logger.InfoWithContext("creating secret", map[string]interface{}{

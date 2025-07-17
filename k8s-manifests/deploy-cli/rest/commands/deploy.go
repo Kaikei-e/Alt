@@ -2,6 +2,8 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 	
 	"github.com/spf13/cobra"
@@ -149,6 +151,34 @@ func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 	options.TargetNamespace, _ = cmd.Flags().GetString("namespace")
 	options.Timeout, _ = cmd.Flags().GetDuration("timeout")
 	options.ChartsDir, _ = cmd.Flags().GetString("charts-dir")
+	
+	// Convert relative charts directory to absolute path
+	if options.ChartsDir != "" {
+		absPath, err := filepath.Abs(options.ChartsDir)
+		if err != nil {
+			d.logger.WarnWithContext("failed to resolve charts directory to absolute path", map[string]interface{}{
+				"charts-dir": options.ChartsDir,
+				"error": err.Error(),
+			})
+		} else {
+			options.ChartsDir = absPath
+		}
+	}
+	
+	// Validate that charts directory exists
+	if options.ChartsDir != "" {
+		if _, err := os.Stat(options.ChartsDir); os.IsNotExist(err) {
+			return fmt.Errorf("charts directory does not exist: %s", options.ChartsDir)
+		}
+	}
+	
+	// Log key deployment parameters
+	d.logger.InfoWithContext("deployment configuration", map[string]interface{}{
+		"charts-dir": options.ChartsDir,
+		"namespace": options.TargetNamespace,
+		"force-update": options.ForceUpdate,
+		"dry-run": options.DryRun,
+	})
 	
 	// Execute deployment
 	start := time.Now()
