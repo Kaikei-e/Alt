@@ -174,13 +174,13 @@ jobs:
           pnpm install --frozen-lockfile
           echo "::endgroup::"
 
-      # - name: Install Playwright browsers
-      #   if: inputs.test-type == 'playwright' && steps.playwright-cache.outputs.cache-hit != 'true'
-      #   working-directory: ${{ inputs.working-directory }}
-      #   run: |
-      #     echo "::group::Installing Playwright browsers"
-      #     pnpm exec playwright install --with-deps
-      #     echo "::endgroup::"
+      - name: Install Playwright browsers
+        if: inputs.test-type == 'playwright' && steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "::group::Installing Playwright browsers"
+          pnpm exec playwright install --with-deps
+          echo "::endgroup::"
 
       - name: Pre-test port check
         if: inputs.test-type == 'playwright'
