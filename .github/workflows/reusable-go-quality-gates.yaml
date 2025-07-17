@@ -107,6 +107,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           # 権限を確保しながらダウンロード
+          go mod tidy
           go mod download
           go mod verify
 
