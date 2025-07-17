@@ -1,6 +1,8 @@
 name: Reusable Python Test Workflow
+
 permissions:
   contents: read
+
 on:
   workflow_call:
     inputs:
@@ -20,28 +22,28 @@ jobs:
   test:
     runs-on: [self-hosted, linux, X64]
     timeout-minutes: 30
+
     steps:
       - name: Security setup
         run: |
           # パスマスキング
           echo "::add-mask::$HOME"
           echo "::add-mask::$USER"
-          echo "::add-mask::/Users"
-          echo "::add-mask::/opt/homebrew"
+          echo "::add-mask::/home"
+          echo "::add-mask::/opt"
 
       - uses: actions/checkout@v4
 
-      - name: Setup isolated Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Create virtual environment
         id: setup
         run: |
-          # 一時的な作業ディレクトリ
           WORK_DIR="${{ runner.temp }}/python-env-${{ github.run_id }}"
-          mkdir -p "$WORK_DIR"
-
-          # 仮想環境を作成（Homebrewのpythonを使用）
-          /opt/homebrew/bin/python3 -m venv "$WORK_DIR/venv" >/dev/null 2>&1
-
-          # 出力用に短縮パスを作成
+          python3 -m venv "$WORK_DIR/venv"
           echo "venv=$WORK_DIR/venv" >> $GITHUB_OUTPUT
           echo "::notice::Python environment ready"
 
@@ -49,58 +51,33 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         shell: bash
         run: |
-          # 仮想環境を有効化
           source "${{ steps.setup.outputs.venv }}/bin/activate"
-
-          # 静かにインストール
-          pip install --quiet --upgrade pip wheel setuptools
-          pip install --quiet pytest pytest-cov psycopg2-binary
-
-          # プロジェクトの依存関係
+          pip install --quiet --upgrade pip wheel setuptools pytest pytest-cov
           if [ -f "requirements.txt" ]; then
-              pip install --quiet -r requirements.txt
-          elif [ -f "pyproject.toml" ]; then
-              # Install core dependencies
-              pip install --quiet -e .
-              # Install test ML dependencies if available
-              pip install --quiet -e ".[test-ml]" 2>/dev/null || echo "No test-ml group found, continuing..."
+            pip install --quiet -r requirements.txt
           fi
-
           echo "::notice::Dependencies installed"
 
       - name: Run tests
         working-directory: ${{ inputs.working-directory }}
         shell: bash
         run: |
-          # 仮想環境を有効化
           source "${{ steps.setup.outputs.venv }}/bin/activate"
-
-          # テストディレクトリを準備
           mkdir -p tests
-
-          # テスト実行（パスを含む出力をフィルタ）
           set +e
           ${{ inputs.test-command }} 2>&1 | \
-            sed -E 's|/Users/[^/]+|/***|g; s|/opt/[^/]+|/***|g' | \
+            sed -E 's|/home/[^/]+|***|g' | \
             grep -v "runner-" | \
             grep -v "actions-runner"
-          TEST_EXIT=${PIPESTATUS[0]}
-
-          # 結果確認
-          if [ ! -f "tests/results.xml" ]; then
-              echo '<?xml version="1.0" encoding="UTF-8"?><testsuites></testsuites>' > tests/results.xml
-          fi
-
-          exit $TEST_EXIT
+          exit ${PIPESTATUS[0]}
 
       - name: Cleanup
-        if: always()
+        if: ${{ always() }}
         run: |
-          # 仮想環境を削除
-          rm -rf "${{ steps.setup.outputs.venv }}" 2>/dev/null || true
+          rm -rf "${{ steps.setup.outputs.venv }}" || true
 
       - name: Upload test results
-        if: always()
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: python-test-results-${{ github.run_id }}
