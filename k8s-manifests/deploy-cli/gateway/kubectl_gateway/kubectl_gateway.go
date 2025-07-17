@@ -3,7 +3,6 @@ package kubectl_gateway
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 	
 	"deploy-cli/port/kubectl_port"
@@ -272,7 +271,7 @@ func (g *KubectlGateway) DeletePersistentVolume(ctx context.Context, name string
 }
 
 // GetPods returns pods in the specified namespace with optional label selector
-func (g *KubectlGateway) GetPods(ctx context.Context, namespace string, selector string) (string, error) {
+func (g *KubectlGateway) GetPods(ctx context.Context, namespace string, selector string) ([]kubectl_port.KubernetesPod, error) {
 	g.logger.DebugWithContext("getting pods", map[string]interface{}{
 		"namespace": namespace,
 		"selector":  selector,
@@ -285,15 +284,7 @@ func (g *KubectlGateway) GetPods(ctx context.Context, namespace string, selector
 			"selector":  selector,
 			"error":     err.Error(),
 		})
-		return "", fmt.Errorf("failed to get pods: %w", err)
-	}
-	
-	// Format the pod output
-	var result strings.Builder
-	result.WriteString("NAME\tREADY\tSTATUS\tRESTARTS\tAGE\n")
-	for _, pod := range pods {
-		result.WriteString(fmt.Sprintf("%s\t%s\t%s\t%d\t%s\n", 
-			pod.Name, pod.Ready, pod.Status, pod.Restarts, pod.Age))
+		return nil, fmt.Errorf("failed to get pods: %w", err)
 	}
 	
 	g.logger.DebugWithContext("pods retrieved", map[string]interface{}{
@@ -301,7 +292,7 @@ func (g *KubectlGateway) GetPods(ctx context.Context, namespace string, selector
 		"count":     len(pods),
 	})
 	
-	return result.String(), nil
+	return pods, nil
 }
 
 // GetProblematicPods returns pods that are not in Running or Succeeded state

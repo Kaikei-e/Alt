@@ -57,14 +57,19 @@ func (o *DeploymentOptions) ShouldOverrideImage() bool {
 
 // GetImageTag returns the image tag for the given chart
 func (o *DeploymentOptions) GetImageTag(chartName string) string {
-	if o.TagBase == "" {
-		if o.ForceUpdate {
-			// Use environment-specific tag for force updates
-			return o.Environment.String()
-		}
-		return ""
+	if o.TagBase != "" {
+		// If TagBase is explicitly provided, use it with chart name
+		return fmt.Sprintf("%s-%s", chartName, o.TagBase)
 	}
-	return fmt.Sprintf("%s-%s", chartName, o.TagBase)
+	
+	if o.ForceUpdate {
+		// For force updates, generate a unique tag to ensure pod updates
+		timestamp := time.Now().Unix()
+		return fmt.Sprintf("%s-force-%d", o.Environment.String(), timestamp)
+	}
+	
+	// Default fallback: use environment name
+	return o.Environment.String()
 }
 
 // DeploymentResult represents the result of a deployment operation

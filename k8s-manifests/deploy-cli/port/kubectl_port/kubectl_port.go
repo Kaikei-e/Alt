@@ -76,6 +76,9 @@ type KubectlPort interface {
 	// RolloutStatus returns the rollout status
 	RolloutStatus(ctx context.Context, resourceType, name, namespace string, timeout time.Duration) error
 	
+	// WaitForRollout waits for a rollout to complete
+	WaitForRollout(ctx context.Context, resourceType, name, namespace string, timeout time.Duration) error
+	
 	// ApplyYAML applies a YAML configuration
 	ApplyYAML(ctx context.Context, yamlContent string) error
 	
@@ -160,19 +163,22 @@ type KubernetesStorageClass struct {
 
 // KubernetesStatefulSet represents a Kubernetes stateful set
 type KubernetesStatefulSet struct {
-	Name      string
-	Namespace string
-	Ready     string
-	Age       string
-	Replicas  int
+	Name           string
+	Namespace      string
+	Ready          string
+	Age            string
+	Replicas       int
+	ReadyReplicas  int
 }
 
 // KubernetesDeployment represents a Kubernetes deployment
 type KubernetesDeployment struct {
-	Name      string
-	Namespace string
-	Ready     string
-	UpToDate  string
-	Available string
-	Age       string
+	Name          string
+	Namespace     string
+	Ready         string
+	UpToDate      string
+	Available     string
+	Age           string
+	Replicas      int
+	ReadyReplicas int
 }

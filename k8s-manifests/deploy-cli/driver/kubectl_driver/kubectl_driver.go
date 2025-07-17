@@ -680,6 +680,99 @@ func (k *KubectlDriver) RolloutStatus(ctx context.Context, resourceType, name, n
 	return nil
 }
 
+// WaitForRollout waits for a rollout to complete
+func (k *KubectlDriver) WaitForRollout(ctx context.Context, resourceType, name, namespace string, timeout time.Duration) error {
+	// Create a timeout context for the rollout wait
+	timeoutCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		timeoutCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	
+	args := []string{"rollout", "status", fmt.Sprintf("%s/%s", resourceType, name), "--namespace", namespace, "--watch=false"}
+	if timeout > 0 {
+		args = append(args, "--timeout", timeout.String())
+	}
+	
+	cmd := exec.CommandContext(timeoutCtx, "kubectl", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Detailed error classification
+		if timeoutCtx.Err() == context.DeadlineExceeded {
+			return &RolloutTimeoutError{
+				ResourceType: resourceType,
+				Name:         name,
+				Namespace:    namespace,
+				Timeout:      timeout,
+				Output:       string(output),
+			}
+		}
+		
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return &KubectlCommandError{
+				Command:  "rollout status",
+				Args:     args,
+				ExitCode: exitErr.ExitCode(),
+				Output:   string(output),
+				Cause:    err,
+			}
+		}
+		
+		return fmt.Errorf("kubectl rollout status wait failed: %w, output: %s", err, string(output))
+	}
+	return nil
+}
+
+// Custom error types for better error handling
+
+// RolloutTimeoutError represents a rollout timeout error
+type RolloutTimeoutError struct {
+	ResourceType string
+	Name         string
+	Namespace    string
+	Timeout      time.Duration
+	Output       string
+}
+
+func (e *RolloutTimeoutError) Error() string {
+	return fmt.Sprintf("rollout wait timed out after %v for %s/%s in namespace %s", 
+		e.Timeout, e.ResourceType, e.Name, e.Namespace)
+}
+
+func (e *RolloutTimeoutError) IsRetriable() bool {
+	return true
+}
+
+// KubectlCommandError represents a kubectl command execution error
+type KubectlCommandError struct {
+	Command  string
+	Args     []string
+	ExitCode int
+	Output   string
+	Cause    error
+}
+
+func (e *KubectlCommandError) Error() string {
+	return fmt.Sprintf("kubectl %s failed with exit code %d: %s", 
+		e.Command, e.ExitCode, e.Output)
+}
+
+func (e *KubectlCommandError) IsRetriable() bool {
+	// Certain exit codes are retriable
+	retriableExitCodes := []int{1, 130} // General errors, interrupted by signal
+	for _, code := range retriableExitCodes {
+		if e.ExitCode == code {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *KubectlCommandError) Unwrap() error {
+	return e.Cause
+}
+
 // ApplyYAML applies a YAML configuration
 func (k *KubectlDriver) ApplyYAML(ctx context.Context, yamlContent string) error {
 	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")

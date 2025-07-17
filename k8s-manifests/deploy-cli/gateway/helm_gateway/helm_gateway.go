@@ -39,11 +39,20 @@ func (g *HelmGateway) TemplateChart(ctx context.Context, chart domain.Chart, opt
 	}
 	
 	// Add image overrides if applicable
-	if chart.SupportsImageOverride() && options.ShouldOverrideImage() {
+	shouldOverrideImage := chart.SupportsImageOverride() && (options.ShouldOverrideImage() || options.ForceUpdate)
+	
+	if shouldOverrideImage {
+		imageTag := options.GetImageTag(chart.Name)
 		helmOptions.ImageOverrides = map[string]string{
 			"image.repository": options.ImagePrefix,
-			"image.tag":        options.GetImageTag(chart.Name),
+			"image.tag":        imageTag,
 		}
+		
+		g.logger.DebugWithContext("applying image override for templating", map[string]interface{}{
+			"chart":      chart.Name,
+			"repository": options.ImagePrefix,
+			"tag":        imageTag,
+		})
 	}
 	
 	start := time.Now()
@@ -76,14 +85,26 @@ func (g *HelmGateway) TemplateChart(ctx context.Context, chart domain.Chart, opt
 func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
 	namespace := options.GetNamespace(chart.Name)
 	
-	g.logger.InfoWithContext("deploying chart", map[string]interface{}{
+	g.logger.InfoWithContext("starting chart deployment", map[string]interface{}{
 		"chart":     chart.Name,
 		"namespace": namespace,
+		"force_update": options.ForceUpdate,
+		"dry_run": options.DryRun,
 	})
+	
+	// Pre-deployment validations
+	if err := g.validatePrerequisites(ctx, chart, options); err != nil {
+		g.logger.ErrorWithContext("pre-deployment validation failed", map[string]interface{}{
+			"chart":     chart.Name,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("pre-deployment validation failed for chart %s: %w", chart.Name, err)
+	}
 	
 	// Check for existing operations before starting deployment
 	if err := g.checkAndHandleConflicts(ctx, chart.Name, namespace); err != nil {
-		g.logger.WarnWithContext("conflict detected during deployment", map[string]interface{}{
+		g.logger.WarnWithContext("conflict detected, attempting to resolve", map[string]interface{}{
 			"chart":     chart.Name,
 			"namespace": namespace,
 			"error":     err.Error(),
@@ -110,26 +131,59 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		Force:           options.ForceUpdate,
 	}
 	
-	// Add image overrides if applicable
-	if chart.SupportsImageOverride() && options.ShouldOverrideImage() {
+	// Simplified image override logic
+	shouldOverrideImage := chart.SupportsImageOverride() && (options.ShouldOverrideImage() || options.ForceUpdate)
+	
+	if shouldOverrideImage {
+		imageTag := options.GetImageTag(chart.Name)
 		helmOptions.ImageOverrides = map[string]string{
 			"image.repository": options.ImagePrefix,
-			"image.tag":        options.GetImageTag(chart.Name),
+			"image.tag":        imageTag,
 		}
+		
+		g.logger.InfoWithContext("applying image override", map[string]interface{}{
+			"chart":      chart.Name,
+			"repository": options.ImagePrefix,
+			"tag":        imageTag,
+			"force_update": options.ForceUpdate,
+			"should_override": options.ShouldOverrideImage(),
+		})
 	}
 	
-	// Add force update flag
+	// Add force update flag for deployment annotations
 	if options.ForceUpdate {
-		helmOptions.SetValues = map[string]string{
-			"forceUpdate": "true",
+		if helmOptions.SetValues == nil {
+			helmOptions.SetValues = make(map[string]string)
 		}
+		helmOptions.SetValues["forceUpdate"] = "true"
+		
+		g.logger.InfoWithContext("enabling force update", map[string]interface{}{
+			"chart": chart.Name,
+			"force_update_flag": true,
+		})
 	}
 	
-	start := time.Now()
-	err := g.helmPort.UpgradeInstall(ctx, chart.Name, chart.Path, helmOptions)
-	duration := time.Since(start)
+	// Execute deployment with retry logic for retriable errors
+	const maxRetries = 3
+	var lastErr error
 	
-	if err != nil {
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		start := time.Now()
+		err := g.helmPort.UpgradeInstall(ctx, chart.Name, chart.Path, helmOptions)
+		duration := time.Since(start)
+		
+		if err == nil {
+			g.logger.InfoWithContext("chart deployed successfully", map[string]interface{}{
+				"chart":     chart.Name,
+				"namespace": namespace,
+				"duration":  duration,
+				"attempt":   attempt,
+			})
+			return nil
+		}
+		
+		lastErr = err
+		
 		g.logger.ErrorWithContext("chart deployment failed", map[string]interface{}{
 			"chart":       chart.Name,
 			"namespace":   namespace,
@@ -138,18 +192,32 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 			"error":       err.Error(),
 			"duration":    duration,
 			"timeout":     helmOptions.Timeout,
-			"resolution":  "Check chart templates, values file, and cluster resources",
+			"attempt":     attempt,
+			"max_retries": maxRetries,
 		})
-		return fmt.Errorf("chart deployment failed for %s: %w", chart.Name, err)
+		
+		// Check if error is retriable
+		if !g.isRetriableError(err) || attempt == maxRetries {
+			break
+		}
+		
+		// Exponential backoff
+		retryDelay := time.Duration(attempt) * 10 * time.Second
+		g.logger.WarnWithContext("retrying chart deployment", map[string]interface{}{
+			"chart":       chart.Name,
+			"attempt":     attempt,
+			"next_attempt_in": retryDelay,
+		})
+		
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retryDelay):
+			// Continue to next attempt
+		}
 	}
 	
-	g.logger.InfoWithContext("chart deployed successfully", map[string]interface{}{
-		"chart":     chart.Name,
-		"namespace": namespace,
-		"duration":  duration,
-	})
-	
-	return nil
+	return fmt.Errorf("chart deployment failed after %d attempts for %s: %w", maxRetries, chart.Name, lastErr)
 }
 
 // GetReleaseStatus returns the status of a Helm release
@@ -466,4 +534,54 @@ func (g *HelmGateway) validateChartDependencies(ctx context.Context, chart domai
 	}
 	
 	return nil
+}
+
+// validatePrerequisites validates chart prerequisites before deployment
+func (g *HelmGateway) validatePrerequisites(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	// Check if chart path exists and is accessible
+	if chart.Path == "" {
+		return fmt.Errorf("chart path is empty")
+	}
+	
+	// Validate that IMAGE_PREFIX is set for charts that support image override
+	if chart.SupportsImageOverride() && options.ImagePrefix == "" {
+		return fmt.Errorf("IMAGE_PREFIX is required for chart %s", chart.Name)
+	}
+	
+	// Check values file existence
+	valuesFile := g.getValuesFile(chart, options.Environment)
+	if valuesFile == "" {
+		g.logger.WarnWithContext("no values file found for chart", map[string]interface{}{
+			"chart":       chart.Name,
+			"environment": options.Environment,
+		})
+	}
+	
+	return nil
+}
+
+// isRetriableError determines if an error is worth retrying
+func (g *HelmGateway) isRetriableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	errorMsg := strings.ToLower(err.Error())
+	
+	// Retriable conditions
+	retriablePatterns := []string{
+		"another operation in progress",
+		"connection refused",
+		"timeout",
+		"temporary failure",
+		"resource temporarily unavailable",
+	}
+	
+	for _, pattern := range retriablePatterns {
+		if strings.Contains(errorMsg, pattern) {
+			return true
+		}
+	}
+	
+	return false
 }
