@@ -44,6 +44,9 @@ apiKeys:
     enabled: true
     secretName: huggingface-secret
     token: ""
+    additionalNamespaces:
+      - "alt-auth"
+      - "alt-apps"
     
   meilisearch:
     enabled: true
