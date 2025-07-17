@@ -49,8 +49,7 @@ jobs:
       - name: Set up Go with module cache
         uses: actions/setup-go@v4
         with:
-          go-version: ${{ inputs.go-version }}
-          cache: "modules"                          # モジュールキャッシュ自動化 :contentReference[oaicite:7]{index=7}
+          go-version: ${{ inputs.go-version }}                    # モジュールキャッシュ自動化 :contentReference[oaicite:7]{index=7}
 
       - name: Speed up Go build & module cache
         uses: magnetikonline/action-golang-cache@v5  # ビルドキャッシュ含むモジュールキャッシュ :contentReference[oaicite:8]{index=8}
