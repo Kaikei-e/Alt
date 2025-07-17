@@ -190,5 +190,6 @@ func (v *ValidateManifestsCommand) createDeploymentUsecase() *deployment_usecase
 		systemGateway,
 		secretUsecase,
 		loggerPort,
+		filesystemDriver,
 	)
 }

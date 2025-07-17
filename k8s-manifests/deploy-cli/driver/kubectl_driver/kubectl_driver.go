@@ -273,6 +273,94 @@ func (k *KubectlDriver) UpdateSecret(ctx context.Context, secret kubectl_port.Ku
 	return createErr
 }
 
+// GetSecret returns a specific secret
+func (k *KubectlDriver) GetSecret(ctx context.Context, name, namespace string) (*kubectl_port.KubernetesSecret, error) {
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "secret", name, "--namespace", namespace, "-o", "json")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("kubectl get secret failed: %w, output: %s", err, string(output))
+	}
+	
+	var secretData struct {
+		Metadata struct {
+			Name        string            `json:"name"`
+			Namespace   string            `json:"namespace"`
+			Labels      map[string]string `json:"labels"`
+			Annotations map[string]string `json:"annotations"`
+		} `json:"metadata"`
+		Type string                 `json:"type"`
+		Data map[string]string      `json:"data"`
+	}
+	
+	if err := json.Unmarshal(output, &secretData); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal secret: %w", err)
+	}
+	
+	// Convert data from base64 strings to bytes
+	data := make(map[string][]byte)
+	for key, value := range secretData.Data {
+		data[key] = []byte(value)
+	}
+	
+	return &kubectl_port.KubernetesSecret{
+		Name:        secretData.Metadata.Name,
+		Namespace:   secretData.Metadata.Namespace,
+		Type:        secretData.Type,
+		Data:        data,
+		Labels:      secretData.Metadata.Labels,
+		Annotations: secretData.Metadata.Annotations,
+	}, nil
+}
+
+// ApplySecret applies or updates a secret
+func (k *KubectlDriver) ApplySecret(ctx context.Context, secret *kubectl_port.KubernetesSecret) error {
+	// Convert secret data to base64 encoded strings
+	data := make(map[string]string)
+	for key, value := range secret.Data {
+		data[key] = string(value) // Assuming data is already base64 encoded
+	}
+	
+	// Create the secret manifest
+	secretManifest := map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "Secret",
+		"metadata": map[string]interface{}{
+			"name":      secret.Name,
+			"namespace": secret.Namespace,
+		},
+		"type": secret.Type,
+		"data": data,
+	}
+	
+	// Add labels if they exist
+	if len(secret.Labels) > 0 {
+		metadata := secretManifest["metadata"].(map[string]interface{})
+		metadata["labels"] = secret.Labels
+	}
+	
+	// Add annotations if they exist
+	if len(secret.Annotations) > 0 {
+		metadata := secretManifest["metadata"].(map[string]interface{})
+		metadata["annotations"] = secret.Annotations
+	}
+	
+	// Convert to JSON for kubectl apply
+	manifestJSON, err := json.Marshal(secretManifest)
+	if err != nil {
+		return fmt.Errorf("failed to marshal secret manifest: %w", err)
+	}
+	
+	// Apply using kubectl
+	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(string(manifestJSON))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("kubectl apply secret failed: %w, output: %s", err, string(output))
+	}
+	
+	return nil
+}
+
 // DeleteSecret deletes a secret
 func (k *KubectlDriver) DeleteSecret(ctx context.Context, name, namespace string) error {
 	cmd := exec.CommandContext(ctx, "kubectl", "delete", "secret", name, "--namespace", namespace, "--force", "--grace-period=0")

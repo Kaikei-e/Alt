@@ -39,19 +39,34 @@ func NewUpdateCommand(logger *logger.Logger) *cobra.Command {
 		Short: "Force update pods and deployments",
 		Long: `Force update pods and deployments in the specified environment.
 		
-This command performs a targeted update that forces pod recreation even when
-manifests are identical. It's useful for pulling new images with the same tag
-or forcing rolling updates without full deployment.
+This command performs targeted updates with automatic secret validation:
+• Forces pod recreation even when manifests are identical
+• Automatically validates and resolves secret conflicts before updating
+• Useful for pulling new images with the same tag
+• Enables rolling updates without full deployment process
+
+Automatic Secret Management:  
+Like the deploy command, update includes automatic secret validation and
+conflict resolution to prevent update failures due to secret issues.
+
+Use Cases:
+• Pulling new Docker images with same tags
+• Forcing rolling restarts for configuration changes
+• Recovering from failed partial deployments
+• Testing new images before full deployment
 
 Examples:
-  # Force update all pods in production
+  # Force update all pods in production (with secret validation)
   deploy-cli update production
 
   # Force update specific chart only
   deploy-cli update production --chart alt-frontend
   
   # Force update and restart all resources
-  deploy-cli update production --restart`,
+  deploy-cli update production --restart
+
+  # Update with custom timeout
+  deploy-cli update production --timeout 10m`,
 		Args:    cobra.ExactArgs(1),
 		PreRunE: updateCmd.preRun,
 		RunE:    updateCmd.run,
@@ -198,6 +213,7 @@ func (u *UpdateCommand) createDeploymentUsecase() *deployment_usecase.Deployment
 		systemGateway,
 		secretUsecase,
 		loggerPort,
+		filesystemDriver,
 	)
 }
 

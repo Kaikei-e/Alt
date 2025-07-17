@@ -26,10 +26,35 @@ func NewCLI(logger *logger.Logger) *CLI {
 	
 	cli.rootCmd = &cobra.Command{
 		Use:   "deploy-cli",
-		Short: "Kubernetes deployment CLI tool for Alt RSS Reader",
-		Long: `A deployment CLI tool for the Alt RSS Reader microservice architecture.
-This tool provides Helm-based deployment capabilities with environment-specific
-configurations and comprehensive validation.`,
+		Short: "Kubernetes deployment CLI with automatic secret management for Alt RSS Reader",
+		Long: `A comprehensive deployment CLI tool for the Alt RSS Reader microservice architecture.
+
+Features:
+• Helm-based deployment with environment-specific configurations
+• Automatic secret validation and conflict resolution  
+• Pre-deployment validation and health checking
+• Comprehensive maintenance and cleanup operations
+
+Common Workflows:
+  # Deploy with automatic secret validation
+  deploy-cli deploy production
+
+  # Check and fix secret conflicts  
+  deploy-cli secrets validate production
+  deploy-cli secrets fix-conflicts production
+
+  # Validate before deployment
+  deploy-cli validate production
+  deploy-cli deploy production
+
+  # Troubleshoot deployment issues
+  deploy-cli troubleshoot diagnose production
+  deploy-cli troubleshoot interactive production
+
+  # Monitor deployment status
+  deploy-cli helm-status production
+
+Supported Environments: development, staging, production`,
 		Version: "1.0.0",
 	}
 	
@@ -73,6 +98,10 @@ func (c *CLI) setupCommands() {
 	// Add secrets command
 	secretsCmd := commands.NewSecretsCommand(c.logger)
 	c.rootCmd.AddCommand(secretsCmd)
+	
+	// Add troubleshoot command
+	troubleshootCmd := commands.NewTroubleshootCommand(c.logger)
+	c.rootCmd.AddCommand(troubleshootCmd)
 	
 	// Add version command
 	versionCmd := &cobra.Command{

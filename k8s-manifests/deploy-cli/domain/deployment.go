@@ -74,6 +74,7 @@ type DeploymentResult struct {
 	Status        DeploymentStatus
 	Error         error
 	Duration      time.Duration
+	StartTime     time.Time
 	Message       string
 }
 

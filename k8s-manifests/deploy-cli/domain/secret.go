@@ -15,10 +15,12 @@ const (
 
 // Secret represents a Kubernetes secret
 type Secret struct {
-	Name      string
-	Namespace string
-	Type      SecretType
-	Data      map[string]string
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
+	Type        string            `json:"type"`
+	Data        map[string]string `json:"data"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // NewSecret creates a new secret
@@ -26,8 +28,10 @@ func NewSecret(name, namespace string, secretType SecretType) *Secret {
 	return &Secret{
 		Name:      name,
 		Namespace: namespace,
-		Type:      secretType,
+		Type:      string(secretType),
 		Data:      make(map[string]string),
+		Labels:    make(map[string]string),
+		Annotations: make(map[string]string),
 	}
 }
 
@@ -257,6 +261,17 @@ type SecretInfo struct {
 	Owner     string `json:"owner,omitempty"`
 	Type      string `json:"type,omitempty"`
 	Age       string `json:"age,omitempty"`
+}
+
+// SecretDistributionValidation represents the validation result for secret distribution
+type SecretDistributionValidation struct {
+	Environment     Environment `json:"environment"`
+	TotalSecrets    int         `json:"total_secrets"`
+	ValidSecrets    int         `json:"valid_secrets"`
+	MissingSecrets  []string    `json:"missing_secrets"`
+	ConflictSecrets []string    `json:"conflict_secrets"`
+	Issues          []string    `json:"issues"`
+	IsValid         bool        `json:"is_valid"`
 }
 
 // SecretConfig represents secret configuration for an environment

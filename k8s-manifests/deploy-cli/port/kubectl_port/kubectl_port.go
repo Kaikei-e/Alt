@@ -34,6 +34,12 @@ type KubectlPort interface {
 	// UpdateSecret updates an existing secret
 	UpdateSecret(ctx context.Context, secret KubernetesSecret) error
 	
+	// GetSecret returns a specific secret
+	GetSecret(ctx context.Context, name, namespace string) (*KubernetesSecret, error)
+	
+	// ApplySecret applies or updates a secret
+	ApplySecret(ctx context.Context, secret *KubernetesSecret) error
+	
 	// DeleteSecret deletes a secret
 	DeleteSecret(ctx context.Context, name, namespace string) error
 	
@@ -106,10 +112,12 @@ type KubernetesNamespace struct {
 
 // KubernetesSecret represents a Kubernetes secret
 type KubernetesSecret struct {
-	Name      string
-	Namespace string
-	Type      string
-	Data      map[string][]byte
+	Name        string
+	Namespace   string
+	Type        string
+	Data        map[string][]byte
+	Labels      map[string]string
+	Annotations map[string]string
 }
 
 // KubernetesSecretWithMetadata represents a Kubernetes secret with Helm metadata

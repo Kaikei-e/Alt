@@ -38,24 +38,38 @@ func NewDeployCommand(logger *logger.Logger) *cobra.Command {
 		Use:   "deploy <environment>",
 		Short: "Deploy Alt RSS Reader services",
 		Long: `Deploy Alt RSS Reader services to Kubernetes using Helm charts.
-		
+
+This command performs comprehensive deployment with automatic validation:
+• Pre-deployment secret validation and conflict resolution
+• Storage infrastructure setup and verification  
+• Namespace creation and configuration
+• Helm chart deployment in proper dependency order
+• Post-deployment health checking and validation
+
+Automatic Secret Management:
+The deployment process automatically validates and resolves secret conflicts
+before deploying charts, preventing common deployment failures.
+
 Supported environments:
   - development
   - staging  
   - production
 
 Examples:
-  # Deploy to production environment
+  # Deploy to production with automatic secret validation
   deploy-cli deploy production
 
-  # Deploy with custom image prefix and tag
+  # Deploy with custom image tags
   IMAGE_PREFIX=myregistry/alt TAG_BASE=20231201-abc123 deploy-cli deploy production
 
-  # Dry run deployment
+  # Preview deployment without applying changes
   deploy-cli deploy production --dry-run
 
-  # Deploy and restart services
-  deploy-cli deploy production --restart`,
+  # Deploy and restart all services  
+  deploy-cli deploy production --restart
+
+  # Force update pods even with identical manifests
+  deploy-cli deploy production --force-update`,
 		Args:    cobra.ExactArgs(1),
 		PreRunE: deployCmd.preRun,
 		RunE:    deployCmd.run,
@@ -183,6 +197,7 @@ func (d *DeployCommand) createDeploymentUsecase() *deployment_usecase.Deployment
 		systemGateway,
 		secretUsecase,
 		loggerPort,
+		filesystemDriver,
 	)
 }
 

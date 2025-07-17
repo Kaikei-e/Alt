@@ -16,10 +16,12 @@ const (
 
 // Chart represents a Helm chart configuration
 type Chart struct {
-	Name      string
-	Type      ChartType
-	Path      string
-	WaitReady bool
+	Name        string
+	Type        ChartType
+	Path        string
+	Version     string
+	ValuesPath  string
+	WaitReady   bool
 }
 
 // ChartConfig holds the chart deployment configuration

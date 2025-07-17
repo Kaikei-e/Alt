@@ -7,21 +7,29 @@ import (
 	
 	"deploy-cli/domain"
 	"deploy-cli/port/logger_port"
+	"deploy-cli/port/filesystem_port"
 	"deploy-cli/gateway/helm_gateway"
 	"deploy-cli/gateway/kubectl_gateway"
 	"deploy-cli/gateway/filesystem_gateway"
 	"deploy-cli/gateway/system_gateway"
 	"deploy-cli/usecase/secret_usecase"
+	"deploy-cli/usecase/dependency_usecase"
 )
 
 // DeploymentUsecase handles deployment operations
 type DeploymentUsecase struct {
-	helmGateway       *helm_gateway.HelmGateway
-	kubectlGateway    *kubectl_gateway.KubectlGateway
-	filesystemGateway *filesystem_gateway.FileSystemGateway
-	systemGateway     *system_gateway.SystemGateway
-	secretUsecase     *secret_usecase.SecretUsecase
-	logger            logger_port.LoggerPort
+	helmGateway         *helm_gateway.HelmGateway
+	kubectlGateway      *kubectl_gateway.KubectlGateway
+	filesystemGateway   *filesystem_gateway.FileSystemGateway
+	systemGateway       *system_gateway.SystemGateway
+	secretUsecase       *secret_usecase.SecretUsecase
+	logger              logger_port.LoggerPort
+	parallelDeployer    *ParallelChartDeployer
+	cache               *DeploymentCache
+	dependencyScanner   *dependency_usecase.DependencyScanner
+	enableParallel      bool
+	enableCache         bool
+	enableDependencyAware bool
 }
 
 // NewDeploymentUsecase creates a new deployment usecase
@@ -32,14 +40,21 @@ func NewDeploymentUsecase(
 	systemGateway *system_gateway.SystemGateway,
 	secretUsecase *secret_usecase.SecretUsecase,
 	logger logger_port.LoggerPort,
+	filesystemPort filesystem_port.FileSystemPort,
 ) *DeploymentUsecase {
+	dependencyScanner := dependency_usecase.NewDependencyScanner(filesystemPort, logger)
+	
 	return &DeploymentUsecase{
-		helmGateway:       helmGateway,
-		kubectlGateway:    kubectlGateway,
-		filesystemGateway: filesystemGateway,
-		systemGateway:     systemGateway,
-		secretUsecase:     secretUsecase,
-		logger:            logger,
+		helmGateway:           helmGateway,
+		kubectlGateway:        kubectlGateway,
+		filesystemGateway:     filesystemGateway,
+		systemGateway:         systemGateway,
+		secretUsecase:         secretUsecase,
+		logger:                logger,
+		dependencyScanner:     dependencyScanner,
+		enableParallel:        false,  // Will be configurable
+		enableCache:           false,  // Will be configurable
+		enableDependencyAware: true,   // Enable by default
 	}
 }
 
@@ -186,6 +201,7 @@ func (u *DeploymentUsecase) ensureNamespaces(ctx context.Context, options *domai
 func (u *DeploymentUsecase) deployCharts(ctx context.Context, options *domain.DeploymentOptions) (*domain.DeploymentProgress, error) {
 	u.logger.InfoWithContext("deploying charts", map[string]interface{}{
 		"environment": options.Environment.String(),
+		"dependency_aware": u.enableDependencyAware,
 	})
 	
 	// Get chart configuration
@@ -195,6 +211,12 @@ func (u *DeploymentUsecase) deployCharts(ctx context.Context, options *domain.De
 	// Create deployment progress
 	progress := domain.NewDeploymentProgress(len(allCharts))
 	
+	// Use dependency-aware deployment if enabled
+	if u.enableDependencyAware {
+		return u.deployChartsWithDependencyAwareness(ctx, options, progress)
+	}
+	
+	// Fallback to traditional group-based deployment
 	// Deploy infrastructure charts
 	if err := u.deployChartGroup(ctx, "Infrastructure", chartConfig.InfrastructureCharts, options, progress); err != nil {
 		return progress, fmt.Errorf("infrastructure chart deployment failed: %w", err)
@@ -660,4 +682,204 @@ func (u *DeploymentUsecase) validateAndFixSecrets(ctx context.Context, options *
 	}
 	
 	return nil
+}
+
+// deployChartsWithDependencyAwareness deploys charts using dependency analysis
+func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Context, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) (*domain.DeploymentProgress, error) {
+	u.logger.InfoWithContext("performing dependency analysis", map[string]interface{}{
+		"charts_dir": options.ChartsDir,
+	})
+	
+	// Scan dependencies
+	dependencyGraph, err := u.dependencyScanner.ScanDependencies(ctx, options.ChartsDir)
+	if err != nil {
+		u.logger.WarnWithContext("dependency scanning failed, falling back to traditional deployment", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return u.deployChartsTraditional(ctx, options, progress)
+	}
+	
+	u.logger.InfoWithContext("dependency analysis completed", map[string]interface{}{
+		"total_charts":       dependencyGraph.Metadata.TotalCharts,
+		"total_dependencies": dependencyGraph.Metadata.TotalDependencies,
+		"has_cycles":         dependencyGraph.Metadata.HasCycles,
+		"deployment_levels":  len(dependencyGraph.DeployOrder),
+	})
+	
+	// Handle dependency cycles
+	if dependencyGraph.Metadata.HasCycles {
+		u.logger.WarnWithContext("dependency cycles detected", map[string]interface{}{
+			"cycles": dependencyGraph.Metadata.Cycles,
+		})
+		// For now, proceed with the calculated order which breaks cycles
+	}
+	
+	// Deploy charts level by level according to dependency graph
+	chartConfig := domain.NewChartConfig(options.ChartsDir)
+	for levelIndex, chartNames := range dependencyGraph.DeployOrder {
+		u.logger.InfoWithContext("deploying dependency level", map[string]interface{}{
+			"level":       levelIndex + 1,
+			"chart_count": len(chartNames),
+			"charts":      chartNames,
+		})
+		
+		// Convert chart names to Chart objects
+		var chartsInLevel []domain.Chart
+		for _, chartName := range chartNames {
+			if chart, err := chartConfig.GetChart(chartName); err == nil {
+				chartsInLevel = append(chartsInLevel, *chart)
+			} else {
+				u.logger.WarnWithContext("chart not found in configuration", map[string]interface{}{
+					"chart": chartName,
+					"error": err.Error(),
+				})
+			}
+		}
+		
+		// Deploy charts in this level
+		if u.enableParallel && len(chartsInLevel) > 1 {
+			// Deploy in parallel if enabled and multiple charts
+			if err := u.deployChartsInParallel(ctx, chartsInLevel, options, progress); err != nil {
+				return progress, fmt.Errorf("parallel deployment of level %d failed: %w", levelIndex+1, err)
+			}
+		} else {
+			// Deploy sequentially
+			if err := u.deployChartsSequentially(ctx, chartsInLevel, options, progress); err != nil {
+				return progress, fmt.Errorf("sequential deployment of level %d failed: %w", levelIndex+1, err)
+			}
+		}
+	}
+	
+	// Post-deployment validation
+	if options.ForceUpdate {
+		if err := u.validatePodUpdates(ctx, options); err != nil {
+			u.logger.WarnWithContext("pod update validation failed", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}
+	
+	return progress, nil
+}
+
+// deployChartsTraditional deploys charts using the traditional group-based approach
+func (u *DeploymentUsecase) deployChartsTraditional(ctx context.Context, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) (*domain.DeploymentProgress, error) {
+	chartConfig := domain.NewChartConfig(options.ChartsDir)
+	
+	// Deploy infrastructure charts
+	if err := u.deployChartGroup(ctx, "Infrastructure", chartConfig.InfrastructureCharts, options, progress); err != nil {
+		return progress, fmt.Errorf("infrastructure chart deployment failed: %w", err)
+	}
+	
+	// Deploy application charts
+	if err := u.deployChartGroup(ctx, "Application", chartConfig.ApplicationCharts, options, progress); err != nil {
+		return progress, fmt.Errorf("application chart deployment failed: %w", err)
+	}
+	
+	// Deploy operational charts
+	if err := u.deployChartGroup(ctx, "Operational", chartConfig.OperationalCharts, options, progress); err != nil {
+		return progress, fmt.Errorf("operational chart deployment failed: %w", err)
+	}
+	
+	return progress, nil
+}
+
+// deployChartsInParallel deploys multiple charts in parallel
+func (u *DeploymentUsecase) deployChartsInParallel(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) error {
+	if u.parallelDeployer == nil {
+		u.logger.WarnWithContext("parallel deployer not initialized, falling back to sequential", map[string]interface{}{})
+		return u.deployChartsSequentially(ctx, charts, options, progress)
+	}
+	
+	u.logger.InfoWithContext("deploying charts in parallel", map[string]interface{}{
+		"chart_count": len(charts),
+	})
+	
+	results, err := u.parallelDeployer.deployChartsParallel(ctx, "dependency-level", charts, options, u.deploySingleChart)
+	if err != nil {
+		return fmt.Errorf("parallel deployment failed: %w", err)
+	}
+	
+	for _, result := range results {
+		progress.AddResult(result)
+		if result.Status == domain.DeploymentStatusFailed && !options.DryRun {
+			return fmt.Errorf("chart deployment failed: %s", result.Error)
+		}
+	}
+	
+	return nil
+}
+
+// deployChartsSequentially deploys charts one by one
+func (u *DeploymentUsecase) deployChartsSequentially(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) error {
+	for _, chart := range charts {
+		// Check if context was cancelled
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		
+		progress.CurrentChart = chart.Name
+		progress.CurrentPhase = "Deploying chart"
+		
+		result := u.deploySingleChart(ctx, chart, options)
+		progress.AddResult(result)
+		
+		if result.Status == domain.DeploymentStatusFailed {
+			u.logger.ErrorWithContext("chart deployment failed", map[string]interface{}{
+				"chart": chart.Name,
+				"error": result.Error,
+			})
+			
+			// Stop on first failure if not dry run
+			if !options.DryRun {
+				return fmt.Errorf("chart deployment failed: %s", result.Error)
+			}
+		}
+	}
+	
+	return nil
+}
+
+// EnableParallelDeployment enables parallel deployment capabilities
+func (u *DeploymentUsecase) EnableParallelDeployment(cacheDir string) error {
+	if u.parallelDeployer == nil {
+		u.parallelDeployer = NewParallelChartDeployer(u.logger, DefaultParallelConfig())
+	}
+	
+	if u.cache == nil && cacheDir != "" {
+		u.cache = NewDeploymentCache(cacheDir, u.logger)
+		if err := u.cache.Initialize(); err != nil {
+			return fmt.Errorf("failed to initialize cache: %w", err)
+		}
+		u.enableCache = true
+	}
+	
+	u.enableParallel = true
+	
+	u.logger.InfoWithContext("parallel deployment enabled", map[string]interface{}{
+		"cache_enabled": u.enableCache,
+		"cache_dir":     cacheDir,
+	})
+	
+	return nil
+}
+
+// SetDependencyAwareDeployment enables or disables dependency-aware deployment
+func (u *DeploymentUsecase) SetDependencyAwareDeployment(enabled bool) {
+	u.enableDependencyAware = enabled
+	u.logger.InfoWithContext("dependency-aware deployment configuration changed", map[string]interface{}{
+		"enabled": enabled,
+	})
+}
+
+// GetDeploymentCapabilities returns the current deployment capabilities
+func (u *DeploymentUsecase) GetDeploymentCapabilities() map[string]interface{} {
+	return map[string]interface{}{
+		"parallel_enabled":        u.enableParallel,
+		"cache_enabled":           u.enableCache,
+		"dependency_aware_enabled": u.enableDependencyAware,
+		"parallel_deployer_ready": u.parallelDeployer != nil,
+		"cache_ready":             u.cache != nil,
+		"dependency_scanner_ready": u.dependencyScanner != nil,
+	}
 }
