@@ -12,7 +12,7 @@ namespaces:
   staging:
     enabled: false
   production:
-    enabled: true
+    enabled: false  # Disabled: common charts now deploy to specific target namespaces (alt-apps, etc.)
   apps:
     enabled: true
   database:

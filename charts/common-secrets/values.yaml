@@ -46,7 +46,6 @@ apiKeys:
     token: ""
     additionalNamespaces:
       - "alt-auth"
-      - "alt-apps"
     
   meilisearch:
     enabled: true
