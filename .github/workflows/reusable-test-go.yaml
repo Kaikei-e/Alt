@@ -25,9 +25,6 @@ jobs:
   test:
     runs-on: [self-hosted, linux, X64]
     timeout-minutes: 30
-    env:
-      # 明示的にキャッシュパスを設定して並行アクセスの衝突を避ける
-      GOCACHE: ${{ runner.temp }}/go-cache
 
     steps:
       - name: Checkout repository
@@ -38,6 +35,21 @@ jobs:
         with:
           go-version: ${{ inputs.go-version }}
           cache: false  # 手動キャッシュ管理
+
+      - name: Configure GOCACHE
+        run: echo "GOCACHE=$RUNNER_TEMP/go-cache" >> $GITHUB_ENV
+
+      - name: Restore Go module cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/go/pkg/mod
+          key: go-mod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+
+      - name: Restore Go build cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.GOCACHE }}
+          key: go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}
 
       - name: Mask home path in logs
         if: runner.environment == 'self-hosted'
