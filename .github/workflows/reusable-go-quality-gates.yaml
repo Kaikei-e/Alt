@@ -57,9 +57,8 @@ jobs:
       - name: Lint code with golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          working-directory: ${{ inputs.working-directory }}
-          go-version: ${{ inputs.go-version }}
-          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+          version: v1.64.8                       # 使用するGolangci-lintのバージョン :contentReference[oaicite:16]{index=16}
+          args: --timeout=5m --config ./.golangci.yml
 
       - name: Install gosec binary
         run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5  # Docker不要 :contentReference[oaicite:10]{index=10}
