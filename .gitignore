@@ -42,3 +42,9 @@ k8s/base/core/database/postgres/ssl-certs/*
 k8s-manifests/deploy-cli/deploy-cli
 k8s-manifests/deploy-cli/deploy-cli/build
 
+pv-data/meilisearch/VERSION
+pv-data/meilisearch/auth/data.mdb
+pv-data/meilisearch/auth/lock.mdb
+pv-data/meilisearch/tasks/data.mdb
+pv-data/meilisearch/tasks/lock.mdb
+pv-data/postgres/preprocessed_configs/config.xml
