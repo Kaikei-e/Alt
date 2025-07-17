@@ -55,7 +55,11 @@ jobs:
         uses: magnetikonline/action-golang-cache@v5  # ビルドキャッシュ含むモジュールキャッシュ :contentReference[oaicite:8]{index=8}
 
       - name: Lint code with golangci-lint
-        uses: golangci/golangci-lint-action@v8       # プリビルド済みバイナリで高速実行 :contentReference[oaicite:9]{index=9}
+        uses: golangci/golangci-lint-action@v8
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          go-version: ${{ inputs.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
 
       - name: Install gosec binary
         run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5  # Docker不要 :contentReference[oaicite:10]{index=10}
