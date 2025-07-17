@@ -57,7 +57,7 @@ jobs:
       - name: Lint code with golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.64.8                       # 使用するGolangci-lintのバージョン :contentReference[oaicite:16]{index=16}
+          version: v2.1                # 使用するGolangci-lintのバージョン :contentReference[oaicite:16]{index=16}
           args: --timeout=5m --config ./.golangci.yml
 
       - name: Install gosec binary
