@@ -119,7 +119,7 @@ jobs:
           cache-dependency-path: ${{ inputs.working-directory }}/go.sum
 
       - name: Download dependencies
-        run: go mod download
+        run: go mod tidy
 
       - name: Run Gosec Security Scanner
         run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5 && \
