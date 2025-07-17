@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           source "${{ steps.setup.outputs.venv }}/bin/activate"
-          pip install --quiet --upgrade pip wheel setuptools pytest pytest-cov
+          pip install --quiet --upgrade pip wheel setuptools pytest pytest-cov psycopg2-binary
           if [ -f "requirements.txt" ]; then
             pip install --quiet -r requirements.txt
           fi
