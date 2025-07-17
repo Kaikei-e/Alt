@@ -37,7 +37,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Set up Python with uv
-        run: uv python install --version ${{ inputs.python-version }}
+        run: uv python install ${{ inputs.python-version }}
 
       - name: Sync project dependencies
         working-directory: ${{ inputs.working-directory }}
