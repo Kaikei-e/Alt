@@ -2,9 +2,9 @@
 
 # Production-specific image settings
 image:
-  repository: news-creator
-  tag: "production"
-  pullPolicy: IfNotPresent
+  # repository: dynamically set by deploy CLI via IMAGE_PREFIX
+  # tag: dynamically set by deploy CLI via TAG_BASE
+  pullPolicy: Always
 
 # GPU resource requirements (from gpu-resource.yaml overlay)
 resources:
@@ -23,6 +23,11 @@ env:
   OLLAMA_NUM_PARALLEL: "2"
   OLLAMA_MAX_LOADED_MODELS: "2"
   OLLAMA_GPU_MEMORY_FRACTION: "0.48"
+
+envFromSecret:
+  name: huggingface-secret
+  keys:
+    - HF_TOKEN
 
 # GPU node configuration (from gpu-resource.yaml overlay)
 nodeSelector:

@@ -20,7 +20,3 @@ dependencies:
     version: "0.1.0"
     repository: "file://../common-ssl"
     condition: ssl.enabled
-  - name: common-secrets
-    version: "0.1.0"
-    repository: "file://../common-secrets"
-    condition: secrets.enabled

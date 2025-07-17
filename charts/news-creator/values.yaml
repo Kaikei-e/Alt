@@ -29,6 +29,11 @@ env:
   OLLAMA_NUM_PARALLEL: "1"
   OLLAMA_MAX_LOADED_MODELS: "1"
 
+envFromSecret:
+  name: huggingface-secret
+  keys:
+    - HF_TOKEN
+
 serviceAccount:
   create: true
   name: ""

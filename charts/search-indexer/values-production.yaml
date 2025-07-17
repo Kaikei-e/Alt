@@ -2,9 +2,9 @@
 replicaCount: 1
 
 image:
-  repository: search-indexer
-  pullPolicy: IfNotPresent
-  tag: "production"
+  # repository: dynamically set by deploy CLI via IMAGE_PREFIX
+  # tag: dynamically set by deploy CLI via TAG_BASE
+  pullPolicy: Always
 
 service:
   create: true

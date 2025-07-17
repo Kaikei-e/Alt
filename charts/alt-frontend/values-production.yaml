@@ -2,8 +2,9 @@
 
 # Production-specific image settings
 image:
-  tag: "production"
-  pullPolicy: IfNotPresent
+  # repository: dynamically set by deploy CLI via IMAGE_PREFIX
+  # tag: dynamically set by deploy CLI via TAG_BASE
+  pullPolicy: Always
 
 # Full resource requirements for production
 resources:

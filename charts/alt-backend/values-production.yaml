@@ -1,9 +1,12 @@
 # Production environment values for alt-backend
 
 # Production-specific image settings
+# Note: repository and tag are dynamically set via IMAGE_PREFIX and TAG_BASE environment variables
+# Use: IMAGE_PREFIX="your-org/project-name" TAG_BASE="your-tag" ./deploy-cli deploy production
 image:
-  tag: "production"
-  pullPolicy: Never
+  # repository: dynamically set by deploy CLI via IMAGE_PREFIX
+  # tag: dynamically set by deploy CLI via TAG_BASE
+  pullPolicy: Always
 
 # Full resource requirements for production
 resources:
@@ -16,14 +19,14 @@ resources:
 
 # Production environment variables (including SSL settings from overlay)
 env:
-  DB_HOST: "db.alt-database.svc.cluster.local"
+  DB_HOST: "postgres.alt-database.svc.cluster.local"
   LOG_LEVEL: "warn"
   # SSL configuration from backend-ssl.yaml overlay
   DB_SSL_MODE: "prefer"
   DB_SSL_ROOT_CERT: "/app/ssl/ca.crt"
-  DB_SSL_CERT: "/app/ssl/server.crt"
-  DB_SSL_KEY: "/app/ssl/server.key"
-  DATABASE_URL: "postgresql://alt_db_user:$(DB_PASSWORD)@db.alt-database.svc.cluster.local:5432/alt?sslmode=prefer&sslcert=/app/ssl/server.crt&sslkey=/app/ssl/server.key&sslrootcert=/app/ssl/ca.crt"
+  DB_SSL_CERT: "/app/ssl/tls.crt"
+  DB_SSL_KEY: "/app/ssl/tls.key"
+  DATABASE_URL: "postgresql://alt_db_user:$(DB_PASSWORD)@postgres.alt-database.svc.cluster.local:5432/alt?sslmode=prefer&sslcert=/app/ssl/tls.crt&sslkey=/app/ssl/tls.key&sslrootcert=/app/ssl/ca.crt"
 
 # Enable SSL for production (secure)
 ssl:
