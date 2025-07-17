@@ -99,8 +99,15 @@ func (h *HelmDriver) UpgradeInstall(ctx context.Context, releaseName, chartPath 
 		}
 		
 		// Create a timeout context for the helm command itself
-		helmTimeout := 3 * time.Minute // Aggressive timeout for each helm command
-		if options.Timeout > 0 && options.Timeout < helmTimeout {
+		helmTimeout := 3 * time.Minute // Default timeout for most helm commands
+		
+		// Special handling for migration operations that need longer timeouts
+		if releaseName == "migrate" {
+			helmTimeout = 15 * time.Minute // Extended timeout for migration operations
+		}
+		
+		// If options.Timeout is explicitly set and is reasonable, use it
+		if options.Timeout > 0 {
 			helmTimeout = options.Timeout
 		}
 		

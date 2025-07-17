@@ -22,6 +22,8 @@ type Chart struct {
 	Version     string
 	ValuesPath  string
 	WaitReady   bool
+	MultiNamespace bool              // Deploy to multiple namespaces
+	TargetNamespaces []string        // List of target namespaces for multi-namespace deployment
 }
 
 // ChartConfig holds the chart deployment configuration
@@ -36,8 +38,8 @@ func NewChartConfig(chartsDir string) *ChartConfig {
 	return &ChartConfig{
 		InfrastructureCharts: []Chart{
 			{Name: "common-config", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-config"), WaitReady: false},
-			{Name: "common-ssl", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-ssl"), WaitReady: false},
-			{Name: "common-secrets", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-secrets"), WaitReady: false},
+			{Name: "common-ssl", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-ssl"), WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-database", "alt-ingress", "alt-search", "alt-auth"}},
+			{Name: "common-secrets", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-secrets"), WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-auth"}},
 			{Name: "postgres", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "postgres"), WaitReady: false},
 			{Name: "auth-postgres", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "auth-postgres"), WaitReady: false},
 			{Name: "kratos-postgres", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "kratos-postgres"), WaitReady: false},

@@ -274,21 +274,46 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 		progress.CurrentChart = chart.Name
 		progress.CurrentPhase = fmt.Sprintf("Deploying %s charts", groupName)
 		
-		result := u.deploySingleChart(ctx, chart, options)
-		progress.AddResult(result)
-		
-		// Collect failed charts but continue if dry run
-		if result.Status == domain.DeploymentStatusFailed {
-			failedCharts = append(failedCharts, chart.Name)
-			u.logger.ErrorWithContext("chart deployment failed", map[string]interface{}{
-				"group": groupName,
-				"chart": chart.Name,
-				"error": result.Error,
-			})
+		// Handle multi-namespace deployment
+		if chart.MultiNamespace {
+			for _, targetNamespace := range chart.TargetNamespaces {
+				chartCopy := chart
+				chartCopy.MultiNamespace = false // Disable multi-namespace for individual deployment
+				result := u.deploySingleChartToNamespace(ctx, chartCopy, targetNamespace, options)
+				progress.AddResult(result)
+				
+				if result.Status == domain.DeploymentStatusFailed {
+					failedCharts = append(failedCharts, fmt.Sprintf("%s-%s", chart.Name, targetNamespace))
+					u.logger.ErrorWithContext("chart deployment failed", map[string]interface{}{
+						"group":     groupName,
+						"chart":     chart.Name,
+						"namespace": targetNamespace,
+						"error":     result.Error,
+					})
+					
+					// Stop on first failure if not dry run
+					if !options.DryRun {
+						return fmt.Errorf("chart deployment failed: %s", result.Error)
+					}
+				}
+			}
+		} else {
+			result := u.deploySingleChart(ctx, chart, options)
+			progress.AddResult(result)
 			
-			// Stop on first failure if not dry run
-			if !options.DryRun {
-				return fmt.Errorf("chart deployment failed: %s", result.Error)
+			// Collect failed charts but continue if dry run
+			if result.Status == domain.DeploymentStatusFailed {
+				failedCharts = append(failedCharts, chart.Name)
+				u.logger.ErrorWithContext("chart deployment failed", map[string]interface{}{
+					"group": groupName,
+					"chart": chart.Name,
+					"error": result.Error,
+				})
+				
+				// Stop on first failure if not dry run
+				if !options.DryRun {
+					return fmt.Errorf("chart deployment failed: %s", result.Error)
+				}
 			}
 		}
 	}
@@ -305,8 +330,13 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 
 // deploySingleChart deploys a single chart
 func (u *DeploymentUsecase) deploySingleChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) domain.DeploymentResult {
-	start := time.Now()
 	namespace := options.GetNamespace(chart.Name)
+	return u.deploySingleChartToNamespace(ctx, chart, namespace, options)
+}
+
+// deploySingleChartToNamespace deploys a single chart to a specific namespace
+func (u *DeploymentUsecase) deploySingleChartToNamespace(ctx context.Context, chart domain.Chart, namespace string, options *domain.DeploymentOptions) domain.DeploymentResult {
+	start := time.Now()
 	
 	u.logger.InfoWithContext("deploying single chart", map[string]interface{}{
 		"chart":     chart.Name,
@@ -345,9 +375,13 @@ func (u *DeploymentUsecase) deploySingleChart(ctx context.Context, chart domain.
 		return result
 	}
 	
+	// Create namespace-specific deployment options
+	nsOptions := *options
+	nsOptions.TargetNamespace = namespace
+	
 	// Deploy or template chart with timeout handling
 	if options.DryRun {
-		_, err = u.helmGateway.TemplateChart(chartCtx, chart, options)
+		_, err = u.helmGateway.TemplateChart(chartCtx, chart, &nsOptions)
 		if err != nil {
 			if chartCtx.Err() == context.DeadlineExceeded {
 				result.Error = fmt.Errorf("chart templating timed out after %v", chartTimeout)
@@ -359,7 +393,7 @@ func (u *DeploymentUsecase) deploySingleChart(ctx context.Context, chart domain.
 			result.Message = "Chart templated successfully"
 		}
 	} else {
-		err = u.helmGateway.DeployChart(chartCtx, chart, options)
+		err = u.helmGateway.DeployChart(chartCtx, chart, &nsOptions)
 		if err != nil {
 			if chartCtx.Err() == context.DeadlineExceeded {
 				result.Error = fmt.Errorf("chart deployment timed out after %v", chartTimeout)

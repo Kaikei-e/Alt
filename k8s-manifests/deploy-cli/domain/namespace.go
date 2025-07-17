@@ -52,6 +52,8 @@ func determineProductionNamespace(chartName string) string {
 		return "alt-observability"
 	case "common-secrets", "common-config", "common-ssl":
 		return "alt-apps"  // Deploy common charts to alt-apps to match service deployments
+	case "migrate":
+		return "alt-database"  // Deploy migrate to alt-database to access postgres secrets
 	default:
 		return "alt-production"
 	}
