@@ -1,7 +1,6 @@
 name: Reusable Go Quality Gates Workflow
 permissions:
   contents: read
-
 on:
   workflow_call:
     inputs:
@@ -28,71 +27,151 @@ on:
 
 jobs:
   quality-check:
+    name: Quality Gates
     runs-on: [self-hosted, linux, X64]
     timeout-minutes: 30
-    env:
-      GOPROXY: "https://proxy.golang.org,direct"
-      GOSUMDB: "sum.golang.org"
-
+    permissions:
+      contents: read
+      security-events: write
     steps:
-      - name: Mask Configuration
+      - name: Configure logging
         if: runner.environment == 'self-hosted'
         run: |
           echo "::group::Masking Configuration"
-          for part in $(echo $HOME | tr '/' ' '); do
-            [ -n "$part" ] && echo "::add-mask::$part"
+          PARTS=($(echo $HOME | tr '/' ' '))
+          for part in "${PARTS[@]}"; do
+            [ ! -z "$part" ] && echo "::add-mask::$part"
           done
           echo "::endgroup::"
 
+      - name: Clean and setup Go environment
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Go キャッシュをクリーンアップ
+          echo "Cleaning Go caches..."
+          go clean -cache || true
+          go clean -modcache || true
+
+          # 新しいキャッシュディレクトリを設定
+          export GOCACHE="${{ runner.temp }}/go-cache"
+          export GOMODCACHE="${{ runner.temp }}/go-mod"
+          mkdir -p "$GOCACHE" "$GOMODCACHE"
+
+          # 環境変数を設定
+          echo "GOCACHE=$GOCACHE" >> $GITHUB_ENV
+          echo "GOMODCACHE=$GOMODCACHE" >> $GITHUB_ENV
+
+          # 権限を修正（書き込み可能に）
+          chmod -R 755 "$GOCACHE" "$GOMODCACHE" || true
+
       - uses: actions/checkout@v4
 
-      - name: Set up Go with module cache
+      - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: ${{ inputs.go-version }}                    # モジュールキャッシュ自動化 :contentReference[oaicite:7]{index=7}
+          go-version: ${{ inputs.go-version }}
+          cache: false  # カスタムキャッシュを使用
 
-      - name: Speed up Go build & module cache
-        uses: magnetikonline/action-golang-cache@v5  # ビルドキャッシュ含むモジュールキャッシュ :contentReference[oaicite:8]{index=8}
-
-      - name: Lint code with golangci-lint
-        uses: golangci/golangci-lint-action@v8
+      - name: Manual Go cache handling
+        uses: actions/cache@v3
         with:
-          version: v2.1                # 使用するGolangci-lintのバージョン :contentReference[oaicite:16]{index=16}
-          args: --timeout=5m --config ./.golangci.yml
+          path: |
+            ${{ runner.temp }}/go-cache
+            ${{ runner.temp }}/go-mod
+          key: ${{ runner.os }}-go-quality-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-go-quality-
+        env:
+          ACTIONS_STEP_DEBUG: false
+        continue-on-error: true
 
-      - name: Install gosec binary
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5  # Docker不要 :contentReference[oaicite:10]{index=10}
+      - name: Install development tools
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # ツールを再インストール（キャッシュ問題を回避）
+          export GOBIN="${{ runner.temp }}/go-tools"
+          mkdir -p "$GOBIN"
+          echo "$GOBIN" >> $GITHUB_PATH
 
-      - name: Security scan with gosec
-        run: gosec -fmt sarif -out gosec-results.sarif ./...            # SARIF 出力 :contentReference[oaicite:11]{index=11}
+          echo "Installing development tools..."
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install go.uber.org/mock/mockgen@latest
+          go install golang.org/x/tools/cmd/goimports@latest
 
-      - name: Upload Gosec SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: gosec-results.sarif
+          # ツールの確認
+          which golangci-lint
+          which gosec
 
-      - name: Vulnerability check with govulncheck
-        uses: golang/govulncheck-action@v1                          # 非 Docker ベースで実行 :contentReference[oaicite:12]{index=12}
+      - name: Download dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # 権限を確保しながらダウンロード
+          go mod download
+          go mod verify
+
+          # ダウンロード後に権限を修正
+          chmod -R u+w "${{ runner.temp }}/go-mod" || true
+
+      - name: Verify go.mod is tidy
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          go mod tidy
+          if [ ! -z "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "go.mod or go.sum is not tidy"
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: Generate mocks
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          make mocks || echo "Mock generation skipped or failed"
+
+      - name: Format code
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          make format || goimports -w .
+
+      - name: Lint code
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # golangci-lintの設定
+          export GOLANGCI_LINT_CACHE="${{ runner.temp }}/golangci-lint-cache"
+          mkdir -p "$GOLANGCI_LINT_CACHE"
+
+          make lint || golangci-lint run --timeout=5m
+
+      - name: Security scan
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          make security || gosec -fmt sarif -out gosec-results.sarif ./...
 
       - name: Run tests with race detection
-        run: go test -race ./...
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          make test-race || go test -race ./...
 
       - name: Generate coverage report
-        run: go test -coverprofile=coverage.out ./...
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          make coverage || go test -coverprofile=coverage.out ./...
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
-          file: coverage.out
+          file: ${{ inputs.working-directory }}/coverage.out
           flags: ${{ inputs.coverage-flags }}
           name: ${{ inputs.coverage-flags }}-coverage
           verbose: false
 
       - name: Build application
-        run: go build -v ./...
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          make build || go build -v ./...
 
-      - name: Upload build artifact
-        if: ${{ inputs.build-artifact-name != '' }}
+      - name: Upload build artifacts
+        if: inputs.build-artifact-name != ''
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.build-artifact-name }}
@@ -101,9 +180,31 @@ jobs:
 
       - name: Cleanup
         if: always()
+        continue-on-error: true  # エラーでも続行
         run: |
-          go clean -cache -modcache
-          rm -rf gosec-results.sarif coverage.out
+          echo "Cleaning up temporary files..."
+
+          # Goのクリーンコマンドを使用（より安全）
+          go clean -cache || true
+          go clean -modcache || true
+
+          # 権限を修正してから削除を試みる
+          if [ -d "${{ runner.temp }}/go-mod" ]; then
+            chmod -R u+w "${{ runner.temp }}/go-mod" 2>/dev/null || true
+            rm -rf "${{ runner.temp }}/go-mod" || echo "Failed to remove go-mod"
+          fi
+
+          if [ -d "${{ runner.temp }}/go-cache" ]; then
+            chmod -R u+w "${{ runner.temp }}/go-cache" 2>/dev/null || true
+            rm -rf "${{ runner.temp }}/go-cache" || echo "Failed to remove go-cache"
+          fi
+
+          if [ -d "${{ runner.temp }}/go-tools" ]; then
+            chmod -R u+w "${{ runner.temp }}/go-tools" 2>/dev/null || true
+            rm -rf "${{ runner.temp }}/go-tools" || echo "Failed to remove go-tools"
+          fi
+
+          echo "Cleanup completed (with possible errors ignored)"
 
   security-audit:
     name: Security Audit
@@ -112,31 +213,34 @@ jobs:
     permissions:
       contents: read
       security-events: write
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
         with:
           go-version: ${{ inputs.go-version }}
           cache-dependency-path: ${{ inputs.working-directory }}/go.sum
 
-      - name: Install dependencies
+      - name: Download dependencies
         working-directory: ${{ inputs.working-directory }}
-        run: |
-          go mod download
-          go mod tidy
+        run: go mod download
+
+      - name: Install Gosec Security Scanner
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Run Gosec Security Scanner
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5 && \
-             gosec -fmt sarif -out gosec-results.sarif ./...
+        working-directory: ${{ inputs.working-directory }}
+        run: gosec -fmt sarif -out gosec-results.sarif ./...
 
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: gosec-results.sarif
+          sarif_file: ${{ inputs.working-directory }}/gosec-results.sarif
 
       - name: Run vulnerability check
-        uses: golang/govulncheck-action@v1
-        with:
-          go-version-input: ${{ inputs.go-version }}
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
