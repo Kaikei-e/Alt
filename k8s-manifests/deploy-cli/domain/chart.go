@@ -37,32 +37,39 @@ type ChartConfig struct {
 func NewChartConfig(chartsDir string) *ChartConfig {
 	return &ChartConfig{
 		InfrastructureCharts: []Chart{
-			{Name: "common-config", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-config"), WaitReady: false},
-			{Name: "common-ssl", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-ssl"), WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-database", "alt-ingress", "alt-search", "alt-auth"}},
-			{Name: "common-secrets", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-secrets"), WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-auth"}},
+			// Database Layer (StatefulSets)
 			{Name: "postgres", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "postgres"), WaitReady: false},
 			{Name: "auth-postgres", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "auth-postgres"), WaitReady: false},
 			{Name: "kratos-postgres", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "kratos-postgres"), WaitReady: false},
-			{Name: "kratos", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "kratos"), WaitReady: false},
 			{Name: "clickhouse", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "clickhouse"), WaitReady: false},
 			{Name: "meilisearch", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "meilisearch"), WaitReady: false},
+			// Config/Secret Layer
+			{Name: "common-secrets", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-secrets"), WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-auth"}},
+			{Name: "common-config", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-config"), WaitReady: false},
+			{Name: "common-ssl", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-ssl"), WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-database", "alt-ingress", "alt-search", "alt-auth"}},
+			// Network Layer
 			{Name: "nginx", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "nginx"), WaitReady: false},
 			{Name: "nginx-external", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "nginx-external"), WaitReady: false},
-			{Name: "monitoring", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "monitoring"), WaitReady: false},
 		},
 		ApplicationCharts: []Chart{
+			// Core Application Layer
 			{Name: "alt-backend", Type: ApplicationChart, Path: filepath.Join(chartsDir, "alt-backend"), WaitReady: true},
 			{Name: "auth-service", Type: ApplicationChart, Path: filepath.Join(chartsDir, "auth-service"), WaitReady: true},
+			{Name: "kratos", Type: ApplicationChart, Path: filepath.Join(chartsDir, "kratos"), WaitReady: true},
+			// Frontend Layer
+			{Name: "alt-frontend", Type: ApplicationChart, Path: filepath.Join(chartsDir, "alt-frontend"), WaitReady: true},
+			// Processor Layer
 			{Name: "pre-processor", Type: ApplicationChart, Path: filepath.Join(chartsDir, "pre-processor"), WaitReady: true},
 			{Name: "search-indexer", Type: ApplicationChart, Path: filepath.Join(chartsDir, "search-indexer"), WaitReady: true},
 			{Name: "tag-generator", Type: ApplicationChart, Path: filepath.Join(chartsDir, "tag-generator"), WaitReady: true},
 			{Name: "news-creator", Type: ApplicationChart, Path: filepath.Join(chartsDir, "news-creator"), WaitReady: true},
 			{Name: "rask-log-aggregator", Type: ApplicationChart, Path: filepath.Join(chartsDir, "rask-log-aggregator"), WaitReady: true},
-			{Name: "alt-frontend", Type: ApplicationChart, Path: filepath.Join(chartsDir, "alt-frontend"), WaitReady: true},
 		},
 		OperationalCharts: []Chart{
+			// Operational Layer
 			{Name: "migrate", Type: OperationalChart, Path: filepath.Join(chartsDir, "migrate"), WaitReady: true},
 			{Name: "backup", Type: OperationalChart, Path: filepath.Join(chartsDir, "backup"), WaitReady: true},
+			{Name: "monitoring", Type: OperationalChart, Path: filepath.Join(chartsDir, "monitoring"), WaitReady: false},
 		},
 	}
 }

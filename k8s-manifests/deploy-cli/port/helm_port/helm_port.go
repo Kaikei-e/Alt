@@ -49,8 +49,10 @@ type HelmUpgradeOptions struct {
 	Namespace      string
 	CreateNamespace bool
 	Wait           bool
+	WaitForJobs    bool
 	Timeout        time.Duration
 	Force          bool
+	Atomic         bool
 	ImageOverrides map[string]string
 	SetValues      map[string]string
 }

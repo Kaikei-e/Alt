@@ -7,15 +7,17 @@ import (
 
 // DeploymentOptions holds the deployment configuration options
 type DeploymentOptions struct {
-	Environment     Environment
-	DryRun          bool
-	DoRestart       bool
-	ForceUpdate     bool
-	TargetNamespace string
-	ImagePrefix     string
-	TagBase         string
-	ChartsDir       string
-	Timeout         time.Duration
+	Environment       Environment
+	DryRun            bool
+	DoRestart         bool
+	ForceUpdate       bool
+	TargetNamespace   string
+	ImagePrefix       string
+	TagBase           string
+	ChartsDir         string
+	Timeout           time.Duration
+	DeploymentStrategy DeploymentStrategy
+	StrategyName      string // Override strategy selection
 }
 
 // NewDeploymentOptions creates a new deployment options with defaults
@@ -69,6 +71,48 @@ func (o *DeploymentOptions) GetImageTag(chartName string) string {
 	}
 	
 	// Default fallback: use environment name
+	return o.Environment.String()
+}
+
+// HasDeploymentStrategy returns true if a deployment strategy is set
+func (o *DeploymentOptions) HasDeploymentStrategy() bool {
+	return o.DeploymentStrategy != nil
+}
+
+// GetDeploymentStrategy returns the deployment strategy
+func (o *DeploymentOptions) GetDeploymentStrategy() DeploymentStrategy {
+	return o.DeploymentStrategy
+}
+
+// SetDeploymentStrategy sets the deployment strategy
+func (o *DeploymentOptions) SetDeploymentStrategy(strategy DeploymentStrategy) {
+	o.DeploymentStrategy = strategy
+}
+
+// GetLayerConfigurations returns the layer configurations from the deployment strategy
+func (o *DeploymentOptions) GetLayerConfigurations() []LayerConfiguration {
+	if o.DeploymentStrategy == nil {
+		return nil
+	}
+	return o.DeploymentStrategy.GetLayerConfigurations(o.ChartsDir)
+}
+
+// GetStrategyTimeout returns the timeout from the deployment strategy or default
+func (o *DeploymentOptions) GetStrategyTimeout() time.Duration {
+	if o.DeploymentStrategy != nil {
+		return o.DeploymentStrategy.GetGlobalTimeout()
+	}
+	return o.Timeout
+}
+
+// GetStrategyName returns the strategy name if set, otherwise returns environment-based name
+func (o *DeploymentOptions) GetStrategyName() string {
+	if o.StrategyName != "" {
+		return o.StrategyName
+	}
+	if o.DeploymentStrategy != nil {
+		return o.DeploymentStrategy.GetName()
+	}
 	return o.Environment.String()
 }
 
@@ -156,4 +200,37 @@ func (p *DeploymentProgress) GetSkippedCount() int {
 // IsComplete returns true if all charts have been processed
 func (p *DeploymentProgress) IsComplete() bool {
 	return p.CompletedCharts >= p.TotalCharts
+}
+
+// Deployment represents a Kubernetes Deployment
+type Deployment struct {
+	Name           string
+	Namespace      string
+	Replicas       int32
+	ReadyReplicas  int32
+	UpdatedReplicas int32
+	AvailableReplicas int32
+	Status         string
+	CreationTime   time.Time
+}
+
+// StatefulSet represents a Kubernetes StatefulSet
+type StatefulSet struct {
+	Name           string
+	Namespace      string
+	Replicas       int32
+	ReadyReplicas  int32
+	UpdatedReplicas int32
+	CurrentReplicas int32
+	Status         string
+	CreationTime   time.Time
+}
+
+// Pod represents a Kubernetes Pod
+type Pod struct {
+	Name           string
+	Namespace      string
+	Status         string
+	RestartCount   int32
+	CreationTime   time.Time
 }

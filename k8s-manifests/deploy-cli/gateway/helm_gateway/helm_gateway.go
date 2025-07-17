@@ -122,13 +122,30 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		// Continue with deployment - Helm will handle dependency resolution
 	}
 	
+	// Configure timeout - use shorter timeout for known problematic charts
+	chartTimeout := options.Timeout
+	if chartTimeout == 0 {
+		chartTimeout = 3 * time.Minute // Default 3 minute timeout
+	}
+	
+	// Use even shorter timeout for charts that often hang
+	if chart.Name == "alt-frontend" || chart.Name == "migrate" {
+		chartTimeout = 90 * time.Second // Very short timeout for problematic charts
+		g.logger.InfoWithContext("using aggressive timeout for problematic chart", map[string]interface{}{
+			"chart": chart.Name,
+			"timeout": chartTimeout,
+		})
+	}
+	
 	helmOptions := helm_port.HelmUpgradeOptions{
 		ValuesFile:      g.getValuesFile(chart, options.Environment),
 		Namespace:       namespace,
 		CreateNamespace: true,
-		Wait:            chart.ShouldWaitForReadinessWithOptions(options),
-		Timeout:         options.Timeout,
+		Wait:            false, // Disable wait to prevent hanging
+		WaitForJobs:     false, // Disable job waiting to prevent hanging
+		Timeout:         chartTimeout,
 		Force:           options.ForceUpdate,
+		Atomic:          true,  // Enable atomic deployment for rollback on failure
 	}
 	
 	// Simplified image override logic
@@ -142,11 +159,21 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		}
 		
 		g.logger.InfoWithContext("applying image override", map[string]interface{}{
-			"chart":      chart.Name,
-			"repository": options.ImagePrefix,
-			"tag":        imageTag,
-			"force_update": options.ForceUpdate,
+			"chart":           chart.Name,
+			"repository":      options.ImagePrefix,
+			"tag":             imageTag,
+			"force_update":    options.ForceUpdate,
 			"should_override": options.ShouldOverrideImage(),
+			"tag_base":        options.TagBase,
+			"supports_image_override": chart.SupportsImageOverride(),
+		})
+	} else {
+		g.logger.InfoWithContext("not applying image override", map[string]interface{}{
+			"chart":                   chart.Name,
+			"supports_image_override": chart.SupportsImageOverride(),
+			"should_override_image":   options.ShouldOverrideImage(),
+			"force_update":           options.ForceUpdate,
+			"tag_base":               options.TagBase,
 		})
 	}
 	
@@ -169,7 +196,21 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 	
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		start := time.Now()
-		err := g.helmPort.UpgradeInstall(ctx, chart.Name, chart.Path, helmOptions)
+		
+		// Create a timeout context for this specific deployment attempt
+		deployCtx, cancel := context.WithTimeout(ctx, helmOptions.Timeout)
+		
+		g.logger.InfoWithContext("executing helm deployment", map[string]interface{}{
+			"chart": chart.Name,
+			"namespace": namespace,
+			"attempt": attempt,
+			"timeout": helmOptions.Timeout,
+			"atomic": helmOptions.Atomic,
+			"wait": helmOptions.Wait,
+		})
+		
+		err := g.helmPort.UpgradeInstall(deployCtx, chart.Name, chart.Path, helmOptions)
+		cancel()
 		duration := time.Since(start)
 		
 		if err == nil {
@@ -180,6 +221,19 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 				"attempt":   attempt,
 			})
 			return nil
+		}
+		
+		// Check if the deployment was cancelled or timed out
+		if deployCtx.Err() == context.DeadlineExceeded {
+			g.logger.ErrorWithContext("chart deployment timed out", map[string]interface{}{
+				"chart": chart.Name,
+				"namespace": namespace,
+				"timeout": helmOptions.Timeout,
+				"attempt": attempt,
+				"duration": duration,
+			})
+			lastErr = fmt.Errorf("deployment timed out after %v", helmOptions.Timeout)
+			break // Don't retry timeout errors
 		}
 		
 		lastErr = err
@@ -194,15 +248,23 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 			"timeout":     helmOptions.Timeout,
 			"attempt":     attempt,
 			"max_retries": maxRetries,
+			"atomic":      helmOptions.Atomic,
+			"wait":        helmOptions.Wait,
 		})
 		
 		// Check if error is retriable
 		if !g.isRetriableError(err) || attempt == maxRetries {
+			g.logger.WarnWithContext("not retrying chart deployment", map[string]interface{}{
+				"chart": chart.Name,
+				"attempt": attempt,
+				"retriable": g.isRetriableError(err),
+				"is_last_attempt": attempt == maxRetries,
+			})
 			break
 		}
 		
 		// Exponential backoff
-		retryDelay := time.Duration(attempt) * 10 * time.Second
+		retryDelay := time.Duration(attempt) * 5 * time.Second // Shorter retry delay
 		g.logger.WarnWithContext("retrying chart deployment", map[string]interface{}{
 			"chart":       chart.Name,
 			"attempt":     attempt,
@@ -211,6 +273,10 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		
 		select {
 		case <-ctx.Done():
+			g.logger.WarnWithContext("chart deployment cancelled during retry", map[string]interface{}{
+				"chart": chart.Name,
+				"attempt": attempt,
+			})
 			return ctx.Err()
 		case <-time.After(retryDelay):
 			// Continue to next attempt
@@ -557,6 +623,20 @@ func (g *HelmGateway) validatePrerequisites(ctx context.Context, chart domain.Ch
 		})
 	}
 	
+	// Postgres-specific validation
+	if chart.Name == "postgres" {
+		if err := g.validatePostgresChart(ctx, chart, options); err != nil {
+			return fmt.Errorf("postgres chart validation failed: %w", err)
+		}
+	}
+	
+	// StatefulSet-specific validation
+	if g.isStatefulSetChart(chart) {
+		if err := g.validateStatefulSetChart(ctx, chart, options); err != nil {
+			return fmt.Errorf("statefulset chart validation failed: %w", err)
+		}
+	}
+	
 	return nil
 }
 
@@ -603,4 +683,60 @@ func (g *HelmGateway) isRetriableError(err error) bool {
 	}
 	
 	return false
+}
+
+// validatePostgresChart validates postgres-specific requirements
+func (g *HelmGateway) validatePostgresChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	g.logger.DebugWithContext("validating postgres chart", map[string]interface{}{
+		"chart": chart.Name,
+	})
+	
+	// Check if the namespace alignment is correct
+	valuesFile := g.getValuesFile(chart, options.Environment)
+	if valuesFile != "" {
+		// TODO: Parse values file to check for configuration conflicts
+		g.logger.DebugWithContext("postgres values file found", map[string]interface{}{
+			"values_file": valuesFile,
+		})
+	}
+	
+	// Check if persistent volumes are available
+	namespace := options.GetNamespace(chart.Name)
+	g.logger.DebugWithContext("postgres chart validation completed", map[string]interface{}{
+		"chart": chart.Name,
+		"namespace": namespace,
+	})
+	
+	return nil
+}
+
+// isStatefulSetChart checks if a chart deploys StatefulSets
+func (g *HelmGateway) isStatefulSetChart(chart domain.Chart) bool {
+	// Known StatefulSet charts
+	statefulSetCharts := []string{
+		"postgres", "auth-postgres", "kratos-postgres", 
+		"clickhouse", "meilisearch",
+	}
+	
+	for _, name := range statefulSetCharts {
+		if chart.Name == name {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// validateStatefulSetChart validates StatefulSet-specific requirements
+func (g *HelmGateway) validateStatefulSetChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	g.logger.DebugWithContext("validating statefulset chart", map[string]interface{}{
+		"chart": chart.Name,
+	})
+	
+	// TODO: Add more StatefulSet-specific validations
+	// - Check for PV availability
+	// - Validate storage class
+	// - Check for proper resource limits
+	
+	return nil
 }

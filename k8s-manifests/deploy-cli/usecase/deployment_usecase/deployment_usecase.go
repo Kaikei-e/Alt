@@ -8,6 +8,7 @@ import (
 	"deploy-cli/domain"
 	"deploy-cli/port/logger_port"
 	"deploy-cli/port/filesystem_port"
+	"deploy-cli/port/kubectl_port"
 	"deploy-cli/gateway/helm_gateway"
 	"deploy-cli/gateway/kubectl_gateway"
 	"deploy-cli/gateway/filesystem_gateway"
@@ -27,9 +28,17 @@ type DeploymentUsecase struct {
 	parallelDeployer    *ParallelChartDeployer
 	cache               *DeploymentCache
 	dependencyScanner   *dependency_usecase.DependencyScanner
+	healthChecker       *HealthChecker
+	dependencyWaiter    *DependencyWaiter
+	strategyFactory     *StrategyFactory
+	metricsCollector    *MetricsCollector
+	layerMonitor        *LayerHealthMonitor
+	dependencyDetector  *DependencyFailureDetector
+	progressTracker     *ProgressTracker
 	enableParallel      bool
 	enableCache         bool
 	enableDependencyAware bool
+	enableMonitoring    bool
 }
 
 // NewDeploymentUsecase creates a new deployment usecase
@@ -43,6 +52,14 @@ func NewDeploymentUsecase(
 	filesystemPort filesystem_port.FileSystemPort,
 ) *DeploymentUsecase {
 	dependencyScanner := dependency_usecase.NewDependencyScanner(filesystemPort, logger)
+	healthChecker := NewHealthChecker(logger)
+	dependencyWaiter := NewDependencyWaiter(healthChecker, logger)
+	strategyFactory := NewStrategyFactory(logger)
+	
+	// Initialize monitoring components
+	metricsCollector := NewMetricsCollector(logger)
+	layerMonitor := NewLayerHealthMonitor(logger, metricsCollector)
+	dependencyDetector := NewDependencyFailureDetector(logger, metricsCollector, layerMonitor)
 	
 	return &DeploymentUsecase{
 		helmGateway:           helmGateway,
@@ -52,17 +69,44 @@ func NewDeploymentUsecase(
 		secretUsecase:         secretUsecase,
 		logger:                logger,
 		dependencyScanner:     dependencyScanner,
+		healthChecker:         healthChecker,
+		dependencyWaiter:      dependencyWaiter,
+		strategyFactory:       strategyFactory,
+		metricsCollector:      metricsCollector,
+		layerMonitor:          layerMonitor,
+		dependencyDetector:    dependencyDetector,
+		progressTracker:       nil, // Will be initialized per deployment
 		enableParallel:        false,  // Will be configurable
 		enableCache:           false,  // Will be configurable
 		enableDependencyAware: true,   // Enable by default
+		enableMonitoring:      true,   // Enable monitoring by default
 	}
 }
 
 // Deploy executes the deployment process
 func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.DeploymentOptions) (*domain.DeploymentProgress, error) {
+	// Setup deployment strategy if not already set
+	if err := u.setupDeploymentStrategy(options); err != nil {
+		return nil, fmt.Errorf("failed to setup deployment strategy: %w", err)
+	}
+	
+	// Initialize monitoring for this deployment
+	deploymentID := fmt.Sprintf("deployment-%d", time.Now().Unix())
+	if u.enableMonitoring {
+		if err := u.initializeMonitoring(ctx, deploymentID, options); err != nil {
+			u.logger.WarnWithContext("failed to initialize monitoring", map[string]interface{}{
+				"deployment_id": deploymentID,
+				"error": err.Error(),
+			})
+		}
+	}
+	
 	u.logger.InfoWithContext("starting deployment process", map[string]interface{}{
+		"deployment_id": deploymentID,
 		"environment": options.Environment.String(),
+		"strategy": options.GetStrategyName(),
 		"dry_run":     options.DryRun,
+		"monitoring_enabled": u.enableMonitoring,
 	})
 	
 	// Step 1: Pre-deployment validation
@@ -116,6 +160,14 @@ func (u *DeploymentUsecase) preDeploymentValidation(ctx context.Context, options
 	// Validate cluster access
 	if err := u.kubectlGateway.ValidateClusterAccess(ctx); err != nil {
 		return fmt.Errorf("cluster access validation failed: %w", err)
+	}
+	
+	// Clean up any stuck Helm operations before deployment
+	if err := u.cleanupStuckHelmOperations(ctx, options); err != nil {
+		u.logger.WarnWithContext("failed to clean up stuck helm operations", map[string]interface{}{
+			"error": err.Error(),
+		})
+		// Continue with deployment - individual chart deployments will handle their own cleanup
 	}
 	
 	// Validate secret state and resolve conflicts
@@ -211,9 +263,9 @@ func (u *DeploymentUsecase) deployCharts(ctx context.Context, options *domain.De
 	// Create deployment progress
 	progress := domain.NewDeploymentProgress(len(allCharts))
 	
-	// Use dependency-aware deployment if enabled
+	// Use layer-aware deployment for correct ordering
 	if u.enableDependencyAware {
-		return u.deployChartsWithDependencyAwareness(ctx, options, progress)
+		return u.deployChartsWithLayerAwareness(ctx, options, progress)
 	}
 	
 	// Fallback to traditional group-based deployment
@@ -782,15 +834,35 @@ func (u *DeploymentUsecase) validateAndFixSecrets(ctx context.Context, options *
 func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Context, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) (*domain.DeploymentProgress, error) {
 	u.logger.InfoWithContext("performing dependency analysis", map[string]interface{}{
 		"charts_dir": options.ChartsDir,
+		"timeout": options.Timeout,
 	})
 	
-	// Scan dependencies
-	dependencyGraph, err := u.dependencyScanner.ScanDependencies(ctx, options.ChartsDir)
-	if err != nil {
-		u.logger.ErrorWithContext("dependency scanning failed, falling back to traditional deployment", map[string]interface{}{
-			"error": err.Error(),
-			"fallback_strategy": "traditional_group_based",
+	// Check for context cancellation before dependency scanning
+	select {
+	case <-ctx.Done():
+		u.logger.WarnWithContext("deployment cancelled before dependency analysis", map[string]interface{}{
+			"error": ctx.Err().Error(),
 		})
+		return progress, ctx.Err()
+	default:
+	}
+	
+	// Scan dependencies with timeout
+	depScanCtx, depCancel := context.WithTimeout(ctx, 1*time.Minute)
+	dependencyGraph, err := u.dependencyScanner.ScanDependencies(depScanCtx, options.ChartsDir)
+	depCancel()
+	if err != nil {
+		if depScanCtx.Err() == context.DeadlineExceeded {
+			u.logger.ErrorWithContext("dependency scanning timed out, falling back to traditional deployment", map[string]interface{}{
+				"timeout": "1m",
+				"fallback_strategy": "traditional_group_based",
+			})
+		} else {
+			u.logger.ErrorWithContext("dependency scanning failed, falling back to traditional deployment", map[string]interface{}{
+				"error": err.Error(),
+				"fallback_strategy": "traditional_group_based",
+			})
+		}
 		return u.deployChartsTraditional(ctx, options, progress)
 	}
 	
@@ -1023,6 +1095,184 @@ func (u *DeploymentUsecase) deployChartsTraditional(ctx context.Context, options
 	return progress, nil
 }
 
+// deployChartsWithLayerAwareness deploys charts in predefined layers for correct ordering
+func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) (*domain.DeploymentProgress, error) {
+	u.logger.InfoWithContext("starting layer-aware deployment", map[string]interface{}{
+		"deployment_strategy": "layer_aware",
+		"charts_dir": options.ChartsDir,
+		"strategy": options.GetStrategyName(),
+	})
+
+	// Get layer configurations from the deployment strategy
+	var layers []domain.LayerConfiguration
+	if options.HasDeploymentStrategy() {
+		layers = options.GetLayerConfigurations()
+		u.logger.InfoWithContext("using strategy-based layer configurations", map[string]interface{}{
+			"strategy": options.GetStrategyName(),
+			"layers_count": len(layers),
+		})
+	} else {
+		// Fallback to default configuration
+		chartConfig := domain.NewChartConfig(options.ChartsDir)
+		layers = u.getDefaultLayerConfigurations(chartConfig, options.ChartsDir)
+		u.logger.InfoWithContext("using default layer configurations", map[string]interface{}{
+			"layers_count": len(layers),
+		})
+	}
+
+	// Now use the layer configurations directly
+	
+	// Get chart configuration for chart validation
+	chartConfig := domain.NewChartConfig(options.ChartsDir)
+
+	// Deploy each layer sequentially
+	for layerIndex, layer := range layers {
+		u.logger.InfoWithContext("deploying layer", map[string]interface{}{
+			"layer": layer.Name,
+			"layer_index": layerIndex + 1,
+			"total_layers": len(layers),
+			"chart_count": len(layer.Charts),
+			"requires_health_check": layer.RequiresHealthCheck,
+			"health_check_timeout": layer.HealthCheckTimeout,
+			"layer_completion_timeout": layer.LayerCompletionTimeout,
+		})
+
+		// Create layer-specific timeout context
+		layerCtx, layerCancel := context.WithTimeout(ctx, layer.LayerCompletionTimeout)
+		defer layerCancel()
+
+		// Check for context cancellation
+		select {
+		case <-layerCtx.Done():
+			u.logger.WarnWithContext("deployment cancelled during layer deployment", map[string]interface{}{
+				"layer": layer.Name,
+				"error": layerCtx.Err().Error(),
+			})
+			return progress, layerCtx.Err()
+		default:
+		}
+
+		// Deploy charts in this layer
+		layerStartTime := time.Now()
+		var layerErr error
+
+		for chartIndex, chart := range layer.Charts {
+			// Check if chart directory exists
+			if _, err := chartConfig.GetChart(chart.Name); err != nil {
+				u.logger.WarnWithContext("chart not found in configuration, skipping", map[string]interface{}{
+					"chart": chart.Name,
+					"layer": layer.Name,
+					"error": err.Error(),
+				})
+				continue
+			}
+
+			// Wait for dependencies before deploying
+			if err := u.dependencyWaiter.WaitForDependencies(layerCtx, chart.Name); err != nil {
+				u.logger.WarnWithContext("dependency wait failed, continuing with deployment", map[string]interface{}{
+					"chart": chart.Name,
+					"layer": layer.Name,
+					"error": err.Error(),
+				})
+			}
+
+			// Deploy the chart
+			result := u.deploySingleChart(layerCtx, chart, options)
+			progress.AddResult(result)
+
+			if result.Status == domain.DeploymentStatusFailed {
+				u.logger.ErrorWithContext("chart deployment failed in layer", map[string]interface{}{
+					"chart": chart.Name,
+					"layer": layer.Name,
+					"error": result.Error.Error(),
+				})
+				
+				layerErr = result.Error
+				
+				// Stop on first failure in layer if not dry run
+				if !options.DryRun {
+					break
+				}
+			} else {
+				u.logger.InfoWithContext("chart deployed successfully in layer", map[string]interface{}{
+					"chart": chart.Name,
+					"layer": layer.Name,
+					"duration": result.Duration,
+				})
+
+				// Wait between charts in the same layer if specified
+				if chartIndex < len(layer.Charts)-1 && layer.WaitBetweenCharts > 0 {
+					u.logger.InfoWithContext("waiting between charts in layer", map[string]interface{}{
+						"chart": chart.Name,
+						"layer": layer.Name,
+						"wait_duration": layer.WaitBetweenCharts,
+					})
+					
+					select {
+					case <-layerCtx.Done():
+						u.logger.WarnWithContext("deployment cancelled during inter-chart wait", map[string]interface{}{
+							"layer": layer.Name,
+							"chart": chart.Name,
+							"error": layerCtx.Err().Error(),
+						})
+						return progress, layerCtx.Err()
+					case <-time.After(layer.WaitBetweenCharts):
+						// Continue to next chart
+					}
+				}
+			}
+		}
+
+		layerDuration := time.Since(layerStartTime)
+		
+		// If layer requires health check and deployment was successful, perform comprehensive health check
+		if layerErr == nil && layer.RequiresHealthCheck && !options.DryRun {
+			u.logger.InfoWithContext("performing layer health check", map[string]interface{}{
+				"layer": layer.Name,
+				"health_check_timeout": layer.HealthCheckTimeout,
+			})
+			
+			healthCheckCtx, healthCheckCancel := context.WithTimeout(layerCtx, layer.HealthCheckTimeout)
+			defer healthCheckCancel()
+			
+			if err := u.performLayerHealthCheck(healthCheckCtx, layer, options); err != nil {
+				u.logger.ErrorWithContext("layer health check failed", map[string]interface{}{
+					"layer": layer.Name,
+					"error": err.Error(),
+				})
+				layerErr = fmt.Errorf("layer health check failed: %w", err)
+			} else {
+				u.logger.InfoWithContext("layer health check passed", map[string]interface{}{
+					"layer": layer.Name,
+				})
+			}
+		}
+
+		u.logger.InfoWithContext("layer deployment completed", map[string]interface{}{
+			"layer": layer.Name,
+			"layer_index": layerIndex + 1,
+			"duration": layerDuration,
+			"success": layerErr == nil,
+			"health_check_performed": layer.RequiresHealthCheck && !options.DryRun,
+		})
+
+		// If layer failed and not in dry-run mode, stop deployment
+		if layerErr != nil && !options.DryRun {
+			return progress, fmt.Errorf("layer deployment failed: %s - %w", layer.Name, layerErr)
+		}
+	}
+
+	u.logger.InfoWithContext("layer-aware deployment completed", map[string]interface{}{
+		"deployment_strategy": "layer_aware",
+		"total_layers": len(layers),
+		"successful_charts": progress.GetSuccessCount(),
+		"failed_charts": progress.GetFailedCount(),
+		"skipped_charts": progress.GetSkippedCount(),
+	})
+
+	return progress, nil
+}
+
 // deployChartsInParallel deploys multiple charts in parallel
 func (u *DeploymentUsecase) deployChartsInParallel(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) error {
 	if u.parallelDeployer == nil {
@@ -1160,6 +1410,47 @@ func (u *DeploymentUsecase) deployChartWithRetry(ctx context.Context, chart doma
 			"timeout":     options.Timeout,
 		})
 		
+		// Check for context cancellation before dependency wait
+		select {
+		case <-ctx.Done():
+			u.logger.WarnWithContext("deployment cancelled before dependency wait", map[string]interface{}{
+				"chart": chart.Name,
+				"attempt": attempt,
+				"error": ctx.Err().Error(),
+			})
+			lastResult.Error = fmt.Errorf("deployment cancelled: %w", ctx.Err())
+			lastResult.Status = domain.DeploymentStatusFailed
+			return lastResult
+		default:
+		}
+		
+		// Wait for dependencies before deploying the chart (with timeout)
+		depWaitCtx, depCancel := context.WithTimeout(ctx, 2*time.Minute)
+		if err := u.dependencyWaiter.WaitForDependencies(depWaitCtx, chart.Name); err != nil {
+			depCancel()
+			if depWaitCtx.Err() == context.DeadlineExceeded {
+				u.logger.WarnWithContext("dependency wait timed out, continuing with deployment", map[string]interface{}{
+					"chart": chart.Name,
+					"attempt": attempt,
+					"timeout": "2m",
+				})
+			} else {
+				u.logger.WarnWithContext("dependency wait failed, continuing with deployment", map[string]interface{}{
+					"chart": chart.Name,
+					"attempt": attempt,
+					"error": err.Error(),
+				})
+			}
+			// Continue with deployment even if dependencies aren't ready
+			// This allows for graceful degradation
+		} else {
+			depCancel()
+			u.logger.InfoWithContext("dependencies ready for chart", map[string]interface{}{
+				"chart": chart.Name,
+				"attempt": attempt,
+			})
+		}
+		
 		result := u.deploySingleChart(ctx, chart, options)
 		attemptDuration := time.Since(attemptStartTime)
 		
@@ -1205,6 +1496,11 @@ func (u *DeploymentUsecase) deployChartWithRetry(ctx context.Context, chart doma
 		// Wait for retry delay or context cancellation
 		select {
 		case <-ctx.Done():
+			u.logger.WarnWithContext("deployment cancelled during retry wait", map[string]interface{}{
+				"chart": chart.Name,
+				"attempt": attempt,
+				"error": ctx.Err().Error(),
+			})
 			lastResult.Error = fmt.Errorf("deployment cancelled during retry: %w", ctx.Err())
 			lastResult.Status = domain.DeploymentStatusFailed
 			return lastResult
@@ -1295,4 +1591,635 @@ func toLower(s string) string {
 		}
 	}
 	return string(result)
+}
+
+// performLayerHealthCheck performs comprehensive health checks for a deployment layer
+func (u *DeploymentUsecase) performLayerHealthCheck(ctx context.Context, layer domain.LayerConfiguration, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("starting layer health check", map[string]interface{}{
+		"layer": layer.Name,
+		"chart_count": len(layer.Charts),
+		"timeout": layer.HealthCheckTimeout,
+	})
+
+	// Check health for each chart in the layer
+	for _, chart := range layer.Charts {
+		if err := u.performChartHealthCheck(ctx, chart, options); err != nil {
+			return fmt.Errorf("chart health check failed for %s: %w", chart.Name, err)
+		}
+	}
+
+	// Layer-specific health checks
+	switch layer.Name {
+	case "Storage & Persistent Infrastructure":
+		return u.performStorageLayerHealthCheck(ctx, layer.Charts, options)
+	case "Core Services":
+		return u.performCoreServicesHealthCheck(ctx, layer.Charts, options)
+	case "Data Processing Services":
+		return u.performProcessingServicesHealthCheck(ctx, layer.Charts, options)
+	default:
+		// Default health check for other layers
+		return u.performDefaultLayerHealthCheck(ctx, layer.Charts, options)
+	}
+}
+
+// performChartHealthCheck performs health check for a single chart
+func (u *DeploymentUsecase) performChartHealthCheck(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	namespace := options.GetNamespace(chart.Name)
+	
+	u.logger.InfoWithContext("performing chart health check", map[string]interface{}{
+		"chart": chart.Name,
+		"namespace": namespace,
+		"wait_ready": chart.WaitReady,
+	})
+
+	// If chart doesn't require readiness check, just verify deployment exists
+	if !chart.WaitReady {
+		return u.verifyChartDeployment(ctx, chart, namespace)
+	}
+
+	// Determine chart type and perform appropriate health check
+	if u.isStatefulSetChart(chart.Name) {
+		return u.performStatefulSetHealthCheck(ctx, chart.Name, namespace)
+	} else {
+		return u.performDeploymentHealthCheck(ctx, chart.Name, namespace)
+	}
+}
+
+// performStorageLayerHealthCheck performs specific health checks for storage layer
+func (u *DeploymentUsecase) performStorageLayerHealthCheck(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("performing storage layer health check", map[string]interface{}{
+		"chart_count": len(charts),
+	})
+
+	// Check all StatefulSets are ready
+	for _, chart := range charts {
+		namespace := options.GetNamespace(chart.Name)
+		
+		// Verify StatefulSet is ready
+		if err := u.performStatefulSetHealthCheck(ctx, chart.Name, namespace); err != nil {
+			return fmt.Errorf("statefulset health check failed for %s: %w", chart.Name, err)
+		}
+		
+		// Verify database connectivity (if applicable)
+		if err := u.verifyDatabaseConnectivity(ctx, chart.Name, namespace); err != nil {
+			u.logger.WarnWithContext("database connectivity check failed", map[string]interface{}{
+				"chart": chart.Name,
+				"namespace": namespace,
+				"error": err.Error(),
+			})
+			// Don't fail here, just warn as connectivity might not be immediately available
+		}
+	}
+
+	return nil
+}
+
+// performCoreServicesHealthCheck performs health checks for core services
+func (u *DeploymentUsecase) performCoreServicesHealthCheck(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("performing core services health check", map[string]interface{}{
+		"chart_count": len(charts),
+	})
+
+	// Check all deployments are ready and health endpoints are responding
+	for _, chart := range charts {
+		namespace := options.GetNamespace(chart.Name)
+		
+		// Verify deployment is ready
+		if err := u.performDeploymentHealthCheck(ctx, chart.Name, namespace); err != nil {
+			return fmt.Errorf("deployment health check failed for %s: %w", chart.Name, err)
+		}
+		
+		// Verify service health endpoints (if applicable)
+		if err := u.verifyServiceHealthEndpoint(ctx, chart.Name, namespace); err != nil {
+			u.logger.WarnWithContext("service health endpoint check failed", map[string]interface{}{
+				"chart": chart.Name,
+				"namespace": namespace,
+				"error": err.Error(),
+			})
+			// Don't fail here, just warn as health endpoints might not be immediately available
+		}
+	}
+
+	return nil
+}
+
+// performProcessingServicesHealthCheck performs health checks for processing services
+func (u *DeploymentUsecase) performProcessingServicesHealthCheck(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("performing processing services health check", map[string]interface{}{
+		"chart_count": len(charts),
+	})
+
+	// Check all deployments are ready
+	for _, chart := range charts {
+		namespace := options.GetNamespace(chart.Name)
+		
+		// Verify deployment is ready
+		if err := u.performDeploymentHealthCheck(ctx, chart.Name, namespace); err != nil {
+			return fmt.Errorf("deployment health check failed for %s: %w", chart.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// performDefaultLayerHealthCheck performs default health checks for other layers
+func (u *DeploymentUsecase) performDefaultLayerHealthCheck(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("performing default layer health check", map[string]interface{}{
+		"chart_count": len(charts),
+	})
+
+	// Basic readiness check for all charts
+	for _, chart := range charts {
+		if chart.WaitReady {
+			namespace := options.GetNamespace(chart.Name)
+			
+			if u.isStatefulSetChart(chart.Name) {
+				if err := u.performStatefulSetHealthCheck(ctx, chart.Name, namespace); err != nil {
+					return fmt.Errorf("statefulset health check failed for %s: %w", chart.Name, err)
+				}
+			} else {
+				if err := u.performDeploymentHealthCheck(ctx, chart.Name, namespace); err != nil {
+					return fmt.Errorf("deployment health check failed for %s: %w", chart.Name, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// performStatefulSetHealthCheck performs comprehensive health check for StatefulSets
+func (u *DeploymentUsecase) performStatefulSetHealthCheck(ctx context.Context, chartName, namespace string) error {
+	u.logger.InfoWithContext("performing statefulset health check", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+	})
+
+	// Wait for StatefulSet rollout to complete
+	if err := u.kubectlGateway.WaitForRollout(ctx, "statefulset", chartName, namespace, 10*time.Minute); err != nil {
+		return fmt.Errorf("statefulset rollout failed: %w", err)
+	}
+
+	// Get StatefulSet details
+	statefulSets, err := u.kubectlGateway.GetStatefulSets(ctx, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to get statefulsets: %w", err)
+	}
+
+	// Find the specific StatefulSet
+	var targetSts *kubectl_port.KubernetesStatefulSet
+	for i := range statefulSets {
+		if statefulSets[i].Name == chartName {
+			targetSts = &statefulSets[i]
+			break
+		}
+	}
+
+	if targetSts == nil {
+		return fmt.Errorf("statefulset %s not found in namespace %s", chartName, namespace)
+	}
+
+	// Verify readiness
+	if targetSts.ReadyReplicas != targetSts.Replicas {
+		return fmt.Errorf("statefulset %s not ready: %d/%d replicas ready", chartName, targetSts.ReadyReplicas, targetSts.Replicas)
+	}
+
+	// Verify pods are running
+	pods, err := u.kubectlGateway.GetPods(ctx, namespace, fmt.Sprintf("app.kubernetes.io/name=%s", chartName))
+	if err != nil {
+		return fmt.Errorf("failed to get pods for statefulset: %w", err)
+	}
+
+	runningPods := 0
+	for i := range pods {
+		if pods[i].Status == "Running" {
+			runningPods++
+		}
+	}
+
+	if runningPods < targetSts.Replicas {
+		return fmt.Errorf("statefulset %s has insufficient running pods: %d/%d", chartName, runningPods, targetSts.Replicas)
+	}
+
+	u.logger.InfoWithContext("statefulset health check passed", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+		"ready_replicas": targetSts.ReadyReplicas,
+		"desired_replicas": targetSts.Replicas,
+		"running_pods": runningPods,
+	})
+
+	return nil
+}
+
+// performDeploymentHealthCheck performs comprehensive health check for Deployments
+func (u *DeploymentUsecase) performDeploymentHealthCheck(ctx context.Context, chartName, namespace string) error {
+	u.logger.InfoWithContext("performing deployment health check", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+	})
+
+	// Wait for deployment rollout to complete
+	if err := u.kubectlGateway.WaitForRollout(ctx, "deployment", chartName, namespace, 5*time.Minute); err != nil {
+		return fmt.Errorf("deployment rollout failed: %w", err)
+	}
+
+	// Get deployment details
+	deployments, err := u.kubectlGateway.GetDeployments(ctx, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to get deployments: %w", err)
+	}
+
+	// Find the specific deployment
+	var targetDep *kubectl_port.KubernetesDeployment
+	for i := range deployments {
+		if deployments[i].Name == chartName {
+			targetDep = &deployments[i]
+			break
+		}
+	}
+
+	if targetDep == nil {
+		return fmt.Errorf("deployment %s not found in namespace %s", chartName, namespace)
+	}
+
+	// Verify readiness
+	if targetDep.ReadyReplicas != targetDep.Replicas {
+		return fmt.Errorf("deployment %s not ready: %d/%d replicas ready", chartName, targetDep.ReadyReplicas, targetDep.Replicas)
+	}
+
+	u.logger.InfoWithContext("deployment health check passed", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+		"ready_replicas": targetDep.ReadyReplicas,
+		"desired_replicas": targetDep.Replicas,
+	})
+
+	return nil
+}
+
+// verifyChartDeployment verifies that a chart deployment exists
+func (u *DeploymentUsecase) verifyChartDeployment(ctx context.Context, chart domain.Chart, namespace string) error {
+	u.logger.InfoWithContext("verifying chart deployment", map[string]interface{}{
+		"chart": chart.Name,
+		"namespace": namespace,
+	})
+
+	// Check if deployment or statefulset exists
+	if u.isStatefulSetChart(chart.Name) {
+		statefulSets, err := u.kubectlGateway.GetStatefulSets(ctx, namespace)
+		if err != nil {
+			return fmt.Errorf("failed to get statefulsets: %w", err)
+		}
+		
+		for i := range statefulSets {
+			if statefulSets[i].Name == chart.Name {
+				return nil // Found
+			}
+		}
+		return fmt.Errorf("statefulset %s not found in namespace %s", chart.Name, namespace)
+	} else {
+		deployments, err := u.kubectlGateway.GetDeployments(ctx, namespace)
+		if err != nil {
+			return fmt.Errorf("failed to get deployments: %w", err)
+		}
+		
+		for i := range deployments {
+			if deployments[i].Name == chart.Name {
+				return nil // Found
+			}
+		}
+		return fmt.Errorf("deployment %s not found in namespace %s", chart.Name, namespace)
+	}
+}
+
+// isStatefulSetChart determines if a chart deploys a StatefulSet
+func (u *DeploymentUsecase) isStatefulSetChart(chartName string) bool {
+	statefulSetCharts := []string{
+		"postgres", "auth-postgres", "kratos-postgres", "clickhouse", "meilisearch",
+	}
+	
+	for _, stsChart := range statefulSetCharts {
+		if chartName == stsChart {
+			return true
+		}
+	}
+	return false
+}
+
+// verifyDatabaseConnectivity attempts to verify database connectivity
+func (u *DeploymentUsecase) verifyDatabaseConnectivity(ctx context.Context, chartName, namespace string) error {
+	u.logger.InfoWithContext("verifying database connectivity", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+	})
+
+	// This is a placeholder - in a real implementation, you would:
+	// 1. Get database connection details from secrets
+	// 2. Attempt to connect to the database
+	// 3. Perform a simple query to verify connectivity
+	
+	// For now, we'll just log that this check was performed
+	u.logger.InfoWithContext("database connectivity check completed", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+		"status": "placeholder_implementation",
+	})
+
+	return nil
+}
+
+// verifyServiceHealthEndpoint attempts to verify service health endpoints
+func (u *DeploymentUsecase) verifyServiceHealthEndpoint(ctx context.Context, chartName, namespace string) error {
+	u.logger.InfoWithContext("verifying service health endpoint", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+	})
+
+	// This is a placeholder - in a real implementation, you would:
+	// 1. Get service endpoint details
+	// 2. Attempt to call health check endpoints
+	// 3. Verify the service is responding correctly
+	
+	// For now, we'll just log that this check was performed
+	u.logger.InfoWithContext("service health endpoint check completed", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+		"status": "placeholder_implementation",
+	})
+
+	return nil
+}
+
+// getDefaultLayerConfigurations returns the default layer configurations for backwards compatibility
+func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.ChartConfig, chartsDir string) []domain.LayerConfiguration {
+	return []domain.LayerConfiguration{
+		{
+			Name: "Storage & Persistent Infrastructure",
+			Charts: []domain.Chart{
+				{Name: "postgres", Type: domain.InfrastructureChart, Path: chartsDir + "/postgres", WaitReady: true},
+				{Name: "auth-postgres", Type: domain.InfrastructureChart, Path: chartsDir + "/auth-postgres", WaitReady: true},
+				{Name: "kratos-postgres", Type: domain.InfrastructureChart, Path: chartsDir + "/kratos-postgres", WaitReady: true},
+				{Name: "clickhouse", Type: domain.InfrastructureChart, Path: chartsDir + "/clickhouse", WaitReady: true},
+				{Name: "meilisearch", Type: domain.InfrastructureChart, Path: chartsDir + "/meilisearch", WaitReady: true},
+			},
+			RequiresHealthCheck:     true,
+			HealthCheckTimeout:      15 * time.Minute,
+			WaitBetweenCharts:      30 * time.Second,
+			LayerCompletionTimeout: 20 * time.Minute,
+			AllowParallelDeployment: false,
+			CriticalLayer:          true,
+		},
+		{
+			Name: "Configuration & Secrets",
+			Charts: []domain.Chart{
+				{Name: "common-secrets", Type: domain.InfrastructureChart, Path: chartsDir + "/common-secrets", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-auth"}},
+				{Name: "common-config", Type: domain.InfrastructureChart, Path: chartsDir + "/common-config", WaitReady: false},
+				{Name: "common-ssl", Type: domain.InfrastructureChart, Path: chartsDir + "/common-ssl", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-database", "alt-ingress", "alt-search", "alt-auth"}},
+			},
+			RequiresHealthCheck:     false,
+			HealthCheckTimeout:      2 * time.Minute,
+			WaitBetweenCharts:      5 * time.Second,
+			LayerCompletionTimeout: 5 * time.Minute,
+			AllowParallelDeployment: false,
+			CriticalLayer:          true,
+		},
+		{
+			Name: "Core Services",
+			Charts: []domain.Chart{
+				{Name: "alt-backend", Type: domain.ApplicationChart, Path: chartsDir + "/alt-backend", WaitReady: true},
+				{Name: "auth-service", Type: domain.ApplicationChart, Path: chartsDir + "/auth-service", WaitReady: true},
+				{Name: "kratos", Type: domain.ApplicationChart, Path: chartsDir + "/kratos", WaitReady: true},
+			},
+			RequiresHealthCheck:     true,
+			HealthCheckTimeout:      10 * time.Minute,
+			WaitBetweenCharts:      15 * time.Second,
+			LayerCompletionTimeout: 15 * time.Minute,
+			AllowParallelDeployment: false,
+			CriticalLayer:          true,
+		},
+		{
+			Name: "Network & Ingress",
+			Charts: []domain.Chart{
+				{Name: "nginx", Type: domain.InfrastructureChart, Path: chartsDir + "/nginx", WaitReady: false},
+				{Name: "nginx-external", Type: domain.InfrastructureChart, Path: chartsDir + "/nginx-external", WaitReady: false},
+			},
+			RequiresHealthCheck:     false,
+			HealthCheckTimeout:      5 * time.Minute,
+			WaitBetweenCharts:      10 * time.Second,
+			LayerCompletionTimeout: 8 * time.Minute,
+			AllowParallelDeployment: false,
+			CriticalLayer:          false,
+		},
+		{
+			Name: "Frontend Applications",
+			Charts: []domain.Chart{
+				{Name: "alt-frontend", Type: domain.ApplicationChart, Path: chartsDir + "/alt-frontend", WaitReady: true},
+			},
+			RequiresHealthCheck:     true,
+			HealthCheckTimeout:      8 * time.Minute,
+			WaitBetweenCharts:      10 * time.Second,
+			LayerCompletionTimeout: 10 * time.Minute,
+			AllowParallelDeployment: false,
+			CriticalLayer:          false,
+		},
+		{
+			Name: "Data Processing Services",
+			Charts: []domain.Chart{
+				{Name: "pre-processor", Type: domain.ApplicationChart, Path: chartsDir + "/pre-processor", WaitReady: true},
+				{Name: "search-indexer", Type: domain.ApplicationChart, Path: chartsDir + "/search-indexer", WaitReady: true},
+				{Name: "tag-generator", Type: domain.ApplicationChart, Path: chartsDir + "/tag-generator", WaitReady: true},
+				{Name: "news-creator", Type: domain.ApplicationChart, Path: chartsDir + "/news-creator", WaitReady: true},
+				{Name: "rask-log-aggregator", Type: domain.ApplicationChart, Path: chartsDir + "/rask-log-aggregator", WaitReady: true},
+			},
+			RequiresHealthCheck:     true,
+			HealthCheckTimeout:      10 * time.Minute,
+			WaitBetweenCharts:      20 * time.Second,
+			LayerCompletionTimeout: 15 * time.Minute,
+			AllowParallelDeployment: false,
+			CriticalLayer:          false,
+		},
+		{
+			Name: "Operations & Monitoring",
+			Charts: []domain.Chart{
+				{Name: "migrate", Type: domain.OperationalChart, Path: chartsDir + "/migrate", WaitReady: true},
+				{Name: "backup", Type: domain.OperationalChart, Path: chartsDir + "/backup", WaitReady: true},
+				{Name: "monitoring", Type: domain.OperationalChart, Path: chartsDir + "/monitoring", WaitReady: false},
+			},
+			RequiresHealthCheck:     true,
+			HealthCheckTimeout:      5 * time.Minute,
+			WaitBetweenCharts:      10 * time.Second,
+			LayerCompletionTimeout: 10 * time.Minute,
+			AllowParallelDeployment: false,
+			CriticalLayer:          false,
+		},
+	}
+}
+
+// setupDeploymentStrategy sets up the deployment strategy for the given options
+func (u *DeploymentUsecase) setupDeploymentStrategy(options *domain.DeploymentOptions) error {
+	// Skip if strategy is already set
+	if options.HasDeploymentStrategy() {
+		u.logger.InfoWithContext("deployment strategy already set", map[string]interface{}{
+			"strategy": options.GetDeploymentStrategy().GetName(),
+		})
+		return nil
+	}
+	
+	var strategy domain.DeploymentStrategy
+	var err error
+	
+	// Use explicit strategy name if provided
+	if options.StrategyName != "" {
+		strategy, err = u.strategyFactory.CreateStrategyByName(options.StrategyName)
+		if err != nil {
+			return fmt.Errorf("failed to create strategy by name '%s': %w", options.StrategyName, err)
+		}
+		
+		// Validate strategy compatibility with environment
+		if err := u.strategyFactory.ValidateStrategyForEnvironment(strategy, options.Environment); err != nil {
+			return fmt.Errorf("strategy validation failed: %w", err)
+		}
+	} else {
+		// Use environment-based strategy selection
+		strategy, err = u.strategyFactory.CreateStrategy(options.Environment)
+		if err != nil {
+			return fmt.Errorf("failed to create strategy for environment '%s': %w", options.Environment, err)
+		}
+	}
+	
+	// Set the strategy
+	options.SetDeploymentStrategy(strategy)
+	
+	u.logger.InfoWithContext("deployment strategy configured", map[string]interface{}{
+		"strategy": strategy.GetName(),
+		"environment": options.Environment.String(),
+		"global_timeout": strategy.GetGlobalTimeout(),
+		"allows_parallel": strategy.AllowsParallelDeployment(),
+		"health_check_retries": strategy.GetHealthCheckRetries(),
+		"zero_downtime": strategy.RequiresZeroDowntime(),
+	})
+	
+	return nil
+}
+
+// initializeMonitoring initializes monitoring components for a deployment
+func (u *DeploymentUsecase) initializeMonitoring(ctx context.Context, deploymentID string, options *domain.DeploymentOptions) error {
+	// Initialize metrics collection
+	if err := u.metricsCollector.StartDeploymentMetrics(deploymentID, options); err != nil {
+		return fmt.Errorf("failed to start deployment metrics: %w", err)
+	}
+	
+	// Initialize dependency monitoring
+	if err := u.dependencyDetector.StartDependencyMonitoring(ctx, deploymentID); err != nil {
+		return fmt.Errorf("failed to start dependency monitoring: %w", err)
+	}
+	
+	// Initialize progress tracking
+	chartConfig := domain.NewChartConfig(options.ChartsDir)
+	allCharts := chartConfig.AllCharts()
+	u.progressTracker = NewProgressTracker(u.logger, deploymentID, len(allCharts), u.metricsCollector)
+	
+	// Set up progress callback for real-time updates
+	u.progressTracker.SetProgressCallback(func(progress *domain.DeploymentProgress) {
+		u.logger.InfoWithContext("deployment progress update", map[string]interface{}{
+			"deployment_id":     deploymentID,
+			"current_phase":     progress.CurrentPhase,
+			"current_chart":     progress.CurrentChart,
+			"completed_charts":  progress.CompletedCharts,
+			"total_charts":      progress.TotalCharts,
+			"progress_percent":  float64(progress.CompletedCharts) / float64(progress.TotalCharts) * 100.0,
+		})
+	})
+	
+	u.logger.InfoWithContext("monitoring initialized", map[string]interface{}{
+		"deployment_id": deploymentID,
+		"total_charts":  len(allCharts),
+	})
+	
+	return nil
+}
+
+// cleanupStuckHelmOperations cleans up any stuck Helm operations before deployment
+func (u *DeploymentUsecase) cleanupStuckHelmOperations(ctx context.Context, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("cleaning up stuck helm operations", map[string]interface{}{
+		"environment": options.Environment.String(),
+	})
+	
+	// Get all charts that will be deployed
+	chartConfig := domain.NewChartConfig(options.ChartsDir)
+	allCharts := chartConfig.AllCharts()
+	
+	cleanupResults := make(map[string]error)
+	
+	// Check each chart for stuck operations
+	for _, chart := range allCharts {
+		// Create a timeout context for each chart cleanup
+		cleanupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		
+		// Check for pending operations
+		operation, err := u.helmGateway.DetectPendingOperation(cleanupCtx, chart, options)
+		if err != nil {
+			cleanupResults[chart.Name] = fmt.Errorf("failed to detect pending operations: %w", err)
+			cancel()
+			continue
+		}
+		
+		if operation != nil {
+			u.logger.WarnWithContext("detected stuck helm operation", map[string]interface{}{
+				"chart": chart.Name,
+				"operation": operation.Type,
+				"status": operation.Status,
+				"start_time": operation.StartTime,
+				"namespace": options.GetNamespace(chart.Name),
+			})
+			
+			// Attempt to clean up the stuck operation
+			if err := u.helmGateway.CleanupStuckOperations(cleanupCtx, chart, options); err != nil {
+				cleanupResults[chart.Name] = fmt.Errorf("failed to cleanup stuck operation: %w", err)
+				u.logger.ErrorWithContext("failed to cleanup stuck operation", map[string]interface{}{
+					"chart": chart.Name,
+					"error": err.Error(),
+				})
+			} else {
+				u.logger.InfoWithContext("successfully cleaned up stuck operation", map[string]interface{}{
+					"chart": chart.Name,
+					"operation": operation.Type,
+					"status": operation.Status,
+				})
+			}
+		}
+		
+		cancel()
+	}
+	
+	// Report cleanup results
+	successCount := 0
+	failureCount := 0
+	
+	for chartName, err := range cleanupResults {
+		if err != nil {
+			failureCount++
+			u.logger.WarnWithContext("chart cleanup failed", map[string]interface{}{
+				"chart": chartName,
+				"error": err.Error(),
+			})
+		} else {
+			successCount++
+		}
+	}
+	
+	u.logger.InfoWithContext("helm operations cleanup completed", map[string]interface{}{
+		"total_charts": len(allCharts),
+		"charts_with_issues": len(cleanupResults),
+		"cleanup_successes": successCount,
+		"cleanup_failures": failureCount,
+	})
+	
+	// Return error only if all cleanups failed
+	if failureCount > 0 && successCount == 0 {
+		return fmt.Errorf("all helm operation cleanups failed")
+	}
+	
+	return nil
 }

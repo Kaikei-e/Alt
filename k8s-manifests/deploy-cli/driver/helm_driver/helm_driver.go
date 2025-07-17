@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"math"
 	"math/rand"
+	"log"
 	
 	"deploy-cli/port/helm_port"
 )
@@ -84,6 +85,21 @@ func (h *HelmDriver) UpgradeInstall(ctx context.Context, releaseName, chartPath 
 			}
 		}
 		
+		if !options.WaitForJobs {
+			args = append(args, "--wait-for-jobs=false")
+		}
+		
+		if options.Atomic {
+			args = append(args, "--atomic")
+		}
+		
+		// Always add timeout to prevent hanging
+		if options.Timeout > 0 {
+			args = append(args, "--timeout", options.Timeout.String())
+		} else {
+			args = append(args, "--timeout", "3m")
+		}
+		
 		if options.Force {
 			args = append(args, "--force")
 		}
@@ -91,12 +107,17 @@ func (h *HelmDriver) UpgradeInstall(ctx context.Context, releaseName, chartPath 
 		// Add image overrides
 		for key, value := range options.ImageOverrides {
 			args = append(args, "--set", fmt.Sprintf("%s=%s", key, value))
+			log.Printf("Adding image override: %s=%s", key, value)
 		}
 		
 		// Add set values
 		for key, value := range options.SetValues {
 			args = append(args, "--set", fmt.Sprintf("%s=%s", key, value))
+			log.Printf("Adding set value: %s=%s", key, value)
 		}
+		
+		// Log the full helm command
+		log.Printf("Executing helm command: helm %s", strings.Join(args, " "))
 		
 		// Create a timeout context for the helm command itself
 		helmTimeout := 3 * time.Minute // Default timeout for most helm commands
@@ -111,11 +132,39 @@ func (h *HelmDriver) UpgradeInstall(ctx context.Context, releaseName, chartPath 
 			helmTimeout = options.Timeout
 		}
 		
-		helmCtx, cancel := context.WithTimeout(ctx, helmTimeout)
+		// Add some buffer to the context timeout beyond the helm timeout
+		contextTimeout := helmTimeout + 30*time.Second
+		
+		helmCtx, cancel := context.WithTimeout(ctx, contextTimeout)
 		defer cancel()
 		
 		cmd := exec.CommandContext(helmCtx, "helm", args...)
+		
+		// Start a watchdog goroutine to monitor the process
+		watchdogDone := make(chan bool, 1)
+		go func() {
+			select {
+			case <-watchdogDone:
+				// Command completed normally
+				return
+			case <-time.After(helmTimeout):
+				// Command is taking too long, kill it
+				log.Printf("Helm command for %s exceeded timeout %v, killing process", releaseName, helmTimeout)
+				if cmd.Process != nil {
+					log.Printf("Sending SIGTERM to helm process %d", cmd.Process.Pid)
+					// Try graceful termination first
+					cmd.Process.Signal(syscall.SIGTERM)
+					time.Sleep(5 * time.Second)
+					// Force kill if still running
+					log.Printf("Force killing helm process %d", cmd.Process.Pid)
+					cmd.Process.Kill()
+				}
+			}
+		}()
+		
 		output, err := cmd.CombinedOutput()
+		watchdogDone <- true // Signal watchdog that command completed
+		
 		if err != nil {
 			// Check if this is a timeout error
 			if helmCtx.Err() == context.DeadlineExceeded {
