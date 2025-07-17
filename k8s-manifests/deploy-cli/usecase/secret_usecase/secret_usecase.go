@@ -3,6 +3,7 @@ package secret_usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 	
 	"deploy-cli/domain"
 	"deploy-cli/port/logger_port"
@@ -76,16 +77,27 @@ func (u *SecretUsecase) detectOwnershipConflicts(ctx context.Context) ([]domain.
 		return nil, fmt.Errorf("failed to get secrets: %w", err)
 	}
 	
+	// Track secrets by name to detect potential ownership conflicts
+	secretsByName := make(map[string][]string) // secretName -> []namespace
+	helmOwnership := make(map[string]string)   // "namespace/secretName" -> "releaseNamespace/releaseName"
+	
 	for _, secret := range secrets {
 		secretNamespace := secret.Namespace
 		secretName := secret.Name
 		releaseName := secret.ReleaseName
 		releaseNamespace := secret.ReleaseNamespace
 		
+		// Track all instances of each secret name
+		secretsByName[secretName] = append(secretsByName[secretName], secretNamespace)
+		
 		// Skip if no Helm annotations
 		if releaseName == "" || releaseNamespace == "" {
 			continue
 		}
+		
+		secretKey := fmt.Sprintf("%s/%s", secretNamespace, secretName)
+		ownerKey := fmt.Sprintf("%s/%s", releaseNamespace, releaseName)
+		helmOwnership[secretKey] = ownerKey
 		
 		// Check for cross-namespace ownership
 		if secretNamespace != releaseNamespace {
@@ -99,6 +111,45 @@ func (u *SecretUsecase) detectOwnershipConflicts(ctx context.Context) ([]domain.
 					secretNamespace, secretName, releaseName, releaseNamespace),
 			}
 			conflicts = append(conflicts, conflict)
+		}
+	}
+	
+	// Check for potential Helm metadata conflicts (same secret name with different owners)
+	for secretName, namespaces := range secretsByName {
+		if len(namespaces) > 1 {
+			// Check if these secrets have different Helm owners
+			owners := make(map[string][]string) // owner -> []namespaces
+			
+			for _, namespace := range namespaces {
+				secretKey := fmt.Sprintf("%s/%s", namespace, secretName)
+				if owner, exists := helmOwnership[secretKey]; exists {
+					owners[owner] = append(owners[owner], namespace)
+				}
+			}
+			
+			// If we have multiple owners for the same secret name, it's a potential conflict
+			if len(owners) > 1 {
+				for owner, ownedNamespaces := range owners {
+					parts := strings.Split(owner, "/")
+					if len(parts) == 2 {
+						releaseNamespace := parts[0]
+						releaseName := parts[1]
+						
+						for _, namespace := range ownedNamespaces {
+							conflict := domain.SecretConflict{
+								SecretName:       secretName,
+								SecretNamespace:  namespace,
+								ReleaseName:      releaseName,
+								ReleaseNamespace: releaseNamespace,
+								ConflictType:     domain.ConflictTypeMetadataConflict,
+								Description: fmt.Sprintf("Secret %s exists in multiple namespaces with different Helm owners - potential metadata conflict when deploying %s", 
+									secretName, releaseName),
+							}
+							conflicts = append(conflicts, conflict)
+						}
+					}
+				}
+			}
 		}
 	}
 	
@@ -200,6 +251,8 @@ func (u *SecretUsecase) resolveConflict(ctx context.Context, conflict domain.Sec
 	switch conflict.ConflictType {
 	case domain.ConflictTypeCrossNamespace:
 		return u.resolveCrossNamespaceConflict(ctx, conflict, dryRun)
+	case domain.ConflictTypeMetadataConflict:
+		return u.resolveMetadataConflict(ctx, conflict, dryRun)
 	default:
 		return fmt.Errorf("unknown conflict type: %s", conflict.ConflictType)
 	}
@@ -233,6 +286,53 @@ func (u *SecretUsecase) resolveCrossNamespaceConflict(ctx context.Context, confl
 		"secret":    conflict.SecretName,
 		"namespace": conflict.SecretNamespace,
 	})
+	
+	return nil
+}
+
+// resolveMetadataConflict resolves Helm metadata annotation conflicts
+func (u *SecretUsecase) resolveMetadataConflict(ctx context.Context, conflict domain.SecretConflict, dryRun bool) error {
+	u.logger.InfoWithContext("resolving Helm metadata conflict", map[string]interface{}{
+		"secret":           conflict.SecretName,
+		"secret_namespace": conflict.SecretNamespace,
+		"release_name":     conflict.ReleaseName,
+		"release_namespace": conflict.ReleaseNamespace,
+		"dry_run":          dryRun,
+	})
+	
+	if dryRun {
+		u.logger.InfoWithContext("dry-run: would delete secret with metadata conflict", map[string]interface{}{
+			"secret":    conflict.SecretName,
+			"namespace": conflict.SecretNamespace,
+		})
+		return nil
+	}
+	
+	// For metadata conflicts, we only delete the secret if it's in the "default" namespace
+	// or if it's clearly orphaned (cross-namespace ownership)
+	if conflict.SecretNamespace == "default" || conflict.SecretNamespace != conflict.ReleaseNamespace {
+		u.logger.InfoWithContext("deleting secret with Helm metadata conflict", map[string]interface{}{
+			"secret":    conflict.SecretName,
+			"namespace": conflict.SecretNamespace,
+			"reason":    "metadata_conflict_safe_to_delete",
+		})
+		
+		err := u.kubectlGateway.DeleteSecret(ctx, conflict.SecretName, conflict.SecretNamespace)
+		if err != nil {
+			return fmt.Errorf("failed to delete conflicting secret: %w", err)
+		}
+		
+		u.logger.InfoWithContext("deleted secret with metadata conflict", map[string]interface{}{
+			"secret":    conflict.SecretName,
+			"namespace": conflict.SecretNamespace,
+		})
+	} else {
+		u.logger.WarnWithContext("skipping metadata conflict resolution - not safe to delete", map[string]interface{}{
+			"secret":    conflict.SecretName,
+			"namespace": conflict.SecretNamespace,
+			"reason":    "same_namespace_as_release",
+		})
+	}
 	
 	return nil
 }

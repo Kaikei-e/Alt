@@ -568,6 +568,25 @@ func (g *HelmGateway) isRetriableError(err error) bool {
 	
 	errorMsg := strings.ToLower(err.Error())
 	
+	// Non-retriable conditions (immediate failures)
+	nonRetriablePatterns := []string{
+		"cannot be imported into the current release",
+		"invalid ownership metadata",
+		"annotation validation error",
+		"meta.helm.sh/release-name",
+		"already exists and cannot be imported",
+	}
+	
+	for _, pattern := range nonRetriablePatterns {
+		if strings.Contains(errorMsg, pattern) {
+			g.logger.DebugWithContext("error classified as non-retriable Helm metadata conflict", map[string]interface{}{
+				"error":   errorMsg,
+				"pattern": pattern,
+			})
+			return false
+		}
+	}
+	
 	// Retriable conditions
 	retriablePatterns := []string{
 		"another operation in progress",

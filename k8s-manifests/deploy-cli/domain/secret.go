@@ -239,6 +239,8 @@ const (
 	ConflictTypeDuplicateOwnership ConflictType = "duplicate_ownership"
 	// ConflictTypeMissingSecret indicates an expected secret is missing
 	ConflictTypeMissingSecret ConflictType = "missing_secret"
+	// ConflictTypeMetadataConflict indicates Helm metadata annotation conflicts
+	ConflictTypeMetadataConflict ConflictType = "metadata_conflict"
 )
 
 // String returns the string representation of ConflictType

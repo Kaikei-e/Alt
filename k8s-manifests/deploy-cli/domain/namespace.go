@@ -50,6 +50,8 @@ func determineProductionNamespace(chartName string) string {
 		return "alt-ingress"
 	case "monitoring":
 		return "alt-observability"
+	case "common-secrets", "common-config", "common-ssl":
+		return "alt-apps"  // Deploy common charts to alt-apps to match service deployments
 	default:
 		return "alt-production"
 	}
