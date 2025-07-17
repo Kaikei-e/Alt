@@ -1,7 +1,6 @@
 name: Reusable Go Quality Gates Workflow
 permissions:
   contents: read
-  security-events: write
 
 on:
   workflow_call:
