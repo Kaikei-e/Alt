@@ -1,6 +1,6 @@
 *.tgz
 
-Chart.lock
+**/Chart.lock
 
 values-production.yaml
 **/values-production.yaml
