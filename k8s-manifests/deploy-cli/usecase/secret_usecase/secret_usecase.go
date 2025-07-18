@@ -869,3 +869,123 @@ func extractServiceName(secretName string) string {
 	
 	return name
 }
+
+// AdoptSecretsForChart adopts existing secrets for a chart by adding proper Helm metadata
+// This method implements the secret adoption functionality referenced in deployment_usecase.go
+func (u *SecretUsecase) AdoptSecretsForChart(ctx context.Context, chartName string) error {
+	u.logger.InfoWithContext("adopting secrets for chart", map[string]interface{}{
+		"chart": chartName,
+	})
+	
+	// Define mapping of chart names to their expected secrets
+	secretMappings := map[string][]struct {
+		secretName string
+		namespace  string
+	}{
+		"postgres": {
+			{secretName: "postgres-secret", namespace: "alt-database"},
+		},
+		"auth-postgres": {
+			{secretName: "auth-postgres-secrets", namespace: "alt-database"},
+		},
+		"kratos-postgres": {
+			{secretName: "kratos-postgres-secrets", namespace: "alt-database"},
+		},
+		"meilisearch": {
+			{secretName: "meilisearch-credentials", namespace: "alt-database"},
+			{secretName: "meilisearch-ssl-certs-prod", namespace: "alt-database"},
+		},
+		"clickhouse": {
+			{secretName: "clickhouse-credentials", namespace: "alt-database"},
+		},
+		"alt-backend": {
+			{secretName: "alt-backend-secrets", namespace: "alt-apps"},
+			{secretName: "database-credentials", namespace: "alt-apps"},
+		},
+		"alt-frontend": {
+			{secretName: "alt-frontend-secrets", namespace: "alt-apps"},
+		},
+		"nginx": {
+			{secretName: "nginx-ssl-certs", namespace: "alt-ingress"},
+		},
+		"auth-service": {
+			{secretName: "auth-service-secrets", namespace: "alt-auth"},
+		},
+		"kratos": {
+			{secretName: "kratos-secrets", namespace: "alt-auth"},
+		},
+	}
+	
+	secrets, exists := secretMappings[chartName]
+	if !exists {
+		u.logger.WarnWithContext("no secret mapping found for chart", map[string]interface{}{
+			"chart": chartName,
+		})
+		return nil // Not an error, just no secrets to adopt
+	}
+	
+	// Adopt each secret for the chart
+	for _, secret := range secrets {
+		if err := u.adoptSingleSecret(ctx, secret.secretName, secret.namespace, chartName); err != nil {
+			u.logger.WarnWithContext("failed to adopt secret", map[string]interface{}{
+				"secret":    secret.secretName,
+				"namespace": secret.namespace,
+				"chart":     chartName,
+				"error":     err.Error(),
+			})
+			// Continue with other secrets even if one fails
+		}
+	}
+	
+	return nil
+}
+
+// adoptSingleSecret adopts a single secret by adding proper Helm metadata
+func (u *SecretUsecase) adoptSingleSecret(ctx context.Context, secretName, namespace, chartName string) error {
+	u.logger.InfoWithContext("adopting single secret", map[string]interface{}{
+		"secret":    secretName,
+		"namespace": namespace,
+		"chart":     chartName,
+	})
+	
+	// Check if secret exists
+	if !u.kubectlGateway.SecretExists(ctx, secretName, namespace) {
+		u.logger.InfoWithContext("secret does not exist, skipping adoption", map[string]interface{}{
+			"secret":    secretName,
+			"namespace": namespace,
+		})
+		return nil
+	}
+	
+	// Add Helm-compatible metadata
+	annotations := map[string]string{
+		"meta.helm.sh/release-name":      chartName,
+		"meta.helm.sh/release-namespace": namespace,
+	}
+	
+	labels := map[string]string{
+		"app.kubernetes.io/managed-by": "Helm",
+	}
+	
+	// Apply annotations
+	for key, value := range annotations {
+		if err := u.kubectlGateway.AnnotateSecret(ctx, secretName, namespace, key, value); err != nil {
+			return fmt.Errorf("failed to add annotation %s to secret %s: %w", key, secretName, err)
+		}
+	}
+	
+	// Apply labels
+	for key, value := range labels {
+		if err := u.kubectlGateway.LabelSecret(ctx, secretName, namespace, key, value); err != nil {
+			return fmt.Errorf("failed to add label %s to secret %s: %w", key, secretName, err)
+		}
+	}
+	
+	u.logger.InfoWithContext("successfully adopted secret", map[string]interface{}{
+		"secret":    secretName,
+		"namespace": namespace,
+		"chart":     chartName,
+	})
+	
+	return nil
+}

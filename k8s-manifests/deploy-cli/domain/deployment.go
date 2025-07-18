@@ -18,6 +18,7 @@ type DeploymentOptions struct {
 	Timeout           time.Duration
 	DeploymentStrategy DeploymentStrategy
 	StrategyName      string // Override strategy selection
+	AutoFixSecrets    bool   // Enable automatic secret error recovery (Phase 4.3)
 }
 
 // NewDeploymentOptions creates a new deployment options with defaults

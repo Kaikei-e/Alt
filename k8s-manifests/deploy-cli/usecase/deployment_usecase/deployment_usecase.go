@@ -1266,10 +1266,32 @@ func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart,
 		return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
 	}
 
-	// Deploy chart using Helm
+	// Deploy chart using Helm with enhanced error recovery (Phase 4.3)
 	err := u.helmGateway.DeployChart(ctx, chart, options)
 	if err != nil {
-		return fmt.Errorf("failed to deploy chart %s: %w", chart.Name, err)
+		// Enhanced error recovery: try to handle secret ownership errors (only if flag is enabled)
+		if options.AutoFixSecrets {
+			if recoveryErr := u.handleSecretOwnershipError(err, chart.Name); recoveryErr != nil {
+				return fmt.Errorf("failed to deploy chart %s: %w", chart.Name, recoveryErr)
+			}
+			
+			// If error recovery succeeded, try deployment again
+			u.logger.InfoWithContext("retrying chart deployment after error recovery", map[string]interface{}{
+				"chart": chart.Name,
+				"original_error": err.Error(),
+			})
+			
+			if retryErr := u.helmGateway.DeployChart(ctx, chart, options); retryErr != nil {
+				return fmt.Errorf("failed to deploy chart %s after error recovery: %w", chart.Name, retryErr)
+			}
+			
+			u.logger.InfoWithContext("chart deployment succeeded after error recovery", map[string]interface{}{
+				"chart": chart.Name,
+			})
+		} else {
+			// No auto-fix enabled, return original error
+			return fmt.Errorf("failed to deploy chart %s: %w", chart.Name, err)
+		}
 	}
 
 	// Wait for readiness if required
@@ -3753,5 +3775,80 @@ func (u *DeploymentUsecase) prepareStatefulSetRecovery(ctx context.Context, opti
 		"charts_processed": len(statefulSetCharts),
 	})
 
+	return nil
+}
+
+// handleSecretOwnershipError handles secret ownership conflicts with automatic remediation
+// Enhanced error recovery as proposed in implement-list08.md Phase 4.3
+func (u *DeploymentUsecase) handleSecretOwnershipError(err error, chartName string) error {
+	errorMessage := err.Error()
+	
+	// Enhanced pattern matching for various secret-related errors
+	secretErrorPatterns := []string{
+		"invalid ownership metadata",
+		"resource mapping not found",
+		"cannot be imported",
+		"secret owned by",
+		"managed by Helm",
+		"release not found",
+		"secret not found",
+		"metadata annotation missing",
+	}
+	
+	for _, pattern := range secretErrorPatterns {
+		if strings.Contains(errorMessage, pattern) {
+			u.logger.WarnWithContext("detected secret-related error, attempting automatic fix", map[string]interface{}{
+				"chart":   chartName,
+				"error":   errorMessage,
+				"pattern": pattern,
+			})
+			
+			// Automatic secret adoption using secret usecase
+			if err := u.adoptSecretsForChart(chartName); err != nil {
+				u.logger.ErrorWithContext("failed to adopt secrets for chart", map[string]interface{}{
+					"chart": chartName,
+					"error": err.Error(),
+				})
+				return fmt.Errorf("failed to adopt secrets for chart %s: %w", chartName, err)
+			}
+			
+			// Indicate successful recovery preparation
+			u.logger.InfoWithContext("secret adoption completed, deployment retry prepared", map[string]interface{}{
+				"chart": chartName,
+			})
+			
+			return u.retryChartDeployment(chartName)
+		}
+	}
+	
+	// If no secret-related error pattern matched, return original error
+	return err
+}
+
+// adoptSecretsForChart adopts existing secrets for a chart by adding proper Helm metadata
+func (u *DeploymentUsecase) adoptSecretsForChart(chartName string) error {
+	u.logger.InfoWithContext("adopting secrets for chart", map[string]interface{}{
+		"chart": chartName,
+	})
+	
+	// This integrates with the existing secret usecase functionality
+	// Use the secretUsecase to adopt secrets with proper metadata
+	ctx := context.Background()
+	if err := u.secretUsecase.AdoptSecretsForChart(ctx, chartName); err != nil {
+		return fmt.Errorf("failed to adopt secrets for chart %s: %w", chartName, err)
+	}
+	
+	return nil
+}
+
+// retryChartDeployment retries deployment for a specific chart
+func (u *DeploymentUsecase) retryChartDeployment(chartName string) error {
+	u.logger.InfoWithContext("retrying chart deployment after secret adoption", map[string]interface{}{
+		"chart": chartName,
+	})
+	
+	// Enhanced retry logic as part of Phase 4.3
+	// The retry is now handled in the deployChart method itself
+	// This method indicates successful preparation for retry
 	return nil
 }

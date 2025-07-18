@@ -84,6 +84,7 @@ Examples:
 	cmd.Flags().StringP("namespace", "n", "", "Override target namespace")
 	cmd.Flags().Duration("timeout", 300*time.Second, "Timeout for deployment operations")
 	cmd.Flags().String("charts-dir", "../charts", "Directory containing Helm charts")
+	cmd.Flags().Bool("auto-fix-secrets", false, "Enable automatic secret error recovery (Phase 4.3)")
 	
 	return cmd
 }
@@ -151,6 +152,7 @@ func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 	options.TargetNamespace, _ = cmd.Flags().GetString("namespace")
 	options.Timeout, _ = cmd.Flags().GetDuration("timeout")
 	options.ChartsDir, _ = cmd.Flags().GetString("charts-dir")
+	options.AutoFixSecrets, _ = cmd.Flags().GetBool("auto-fix-secrets")
 	
 	// Convert relative charts directory to absolute path
 	if options.ChartsDir != "" {

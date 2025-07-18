@@ -38,6 +38,7 @@ type SSLCertificateConfig struct {
 	DNSNames     []string
 	IPAddresses  []net.IP
 	ValidityDays int
+	ReleaseName  string // For Helm-compatible metadata
 }
 
 // CreateMeiliSearchSSLCertificate creates SSL certificate for MeiliSearch
@@ -60,6 +61,7 @@ func (u *SSLCertificateUsecase) CreateMeiliSearchSSLCertificate(ctx context.Cont
 		},
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
 		ValidityDays: 365,
+		ReleaseName:  "meilisearch", // For Helm-compatible metadata
 	}
 
 	return u.createSSLCertificate(ctx, config)
@@ -86,6 +88,7 @@ func (u *SSLCertificateUsecase) CreateBackendSSLCertificate(ctx context.Context,
 		},
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
 		ValidityDays: 365,
+		ReleaseName:  "alt-backend", // For Helm-compatible metadata
 	}
 
 	return u.createSSLCertificate(ctx, config)
@@ -112,6 +115,7 @@ func (u *SSLCertificateUsecase) CreateFrontendSSLCertificate(ctx context.Context
 		},
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
 		ValidityDays: 365,
+		ReleaseName:  "alt-frontend", // For Helm-compatible metadata
 	}
 
 	return u.createSSLCertificate(ctx, config)
@@ -139,6 +143,7 @@ func (u *SSLCertificateUsecase) CreateNginxSSLCertificate(ctx context.Context, n
 		},
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
 		ValidityDays: 365,
+		ReleaseName:  "nginx", // For Helm-compatible metadata
 	}
 
 	return u.createSSLCertificate(ctx, config)
@@ -165,6 +170,7 @@ func (u *SSLCertificateUsecase) CreateAuthServiceSSLCertificate(ctx context.Cont
 		},
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
 		ValidityDays: 365,
+		ReleaseName:  "auth-service", // For Helm-compatible metadata
 	}
 
 	return u.createSSLCertificate(ctx, config)
@@ -191,6 +197,7 @@ func (u *SSLCertificateUsecase) CreateKratosSSLCertificate(ctx context.Context, 
 		},
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
 		ValidityDays: 365,
+		ReleaseName:  "kratos", // For Helm-compatible metadata
 	}
 
 	return u.createSSLCertificate(ctx, config)
@@ -217,6 +224,7 @@ func (u *SSLCertificateUsecase) CreatePostgresSSLCertificate(ctx context.Context
 		},
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
 		ValidityDays: 365,
+		ReleaseName:  "postgres", // For Helm-compatible metadata
 	}
 
 	return u.createSSLCertificate(ctx, config)
@@ -289,6 +297,13 @@ func (u *SSLCertificateUsecase) createSSLCertificate(ctx context.Context, config
 	secret.Labels["app.kubernetes.io/component"] = "ssl-certificate"
 	secret.Labels["app.kubernetes.io/environment"] = config.Environment.String()
 	secret.Labels["deploy-cli/managed"] = "true"
+	
+	// Add Helm-compatible metadata for Strategy A unified management
+	if config.ReleaseName != "" {
+		secret.Labels["app.kubernetes.io/managed-by"] = "Helm"
+		secret.Annotations["meta.helm.sh/release-name"] = config.ReleaseName
+		secret.Annotations["meta.helm.sh/release-namespace"] = config.Namespace
+	}
 
 	u.logger.InfoWithContext("SSL certificate generated successfully", map[string]interface{}{
 		"secret_name":    secretName,

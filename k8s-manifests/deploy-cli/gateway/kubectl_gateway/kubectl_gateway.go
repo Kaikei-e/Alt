@@ -652,3 +652,124 @@ func (g *KubectlGateway) GetSecret(ctx context.Context, name, namespace string) 
 
 	return domainSecret, nil
 }
+
+// SecretExists checks if a secret exists in the specified namespace
+func (g *KubectlGateway) SecretExists(ctx context.Context, secretName, namespace string) bool {
+	g.logger.DebugWithContext("checking if secret exists", map[string]interface{}{
+		"secret":    secretName,
+		"namespace": namespace,
+	})
+	
+	_, err := g.kubectlPort.GetSecret(ctx, secretName, namespace)
+	exists := err == nil
+	
+	g.logger.DebugWithContext("secret existence check result", map[string]interface{}{
+		"secret":    secretName,
+		"namespace": namespace,
+		"exists":    exists,
+	})
+	
+	return exists
+}
+
+// AnnotateSecret adds an annotation to an existing secret
+func (g *KubectlGateway) AnnotateSecret(ctx context.Context, secretName, namespace, key, value string) error {
+	g.logger.InfoWithContext("annotating secret", map[string]interface{}{
+		"secret":    secretName,
+		"namespace": namespace,
+		"key":       key,
+		"value":     value,
+	})
+	
+	// Get the existing secret
+	kubernetesSecret, err := g.kubectlPort.GetSecret(ctx, secretName, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get secret for annotation", map[string]interface{}{
+			"secret":    secretName,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("failed to get secret %s for annotation: %w", secretName, err)
+	}
+	
+	// Initialize annotations if nil
+	if kubernetesSecret.Annotations == nil {
+		kubernetesSecret.Annotations = make(map[string]string)
+	}
+	
+	// Add the annotation
+	kubernetesSecret.Annotations[key] = value
+	
+	// Apply the updated secret
+	err = g.kubectlPort.ApplySecret(ctx, kubernetesSecret)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to apply secret annotation", map[string]interface{}{
+			"secret":    secretName,
+			"namespace": namespace,
+			"key":       key,
+			"value":     value,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("failed to apply annotation to secret %s: %w", secretName, err)
+	}
+	
+	g.logger.InfoWithContext("secret annotated successfully", map[string]interface{}{
+		"secret":    secretName,
+		"namespace": namespace,
+		"key":       key,
+		"value":     value,
+	})
+	
+	return nil
+}
+
+// LabelSecret adds a label to an existing secret
+func (g *KubectlGateway) LabelSecret(ctx context.Context, secretName, namespace, key, value string) error {
+	g.logger.InfoWithContext("labeling secret", map[string]interface{}{
+		"secret":    secretName,
+		"namespace": namespace,
+		"key":       key,
+		"value":     value,
+	})
+	
+	// Get the existing secret
+	kubernetesSecret, err := g.kubectlPort.GetSecret(ctx, secretName, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get secret for labeling", map[string]interface{}{
+			"secret":    secretName,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("failed to get secret %s for labeling: %w", secretName, err)
+	}
+	
+	// Initialize labels if nil
+	if kubernetesSecret.Labels == nil {
+		kubernetesSecret.Labels = make(map[string]string)
+	}
+	
+	// Add the label
+	kubernetesSecret.Labels[key] = value
+	
+	// Apply the updated secret
+	err = g.kubectlPort.ApplySecret(ctx, kubernetesSecret)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to apply secret label", map[string]interface{}{
+			"secret":    secretName,
+			"namespace": namespace,
+			"key":       key,
+			"value":     value,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("failed to apply label to secret %s: %w", secretName, err)
+	}
+	
+	g.logger.InfoWithContext("secret labeled successfully", map[string]interface{}{
+		"secret":    secretName,
+		"namespace": namespace,
+		"key":       key,
+		"value":     value,
+	})
+	
+	return nil
+}
