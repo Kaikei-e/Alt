@@ -682,3 +682,25 @@ func (h *HelmDriver) rollbackRelease(ctx context.Context, releaseName, namespace
 	
 	return nil
 }
+
+// Rollback rolls back a Helm release to a specific revision
+func (h *HelmDriver) Rollback(ctx context.Context, releaseName, namespace string, revision int) error {
+	args := []string{"rollback", releaseName}
+	if revision > 0 {
+		args = append(args, fmt.Sprintf("%d", revision))
+	}
+	if namespace != "" {
+		args = append(args, "--namespace", namespace)
+	}
+	
+	// Add timeout to prevent hanging
+	args = append(args, "--timeout", "2m")
+	
+	cmd := exec.CommandContext(ctx, "helm", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to rollback release %s to revision %d: %w, output: %s", releaseName, revision, err, string(output))
+	}
+	
+	return nil
+}

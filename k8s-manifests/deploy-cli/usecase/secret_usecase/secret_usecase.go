@@ -2,7 +2,9 @@ package secret_usecase
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"strings"
 	
 	"deploy-cli/domain"
@@ -735,4 +737,135 @@ func (u *SecretUsecase) DeleteOrphanedSecrets(ctx context.Context, orphaned []do
 	}
 	
 	return nil
+}
+
+// SecretExists checks if a secret exists in the specified namespace
+func (u *SecretUsecase) SecretExists(ctx context.Context, secretName, namespace string) (bool, error) {
+	u.logger.DebugWithContext("checking secret existence", map[string]interface{}{
+		"secret_name": secretName,
+		"namespace":   namespace,
+	})
+
+	// Try to get the secret
+	_, err := u.kubectlGateway.GetSecret(ctx, secretName, namespace)
+	if err != nil {
+		// If the error indicates the secret doesn't exist, return false
+		// TODO: Check for specific "not found" error types
+		u.logger.DebugWithContext("secret not found", map[string]interface{}{
+			"secret_name": secretName,
+			"namespace":   namespace,
+			"error":       err.Error(),
+		})
+		return false, nil
+	}
+
+	u.logger.DebugWithContext("secret exists", map[string]interface{}{
+		"secret_name": secretName,
+		"namespace":   namespace,
+	})
+
+	return true, nil
+}
+
+// GenerateDatabaseCredentials generates database credentials for the specified service
+func (u *SecretUsecase) GenerateDatabaseCredentials(ctx context.Context, secretName, namespace string) error {
+	u.logger.InfoWithContext("generating database credentials", map[string]interface{}{
+		"secret_name": secretName,
+		"namespace":   namespace,
+	})
+
+	// Generate random credentials
+	username, password, database := u.generateDatabaseCredentials(secretName)
+
+	// Create the secret
+	secret := domain.NewSecret(secretName, namespace, domain.DatabaseSecret)
+	secret.AddData("username", username)
+	secret.AddData("password", password)
+	secret.AddData("database", database)
+
+	// Add management labels
+	secret.Labels["app.kubernetes.io/name"] = extractServiceName(secretName)
+	secret.Labels["app.kubernetes.io/component"] = "database-credentials"
+	secret.Labels["deploy-cli/managed"] = "true"
+	secret.Labels["deploy-cli/auto-generated"] = "true"
+
+	// Create the secret using kubectl gateway
+	err := u.CreateSecret(ctx, secret)
+	if err != nil {
+		return fmt.Errorf("failed to create database credentials secret: %w", err)
+	}
+
+	u.logger.InfoWithContext("database credentials generated successfully", map[string]interface{}{
+		"secret_name": secretName,
+		"namespace":   namespace,
+		"username":    username,
+		"database":    database,
+	})
+
+	return nil
+}
+
+// generateDatabaseCredentials generates username, password, and database name
+func (u *SecretUsecase) generateDatabaseCredentials(secretName string) (username, password, database string) {
+	// Extract service name from secret name
+	serviceName := extractServiceName(secretName)
+	
+	// Generate username based on service name
+	username = serviceName
+	if username == "auth-postgres" {
+		username = "authuser"
+	} else if username == "kratos-postgres" {
+		username = "kratosuser"
+	} else if username == "postgres" {
+		username = "altuser"
+	}
+	
+	// Generate secure random password
+	password = u.generateSecurePassword(32)
+	
+	// Generate database name
+	database = serviceName
+	if database == "auth-postgres" {
+		database = "authdb"
+	} else if database == "kratos-postgres" {
+		database = "kratosdb"
+	} else if database == "postgres" {
+		database = "altdb"
+	} else if database == "clickhouse" {
+		database = "altdb"
+	} else if database == "meilisearch" {
+		database = "meilisearch"
+	}
+	
+	return username, password, database
+}
+
+// generateSecurePassword generates a cryptographically secure random password
+func (u *SecretUsecase) generateSecurePassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+	password := make([]byte, length)
+	
+	for i := range password {
+		// Use crypto/rand for secure random number generation
+		num, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		password[i] = charset[num.Int64()]
+	}
+	
+	return string(password)
+}
+
+// extractServiceName extracts service name from secret name
+func extractServiceName(secretName string) string {
+	// Remove common suffixes
+	name := secretName
+	suffixes := []string{"-credentials", "-secrets", "-secret"}
+	
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(name, suffix) {
+			name = strings.TrimSuffix(name, suffix)
+			break
+		}
+	}
+	
+	return name
 }

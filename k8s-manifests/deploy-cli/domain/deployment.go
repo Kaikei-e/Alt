@@ -234,3 +234,23 @@ type Pod struct {
 	RestartCount   int32
 	CreationTime   time.Time
 }
+
+// HelmReleaseInfo represents information about a Helm release
+type HelmReleaseInfo struct {
+	Name       string
+	Namespace  string
+	Revision   int
+	Status     string
+	Chart      string
+	AppVersion string
+	Updated    time.Time
+}
+
+// DeploymentCheckpoint represents a snapshot of deployment state for rollback
+type DeploymentCheckpoint struct {
+	ID          string
+	Timestamp   time.Time
+	Environment Environment
+	Releases    []HelmReleaseInfo
+	Namespaces  []string
+}

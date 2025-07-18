@@ -220,12 +220,16 @@ func (d *DeployCommand) createDeploymentUsecase() *deployment_usecase.Deployment
 	// Create secret usecase
 	secretUsecase := secret_usecase.NewSecretUsecase(kubectlGateway, loggerPort)
 	
+	// Create SSL certificate usecase
+	sslUsecase := secret_usecase.NewSSLCertificateUsecase(secretUsecase, loggerPort)
+	
 	return deployment_usecase.NewDeploymentUsecase(
 		helmGateway,
 		kubectlGateway,
 		filesystemGateway,
 		systemGateway,
 		secretUsecase,
+		sslUsecase,
 		loggerPort,
 		filesystemDriver,
 	)

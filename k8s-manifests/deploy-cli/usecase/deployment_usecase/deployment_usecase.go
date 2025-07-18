@@ -24,6 +24,7 @@ type DeploymentUsecase struct {
 	filesystemGateway   *filesystem_gateway.FileSystemGateway
 	systemGateway       *system_gateway.SystemGateway
 	secretUsecase       *secret_usecase.SecretUsecase
+	sslUsecase          *secret_usecase.SSLCertificateUsecase
 	logger              logger_port.LoggerPort
 	parallelDeployer    *ParallelChartDeployer
 	cache               *DeploymentCache
@@ -48,6 +49,7 @@ func NewDeploymentUsecase(
 	filesystemGateway *filesystem_gateway.FileSystemGateway,
 	systemGateway *system_gateway.SystemGateway,
 	secretUsecase *secret_usecase.SecretUsecase,
+	sslUsecase *secret_usecase.SSLCertificateUsecase,
 	logger logger_port.LoggerPort,
 	filesystemPort filesystem_port.FileSystemPort,
 ) *DeploymentUsecase {
@@ -67,6 +69,7 @@ func NewDeploymentUsecase(
 		filesystemGateway:     filesystemGateway,
 		systemGateway:         systemGateway,
 		secretUsecase:         secretUsecase,
+		sslUsecase:            sslUsecase,
 		logger:                logger,
 		dependencyScanner:     dependencyScanner,
 		healthChecker:         healthChecker,
@@ -112,6 +115,17 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 	// Step 1: Pre-deployment validation
 	if err := u.preDeploymentValidation(ctx, options); err != nil {
 		return nil, fmt.Errorf("pre-deployment validation failed: %w", err)
+	}
+	
+	// Step 1.5: SSL certificate validation and auto-generation
+	if err := u.PreDeploymentSSLCheck(ctx, options); err != nil {
+		return nil, fmt.Errorf("SSL certificate validation failed: %w", err)
+	}
+	
+	// Step 1.6: Pre-deployment secret validation
+	charts := u.getAllCharts(options)
+	if err := u.ValidateSecretsBeforeDeployment(ctx, charts); err != nil {
+		return nil, fmt.Errorf("secret validation failed: %w", err)
 	}
 	
 	// Step 2: Setup storage infrastructure
@@ -505,6 +519,735 @@ func (u *DeploymentUsecase) postDeploymentOperations(ctx context.Context, option
 		"environment": options.Environment.String(),
 	})
 	
+	return nil
+}
+
+// PreDeploymentSSLCheck performs SSL certificate validation and auto-generation before deployment
+func (u *DeploymentUsecase) PreDeploymentSSLCheck(ctx context.Context, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("starting SSL certificate validation", map[string]interface{}{
+		"environment": options.Environment.String(),
+	})
+
+	// Identify SSL certificate requirements based on environment
+	requiredCertificates := u.identifySSLRequirements(options.Environment)
+	
+	// Validate existing certificates
+	for _, certName := range requiredCertificates {
+		exists, err := u.sslUsecase.ValidateCertificateExists(ctx, certName, options.Environment)
+		if err != nil {
+			u.logger.ErrorWithContext("failed to validate SSL certificate", map[string]interface{}{
+				"certificate": certName,
+				"environment": options.Environment.String(),
+				"error": err.Error(),
+			})
+			return fmt.Errorf("SSL certificate validation failed for %s: %w", certName, err)
+		}
+
+		if !exists {
+			u.logger.InfoWithContext("SSL certificate missing, attempting auto-generation", map[string]interface{}{
+				"certificate": certName,
+				"environment": options.Environment.String(),
+			})
+
+			// Auto-generate missing SSL certificates
+			if err := u.sslUsecase.GenerateCertificate(ctx, certName, options.Environment); err != nil {
+				u.logger.ErrorWithContext("failed to auto-generate SSL certificate", map[string]interface{}{
+					"certificate": certName,
+					"environment": options.Environment.String(),
+					"error": err.Error(),
+				})
+				return fmt.Errorf("SSL certificate auto-generation failed for %s: %w", certName, err)
+			}
+
+			u.logger.InfoWithContext("SSL certificate auto-generated successfully", map[string]interface{}{
+				"certificate": certName,
+				"environment": options.Environment.String(),
+			})
+		} else {
+			u.logger.InfoWithContext("SSL certificate validated successfully", map[string]interface{}{
+				"certificate": certName,
+				"environment": options.Environment.String(),
+			})
+		}
+	}
+
+	u.logger.InfoWithContext("SSL certificate validation completed", map[string]interface{}{
+		"environment": options.Environment.String(),
+		"certificates_checked": len(requiredCertificates),
+	})
+
+	return nil
+}
+
+// identifySSLRequirements returns the list of required SSL certificates based on environment
+func (u *DeploymentUsecase) identifySSLRequirements(env domain.Environment) []string {
+	switch env {
+	case domain.Production:
+		return []string{
+			"alt-backend-tls",
+			"alt-frontend-tls", 
+			"auth-service-tls",
+			"nginx-external-tls",
+			"kratos-tls",
+		}
+	case domain.Staging:
+		return []string{
+			"alt-backend-tls",
+			"alt-frontend-tls",
+			"auth-service-tls", 
+			"nginx-external-tls",
+			"kratos-tls",
+		}
+	case domain.Development:
+		return []string{
+			"alt-backend-tls",
+			"alt-frontend-tls",
+		}
+	default:
+		return []string{}
+	}
+}
+
+// ValidateSecretsBeforeDeployment performs comprehensive secret validation before deployment
+func (u *DeploymentUsecase) ValidateSecretsBeforeDeployment(ctx context.Context, charts []domain.Chart) error {
+	u.logger.InfoWithContext("starting pre-deployment secret validation", map[string]interface{}{
+		"charts_count": len(charts),
+	})
+
+	for _, chart := range charts {
+		u.logger.InfoWithContext("validating secrets for chart", map[string]interface{}{
+			"chart_name": chart.Name,
+			"chart_path": chart.Path,
+		})
+
+		// Step 1: Check secret existence
+		if err := u.validateSecretExistence(ctx, chart); err != nil {
+			u.logger.ErrorWithContext("secret existence validation failed", map[string]interface{}{
+				"chart_name": chart.Name,
+				"error": err.Error(),
+			})
+			return fmt.Errorf("secret existence validation failed for chart %s: %w", chart.Name, err)
+		}
+
+		// Step 2: Validate secret metadata consistency
+		if err := u.validateSecretMetadata(ctx, chart); err != nil {
+			u.logger.ErrorWithContext("secret metadata validation failed", map[string]interface{}{
+				"chart_name": chart.Name,
+				"error": err.Error(),
+			})
+			return fmt.Errorf("secret metadata validation failed for chart %s: %w", chart.Name, err)
+		}
+
+		// Step 3: Auto-generate missing dependency secrets
+		if err := u.autoGenerateMissingSecrets(ctx, chart); err != nil {
+			u.logger.ErrorWithContext("auto-generation of missing secrets failed", map[string]interface{}{
+				"chart_name": chart.Name,
+				"error": err.Error(),
+			})
+			return fmt.Errorf("auto-generation of missing secrets failed for chart %s: %w", chart.Name, err)
+		}
+
+		u.logger.InfoWithContext("secret validation completed for chart", map[string]interface{}{
+			"chart_name": chart.Name,
+		})
+	}
+
+	u.logger.InfoWithContext("pre-deployment secret validation completed successfully", map[string]interface{}{
+		"charts_validated": len(charts),
+	})
+
+	return nil
+}
+
+// validateSecretExistence checks if required secrets exist for the chart
+func (u *DeploymentUsecase) validateSecretExistence(ctx context.Context, chart domain.Chart) error {
+	// Get required secrets for this chart based on chart type and name
+	requiredSecrets := u.getRequiredSecretsForChart(chart)
+	
+	for _, secretName := range requiredSecrets {
+		namespace := u.getNamespaceForChart(chart)
+		
+		exists, err := u.secretUsecase.SecretExists(ctx, secretName, namespace)
+		if err != nil {
+			return fmt.Errorf("failed to check secret existence %s in namespace %s: %w", secretName, namespace, err)
+		}
+		
+		if !exists {
+			u.logger.WarnWithContext("required secret missing", map[string]interface{}{
+				"secret_name": secretName,
+				"namespace": namespace,
+				"chart_name": chart.Name,
+			})
+			return fmt.Errorf("required secret %s does not exist in namespace %s", secretName, namespace)
+		}
+		
+		u.logger.DebugWithContext("secret existence verified", map[string]interface{}{
+			"secret_name": secretName,
+			"namespace": namespace,
+			"chart_name": chart.Name,
+		})
+	}
+	
+	return nil
+}
+
+// validateSecretMetadata validates secret metadata consistency
+func (u *DeploymentUsecase) validateSecretMetadata(ctx context.Context, chart domain.Chart) error {
+	requiredSecrets := u.getRequiredSecretsForChart(chart)
+	namespace := u.getNamespaceForChart(chart)
+	
+	for _, secretName := range requiredSecrets {
+		secret, err := u.secretUsecase.GetSecret(ctx, secretName, namespace)
+		if err != nil {
+			// If secret doesn't exist, skip metadata validation (it will be handled in existence check)
+			continue
+		}
+		
+		// Validate secret labels
+		if err := u.validateSecretLabels(secret, chart); err != nil {
+			return fmt.Errorf("secret metadata validation failed for %s: %w", secretName, err)
+		}
+		
+		// Validate secret data format
+		if err := u.validateSecretDataFormat(secret, chart); err != nil {
+			return fmt.Errorf("secret data format validation failed for %s: %w", secretName, err)
+		}
+		
+		u.logger.DebugWithContext("secret metadata validated", map[string]interface{}{
+			"secret_name": secretName,
+			"namespace": namespace,
+			"chart_name": chart.Name,
+		})
+	}
+	
+	return nil
+}
+
+// autoGenerateMissingSecrets automatically generates missing dependency secrets
+func (u *DeploymentUsecase) autoGenerateMissingSecrets(ctx context.Context, chart domain.Chart) error {
+	// Get auto-generatable secrets for this chart
+	autoGenSecrets := u.getAutoGeneratableSecretsForChart(chart)
+	namespace := u.getNamespaceForChart(chart)
+	
+	for _, secretName := range autoGenSecrets {
+		exists, err := u.secretUsecase.SecretExists(ctx, secretName, namespace)
+		if err != nil {
+			return fmt.Errorf("failed to check secret existence for auto-generation %s: %w", secretName, err)
+		}
+		
+		if !exists {
+			u.logger.InfoWithContext("auto-generating missing secret", map[string]interface{}{
+				"secret_name": secretName,
+				"namespace": namespace,
+				"chart_name": chart.Name,
+			})
+			
+			if err := u.generateSecret(ctx, secretName, namespace, chart); err != nil {
+				return fmt.Errorf("failed to auto-generate secret %s: %w", secretName, err)
+			}
+			
+			u.logger.InfoWithContext("secret auto-generated successfully", map[string]interface{}{
+				"secret_name": secretName,
+				"namespace": namespace,
+				"chart_name": chart.Name,
+			})
+		}
+	}
+	
+	return nil
+}
+
+// getAllCharts gets all charts that will be deployed based on deployment options
+func (u *DeploymentUsecase) getAllCharts(options *domain.DeploymentOptions) []domain.Chart {
+	strategy := u.strategyFactory.GetStrategy(options.Environment)
+	layerConfigs := strategy.GetLayerConfigurations(options.ChartsDir)
+	
+	var allCharts []domain.Chart
+	for _, layerConfig := range layerConfigs {
+		allCharts = append(allCharts, layerConfig.Charts...)
+	}
+	
+	return allCharts
+}
+
+// getRequiredSecretsForChart returns the list of required secrets for a specific chart
+func (u *DeploymentUsecase) getRequiredSecretsForChart(chart domain.Chart) []string {
+	switch chart.Name {
+	case "postgres":
+		return []string{"postgres-credentials"}
+	case "auth-postgres":
+		return []string{"auth-postgres-credentials"}
+	case "kratos-postgres":
+		return []string{"kratos-postgres-credentials"}
+	case "clickhouse":
+		return []string{"clickhouse-credentials"}
+	case "meilisearch":
+		return []string{"meilisearch-credentials", "meilisearch-ssl-certs-prod"}
+	case "alt-backend":
+		return []string{"alt-backend-secrets", "database-credentials"}
+	case "auth-service":
+		return []string{"auth-service-secrets", "auth-postgres-credentials"}
+	case "kratos":
+		return []string{"kratos-secrets", "kratos-postgres-credentials"}
+	case "alt-frontend":
+		return []string{"alt-frontend-secrets"}
+	case "nginx", "nginx-external":
+		return []string{"nginx-ssl-certs"}
+	case "common-secrets":
+		return []string{} // Common secrets chart creates secrets, doesn't require them
+	case "common-ssl":
+		return []string{} // Common SSL chart creates SSL certificates, doesn't require them
+	default:
+		return []string{} // Default to no required secrets for unknown charts
+	}
+}
+
+// getAutoGeneratableSecretsForChart returns secrets that can be auto-generated for a chart
+func (u *DeploymentUsecase) getAutoGeneratableSecretsForChart(chart domain.Chart) []string {
+	switch chart.Name {
+	case "postgres":
+		return []string{"postgres-credentials"}
+	case "auth-postgres":
+		return []string{"auth-postgres-credentials"}
+	case "kratos-postgres":
+		return []string{"kratos-postgres-credentials"}
+	case "clickhouse":
+		return []string{"clickhouse-credentials"}
+	case "meilisearch":
+		return []string{"meilisearch-credentials"}
+	default:
+		return []string{} // Most application secrets require manual configuration
+	}
+}
+
+// getNamespaceForChart returns the appropriate namespace for a chart
+func (u *DeploymentUsecase) getNamespaceForChart(chart domain.Chart) string {
+	// For multi-namespace charts, return the primary namespace
+	if chart.MultiNamespace && len(chart.TargetNamespaces) > 0 {
+		return chart.TargetNamespaces[0]
+	}
+	
+	// Use chart type to determine namespace
+	switch chart.Type {
+	case domain.InfrastructureChart:
+		if chart.Name == "postgres" || chart.Name == "clickhouse" || chart.Name == "meilisearch" {
+			return "alt-database"
+		}
+		if chart.Name == "nginx" || chart.Name == "nginx-external" {
+			return "alt-ingress"
+		}
+		if chart.Name == "auth-postgres" || chart.Name == "kratos-postgres" || chart.Name == "kratos" {
+			return "alt-auth"
+		}
+		return "alt-apps"
+	case domain.ApplicationChart:
+		if chart.Name == "auth-service" || chart.Name == "kratos" {
+			return "alt-auth"
+		}
+		return "alt-apps"
+	case domain.OperationalChart:
+		return "alt-apps"
+	default:
+		return "alt-apps"
+	}
+}
+
+// validateSecretLabels validates that secret has proper labels
+func (u *DeploymentUsecase) validateSecretLabels(secret *domain.Secret, chart domain.Chart) error {
+	// Check for required labels
+	if secret.Labels == nil {
+		return fmt.Errorf("secret missing labels")
+	}
+	
+	// Validate deploy-cli management label
+	if managed, exists := secret.Labels["deploy-cli/managed"]; !exists || managed != "true" {
+		u.logger.WarnWithContext("secret not managed by deploy-cli", map[string]interface{}{
+			"secret_name": secret.Name,
+			"chart_name": chart.Name,
+		})
+	}
+	
+	return nil
+}
+
+// validateSecretDataFormat validates secret data format based on secret type
+func (u *DeploymentUsecase) validateSecretDataFormat(secret *domain.Secret, chart domain.Chart) error {
+	switch secret.Type {
+	case string(domain.DatabaseSecret):
+		// Validate database secret format
+		requiredKeys := []string{"username", "password", "database"}
+		for _, key := range requiredKeys {
+			if _, exists := secret.GetData(key); !exists {
+				return fmt.Errorf("database secret missing required key: %s", key)
+			}
+		}
+	case string(domain.SSLSecret):
+		// Validate SSL secret format
+		requiredKeys := []string{"server.crt", "server.key", "ca.crt"}
+		for _, key := range requiredKeys {
+			if _, exists := secret.GetData(key); !exists {
+				return fmt.Errorf("SSL secret missing required key: %s", key)
+			}
+		}
+	}
+	
+	return nil
+}
+
+// generateSecret generates a new secret based on the secret name and chart
+func (u *DeploymentUsecase) generateSecret(ctx context.Context, secretName, namespace string, chart domain.Chart) error {
+	// Get environment from deployment options (we'll need to pass this as a parameter)
+	// For now, determine environment based on namespace
+	env := u.getEnvironmentFromNamespace(namespace)
+	
+	// Determine secret type and generate accordingly
+	if secretName == "meilisearch-ssl-certs-prod" {
+		// Generate SSL certificate using SSL usecase
+		return u.sslUsecase.CreateMeiliSearchSSLCertificate(ctx, namespace, env)
+	}
+	
+	// For database credentials, generate using secret usecase
+	if secretName == "postgres-credentials" || 
+	   secretName == "auth-postgres-credentials" || 
+	   secretName == "kratos-postgres-credentials" || 
+	   secretName == "clickhouse-credentials" || 
+	   secretName == "meilisearch-credentials" {
+		return u.secretUsecase.GenerateDatabaseCredentials(ctx, secretName, namespace)
+	}
+	
+	return fmt.Errorf("unknown secret type for auto-generation: %s", secretName)
+}
+
+// getEnvironmentFromNamespace determines the environment based on namespace
+func (u *DeploymentUsecase) getEnvironmentFromNamespace(namespace string) domain.Environment {
+	switch namespace {
+	case "alt-production", "alt-apps", "alt-auth", "alt-database", "alt-ingress", "alt-search":
+		return domain.Production
+	case "alt-staging":
+		return domain.Staging
+	case "alt-dev":
+		return domain.Development
+	default:
+		// Default to development for unknown namespaces
+		return domain.Development
+	}
+}
+
+// DeployWithRollback deploys charts with automatic rollback on failure
+func (u *DeploymentUsecase) DeployWithRollback(ctx context.Context, options *domain.DeploymentOptions) (*domain.DeploymentProgress, error) {
+	u.logger.InfoWithContext("starting deployment with rollback capability", map[string]interface{}{
+		"environment": options.Environment.String(),
+	})
+
+	// Create deployment checkpoint
+	checkpoint, err := u.createDeploymentCheckpoint(ctx, options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create deployment checkpoint: %w", err)
+	}
+
+	u.logger.InfoWithContext("deployment checkpoint created", map[string]interface{}{
+		"checkpoint_id": checkpoint.ID,
+		"timestamp": checkpoint.Timestamp,
+	})
+
+	// Attempt deployment
+	result, err := u.Deploy(ctx, options)
+	if err != nil {
+		u.logger.ErrorWithContext("deployment failed, initiating rollback", map[string]interface{}{
+			"error": err.Error(),
+			"checkpoint_id": checkpoint.ID,
+		})
+
+		// Attempt rollback
+		rollbackErr := u.rollbackToCheckpoint(ctx, checkpoint, options)
+		if rollbackErr != nil {
+			u.logger.ErrorWithContext("rollback failed", map[string]interface{}{
+				"deploy_error": err.Error(),
+				"rollback_error": rollbackErr.Error(),
+				"checkpoint_id": checkpoint.ID,
+			})
+			return nil, fmt.Errorf("deployment failed and rollback failed: deploy=%w, rollback=%w", err, rollbackErr)
+		}
+
+		u.logger.InfoWithContext("rollback completed successfully", map[string]interface{}{
+			"checkpoint_id": checkpoint.ID,
+		})
+		return nil, fmt.Errorf("deployment failed, rolled back to checkpoint %s: %w", checkpoint.ID, err)
+	}
+
+	u.logger.InfoWithContext("deployment completed successfully", map[string]interface{}{
+		"checkpoint_id": checkpoint.ID,
+	})
+
+	return result, nil
+}
+
+// DeployWithRetry deploys a chart with retry logic and cleanup between attempts
+func (u *DeploymentUsecase) DeployWithRetry(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions, maxRetries int) error {
+	u.logger.InfoWithContext("starting chart deployment with retry", map[string]interface{}{
+		"chart": chart.Name,
+		"max_retries": maxRetries,
+	})
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		u.logger.InfoWithContext("attempting chart deployment", map[string]interface{}{
+			"chart": chart.Name,
+			"attempt": attempt,
+			"max_retries": maxRetries,
+		})
+
+		err := u.deployChart(ctx, chart, options)
+		if err == nil {
+			u.logger.InfoWithContext("chart deployment successful", map[string]interface{}{
+				"chart": chart.Name,
+				"attempt": attempt,
+			})
+			return nil
+		}
+
+		u.logger.WarnWithContext("chart deployment failed", map[string]interface{}{
+			"chart": chart.Name,
+			"attempt": attempt,
+			"error": err.Error(),
+		})
+
+		// Cleanup failed deployment before next attempt
+		if attempt < maxRetries {
+			cleanupErr := u.cleanupFailedDeployment(ctx, chart, options)
+			if cleanupErr != nil {
+				u.logger.WarnWithContext("cleanup failed", map[string]interface{}{
+					"chart": chart.Name,
+					"attempt": attempt,
+					"cleanup_error": cleanupErr.Error(),
+				})
+			} else {
+				u.logger.InfoWithContext("cleanup completed", map[string]interface{}{
+					"chart": chart.Name,
+					"attempt": attempt,
+				})
+			}
+
+			// Exponential backoff
+			backoffDuration := time.Duration(attempt) * 10 * time.Second
+			u.logger.InfoWithContext("waiting before retry", map[string]interface{}{
+				"chart": chart.Name,
+				"attempt": attempt,
+				"backoff_duration": backoffDuration.String(),
+			})
+			time.Sleep(backoffDuration)
+		}
+	}
+
+	return fmt.Errorf("chart deployment failed after %d attempts: %s", maxRetries, chart.Name)
+}
+
+// createDeploymentCheckpoint creates a checkpoint of the current deployment state
+func (u *DeploymentUsecase) createDeploymentCheckpoint(ctx context.Context, options *domain.DeploymentOptions) (*domain.DeploymentCheckpoint, error) {
+	checkpointID := fmt.Sprintf("checkpoint-%d", time.Now().Unix())
+	
+	u.logger.InfoWithContext("creating deployment checkpoint", map[string]interface{}{
+		"checkpoint_id": checkpointID,
+		"environment": options.Environment.String(),
+	})
+
+	// Get current Helm releases
+	namespaces := domain.GetNamespacesForEnvironment(options.Environment)
+	var releases []domain.HelmReleaseInfo
+	
+	for _, namespace := range namespaces {
+		nsReleases, err := u.helmGateway.ListReleases(ctx, namespace)
+		if err != nil {
+			u.logger.WarnWithContext("failed to list releases for checkpoint", map[string]interface{}{
+				"namespace": namespace,
+				"error": err.Error(),
+			})
+			continue
+		}
+		releases = append(releases, nsReleases...)
+	}
+
+	checkpoint := &domain.DeploymentCheckpoint{
+		ID:          checkpointID,
+		Timestamp:   time.Now(),
+		Environment: options.Environment,
+		Releases:    releases,
+		Namespaces:  namespaces,
+	}
+
+	u.logger.InfoWithContext("deployment checkpoint created", map[string]interface{}{
+		"checkpoint_id": checkpointID,
+		"releases_count": len(releases),
+		"namespaces_count": len(namespaces),
+	})
+
+	return checkpoint, nil
+}
+
+// rollbackToCheckpoint rolls back deployment to a previous checkpoint
+func (u *DeploymentUsecase) rollbackToCheckpoint(ctx context.Context, checkpoint *domain.DeploymentCheckpoint, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("starting rollback to checkpoint", map[string]interface{}{
+		"checkpoint_id": checkpoint.ID,
+		"checkpoint_timestamp": checkpoint.Timestamp,
+		"environment": options.Environment.String(),
+	})
+
+	// Get current releases
+	var currentReleases []domain.HelmReleaseInfo
+	for _, namespace := range checkpoint.Namespaces {
+		nsReleases, err := u.helmGateway.ListReleases(ctx, namespace)
+		if err != nil {
+			u.logger.WarnWithContext("failed to list current releases for rollback", map[string]interface{}{
+				"namespace": namespace,
+				"error": err.Error(),
+			})
+			continue
+		}
+		currentReleases = append(currentReleases, nsReleases...)
+	}
+
+	// Identify releases to rollback or remove
+	checkpointReleaseMap := make(map[string]domain.HelmReleaseInfo)
+	for _, release := range checkpoint.Releases {
+		key := fmt.Sprintf("%s/%s", release.Namespace, release.Name)
+		checkpointReleaseMap[key] = release
+	}
+
+	// Process each current release
+	for _, currentRelease := range currentReleases {
+		key := fmt.Sprintf("%s/%s", currentRelease.Namespace, currentRelease.Name)
+		checkpointRelease, existedInCheckpoint := checkpointReleaseMap[key]
+
+		if existedInCheckpoint {
+			// Rollback to previous revision if different
+			if currentRelease.Revision != checkpointRelease.Revision {
+				u.logger.InfoWithContext("rolling back release", map[string]interface{}{
+					"release": currentRelease.Name,
+					"namespace": currentRelease.Namespace,
+					"current_revision": currentRelease.Revision,
+					"target_revision": checkpointRelease.Revision,
+				})
+
+				err := u.helmGateway.RollbackRelease(ctx, currentRelease.Name, currentRelease.Namespace, checkpointRelease.Revision)
+				if err != nil {
+					return fmt.Errorf("failed to rollback release %s in namespace %s: %w", currentRelease.Name, currentRelease.Namespace, err)
+				}
+			}
+		} else {
+			// Release didn't exist in checkpoint, uninstall it
+			u.logger.InfoWithContext("uninstalling new release", map[string]interface{}{
+				"release": currentRelease.Name,
+				"namespace": currentRelease.Namespace,
+			})
+
+			err := u.helmGateway.UninstallRelease(ctx, currentRelease.Name, currentRelease.Namespace)
+			if err != nil {
+				return fmt.Errorf("failed to uninstall release %s in namespace %s: %w", currentRelease.Name, currentRelease.Namespace, err)
+			}
+		}
+	}
+
+	u.logger.InfoWithContext("rollback to checkpoint completed", map[string]interface{}{
+		"checkpoint_id": checkpoint.ID,
+	})
+
+	return nil
+}
+
+// cleanupFailedDeployment cleans up a failed chart deployment
+func (u *DeploymentUsecase) cleanupFailedDeployment(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("starting cleanup of failed deployment", map[string]interface{}{
+		"chart": chart.Name,
+	})
+
+	namespace := u.getNamespaceForChart(chart)
+	
+	// Check if release exists
+	releases, err := u.helmGateway.ListReleases(ctx, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list releases for cleanup: %w", err)
+	}
+
+	var releaseToCleanup *domain.HelmReleaseInfo
+	for _, release := range releases {
+		if release.Name == chart.Name {
+			releaseToCleanup = &release
+			break
+		}
+	}
+
+	if releaseToCleanup == nil {
+		u.logger.InfoWithContext("no release found to cleanup", map[string]interface{}{
+			"chart": chart.Name,
+			"namespace": namespace,
+		})
+		return nil
+	}
+
+	// Check release status
+	if releaseToCleanup.Status == "failed" || releaseToCleanup.Status == "pending-install" || releaseToCleanup.Status == "pending-upgrade" {
+		u.logger.InfoWithContext("uninstalling failed release", map[string]interface{}{
+			"release": releaseToCleanup.Name,
+			"namespace": namespace,
+			"status": releaseToCleanup.Status,
+		})
+
+		err := u.helmGateway.UninstallRelease(ctx, releaseToCleanup.Name, namespace)
+		if err != nil {
+			return fmt.Errorf("failed to uninstall failed release %s: %w", releaseToCleanup.Name, err)
+		}
+
+		u.logger.InfoWithContext("failed release uninstalled", map[string]interface{}{
+			"release": releaseToCleanup.Name,
+			"namespace": namespace,
+		})
+	}
+
+	return nil
+}
+
+// deployChart deploys a single chart
+func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("deploying individual chart", map[string]interface{}{
+		"chart": chart.Name,
+		"type": string(chart.Type),
+	})
+
+	namespace := u.getNamespaceForChart(chart)
+	
+	// Create namespace if it doesn't exist
+	if err := u.kubectlGateway.EnsureNamespace(ctx, namespace); err != nil {
+		return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
+	}
+
+	// Deploy chart using Helm
+	err := u.helmGateway.DeployChart(ctx, chart, options)
+	if err != nil {
+		return fmt.Errorf("failed to deploy chart %s: %w", chart.Name, err)
+	}
+
+	// Wait for readiness if required
+	if chart.ShouldWaitForReadinessWithOptions(options) {
+		u.logger.InfoWithContext("waiting for chart readiness", map[string]interface{}{
+			"chart": chart.Name,
+			"namespace": namespace,
+		})
+
+		// Use appropriate health check based on chart type
+		var err error
+		switch chart.Name {
+		case "postgres", "auth-postgres", "kratos-postgres":
+			err = u.healthChecker.WaitForPostgreSQLReady(ctx, namespace, chart.Name)
+		case "meilisearch":
+			err = u.healthChecker.WaitForMeilisearchReady(ctx, namespace, chart.Name)
+		default:
+			err = u.healthChecker.WaitForServiceReady(ctx, chart.Name, string(chart.Type), namespace)
+		}
+		
+		if err != nil {
+			return fmt.Errorf("chart %s readiness check failed: %w", chart.Name, err)
+		}
+	}
+
 	return nil
 }
 

@@ -22,6 +22,9 @@ type HelmPort interface {
 	// Uninstall removes a Helm release
 	Uninstall(ctx context.Context, releaseName, namespace string) error
 	
+	// Rollback rolls back a Helm release to a specific revision
+	Rollback(ctx context.Context, releaseName, namespace string, revision int) error
+	
 	// History returns the history of a Helm release
 	History(ctx context.Context, releaseName, namespace string) ([]HelmRevision, error)
 	

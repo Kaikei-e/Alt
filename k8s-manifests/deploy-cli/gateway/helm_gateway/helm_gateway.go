@@ -341,13 +341,13 @@ func (g *HelmGateway) GetReleaseStatus(ctx context.Context, releaseName, namespa
 	return status, nil
 }
 
-// ListReleases returns list of Helm releases
-func (g *HelmGateway) ListReleases(ctx context.Context, namespace string) ([]helm_port.HelmRelease, error) {
+// ListReleases returns list of Helm releases as domain objects
+func (g *HelmGateway) ListReleases(ctx context.Context, namespace string) ([]domain.HelmReleaseInfo, error) {
 	g.logger.DebugWithContext("listing releases", map[string]interface{}{
 		"namespace": namespace,
 	})
 	
-	releases, err := g.helmPort.List(ctx, namespace)
+	portReleases, err := g.helmPort.List(ctx, namespace)
 	if err != nil {
 		g.logger.ErrorWithContext("failed to list releases", map[string]interface{}{
 			"namespace": namespace,
@@ -355,13 +355,28 @@ func (g *HelmGateway) ListReleases(ctx context.Context, namespace string) ([]hel
 		})
 		return nil, fmt.Errorf("failed to list releases in namespace %s: %w", namespace, err)
 	}
+
+	// Convert port releases to domain releases
+	var domainReleases []domain.HelmReleaseInfo
+	for _, portRelease := range portReleases {
+		domainRelease := domain.HelmReleaseInfo{
+			Name:       portRelease.Name,
+			Namespace:  portRelease.Namespace,
+			Revision:   portRelease.Revision,
+			Status:     portRelease.Status,
+			Chart:      portRelease.Chart,
+			AppVersion: portRelease.AppVersion,
+			Updated:    portRelease.Updated,
+		}
+		domainReleases = append(domainReleases, domainRelease)
+	}
 	
 	g.logger.DebugWithContext("releases listed", map[string]interface{}{
 		"namespace": namespace,
-		"count":     len(releases),
+		"count":     len(domainReleases),
 	})
 	
-	return releases, nil
+	return domainReleases, nil
 }
 
 // UninstallRelease removes a Helm release
@@ -1011,5 +1026,27 @@ func (g *HelmGateway) CleanupConflictingReleases(ctx context.Context, chart doma
 			})
 		}
 	}
+	return nil
+}
+
+// RollbackRelease rolls back a Helm release to a specific revision
+func (g *HelmGateway) RollbackRelease(ctx context.Context, releaseName, namespace string, revision int) error {
+	g.logger.InfoWithContext("rolling back Helm release", map[string]interface{}{
+		"release": releaseName,
+		"namespace": namespace,
+		"revision": revision,
+	})
+
+	err := g.helmPort.Rollback(ctx, releaseName, namespace, revision)
+	if err != nil {
+		return fmt.Errorf("failed to rollback release %s to revision %d: %w", releaseName, revision, err)
+	}
+
+	g.logger.InfoWithContext("release rolled back successfully", map[string]interface{}{
+		"release": releaseName,
+		"namespace": namespace,
+		"revision": revision,
+	})
+
 	return nil
 }

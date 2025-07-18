@@ -127,3 +127,18 @@ func (f *StrategyFactory) GetRecommendedStrategy(env domain.Environment) string 
 		return "development" // Default fallback
 	}
 }
+
+// GetStrategy creates a deployment strategy based on environment (alias for CreateStrategy)
+func (f *StrategyFactory) GetStrategy(env domain.Environment) domain.DeploymentStrategy {
+	strategy, err := f.CreateStrategy(env)
+	if err != nil {
+		// Fallback to development strategy if creation fails
+		f.logger.WarnWithContext("failed to create strategy, falling back to development", map[string]interface{}{
+			"environment": env.String(),
+			"error": err.Error(),
+		})
+		devStrategy, _ := f.CreateStrategy(domain.Development)
+		return devStrategy
+	}
+	return strategy
+}

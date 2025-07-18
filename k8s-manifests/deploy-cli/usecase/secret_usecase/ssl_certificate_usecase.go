@@ -257,3 +257,154 @@ func (u *SSLCertificateUsecase) ListSSLCertificates(ctx context.Context, namespa
 
 	return sslSecrets, nil
 }
+
+// ValidateCertificateExists checks if an SSL certificate exists for the given service and environment
+func (u *SSLCertificateUsecase) ValidateCertificateExists(ctx context.Context, certName string, env domain.Environment) (bool, error) {
+	namespace := u.getNamespaceForEnvironment(env)
+	
+	// Extract service name from certificate name (remove -tls suffix if present)
+	serviceName := certName
+	if len(certName) > 4 && certName[len(certName)-4:] == "-tls" {
+		serviceName = certName[:len(certName)-4]
+	}
+	
+	secretName := fmt.Sprintf("%s-ssl-certs-prod", serviceName)
+	
+	u.logger.InfoWithContext("validating SSL certificate existence", map[string]interface{}{
+		"certificate_name": certName,
+		"secret_name":      secretName,
+		"namespace":        namespace,
+		"environment":      env.String(),
+	})
+
+	// Check if the secret exists
+	_, err := u.secretUsecase.GetSecret(ctx, secretName, namespace)
+	if err != nil {
+		u.logger.DebugWithContext("SSL certificate not found", map[string]interface{}{
+			"certificate_name": certName,
+			"secret_name":      secretName,
+			"namespace":        namespace,
+			"error":           err.Error(),
+		})
+		return false, nil
+	}
+
+	u.logger.InfoWithContext("SSL certificate exists", map[string]interface{}{
+		"certificate_name": certName,
+		"secret_name":      secretName,
+		"namespace":        namespace,
+	})
+
+	return true, nil
+}
+
+// GenerateCertificate generates a new SSL certificate for the given service and environment
+func (u *SSLCertificateUsecase) GenerateCertificate(ctx context.Context, certName string, env domain.Environment) error {
+	namespace := u.getNamespaceForEnvironment(env)
+	
+	u.logger.InfoWithContext("generating SSL certificate", map[string]interface{}{
+		"certificate_name": certName,
+		"namespace":        namespace,
+		"environment":      env.String(),
+	})
+
+	// Create SSL certificate configuration based on the certificate name
+	config := u.createCertificateConfig(certName, namespace, env)
+	
+	return u.createSSLCertificate(ctx, config)
+}
+
+// getNamespaceForEnvironment returns the appropriate namespace for the environment
+func (u *SSLCertificateUsecase) getNamespaceForEnvironment(env domain.Environment) string {
+	switch env {
+	case domain.Production:
+		return "alt-production"
+	case domain.Staging:
+		return "alt-staging"
+	case domain.Development:
+		return "alt-dev"
+	default:
+		return "default"
+	}
+}
+
+// createCertificateConfig creates SSL certificate configuration based on certificate name
+func (u *SSLCertificateUsecase) createCertificateConfig(certName string, namespace string, env domain.Environment) *SSLCertificateConfig {
+	// Extract service name from certificate name (remove -tls suffix)
+	serviceName := certName
+	if len(certName) > 4 && certName[len(certName)-4:] == "-tls" {
+		serviceName = certName[:len(certName)-4]
+	}
+
+	// Configure DNS names based on service
+	var dnsNames []string
+	switch serviceName {
+	case "alt-backend":
+		dnsNames = []string{
+			"alt-backend",
+			fmt.Sprintf("alt-backend.%s", namespace),
+			fmt.Sprintf("alt-backend.%s.svc", namespace),
+			fmt.Sprintf("alt-backend.%s.svc.cluster.local", namespace),
+			"api.alt.local",
+			"localhost",
+		}
+	case "alt-frontend":
+		dnsNames = []string{
+			"alt-frontend",
+			fmt.Sprintf("alt-frontend.%s", namespace),
+			fmt.Sprintf("alt-frontend.%s.svc", namespace),
+			fmt.Sprintf("alt-frontend.%s.svc.cluster.local", namespace),
+			"app.alt.local",
+			"localhost",
+		}
+	case "auth-service":
+		dnsNames = []string{
+			"auth-service",
+			fmt.Sprintf("auth-service.%s", namespace),
+			fmt.Sprintf("auth-service.%s.svc", namespace),
+			fmt.Sprintf("auth-service.%s.svc.cluster.local", namespace),
+			"auth.alt.local",
+			"localhost",
+		}
+	case "nginx-external":
+		dnsNames = []string{
+			"nginx-external",
+			fmt.Sprintf("nginx-external.%s", namespace),
+			fmt.Sprintf("nginx-external.%s.svc", namespace),
+			fmt.Sprintf("nginx-external.%s.svc.cluster.local", namespace),
+			"alt.local",
+			"localhost",
+		}
+	case "kratos":
+		dnsNames = []string{
+			"kratos",
+			fmt.Sprintf("kratos.%s", namespace),
+			fmt.Sprintf("kratos.%s.svc", namespace),
+			fmt.Sprintf("kratos.%s.svc.cluster.local", namespace),
+			"identity.alt.local",
+			"localhost",
+		}
+	default:
+		dnsNames = []string{
+			serviceName,
+			fmt.Sprintf("%s.%s", serviceName, namespace),
+			fmt.Sprintf("%s.%s.svc", serviceName, namespace),
+			fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace),
+			"localhost",
+		}
+	}
+
+	validityDays := 365
+	if env == domain.Development {
+		validityDays = 90  // Shorter validity for development
+	}
+
+	return &SSLCertificateConfig{
+		ServiceName:  serviceName,
+		Namespace:    namespace,
+		Environment:  env,
+		DNSNames:     dnsNames,
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		ValidityDays: validityDays,
+	}
+}
