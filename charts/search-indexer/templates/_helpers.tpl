@@ -63,14 +63,27 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Standard secret name template
+*/}}
+{{- define "search-indexer.secretName" -}}
+{{- if .Values.envFromSecret.name }}
+{{- .Values.envFromSecret.name }}
+{{- else }}
+{{- printf "%s-secrets" (include "search-indexer.fullname" .) }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create environment variables from secrets
 */}}
 {{- define "search-indexer.envFromSecret" -}}
+{{- if .Values.envFromSecret }}
 {{- range .Values.envFromSecret.keys }}
 - name: {{ . }}
   valueFrom:
     secretKeyRef:
-      name: {{ $.Values.envFromSecret.name }}
+      name: {{ include "search-indexer.secretName" $ }}
       key: {{ . }}
+{{- end }}
 {{- end }}
 {{- end }}

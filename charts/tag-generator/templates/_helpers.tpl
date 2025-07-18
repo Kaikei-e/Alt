@@ -63,14 +63,27 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Standard secret name template
+*/}}
+{{- define "tag-generator.secretName" -}}
+{{- if .Values.envFromSecret.name }}
+{{- .Values.envFromSecret.name }}
+{{- else }}
+{{- printf "%s-secrets" (include "tag-generator.fullname" .) }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create environment variables from secrets
 */}}
 {{- define "tag-generator.envFromSecret" -}}
+{{- if .Values.envFromSecret }}
 {{- range .Values.envFromSecret.keys }}
 - name: {{ . }}
   valueFrom:
     secretKeyRef:
-      name: {{ $.Values.envFromSecret.name }}
+      name: {{ include "tag-generator.secretName" $ }}
       key: {{ . }}
+{{- end }}
 {{- end }}
 {{- end }}

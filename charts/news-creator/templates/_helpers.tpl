@@ -63,6 +63,17 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Standard secret name template
+*/}}
+{{- define "news-creator.secretName" -}}
+{{- if .Values.envFromSecret.name }}
+{{- .Values.envFromSecret.name }}
+{{- else }}
+{{- printf "%s-secrets" (include "news-creator.fullname" .) }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create environment variables from secrets
 */}}
 {{- define "news-creator.envFromSecret" -}}
@@ -71,7 +82,7 @@ Create environment variables from secrets
 - name: {{ . }}
   valueFrom:
     secretKeyRef:
-      name: {{ $.Values.envFromSecret.name }}
+      name: {{ include "news-creator.secretName" $ }}
       key: {{ . }}
 {{- end }}
 {{- end }}

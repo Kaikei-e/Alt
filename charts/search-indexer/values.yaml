@@ -1,14 +1,15 @@
-# Default values for pre-processor
+# Default values for search-indexer
 replicaCount: 1
+
 image:
-  repository: pre-processor
+  repository: search-indexer
   pullPolicy: IfNotPresent
   tag: "production"
 
 service:
   type: ClusterIP
-  port: 9200
-  targetPort: 9200
+  port: 9300
+  targetPort: 9300
 
 resources:
   requests:
@@ -24,15 +25,15 @@ env:
   DB_PORT: "5432"
   DB_SSL_MODE: "require"
   LOG_LEVEL: "info"
-  PRE_PROCESSOR_DB_USER: "pre_processor_user"
-  SERVICE_NAME: "pre-processor"
-  NEWS_CREATOR_HOST: "http://news-creator.alt-apps.svc.cluster.local:11434"
-  NEWS_CREATOR_TIMEOUT: "120s"
+  SEARCH_INDEXER_DB_USER: "search_indexer_user"
+  SERVICE_NAME: "search-indexer"
+  MEILISEARCH_HOST: "http://meilisearch.alt-search.svc.cluster.local:7700"
+  MEILISEARCH_TIMEOUT: "60s"
 
 envFromSecret:
-  name: pre-processor-secrets
+  name: search-indexer-secrets
   keys:
-    - PRE_PROCESSOR_DB_PASSWORD
+    - SEARCH_INDEXER_DB_PASSWORD
 
 serviceAccount:
   create: true

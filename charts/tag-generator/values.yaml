@@ -1,22 +1,23 @@
-# Default values for pre-processor
+# Default values for tag-generator
 replicaCount: 1
+
 image:
-  repository: pre-processor
+  repository: tag-generator
   pullPolicy: IfNotPresent
   tag: "production"
 
 service:
   type: ClusterIP
-  port: 9200
-  targetPort: 9200
+  port: 9400
+  targetPort: 9400
 
 resources:
   requests:
-    memory: "256Mi"
-    cpu: "250m"
-  limits:
     memory: "512Mi"
     cpu: "500m"
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
 
 env:
   DB_HOST: "db.alt-database.svc.cluster.local"
@@ -24,15 +25,17 @@ env:
   DB_PORT: "5432"
   DB_SSL_MODE: "require"
   LOG_LEVEL: "info"
-  PRE_PROCESSOR_DB_USER: "pre_processor_user"
-  SERVICE_NAME: "pre-processor"
-  NEWS_CREATOR_HOST: "http://news-creator.alt-apps.svc.cluster.local:11434"
-  NEWS_CREATOR_TIMEOUT: "120s"
+  DB_TAG_GENERATOR_USER: "tag_generator_user"
+  SERVICE_NAME: "tag-generator"
+  MODEL_PATH: "/app/models"
+  MODEL_NAME: "gemma:2b"
+  OLLAMA_HOST: "http://ollama.alt-apps.svc.cluster.local:11434"
+  OLLAMA_TIMEOUT: "180s"
 
 envFromSecret:
-  name: pre-processor-secrets
+  name: tag-generator-secrets
   keys:
-    - PRE_PROCESSOR_DB_PASSWORD
+    - DB_TAG_GENERATOR_PASSWORD
 
 serviceAccount:
   create: true

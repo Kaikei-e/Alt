@@ -63,14 +63,27 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Standard secret name template
+*/}}
+{{- define "pre-processor.secretName" -}}
+{{- if .Values.envFromSecret.name }}
+{{- .Values.envFromSecret.name }}
+{{- else }}
+{{- printf "%s-secrets" (include "pre-processor.fullname" .) }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create environment variables from secrets
 */}}
 {{- define "pre-processor.envFromSecret" -}}
+{{- if .Values.envFromSecret }}
 {{- range .Values.envFromSecret.keys }}
 - name: {{ . }}
   valueFrom:
     secretKeyRef:
-      name: {{ $.Values.envFromSecret.name }}
+      name: {{ include "pre-processor.secretName" $ }}
       key: {{ . }}
+{{- end }}
 {{- end }}
 {{- end }}
