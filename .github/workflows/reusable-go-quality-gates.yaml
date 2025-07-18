@@ -105,9 +105,10 @@ jobs:
           go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5
 
           echo "Verifying installations:"
+
       - name: Add Go tools to PATH
         run: |
-          echo "$HOME/go/bin" >> $GITHUB_PATH
+          echo "${{ runner.temp }}/go-tools" >> $GITHUB_PATH
 
       - name: Verify tool paths
         run: |
