@@ -506,15 +506,46 @@ func (h *HealthChecker) checkClickHouseHealth(namespace, serviceName string) err
 	defer cancel()
 
 	podName := serviceName + "-0" // StatefulSet naming convention
+	
+	// Check if SSL is enabled for ClickHouse
+	sslEnabled, err := h.isClickHouseSSLEnabled(namespace, podName)
+	if err != nil {
+		h.logger.WarnWithContext("failed to detect ClickHouse SSL configuration, trying HTTP", map[string]interface{}{
+			"namespace": namespace,
+			"service": serviceName,
+			"pod": podName,
+			"error": err.Error(),
+		})
+		sslEnabled = false
+	}
+
+	var endpoint string
+	var scheme string
+	if sslEnabled {
+		endpoint = "https://localhost:8443/ping"
+		scheme = "HTTPS"
+	} else {
+		endpoint = "http://localhost:8123/ping"
+		scheme = "HTTP"
+	}
+
 	h.logger.DebugWithContext("executing ClickHouse health check", map[string]interface{}{
 		"namespace": namespace,
 		"service": serviceName,
 		"pod": podName,
-		"endpoint": "ping",
+		"endpoint": endpoint,
+		"scheme": scheme,
 		"timeout": "30s",
+		"ssl_enabled": sslEnabled,
 	})
 
-	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "curl", "-f", "http://localhost:8123/ping")
+	var cmd *exec.Cmd
+	if sslEnabled {
+		// Use -k flag to ignore SSL certificate verification for health checks
+		cmd = exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "curl", "-f", "-k", endpoint)
+	} else {
+		cmd = exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "curl", "-f", endpoint)
+	}
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -570,4 +601,146 @@ func (h *HealthChecker) isStatefulSetService(serviceName string) bool {
 		}
 	}
 	return false
+}
+
+// isClickHouseSSLEnabled checks if SSL is enabled for ClickHouse by examining the configuration
+func (h *HealthChecker) isClickHouseSSLEnabled(namespace, podName string) (bool, error) {
+	// Check if SSL-related environment variables or configuration exist
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	// First, try to check if HTTPS port is listening
+	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "netstat", "-ln", "|", "grep", ":8443")
+	output, err := cmd.CombinedOutput()
+	if err == nil && len(output) > 0 {
+		h.logger.DebugWithContext("detected ClickHouse SSL port 8443", map[string]interface{}{
+			"namespace": namespace,
+			"pod": podName,
+			"output": string(output),
+		})
+		return true, nil
+	}
+	
+	// Fallback: check for SSL configuration files
+	cmd = exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "ls", "/ssl/server.crt")
+	_, err = cmd.CombinedOutput()
+	if err == nil {
+		h.logger.DebugWithContext("detected ClickHouse SSL certificate", map[string]interface{}{
+			"namespace": namespace,
+			"pod": podName,
+		})
+		return true, nil
+	}
+	
+	// No SSL detected
+	h.logger.DebugWithContext("ClickHouse SSL not detected, using HTTP", map[string]interface{}{
+		"namespace": namespace,
+		"pod": podName,
+	})
+	return false, nil
+}
+
+// detectClickHouseConfigurationConflicts checks for common ClickHouse configuration issues
+func (h *HealthChecker) detectClickHouseConfigurationConflicts(namespace, serviceName string) []string {
+	var conflicts []string
+	
+	// Check for SSL/TLS configuration consistency
+	if sslConflict := h.checkSSLConfigurationConflict(namespace, serviceName); sslConflict != "" {
+		conflicts = append(conflicts, sslConflict)
+	}
+	
+	// Check for authentication method conflicts
+	if authConflict := h.checkAuthenticationConflict(namespace, serviceName); authConflict != "" {
+		conflicts = append(conflicts, authConflict)
+	}
+	
+	// Check for secret name conflicts
+	if secretConflict := h.checkSecretNameConflict(namespace, serviceName); secretConflict != "" {
+		conflicts = append(conflicts, secretConflict)
+	}
+	
+	return conflicts
+}
+
+// checkSSLConfigurationConflict detects SSL configuration mismatches
+func (h *HealthChecker) checkSSLConfigurationConflict(namespace, serviceName string) string {
+	podName := serviceName + "-0"
+	
+	// Check if SSL is enabled but health checks are using HTTP
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	// Check if SSL port is listening
+	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "netstat", "-ln")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "" // Can't determine, skip conflict detection
+	}
+	
+	outputStr := string(output)
+	httpsPortOpen := strings.Contains(outputStr, ":8443")
+	httpPortOpen := strings.Contains(outputStr, ":8123")
+	
+	if httpsPortOpen && !httpPortOpen {
+		return "SSL-only configuration detected but health check may be using HTTP port"
+	}
+	
+	return ""
+}
+
+// checkAuthenticationConflict detects authentication configuration issues
+func (h *HealthChecker) checkAuthenticationConflict(namespace, serviceName string) string {
+	// Check if both environment variables and users.xml are configured
+	podName := serviceName + "-0"
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	// Check for CLICKHOUSE_USER environment variable
+	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "env")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "" // Can't determine
+	}
+	
+	envHasClickHouseUser := strings.Contains(string(output), "CLICKHOUSE_USER=")
+	envHasClickHousePassword := strings.Contains(string(output), "CLICKHOUSE_PASSWORD=")
+	
+	// Check for users.xml configuration
+	cmd = exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "cat", "/etc/clickhouse-server/users.xml")
+	usersOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		return "" // Can't determine
+	}
+	
+	usersXmlHasUsers := strings.Contains(string(usersOutput), "<clickhouse_user>")
+	
+	if (envHasClickHouseUser || envHasClickHousePassword) && usersXmlHasUsers {
+		return "Both environment variable and users.xml authentication detected - may cause conflicts"
+	}
+	
+	return ""
+}
+
+// checkSecretNameConflict detects secret naming inconsistencies
+func (h *HealthChecker) checkSecretNameConflict(namespace, serviceName string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	// Check if both old and new secret names exist
+	oldSecretCmd := exec.CommandContext(ctx, "kubectl", "get", "secret", "clickhouse-secrets", "-n", namespace)
+	newSecretCmd := exec.CommandContext(ctx, "kubectl", "get", "secret", "clickhouse-secret", "-n", namespace)
+	
+	oldExists := oldSecretCmd.Run() == nil
+	newExists := newSecretCmd.Run() == nil
+	
+	if oldExists && newExists {
+		return "Both 'clickhouse-secrets' and 'clickhouse-secret' exist - may cause confusion"
+	}
+	
+	if !oldExists && !newExists {
+		return "Neither 'clickhouse-secrets' nor 'clickhouse-secret' found - deployment may fail"
+	}
+	
+	return ""
 }

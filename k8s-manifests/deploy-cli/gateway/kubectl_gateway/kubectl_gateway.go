@@ -118,7 +118,7 @@ func (g *KubectlGateway) GetNamespaces(ctx context.Context) ([]kubectl_port.Kube
 }
 
 // CreateSecret creates a Kubernetes secret
-func (g *KubectlGateway) CreateSecret(ctx context.Context, secret domain.Secret) error {
+func (g *KubectlGateway) CreateSecret(ctx context.Context, secret *domain.Secret) error {
 	g.logger.InfoWithContext("creating secret", map[string]interface{}{
 		"secret":    secret.Name,
 		"namespace": secret.Namespace,
@@ -126,10 +126,17 @@ func (g *KubectlGateway) CreateSecret(ctx context.Context, secret domain.Secret)
 	})
 	
 	kubectlSecret := kubectl_port.KubernetesSecret{
-		Name:      secret.Name,
-		Namespace: secret.Namespace,
-		Type:      "Opaque",
-		Data:      make(map[string][]byte),
+		Name:        secret.Name,
+		Namespace:   secret.Namespace,
+		Type:        secret.Type,
+		Data:        make(map[string][]byte),
+		Labels:      secret.Labels,
+		Annotations: secret.Annotations,
+	}
+	
+	// Set default type if not specified
+	if kubectlSecret.Type == "" {
+		kubectlSecret.Type = "Opaque"
 	}
 	
 	for key, value := range secret.Data {
@@ -604,4 +611,44 @@ func (g *KubectlGateway) DeleteResource(ctx context.Context, resourceType, name,
 	})
 	
 	return nil
+}
+
+// GetSecret retrieves a specific Kubernetes secret
+func (g *KubectlGateway) GetSecret(ctx context.Context, name, namespace string) (*domain.Secret, error) {
+	g.logger.InfoWithContext("getting secret via kubectl", map[string]interface{}{
+		"name":      name,
+		"namespace": namespace,
+	})
+
+	kubernetesSecret, err := g.kubectlPort.GetSecret(ctx, name, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get secret", map[string]interface{}{
+			"name":      name,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get secret %s in namespace %s: %w", name, namespace, err)
+	}
+
+	// Convert kubectl_port.KubernetesSecret to domain.Secret
+	domainSecret := &domain.Secret{
+		Name:        kubernetesSecret.Name,
+		Namespace:   kubernetesSecret.Namespace,
+		Type:        kubernetesSecret.Type,
+		Data:        make(map[string]string),
+		Labels:      kubernetesSecret.Labels,
+		Annotations: kubernetesSecret.Annotations,
+	}
+
+	// Convert []byte data to string
+	for key, value := range kubernetesSecret.Data {
+		domainSecret.Data[key] = string(value)
+	}
+
+	g.logger.InfoWithContext("secret retrieved successfully", map[string]interface{}{
+		"name":      name,
+		"namespace": namespace,
+	})
+
+	return domainSecret, nil
 }

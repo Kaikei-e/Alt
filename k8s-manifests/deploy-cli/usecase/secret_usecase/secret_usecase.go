@@ -583,6 +583,93 @@ func (u *SecretUsecase) ListSecrets(ctx context.Context, environment domain.Envi
 	return secretInfos, nil
 }
 
+// ListSecretsInNamespace lists all secrets in a specific namespace
+func (u *SecretUsecase) ListSecretsInNamespace(ctx context.Context, namespace string) ([]domain.Secret, error) {
+	u.logger.InfoWithContext("listing secrets in namespace", map[string]interface{}{
+		"namespace": namespace,
+	})
+	
+	// Get all secrets with metadata
+	secrets, err := u.kubectlGateway.GetSecretsWithMetadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secrets: %w", err)
+	}
+	
+	var namespaceSecrets []domain.Secret
+	for _, secret := range secrets {
+		if secret.Namespace == namespace {
+			domainSecret := domain.Secret{
+				Name:      secret.Name,
+				Namespace: secret.Namespace,
+				Type:      secret.Type,
+				Data:      make(map[string]string),
+				Labels:    make(map[string]string),
+				Annotations: make(map[string]string),
+			}
+			
+			// Add metadata if available
+			if secret.ReleaseName != "" {
+				domainSecret.Labels["app.kubernetes.io/managed-by"] = "Helm"
+				domainSecret.Annotations["meta.helm.sh/release-name"] = secret.ReleaseName
+				domainSecret.Annotations["meta.helm.sh/release-namespace"] = secret.ReleaseNamespace
+			}
+			
+			namespaceSecrets = append(namespaceSecrets, domainSecret)
+		}
+	}
+	
+	u.logger.InfoWithContext("listed secrets in namespace", map[string]interface{}{
+		"namespace": namespace,
+		"count":     len(namespaceSecrets),
+	})
+	
+	return namespaceSecrets, nil
+}
+
+// CreateSecret creates a new Kubernetes secret
+func (u *SecretUsecase) CreateSecret(ctx context.Context, secret *domain.Secret) error {
+	u.logger.InfoWithContext("creating secret", map[string]interface{}{
+		"name":      secret.Name,
+		"namespace": secret.Namespace,
+		"type":      secret.Type,
+	})
+	
+	// Use kubectl gateway to create the secret
+	err := u.kubectlGateway.CreateSecret(ctx, secret)
+	if err != nil {
+		return fmt.Errorf("failed to create secret: %w", err)
+	}
+	
+	u.logger.InfoWithContext("secret created successfully", map[string]interface{}{
+		"name":      secret.Name,
+		"namespace": secret.Namespace,
+	})
+	
+	return nil
+}
+
+// GetSecret retrieves a specific secret
+func (u *SecretUsecase) GetSecret(ctx context.Context, name, namespace string) (*domain.Secret, error) {
+	u.logger.InfoWithContext("getting secret", map[string]interface{}{
+		"name":      name,
+		"namespace": namespace,
+	})
+	
+	// Get secret from kubectl gateway
+	secret, err := u.kubectlGateway.GetSecret(ctx, name, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret: %w", err)
+	}
+	
+	u.logger.InfoWithContext("secret retrieved successfully", map[string]interface{}{
+		"name":      name,
+		"namespace": namespace,
+	})
+	
+	return secret, nil
+}
+
+
 // FindOrphanedSecrets finds secrets that are orphaned or have invalid ownership
 func (u *SecretUsecase) FindOrphanedSecrets(ctx context.Context, environment domain.Environment) ([]domain.SecretInfo, error) {
 	u.logger.InfoWithContext("finding orphaned secrets", map[string]interface{}{

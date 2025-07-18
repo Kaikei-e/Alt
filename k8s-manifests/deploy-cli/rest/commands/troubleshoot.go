@@ -603,7 +603,7 @@ func (t *TroubleshootCommand) RunDiagnostics(ctx context.Context, env domain.Env
 
 	// Run dependency analysis
 	fmt.Printf("  %s Analyzing chart dependencies...\n", colors.Blue("→"))
-	depGraph, err := t.dependencyScanner.ScanDependencies(ctx, "../charts")
+	depGraph, err := t.dependencyScanner.ScanDependencies(ctx, "../../charts")
 	if err != nil {
 		report.Issues = append(report.Issues, DiagnosticIssue{
 			Category:    "dependencies",
@@ -709,7 +709,7 @@ func (t *TroubleshootCommand) WatchHealth(ctx context.Context, component string,
 
 func (t *TroubleshootCommand) AnalyzeDependencies(ctx context.Context, env domain.Environment) (*DependencyAnalysis, error) {
 	// Perform dependency analysis
-	depGraph, err := t.dependencyScanner.ScanDependencies(ctx, "../charts")
+	depGraph, err := t.dependencyScanner.ScanDependencies(ctx, "../../charts")
 	if err != nil {
 		return nil, fmt.Errorf("dependency scanning failed: %w", err)
 	}

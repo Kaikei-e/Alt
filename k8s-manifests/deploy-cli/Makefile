@@ -3,7 +3,7 @@
 # Build variables
 BINARY_NAME=deploy-cli
 CMD_DIR=./cmd
-BUILD_DIR=./
+BUILD_DIR=.
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
 

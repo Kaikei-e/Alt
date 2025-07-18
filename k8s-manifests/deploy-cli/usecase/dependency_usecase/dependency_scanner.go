@@ -98,8 +98,14 @@ func createDependencyPatterns() *DependencyPatterns {
 			regexp.MustCompile(`postgresql://.*@([a-z0-9-]+)`),
 			// Database host references
 			regexp.MustCompile(`DB_HOST.*[:=]\s*([a-z0-9.-]+)`),
-			// ClickHouse references
+			// ClickHouse references (expanded patterns)
 			regexp.MustCompile(`CLICKHOUSE_HOST.*[:=]\s*([a-z0-9.-]+)`),
+			regexp.MustCompile(`CH_HOST.*[:=]\s*([a-z0-9.-]+)`),
+			regexp.MustCompile(`clickhouse\.[a-z-]+\.svc\.cluster\.local`),
+			// ClickHouse connection strings
+			regexp.MustCompile(`clickhouse://.*@([a-z0-9-]+)`),
+			regexp.MustCompile(`http://.*@([a-z0-9-]+):8123`),
+			regexp.MustCompile(`https://.*@([a-z0-9-]+):8443`),
 		},
 		SecretReferences: []*regexp.Regexp{
 			// Secret references in values
@@ -108,6 +114,12 @@ func createDependencyPatterns() *DependencyPatterns {
 			regexp.MustCompile(`secretKeyRef:\s*name:\s*([a-z0-9-]+)`),
 			// Environment from secret
 			regexp.MustCompile(`envFromSecret:\s*name:\s*([a-z0-9-]+)`),
+			// ClickHouse-specific secret patterns
+			regexp.MustCompile(`existingSecret:\s*"?([a-z0-9-]+)"?`),
+			regexp.MustCompile(`clickhouse-secret`),
+			regexp.MustCompile(`clickhouse-credentials`),
+			// SSL certificate secrets
+			regexp.MustCompile(`server-ssl-secret`),
 		},
 		ConfigReferences: []*regexp.Regexp{
 			// ConfigMap references
@@ -457,7 +469,7 @@ func (s *DependencyScanner) mapSecretToChart(secretName string) string {
 		"postgres-secrets":       "postgres",
 		"auth-postgres-secrets":  "auth-postgres",
 		"kratos-postgres-secrets": "kratos-postgres",
-		"clickhouse-secrets":     "clickhouse",
+		"clickhouse-secret":      "clickhouse",
 		"meilisearch-secrets":    "meilisearch",
 		"backend-secrets":        "alt-backend",
 		"auth-service-secrets":   "auth-service",

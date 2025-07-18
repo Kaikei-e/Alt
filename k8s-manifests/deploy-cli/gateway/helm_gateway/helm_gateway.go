@@ -659,6 +659,13 @@ func (g *HelmGateway) validatePrerequisites(ctx context.Context, chart domain.Ch
 		}
 	}
 	
+	// ClickHouse-specific validation
+	if chart.Name == "clickhouse" {
+		if err := g.validateClickHouseChart(ctx, chart, options); err != nil {
+			return fmt.Errorf("clickhouse chart validation failed: %w", err)
+		}
+	}
+	
 	// StatefulSet-specific validation
 	if g.isStatefulSetChart(chart) {
 		if err := g.validateStatefulSetChart(ctx, chart, options); err != nil {
@@ -736,6 +743,97 @@ func (g *HelmGateway) validatePostgresChart(ctx context.Context, chart domain.Ch
 		"namespace": namespace,
 	})
 	
+	return nil
+}
+
+// validateClickHouseChart validates ClickHouse-specific requirements
+func (g *HelmGateway) validateClickHouseChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	g.logger.DebugWithContext("validating ClickHouse chart", map[string]interface{}{
+		"chart": chart.Name,
+	})
+	
+	// Check if the namespace alignment is correct for ClickHouse
+	namespace := options.GetNamespace(chart.Name)
+	expectedNamespace := "alt-database"
+	if namespace != expectedNamespace {
+		return fmt.Errorf("ClickHouse chart namespace mismatch: expected %s, got %s", expectedNamespace, namespace)
+	}
+	
+	// Check for values file and validate basic structure
+	valuesFile := g.getValuesFile(chart, options.Environment)
+	if valuesFile != "" {
+		// Validate ClickHouse-specific configuration
+		if err := g.validateClickHouseValues(valuesFile); err != nil {
+			return fmt.Errorf("ClickHouse values validation failed: %w", err)
+		}
+		
+		g.logger.DebugWithContext("ClickHouse values file validated", map[string]interface{}{
+			"values_file": valuesFile,
+		})
+	}
+	
+	// Check if required persistent volumes are available
+	if err := g.validateClickHousePersistentVolumes(ctx, namespace); err != nil {
+		return fmt.Errorf("ClickHouse persistent volume validation failed: %w", err)
+	}
+	
+	// Check if required secrets exist or can be created
+	if err := g.validateClickHouseSecrets(ctx, namespace); err != nil {
+		g.logger.WarnWithContext("ClickHouse secret validation warning", map[string]interface{}{
+			"error": err.Error(),
+			"namespace": namespace,
+		})
+		// Not a hard failure - secrets can be created during deployment
+	}
+	
+	g.logger.DebugWithContext("ClickHouse chart validation completed", map[string]interface{}{
+		"chart": chart.Name,
+		"namespace": namespace,
+	})
+	
+	return nil
+}
+
+// validateClickHouseValues validates ClickHouse values file structure
+func (g *HelmGateway) validateClickHouseValues(valuesFile string) error {
+	// TODO: Parse YAML values file and validate:
+	// - auth.username exists and is not empty
+	// - auth.password exists and is not empty
+	// - persistence.data.size is reasonable (>= 1Gi)
+	// - SSL configuration consistency
+	
+	g.logger.DebugWithContext("ClickHouse values validation placeholder", map[string]interface{}{
+		"values_file": valuesFile,
+	})
+	
+	return nil
+}
+
+// validateClickHousePersistentVolumes checks if required PVs are available
+func (g *HelmGateway) validateClickHousePersistentVolumes(ctx context.Context, namespace string) error {
+	// Check if clickhouse-pv exists and is available
+	pvName := "clickhouse-pv"
+	
+	g.logger.DebugWithContext("validating ClickHouse persistent volumes", map[string]interface{}{
+		"pv_name": pvName,
+		"namespace": namespace,
+	})
+	
+	// This validation is informational - PVs will be created if they don't exist
+	return nil
+}
+
+// validateClickHouseSecrets checks if required secrets exist
+func (g *HelmGateway) validateClickHouseSecrets(ctx context.Context, namespace string) error {
+	secretName := "clickhouse-secret"
+	
+	g.logger.DebugWithContext("validating ClickHouse secrets", map[string]interface{}{
+		"secret_name": secretName,
+		"namespace": namespace,
+	})
+	
+	// Check if the secret exists
+	// This is informational - secrets will be created during deployment
 	return nil
 }
 

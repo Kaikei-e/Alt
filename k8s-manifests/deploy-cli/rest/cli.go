@@ -116,6 +116,10 @@ func (c *CLI) setupCommands() {
 	emergencyResetCmd := commands.NewEmergencyResetCommand(c.logger)
 	c.rootCmd.AddCommand(emergencyResetCmd)
 
+	// Add SSL certificates command
+	sslCertificatesCmd := commands.NewSSLCertificatesCommand(c.logger)
+	c.rootCmd.AddCommand(sslCertificatesCmd)
+
 	// Add version command
 	versionCmd := &cobra.Command{
 		Use:   "version",
