@@ -36,6 +36,33 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
+        # Wait for storage to be ready before starting PostgreSQL
+        - name: wait-for-storage
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Checking storage readiness..."
+              
+              # Check if data directory is accessible
+              if [ ! -d "/var/lib/postgresql/data" ]; then
+                echo "Creating data directory..."
+                mkdir -p /var/lib/postgresql/data
+              fi
+              
+              # Test write permissions
+              echo "Testing write permissions..."
+              touch /var/lib/postgresql/data/.write-test
+              rm -f /var/lib/postgresql/data/.write-test
+              
+              echo "Storage is ready for PostgreSQL!"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
         {{- if .Values.ssl.enabled }}
         - name: ssl-cert-setup
           image: busybox:1.36
@@ -126,12 +153,18 @@ spec:
                 - -c
                 - -e
                 - |
+                  # Enhanced readiness check for PostgreSQL
                   exec pg_isready -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -h 127.0.0.1 -p 5432
-                  [ -f /opt/bitnami/postgresql/tmp/.initialized ] || [ -f /bitnami/postgresql/.initialized ]
-            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+                  
+                  # Check if PostgreSQL is accepting connections and can process queries
+                  psql -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -h 127.0.0.1 -p 5432 -c "SELECT 1;" > /dev/null 2>&1
+                  
+                  # Check for initialization completion
+                  [ -f /opt/bitnami/postgresql/tmp/.initialized ] || [ -f /bitnami/postgresql/.initialized ] || [ -f /var/lib/postgresql/data/.initialized ]
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds | default 30 }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold | default 6 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
