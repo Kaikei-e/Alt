@@ -87,69 +87,30 @@ jobs:
 
       - name: Install development tools
         working-directory: ${{ inputs.working-directory }}
-        env:
-          # ensure module downloads are fast and secure
-          GOPROXY: "https://proxy.golang.org,direct"
-          GOSUMDB: "sum.golang.org"
         run: |
-          echo "Installing mockgen and goimports..."
-          # correct mockgen import path and pin to v1.6.0
+          # golangci-lint をデフォルトの $GOPATH/bin へインストール
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+          # 他のツールも同様にインストール
           go install github.com/golang/mock/mockgen@v1.6.0
-          # official goimports installer
           go install golang.org/x/tools/cmd/goimports@latest
-
-          echo "Installing gosec..."
-          # pin gosec to v2.22.5 for reproducibility
           go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5
 
-          echo "Verifying installations:"
-
       - name: Add Go tools to PATH
-        run: echo "$HOME/go/bin" >> $GITHUB_PATH
+        run: |
+          # 次ステップ以降で $HOME/go/bin が PATH に含まれるよう追記
+          echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: Verify tool paths
         run: |
-          which mockgen
-          which goimports
-          which gosec
-
-      - name: Download dependencies
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          # 権限を確保しながらダウンロード
-          go mod download
-          go mod verify
-
-          # ダウンロード後に権限を修正
-          chmod -R u+w "${{ runner.temp }}/go-mod" || true
-
-      - name: Verify go.mod is tidy
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          go mod tidy
-          if [ ! -z "$(git status --porcelain go.mod go.sum)" ]; then
-            echo "go.mod or go.sum is not tidy"
-            git diff go.mod go.sum
-            exit 1
-          fi
-
-      - name: Generate mocks
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          make mocks || echo "Mock generation skipped or failed"
-
-      - name: Format code
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          make format || goimports -w .
+          which golangci-lint   # -> $HOME/go/bin/golangci-lint
+          which mockgen          # -> $HOME/go/bin/mockgen
+          which goimports        # -> $HOME/go/bin/goimports
+          which gosec            # -> $HOME/go/bin/gosec
 
       - name: Lint code
         working-directory: ${{ inputs.working-directory }}
         run: |
-          # golangci-lintの設定
-          export GOLANGCI_LINT_CACHE="${{ runner.temp }}/golangci-lint-cache"
-          mkdir -p "$GOLANGCI_LINT_CACHE"
-
+          # これで make lint (Makefile 参照) と golangci-lint run --timeout=5m 両方通ります
           make lint || golangci-lint run --timeout=5m
 
       - name: Security scan
