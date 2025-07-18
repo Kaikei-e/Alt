@@ -122,10 +122,19 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		// Continue with deployment - Helm will handle dependency resolution
 	}
 	
-	// Configure timeout - use shorter timeout for known problematic charts
+	// Configure timeout - use appropriate timeout for different chart types
 	chartTimeout := options.Timeout
 	if chartTimeout == 0 {
 		chartTimeout = 3 * time.Minute // Default 3 minute timeout
+	}
+	
+	// Use longer timeout for StatefulSet database charts that need time to initialize
+	if chart.Name == "postgres" || chart.Name == "auth-postgres" || chart.Name == "kratos-postgres" || chart.Name == "clickhouse" || chart.Name == "meilisearch" {
+		chartTimeout = 10 * time.Minute // Extended timeout for database initialization
+		g.logger.InfoWithContext("using extended timeout for database chart", map[string]interface{}{
+			"chart": chart.Name,
+			"timeout": chartTimeout,
+		})
 	}
 	
 	// Use even shorter timeout for charts that often hang

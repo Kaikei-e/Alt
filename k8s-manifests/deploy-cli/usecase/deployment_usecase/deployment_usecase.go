@@ -407,6 +407,17 @@ func (u *DeploymentUsecase) deploySingleChartToNamespace(ctx context.Context, ch
 	if chartTimeout == 0 {
 		chartTimeout = 5 * time.Minute // Default timeout
 	}
+	
+	// Use longer timeout for StatefulSet database charts that need time to initialize
+	// This overrides the command line timeout for database charts
+	if chart.Name == "postgres" || chart.Name == "auth-postgres" || chart.Name == "kratos-postgres" || chart.Name == "clickhouse" || chart.Name == "meilisearch" {
+		chartTimeout = 10 * time.Minute // Extended timeout for database initialization
+		u.logger.InfoWithContext("using extended timeout for database chart", map[string]interface{}{
+			"chart": chart.Name,
+			"timeout": chartTimeout,
+			"overriding_command_line_timeout": options.Timeout,
+		})
+	}
 	chartCtx, cancel := context.WithTimeout(ctx, chartTimeout)
 	defer cancel()
 	
@@ -1176,49 +1187,89 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 				})
 			}
 
-			// Deploy the chart
-			result := u.deploySingleChart(layerCtx, chart, options)
-			progress.AddResult(result)
-
-			if result.Status == domain.DeploymentStatusFailed {
-				u.logger.ErrorWithContext("chart deployment failed in layer", map[string]interface{}{
+			// Deploy the chart - handle multi-namespace deployment
+			if chart.MultiNamespace {
+				// Deploy to multiple namespaces
+				u.logger.InfoWithContext("deploying multi-namespace chart", map[string]interface{}{
 					"chart": chart.Name,
 					"layer": layer.Name,
-					"error": result.Error.Error(),
+					"target_namespaces": chart.TargetNamespaces,
 				})
 				
-				layerErr = result.Error
-				
-				// Stop on first failure in layer if not dry run
-				if !options.DryRun {
-					break
+				for _, targetNamespace := range chart.TargetNamespaces {
+					chartCopy := chart
+					chartCopy.MultiNamespace = false // Disable multi-namespace for individual deployment
+					result := u.deploySingleChartToNamespace(layerCtx, chartCopy, targetNamespace, options)
+					progress.AddResult(result)
+					
+					if result.Status == domain.DeploymentStatusFailed {
+						u.logger.ErrorWithContext("multi-namespace chart deployment failed", map[string]interface{}{
+							"chart": chart.Name,
+							"layer": layer.Name,
+							"namespace": targetNamespace,
+							"error": result.Error.Error(),
+						})
+						
+						layerErr = result.Error
+						
+						// Stop on first failure if not dry run
+						if !options.DryRun {
+							break
+						}
+					} else {
+						u.logger.InfoWithContext("multi-namespace chart deployed successfully", map[string]interface{}{
+							"chart": chart.Name,
+							"layer": layer.Name,
+							"namespace": targetNamespace,
+							"duration": result.Duration,
+						})
+					}
 				}
 			} else {
-				u.logger.InfoWithContext("chart deployed successfully in layer", map[string]interface{}{
-					"chart": chart.Name,
-					"layer": layer.Name,
-					"duration": result.Duration,
-				})
+				// Deploy to single namespace
+				result := u.deploySingleChart(layerCtx, chart, options)
+				progress.AddResult(result)
 
-				// Wait between charts in the same layer if specified
-				if chartIndex < len(layer.Charts)-1 && layer.WaitBetweenCharts > 0 {
-					u.logger.InfoWithContext("waiting between charts in layer", map[string]interface{}{
+				if result.Status == domain.DeploymentStatusFailed {
+					u.logger.ErrorWithContext("chart deployment failed in layer", map[string]interface{}{
 						"chart": chart.Name,
 						"layer": layer.Name,
-						"wait_duration": layer.WaitBetweenCharts,
+						"error": result.Error.Error(),
 					})
 					
-					select {
-					case <-layerCtx.Done():
-						u.logger.WarnWithContext("deployment cancelled during inter-chart wait", map[string]interface{}{
-							"layer": layer.Name,
-							"chart": chart.Name,
-							"error": layerCtx.Err().Error(),
-						})
-						return progress, layerCtx.Err()
-					case <-time.After(layer.WaitBetweenCharts):
-						// Continue to next chart
+					layerErr = result.Error
+					
+					// Stop on first failure in layer if not dry run
+					if !options.DryRun {
+						break
 					}
+				} else {
+					u.logger.InfoWithContext("chart deployed successfully in layer", map[string]interface{}{
+						"chart": chart.Name,
+						"layer": layer.Name,
+						"duration": result.Duration,
+					})
+				}
+			}
+
+			// Wait between charts in the same layer if specified
+			if chartIndex < len(layer.Charts)-1 && layer.WaitBetweenCharts > 0 {
+				u.logger.InfoWithContext("waiting between charts in layer", map[string]interface{}{
+					"chart": chart.Name,
+					"layer": layer.Name,
+					"wait_duration": layer.WaitBetweenCharts,
+				})
+				
+				select {
+				case <-layerCtx.Done():
+					u.logger.WarnWithContext("deployment cancelled during inter-chart wait", map[string]interface{}{
+						"layer": layer.Name,
+						"chart": chart.Name,
+						"error": layerCtx.Err().Error(),
+					})
+					return progress, layerCtx.Err()
+				case <-time.After(layer.WaitBetweenCharts):
+					// Continue to next chart
 				}
 			}
 		}
@@ -1624,9 +1675,40 @@ func (u *DeploymentUsecase) performLayerHealthCheck(ctx context.Context, layer d
 
 // performChartHealthCheck performs health check for a single chart
 func (u *DeploymentUsecase) performChartHealthCheck(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
-	namespace := options.GetNamespace(chart.Name)
-	
 	u.logger.InfoWithContext("performing chart health check", map[string]interface{}{
+		"chart": chart.Name,
+		"multi_namespace": chart.MultiNamespace,
+		"target_namespaces": chart.TargetNamespaces,
+		"wait_ready": chart.WaitReady,
+	})
+
+	// Handle multi-namespace charts
+	if chart.MultiNamespace {
+		for _, targetNamespace := range chart.TargetNamespaces {
+			u.logger.InfoWithContext("checking health for namespace", map[string]interface{}{
+				"chart": chart.Name,
+				"namespace": targetNamespace,
+			})
+			
+			// Create a copy of the chart for single namespace health check
+			chartCopy := chart
+			chartCopy.MultiNamespace = false
+			
+			if err := u.performSingleNamespaceHealthCheck(ctx, chartCopy, targetNamespace, options); err != nil {
+				return fmt.Errorf("health check failed for chart %s in namespace %s: %w", chart.Name, targetNamespace, err)
+			}
+		}
+		return nil
+	}
+
+	// Handle single namespace charts
+	namespace := options.GetNamespace(chart.Name)
+	return u.performSingleNamespaceHealthCheck(ctx, chart, namespace, options)
+}
+
+// performSingleNamespaceHealthCheck performs health check for a chart in a single namespace
+func (u *DeploymentUsecase) performSingleNamespaceHealthCheck(ctx context.Context, chart domain.Chart, namespace string, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("performing single namespace health check", map[string]interface{}{
 		"chart": chart.Name,
 		"namespace": namespace,
 		"wait_ready": chart.WaitReady,
@@ -1865,6 +1947,26 @@ func (u *DeploymentUsecase) verifyChartDeployment(ctx context.Context, chart dom
 		"namespace": namespace,
 	})
 
+	// Enhanced logging for debugging
+	isSecretOnly := u.isSecretOnlyChart(chart.Name)
+	isStatefulSet := u.isStatefulSetChart(chart.Name)
+	
+	u.logger.InfoWithContext("chart type detection", map[string]interface{}{
+		"chart": chart.Name,
+		"is_secret_only": isSecretOnly,
+		"is_stateful_set": isStatefulSet,
+		"namespace": namespace,
+	})
+
+	// Special case for charts that only create secrets/configmaps
+	if isSecretOnly {
+		u.logger.InfoWithContext("routing to secret chart verification", map[string]interface{}{
+			"chart": chart.Name,
+			"namespace": namespace,
+		})
+		return u.verifySecretChart(ctx, chart.Name, namespace)
+	}
+
 	// Check if deployment or statefulset exists
 	if u.isStatefulSetChart(chart.Name) {
 		statefulSets, err := u.kubectlGateway.GetStatefulSets(ctx, namespace)
@@ -1905,6 +2007,68 @@ func (u *DeploymentUsecase) isStatefulSetChart(chartName string) bool {
 		}
 	}
 	return false
+}
+
+// isSecretOnlyChart determines if a chart only creates secrets/configmaps
+func (u *DeploymentUsecase) isSecretOnlyChart(chartName string) bool {
+	secretOnlyCharts := []string{
+		"common-secrets", "common-config", "common-ssl",
+	}
+	
+	for _, secretChart := range secretOnlyCharts {
+		if chartName == secretChart {
+			return true
+		}
+	}
+	return false
+}
+
+// verifySecretChart verifies that a secret-only chart has created its resources
+func (u *DeploymentUsecase) verifySecretChart(ctx context.Context, chartName, namespace string) error {
+	u.logger.InfoWithContext("verifying secret chart deployment", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+	})
+
+	// For secret-only charts, check if the helm release exists and is deployed
+	u.logger.InfoWithContext("getting helm release status for secret chart", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+	})
+	
+	status, err := u.helmGateway.GetReleaseStatus(ctx, chartName, namespace)
+	if err != nil {
+		u.logger.ErrorWithContext("failed to get release status for secret chart", map[string]interface{}{
+			"chart": chartName,
+			"namespace": namespace,
+			"error": err.Error(),
+		})
+		return fmt.Errorf("failed to get release status for %s in namespace %s: %w", chartName, namespace, err)
+	}
+
+	u.logger.InfoWithContext("helm release status retrieved", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+		"status": status.Status,
+	})
+
+	// Check if the release is deployed
+	if status.Status != "deployed" {
+		u.logger.ErrorWithContext("helm release not deployed", map[string]interface{}{
+			"chart": chartName,
+			"namespace": namespace,
+			"status": status.Status,
+		})
+		return fmt.Errorf("helm release %s in namespace %s is not deployed, status: %s", chartName, namespace, status.Status)
+	}
+
+	u.logger.InfoWithContext("secret chart verified successfully", map[string]interface{}{
+		"chart": chartName,
+		"namespace": namespace,
+		"status": status.Status,
+	})
+
+	return nil
 }
 
 // verifyDatabaseConnectivity attempts to verify database connectivity
@@ -1977,10 +2141,10 @@ func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.Ch
 				{Name: "common-config", Type: domain.InfrastructureChart, Path: chartsDir + "/common-config", WaitReady: false},
 				{Name: "common-ssl", Type: domain.InfrastructureChart, Path: chartsDir + "/common-ssl", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-database", "alt-ingress", "alt-search", "alt-auth"}},
 			},
-			RequiresHealthCheck:     false,
-			HealthCheckTimeout:      2 * time.Minute,
-			WaitBetweenCharts:      5 * time.Second,
-			LayerCompletionTimeout: 5 * time.Minute,
+			RequiresHealthCheck:     true,  // Enable health check for secret charts
+			HealthCheckTimeout:      3 * time.Minute,
+			WaitBetweenCharts:      10 * time.Second,
+			LayerCompletionTimeout: 8 * time.Minute,
 			AllowParallelDeployment: false,
 			CriticalLayer:          true,
 		},

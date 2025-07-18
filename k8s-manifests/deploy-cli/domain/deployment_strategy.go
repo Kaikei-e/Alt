@@ -8,22 +8,22 @@ import (
 type DeploymentStrategy interface {
 	// GetName returns the strategy name
 	GetName() string
-	
+
 	// GetEnvironment returns the target environment
 	GetEnvironment() Environment
-	
+
 	// GetLayerConfigurations returns environment-specific layer configurations
 	GetLayerConfigurations(chartsDir string) []LayerConfiguration
-	
+
 	// GetGlobalTimeout returns the overall deployment timeout
 	GetGlobalTimeout() time.Duration
-	
+
 	// AllowsParallelDeployment returns whether parallel deployment is allowed
 	AllowsParallelDeployment() bool
-	
+
 	// GetHealthCheckRetries returns the number of health check retries
 	GetHealthCheckRetries() int
-	
+
 	// RequiresZeroDowntime returns whether zero-downtime deployment is required
 	RequiresZeroDowntime() bool
 }
@@ -267,7 +267,7 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      15 * time.Minute, // Conservative timeout
-			WaitBetweenCharts:      45 * time.Second,  // Extended wait for stability
+			WaitBetweenCharts:      10 * time.Second,  // Extended wait for stability
 			LayerCompletionTimeout: 25 * time.Minute,  // Extended layer timeout
 			AllowParallelDeployment: false,
 			CriticalLayer:          true,
