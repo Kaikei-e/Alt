@@ -116,7 +116,7 @@ func createDependencyPatterns() *DependencyPatterns {
 			regexp.MustCompile(`envFromSecret:\s*name:\s*([a-z0-9-]+)`),
 			// ClickHouse-specific secret patterns
 			regexp.MustCompile(`existingSecret:\s*"?([a-z0-9-]+)"?`),
-			regexp.MustCompile(`clickhouse-secret`),
+			regexp.MustCompile(`clickhouse-secrets`),
 			regexp.MustCompile(`clickhouse-credentials`),
 			// SSL certificate secrets
 			regexp.MustCompile(`server-ssl-secret`),
@@ -469,7 +469,7 @@ func (s *DependencyScanner) mapSecretToChart(secretName string) string {
 		"postgres-secrets":       "postgres",
 		"auth-postgres-secrets":  "auth-postgres",
 		"kratos-postgres-secrets": "kratos-postgres",
-		"clickhouse-secret":      "clickhouse",
+		"clickhouse-secrets":      "clickhouse",
 		"meilisearch-secrets":    "meilisearch",
 		"backend-secrets":        "alt-backend",
 		"auth-service-secrets":   "auth-service",

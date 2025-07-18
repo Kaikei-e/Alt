@@ -82,7 +82,16 @@ func (u *SecretManagementUsecase) validateChartSecrets(ctx context.Context, char
 		return err
 	}
 
-	// Step 1: Check secret existence
+	// Step 1: Auto-generate missing secrets if possible (MOVED UP - Critical for --auto-fix-secrets)
+	if err := u.autoGenerateMissingSecrets(ctx, chart); err != nil {
+		u.logger.ErrorWithContext("auto-generation of missing secrets failed", map[string]interface{}{
+			"chart_name": chart.Name,
+			"error":      err.Error(),
+		})
+		return err
+	}
+
+	// Step 2: Check secret existence (AFTER auto-generation)
 	if err := u.validateSecretExistence(ctx, chart); err != nil {
 		u.logger.ErrorWithContext("secret existence validation failed", map[string]interface{}{
 			"chart_name": chart.Name,
@@ -91,18 +100,9 @@ func (u *SecretManagementUsecase) validateChartSecrets(ctx context.Context, char
 		return err
 	}
 
-	// Step 2: Validate secret metadata
+	// Step 3: Validate secret metadata
 	if err := u.validateSecretMetadata(ctx, chart); err != nil {
 		u.logger.ErrorWithContext("secret metadata validation failed", map[string]interface{}{
-			"chart_name": chart.Name,
-			"error":      err.Error(),
-		})
-		return err
-	}
-
-	// Step 3: Auto-generate missing secrets if possible
-	if err := u.autoGenerateMissingSecrets(ctx, chart); err != nil {
-		u.logger.ErrorWithContext("auto-generation of missing secrets failed", map[string]interface{}{
 			"chart_name": chart.Name,
 			"error":      err.Error(),
 		})
@@ -241,6 +241,10 @@ func (u *SecretManagementUsecase) getAutoGeneratableSecretsForChart(chart domain
 		return []string{"frontend-secrets"}
 	case "kratos":
 		return []string{"kratos-secrets"}
+	case "nginx":
+		return []string{"nginx-secrets"}
+	case "nginx-external":
+		return []string{"nginx-external-secrets"}
 	default:
 		return []string{}
 	}
@@ -278,8 +282,44 @@ func (u *SecretManagementUsecase) generateSecret(ctx context.Context, secretName
 		"chart_name":  chart.Name,
 	})
 
-	// Use the secret usecase to generate the secret
-	if err := u.secretUsecase.GenerateDatabaseCredentials(ctx, secretName, namespace); err != nil {
+	// Route to appropriate secret generation method based on chart type
+	var err error
+	switch chart.Name {
+	case "nginx", "nginx-external":
+		// Generate web server credentials for nginx charts
+		u.logger.InfoWithContext("generating web server credentials", map[string]interface{}{
+			"secret_name": secretName,
+			"chart_name":  chart.Name,
+			"type":        "webserver",
+		})
+		err = u.secretUsecase.GenerateWebServerCredentials(ctx, secretName, namespace)
+	case "postgres", "auth-postgres", "kratos-postgres", "clickhouse", "meilisearch":
+		// Generate database credentials for database charts
+		u.logger.InfoWithContext("generating database credentials", map[string]interface{}{
+			"secret_name": secretName,
+			"chart_name":  chart.Name,
+			"type":        "database",
+		})
+		err = u.secretUsecase.GenerateDatabaseCredentials(ctx, secretName, namespace)
+	case "alt-backend", "alt-frontend", "auth-service", "kratos":
+		// Generate application credentials for application charts
+		u.logger.InfoWithContext("generating application credentials", map[string]interface{}{
+			"secret_name": secretName,
+			"chart_name":  chart.Name,
+			"type":        "application",
+		})
+		err = u.secretUsecase.GenerateApplicationCredentials(ctx, secretName, namespace)
+	default:
+		// Default to database credentials for unknown charts
+		u.logger.InfoWithContext("generating database credentials (default)", map[string]interface{}{
+			"secret_name": secretName,
+			"chart_name":  chart.Name,
+			"type":        "database",
+		})
+		err = u.secretUsecase.GenerateDatabaseCredentials(ctx, secretName, namespace)
+	}
+
+	if err != nil {
 		return fmt.Errorf("failed to generate secret %s: %w", secretName, err)
 	}
 

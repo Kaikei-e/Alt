@@ -100,7 +100,7 @@ func (h *HealthChecker) checkPostgreSQLConnection(namespace, serviceName string)
 	})
 
 	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "pg_isready", "-U", "alt_db_user")
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
@@ -186,7 +186,7 @@ func (h *HealthChecker) checkMeilisearchHealth(namespace, serviceName string) er
 	// Try to access Meilisearch health endpoint
 	podName := serviceName + "-0" // StatefulSet naming convention
 	cmd := exec.Command("kubectl", "exec", "-n", namespace, podName, "--", "curl", "-f", "http://localhost:7700/health")
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		h.logger.Debug("Meilisearch health check failed",
@@ -280,7 +280,7 @@ func (h *HealthChecker) WaitForPodsReady(ctx context.Context, namespace, service
 // checkPodsReady checks if pods are in ready state
 func (h *HealthChecker) checkPodsReady(namespace, serviceName string) error {
 	cmd := exec.Command("kubectl", "get", "pods", "-n", namespace, "-l", fmt.Sprintf("app.kubernetes.io/name=%s", serviceName), "-o", "jsonpath={.items[*].status.conditions[?(@.type=='Ready')].status}")
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to check pod readiness: %w", err)
@@ -506,7 +506,7 @@ func (h *HealthChecker) checkClickHouseHealth(namespace, serviceName string) err
 	defer cancel()
 
 	podName := serviceName + "-0" // StatefulSet naming convention
-	
+
 	// Check if SSL is enabled for ClickHouse
 	sslEnabled, err := h.isClickHouseSSLEnabled(namespace, podName)
 	if err != nil {
@@ -546,7 +546,7 @@ func (h *HealthChecker) checkClickHouseHealth(namespace, serviceName string) err
 	} else {
 		cmd = exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "curl", "-f", endpoint)
 	}
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
@@ -594,7 +594,7 @@ func (h *HealthChecker) isStatefulSetService(serviceName string) bool {
 	statefulSetServices := []string{
 		"postgres", "auth-postgres", "kratos-postgres", "clickhouse", "meilisearch",
 	}
-	
+
 	for _, stsService := range statefulSetServices {
 		if serviceName == stsService {
 			return true
@@ -608,7 +608,7 @@ func (h *HealthChecker) isClickHouseSSLEnabled(namespace, podName string) (bool,
 	// Check if SSL-related environment variables or configuration exist
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	// First, try to check if HTTPS port is listening
 	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "netstat", "-ln", "|", "grep", ":8443")
 	output, err := cmd.CombinedOutput()
@@ -620,7 +620,7 @@ func (h *HealthChecker) isClickHouseSSLEnabled(namespace, podName string) (bool,
 		})
 		return true, nil
 	}
-	
+
 	// Fallback: check for SSL configuration files
 	cmd = exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "ls", "/ssl/server.crt")
 	_, err = cmd.CombinedOutput()
@@ -631,7 +631,7 @@ func (h *HealthChecker) isClickHouseSSLEnabled(namespace, podName string) (bool,
 		})
 		return true, nil
 	}
-	
+
 	// No SSL detected
 	h.logger.DebugWithContext("ClickHouse SSL not detected, using HTTP", map[string]interface{}{
 		"namespace": namespace,
@@ -643,48 +643,48 @@ func (h *HealthChecker) isClickHouseSSLEnabled(namespace, podName string) (bool,
 // detectClickHouseConfigurationConflicts checks for common ClickHouse configuration issues
 func (h *HealthChecker) detectClickHouseConfigurationConflicts(namespace, serviceName string) []string {
 	var conflicts []string
-	
+
 	// Check for SSL/TLS configuration consistency
 	if sslConflict := h.checkSSLConfigurationConflict(namespace, serviceName); sslConflict != "" {
 		conflicts = append(conflicts, sslConflict)
 	}
-	
+
 	// Check for authentication method conflicts
 	if authConflict := h.checkAuthenticationConflict(namespace, serviceName); authConflict != "" {
 		conflicts = append(conflicts, authConflict)
 	}
-	
+
 	// Check for secret name conflicts
 	if secretConflict := h.checkSecretNameConflict(namespace, serviceName); secretConflict != "" {
 		conflicts = append(conflicts, secretConflict)
 	}
-	
+
 	return conflicts
 }
 
 // checkSSLConfigurationConflict detects SSL configuration mismatches
 func (h *HealthChecker) checkSSLConfigurationConflict(namespace, serviceName string) string {
 	podName := serviceName + "-0"
-	
+
 	// Check if SSL is enabled but health checks are using HTTP
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	// Check if SSL port is listening
 	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "netstat", "-ln")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "" // Can't determine, skip conflict detection
 	}
-	
+
 	outputStr := string(output)
 	httpsPortOpen := strings.Contains(outputStr, ":8443")
 	httpPortOpen := strings.Contains(outputStr, ":8123")
-	
+
 	if httpsPortOpen && !httpPortOpen {
 		return "SSL-only configuration detected but health check may be using HTTP port"
 	}
-	
+
 	return ""
 }
 
@@ -692,33 +692,33 @@ func (h *HealthChecker) checkSSLConfigurationConflict(namespace, serviceName str
 func (h *HealthChecker) checkAuthenticationConflict(namespace, serviceName string) string {
 	// Check if both environment variables and users.xml are configured
 	podName := serviceName + "-0"
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	// Check for CLICKHOUSE_USER environment variable
 	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "env")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "" // Can't determine
 	}
-	
+
 	envHasClickHouseUser := strings.Contains(string(output), "CLICKHOUSE_USER=")
 	envHasClickHousePassword := strings.Contains(string(output), "CLICKHOUSE_PASSWORD=")
-	
+
 	// Check for users.xml configuration
 	cmd = exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "cat", "/etc/clickhouse-server/users.xml")
 	usersOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		return "" // Can't determine
 	}
-	
+
 	usersXmlHasUsers := strings.Contains(string(usersOutput), "<clickhouse_user>")
-	
+
 	if (envHasClickHouseUser || envHasClickHousePassword) && usersXmlHasUsers {
 		return "Both environment variable and users.xml authentication detected - may cause conflicts"
 	}
-	
+
 	return ""
 }
 
@@ -726,21 +726,21 @@ func (h *HealthChecker) checkAuthenticationConflict(namespace, serviceName strin
 func (h *HealthChecker) checkSecretNameConflict(namespace, serviceName string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	// Check if both old and new secret names exist
 	oldSecretCmd := exec.CommandContext(ctx, "kubectl", "get", "secret", "clickhouse-secrets", "-n", namespace)
-	newSecretCmd := exec.CommandContext(ctx, "kubectl", "get", "secret", "clickhouse-secret", "-n", namespace)
-	
+	newSecretCmd := exec.CommandContext(ctx, "kubectl", "get", "secret", "clickhouse-secrets", "-n", namespace)
+
 	oldExists := oldSecretCmd.Run() == nil
 	newExists := newSecretCmd.Run() == nil
-	
+
 	if oldExists && newExists {
-		return "Both 'clickhouse-secrets' and 'clickhouse-secret' exist - may cause confusion"
+		return "Both 'clickhouse-secrets' and 'clickhouse-secrets' exist - may cause confusion"
 	}
-	
+
 	if !oldExists && !newExists {
-		return "Neither 'clickhouse-secrets' nor 'clickhouse-secret' found - deployment may fail"
+		return "Neither 'clickhouse-secrets' nor 'clickhouse-secrets' found - deployment may fail"
 	}
-	
+
 	return ""
 }

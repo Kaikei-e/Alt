@@ -91,7 +91,7 @@ func GetDefaultDatabaseConfigs() []DatabaseSecretConfig {
 			Namespace: "alt-database",
 		},
 		{
-			Name:      "clickhouse-secret",
+			Name:      "clickhouse-secrets",
 			Username:  "clickhouse_user",
 			Password:  "analytics_secure_password",
 			KeyName:   "clickhouse-password",
