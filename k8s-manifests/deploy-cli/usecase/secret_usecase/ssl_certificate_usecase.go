@@ -65,6 +65,163 @@ func (u *SSLCertificateUsecase) CreateMeiliSearchSSLCertificate(ctx context.Cont
 	return u.createSSLCertificate(ctx, config)
 }
 
+// CreateBackendSSLCertificate creates SSL certificate for Alt Backend
+func (u *SSLCertificateUsecase) CreateBackendSSLCertificate(ctx context.Context, namespace string, env domain.Environment) error {
+	u.logger.InfoWithContext("creating Alt Backend SSL certificate", map[string]interface{}{
+		"namespace":   namespace,
+		"environment": env.String(),
+	})
+
+	config := &SSLCertificateConfig{
+		ServiceName:  "alt-backend",
+		Namespace:    namespace,
+		Environment:  env,
+		DNSNames: []string{
+			"alt-backend",
+			fmt.Sprintf("alt-backend.%s", namespace),
+			fmt.Sprintf("alt-backend.%s.svc", namespace),
+			fmt.Sprintf("alt-backend.%s.svc.cluster.local", namespace),
+			"api.alt.local",
+			"localhost",
+		},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		ValidityDays: 365,
+	}
+
+	return u.createSSLCertificate(ctx, config)
+}
+
+// CreateFrontendSSLCertificate creates SSL certificate for Alt Frontend
+func (u *SSLCertificateUsecase) CreateFrontendSSLCertificate(ctx context.Context, namespace string, env domain.Environment) error {
+	u.logger.InfoWithContext("creating Alt Frontend SSL certificate", map[string]interface{}{
+		"namespace":   namespace,
+		"environment": env.String(),
+	})
+
+	config := &SSLCertificateConfig{
+		ServiceName:  "alt-frontend",
+		Namespace:    namespace,
+		Environment:  env,
+		DNSNames: []string{
+			"alt-frontend",
+			fmt.Sprintf("alt-frontend.%s", namespace),
+			fmt.Sprintf("alt-frontend.%s.svc", namespace),
+			fmt.Sprintf("alt-frontend.%s.svc.cluster.local", namespace),
+			"app.alt.local",
+			"localhost",
+		},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		ValidityDays: 365,
+	}
+
+	return u.createSSLCertificate(ctx, config)
+}
+
+// CreateNginxSSLCertificate creates SSL certificate for Nginx
+func (u *SSLCertificateUsecase) CreateNginxSSLCertificate(ctx context.Context, namespace string, env domain.Environment) error {
+	u.logger.InfoWithContext("creating Nginx SSL certificate", map[string]interface{}{
+		"namespace":   namespace,
+		"environment": env.String(),
+	})
+
+	config := &SSLCertificateConfig{
+		ServiceName:  "nginx",
+		Namespace:    namespace,
+		Environment:  env,
+		DNSNames: []string{
+			"nginx",
+			fmt.Sprintf("nginx.%s", namespace),
+			fmt.Sprintf("nginx.%s.svc", namespace),
+			fmt.Sprintf("nginx.%s.svc.cluster.local", namespace),
+			"alt.production.local",
+			"*.alt.production.local",
+			"localhost",
+		},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		ValidityDays: 365,
+	}
+
+	return u.createSSLCertificate(ctx, config)
+}
+
+// CreateAuthServiceSSLCertificate creates SSL certificate for Auth Service
+func (u *SSLCertificateUsecase) CreateAuthServiceSSLCertificate(ctx context.Context, namespace string, env domain.Environment) error {
+	u.logger.InfoWithContext("creating Auth Service SSL certificate", map[string]interface{}{
+		"namespace":   namespace,
+		"environment": env.String(),
+	})
+
+	config := &SSLCertificateConfig{
+		ServiceName:  "auth-service",
+		Namespace:    namespace,
+		Environment:  env,
+		DNSNames: []string{
+			"auth-service",
+			fmt.Sprintf("auth-service.%s", namespace),
+			fmt.Sprintf("auth-service.%s.svc", namespace),
+			fmt.Sprintf("auth-service.%s.svc.cluster.local", namespace),
+			"auth.alt.local",
+			"localhost",
+		},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		ValidityDays: 365,
+	}
+
+	return u.createSSLCertificate(ctx, config)
+}
+
+// CreateKratosSSLCertificate creates SSL certificate for Kratos
+func (u *SSLCertificateUsecase) CreateKratosSSLCertificate(ctx context.Context, namespace string, env domain.Environment) error {
+	u.logger.InfoWithContext("creating Kratos SSL certificate", map[string]interface{}{
+		"namespace":   namespace,
+		"environment": env.String(),
+	})
+
+	config := &SSLCertificateConfig{
+		ServiceName:  "kratos",
+		Namespace:    namespace,
+		Environment:  env,
+		DNSNames: []string{
+			"kratos",
+			fmt.Sprintf("kratos.%s", namespace),
+			fmt.Sprintf("kratos.%s.svc", namespace),
+			fmt.Sprintf("kratos.%s.svc.cluster.local", namespace),
+			"identity.alt.local",
+			"localhost",
+		},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		ValidityDays: 365,
+	}
+
+	return u.createSSLCertificate(ctx, config)
+}
+
+// CreatePostgresSSLCertificate creates SSL certificate for Postgres
+func (u *SSLCertificateUsecase) CreatePostgresSSLCertificate(ctx context.Context, namespace string, env domain.Environment) error {
+	u.logger.InfoWithContext("creating Postgres SSL certificate", map[string]interface{}{
+		"namespace":   namespace,
+		"environment": env.String(),
+	})
+
+	config := &SSLCertificateConfig{
+		ServiceName:  "postgres",
+		Namespace:    namespace,
+		Environment:  env,
+		DNSNames: []string{
+			"postgres",
+			fmt.Sprintf("postgres.%s", namespace),
+			fmt.Sprintf("postgres.%s.svc", namespace),
+			fmt.Sprintf("postgres.%s.svc.cluster.local", namespace),
+			"db.alt.local",
+			"localhost",
+		},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		ValidityDays: 365,
+	}
+
+	return u.createSSLCertificate(ctx, config)
+}
+
 // createSSLCertificate generates and creates SSL certificate secret
 func (u *SSLCertificateUsecase) createSSLCertificate(ctx context.Context, config *SSLCertificateConfig) error {
 	// Generate private key

@@ -2,7 +2,18 @@ package deployment_usecase
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/pem"
 	"fmt"
+	"os"
+	"math/big"
+	"net"
+	"path/filepath"
+	"strings"
 	"time"
 	
 	"deploy-cli/domain"
@@ -15,7 +26,17 @@ import (
 	"deploy-cli/gateway/system_gateway"
 	"deploy-cli/usecase/secret_usecase"
 	"deploy-cli/usecase/dependency_usecase"
+	"gopkg.in/yaml.v2"
 )
+
+// GeneratedCertificates holds SSL certificate data
+type GeneratedCertificates struct {
+	CACert           string
+	CAPrivateKey     string
+	ServerCert       string
+	ServerPrivateKey string
+	Generated        time.Time
+}
 
 // DeploymentUsecase handles deployment operations
 type DeploymentUsecase struct {
@@ -40,6 +61,8 @@ type DeploymentUsecase struct {
 	enableCache         bool
 	enableDependencyAware bool
 	enableMonitoring    bool
+	generatedCertificates *GeneratedCertificates
+	chartsDir           string
 }
 
 // NewDeploymentUsecase creates a new deployment usecase
@@ -131,6 +154,16 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 	// Step 1.7: Comprehensive secret provisioning
 	if err := u.provisionAllRequiredSecrets(ctx, charts); err != nil {
 		return nil, fmt.Errorf("secret provisioning failed: %w", err)
+	}
+	
+	// Step 1.8: SSL Certificate Management (NEW!)
+	if err := u.manageCertificateLifecycle(ctx, options.Environment, options.ChartsDir); err != nil {
+		return nil, fmt.Errorf("SSL certificate management failed: %w", err)
+	}
+	
+	// Step 1.9: StatefulSet Recovery Preparation (NEW!)
+	if err := u.prepareStatefulSetRecovery(ctx, options); err != nil {
+		return nil, fmt.Errorf("StatefulSet recovery preparation failed: %w", err)
 	}
 	
 	// Step 2: Setup storage infrastructure
@@ -3226,4 +3259,499 @@ func (u *DeploymentUsecase) detectMissingSecrets(ctx context.Context, charts []d
 func (u *DeploymentUsecase) secretExists(ctx context.Context, secretName, namespace string) bool {
 	_, err := u.kubectlGateway.GetSecret(ctx, secretName, namespace)
 	return err == nil
+}
+
+// generateSSLCertificates generates CA and server certificates for SSL
+func (u *DeploymentUsecase) generateSSLCertificates(ctx context.Context) error {
+	u.logger.InfoWithContext("generating SSL certificates", map[string]interface{}{
+		"system": "ssl-certificate-manager",
+	})
+
+	// Generate CA private key
+	caPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return fmt.Errorf("failed to generate CA private key: %w", err)
+	}
+
+	// Create CA certificate template
+	caTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization:  []string{"Alt RSS Reader"},
+			Country:       []string{"JP"},
+			Province:      []string{"Tokyo"},
+			Locality:      []string{"Tokyo"},
+			CommonName:    "Alt RSS Reader CA",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(5, 0, 0), // 5年間有効
+		IsCA:                  true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
+
+	// Generate CA certificate
+	caCertDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caPrivateKey.PublicKey, caPrivateKey)
+	if err != nil {
+		return fmt.Errorf("failed to create CA certificate: %w", err)
+	}
+
+	// Encode CA certificate to PEM format
+	caCertPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: caCertDER,
+	})
+
+	// Encode CA private key to PEM format
+	caPrivateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(caPrivateKey),
+	})
+
+	// Generate server private key
+	serverPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return fmt.Errorf("failed to generate server private key: %w", err)
+	}
+
+	// Create server certificate template
+	serverTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject: pkix.Name{
+			Organization:  []string{"Alt RSS Reader"},
+			Country:       []string{"JP"},
+			Province:      []string{"Tokyo"},
+			Locality:      []string{"Tokyo"},
+			CommonName:    "Alt RSS Reader Server",
+		},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().AddDate(1, 0, 0), // 1年間有効
+		SubjectKeyId: []byte{1, 2, 3, 4, 6},
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		DNSNames:     []string{"postgres", "postgres.alt-database.svc.cluster.local", "db.alt-database.svc.cluster.local", "localhost"},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+	}
+
+	// Generate server certificate signed by CA
+	serverCertDER, err := x509.CreateCertificate(rand.Reader, serverTemplate, caTemplate, &serverPrivateKey.PublicKey, caPrivateKey)
+	if err != nil {
+		return fmt.Errorf("failed to create server certificate: %w", err)
+	}
+
+	// Encode server certificate to PEM format
+	serverCertPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: serverCertDER,
+	})
+
+	// Encode server private key to PEM format
+	serverPrivateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(serverPrivateKey),
+	})
+
+	// Store certificates in deploy-cli
+	u.generatedCertificates = &GeneratedCertificates{
+		CACert:           base64.StdEncoding.EncodeToString(caCertPEM),
+		CAPrivateKey:     base64.StdEncoding.EncodeToString(caPrivateKeyPEM),
+		ServerCert:       base64.StdEncoding.EncodeToString(serverCertPEM),
+		ServerPrivateKey: base64.StdEncoding.EncodeToString(serverPrivateKeyPEM),
+		Generated:        time.Now(),
+	}
+
+	u.logger.InfoWithContext("SSL certificates generated successfully", map[string]interface{}{
+		"ca_cert_length":     len(u.generatedCertificates.CACert),
+		"server_cert_length": len(u.generatedCertificates.ServerCert),
+		"generated_time":     u.generatedCertificates.Generated.Format(time.RFC3339),
+	})
+
+	return nil
+}
+
+// injectCertificateData injects generated SSL certificates into common-ssl charts
+func (u *DeploymentUsecase) injectCertificateData(ctx context.Context, chartPath string) error {
+	if !strings.Contains(chartPath, "common-ssl") {
+		return nil // Skip non-SSL charts
+	}
+
+	u.logger.InfoWithContext("injecting SSL certificate data", map[string]interface{}{
+		"chart_path": chartPath,
+	})
+
+	valuesPath := filepath.Join(chartPath, "values.yaml")
+	
+	// Read current values
+	valuesData, err := os.ReadFile(valuesPath)
+	if err != nil {
+		return fmt.Errorf("failed to read values.yaml: %w", err)
+	}
+
+	// Parse YAML
+	var values map[string]interface{}
+	if err := yaml.Unmarshal(valuesData, &values); err != nil {
+		return fmt.Errorf("failed to parse values.yaml: %w", err)
+	}
+
+	// Inject certificate data
+	if sslInterface, ok := values["ssl"]; ok {
+		if ssl, ok := sslInterface.(map[interface{}]interface{}); ok {
+			if caInterface, ok := ssl["ca"]; ok {
+				if ca, ok := caInterface.(map[interface{}]interface{}); ok {
+					ca["cert"] = u.generatedCertificates.CACert
+					ca["key"] = u.generatedCertificates.CAPrivateKey
+					
+					u.logger.InfoWithContext("injected CA certificate data", map[string]interface{}{
+						"chart": chartPath,
+						"ca_cert_length": len(u.generatedCertificates.CACert),
+					})
+				}
+			}
+
+			if serverInterface, ok := ssl["server"]; ok {
+				if server, ok := serverInterface.(map[interface{}]interface{}); ok {
+					server["cert"] = u.generatedCertificates.ServerCert
+					server["key"] = u.generatedCertificates.ServerPrivateKey
+					
+					u.logger.InfoWithContext("injected server certificate data", map[string]interface{}{
+						"chart": chartPath,
+						"server_cert_length": len(u.generatedCertificates.ServerCert),
+					})
+				}
+			}
+		}
+	}
+
+	// Write back to file
+	updatedData, err := yaml.Marshal(values)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated values: %w", err)
+	}
+
+	if err := os.WriteFile(valuesPath, updatedData, 0644); err != nil {
+		return fmt.Errorf("failed to write updated values.yaml: %w", err)
+	}
+
+	u.logger.InfoWithContext("SSL certificate data injection completed", map[string]interface{}{
+		"chart_path": chartPath,
+		"values_file": valuesPath,
+	})
+
+	return nil
+}
+
+// safeStatefulSetRecreation safely recreates StatefulSet to resolve conflicts
+func (u *DeploymentUsecase) safeStatefulSetRecreation(ctx context.Context, chartName, namespace string) error {
+	statefulSetName := chartName // postgres, auth-postgres, etc.
+	
+	u.logger.InfoWithContext("checking for existing StatefulSet", map[string]interface{}{
+		"statefulset": statefulSetName,
+		"namespace": namespace,
+	})
+
+	// Check if StatefulSet exists
+	exists, err := u.checkStatefulSetExists(ctx, statefulSetName, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to check StatefulSet existence: %w", err)
+	}
+
+	if exists {
+		u.logger.InfoWithContext("existing StatefulSet detected, performing safe recreation", map[string]interface{}{
+			"statefulset": statefulSetName,
+			"namespace": namespace,
+		})
+
+		// Step 1: Scale down StatefulSet to 0
+		if err := u.scaleStatefulSet(ctx, statefulSetName, namespace, 0); err != nil {
+			return fmt.Errorf("failed to scale down StatefulSet: %w", err)
+		}
+
+		// Step 2: Wait for all pods to terminate
+		if err := u.waitForPodsTermination(ctx, statefulSetName, namespace, 300); err != nil {
+			return fmt.Errorf("failed to wait for pods termination: %w", err)
+		}
+
+		// Step 3: Delete StatefulSet (preserve PVC)
+		if err := u.deleteStatefulSet(ctx, statefulSetName, namespace); err != nil {
+			return fmt.Errorf("failed to delete StatefulSet: %w", err)
+		}
+
+		// Step 4: Clean up related resources (except PVC)
+		if err := u.cleanupStatefulSetResources(ctx, statefulSetName, namespace); err != nil {
+			return fmt.Errorf("failed to cleanup StatefulSet resources: %w", err)
+		}
+
+		u.logger.InfoWithContext("StatefulSet safely removed", map[string]interface{}{
+			"statefulset": statefulSetName,
+			"namespace": namespace,
+			"pvc_preserved": true,
+		})
+	} else {
+		u.logger.InfoWithContext("no existing StatefulSet found, proceeding with fresh deployment", map[string]interface{}{
+			"statefulset": statefulSetName,
+			"namespace": namespace,
+		})
+	}
+
+	return nil
+}
+
+// checkStatefulSetExists checks if a StatefulSet exists in the namespace
+func (u *DeploymentUsecase) checkStatefulSetExists(ctx context.Context, name, namespace string) (bool, error) {
+	// Use kubectl to check StatefulSet existence
+	cmd := fmt.Sprintf("kubectl get statefulset %s -n %s", name, namespace)
+	_, err := u.systemGateway.ExecuteCommand(ctx, cmd)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check StatefulSet existence: %w", err)
+	}
+	return true, nil
+}
+
+// scaleStatefulSet scales a StatefulSet to specified replica count
+func (u *DeploymentUsecase) scaleStatefulSet(ctx context.Context, name, namespace string, replicas int) error {
+	u.logger.InfoWithContext("scaling StatefulSet", map[string]interface{}{
+		"statefulset": name,
+		"namespace": namespace,
+		"replicas": replicas,
+	})
+
+	cmd := fmt.Sprintf("kubectl scale statefulset %s --replicas=%d -n %s", name, replicas, namespace)
+	_, err := u.systemGateway.ExecuteCommand(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("failed to scale StatefulSet: %w", err)
+	}
+
+	u.logger.InfoWithContext("StatefulSet scaled successfully", map[string]interface{}{
+		"statefulset": name,
+		"namespace": namespace,
+		"replicas": replicas,
+	})
+
+	return nil
+}
+
+// waitForPodsTermination waits for all pods of a StatefulSet to terminate
+func (u *DeploymentUsecase) waitForPodsTermination(ctx context.Context, name, namespace string, timeoutSeconds int) error {
+	u.logger.InfoWithContext("waiting for pods termination", map[string]interface{}{
+		"statefulset": name,
+		"namespace": namespace,
+		"timeout": timeoutSeconds,
+	})
+
+	for i := 0; i < timeoutSeconds; i += 5 {
+		cmd := fmt.Sprintf("kubectl get pods -n %s -l app=%s --no-headers", namespace, name)
+		output, err := u.systemGateway.ExecuteCommand(ctx, cmd)
+		if err != nil {
+			return fmt.Errorf("failed to check pod status: %w", err)
+		}
+
+		if strings.TrimSpace(output) == "" {
+			u.logger.InfoWithContext("all pods terminated", map[string]interface{}{
+				"statefulset": name,
+				"namespace": namespace,
+				"elapsed": i,
+			})
+			return nil
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+
+	return fmt.Errorf("timeout waiting for pods termination after %d seconds", timeoutSeconds)
+}
+
+// deleteStatefulSet deletes a StatefulSet while preserving PVCs
+func (u *DeploymentUsecase) deleteStatefulSet(ctx context.Context, name, namespace string) error {
+	u.logger.InfoWithContext("deleting StatefulSet", map[string]interface{}{
+		"statefulset": name,
+		"namespace": namespace,
+	})
+
+	cmd := fmt.Sprintf("kubectl delete statefulset %s -n %s", name, namespace)
+	_, err := u.systemGateway.ExecuteCommand(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("failed to delete StatefulSet: %w", err)
+	}
+
+	u.logger.InfoWithContext("StatefulSet deleted successfully", map[string]interface{}{
+		"statefulset": name,
+		"namespace": namespace,
+	})
+
+	return nil
+}
+
+// cleanupStatefulSetResources cleans up related resources except PVCs
+func (u *DeploymentUsecase) cleanupStatefulSetResources(ctx context.Context, name, namespace string) error {
+	u.logger.InfoWithContext("cleaning up StatefulSet resources", map[string]interface{}{
+		"statefulset": name,
+		"namespace": namespace,
+	})
+
+	// Clean up services (but not PVCs)
+	resources := []string{"service", "configmap"}
+	for _, resource := range resources {
+		cmd := fmt.Sprintf("kubectl delete %s -l app=%s -n %s --ignore-not-found=true", resource, name, namespace)
+		_, err := u.systemGateway.ExecuteCommand(ctx, cmd)
+		if err != nil {
+			u.logger.WarnWithContext("failed to cleanup resource", map[string]interface{}{
+				"resource": resource,
+				"statefulset": name,
+				"namespace": namespace,
+				"error": err.Error(),
+			})
+		}
+	}
+
+	u.logger.InfoWithContext("StatefulSet resources cleanup completed", map[string]interface{}{
+		"statefulset": name,
+		"namespace": namespace,
+	})
+
+	return nil
+}
+
+// validateGeneratedCertificates validates the generated SSL certificates
+func (u *DeploymentUsecase) validateGeneratedCertificates(ctx context.Context) error {
+	if u.generatedCertificates == nil {
+		return fmt.Errorf("no certificates generated to validate")
+	}
+
+	u.logger.InfoWithContext("validating generated SSL certificates", map[string]interface{}{
+		"generated_time": u.generatedCertificates.Generated.Format(time.RFC3339),
+	})
+
+	// Validate CA certificate
+	if err := u.validateCertificate(u.generatedCertificates.CACert, "CA"); err != nil {
+		return fmt.Errorf("CA certificate validation failed: %w", err)
+	}
+
+	// Validate server certificate
+	if err := u.validateCertificate(u.generatedCertificates.ServerCert, "Server"); err != nil {
+		return fmt.Errorf("server certificate validation failed: %w", err)
+	}
+
+	u.logger.InfoWithContext("SSL certificate validation completed successfully", map[string]interface{}{
+		"ca_cert_valid": true,
+		"server_cert_valid": true,
+	})
+
+	return nil
+}
+
+// validateCertificate validates a single certificate
+func (u *DeploymentUsecase) validateCertificate(certBase64, certType string) error {
+	// Decode base64 certificate
+	certPEM, err := base64.StdEncoding.DecodeString(certBase64)
+	if err != nil {
+		return fmt.Errorf("failed to decode %s certificate: %w", certType, err)
+	}
+
+	// Parse PEM block
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return fmt.Errorf("failed to parse PEM block for %s certificate", certType)
+	}
+
+	// Parse certificate
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse %s certificate: %w", certType, err)
+	}
+
+	// Validate certificate properties
+	if time.Now().After(cert.NotAfter) {
+		return fmt.Errorf("%s certificate has expired", certType)
+	}
+
+	if time.Now().Before(cert.NotBefore) {
+		return fmt.Errorf("%s certificate is not yet valid", certType)
+	}
+
+	// Additional validation for CA certificate
+	if certType == "CA" && !cert.IsCA {
+		return fmt.Errorf("certificate is not a CA certificate")
+	}
+
+	u.logger.InfoWithContext("certificate validation successful", map[string]interface{}{
+		"cert_type": certType,
+		"subject": cert.Subject.String(),
+		"not_before": cert.NotBefore.Format(time.RFC3339),
+		"not_after": cert.NotAfter.Format(time.RFC3339),
+		"is_ca": cert.IsCA,
+	})
+
+	return nil
+}
+
+// manageCertificateLifecycle manages SSL certificate lifecycle
+func (u *DeploymentUsecase) manageCertificateLifecycle(ctx context.Context, environment domain.Environment, chartsDir string) error {
+	u.logger.InfoWithContext("starting SSL certificate lifecycle management", map[string]interface{}{
+		"environment": environment.String(),
+		"charts_dir": chartsDir,
+	})
+
+	// Step 1: Generate certificates
+	if err := u.generateSSLCertificates(ctx); err != nil {
+		return fmt.Errorf("failed to generate SSL certificates: %w", err)
+	}
+
+	// Step 2: Validate certificates
+	if err := u.validateGeneratedCertificates(ctx); err != nil {
+		return fmt.Errorf("failed to validate certificates: %w", err)
+	}
+
+	// Step 3: Distribute certificates to all common-ssl charts
+
+	commonSSLCharts := []string{"common-ssl"}
+	for _, chart := range commonSSLCharts {
+		chartPath := filepath.Join(chartsDir, chart)
+		if err := u.injectCertificateData(ctx, chartPath); err != nil {
+			return fmt.Errorf("failed to inject certificate data for %s: %w", chart, err)
+		}
+	}
+
+	u.logger.InfoWithContext("certificate lifecycle management completed", map[string]interface{}{
+		"environment": environment.String(),
+		"charts_dir": chartsDir,
+		"certificates_distributed": len(commonSSLCharts),
+	})
+
+	return nil
+}
+
+// prepareStatefulSetRecovery prepares StatefulSet recovery for database charts
+func (u *DeploymentUsecase) prepareStatefulSetRecovery(ctx context.Context, options *domain.DeploymentOptions) error {
+	u.logger.InfoWithContext("preparing StatefulSet recovery", map[string]interface{}{
+		"environment": options.Environment.String(),
+	})
+
+	// Define StatefulSet charts that may need recovery
+	statefulSetCharts := []struct {
+		name      string
+		namespace string
+	}{
+		{"postgres", "alt-database"},
+		{"auth-postgres", "alt-auth"},
+		{"kratos-postgres", "alt-auth"},
+		{"clickhouse", "alt-database"},
+		{"meilisearch", "alt-search"},
+	}
+
+	for _, chart := range statefulSetCharts {
+		if err := u.safeStatefulSetRecreation(ctx, chart.name, chart.namespace); err != nil {
+			return fmt.Errorf("failed to prepare StatefulSet recovery for %s: %w", chart.name, err)
+		}
+	}
+
+	u.logger.InfoWithContext("StatefulSet recovery preparation completed", map[string]interface{}{
+		"environment": options.Environment.String(),
+		"charts_processed": len(statefulSetCharts),
+	})
+
+	return nil
 }

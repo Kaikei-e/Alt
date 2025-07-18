@@ -442,7 +442,23 @@ func (g *HelmGateway) getValuesFile(chart domain.Chart, env domain.Environment) 
 	// Try environment-specific values file first
 	envFile := chart.ValuesFile(env)
 	if envFile != "" {
-		return envFile
+		// Check if the environment-specific file exists
+		if _, err := os.Stat(envFile); err == nil {
+			g.logger.DebugWithContext("using environment-specific values file", map[string]interface{}{
+				"chart":       chart.Name,
+				"environment": env,
+				"values_file": envFile,
+			})
+			return envFile
+		}
+		
+		// Log warning if environment-specific file doesn't exist
+		g.logger.WarnWithContext("environment-specific values file not found, using default", map[string]interface{}{
+			"chart":          chart.Name,
+			"environment":    env,
+			"env_values_file": envFile,
+			"default_values_file": chart.DefaultValuesFile(),
+		})
 	}
 	
 	// Fall back to default values file

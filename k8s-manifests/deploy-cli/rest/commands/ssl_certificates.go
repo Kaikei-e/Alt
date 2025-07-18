@@ -122,6 +122,18 @@ The generated certificate secret will be named: {service}-ssl-certs-prod`,
 			switch serviceName {
 			case "meilisearch":
 				err = sslUsecase.CreateMeiliSearchSSLCertificate(ctx, namespace, env)
+			case "alt-backend":
+				err = sslUsecase.CreateBackendSSLCertificate(ctx, namespace, env)
+			case "alt-frontend":
+				err = sslUsecase.CreateFrontendSSLCertificate(ctx, namespace, env)
+			case "nginx":
+				err = sslUsecase.CreateNginxSSLCertificate(ctx, namespace, env)
+			case "auth-service":
+				err = sslUsecase.CreateAuthServiceSSLCertificate(ctx, namespace, env)
+			case "kratos":
+				err = sslUsecase.CreateKratosSSLCertificate(ctx, namespace, env)
+			case "postgres":
+				err = sslUsecase.CreatePostgresSSLCertificate(ctx, namespace, env)
 			default:
 				return fmt.Errorf("SSL certificate creation for service '%s' is not yet implemented", serviceName)
 			}
