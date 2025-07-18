@@ -231,7 +231,7 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 			"wait": helmOptions.Wait,
 		})
 		
-		g.logger.DebugWithContext("using release name for deployment", map[string]interface{}{
+		g.logger.InfoWithContext("using release name for deployment", map[string]interface{}{
 			"chart": chart.Name,
 			"namespace": namespace,
 			"release_name": releaseName,
@@ -867,9 +867,22 @@ func (g *HelmGateway) generateReleaseName(chart domain.Chart, namespace string) 
 	if chart.MultiNamespace {
 		// マルチネームスペースチャートは namespace suffix を追加
 		namespaceSuffix := strings.TrimPrefix(namespace, "alt-")
-		return fmt.Sprintf("%s-%s", chart.Name, namespaceSuffix)
+		releaseName := fmt.Sprintf("%s-%s", chart.Name, namespaceSuffix)
+		g.logger.InfoWithContext("generating namespace-scoped release name", map[string]interface{}{
+			"chart": chart.Name,
+			"namespace": namespace,
+			"original_name": chart.Name,
+			"namespace_suffix": namespaceSuffix,
+			"generated_release_name": releaseName,
+		})
+		return releaseName
 	}
 	// 単一ネームスペースチャートは従来通り
+	g.logger.InfoWithContext("using original release name for single-namespace chart", map[string]interface{}{
+		"chart": chart.Name,
+		"namespace": namespace,
+		"release_name": chart.Name,
+	})
 	return chart.Name
 }
 
