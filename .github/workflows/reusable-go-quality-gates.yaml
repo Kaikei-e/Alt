@@ -91,8 +91,6 @@ jobs:
           # ensure module downloads are fast and secure
           GOPROXY: "https://proxy.golang.org,direct"
           GOSUMDB: "sum.golang.org"
-          # install tools into the runner's temp folder
-          GOBIN: "${{ runner.temp }}/go-tools"
         run: |
           echo "Installing mockgen and goimports..."
           # correct mockgen import path and pin to v1.6.0
@@ -107,8 +105,7 @@ jobs:
           echo "Verifying installations:"
 
       - name: Add Go tools to PATH
-        run: |
-          echo "${{ runner.temp }}/go-tools" >> $GITHUB_PATH
+        run: echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: Verify tool paths
         run: |
