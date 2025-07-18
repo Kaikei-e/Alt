@@ -926,7 +926,7 @@ func (u *DeploymentUsecase) generateSecret(ctx context.Context, secretName, name
 	   secretName == "search-indexer-secrets" ||
 	   secretName == "tag-generator-secrets" ||
 	   secretName == "alt-backend-secrets" {
-		return u.secretUsecase.GenerateApplicationCredentials(ctx, secretName, namespace)
+		return u.secretUsecase.GenerateDatabaseCredentials(ctx, secretName, namespace)
 	}
 	
 	return fmt.Errorf("unknown secret type for auto-generation: %s", secretName)
@@ -3224,6 +3224,6 @@ func (u *DeploymentUsecase) detectMissingSecrets(ctx context.Context, charts []d
 
 // secretExists checks if a secret exists in the given namespace
 func (u *DeploymentUsecase) secretExists(ctx context.Context, secretName, namespace string) bool {
-	_, err := u.kubectl.GetSecret(ctx, secretName, namespace)
+	_, err := u.kubectlGateway.GetSecret(ctx, secretName, namespace)
 	return err == nil
 }
