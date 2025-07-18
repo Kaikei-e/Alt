@@ -128,6 +128,11 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 		return nil, fmt.Errorf("secret validation failed: %w", err)
 	}
 	
+	// Step 1.7: Comprehensive secret provisioning
+	if err := u.provisionAllRequiredSecrets(ctx, charts); err != nil {
+		return nil, fmt.Errorf("secret provisioning failed: %w", err)
+	}
+	
 	// Step 2: Setup storage infrastructure
 	if err := u.setupStorageInfrastructure(ctx, options); err != nil {
 		return nil, fmt.Errorf("storage infrastructure setup failed: %w", err)
@@ -774,11 +779,11 @@ func (u *DeploymentUsecase) getAllCharts(options *domain.DeploymentOptions) []do
 func (u *DeploymentUsecase) getRequiredSecretsForChart(chart domain.Chart) []string {
 	switch chart.Name {
 	case "postgres":
-		return []string{"postgres-credentials"}
+		return []string{"postgres-secret"}
 	case "auth-postgres":
-		return []string{"auth-postgres-credentials"}
+		return []string{"auth-postgres-secrets"}
 	case "kratos-postgres":
-		return []string{"kratos-postgres-credentials"}
+		return []string{"kratos-postgres-secrets"}
 	case "clickhouse":
 		return []string{"clickhouse-credentials"}
 	case "meilisearch":
@@ -786,9 +791,9 @@ func (u *DeploymentUsecase) getRequiredSecretsForChart(chart domain.Chart) []str
 	case "alt-backend":
 		return []string{"alt-backend-secrets", "database-credentials"}
 	case "auth-service":
-		return []string{"auth-service-secrets", "auth-postgres-credentials"}
+		return []string{"auth-service-secrets", "auth-postgres-secrets"}
 	case "kratos":
-		return []string{"kratos-secrets", "kratos-postgres-credentials"}
+		return []string{"kratos-secrets", "kratos-postgres-secrets"}
 	case "alt-frontend":
 		return []string{"alt-frontend-secrets"}
 	case "nginx", "nginx-external":
@@ -806,11 +811,11 @@ func (u *DeploymentUsecase) getRequiredSecretsForChart(chart domain.Chart) []str
 func (u *DeploymentUsecase) getAutoGeneratableSecretsForChart(chart domain.Chart) []string {
 	switch chart.Name {
 	case "postgres":
-		return []string{"postgres-credentials"}
+		return []string{"postgres-secret"}
 	case "auth-postgres":
-		return []string{"auth-postgres-credentials"}
+		return []string{"auth-postgres-secrets"}
 	case "kratos-postgres":
-		return []string{"kratos-postgres-credentials"}
+		return []string{"kratos-postgres-secrets"}
 	case "clickhouse":
 		return []string{"clickhouse-credentials"}
 	case "meilisearch":
@@ -907,12 +912,21 @@ func (u *DeploymentUsecase) generateSecret(ctx context.Context, secretName, name
 	}
 	
 	// For database credentials, generate using secret usecase
-	if secretName == "postgres-credentials" || 
-	   secretName == "auth-postgres-credentials" || 
-	   secretName == "kratos-postgres-credentials" || 
+	if secretName == "postgres-secret" || 
+	   secretName == "auth-postgres-secrets" || 
+	   secretName == "kratos-postgres-secrets" || 
 	   secretName == "clickhouse-credentials" || 
 	   secretName == "meilisearch-credentials" {
 		return u.secretUsecase.GenerateDatabaseCredentials(ctx, secretName, namespace)
+	}
+	
+	// For application secrets, generate standardized secrets
+	if secretName == "alt-frontend-secrets" ||
+	   secretName == "pre-processor-secrets" ||
+	   secretName == "search-indexer-secrets" ||
+	   secretName == "tag-generator-secrets" ||
+	   secretName == "alt-backend-secrets" {
+		return u.secretUsecase.GenerateApplicationCredentials(ctx, secretName, namespace)
 	}
 	
 	return fmt.Errorf("unknown secret type for auto-generation: %s", secretName)
@@ -3129,4 +3143,87 @@ func (u *DeploymentUsecase) cleanupStuckHelmOperations(ctx context.Context, opti
 	}
 	
 	return nil
+}
+
+// provisionAllRequiredSecrets implements Phase 4 comprehensive secret provisioning
+func (u *DeploymentUsecase) provisionAllRequiredSecrets(ctx context.Context, charts []domain.Chart) error {
+	u.logger.InfoWithContext("starting comprehensive secret provisioning", map[string]interface{}{
+		"chart_count": len(charts),
+	})
+	
+	missingSecrets := u.detectMissingSecrets(ctx, charts)
+	if len(missingSecrets) == 0 {
+		u.logger.InfoWithContext("all required secrets exist", map[string]interface{}{
+			"status": "complete",
+		})
+		return nil
+	}
+	
+	u.logger.InfoWithContext("provisioning missing secrets", map[string]interface{}{
+		"missing_count": len(missingSecrets),
+	})
+	
+	for _, secret := range missingSecrets {
+		u.logger.InfoWithContext("auto-generating missing secret", map[string]interface{}{
+			"name": secret.Name,
+			"namespace": secret.Namespace,
+			"chart": secret.Chart,
+		})
+		
+		if err := u.generateSecret(ctx, secret.Name, secret.Namespace, domain.Chart{Name: secret.Chart}); err != nil {
+			u.logger.ErrorWithContext("failed to generate secret", map[string]interface{}{
+				"name": secret.Name,
+				"namespace": secret.Namespace,
+				"chart": secret.Chart,
+				"error": err.Error(),
+			})
+			return fmt.Errorf("failed to generate secret %s in namespace %s: %w", secret.Name, secret.Namespace, err)
+		}
+		
+		u.logger.InfoWithContext("successfully generated secret", map[string]interface{}{
+			"name": secret.Name,
+			"namespace": secret.Namespace,
+			"chart": secret.Chart,
+		})
+	}
+	
+	u.logger.InfoWithContext("comprehensive secret provisioning completed", map[string]interface{}{
+		"provisioned_count": len(missingSecrets),
+	})
+	return nil
+}
+
+// SecretRequirement represents a missing secret that needs to be provisioned
+type SecretRequirement struct {
+	Name      string
+	Namespace string
+	Chart     string
+}
+
+// detectMissingSecrets identifies all missing secrets across charts
+func (u *DeploymentUsecase) detectMissingSecrets(ctx context.Context, charts []domain.Chart) []SecretRequirement {
+	var missingSecrets []SecretRequirement
+	
+	for _, chart := range charts {
+		required := u.getRequiredSecretsForChart(chart)
+		namespace := u.getNamespaceForChart(chart)
+		
+		for _, secretName := range required {
+			if !u.secretExists(ctx, secretName, namespace) {
+				missingSecrets = append(missingSecrets, SecretRequirement{
+					Name:      secretName,
+					Namespace: namespace,
+					Chart:     chart.Name,
+				})
+			}
+		}
+	}
+	
+	return missingSecrets
+}
+
+// secretExists checks if a secret exists in the given namespace
+func (u *DeploymentUsecase) secretExists(ctx context.Context, secretName, namespace string) bool {
+	_, err := u.kubectl.GetSecret(ctx, secretName, namespace)
+	return err == nil
 }
