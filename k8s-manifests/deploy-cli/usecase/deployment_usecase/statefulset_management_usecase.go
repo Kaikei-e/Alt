@@ -28,9 +28,9 @@ func NewStatefulSetManagementUsecase(
 	}
 }
 
-// prepareStatefulSetRecovery prepares StatefulSet recovery for database charts
+// prepareStatefulSetRecovery prepares StatefulSet recovery for database charts with pre-checks
 func (u *StatefulSetManagementUsecase) prepareStatefulSetRecovery(ctx context.Context, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("preparing StatefulSet recovery", map[string]interface{}{
+	u.logger.InfoWithContext("preparing StatefulSet recovery with pre-checks", map[string]interface{}{
 		"environment": options.Environment.String(),
 	})
 
@@ -46,15 +46,84 @@ func (u *StatefulSetManagementUsecase) prepareStatefulSetRecovery(ctx context.Co
 		{"meilisearch", "alt-search"},
 	}
 
+	// Step 1: Check which StatefulSets actually need recovery
+	var chartsNeedingRecovery []struct {
+		name      string
+		namespace string
+		reason    string
+	}
+
 	for _, chart := range statefulSetCharts {
+		needsRecovery, reason, err := u.checkStatefulSetNeedsRecovery(ctx, chart.name, chart.namespace)
+		if err != nil {
+			u.logger.WarnWithContext("failed to check StatefulSet recovery need, skipping chart", map[string]interface{}{
+				"chart":     chart.name,
+				"namespace": chart.namespace,
+				"error":     err.Error(),
+			})
+			// On check failure, skip this chart rather than assume recovery is needed
+			continue
+		}
+
+		if needsRecovery {
+			chartsNeedingRecovery = append(chartsNeedingRecovery, struct {
+				name      string
+				namespace string
+				reason    string
+			}{chart.name, chart.namespace, reason})
+		}
+	}
+
+	// Step 2: Log pre-check results
+	u.logger.InfoWithContext("StatefulSet recovery pre-check completed", map[string]interface{}{
+		"total_charts":            len(statefulSetCharts),
+		"charts_needing_recovery": len(chartsNeedingRecovery),
+		"charts_skipped":          len(statefulSetCharts) - len(chartsNeedingRecovery),
+	})
+
+	// Log detailed recovery decisions
+	if len(chartsNeedingRecovery) > 0 {
+		u.logger.InfoWithContext("StatefulSets requiring recovery", map[string]interface{}{
+			"charts": chartsNeedingRecovery,
+		})
+	}
+
+	chartsSkipped := len(statefulSetCharts) - len(chartsNeedingRecovery)
+	if chartsSkipped > 0 {
+		u.logger.InfoWithContext("StatefulSets skipped (healthy or non-existent)", map[string]interface{}{
+			"count": chartsSkipped,
+		})
+	}
+
+	// Step 3: Only perform recovery on charts that actually need it
+	if len(chartsNeedingRecovery) == 0 {
+		u.logger.InfoWithContext("no StatefulSet recovery needed, skipping recovery phase", map[string]interface{}{
+			"environment": options.Environment.String(),
+		})
+		return nil
+	}
+
+	u.logger.InfoWithContext("performing StatefulSet recovery for identified charts", map[string]interface{}{
+		"environment": options.Environment.String(),
+		"charts_to_recover": len(chartsNeedingRecovery),
+	})
+
+	for _, chart := range chartsNeedingRecovery {
+		u.logger.InfoWithContext("recovering StatefulSet", map[string]interface{}{
+			"chart":     chart.name,
+			"namespace": chart.namespace,
+			"reason":    chart.reason,
+		})
+
 		if err := u.safeStatefulSetRecreation(ctx, chart.name, chart.namespace); err != nil {
-			return fmt.Errorf("failed to prepare StatefulSet recovery for %s: %w", chart.name, err)
+			return fmt.Errorf("failed to prepare StatefulSet recovery for %s in namespace %s: %w\n\nThis usually indicates:\n- kubectl connectivity issues\n- missing namespace\n- insufficient permissions", chart.name, chart.namespace, err)
 		}
 	}
 
 	u.logger.InfoWithContext("StatefulSet recovery preparation completed", map[string]interface{}{
 		"environment":       options.Environment.String(),
-		"charts_processed":  len(statefulSetCharts),
+		"charts_processed":  len(chartsNeedingRecovery),
+		"charts_skipped":    len(statefulSetCharts) - len(chartsNeedingRecovery),
 	})
 
 	return nil
@@ -72,7 +141,12 @@ func (u *StatefulSetManagementUsecase) safeStatefulSetRecreation(ctx context.Con
 	// Check if StatefulSet exists
 	exists, err := u.checkStatefulSetExists(ctx, statefulSetName, namespace)
 	if err != nil {
-		return fmt.Errorf("failed to check StatefulSet existence: %w", err)
+		u.logger.WarnWithContext("failed to check StatefulSet existence, assuming it doesn't exist", map[string]interface{}{
+			"statefulset": statefulSetName,
+			"namespace":   namespace,
+			"error":       err.Error(),
+		})
+		exists = false // Assume it doesn't exist and proceed with fresh deployment
 	}
 
 	if exists {
@@ -129,6 +203,174 @@ func (u *StatefulSetManagementUsecase) checkStatefulSetExists(ctx context.Contex
 	return true, nil
 }
 
+// checkStatefulSetNeedsRecovery determines if a StatefulSet needs recovery based on its current state
+func (u *StatefulSetManagementUsecase) checkStatefulSetNeedsRecovery(ctx context.Context, name, namespace string) (bool, string, error) {
+	u.logger.InfoWithContext("checking StatefulSet recovery necessity", map[string]interface{}{
+		"statefulset": name,
+		"namespace":   namespace,
+	})
+
+	// Step 1: Check if StatefulSet exists
+	exists, err := u.checkStatefulSetExists(ctx, name, namespace)
+	if err != nil {
+		// If we can't check existence, log warning but don't fail - assume no recovery needed
+		u.logger.WarnWithContext("failed to check StatefulSet existence, assuming no recovery needed", map[string]interface{}{
+			"statefulset": name,
+			"namespace":   namespace,
+			"error":       err.Error(),
+		})
+		return false, "existence_check_failed", nil
+	}
+
+	if !exists {
+		u.logger.InfoWithContext("StatefulSet does not exist, no recovery needed", map[string]interface{}{
+			"statefulset": name,
+			"namespace":   namespace,
+		})
+		return false, "", nil
+	}
+
+	// Step 2: Check StatefulSet health/readiness
+	output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "statefulset", name, "-n", namespace, "-o", "jsonpath='{.status.readyReplicas}/{.status.replicas}'")
+	if err != nil {
+		u.logger.WarnWithContext("failed to check StatefulSet readiness, assuming recovery needed", map[string]interface{}{
+			"statefulset": name,
+			"namespace":   namespace,
+			"error":       err.Error(),
+		})
+		return true, "readiness_check_failed", nil
+	}
+
+	readinessStatus := strings.TrimSpace(strings.Trim(output, "'"))
+	
+	// Check if StatefulSet is ready (1/1 or similar)
+	if readinessStatus == "1/1" || readinessStatus == "0/0" {
+		// Step 3: Check pod health for ready StatefulSets
+		podHealthy, err := u.checkStatefulSetPodHealth(ctx, name, namespace)
+		if err != nil {
+			u.logger.WarnWithContext("failed to check pod health, assuming recovery needed", map[string]interface{}{
+				"statefulset": name,
+				"namespace":   namespace,
+				"error":       err.Error(),
+			})
+			return true, "pod_health_check_failed", nil
+		}
+
+		if podHealthy {
+			u.logger.InfoWithContext("StatefulSet is healthy, no recovery needed", map[string]interface{}{
+				"statefulset": name,
+				"namespace":   namespace,
+				"readiness":   readinessStatus,
+			})
+			return false, "", nil
+		} else {
+			u.logger.InfoWithContext("StatefulSet pods are unhealthy, recovery needed", map[string]interface{}{
+				"statefulset": name,
+				"namespace":   namespace,
+				"readiness":   readinessStatus,
+			})
+			return true, "pod_unhealthy", nil
+		}
+	}
+
+	// Step 4: StatefulSet is not ready, check the reason
+	u.logger.InfoWithContext("StatefulSet is not ready, checking detailed status", map[string]interface{}{
+		"statefulset": name,
+		"namespace":   namespace,
+		"readiness":   readinessStatus,
+	})
+
+	// Get detailed StatefulSet status
+	statusOutput, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "statefulset", name, "-n", namespace, "-o", "jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'")
+	if err == nil && strings.TrimSpace(strings.Trim(statusOutput, "'")) == "False" {
+		return true, "not_ready", nil
+	}
+
+	// Check for update conflicts or other issues
+	updateRevision, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "statefulset", name, "-n", namespace, "-o", "jsonpath='{.status.updateRevision}'")
+	currentRevision, err2 := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "statefulset", name, "-n", namespace, "-o", "jsonpath='{.status.currentRevision}'")
+	
+	if err == nil && err2 == nil {
+		updateRev := strings.TrimSpace(strings.Trim(updateRevision, "'"))
+		currentRev := strings.TrimSpace(strings.Trim(currentRevision, "'"))
+		
+		if updateRev != currentRev && updateRev != "" && currentRev != "" {
+			u.logger.InfoWithContext("StatefulSet has update conflicts, recovery needed", map[string]interface{}{
+				"statefulset":       name,
+				"namespace":         namespace,
+				"current_revision":  currentRev,
+				"update_revision":   updateRev,
+			})
+			return true, "update_conflict", nil
+		}
+	}
+
+	// Default to recovery needed for unknown states
+	u.logger.InfoWithContext("StatefulSet in unknown state, recovery needed", map[string]interface{}{
+		"statefulset": name,
+		"namespace":   namespace,
+		"readiness":   readinessStatus,
+	})
+	return true, "unknown_state", nil
+}
+
+// checkStatefulSetPodHealth checks if StatefulSet pods are healthy
+func (u *StatefulSetManagementUsecase) checkStatefulSetPodHealth(ctx context.Context, name, namespace string) (bool, error) {
+	// Try multiple label selectors to find pods
+	labelSelectors := []string{
+		fmt.Sprintf("app=%s", name),
+		fmt.Sprintf("app.kubernetes.io/name=%s", name),
+		fmt.Sprintf("app.kubernetes.io/instance=%s", name),
+	}
+
+	for _, selector := range labelSelectors {
+		output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "pods", "-n", namespace, "-l", selector, "--no-headers")
+		if err != nil {
+			continue
+		}
+
+		if strings.TrimSpace(output) == "" {
+			continue // No pods found with this selector
+		}
+
+		// Parse pod status
+		pods := strings.Split(strings.TrimSpace(output), "\n")
+		for _, pod := range pods {
+			if strings.TrimSpace(pod) == "" {
+				continue
+			}
+
+			fields := strings.Fields(pod)
+			if len(fields) < 3 {
+				continue
+			}
+
+			podStatus := fields[2]
+			// Check for problematic pod states
+			if podStatus == "CrashLoopBackOff" || podStatus == "Error" || podStatus == "Failed" || 
+			   podStatus == "ImagePullBackOff" || podStatus == "InvalidImageName" || podStatus == "ErrImagePull" {
+				u.logger.WarnWithContext("found unhealthy pod", map[string]interface{}{
+					"pod":         fields[0],
+					"status":      podStatus,
+					"statefulset": name,
+					"namespace":   namespace,
+				})
+				return false, nil
+			}
+		}
+
+		// Found pods and they seem healthy
+		return true, nil
+	}
+
+	// No pods found with any selector - might be scaled to 0 or other issue
+	u.logger.InfoWithContext("no pods found for StatefulSet", map[string]interface{}{
+		"statefulset": name,
+		"namespace":   namespace,
+	})
+	return false, nil
+}
+
 // scaleStatefulSet scales a StatefulSet to specified replica count
 func (u *StatefulSetManagementUsecase) scaleStatefulSet(ctx context.Context, name, namespace string, replicas int) error {
 	u.logger.InfoWithContext("scaling StatefulSet", map[string]interface{}{
@@ -151,7 +393,7 @@ func (u *StatefulSetManagementUsecase) scaleStatefulSet(ctx context.Context, nam
 	return nil
 }
 
-// waitForPodsTermination waits for all pods of a StatefulSet to terminate
+// waitForPodsTermination waits for all pods of a StatefulSet to terminate with detailed logging
 func (u *StatefulSetManagementUsecase) waitForPodsTermination(ctx context.Context, name, namespace string, timeoutSeconds int) error {
 	u.logger.InfoWithContext("waiting for pods termination", map[string]interface{}{
 		"statefulset": name,
@@ -159,22 +401,106 @@ func (u *StatefulSetManagementUsecase) waitForPodsTermination(ctx context.Contex
 		"timeout":     timeoutSeconds,
 	})
 
+	// Try multiple label selectors to ensure we catch all pods
+	labelSelectors := []string{
+		fmt.Sprintf("app=%s", name),
+		fmt.Sprintf("app.kubernetes.io/name=%s", name),
+		fmt.Sprintf("app.kubernetes.io/instance=%s", name),
+	}
+
 	for i := 0; i < timeoutSeconds; i += 5 {
-		output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "pods", "-n", namespace, "-l", fmt.Sprintf("app=%s", name), "--no-headers")
-		if err != nil {
-			return fmt.Errorf("failed to check pod status: %w", err)
+		// Check with all possible label selectors
+		allPodsTerminated := true
+		var foundPods []string
+		
+		for _, selector := range labelSelectors {
+			output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "pods", "-n", namespace, "-l", selector, "--no-headers")
+			if err != nil {
+				u.logger.WarnWithContext("failed to check pod status with selector", map[string]interface{}{
+					"selector": selector,
+					"error":    err.Error(),
+				})
+				continue
+			}
+
+			if strings.TrimSpace(output) != "" {
+				allPodsTerminated = false
+				// Parse pod details for detailed logging
+				pods := strings.Split(strings.TrimSpace(output), "\n")
+				for _, pod := range pods {
+					if strings.TrimSpace(pod) != "" {
+						fields := strings.Fields(pod)
+						if len(fields) >= 3 {
+							podName := fields[0]
+							podStatus := fields[2]
+							foundPods = append(foundPods, fmt.Sprintf("%s(%s)", podName, podStatus))
+						}
+					}
+				}
+			}
 		}
 
-		if strings.TrimSpace(output) == "" {
-			u.logger.InfoWithContext("all pods terminated", map[string]interface{}{
+		if allPodsTerminated && len(foundPods) == 0 {
+			u.logger.InfoWithContext("all pods terminated successfully", map[string]interface{}{
 				"statefulset": name,
 				"namespace":   namespace,
-				"elapsed":     i,
+				"elapsed":     fmt.Sprintf("%ds", i),
 			})
 			return nil
 		}
 
-		time.Sleep(5 * time.Second)
+		// Log detailed pod status for debugging
+		if len(foundPods) > 0 {
+			u.logger.InfoWithContext("pods still running, waiting for termination", map[string]interface{}{
+				"statefulset":     name,
+				"namespace":       namespace,
+				"elapsed":         fmt.Sprintf("%ds", i),
+				"remaining_pods":  foundPods,
+				"timeout_in":      fmt.Sprintf("%ds", timeoutSeconds-i),
+			})
+		}
+
+		// Check if context is cancelled
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled while waiting for pods termination")
+		default:
+			time.Sleep(5 * time.Second)
+		}
+	}
+
+	// Final check with detailed error information
+	var stillRunningPods []string
+	for _, selector := range labelSelectors {
+		output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "pods", "-n", namespace, "-l", selector, "--no-headers")
+		if err == nil && strings.TrimSpace(output) != "" {
+			pods := strings.Split(strings.TrimSpace(output), "\n")
+			for _, pod := range pods {
+				if strings.TrimSpace(pod) != "" {
+					fields := strings.Fields(pod)
+					if len(fields) >= 3 {
+						stillRunningPods = append(stillRunningPods, fmt.Sprintf("%s(%s)", fields[0], fields[2]))
+					}
+				}
+			}
+		}
+	}
+
+	if len(stillRunningPods) > 0 {
+		u.logger.WarnWithContext("timeout waiting for pods termination", map[string]interface{}{
+			"statefulset":        name,
+			"namespace":          namespace,
+			"timeout_seconds":    timeoutSeconds,
+			"still_running_pods": stillRunningPods,
+		})
+		
+		// Continue with deployment instead of failing - pods might be terminating gracefully
+		u.logger.InfoWithContext("continuing with deployment despite timeout", map[string]interface{}{
+			"statefulset": name,
+			"namespace":   namespace,
+			"reason":      "pods_may_still_be_terminating_gracefully",
+		})
+		return nil
 	}
 
 	return fmt.Errorf("timeout waiting for pods termination after %d seconds", timeoutSeconds)

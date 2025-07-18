@@ -331,16 +331,10 @@ func (h *HealthChecker) WaitForStatefulSetReady(ctx context.Context, namespace, 
 			"max_retries": maxRetries,
 		})
 
-		// Check if StatefulSet is ready
-		if err := h.checkStatefulSetReady(namespace, serviceName); err == nil {
-			h.logger.InfoWithContext("StatefulSet is ready", map[string]interface{}{
-				"namespace": namespace,
-				"service": serviceName,
-				"attempts": i + 1,
-			})
-			return nil
-		} else {
-			h.logger.WarnWithContext("StatefulSet not ready, retrying", map[string]interface{}{
+		// First check if StatefulSet exists
+		exists, err := h.checkStatefulSetExists(namespace, serviceName)
+		if err != nil {
+			h.logger.WarnWithContext("Failed to check StatefulSet existence, retrying", map[string]interface{}{
 				"namespace": namespace,
 				"service": serviceName,
 				"attempt": i + 1,
@@ -348,6 +342,33 @@ func (h *HealthChecker) WaitForStatefulSetReady(ctx context.Context, namespace, 
 				"error": err.Error(),
 				"retry_delay": "10s",
 			})
+		} else if !exists {
+			h.logger.InfoWithContext("StatefulSet does not exist yet, waiting for creation", map[string]interface{}{
+				"namespace": namespace,
+				"service": serviceName,
+				"attempt": i + 1,
+				"max_retries": maxRetries,
+				"retry_delay": "10s",
+			})
+		} else {
+			// StatefulSet exists, check if it's ready
+			if err := h.checkStatefulSetReady(namespace, serviceName); err == nil {
+				h.logger.InfoWithContext("StatefulSet is ready", map[string]interface{}{
+					"namespace": namespace,
+					"service": serviceName,
+					"attempts": i + 1,
+				})
+				return nil
+			} else {
+				h.logger.WarnWithContext("StatefulSet not ready, retrying", map[string]interface{}{
+					"namespace": namespace,
+					"service": serviceName,
+					"attempt": i + 1,
+					"max_retries": maxRetries,
+					"error": err.Error(),
+					"retry_delay": "10s",
+				})
+			}
 		}
 
 		time.Sleep(10 * time.Second)
@@ -362,14 +383,28 @@ func (h *HealthChecker) WaitForStatefulSetReady(ctx context.Context, namespace, 
 	return fmt.Errorf("StatefulSet %s in namespace %s not ready after %d attempts", serviceName, namespace, maxRetries)
 }
 
-// checkStatefulSetReady checks if StatefulSet is fully ready
+// checkStatefulSetExists checks if a StatefulSet exists in the namespace
+func (h *HealthChecker) checkStatefulSetExists(namespace, serviceName string) (bool, error) {
+	// Use kubectl to check StatefulSet existence
+	cmd := exec.Command("kubectl", "get", "statefulset", serviceName, "-n", namespace)
+	_, err := cmd.CombinedOutput()
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check StatefulSet existence: %w", err)
+	}
+	return true, nil
+}
+
+// checkStatefulSetReady checks if StatefulSet is fully ready (assumes StatefulSet exists)
 func (h *HealthChecker) checkStatefulSetReady(namespace, serviceName string) error {
 	h.logger.DebugWithContext("checking StatefulSet status", map[string]interface{}{
 		"namespace": namespace,
 		"service": serviceName,
 	})
 
-	// Check StatefulSet status
+	// Check StatefulSet status (StatefulSet existence should be checked by caller)
 	cmd := exec.Command("kubectl", "get", "statefulset", serviceName, "-n", namespace, "-o", "jsonpath={.status.replicas},{.status.readyReplicas},{.status.currentReplicas}")
 	output, err := cmd.CombinedOutput()
 	if err != nil {

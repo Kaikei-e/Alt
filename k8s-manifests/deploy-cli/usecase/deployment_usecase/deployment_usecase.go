@@ -2,13 +2,7 @@ package deployment_usecase
 
 import (
 	"context"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/pem"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 	
 	"deploy-cli/domain"
@@ -20,17 +14,10 @@ import (
 	"deploy-cli/gateway/system_gateway"
 	"deploy-cli/usecase/secret_usecase"
 	"deploy-cli/usecase/dependency_usecase"
-	"gopkg.in/yaml.v2"
 )
 
-// GeneratedCertificates holds SSL certificate data
-type GeneratedCertificates struct {
-	CACert           string
-	CAPrivateKey     string
-	ServerCert       string
-	ServerPrivateKey string
-	Generated        time.Time
-}
+// SSL certificate management functionality moved to ssl_management_usecase.go
+// GeneratedCertificates moved to port/ssl_manager_port.go
 
 // DeploymentUsecase handles deployment operations
 type DeploymentUsecase struct {
@@ -58,11 +45,11 @@ type DeploymentUsecase struct {
 	infrastructureSetupUsecase *InfrastructureSetupUsecase
 	statefulSetManagementUsecase *StatefulSetManagementUsecase
 	deploymentStrategyUsecase *DeploymentStrategyUsecase
+	sslManagementUsecase *SSLManagementUsecase
 	enableParallel      bool
 	enableCache         bool
 	enableDependencyAware bool
 	enableMonitoring    bool
-	generatedCertificates *GeneratedCertificates
 	chartsDir           string
 }
 
@@ -108,6 +95,9 @@ func NewDeploymentUsecase(
 	// Initialize deployment strategy usecase
 	deploymentStrategyUsecase := NewDeploymentStrategyUsecase(strategyFactory, logger)
 	
+	// Initialize SSL management usecase
+	sslManagementUsecase := NewSSLManagementUsecase(secretUsecase, sslUsecase, logger)
+	
 	return &DeploymentUsecase{
 		helmGateway:           helmGateway,
 		kubectlGateway:        kubectlGateway,
@@ -131,6 +121,7 @@ func NewDeploymentUsecase(
 		infrastructureSetupUsecase: infrastructureSetupUsecase,
 		statefulSetManagementUsecase: statefulSetManagementUsecase,
 		deploymentStrategyUsecase: deploymentStrategyUsecase,
+		sslManagementUsecase: sslManagementUsecase,
 		enableParallel:             false,  // Will be configurable
 		enableCache:           false,  // Will be configurable
 		enableDependencyAware: true,   // Enable by default
@@ -186,13 +177,20 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 	}
 	
 	// Step 1.8: SSL Certificate Management (NEW!)
-	if err := u.manageCertificateLifecycle(ctx, options.Environment, options.ChartsDir); err != nil {
+	if err := u.sslManagementUsecase.ManageCertificateLifecycle(ctx, options.Environment, options.ChartsDir); err != nil {
 		return nil, fmt.Errorf("SSL certificate management failed: %w", err)
 	}
 	
 	// Step 1.9: StatefulSet Recovery Preparation (NEW!)
-	if err := u.statefulSetManagementUsecase.prepareStatefulSetRecovery(ctx, options); err != nil {
-		return nil, fmt.Errorf("StatefulSet recovery preparation failed: %w", err)
+	if options.SkipStatefulSetRecovery {
+		u.logger.InfoWithContext("skipping StatefulSet recovery (emergency deployment mode)", map[string]interface{}{
+			"environment": options.Environment.String(),
+			"reason":      "skip_option_enabled",
+		})
+	} else {
+		if err := u.statefulSetManagementUsecase.prepareStatefulSetRecovery(ctx, options); err != nil {
+			return nil, fmt.Errorf("StatefulSet recovery preparation failed: %w\n\nTroubleshooting:\n- For emergency deployments, use --skip-statefulset-recovery flag\n- Check if kubectl is properly configured and accessible\n- Verify that the specified namespaces exist", err)
+		}
 	}
 	
 	// Step 2: Setup storage infrastructure
@@ -2013,200 +2011,5 @@ func (u *DeploymentUsecase) secretExists(ctx context.Context, secretName, namesp
 }
 
 
-// injectCertificateData injects generated SSL certificates into common-ssl charts
-func (u *DeploymentUsecase) injectCertificateData(ctx context.Context, chartPath string) error {
-	if !strings.Contains(chartPath, "common-ssl") {
-		return nil // Skip non-SSL charts
-	}
+// SSL certificate management methods moved to ssl_management_usecase.go
 
-	u.logger.InfoWithContext("injecting SSL certificate data", map[string]interface{}{
-		"chart_path": chartPath,
-	})
-
-	valuesPath := filepath.Join(chartPath, "values.yaml")
-	
-	// Read current values
-	valuesData, err := os.ReadFile(valuesPath)
-	if err != nil {
-		return fmt.Errorf("failed to read values.yaml: %w", err)
-	}
-
-	// Parse YAML
-	var values map[string]interface{}
-	if err := yaml.Unmarshal(valuesData, &values); err != nil {
-		return fmt.Errorf("failed to parse values.yaml: %w", err)
-	}
-
-	// Inject certificate data
-	if sslInterface, ok := values["ssl"]; ok {
-		if ssl, ok := sslInterface.(map[interface{}]interface{}); ok {
-			if caInterface, ok := ssl["ca"]; ok {
-				if ca, ok := caInterface.(map[interface{}]interface{}); ok {
-					ca["cert"] = u.generatedCertificates.CACert
-					ca["key"] = u.generatedCertificates.CAPrivateKey
-					
-					u.logger.InfoWithContext("injected CA certificate data", map[string]interface{}{
-						"chart": chartPath,
-						"ca_cert_length": len(u.generatedCertificates.CACert),
-					})
-				}
-			}
-
-			if serverInterface, ok := ssl["server"]; ok {
-				if server, ok := serverInterface.(map[interface{}]interface{}); ok {
-					server["cert"] = u.generatedCertificates.ServerCert
-					server["key"] = u.generatedCertificates.ServerPrivateKey
-					
-					u.logger.InfoWithContext("injected server certificate data", map[string]interface{}{
-						"chart": chartPath,
-						"server_cert_length": len(u.generatedCertificates.ServerCert),
-					})
-				}
-			}
-		}
-	}
-
-	// Write back to file
-	updatedData, err := yaml.Marshal(values)
-	if err != nil {
-		return fmt.Errorf("failed to marshal updated values: %w", err)
-	}
-
-	if err := os.WriteFile(valuesPath, updatedData, 0644); err != nil {
-		return fmt.Errorf("failed to write updated values.yaml: %w", err)
-	}
-
-	u.logger.InfoWithContext("SSL certificate data injection completed", map[string]interface{}{
-		"chart_path": chartPath,
-		"values_file": valuesPath,
-	})
-
-	return nil
-}
-
-
-
-
-
-
-
-// validateGeneratedCertificates validates the generated SSL certificates
-func (u *DeploymentUsecase) validateGeneratedCertificates(ctx context.Context) error {
-	if u.generatedCertificates == nil {
-		return fmt.Errorf("no certificates generated to validate")
-	}
-
-	u.logger.InfoWithContext("validating generated SSL certificates", map[string]interface{}{
-		"generated_time": u.generatedCertificates.Generated.Format(time.RFC3339),
-	})
-
-	// Validate CA certificate
-	if err := u.validateCertificate(u.generatedCertificates.CACert, "CA"); err != nil {
-		return fmt.Errorf("CA certificate validation failed: %w", err)
-	}
-
-	// Validate server certificate
-	if err := u.validateCertificate(u.generatedCertificates.ServerCert, "Server"); err != nil {
-		return fmt.Errorf("server certificate validation failed: %w", err)
-	}
-
-	u.logger.InfoWithContext("SSL certificate validation completed successfully", map[string]interface{}{
-		"ca_cert_valid": true,
-		"server_cert_valid": true,
-	})
-
-	return nil
-}
-
-// validateCertificate validates a single certificate
-func (u *DeploymentUsecase) validateCertificate(certBase64, certType string) error {
-	// Decode base64 certificate
-	certPEM, err := base64.StdEncoding.DecodeString(certBase64)
-	if err != nil {
-		return fmt.Errorf("failed to decode %s certificate: %w", certType, err)
-	}
-
-	// Parse PEM block
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
-		return fmt.Errorf("failed to parse PEM block for %s certificate", certType)
-	}
-
-	// Parse certificate
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse %s certificate: %w", certType, err)
-	}
-
-	// Validate certificate properties
-	if time.Now().After(cert.NotAfter) {
-		return fmt.Errorf("%s certificate has expired", certType)
-	}
-
-	if time.Now().Before(cert.NotBefore) {
-		return fmt.Errorf("%s certificate is not yet valid", certType)
-	}
-
-	// Additional validation for CA certificate
-	if certType == "CA" && !cert.IsCA {
-		return fmt.Errorf("certificate is not a CA certificate")
-	}
-
-	u.logger.InfoWithContext("certificate validation successful", map[string]interface{}{
-		"cert_type": certType,
-		"subject": cert.Subject.String(),
-		"not_before": cert.NotBefore.Format(time.RFC3339),
-		"not_after": cert.NotAfter.Format(time.RFC3339),
-		"is_ca": cert.IsCA,
-	})
-
-	return nil
-}
-
-// manageCertificateLifecycle manages SSL certificate lifecycle
-func (u *DeploymentUsecase) manageCertificateLifecycle(ctx context.Context, environment domain.Environment, chartsDir string) error {
-	u.logger.InfoWithContext("starting SSL certificate lifecycle management", map[string]interface{}{
-		"environment": environment.String(),
-		"charts_dir": chartsDir,
-	})
-
-	// Step 1: Certificate generation is now handled by SSLCertificateUsecase during pre-deployment validation
-
-	// Step 2: Validate certificates
-	if err := u.validateGeneratedCertificates(ctx); err != nil {
-		return fmt.Errorf("failed to validate certificates: %w", err)
-	}
-
-	// Step 3: Distribute certificates to all common-ssl charts
-
-	commonSSLCharts := []string{"common-ssl"}
-	for _, chart := range commonSSLCharts {
-		chartPath := filepath.Join(chartsDir, chart)
-		if err := u.injectCertificateData(ctx, chartPath); err != nil {
-			return fmt.Errorf("failed to inject certificate data for %s: %w", chart, err)
-		}
-	}
-
-	u.logger.InfoWithContext("certificate lifecycle management completed", map[string]interface{}{
-		"environment": environment.String(),
-		"charts_dir": chartsDir,
-		"certificates_distributed": len(commonSSLCharts),
-	})
-
-	return nil
-}
-
-
-
-
-// retryChartDeployment retries deployment for a specific chart
-func (u *DeploymentUsecase) retryChartDeployment(chartName string) error {
-	u.logger.InfoWithContext("retrying chart deployment after secret adoption", map[string]interface{}{
-		"chart": chartName,
-	})
-	
-	// Enhanced retry logic as part of Phase 4.3
-	// The retry is now handled in the deployChart method itself
-	// This method indicates successful preparation for retry
-	return nil
-}

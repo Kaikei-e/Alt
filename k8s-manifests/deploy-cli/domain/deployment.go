@@ -7,18 +7,19 @@ import (
 
 // DeploymentOptions holds the deployment configuration options
 type DeploymentOptions struct {
-	Environment       Environment
-	DryRun            bool
-	DoRestart         bool
-	ForceUpdate       bool
-	TargetNamespace   string
-	ImagePrefix       string
-	TagBase           string
-	ChartsDir         string
-	Timeout           time.Duration
-	DeploymentStrategy DeploymentStrategy
-	StrategyName      string // Override strategy selection
-	AutoFixSecrets    bool   // Enable automatic secret error recovery (Phase 4.3)
+	Environment            Environment
+	DryRun                 bool
+	DoRestart              bool
+	ForceUpdate            bool
+	TargetNamespace        string
+	ImagePrefix            string
+	TagBase                string
+	ChartsDir              string
+	Timeout                time.Duration
+	DeploymentStrategy     DeploymentStrategy
+	StrategyName           string // Override strategy selection
+	AutoFixSecrets         bool   // Enable automatic secret error recovery (Phase 4.3)
+	SkipStatefulSetRecovery bool   // Skip StatefulSet recovery for emergency deployments
 }
 
 // NewDeploymentOptions creates a new deployment options with defaults

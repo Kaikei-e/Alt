@@ -71,7 +71,10 @@ Examples:
   deploy-cli deploy production --restart
 
   # Force update pods even with identical manifests
-  deploy-cli deploy production --force-update`,
+  deploy-cli deploy production --force-update
+
+  # Emergency deployment skipping StatefulSet recovery
+  deploy-cli deploy production --skip-statefulset-recovery`,
 		Args:    cobra.ExactArgs(1),
 		PreRunE: deployCmd.preRun,
 		RunE:    deployCmd.run,
@@ -85,6 +88,7 @@ Examples:
 	cmd.Flags().Duration("timeout", 300*time.Second, "Timeout for deployment operations")
 	cmd.Flags().String("charts-dir", "../charts", "Directory containing Helm charts")
 	cmd.Flags().Bool("auto-fix-secrets", false, "Enable automatic secret error recovery (Phase 4.3)")
+	cmd.Flags().Bool("skip-statefulset-recovery", false, "Skip StatefulSet recovery for emergency deployments")
 	
 	return cmd
 }
@@ -153,6 +157,7 @@ func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 	options.Timeout, _ = cmd.Flags().GetDuration("timeout")
 	options.ChartsDir, _ = cmd.Flags().GetString("charts-dir")
 	options.AutoFixSecrets, _ = cmd.Flags().GetBool("auto-fix-secrets")
+	options.SkipStatefulSetRecovery, _ = cmd.Flags().GetBool("skip-statefulset-recovery")
 	
 	// Convert relative charts directory to absolute path
 	if options.ChartsDir != "" {
