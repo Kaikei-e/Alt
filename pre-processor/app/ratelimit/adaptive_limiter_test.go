@@ -31,10 +31,10 @@ func TestNewAdaptiveLimiter(t *testing.T) {
 	}{
 		"default configuration": {
 			config: config.RateLimitConfig{
-				DefaultInterval:    5 * time.Second,
-				BurstSize:          1,
-				EnableAdaptive:     true,
-				DomainIntervals:    map[string]time.Duration{},
+				DefaultInterval: 5 * time.Second,
+				BurstSize:       1,
+				EnableAdaptive:  true,
+				DomainIntervals: map[string]time.Duration{},
 			},
 			expectError: false,
 			validate: func(t *testing.T, limiter *AdaptiveLimiter) {

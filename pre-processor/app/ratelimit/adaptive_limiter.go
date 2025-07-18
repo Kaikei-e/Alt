@@ -26,39 +26,39 @@ type DomainMetrics struct {
 
 // domainLimiter manages rate limiting for a single domain
 type domainLimiter struct {
-	lastRequest     time.Time
-	interval        time.Duration
-	baseInterval    time.Duration
-	burstTokens     int
-	maxBurstTokens  int
-	mu              sync.Mutex
+	lastRequest    time.Time
+	interval       time.Duration
+	baseInterval   time.Duration
+	burstTokens    int
+	maxBurstTokens int
+	mu             sync.Mutex
 
 	// Adaptive metrics
-	totalRequests   int64
-	successCount    int64
-	failureCount    int64
+	totalRequests     int64
+	successCount      int64
+	failureCount      int64
 	totalResponseTime time.Duration
-	lastRequestTime time.Time
+	lastRequestTime   time.Time
 }
 
 // AdaptiveLimiter provides intelligent rate limiting with domain-specific controls
 type AdaptiveLimiter struct {
-	defaultInterval  time.Duration
-	domainIntervals  map[string]time.Duration
-	burstSize        int
-	enableAdaptive   bool
-	domainLimiters   map[string]*domainLimiter
-	metrics          map[string]*DomainMetrics
-	mu               sync.RWMutex
-	logger           *slog.Logger
+	defaultInterval time.Duration
+	domainIntervals map[string]time.Duration
+	burstSize       int
+	enableAdaptive  bool
+	domainLimiters  map[string]*domainLimiter
+	metrics         map[string]*DomainMetrics
+	mu              sync.RWMutex
+	logger          *slog.Logger
 
 	// Adaptive parameters
-	adaptationFactor   float64
-	minInterval        time.Duration
-	maxInterval        time.Duration
-	successThreshold   float64
-	failureThreshold   float64
-	adaptationWindow   int64
+	adaptationFactor float64
+	minInterval      time.Duration
+	maxInterval      time.Duration
+	successThreshold float64
+	failureThreshold float64
+	adaptationWindow int64
 }
 
 // NewAdaptiveLimiter creates a new adaptive rate limiter
@@ -72,21 +72,21 @@ func NewAdaptiveLimiter(cfg config.RateLimitConfig, logger *slog.Logger) (*Adapt
 	}
 
 	limiter := &AdaptiveLimiter{
-		defaultInterval:    cfg.DefaultInterval,
-		domainIntervals:    cfg.DomainIntervals,
-		burstSize:          cfg.BurstSize,
-		enableAdaptive:     cfg.EnableAdaptive,
-		domainLimiters:     make(map[string]*domainLimiter),
-		metrics:            make(map[string]*DomainMetrics),
-		logger:             logger,
+		defaultInterval: cfg.DefaultInterval,
+		domainIntervals: cfg.DomainIntervals,
+		burstSize:       cfg.BurstSize,
+		enableAdaptive:  cfg.EnableAdaptive,
+		domainLimiters:  make(map[string]*domainLimiter),
+		metrics:         make(map[string]*DomainMetrics),
+		logger:          logger,
 
 		// Adaptive parameters
-		adaptationFactor:   0.1,  // 10% adjustment per adaptation
-		minInterval:        cfg.DefaultInterval / 4,  // Minimum 25% of default
-		maxInterval:        cfg.DefaultInterval * 10, // Maximum 10x default
-		successThreshold:   0.9,  // 90% success rate to reduce interval
-		failureThreshold:   0.7,  // Below 70% success rate to increase interval
-		adaptationWindow:   10,   // Adapt after every 10 requests
+		adaptationFactor: 0.1,                      // 10% adjustment per adaptation
+		minInterval:      cfg.DefaultInterval / 4,  // Minimum 25% of default
+		maxInterval:      cfg.DefaultInterval * 10, // Maximum 10x default
+		successThreshold: 0.9,                      // 90% success rate to reduce interval
+		failureThreshold: 0.7,                      // Below 70% success rate to increase interval
+		adaptationWindow: 10,                       // Adapt after every 10 requests
 	}
 
 	if limiter.domainIntervals == nil {

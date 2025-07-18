@@ -71,7 +71,7 @@ func NewArticleFetcherServiceWithRetryAndDLQ(logger *slog.Logger, retrier *retry
 		}
 		retrier = retry.NewRetrier(retryConfig, IsRetryableError, logger)
 	}
-	
+
 	return &articleFetcherService{
 		logger:       logger,
 		httpClient:   nil, // Will use shared HTTP client when nil
@@ -118,8 +118,8 @@ func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string)
 func (s *articleFetcherService) fetchWithRetryAndDLQ(ctx context.Context, parsedURL url.URL, start time.Time) (*models.Article, error) {
 	urlStr := parsedURL.String()
 	domain := parsedURL.Hostname()
-	
-	s.logger.Info("article fetch pipeline started with retry and DLQ", 
+
+	s.logger.Info("article fetch pipeline started with retry and DLQ",
 		"url", urlStr,
 		"domain", domain,
 		"timestamp", start.Format(time.RFC3339Nano))
@@ -131,7 +131,7 @@ func (s *articleFetcherService) fetchWithRetryAndDLQ(ctx context.Context, parsed
 	operation := func() error {
 		attemptCount++
 		attemptStart := time.Now()
-		
+
 		s.logger.Debug("fetch attempt starting",
 			"url", urlStr,
 			"attempt", attemptCount,

@@ -4,10 +4,10 @@ package retry
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"log/slog"
 	"math"
-	"crypto/rand"
 	"time"
 )
 

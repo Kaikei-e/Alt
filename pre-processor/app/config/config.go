@@ -47,10 +47,10 @@ type RetryConfig struct {
 }
 
 type RateLimitConfig struct {
-	DefaultInterval    time.Duration            `json:"default_interval" env:"RATE_LIMIT_DEFAULT_INTERVAL" default:"5s"`
-	DomainIntervals    map[string]time.Duration `json:"domain_intervals" env:"RATE_LIMIT_DOMAIN_INTERVALS"`
-	BurstSize          int                      `json:"burst_size" env:"RATE_LIMIT_BURST_SIZE" default:"1"`
-	EnableAdaptive     bool                     `json:"enable_adaptive" env:"RATE_LIMIT_ENABLE_ADAPTIVE" default:"false"`
+	DefaultInterval time.Duration            `json:"default_interval" env:"RATE_LIMIT_DEFAULT_INTERVAL" default:"5s"`
+	DomainIntervals map[string]time.Duration `json:"domain_intervals" env:"RATE_LIMIT_DOMAIN_INTERVALS"`
+	BurstSize       int                      `json:"burst_size" env:"RATE_LIMIT_BURST_SIZE" default:"1"`
+	EnableAdaptive  bool                     `json:"enable_adaptive" env:"RATE_LIMIT_ENABLE_ADAPTIVE" default:"false"`
 }
 
 type DLQConfig struct {

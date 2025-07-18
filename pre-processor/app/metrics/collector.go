@@ -45,10 +45,10 @@ type AggregateMetrics struct {
 
 // ExportData contains all metrics for export
 type ExportData struct {
-	Aggregate     *AggregateMetrics          `json:"aggregate"`
+	Aggregate     *AggregateMetrics         `json:"aggregate"`
 	DomainMetrics map[string]*DomainMetrics `json:"domains"`
-	ExportTime    time.Time                  `json:"export_time"`
-	ServiceName   string                     `json:"service_name"`
+	ExportTime    time.Time                 `json:"export_time"`
+	ServiceName   string                    `json:"service_name"`
 }
 
 // Collector manages metric collection and aggregation

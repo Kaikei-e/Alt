@@ -29,10 +29,10 @@ func TestRetrier_Do(t *testing.T) {
 		description   string
 	}{
 		"success on first attempt": {
-			operation: func() error { return nil },
+			operation:     func() error { return nil },
 			expectedCalls: 1,
-			wantErr: false,
-			description: "Should succeed immediately without retries",
+			wantErr:       false,
+			description:   "Should succeed immediately without retries",
 		},
 		"success on second attempt": {
 			operation: func() func() error {
@@ -46,20 +46,20 @@ func TestRetrier_Do(t *testing.T) {
 				}
 			}(),
 			expectedCalls: 2,
-			wantErr: false,
-			description: "Should succeed after one retry",
+			wantErr:       false,
+			description:   "Should succeed after one retry",
 		},
 		"failure after max attempts": {
-			operation: func() error { return errors.New("temporary error") },
+			operation:     func() error { return errors.New("temporary error") },
 			expectedCalls: 3,
-			wantErr: true,
-			description: "Should fail after all retry attempts exhausted",
+			wantErr:       true,
+			description:   "Should fail after all retry attempts exhausted",
 		},
 		"non-retryable error fails immediately": {
-			operation: func() error { return errors.New("non-retryable error") },
+			operation:     func() error { return errors.New("non-retryable error") },
 			expectedCalls: 1,
-			wantErr: true,
-			description: "Non-retryable errors should fail without retries",
+			wantErr:       true,
+			description:   "Non-retryable errors should fail without retries",
 		},
 	}
 
@@ -147,13 +147,13 @@ func TestRetrier_CalculateDelay(t *testing.T) {
 	retrier := NewRetrier(config, nil, testLogger())
 
 	tests := []struct {
-		attempt int
+		attempt  int
 		minDelay time.Duration
 		maxDelay time.Duration
 	}{
-		{1, 90 * time.Millisecond, 110 * time.Millisecond},   // 100ms ± 10%
-		{2, 180 * time.Millisecond, 220 * time.Millisecond}, // 200ms ± 10%
-		{3, 360 * time.Millisecond, 440 * time.Millisecond}, // 400ms ± 10%
+		{1, 90 * time.Millisecond, 110 * time.Millisecond},    // 100ms ± 10%
+		{2, 180 * time.Millisecond, 220 * time.Millisecond},   // 200ms ± 10%
+		{3, 360 * time.Millisecond, 440 * time.Millisecond},   // 400ms ± 10%
 		{10, 900 * time.Millisecond, 1100 * time.Millisecond}, // Should cap at MaxDelay ± 10%
 	}
 

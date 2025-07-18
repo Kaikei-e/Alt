@@ -132,9 +132,9 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 		return nil, err
 	}
 
-	logger.Debug("Making request to news-creator API", 
-		"api_url", apiURL, 
-		"model", cfg.NewsCreator.Model, 
+	logger.Debug("Making request to news-creator API",
+		"api_url", apiURL,
+		"model", cfg.NewsCreator.Model,
 		"timeout", cfg.NewsCreator.Timeout)
 
 	req.Header.Set("Content-Type", "application/json")

@@ -36,7 +36,7 @@ type ErrorDetails struct {
 type FileDLQConfig struct {
 	BasePath      string        `json:"base_path" env:"DLQ_BASE_PATH" default:"/var/dlq/pre-processor"`
 	MaxFileSize   int64         `json:"max_file_size" env:"DLQ_MAX_FILE_SIZE" default:"10485760"` // 10MB
-	Retention     time.Duration `json:"retention" env:"DLQ_RETENTION" default:"720h"`            // 30日
+	Retention     time.Duration `json:"retention" env:"DLQ_RETENTION" default:"720h"`             // 30日
 	EnableCleanup bool          `json:"enable_cleanup" env:"DLQ_ENABLE_CLEANUP" default:"true"`
 }
 
@@ -237,10 +237,10 @@ func (dlq *FileDLQManager) writeMessageToFile(message FailedArticleMessage) erro
 
 // DLQ統計情報
 type DLQStats struct {
-	TotalFailedItems int           `json:"total_failed_items"`
-	OldestFailure    time.Time     `json:"oldest_failure"`
-	DiskUsage        int64         `json:"disk_usage_bytes"`
-	DailyFailureRate float64       `json:"daily_failure_rate"`
+	TotalFailedItems int       `json:"total_failed_items"`
+	OldestFailure    time.Time `json:"oldest_failure"`
+	DiskUsage        int64     `json:"disk_usage_bytes"`
+	DailyFailureRate float64   `json:"daily_failure_rate"`
 }
 
 func (dlq *FileDLQManager) GetStats() (DLQStats, error) {

@@ -31,12 +31,12 @@ func TestLoadConfig(t *testing.T) {
 		},
 		"custom values": {
 			envVars: map[string]string{
-				"SERVER_PORT":            "8080",
-				"HTTP_TIMEOUT":           "60s",
-				"RETRY_MAX_ATTEMPTS":     "5",
-				"RETRY_BACKOFF_FACTOR":   "3.0",
+				"SERVER_PORT":                 "8080",
+				"HTTP_TIMEOUT":                "60s",
+				"RETRY_MAX_ATTEMPTS":          "5",
+				"RETRY_BACKOFF_FACTOR":        "3.0",
 				"RATE_LIMIT_DEFAULT_INTERVAL": "10s",
-				"METRICS_ENABLED":        "false",
+				"METRICS_ENABLED":             "false",
 			},
 			validate: func(t *testing.T, c *Config) {
 				assert.Equal(t, 8080, c.Server.Port)
@@ -184,8 +184,8 @@ func TestValidateConfig(t *testing.T) {
 func TestConfigManager(t *testing.T) {
 	t.Run("should create config manager", func(t *testing.T) {
 		config := &Config{
-			Server: ServerConfig{Port: 9200},
-			HTTP:   HTTPConfig{Timeout: 30 * time.Second},
+			Server:    ServerConfig{Port: 9200},
+			HTTP:      HTTPConfig{Timeout: 30 * time.Second},
 			RateLimit: RateLimitConfig{DefaultInterval: 5 * time.Second},
 			Metrics:   MetricsConfig{Port: 9201},
 		}
@@ -200,9 +200,9 @@ func TestConfigManager(t *testing.T) {
 
 	t.Run("should update config safely", func(t *testing.T) {
 		originalConfig := &Config{
-			Server: ServerConfig{Port: 9200},
-			HTTP:   HTTPConfig{Timeout: 30 * time.Second},
-			Retry:  RetryConfig{MaxAttempts: 3, BackoffFactor: 2.0},
+			Server:    ServerConfig{Port: 9200},
+			HTTP:      HTTPConfig{Timeout: 30 * time.Second},
+			Retry:     RetryConfig{MaxAttempts: 3, BackoffFactor: 2.0},
 			RateLimit: RateLimitConfig{DefaultInterval: 5 * time.Second},
 			Metrics:   MetricsConfig{Port: 9201},
 			NewsCreator: NewsCreatorConfig{
@@ -216,9 +216,9 @@ func TestConfigManager(t *testing.T) {
 		manager := NewConfigManager(originalConfig, nil)
 
 		newConfig := &Config{
-			Server: ServerConfig{Port: 8080},
-			HTTP:   HTTPConfig{Timeout: 60 * time.Second},
-			Retry:  RetryConfig{MaxAttempts: 5, BackoffFactor: 3.0},
+			Server:    ServerConfig{Port: 8080},
+			HTTP:      HTTPConfig{Timeout: 60 * time.Second},
+			Retry:     RetryConfig{MaxAttempts: 5, BackoffFactor: 3.0},
 			RateLimit: RateLimitConfig{DefaultInterval: 10 * time.Second},
 			Metrics:   MetricsConfig{Port: 9202},
 			NewsCreator: NewsCreatorConfig{
@@ -240,9 +240,9 @@ func TestConfigManager(t *testing.T) {
 
 	t.Run("should reject invalid config update", func(t *testing.T) {
 		originalConfig := &Config{
-			Server: ServerConfig{Port: 9200},
-			HTTP:   HTTPConfig{Timeout: 30 * time.Second},
-			Retry:  RetryConfig{MaxAttempts: 3, BackoffFactor: 2.0},
+			Server:    ServerConfig{Port: 9200},
+			HTTP:      HTTPConfig{Timeout: 30 * time.Second},
+			Retry:     RetryConfig{MaxAttempts: 3, BackoffFactor: 2.0},
 			RateLimit: RateLimitConfig{DefaultInterval: 5 * time.Second},
 			Metrics:   MetricsConfig{Port: 9201},
 			NewsCreator: NewsCreatorConfig{
@@ -284,21 +284,21 @@ func TestLoadFromEnv(t *testing.T) {
 
 	t.Run("should parse all supported environment variables", func(t *testing.T) {
 		envVars := map[string]string{
-			"SERVER_PORT":                     "8080",
-			"SERVER_SHUTDOWN_TIMEOUT":         "45s",
-			"HTTP_TIMEOUT":                    "60s",
-			"HTTP_MAX_IDLE_CONNS":             "20",
-			"RETRY_MAX_ATTEMPTS":              "5",
-			"RETRY_BASE_DELAY":                "2s",
-			"RETRY_MAX_DELAY":                 "60s",
-			"RETRY_BACKOFF_FACTOR":            "3.0",
-			"RETRY_JITTER_FACTOR":             "0.2",
-			"RATE_LIMIT_DEFAULT_INTERVAL":     "10s",
-			"RATE_LIMIT_BURST_SIZE":           "2",
-			"RATE_LIMIT_ENABLE_ADAPTIVE":      "true",
-			"METRICS_ENABLED":                 "false",
-			"METRICS_PORT":                    "9202",
-			"METRICS_UPDATE_INTERVAL":         "5s",
+			"SERVER_PORT":                 "8080",
+			"SERVER_SHUTDOWN_TIMEOUT":     "45s",
+			"HTTP_TIMEOUT":                "60s",
+			"HTTP_MAX_IDLE_CONNS":         "20",
+			"RETRY_MAX_ATTEMPTS":          "5",
+			"RETRY_BASE_DELAY":            "2s",
+			"RETRY_MAX_DELAY":             "60s",
+			"RETRY_BACKOFF_FACTOR":        "3.0",
+			"RETRY_JITTER_FACTOR":         "0.2",
+			"RATE_LIMIT_DEFAULT_INTERVAL": "10s",
+			"RATE_LIMIT_BURST_SIZE":       "2",
+			"RATE_LIMIT_ENABLE_ADAPTIVE":  "true",
+			"METRICS_ENABLED":             "false",
+			"METRICS_PORT":                "9202",
+			"METRICS_UPDATE_INTERVAL":     "5s",
 		}
 
 		for key, value := range envVars {

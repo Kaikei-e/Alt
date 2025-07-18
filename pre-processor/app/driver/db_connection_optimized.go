@@ -65,7 +65,7 @@ func NewOptimizedPoolConfig() *OptimizedPoolConfig {
 // buildOptimizedConnectionString builds an optimized connection string with SSL
 func buildOptimizedConnectionString() string {
 	dbConfig := NewDatabaseConfig()
-	
+
 	// Override with optimized settings from environment
 	if envMaxConns := getEnvOrDefault("DB_POOL_MAX_CONNS", ""); envMaxConns != "" {
 		if maxConns, err := strconv.Atoi(envMaxConns); err == nil {
@@ -77,14 +77,14 @@ func buildOptimizedConnectionString() string {
 			dbConfig.MinConns = minConns
 		}
 	}
-	
+
 	dbConfig.MaxConnLifetime = getEnvOrDefault("DB_POOL_MAX_CONN_LIFETIME", dbConfig.MaxConnLifetime)
 	dbConfig.MaxConnIdleTime = getEnvOrDefault("DB_POOL_MAX_CONN_IDLE_TIME", dbConfig.MaxConnIdleTime)
-	
+
 	// Build with additional health check period
 	baseConnString := dbConfig.BuildConnectionString()
 	healthCheckPeriod := getEnvOrDefault("DB_POOL_HEALTH_CHECK_PERIOD", "45s")
-	
+
 	return baseConnString + " pool_health_check_period=" + healthCheckPeriod
 }
 

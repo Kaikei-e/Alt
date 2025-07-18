@@ -259,25 +259,25 @@ func TestArticleFetcher_TASK2_Requirements(t *testing.T) {
 	t.Run("should integrate with retry mechanism", func(t *testing.T) {
 		// TDD RED PHASE: Test that retry is integrated
 		service := NewArticleFetcherServiceWithRetryAndDLQ(testLoggerFetcher(), nil, nil)
-		
+
 		assert.NotNil(t, service, "service should support retry and DLQ integration")
 	})
-	
+
 	t.Run("should publish failed articles to DLQ", func(t *testing.T) {
 		// TDD RED PHASE: Mock DLQ publisher
 		mockDLQ := &MockDLQPublisher{published: make([]DLQMessage, 0)}
 		service := NewArticleFetcherServiceWithRetryAndDLQ(testLoggerFetcher(), nil, mockDLQ)
-		
+
 		// Mock should be integrated
 		assert.NotNil(t, service, "service should integrate DLQ publisher")
 		assert.Empty(t, mockDLQ.published, "DLQ should start empty")
 	})
-	
+
 	t.Run("should handle retryable errors with exponential backoff", func(t *testing.T) {
 		// TDD RED PHASE: Test retry behavior
 		mockDLQ := &MockDLQPublisher{published: make([]DLQMessage, 0)}
 		service := NewArticleFetcherServiceWithRetryAndDLQ(testLoggerFetcher(), nil, mockDLQ)
-		
+
 		// This documents the retry requirement
 		assert.NotNil(t, service, "service should implement exponential backoff retry")
 	})
@@ -299,7 +299,7 @@ func (m *MockDLQPublisher) PublishFailedArticle(ctx context.Context, url string,
 	if m.shouldErr {
 		return errors.New("DLQ publish failed")
 	}
-	
+
 	m.published = append(m.published, DLQMessage{
 		URL:      url,
 		Attempts: attempts,
