@@ -1,0 +1,8 @@
+# selfsigned-issuer.yaml
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt-prod
+  namespace: cert-manager
+spec:
+  selfSigned: {}

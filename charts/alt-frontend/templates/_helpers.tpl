@@ -63,6 +63,17 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Standard secret name template
+*/}}
+{{- define "alt-frontend.secretName" -}}
+{{- if .Values.envFromSecret.name }}
+{{- .Values.envFromSecret.name }}
+{{- else }}
+{{- printf "%s-secrets" (include "alt-frontend.fullname" .) }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create environment variables from secrets
 */}}
 {{- define "alt-frontend.envFromSecret" -}}
@@ -71,7 +82,7 @@ Create environment variables from secrets
 - name: {{ . }}
   valueFrom:
     secretKeyRef:
-      name: {{ $.Values.envFromSecret.name }}
+      name: {{ include "alt-frontend.secretName" $ }}
       key: {{ . }}
 {{- end }}
 {{- end }}

@@ -55,7 +55,11 @@ securityContext: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
-commonLabels: {}
+commonLabels:
+  app.kubernetes.io/name: alt-frontend
+  app.kubernetes.io/part-of: alt
+  app.kubernetes.io/component: frontend
+
 commonAnnotations: {}
 podLabels: {}
 podAnnotations: {}
@@ -68,3 +72,10 @@ strategy:
   rollingUpdate:
     maxUnavailable: 1
     maxSurge: 1
+
+# Secret configuration (optional)
+envFromSecret:
+  name: alt-frontend-secrets
+  keys:
+    - API_URL
+    - AUTH_URL

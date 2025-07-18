@@ -46,7 +46,7 @@ service:
   postgresqlPort: 9005
   interserverPort: 9009
   annotations: {}
-  
+
   headless:
     enabled: true
     annotations: {}
@@ -61,10 +61,10 @@ auth:
     password: "clickhouse-password"
     username: "username"
     database: "database"
-  
+
   # SHA256 hash of password (optional, for users.xml)
   passwordSha256: ""
-  
+
   # Additional users for analytics
   additionalUsers: []
     # - username: "readonly_user"
@@ -76,7 +76,7 @@ auth:
     #   databases: ["alt_analytics"]
     #   grants:
     #     - "GRANT SELECT ON alt_analytics.* TO readonly_user"
-  
+
   # Extra authentication secrets
   extraSecrets: {}
 
@@ -87,7 +87,7 @@ clickhouse:
     level: "information"
     size: "1000M"
     count: 10
-  
+
   # Performance settings optimized for analytics workloads
   performance:
     maxMemoryUsage: 10000000000  # 10GB
@@ -97,12 +97,12 @@ clickhouse:
     backgroundPoolSize: 16
     backgroundMergesConcurrencyRatio: 2
     backgroundSchedulePoolSize: 16
-  
+
   # Compression settings for analytics data
   compression:
     method: "lz4"
     level: 1
-  
+
   # MergeTree settings optimized for RSS feed analytics
   mergeTree:
     maxSuspiciousBrokenParts: 5
@@ -111,7 +111,7 @@ clickhouse:
     maxPartsInTotal: 100000
     mergeMaxBlockSize: 8192
     maxBytesToMergeAtMaxSpaceInPool: 1073741824  # 1GB
-  
+
   # Query profiles for different workloads
   profiles:
     default:
@@ -121,16 +121,16 @@ clickhouse:
       maxExecutionTime: 300  # 5 minutes
       maxBlockSize: 65536
       maxInsertBlockSize: 1048576
-  
+
   # Network settings
   network:
     maxConnections: 1024
     keepAliveTimeout: 10
     maxConcurrentQueriesForUser: 64
-  
+
   # Default table engine for analytics
   defaultTableEngine: "MergeTree"
-  
+
   # Custom configuration (XML)
   customConfig: ""
 
@@ -151,7 +151,7 @@ persistence:
       - ReadWriteOnce
     size: 100Gi
     storageClass: ""
-  
+
   logs:
     enabled: false
     accessModes:
@@ -202,9 +202,6 @@ commonAnnotations: {}
 # Dependencies configuration
 secrets:
   enabled: true
-
-ssl:
-  enabled: false
 
 imagePullSecrets: []
 nameOverride: ""
