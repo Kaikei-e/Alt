@@ -102,8 +102,21 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		return fmt.Errorf("pre-deployment validation failed for chart %s: %w", chart.Name, err)
 	}
 	
+	// Generate release name for conflict checking
+	releaseName := g.generateReleaseName(chart, namespace)
+	
+	// Before deployment, cleanup any conflicting releases for multi-namespace charts
+	if chart.MultiNamespace {
+		if err := g.CleanupConflictingReleases(ctx, chart, chart.TargetNamespaces); err != nil {
+			g.logger.WarnWithContext("failed to cleanup conflicting releases", map[string]interface{}{
+				"chart": chart.Name,
+				"error": err.Error(),
+			})
+		}
+	}
+	
 	// Check for existing operations before starting deployment
-	if err := g.checkAndHandleConflicts(ctx, chart.Name, namespace); err != nil {
+	if err := g.checkAndHandleConflicts(ctx, releaseName, namespace); err != nil {
 		g.logger.WarnWithContext("conflict detected, attempting to resolve", map[string]interface{}{
 			"chart":     chart.Name,
 			"namespace": namespace,
@@ -218,7 +231,14 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 			"wait": helmOptions.Wait,
 		})
 		
-		err := g.helmPort.UpgradeInstall(deployCtx, chart.Name, chart.Path, helmOptions)
+		g.logger.DebugWithContext("using release name for deployment", map[string]interface{}{
+			"chart": chart.Name,
+			"namespace": namespace,
+			"release_name": releaseName,
+			"multi_namespace": chart.MultiNamespace,
+		})
+		
+		err := g.helmPort.UpgradeInstall(deployCtx, releaseName, chart.Path, helmOptions)
 		cancel()
 		duration := time.Since(start)
 		
@@ -840,4 +860,45 @@ func (g *HelmGateway) ValidateReleaseState(ctx context.Context, releaseName, nam
 	})
 	
 	return &status, nil
+}
+
+// generateReleaseName generates namespace-scoped release name for multi-namespace charts
+func (g *HelmGateway) generateReleaseName(chart domain.Chart, namespace string) string {
+	if chart.MultiNamespace {
+		// マルチネームスペースチャートは namespace suffix を追加
+		namespaceSuffix := strings.TrimPrefix(namespace, "alt-")
+		return fmt.Sprintf("%s-%s", chart.Name, namespaceSuffix)
+	}
+	// 単一ネームスペースチャートは従来通り
+	return chart.Name
+}
+
+// CleanupConflictingReleases cleans up conflicting releases for multi-namespace charts
+func (g *HelmGateway) CleanupConflictingReleases(ctx context.Context, chart domain.Chart, targetNamespaces []string) error {
+	if !chart.MultiNamespace {
+		return nil // 単一ネームスペースは対象外
+	}
+	
+	g.logger.InfoWithContext("cleaning up conflicting releases for multi-namespace chart", map[string]interface{}{
+		"chart": chart.Name,
+		"target_namespaces": targetNamespaces,
+	})
+	
+	// 全ネームスペースで同名リリースを検索・削除
+	for _, ns := range targetNamespaces {
+		if err := g.helmPort.Uninstall(ctx, chart.Name, ns); err != nil {
+			// エラーログ出力して継続（リリースが存在しない場合は正常）
+			g.logger.WarnWithContext("failed to cleanup conflicting release", map[string]interface{}{
+				"chart": chart.Name,
+				"namespace": ns,
+				"error": err.Error(),
+			})
+		} else {
+			g.logger.InfoWithContext("conflicting release cleaned up", map[string]interface{}{
+				"chart": chart.Name,
+				"namespace": ns,
+			})
+		}
+	}
+	return nil
 }
