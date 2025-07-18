@@ -2,16 +2,11 @@ package deployment_usecase
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"os"
-	"math/big"
-	"net"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,7 +14,6 @@ import (
 	"deploy-cli/domain"
 	"deploy-cli/port/logger_port"
 	"deploy-cli/port/filesystem_port"
-	"deploy-cli/port/kubectl_port"
 	"deploy-cli/gateway/helm_gateway"
 	"deploy-cli/gateway/kubectl_gateway"
 	"deploy-cli/gateway/filesystem_gateway"
@@ -57,6 +51,13 @@ type DeploymentUsecase struct {
 	layerMonitor        *LayerHealthMonitor
 	dependencyDetector  *DependencyFailureDetector
 	progressTracker     *ProgressTracker
+	helmOperationManager *HelmOperationManager
+	sslCertificateUsecase *SSLCertificateUsecase
+	secretManagementUsecase *SecretManagementUsecase
+	healthCheckUsecase *HealthCheckUsecase
+	infrastructureSetupUsecase *InfrastructureSetupUsecase
+	statefulSetManagementUsecase *StatefulSetManagementUsecase
+	deploymentStrategyUsecase *DeploymentStrategyUsecase
 	enableParallel      bool
 	enableCache         bool
 	enableDependencyAware bool
@@ -86,6 +87,27 @@ func NewDeploymentUsecase(
 	layerMonitor := NewLayerHealthMonitor(logger, metricsCollector)
 	dependencyDetector := NewDependencyFailureDetector(logger, metricsCollector, layerMonitor)
 	
+	// Initialize helm operation manager
+	helmOperationManager := NewHelmOperationManager(logger)
+	
+	// Initialize SSL certificate usecase
+	sslCertificateUsecase := NewSSLCertificateUsecase(logger, secretUsecase, sslUsecase)
+	
+	// Initialize secret management usecase
+	secretManagementUsecase := NewSecretManagementUsecase(kubectlGateway, secretUsecase, logger)
+	
+	// Initialize health check usecase
+	healthCheckUsecase := NewHealthCheckUsecase(logger, healthChecker)
+	
+	// Initialize infrastructure setup usecase
+	infrastructureSetupUsecase := NewInfrastructureSetupUsecase(kubectlGateway, systemGateway, logger, strategyFactory)
+	
+	// Initialize StatefulSet management usecase
+	statefulSetManagementUsecase := NewStatefulSetManagementUsecase(systemGateway, logger)
+	
+	// Initialize deployment strategy usecase
+	deploymentStrategyUsecase := NewDeploymentStrategyUsecase(strategyFactory, logger)
+	
 	return &DeploymentUsecase{
 		helmGateway:           helmGateway,
 		kubectlGateway:        kubectlGateway,
@@ -102,7 +124,14 @@ func NewDeploymentUsecase(
 		layerMonitor:          layerMonitor,
 		dependencyDetector:    dependencyDetector,
 		progressTracker:       nil, // Will be initialized per deployment
-		enableParallel:        false,  // Will be configurable
+		helmOperationManager:    helmOperationManager,
+		sslCertificateUsecase:   sslCertificateUsecase,
+		secretManagementUsecase:    secretManagementUsecase,
+		healthCheckUsecase:         healthCheckUsecase,
+		infrastructureSetupUsecase: infrastructureSetupUsecase,
+		statefulSetManagementUsecase: statefulSetManagementUsecase,
+		deploymentStrategyUsecase: deploymentStrategyUsecase,
+		enableParallel:             false,  // Will be configurable
 		enableCache:           false,  // Will be configurable
 		enableDependencyAware: true,   // Enable by default
 		enableMonitoring:      true,   // Enable monitoring by default
@@ -112,7 +141,7 @@ func NewDeploymentUsecase(
 // Deploy executes the deployment process
 func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.DeploymentOptions) (*domain.DeploymentProgress, error) {
 	// Setup deployment strategy if not already set
-	if err := u.setupDeploymentStrategy(options); err != nil {
+	if err := u.deploymentStrategyUsecase.setupDeploymentStrategy(options); err != nil {
 		return nil, fmt.Errorf("failed to setup deployment strategy: %w", err)
 	}
 	
@@ -136,23 +165,23 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 	})
 	
 	// Step 1: Pre-deployment validation
-	if err := u.preDeploymentValidation(ctx, options); err != nil {
+	if err := u.infrastructureSetupUsecase.preDeploymentValidation(ctx, options); err != nil {
 		return nil, fmt.Errorf("pre-deployment validation failed: %w", err)
 	}
 	
 	// Step 1.5: SSL certificate validation and auto-generation
-	if err := u.PreDeploymentSSLCheck(ctx, options); err != nil {
+	if err := u.sslCertificateUsecase.PreDeploymentSSLCheck(ctx, options); err != nil {
 		return nil, fmt.Errorf("SSL certificate validation failed: %w", err)
 	}
 	
 	// Step 1.6: Pre-deployment secret validation
-	charts := u.getAllCharts(options)
-	if err := u.ValidateSecretsBeforeDeployment(ctx, charts); err != nil {
+	charts := u.deploymentStrategyUsecase.getAllCharts(options)
+	if err := u.secretManagementUsecase.ValidateSecretsBeforeDeployment(ctx, charts); err != nil {
 		return nil, fmt.Errorf("secret validation failed: %w", err)
 	}
 	
 	// Step 1.7: Comprehensive secret provisioning
-	if err := u.provisionAllRequiredSecrets(ctx, charts); err != nil {
+	if err := u.secretManagementUsecase.provisionAllRequiredSecrets(ctx, charts); err != nil {
 		return nil, fmt.Errorf("secret provisioning failed: %w", err)
 	}
 	
@@ -162,17 +191,17 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 	}
 	
 	// Step 1.9: StatefulSet Recovery Preparation (NEW!)
-	if err := u.prepareStatefulSetRecovery(ctx, options); err != nil {
+	if err := u.statefulSetManagementUsecase.prepareStatefulSetRecovery(ctx, options); err != nil {
 		return nil, fmt.Errorf("StatefulSet recovery preparation failed: %w", err)
 	}
 	
 	// Step 2: Setup storage infrastructure
-	if err := u.setupStorageInfrastructure(ctx, options); err != nil {
+	if err := u.infrastructureSetupUsecase.setupStorageInfrastructure(ctx, options); err != nil {
 		return nil, fmt.Errorf("storage infrastructure setup failed: %w", err)
 	}
 	
 	// Step 3: Ensure namespaces exist
-	if err := u.ensureNamespaces(ctx, options); err != nil {
+	if err := u.infrastructureSetupUsecase.ensureNamespaces(ctx, options); err != nil {
 		return nil, fmt.Errorf("namespace setup failed: %w", err)
 	}
 	
@@ -183,7 +212,7 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 	}
 	
 	// Step 5: Post-deployment operations
-	if err := u.postDeploymentOperations(ctx, options); err != nil {
+	if err := u.infrastructureSetupUsecase.postDeploymentOperations(ctx, options); err != nil {
 		return progress, fmt.Errorf("post-deployment operations failed: %w", err)
 	}
 	
@@ -197,109 +226,8 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 	return progress, nil
 }
 
-// preDeploymentValidation performs pre-deployment validation
-func (u *DeploymentUsecase) preDeploymentValidation(ctx context.Context, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("performing pre-deployment validation", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	// Validate required commands
-	requiredCommands := []string{"helm", "kubectl"}
-	if err := u.systemGateway.ValidateRequiredCommands(requiredCommands); err != nil {
-		return fmt.Errorf("required commands validation failed: %w", err)
-	}
-	
-	// Validate cluster access
-	if err := u.kubectlGateway.ValidateClusterAccess(ctx); err != nil {
-		return fmt.Errorf("cluster access validation failed: %w", err)
-	}
-	
-	// Clean up any stuck Helm operations before deployment
-	if err := u.cleanupStuckHelmOperations(ctx, options); err != nil {
-		u.logger.WarnWithContext("failed to clean up stuck helm operations", map[string]interface{}{
-			"error": err.Error(),
-		})
-		// Continue with deployment - individual chart deployments will handle their own cleanup
-	}
-	
-	// Validate secret state and resolve conflicts
-	if err := u.validateAndFixSecrets(ctx, options); err != nil {
-		return fmt.Errorf("secret validation failed: %w", err)
-	}
-	
-	u.logger.InfoWithContext("pre-deployment validation completed", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	return nil
-}
 
-// setupStorageInfrastructure sets up storage infrastructure
-func (u *DeploymentUsecase) setupStorageInfrastructure(ctx context.Context, options *domain.DeploymentOptions) error {
-	if options.DryRun {
-		u.logger.InfoWithContext("dry-run: skipping storage infrastructure setup", map[string]interface{}{})
-		return nil
-	}
-	
-	u.logger.InfoWithContext("setting up storage infrastructure", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	// Create storage configuration
-	storageConfig := domain.NewStorageConfig()
-	
-	// Validate storage paths
-	if err := u.filesystemGateway.ValidateStoragePaths(storageConfig); err != nil {
-		return fmt.Errorf("storage paths validation failed: %w", err)
-	}
-	
-	// Create persistent volumes
-	for _, pv := range storageConfig.PersistentVolumes {
-		if err := u.kubectlGateway.CreatePersistentVolume(ctx, pv); err != nil {
-			u.logger.ErrorWithContext("failed to create persistent volume - this may cause chart deployment issues", map[string]interface{}{
-				"pv_name":        pv.Name,
-				"pv_capacity":    pv.Capacity,
-				"pv_path":        pv.HostPath,
-				"storage_class":  pv.StorageClass,
-				"error":          err.Error(),
-				"resolution":     "Check if the storage class exists and the host path is accessible",
-			})
-		} else {
-			u.logger.InfoWithContext("persistent volume created successfully", map[string]interface{}{
-				"pv_name":     pv.Name,
-				"pv_capacity": pv.Capacity,
-			})
-		}
-	}
-	
-	u.logger.InfoWithContext("storage infrastructure setup completed", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	return nil
-}
 
-// ensureNamespaces ensures that all required namespaces exist
-func (u *DeploymentUsecase) ensureNamespaces(ctx context.Context, options *domain.DeploymentOptions) error {
-	if options.DryRun {
-		u.logger.InfoWithContext("dry-run: skipping namespace creation", map[string]interface{}{})
-		return nil
-	}
-	
-	u.logger.InfoWithContext("ensuring namespaces exist", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	if err := u.kubectlGateway.EnsureNamespaces(ctx, options.Environment); err != nil {
-		return fmt.Errorf("failed to ensure namespaces: %w", err)
-	}
-	
-	u.logger.InfoWithContext("namespaces ensured", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	return nil
-}
 
 // deployCharts deploys all charts in the correct order
 func (u *DeploymentUsecase) deployCharts(ctx context.Context, options *domain.DeploymentOptions) (*domain.DeploymentProgress, error) {
@@ -338,7 +266,7 @@ func (u *DeploymentUsecase) deployCharts(ctx context.Context, options *domain.De
 	
 	// Validate pod updates if force update was enabled or if images were updated
 	if options.ForceUpdate || options.ShouldOverrideImage() {
-		if err := u.validatePodUpdates(ctx, options); err != nil {
+		if err := u.healthCheckUsecase.validatePodUpdates(ctx, options); err != nil {
 			u.logger.WarnWithContext("pod update validation failed", map[string]interface{}{
 				"error": err.Error(),
 			})
@@ -508,7 +436,10 @@ func (u *DeploymentUsecase) deploySingleChartToNamespace(ctx context.Context, ch
 			result.Message = "Chart templated successfully"
 		}
 	} else {
-		err = u.helmGateway.DeployChart(chartCtx, chart, &nsOptions)
+		chartNamespace := u.getNamespaceForChart(chart)
+		err = u.helmOperationManager.ExecuteWithLock(chart.Name, chartNamespace, "deploy", func() error {
+			return u.helmGateway.DeployChart(chartCtx, chart, &nsOptions)
+		})
 		if err != nil {
 			if chartCtx.Err() == context.DeadlineExceeded {
 				result.Error = fmt.Errorf("chart deployment timed out after %v", chartTimeout)
@@ -535,328 +466,18 @@ func (u *DeploymentUsecase) deploySingleChartToNamespace(ctx context.Context, ch
 	return result
 }
 
-// postDeploymentOperations performs post-deployment operations
-func (u *DeploymentUsecase) postDeploymentOperations(ctx context.Context, options *domain.DeploymentOptions) error {
-	if options.DryRun {
-		u.logger.InfoWithContext("dry-run: skipping post-deployment operations", map[string]interface{}{})
-		return nil
-	}
-	
-	u.logger.InfoWithContext("performing post-deployment operations", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	// Restart deployments if requested
-	if options.DoRestart {
-		if err := u.restartDeployments(ctx, options); err != nil {
-			return fmt.Errorf("deployment restart failed: %w", err)
-		}
-	}
-	
-	u.logger.InfoWithContext("post-deployment operations completed", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	return nil
-}
 
-// PreDeploymentSSLCheck performs SSL certificate validation and auto-generation before deployment
-func (u *DeploymentUsecase) PreDeploymentSSLCheck(ctx context.Context, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("starting SSL certificate validation", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
 
-	// Identify SSL certificate requirements based on environment
-	requiredCertificates := u.identifySSLRequirements(options.Environment)
-	
-	// Validate existing certificates
-	for _, certName := range requiredCertificates {
-		exists, err := u.sslUsecase.ValidateCertificateExists(ctx, certName, options.Environment)
-		if err != nil {
-			u.logger.ErrorWithContext("failed to validate SSL certificate", map[string]interface{}{
-				"certificate": certName,
-				"environment": options.Environment.String(),
-				"error": err.Error(),
-			})
-			return fmt.Errorf("SSL certificate validation failed for %s: %w", certName, err)
-		}
 
-		if !exists {
-			u.logger.InfoWithContext("SSL certificate missing, attempting auto-generation", map[string]interface{}{
-				"certificate": certName,
-				"environment": options.Environment.String(),
-			})
 
-			// Auto-generate missing SSL certificates
-			if err := u.sslUsecase.GenerateCertificate(ctx, certName, options.Environment); err != nil {
-				u.logger.ErrorWithContext("failed to auto-generate SSL certificate", map[string]interface{}{
-					"certificate": certName,
-					"environment": options.Environment.String(),
-					"error": err.Error(),
-				})
-				return fmt.Errorf("SSL certificate auto-generation failed for %s: %w", certName, err)
-			}
 
-			u.logger.InfoWithContext("SSL certificate auto-generated successfully", map[string]interface{}{
-				"certificate": certName,
-				"environment": options.Environment.String(),
-			})
-		} else {
-			u.logger.InfoWithContext("SSL certificate validated successfully", map[string]interface{}{
-				"certificate": certName,
-				"environment": options.Environment.String(),
-			})
-		}
-	}
 
-	u.logger.InfoWithContext("SSL certificate validation completed", map[string]interface{}{
-		"environment": options.Environment.String(),
-		"certificates_checked": len(requiredCertificates),
-	})
-
-	return nil
-}
-
-// identifySSLRequirements returns the list of required SSL certificates based on environment
-func (u *DeploymentUsecase) identifySSLRequirements(env domain.Environment) []string {
-	switch env {
-	case domain.Production:
-		return []string{
-			"alt-backend-tls",
-			"alt-frontend-tls", 
-			"auth-service-tls",
-			"nginx-external-tls",
-			"kratos-tls",
-		}
-	case domain.Staging:
-		return []string{
-			"alt-backend-tls",
-			"alt-frontend-tls",
-			"auth-service-tls", 
-			"nginx-external-tls",
-			"kratos-tls",
-		}
-	case domain.Development:
-		return []string{
-			"alt-backend-tls",
-			"alt-frontend-tls",
-		}
-	default:
-		return []string{}
-	}
-}
-
-// ValidateSecretsBeforeDeployment performs comprehensive secret validation before deployment
-func (u *DeploymentUsecase) ValidateSecretsBeforeDeployment(ctx context.Context, charts []domain.Chart) error {
-	u.logger.InfoWithContext("starting pre-deployment secret validation", map[string]interface{}{
-		"charts_count": len(charts),
-	})
-
-	for _, chart := range charts {
-		u.logger.InfoWithContext("validating secrets for chart", map[string]interface{}{
-			"chart_name": chart.Name,
-			"chart_path": chart.Path,
-		})
-
-		// Step 1: Check secret existence
-		if err := u.validateSecretExistence(ctx, chart); err != nil {
-			u.logger.ErrorWithContext("secret existence validation failed", map[string]interface{}{
-				"chart_name": chart.Name,
-				"error": err.Error(),
-			})
-			return fmt.Errorf("secret existence validation failed for chart %s: %w", chart.Name, err)
-		}
-
-		// Step 2: Validate secret metadata consistency
-		if err := u.validateSecretMetadata(ctx, chart); err != nil {
-			u.logger.ErrorWithContext("secret metadata validation failed", map[string]interface{}{
-				"chart_name": chart.Name,
-				"error": err.Error(),
-			})
-			return fmt.Errorf("secret metadata validation failed for chart %s: %w", chart.Name, err)
-		}
-
-		// Step 3: Auto-generate missing dependency secrets
-		if err := u.autoGenerateMissingSecrets(ctx, chart); err != nil {
-			u.logger.ErrorWithContext("auto-generation of missing secrets failed", map[string]interface{}{
-				"chart_name": chart.Name,
-				"error": err.Error(),
-			})
-			return fmt.Errorf("auto-generation of missing secrets failed for chart %s: %w", chart.Name, err)
-		}
-
-		u.logger.InfoWithContext("secret validation completed for chart", map[string]interface{}{
-			"chart_name": chart.Name,
-		})
-	}
-
-	u.logger.InfoWithContext("pre-deployment secret validation completed successfully", map[string]interface{}{
-		"charts_validated": len(charts),
-	})
-
-	return nil
-}
-
-// validateSecretExistence checks if required secrets exist for the chart
-func (u *DeploymentUsecase) validateSecretExistence(ctx context.Context, chart domain.Chart) error {
-	// Get required secrets for this chart based on chart type and name
-	requiredSecrets := u.getRequiredSecretsForChart(chart)
-	
-	for _, secretName := range requiredSecrets {
-		namespace := u.getNamespaceForChart(chart)
-		
-		exists, err := u.secretUsecase.SecretExists(ctx, secretName, namespace)
-		if err != nil {
-			return fmt.Errorf("failed to check secret existence %s in namespace %s: %w", secretName, namespace, err)
-		}
-		
-		if !exists {
-			u.logger.WarnWithContext("required secret missing", map[string]interface{}{
-				"secret_name": secretName,
-				"namespace": namespace,
-				"chart_name": chart.Name,
-			})
-			return fmt.Errorf("required secret %s does not exist in namespace %s", secretName, namespace)
-		}
-		
-		u.logger.DebugWithContext("secret existence verified", map[string]interface{}{
-			"secret_name": secretName,
-			"namespace": namespace,
-			"chart_name": chart.Name,
-		})
-	}
-	
-	return nil
-}
-
-// validateSecretMetadata validates secret metadata consistency
-func (u *DeploymentUsecase) validateSecretMetadata(ctx context.Context, chart domain.Chart) error {
-	requiredSecrets := u.getRequiredSecretsForChart(chart)
-	namespace := u.getNamespaceForChart(chart)
-	
-	for _, secretName := range requiredSecrets {
-		secret, err := u.secretUsecase.GetSecret(ctx, secretName, namespace)
-		if err != nil {
-			// If secret doesn't exist, skip metadata validation (it will be handled in existence check)
-			continue
-		}
-		
-		// Validate secret labels
-		if err := u.validateSecretLabels(secret, chart); err != nil {
-			return fmt.Errorf("secret metadata validation failed for %s: %w", secretName, err)
-		}
-		
-		// Validate secret data format
-		if err := u.validateSecretDataFormat(secret, chart); err != nil {
-			return fmt.Errorf("secret data format validation failed for %s: %w", secretName, err)
-		}
-		
-		u.logger.DebugWithContext("secret metadata validated", map[string]interface{}{
-			"secret_name": secretName,
-			"namespace": namespace,
-			"chart_name": chart.Name,
-		})
-	}
-	
-	return nil
-}
-
-// autoGenerateMissingSecrets automatically generates missing dependency secrets
-func (u *DeploymentUsecase) autoGenerateMissingSecrets(ctx context.Context, chart domain.Chart) error {
-	// Get auto-generatable secrets for this chart
-	autoGenSecrets := u.getAutoGeneratableSecretsForChart(chart)
-	namespace := u.getNamespaceForChart(chart)
-	
-	for _, secretName := range autoGenSecrets {
-		exists, err := u.secretUsecase.SecretExists(ctx, secretName, namespace)
-		if err != nil {
-			return fmt.Errorf("failed to check secret existence for auto-generation %s: %w", secretName, err)
-		}
-		
-		if !exists {
-			u.logger.InfoWithContext("auto-generating missing secret", map[string]interface{}{
-				"secret_name": secretName,
-				"namespace": namespace,
-				"chart_name": chart.Name,
-			})
-			
-			if err := u.generateSecret(ctx, secretName, namespace, chart); err != nil {
-				return fmt.Errorf("failed to auto-generate secret %s: %w", secretName, err)
-			}
-			
-			u.logger.InfoWithContext("secret auto-generated successfully", map[string]interface{}{
-				"secret_name": secretName,
-				"namespace": namespace,
-				"chart_name": chart.Name,
-			})
-		}
-	}
-	
-	return nil
-}
-
-// getAllCharts gets all charts that will be deployed based on deployment options
+// getAllCharts gets all charts that will be deployed based on deployment options (delegated to DeploymentStrategyUsecase)
 func (u *DeploymentUsecase) getAllCharts(options *domain.DeploymentOptions) []domain.Chart {
-	strategy := u.strategyFactory.GetStrategy(options.Environment)
-	layerConfigs := strategy.GetLayerConfigurations(options.ChartsDir)
-	
-	var allCharts []domain.Chart
-	for _, layerConfig := range layerConfigs {
-		allCharts = append(allCharts, layerConfig.Charts...)
-	}
-	
-	return allCharts
+	return u.deploymentStrategyUsecase.getAllCharts(options)
 }
 
-// getRequiredSecretsForChart returns the list of required secrets for a specific chart
-func (u *DeploymentUsecase) getRequiredSecretsForChart(chart domain.Chart) []string {
-	switch chart.Name {
-	case "postgres":
-		return []string{"postgres-secret"}
-	case "auth-postgres":
-		return []string{"auth-postgres-secrets"}
-	case "kratos-postgres":
-		return []string{"kratos-postgres-secrets"}
-	case "clickhouse":
-		return []string{"clickhouse-credentials"}
-	case "meilisearch":
-		return []string{"meilisearch-credentials", "meilisearch-ssl-certs-prod"}
-	case "alt-backend":
-		return []string{"alt-backend-secrets", "database-credentials"}
-	case "auth-service":
-		return []string{"auth-service-secrets", "auth-postgres-secrets"}
-	case "kratos":
-		return []string{"kratos-secrets", "kratos-postgres-secrets"}
-	case "alt-frontend":
-		return []string{"alt-frontend-secrets"}
-	case "nginx", "nginx-external":
-		return []string{"nginx-ssl-certs"}
-	case "common-secrets":
-		return []string{} // Common secrets chart creates secrets, doesn't require them
-	case "common-ssl":
-		return []string{} // Common SSL chart creates SSL certificates, doesn't require them
-	default:
-		return []string{} // Default to no required secrets for unknown charts
-	}
-}
 
-// getAutoGeneratableSecretsForChart returns secrets that can be auto-generated for a chart
-func (u *DeploymentUsecase) getAutoGeneratableSecretsForChart(chart domain.Chart) []string {
-	switch chart.Name {
-	case "postgres":
-		return []string{"postgres-secret"}
-	case "auth-postgres":
-		return []string{"auth-postgres-secrets"}
-	case "kratos-postgres":
-		return []string{"kratos-postgres-secrets"}
-	case "clickhouse":
-		return []string{"clickhouse-credentials"}
-	case "meilisearch":
-		return []string{"meilisearch-credentials"}
-	default:
-		return []string{} // Most application secrets require manual configuration
-	}
-}
 
 // getNamespaceForChart returns the appropriate namespace for a chart
 func (u *DeploymentUsecase) getNamespaceForChart(chart domain.Chart) string {
@@ -890,80 +511,8 @@ func (u *DeploymentUsecase) getNamespaceForChart(chart domain.Chart) string {
 	}
 }
 
-// validateSecretLabels validates that secret has proper labels
-func (u *DeploymentUsecase) validateSecretLabels(secret *domain.Secret, chart domain.Chart) error {
-	// Check for required labels
-	if secret.Labels == nil {
-		return fmt.Errorf("secret missing labels")
-	}
-	
-	// Validate deploy-cli management label
-	if managed, exists := secret.Labels["deploy-cli/managed"]; !exists || managed != "true" {
-		u.logger.WarnWithContext("secret not managed by deploy-cli", map[string]interface{}{
-			"secret_name": secret.Name,
-			"chart_name": chart.Name,
-		})
-	}
-	
-	return nil
-}
 
-// validateSecretDataFormat validates secret data format based on secret type
-func (u *DeploymentUsecase) validateSecretDataFormat(secret *domain.Secret, chart domain.Chart) error {
-	switch secret.Type {
-	case string(domain.DatabaseSecret):
-		// Validate database secret format
-		requiredKeys := []string{"username", "password", "database"}
-		for _, key := range requiredKeys {
-			if _, exists := secret.GetData(key); !exists {
-				return fmt.Errorf("database secret missing required key: %s", key)
-			}
-		}
-	case string(domain.SSLSecret):
-		// Validate SSL secret format
-		requiredKeys := []string{"server.crt", "server.key", "ca.crt"}
-		for _, key := range requiredKeys {
-			if _, exists := secret.GetData(key); !exists {
-				return fmt.Errorf("SSL secret missing required key: %s", key)
-			}
-		}
-	}
-	
-	return nil
-}
 
-// generateSecret generates a new secret based on the secret name and chart
-func (u *DeploymentUsecase) generateSecret(ctx context.Context, secretName, namespace string, chart domain.Chart) error {
-	// Get environment from deployment options (we'll need to pass this as a parameter)
-	// For now, determine environment based on namespace
-	env := u.getEnvironmentFromNamespace(namespace)
-	
-	// Determine secret type and generate accordingly
-	if secretName == "meilisearch-ssl-certs-prod" {
-		// Generate SSL certificate using SSL usecase
-		return u.sslUsecase.CreateMeiliSearchSSLCertificate(ctx, namespace, env)
-	}
-	
-	// For database credentials, generate using secret usecase
-	if secretName == "postgres-secret" || 
-	   secretName == "auth-postgres-secrets" || 
-	   secretName == "kratos-postgres-secrets" || 
-	   secretName == "clickhouse-credentials" || 
-	   secretName == "meilisearch-credentials" {
-		return u.secretUsecase.GenerateDatabaseCredentials(ctx, secretName, namespace)
-	}
-	
-	// For application secrets, generate standardized secrets
-	if secretName == "alt-frontend-secrets" ||
-	   secretName == "pre-processor-secrets" ||
-	   secretName == "search-indexer-secrets" ||
-	   secretName == "tag-generator-secrets" ||
-	   secretName == "alt-backend-secrets" {
-		return u.secretUsecase.GenerateDatabaseCredentials(ctx, secretName, namespace)
-	}
-	
-	return fmt.Errorf("unknown secret type for auto-generation: %s", secretName)
-}
 
 // getEnvironmentFromNamespace determines the environment based on namespace
 func (u *DeploymentUsecase) getEnvironmentFromNamespace(namespace string) domain.Environment {
@@ -1266,12 +815,20 @@ func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart,
 		return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
 	}
 
-	// Deploy chart using Helm with enhanced error recovery (Phase 4.3)
-	err := u.helmGateway.DeployChart(ctx, chart, options)
+	// Deploy chart using Helm with enhanced error recovery (Phase 4.3) and concurrent operation prevention
+	err := u.helmOperationManager.ExecuteWithLock(chart.Name, namespace, "deploy", func() error {
+		return u.helmGateway.DeployChart(ctx, chart, options)
+	})
 	if err != nil {
 		// Enhanced error recovery: try to handle secret ownership errors (only if flag is enabled)
 		if options.AutoFixSecrets {
-			if recoveryErr := u.handleSecretOwnershipError(err, chart.Name); recoveryErr != nil {
+			u.logger.WarnWithContext("deployment failed, attempting secret error recovery", map[string]interface{}{
+				"chart": chart.Name,
+				"error": err.Error(),
+			})
+			
+			// Use the secret management usecase to handle the error
+			if recoveryErr := u.secretManagementUsecase.handleSecretOwnershipError(err, chart.Name); recoveryErr != nil {
 				return fmt.Errorf("failed to deploy chart %s: %w", chart.Name, recoveryErr)
 			}
 			
@@ -1281,7 +838,9 @@ func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart,
 				"original_error": err.Error(),
 			})
 			
-			if retryErr := u.helmGateway.DeployChart(ctx, chart, options); retryErr != nil {
+			if retryErr := u.helmOperationManager.ExecuteWithLock(chart.Name, namespace, "deploy-retry", func() error {
+				return u.helmGateway.DeployChart(ctx, chart, options)
+			}); retryErr != nil {
 				return fmt.Errorf("failed to deploy chart %s after error recovery: %w", chart.Name, retryErr)
 			}
 			
@@ -1320,283 +879,12 @@ func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart,
 	return nil
 }
 
-// restartDeployments restarts all workload resources (deployments, statefulsets, daemonsets)
-func (u *DeploymentUsecase) restartDeployments(ctx context.Context, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("restarting workload resources", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	namespaces := domain.GetNamespacesForEnvironment(options.Environment)
-	
-	for _, namespace := range namespaces {
-		// Restart deployments
-		if err := u.restartDeploymentsInNamespace(ctx, namespace); err != nil {
-			u.logger.WarnWithContext("failed to restart deployments in namespace", map[string]interface{}{
-				"namespace": namespace,
-				"error":     err.Error(),
-			})
-		}
-		
-		// Restart StatefulSets
-		if err := u.restartStatefulSetsInNamespace(ctx, namespace); err != nil {
-			u.logger.WarnWithContext("failed to restart statefulsets in namespace", map[string]interface{}{
-				"namespace": namespace,
-				"error":     err.Error(),
-			})
-		}
-		
-		// Restart DaemonSets (if method exists)
-		if err := u.restartDaemonSetsInNamespace(ctx, namespace); err != nil {
-			u.logger.WarnWithContext("failed to restart daemonsets in namespace", map[string]interface{}{
-				"namespace": namespace,
-				"error":     err.Error(),
-			})
-		}
-	}
-	
-	u.logger.InfoWithContext("workload resource restart completed", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	return nil
-}
 
-// restartDeploymentsInNamespace restarts deployments in a specific namespace
-func (u *DeploymentUsecase) restartDeploymentsInNamespace(ctx context.Context, namespace string) error {
-	deployments, err := u.kubectlGateway.GetDeployments(ctx, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get deployments: %w", err)
-	}
-	
-	for _, deployment := range deployments {
-		if err := u.kubectlGateway.RolloutRestart(ctx, "deployment", deployment.Name, namespace); err != nil {
-			u.logger.WarnWithContext("failed to restart deployment", map[string]interface{}{
-				"deployment": deployment.Name,
-				"namespace":  namespace,
-				"error":      err.Error(),
-			})
-		} else {
-			u.logger.InfoWithContext("deployment restarted", map[string]interface{}{
-				"deployment": deployment.Name,
-				"namespace":  namespace,
-			})
-			
-			// Wait for rollout completion
-			if err := u.kubectlGateway.WaitForRollout(ctx, "deployment", deployment.Name, namespace, 5*time.Minute); err != nil {
-				u.logger.WarnWithContext("deployment rollout did not complete", map[string]interface{}{
-					"deployment": deployment.Name,
-					"namespace":  namespace,
-					"error":      err.Error(),
-				})
-			} else {
-				u.logger.InfoWithContext("deployment rollout completed", map[string]interface{}{
-					"deployment": deployment.Name,
-					"namespace":  namespace,
-				})
-			}
-		}
-	}
-	
-	return nil
-}
 
-// restartStatefulSetsInNamespace restarts StatefulSets in a specific namespace
-func (u *DeploymentUsecase) restartStatefulSetsInNamespace(ctx context.Context, namespace string) error {
-	statefulSets, err := u.kubectlGateway.GetStatefulSets(ctx, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get statefulsets: %w", err)
-	}
-	
-	for _, sts := range statefulSets {
-		if err := u.kubectlGateway.RolloutRestart(ctx, "statefulset", sts.Name, namespace); err != nil {
-			u.logger.WarnWithContext("failed to restart statefulset", map[string]interface{}{
-				"statefulset": sts.Name,
-				"namespace":   namespace,
-				"error":       err.Error(),
-			})
-		} else {
-			u.logger.InfoWithContext("statefulset restarted", map[string]interface{}{
-				"statefulset": sts.Name,
-				"namespace":   namespace,
-			})
-			
-			// Wait for rollout completion (StatefulSets may take longer)
-			if err := u.kubectlGateway.WaitForRollout(ctx, "statefulset", sts.Name, namespace, 10*time.Minute); err != nil {
-				u.logger.WarnWithContext("statefulset rollout did not complete", map[string]interface{}{
-					"statefulset": sts.Name,
-					"namespace":   namespace,
-					"error":       err.Error(),
-				})
-			} else {
-				u.logger.InfoWithContext("statefulset rollout completed", map[string]interface{}{
-					"statefulset": sts.Name,
-					"namespace":   namespace,
-				})
-			}
-		}
-	}
-	
-	return nil
-}
 
-// restartDaemonSetsInNamespace restarts DaemonSets in a specific namespace
-func (u *DeploymentUsecase) restartDaemonSetsInNamespace(ctx context.Context, namespace string) error {
-	// Note: DaemonSets don't support rollout restart in the same way
-	// We'll skip them for now as they typically don't need manual restarts
-	// and have different update strategies
-	return nil
-}
 
-// validatePodUpdates validates that pods have been updated after deployment
-func (u *DeploymentUsecase) validatePodUpdates(ctx context.Context, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("validating pod updates", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	namespaces := domain.GetNamespacesForEnvironment(options.Environment)
-	
-	for _, namespace := range namespaces {
-		// Check deployment pods
-		if err := u.validateDeploymentPods(ctx, namespace); err != nil {
-			u.logger.WarnWithContext("deployment pod validation failed", map[string]interface{}{
-				"namespace": namespace,
-				"error":     err.Error(),
-			})
-		}
-		
-		// Check StatefulSet pods  
-		if err := u.validateStatefulSetPods(ctx, namespace); err != nil {
-			u.logger.WarnWithContext("statefulset pod validation failed", map[string]interface{}{
-				"namespace": namespace,
-				"error":     err.Error(),
-			})
-		}
-	}
-	
-	u.logger.InfoWithContext("pod update validation completed", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
-	
-	return nil
-}
 
-// validateDeploymentPods validates that deployment pods are running and updated
-func (u *DeploymentUsecase) validateDeploymentPods(ctx context.Context, namespace string) error {
-	deployments, err := u.kubectlGateway.GetDeployments(ctx, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get deployments: %w", err)
-	}
-	
-	for _, deployment := range deployments {
-		// Wait for deployment rollout to complete
-		if err := u.kubectlGateway.WaitForRollout(ctx, "deployment", deployment.Name, namespace, 5*time.Minute); err != nil {
-			u.logger.WarnWithContext("deployment rollout did not complete within timeout", map[string]interface{}{
-				"deployment": deployment.Name,
-				"namespace":  namespace,
-				"error":      err.Error(),
-			})
-		}
-		
-		// Check pod status for this deployment
-		pods, err := u.kubectlGateway.GetPods(ctx, namespace, fmt.Sprintf("app.kubernetes.io/name=%s", deployment.Name))
-		if err != nil {
-			u.logger.WarnWithContext("failed to get pods for deployment", map[string]interface{}{
-				"deployment": deployment.Name,
-				"namespace":  namespace,
-				"error":      err.Error(),
-			})
-			continue
-		}
-		
-		// Count running pods
-		runningPods := 0
-		for i := range pods {
-			if pods[i].Status == "Running" {
-				runningPods++
-			}
-		}
-		
-		u.logger.InfoWithContext("deployment pod status validation", map[string]interface{}{
-			"deployment":   deployment.Name,
-			"namespace":    namespace,
-			"total_pods":   len(pods),
-			"running_pods": runningPods,
-			"ready_replicas": deployment.ReadyReplicas,
-			"desired_replicas": deployment.Replicas,
-		})
-		
-		// Validate that deployment has expected number of ready replicas
-		if deployment.ReadyReplicas != deployment.Replicas {
-			u.logger.WarnWithContext("deployment does not have all replicas ready", map[string]interface{}{
-				"deployment":       deployment.Name,
-				"namespace":        namespace,
-				"ready_replicas":   deployment.ReadyReplicas,
-				"desired_replicas": deployment.Replicas,
-			})
-		}
-	}
-	
-	return nil
-}
 
-// validateStatefulSetPods validates that StatefulSet pods are running and updated
-func (u *DeploymentUsecase) validateStatefulSetPods(ctx context.Context, namespace string) error {
-	statefulSets, err := u.kubectlGateway.GetStatefulSets(ctx, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get statefulsets: %w", err)
-	}
-	
-	for _, sts := range statefulSets {
-		// Wait for StatefulSet rollout to complete (longer timeout for StatefulSets)
-		if err := u.kubectlGateway.WaitForRollout(ctx, "statefulset", sts.Name, namespace, 10*time.Minute); err != nil {
-			u.logger.WarnWithContext("statefulset rollout did not complete within timeout", map[string]interface{}{
-				"statefulset": sts.Name,
-				"namespace":   namespace,
-				"error":       err.Error(),
-			})
-		}
-		
-		// Check pod status for this StatefulSet
-		pods, err := u.kubectlGateway.GetPods(ctx, namespace, fmt.Sprintf("app.kubernetes.io/name=%s", sts.Name))
-		if err != nil {
-			u.logger.WarnWithContext("failed to get pods for statefulset", map[string]interface{}{
-				"statefulset": sts.Name,
-				"namespace":   namespace,
-				"error":       err.Error(),
-			})
-			continue
-		}
-		
-		// Count running pods
-		runningPods := 0
-		for i := range pods {
-			if pods[i].Status == "Running" {
-				runningPods++
-			}
-		}
-		
-		u.logger.InfoWithContext("statefulset pod status validation", map[string]interface{}{
-			"statefulset":    sts.Name,
-			"namespace":      namespace,
-			"total_pods":     len(pods),
-			"running_pods":   runningPods,
-			"ready_replicas": sts.ReadyReplicas,
-			"desired_replicas": sts.Replicas,
-		})
-		
-		// Validate that StatefulSet has expected number of ready replicas
-		if sts.ReadyReplicas != sts.Replicas {
-			u.logger.WarnWithContext("statefulset does not have all replicas ready", map[string]interface{}{
-				"statefulset":      sts.Name,
-				"namespace":        namespace,
-				"ready_replicas":   sts.ReadyReplicas,
-				"desired_replicas": sts.Replicas,
-			})
-		}
-	}
-	
-	return nil
-}
 
 // validateAndFixSecrets validates secret state and automatically resolves conflicts
 func (u *DeploymentUsecase) validateAndFixSecrets(ctx context.Context, options *domain.DeploymentOptions) error {
@@ -1798,7 +1086,7 @@ func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Cont
 	
 	// Post-deployment validation
 	if options.ForceUpdate || options.ShouldOverrideImage() {
-		if err := u.validatePodUpdates(ctx, options); err != nil {
+		if err := u.healthCheckUsecase.validatePodUpdates(ctx, options); err != nil {
 			u.logger.WarnWithContext("pod update validation failed", map[string]interface{}{
 				"error": err.Error(),
 			})
@@ -2098,7 +1386,7 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 			healthCheckCtx, healthCheckCancel := context.WithTimeout(layerCtx, layer.HealthCheckTimeout)
 			defer healthCheckCancel()
 			
-			if err := u.performLayerHealthCheck(healthCheckCtx, layer, options); err != nil {
+			if err := u.healthCheckUsecase.performLayerHealthCheck(healthCheckCtx, layer, options); err != nil {
 				u.logger.ErrorWithContext("layer health check failed", map[string]interface{}{
 					"layer": layer.Name,
 					"error": err.Error(),
@@ -2456,369 +1744,19 @@ func toLower(s string) string {
 	return string(result)
 }
 
-// performLayerHealthCheck performs comprehensive health checks for a deployment layer
-func (u *DeploymentUsecase) performLayerHealthCheck(ctx context.Context, layer domain.LayerConfiguration, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("starting layer health check", map[string]interface{}{
-		"layer": layer.Name,
-		"chart_count": len(layer.Charts),
-		"timeout": layer.HealthCheckTimeout,
-	})
 
-	// Check health for each chart in the layer
-	for _, chart := range layer.Charts {
-		if err := u.performChartHealthCheck(ctx, chart, options); err != nil {
-			return fmt.Errorf("chart health check failed for %s: %w", chart.Name, err)
-		}
-	}
 
-	// Layer-specific health checks
-	switch layer.Name {
-	case "Storage & Persistent Infrastructure":
-		return u.performStorageLayerHealthCheck(ctx, layer.Charts, options)
-	case "Core Services":
-		return u.performCoreServicesHealthCheck(ctx, layer.Charts, options)
-	case "Data Processing Services":
-		return u.performProcessingServicesHealthCheck(ctx, layer.Charts, options)
-	default:
-		// Default health check for other layers
-		return u.performDefaultLayerHealthCheck(ctx, layer.Charts, options)
-	}
-}
 
-// performChartHealthCheck performs health check for a single chart
-func (u *DeploymentUsecase) performChartHealthCheck(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("performing chart health check", map[string]interface{}{
-		"chart": chart.Name,
-		"multi_namespace": chart.MultiNamespace,
-		"target_namespaces": chart.TargetNamespaces,
-		"wait_ready": chart.WaitReady,
-	})
 
-	// Handle multi-namespace charts
-	if chart.MultiNamespace {
-		for _, targetNamespace := range chart.TargetNamespaces {
-			u.logger.InfoWithContext("checking health for namespace", map[string]interface{}{
-				"chart": chart.Name,
-				"namespace": targetNamespace,
-			})
-			
-			// Create a copy of the chart for single namespace health check
-			chartCopy := chart
-			chartCopy.MultiNamespace = false
-			
-			if err := u.performSingleNamespaceHealthCheck(ctx, chartCopy, targetNamespace, options); err != nil {
-				return fmt.Errorf("health check failed for chart %s in namespace %s: %w", chart.Name, targetNamespace, err)
-			}
-		}
-		return nil
-	}
 
-	// Handle single namespace charts
-	namespace := options.GetNamespace(chart.Name)
-	return u.performSingleNamespaceHealthCheck(ctx, chart, namespace, options)
-}
 
-// performSingleNamespaceHealthCheck performs health check for a chart in a single namespace
-func (u *DeploymentUsecase) performSingleNamespaceHealthCheck(ctx context.Context, chart domain.Chart, namespace string, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("performing single namespace health check", map[string]interface{}{
-		"chart": chart.Name,
-		"namespace": namespace,
-		"wait_ready": chart.WaitReady,
-	})
 
-	// If chart doesn't require readiness check, just verify deployment exists
-	if !chart.WaitReady {
-		return u.verifyChartDeployment(ctx, chart, namespace)
-	}
 
-	// Determine chart type and perform appropriate health check
-	if u.isStatefulSetChart(chart.Name) {
-		return u.performStatefulSetHealthCheck(ctx, chart.Name, namespace)
-	} else {
-		return u.performDeploymentHealthCheck(ctx, chart.Name, namespace)
-	}
-}
 
-// performStorageLayerHealthCheck performs specific health checks for storage layer
-func (u *DeploymentUsecase) performStorageLayerHealthCheck(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("performing storage layer health check", map[string]interface{}{
-		"chart_count": len(charts),
-	})
 
-	// Check all StatefulSets are ready
-	for _, chart := range charts {
-		namespace := options.GetNamespace(chart.Name)
-		
-		// Verify StatefulSet is ready
-		if err := u.performStatefulSetHealthCheck(ctx, chart.Name, namespace); err != nil {
-			return fmt.Errorf("statefulset health check failed for %s: %w", chart.Name, err)
-		}
-		
-		// Verify database connectivity (if applicable)
-		if err := u.verifyDatabaseConnectivity(ctx, chart.Name, namespace); err != nil {
-			u.logger.WarnWithContext("database connectivity check failed", map[string]interface{}{
-				"chart": chart.Name,
-				"namespace": namespace,
-				"error": err.Error(),
-			})
-			// Don't fail here, just warn as connectivity might not be immediately available
-		}
-	}
-
-	return nil
-}
-
-// performCoreServicesHealthCheck performs health checks for core services
-func (u *DeploymentUsecase) performCoreServicesHealthCheck(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("performing core services health check", map[string]interface{}{
-		"chart_count": len(charts),
-	})
-
-	// Check all deployments are ready and health endpoints are responding
-	for _, chart := range charts {
-		namespace := options.GetNamespace(chart.Name)
-		
-		// Verify deployment is ready
-		if err := u.performDeploymentHealthCheck(ctx, chart.Name, namespace); err != nil {
-			return fmt.Errorf("deployment health check failed for %s: %w", chart.Name, err)
-		}
-		
-		// Verify service health endpoints (if applicable)
-		if err := u.verifyServiceHealthEndpoint(ctx, chart.Name, namespace); err != nil {
-			u.logger.WarnWithContext("service health endpoint check failed", map[string]interface{}{
-				"chart": chart.Name,
-				"namespace": namespace,
-				"error": err.Error(),
-			})
-			// Don't fail here, just warn as health endpoints might not be immediately available
-		}
-	}
-
-	return nil
-}
-
-// performProcessingServicesHealthCheck performs health checks for processing services
-func (u *DeploymentUsecase) performProcessingServicesHealthCheck(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("performing processing services health check", map[string]interface{}{
-		"chart_count": len(charts),
-	})
-
-	// Check all deployments are ready
-	for _, chart := range charts {
-		namespace := options.GetNamespace(chart.Name)
-		
-		// Verify deployment is ready
-		if err := u.performDeploymentHealthCheck(ctx, chart.Name, namespace); err != nil {
-			return fmt.Errorf("deployment health check failed for %s: %w", chart.Name, err)
-		}
-	}
-
-	return nil
-}
-
-// performDefaultLayerHealthCheck performs default health checks for other layers
-func (u *DeploymentUsecase) performDefaultLayerHealthCheck(ctx context.Context, charts []domain.Chart, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("performing default layer health check", map[string]interface{}{
-		"chart_count": len(charts),
-	})
-
-	// Basic readiness check for all charts
-	for _, chart := range charts {
-		if chart.WaitReady {
-			namespace := options.GetNamespace(chart.Name)
-			
-			if u.isStatefulSetChart(chart.Name) {
-				if err := u.performStatefulSetHealthCheck(ctx, chart.Name, namespace); err != nil {
-					return fmt.Errorf("statefulset health check failed for %s: %w", chart.Name, err)
-				}
-			} else {
-				if err := u.performDeploymentHealthCheck(ctx, chart.Name, namespace); err != nil {
-					return fmt.Errorf("deployment health check failed for %s: %w", chart.Name, err)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-// performStatefulSetHealthCheck performs comprehensive health check for StatefulSets
-func (u *DeploymentUsecase) performStatefulSetHealthCheck(ctx context.Context, chartName, namespace string) error {
-	u.logger.InfoWithContext("performing statefulset health check", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-	})
-
-	// Wait for StatefulSet rollout to complete
-	if err := u.kubectlGateway.WaitForRollout(ctx, "statefulset", chartName, namespace, 10*time.Minute); err != nil {
-		return fmt.Errorf("statefulset rollout failed: %w", err)
-	}
-
-	// Get StatefulSet details
-	statefulSets, err := u.kubectlGateway.GetStatefulSets(ctx, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get statefulsets: %w", err)
-	}
-
-	// Find the specific StatefulSet
-	var targetSts *kubectl_port.KubernetesStatefulSet
-	for i := range statefulSets {
-		if statefulSets[i].Name == chartName {
-			targetSts = &statefulSets[i]
-			break
-		}
-	}
-
-	if targetSts == nil {
-		return fmt.Errorf("statefulset %s not found in namespace %s", chartName, namespace)
-	}
-
-	// Verify readiness
-	if targetSts.ReadyReplicas != targetSts.Replicas {
-		return fmt.Errorf("statefulset %s not ready: %d/%d replicas ready", chartName, targetSts.ReadyReplicas, targetSts.Replicas)
-	}
-
-	// Verify pods are running
-	pods, err := u.kubectlGateway.GetPods(ctx, namespace, fmt.Sprintf("app.kubernetes.io/name=%s", chartName))
-	if err != nil {
-		return fmt.Errorf("failed to get pods for statefulset: %w", err)
-	}
-
-	runningPods := 0
-	for i := range pods {
-		if pods[i].Status == "Running" {
-			runningPods++
-		}
-	}
-
-	if runningPods < targetSts.Replicas {
-		return fmt.Errorf("statefulset %s has insufficient running pods: %d/%d", chartName, runningPods, targetSts.Replicas)
-	}
-
-	u.logger.InfoWithContext("statefulset health check passed", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-		"ready_replicas": targetSts.ReadyReplicas,
-		"desired_replicas": targetSts.Replicas,
-		"running_pods": runningPods,
-	})
-
-	return nil
-}
-
-// performDeploymentHealthCheck performs comprehensive health check for Deployments
-func (u *DeploymentUsecase) performDeploymentHealthCheck(ctx context.Context, chartName, namespace string) error {
-	u.logger.InfoWithContext("performing deployment health check", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-	})
-
-	// Wait for deployment rollout to complete
-	if err := u.kubectlGateway.WaitForRollout(ctx, "deployment", chartName, namespace, 5*time.Minute); err != nil {
-		return fmt.Errorf("deployment rollout failed: %w", err)
-	}
-
-	// Get deployment details
-	deployments, err := u.kubectlGateway.GetDeployments(ctx, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get deployments: %w", err)
-	}
-
-	// Find the specific deployment
-	var targetDep *kubectl_port.KubernetesDeployment
-	for i := range deployments {
-		if deployments[i].Name == chartName {
-			targetDep = &deployments[i]
-			break
-		}
-	}
-
-	if targetDep == nil {
-		return fmt.Errorf("deployment %s not found in namespace %s", chartName, namespace)
-	}
-
-	// Verify readiness
-	if targetDep.ReadyReplicas != targetDep.Replicas {
-		return fmt.Errorf("deployment %s not ready: %d/%d replicas ready", chartName, targetDep.ReadyReplicas, targetDep.Replicas)
-	}
-
-	u.logger.InfoWithContext("deployment health check passed", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-		"ready_replicas": targetDep.ReadyReplicas,
-		"desired_replicas": targetDep.Replicas,
-	})
-
-	return nil
-}
-
-// verifyChartDeployment verifies that a chart deployment exists
-func (u *DeploymentUsecase) verifyChartDeployment(ctx context.Context, chart domain.Chart, namespace string) error {
-	u.logger.InfoWithContext("verifying chart deployment", map[string]interface{}{
-		"chart": chart.Name,
-		"namespace": namespace,
-	})
-
-	// Enhanced logging for debugging
-	isSecretOnly := u.isSecretOnlyChart(chart.Name)
-	isStatefulSet := u.isStatefulSetChart(chart.Name)
-	
-	u.logger.InfoWithContext("chart type detection", map[string]interface{}{
-		"chart": chart.Name,
-		"is_secret_only": isSecretOnly,
-		"is_stateful_set": isStatefulSet,
-		"namespace": namespace,
-	})
-
-	// Special case for charts that only create secrets/configmaps
-	if isSecretOnly {
-		u.logger.InfoWithContext("routing to secret chart verification", map[string]interface{}{
-			"chart": chart.Name,
-			"namespace": namespace,
-		})
-		return u.verifySecretChart(ctx, chart.Name, namespace)
-	}
-
-	// Check if deployment or statefulset exists
-	if u.isStatefulSetChart(chart.Name) {
-		statefulSets, err := u.kubectlGateway.GetStatefulSets(ctx, namespace)
-		if err != nil {
-			return fmt.Errorf("failed to get statefulsets: %w", err)
-		}
-		
-		for i := range statefulSets {
-			if statefulSets[i].Name == chart.Name {
-				return nil // Found
-			}
-		}
-		return fmt.Errorf("statefulset %s not found in namespace %s", chart.Name, namespace)
-	} else {
-		deployments, err := u.kubectlGateway.GetDeployments(ctx, namespace)
-		if err != nil {
-			return fmt.Errorf("failed to get deployments: %w", err)
-		}
-		
-		for i := range deployments {
-			if deployments[i].Name == chart.Name {
-				return nil // Found
-			}
-		}
-		return fmt.Errorf("deployment %s not found in namespace %s", chart.Name, namespace)
-	}
-}
-
-// isStatefulSetChart determines if a chart deploys a StatefulSet
+// isStatefulSetChart determines if a chart deploys a StatefulSet (delegated to StatefulSetManagementUsecase)
 func (u *DeploymentUsecase) isStatefulSetChart(chartName string) bool {
-	statefulSetCharts := []string{
-		"postgres", "auth-postgres", "kratos-postgres", "clickhouse", "meilisearch",
-	}
-	
-	for _, stsChart := range statefulSetCharts {
-		if chartName == stsChart {
-			return true
-		}
-	}
-	return false
+	return u.statefulSetManagementUsecase.isStatefulSetChart(chartName)
 }
 
 // isSecretOnlyChart determines if a chart only creates secrets/configmaps
@@ -2835,97 +1773,8 @@ func (u *DeploymentUsecase) isSecretOnlyChart(chartName string) bool {
 	return false
 }
 
-// verifySecretChart verifies that a secret-only chart has created its resources
-func (u *DeploymentUsecase) verifySecretChart(ctx context.Context, chartName, namespace string) error {
-	u.logger.InfoWithContext("verifying secret chart deployment", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-	})
 
-	// For secret-only charts, check if the helm release exists and is deployed
-	u.logger.InfoWithContext("getting helm release status for secret chart", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-	})
-	
-	status, err := u.helmGateway.GetReleaseStatus(ctx, chartName, namespace)
-	if err != nil {
-		u.logger.ErrorWithContext("failed to get release status for secret chart", map[string]interface{}{
-			"chart": chartName,
-			"namespace": namespace,
-			"error": err.Error(),
-		})
-		return fmt.Errorf("failed to get release status for %s in namespace %s: %w", chartName, namespace, err)
-	}
 
-	u.logger.InfoWithContext("helm release status retrieved", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-		"status": status.Status,
-	})
-
-	// Check if the release is deployed
-	if status.Status != "deployed" {
-		u.logger.ErrorWithContext("helm release not deployed", map[string]interface{}{
-			"chart": chartName,
-			"namespace": namespace,
-			"status": status.Status,
-		})
-		return fmt.Errorf("helm release %s in namespace %s is not deployed, status: %s", chartName, namespace, status.Status)
-	}
-
-	u.logger.InfoWithContext("secret chart verified successfully", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-		"status": status.Status,
-	})
-
-	return nil
-}
-
-// verifyDatabaseConnectivity attempts to verify database connectivity
-func (u *DeploymentUsecase) verifyDatabaseConnectivity(ctx context.Context, chartName, namespace string) error {
-	u.logger.InfoWithContext("verifying database connectivity", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-	})
-
-	// This is a placeholder - in a real implementation, you would:
-	// 1. Get database connection details from secrets
-	// 2. Attempt to connect to the database
-	// 3. Perform a simple query to verify connectivity
-	
-	// For now, we'll just log that this check was performed
-	u.logger.InfoWithContext("database connectivity check completed", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-		"status": "placeholder_implementation",
-	})
-
-	return nil
-}
-
-// verifyServiceHealthEndpoint attempts to verify service health endpoints
-func (u *DeploymentUsecase) verifyServiceHealthEndpoint(ctx context.Context, chartName, namespace string) error {
-	u.logger.InfoWithContext("verifying service health endpoint", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-	})
-
-	// This is a placeholder - in a real implementation, you would:
-	// 1. Get service endpoint details
-	// 2. Attempt to call health check endpoints
-	// 3. Verify the service is responding correctly
-	
-	// For now, we'll just log that this check was performed
-	u.logger.InfoWithContext("service health endpoint check completed", map[string]interface{}{
-		"chart": chartName,
-		"namespace": namespace,
-		"status": "placeholder_implementation",
-	})
-
-	return nil
-}
 
 // getDefaultLayerConfigurations returns the default layer configurations for backwards compatibility
 func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.ChartConfig, chartsDir string) []domain.LayerConfiguration {
@@ -3032,52 +1881,6 @@ func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.Ch
 	}
 }
 
-// setupDeploymentStrategy sets up the deployment strategy for the given options
-func (u *DeploymentUsecase) setupDeploymentStrategy(options *domain.DeploymentOptions) error {
-	// Skip if strategy is already set
-	if options.HasDeploymentStrategy() {
-		u.logger.InfoWithContext("deployment strategy already set", map[string]interface{}{
-			"strategy": options.GetDeploymentStrategy().GetName(),
-		})
-		return nil
-	}
-	
-	var strategy domain.DeploymentStrategy
-	var err error
-	
-	// Use explicit strategy name if provided
-	if options.StrategyName != "" {
-		strategy, err = u.strategyFactory.CreateStrategyByName(options.StrategyName)
-		if err != nil {
-			return fmt.Errorf("failed to create strategy by name '%s': %w", options.StrategyName, err)
-		}
-		
-		// Validate strategy compatibility with environment
-		if err := u.strategyFactory.ValidateStrategyForEnvironment(strategy, options.Environment); err != nil {
-			return fmt.Errorf("strategy validation failed: %w", err)
-		}
-	} else {
-		// Use environment-based strategy selection
-		strategy, err = u.strategyFactory.CreateStrategy(options.Environment)
-		if err != nil {
-			return fmt.Errorf("failed to create strategy for environment '%s': %w", options.Environment, err)
-		}
-	}
-	
-	// Set the strategy
-	options.SetDeploymentStrategy(strategy)
-	
-	u.logger.InfoWithContext("deployment strategy configured", map[string]interface{}{
-		"strategy": strategy.GetName(),
-		"environment": options.Environment.String(),
-		"global_timeout": strategy.GetGlobalTimeout(),
-		"allows_parallel": strategy.AllowsParallelDeployment(),
-		"health_check_retries": strategy.GetHealthCheckRetries(),
-		"zero_downtime": strategy.RequiresZeroDowntime(),
-	})
-	
-	return nil
-}
 
 // initializeMonitoring initializes monitoring components for a deployment
 func (u *DeploymentUsecase) initializeMonitoring(ctx context.Context, deploymentID string, options *domain.DeploymentOptions) error {
@@ -3200,82 +2003,8 @@ func (u *DeploymentUsecase) cleanupStuckHelmOperations(ctx context.Context, opti
 	return nil
 }
 
-// provisionAllRequiredSecrets implements Phase 4 comprehensive secret provisioning
-func (u *DeploymentUsecase) provisionAllRequiredSecrets(ctx context.Context, charts []domain.Chart) error {
-	u.logger.InfoWithContext("starting comprehensive secret provisioning", map[string]interface{}{
-		"chart_count": len(charts),
-	})
-	
-	missingSecrets := u.detectMissingSecrets(ctx, charts)
-	if len(missingSecrets) == 0 {
-		u.logger.InfoWithContext("all required secrets exist", map[string]interface{}{
-			"status": "complete",
-		})
-		return nil
-	}
-	
-	u.logger.InfoWithContext("provisioning missing secrets", map[string]interface{}{
-		"missing_count": len(missingSecrets),
-	})
-	
-	for _, secret := range missingSecrets {
-		u.logger.InfoWithContext("auto-generating missing secret", map[string]interface{}{
-			"name": secret.Name,
-			"namespace": secret.Namespace,
-			"chart": secret.Chart,
-		})
-		
-		if err := u.generateSecret(ctx, secret.Name, secret.Namespace, domain.Chart{Name: secret.Chart}); err != nil {
-			u.logger.ErrorWithContext("failed to generate secret", map[string]interface{}{
-				"name": secret.Name,
-				"namespace": secret.Namespace,
-				"chart": secret.Chart,
-				"error": err.Error(),
-			})
-			return fmt.Errorf("failed to generate secret %s in namespace %s: %w", secret.Name, secret.Namespace, err)
-		}
-		
-		u.logger.InfoWithContext("successfully generated secret", map[string]interface{}{
-			"name": secret.Name,
-			"namespace": secret.Namespace,
-			"chart": secret.Chart,
-		})
-	}
-	
-	u.logger.InfoWithContext("comprehensive secret provisioning completed", map[string]interface{}{
-		"provisioned_count": len(missingSecrets),
-	})
-	return nil
-}
 
-// SecretRequirement represents a missing secret that needs to be provisioned
-type SecretRequirement struct {
-	Name      string
-	Namespace string
-	Chart     string
-}
 
-// detectMissingSecrets identifies all missing secrets across charts
-func (u *DeploymentUsecase) detectMissingSecrets(ctx context.Context, charts []domain.Chart) []SecretRequirement {
-	var missingSecrets []SecretRequirement
-	
-	for _, chart := range charts {
-		required := u.getRequiredSecretsForChart(chart)
-		namespace := u.getNamespaceForChart(chart)
-		
-		for _, secretName := range required {
-			if !u.secretExists(ctx, secretName, namespace) {
-				missingSecrets = append(missingSecrets, SecretRequirement{
-					Name:      secretName,
-					Namespace: namespace,
-					Chart:     chart.Name,
-				})
-			}
-		}
-	}
-	
-	return missingSecrets
-}
 
 // secretExists checks if a secret exists in the given namespace
 func (u *DeploymentUsecase) secretExists(ctx context.Context, secretName, namespace string) bool {
@@ -3283,114 +2012,6 @@ func (u *DeploymentUsecase) secretExists(ctx context.Context, secretName, namesp
 	return err == nil
 }
 
-// generateSSLCertificates generates CA and server certificates for SSL
-func (u *DeploymentUsecase) generateSSLCertificates(ctx context.Context) error {
-	u.logger.InfoWithContext("generating SSL certificates", map[string]interface{}{
-		"system": "ssl-certificate-manager",
-	})
-
-	// Generate CA private key
-	caPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return fmt.Errorf("failed to generate CA private key: %w", err)
-	}
-
-	// Create CA certificate template
-	caTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization:  []string{"Alt RSS Reader"},
-			Country:       []string{"JP"},
-			Province:      []string{"Tokyo"},
-			Locality:      []string{"Tokyo"},
-			CommonName:    "Alt RSS Reader CA",
-		},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(5, 0, 0), // 5年間有効
-		IsCA:                  true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-	}
-
-	// Generate CA certificate
-	caCertDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caPrivateKey.PublicKey, caPrivateKey)
-	if err != nil {
-		return fmt.Errorf("failed to create CA certificate: %w", err)
-	}
-
-	// Encode CA certificate to PEM format
-	caCertPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: caCertDER,
-	})
-
-	// Encode CA private key to PEM format
-	caPrivateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(caPrivateKey),
-	})
-
-	// Generate server private key
-	serverPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return fmt.Errorf("failed to generate server private key: %w", err)
-	}
-
-	// Create server certificate template
-	serverTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		Subject: pkix.Name{
-			Organization:  []string{"Alt RSS Reader"},
-			Country:       []string{"JP"},
-			Province:      []string{"Tokyo"},
-			Locality:      []string{"Tokyo"},
-			CommonName:    "Alt RSS Reader Server",
-		},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(1, 0, 0), // 1年間有効
-		SubjectKeyId: []byte{1, 2, 3, 4, 6},
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		DNSNames:     []string{"postgres", "postgres.alt-database.svc.cluster.local", "db.alt-database.svc.cluster.local", "localhost"},
-		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
-	}
-
-	// Generate server certificate signed by CA
-	serverCertDER, err := x509.CreateCertificate(rand.Reader, serverTemplate, caTemplate, &serverPrivateKey.PublicKey, caPrivateKey)
-	if err != nil {
-		return fmt.Errorf("failed to create server certificate: %w", err)
-	}
-
-	// Encode server certificate to PEM format
-	serverCertPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: serverCertDER,
-	})
-
-	// Encode server private key to PEM format
-	serverPrivateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(serverPrivateKey),
-	})
-
-	// Store certificates in deploy-cli
-	u.generatedCertificates = &GeneratedCertificates{
-		CACert:           base64.StdEncoding.EncodeToString(caCertPEM),
-		CAPrivateKey:     base64.StdEncoding.EncodeToString(caPrivateKeyPEM),
-		ServerCert:       base64.StdEncoding.EncodeToString(serverCertPEM),
-		ServerPrivateKey: base64.StdEncoding.EncodeToString(serverPrivateKeyPEM),
-		Generated:        time.Now(),
-	}
-
-	u.logger.InfoWithContext("SSL certificates generated successfully", map[string]interface{}{
-		"ca_cert_length":     len(u.generatedCertificates.CACert),
-		"server_cert_length": len(u.generatedCertificates.ServerCert),
-		"generated_time":     u.generatedCertificates.Generated.Format(time.RFC3339),
-	})
-
-	return nil
-}
 
 // injectCertificateData injects generated SSL certificates into common-ssl charts
 func (u *DeploymentUsecase) injectCertificateData(ctx context.Context, chartPath string) error {
@@ -3463,179 +2084,11 @@ func (u *DeploymentUsecase) injectCertificateData(ctx context.Context, chartPath
 	return nil
 }
 
-// safeStatefulSetRecreation safely recreates StatefulSet to resolve conflicts
-func (u *DeploymentUsecase) safeStatefulSetRecreation(ctx context.Context, chartName, namespace string) error {
-	statefulSetName := chartName // postgres, auth-postgres, etc.
-	
-	u.logger.InfoWithContext("checking for existing StatefulSet", map[string]interface{}{
-		"statefulset": statefulSetName,
-		"namespace": namespace,
-	})
 
-	// Check if StatefulSet exists
-	exists, err := u.checkStatefulSetExists(ctx, statefulSetName, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to check StatefulSet existence: %w", err)
-	}
 
-	if exists {
-		u.logger.InfoWithContext("existing StatefulSet detected, performing safe recreation", map[string]interface{}{
-			"statefulset": statefulSetName,
-			"namespace": namespace,
-		})
 
-		// Step 1: Scale down StatefulSet to 0
-		if err := u.scaleStatefulSet(ctx, statefulSetName, namespace, 0); err != nil {
-			return fmt.Errorf("failed to scale down StatefulSet: %w", err)
-		}
 
-		// Step 2: Wait for all pods to terminate
-		if err := u.waitForPodsTermination(ctx, statefulSetName, namespace, 300); err != nil {
-			return fmt.Errorf("failed to wait for pods termination: %w", err)
-		}
 
-		// Step 3: Delete StatefulSet (preserve PVC)
-		if err := u.deleteStatefulSet(ctx, statefulSetName, namespace); err != nil {
-			return fmt.Errorf("failed to delete StatefulSet: %w", err)
-		}
-
-		// Step 4: Clean up related resources (except PVC)
-		if err := u.cleanupStatefulSetResources(ctx, statefulSetName, namespace); err != nil {
-			return fmt.Errorf("failed to cleanup StatefulSet resources: %w", err)
-		}
-
-		u.logger.InfoWithContext("StatefulSet safely removed", map[string]interface{}{
-			"statefulset": statefulSetName,
-			"namespace": namespace,
-			"pvc_preserved": true,
-		})
-	} else {
-		u.logger.InfoWithContext("no existing StatefulSet found, proceeding with fresh deployment", map[string]interface{}{
-			"statefulset": statefulSetName,
-			"namespace": namespace,
-		})
-	}
-
-	return nil
-}
-
-// checkStatefulSetExists checks if a StatefulSet exists in the namespace
-func (u *DeploymentUsecase) checkStatefulSetExists(ctx context.Context, name, namespace string) (bool, error) {
-	// Use kubectl to check StatefulSet existence
-	cmd := fmt.Sprintf("kubectl get statefulset %s -n %s", name, namespace)
-	_, err := u.systemGateway.ExecuteCommand(ctx, cmd)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return false, nil
-		}
-		return false, fmt.Errorf("failed to check StatefulSet existence: %w", err)
-	}
-	return true, nil
-}
-
-// scaleStatefulSet scales a StatefulSet to specified replica count
-func (u *DeploymentUsecase) scaleStatefulSet(ctx context.Context, name, namespace string, replicas int) error {
-	u.logger.InfoWithContext("scaling StatefulSet", map[string]interface{}{
-		"statefulset": name,
-		"namespace": namespace,
-		"replicas": replicas,
-	})
-
-	cmd := fmt.Sprintf("kubectl scale statefulset %s --replicas=%d -n %s", name, replicas, namespace)
-	_, err := u.systemGateway.ExecuteCommand(ctx, cmd)
-	if err != nil {
-		return fmt.Errorf("failed to scale StatefulSet: %w", err)
-	}
-
-	u.logger.InfoWithContext("StatefulSet scaled successfully", map[string]interface{}{
-		"statefulset": name,
-		"namespace": namespace,
-		"replicas": replicas,
-	})
-
-	return nil
-}
-
-// waitForPodsTermination waits for all pods of a StatefulSet to terminate
-func (u *DeploymentUsecase) waitForPodsTermination(ctx context.Context, name, namespace string, timeoutSeconds int) error {
-	u.logger.InfoWithContext("waiting for pods termination", map[string]interface{}{
-		"statefulset": name,
-		"namespace": namespace,
-		"timeout": timeoutSeconds,
-	})
-
-	for i := 0; i < timeoutSeconds; i += 5 {
-		cmd := fmt.Sprintf("kubectl get pods -n %s -l app=%s --no-headers", namespace, name)
-		output, err := u.systemGateway.ExecuteCommand(ctx, cmd)
-		if err != nil {
-			return fmt.Errorf("failed to check pod status: %w", err)
-		}
-
-		if strings.TrimSpace(output) == "" {
-			u.logger.InfoWithContext("all pods terminated", map[string]interface{}{
-				"statefulset": name,
-				"namespace": namespace,
-				"elapsed": i,
-			})
-			return nil
-		}
-
-		time.Sleep(5 * time.Second)
-	}
-
-	return fmt.Errorf("timeout waiting for pods termination after %d seconds", timeoutSeconds)
-}
-
-// deleteStatefulSet deletes a StatefulSet while preserving PVCs
-func (u *DeploymentUsecase) deleteStatefulSet(ctx context.Context, name, namespace string) error {
-	u.logger.InfoWithContext("deleting StatefulSet", map[string]interface{}{
-		"statefulset": name,
-		"namespace": namespace,
-	})
-
-	cmd := fmt.Sprintf("kubectl delete statefulset %s -n %s", name, namespace)
-	_, err := u.systemGateway.ExecuteCommand(ctx, cmd)
-	if err != nil {
-		return fmt.Errorf("failed to delete StatefulSet: %w", err)
-	}
-
-	u.logger.InfoWithContext("StatefulSet deleted successfully", map[string]interface{}{
-		"statefulset": name,
-		"namespace": namespace,
-	})
-
-	return nil
-}
-
-// cleanupStatefulSetResources cleans up related resources except PVCs
-func (u *DeploymentUsecase) cleanupStatefulSetResources(ctx context.Context, name, namespace string) error {
-	u.logger.InfoWithContext("cleaning up StatefulSet resources", map[string]interface{}{
-		"statefulset": name,
-		"namespace": namespace,
-	})
-
-	// Clean up services (but not PVCs)
-	resources := []string{"service", "configmap"}
-	for _, resource := range resources {
-		cmd := fmt.Sprintf("kubectl delete %s -l app=%s -n %s --ignore-not-found=true", resource, name, namespace)
-		_, err := u.systemGateway.ExecuteCommand(ctx, cmd)
-		if err != nil {
-			u.logger.WarnWithContext("failed to cleanup resource", map[string]interface{}{
-				"resource": resource,
-				"statefulset": name,
-				"namespace": namespace,
-				"error": err.Error(),
-			})
-		}
-	}
-
-	u.logger.InfoWithContext("StatefulSet resources cleanup completed", map[string]interface{}{
-		"statefulset": name,
-		"namespace": namespace,
-	})
-
-	return nil
-}
 
 // validateGeneratedCertificates validates the generated SSL certificates
 func (u *DeploymentUsecase) validateGeneratedCertificates(ctx context.Context) error {
@@ -3717,10 +2170,7 @@ func (u *DeploymentUsecase) manageCertificateLifecycle(ctx context.Context, envi
 		"charts_dir": chartsDir,
 	})
 
-	// Step 1: Generate certificates
-	if err := u.generateSSLCertificates(ctx); err != nil {
-		return fmt.Errorf("failed to generate SSL certificates: %w", err)
-	}
+	// Step 1: Certificate generation is now handled by SSLCertificateUsecase during pre-deployment validation
 
 	// Step 2: Validate certificates
 	if err := u.validateGeneratedCertificates(ctx); err != nil {
@@ -3746,100 +2196,8 @@ func (u *DeploymentUsecase) manageCertificateLifecycle(ctx context.Context, envi
 	return nil
 }
 
-// prepareStatefulSetRecovery prepares StatefulSet recovery for database charts
-func (u *DeploymentUsecase) prepareStatefulSetRecovery(ctx context.Context, options *domain.DeploymentOptions) error {
-	u.logger.InfoWithContext("preparing StatefulSet recovery", map[string]interface{}{
-		"environment": options.Environment.String(),
-	})
 
-	// Define StatefulSet charts that may need recovery
-	statefulSetCharts := []struct {
-		name      string
-		namespace string
-	}{
-		{"postgres", "alt-database"},
-		{"auth-postgres", "alt-auth"},
-		{"kratos-postgres", "alt-auth"},
-		{"clickhouse", "alt-database"},
-		{"meilisearch", "alt-search"},
-	}
 
-	for _, chart := range statefulSetCharts {
-		if err := u.safeStatefulSetRecreation(ctx, chart.name, chart.namespace); err != nil {
-			return fmt.Errorf("failed to prepare StatefulSet recovery for %s: %w", chart.name, err)
-		}
-	}
-
-	u.logger.InfoWithContext("StatefulSet recovery preparation completed", map[string]interface{}{
-		"environment": options.Environment.String(),
-		"charts_processed": len(statefulSetCharts),
-	})
-
-	return nil
-}
-
-// handleSecretOwnershipError handles secret ownership conflicts with automatic remediation
-// Enhanced error recovery as proposed in implement-list08.md Phase 4.3
-func (u *DeploymentUsecase) handleSecretOwnershipError(err error, chartName string) error {
-	errorMessage := err.Error()
-	
-	// Enhanced pattern matching for various secret-related errors
-	secretErrorPatterns := []string{
-		"invalid ownership metadata",
-		"resource mapping not found",
-		"cannot be imported",
-		"secret owned by",
-		"managed by Helm",
-		"release not found",
-		"secret not found",
-		"metadata annotation missing",
-	}
-	
-	for _, pattern := range secretErrorPatterns {
-		if strings.Contains(errorMessage, pattern) {
-			u.logger.WarnWithContext("detected secret-related error, attempting automatic fix", map[string]interface{}{
-				"chart":   chartName,
-				"error":   errorMessage,
-				"pattern": pattern,
-			})
-			
-			// Automatic secret adoption using secret usecase
-			if err := u.adoptSecretsForChart(chartName); err != nil {
-				u.logger.ErrorWithContext("failed to adopt secrets for chart", map[string]interface{}{
-					"chart": chartName,
-					"error": err.Error(),
-				})
-				return fmt.Errorf("failed to adopt secrets for chart %s: %w", chartName, err)
-			}
-			
-			// Indicate successful recovery preparation
-			u.logger.InfoWithContext("secret adoption completed, deployment retry prepared", map[string]interface{}{
-				"chart": chartName,
-			})
-			
-			return u.retryChartDeployment(chartName)
-		}
-	}
-	
-	// If no secret-related error pattern matched, return original error
-	return err
-}
-
-// adoptSecretsForChart adopts existing secrets for a chart by adding proper Helm metadata
-func (u *DeploymentUsecase) adoptSecretsForChart(chartName string) error {
-	u.logger.InfoWithContext("adopting secrets for chart", map[string]interface{}{
-		"chart": chartName,
-	})
-	
-	// This integrates with the existing secret usecase functionality
-	// Use the secretUsecase to adopt secrets with proper metadata
-	ctx := context.Background()
-	if err := u.secretUsecase.AdoptSecretsForChart(ctx, chartName); err != nil {
-		return fmt.Errorf("failed to adopt secrets for chart %s: %w", chartName, err)
-	}
-	
-	return nil
-}
 
 // retryChartDeployment retries deployment for a specific chart
 func (u *DeploymentUsecase) retryChartDeployment(chartName string) error {

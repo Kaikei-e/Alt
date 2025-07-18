@@ -313,7 +313,7 @@ func (u *SecretUsecase) getExpectedSecretDistribution(environment domain.Environ
 			"huggingface-secret":     {"alt-auth", "alt-apps"},
 			"meilisearch-secrets":    {"alt-search"},
 			"postgres-secrets":       {"alt-database"},
-			"auth-postgres-secrets":  {"alt-database"},
+			"auth-postgres-secrets":  {"alt-auth"},
 			"auth-service-secrets":   {"alt-auth"},
 			"backend-secrets":        {"alt-apps"},
 		}
@@ -886,7 +886,7 @@ func (u *SecretUsecase) AdoptSecretsForChart(ctx context.Context, chartName stri
 			{secretName: "postgres-secret", namespace: "alt-database"},
 		},
 		"auth-postgres": {
-			{secretName: "auth-postgres-secrets", namespace: "alt-database"},
+			{secretName: "auth-postgres-secrets", namespace: "alt-auth"},
 		},
 		"kratos-postgres": {
 			{secretName: "kratos-postgres-secrets", namespace: "alt-database"},
