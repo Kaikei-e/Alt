@@ -40,7 +40,7 @@ func (s *SecretDistributionStrategy) DistributeSecrets(ctx context.Context, envi
 	}
 
 	s.logger.InfoWithContext("centralized secret distribution completed", map[string]interface{}{
-		"environment": environment,
+		"environment":         environment,
 		"secrets_distributed": len(plan),
 	})
 	return nil
@@ -48,11 +48,11 @@ func (s *SecretDistributionStrategy) DistributeSecrets(ctx context.Context, envi
 
 // SecretDistribution represents a secret to be distributed
 type SecretDistribution struct {
-	SecretName      string
-	SourceNamespace string
+	SecretName       string
+	SourceNamespace  string
 	TargetNamespaces []string
-	SecretType      string
-	Data            map[string]string
+	SecretType       string
+	Data             map[string]string
 }
 
 // getDistributionPlan returns the secret distribution plan for an environment
@@ -197,8 +197,8 @@ func (s *SecretDistributionStrategy) getDefaultDistributionPlan() []SecretDistri
 // distributeSecret distributes a single secret to target namespaces
 func (s *SecretDistributionStrategy) distributeSecret(ctx context.Context, dist SecretDistribution) error {
 	s.logger.InfoWithContext("distributing secret", map[string]interface{}{
-		"secret": dist.SecretName,
-		"source_namespace": dist.SourceNamespace,
+		"secret":            dist.SecretName,
+		"source_namespace":  dist.SourceNamespace,
 		"target_namespaces": dist.TargetNamespaces,
 	})
 
@@ -206,9 +206,9 @@ func (s *SecretDistributionStrategy) distributeSecret(ctx context.Context, dist 
 	sourceSecret, err := s.kubectlGateway.GetSecret(ctx, dist.SecretName, dist.SourceNamespace)
 	if err != nil {
 		s.logger.WarnWithContext("source secret not found, skipping distribution", map[string]interface{}{
-			"secret": dist.SecretName,
+			"secret":           dist.SecretName,
 			"source_namespace": dist.SourceNamespace,
-			"error": err.Error(),
+			"error":            err.Error(),
 		})
 		return nil // Don't fail if source secret doesn't exist
 	}
@@ -216,7 +216,7 @@ func (s *SecretDistributionStrategy) distributeSecret(ctx context.Context, dist 
 	// Distribute to each target namespace
 	for _, targetNamespace := range dist.TargetNamespaces {
 		if err := s.copySecretToNamespace(ctx, sourceSecret, targetNamespace); err != nil {
-			return fmt.Errorf("failed to copy secret %s to namespace %s: %w", 
+			return fmt.Errorf("failed to copy secret %s to namespace %s: %w",
 				dist.SecretName, targetNamespace, err)
 		}
 	}
@@ -239,7 +239,7 @@ func (s *SecretDistributionStrategy) copySecretToNamespace(ctx context.Context, 
 			"alt.deployment/source":        "centralized-distribution",
 		},
 		Annotations: map[string]string{
-			"alt.deployment/distributed-from": sourceSecret.Namespace,
+			"alt.deployment/distributed-from":  sourceSecret.Namespace,
 			"alt.deployment/distribution-time": fmt.Sprintf("%d", ctx.Value("timestamp")),
 		},
 	}
@@ -250,7 +250,7 @@ func (s *SecretDistributionStrategy) copySecretToNamespace(ctx context.Context, 
 	}
 
 	s.logger.InfoWithContext("secret copied successfully", map[string]interface{}{
-		"secret": sourceSecret.Name,
+		"secret":           sourceSecret.Name,
 		"target_namespace": targetNamespace,
 	})
 
@@ -277,9 +277,9 @@ func (s *SecretDistributionStrategy) ValidateDistribution(ctx context.Context, e
 		for _, targetNamespace := range dist.TargetNamespaces {
 			_, err := s.kubectlGateway.GetSecret(ctx, dist.SecretName, targetNamespace)
 			if err != nil {
-				validation.MissingSecrets = append(validation.MissingSecrets, 
+				validation.MissingSecrets = append(validation.MissingSecrets,
 					fmt.Sprintf("%s in %s", dist.SecretName, targetNamespace))
-				validation.Issues = append(validation.Issues, 
+				validation.Issues = append(validation.Issues,
 					fmt.Sprintf("Secret %s missing in namespace %s", dist.SecretName, targetNamespace))
 			} else {
 				validation.ValidSecrets++
@@ -290,9 +290,9 @@ func (s *SecretDistributionStrategy) ValidateDistribution(ctx context.Context, e
 	validation.IsValid = len(validation.MissingSecrets) == 0 && len(validation.ConflictSecrets) == 0
 
 	s.logger.InfoWithContext("secret distribution validation completed", map[string]interface{}{
-		"environment": environment,
-		"valid": validation.IsValid,
-		"missing_count": len(validation.MissingSecrets),
+		"environment":    environment,
+		"valid":          validation.IsValid,
+		"missing_count":  len(validation.MissingSecrets),
 		"conflict_count": len(validation.ConflictSecrets),
 	})
 

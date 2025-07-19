@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"deploy-cli/domain"
-	"deploy-cli/port/logger_port"
 	"deploy-cli/gateway/kubectl_gateway"
+	"deploy-cli/port/logger_port"
 )
 
 // SecretUsecase handles secret validation and conflict detection
@@ -69,10 +69,10 @@ func (u *SecretUsecase) ValidateSecretState(ctx context.Context, environment dom
 	result.Valid = len(result.Conflicts) == 0
 
 	u.logger.InfoWithContext("secret state validation completed", map[string]interface{}{
-		"environment":    environment.String(),
-		"conflicts":      len(result.Conflicts),
-		"warnings":       len(result.Warnings),
-		"valid":          result.Valid,
+		"environment": environment.String(),
+		"conflicts":   len(result.Conflicts),
+		"warnings":    len(result.Warnings),
+		"valid":       result.Valid,
 	})
 
 	return result, nil
@@ -191,7 +191,7 @@ func (u *SecretUsecase) detectResourceConflicts(ctx context.Context) ([]domain.S
 			// Log warning but continue with other resource types
 			u.logger.WarnWithContext("failed to get resources with metadata", map[string]interface{}{
 				"resource_type": resourceType,
-				"error":        err.Error(),
+				"error":         err.Error(),
 			})
 			continue
 		}
@@ -265,11 +265,11 @@ func (u *SecretUsecase) isNamespaceMigrationConflict(conflict domain.SecretConfl
 	isClusterScoped := conflict.SecretNamespace == ""
 	if isClusterScoped && u.isCommonChart(conflict.ReleaseName) {
 		u.logger.InfoWithContext("detected cluster-scoped resource migration conflict", map[string]interface{}{
-			"release_name":         conflict.ReleaseName,
-			"resource_name":        conflict.SecretName,
-			"resource_type":        conflict.ResourceType,
-			"release_namespace":    conflict.ReleaseNamespace,
-			"intended_namespace":   intendedNamespace,
+			"release_name":       conflict.ReleaseName,
+			"resource_name":      conflict.SecretName,
+			"resource_type":      conflict.ResourceType,
+			"release_namespace":  conflict.ReleaseNamespace,
+			"intended_namespace": intendedNamespace,
 		})
 		return true
 	}
@@ -279,14 +279,14 @@ func (u *SecretUsecase) isNamespaceMigrationConflict(conflict domain.SecretConfl
 	// 2. Release should now deploy to a different namespace (new location)
 	// 3. Release is a common chart that has migrated
 	if conflict.SecretNamespace == "alt-production" &&
-	   intendedNamespace != "alt-production" &&
-	   u.isCommonChart(conflict.ReleaseName) {
+		intendedNamespace != "alt-production" &&
+		u.isCommonChart(conflict.ReleaseName) {
 		u.logger.InfoWithContext("detected namespace migration conflict", map[string]interface{}{
-			"release_name":         conflict.ReleaseName,
-			"current_namespace":    conflict.SecretNamespace,
-			"intended_namespace":   intendedNamespace,
-			"resource_name":        conflict.SecretName,
-			"resource_type":        conflict.ResourceType,
+			"release_name":       conflict.ReleaseName,
+			"current_namespace":  conflict.SecretNamespace,
+			"intended_namespace": intendedNamespace,
+			"resource_name":      conflict.SecretName,
+			"resource_type":      conflict.ResourceType,
 		})
 		return true
 	}
@@ -310,24 +310,24 @@ func (u *SecretUsecase) getExpectedSecretDistribution(environment domain.Environ
 	switch environment {
 	case domain.Production:
 		return map[string][]string{
-			"huggingface-secret":     {"alt-auth", "alt-apps"},
-			"meilisearch-secrets":    {"alt-search"},
-			"postgres-secrets":       {"alt-database"},
-			"auth-postgres-secrets":  {"alt-auth"},
-			"auth-service-secrets":   {"alt-auth"},
-			"backend-secrets":        {"alt-apps"},
+			"huggingface-secret":    {"alt-auth", "alt-apps"},
+			"meilisearch-secrets":   {"alt-search"},
+			"postgres-secrets":      {"alt-database"},
+			"auth-postgres-secrets": {"alt-auth"},
+			"auth-service-secrets":  {"alt-auth"},
+			"backend-secrets":       {"alt-apps"},
 		}
 	case domain.Staging:
 		return map[string][]string{
-			"huggingface-secret":     {"alt-staging"},
-			"meilisearch-secrets":    {"alt-staging"},
-			"postgres-secrets":       {"alt-staging"},
+			"huggingface-secret":  {"alt-staging"},
+			"meilisearch-secrets": {"alt-staging"},
+			"postgres-secrets":    {"alt-staging"},
 		}
 	case domain.Development:
 		return map[string][]string{
-			"huggingface-secret":     {"alt-dev"},
-			"meilisearch-secrets":    {"alt-dev"},
-			"postgres-secrets":       {"alt-dev"},
+			"huggingface-secret":  {"alt-dev"},
+			"meilisearch-secrets": {"alt-dev"},
+			"postgres-secrets":    {"alt-dev"},
 		}
 	default:
 		return map[string][]string{}
@@ -378,11 +378,11 @@ func (u *SecretUsecase) resolveConflict(ctx context.Context, conflict domain.Sec
 // resolveCrossNamespaceConflict resolves cross-namespace ownership conflicts
 func (u *SecretUsecase) resolveCrossNamespaceConflict(ctx context.Context, conflict domain.SecretConflict, dryRun bool) error {
 	u.logger.InfoWithContext("resolving cross-namespace conflict", map[string]interface{}{
-		"secret":           conflict.SecretName,
-		"secret_namespace": conflict.SecretNamespace,
-		"release_name":     conflict.ReleaseName,
+		"secret":            conflict.SecretName,
+		"secret_namespace":  conflict.SecretNamespace,
+		"release_name":      conflict.ReleaseName,
 		"release_namespace": conflict.ReleaseNamespace,
-		"dry_run":          dryRun,
+		"dry_run":           dryRun,
 	})
 
 	if dryRun {
@@ -410,11 +410,11 @@ func (u *SecretUsecase) resolveCrossNamespaceConflict(ctx context.Context, confl
 // resolveMetadataConflict resolves Helm metadata annotation conflicts
 func (u *SecretUsecase) resolveMetadataConflict(ctx context.Context, conflict domain.SecretConflict, dryRun bool) error {
 	u.logger.InfoWithContext("resolving Helm metadata conflict", map[string]interface{}{
-		"secret":           conflict.SecretName,
-		"secret_namespace": conflict.SecretNamespace,
-		"release_name":     conflict.ReleaseName,
+		"secret":            conflict.SecretName,
+		"secret_namespace":  conflict.SecretNamespace,
+		"release_name":      conflict.ReleaseName,
 		"release_namespace": conflict.ReleaseNamespace,
-		"dry_run":          dryRun,
+		"dry_run":           dryRun,
 	})
 
 	if dryRun {
@@ -433,8 +433,8 @@ func (u *SecretUsecase) resolveMetadataConflict(ctx context.Context, conflict do
 	// 2. It's clearly orphaned (cross-namespace ownership)
 	// 3. It's a namespace migration conflict (resource in old target namespace)
 	shouldDelete := conflict.SecretNamespace == "default" ||
-					conflict.SecretNamespace != conflict.ReleaseNamespace ||
-					isMigrationConflict
+		conflict.SecretNamespace != conflict.ReleaseNamespace ||
+		isMigrationConflict
 
 	if shouldDelete {
 		reason := "metadata_conflict_safe_to_delete"
@@ -443,9 +443,9 @@ func (u *SecretUsecase) resolveMetadataConflict(ctx context.Context, conflict do
 		}
 
 		u.logger.InfoWithContext("deleting secret with Helm metadata conflict", map[string]interface{}{
-			"secret":    conflict.SecretName,
-			"namespace": conflict.SecretNamespace,
-			"reason":    reason,
+			"secret":       conflict.SecretName,
+			"namespace":    conflict.SecretNamespace,
+			"reason":       reason,
 			"is_migration": isMigrationConflict,
 		})
 
@@ -473,12 +473,12 @@ func (u *SecretUsecase) resolveMetadataConflict(ctx context.Context, conflict do
 // resolveResourceConflict resolves Kubernetes resource metadata conflicts
 func (u *SecretUsecase) resolveResourceConflict(ctx context.Context, conflict domain.SecretConflict, dryRun bool) error {
 	u.logger.InfoWithContext("resolving resource metadata conflict", map[string]interface{}{
-		"resource_type":     conflict.ResourceType,
-		"resource":          conflict.SecretName,
+		"resource_type":      conflict.ResourceType,
+		"resource":           conflict.SecretName,
 		"resource_namespace": conflict.SecretNamespace,
-		"release_name":      conflict.ReleaseName,
-		"release_namespace": conflict.ReleaseNamespace,
-		"dry_run":           dryRun,
+		"release_name":       conflict.ReleaseName,
+		"release_namespace":  conflict.ReleaseNamespace,
+		"dry_run":            dryRun,
 	})
 
 	if dryRun {
@@ -500,8 +500,8 @@ func (u *SecretUsecase) resolveResourceConflict(ctx context.Context, conflict do
 	// 4. It's a cluster-scoped resource with migration conflict
 	isClusterScoped := conflict.SecretNamespace == ""
 	shouldDelete := conflict.SecretNamespace == "default" ||
-					(!isClusterScoped && conflict.SecretNamespace != conflict.ReleaseNamespace) ||
-					isMigrationConflict
+		(!isClusterScoped && conflict.SecretNamespace != conflict.ReleaseNamespace) ||
+		isMigrationConflict
 
 	if shouldDelete {
 		reason := "resource_metadata_conflict_safe_to_delete"
@@ -601,11 +601,11 @@ func (u *SecretUsecase) ListSecretsInNamespace(ctx context.Context, namespace st
 	for _, secret := range secrets {
 		if secret.Namespace == namespace {
 			domainSecret := domain.Secret{
-				Name:      secret.Name,
-				Namespace: secret.Namespace,
-				Type:      secret.Type,
-				Data:      make(map[string]string),
-				Labels:    make(map[string]string),
+				Name:        secret.Name,
+				Namespace:   secret.Namespace,
+				Type:        secret.Type,
+				Data:        make(map[string]string),
+				Labels:      make(map[string]string),
 				Annotations: make(map[string]string),
 			}
 
@@ -670,7 +670,6 @@ func (u *SecretUsecase) GetSecret(ctx context.Context, name, namespace string) (
 
 	return secret, nil
 }
-
 
 // FindOrphanedSecrets finds secrets that are orphaned or have invalid ownership
 func (u *SecretUsecase) FindOrphanedSecrets(ctx context.Context, environment domain.Environment) ([]domain.SecretInfo, error) {

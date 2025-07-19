@@ -36,15 +36,15 @@ func NewPrerequisitesDiagnosticUsecase(
 
 // DiagnosticReport represents a comprehensive diagnostic report
 type DiagnosticReport struct {
-	OverallStatus   string                   `json:"overall_status"`
-	Kubernetes      KubernetesStatus         `json:"kubernetes"`
-	Namespaces      []NamespaceStatus        `json:"namespaces"`
-	StorageClasses  []StorageClassStatus     `json:"storage_classes"`
-	RBAC            RBACStatus               `json:"rbac"`
-	Recommendations []string                 `json:"recommendations"`
-	ExecutionTime   time.Duration            `json:"execution_time"`
-	Environment     string                   `json:"environment"`
-	Timestamp       time.Time                `json:"timestamp"`
+	OverallStatus   string               `json:"overall_status"`
+	Kubernetes      KubernetesStatus     `json:"kubernetes"`
+	Namespaces      []NamespaceStatus    `json:"namespaces"`
+	StorageClasses  []StorageClassStatus `json:"storage_classes"`
+	RBAC            RBACStatus           `json:"rbac"`
+	Recommendations []string             `json:"recommendations"`
+	ExecutionTime   time.Duration        `json:"execution_time"`
+	Environment     string               `json:"environment"`
+	Timestamp       time.Time            `json:"timestamp"`
 }
 
 // KubernetesStatus represents the status of Kubernetes connection
@@ -321,8 +321,8 @@ func (u *PrerequisitesDiagnosticUsecase) diagnoseAndFixStorageClasses(ctx contex
 // diagnoseRBACPermissions diagnoses RBAC permissions
 func (u *PrerequisitesDiagnosticUsecase) diagnoseRBACPermissions(ctx context.Context) RBACStatus {
 	status := RBACStatus{
-		Status:      "診断中",
-		Permissions: []string{},
+		Status:       "診断中",
+		Permissions:  []string{},
 		Restrictions: []string{},
 	}
 
@@ -471,19 +471,19 @@ func (u *PrerequisitesDiagnosticUsecase) isNotFoundError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	errorStr := err.Error()
-	return contains(errorStr, "not found") || 
-		   contains(errorStr, "NotFound") || 
-		   contains(errorStr, "does not exist")
+	return contains(errorStr, "not found") ||
+		contains(errorStr, "NotFound") ||
+		contains(errorStr, "does not exist")
 }
 
 // contains checks if a string contains a substring (case-insensitive helper)
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		   (s == substr || 
-		    (len(s) > len(substr) && 
-		     findSubstring(s, substr)))
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			(len(s) > len(substr) &&
+				findSubstring(s, substr)))
 }
 
 // findSubstring finds substring in string (simple implementation)
@@ -494,7 +494,7 @@ func findSubstring(s, substr string) bool {
 	if len(s) < len(substr) {
 		return false
 	}
-	
+
 	for i := 0; i <= len(s)-len(substr); i++ {
 		match := true
 		for j := 0; j < len(substr); j++ {

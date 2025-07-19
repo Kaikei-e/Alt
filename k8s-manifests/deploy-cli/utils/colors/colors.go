@@ -7,25 +7,25 @@ import (
 var (
 	// Red color for errors
 	Red = color.New(color.FgRed).SprintFunc()
-	
+
 	// Green color for success
 	Green = color.New(color.FgGreen).SprintFunc()
-	
+
 	// Yellow color for warnings
 	Yellow = color.New(color.FgYellow).SprintFunc()
-	
+
 	// Blue color for info
 	Blue = color.New(color.FgBlue).SprintFunc()
-	
+
 	// Cyan color for secondary info
 	Cyan = color.New(color.FgCyan).SprintFunc()
-	
+
 	// Bold colors
-	RedBold = color.New(color.FgRed, color.Bold).SprintFunc()
-	GreenBold = color.New(color.FgGreen, color.Bold).SprintFunc()
+	RedBold    = color.New(color.FgRed, color.Bold).SprintFunc()
+	GreenBold  = color.New(color.FgGreen, color.Bold).SprintFunc()
 	YellowBold = color.New(color.FgYellow, color.Bold).SprintFunc()
-	BlueBold = color.New(color.FgBlue, color.Bold).SprintFunc()
-	CyanBold = color.New(color.FgCyan, color.Bold).SprintFunc()
+	BlueBold   = color.New(color.FgBlue, color.Bold).SprintFunc()
+	CyanBold   = color.New(color.FgCyan, color.Bold).SprintFunc()
 )
 
 // PrintSuccess prints a success message

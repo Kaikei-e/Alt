@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strings"
 
-	"deploy-cli/domain"
 	"deploy-cli/port/logger_port"
 	"deploy-cli/usecase/infrastructure_usecase"
 	"deploy-cli/usecase/secret_usecase"
@@ -57,22 +56,22 @@ func (u *AutoRecoveryUsecase) RecoverFromError(ctx context.Context, err error) (
 	u.logger.InfoWithContext("エラー自動復旧を開始", map[string]interface{}{
 		"error": err.Error(),
 	})
-	
+
 	errorInfo := u.analyzeError(err)
-	
+
 	switch errorInfo.Type {
 	case "NamespaceNotFound":
 		return u.recoverNamespaceNotFound(ctx, errorInfo)
-		
+
 	case "StorageClassNotFound":
 		return u.recoverStorageClassNotFound(ctx, errorInfo)
-		
+
 	case "SecretNotFound":
 		return u.recoverSecretNotFound(ctx, errorInfo)
-		
+
 	case "InsufficientPermissions":
 		return u.handleInsufficientPermissions(ctx, errorInfo)
-		
+
 	default:
 		u.logger.WarnWithContext("未対応のエラータイプです", map[string]interface{}{
 			"error_type": errorInfo.Type,
@@ -92,12 +91,12 @@ func (u *AutoRecoveryUsecase) analyzeError(err error) *ErrorInfo {
 	if err == nil {
 		return &ErrorInfo{Type: "Unknown", Description: "No error provided"}
 	}
-	
+
 	errorStr := strings.ToLower(err.Error())
-	
+
 	// 名前空間不存在エラーの検出
-	if strings.Contains(errorStr, "namespace") && 
-	   (strings.Contains(errorStr, "not found") || strings.Contains(errorStr, "notfound")) {
+	if strings.Contains(errorStr, "namespace") &&
+		(strings.Contains(errorStr, "not found") || strings.Contains(errorStr, "notfound")) {
 		namespace := u.extractNamespaceFromError(err.Error())
 		return &ErrorInfo{
 			Type:        "NamespaceNotFound",
@@ -106,10 +105,10 @@ func (u *AutoRecoveryUsecase) analyzeError(err error) *ErrorInfo {
 			Error:       err,
 		}
 	}
-	
+
 	// StorageClass不存在エラーの検出
-	if strings.Contains(errorStr, "storageclass") && 
-	   (strings.Contains(errorStr, "not found") || strings.Contains(errorStr, "notfound")) {
+	if strings.Contains(errorStr, "storageclass") &&
+		(strings.Contains(errorStr, "not found") || strings.Contains(errorStr, "notfound")) {
 		return &ErrorInfo{
 			Type:        "StorageClassNotFound",
 			Description: "StorageClass 'standard' が存在しません",
@@ -117,10 +116,10 @@ func (u *AutoRecoveryUsecase) analyzeError(err error) *ErrorInfo {
 			Error:       err,
 		}
 	}
-	
+
 	// Secret不存在エラーの検出
-	if strings.Contains(errorStr, "secret") && 
-	   (strings.Contains(errorStr, "not found") || strings.Contains(errorStr, "notfound")) {
+	if strings.Contains(errorStr, "secret") &&
+		(strings.Contains(errorStr, "not found") || strings.Contains(errorStr, "notfound")) {
 		secretInfo := u.extractSecretInfoFromError(err.Error())
 		return &ErrorInfo{
 			Type:        "SecretNotFound",
@@ -130,7 +129,7 @@ func (u *AutoRecoveryUsecase) analyzeError(err error) *ErrorInfo {
 			Error:       err,
 		}
 	}
-	
+
 	// 権限不足エラーの検出
 	if strings.Contains(errorStr, "forbidden") || strings.Contains(errorStr, "unauthorized") {
 		return &ErrorInfo{
@@ -139,7 +138,7 @@ func (u *AutoRecoveryUsecase) analyzeError(err error) *ErrorInfo {
 			Error:       err,
 		}
 	}
-	
+
 	return &ErrorInfo{
 		Type:        "Unknown",
 		Description: "未知のエラータイプ",
@@ -152,7 +151,7 @@ func (u *AutoRecoveryUsecase) recoverNamespaceNotFound(ctx context.Context, erro
 	u.logger.InfoWithContext("名前空間不存在エラーの自動修復中", map[string]interface{}{
 		"namespace": errorInfo.Namespace,
 	})
-	
+
 	if err := u.namespaceEnsure.EnsureNamespaceExists(ctx, errorInfo.Namespace); err != nil {
 		return &RecoveryResult{
 			Success:     false,
@@ -161,11 +160,11 @@ func (u *AutoRecoveryUsecase) recoverNamespaceNotFound(ctx context.Context, erro
 			Error:       err,
 		}, err
 	}
-	
+
 	u.logger.InfoWithContext("名前空間不存在エラーの自動修復が成功", map[string]interface{}{
 		"namespace": errorInfo.Namespace,
 	})
-	
+
 	return &RecoveryResult{
 		Success:     true,
 		Action:      "CreateNamespace",
@@ -178,7 +177,7 @@ func (u *AutoRecoveryUsecase) recoverStorageClassNotFound(ctx context.Context, e
 	u.logger.InfoWithContext("StorageClass不存在エラーの自動修復中", map[string]interface{}{
 		"storage_class": errorInfo.Resource,
 	})
-	
+
 	if err := u.storageClassEnsure.EnsureDefaultStorageClass(ctx); err != nil {
 		// StorageClassエラーは警告として処理
 		u.logger.WarnWithContext("StorageClass修復は警告として処理", map[string]interface{}{
@@ -186,7 +185,7 @@ func (u *AutoRecoveryUsecase) recoverStorageClassNotFound(ctx context.Context, e
 			"error":         err.Error(),
 		})
 	}
-	
+
 	return &RecoveryResult{
 		Success:     true, // 警告として成功扱い
 		Action:      "ValidateStorageClass",
@@ -200,14 +199,14 @@ func (u *AutoRecoveryUsecase) recoverSecretNotFound(ctx context.Context, errorIn
 		"secret":    errorInfo.Resource,
 		"namespace": errorInfo.Namespace,
 	})
-	
+
 	// この実装では基本的なSecretリカバリのみ対応
 	// より詳細なSecret自動生成は secretUsecase で実装
 	u.logger.InfoWithContext("Secret自動生成は別のユースケースで処理されます", map[string]interface{}{
 		"secret":    errorInfo.Resource,
 		"namespace": errorInfo.Namespace,
 	})
-	
+
 	return &RecoveryResult{
 		Success:     false,
 		Action:      "SecretRecovery",
@@ -221,7 +220,7 @@ func (u *AutoRecoveryUsecase) handleInsufficientPermissions(ctx context.Context,
 	u.logger.ErrorWithContext("権限不足エラーが検出されました", map[string]interface{}{
 		"error": errorInfo.Error.Error(),
 	})
-	
+
 	return &RecoveryResult{
 		Success:     false,
 		Action:      "CheckPermissions",
@@ -235,34 +234,34 @@ func (u *AutoRecoveryUsecase) RecoverFromMultipleErrors(ctx context.Context, err
 	u.logger.InfoWithContext("複数エラーの自動復旧を開始", map[string]interface{}{
 		"error_count": len(errors),
 	})
-	
+
 	var results []*RecoveryResult
 	var finalError error
 	successCount := 0
-	
+
 	for i, err := range errors {
 		u.logger.InfoWithContext("エラーの個別処理中", map[string]interface{}{
 			"index": i + 1,
 			"total": len(errors),
 			"error": err.Error(),
 		})
-		
+
 		result, recoverErr := u.RecoverFromError(ctx, err)
 		results = append(results, result)
-		
+
 		if result.Success {
 			successCount++
 		} else if recoverErr != nil {
 			finalError = recoverErr
 		}
 	}
-	
+
 	u.logger.InfoWithContext("複数エラーの自動復旧が完了", map[string]interface{}{
-		"total_errors":      len(errors),
+		"total_errors":        len(errors),
 		"successful_recovery": successCount,
 		"failed_recovery":     len(errors) - successCount,
 	})
-	
+
 	return results, finalError
 }
 
@@ -274,14 +273,14 @@ func (u *AutoRecoveryUsecase) extractNamespaceFromError(errorMsg string) string 
 	if len(matches) > 1 {
 		return matches[1]
 	}
-	
+
 	// パターン: namespace namespace-name not found
 	re = regexp.MustCompile(`namespace\s+([^\s]+)\s+not found`)
 	matches = re.FindStringSubmatch(errorMsg)
 	if len(matches) > 1 {
 		return matches[1]
 	}
-	
+
 	return "unknown"
 }
 
@@ -297,7 +296,7 @@ func (u *AutoRecoveryUsecase) extractSecretInfoFromError(errorMsg string) Secret
 		Name:      "unknown",
 		Namespace: "unknown",
 	}
-	
+
 	// パターン: secret "secret-name" in namespace "namespace-name" not found
 	re := regexp.MustCompile(`secret\s+"([^"]+)"\s+.*namespace\s+"([^"]+)"\s+not found`)
 	matches := re.FindStringSubmatch(errorMsg)
@@ -306,14 +305,14 @@ func (u *AutoRecoveryUsecase) extractSecretInfoFromError(errorMsg string) Secret
 		secretInfo.Namespace = matches[2]
 		return secretInfo
 	}
-	
+
 	// パターン: secrets "secret-name" not found
 	re = regexp.MustCompile(`secrets?\s+"([^"]+)"\s+not found`)
 	matches = re.FindStringSubmatch(errorMsg)
 	if len(matches) > 1 {
 		secretInfo.Name = matches[1]
 	}
-	
+
 	return secretInfo
 }
 
@@ -322,9 +321,9 @@ func (u *AutoRecoveryUsecase) IsRecoverableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	errorInfo := u.analyzeError(err)
-	
+
 	switch errorInfo.Type {
 	case "NamespaceNotFound", "StorageClassNotFound":
 		return true
@@ -342,9 +341,9 @@ func (u *AutoRecoveryUsecase) GetRecoveryStrategies(err error) []string {
 	if err == nil {
 		return []string{}
 	}
-	
+
 	errorInfo := u.analyzeError(err)
-	
+
 	switch errorInfo.Type {
 	case "NamespaceNotFound":
 		return []string{

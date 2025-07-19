@@ -68,56 +68,56 @@ func NewMetricsCollector(logger logger_port.LoggerPort) *MetricsCollector {
 
 // HealthReport represents a comprehensive health report
 type HealthReport struct {
-	OverallStatus    string                    `json:"overall_status"`
-	Timestamp        time.Time                 `json:"timestamp"`
-	Environment      string                    `json:"environment"`
-	NamespaceHealth  []NamespaceHealthStatus   `json:"namespace_health"`
-	ServiceHealth    []ServiceHealthStatus     `json:"service_health"`
-	StorageHealth    []StorageHealthStatus     `json:"storage_health"`
-	NetworkHealth    NetworkHealthStatus       `json:"network_health"`
-	Issues           []HealthIssue             `json:"issues"`
-	Recommendations  []string                  `json:"recommendations"`
+	OverallStatus   string                  `json:"overall_status"`
+	Timestamp       time.Time               `json:"timestamp"`
+	Environment     string                  `json:"environment"`
+	NamespaceHealth []NamespaceHealthStatus `json:"namespace_health"`
+	ServiceHealth   []ServiceHealthStatus   `json:"service_health"`
+	StorageHealth   []StorageHealthStatus   `json:"storage_health"`
+	NetworkHealth   NetworkHealthStatus     `json:"network_health"`
+	Issues          []HealthIssue           `json:"issues"`
+	Recommendations []string                `json:"recommendations"`
 }
 
 // NamespaceHealthStatus represents namespace health status
 type NamespaceHealthStatus struct {
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	PodCount  int    `json:"pod_count"`
-	ReadyPods int    `json:"ready_pods"`
+	Name      string   `json:"name"`
+	Status    string   `json:"status"`
+	PodCount  int      `json:"pod_count"`
+	ReadyPods int      `json:"ready_pods"`
 	Issues    []string `json:"issues"`
 }
 
 // ServiceHealthStatus represents service health status
 type ServiceHealthStatus struct {
-	Name        string `json:"name"`
-	Namespace   string `json:"namespace"`
-	Type        string `json:"type"`
-	Status      string `json:"status"`
-	Replicas    int    `json:"replicas"`
-	ReadyReps   int    `json:"ready_replicas"`
-	Restarts    int    `json:"restarts"`
+	Name        string    `json:"name"`
+	Namespace   string    `json:"namespace"`
+	Type        string    `json:"type"`
+	Status      string    `json:"status"`
+	Replicas    int       `json:"replicas"`
+	ReadyReps   int       `json:"ready_replicas"`
+	Restarts    int       `json:"restarts"`
 	LastRestart time.Time `json:"last_restart,omitempty"`
-	Issues      []string `json:"issues"`
+	Issues      []string  `json:"issues"`
 }
 
 // StorageHealthStatus represents storage health status
 type StorageHealthStatus struct {
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	Status       string `json:"status"`
-	Capacity     string `json:"capacity"`
-	Usage        string `json:"usage,omitempty"`
-	Issues       []string `json:"issues"`
+	Name     string   `json:"name"`
+	Type     string   `json:"type"`
+	Status   string   `json:"status"`
+	Capacity string   `json:"capacity"`
+	Usage    string   `json:"usage,omitempty"`
+	Issues   []string `json:"issues"`
 }
 
 // NetworkHealthStatus represents network health status
 type NetworkHealthStatus struct {
-	IngressStatus    string   `json:"ingress_status"`
-	ServiceMeshOK    bool     `json:"service_mesh_ok"`
-	ConnectivityOK   bool     `json:"connectivity_ok"`
-	ExternalAccess   bool     `json:"external_access"`
-	Issues           []string `json:"issues"`
+	IngressStatus  string   `json:"ingress_status"`
+	ServiceMeshOK  bool     `json:"service_mesh_ok"`
+	ConnectivityOK bool     `json:"connectivity_ok"`
+	ExternalAccess bool     `json:"external_access"`
+	Issues         []string `json:"issues"`
 }
 
 // HealthIssue represents a detected health issue
@@ -133,21 +133,21 @@ type HealthIssue struct {
 
 // MonitoringConfig represents monitoring configuration
 type MonitoringConfig struct {
-	Interval              time.Duration `json:"interval"`
-	AutoRecoveryEnabled   bool         `json:"auto_recovery_enabled"`
-	NotificationEnabled   bool         `json:"notification_enabled"`
-	MaxRetries            int          `json:"max_retries"`
-	CriticalThreshold     int          `json:"critical_threshold"`
-	WarningThreshold      int          `json:"warning_threshold"`
+	Interval            time.Duration `json:"interval"`
+	AutoRecoveryEnabled bool          `json:"auto_recovery_enabled"`
+	NotificationEnabled bool          `json:"notification_enabled"`
+	MaxRetries          int           `json:"max_retries"`
+	CriticalThreshold   int           `json:"critical_threshold"`
+	WarningThreshold    int           `json:"warning_threshold"`
 }
 
 // ContinuousMonitoring 継続的監視と自動修復
 func (u *DeploymentMonitoringUsecase) ContinuousMonitoring(ctx context.Context, options *domain.DeploymentOptions) {
 	config := u.getMonitoringConfig(options.Environment)
-	
+
 	u.logger.InfoWithContext("継続的監視を開始", map[string]interface{}{
-		"environment": options.Environment.String(),
-		"interval":    config.Interval.String(),
+		"environment":   options.Environment.String(),
+		"interval":      config.Interval.String(),
 		"auto_recovery": config.AutoRecoveryEnabled,
 	})
 
@@ -443,11 +443,11 @@ func (h *HealthCheckerUsecase) checkStorageHealth(ctx context.Context) []Storage
 // checkNetworkHealth checks the health of network resources
 func (h *HealthCheckerUsecase) checkNetworkHealth(ctx context.Context, env domain.Environment) NetworkHealthStatus {
 	status := NetworkHealthStatus{
-		IngressStatus:    "checking",
-		ServiceMeshOK:    true,
-		ConnectivityOK:   true,
-		ExternalAccess:   false,
-		Issues:           []string{},
+		IngressStatus:  "checking",
+		ServiceMeshOK:  true,
+		ConnectivityOK: true,
+		ExternalAccess: false,
+		Issues:         []string{},
 	}
 
 	// Simple connectivity test (basic implementation)
@@ -582,39 +582,39 @@ func (u *DeploymentMonitoringUsecase) getMonitoringConfig(env domain.Environment
 	switch env {
 	case domain.Production:
 		return MonitoringConfig{
-			Interval:              30 * time.Second,
-			AutoRecoveryEnabled:   true,
-			NotificationEnabled:   true,
-			MaxRetries:            3,
-			CriticalThreshold:     3,
-			WarningThreshold:      5,
+			Interval:            30 * time.Second,
+			AutoRecoveryEnabled: true,
+			NotificationEnabled: true,
+			MaxRetries:          3,
+			CriticalThreshold:   3,
+			WarningThreshold:    5,
 		}
 	case domain.Staging:
 		return MonitoringConfig{
-			Interval:              1 * time.Minute,
-			AutoRecoveryEnabled:   true,
-			NotificationEnabled:   false,
-			MaxRetries:            2,
-			CriticalThreshold:     2,
-			WarningThreshold:      3,
+			Interval:            1 * time.Minute,
+			AutoRecoveryEnabled: true,
+			NotificationEnabled: false,
+			MaxRetries:          2,
+			CriticalThreshold:   2,
+			WarningThreshold:    3,
 		}
 	case domain.Development:
 		return MonitoringConfig{
-			Interval:              2 * time.Minute,
-			AutoRecoveryEnabled:   false,
-			NotificationEnabled:   false,
-			MaxRetries:            1,
-			CriticalThreshold:     5,
-			WarningThreshold:      10,
+			Interval:            2 * time.Minute,
+			AutoRecoveryEnabled: false,
+			NotificationEnabled: false,
+			MaxRetries:          1,
+			CriticalThreshold:   5,
+			WarningThreshold:    10,
 		}
 	default:
 		return MonitoringConfig{
-			Interval:              1 * time.Minute,
-			AutoRecoveryEnabled:   false,
-			NotificationEnabled:   false,
-			MaxRetries:            2,
-			CriticalThreshold:     3,
-			WarningThreshold:      5,
+			Interval:            1 * time.Minute,
+			AutoRecoveryEnabled: false,
+			NotificationEnabled: false,
+			MaxRetries:          2,
+			CriticalThreshold:   3,
+			WarningThreshold:    5,
 		}
 	}
 }
@@ -695,8 +695,8 @@ func (u *DeploymentMonitoringUsecase) performAutoRecovery(ctx context.Context, i
 		result, err := u.autoRecovery.RecoverFromError(ctx, issue.Error)
 		if err != nil {
 			u.logger.ErrorWithContext("自動復旧に失敗", map[string]interface{}{
-				"issue":       issue.Description,
-				"error":       err.Error(),
+				"issue": issue.Description,
+				"error": err.Error(),
 			})
 			u.metrics.RecordRecoveryFailure(issue.Type)
 		} else {
@@ -711,7 +711,7 @@ func (u *DeploymentMonitoringUsecase) performAutoRecovery(ctx context.Context, i
 	}
 
 	u.logger.InfoWithContext("自動復旧処理が完了", map[string]interface{}{
-		"total_issues":    len(issues),
+		"total_issues":        len(issues),
 		"successful_recovery": successCount,
 		"failed_recovery":     len(issues) - successCount,
 	})

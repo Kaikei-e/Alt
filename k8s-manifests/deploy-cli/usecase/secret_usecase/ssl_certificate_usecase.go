@@ -49,9 +49,9 @@ func (u *SSLCertificateUsecase) CreateMeiliSearchSSLCertificate(ctx context.Cont
 	})
 
 	config := &SSLCertificateConfig{
-		ServiceName:  "meilisearch",
-		Namespace:    namespace,
-		Environment:  env,
+		ServiceName: "meilisearch",
+		Namespace:   namespace,
+		Environment: env,
 		DNSNames: []string{
 			"meilisearch",
 			fmt.Sprintf("meilisearch.%s", namespace),
@@ -75,9 +75,9 @@ func (u *SSLCertificateUsecase) CreateBackendSSLCertificate(ctx context.Context,
 	})
 
 	config := &SSLCertificateConfig{
-		ServiceName:  "alt-backend",
-		Namespace:    namespace,
-		Environment:  env,
+		ServiceName: "alt-backend",
+		Namespace:   namespace,
+		Environment: env,
 		DNSNames: []string{
 			"alt-backend",
 			fmt.Sprintf("alt-backend.%s", namespace),
@@ -102,9 +102,9 @@ func (u *SSLCertificateUsecase) CreateFrontendSSLCertificate(ctx context.Context
 	})
 
 	config := &SSLCertificateConfig{
-		ServiceName:  "alt-frontend",
-		Namespace:    namespace,
-		Environment:  env,
+		ServiceName: "alt-frontend",
+		Namespace:   namespace,
+		Environment: env,
 		DNSNames: []string{
 			"alt-frontend",
 			fmt.Sprintf("alt-frontend.%s", namespace),
@@ -129,9 +129,9 @@ func (u *SSLCertificateUsecase) CreateNginxSSLCertificate(ctx context.Context, n
 	})
 
 	config := &SSLCertificateConfig{
-		ServiceName:  "nginx",
-		Namespace:    namespace,
-		Environment:  env,
+		ServiceName: "nginx",
+		Namespace:   namespace,
+		Environment: env,
 		DNSNames: []string{
 			"nginx",
 			fmt.Sprintf("nginx.%s", namespace),
@@ -157,9 +157,9 @@ func (u *SSLCertificateUsecase) CreateAuthServiceSSLCertificate(ctx context.Cont
 	})
 
 	config := &SSLCertificateConfig{
-		ServiceName:  "auth-service",
-		Namespace:    namespace,
-		Environment:  env,
+		ServiceName: "auth-service",
+		Namespace:   namespace,
+		Environment: env,
 		DNSNames: []string{
 			"auth-service",
 			fmt.Sprintf("auth-service.%s", namespace),
@@ -184,9 +184,9 @@ func (u *SSLCertificateUsecase) CreateKratosSSLCertificate(ctx context.Context, 
 	})
 
 	config := &SSLCertificateConfig{
-		ServiceName:  "kratos",
-		Namespace:    namespace,
-		Environment:  env,
+		ServiceName: "kratos",
+		Namespace:   namespace,
+		Environment: env,
 		DNSNames: []string{
 			"kratos",
 			fmt.Sprintf("kratos.%s", namespace),
@@ -211,9 +211,9 @@ func (u *SSLCertificateUsecase) CreatePostgresSSLCertificate(ctx context.Context
 	})
 
 	config := &SSLCertificateConfig{
-		ServiceName:  "postgres",
-		Namespace:    namespace,
-		Environment:  env,
+		ServiceName: "postgres",
+		Namespace:   namespace,
+		Environment: env,
 		DNSNames: []string{
 			"postgres",
 			fmt.Sprintf("postgres.%s", namespace),
@@ -250,12 +250,12 @@ func (u *SSLCertificateUsecase) createSSLCertificate(ctx context.Context, config
 			PostalCode:    []string{""},
 			CommonName:    fmt.Sprintf("%s.%s.svc.cluster.local", config.ServiceName, config.Namespace),
 		},
-		DNSNames:     config.DNSNames,
-		IPAddresses:  config.IPAddresses,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Duration(config.ValidityDays) * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:              config.DNSNames,
+		IPAddresses:           config.IPAddresses,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Duration(config.ValidityDays) * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 	}
 
@@ -298,7 +298,7 @@ func (u *SSLCertificateUsecase) createSSLCertificate(ctx context.Context, config
 	secret.Labels["app.kubernetes.io/environment"] = config.Environment.String()
 	secret.Labels["deploy-cli/managed"] = "true"
 	secret.Labels["deploy-cli/auto-generated"] = "true"
-	
+
 	// Add Helm-compatible metadata for Strategy A unified management
 	if config.ReleaseName != "" {
 		secret.Labels["app.kubernetes.io/managed-by"] = "Helm"
@@ -310,10 +310,10 @@ func (u *SSLCertificateUsecase) createSSLCertificate(ctx context.Context, config
 	}
 
 	u.logger.InfoWithContext("SSL certificate generated successfully", map[string]interface{}{
-		"secret_name":    secretName,
-		"namespace":      config.Namespace,
-		"dns_names":      config.DNSNames,
-		"validity_days":  config.ValidityDays,
+		"secret_name":   secretName,
+		"namespace":     config.Namespace,
+		"dns_names":     config.DNSNames,
+		"validity_days": config.ValidityDays,
 	})
 
 	// Use secret usecase to create the secret
@@ -410,9 +410,9 @@ func (u *SSLCertificateUsecase) ListSSLCertificates(ctx context.Context, namespa
 	var sslSecrets []domain.SecretInfo
 	for _, secret := range secrets {
 		// Check if it's an SSL certificate secret
-		if secret.Type == string(domain.SSLSecret) || 
-		   (secret.Labels != nil && secret.Labels["deploy-cli/managed"] == "true" && 
-		    secret.Labels["app.kubernetes.io/component"] == "ssl-certificate") {
+		if secret.Type == string(domain.SSLSecret) ||
+			(secret.Labels != nil && secret.Labels["deploy-cli/managed"] == "true" &&
+				secret.Labels["app.kubernetes.io/component"] == "ssl-certificate") {
 			owner := ""
 			if secret.Labels != nil {
 				owner = secret.Labels["app.kubernetes.io/name"]
@@ -441,12 +441,12 @@ func (u *SSLCertificateUsecase) ValidateCertificateExists(ctx context.Context, c
 	if len(certName) > 4 && certName[len(certName)-4:] == "-tls" {
 		serviceName = certName[:len(certName)-4]
 	}
-	
+
 	// Get the appropriate namespace for the service
 	namespace := domain.DetermineNamespace(serviceName, env)
-	
+
 	secretName := fmt.Sprintf("%s-ssl-certs-prod", serviceName)
-	
+
 	u.logger.InfoWithContext("validating SSL certificate existence", map[string]interface{}{
 		"certificate_name": certName,
 		"secret_name":      secretName,
@@ -461,7 +461,7 @@ func (u *SSLCertificateUsecase) ValidateCertificateExists(ctx context.Context, c
 			"certificate_name": certName,
 			"secret_name":      secretName,
 			"namespace":        namespace,
-			"error":           err.Error(),
+			"error":            err.Error(),
 		})
 		return false, nil
 	}
@@ -482,10 +482,10 @@ func (u *SSLCertificateUsecase) GenerateCertificate(ctx context.Context, certNam
 	if len(certName) > 4 && certName[len(certName)-4:] == "-tls" {
 		serviceName = certName[:len(certName)-4]
 	}
-	
+
 	// Get the appropriate namespace for the service
 	namespace := domain.DetermineNamespace(serviceName, env)
-	
+
 	u.logger.InfoWithContext("generating SSL certificate", map[string]interface{}{
 		"certificate_name": certName,
 		"service_name":     serviceName,
@@ -495,7 +495,7 @@ func (u *SSLCertificateUsecase) GenerateCertificate(ctx context.Context, certNam
 
 	// Create SSL certificate configuration based on the certificate name
 	config := u.createCertificateConfig(certName, namespace, env)
-	
+
 	return u.createSSLCertificate(ctx, config)
 }
 
@@ -567,7 +567,7 @@ func (u *SSLCertificateUsecase) createCertificateConfig(certName string, namespa
 
 	validityDays := 365
 	if env == domain.Development {
-		validityDays = 90  // Shorter validity for development
+		validityDays = 90 // Shorter validity for development
 	}
 
 	return &SSLCertificateConfig{
