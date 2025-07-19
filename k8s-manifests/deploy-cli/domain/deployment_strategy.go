@@ -257,19 +257,41 @@ func (p *ProductionStrategy) GetEnvironment() Environment {
 func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerConfiguration {
 	return []LayerConfiguration{
 		{
-			Name: "Storage & Persistent Infrastructure",
+			Name: "Core Database Layer",
 			Charts: []Chart{
 				{Name: "postgres", Type: InfrastructureChart, Path: chartsDir + "/postgres", WaitReady: true},
+			},
+			RequiresHealthCheck:     true,
+			HealthCheckTimeout:      5 * time.Minute,
+			WaitBetweenCharts:       20 * time.Second,
+			LayerCompletionTimeout:  8 * time.Minute, // Single chart, shorter timeout
+			AllowParallelDeployment: false,
+			CriticalLayer:           true,
+		},
+		{
+			Name: "Authentication Database Layer",
+			Charts: []Chart{
 				{Name: "auth-postgres", Type: InfrastructureChart, Path: chartsDir + "/auth-postgres", WaitReady: true},
 				{Name: "kratos-postgres", Type: InfrastructureChart, Path: chartsDir + "/kratos-postgres", WaitReady: true},
+			},
+			RequiresHealthCheck:     true,
+			HealthCheckTimeout:      4 * time.Minute,
+			WaitBetweenCharts:       20 * time.Second,
+			LayerCompletionTimeout:  10 * time.Minute, // Two charts, parallel possible
+			AllowParallelDeployment: true, // IMPROVEMENT: Enable parallel for independent auth DBs
+			CriticalLayer:           true,
+		},
+		{
+			Name: "Analytics & Search Database Layer",
+			Charts: []Chart{
 				{Name: "clickhouse", Type: InfrastructureChart, Path: chartsDir + "/clickhouse", WaitReady: true},
 				{Name: "meilisearch", Type: InfrastructureChart, Path: chartsDir + "/meilisearch", WaitReady: true},
 			},
 			RequiresHealthCheck:     true,
-			HealthCheckTimeout:      15 * time.Minute, // Conservative timeout
-			WaitBetweenCharts:       10 * time.Second, // Extended wait for stability
-			LayerCompletionTimeout:  25 * time.Minute, // Extended layer timeout
-			AllowParallelDeployment: false,
+			HealthCheckTimeout:      4 * time.Minute,
+			WaitBetweenCharts:       20 * time.Second,
+			LayerCompletionTimeout:  10 * time.Minute, // Two charts, parallel possible
+			AllowParallelDeployment: true, // IMPROVEMENT: Enable parallel for independent storage
 			CriticalLayer:           true,
 		},
 		{
@@ -294,10 +316,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 				{Name: "kratos", Type: ApplicationChart, Path: chartsDir + "/kratos", WaitReady: true},
 			},
 			RequiresHealthCheck:     true,
-			HealthCheckTimeout:      12 * time.Minute,
-			WaitBetweenCharts:       30 * time.Second,
-			LayerCompletionTimeout:  20 * time.Minute,
-			AllowParallelDeployment: false,
+			HealthCheckTimeout:      6 * time.Minute, // Reduced for faster failure detection
+			WaitBetweenCharts:       20 * time.Second, // Reduced for efficiency
+			LayerCompletionTimeout:  12 * time.Minute, // Reduced from 15m to 12m
+			AllowParallelDeployment: true, // IMPROVEMENT: Enable parallel for independent services
 			CriticalLayer:           true,
 		},
 		{
@@ -307,10 +329,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 				{Name: "nginx-external", Type: InfrastructureChart, Path: chartsDir + "/nginx-external", WaitReady: true},
 			},
 			RequiresHealthCheck:     true,
-			HealthCheckTimeout:      8 * time.Minute,
-			WaitBetweenCharts:       20 * time.Second,
-			LayerCompletionTimeout:  12 * time.Minute,
-			AllowParallelDeployment: false,
+			HealthCheckTimeout:      5 * time.Minute, // Reduced for faster detection
+			WaitBetweenCharts:       15 * time.Second,
+			LayerCompletionTimeout:  8 * time.Minute, // Reduced from 12m to 8m
+			AllowParallelDeployment: true, // IMPROVEMENT: nginx services can be parallel
 			CriticalLayer:           false,
 		},
 		{
@@ -335,10 +357,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 				{Name: "rask-log-aggregator", Type: ApplicationChart, Path: chartsDir + "/rask-log-aggregator", WaitReady: true},
 			},
 			RequiresHealthCheck:     true,
-			HealthCheckTimeout:      12 * time.Minute,
-			WaitBetweenCharts:       30 * time.Second,
-			LayerCompletionTimeout:  20 * time.Minute,
-			AllowParallelDeployment: false,
+			HealthCheckTimeout:      6 * time.Minute, // Reduced for efficiency
+			WaitBetweenCharts:       20 * time.Second, // Reduced from 30s
+			LayerCompletionTimeout:  12 * time.Minute, // Reduced from 15m to 12m
+			AllowParallelDeployment: true, // IMPROVEMENT: Independent processing services
 			CriticalLayer:           false,
 		},
 		{
@@ -359,7 +381,7 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 }
 
 func (p *ProductionStrategy) GetGlobalTimeout() time.Duration {
-	return 90 * time.Minute // Very conservative timeout for production
+	return 60 * time.Minute // EMERGENCY FIX: Reduced from 90m to 60m
 }
 
 func (p *ProductionStrategy) AllowsParallelDeployment() bool {

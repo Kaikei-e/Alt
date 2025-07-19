@@ -153,12 +153,35 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 			}
 
 			// Deploy the chart - handle multi-namespace deployment
+			e.logger.InfoWithContext("🚀 Starting chart deployment", map[string]interface{}{
+				"chart":       chart.Name,
+				"layer":       layer.Name,
+				"chart_index": chartIndex + 1,
+				"total_charts_in_layer": len(layer.Charts),
+				"multi_namespace": chart.MultiNamespace,
+				"elapsed_time": time.Since(layerStartTime).String(),
+			})
+			
 			if chart.MultiNamespace {
-				for _, targetNamespace := range chart.TargetNamespaces {
+				for nsIndex, targetNamespace := range chart.TargetNamespaces {
+					e.logger.InfoWithContext("📦 Deploying to namespace", map[string]interface{}{
+						"chart":     chart.Name,
+						"namespace": targetNamespace,
+						"ns_index":  nsIndex + 1,
+						"total_ns":  len(chart.TargetNamespaces),
+					})
+					
 					chartCopy := chart
 					chartCopy.MultiNamespace = false
 					result := e.deploySingleChartToNamespace(layerCtx, chartCopy, targetNamespace, options)
 					progress.AddResult(result)
+
+					e.logger.InfoWithContext("📊 Chart deployment result", map[string]interface{}{
+						"chart":     chart.Name,
+						"namespace": targetNamespace,
+						"status":    result.Status,
+						"duration":  result.Duration.String(),
+					})
 
 					if result.Status == domain.DeploymentStatusFailed {
 						layerErr = result.Error
@@ -168,8 +191,26 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 					}
 				}
 			} else {
+				e.logger.InfoWithContext("⚡ Deploying single chart", map[string]interface{}{
+					"chart": chart.Name,
+					"layer": layer.Name,
+					"about_to_call": "deploySingleChart",
+				})
+				
 				result := e.deploySingleChart(layerCtx, chart, options)
 				progress.AddResult(result)
+
+				e.logger.InfoWithContext("✨ Single chart deployment completed", map[string]interface{}{
+					"chart":    chart.Name,
+					"status":   result.Status,
+					"duration": result.Duration.String(),
+					"error":    func() string {
+						if result.Error != nil {
+							return result.Error.Error()
+						}
+						return "none"
+					}(),
+				})
 
 				if result.Status == domain.DeploymentStatusFailed {
 					layerErr = result.Error
@@ -192,19 +233,59 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 
 		layerDuration := time.Since(layerStartTime)
 
+		e.logger.InfoWithContext("🔄 CHECKING layer completion requirements", map[string]interface{}{
+			"layer": layer.Name,
+			"layer_error": layerErr == nil,
+			"requires_health_check": layer.RequiresHealthCheck,
+			"dry_run": options.DryRun,
+			"skip_health_checks": options.SkipHealthChecks,
+			"emergency_mode": options.SkipStatefulSetRecovery, // Using this as emergency mode indicator
+		})
+
 		// If layer requires health check and deployment was successful, perform health check
-		if layerErr == nil && layer.RequiresHealthCheck && !options.DryRun {
+		if layerErr == nil && layer.RequiresHealthCheck && !options.DryRun && !options.SkipHealthChecks {
+			e.logger.InfoWithContext("🩺 STARTING layer health check", map[string]interface{}{
+				"layer": layer.Name,
+				"timeout": layer.HealthCheckTimeout.String(),
+				"emergency_mode": options.SkipStatefulSetRecovery,
+			})
+			
 			healthCheckCtx, healthCheckCancel := context.WithTimeout(layerCtx, layer.HealthCheckTimeout)
 			defer healthCheckCancel()
 
 			if err := e.performLayerHealthCheck(healthCheckCtx, layer, options); err != nil {
-				e.logger.ErrorWithContext("layer health check failed", map[string]interface{}{
+				e.logger.ErrorWithContext("❌ Layer health check FAILED", map[string]interface{}{
 					"layer": layer.Name,
 					"error": err.Error(),
+					"emergency_mode": options.SkipStatefulSetRecovery,
 				})
-				layerErr = fmt.Errorf("layer health check failed: %w", err)
+				
+				if options.SkipStatefulSetRecovery { // Emergency mode
+					e.logger.WarnWithContext("🚨 SKIPPING health check in emergency mode", map[string]interface{}{
+						"layer": layer.Name,
+					})
+				} else {
+					layerErr = fmt.Errorf("layer health check failed: %w", err)
+				}
+			} else {
+				e.logger.InfoWithContext("✅ Layer health check PASSED", map[string]interface{}{
+					"layer": layer.Name,
+				})
 			}
+		} else if options.SkipHealthChecks {
+			e.logger.InfoWithContext("⏭️ SKIPPING health check (--skip-health-checks flag)", map[string]interface{}{
+				"layer": layer.Name,
+				"requires_health_check": layer.RequiresHealthCheck,
+			})
 		}
+
+		e.logger.InfoWithContext("🎯 LAYER COMPLETION STATUS", map[string]interface{}{
+			"layer":       layer.Name,
+			"layer_index": layerIndex + 1,
+			"duration":    layerDuration,
+			"success":     layerErr == nil,
+			"about_to_complete": true,
+		})
 
 		e.logger.InfoWithContext("layer deployment completed", map[string]interface{}{
 			"layer":       layer.Name,
@@ -316,6 +397,11 @@ func (e *DeploymentStrategyExecutor) deployChartGroup(ctx context.Context, group
 // deploySingleChart deploys a single chart
 func (e *DeploymentStrategyExecutor) deploySingleChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) domain.DeploymentResult {
 	namespace := options.GetNamespace(chart.Name)
+	e.logger.InfoWithContext("🔍 Resolving chart namespace", map[string]interface{}{
+		"chart":     chart.Name,
+		"namespace": namespace,
+		"function":  "deploySingleChart",
+	})
 	return e.deploySingleChartToNamespace(ctx, chart, namespace, options)
 }
 
@@ -323,9 +409,11 @@ func (e *DeploymentStrategyExecutor) deploySingleChart(ctx context.Context, char
 func (e *DeploymentStrategyExecutor) deploySingleChartToNamespace(ctx context.Context, chart domain.Chart, namespace string, options *domain.DeploymentOptions) domain.DeploymentResult {
 	start := time.Now()
 
-	e.logger.InfoWithContext("deploying single chart", map[string]interface{}{
+	e.logger.InfoWithContext("🎯 ENTERING deploySingleChartToNamespace", map[string]interface{}{
 		"chart":     chart.Name,
 		"namespace": namespace,
+		"function":  "deploySingleChartToNamespace",
+		"start_time": start.Format(time.RFC3339),
 	})
 
 	result := domain.DeploymentResult{
@@ -350,7 +438,15 @@ func (e *DeploymentStrategyExecutor) deploySingleChartToNamespace(ctx context.Co
 	defer cancel()
 
 	// Validate chart path
+	e.logger.InfoWithContext("🔍 Validating chart path", map[string]interface{}{
+		"chart": chart.Name,
+		"path":  chart.Path,
+	})
 	if err := e.filesystemGateway.ValidateChartPath(chart); err != nil {
+		e.logger.ErrorWithContext("❌ Chart path validation failed", map[string]interface{}{
+			"chart": chart.Name,
+			"error": err.Error(),
+		})
 		result.Error = fmt.Errorf("chart path validation failed: %w", err)
 		result.Status = domain.DeploymentStatusSkipped
 		result.Duration = time.Since(start)
@@ -358,13 +454,25 @@ func (e *DeploymentStrategyExecutor) deploySingleChartToNamespace(ctx context.Co
 	}
 
 	// Validate values file
+	e.logger.InfoWithContext("📄 Validating values file", map[string]interface{}{
+		"chart":       chart.Name,
+		"environment": options.Environment.String(),
+	})
 	valuesFile, err := e.filesystemGateway.ValidateValuesFile(chart, options.Environment)
 	if err != nil {
+		e.logger.ErrorWithContext("❌ Values file validation failed", map[string]interface{}{
+			"chart": chart.Name,
+			"error": err.Error(),
+		})
 		result.Error = fmt.Errorf("values file validation failed: %w", err)
 		result.Status = domain.DeploymentStatusSkipped
 		result.Duration = time.Since(start)
 		return result
 	}
+	e.logger.InfoWithContext("✅ Values file validated", map[string]interface{}{
+		"chart":       chart.Name,
+		"values_file": valuesFile,
+	})
 
 	// Create namespace-specific deployment options
 	nsOptions := *options
@@ -372,29 +480,81 @@ func (e *DeploymentStrategyExecutor) deploySingleChartToNamespace(ctx context.Co
 
 	// Deploy or template chart with timeout handling
 	if options.DryRun {
+		e.logger.InfoWithContext("🧪 Starting dry-run templating", map[string]interface{}{
+			"chart":   chart.Name,
+			"timeout": chartTimeout.String(),
+		})
 		_, err = e.helmGateway.TemplateChart(chartCtx, chart, &nsOptions)
 		if err != nil {
 			if chartCtx.Err() == context.DeadlineExceeded {
+				e.logger.ErrorWithContext("⏰ Chart templating TIMEOUT", map[string]interface{}{
+					"chart":   chart.Name,
+					"timeout": chartTimeout.String(),
+				})
 				result.Error = fmt.Errorf("chart templating timed out after %v", chartTimeout)
 			} else {
+				e.logger.ErrorWithContext("❌ Chart templating FAILED", map[string]interface{}{
+					"chart": chart.Name,
+					"error": err.Error(),
+				})
 				result.Error = fmt.Errorf("chart templating failed: %w", err)
 			}
 		} else {
+			e.logger.InfoWithContext("✅ Chart templating SUCCESS", map[string]interface{}{
+				"chart": chart.Name,
+			})
 			result.Status = domain.DeploymentStatusSuccess
 			result.Message = "Chart templated successfully"
 		}
 	} else {
 		chartNamespace := e.getNamespaceForChart(chart)
-		err = e.helmOperationManager.ExecuteWithLock(chart.Name, chartNamespace, "deploy", func() error {
-			return e.helmGateway.DeployChart(chartCtx, chart, &nsOptions)
+		e.logger.InfoWithContext("🚀 Starting HELM deployment", map[string]interface{}{
+			"chart":          chart.Name,
+			"namespace":      chartNamespace,
+			"timeout":        chartTimeout.String(),
+			"about_to_call":  "helmOperationManager.ExecuteWithLock",
 		})
+		
+		err = e.helmOperationManager.ExecuteWithLock(chart.Name, chartNamespace, "deploy", func() error {
+			e.logger.InfoWithContext("🔐 INSIDE Helm lock - about to call DeployChart", map[string]interface{}{
+				"chart":     chart.Name,
+				"namespace": chartNamespace,
+			})
+			
+			helmErr := e.helmGateway.DeployChart(chartCtx, chart, &nsOptions)
+			
+			e.logger.InfoWithContext("🔓 Helm DeployChart returned", map[string]interface{}{
+				"chart":     chart.Name,
+				"namespace": chartNamespace,
+				"error":     func() string {
+					if helmErr != nil {
+						return helmErr.Error()
+					}
+					return "none"
+				}(),
+			})
+			
+			return helmErr
+		})
+		
 		if err != nil {
 			if chartCtx.Err() == context.DeadlineExceeded {
+				e.logger.ErrorWithContext("⏰ Chart deployment TIMEOUT", map[string]interface{}{
+					"chart":   chart.Name,
+					"timeout": chartTimeout.String(),
+				})
 				result.Error = fmt.Errorf("chart deployment timed out after %v", chartTimeout)
 			} else {
+				e.logger.ErrorWithContext("❌ Chart deployment FAILED", map[string]interface{}{
+					"chart": chart.Name,
+					"error": err.Error(),
+				})
 				result.Error = fmt.Errorf("chart deployment failed: %w", err)
 			}
 		} else {
+			e.logger.InfoWithContext("🎉 Chart deployment SUCCESS", map[string]interface{}{
+				"chart": chart.Name,
+			})
 			result.Status = domain.DeploymentStatusSuccess
 			result.Message = "Chart deployed successfully"
 		}
@@ -530,27 +690,77 @@ func (e *DeploymentStrategyExecutor) isStatefulSetChart(chartName string) bool {
 
 // performLayerHealthCheck performs health check for a layer
 func (e *DeploymentStrategyExecutor) performLayerHealthCheck(ctx context.Context, layer domain.LayerConfiguration, options *domain.DeploymentOptions) error {
-	e.logger.InfoWithContext("performing layer health check", map[string]interface{}{
+	e.logger.InfoWithContext("🩺 STARTING performLayerHealthCheck", map[string]interface{}{
 		"layer": layer.Name,
+		"charts_count": len(layer.Charts),
+		"context_deadline": ctx.Err() == nil,
 	})
 
-	for _, chart := range layer.Charts {
+	for chartIndex, chart := range layer.Charts {
 		if chart.WaitReady {
 			namespace := options.GetNamespace(chart.Name)
+
+			e.logger.InfoWithContext("🔍 CHECKING individual chart health", map[string]interface{}{
+				"chart": chart.Name,
+				"namespace": namespace,
+				"chart_index": chartIndex + 1,
+				"total_charts": len(layer.Charts),
+				"chart_type": string(chart.Type),
+			})
 
 			var err error
 			switch chart.Name {
 			case "postgres", "auth-postgres", "kratos-postgres":
+				e.logger.InfoWithContext("🐘 PostgreSQL health check STARTING", map[string]interface{}{
+					"chart": chart.Name,
+					"namespace": namespace,
+					"about_to_call": "WaitForPostgreSQLReady",
+				})
 				err = e.healthChecker.WaitForPostgreSQLReady(ctx, namespace, chart.Name)
+				if err != nil {
+					e.logger.ErrorWithContext("🐘 PostgreSQL health check FAILED", map[string]interface{}{
+						"chart": chart.Name,
+						"namespace": namespace,
+						"error": err.Error(),
+					})
+				} else {
+					e.logger.InfoWithContext("🐘 PostgreSQL health check PASSED", map[string]interface{}{
+						"chart": chart.Name,
+						"namespace": namespace,
+					})
+				}
 			case "meilisearch":
+				e.logger.InfoWithContext("🔍 Meilisearch health check STARTING", map[string]interface{}{
+					"chart": chart.Name,
+					"namespace": namespace,
+				})
 				err = e.healthChecker.WaitForMeilisearchReady(ctx, namespace, chart.Name)
 			default:
+				e.logger.InfoWithContext("⚙️ Service health check STARTING", map[string]interface{}{
+					"chart": chart.Name,
+					"namespace": namespace,
+					"service_type": string(chart.Type),
+				})
 				err = e.healthChecker.WaitForServiceReady(ctx, chart.Name, string(chart.Type), namespace)
 			}
 
 			if err != nil {
+				e.logger.ErrorWithContext("❌ Chart health check FAILED", map[string]interface{}{
+					"chart": chart.Name,
+					"namespace": namespace,
+					"error": err.Error(),
+				})
 				return fmt.Errorf("health check failed for chart %s: %w", chart.Name, err)
 			}
+
+			e.logger.InfoWithContext("✅ Chart health check COMPLETED", map[string]interface{}{
+				"chart": chart.Name,
+				"namespace": namespace,
+			})
+		} else {
+			e.logger.InfoWithContext("⏭️ SKIPPING health check (WaitReady=false)", map[string]interface{}{
+				"chart": chart.Name,
+			})
 		}
 	}
 

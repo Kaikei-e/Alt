@@ -22,6 +22,7 @@ type DeploymentOptions struct {
 	AutoCreateNamespaces    bool   // Enable automatic namespace creation if not exists
 	AutoFixStorage          bool   // Enable automatic StorageClass configuration
 	SkipStatefulSetRecovery bool   // Skip StatefulSet recovery for emergency deployments
+	SkipHealthChecks        bool   // Skip all health checks for emergency deployment
 }
 
 // NewDeploymentOptions creates a new deployment options with defaults

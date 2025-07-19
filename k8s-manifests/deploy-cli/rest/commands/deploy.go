@@ -74,7 +74,10 @@ Examples:
   deploy-cli deploy production --force-update
 
   # Emergency deployment skipping StatefulSet recovery
-  deploy-cli deploy production --skip-statefulset-recovery`,
+  deploy-cli deploy production --skip-statefulset-recovery
+  
+  # Full emergency mode with aggressive timeouts
+  deploy-cli deploy production --emergency-mode`,
 		Args:    cobra.ExactArgs(1),
 		PreRunE: deployCmd.preRun,
 		RunE:    deployCmd.run,
@@ -95,6 +98,8 @@ Examples:
 	cmd.Flags().Duration("monitoring-interval", 30*time.Second, "Monitoring interval for continuous monitoring")
 	cmd.Flags().Bool("diagnostic-report", false, "Generate detailed diagnostic report before deployment")
 	cmd.Flags().Bool("skip-statefulset-recovery", false, "Skip StatefulSet recovery for emergency deployments")
+	cmd.Flags().Bool("emergency-mode", false, "Emergency deployment mode: aggressive timeouts, skip non-critical checks")
+	cmd.Flags().Bool("skip-health-checks", false, "Skip all health checks for emergency deployment")
 
 	return cmd
 }
@@ -136,6 +141,15 @@ func (d *DeployCommand) preRun(cmd *cobra.Command, args []string) error {
 		options.AutoFixSecrets = true
 		options.AutoCreateNamespaces = true
 		options.AutoFixStorage = true
+	}
+	
+	// Emergency mode processing in preRun
+	emergencyMode, _ := cmd.Flags().GetBool("emergency-mode")
+	if emergencyMode {
+		options.SkipStatefulSetRecovery = true
+		options.AutoFixSecrets = true
+		options.AutoCreateNamespaces = true
+		options.Timeout = 5 * time.Minute
 	}
 
 	// Validate options
@@ -181,6 +195,30 @@ func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 		options.AutoFixStorage = true
 	}
 	options.SkipStatefulSetRecovery, _ = cmd.Flags().GetBool("skip-statefulset-recovery")
+	options.SkipHealthChecks, _ = cmd.Flags().GetBool("skip-health-checks")
+	
+	// Emergency mode processing
+	emergencyMode, _ := cmd.Flags().GetBool("emergency-mode")
+	if emergencyMode {
+		colors.PrintWarning("🚨 EMERGENCY MODE ACTIVATED - Aggressive timeouts and minimal validation")
+		options.SkipStatefulSetRecovery = true
+		options.AutoFixSecrets = true
+		options.AutoCreateNamespaces = true
+		options.SkipHealthChecks = true // Enable health check skip in emergency mode
+		// Override timeout to 5 minutes for emergency
+		options.Timeout = 5 * time.Minute
+		d.logger.InfoWithContext("emergency mode configuration applied", map[string]interface{}{
+			"skip_statefulset_recovery": true,
+			"auto_fix_secrets":          true,
+			"skip_health_checks":        true,
+			"emergency_timeout":         "5m",
+		})
+	}
+	
+	// Health check skip mode processing
+	if options.SkipHealthChecks {
+		colors.PrintWarning("⚠️ HEALTH CHECKS DISABLED - Deployment will proceed without waiting for service readiness")
+	}
 
 	// Convert relative charts directory to absolute path
 	if options.ChartsDir != "" {

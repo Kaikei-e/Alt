@@ -24,63 +24,79 @@ func NewHealthChecker(logger logger_port.LoggerPort) *HealthChecker {
 
 // WaitForPostgreSQLReady waits for PostgreSQL service to be ready for connections
 func (h *HealthChecker) WaitForPostgreSQLReady(ctx context.Context, namespace, serviceName string) error {
-	h.logger.InfoWithContext("waiting for PostgreSQL service to be ready", map[string]interface{}{
+	h.logger.InfoWithContext("🐘 PostgreSQL health check STARTING", map[string]interface{}{
 		"namespace":    namespace,
 		"service":      serviceName,
 		"max_duration": "5m",
+		"context_deadline": func() string {
+			if deadline, ok := ctx.Deadline(); ok {
+				return deadline.Format(time.RFC3339)
+			}
+			return "no deadline"
+		}(),
 	})
 
-	maxRetries := 30 // 5 minutes with 10 second intervals
-	for i := 0; i < maxRetries; i++ {
+	// Add emergency timeout detection
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	
+	attempt := 0
+	maxRetries := 60 // 5 minutes with 5 second intervals (more frequent checks)
+	
+	for attempt < maxRetries {
 		select {
 		case <-ctx.Done():
-			h.logger.ErrorWithContext("PostgreSQL wait cancelled", map[string]interface{}{
+			h.logger.ErrorWithContext("⏰ PostgreSQL health check TIMEOUT", map[string]interface{}{
 				"namespace": namespace,
 				"service":   serviceName,
-				"attempt":   i + 1,
+				"attempt":   attempt + 1,
 				"error":     ctx.Err().Error(),
+				"total_duration": fmt.Sprintf("%ds", attempt*5),
 			})
 			return ctx.Err()
-		default:
-		}
-
-		// Log current attempt
-		h.logger.InfoWithContext("checking PostgreSQL connection", map[string]interface{}{
-			"namespace":   namespace,
-			"service":     serviceName,
-			"attempt":     i + 1,
-			"max_retries": maxRetries,
-		})
-
-		// Check if PostgreSQL is ready to accept connections
-		if err := h.checkPostgreSQLConnection(namespace, serviceName); err == nil {
-			h.logger.InfoWithContext("PostgreSQL service is ready", map[string]interface{}{
-				"namespace": namespace,
-				"service":   serviceName,
-				"attempts":  i + 1,
-			})
-			return nil
-		} else {
-			h.logger.WarnWithContext("PostgreSQL not ready, retrying", map[string]interface{}{
+		case <-ticker.C:
+			attempt++
+			
+			// Log current attempt with detailed info
+			h.logger.InfoWithContext("🔍 Checking PostgreSQL connection", map[string]interface{}{
 				"namespace":   namespace,
 				"service":     serviceName,
-				"attempt":     i + 1,
+				"attempt":     attempt,
 				"max_retries": maxRetries,
-				"error":       err.Error(),
-				"retry_delay": "10s",
+				"elapsed_time": fmt.Sprintf("%ds", attempt*5),
+				"remaining_retries": maxRetries - attempt,
 			})
-		}
 
-		time.Sleep(10 * time.Second)
+			// Check if PostgreSQL is ready to accept connections
+			if err := h.checkPostgreSQLConnection(namespace, serviceName); err == nil {
+				h.logger.InfoWithContext("🐘 PostgreSQL service is READY", map[string]interface{}{
+					"namespace": namespace,
+					"service":   serviceName,
+					"attempts":  attempt,
+					"total_duration": fmt.Sprintf("%ds", attempt*5),
+				})
+				return nil
+			} else {
+				h.logger.WarnWithContext("🐘 PostgreSQL not ready, retrying", map[string]interface{}{
+					"namespace":   namespace,
+					"service":     serviceName,
+					"attempt":     attempt,
+					"max_retries": maxRetries,
+					"error":       err.Error(),
+					"retry_delay": "5s",
+					"time_remaining": fmt.Sprintf("%ds", (maxRetries-attempt)*5),
+				})
+			}
+		}
 	}
 
-	h.logger.ErrorWithContext("PostgreSQL service not ready after maximum attempts", map[string]interface{}{
+	h.logger.ErrorWithContext("🐘 PostgreSQL service FAILED after maximum attempts", map[string]interface{}{
 		"namespace":      namespace,
 		"service":        serviceName,
 		"max_attempts":   maxRetries,
-		"total_duration": "5m",
+		"total_duration": fmt.Sprintf("%ds", maxRetries*5),
 	})
-	return fmt.Errorf("PostgreSQL service %s in namespace %s not ready after %d attempts", serviceName, namespace, maxRetries)
+	return fmt.Errorf("PostgreSQL service %s in namespace %s not ready after %d attempts (%ds total)", serviceName, namespace, maxRetries, maxRetries*5)
 }
 
 // checkPostgreSQLConnection checks if PostgreSQL is ready to accept connections
