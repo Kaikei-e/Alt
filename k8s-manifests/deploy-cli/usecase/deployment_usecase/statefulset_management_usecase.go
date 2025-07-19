@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"deploy-cli/domain"
 	"deploy-cli/gateway/system_gateway"
@@ -395,115 +394,103 @@ func (u *StatefulSetManagementUsecase) scaleStatefulSet(ctx context.Context, nam
 
 // waitForPodsTermination waits for all pods of a StatefulSet to terminate with detailed logging
 func (u *StatefulSetManagementUsecase) waitForPodsTermination(ctx context.Context, name, namespace string, timeoutSeconds int) error {
-	u.logger.InfoWithContext("waiting for pods termination", map[string]interface{}{
+	u.logger.InfoWithContext("waiting for pods termination using kubectl wait", map[string]interface{}{
 		"statefulset": name,
 		"namespace":   namespace,
 		"timeout":     timeoutSeconds,
 	})
 
-	// Try multiple label selectors to ensure we catch all pods
+	// Define label selectors to try
 	labelSelectors := []string{
 		fmt.Sprintf("app=%s", name),
 		fmt.Sprintf("app.kubernetes.io/name=%s", name),
 		fmt.Sprintf("app.kubernetes.io/instance=%s", name),
 	}
 
-	for i := 0; i < timeoutSeconds; i += 5 {
-		// Check with all possible label selectors
-		allPodsTerminated := true
-		var foundPods []string
-
-		for _, selector := range labelSelectors {
-			output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "pods", "-n", namespace, "-l", selector, "--no-headers")
-			if err != nil {
-				u.logger.WarnWithContext("failed to check pod status with selector", map[string]interface{}{
-					"selector": selector,
-					"error":    err.Error(),
-				})
-				continue
-			}
-
-			if strings.TrimSpace(output) != "" {
-				allPodsTerminated = false
-				// Parse pod details for detailed logging
-				pods := strings.Split(strings.TrimSpace(output), "\n")
-				for _, pod := range pods {
-					if strings.TrimSpace(pod) != "" {
-						fields := strings.Fields(pod)
-						if len(fields) >= 3 {
-							podName := fields[0]
-							podStatus := fields[2]
-							foundPods = append(foundPods, fmt.Sprintf("%s(%s)", podName, podStatus))
-						}
-					}
-				}
-			}
-		}
-
-		if allPodsTerminated && len(foundPods) == 0 {
-			u.logger.InfoWithContext("all pods terminated successfully", map[string]interface{}{
-				"statefulset": name,
-				"namespace":   namespace,
-				"elapsed":     fmt.Sprintf("%ds", i),
-			})
-			return nil
-		}
-
-		// Log detailed pod status for debugging
-		if len(foundPods) > 0 {
-			u.logger.InfoWithContext("pods still running, waiting for termination", map[string]interface{}{
-				"statefulset":    name,
-				"namespace":      namespace,
-				"elapsed":        fmt.Sprintf("%ds", i),
-				"remaining_pods": foundPods,
-				"timeout_in":     fmt.Sprintf("%ds", timeoutSeconds-i),
-			})
-		}
-
-		// Check if context is cancelled
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("context cancelled while waiting for pods termination")
-		default:
-			time.Sleep(5 * time.Second)
-		}
-	}
-
-	// Final check with detailed error information
-	var stillRunningPods []string
+	// First, check if any pods exist with any of these selectors
+	var existingSelector string
 	for _, selector := range labelSelectors {
 		output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "pods", "-n", namespace, "-l", selector, "--no-headers")
-		if err == nil && strings.TrimSpace(output) != "" {
-			pods := strings.Split(strings.TrimSpace(output), "\n")
-			for _, pod := range pods {
-				if strings.TrimSpace(pod) != "" {
-					fields := strings.Fields(pod)
-					if len(fields) >= 3 {
-						stillRunningPods = append(stillRunningPods, fmt.Sprintf("%s(%s)", fields[0], fields[2]))
-					}
-				}
-			}
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(output) != "" {
+			existingSelector = selector
+			u.logger.InfoWithContext("found pods with selector", map[string]interface{}{
+				"selector":    selector,
+				"statefulset": name,
+				"namespace":   namespace,
+			})
+			break
 		}
 	}
 
-	if len(stillRunningPods) > 0 {
-		u.logger.WarnWithContext("timeout waiting for pods termination", map[string]interface{}{
-			"statefulset":        name,
-			"namespace":          namespace,
-			"timeout_seconds":    timeoutSeconds,
-			"still_running_pods": stillRunningPods,
-		})
-
-		// Continue with deployment instead of failing - pods might be terminating gracefully
-		u.logger.InfoWithContext("continuing with deployment despite timeout", map[string]interface{}{
+	// If no pods found with any selector, they're already terminated
+	if existingSelector == "" {
+		u.logger.InfoWithContext("no pods found with any selector, termination already complete", map[string]interface{}{
 			"statefulset": name,
 			"namespace":   namespace,
-			"reason":      "pods_may_still_be_terminating_gracefully",
 		})
 		return nil
 	}
 
-	return fmt.Errorf("timeout waiting for pods termination after %d seconds", timeoutSeconds)
+	// Use kubectl wait --for=delete to wait for pod deletion
+	timeoutArg := fmt.Sprintf("%ds", timeoutSeconds)
+	waitArgs := []string{
+		"wait", "--for=delete", "pod",
+		"--selector=" + existingSelector,
+		"--namespace=" + namespace,
+		"--timeout=" + timeoutArg,
+	}
+
+	u.logger.InfoWithContext("executing kubectl wait for pod deletion", map[string]interface{}{
+		"command":     "kubectl " + strings.Join(waitArgs, " "),
+		"statefulset": name,
+		"namespace":   namespace,
+		"selector":    existingSelector,
+		"timeout":     timeoutArg,
+	})
+
+	output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", waitArgs...)
+	if err != nil {
+		// kubectl wait can return error even on success, check the actual pod status
+		verifyOutput, verifyErr := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "pods", "-n", namespace, "-l", existingSelector, "--no-headers")
+		if verifyErr == nil && strings.TrimSpace(verifyOutput) == "" {
+			u.logger.InfoWithContext("pods terminated successfully (verified by secondary check)", map[string]interface{}{
+				"statefulset": name,
+				"namespace":   namespace,
+				"selector":    existingSelector,
+			})
+			return nil
+		}
+
+		u.logger.ErrorWithContext("kubectl wait failed and pods still exist", map[string]interface{}{
+			"statefulset":  name,
+			"namespace":    namespace,
+			"selector":     existingSelector,
+			"wait_error":   err.Error(),
+			"wait_output":  output,
+			"verify_error": verifyErr,
+			"verify_pods":  verifyOutput,
+		})
+		
+		// Continue with deployment instead of failing - pods might be terminating gracefully
+		u.logger.InfoWithContext("continuing with deployment despite kubectl wait timeout", map[string]interface{}{
+			"statefulset": name,
+			"namespace":   namespace,
+			"reason":      "kubectl_wait_timeout_but_proceeding",
+		})
+		return nil
+	}
+
+	u.logger.InfoWithContext("kubectl wait completed successfully", map[string]interface{}{
+		"statefulset": name,
+		"namespace":   namespace,
+		"selector":    existingSelector,
+		"output":      output,
+	})
+
+	return nil
 }
 
 // deleteStatefulSet deletes a StatefulSet while preserving PVCs
