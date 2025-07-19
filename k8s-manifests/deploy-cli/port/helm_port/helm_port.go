@@ -10,6 +10,9 @@ type HelmPort interface {
 	// Template renders chart templates locally
 	Template(ctx context.Context, releaseName, chartPath string, options HelmTemplateOptions) (string, error)
 
+	// Lint validates chart templates and values
+	Lint(ctx context.Context, chartPath string, options HelmLintOptions) (*HelmLintResult, error)
+
 	// UpgradeInstall installs or upgrades a Helm release
 	UpgradeInstall(ctx context.Context, releaseName, chartPath string, options HelmUpgradeOptions) error
 
@@ -44,6 +47,28 @@ type HelmTemplateOptions struct {
 	Namespace      string
 	ImageOverrides map[string]string
 	SetValues      map[string]string
+}
+
+// HelmLintOptions holds options for helm lint command
+type HelmLintOptions struct {
+	ValuesFile string
+	Strict     bool // Enable strict mode for more rigorous validation
+	Namespace  string
+}
+
+// HelmLintResult holds the result of helm lint operation
+type HelmLintResult struct {
+	Success  bool
+	Warnings []HelmLintMessage
+	Errors   []HelmLintMessage
+	Output   string
+}
+
+// HelmLintMessage represents a single lint warning or error
+type HelmLintMessage struct {
+	Severity string // "WARNING", "ERROR"
+	Path     string // File path where issue was found
+	Message  string // Description of the issue
 }
 
 // HelmUpgradeOptions holds options for helm upgrade command

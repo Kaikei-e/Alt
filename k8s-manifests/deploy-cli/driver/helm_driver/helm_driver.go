@@ -55,6 +55,51 @@ func (h *HelmDriver) Template(ctx context.Context, releaseName, chartPath string
 	return string(output), err
 }
 
+// Lint validates chart templates and values
+func (h *HelmDriver) Lint(ctx context.Context, chartPath string, options helm_port.HelmLintOptions) (*helm_port.HelmLintResult, error) {
+	args := []string{"lint", chartPath}
+
+	if options.ValuesFile != "" {
+		args = append(args, "-f", options.ValuesFile)
+	}
+
+	if options.Strict {
+		args = append(args, "--strict")
+	}
+
+	cmd := exec.CommandContext(ctx, "helm", args...)
+	output, err := cmd.CombinedOutput()
+	
+	// Parse the output to create structured result
+	result := &helm_port.HelmLintResult{
+		Output:   string(output),
+		Success:  err == nil,
+		Warnings: []helm_port.HelmLintMessage{},
+		Errors:   []helm_port.HelmLintMessage{},
+	}
+
+	// Parse lint output for warnings and errors
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "[WARNING]") {
+			result.Warnings = append(result.Warnings, helm_port.HelmLintMessage{
+				Severity: "WARNING",
+				Message:  strings.TrimPrefix(line, "[WARNING] "),
+				Path:     chartPath,
+			})
+		} else if strings.Contains(line, "[ERROR]") {
+			result.Errors = append(result.Errors, helm_port.HelmLintMessage{
+				Severity: "ERROR", 
+				Message:  strings.TrimPrefix(line, "[ERROR] "),
+				Path:     chartPath,
+			})
+		}
+	}
+
+	return result, nil
+}
+
 // UpgradeInstall installs or upgrades a Helm release
 func (h *HelmDriver) UpgradeInstall(ctx context.Context, releaseName, chartPath string, options helm_port.HelmUpgradeOptions) error {
 	// First check for and cleanup any stuck operations
@@ -656,6 +701,125 @@ func (h *HelmDriver) cleanupLockFiles(releaseName, namespace string) error {
 	// In Helm v3, we don't have traditional lock files
 	// The state is managed through Kubernetes secrets
 	// For now, we'll just return nil as the main cleanup is done through process killing
+
+	return nil
+}
+
+// clearPendingOperations provides enhanced lock detection and cleanup
+func (h *HelmDriver) clearPendingOperations(releaseName, namespace string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	log.Printf("Starting enhanced lock clearance for release %s in namespace %s", releaseName, namespace)
+
+	// Step 1: Check and delete pending Helm secrets
+	if err := h.clearPendingHelmSecrets(ctx, releaseName, namespace); err != nil {
+		log.Printf("Warning: failed to clear pending helm secrets: %v", err)
+		// Continue with other cleanup steps
+	}
+
+	// Step 2: Kill any stuck helm processes
+	if err := h.terminateStuckHelmProcesses(ctx, releaseName); err != nil {
+		log.Printf("Warning: failed to terminate stuck processes: %v", err)
+		// Continue with other cleanup steps
+	}
+
+	// Step 3: Wait and verify cleanup
+	for attempt := 0; attempt < 3; attempt++ {
+		time.Sleep(time.Duration(2+attempt*2) * time.Second)
+		
+		// Verify no pending operations remain
+		operation, err := h.DetectPendingOperation(ctx, releaseName, namespace)
+		if err != nil {
+			log.Printf("Warning: failed to verify cleanup (attempt %d): %v", attempt+1, err)
+			continue
+		}
+		
+		if operation == nil {
+			log.Printf("Lock clearance successful for release %s", releaseName)
+			return nil
+		}
+		
+		log.Printf("Pending operation still detected (attempt %d): %+v", attempt+1, operation)
+	}
+
+	return fmt.Errorf("failed to fully clear pending operations after 3 attempts")
+}
+
+// clearPendingHelmSecrets removes stuck Helm release secrets
+func (h *HelmDriver) clearPendingHelmSecrets(ctx context.Context, releaseName, namespace string) error {
+	// Find helm secrets for this release
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "secret", 
+		"-n", namespace, 
+		"-l", "owner=helm,name="+releaseName,
+		"-o", "jsonpath={.items[*].metadata.name}")
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to find helm secrets: %w, output: %s", err, string(output))
+	}
+
+	secretNames := strings.Fields(string(output))
+	if len(secretNames) == 0 {
+		log.Printf("No helm secrets found for release %s", releaseName)
+		return nil
+	}
+
+	log.Printf("Found %d helm secrets for release %s: %v", len(secretNames), releaseName, secretNames)
+
+	// Delete each secret
+	for _, secretName := range secretNames {
+		deleteCmd := exec.CommandContext(ctx, "kubectl", "delete", "secret", secretName, "-n", namespace)
+		if output, err := deleteCmd.CombinedOutput(); err != nil {
+			log.Printf("Warning: failed to delete secret %s: %v, output: %s", secretName, err, string(output))
+		} else {
+			log.Printf("Successfully deleted helm secret: %s", secretName)
+		}
+	}
+
+	return nil
+}
+
+// terminateStuckHelmProcesses kills any stuck helm processes for the release
+func (h *HelmDriver) terminateStuckHelmProcesses(ctx context.Context, releaseName string) error {
+	pids, err := h.findHelmProcesses(releaseName, "")
+	if err != nil {
+		return fmt.Errorf("failed to find helm processes: %w", err)
+	}
+
+	if len(pids) == 0 {
+		log.Printf("No helm processes found for release %s", releaseName)
+		return nil
+	}
+
+	log.Printf("Found %d helm processes for release %s: %v", len(pids), releaseName, pids)
+
+	for _, pid := range pids {
+		log.Printf("Terminating helm process %d for release %s", pid, releaseName)
+		
+		// First try SIGTERM
+		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+			log.Printf("Failed to send SIGTERM to process %d: %v", pid, err)
+		} else {
+			log.Printf("Sent SIGTERM to process %d", pid)
+			
+			// Wait 5 seconds for graceful termination
+			time.Sleep(5 * time.Second)
+			
+			// Check if process still exists
+			if err := syscall.Kill(pid, 0); err == nil {
+				// Process still exists, force kill
+				log.Printf("Process %d still running, sending SIGKILL", pid)
+				if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+					log.Printf("Failed to send SIGKILL to process %d: %v", pid, err)
+				} else {
+					log.Printf("Successfully killed process %d", pid)
+				}
+			} else {
+				log.Printf("Process %d terminated gracefully", pid)
+			}
+		}
+	}
 
 	return nil
 }

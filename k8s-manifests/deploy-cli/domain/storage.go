@@ -45,11 +45,7 @@ type StorageConfig struct {
 func NewStorageConfig() *StorageConfig {
 	return &StorageConfig{
 		RequiredStorageClasses: []string{
-			"local-storage",
-			"alt-fast-ssd",
-			"alt-backup",
-			"fast-ssd",
-			"backup-storage",
+			"standard",
 		},
 		CapacityLimits: map[string]string{
 			"postgres":              "8Gi",

@@ -14,15 +14,17 @@ import (
 
 // HelmGateway acts as anti-corruption layer for Helm operations
 type HelmGateway struct {
-	helmPort helm_port.HelmPort
-	logger   logger_port.LoggerPort
+	helmPort        helm_port.HelmPort
+	logger          logger_port.LoggerPort
+	errorClassifier *domain.ErrorClassifier
 }
 
 // NewHelmGateway creates a new Helm gateway
 func NewHelmGateway(helmPort helm_port.HelmPort, logger logger_port.LoggerPort) *HelmGateway {
 	return &HelmGateway{
-		helmPort: helmPort,
-		logger:   logger,
+		helmPort:        helmPort,
+		logger:          logger,
+		errorClassifier: domain.NewErrorClassifier(),
 	}
 }
 
@@ -81,6 +83,76 @@ func (g *HelmGateway) TemplateChart(ctx context.Context, chart domain.Chart, opt
 	return output, nil
 }
 
+// LintChart validates chart templates and values
+func (g *HelmGateway) LintChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) (*helm_port.HelmLintResult, error) {
+	g.logger.InfoWithContext("linting chart", map[string]interface{}{
+		"chart":       chart.Name,
+		"chart_path":  chart.Path,
+		"environment": options.Environment,
+	})
+
+	lintOptions := helm_port.HelmLintOptions{
+		ValuesFile: g.getValuesFile(chart, options.Environment),
+		Strict:     true, // Enable strict mode for production deployments
+		Namespace:  options.GetNamespace(chart.Name),
+	}
+
+	start := time.Now()
+	result, err := g.helmPort.Lint(ctx, chart.Path, lintOptions)
+	duration := time.Since(start)
+
+	if err != nil {
+		g.logger.ErrorWithContext("chart linting failed", map[string]interface{}{
+			"chart":       chart.Name,
+			"chart_path":  chart.Path,
+			"values_file": lintOptions.ValuesFile,
+			"error":       err.Error(),
+			"duration":    duration,
+		})
+		return nil, fmt.Errorf("chart linting failed for %s: %w", chart.Name, err)
+	}
+
+	// Log results
+	if !result.Success {
+		g.logger.ErrorWithContext("chart lint validation failed", map[string]interface{}{
+			"chart":        chart.Name,
+			"errors_count": len(result.Errors),
+			"warnings_count": len(result.Warnings),
+			"duration":     duration,
+		})
+
+		// Log each error
+		for _, errMsg := range result.Errors {
+			g.logger.ErrorWithContext("lint error", map[string]interface{}{
+				"chart":    chart.Name,
+				"severity": errMsg.Severity,
+				"message":  errMsg.Message,
+				"path":     errMsg.Path,
+			})
+		}
+	}
+
+	// Log warnings even if validation passed
+	for _, warning := range result.Warnings {
+		g.logger.WarnWithContext("lint warning", map[string]interface{}{
+			"chart":    chart.Name,
+			"severity": warning.Severity,
+			"message":  warning.Message,
+			"path":     warning.Path,
+		})
+	}
+
+	g.logger.InfoWithContext("chart linting completed", map[string]interface{}{
+		"chart":          chart.Name,
+		"success":        result.Success,
+		"errors_count":   len(result.Errors),
+		"warnings_count": len(result.Warnings),
+		"duration":       duration,
+	})
+
+	return result, nil
+}
+
 // DeployChart installs or upgrades a Helm chart
 func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
 	namespace := options.GetNamespace(chart.Name)
@@ -101,6 +173,43 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		})
 		return fmt.Errorf("pre-deployment validation failed for chart %s: %w", chart.Name, err)
 	}
+
+	// Helm lint validation before deployment
+	lintResult, err := g.LintChart(ctx, chart, options)
+	if err != nil {
+		g.logger.ErrorWithContext("helm lint execution failed", map[string]interface{}{
+			"chart":     chart.Name,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("helm lint execution failed for chart %s: %w", chart.Name, err)
+	}
+
+	// Fail deployment if lint validation has errors
+	if !lintResult.Success || len(lintResult.Errors) > 0 {
+		lintError := fmt.Errorf("helm lint validation failed for chart %s: found %d errors", chart.Name, len(lintResult.Errors))
+		
+		// Classify the lint error (will be marked as validation error - non-retriable)
+		deploymentError := g.classifyAndHandleError(lintError, chart, namespace, "lint")
+		
+		g.logger.ErrorWithContext("helm lint validation failed - blocking deployment", map[string]interface{}{
+			"chart":           chart.Name,
+			"namespace":       namespace,
+			"errors_count":    len(lintResult.Errors),
+			"warnings_count":  len(lintResult.Warnings),
+			"error_type":      string(deploymentError.Classification.Type),
+			"retriable":       deploymentError.Classification.Retriable,
+			"suggestion":      deploymentError.Classification.Suggestion,
+		})
+		
+		return lintError
+	}
+
+	g.logger.InfoWithContext("helm lint validation passed", map[string]interface{}{
+		"chart":          chart.Name,
+		"namespace":      namespace,
+		"warnings_count": len(lintResult.Warnings),
+	})
 
 	// Generate release name for conflict checking
 	releaseName := g.generateReleaseName(chart, namespace)
@@ -1607,4 +1716,73 @@ func (g *HelmGateway) logRetryAttempt(chart domain.Chart, namespace string, atte
 		"timestamp":        time.Now().Unix(),
 		"retry_strategy":   g.getRetryStrategy(fmt.Errorf("error_type: %s", errorType)),
 	})
+}
+
+// classifyAndHandleError classifies an error and determines retry strategy
+func (g *HelmGateway) classifyAndHandleError(err error, chart domain.Chart, namespace, operation string) *domain.DeploymentError {
+	classification := g.errorClassifier.ClassifyError(err, operation)
+	
+	deploymentError := &domain.DeploymentError{
+		ChartName:      chart.Name,
+		Namespace:      namespace,
+		Operation:      operation,
+		OriginalError:  err,
+		Classification: classification,
+		Attempt:        1,
+		LastAttempt:    time.Now(),
+	}
+
+	// Log error classification
+	g.logger.ErrorWithContext("deployment error classified", map[string]interface{}{
+		"chart":        chart.Name,
+		"namespace":    namespace,
+		"operation":    operation,
+		"error_type":   string(classification.Type),
+		"retriable":    classification.Retriable,
+		"reason":       classification.Reason,
+		"suggestion":   classification.Suggestion,
+		"original_error": err.Error(),
+	})
+
+	// If error is not retriable, log it as permanent failure
+	if !classification.Retriable {
+		g.logger.ErrorWithContext("permanent deployment failure detected", map[string]interface{}{
+			"chart":          chart.Name,
+			"namespace":      namespace,
+			"operation":      operation,
+			"error_type":     string(classification.Type),
+			"reason":         classification.Reason,
+			"suggestion":     classification.Suggestion,
+			"requires_manual_intervention": true,
+		})
+	}
+
+	return deploymentError
+}
+
+// shouldRetryOperation determines if an operation should be retried based on error classification
+func (g *HelmGateway) shouldRetryOperation(deploymentError *domain.DeploymentError, maxRetries int) bool {
+	if !deploymentError.IsRetriable() {
+		g.logger.WarnWithContext("skipping retry for non-retriable error", map[string]interface{}{
+			"chart":      deploymentError.ChartName,
+			"namespace":  deploymentError.Namespace,
+			"operation":  deploymentError.Operation,
+			"error_type": string(deploymentError.Classification.Type),
+			"reason":     deploymentError.Classification.Reason,
+		})
+		return false
+	}
+
+	if deploymentError.Attempt >= maxRetries {
+		g.logger.WarnWithContext("max retry attempts reached", map[string]interface{}{
+			"chart":       deploymentError.ChartName,
+			"namespace":   deploymentError.Namespace,
+			"operation":   deploymentError.Operation,
+			"attempt":     deploymentError.Attempt,
+			"max_retries": maxRetries,
+		})
+		return false
+	}
+
+	return true
 }

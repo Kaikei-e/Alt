@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"deploy-cli/domain"
 	"deploy-cli/gateway/system_gateway"
@@ -491,6 +492,136 @@ func (u *StatefulSetManagementUsecase) waitForPodsTermination(ctx context.Contex
 	})
 
 	return nil
+}
+
+// waitForPodsTerminationEnhanced provides more robust pod termination verification
+func (u *StatefulSetManagementUsecase) waitForPodsTerminationEnhanced(ctx context.Context, name, namespace string, timeoutSeconds int) error {
+	u.logger.InfoWithContext("starting enhanced pod termination wait", map[string]interface{}{
+		"statefulset": name,
+		"namespace":   namespace,
+		"timeout":     timeoutSeconds,
+	})
+
+	// Step 1: Use the existing function first
+	if err := u.waitForPodsTermination(ctx, name, namespace, timeoutSeconds); err != nil {
+		u.logger.WarnWithContext("standard termination wait had issues, performing additional verification", map[string]interface{}{
+			"statefulset": name,
+			"namespace":   namespace,
+			"error":       err.Error(),
+		})
+	}
+
+	// Step 2: Additional verification with polling
+	maxAttempts := 15 // 15 attempts x 2 seconds = 30 seconds additional wait
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		u.logger.InfoWithContext("verifying pod termination", map[string]interface{}{
+			"statefulset": name,
+			"namespace":   namespace,
+			"attempt":     attempt,
+			"max_attempts": maxAttempts,
+		})
+
+		// Check if any pods still exist
+		stillExists, podList, err := u.checkPodsStillExist(ctx, name, namespace)
+		if err != nil {
+			u.logger.WarnWithContext("failed to verify pod termination", map[string]interface{}{
+				"statefulset": name,
+				"namespace":   namespace,
+				"attempt":     attempt,
+				"error":       err.Error(),
+			})
+			// Continue checking anyway
+		}
+
+		if !stillExists {
+			u.logger.InfoWithContext("pod termination verified successfully", map[string]interface{}{
+				"statefulset": name,
+				"namespace":   namespace,
+				"attempt":     attempt,
+			})
+			return nil
+		}
+
+		u.logger.InfoWithContext("pods still exist, waiting", map[string]interface{}{
+			"statefulset":    name,
+			"namespace":      namespace,
+			"attempt":        attempt,
+			"remaining_pods": podList,
+		})
+
+		// Wait 2 seconds before next check
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled while waiting for pod termination")
+		case <-time.After(2 * time.Second):
+			// Continue to next attempt
+		}
+	}
+
+	// Final check after all attempts
+	stillExists, podList, err := u.checkPodsStillExist(ctx, name, namespace)
+	if err != nil {
+		u.logger.WarnWithContext("final termination verification failed", map[string]interface{}{
+			"statefulset": name,
+			"namespace":   namespace,
+			"error":       err.Error(),
+		})
+		// Proceed anyway to avoid blocking deployments
+		return nil
+	}
+
+	if stillExists {
+		u.logger.WarnWithContext("pods still exist after enhanced wait, proceeding anyway", map[string]interface{}{
+			"statefulset":    name,
+			"namespace":      namespace,
+			"remaining_pods": podList,
+			"action":         "continuing_deployment",
+		})
+		// Don't fail - pods might be in graceful termination
+		return nil
+	}
+
+	u.logger.InfoWithContext("enhanced pod termination verification completed successfully", map[string]interface{}{
+		"statefulset": name,
+		"namespace":   namespace,
+	})
+
+	return nil
+}
+
+// checkPodsStillExist checks if any pods for the StatefulSet still exist
+func (u *StatefulSetManagementUsecase) checkPodsStillExist(ctx context.Context, name, namespace string) (bool, []string, error) {
+	labelSelectors := []string{
+		fmt.Sprintf("app=%s", name),
+		fmt.Sprintf("app.kubernetes.io/name=%s", name),
+		fmt.Sprintf("app.kubernetes.io/instance=%s", name),
+	}
+
+	for _, selector := range labelSelectors {
+		output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "pods", "-n", namespace, "-l", selector, "--no-headers", "-o", "custom-columns=NAME:.metadata.name,STATUS:.status.phase")
+		if err != nil {
+			continue // Try next selector
+		}
+
+		if strings.TrimSpace(output) != "" {
+			// Parse pod list
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			var podNames []string
+			for _, line := range lines {
+				if strings.TrimSpace(line) != "" {
+					parts := strings.Fields(line)
+					if len(parts) >= 1 {
+						podNames = append(podNames, parts[0])
+					}
+				}
+			}
+			if len(podNames) > 0 {
+				return true, podNames, nil
+			}
+		}
+	}
+
+	return false, nil, nil
 }
 
 // deleteStatefulSet deletes a StatefulSet while preserving PVCs

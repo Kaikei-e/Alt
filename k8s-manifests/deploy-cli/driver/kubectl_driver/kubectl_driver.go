@@ -565,9 +565,9 @@ func (k *KubectlDriver) CreatePersistentVolume(ctx context.Context, pv kubectl_p
 
 	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
 
-	// Build YAML manifest using local storage instead of hostPath for local-storage class
+	// Build YAML manifest using standard only
 	var storageSpec string
-	if pv.StorageClass == "local-storage" {
+	if pv.StorageClass == "standard" {
 		// Use local storage specification with node affinity
 		storageSpec = fmt.Sprintf(`  local:
     path: %s
