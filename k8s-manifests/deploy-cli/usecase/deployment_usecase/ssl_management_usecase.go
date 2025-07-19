@@ -136,25 +136,28 @@ func (s *SSLManagementUsecase) LoadExistingCertificates(ctx context.Context, env
 		"environment": environment.String(),
 	})
 
-	namespace := s.getNamespaceForEnvironment(environment)
+	// Use common-ssl namespace for CA certificate
+	caNamespace := s.getNamespaceForService("common-ssl", environment)
+	// Use alt-backend namespace for server certificate
+	serverNamespace := s.getNamespaceForService("alt-backend", environment)
 
 	// Try to load CA certificate from common-ssl secret
-	caSecret, err := s.secretUsecase.GetSecret(ctx, "ca-secret", namespace)
+	caSecret, err := s.secretUsecase.GetSecret(ctx, "ca-secret", caNamespace)
 	if err != nil {
 		s.logger.DebugWithContext("CA certificate secret not found", map[string]interface{}{
 			"secret_name": "ca-secret",
-			"namespace":   namespace,
+			"namespace":   caNamespace,
 			"error":       err.Error(),
 		})
 		return fmt.Errorf("failed to load CA certificate secret: %w", err)
 	}
 
 	// Try to load server certificate from one of the SSL secrets
-	serverSecret, err := s.secretUsecase.GetSecret(ctx, "alt-backend-ssl-certs-prod", namespace)
+	serverSecret, err := s.secretUsecase.GetSecret(ctx, "alt-backend-ssl-certs-prod", serverNamespace)
 	if err != nil {
 		s.logger.DebugWithContext("server certificate secret not found", map[string]interface{}{
 			"secret_name": "alt-backend-ssl-certs-prod",
-			"namespace":   namespace,
+			"namespace":   serverNamespace,
 			"error":       err.Error(),
 		})
 		return fmt.Errorf("failed to load server certificate secret: %w", err)
@@ -195,18 +198,10 @@ func (s *SSLManagementUsecase) LoadExistingCertificates(ctx context.Context, env
 	return nil
 }
 
-// getNamespaceForEnvironment returns the appropriate namespace for the environment
-func (s *SSLManagementUsecase) getNamespaceForEnvironment(env domain.Environment) string {
-	switch env {
-	case domain.Production:
-		return "alt-production"
-	case domain.Staging:
-		return "alt-staging"
-	case domain.Development:
-		return "alt-dev"
-	default:
-		return "alt-production"
-	}
+// getNamespaceForService returns the appropriate namespace for a service in the given environment
+func (s *SSLManagementUsecase) getNamespaceForService(serviceName string, env domain.Environment) string {
+	// Use the same logic as domain.DetermineNamespace to ensure consistency
+	return domain.DetermineNamespace(serviceName, env)
 }
 
 // GenerateSSLCertificates generates SSL certificates for the application
@@ -598,8 +593,6 @@ func (s *SSLManagementUsecase) GenerateSSLCertificateSecrets(ctx context.Context
 		"environment": environment.String(),
 	})
 
-	namespace := s.getNamespaceForEnvironment(environment)
-
 	// List of services that need SSL certificates
 	services := []string{
 		"alt-backend",
@@ -613,12 +606,15 @@ func (s *SSLManagementUsecase) GenerateSSLCertificateSecrets(ctx context.Context
 	}
 
 	for _, service := range services {
+		// Get the appropriate namespace for each service
+		serviceNamespace := s.getNamespaceForService(service, environment)
 		secretName := fmt.Sprintf("%s-ssl-certs-prod", service)
-		if err := s.CreateSSLCertificateSecret(ctx, service, secretName, namespace); err != nil {
+		
+		if err := s.CreateSSLCertificateSecret(ctx, service, secretName, serviceNamespace); err != nil {
 			s.logger.WarnWithContext("failed to create SSL certificate secret", map[string]interface{}{
 				"service":     service,
 				"secret_name": secretName,
-				"namespace":   namespace,
+				"namespace":   serviceNamespace,
 				"error":       err.Error(),
 			})
 			// Continue with other services
@@ -627,7 +623,6 @@ func (s *SSLManagementUsecase) GenerateSSLCertificateSecrets(ctx context.Context
 
 	s.logger.InfoWithContext("SSL certificate secrets generation completed", map[string]interface{}{
 		"environment": environment.String(),
-		"namespace":   namespace,
 		"services":    len(services),
 	})
 

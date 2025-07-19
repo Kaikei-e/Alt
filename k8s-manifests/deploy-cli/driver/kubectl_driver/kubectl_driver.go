@@ -231,20 +231,11 @@ func (k *KubectlDriver) GetSecretsWithMetadata(ctx context.Context) ([]kubectl_p
 	return secrets, nil
 }
 
-// CreateSecret creates a new secret
+// CreateSecret creates a new secret using ApplySecret to ensure labels and annotations are properly set
 func (k *KubectlDriver) CreateSecret(ctx context.Context, secret kubectl_port.KubernetesSecret) error {
-	args := []string{"create", "secret", "generic", secret.Name, "--namespace", secret.Namespace}
-	
-	for key, value := range secret.Data {
-		args = append(args, "--from-literal", fmt.Sprintf("%s=%s", key, string(value)))
-	}
-	
-	cmd := exec.CommandContext(ctx, "kubectl", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil && !strings.Contains(string(output), "already exists") {
-		return fmt.Errorf("kubectl create secret failed: %w, output: %s", err, string(output))
-	}
-	return nil
+	// Use ApplySecret which properly handles labels and annotations
+	// This ensures compatibility with secret validation requirements
+	return k.ApplySecret(ctx, &secret)
 }
 
 // UpdateSecret updates an existing secret
@@ -322,7 +313,9 @@ func (k *KubectlDriver) ApplySecret(ctx context.Context, secret *kubectl_port.Ku
 	// Convert secret data to base64 encoded strings
 	data := make(map[string]string)
 	for key, value := range secret.Data {
-		data[key] = string(value) // Assuming data is already base64 encoded
+		// Base64 encode the data as required by Kubernetes Secret spec
+		encoded := base64.StdEncoding.EncodeToString(value)
+		data[key] = encoded
 	}
 	
 	// Create the secret manifest
@@ -869,4 +862,24 @@ func (k *KubectlDriver) Version(ctx context.Context) (string, error) {
 func (k *KubectlDriver) IsInstalled() bool {
 	_, err := exec.LookPath("kubectl")
 	return err == nil
+}
+
+// GetNamespace returns a specific namespace
+func (k *KubectlDriver) GetNamespace(ctx context.Context, name string) error {
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "namespace", name)
+	_, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("kubectl get namespace %s failed: %w", name, err)
+	}
+	return nil
+}
+
+// ListSecrets lists secrets in the specified namespace (for access testing)
+func (k *KubectlDriver) ListSecrets(ctx context.Context, namespace string) error {
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "secrets", "-n", namespace)
+	_, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("kubectl list secrets in namespace %s failed: %w", namespace, err)
+	}
+	return nil
 }

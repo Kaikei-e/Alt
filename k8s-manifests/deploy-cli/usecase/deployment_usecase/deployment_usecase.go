@@ -160,7 +160,12 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 		return nil, fmt.Errorf("pre-deployment validation failed: %w", err)
 	}
 	
-	// Step 1.5: SSL certificate validation and auto-generation
+	// Step 1.4: Ensure namespaces exist (moved from Step 3 for SSL certificate validation)
+	if err := u.infrastructureSetupUsecase.ensureNamespaces(ctx, options); err != nil {
+		return nil, fmt.Errorf("namespace setup failed: %w", err)
+	}
+	
+	// Step 1.5: SSL certificate validation and auto-generation (after namespace creation)
 	if err := u.sslCertificateUsecase.PreDeploymentSSLCheck(ctx, options); err != nil {
 		return nil, fmt.Errorf("SSL certificate validation failed: %w", err)
 	}
@@ -198,18 +203,13 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 		return nil, fmt.Errorf("storage infrastructure setup failed: %w", err)
 	}
 	
-	// Step 3: Ensure namespaces exist
-	if err := u.infrastructureSetupUsecase.ensureNamespaces(ctx, options); err != nil {
-		return nil, fmt.Errorf("namespace setup failed: %w", err)
-	}
-	
-	// Step 4: Deploy charts
+	// Step 3: Deploy charts (namespaces already created in Step 1.4)
 	progress, err := u.deployCharts(ctx, options)
 	if err != nil {
 		return progress, fmt.Errorf("chart deployment failed: %w", err)
 	}
 	
-	// Step 5: Post-deployment operations
+	// Step 4: Post-deployment operations
 	if err := u.infrastructureSetupUsecase.postDeploymentOperations(ctx, options); err != nil {
 		return progress, fmt.Errorf("post-deployment operations failed: %w", err)
 	}

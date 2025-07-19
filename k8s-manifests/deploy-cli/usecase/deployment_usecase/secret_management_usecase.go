@@ -252,13 +252,35 @@ func (u *SecretManagementUsecase) getAutoGeneratableSecretsForChart(chart domain
 
 // validateSecretLabels validates secret labels for deploy-cli management
 func (u *SecretManagementUsecase) validateSecretLabels(secret *domain.Secret, chart domain.Chart) error {
+	// Allow secrets without labels - this provides compatibility with existing secrets
+	// and secrets created by other tools (manual creation, Helm, etc.)
 	if secret.Labels == nil {
-		return fmt.Errorf("secret missing labels")
+		u.logger.WarnWithContext("secret has no labels, but continuing deployment", map[string]interface{}{
+			"secret_name": secret.Name,
+			"namespace":   secret.Namespace,
+			"chart_name":  chart.Name,
+		})
+		return nil
 	}
 	
 	// Validate deploy-cli management label (now using DEBUG level to reduce noise)
 	if managed, exists := secret.Labels["deploy-cli/managed"]; !exists || managed != "true" {
 		u.logger.DebugWithContext("secret not managed by deploy-cli", map[string]interface{}{
+			"secret_name": secret.Name,
+			"chart_name":  chart.Name,
+		})
+	}
+	
+	// Warn if secret lacks important Kubernetes standard labels but don't fail
+	if appName, exists := secret.Labels["app.kubernetes.io/name"]; !exists || appName == "" {
+		u.logger.WarnWithContext("secret missing app.kubernetes.io/name label", map[string]interface{}{
+			"secret_name": secret.Name,
+			"chart_name":  chart.Name,
+		})
+	}
+	
+	if managedBy, exists := secret.Labels["app.kubernetes.io/managed-by"]; !exists || managedBy == "" {
+		u.logger.WarnWithContext("secret missing app.kubernetes.io/managed-by label", map[string]interface{}{
 			"secret_name": secret.Name,
 			"chart_name":  chart.Name,
 		})

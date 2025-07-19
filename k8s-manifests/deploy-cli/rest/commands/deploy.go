@@ -88,6 +88,12 @@ Examples:
 	cmd.Flags().Duration("timeout", 300*time.Second, "Timeout for deployment operations")
 	cmd.Flags().String("charts-dir", "../charts", "Directory containing Helm charts")
 	cmd.Flags().Bool("auto-fix-secrets", false, "Enable automatic secret error recovery (Phase 4.3)")
+	cmd.Flags().Bool("auto-create-namespaces", false, "Enable automatic namespace creation if not exists")
+	cmd.Flags().Bool("auto-fix-storage", false, "Enable automatic StorageClass configuration")
+	cmd.Flags().Bool("auto-everything", false, "Enable all automatic recovery features")
+	cmd.Flags().Bool("continuous-monitoring", false, "Enable continuous monitoring after deployment")
+	cmd.Flags().Duration("monitoring-interval", 30*time.Second, "Monitoring interval for continuous monitoring")
+	cmd.Flags().Bool("diagnostic-report", false, "Generate detailed diagnostic report before deployment")
 	cmd.Flags().Bool("skip-statefulset-recovery", false, "Skip StatefulSet recovery for emergency deployments")
 	
 	return cmd
@@ -122,6 +128,15 @@ func (d *DeployCommand) preRun(cmd *cobra.Command, args []string) error {
 	options.TargetNamespace, _ = cmd.Flags().GetString("namespace")
 	options.Timeout, _ = cmd.Flags().GetDuration("timeout")
 	options.ChartsDir, _ = cmd.Flags().GetString("charts-dir")
+	options.AutoFixSecrets, _ = cmd.Flags().GetBool("auto-fix-secrets")
+	options.AutoCreateNamespaces, _ = cmd.Flags().GetBool("auto-create-namespaces")
+	options.AutoFixStorage, _ = cmd.Flags().GetBool("auto-fix-storage")
+	autoEverything, _ := cmd.Flags().GetBool("auto-everything")
+	if autoEverything {
+		options.AutoFixSecrets = true
+		options.AutoCreateNamespaces = true
+		options.AutoFixStorage = true
+	}
 	
 	// Validate options
 	if err := options.Validate(); err != nil {
@@ -157,6 +172,14 @@ func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 	options.Timeout, _ = cmd.Flags().GetDuration("timeout")
 	options.ChartsDir, _ = cmd.Flags().GetString("charts-dir")
 	options.AutoFixSecrets, _ = cmd.Flags().GetBool("auto-fix-secrets")
+	options.AutoCreateNamespaces, _ = cmd.Flags().GetBool("auto-create-namespaces")
+	options.AutoFixStorage, _ = cmd.Flags().GetBool("auto-fix-storage")
+	autoEverything, _ := cmd.Flags().GetBool("auto-everything")
+	if autoEverything {
+		options.AutoFixSecrets = true
+		options.AutoCreateNamespaces = true
+		options.AutoFixStorage = true
+	}
 	options.SkipStatefulSetRecovery, _ = cmd.Flags().GetBool("skip-statefulset-recovery")
 	
 	// Convert relative charts directory to absolute path

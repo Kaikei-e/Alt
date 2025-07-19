@@ -19,6 +19,8 @@ type DeploymentOptions struct {
 	DeploymentStrategy     DeploymentStrategy
 	StrategyName           string // Override strategy selection
 	AutoFixSecrets         bool   // Enable automatic secret error recovery (Phase 4.3)
+	AutoCreateNamespaces   bool   // Enable automatic namespace creation if not exists
+	AutoFixStorage         bool   // Enable automatic StorageClass configuration  
 	SkipStatefulSetRecovery bool   // Skip StatefulSet recovery for emergency deployments
 }
 

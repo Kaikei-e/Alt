@@ -783,9 +783,10 @@ func (u *SecretUsecase) GenerateDatabaseCredentials(ctx context.Context, secretN
 	secret.AddData("password", password)
 	secret.AddData("database", database)
 
-	// Add management labels
+	// Add management labels following Kubernetes standards
 	secret.Labels["app.kubernetes.io/name"] = extractServiceName(secretName)
 	secret.Labels["app.kubernetes.io/component"] = "database-credentials"
+	secret.Labels["app.kubernetes.io/managed-by"] = "deploy-cli"
 	secret.Labels["deploy-cli/managed"] = "true"
 	secret.Labels["deploy-cli/auto-generated"] = "true"
 
@@ -1081,9 +1082,10 @@ func (u *SecretUsecase) GenerateSSLCredentials(ctx context.Context, secretName, 
 	secret.AddData("tls.key", "# SSL private key placeholder - replace with actual private key")
 	secret.AddData("ca.crt", "# CA certificate placeholder - replace with actual CA certificate")
 
-	// Add management labels
+	// Add management labels following Kubernetes standards
 	secret.Labels["app.kubernetes.io/name"] = extractServiceName(secretName)
 	secret.Labels["app.kubernetes.io/component"] = "ssl-credentials"
+	secret.Labels["app.kubernetes.io/managed-by"] = "deploy-cli"
 	secret.Labels["deploy-cli/managed"] = "true"
 	secret.Labels["deploy-cli/auto-generated"] = "true"
 

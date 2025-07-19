@@ -292,17 +292,21 @@ func (u *SSLCertificateUsecase) createSSLCertificate(ctx context.Context, config
 	secret.AddData("server.key", string(privateKeyPEM))
 	secret.AddData("ca.crt", string(caPEM))
 
-	// Add labels for management
+	// Add labels for management following Kubernetes standards
 	secret.Labels["app.kubernetes.io/name"] = config.ServiceName
 	secret.Labels["app.kubernetes.io/component"] = "ssl-certificate"
 	secret.Labels["app.kubernetes.io/environment"] = config.Environment.String()
 	secret.Labels["deploy-cli/managed"] = "true"
+	secret.Labels["deploy-cli/auto-generated"] = "true"
 	
 	// Add Helm-compatible metadata for Strategy A unified management
 	if config.ReleaseName != "" {
 		secret.Labels["app.kubernetes.io/managed-by"] = "Helm"
 		secret.Annotations["meta.helm.sh/release-name"] = config.ReleaseName
 		secret.Annotations["meta.helm.sh/release-namespace"] = config.Namespace
+	} else {
+		// Default to deploy-cli management when not managed by Helm
+		secret.Labels["app.kubernetes.io/managed-by"] = "deploy-cli"
 	}
 
 	u.logger.InfoWithContext("SSL certificate generated successfully", map[string]interface{}{
@@ -432,13 +436,14 @@ func (u *SSLCertificateUsecase) ListSSLCertificates(ctx context.Context, namespa
 
 // ValidateCertificateExists checks if an SSL certificate exists for the given service and environment
 func (u *SSLCertificateUsecase) ValidateCertificateExists(ctx context.Context, certName string, env domain.Environment) (bool, error) {
-	namespace := u.getNamespaceForEnvironment(env)
-	
 	// Extract service name from certificate name (remove -tls suffix if present)
 	serviceName := certName
 	if len(certName) > 4 && certName[len(certName)-4:] == "-tls" {
 		serviceName = certName[:len(certName)-4]
 	}
+	
+	// Get the appropriate namespace for the service
+	namespace := domain.DetermineNamespace(serviceName, env)
 	
 	secretName := fmt.Sprintf("%s-ssl-certs-prod", serviceName)
 	
@@ -472,10 +477,18 @@ func (u *SSLCertificateUsecase) ValidateCertificateExists(ctx context.Context, c
 
 // GenerateCertificate generates a new SSL certificate for the given service and environment
 func (u *SSLCertificateUsecase) GenerateCertificate(ctx context.Context, certName string, env domain.Environment) error {
-	namespace := u.getNamespaceForEnvironment(env)
+	// Extract service name from certificate name (remove -tls suffix if present)
+	serviceName := certName
+	if len(certName) > 4 && certName[len(certName)-4:] == "-tls" {
+		serviceName = certName[:len(certName)-4]
+	}
+	
+	// Get the appropriate namespace for the service
+	namespace := domain.DetermineNamespace(serviceName, env)
 	
 	u.logger.InfoWithContext("generating SSL certificate", map[string]interface{}{
 		"certificate_name": certName,
+		"service_name":     serviceName,
 		"namespace":        namespace,
 		"environment":      env.String(),
 	})
@@ -484,20 +497,6 @@ func (u *SSLCertificateUsecase) GenerateCertificate(ctx context.Context, certNam
 	config := u.createCertificateConfig(certName, namespace, env)
 	
 	return u.createSSLCertificate(ctx, config)
-}
-
-// getNamespaceForEnvironment returns the appropriate namespace for the environment
-func (u *SSLCertificateUsecase) getNamespaceForEnvironment(env domain.Environment) string {
-	switch env {
-	case domain.Production:
-		return "alt-production"
-	case domain.Staging:
-		return "alt-staging"
-	case domain.Development:
-		return "alt-dev"
-	default:
-		return "default"
-	}
 }
 
 // createCertificateConfig creates SSL certificate configuration based on certificate name

@@ -16,6 +16,9 @@ type KubectlPort interface {
 	// GetNamespaces returns all namespaces
 	GetNamespaces(ctx context.Context) ([]KubernetesNamespace, error)
 	
+	// GetNamespace returns a specific namespace
+	GetNamespace(ctx context.Context, name string) error
+	
 	// CreateNamespace creates a new namespace
 	CreateNamespace(ctx context.Context, name string) error
 	
@@ -24,6 +27,9 @@ type KubectlPort interface {
 	
 	// GetSecrets returns secrets in the specified namespace
 	GetSecrets(ctx context.Context, namespace string) ([]KubernetesSecret, error)
+	
+	// ListSecrets lists secrets in the specified namespace (for access testing)
+	ListSecrets(ctx context.Context, namespace string) error
 	
 	// GetSecretsWithMetadata returns secrets with helm metadata across all namespaces
 	GetSecretsWithMetadata(ctx context.Context) ([]KubernetesSecretWithMetadata, error)
