@@ -172,11 +172,11 @@ func (r *DependencyGraphResolver) calculateDependencyLevels(graph *DependencyGra
 		// Update dependents
 		for _, dependentName := range current.Dependents {
 			dependent := graph.Nodes[dependentName]
-			
+
 			// Check if all dependencies are processed
 			allDepsProcessed := true
 			maxDepLevel := -1
-			
+
 			for _, depName := range dependent.Dependencies {
 				dep := graph.Nodes[depName]
 				if !dep.Processed {
@@ -223,44 +223,44 @@ func (r *DependencyGraphResolver) generateProductionPhases() []DeploymentPhase {
 			Optional:    false,
 		},
 		{
-			Name:        "データストレージ",
-			Description: "データベースとストレージサービスのデプロイ",
-			Charts:      []string{"postgres", "auth-postgres", "kratos-postgres", "clickhouse"},
+			Name:         "データストレージ",
+			Description:  "データベースとストレージサービスのデプロイ",
+			Charts:       []string{"postgres", "auth-postgres", "kratos-postgres", "clickhouse"},
 			Dependencies: []string{"インフラ基盤"},
-			Parallel:    true,
-			Timeout:     10 * time.Minute,
-			Priority:    2,
-			Optional:    false,
+			Parallel:     true,
+			Timeout:      10 * time.Minute,
+			Priority:     2,
+			Optional:     false,
 		},
 		{
-			Name:        "コアサービス",
-			Description: "バックエンドとフロントエンドアプリケーション",
-			Charts:      []string{"alt-backend", "alt-frontend"},
+			Name:         "コアサービス",
+			Description:  "バックエンドとフロントエンドアプリケーション",
+			Charts:       []string{"alt-backend", "alt-frontend"},
 			Dependencies: []string{"データストレージ"},
-			Parallel:    true,
-			Timeout:     8 * time.Minute,
-			Priority:    3,
-			Optional:    false,
+			Parallel:     true,
+			Timeout:      8 * time.Minute,
+			Priority:     3,
+			Optional:     false,
 		},
 		{
-			Name:        "認証・検索",
-			Description: "認証サービスと検索エンジン",
-			Charts:      []string{"auth-service", "kratos", "meilisearch"},
+			Name:         "認証・検索",
+			Description:  "認証サービスと検索エンジン",
+			Charts:       []string{"auth-service", "kratos", "meilisearch"},
 			Dependencies: []string{"データストレージ"},
-			Parallel:    true,
-			Timeout:     6 * time.Minute,
-			Priority:    3,
-			Optional:    false,
+			Parallel:     true,
+			Timeout:      6 * time.Minute,
+			Priority:     3,
+			Optional:     false,
 		},
 		{
-			Name:        "ネットワーク・監視",
-			Description: "ロードバランサーと監視システム",
-			Charts:      []string{"nginx-external", "monitoring"},
+			Name:         "ネットワーク・監視",
+			Description:  "ロードバランサーと監視システム",
+			Charts:       []string{"nginx-external", "monitoring"},
 			Dependencies: []string{"コアサービス", "認証・検索"},
-			Parallel:    true,
-			Timeout:     5 * time.Minute,
-			Priority:    4,
-			Optional:    true,
+			Parallel:     true,
+			Timeout:      5 * time.Minute,
+			Priority:     4,
+			Optional:     true,
 		},
 	}
 }
@@ -278,34 +278,34 @@ func (r *DependencyGraphResolver) generateStagingPhases() []DeploymentPhase {
 			Optional:    false,
 		},
 		{
-			Name:        "データベース",
-			Description: "必要最小限のデータベース",
-			Charts:      []string{"postgres", "clickhouse"},
+			Name:         "データベース",
+			Description:  "必要最小限のデータベース",
+			Charts:       []string{"postgres", "clickhouse"},
 			Dependencies: []string{"基盤設定"},
-			Parallel:    true,
-			Timeout:     8 * time.Minute,
-			Priority:    2,
-			Optional:    false,
+			Parallel:     true,
+			Timeout:      8 * time.Minute,
+			Priority:     2,
+			Optional:     false,
 		},
 		{
-			Name:        "アプリケーション",
-			Description: "メインアプリケーション",
-			Charts:      []string{"alt-backend", "alt-frontend", "meilisearch"},
+			Name:         "アプリケーション",
+			Description:  "メインアプリケーション",
+			Charts:       []string{"alt-backend", "alt-frontend", "meilisearch"},
 			Dependencies: []string{"データベース"},
-			Parallel:    true,
-			Timeout:     6 * time.Minute,
-			Priority:    3,
-			Optional:    false,
+			Parallel:     true,
+			Timeout:      6 * time.Minute,
+			Priority:     3,
+			Optional:     false,
 		},
 		{
-			Name:        "付加サービス",
-			Description: "認証とネットワーク",
-			Charts:      []string{"auth-service", "nginx-external"},
+			Name:         "付加サービス",
+			Description:  "認証とネットワーク",
+			Charts:       []string{"auth-service", "nginx-external"},
 			Dependencies: []string{"アプリケーション"},
-			Parallel:    true,
-			Timeout:     4 * time.Minute,
-			Priority:    4,
-			Optional:    true,
+			Parallel:     true,
+			Timeout:      4 * time.Minute,
+			Priority:     4,
+			Optional:     true,
 		},
 	}
 }
@@ -323,14 +323,14 @@ func (r *DependencyGraphResolver) generateDevelopmentPhases() []DeploymentPhase 
 			Optional:    false,
 		},
 		{
-			Name:        "開発サービス",
-			Description: "開発に必要な全サービスを並列デプロイ",
-			Charts:      []string{"postgres", "alt-backend", "alt-frontend", "meilisearch"},
+			Name:         "開発サービス",
+			Description:  "開発に必要な全サービスを並列デプロイ",
+			Charts:       []string{"postgres", "alt-backend", "alt-frontend", "meilisearch"},
 			Dependencies: []string{"開発環境基盤"},
-			Parallel:    true,
-			Timeout:     10 * time.Minute,
-			Priority:    2,
-			Optional:    false,
+			Parallel:     true,
+			Timeout:      10 * time.Minute,
+			Priority:     2,
+			Optional:     false,
 		},
 	}
 }
@@ -397,7 +397,7 @@ func (r *DependencyGraphResolver) optimizePhases(phases []DeploymentPhase, graph
 // ValidateDependencies validates that all dependencies are satisfied
 func (r *DependencyGraphResolver) ValidateDependencies(phases []DeploymentPhase) error {
 	deployedCharts := make(map[string]bool)
-	
+
 	for _, phase := range phases {
 		// Check if all dependencies are satisfied
 		for _, chartName := range phase.Charts {

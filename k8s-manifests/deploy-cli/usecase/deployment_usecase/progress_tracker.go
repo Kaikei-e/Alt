@@ -26,12 +26,12 @@ type ProgressTracker struct {
 // NewProgressTracker creates a new progress tracker
 func NewProgressTracker(logger logger_port.LoggerPort, deploymentID string, totalCharts int, metricsCollector *MetricsCollector) *ProgressTracker {
 	return &ProgressTracker{
-		logger:        logger,
-		deploymentID:  deploymentID,
-		progress:      domain.NewDeploymentProgress(totalCharts),
-		layerProgress: make(map[string]*domain.LayerProgress),
-		chartProgress: make(map[string]*domain.ChartProgress),
-		startTime:     time.Now(),
+		logger:           logger,
+		deploymentID:     deploymentID,
+		progress:         domain.NewDeploymentProgress(totalCharts),
+		layerProgress:    make(map[string]*domain.LayerProgress),
+		chartProgress:    make(map[string]*domain.ChartProgress),
+		startTime:        time.Now(),
 		metricsCollector: metricsCollector,
 	}
 }
@@ -459,9 +459,9 @@ func (p *ProgressTracker) GetProgressInsights() []domain.DeploymentInsight {
 			Title:       "Deployment Failures Detected",
 			Description: fmt.Sprintf("Deployment has %.1f%% failure rate", failureRate),
 			Metrics: map[string]interface{}{
-				"failed_charts":  p.progress.GetFailedCount(),
-				"total_charts":   p.progress.TotalCharts,
-				"failure_rate":   failureRate,
+				"failed_charts": p.progress.GetFailedCount(),
+				"total_charts":  p.progress.TotalCharts,
+				"failure_rate":  failureRate,
 			},
 			Suggestions: []domain.OptimizationSuggestion{
 				{

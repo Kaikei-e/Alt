@@ -188,11 +188,11 @@ func (s *SSLManagementUsecase) LoadExistingCertificates(ctx context.Context, env
 	}
 
 	s.logger.InfoWithContext("SSL certificates loaded successfully", map[string]interface{}{
-		"environment":             environment.String(),
-		"ca_cert_length":          len(s.generatedCertificates.CACert),
-		"server_cert_length":      len(s.generatedCertificates.ServerCert),
-		"ca_has_private_key":      len(s.generatedCertificates.CAPrivateKey) > 0,
-		"server_has_private_key":  len(s.generatedCertificates.ServerPrivateKey) > 0,
+		"environment":            environment.String(),
+		"ca_cert_length":         len(s.generatedCertificates.CACert),
+		"server_cert_length":     len(s.generatedCertificates.ServerCert),
+		"ca_has_private_key":     len(s.generatedCertificates.CAPrivateKey) > 0,
+		"server_has_private_key": len(s.generatedCertificates.ServerPrivateKey) > 0,
 	})
 
 	return nil
@@ -220,11 +220,11 @@ func (s *SSLManagementUsecase) GenerateSSLCertificates(ctx context.Context) erro
 	caTemplate := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
-			Organization:  []string{"Alt RSS Reader"},
-			Country:       []string{"JP"},
-			Province:      []string{"Tokyo"},
-			Locality:      []string{"Tokyo"},
-			CommonName:    "Alt RSS Reader CA",
+			Organization: []string{"Alt RSS Reader"},
+			Country:      []string{"JP"},
+			Province:     []string{"Tokyo"},
+			Locality:     []string{"Tokyo"},
+			CommonName:   "Alt RSS Reader CA",
 		},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().AddDate(5, 0, 0), // 5年間有効
@@ -262,11 +262,11 @@ func (s *SSLManagementUsecase) GenerateSSLCertificates(ctx context.Context) erro
 	serverTemplate := &x509.Certificate{
 		SerialNumber: big.NewInt(2),
 		Subject: pkix.Name{
-			Organization:  []string{"Alt RSS Reader"},
-			Country:       []string{"JP"},
-			Province:      []string{"Tokyo"},
-			Locality:      []string{"Tokyo"},
-			CommonName:    "*.alt-app.local",
+			Organization: []string{"Alt RSS Reader"},
+			Country:      []string{"JP"},
+			Province:     []string{"Tokyo"},
+			Locality:     []string{"Tokyo"},
+			CommonName:   "*.alt-app.local",
 		},
 		NotBefore:   time.Now(),
 		NotAfter:    time.Now().AddDate(1, 0, 0), // 1年間有効
@@ -293,6 +293,11 @@ func (s *SSLManagementUsecase) GenerateSSLCertificates(ctx context.Context) erro
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(serverPrivateKey),
 	})
+
+	// Validate generated PEM data before storing
+	if err := s.validatePEMData(string(caCertPEM), string(caPrivateKeyPEM), string(serverCertPEM), string(serverPrivateKeyPEM)); err != nil {
+		return fmt.Errorf("PEM data validation failed: %w", err)
+	}
 
 	// Store generated certificates
 	s.generatedCertificates = &port.GeneratedCertificates{
@@ -378,11 +383,11 @@ func (s *SSLManagementUsecase) ValidateCertificatePEM(certPEM, certType string) 
 	}
 
 	s.logger.InfoWithContext("certificate validation successful", map[string]interface{}{
-		"cert_type":    certType,
-		"subject":      cert.Subject.String(),
-		"not_before":   cert.NotBefore.Format(time.RFC3339),
-		"not_after":    cert.NotAfter.Format(time.RFC3339),
-		"is_ca":        cert.IsCA,
+		"cert_type":  certType,
+		"subject":    cert.Subject.String(),
+		"not_before": cert.NotBefore.Format(time.RFC3339),
+		"not_after":  cert.NotAfter.Format(time.RFC3339),
+		"is_ca":      cert.IsCA,
 	})
 
 	return nil
@@ -391,7 +396,7 @@ func (s *SSLManagementUsecase) ValidateCertificatePEM(certPEM, certType string) 
 // detectCertificateFormat detects and converts certificate data format
 func (s *SSLManagementUsecase) detectCertificateFormat(data []byte) (string, error) {
 	dataStr := string(data)
-	
+
 	// Check if it's already PEM format
 	if isPEMFormat(dataStr) {
 		s.logger.DebugWithContext("certificate data detected as PEM format", map[string]interface{}{
@@ -399,7 +404,7 @@ func (s *SSLManagementUsecase) detectCertificateFormat(data []byte) (string, err
 		})
 		return dataStr, nil
 	}
-	
+
 	// Check if it's base64 encoded
 	if isBase64Encoded(dataStr) {
 		s.logger.DebugWithContext("certificate data detected as base64 format", map[string]interface{}{
@@ -411,21 +416,11 @@ func (s *SSLManagementUsecase) detectCertificateFormat(data []byte) (string, err
 		}
 		return string(decoded), nil
 	}
-	
+
 	return dataStr, nil
 }
 
-// isPEMFormat checks if the data is in PEM format
-func isPEMFormat(data string) bool {
-	return strings.Contains(data, "-----BEGIN") && strings.Contains(data, "-----END")
-}
-
-// isBase64Encoded checks if the data is base64 encoded
-func isBase64Encoded(data string) bool {
-	// Try to decode as base64
-	_, err := base64.StdEncoding.DecodeString(data)
-	return err == nil && !strings.Contains(data, "-----BEGIN")
-}
+// Note: Utility functions moved to shared_utils.go to avoid duplication
 
 // ValidateCertificate validates a certificate in base64 format
 func (s *SSLManagementUsecase) ValidateCertificate(certBase64, certType string) error {
@@ -462,11 +457,11 @@ func (s *SSLManagementUsecase) ValidateCertificate(certBase64, certType string) 
 	}
 
 	s.logger.InfoWithContext("certificate validation successful", map[string]interface{}{
-		"cert_type":      certType,
-		"subject":        cert.Subject.String(),
-		"not_before":     cert.NotBefore.Format(time.RFC3339),
-		"not_after":      cert.NotAfter.Format(time.RFC3339),
-		"is_ca":          cert.IsCA,
+		"cert_type":  certType,
+		"subject":    cert.Subject.String(),
+		"not_before": cert.NotBefore.Format(time.RFC3339),
+		"not_after":  cert.NotAfter.Format(time.RFC3339),
+		"is_ca":      cert.IsCA,
 	})
 
 	return nil
@@ -609,7 +604,7 @@ func (s *SSLManagementUsecase) GenerateSSLCertificateSecrets(ctx context.Context
 		// Get the appropriate namespace for each service
 		serviceNamespace := s.getNamespaceForService(service, environment)
 		secretName := fmt.Sprintf("%s-ssl-certs-prod", service)
-		
+
 		if err := s.CreateSSLCertificateSecret(ctx, service, secretName, serviceNamespace); err != nil {
 			s.logger.WarnWithContext("failed to create SSL certificate secret", map[string]interface{}{
 				"service":     service,
@@ -684,16 +679,7 @@ func (s *SSLManagementUsecase) GetCertificateGenerationTime() time.Time {
 	return s.generatedCertificates.Generated
 }
 
-// CSRGenerationConfig represents CSR generation configuration
-type CSRGenerationConfig struct {
-	ServiceName   string
-	Namespace     string
-	DNSNames      []string
-	IPAddresses   []net.IP
-	SignerName    string
-	KeySize       int
-	Organization  []string
-}
+// Note: CSRGenerationConfig moved to ssl_lifecycle_manager.go to avoid duplication
 
 // GenerateCSRForService generates CSR for a specific service
 func (s *SSLManagementUsecase) GenerateCSRForService(ctx context.Context, config CSRGenerationConfig) error {
@@ -732,7 +718,7 @@ func (s *SSLManagementUsecase) GenerateCSRForService(ctx context.Context, config
 	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
 
 	s.logger.InfoWithContext("CSR generated successfully", map[string]interface{}{
-		"csr_name":      csrName,
+		"csr_name":       csrName,
 		"csr_pem_length": len(csrPEM),
 	})
 
@@ -763,7 +749,7 @@ func (s *SSLManagementUsecase) submitCSR(ctx context.Context, csrName string, cs
 
 	// TODO: Implement actual Kubernetes API submission
 	// This will be implemented when we have the Kubernetes client integration
-	
+
 	// For now, we'll log the CSR details and store the private key
 	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "RSA PRIVATE KEY",
@@ -793,13 +779,7 @@ func (s *SSLManagementUsecase) storePendingCSR(csrName string, csrPEM, privateKe
 	// This could be stored in a ConfigMap or Secret for later retrieval
 }
 
-// DistributeCertificatesConfig represents certificate distribution configuration
-type DistributeCertificatesConfig struct {
-	Environment   domain.Environment
-	Namespaces    []string
-	Services      []string
-	UseProjection bool
-}
+// Note: DistributeCertificatesConfig moved to ssl_lifecycle_manager.go to avoid duplication
 
 // DistributeCertificates distributes certificates across namespaces
 func (s *SSLManagementUsecase) DistributeCertificates(ctx context.Context, config DistributeCertificatesConfig) error {
@@ -914,6 +894,129 @@ func (s *SSLManagementUsecase) updateDeploymentWithProjectedVolumes(ctx context.
 
 	// TODO: Implement deployment update logic
 	// This will modify the deployment to use projected volumes for certificates
+
+	return nil
+}
+
+// validatePEMData validates PEM-encoded certificate and key data
+func (s *SSLManagementUsecase) validatePEMData(caCert, caKey, serverCert, serverKey string) error {
+	s.logger.InfoWithContext("validating PEM data", map[string]interface{}{
+		"ca_cert_length":     len(caCert),
+		"ca_key_length":      len(caKey),
+		"server_cert_length": len(serverCert),
+		"server_key_length":  len(serverKey),
+	})
+
+	// Validate each PEM data component
+	pemComponents := map[string]struct {
+		data         string
+		expectedType string
+	}{
+		"CA Certificate":     {caCert, "CERTIFICATE"},
+		"CA Private Key":     {caKey, "RSA PRIVATE KEY"},
+		"Server Certificate": {serverCert, "CERTIFICATE"},
+		"Server Private Key": {serverKey, "RSA PRIVATE KEY"},
+	}
+
+	for name, component := range pemComponents {
+		if err := s.validateSinglePEM(name, component.data, component.expectedType); err != nil {
+			return fmt.Errorf("PEM validation failed for %s: %w", name, err)
+		}
+	}
+
+	// Additional validation: ensure certificates can be parsed
+	if err := s.validateCertificateStructure(caCert, serverCert); err != nil {
+		return fmt.Errorf("certificate structure validation failed: %w", err)
+	}
+
+	s.logger.InfoWithContext("PEM data validation completed successfully", map[string]interface{}{
+		"components_validated": len(pemComponents),
+	})
+
+	return nil
+}
+
+// validateSinglePEM validates a single PEM-encoded data
+func (s *SSLManagementUsecase) validateSinglePEM(name, data, expectedType string) error {
+	if data == "" {
+		return fmt.Errorf("%s is empty", name)
+	}
+
+	// Decode PEM block
+	block, rest := pem.Decode([]byte(data))
+	if block == nil {
+		return fmt.Errorf("%s contains no valid PEM data", name)
+	}
+
+	// Check PEM type
+	if block.Type != expectedType {
+		return fmt.Errorf("%s has wrong PEM type: expected %s, got %s", name, expectedType, block.Type)
+	}
+
+	// Check for remaining data (should be empty for single PEM)
+	if len(rest) > 0 {
+		// Allow whitespace but warn about unexpected content
+		trimmed := strings.TrimSpace(string(rest))
+		if len(trimmed) > 0 {
+			s.logger.WarnWithContext("unexpected data after PEM block", map[string]interface{}{
+				"component":       name,
+				"remaining_bytes": len(trimmed),
+			})
+		}
+	}
+
+	// Validate PEM data length
+	if len(block.Bytes) == 0 {
+		return fmt.Errorf("%s PEM block has no data", name)
+	}
+
+	return nil
+}
+
+// validateCertificateStructure validates that certificates can be parsed
+func (s *SSLManagementUsecase) validateCertificateStructure(caCert, serverCert string) error {
+	// Parse CA certificate
+	caBlock, _ := pem.Decode([]byte(caCert))
+	if caBlock == nil {
+		return fmt.Errorf("failed to decode CA certificate PEM")
+	}
+
+	caCertParsed, err := x509.ParseCertificate(caBlock.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse CA certificate: %w", err)
+	}
+
+	// Parse server certificate
+	serverBlock, _ := pem.Decode([]byte(serverCert))
+	if serverBlock == nil {
+		return fmt.Errorf("failed to decode server certificate PEM")
+	}
+
+	serverCertParsed, err := x509.ParseCertificate(serverBlock.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse server certificate: %w", err)
+	}
+
+	// Validate certificate properties
+	now := time.Now()
+	if caCertParsed.NotAfter.Before(now) {
+		return fmt.Errorf("CA certificate has expired: %s", caCertParsed.NotAfter)
+	}
+
+	if serverCertParsed.NotAfter.Before(now) {
+		return fmt.Errorf("server certificate has expired: %s", serverCertParsed.NotAfter)
+	}
+
+	// Validate that server certificate is issued by CA (simplified check)
+	if !serverCertParsed.IsCA && caCertParsed.IsCA {
+		// Basic validation passed
+		s.logger.InfoWithContext("certificate structure validation passed", map[string]interface{}{
+			"ca_subject":     caCertParsed.Subject.String(),
+			"server_subject": serverCertParsed.Subject.String(),
+			"ca_expires":     caCertParsed.NotAfter.Format(time.RFC3339),
+			"server_expires": serverCertParsed.NotAfter.Format(time.RFC3339),
+		})
+	}
 
 	return nil
 }

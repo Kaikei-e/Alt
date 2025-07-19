@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
-	
+
 	"deploy-cli/port/filesystem_port"
 )
 
@@ -87,7 +87,7 @@ func (f *FileSystemDriver) CopyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return os.Chmod(dst, sourceInfo.Mode())
 }
 
@@ -132,7 +132,7 @@ func (f *FileSystemDriver) MakeExecutable(path string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Add execute permission for owner, group, and others
 	return os.Chmod(path, info.Mode()|0111)
 }
@@ -143,12 +143,12 @@ func (f *FileSystemDriver) IsWritable(path string) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	// Check if writable by owner
 	if info.Mode().Perm()&0200 != 0 {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -226,10 +226,10 @@ func (f *FileSystemDriver) GetDiskUsage(path string) (free, total uint64, err er
 	if err != nil {
 		return 0, 0, err
 	}
-	
+
 	free = stat.Bavail * uint64(stat.Bsize)
 	total = stat.Blocks * uint64(stat.Bsize)
-	
+
 	return free, total, nil
 }
 

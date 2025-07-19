@@ -1,34 +1,34 @@
 package deployment_usecase
 
 import (
+	"fmt"
 	"sync"
 	"time"
-	"fmt"
-	
+
 	"deploy-cli/domain"
 	"deploy-cli/port/logger_port"
 )
 
 // MetricsCollector collects and manages deployment metrics
 type MetricsCollector struct {
-	logger             logger_port.LoggerPort
-	deploymentMetrics  map[string]*domain.DeploymentMetrics
-	layerMetrics       map[string]map[string]*domain.LayerMetrics
-	chartMetrics       map[string]map[string]map[string]*domain.ChartMetrics
-	alerts             []domain.DeploymentAlert
-	insights           []domain.DeploymentInsight
-	mutex              sync.RWMutex
-	alertThresholds    *AlertThresholds
+	logger            logger_port.LoggerPort
+	deploymentMetrics map[string]*domain.DeploymentMetrics
+	layerMetrics      map[string]map[string]*domain.LayerMetrics
+	chartMetrics      map[string]map[string]map[string]*domain.ChartMetrics
+	alerts            []domain.DeploymentAlert
+	insights          []domain.DeploymentInsight
+	mutex             sync.RWMutex
+	alertThresholds   *AlertThresholds
 }
 
 // AlertThresholds defines thresholds for generating alerts
 type AlertThresholds struct {
-	MaxLayerDuration        time.Duration
-	MaxChartDuration        time.Duration
-	MaxHealthCheckDuration  time.Duration
-	MaxFailureRate          float64
-	MaxRetryCount           int
-	MinSuccessRate          float64
+	MaxLayerDuration       time.Duration
+	MaxChartDuration       time.Duration
+	MaxHealthCheckDuration time.Duration
+	MaxFailureRate         float64
+	MaxRetryCount          int
+	MinSuccessRate         float64
 }
 
 // NewMetricsCollector creates a new metrics collector
@@ -62,16 +62,16 @@ func (m *MetricsCollector) StartDeploymentMetrics(deploymentID string, options *
 	defer m.mutex.Unlock()
 
 	m.deploymentMetrics[deploymentID] = &domain.DeploymentMetrics{
-		DeploymentID:     deploymentID,
-		StartTime:        time.Now(),
-		Status:           domain.DeploymentStatusSkipped, // Will be updated to success/failed
-		Environment:      options.Environment,
-		Strategy:         options.GetStrategyName(),
-		LayerMetrics:     make([]domain.LayerMetrics, 0),
+		DeploymentID: deploymentID,
+		StartTime:    time.Now(),
+		Status:       domain.DeploymentStatusSkipped, // Will be updated to success/failed
+		Environment:  options.Environment,
+		Strategy:     options.GetStrategyName(),
+		LayerMetrics: make([]domain.LayerMetrics, 0),
 		PerformanceMetrics: &domain.PerformanceMetrics{
 			OptimizationSuggestions: make([]string, 0),
 		},
-		ErrorSummary:     make([]domain.ErrorSummary, 0),
+		ErrorSummary: make([]domain.ErrorSummary, 0),
 	}
 
 	m.layerMetrics[deploymentID] = make(map[string]*domain.LayerMetrics)
@@ -96,11 +96,11 @@ func (m *MetricsCollector) StartLayerMetrics(deploymentID, layerName string, tot
 	}
 
 	m.layerMetrics[deploymentID][layerName] = &domain.LayerMetrics{
-		LayerName:         layerName,
-		StartTime:         time.Now(),
-		Status:            domain.LayerStatusInProgress,
-		TotalCharts:       totalCharts,
-		ChartMetrics:      make([]domain.ChartMetrics, 0),
+		LayerName:    layerName,
+		StartTime:    time.Now(),
+		Status:       domain.LayerStatusInProgress,
+		TotalCharts:  totalCharts,
+		ChartMetrics: make([]domain.ChartMetrics, 0),
 		HealthCheckMetrics: &domain.HealthCheckMetrics{
 			StartTime:          time.Now(),
 			HealthCheckResults: make([]domain.HealthCheckResult, 0),
@@ -268,13 +268,13 @@ func (m *MetricsCollector) CompleteDeploymentMetrics(deploymentID string, result
 		m.generateInsights(deploymentID, deploymentMetrics)
 
 		m.logger.InfoWithContext("completed deployment metrics collection", map[string]interface{}{
-			"deployment_id":     deploymentID,
-			"duration":          deploymentMetrics.Duration,
-			"status":            result.Status,
-			"total_layers":      deploymentMetrics.TotalLayers,
-			"total_charts":      deploymentMetrics.TotalCharts,
-			"completed_charts":  deploymentMetrics.CompletedCharts,
-			"failed_charts":     deploymentMetrics.FailedCharts,
+			"deployment_id":    deploymentID,
+			"duration":         deploymentMetrics.Duration,
+			"status":           result.Status,
+			"total_layers":     deploymentMetrics.TotalLayers,
+			"total_charts":     deploymentMetrics.TotalCharts,
+			"completed_charts": deploymentMetrics.CompletedCharts,
+			"failed_charts":    deploymentMetrics.FailedCharts,
 		})
 	}
 
@@ -351,8 +351,8 @@ func (m *MetricsCollector) checkLayerAlerts(deploymentID, layerName string, laye
 				Message:   fmt.Sprintf("Layer %s has high failure rate: %.2f%%", layerName, failureRate*100),
 				Component: layerName,
 				Context: map[string]interface{}{
-					"failure_rate": failureRate,
-					"threshold":    m.alertThresholds.MaxFailureRate,
+					"failure_rate":  failureRate,
+					"threshold":     m.alertThresholds.MaxFailureRate,
 					"failed_charts": layerMetrics.FailedCharts,
 					"total_charts":  layerMetrics.TotalCharts,
 				},
@@ -378,11 +378,11 @@ func (m *MetricsCollector) calculatePerformanceMetrics(deploymentMetrics *domain
 		for _, layerMetrics := range deploymentMetrics.LayerMetrics {
 			totalLayerTime += layerMetrics.Duration
 			totalCharts += len(layerMetrics.ChartMetrics)
-			
+
 			for _, chartMetrics := range layerMetrics.ChartMetrics {
 				totalChartTime += chartMetrics.Duration
 			}
-			
+
 			if layerMetrics.HealthCheckMetrics != nil {
 				totalHealthCheckTime += layerMetrics.HealthCheckMetrics.Duration
 			}
@@ -434,7 +434,7 @@ func (m *MetricsCollector) generateInsights(deploymentID string, deploymentMetri
 			Title:       "Long Deployment Duration",
 			Description: fmt.Sprintf("Deployment took %v, which is longer than recommended", deploymentMetrics.Duration),
 			Metrics: map[string]interface{}{
-				"duration": deploymentMetrics.Duration,
+				"duration":        deploymentMetrics.Duration,
 				"recommended_max": 30 * time.Minute,
 			},
 			Suggestions: []domain.OptimizationSuggestion{
@@ -525,7 +525,7 @@ func (m *MetricsCollector) RecordHealthCheck(deploymentID, layerName string, res
 		if layerMetrics.HealthCheckMetrics != nil {
 			layerMetrics.HealthCheckMetrics.HealthCheckResults = append(layerMetrics.HealthCheckMetrics.HealthCheckResults, result)
 			layerMetrics.HealthCheckMetrics.TotalChecks++
-			
+
 			if result.Status == "success" {
 				layerMetrics.HealthCheckMetrics.SuccessfulChecks++
 			} else {

@@ -23,9 +23,9 @@ import (
 
 // SSLCertificateUsecase handles SSL certificate lifecycle management
 type SSLCertificateUsecase struct {
-	logger              logger_port.LoggerPort
-	secretUsecase       *secret_usecase.SecretUsecase
-	sslUsecase          *secret_usecase.SSLCertificateUsecase
+	logger                logger_port.LoggerPort
+	secretUsecase         *secret_usecase.SecretUsecase
+	sslUsecase            *secret_usecase.SSLCertificateUsecase
 	generatedCertificates *port.GeneratedCertificates
 }
 
@@ -50,7 +50,7 @@ func (u *SSLCertificateUsecase) PreDeploymentSSLCheck(ctx context.Context, optio
 
 	// Identify SSL certificate requirements based on environment
 	requiredCertificates := u.identifySSLRequirements(options.Environment)
-	
+
 	// Validate existing certificates
 	for _, certName := range requiredCertificates {
 		exists, err := u.sslUsecase.ValidateCertificateExists(ctx, certName, options.Environment)
@@ -58,7 +58,7 @@ func (u *SSLCertificateUsecase) PreDeploymentSSLCheck(ctx context.Context, optio
 			u.logger.ErrorWithContext("failed to validate SSL certificate", map[string]interface{}{
 				"certificate": certName,
 				"environment": options.Environment.String(),
-				"error": err.Error(),
+				"error":       err.Error(),
 			})
 			return fmt.Errorf("SSL certificate validation failed for %s: %w", certName, err)
 		}
@@ -74,7 +74,7 @@ func (u *SSLCertificateUsecase) PreDeploymentSSLCheck(ctx context.Context, optio
 				u.logger.ErrorWithContext("failed to auto-generate SSL certificate", map[string]interface{}{
 					"certificate": certName,
 					"environment": options.Environment.String(),
-					"error": err.Error(),
+					"error":       err.Error(),
 				})
 				return fmt.Errorf("failed to auto-generate SSL certificate for %s: %w", certName, err)
 			}
@@ -87,7 +87,7 @@ func (u *SSLCertificateUsecase) PreDeploymentSSLCheck(ctx context.Context, optio
 	}
 
 	u.logger.InfoWithContext("SSL certificate validation completed", map[string]interface{}{
-		"environment": options.Environment.String(),
+		"environment":          options.Environment.String(),
 		"certificates_checked": len(requiredCertificates),
 	})
 
@@ -100,7 +100,7 @@ func (u *SSLCertificateUsecase) identifySSLRequirements(env domain.Environment) 
 	case domain.Production:
 		return []string{
 			"alt-backend-tls",
-			"alt-frontend-tls", 
+			"alt-frontend-tls",
 			"auth-service-tls",
 			"nginx-external-tls",
 			"kratos-tls",
@@ -109,7 +109,7 @@ func (u *SSLCertificateUsecase) identifySSLRequirements(env domain.Environment) 
 		return []string{
 			"alt-backend-tls",
 			"alt-frontend-tls",
-			"auth-service-tls", 
+			"auth-service-tls",
 			"nginx-external-tls",
 			"kratos-tls",
 		}
@@ -139,11 +139,11 @@ func (u *SSLCertificateUsecase) generateSSLCertificates(ctx context.Context) err
 	caTemplate := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
-			Organization:  []string{"Alt RSS Reader"},
-			Country:       []string{"JP"},
-			Province:      []string{"Tokyo"},
-			Locality:      []string{"Tokyo"},
-			CommonName:    "Alt RSS Reader CA",
+			Organization: []string{"Alt RSS Reader"},
+			Country:      []string{"JP"},
+			Province:     []string{"Tokyo"},
+			Locality:     []string{"Tokyo"},
+			CommonName:   "Alt RSS Reader CA",
 		},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().AddDate(5, 0, 0), // 5年間有効
@@ -181,18 +181,18 @@ func (u *SSLCertificateUsecase) generateSSLCertificates(ctx context.Context) err
 	serverTemplate := &x509.Certificate{
 		SerialNumber: big.NewInt(2),
 		Subject: pkix.Name{
-			Organization:  []string{"Alt RSS Reader"},
-			Country:       []string{"JP"},
-			Province:      []string{"Tokyo"},
-			Locality:      []string{"Tokyo"},
-			CommonName:    "*.alt-app.local",
+			Organization: []string{"Alt RSS Reader"},
+			Country:      []string{"JP"},
+			Province:     []string{"Tokyo"},
+			Locality:     []string{"Tokyo"},
+			CommonName:   "*.alt-app.local",
 		},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(1, 0, 0), // 1年間有効
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
-		DNSNames:     []string{"localhost", "*.alt-app.local", "alt-backend", "alt-frontend", "auth-service"},
+		NotBefore:   time.Now(),
+		NotAfter:    time.Now().AddDate(1, 0, 0), // 1年間有効
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		KeyUsage:    x509.KeyUsageDigitalSignature,
+		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
+		DNSNames:    []string{"localhost", "*.alt-app.local", "alt-backend", "alt-frontend", "auth-service"},
 	}
 
 	// Generate server certificate
@@ -223,9 +223,9 @@ func (u *SSLCertificateUsecase) generateSSLCertificates(ctx context.Context) err
 	}
 
 	u.logger.InfoWithContext("SSL certificates generated successfully", map[string]interface{}{
-		"ca_cert_length":      len(caCertPEM),
-		"server_cert_length":  len(serverCertPEM),
-		"generated_at":        u.generatedCertificates.Generated,
+		"ca_cert_length":     len(caCertPEM),
+		"server_cert_length": len(serverCertPEM),
+		"generated_at":       u.generatedCertificates.Generated,
 	})
 
 	return nil
@@ -287,10 +287,10 @@ func (u *SSLCertificateUsecase) validateCertificate(certPEM, certType string) er
 	}
 
 	u.logger.DebugWithContext("certificate validation passed", map[string]interface{}{
-		"cert_type":    certType,
-		"subject":      cert.Subject.String(),
-		"not_before":   cert.NotBefore,
-		"not_after":    cert.NotAfter,
+		"cert_type":     certType,
+		"subject":       cert.Subject.String(),
+		"not_before":    cert.NotBefore,
+		"not_after":     cert.NotAfter,
 		"serial_number": cert.SerialNumber,
 	})
 
@@ -338,13 +338,13 @@ func (u *SSLCertificateUsecase) injectCertificateData(ctx context.Context, chart
 
 	// Extract chart name from path
 	chartName := filepath.Base(chartPath)
-	
+
 	// Create values file for SSL configuration
 	valuesFile := filepath.Join(chartPath, "values-ssl.yaml")
-	
+
 	// Create SSL configuration based on chart type
 	var sslConfig map[string]interface{}
-	
+
 	switch chartName {
 	case "common-ssl":
 		sslConfig = map[string]interface{}{
@@ -385,10 +385,10 @@ func (u *SSLCertificateUsecase) injectCertificateData(ctx context.Context, chart
 	if err := u.writeSSLValuesFile(valuesFile, sslConfig); err != nil {
 		return fmt.Errorf("failed to write SSL values file: %w", err)
 	}
-	
+
 	u.logger.InfoWithContext("certificate data injection completed", map[string]interface{}{
-		"chart_path": chartPath,
-		"chart_name": chartName,
+		"chart_path":  chartPath,
+		"chart_name":  chartName,
 		"values_file": valuesFile,
 	})
 

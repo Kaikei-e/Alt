@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"deploy-cli/rest/commands"
-	"deploy-cli/utils/logger"
 	"deploy-cli/utils/colors"
+	"deploy-cli/utils/logger"
 )
 
 // CLI represents the command line interface

@@ -25,8 +25,8 @@ func NewHealthChecker(logger logger_port.LoggerPort) *HealthChecker {
 // WaitForPostgreSQLReady waits for PostgreSQL service to be ready for connections
 func (h *HealthChecker) WaitForPostgreSQLReady(ctx context.Context, namespace, serviceName string) error {
 	h.logger.InfoWithContext("waiting for PostgreSQL service to be ready", map[string]interface{}{
-		"namespace": namespace,
-		"service": serviceName,
+		"namespace":    namespace,
+		"service":      serviceName,
 		"max_duration": "5m",
 	})
 
@@ -36,9 +36,9 @@ func (h *HealthChecker) WaitForPostgreSQLReady(ctx context.Context, namespace, s
 		case <-ctx.Done():
 			h.logger.ErrorWithContext("PostgreSQL wait cancelled", map[string]interface{}{
 				"namespace": namespace,
-				"service": serviceName,
-				"attempt": i + 1,
-				"error": ctx.Err().Error(),
+				"service":   serviceName,
+				"attempt":   i + 1,
+				"error":     ctx.Err().Error(),
 			})
 			return ctx.Err()
 		default:
@@ -46,9 +46,9 @@ func (h *HealthChecker) WaitForPostgreSQLReady(ctx context.Context, namespace, s
 
 		// Log current attempt
 		h.logger.InfoWithContext("checking PostgreSQL connection", map[string]interface{}{
-			"namespace": namespace,
-			"service": serviceName,
-			"attempt": i + 1,
+			"namespace":   namespace,
+			"service":     serviceName,
+			"attempt":     i + 1,
 			"max_retries": maxRetries,
 		})
 
@@ -56,17 +56,17 @@ func (h *HealthChecker) WaitForPostgreSQLReady(ctx context.Context, namespace, s
 		if err := h.checkPostgreSQLConnection(namespace, serviceName); err == nil {
 			h.logger.InfoWithContext("PostgreSQL service is ready", map[string]interface{}{
 				"namespace": namespace,
-				"service": serviceName,
-				"attempts": i + 1,
+				"service":   serviceName,
+				"attempts":  i + 1,
 			})
 			return nil
 		} else {
 			h.logger.WarnWithContext("PostgreSQL not ready, retrying", map[string]interface{}{
-				"namespace": namespace,
-				"service": serviceName,
-				"attempt": i + 1,
+				"namespace":   namespace,
+				"service":     serviceName,
+				"attempt":     i + 1,
 				"max_retries": maxRetries,
-				"error": err.Error(),
+				"error":       err.Error(),
 				"retry_delay": "10s",
 			})
 		}
@@ -75,9 +75,9 @@ func (h *HealthChecker) WaitForPostgreSQLReady(ctx context.Context, namespace, s
 	}
 
 	h.logger.ErrorWithContext("PostgreSQL service not ready after maximum attempts", map[string]interface{}{
-		"namespace": namespace,
-		"service": serviceName,
-		"max_attempts": maxRetries,
+		"namespace":      namespace,
+		"service":        serviceName,
+		"max_attempts":   maxRetries,
 		"total_duration": "5m",
 	})
 	return fmt.Errorf("PostgreSQL service %s in namespace %s not ready after %d attempts", serviceName, namespace, maxRetries)
@@ -93,10 +93,10 @@ func (h *HealthChecker) checkPostgreSQLConnection(namespace, serviceName string)
 	podName := serviceName + "-0" // StatefulSet naming convention
 	h.logger.DebugWithContext("executing PostgreSQL connection check", map[string]interface{}{
 		"namespace": namespace,
-		"service": serviceName,
-		"pod": podName,
-		"command": "pg_isready",
-		"timeout": "30s",
+		"service":   serviceName,
+		"pod":       podName,
+		"command":   "pg_isready",
+		"timeout":   "30s",
 	})
 
 	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName, "--", "pg_isready", "-U", "alt_db_user")
@@ -106,19 +106,19 @@ func (h *HealthChecker) checkPostgreSQLConnection(namespace, serviceName string)
 		if ctx.Err() == context.DeadlineExceeded {
 			h.logger.WarnWithContext("PostgreSQL connection check timed out", map[string]interface{}{
 				"namespace": namespace,
-				"service": serviceName,
-				"pod": podName,
-				"timeout": "30s",
-				"output": string(output),
+				"service":   serviceName,
+				"pod":       podName,
+				"timeout":   "30s",
+				"output":    string(output),
 			})
 			return fmt.Errorf("PostgreSQL connection check timed out after 30s")
 		}
 		h.logger.DebugWithContext("PostgreSQL connection check failed", map[string]interface{}{
 			"namespace": namespace,
-			"service": serviceName,
-			"pod": podName,
-			"error": err.Error(),
-			"output": string(output),
+			"service":   serviceName,
+			"pod":       podName,
+			"error":     err.Error(),
+			"output":    string(output),
 		})
 		return fmt.Errorf("PostgreSQL connection check failed: %w", err)
 	}
@@ -127,18 +127,18 @@ func (h *HealthChecker) checkPostgreSQLConnection(namespace, serviceName string)
 	if !strings.Contains(string(output), "accepting connections") {
 		h.logger.DebugWithContext("PostgreSQL not accepting connections", map[string]interface{}{
 			"namespace": namespace,
-			"service": serviceName,
-			"pod": podName,
-			"output": string(output),
+			"service":   serviceName,
+			"pod":       podName,
+			"output":    string(output),
 		})
 		return fmt.Errorf("PostgreSQL not accepting connections: %s", string(output))
 	}
 
 	h.logger.DebugWithContext("PostgreSQL connection check successful", map[string]interface{}{
 		"namespace": namespace,
-		"service": serviceName,
-		"pod": podName,
-		"output": string(output),
+		"service":   serviceName,
+		"pod":       podName,
+		"output":    string(output),
 	})
 	return nil
 }
@@ -209,8 +209,8 @@ func (h *HealthChecker) checkMeilisearchHealth(namespace, serviceName string) er
 // WaitForServiceReady waits for any service to be ready based on its type
 func (h *HealthChecker) WaitForServiceReady(ctx context.Context, serviceName, serviceType, namespace string) error {
 	h.logger.InfoWithContext("waiting for service readiness", map[string]interface{}{
-		"service": serviceName,
-		"type": serviceType,
+		"service":   serviceName,
+		"type":      serviceType,
 		"namespace": namespace,
 	})
 
@@ -231,8 +231,8 @@ func (h *HealthChecker) WaitForServiceReady(ctx context.Context, serviceName, se
 	default:
 		// For other services, just check if pods are ready
 		h.logger.InfoWithContext("using generic pod readiness check", map[string]interface{}{
-			"service": serviceName,
-			"type": serviceType,
+			"service":   serviceName,
+			"type":      serviceType,
 			"namespace": namespace,
 		})
 		return h.WaitForPodsReady(ctx, namespace, serviceName)
@@ -304,8 +304,8 @@ func (h *HealthChecker) checkPodsReady(namespace, serviceName string) error {
 // WaitForStatefulSetReady waits for StatefulSet to be fully ready
 func (h *HealthChecker) WaitForStatefulSetReady(ctx context.Context, namespace, serviceName string) error {
 	h.logger.InfoWithContext("waiting for StatefulSet to be ready", map[string]interface{}{
-		"namespace": namespace,
-		"service": serviceName,
+		"namespace":    namespace,
+		"service":      serviceName,
 		"max_duration": "15m",
 	})
 
@@ -315,9 +315,9 @@ func (h *HealthChecker) WaitForStatefulSetReady(ctx context.Context, namespace, 
 		case <-ctx.Done():
 			h.logger.ErrorWithContext("StatefulSet wait cancelled", map[string]interface{}{
 				"namespace": namespace,
-				"service": serviceName,
-				"attempt": i + 1,
-				"error": ctx.Err().Error(),
+				"service":   serviceName,
+				"attempt":   i + 1,
+				"error":     ctx.Err().Error(),
 			})
 			return ctx.Err()
 		default:
@@ -325,9 +325,9 @@ func (h *HealthChecker) WaitForStatefulSetReady(ctx context.Context, namespace, 
 
 		// Log current attempt
 		h.logger.InfoWithContext("checking StatefulSet readiness", map[string]interface{}{
-			"namespace": namespace,
-			"service": serviceName,
-			"attempt": i + 1,
+			"namespace":   namespace,
+			"service":     serviceName,
+			"attempt":     i + 1,
 			"max_retries": maxRetries,
 		})
 
@@ -335,18 +335,18 @@ func (h *HealthChecker) WaitForStatefulSetReady(ctx context.Context, namespace, 
 		exists, err := h.checkStatefulSetExists(namespace, serviceName)
 		if err != nil {
 			h.logger.WarnWithContext("Failed to check StatefulSet existence, retrying", map[string]interface{}{
-				"namespace": namespace,
-				"service": serviceName,
-				"attempt": i + 1,
+				"namespace":   namespace,
+				"service":     serviceName,
+				"attempt":     i + 1,
 				"max_retries": maxRetries,
-				"error": err.Error(),
+				"error":       err.Error(),
 				"retry_delay": "10s",
 			})
 		} else if !exists {
 			h.logger.InfoWithContext("StatefulSet does not exist yet, waiting for creation", map[string]interface{}{
-				"namespace": namespace,
-				"service": serviceName,
-				"attempt": i + 1,
+				"namespace":   namespace,
+				"service":     serviceName,
+				"attempt":     i + 1,
 				"max_retries": maxRetries,
 				"retry_delay": "10s",
 			})
@@ -355,17 +355,17 @@ func (h *HealthChecker) WaitForStatefulSetReady(ctx context.Context, namespace, 
 			if err := h.checkStatefulSetReady(namespace, serviceName); err == nil {
 				h.logger.InfoWithContext("StatefulSet is ready", map[string]interface{}{
 					"namespace": namespace,
-					"service": serviceName,
-					"attempts": i + 1,
+					"service":   serviceName,
+					"attempts":  i + 1,
 				})
 				return nil
 			} else {
 				h.logger.WarnWithContext("StatefulSet not ready, retrying", map[string]interface{}{
-					"namespace": namespace,
-					"service": serviceName,
-					"attempt": i + 1,
+					"namespace":   namespace,
+					"service":     serviceName,
+					"attempt":     i + 1,
 					"max_retries": maxRetries,
-					"error": err.Error(),
+					"error":       err.Error(),
 					"retry_delay": "10s",
 				})
 			}
@@ -375,9 +375,9 @@ func (h *HealthChecker) WaitForStatefulSetReady(ctx context.Context, namespace, 
 	}
 
 	h.logger.ErrorWithContext("StatefulSet not ready after maximum attempts", map[string]interface{}{
-		"namespace": namespace,
-		"service": serviceName,
-		"max_attempts": maxRetries,
+		"namespace":      namespace,
+		"service":        serviceName,
+		"max_attempts":   maxRetries,
 		"total_duration": "15m",
 	})
 	return fmt.Errorf("StatefulSet %s in namespace %s not ready after %d attempts", serviceName, namespace, maxRetries)
@@ -401,7 +401,7 @@ func (h *HealthChecker) checkStatefulSetExists(namespace, serviceName string) (b
 func (h *HealthChecker) checkStatefulSetReady(namespace, serviceName string) error {
 	h.logger.DebugWithContext("checking StatefulSet status", map[string]interface{}{
 		"namespace": namespace,
-		"service": serviceName,
+		"service":   serviceName,
 	})
 
 	// Check StatefulSet status (StatefulSet existence should be checked by caller)
@@ -410,9 +410,9 @@ func (h *HealthChecker) checkStatefulSetReady(namespace, serviceName string) err
 	if err != nil {
 		h.logger.DebugWithContext("StatefulSet status check failed", map[string]interface{}{
 			"namespace": namespace,
-			"service": serviceName,
-			"error": err.Error(),
-			"output": string(output),
+			"service":   serviceName,
+			"error":     err.Error(),
+			"output":    string(output),
 		})
 		return fmt.Errorf("StatefulSet status check failed: %w", err)
 	}
@@ -441,10 +441,10 @@ func (h *HealthChecker) checkStatefulSetReady(namespace, serviceName string) err
 	}
 
 	h.logger.DebugWithContext("StatefulSet is ready", map[string]interface{}{
-		"namespace": namespace,
-		"service": serviceName,
-		"replicas": replicas,
-		"ready_replicas": readyReplicas,
+		"namespace":        namespace,
+		"service":          serviceName,
+		"replicas":         replicas,
+		"ready_replicas":   readyReplicas,
 		"current_replicas": currentReplicas,
 	})
 
@@ -476,8 +476,8 @@ func (h *HealthChecker) checkStatefulSetPodsRunning(namespace, serviceName strin
 // WaitForClickHouseReady waits for ClickHouse service to be ready
 func (h *HealthChecker) WaitForClickHouseReady(ctx context.Context, namespace, serviceName string) error {
 	h.logger.InfoWithContext("waiting for ClickHouse service to be ready", map[string]interface{}{
-		"namespace": namespace,
-		"service": serviceName,
+		"namespace":    namespace,
+		"service":      serviceName,
 		"max_duration": "10m",
 	})
 
@@ -487,9 +487,9 @@ func (h *HealthChecker) WaitForClickHouseReady(ctx context.Context, namespace, s
 		case <-ctx.Done():
 			h.logger.ErrorWithContext("ClickHouse wait cancelled", map[string]interface{}{
 				"namespace": namespace,
-				"service": serviceName,
-				"attempt": i + 1,
-				"error": ctx.Err().Error(),
+				"service":   serviceName,
+				"attempt":   i + 1,
+				"error":     ctx.Err().Error(),
 			})
 			return ctx.Err()
 		default:
@@ -497,9 +497,9 @@ func (h *HealthChecker) WaitForClickHouseReady(ctx context.Context, namespace, s
 
 		// Log current attempt
 		h.logger.InfoWithContext("checking ClickHouse connection", map[string]interface{}{
-			"namespace": namespace,
-			"service": serviceName,
-			"attempt": i + 1,
+			"namespace":   namespace,
+			"service":     serviceName,
+			"attempt":     i + 1,
 			"max_retries": maxRetries,
 		})
 
@@ -507,17 +507,17 @@ func (h *HealthChecker) WaitForClickHouseReady(ctx context.Context, namespace, s
 		if err := h.checkClickHouseHealth(namespace, serviceName); err == nil {
 			h.logger.InfoWithContext("ClickHouse service is ready", map[string]interface{}{
 				"namespace": namespace,
-				"service": serviceName,
-				"attempts": i + 1,
+				"service":   serviceName,
+				"attempts":  i + 1,
 			})
 			return nil
 		} else {
 			h.logger.WarnWithContext("ClickHouse not ready, retrying", map[string]interface{}{
-				"namespace": namespace,
-				"service": serviceName,
-				"attempt": i + 1,
+				"namespace":   namespace,
+				"service":     serviceName,
+				"attempt":     i + 1,
 				"max_retries": maxRetries,
-				"error": err.Error(),
+				"error":       err.Error(),
 				"retry_delay": "10s",
 			})
 		}
@@ -526,9 +526,9 @@ func (h *HealthChecker) WaitForClickHouseReady(ctx context.Context, namespace, s
 	}
 
 	h.logger.ErrorWithContext("ClickHouse service not ready after maximum attempts", map[string]interface{}{
-		"namespace": namespace,
-		"service": serviceName,
-		"max_attempts": maxRetries,
+		"namespace":      namespace,
+		"service":        serviceName,
+		"max_attempts":   maxRetries,
 		"total_duration": "10m",
 	})
 	return fmt.Errorf("ClickHouse service %s in namespace %s not ready after %d attempts", serviceName, namespace, maxRetries)
@@ -547,9 +547,9 @@ func (h *HealthChecker) checkClickHouseHealth(namespace, serviceName string) err
 	if err != nil {
 		h.logger.WarnWithContext("failed to detect ClickHouse SSL configuration, trying HTTP", map[string]interface{}{
 			"namespace": namespace,
-			"service": serviceName,
-			"pod": podName,
-			"error": err.Error(),
+			"service":   serviceName,
+			"pod":       podName,
+			"error":     err.Error(),
 		})
 		sslEnabled = false
 	}
@@ -565,12 +565,12 @@ func (h *HealthChecker) checkClickHouseHealth(namespace, serviceName string) err
 	}
 
 	h.logger.DebugWithContext("executing ClickHouse health check", map[string]interface{}{
-		"namespace": namespace,
-		"service": serviceName,
-		"pod": podName,
-		"endpoint": endpoint,
-		"scheme": scheme,
-		"timeout": "30s",
+		"namespace":   namespace,
+		"service":     serviceName,
+		"pod":         podName,
+		"endpoint":    endpoint,
+		"scheme":      scheme,
+		"timeout":     "30s",
 		"ssl_enabled": sslEnabled,
 	})
 
@@ -587,19 +587,19 @@ func (h *HealthChecker) checkClickHouseHealth(namespace, serviceName string) err
 		if ctx.Err() == context.DeadlineExceeded {
 			h.logger.WarnWithContext("ClickHouse health check timed out", map[string]interface{}{
 				"namespace": namespace,
-				"service": serviceName,
-				"pod": podName,
-				"timeout": "30s",
-				"output": string(output),
+				"service":   serviceName,
+				"pod":       podName,
+				"timeout":   "30s",
+				"output":    string(output),
 			})
 			return fmt.Errorf("ClickHouse health check timed out after 30s")
 		}
 		h.logger.DebugWithContext("ClickHouse health check failed", map[string]interface{}{
 			"namespace": namespace,
-			"service": serviceName,
-			"pod": podName,
-			"error": err.Error(),
-			"output": string(output),
+			"service":   serviceName,
+			"pod":       podName,
+			"error":     err.Error(),
+			"output":    string(output),
 		})
 		return fmt.Errorf("ClickHouse health check failed: %w", err)
 	}
@@ -608,18 +608,18 @@ func (h *HealthChecker) checkClickHouseHealth(namespace, serviceName string) err
 	if !strings.Contains(string(output), "Ok") {
 		h.logger.DebugWithContext("ClickHouse not responding correctly", map[string]interface{}{
 			"namespace": namespace,
-			"service": serviceName,
-			"pod": podName,
-			"output": string(output),
+			"service":   serviceName,
+			"pod":       podName,
+			"output":    string(output),
 		})
 		return fmt.Errorf("ClickHouse not responding correctly: %s", string(output))
 	}
 
 	h.logger.DebugWithContext("ClickHouse health check successful", map[string]interface{}{
 		"namespace": namespace,
-		"service": serviceName,
-		"pod": podName,
-		"output": string(output),
+		"service":   serviceName,
+		"pod":       podName,
+		"output":    string(output),
 	})
 	return nil
 }
@@ -650,8 +650,8 @@ func (h *HealthChecker) isClickHouseSSLEnabled(namespace, podName string) (bool,
 	if err == nil && len(output) > 0 {
 		h.logger.DebugWithContext("detected ClickHouse SSL port 8443", map[string]interface{}{
 			"namespace": namespace,
-			"pod": podName,
-			"output": string(output),
+			"pod":       podName,
+			"output":    string(output),
 		})
 		return true, nil
 	}
@@ -662,7 +662,7 @@ func (h *HealthChecker) isClickHouseSSLEnabled(namespace, podName string) (bool,
 	if err == nil {
 		h.logger.DebugWithContext("detected ClickHouse SSL certificate", map[string]interface{}{
 			"namespace": namespace,
-			"pod": podName,
+			"pod":       podName,
 		})
 		return true, nil
 	}
@@ -670,7 +670,7 @@ func (h *HealthChecker) isClickHouseSSLEnabled(namespace, podName string) (bool,
 	// No SSL detected
 	h.logger.DebugWithContext("ClickHouse SSL not detected, using HTTP", map[string]interface{}{
 		"namespace": namespace,
-		"pod": podName,
+		"pod":       podName,
 	})
 	return false, nil
 }

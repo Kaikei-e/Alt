@@ -6,15 +6,15 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	
+
 	"deploy-cli/domain"
-	"deploy-cli/utils/logger"
-	"deploy-cli/utils/colors"
 	"deploy-cli/driver/helm_driver"
 	"deploy-cli/driver/kubectl_driver"
 	"deploy-cli/gateway/helm_gateway"
 	"deploy-cli/gateway/kubectl_gateway"
 	"deploy-cli/port/kubectl_port"
+	"deploy-cli/utils/colors"
+	"deploy-cli/utils/logger"
 )
 
 // HelmStatusCommand represents the helm-status command
@@ -27,7 +27,7 @@ func NewHelmStatusCommand(logger *logger.Logger) *cobra.Command {
 	statusCmd := &HelmStatusCommand{
 		logger: logger,
 	}
-	
+
 	cmd := &cobra.Command{
 		Use:   "helm-status [environment]",
 		Short: "Check Helm release status for deployment",
@@ -48,25 +48,25 @@ Examples:
   
   # Show detailed pod information
   deploy-cli helm-status production --pods`,
-		Args:    cobra.MaximumNArgs(1),
-		RunE:    statusCmd.run,
+		Args: cobra.MaximumNArgs(1),
+		RunE: statusCmd.run,
 	}
-	
+
 	// Add flags
 	cmd.Flags().String("chart", "", "Check status for specific chart only")
 	cmd.Flags().Bool("pods", false, "Show detailed pod information")
 	cmd.Flags().Bool("history", false, "Show release history")
 	cmd.Flags().String("charts-dir", "/home/koko/Documents/dev/Alt/charts", "Directory containing Helm charts")
-	
+
 	return cmd
 }
 
 // run executes the helm status check
 func (h *HelmStatusCommand) run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	
+
 	colors.PrintInfo("Checking Helm release status")
-	
+
 	// Parse environment (default to production if not specified)
 	env := domain.Production
 	if len(args) > 0 {
@@ -76,20 +76,20 @@ func (h *HelmStatusCommand) run(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("invalid environment: %w", err)
 		}
 	}
-	
+
 	// Get flags
 	chartName, _ := cmd.Flags().GetString("chart")
 	showPods, _ := cmd.Flags().GetBool("pods")
 	showHistory, _ := cmd.Flags().GetBool("history")
 	chartsDir, _ := cmd.Flags().GetString("charts-dir")
-	
+
 	// Create drivers and gateways
 	helmDriver := helm_driver.NewHelmDriver()
 	kubectlDriver := kubectl_driver.NewKubectlDriver()
 	loggerPort := NewLoggerPortAdapter(h.logger)
 	helmGateway := helm_gateway.NewHelmGateway(helmDriver, loggerPort)
 	kubectlGateway := kubectl_gateway.NewKubectlGateway(kubectlDriver, loggerPort)
-	
+
 	// Get charts to check
 	var charts []domain.Chart
 	if chartName != "" {
@@ -103,18 +103,18 @@ func (h *HelmStatusCommand) run(cmd *cobra.Command, args []string) error {
 		chartConfig := domain.NewChartConfig(chartsDir)
 		charts = chartConfig.AllCharts()
 	}
-	
+
 	// Create deployment options
 	options := domain.NewDeploymentOptions()
 	options.Environment = env
 	options.ChartsDir = chartsDir
-	
+
 	// Check status for each chart
 	var successCount, failedCount int
-	
+
 	for _, chart := range charts {
 		colors.PrintStep(fmt.Sprintf("Checking chart: %s", chart.Name))
-		
+
 		// Check Helm release status
 		releaseStatus, err := h.checkHelmReleaseStatus(ctx, helmGateway, chart, options)
 		if err != nil {
@@ -122,10 +122,10 @@ func (h *HelmStatusCommand) run(cmd *cobra.Command, args []string) error {
 			failedCount++
 			continue
 		}
-		
+
 		if releaseStatus != "" {
 			colors.PrintSubInfo(fmt.Sprintf("Release Status: %s", releaseStatus))
-			
+
 			// Show history if requested
 			if showHistory {
 				history, err := h.getHelmHistory(ctx, helmGateway, chart, options)
@@ -136,7 +136,7 @@ func (h *HelmStatusCommand) run(cmd *cobra.Command, args []string) error {
 					fmt.Println(history)
 				}
 			}
-			
+
 			// Check pod status if requested and it's an application chart
 			if showPods && chart.Type == domain.ApplicationChart {
 				podStatus, err := h.checkPodStatus(ctx, kubectlGateway, chart, options)
@@ -150,13 +150,13 @@ func (h *HelmStatusCommand) run(cmd *cobra.Command, args []string) error {
 		} else {
 			colors.PrintWarning(fmt.Sprintf("Release not found: %s", chart.Name))
 		}
-		
+
 		successCount++
 	}
-	
+
 	// Print summary
 	colors.PrintSuccess(fmt.Sprintf("Status check completed: %d charts checked, %d failed", successCount, failedCount))
-	
+
 	return nil
 }
 
@@ -168,7 +168,7 @@ func (h *HelmStatusCommand) checkHelmReleaseStatus(ctx context.Context, helmGate
 	if err != nil {
 		return "", fmt.Errorf("failed to get release status: %w", err)
 	}
-	
+
 	return status.Status, nil
 }
 
@@ -179,7 +179,7 @@ func (h *HelmStatusCommand) getHelmHistory(ctx context.Context, helmGateway *hel
 	if err != nil {
 		return "", fmt.Errorf("failed to get release history: %w", err)
 	}
-	
+
 	return history, nil
 }
 
@@ -187,13 +187,13 @@ func (h *HelmStatusCommand) getHelmHistory(ctx context.Context, helmGateway *hel
 func (h *HelmStatusCommand) checkPodStatus(ctx context.Context, kubectlGateway *kubectl_gateway.KubectlGateway, chart domain.Chart, options *domain.DeploymentOptions) (string, error) {
 	// Get namespace for the chart
 	namespace := options.GetNamespace(chart.Name)
-	
+
 	// Get pod status
 	pods, err := kubectlGateway.GetPods(ctx, namespace, fmt.Sprintf("app.kubernetes.io/name=%s", chart.Name))
 	if err != nil {
 		return "", fmt.Errorf("failed to get pods: %w", err)
 	}
-	
+
 	// Format pods into a readable string
 	return h.formatPodStatus(pods), nil
 }
@@ -203,21 +203,21 @@ func (h *HelmStatusCommand) formatPodStatus(pods []kubectl_port.KubernetesPod) s
 	if len(pods) == 0 {
 		return colors.Yellow("No pods found")
 	}
-	
+
 	var result strings.Builder
-	
+
 	// Add header
 	result.WriteString(fmt.Sprintf("Found %d pod(s):\n", len(pods)))
 	result.WriteString(fmt.Sprintf("%-30s %-15s %-10s %-10s %-10s\n", "NAME", "STATUS", "READY", "RESTARTS", "AGE"))
 	result.WriteString(strings.Repeat("-", 85) + "\n")
-	
+
 	// Count pods by status
 	statusCounts := make(map[string]int)
-	
+
 	// Add pod information
 	for _, pod := range pods {
 		statusCounts[pod.Status]++
-		
+
 		// Apply color based on status
 		var statusDisplay string
 		switch pod.Status {
@@ -230,7 +230,7 @@ func (h *HelmStatusCommand) formatPodStatus(pods []kubectl_port.KubernetesPod) s
 		default:
 			statusDisplay = pod.Status
 		}
-		
+
 		// Apply color to ready status
 		var readyDisplay string
 		if pod.Ready == "True" || strings.Contains(pod.Ready, "/") {
@@ -242,7 +242,7 @@ func (h *HelmStatusCommand) formatPodStatus(pods []kubectl_port.KubernetesPod) s
 		} else {
 			readyDisplay = colors.Red(pod.Ready)
 		}
-		
+
 		// Format restart count with color
 		var restartsDisplay string
 		if pod.Restarts == 0 {
@@ -252,15 +252,15 @@ func (h *HelmStatusCommand) formatPodStatus(pods []kubectl_port.KubernetesPod) s
 		} else {
 			restartsDisplay = colors.Red(fmt.Sprintf("%d", pod.Restarts))
 		}
-		
-		result.WriteString(fmt.Sprintf("%-30s %-25s %-20s %-20s %-10s\n", 
-			pod.Name, 
-			statusDisplay, 
-			readyDisplay, 
-			restartsDisplay, 
+
+		result.WriteString(fmt.Sprintf("%-30s %-25s %-20s %-20s %-10s\n",
+			pod.Name,
+			statusDisplay,
+			readyDisplay,
+			restartsDisplay,
 			pod.Age))
 	}
-	
+
 	// Add summary
 	if len(statusCounts) > 0 {
 		result.WriteString("\nStatus Summary:\n")
@@ -279,6 +279,6 @@ func (h *HelmStatusCommand) formatPodStatus(pods []kubectl_port.KubernetesPod) s
 			result.WriteString(fmt.Sprintf("  %s: %d\n", statusDisplay, count))
 		}
 	}
-	
+
 	return result.String()
 }

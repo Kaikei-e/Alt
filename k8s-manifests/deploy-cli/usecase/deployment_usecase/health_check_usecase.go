@@ -47,7 +47,7 @@ func (u *HealthCheckUsecase) performLayerHealthCheck(ctx context.Context, layer 
 // performChartHealthCheck performs health checks for a specific chart
 func (u *HealthCheckUsecase) performChartHealthCheck(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
 	u.logger.InfoWithContext("performing chart health check", map[string]interface{}{
-		"chart_name":     chart.Name,
+		"chart_name":      chart.Name,
 		"multi_namespace": chart.MultiNamespace,
 	})
 
@@ -393,7 +393,7 @@ func (u *HealthCheckUsecase) getNamespaceForChart(chart domain.Chart) string {
 	if chart.MultiNamespace && len(chart.TargetNamespaces) > 0 {
 		return chart.TargetNamespaces[0]
 	}
-	
+
 	// Use chart type to determine namespace
 	switch chart.Type {
 	case domain.InfrastructureChart:

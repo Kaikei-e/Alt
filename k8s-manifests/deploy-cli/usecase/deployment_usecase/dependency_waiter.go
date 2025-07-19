@@ -26,7 +26,7 @@ func NewDependencyWaiter(healthChecker *HealthChecker, logger logger_port.Logger
 // WaitForDependencies waits for all dependencies of a service to be ready
 func (d *DependencyWaiter) WaitForDependencies(ctx context.Context, serviceName string) error {
 	dependencies := domain.GetServiceDependencies(serviceName)
-	
+
 	if len(dependencies) == 0 {
 		d.logger.Debug("no dependencies found for service",
 			"service", serviceName,
@@ -99,7 +99,7 @@ func (d *DependencyWaiter) waitForSingleDependency(ctx context.Context, serviceN
 // ValidateDependencies validates that all dependencies are currently ready (without waiting)
 func (d *DependencyWaiter) ValidateDependencies(ctx context.Context, serviceName string) error {
 	dependencies := domain.GetServiceDependencies(serviceName)
-	
+
 	if len(dependencies) == 0 {
 		return nil
 	}
@@ -114,7 +114,7 @@ func (d *DependencyWaiter) ValidateDependencies(ctx context.Context, serviceName
 	for _, dep := range requiredDeps {
 		// Create a short timeout context for validation
 		validationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		
+
 		if err := d.healthChecker.WaitForServiceReady(validationCtx, dep.ServiceName, dep.ServiceType, dep.Namespace); err != nil {
 			cancel()
 			return fmt.Errorf("required dependency %s not ready: %w", dep.ServiceName, err)
@@ -137,10 +137,10 @@ func (d *DependencyWaiter) GetDependencyStatus(ctx context.Context, serviceName 
 	for _, dep := range dependencies {
 		// Create a short timeout context for status check
 		statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		
+
 		err := d.healthChecker.WaitForServiceReady(statusCtx, dep.ServiceName, dep.ServiceType, dep.Namespace)
 		status[dep.ServiceName] = (err == nil)
-		
+
 		cancel()
 	}
 

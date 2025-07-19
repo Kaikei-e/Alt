@@ -9,15 +9,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"deploy-cli/domain"
-	"deploy-cli/gateway/kubectl_gateway"
-	"deploy-cli/gateway/helm_gateway"
-	"deploy-cli/usecase/secret_usecase"
-	"deploy-cli/usecase/dependency_usecase"
-	"deploy-cli/driver/kubectl_driver"
-	"deploy-cli/driver/helm_driver"
 	"deploy-cli/driver/filesystem_driver"
-	"deploy-cli/utils/logger"
+	"deploy-cli/driver/helm_driver"
+	"deploy-cli/driver/kubectl_driver"
+	"deploy-cli/gateway/helm_gateway"
+	"deploy-cli/gateway/kubectl_gateway"
+	"deploy-cli/usecase/dependency_usecase"
+	"deploy-cli/usecase/secret_usecase"
 	"deploy-cli/utils/colors"
+	"deploy-cli/utils/logger"
 )
 
 // TroubleshootCommand provides interactive troubleshooting capabilities
@@ -131,7 +131,7 @@ Common Issues Detected:
 			}
 
 			troubleshooter := createTroubleshooter(log)
-			
+
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
 
@@ -151,7 +151,7 @@ Common Issues Detected:
 				if err := saveDiagnosticReport(report, outputFile); err != nil {
 					log.Warn("Failed to save diagnostic report", "error", err, "file", outputFile)
 				} else {
-					fmt.Printf("%s Diagnostic report saved to %s\n", 
+					fmt.Printf("%s Diagnostic report saved to %s\n",
 						colors.Green("✓"), outputFile)
 				}
 			}
@@ -517,12 +517,12 @@ func createTroubleshooter(log *logger.Logger) *TroubleshootCommand {
 
 // Placeholder structs for the diagnostic report and health status
 type DiagnosticReport struct {
-	Environment    domain.Environment                 `json:"environment"`
-	Timestamp      time.Time                         `json:"timestamp"`
-	OverallHealth  string                            `json:"overall_health"`
-	Issues         []DiagnosticIssue                 `json:"issues"`
-	Recommendations []string                         `json:"recommendations"`
-	Summary        DiagnosticSummary                 `json:"summary"`
+	Environment     domain.Environment `json:"environment"`
+	Timestamp       time.Time          `json:"timestamp"`
+	OverallHealth   string             `json:"overall_health"`
+	Issues          []DiagnosticIssue  `json:"issues"`
+	Recommendations []string           `json:"recommendations"`
+	Summary         DiagnosticSummary  `json:"summary"`
 }
 
 type DiagnosticIssue struct {
@@ -541,40 +541,40 @@ type DiagnosticSummary struct {
 }
 
 type HealthStatus struct {
-	Environment  domain.Environment       `json:"environment"`
-	Component    string                   `json:"component"`
-	OverallHealth string                  `json:"overall_health"`
-	Components   []ComponentHealth        `json:"components"`
-	Timestamp    time.Time               `json:"timestamp"`
+	Environment   domain.Environment `json:"environment"`
+	Component     string             `json:"component"`
+	OverallHealth string             `json:"overall_health"`
+	Components    []ComponentHealth  `json:"components"`
+	Timestamp     time.Time          `json:"timestamp"`
 }
 
 type ComponentHealth struct {
-	Name         string            `json:"name"`
-	Status       string            `json:"status"`
-	Ready        bool              `json:"ready"`
-	Restarts     int               `json:"restarts"`
-	Age          string            `json:"age"`
-	Resources    map[string]string `json:"resources,omitempty"`
-	Issues       []string          `json:"issues,omitempty"`
+	Name      string            `json:"name"`
+	Status    string            `json:"status"`
+	Ready     bool              `json:"ready"`
+	Restarts  int               `json:"restarts"`
+	Age       string            `json:"age"`
+	Resources map[string]string `json:"resources,omitempty"`
+	Issues    []string          `json:"issues,omitempty"`
 }
 
 type DependencyAnalysis struct {
-	Environment     domain.Environment            `json:"environment"`
-	TotalCharts     int                          `json:"total_charts"`
-	Dependencies    int                          `json:"dependencies"`
-	CircularDeps    [][]string                   `json:"circular_dependencies"`
-	MissingDeps     []string                     `json:"missing_dependencies"`
-	DeploymentOrder [][]string                   `json:"deployment_order"`
-	Issues          []string                     `json:"issues"`
-	Graph           map[string][]string          `json:"dependency_graph"`
+	Environment     domain.Environment  `json:"environment"`
+	TotalCharts     int                 `json:"total_charts"`
+	Dependencies    int                 `json:"dependencies"`
+	CircularDeps    [][]string          `json:"circular_dependencies"`
+	MissingDeps     []string            `json:"missing_dependencies"`
+	DeploymentOrder [][]string          `json:"deployment_order"`
+	Issues          []string            `json:"issues"`
+	Graph           map[string][]string `json:"dependency_graph"`
 }
 
 // Implementation methods for TroubleshootCommand
 func (t *TroubleshootCommand) RunDiagnostics(ctx context.Context, env domain.Environment, verbose bool) (*DiagnosticReport, error) {
 	report := &DiagnosticReport{
-		Environment: env,
-		Timestamp:   time.Now(),
-		Issues:      make([]DiagnosticIssue, 0),
+		Environment:     env,
+		Timestamp:       time.Now(),
+		Issues:          make([]DiagnosticIssue, 0),
 		Recommendations: make([]string, 0),
 	}
 
@@ -701,7 +701,7 @@ func (t *TroubleshootCommand) WatchHealth(ctx context.Context, component string,
 				fmt.Printf("%s Health check failed: %v\n", colors.Red("✗"), err)
 				continue
 			}
-			fmt.Printf("%s [%s] Overall health: %s\n", 
+			fmt.Printf("%s [%s] Overall health: %s\n",
 				colors.Blue("📊"), health.Timestamp.Format("15:04:05"), health.OverallHealth)
 		}
 	}
@@ -766,17 +766,17 @@ func (t *TroubleshootCommand) RunInteractiveSession(ctx context.Context, env dom
 			icon = "✗"
 			color = colors.Red
 		}
-		fmt.Printf("  %d. %s [%s] %s: %s\n", 
+		fmt.Printf("  %d. %s [%s] %s: %s\n",
 			i+1, color(icon), issue.Category, issue.Component, issue.Description)
 	}
 
 	// Step 3: Interactive resolution
 	fmt.Printf("\n%s Step 3: Problem resolution\n", colors.Blue("3"))
-	
+
 	for i, issue := range report.Issues {
 		fmt.Printf("\n--- Issue %d: %s ---\n", i+1, issue.Description)
 		fmt.Printf("Suggested solution: %s\n", issue.Solution)
-		
+
 		if autoFix {
 			fmt.Printf("%s Auto-fixing...\n", colors.Blue("→"))
 			// Implement auto-fix logic here
@@ -784,7 +784,7 @@ func (t *TroubleshootCommand) RunInteractiveSession(ctx context.Context, env dom
 			fmt.Print("Apply this fix? (y/N/s to skip): ")
 			var response string
 			fmt.Scanln(&response)
-			
+
 			switch strings.ToLower(response) {
 			case "y", "yes":
 				fmt.Printf("%s Applying fix...\n", colors.Blue("→"))
@@ -812,7 +812,7 @@ func (t *TroubleshootCommand) RunRecovery(ctx context.Context, env domain.Enviro
 
 	// Implementation would include:
 	// - Helm rollback procedures
-	// - Pod restart strategies  
+	// - Pod restart strategies
 	// - Secret conflict resolution
 	// - Service restoration
 	// - Data validation and recovery
@@ -825,7 +825,7 @@ func (t *TroubleshootCommand) RunRecovery(ctx context.Context, env domain.Enviro
 func displayDiagnosticReport(report *DiagnosticReport) {
 	fmt.Printf("\nDiagnostic Report for %s\n", report.Environment.String())
 	fmt.Println("====================================")
-	
+
 	// Overall health
 	healthIcon := "✓"
 	healthColor := colors.Green
@@ -836,9 +836,9 @@ func displayDiagnosticReport(report *DiagnosticReport) {
 		healthIcon = "✗"
 		healthColor = colors.Red
 	}
-	
+
 	fmt.Printf("Overall Health: %s %s\n", healthColor(healthIcon), report.OverallHealth)
-	
+
 	// Summary
 	fmt.Printf("\nSummary:\n")
 	fmt.Printf("  Total Issues: %d\n", report.Summary.TotalIssues)
@@ -865,8 +865,8 @@ func displayDiagnosticReport(report *DiagnosticReport) {
 				icon = "✗"
 				color = colors.Red
 			}
-			
-			fmt.Printf("%d. %s [%s] %s: %s\n", 
+
+			fmt.Printf("%d. %s [%s] %s: %s\n",
 				i+1, color(icon), issue.Category, issue.Component, issue.Description)
 			fmt.Printf("   Solution: %s\n", issue.Solution)
 		}
@@ -889,7 +889,7 @@ func displayHealthStatus(health *HealthStatus) {
 		fmt.Printf("Component: %s\n", health.Component)
 	}
 	fmt.Println("===========================")
-	
+
 	// Overall health
 	healthIcon := "✓"
 	healthColor := colors.Green
@@ -900,7 +900,7 @@ func displayHealthStatus(health *HealthStatus) {
 		healthIcon = "✗"
 		healthColor = colors.Red
 	}
-	
+
 	fmt.Printf("Overall Health: %s %s\n", healthColor(healthIcon), health.OverallHealth)
 	fmt.Printf("Checked at: %s\n", health.Timestamp.Format("2006-01-02 15:04:05"))
 }
@@ -908,29 +908,29 @@ func displayHealthStatus(health *HealthStatus) {
 func displayDependencyAnalysis(analysis *DependencyAnalysis, showGraph bool) {
 	fmt.Printf("\nDependency Analysis for %s\n", analysis.Environment.String())
 	fmt.Println("=====================================")
-	
+
 	fmt.Printf("Charts: %d\n", analysis.TotalCharts)
 	fmt.Printf("Dependencies: %d\n", analysis.Dependencies)
-	
+
 	if len(analysis.CircularDeps) > 0 {
 		fmt.Printf("%s Circular Dependencies: %d\n", colors.Yellow("⚠"), len(analysis.CircularDeps))
 		for i, cycle := range analysis.CircularDeps {
 			fmt.Printf("  %d. %v\n", i+1, cycle)
 		}
 	}
-	
+
 	if len(analysis.MissingDeps) > 0 {
 		fmt.Printf("%s Missing Dependencies: %d\n", colors.Red("✗"), len(analysis.MissingDeps))
 		for i, missing := range analysis.MissingDeps {
 			fmt.Printf("  %d. %s\n", i+1, missing)
 		}
 	}
-	
+
 	fmt.Printf("\nDeployment Order (%d levels):\n", len(analysis.DeploymentOrder))
 	for i, level := range analysis.DeploymentOrder {
 		fmt.Printf("  Level %d: %v\n", i+1, level)
 	}
-	
+
 	if showGraph && len(analysis.Graph) > 0 {
 		fmt.Printf("\nDependency Graph:\n")
 		for chart, deps := range analysis.Graph {

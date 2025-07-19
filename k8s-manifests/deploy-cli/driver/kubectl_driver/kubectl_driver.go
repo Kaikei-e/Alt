@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	
+
 	"deploy-cli/port/kubectl_port"
 )
 
@@ -31,10 +31,10 @@ func (k *KubectlDriver) GetNodes(ctx context.Context) ([]kubectl_port.Kubernetes
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get nodes failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var nodes []kubectl_port.KubernetesNode
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -51,20 +51,20 @@ func (k *KubectlDriver) GetNodes(ctx context.Context) ([]kubectl_port.Kubernetes
 			nodes = append(nodes, node)
 		}
 	}
-	
+
 	return nodes, nil
 }
 
 // GetPods returns pods in the specified namespace
 func (k *KubectlDriver) GetPods(ctx context.Context, namespace string, selector string) ([]kubectl_port.KubernetesPod, error) {
 	args := []string{"get", "pods", "--no-headers", "-o", "custom-columns=NAME:.metadata.name,NAMESPACE:.metadata.namespace,STATUS:.status.phase,READY:.status.conditions[-1].status,RESTARTS:.status.containerStatuses[0].restartCount,AGE:.metadata.creationTimestamp"}
-	
+
 	if namespace != "" {
 		args = append(args, "--namespace", namespace)
 	} else {
 		args = append(args, "--all-namespaces")
 	}
-	
+
 	if selector != "" {
 		// Check if it's a field selector or label selector
 		if strings.Contains(selector, "status.phase") || strings.Contains(selector, "metadata.") {
@@ -73,16 +73,16 @@ func (k *KubectlDriver) GetPods(ctx context.Context, namespace string, selector 
 			args = append(args, "--selector", selector)
 		}
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get pods failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var pods []kubectl_port.KubernetesPod
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -101,7 +101,7 @@ func (k *KubectlDriver) GetPods(ctx context.Context, namespace string, selector 
 			pods = append(pods, pod)
 		}
 	}
-	
+
 	return pods, nil
 }
 
@@ -112,10 +112,10 @@ func (k *KubectlDriver) GetNamespaces(ctx context.Context) ([]kubectl_port.Kuber
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get namespaces failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var namespaces []kubectl_port.KubernetesNamespace
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -130,7 +130,7 @@ func (k *KubectlDriver) GetNamespaces(ctx context.Context) ([]kubectl_port.Kuber
 			namespaces = append(namespaces, namespace)
 		}
 	}
-	
+
 	return namespaces, nil
 }
 
@@ -160,16 +160,16 @@ func (k *KubectlDriver) GetSecrets(ctx context.Context, namespace string) ([]kub
 	if namespace != "" {
 		args = append(args, "--namespace", namespace)
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get secrets failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var secrets []kubectl_port.KubernetesSecret
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -185,7 +185,7 @@ func (k *KubectlDriver) GetSecrets(ctx context.Context, namespace string) ([]kub
 			secrets = append(secrets, secret)
 		}
 	}
-	
+
 	return secrets, nil
 }
 
@@ -196,10 +196,10 @@ func (k *KubectlDriver) GetSecretsWithMetadata(ctx context.Context) ([]kubectl_p
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get secrets with metadata failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var secrets []kubectl_port.KubernetesSecretWithMetadata
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -212,7 +212,7 @@ func (k *KubectlDriver) GetSecretsWithMetadata(ctx context.Context) ([]kubectl_p
 				Type:      fields[2],
 				Data:      make(map[string][]byte),
 			}
-			
+
 			// Parse optional fields
 			if len(fields) >= 4 && fields[3] != "<none>" {
 				secret.ReleaseName = fields[3]
@@ -223,11 +223,11 @@ func (k *KubectlDriver) GetSecretsWithMetadata(ctx context.Context) ([]kubectl_p
 			if len(fields) >= 6 && fields[5] != "<none>" {
 				secret.Age = fields[5]
 			}
-			
+
 			secrets = append(secrets, secret)
 		}
 	}
-	
+
 	return secrets, nil
 }
 
@@ -248,14 +248,14 @@ func (k *KubectlDriver) UpdateSecret(ctx context.Context, secret kubectl_port.Ku
 		for key, value := range secret.Data {
 			patchData[key] = string(value)
 		}
-		
+
 		patchJSON, err := json.Marshal(map[string]interface{}{
 			"data": patchData,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to marshal patch data: %w", err)
 		}
-		
+
 		cmd := exec.CommandContext(ctx, "kubectl", "patch", "secret", secret.Name, "-n", secret.Namespace, "-p", string(patchJSON))
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -272,7 +272,7 @@ func (k *KubectlDriver) GetSecret(ctx context.Context, name, namespace string) (
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get secret failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var secretData struct {
 		Metadata struct {
 			Name        string            `json:"name"`
@@ -280,14 +280,14 @@ func (k *KubectlDriver) GetSecret(ctx context.Context, name, namespace string) (
 			Labels      map[string]string `json:"labels"`
 			Annotations map[string]string `json:"annotations"`
 		} `json:"metadata"`
-		Type string                 `json:"type"`
-		Data map[string]string      `json:"data"`
+		Type string            `json:"type"`
+		Data map[string]string `json:"data"`
 	}
-	
+
 	if err := json.Unmarshal(output, &secretData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal secret: %w", err)
 	}
-	
+
 	// Convert data from base64 strings to bytes
 	data := make(map[string][]byte)
 	for key, value := range secretData.Data {
@@ -297,7 +297,7 @@ func (k *KubectlDriver) GetSecret(ctx context.Context, name, namespace string) (
 		}
 		data[key] = decoded
 	}
-	
+
 	return &kubectl_port.KubernetesSecret{
 		Name:        secretData.Metadata.Name,
 		Namespace:   secretData.Metadata.Namespace,
@@ -308,16 +308,111 @@ func (k *KubectlDriver) GetSecret(ctx context.Context, name, namespace string) (
 	}, nil
 }
 
-// ApplySecret applies or updates a secret
+// ApplySecret applies or updates a secret with proper handling of immutable type field
 func (k *KubectlDriver) ApplySecret(ctx context.Context, secret *kubectl_port.KubernetesSecret) error {
+	// Check if secret already exists
+	existingSecret, err := k.GetSecret(ctx, secret.Name, secret.Namespace)
+	if err != nil {
+		// Secret doesn't exist, create new one
+		return k.createNewSecret(ctx, secret)
+	}
+
+	// Secret exists, check if type needs to be changed
+	if existingSecret.Type != secret.Type {
+		// Type is immutable, need to delete and recreate
+		if err := k.deleteAndRecreateSecret(ctx, secret); err != nil {
+			return fmt.Errorf("failed to recreate secret with new type: %w", err)
+		}
+		return nil
+	}
+
+	// Type is same, can patch data and metadata
+	return k.patchSecretData(ctx, secret)
+}
+
+// createNewSecret creates a new secret using kubectl apply
+func (k *KubectlDriver) createNewSecret(ctx context.Context, secret *kubectl_port.KubernetesSecret) error {
+	manifestJSON, err := k.buildSecretManifest(secret)
+	if err != nil {
+		return err
+	}
+
+	// Apply using kubectl
+	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(string(manifestJSON))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("kubectl apply secret failed: %w, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// deleteAndRecreateSecret deletes existing secret and creates new one with different type
+func (k *KubectlDriver) deleteAndRecreateSecret(ctx context.Context, secret *kubectl_port.KubernetesSecret) error {
+	// Delete existing secret
+	deleteCmd := exec.CommandContext(ctx, "kubectl", "delete", "secret", secret.Name, "-n", secret.Namespace, "--ignore-not-found=true")
+	if output, err := deleteCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to delete existing secret: %w, output: %s", err, string(output))
+	}
+
+	// Wait a moment for deletion to complete
+	time.Sleep(2 * time.Second)
+
+	// Create new secret
+	return k.createNewSecret(ctx, secret)
+}
+
+// patchSecretData patches only the data of existing secret (type unchanged)
+func (k *KubectlDriver) patchSecretData(ctx context.Context, secret *kubectl_port.KubernetesSecret) error {
 	// Convert secret data to base64 encoded strings
 	data := make(map[string]string)
 	for key, value := range secret.Data {
-		// Base64 encode the data as required by Kubernetes Secret spec
 		encoded := base64.StdEncoding.EncodeToString(value)
 		data[key] = encoded
 	}
-	
+
+	// Create patch for data and metadata only
+	patchData := map[string]interface{}{
+		"data": data,
+	}
+
+	// Add metadata updates if needed
+	metadata := make(map[string]interface{})
+	if len(secret.Labels) > 0 {
+		metadata["labels"] = secret.Labels
+	}
+	if len(secret.Annotations) > 0 {
+		metadata["annotations"] = secret.Annotations
+	}
+	if len(metadata) > 0 {
+		patchData["metadata"] = metadata
+	}
+
+	patchJSON, err := json.Marshal(patchData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal patch data: %w", err)
+	}
+
+	// Apply patch using kubectl
+	cmd := exec.CommandContext(ctx, "kubectl", "patch", "secret", secret.Name, "-n", secret.Namespace, "--type=strategic", "-p", string(patchJSON))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("kubectl patch secret failed: %w, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// buildSecretManifest builds the complete secret manifest
+func (k *KubectlDriver) buildSecretManifest(secret *kubectl_port.KubernetesSecret) ([]byte, error) {
+	// Convert secret data to base64 encoded strings
+	data := make(map[string]string)
+	for key, value := range secret.Data {
+		encoded := base64.StdEncoding.EncodeToString(value)
+		data[key] = encoded
+	}
+
 	// Create the secret manifest
 	secretManifest := map[string]interface{}{
 		"apiVersion": "v1",
@@ -329,34 +424,21 @@ func (k *KubectlDriver) ApplySecret(ctx context.Context, secret *kubectl_port.Ku
 		"type": secret.Type,
 		"data": data,
 	}
-	
+
 	// Add labels if they exist
 	if len(secret.Labels) > 0 {
 		metadata := secretManifest["metadata"].(map[string]interface{})
 		metadata["labels"] = secret.Labels
 	}
-	
+
 	// Add annotations if they exist
 	if len(secret.Annotations) > 0 {
 		metadata := secretManifest["metadata"].(map[string]interface{})
 		metadata["annotations"] = secret.Annotations
 	}
-	
-	// Convert to JSON for kubectl apply
-	manifestJSON, err := json.Marshal(secretManifest)
-	if err != nil {
-		return fmt.Errorf("failed to marshal secret manifest: %w", err)
-	}
-	
-	// Apply using kubectl
-	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(string(manifestJSON))
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("kubectl apply secret failed: %w, output: %s", err, string(output))
-	}
-	
-	return nil
+
+	// Convert to JSON
+	return json.Marshal(secretManifest)
 }
 
 // DeleteSecret deletes a secret
@@ -372,7 +454,7 @@ func (k *KubectlDriver) DeleteSecret(ctx context.Context, name, namespace string
 // GetResourcesWithMetadata returns any resource type with Helm metadata across all namespaces
 func (k *KubectlDriver) GetResourcesWithMetadata(ctx context.Context, resourceType string) ([]kubectl_port.KubernetesResourceWithMetadata, error) {
 	var resources []kubectl_port.KubernetesResourceWithMetadata
-	
+
 	// Build kubectl command for the specific resource type
 	cmd := exec.CommandContext(ctx, "kubectl", "get", resourceType, "--all-namespaces", "--no-headers", "-o", "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,RELEASE:.metadata.annotations.meta\\.helm\\.sh/release-name,RELEASE_NS:.metadata.annotations.meta\\.helm\\.sh/release-namespace,AGE:.metadata.creationTimestamp")
 	output, err := cmd.CombinedOutput()
@@ -385,7 +467,7 @@ func (k *KubectlDriver) GetResourcesWithMetadata(ctx context.Context, resourceTy
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		
+
 		fields := strings.Fields(line)
 		if len(fields) >= 5 {
 			namespace := fields[0]
@@ -393,12 +475,12 @@ func (k *KubectlDriver) GetResourcesWithMetadata(ctx context.Context, resourceTy
 			releaseName := fields[2]
 			releaseNamespace := fields[3]
 			age := fields[4]
-			
+
 			// Skip resources without Helm metadata
 			if releaseName == "<none>" || releaseNamespace == "<none>" {
 				continue
 			}
-			
+
 			resource := kubectl_port.KubernetesResourceWithMetadata{
 				ResourceType:     resourceType,
 				Name:             name,
@@ -407,7 +489,7 @@ func (k *KubectlDriver) GetResourcesWithMetadata(ctx context.Context, resourceTy
 				ReleaseNamespace: releaseNamespace,
 				Age:              age,
 			}
-			
+
 			resources = append(resources, resource)
 		}
 	}
@@ -432,10 +514,10 @@ func (k *KubectlDriver) GetPersistentVolumes(ctx context.Context) ([]kubectl_por
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get pv failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var pvs []kubectl_port.KubernetesPersistentVolume
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -452,7 +534,7 @@ func (k *KubectlDriver) GetPersistentVolumes(ctx context.Context) ([]kubectl_por
 			pvs = append(pvs, pv)
 		}
 	}
-	
+
 	return pvs, nil
 }
 
@@ -463,7 +545,7 @@ func (k *KubectlDriver) CreatePersistentVolume(ctx context.Context, pv kubectl_p
 	if err != nil {
 		return fmt.Errorf("failed to check existing PVs: %w", err)
 	}
-	
+
 	for _, existingPV := range existingPVs {
 		if existingPV.Name == pv.Name {
 			// PV already exists, check if it needs to be updated
@@ -480,9 +562,9 @@ func (k *KubectlDriver) CreatePersistentVolume(ctx context.Context, pv kubectl_p
 			}
 		}
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
-	
+
 	// Build YAML manifest using local storage instead of hostPath for local-storage class
 	var storageSpec string
 	if pv.StorageClass == "local-storage" {
@@ -501,7 +583,7 @@ func (k *KubectlDriver) CreatePersistentVolume(ctx context.Context, pv kubectl_p
 		storageSpec = fmt.Sprintf(`  hostPath:
     path: %s`, pv.HostPath)
 	}
-	
+
 	yaml := fmt.Sprintf(`apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -518,7 +600,7 @@ spec:
   storageClassName: %s
 %s
 `, pv.Name, pv.Capacity, pv.StorageClass, storageSpec)
-	
+
 	cmd.Stdin = strings.NewReader(yaml)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -545,16 +627,16 @@ func (k *KubectlDriver) GetPersistentVolumeClaims(ctx context.Context, namespace
 	} else {
 		args = append(args, "--all-namespaces")
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get pvc failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var pvcs []kubectl_port.KubernetesPersistentVolumeClaim
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -571,7 +653,7 @@ func (k *KubectlDriver) GetPersistentVolumeClaims(ctx context.Context, namespace
 			pvcs = append(pvcs, pvc)
 		}
 	}
-	
+
 	return pvcs, nil
 }
 
@@ -582,10 +664,10 @@ func (k *KubectlDriver) GetStorageClasses(ctx context.Context) ([]kubectl_port.K
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get storageclass failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var scs []kubectl_port.KubernetesStorageClass
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -600,7 +682,7 @@ func (k *KubectlDriver) GetStorageClasses(ctx context.Context) ([]kubectl_port.K
 			scs = append(scs, sc)
 		}
 	}
-	
+
 	return scs, nil
 }
 
@@ -612,7 +694,7 @@ metadata:
   name: %s
 provisioner: %s
 `, sc.Name, sc.Provisioner)
-	
+
 	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(yaml)
 	output, err := cmd.CombinedOutput()
@@ -628,16 +710,16 @@ func (k *KubectlDriver) GetStatefulSets(ctx context.Context, namespace string) (
 	if namespace != "" {
 		args = append(args, "--namespace", namespace)
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get statefulset failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var sts []kubectl_port.KubernetesStatefulSet
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -653,7 +735,7 @@ func (k *KubectlDriver) GetStatefulSets(ctx context.Context, namespace string) (
 			sts = append(sts, ss)
 		}
 	}
-	
+
 	return sts, nil
 }
 
@@ -663,7 +745,7 @@ func (k *KubectlDriver) DeleteStatefulSet(ctx context.Context, name, namespace s
 	if force {
 		args = append(args, "--force", "--grace-period=0")
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil && !strings.Contains(string(output), "not found") {
@@ -678,16 +760,16 @@ func (k *KubectlDriver) GetDeployments(ctx context.Context, namespace string) ([
 	if namespace != "" {
 		args = append(args, "--namespace", namespace)
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("kubectl get deployment failed: %w, output: %s", err, string(output))
 	}
-	
+
 	var deployments []kubectl_port.KubernetesDeployment
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -705,7 +787,7 @@ func (k *KubectlDriver) GetDeployments(ctx context.Context, namespace string) ([
 			deployments = append(deployments, deployment)
 		}
 	}
-	
+
 	return deployments, nil
 }
 
@@ -725,7 +807,7 @@ func (k *KubectlDriver) RolloutStatus(ctx context.Context, resourceType, name, n
 	if timeout > 0 {
 		args = append(args, "--timeout", timeout.String())
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -743,12 +825,12 @@ func (k *KubectlDriver) WaitForRollout(ctx context.Context, resourceType, name, 
 		timeoutCtx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	
+
 	args := []string{"rollout", "status", fmt.Sprintf("%s/%s", resourceType, name), "--namespace", namespace, "--watch=false"}
 	if timeout > 0 {
 		args = append(args, "--timeout", timeout.String())
 	}
-	
+
 	cmd := exec.CommandContext(timeoutCtx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -762,7 +844,7 @@ func (k *KubectlDriver) WaitForRollout(ctx context.Context, resourceType, name, 
 				Output:       string(output),
 			}
 		}
-		
+
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return &KubectlCommandError{
 				Command:  "rollout status",
@@ -772,7 +854,7 @@ func (k *KubectlDriver) WaitForRollout(ctx context.Context, resourceType, name, 
 				Cause:    err,
 			}
 		}
-		
+
 		return fmt.Errorf("kubectl rollout status wait failed: %w, output: %s", err, string(output))
 	}
 	return nil
@@ -790,7 +872,7 @@ type RolloutTimeoutError struct {
 }
 
 func (e *RolloutTimeoutError) Error() string {
-	return fmt.Sprintf("rollout wait timed out after %v for %s/%s in namespace %s", 
+	return fmt.Sprintf("rollout wait timed out after %v for %s/%s in namespace %s",
 		e.Timeout, e.ResourceType, e.Name, e.Namespace)
 }
 
@@ -808,7 +890,7 @@ type KubectlCommandError struct {
 }
 
 func (e *KubectlCommandError) Error() string {
-	return fmt.Sprintf("kubectl %s failed with exit code %d: %s", 
+	return fmt.Sprintf("kubectl %s failed with exit code %d: %s",
 		e.Command, e.ExitCode, e.Output)
 }
 

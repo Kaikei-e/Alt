@@ -104,7 +104,7 @@ func (u *StatefulSetManagementUsecase) prepareStatefulSetRecovery(ctx context.Co
 	}
 
 	u.logger.InfoWithContext("performing StatefulSet recovery for identified charts", map[string]interface{}{
-		"environment": options.Environment.String(),
+		"environment":       options.Environment.String(),
 		"charts_to_recover": len(chartsNeedingRecovery),
 	})
 
@@ -121,9 +121,9 @@ func (u *StatefulSetManagementUsecase) prepareStatefulSetRecovery(ctx context.Co
 	}
 
 	u.logger.InfoWithContext("StatefulSet recovery preparation completed", map[string]interface{}{
-		"environment":       options.Environment.String(),
-		"charts_processed":  len(chartsNeedingRecovery),
-		"charts_skipped":    len(statefulSetCharts) - len(chartsNeedingRecovery),
+		"environment":      options.Environment.String(),
+		"charts_processed": len(chartsNeedingRecovery),
+		"charts_skipped":   len(statefulSetCharts) - len(chartsNeedingRecovery),
 	})
 
 	return nil
@@ -132,7 +132,7 @@ func (u *StatefulSetManagementUsecase) prepareStatefulSetRecovery(ctx context.Co
 // safeStatefulSetRecreation safely recreates StatefulSet to resolve conflicts
 func (u *StatefulSetManagementUsecase) safeStatefulSetRecreation(ctx context.Context, chartName, namespace string) error {
 	statefulSetName := chartName // postgres, auth-postgres, etc.
-	
+
 	u.logger.InfoWithContext("checking for existing StatefulSet", map[string]interface{}{
 		"statefulset": statefulSetName,
 		"namespace":   namespace,
@@ -176,9 +176,9 @@ func (u *StatefulSetManagementUsecase) safeStatefulSetRecreation(ctx context.Con
 		}
 
 		u.logger.InfoWithContext("StatefulSet safely removed", map[string]interface{}{
-			"statefulset":    statefulSetName,
-			"namespace":      namespace,
-			"pvc_preserved":  true,
+			"statefulset":   statefulSetName,
+			"namespace":     namespace,
+			"pvc_preserved": true,
 		})
 	} else {
 		u.logger.InfoWithContext("no existing StatefulSet found, proceeding with fresh deployment", map[string]interface{}{
@@ -242,7 +242,7 @@ func (u *StatefulSetManagementUsecase) checkStatefulSetNeedsRecovery(ctx context
 	}
 
 	readinessStatus := strings.TrimSpace(strings.Trim(output, "'"))
-	
+
 	// Check if StatefulSet is ready (1/1 or similar)
 	if readinessStatus == "1/1" || readinessStatus == "0/0" {
 		// Step 3: Check pod health for ready StatefulSets
@@ -289,17 +289,17 @@ func (u *StatefulSetManagementUsecase) checkStatefulSetNeedsRecovery(ctx context
 	// Check for update conflicts or other issues
 	updateRevision, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "statefulset", name, "-n", namespace, "-o", "jsonpath='{.status.updateRevision}'")
 	currentRevision, err2 := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "statefulset", name, "-n", namespace, "-o", "jsonpath='{.status.currentRevision}'")
-	
+
 	if err == nil && err2 == nil {
 		updateRev := strings.TrimSpace(strings.Trim(updateRevision, "'"))
 		currentRev := strings.TrimSpace(strings.Trim(currentRevision, "'"))
-		
+
 		if updateRev != currentRev && updateRev != "" && currentRev != "" {
 			u.logger.InfoWithContext("StatefulSet has update conflicts, recovery needed", map[string]interface{}{
-				"statefulset":       name,
-				"namespace":         namespace,
-				"current_revision":  currentRev,
-				"update_revision":   updateRev,
+				"statefulset":      name,
+				"namespace":        namespace,
+				"current_revision": currentRev,
+				"update_revision":  updateRev,
 			})
 			return true, "update_conflict", nil
 		}
@@ -347,8 +347,8 @@ func (u *StatefulSetManagementUsecase) checkStatefulSetPodHealth(ctx context.Con
 
 			podStatus := fields[2]
 			// Check for problematic pod states
-			if podStatus == "CrashLoopBackOff" || podStatus == "Error" || podStatus == "Failed" || 
-			   podStatus == "ImagePullBackOff" || podStatus == "InvalidImageName" || podStatus == "ErrImagePull" {
+			if podStatus == "CrashLoopBackOff" || podStatus == "Error" || podStatus == "Failed" ||
+				podStatus == "ImagePullBackOff" || podStatus == "InvalidImageName" || podStatus == "ErrImagePull" {
 				u.logger.WarnWithContext("found unhealthy pod", map[string]interface{}{
 					"pod":         fields[0],
 					"status":      podStatus,
@@ -412,7 +412,7 @@ func (u *StatefulSetManagementUsecase) waitForPodsTermination(ctx context.Contex
 		// Check with all possible label selectors
 		allPodsTerminated := true
 		var foundPods []string
-		
+
 		for _, selector := range labelSelectors {
 			output, err := u.systemGateway.ExecuteCommand(ctx, "kubectl", "get", "pods", "-n", namespace, "-l", selector, "--no-headers")
 			if err != nil {
@@ -452,11 +452,11 @@ func (u *StatefulSetManagementUsecase) waitForPodsTermination(ctx context.Contex
 		// Log detailed pod status for debugging
 		if len(foundPods) > 0 {
 			u.logger.InfoWithContext("pods still running, waiting for termination", map[string]interface{}{
-				"statefulset":     name,
-				"namespace":       namespace,
-				"elapsed":         fmt.Sprintf("%ds", i),
-				"remaining_pods":  foundPods,
-				"timeout_in":      fmt.Sprintf("%ds", timeoutSeconds-i),
+				"statefulset":    name,
+				"namespace":      namespace,
+				"elapsed":        fmt.Sprintf("%ds", i),
+				"remaining_pods": foundPods,
+				"timeout_in":     fmt.Sprintf("%ds", timeoutSeconds-i),
 			})
 		}
 
@@ -493,7 +493,7 @@ func (u *StatefulSetManagementUsecase) waitForPodsTermination(ctx context.Contex
 			"timeout_seconds":    timeoutSeconds,
 			"still_running_pods": stillRunningPods,
 		})
-		
+
 		// Continue with deployment instead of failing - pods might be terminating gracefully
 		u.logger.InfoWithContext("continuing with deployment despite timeout", map[string]interface{}{
 			"statefulset": name,
@@ -560,7 +560,7 @@ func (u *StatefulSetManagementUsecase) isStatefulSetChart(chartName string) bool
 	statefulSetCharts := []string{
 		"postgres", "auth-postgres", "kratos-postgres", "clickhouse", "meilisearch",
 	}
-	
+
 	for _, stsChart := range statefulSetCharts {
 		if chartName == stsChart {
 			return true
@@ -601,7 +601,7 @@ func (u *StatefulSetManagementUsecase) getNamespaceForChart(chart domain.Chart) 
 	if chart.MultiNamespace && len(chart.TargetNamespaces) > 0 {
 		return chart.TargetNamespaces[0]
 	}
-	
+
 	// Use chart type to determine namespace
 	switch chart.Type {
 	case domain.InfrastructureChart:

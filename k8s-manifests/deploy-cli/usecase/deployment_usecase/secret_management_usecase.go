@@ -20,9 +20,9 @@ type SecretRequirement struct {
 
 // SecretManagementUsecase handles secret creation, validation, and Helm ownership management
 type SecretManagementUsecase struct {
-	kubectlGateway    *kubectl_gateway.KubectlGateway
-	secretUsecase     *secret_usecase.SecretUsecase
-	logger            logger_port.LoggerPort
+	kubectlGateway *kubectl_gateway.KubectlGateway
+	secretUsecase  *secret_usecase.SecretUsecase
+	logger         logger_port.LoggerPort
 }
 
 // NewSecretManagementUsecase creates a new secret management usecase
@@ -115,7 +115,7 @@ func (u *SecretManagementUsecase) validateChartSecrets(ctx context.Context, char
 // validateSecretExistence checks if required secrets exist for a chart
 func (u *SecretManagementUsecase) validateSecretExistence(ctx context.Context, chart domain.Chart) error {
 	requiredSecrets := u.getRequiredSecretsForChart(chart)
-	
+
 	for _, secretName := range requiredSecrets {
 		u.logger.DebugWithContext("checking secret existence", map[string]interface{}{
 			"secret_name": secretName,
@@ -143,7 +143,7 @@ func (u *SecretManagementUsecase) validateSecretExistence(ctx context.Context, c
 // validateSecretMetadata validates secret labels and data format
 func (u *SecretManagementUsecase) validateSecretMetadata(ctx context.Context, chart domain.Chart) error {
 	requiredSecrets := u.getRequiredSecretsForChart(chart)
-	
+
 	for _, secretName := range requiredSecrets {
 		secret, err := u.secretUsecase.GetSecret(ctx, secretName, u.getNamespaceForChart(chart))
 		if err != nil {
@@ -167,7 +167,7 @@ func (u *SecretManagementUsecase) validateSecretMetadata(ctx context.Context, ch
 // autoGenerateMissingSecrets automatically generates missing secrets where possible
 func (u *SecretManagementUsecase) autoGenerateMissingSecrets(ctx context.Context, chart domain.Chart) error {
 	autoGeneratableSecrets := u.getAutoGeneratableSecretsForChart(chart)
-	
+
 	for _, secretName := range autoGeneratableSecrets {
 		exists, err := u.secretUsecase.SecretExists(ctx, secretName, u.getNamespaceForChart(chart))
 		if err != nil {
@@ -262,7 +262,7 @@ func (u *SecretManagementUsecase) validateSecretLabels(secret *domain.Secret, ch
 		})
 		return nil
 	}
-	
+
 	// Validate deploy-cli management label (now using DEBUG level to reduce noise)
 	if managed, exists := secret.Labels["deploy-cli/managed"]; !exists || managed != "true" {
 		u.logger.DebugWithContext("secret not managed by deploy-cli", map[string]interface{}{
@@ -270,7 +270,7 @@ func (u *SecretManagementUsecase) validateSecretLabels(secret *domain.Secret, ch
 			"chart_name":  chart.Name,
 		})
 	}
-	
+
 	// Warn if secret lacks important Kubernetes standard labels but don't fail
 	if appName, exists := secret.Labels["app.kubernetes.io/name"]; !exists || appName == "" {
 		u.logger.WarnWithContext("secret missing app.kubernetes.io/name label", map[string]interface{}{
@@ -278,14 +278,14 @@ func (u *SecretManagementUsecase) validateSecretLabels(secret *domain.Secret, ch
 			"chart_name":  chart.Name,
 		})
 	}
-	
+
 	if managedBy, exists := secret.Labels["app.kubernetes.io/managed-by"]; !exists || managedBy == "" {
 		u.logger.WarnWithContext("secret missing app.kubernetes.io/managed-by label", map[string]interface{}{
 			"secret_name": secret.Name,
 			"chart_name":  chart.Name,
 		})
 	}
-	
+
 	return nil
 }
 
@@ -359,7 +359,7 @@ func (u *SecretManagementUsecase) isOwnershipError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	errorMsg := strings.ToLower(err.Error())
 	ownershipPatterns := []string{
 		"managed by helm",
@@ -368,13 +368,13 @@ func (u *SecretManagementUsecase) isOwnershipError(err error) bool {
 		"forbidden",
 		"access denied",
 	}
-	
+
 	for _, pattern := range ownershipPatterns {
 		if strings.Contains(errorMsg, pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -490,7 +490,7 @@ func (u *SecretManagementUsecase) detectMissingSecrets(ctx context.Context, char
 // validateNamespaceConsistency validates that secrets are in the correct namespace for their charts
 func (u *SecretManagementUsecase) validateNamespaceConsistency(chart domain.Chart) error {
 	expectedNamespace := u.getNamespaceForChart(chart)
-	
+
 	u.logger.DebugWithContext("validating namespace consistency", map[string]interface{}{
 		"chart_name":         chart.Name,
 		"expected_namespace": expectedNamespace,
@@ -498,7 +498,7 @@ func (u *SecretManagementUsecase) validateNamespaceConsistency(chart domain.Char
 
 	// CRITICAL FIX: Validate actual namespace mismatches
 	requiredSecrets := u.getRequiredSecretsForChart(chart)
-	
+
 	for _, secretName := range requiredSecrets {
 		// Check if secret exists in the expected namespace
 		exists, err := u.secretUsecase.SecretExists(context.Background(), secretName, expectedNamespace)
@@ -511,7 +511,7 @@ func (u *SecretManagementUsecase) validateNamespaceConsistency(chart domain.Char
 			})
 			continue
 		}
-		
+
 		if !exists {
 			// Check if secret exists in other common namespaces
 			alternativeNamespaces := []string{"alt-database", "alt-auth", "alt-apps", "alt-ingress", "alt-search"}
@@ -519,12 +519,12 @@ func (u *SecretManagementUsecase) validateNamespaceConsistency(chart domain.Char
 				if altNamespace == expectedNamespace {
 					continue
 				}
-				
+
 				altExists, altErr := u.secretUsecase.SecretExists(context.Background(), secretName, altNamespace)
 				if altErr != nil {
 					continue
 				}
-				
+
 				if altExists {
 					u.logger.WarnWithContext("NAMESPACE MISMATCH DETECTED", map[string]interface{}{
 						"secret_name":        secretName,
@@ -533,14 +533,14 @@ func (u *SecretManagementUsecase) validateNamespaceConsistency(chart domain.Char
 						"actual_namespace":   altNamespace,
 						"fix_suggestion":     fmt.Sprintf("Consider moving secret from %s to %s", altNamespace, expectedNamespace),
 					})
-					
+
 					// This is a warning, not an error - let the deployment continue
 					// but log the inconsistency for manual resolution
 				}
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -550,7 +550,7 @@ func (u *SecretManagementUsecase) getNamespaceForChart(chart domain.Chart) strin
 	if chart.MultiNamespace && len(chart.TargetNamespaces) > 0 {
 		return chart.TargetNamespaces[0]
 	}
-	
+
 	// CRITICAL FIX: Prioritize chart name mapping over chart type to prevent namespace mismatches
 	// Handle auth-postgres specifically to ensure it goes to alt-auth (not alt-database)
 	switch chart.Name {
@@ -563,7 +563,7 @@ func (u *SecretManagementUsecase) getNamespaceForChart(chart domain.Chart) strin
 	case "alt-backend", "alt-frontend":
 		return "alt-apps"
 	}
-	
+
 	// Fallback to chart type mapping
 	switch chart.Type {
 	case domain.InfrastructureChart:

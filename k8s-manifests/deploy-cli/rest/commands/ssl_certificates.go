@@ -428,7 +428,7 @@ func getEnvironmentNamespaces(env domain.Environment) []string {
 	case domain.Production:
 		return []string{
 			"alt-apps",
-			"alt-database", 
+			"alt-database",
 			"alt-search",
 			"alt-auth",
 			"alt-ingress",

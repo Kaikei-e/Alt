@@ -3,13 +3,13 @@ package helm_gateway
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
-	"os"
 
+	"deploy-cli/domain"
 	"deploy-cli/port/helm_port"
 	"deploy-cli/port/logger_port"
-	"deploy-cli/domain"
 )
 
 // HelmGateway acts as anti-corruption layer for Helm operations
@@ -86,10 +86,10 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 	namespace := options.GetNamespace(chart.Name)
 
 	g.logger.InfoWithContext("starting chart deployment", map[string]interface{}{
-		"chart":     chart.Name,
-		"namespace": namespace,
+		"chart":        chart.Name,
+		"namespace":    namespace,
 		"force_update": options.ForceUpdate,
-		"dry_run": options.DryRun,
+		"dry_run":      options.DryRun,
 	})
 
 	// Pre-deployment validations
@@ -145,7 +145,7 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 	if chart.Name == "postgres" || chart.Name == "auth-postgres" || chart.Name == "kratos-postgres" || chart.Name == "clickhouse" || chart.Name == "meilisearch" {
 		chartTimeout = 10 * time.Minute // Extended timeout for database initialization
 		g.logger.InfoWithContext("using extended timeout for database chart", map[string]interface{}{
-			"chart": chart.Name,
+			"chart":   chart.Name,
 			"timeout": chartTimeout,
 		})
 	}
@@ -154,7 +154,7 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 	if chart.Name == "alt-frontend" || chart.Name == "migrate" {
 		chartTimeout = 90 * time.Second // Very short timeout for problematic charts
 		g.logger.InfoWithContext("using aggressive timeout for problematic chart", map[string]interface{}{
-			"chart": chart.Name,
+			"chart":   chart.Name,
 			"timeout": chartTimeout,
 		})
 	}
@@ -167,7 +167,7 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		WaitForJobs:     false, // Disable job waiting to prevent hanging
 		Timeout:         chartTimeout,
 		Force:           options.ForceUpdate,
-		Atomic:          true,  // Enable atomic deployment for rollback on failure
+		Atomic:          true, // Enable atomic deployment for rollback on failure
 	}
 
 	// Simplified image override logic
@@ -181,12 +181,12 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		}
 
 		g.logger.InfoWithContext("applying image override", map[string]interface{}{
-			"chart":           chart.Name,
-			"repository":      options.ImagePrefix,
-			"tag":             imageTag,
-			"force_update":    options.ForceUpdate,
-			"should_override": options.ShouldOverrideImage(),
-			"tag_base":        options.TagBase,
+			"chart":                   chart.Name,
+			"repository":              options.ImagePrefix,
+			"tag":                     imageTag,
+			"force_update":            options.ForceUpdate,
+			"should_override":         options.ShouldOverrideImage(),
+			"tag_base":                options.TagBase,
 			"supports_image_override": chart.SupportsImageOverride(),
 		})
 	} else {
@@ -194,8 +194,8 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 			"chart":                   chart.Name,
 			"supports_image_override": chart.SupportsImageOverride(),
 			"should_override_image":   options.ShouldOverrideImage(),
-			"force_update":           options.ForceUpdate,
-			"tag_base":               options.TagBase,
+			"force_update":            options.ForceUpdate,
+			"tag_base":                options.TagBase,
 		})
 	}
 
@@ -207,7 +207,7 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		helmOptions.SetValues["forceUpdate"] = "true"
 
 		g.logger.InfoWithContext("enabling force update", map[string]interface{}{
-			"chart": chart.Name,
+			"chart":             chart.Name,
 			"force_update_flag": true,
 		})
 	}
@@ -223,18 +223,18 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		deployCtx, cancel := context.WithTimeout(ctx, helmOptions.Timeout)
 
 		g.logger.InfoWithContext("executing helm deployment", map[string]interface{}{
-			"chart": chart.Name,
+			"chart":     chart.Name,
 			"namespace": namespace,
-			"attempt": attempt,
-			"timeout": helmOptions.Timeout,
-			"atomic": helmOptions.Atomic,
-			"wait": helmOptions.Wait,
+			"attempt":   attempt,
+			"timeout":   helmOptions.Timeout,
+			"atomic":    helmOptions.Atomic,
+			"wait":      helmOptions.Wait,
 		})
 
 		g.logger.InfoWithContext("using release name for deployment", map[string]interface{}{
-			"chart": chart.Name,
-			"namespace": namespace,
-			"release_name": releaseName,
+			"chart":           chart.Name,
+			"namespace":       namespace,
+			"release_name":    releaseName,
 			"multi_namespace": chart.MultiNamespace,
 		})
 
@@ -255,11 +255,11 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		// Check if the deployment was cancelled or timed out
 		if deployCtx.Err() == context.DeadlineExceeded {
 			g.logger.ErrorWithContext("chart deployment timed out", map[string]interface{}{
-				"chart": chart.Name,
+				"chart":     chart.Name,
 				"namespace": namespace,
-				"timeout": helmOptions.Timeout,
-				"attempt": attempt,
-				"duration": duration,
+				"timeout":   helmOptions.Timeout,
+				"attempt":   attempt,
+				"duration":  duration,
 			})
 			lastErr = fmt.Errorf("deployment timed out after %v", helmOptions.Timeout)
 			break // Don't retry timeout errors
@@ -284,9 +284,9 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		// Check if error is retriable
 		if !g.isRetriableError(err) || attempt == maxRetries {
 			g.logger.WarnWithContext("not retrying chart deployment", map[string]interface{}{
-				"chart": chart.Name,
-				"attempt": attempt,
-				"retriable": g.isRetriableError(err),
+				"chart":           chart.Name,
+				"attempt":         attempt,
+				"retriable":       g.isRetriableError(err),
 				"is_last_attempt": attempt == maxRetries,
 			})
 			break
@@ -295,15 +295,15 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		// Exponential backoff
 		retryDelay := time.Duration(attempt) * 5 * time.Second // Shorter retry delay
 		g.logger.WarnWithContext("retrying chart deployment", map[string]interface{}{
-			"chart":       chart.Name,
-			"attempt":     attempt,
+			"chart":           chart.Name,
+			"attempt":         attempt,
 			"next_attempt_in": retryDelay,
 		})
 
 		select {
 		case <-ctx.Done():
 			g.logger.WarnWithContext("chart deployment cancelled during retry", map[string]interface{}{
-				"chart": chart.Name,
+				"chart":   chart.Name,
 				"attempt": attempt,
 			})
 			return ctx.Err()
@@ -454,9 +454,9 @@ func (g *HelmGateway) getValuesFile(chart domain.Chart, env domain.Environment) 
 
 		// Log warning if environment-specific file doesn't exist
 		g.logger.WarnWithContext("environment-specific values file not found, using default", map[string]interface{}{
-			"chart":          chart.Name,
-			"environment":    env,
-			"env_values_file": envFile,
+			"chart":               chart.Name,
+			"environment":         env,
+			"env_values_file":     envFile,
 			"default_values_file": chart.DefaultValuesFile(),
 		})
 	}
@@ -500,7 +500,6 @@ func (g *HelmGateway) GetWaitOptions(chart domain.Chart, options *domain.Deploym
 	return wait, timeout
 }
 
-
 // GetReleaseHistory returns the history of a Helm release for a chart
 func (g *HelmGateway) GetReleaseHistory(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) (string, error) {
 	namespace := options.GetNamespace(chart.Name)
@@ -538,12 +537,12 @@ func (g *HelmGateway) checkAndHandleConflicts(ctx context.Context, releaseName, 
 
 	if operation != nil {
 		g.logger.WarnWithContext("detected pending helm operation", map[string]interface{}{
-			"release":     releaseName,
-			"namespace":   namespace,
-			"operation":   operation.Type,
-			"status":      operation.Status,
-			"start_time":  operation.StartTime,
-			"pid":         operation.PID,
+			"release":    releaseName,
+			"namespace":  namespace,
+			"operation":  operation.Type,
+			"status":     operation.Status,
+			"start_time": operation.StartTime,
+			"pid":        operation.PID,
 		})
 
 		// Try to cleanup stuck operations
@@ -770,7 +769,7 @@ func (g *HelmGateway) validatePostgresChart(ctx context.Context, chart domain.Ch
 	// Check if persistent volumes are available
 	namespace := options.GetNamespace(chart.Name)
 	g.logger.DebugWithContext("postgres chart validation completed", map[string]interface{}{
-		"chart": chart.Name,
+		"chart":     chart.Name,
 		"namespace": namespace,
 	})
 
@@ -811,14 +810,14 @@ func (g *HelmGateway) validateClickHouseChart(ctx context.Context, chart domain.
 	// Check if required secrets exist or can be created
 	if err := g.validateClickHouseSecrets(ctx, namespace); err != nil {
 		g.logger.WarnWithContext("ClickHouse secret validation warning", map[string]interface{}{
-			"error": err.Error(),
+			"error":     err.Error(),
 			"namespace": namespace,
 		})
 		// Not a hard failure - secrets can be created during deployment
 	}
 
 	g.logger.DebugWithContext("ClickHouse chart validation completed", map[string]interface{}{
-		"chart": chart.Name,
+		"chart":     chart.Name,
 		"namespace": namespace,
 	})
 
@@ -846,7 +845,7 @@ func (g *HelmGateway) validateClickHousePersistentVolumes(ctx context.Context, n
 	pvName := "clickhouse-pv"
 
 	g.logger.DebugWithContext("validating ClickHouse persistent volumes", map[string]interface{}{
-		"pv_name": pvName,
+		"pv_name":   pvName,
 		"namespace": namespace,
 	})
 
@@ -860,7 +859,7 @@ func (g *HelmGateway) validateClickHouseSecrets(ctx context.Context, namespace s
 
 	g.logger.DebugWithContext("validating ClickHouse secrets", map[string]interface{}{
 		"secret_name": secretName,
-		"namespace": namespace,
+		"namespace":   namespace,
 	})
 
 	// Check if the secret exists
@@ -998,18 +997,18 @@ func (g *HelmGateway) generateReleaseName(chart domain.Chart, namespace string) 
 		namespaceSuffix := strings.TrimPrefix(namespace, "alt-")
 		releaseName := fmt.Sprintf("%s-%s", chart.Name, namespaceSuffix)
 		g.logger.InfoWithContext("generating namespace-scoped release name", map[string]interface{}{
-			"chart": chart.Name,
-			"namespace": namespace,
-			"original_name": chart.Name,
-			"namespace_suffix": namespaceSuffix,
+			"chart":                  chart.Name,
+			"namespace":              namespace,
+			"original_name":          chart.Name,
+			"namespace_suffix":       namespaceSuffix,
 			"generated_release_name": releaseName,
 		})
 		return releaseName
 	}
 	// 単一ネームスペースチャートは従来通り
 	g.logger.InfoWithContext("using original release name for single-namespace chart", map[string]interface{}{
-		"chart": chart.Name,
-		"namespace": namespace,
+		"chart":        chart.Name,
+		"namespace":    namespace,
 		"release_name": chart.Name,
 	})
 	return chart.Name
@@ -1022,7 +1021,7 @@ func (g *HelmGateway) CleanupConflictingReleases(ctx context.Context, chart doma
 	}
 
 	g.logger.InfoWithContext("cleaning up conflicting releases for multi-namespace chart", map[string]interface{}{
-		"chart": chart.Name,
+		"chart":             chart.Name,
 		"target_namespaces": targetNamespaces,
 	})
 
@@ -1031,13 +1030,13 @@ func (g *HelmGateway) CleanupConflictingReleases(ctx context.Context, chart doma
 		if err := g.helmPort.Uninstall(ctx, chart.Name, ns); err != nil {
 			// エラーログ出力して継続（リリースが存在しない場合は正常）
 			g.logger.WarnWithContext("failed to cleanup conflicting release", map[string]interface{}{
-				"chart": chart.Name,
+				"chart":     chart.Name,
 				"namespace": ns,
-				"error": err.Error(),
+				"error":     err.Error(),
 			})
 		} else {
 			g.logger.InfoWithContext("conflicting release cleaned up", map[string]interface{}{
-				"chart": chart.Name,
+				"chart":     chart.Name,
 				"namespace": ns,
 			})
 		}
@@ -1048,9 +1047,9 @@ func (g *HelmGateway) CleanupConflictingReleases(ctx context.Context, chart doma
 // RollbackRelease rolls back a Helm release to a specific revision
 func (g *HelmGateway) RollbackRelease(ctx context.Context, releaseName, namespace string, revision int) error {
 	g.logger.InfoWithContext("rolling back Helm release", map[string]interface{}{
-		"release": releaseName,
+		"release":   releaseName,
 		"namespace": namespace,
-		"revision": revision,
+		"revision":  revision,
 	})
 
 	err := g.helmPort.Rollback(ctx, releaseName, namespace, revision)
@@ -1059,9 +1058,9 @@ func (g *HelmGateway) RollbackRelease(ctx context.Context, releaseName, namespac
 	}
 
 	g.logger.InfoWithContext("release rolled back successfully", map[string]interface{}{
-		"release": releaseName,
+		"release":   releaseName,
 		"namespace": namespace,
-		"revision": revision,
+		"revision":  revision,
 	})
 
 	return nil

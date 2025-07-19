@@ -16,10 +16,10 @@ import (
 
 // InfrastructureSetupUsecase handles deployment infrastructure setup and teardown
 type InfrastructureSetupUsecase struct {
-	kubectlGateway    *kubectl_gateway.KubectlGateway
-	systemGateway     *system_gateway.SystemGateway
-	logger            logger_port.LoggerPort
-	strategyFactory   *StrategyFactory
+	kubectlGateway  *kubectl_gateway.KubectlGateway
+	systemGateway   *system_gateway.SystemGateway
+	logger          logger_port.LoggerPort
+	strategyFactory *StrategyFactory
 }
 
 // NewInfrastructureSetupUsecase creates a new infrastructure setup usecase
@@ -41,7 +41,7 @@ func NewInfrastructureSetupUsecase(
 func (u *InfrastructureSetupUsecase) preDeploymentValidation(ctx context.Context, options *domain.DeploymentOptions) error {
 	// Get charts from strategy
 	charts := u.getAllCharts(options)
-	
+
 	u.logger.InfoWithContext("starting pre-deployment validation", map[string]interface{}{
 		"environment":  options.Environment.String(),
 		"charts_count": len(charts),
@@ -268,23 +268,23 @@ func (u *InfrastructureSetupUsecase) executeKubectlCommand(ctx context.Context, 
 
 	// Fixed: Use proper argument separation instead of passing command as single string
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
-	
+
 	// CRITICAL FIX: Inherit current environment variables instead of wiping them
 	cmd.Env = os.Environ()
-	
+
 	// Add kubectl path to existing PATH instead of replacing it
 	currentPath := os.Getenv("PATH")
 	finalPath := currentPath + ":" + getKubectlPath()
-	
+
 	// Set final PATH
 	cmd.Env = append(cmd.Env, "PATH="+finalPath)
-	
+
 	// DEBUG: Log environment details
 	u.logger.InfoWithContext("kubectl execution environment", map[string]interface{}{
-		"original_path":  currentPath,
+		"original_path":   currentPath,
 		"additional_path": getKubectlPath(),
-		"final_path":     finalPath,
-		"working_dir":    cmd.Dir,
+		"final_path":      finalPath,
+		"working_dir":     cmd.Dir,
 	})
 
 	output, err := cmd.CombinedOutput()
@@ -392,7 +392,7 @@ func (u *InfrastructureSetupUsecase) validateRequiredResources(ctx context.Conte
 // getRequiredNamespaces returns the list of required namespaces for the deployment
 func (u *InfrastructureSetupUsecase) getRequiredNamespaces(options *domain.DeploymentOptions) []string {
 	namespaces := make(map[string]bool)
-	
+
 	// Add standard namespaces
 	namespaces["alt-apps"] = true
 	namespaces["alt-database"] = true
@@ -483,12 +483,12 @@ func (u *InfrastructureSetupUsecase) validatePersistentVolumes(ctx context.Conte
 func (u *InfrastructureSetupUsecase) getAllCharts(options *domain.DeploymentOptions) []domain.Chart {
 	strategy := u.strategyFactory.GetStrategy(options.Environment)
 	layerConfigs := strategy.GetLayerConfigurations(options.ChartsDir)
-	
+
 	var allCharts []domain.Chart
 	for _, layerConfig := range layerConfigs {
 		allCharts = append(allCharts, layerConfig.Charts...)
 	}
-	
+
 	return allCharts
 }
 

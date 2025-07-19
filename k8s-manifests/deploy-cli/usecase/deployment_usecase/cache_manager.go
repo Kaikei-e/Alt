@@ -17,13 +17,13 @@ import (
 
 // CacheEntry represents a cached deployment result
 type CacheEntry struct {
-	ChartName     string                         `json:"chart_name"`
-	ChartVersion  string                         `json:"chart_version"`
-	ValuesHash    string                         `json:"values_hash"`
-	ImageHash     string                         `json:"image_hash"`
-	Result        *domain.DeploymentResult       `json:"result"`
-	Timestamp     time.Time                      `json:"timestamp"`
-	TTL           time.Duration                  `json:"ttl"`
+	ChartName    string                   `json:"chart_name"`
+	ChartVersion string                   `json:"chart_version"`
+	ValuesHash   string                   `json:"values_hash"`
+	ImageHash    string                   `json:"image_hash"`
+	Result       *domain.DeploymentResult `json:"result"`
+	Timestamp    time.Time                `json:"timestamp"`
+	TTL          time.Duration            `json:"ttl"`
 }
 
 // IsExpired checks if the cache entry has expired
@@ -33,10 +33,10 @@ func (e *CacheEntry) IsExpired() bool {
 
 // DeploymentCache manages caching of deployment results
 type DeploymentCache struct {
-	cacheDir  string
-	entries   map[string]*CacheEntry
-	mutex     sync.RWMutex
-	logger    logger_port.LoggerPort
+	cacheDir   string
+	entries    map[string]*CacheEntry
+	mutex      sync.RWMutex
+	logger     logger_port.LoggerPort
 	defaultTTL time.Duration
 }
 
@@ -67,14 +67,14 @@ func (c *DeploymentCache) Initialize() error {
 // GenerateCacheKey generates a unique cache key for a chart deployment
 func (c *DeploymentCache) GenerateCacheKey(chart domain.Chart, options *domain.DeploymentOptions) string {
 	// Create a hash based on chart configuration and deployment options
-	data := fmt.Sprintf("%s-%s-%s-%s-%s", 
+	data := fmt.Sprintf("%s-%s-%s-%s-%s",
 		chart.Name,
 		chart.Version,
 		options.Environment.String(),
 		options.ImagePrefix,
 		options.TagBase,
 	)
-	
+
 	hash := md5.Sum([]byte(data))
 	return hex.EncodeToString(hash[:])
 }
@@ -128,7 +128,7 @@ func (c *DeploymentCache) Set(key string, chart domain.Chart, options *domain.De
 	// Only cache successful deployments that didn't actually change anything
 	if result.Status == domain.DeploymentStatusSuccess && !c.hasSignificantChanges(result) {
 		c.entries[key] = entry
-		
+
 		if err := c.saveCacheEntry(key, entry); err != nil {
 			c.logger.WarnWithContext("failed to save cache entry to disk", map[string]interface{}{
 				"key":   key,
@@ -151,7 +151,7 @@ func (c *DeploymentCache) Clear() error {
 	defer c.mutex.Unlock()
 
 	c.entries = make(map[string]*CacheEntry)
-	
+
 	// Remove cache files
 	return os.RemoveAll(c.cacheDir)
 }
@@ -202,7 +202,7 @@ func (c *DeploymentCache) GetStats() map[string]interface{} {
 
 // hashValues creates a hash of chart values and options
 func (c *DeploymentCache) hashValues(chart domain.Chart, options *domain.DeploymentOptions) string {
-	data := fmt.Sprintf("%s-%s-%v-%s", 
+	data := fmt.Sprintf("%s-%s-%v-%s",
 		chart.ValuesPath,
 		options.Environment.String(),
 		options.DryRun,
@@ -214,7 +214,7 @@ func (c *DeploymentCache) hashValues(chart domain.Chart, options *domain.Deploym
 
 // hashImage creates a hash of image-related options
 func (c *DeploymentCache) hashImage(options *domain.DeploymentOptions) string {
-	data := fmt.Sprintf("%s-%s-%v", 
+	data := fmt.Sprintf("%s-%s-%v",
 		options.ImagePrefix,
 		options.TagBase,
 		options.ForceUpdate,
@@ -268,7 +268,7 @@ func (c *DeploymentCache) loadCacheFromDisk() error {
 // saveCacheEntry saves a cache entry to disk
 func (c *DeploymentCache) saveCacheEntry(key string, entry *CacheEntry) error {
 	filename := filepath.Join(c.cacheDir, fmt.Sprintf("%s.json", key))
-	
+
 	data, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal cache entry: %w", err)
@@ -305,8 +305,8 @@ func (c *DeploymentCache) removeCacheFile(key string) {
 
 // CachedDeploymentUsecase wraps DeploymentUsecase with caching capabilities
 type CachedDeploymentUsecase struct {
-	base  *DeploymentUsecase
-	cache *DeploymentCache
+	base   *DeploymentUsecase
+	cache  *DeploymentCache
 	logger logger_port.LoggerPort
 }
 
@@ -332,14 +332,14 @@ func (c *CachedDeploymentUsecase) deployWithCache(ctx context.Context, chart dom
 	}
 
 	cacheKey := c.cache.GenerateCacheKey(chart, options)
-	
+
 	// Check cache first
 	if entry, found := c.cache.Get(cacheKey); found {
 		c.logger.InfoWithContext("using cached deployment result", map[string]interface{}{
 			"chart":     chart.Name,
 			"cache_key": cacheKey,
 		})
-		
+
 		// Return cached result with updated timestamp
 		result := *entry.Result
 		result.StartTime = time.Now()
@@ -349,7 +349,7 @@ func (c *CachedDeploymentUsecase) deployWithCache(ctx context.Context, chart dom
 
 	// Deploy and cache result
 	result := c.base.deploySingleChart(ctx, chart, options)
-	
+
 	// Cache the result
 	if err := c.cache.Set(cacheKey, chart, options, &result); err != nil {
 		c.logger.WarnWithContext("failed to cache deployment result", map[string]interface{}{

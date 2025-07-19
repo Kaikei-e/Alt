@@ -2,11 +2,11 @@ package commands
 
 import (
 	"fmt"
-	
+
 	"github.com/spf13/cobra"
-	
-	"deploy-cli/utils/logger"
+
 	"deploy-cli/utils/colors"
+	"deploy-cli/utils/logger"
 )
 
 // NewCleanupCommand creates a new cleanup command
@@ -57,10 +57,10 @@ Use Cases:
 			return nil
 		},
 	}
-	
+
 	// Add flags
 	cmd.Flags().Bool("force", false, "Force cleanup without confirmation")
 	cmd.Flags().Bool("complete", false, "Perform complete cleanup including StatefulSets")
-	
+
 	return cmd
 }

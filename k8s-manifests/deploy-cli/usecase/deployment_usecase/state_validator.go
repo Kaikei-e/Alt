@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"deploy-cli/domain"
-	"deploy-cli/port/logger_port"
 	"deploy-cli/gateway/helm_gateway"
 	"deploy-cli/gateway/kubectl_gateway"
+	"deploy-cli/port/logger_port"
 )
 
 // DeploymentStateValidator handles validation of deployment state
@@ -34,7 +34,7 @@ func NewDeploymentStateValidator(
 
 // DeploymentStateReport represents the current state of deployment
 type DeploymentStateReport struct {
-	IsHealthy                bool
+	IsHealthy               bool
 	StuckOperations         []StuckOperation
 	CorruptedReleases       []CorruptedRelease
 	ResourceInconsistencies []ResourceInconsistency
@@ -84,7 +84,7 @@ func (v *DeploymentStateValidator) ValidateDeploymentState(ctx context.Context, 
 	})
 
 	report := &DeploymentStateReport{
-		IsHealthy:                true,
+		IsHealthy:               true,
 		StuckOperations:         []StuckOperation{},
 		CorruptedReleases:       []CorruptedRelease{},
 		ResourceInconsistencies: []ResourceInconsistency{},
@@ -131,20 +131,20 @@ func (v *DeploymentStateValidator) ValidateDeploymentState(ctx context.Context, 
 	}
 
 	// Determine overall health
-	report.IsHealthy = len(report.StuckOperations) == 0 && 
-		len(report.CorruptedReleases) == 0 && 
-		len(report.ResourceInconsistencies) == 0 && 
+	report.IsHealthy = len(report.StuckOperations) == 0 &&
+		len(report.CorruptedReleases) == 0 &&
+		len(report.ResourceInconsistencies) == 0 &&
 		len(report.ValidationErrors) == 0
 
 	// Generate summary
 	report.Summary = v.generateSummary(report)
 
 	v.logger.InfoWithContext("deployment state validation completed", map[string]interface{}{
-		"is_healthy":                report.IsHealthy,
-		"stuck_operations":          len(report.StuckOperations),
-		"corrupted_releases":        len(report.CorruptedReleases),
-		"resource_inconsistencies":  len(report.ResourceInconsistencies),
-		"validation_errors":         len(report.ValidationErrors),
+		"is_healthy":               report.IsHealthy,
+		"stuck_operations":         len(report.StuckOperations),
+		"corrupted_releases":       len(report.CorruptedReleases),
+		"resource_inconsistencies": len(report.ResourceInconsistencies),
+		"validation_errors":        len(report.ValidationErrors),
 	})
 
 	return report, nil
@@ -154,7 +154,7 @@ func (v *DeploymentStateValidator) ValidateDeploymentState(ctx context.Context, 
 func (v *DeploymentStateValidator) checkStuckOperations(ctx context.Context, report *DeploymentStateReport) error {
 	// This would typically involve checking Helm secrets for pending operations
 	// For now, we'll implement a basic check
-	
+
 	// Check for helm list command hanging or failing
 	helmListOutput, err := v.helmGateway.ListReleases(ctx, "")
 	if err != nil {
@@ -218,7 +218,7 @@ func (v *DeploymentStateValidator) checkResourceInconsistencies(ctx context.Cont
 
 	namespaces := []string{
 		"alt-apps",
-		"alt-database", 
+		"alt-database",
 		"alt-search",
 		"alt-auth",
 		"alt-ingress",
@@ -269,25 +269,25 @@ func (v *DeploymentStateValidator) generateSummary(report *DeploymentStateReport
 	}
 
 	var issues []string
-	
+
 	if len(report.StuckOperations) > 0 {
 		issues = append(issues, fmt.Sprintf("❌ %d stuck operations detected", len(report.StuckOperations)))
 	}
-	
+
 	if len(report.CorruptedReleases) > 0 {
 		issues = append(issues, fmt.Sprintf("❌ %d corrupted releases detected", len(report.CorruptedReleases)))
 	}
-	
+
 	if len(report.ResourceInconsistencies) > 0 {
 		issues = append(issues, fmt.Sprintf("⚠️ %d resource inconsistencies detected", len(report.ResourceInconsistencies)))
 	}
-	
+
 	if len(report.ValidationErrors) > 0 {
 		issues = append(issues, fmt.Sprintf("⚠️ %d validation errors detected", len(report.ValidationErrors)))
 	}
 
 	summary := "🚨 Deployment state issues detected:\n" + strings.Join(issues, "\n")
-	
+
 	// Add recommendation
 	if len(report.StuckOperations) > 0 || len(report.CorruptedReleases) > 0 {
 		summary += "\n\n💡 Recommendation: Consider running 'deploy-cli emergency-reset' to resolve persistent issues"

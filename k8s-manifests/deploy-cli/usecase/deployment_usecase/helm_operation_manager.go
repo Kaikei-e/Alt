@@ -37,29 +37,29 @@ func (h *HelmOperationManager) ExecuteWithLock(releaseName, namespace, operation
 	defer h.mu.Unlock()
 
 	key := fmt.Sprintf("%s/%s", namespace, releaseName)
-	
+
 	// Check if operation is already in progress
 	if activeOp, exists := h.activeOperations[key]; exists {
 		// Check if operation is stale
 		if time.Since(activeOp.StartTime) < h.staleTimeout {
 			h.logger.WarnWithContext("helm operation already in progress", map[string]interface{}{
-				"release":     releaseName,
-				"namespace":   namespace,
-				"operation":   operation,
-				"active_op":   activeOp.Operation,
-				"started_at":  activeOp.StartTime,
-				"elapsed":     time.Since(activeOp.StartTime),
+				"release":    releaseName,
+				"namespace":  namespace,
+				"operation":  operation,
+				"active_op":  activeOp.Operation,
+				"started_at": activeOp.StartTime,
+				"elapsed":    time.Since(activeOp.StartTime),
 			})
-			return fmt.Errorf("helm operation already in progress for %s (operation: %s, started: %v)", 
+			return fmt.Errorf("helm operation already in progress for %s (operation: %s, started: %v)",
 				key, activeOp.Operation, activeOp.StartTime)
 		}
 		// Clean up stale operation
 		h.logger.InfoWithContext("cleaning up stale helm operation", map[string]interface{}{
-			"release":     releaseName,
-			"namespace":   namespace,
-			"stale_op":    activeOp.Operation,
-			"started_at":  activeOp.StartTime,
-			"elapsed":     time.Since(activeOp.StartTime),
+			"release":    releaseName,
+			"namespace":  namespace,
+			"stale_op":   activeOp.Operation,
+			"started_at": activeOp.StartTime,
+			"elapsed":    time.Since(activeOp.StartTime),
 		})
 		delete(h.activeOperations, key)
 	}
@@ -98,7 +98,7 @@ func (h *HelmOperationManager) IsOperationInProgress(releaseName, namespace stri
 
 	key := fmt.Sprintf("%s/%s", namespace, releaseName)
 	activeOp, exists := h.activeOperations[key]
-	
+
 	if !exists {
 		return false
 	}

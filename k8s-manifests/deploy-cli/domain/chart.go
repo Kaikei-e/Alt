@@ -16,14 +16,14 @@ const (
 
 // Chart represents a Helm chart configuration
 type Chart struct {
-	Name        string
-	Type        ChartType
-	Path        string
-	Version     string
-	ValuesPath  string
-	WaitReady   bool
-	MultiNamespace bool              // Deploy to multiple namespaces
-	TargetNamespaces []string        // List of target namespaces for multi-namespace deployment
+	Name             string
+	Type             ChartType
+	Path             string
+	Version          string
+	ValuesPath       string
+	WaitReady        bool
+	MultiNamespace   bool     // Deploy to multiple namespaces
+	TargetNamespaces []string // List of target namespaces for multi-namespace deployment
 }
 
 // ChartConfig holds the chart deployment configuration
@@ -115,26 +115,26 @@ func (c *Chart) ShouldWaitForReadinessWithOptions(options *DeploymentOptions) bo
 	if options.ForceUpdate {
 		return false
 	}
-	
+
 	// Don't wait for readiness during dry run
 	if options.DryRun {
 		return false
 	}
-	
+
 	return c.WaitReady
 }
 
 // SupportsImageOverride returns true if the chart supports image override
 func (c *Chart) SupportsImageOverride() bool {
 	applicationCharts := map[string]bool{
-		"alt-backend":           true,
-		"auth-service":          true,
-		"pre-processor":         true,
-		"search-indexer":        true,
-		"tag-generator":         true,
-		"news-creator":          true,
-		"rask-log-aggregator":   true,
-		"alt-frontend":          true,
+		"alt-backend":         true,
+		"auth-service":        true,
+		"pre-processor":       true,
+		"search-indexer":      true,
+		"tag-generator":       true,
+		"news-creator":        true,
+		"rask-log-aggregator": true,
+		"alt-frontend":        true,
 	}
 	return applicationCharts[c.Name]
 }

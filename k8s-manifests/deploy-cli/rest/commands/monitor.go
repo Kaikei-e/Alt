@@ -4,20 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
-	"os"
 
 	"github.com/spf13/cobra"
 
 	"deploy-cli/domain"
-	"deploy-cli/gateway/kubectl_gateway"
-	"deploy-cli/gateway/helm_gateway"
-	"deploy-cli/usecase/secret_usecase"
-	"deploy-cli/driver/kubectl_driver"
 	"deploy-cli/driver/helm_driver"
-	"deploy-cli/utils/logger"
+	"deploy-cli/driver/kubectl_driver"
+	"deploy-cli/gateway/helm_gateway"
+	"deploy-cli/gateway/kubectl_gateway"
+	"deploy-cli/usecase/secret_usecase"
 	"deploy-cli/utils/colors"
+	"deploy-cli/utils/logger"
 )
 
 // MonitorCommand provides monitoring and observability capabilities
@@ -139,7 +139,7 @@ Navigation:
 			}
 
 			monitor := createMonitor(log)
-			
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -223,7 +223,7 @@ Available Services:
 			}
 
 			monitor := createMonitor(log)
-			
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -306,7 +306,7 @@ Supported Metrics:
 			}
 
 			monitor := createMonitor(log)
-			
+
 			ctx, cancel := context.WithTimeout(context.Background(), duration+time.Minute)
 			defer cancel()
 
@@ -322,23 +322,23 @@ Supported Metrics:
 			if analyze {
 				analysis := monitor.AnalyzeMetrics(metrics)
 				displayMetricsAnalysis(analysis)
-				
+
 				if output != "" {
 					if err := saveMetricsAnalysis(analysis, output); err != nil {
 						log.Warn("Failed to save metrics analysis", "error", err, "file", output)
 					} else {
-						fmt.Printf("%s Metrics analysis saved to %s\n", 
+						fmt.Printf("%s Metrics analysis saved to %s\n",
 							colors.Green("✓"), output)
 					}
 				}
 			} else {
 				displayMetrics(metrics)
-				
+
 				if output != "" {
 					if err := saveMetrics(metrics, output); err != nil {
 						log.Warn("Failed to save metrics", "error", err, "file", output)
 					} else {
-						fmt.Printf("%s Metrics saved to %s\n", 
+						fmt.Printf("%s Metrics saved to %s\n",
 							colors.Green("✓"), output)
 					}
 				}
@@ -421,13 +421,13 @@ Log Analysis:
 			}
 
 			monitor := createMonitor(log)
-			
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
 			fmt.Printf("%s Monitoring logs for %s...\n",
 				colors.Blue("📋"), env.String())
-			
+
 			if follow {
 				fmt.Printf("Following logs (Press Ctrl+C to stop)...\n\n")
 			}
@@ -509,7 +509,7 @@ Report Delivery:
 			}
 
 			monitor := createMonitor(log)
-			
+
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
 
@@ -612,7 +612,7 @@ Alert Configuration:
 			}
 
 			monitor := createMonitor(log)
-			
+
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 
@@ -685,98 +685,98 @@ func createMonitor(log *logger.Logger) *MonitorCommand {
 
 // Data structures for monitoring
 type DashboardData struct {
-	Environment     domain.Environment         `json:"environment"`
-	Timestamp       time.Time                 `json:"timestamp"`
-	OverallHealth   string                    `json:"overall_health"`
-	Services        []ServiceStatus           `json:"services"`
-	Resources       ResourceSummary           `json:"resources"`
-	RecentAlerts    []AlertInfo               `json:"recent_alerts"`
-	DeploymentInfo  DeploymentSummary         `json:"deployment_info"`
+	Environment    domain.Environment `json:"environment"`
+	Timestamp      time.Time          `json:"timestamp"`
+	OverallHealth  string             `json:"overall_health"`
+	Services       []ServiceStatus    `json:"services"`
+	Resources      ResourceSummary    `json:"resources"`
+	RecentAlerts   []AlertInfo        `json:"recent_alerts"`
+	DeploymentInfo DeploymentSummary  `json:"deployment_info"`
 }
 
 type ServiceStatus struct {
-	Name            string                    `json:"name"`
-	Status          string                    `json:"status"`
-	Health          string                    `json:"health"`
-	Replicas        string                    `json:"replicas"`
-	CPU             string                    `json:"cpu"`
-	Memory          string                    `json:"memory"`
-	Uptime          string                    `json:"uptime"`
-	LastDeployment  string                    `json:"last_deployment"`
-	Issues          []string                  `json:"issues,omitempty"`
+	Name           string   `json:"name"`
+	Status         string   `json:"status"`
+	Health         string   `json:"health"`
+	Replicas       string   `json:"replicas"`
+	CPU            string   `json:"cpu"`
+	Memory         string   `json:"memory"`
+	Uptime         string   `json:"uptime"`
+	LastDeployment string   `json:"last_deployment"`
+	Issues         []string `json:"issues,omitempty"`
 }
 
 type ResourceSummary struct {
-	TotalCPU        string                    `json:"total_cpu"`
-	TotalMemory     string                    `json:"total_memory"`
-	UsedCPU         string                    `json:"used_cpu"`
-	UsedMemory      string                    `json:"used_memory"`
-	CPUPercentage   float64                   `json:"cpu_percentage"`
-	MemoryPercentage float64                  `json:"memory_percentage"`
-	StorageUsage    string                    `json:"storage_usage"`
-	NetworkIO       string                    `json:"network_io"`
+	TotalCPU         string  `json:"total_cpu"`
+	TotalMemory      string  `json:"total_memory"`
+	UsedCPU          string  `json:"used_cpu"`
+	UsedMemory       string  `json:"used_memory"`
+	CPUPercentage    float64 `json:"cpu_percentage"`
+	MemoryPercentage float64 `json:"memory_percentage"`
+	StorageUsage     string  `json:"storage_usage"`
+	NetworkIO        string  `json:"network_io"`
 }
 
 type AlertInfo struct {
-	ID              string                    `json:"id"`
-	Type            string                    `json:"type"`
-	Severity        string                    `json:"severity"`
-	Message         string                    `json:"message"`
-	Service         string                    `json:"service"`
-	Timestamp       time.Time                 `json:"timestamp"`
-	Status          string                    `json:"status"`
+	ID        string    `json:"id"`
+	Type      string    `json:"type"`
+	Severity  string    `json:"severity"`
+	Message   string    `json:"message"`
+	Service   string    `json:"service"`
+	Timestamp time.Time `json:"timestamp"`
+	Status    string    `json:"status"`
 }
 
 type DeploymentSummary struct {
-	LastDeployment  string                    `json:"last_deployment"`
-	RecentChanges   []string                  `json:"recent_changes"`
-	PendingUpdates  []string                  `json:"pending_updates"`
-	HealthChecks    int                       `json:"health_checks_passing"`
-	TotalServices   int                       `json:"total_services"`
+	LastDeployment string   `json:"last_deployment"`
+	RecentChanges  []string `json:"recent_changes"`
+	PendingUpdates []string `json:"pending_updates"`
+	HealthChecks   int      `json:"health_checks_passing"`
+	TotalServices  int      `json:"total_services"`
 }
 
 type MetricsData struct {
-	Environment     domain.Environment         `json:"environment"`
-	StartTime       time.Time                 `json:"start_time"`
-	EndTime         time.Time                 `json:"end_time"`
-	Interval        time.Duration             `json:"interval"`
-	Metrics         map[string][]MetricPoint  `json:"metrics"`
-	Summary         MetricsSummary            `json:"summary"`
+	Environment domain.Environment       `json:"environment"`
+	StartTime   time.Time                `json:"start_time"`
+	EndTime     time.Time                `json:"end_time"`
+	Interval    time.Duration            `json:"interval"`
+	Metrics     map[string][]MetricPoint `json:"metrics"`
+	Summary     MetricsSummary           `json:"summary"`
 }
 
 type MetricPoint struct {
-	Timestamp       time.Time                 `json:"timestamp"`
-	Value           float64                   `json:"value"`
-	Labels          map[string]string         `json:"labels,omitempty"`
+	Timestamp time.Time         `json:"timestamp"`
+	Value     float64           `json:"value"`
+	Labels    map[string]string `json:"labels,omitempty"`
 }
 
 type MetricsSummary struct {
-	AvgCPU          float64                   `json:"avg_cpu"`
-	MaxCPU          float64                   `json:"max_cpu"`
-	AvgMemory       float64                   `json:"avg_memory"`
-	MaxMemory       float64                   `json:"max_memory"`
-	RequestRate     float64                   `json:"request_rate"`
-	ErrorRate       float64                   `json:"error_rate"`
-	ResponseTime    float64                   `json:"avg_response_time"`
+	AvgCPU       float64 `json:"avg_cpu"`
+	MaxCPU       float64 `json:"max_cpu"`
+	AvgMemory    float64 `json:"avg_memory"`
+	MaxMemory    float64 `json:"max_memory"`
+	RequestRate  float64 `json:"request_rate"`
+	ErrorRate    float64 `json:"error_rate"`
+	ResponseTime float64 `json:"avg_response_time"`
 }
 
 type MonitoringReport struct {
-	Environment     domain.Environment         `json:"environment"`
-	ReportType      string                    `json:"report_type"`
-	Period          string                    `json:"period"`
-	GeneratedAt     time.Time                 `json:"generated_at"`
-	Summary         ReportSummary             `json:"summary"`
-	Details         interface{}               `json:"details"`
-	Recommendations []string                  `json:"recommendations"`
+	Environment     domain.Environment `json:"environment"`
+	ReportType      string             `json:"report_type"`
+	Period          string             `json:"period"`
+	GeneratedAt     time.Time          `json:"generated_at"`
+	Summary         ReportSummary      `json:"summary"`
+	Details         interface{}        `json:"details"`
+	Recommendations []string           `json:"recommendations"`
 }
 
 type ReportSummary struct {
-	OverallHealth   string                    `json:"overall_health"`
-	TotalServices   int                       `json:"total_services"`
-	HealthyServices int                       `json:"healthy_services"`
-	ActiveAlerts    int                       `json:"active_alerts"`
-	CriticalIssues  int                       `json:"critical_issues"`
-	Uptime          string                    `json:"uptime"`
+	OverallHealth   string `json:"overall_health"`
+	TotalServices   int    `json:"total_services"`
+	HealthyServices int    `json:"healthy_services"`
+	ActiveAlerts    int    `json:"active_alerts"`
+	CriticalIssues  int    `json:"critical_issues"`
+	Uptime          string `json:"uptime"`
 }
 
 // Implementation methods for MonitorCommand
@@ -787,7 +787,7 @@ func (m *MonitorCommand) RunDashboard(ctx context.Context, env domain.Environmen
 	for {
 		// Clear screen and show dashboard
 		fmt.Print("\033[H\033[2J") // Clear screen
-		
+
 		dashboard, err := m.collectDashboardData(ctx, env, filter)
 		if err != nil {
 			fmt.Printf("%s Dashboard data collection failed: %v\n", colors.Red("✗"), err)
@@ -817,7 +817,7 @@ func (m *MonitorCommand) MonitorServices(ctx context.Context, services []string,
 	fmt.Printf("Environment: %s\n", env.String())
 	fmt.Printf("Include metrics: %v\n", metrics)
 	fmt.Printf("Include logs: %v\n", logs)
-	
+
 	// This would integrate with kubectl to monitor actual services
 	return nil
 }
@@ -831,11 +831,11 @@ func (m *MonitorCommand) CollectMetrics(ctx context.Context, env domain.Environm
 		Interval:    interval,
 		Metrics:     make(map[string][]MetricPoint),
 	}
-	
+
 	// Simulate metrics collection
 	fmt.Printf("Collecting metrics for %v...\n", duration)
 	time.Sleep(2 * time.Second) // Simulate collection time
-	
+
 	return data, nil
 }
 
@@ -850,7 +850,7 @@ func (m *MonitorCommand) AnalyzeMetrics(data *MetricsData) *MetricsData {
 		ErrorRate:    0.15,
 		ResponseTime: 85.3,
 	}
-	
+
 	return data
 }
 
@@ -866,7 +866,7 @@ func (m *MonitorCommand) MonitorLogs(ctx context.Context, env domain.Environment
 	if search != "" {
 		fmt.Printf("Search pattern: %s\n", search)
 	}
-	
+
 	// This would integrate with kubectl to stream actual logs
 	return nil
 }
@@ -892,7 +892,7 @@ func (m *MonitorCommand) GenerateReport(ctx context.Context, env domain.Environm
 			"Update health check timeouts for better reliability",
 		},
 	}
-	
+
 	return report, nil
 }
 
@@ -929,16 +929,16 @@ func (m *MonitorCommand) ShowAlertHistory(ctx context.Context, env domain.Enviro
 
 func (m *MonitorCommand) ShowAlerts(ctx context.Context, env domain.Environment, status string) error {
 	fmt.Printf("Current alerts (status: %s):\n", status)
-	
+
 	if status == "all" || status == "active" {
 		fmt.Printf("%s [ACTIVE] High memory usage - postgres service (85%% used)\n", colors.Yellow("⚠"))
 		fmt.Printf("%s [ACTIVE] Slow response time - alt-backend service (>500ms)\n", colors.Yellow("⚠"))
 	}
-	
+
 	if status == "all" || status == "resolved" {
 		fmt.Printf("%s [RESOLVED] CPU spike - resolved 2 hours ago\n", colors.Green("✓"))
 	}
-	
+
 	return nil
 }
 
@@ -978,21 +978,21 @@ func (m *MonitorCommand) collectDashboardData(ctx context.Context, env domain.En
 
 func (m *MonitorCommand) displayDashboard(dashboard *DashboardData, compact bool) {
 	fmt.Printf("📊 Alt RSS Reader - Monitoring Dashboard\n")
-	fmt.Printf("Environment: %s | Last Update: %s\n", 
+	fmt.Printf("Environment: %s | Last Update: %s\n",
 		dashboard.Environment.String(), dashboard.Timestamp.Format("15:04:05"))
-	fmt.Printf("Overall Health: %s\n\n", 
+	fmt.Printf("Overall Health: %s\n\n",
 		getHealthIcon(dashboard.OverallHealth))
 
 	// Services section
 	fmt.Printf("🔧 Services Status:\n")
 	for _, service := range dashboard.Services {
 		healthIcon := getHealthIcon(service.Health)
-		fmt.Printf("  %s %-15s %s %-10s %s %s\n", 
-			healthIcon, service.Name, 
+		fmt.Printf("  %s %-15s %s %-10s %s %s\n",
+			healthIcon, service.Name,
 			getStatusIcon(service.Status), service.Replicas,
 			fmt.Sprintf("CPU:%s", service.CPU),
 			fmt.Sprintf("Mem:%s", service.Memory))
-		
+
 		if len(service.Issues) > 0 && !compact {
 			for _, issue := range service.Issues {
 				fmt.Printf("    %s %s\n", colors.Yellow("⚠"), issue)
@@ -1012,14 +1012,14 @@ func (m *MonitorCommand) displayDashboard(dashboard *DashboardData, compact bool
 		fmt.Printf("\n🔔 Recent Alerts:\n")
 		for _, alert := range dashboard.RecentAlerts {
 			severityIcon := getSeverityIcon(alert.Severity)
-			fmt.Printf("  %s [%s] %s - %s\n", 
+			fmt.Printf("  %s [%s] %s - %s\n",
 				severityIcon, alert.Service, alert.Message, alert.Timestamp.Format("15:04"))
 		}
 	}
 
 	fmt.Printf("\n📈 Quick Stats: %d/%d services healthy | %d active alerts\n",
 		dashboard.DeploymentInfo.HealthChecks, dashboard.DeploymentInfo.TotalServices, len(dashboard.RecentAlerts))
-		
+
 	if !compact {
 		fmt.Printf("\nPress Ctrl+C to exit | 'q' + Enter to quit | 'h' + Enter for help\n")
 	}
@@ -1036,10 +1036,10 @@ func (m *MonitorCommand) exportDashboard(dashboard *DashboardData, filename stri
 // Display functions
 func displayMetrics(metrics *MetricsData) {
 	fmt.Printf("\nMetrics Summary for %s:\n", metrics.Environment.String())
-	fmt.Printf("Collection Period: %s to %s\n", 
+	fmt.Printf("Collection Period: %s to %s\n",
 		metrics.StartTime.Format("15:04:05"), metrics.EndTime.Format("15:04:05"))
 	fmt.Printf("Total Metrics: %d types collected\n", len(metrics.Metrics))
-	
+
 	if metrics.Summary.AvgCPU > 0 {
 		fmt.Printf("\nKey Metrics:\n")
 		fmt.Printf("  Average CPU: %.1f%% (Max: %.1f%%)\n", metrics.Summary.AvgCPU, metrics.Summary.MaxCPU)
@@ -1052,7 +1052,7 @@ func displayMetrics(metrics *MetricsData) {
 
 func displayMetricsAnalysis(metrics *MetricsData) {
 	displayMetrics(metrics)
-	
+
 	fmt.Printf("\nAnalysis & Recommendations:\n")
 	if metrics.Summary.MaxCPU > 80 {
 		fmt.Printf("  %s CPU usage peaked at %.1f%% - consider scaling\n", colors.Yellow("⚠"), metrics.Summary.MaxCPU)
@@ -1067,12 +1067,12 @@ func displayMetricsAnalysis(metrics *MetricsData) {
 
 func displayReport(report *MonitoringReport, format string) {
 	fmt.Printf("\n%s Report: %s\n", strings.Title(report.ReportType), report.Environment.String())
-	fmt.Printf("Generated: %s | Period: %s\n", 
+	fmt.Printf("Generated: %s | Period: %s\n",
 		report.GeneratedAt.Format("2006-01-02 15:04"), report.Period)
 	fmt.Printf("Overall Health: %s\n\n", getHealthIcon(report.Summary.OverallHealth))
 
 	fmt.Printf("Summary:\n")
-	fmt.Printf("  Services: %d total, %d healthy\n", 
+	fmt.Printf("  Services: %d total, %d healthy\n",
 		report.Summary.TotalServices, report.Summary.HealthyServices)
 	fmt.Printf("  Active Alerts: %d\n", report.Summary.ActiveAlerts)
 	fmt.Printf("  Critical Issues: %d\n", report.Summary.CriticalIssues)

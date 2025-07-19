@@ -40,20 +40,20 @@ type ChartDependency struct {
 
 // DependencyGraph represents the complete dependency graph
 type DependencyGraph struct {
-	Charts       []string                    `json:"charts"`
-	Dependencies []ChartDependency           `json:"dependencies"`
-	Groups       map[string][]string         `json:"groups"`
-	DeployOrder  [][]string                  `json:"deploy_order"`
-	Metadata     DependencyGraphMetadata     `json:"metadata"`
+	Charts       []string                `json:"charts"`
+	Dependencies []ChartDependency       `json:"dependencies"`
+	Groups       map[string][]string     `json:"groups"`
+	DeployOrder  [][]string              `json:"deploy_order"`
+	Metadata     DependencyGraphMetadata `json:"metadata"`
 }
 
 // DependencyGraphMetadata contains metadata about the dependency graph
 type DependencyGraphMetadata struct {
-	GeneratedAt       time.Time `json:"generated_at"`
-	TotalCharts       int       `json:"total_charts"`
-	TotalDependencies int       `json:"total_dependencies"`
-	MaxDepth          int       `json:"max_depth"`
-	HasCycles         bool      `json:"has_cycles"`
+	GeneratedAt       time.Time  `json:"generated_at"`
+	TotalCharts       int        `json:"total_charts"`
+	TotalDependencies int        `json:"total_dependencies"`
+	MaxDepth          int        `json:"max_depth"`
+	HasCycles         bool       `json:"has_cycles"`
 	Cycles            [][]string `json:"cycles,omitempty"`
 }
 
@@ -66,11 +66,11 @@ type DependencyScanner struct {
 
 // DependencyPatterns holds regex patterns for dependency detection
 type DependencyPatterns struct {
-	ServiceReferences   []*regexp.Regexp
-	DatabaseReferences  []*regexp.Regexp
-	SecretReferences    []*regexp.Regexp
-	ConfigReferences    []*regexp.Regexp
-	HelmDependencies    []*regexp.Regexp
+	ServiceReferences  []*regexp.Regexp
+	DatabaseReferences []*regexp.Regexp
+	SecretReferences   []*regexp.Regexp
+	ConfigReferences   []*regexp.Regexp
+	HelmDependencies   []*regexp.Regexp
 }
 
 // NewDependencyScanner creates a new dependency scanner
@@ -147,7 +147,7 @@ func (s *DependencyScanner) ScanDependencies(ctx context.Context, chartsDir stri
 	}
 
 	s.logger.InfoWithContext("discovered charts", map[string]interface{}{
-		"count": len(charts),
+		"count":  len(charts),
 		"charts": charts,
 	})
 
@@ -466,15 +466,15 @@ func (s *DependencyScanner) isValidChartName(name string) bool {
 func (s *DependencyScanner) mapSecretToChart(secretName string) string {
 	// Common patterns for mapping secrets to charts
 	secretToChart := map[string]string{
-		"postgres-secrets":       "postgres",
-		"auth-postgres-secrets":  "auth-postgres",
+		"postgres-secrets":        "postgres",
+		"auth-postgres-secrets":   "auth-postgres",
 		"kratos-postgres-secrets": "kratos-postgres",
 		"clickhouse-secrets":      "clickhouse",
-		"meilisearch-secrets":    "meilisearch",
-		"backend-secrets":        "alt-backend",
-		"auth-service-secrets":   "auth-service",
-		"frontend-secrets":       "alt-frontend",
-		"nginx-secrets":          "nginx",
+		"meilisearch-secrets":     "meilisearch",
+		"backend-secrets":         "alt-backend",
+		"auth-service-secrets":    "auth-service",
+		"frontend-secrets":        "alt-frontend",
+		"nginx-secrets":           "nginx",
 	}
 
 	if chart, exists := secretToChart[secretName]; exists {

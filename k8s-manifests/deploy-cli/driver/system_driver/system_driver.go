@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-	
+
 	"deploy-cli/port/system_port"
 )
 
@@ -32,7 +32,7 @@ func (s *SystemDriver) ExecuteCommand(ctx context.Context, command string, args 
 func (s *SystemDriver) ExecuteCommandWithTimeout(ctx context.Context, timeout time.Duration, command string, args ...string) (string, error) {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	return s.ExecuteCommand(ctxWithTimeout, command, args...)
 }
 
@@ -77,21 +77,21 @@ func (s *SystemDriver) ChangeDirectory(path string) error {
 // GetSystemInfo returns basic system information
 func (s *SystemDriver) GetSystemInfo(ctx context.Context) (map[string]string, error) {
 	info := make(map[string]string)
-	
+
 	// Get OS type
 	if output, err := s.ExecuteCommand(ctx, "uname", "-s"); err == nil {
 		info["os"] = strings.TrimSpace(output)
 	}
-	
+
 	// Get kernel version
 	if output, err := s.ExecuteCommand(ctx, "uname", "-r"); err == nil {
 		info["kernel"] = strings.TrimSpace(output)
 	}
-	
+
 	// Get architecture
 	if output, err := s.ExecuteCommand(ctx, "uname", "-m"); err == nil {
 		info["architecture"] = strings.TrimSpace(output)
 	}
-	
+
 	return info, nil
 }

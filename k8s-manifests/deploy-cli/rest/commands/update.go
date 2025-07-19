@@ -6,20 +6,20 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	
+
 	"deploy-cli/domain"
-	"deploy-cli/utils/logger"
-	"deploy-cli/utils/colors"
-	"deploy-cli/usecase/deployment_usecase"
-	"deploy-cli/usecase/secret_usecase"
+	"deploy-cli/driver/filesystem_driver"
 	"deploy-cli/driver/helm_driver"
 	"deploy-cli/driver/kubectl_driver"
-	"deploy-cli/driver/filesystem_driver"
 	"deploy-cli/driver/system_driver"
+	"deploy-cli/gateway/filesystem_gateway"
 	"deploy-cli/gateway/helm_gateway"
 	"deploy-cli/gateway/kubectl_gateway"
-	"deploy-cli/gateway/filesystem_gateway"
 	"deploy-cli/gateway/system_gateway"
+	"deploy-cli/usecase/deployment_usecase"
+	"deploy-cli/usecase/secret_usecase"
+	"deploy-cli/utils/colors"
+	"deploy-cli/utils/logger"
 )
 
 // UpdateCommand represents the update command
@@ -33,7 +33,7 @@ func NewUpdateCommand(logger *logger.Logger) *cobra.Command {
 	updateCmd := &UpdateCommand{
 		logger: logger,
 	}
-	
+
 	cmd := &cobra.Command{
 		Use:   "update <environment>",
 		Short: "Force update pods and deployments",
@@ -71,46 +71,46 @@ Examples:
 		PreRunE: updateCmd.preRun,
 		RunE:    updateCmd.run,
 	}
-	
+
 	// Add flags
 	cmd.Flags().String("chart", "", "Update specific chart only")
 	cmd.Flags().BoolP("restart", "r", false, "Restart all resources after update")
 	cmd.Flags().StringP("namespace", "n", "", "Override target namespace")
 	cmd.Flags().Duration("timeout", 300*time.Second, "Timeout for update operations")
 	cmd.Flags().String("charts-dir", "/home/koko/Documents/dev/Alt/charts", "Directory containing Helm charts")
-	
+
 	return cmd
 }
 
 // preRun performs pre-execution setup
 func (u *UpdateCommand) preRun(cmd *cobra.Command, args []string) error {
 	u.logger.InfoWithContext("initializing update command", "environment", args[0])
-	
+
 	// Create dependencies
 	u.usecase = u.createDeploymentUsecase()
-	
+
 	return nil
 }
 
 // run executes the update
 func (u *UpdateCommand) run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	
+
 	colors.PrintInfo("Starting forced update process")
-	
+
 	// Parse environment
 	env, err := domain.ParseEnvironment(args[0])
 	if err != nil {
 		return fmt.Errorf("invalid environment: %w", err)
 	}
-	
+
 	// Get flags
 	chartName, _ := cmd.Flags().GetString("chart")
 	doRestart, _ := cmd.Flags().GetBool("restart")
 	targetNamespace, _ := cmd.Flags().GetString("namespace")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	chartsDir, _ := cmd.Flags().GetString("charts-dir")
-	
+
 	// Create deployment options with force update enabled
 	options := domain.NewDeploymentOptions()
 	options.Environment = env
@@ -119,16 +119,16 @@ func (u *UpdateCommand) run(cmd *cobra.Command, args []string) error {
 	options.TargetNamespace = targetNamespace
 	options.Timeout = timeout
 	options.ChartsDir = chartsDir
-	
+
 	// Set image prefix (required for validation)
 	options.ImagePrefix = u.getEnvVar("IMAGE_PREFIX")
 	if options.ImagePrefix == "" {
 		return fmt.Errorf("IMAGE_PREFIX environment variable is required")
 	}
-	
+
 	// Set tag base if provided
 	options.TagBase = u.getEnvVar("TAG_BASE")
-	
+
 	if chartName != "" {
 		// Update specific chart
 		if err := u.updateSpecificChart(ctx, chartName, options); err != nil {
@@ -142,7 +142,7 @@ func (u *UpdateCommand) run(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	
+
 	colors.PrintSuccess("Update completed successfully")
 	return nil
 }
@@ -150,20 +150,20 @@ func (u *UpdateCommand) run(cmd *cobra.Command, args []string) error {
 // updateSpecificChart updates a specific chart
 func (u *UpdateCommand) updateSpecificChart(ctx context.Context, chartName string, options *domain.DeploymentOptions) error {
 	colors.PrintStep(fmt.Sprintf("Updating chart: %s", chartName))
-	
+
 	// Get chart configuration
 	chartConfig := domain.NewChartConfig(options.ChartsDir)
 	chart, err := chartConfig.GetChart(chartName)
 	if err != nil {
 		return fmt.Errorf("chart not found: %w", err)
 	}
-	
+
 	// Deploy the chart with force update
 	helmGateway := u.createHelmGateway()
 	if err := helmGateway.DeployChart(ctx, *chart, options); err != nil {
 		return fmt.Errorf("failed to update chart %s: %w", chartName, err)
 	}
-	
+
 	colors.PrintSuccess(fmt.Sprintf("Chart %s updated successfully", chartName))
 	return nil
 }
@@ -171,17 +171,17 @@ func (u *UpdateCommand) updateSpecificChart(ctx context.Context, chartName strin
 // updateAllCharts updates all charts
 func (u *UpdateCommand) updateAllCharts(ctx context.Context, options *domain.DeploymentOptions) error {
 	colors.PrintStep("Updating all charts with force update")
-	
+
 	// Use the deployment usecase to deploy all charts
 	progress, err := u.usecase.Deploy(ctx, options)
 	if err != nil {
 		return fmt.Errorf("chart updates failed: %w", err)
 	}
-	
+
 	// Print results
-	colors.PrintSuccess(fmt.Sprintf("Update completed: %d successful, %d failed, %d skipped", 
+	colors.PrintSuccess(fmt.Sprintf("Update completed: %d successful, %d failed, %d skipped",
 		progress.GetSuccessCount(), progress.GetFailedCount(), progress.GetSkippedCount()))
-	
+
 	return nil
 }
 
@@ -192,23 +192,23 @@ func (u *UpdateCommand) createDeploymentUsecase() *deployment_usecase.Deployment
 	helmDriver := helm_driver.NewHelmDriver()
 	kubectlDriver := kubectl_driver.NewKubectlDriver()
 	filesystemDriver := filesystem_driver.NewFileSystemDriver()
-	
+
 	// Create logger port adapter
 	loggerPort := NewLoggerPortAdapter(u.logger)
-	
+
 	// Create gateways
 	systemGateway := system_gateway.NewSystemGateway(systemDriver, loggerPort)
 	helmGateway := helm_gateway.NewHelmGateway(helmDriver, loggerPort)
 	kubectlGateway := kubectl_gateway.NewKubectlGateway(kubectlDriver, loggerPort)
 	filesystemGateway := filesystem_gateway.NewFileSystemGateway(filesystemDriver, loggerPort)
-	
+
 	// Create usecase
 	// Create secret usecase
 	secretUsecase := secret_usecase.NewSecretUsecase(kubectlGateway, loggerPort)
-	
+
 	// Create SSL certificate usecase
 	sslUsecase := secret_usecase.NewSSLCertificateUsecase(secretUsecase, loggerPort)
-	
+
 	return deployment_usecase.NewDeploymentUsecase(
 		helmGateway,
 		kubectlGateway,

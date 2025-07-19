@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"time"
-	
-	"deploy-cli/port/system_port"
+
 	"deploy-cli/port/logger_port"
+	"deploy-cli/port/system_port"
 )
 
 // SystemGateway acts as anti-corruption layer for system operations
@@ -29,11 +29,11 @@ func (g *SystemGateway) ExecuteCommand(ctx context.Context, command string, args
 		"command": command,
 		"args":    args,
 	})
-	
+
 	start := time.Now()
 	output, err := g.systemPort.ExecuteCommand(ctx, command, args...)
 	duration := time.Since(start)
-	
+
 	if err != nil {
 		g.logger.ErrorWithContext("command execution failed", map[string]interface{}{
 			"command":  command,
@@ -44,13 +44,13 @@ func (g *SystemGateway) ExecuteCommand(ctx context.Context, command string, args
 		})
 		return output, fmt.Errorf("command execution failed: %w", err)
 	}
-	
+
 	g.logger.InfoWithContext("command executed successfully", map[string]interface{}{
 		"command":  command,
 		"args":     args,
 		"duration": duration,
 	})
-	
+
 	return output, nil
 }
 
@@ -61,11 +61,11 @@ func (g *SystemGateway) ExecuteCommandWithTimeout(ctx context.Context, timeout t
 		"args":    args,
 		"timeout": timeout,
 	})
-	
+
 	start := time.Now()
 	output, err := g.systemPort.ExecuteCommandWithTimeout(ctx, timeout, command, args...)
 	duration := time.Since(start)
-	
+
 	if err != nil {
 		g.logger.ErrorWithContext("command execution with timeout failed", map[string]interface{}{
 			"command":  command,
@@ -77,14 +77,14 @@ func (g *SystemGateway) ExecuteCommandWithTimeout(ctx context.Context, timeout t
 		})
 		return output, fmt.Errorf("command execution with timeout failed: %w", err)
 	}
-	
+
 	g.logger.InfoWithContext("command executed successfully with timeout", map[string]interface{}{
 		"command":  command,
 		"args":     args,
 		"timeout":  timeout,
 		"duration": duration,
 	})
-	
+
 	return output, nil
 }
 
@@ -93,14 +93,14 @@ func (g *SystemGateway) CheckCommandExists(command string) bool {
 	g.logger.DebugWithContext("checking command existence", map[string]interface{}{
 		"command": command,
 	})
-	
+
 	exists := g.systemPort.CheckCommandExists(command)
-	
+
 	g.logger.DebugWithContext("command existence check result", map[string]interface{}{
 		"command": command,
 		"exists":  exists,
 	})
-	
+
 	return exists
 }
 
@@ -109,7 +109,7 @@ func (g *SystemGateway) Sleep(duration time.Duration) {
 	g.logger.DebugWithContext("sleeping", map[string]interface{}{
 		"duration": duration,
 	})
-	
+
 	g.systemPort.Sleep(duration)
 }
 
@@ -118,14 +118,14 @@ func (g *SystemGateway) GetEnvironmentVariable(key string) string {
 	g.logger.DebugWithContext("getting environment variable", map[string]interface{}{
 		"key": key,
 	})
-	
+
 	value := g.systemPort.GetEnvironmentVariable(key)
-	
+
 	g.logger.DebugWithContext("environment variable retrieved", map[string]interface{}{
 		"key":   key,
 		"value": value,
 	})
-	
+
 	return value
 }
 
@@ -135,7 +135,7 @@ func (g *SystemGateway) SetEnvironmentVariable(key, value string) error {
 		"key":   key,
 		"value": value,
 	})
-	
+
 	err := g.systemPort.SetEnvironmentVariable(key, value)
 	if err != nil {
 		g.logger.ErrorWithContext("failed to set environment variable", map[string]interface{}{
@@ -145,12 +145,12 @@ func (g *SystemGateway) SetEnvironmentVariable(key, value string) error {
 		})
 		return fmt.Errorf("failed to set environment variable: %w", err)
 	}
-	
+
 	g.logger.InfoWithContext("environment variable set successfully", map[string]interface{}{
 		"key":   key,
 		"value": value,
 	})
-	
+
 	return nil
 }
 
@@ -159,25 +159,25 @@ func (g *SystemGateway) ValidateRequiredCommands(commands []string) error {
 	g.logger.InfoWithContext("validating required commands", map[string]interface{}{
 		"commands": commands,
 	})
-	
+
 	var missingCommands []string
 	for _, command := range commands {
 		if !g.CheckCommandExists(command) {
 			missingCommands = append(missingCommands, command)
 		}
 	}
-	
+
 	if len(missingCommands) > 0 {
 		g.logger.ErrorWithContext("missing required commands", map[string]interface{}{
 			"missing_commands": missingCommands,
 		})
 		return fmt.Errorf("missing required commands: %v", missingCommands)
 	}
-	
+
 	g.logger.InfoWithContext("all required commands are available", map[string]interface{}{
 		"commands": commands,
 	})
-	
+
 	return nil
 }
 
@@ -187,7 +187,7 @@ func (g *SystemGateway) ExecuteCommandSafely(ctx context.Context, command string
 	if !g.CheckCommandExists(command) {
 		return "", fmt.Errorf("command not found: %s", command)
 	}
-	
+
 	// Execute with retry logic
 	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
@@ -195,7 +195,7 @@ func (g *SystemGateway) ExecuteCommandSafely(ctx context.Context, command string
 		if err == nil {
 			return output, nil
 		}
-		
+
 		if i < maxRetries-1 {
 			g.logger.WarnWithContext("command execution failed, retrying", map[string]interface{}{
 				"command": command,
@@ -206,34 +206,34 @@ func (g *SystemGateway) ExecuteCommandSafely(ctx context.Context, command string
 			time.Sleep(time.Second * time.Duration(i+1))
 		}
 	}
-	
+
 	return "", fmt.Errorf("command execution failed after %d retries", maxRetries)
 }
 
 // GetSystemInfo returns system information
 func (g *SystemGateway) GetSystemInfo(ctx context.Context) (map[string]string, error) {
 	g.logger.InfoWithContext("getting system information", map[string]interface{}{})
-	
+
 	info := make(map[string]string)
-	
+
 	// Get OS information
 	if output, err := g.ExecuteCommand(ctx, "uname", "-s"); err == nil {
 		info["os"] = output
 	}
-	
+
 	// Get kernel version
 	if output, err := g.ExecuteCommand(ctx, "uname", "-r"); err == nil {
 		info["kernel"] = output
 	}
-	
+
 	// Get architecture
 	if output, err := g.ExecuteCommand(ctx, "uname", "-m"); err == nil {
 		info["architecture"] = output
 	}
-	
+
 	g.logger.InfoWithContext("system information retrieved", map[string]interface{}{
 		"info": info,
 	})
-	
+
 	return info, nil
 }

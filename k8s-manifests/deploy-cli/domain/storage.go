@@ -52,13 +52,13 @@ func NewStorageConfig() *StorageConfig {
 			"backup-storage",
 		},
 		CapacityLimits: map[string]string{
-			"postgres":               "8Gi",
-			"auth-postgres":          "5Gi",
-			"kratos-postgres":        "5Gi",
-			"clickhouse":             "8Gi",
-			"meilisearch":            "8Gi",
-			"meilisearch-dumps":      "3Gi",
-			"meilisearch-snapshots":  "3Gi",
+			"postgres":              "8Gi",
+			"auth-postgres":         "5Gi",
+			"kratos-postgres":       "5Gi",
+			"clickhouse":            "8Gi",
+			"meilisearch":           "8Gi",
+			"meilisearch-dumps":     "3Gi",
+			"meilisearch-snapshots": "3Gi",
 		},
 		PersistentVolumes: []PersistentVolume{
 			*NewPersistentVolume("postgres-pv", "8Gi", "local-storage", "/home/koko/Documents/dev/Alt/pv-data/postgres"),
@@ -102,15 +102,15 @@ func (s *StorageConfig) GetCapacityLimit(service string) (string, error) {
 // GetTotalCapacity returns the total capacity required
 func (s *StorageConfig) GetTotalCapacity() int {
 	capacities := map[string]int{
-		"postgres":               8,
-		"auth-postgres":          5,
-		"kratos-postgres":        5,
-		"clickhouse":             8,
-		"meilisearch":            8,
-		"meilisearch-dumps":      3,
-		"meilisearch-snapshots":  3,
+		"postgres":              8,
+		"auth-postgres":         5,
+		"kratos-postgres":       5,
+		"clickhouse":            8,
+		"meilisearch":           8,
+		"meilisearch-dumps":     3,
+		"meilisearch-snapshots": 3,
 	}
-	
+
 	total := 0
 	for _, capacity := range capacities {
 		total += capacity
@@ -127,7 +127,7 @@ func (s *StorageConfig) GetMaxCapacityLimit() int {
 func (s *StorageConfig) ValidateCapacity() error {
 	total := s.GetTotalCapacity()
 	max := s.GetMaxCapacityLimit()
-	
+
 	if total > max {
 		return fmt.Errorf("total storage capacity %dGi exceeds maximum limit %dGi", total, max)
 	}

@@ -5,23 +5,23 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-	
+
 	"github.com/spf13/cobra"
-	
+
 	"deploy-cli/domain"
-	"deploy-cli/utils/logger"
-	"deploy-cli/utils/colors"
-	"deploy-cli/usecase/deployment_usecase"
-	"deploy-cli/usecase/secret_usecase"
+	"deploy-cli/driver/filesystem_driver"
 	"deploy-cli/driver/helm_driver"
 	"deploy-cli/driver/kubectl_driver"
-	"deploy-cli/driver/filesystem_driver"
 	"deploy-cli/driver/system_driver"
+	"deploy-cli/gateway/filesystem_gateway"
 	"deploy-cli/gateway/helm_gateway"
 	"deploy-cli/gateway/kubectl_gateway"
-	"deploy-cli/gateway/filesystem_gateway"
 	"deploy-cli/gateway/system_gateway"
 	"deploy-cli/port/logger_port"
+	"deploy-cli/usecase/deployment_usecase"
+	"deploy-cli/usecase/secret_usecase"
+	"deploy-cli/utils/colors"
+	"deploy-cli/utils/logger"
 )
 
 // DeployCommand represents the deploy command
@@ -35,7 +35,7 @@ func NewDeployCommand(logger *logger.Logger) *cobra.Command {
 	deployCmd := &DeployCommand{
 		logger: logger,
 	}
-	
+
 	cmd := &cobra.Command{
 		Use:   "deploy <environment>",
 		Short: "Deploy Alt RSS Reader services",
@@ -79,7 +79,7 @@ Examples:
 		PreRunE: deployCmd.preRun,
 		RunE:    deployCmd.run,
 	}
-	
+
 	// Add flags
 	cmd.Flags().BoolP("dry-run", "d", false, "Perform dry-run (template charts without deploying)")
 	cmd.Flags().BoolP("restart", "r", false, "Restart deployments after deployment")
@@ -95,32 +95,32 @@ Examples:
 	cmd.Flags().Duration("monitoring-interval", 30*time.Second, "Monitoring interval for continuous monitoring")
 	cmd.Flags().Bool("diagnostic-report", false, "Generate detailed diagnostic report before deployment")
 	cmd.Flags().Bool("skip-statefulset-recovery", false, "Skip StatefulSet recovery for emergency deployments")
-	
+
 	return cmd
 }
 
 // preRun performs pre-execution setup
 func (d *DeployCommand) preRun(cmd *cobra.Command, args []string) error {
 	d.logger.InfoWithContext("initializing deployment command", "environment", args[0])
-	
+
 	// Parse environment
 	env, err := domain.ParseEnvironment(args[0])
 	if err != nil {
 		return fmt.Errorf("invalid environment: %w", err)
 	}
-	
+
 	// Get environment variables
 	imagePrefix := d.getEnvVar("IMAGE_PREFIX")
 	if imagePrefix == "" {
 		return fmt.Errorf("IMAGE_PREFIX environment variable is required")
 	}
-	
+
 	// Create deployment options
 	options := domain.NewDeploymentOptions()
 	options.Environment = env
 	options.ImagePrefix = imagePrefix
 	options.TagBase = d.getEnvVar("TAG_BASE")
-	
+
 	// Set flags
 	options.DryRun, _ = cmd.Flags().GetBool("dry-run")
 	options.DoRestart, _ = cmd.Flags().GetBool("restart")
@@ -137,33 +137,33 @@ func (d *DeployCommand) preRun(cmd *cobra.Command, args []string) error {
 		options.AutoCreateNamespaces = true
 		options.AutoFixStorage = true
 	}
-	
+
 	// Validate options
 	if err := options.Validate(); err != nil {
 		return fmt.Errorf("deployment options validation failed: %w", err)
 	}
-	
+
 	// Create dependencies
 	d.usecase = d.createDeploymentUsecase()
-	
+
 	return nil
 }
 
 // run executes the deployment
 func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	
+
 	colors.PrintInfo("Starting OSS-optimized deployment workflow")
-	
+
 	// Parse environment
 	env, _ := domain.ParseEnvironment(args[0])
-	
+
 	// Create deployment options
 	options := domain.NewDeploymentOptions()
 	options.Environment = env
 	options.ImagePrefix = d.getEnvVar("IMAGE_PREFIX")
 	options.TagBase = d.getEnvVar("TAG_BASE")
-	
+
 	// Set flags
 	options.DryRun, _ = cmd.Flags().GetBool("dry-run")
 	options.DoRestart, _ = cmd.Flags().GetBool("restart")
@@ -181,51 +181,51 @@ func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 		options.AutoFixStorage = true
 	}
 	options.SkipStatefulSetRecovery, _ = cmd.Flags().GetBool("skip-statefulset-recovery")
-	
+
 	// Convert relative charts directory to absolute path
 	if options.ChartsDir != "" {
 		absPath, err := filepath.Abs(options.ChartsDir)
 		if err != nil {
 			d.logger.WarnWithContext("failed to resolve charts directory to absolute path", map[string]interface{}{
 				"charts-dir": options.ChartsDir,
-				"error": err.Error(),
+				"error":      err.Error(),
 			})
 		} else {
 			options.ChartsDir = absPath
 		}
 	}
-	
+
 	// Validate that charts directory exists
 	if options.ChartsDir != "" {
 		if _, err := os.Stat(options.ChartsDir); os.IsNotExist(err) {
 			return fmt.Errorf("charts directory does not exist: %s", options.ChartsDir)
 		}
 	}
-	
+
 	// Log key deployment parameters
 	d.logger.InfoWithContext("deployment configuration", map[string]interface{}{
-		"charts-dir": options.ChartsDir,
-		"namespace": options.TargetNamespace,
+		"charts-dir":   options.ChartsDir,
+		"namespace":    options.TargetNamespace,
 		"force-update": options.ForceUpdate,
-		"dry-run": options.DryRun,
+		"dry-run":      options.DryRun,
 	})
-	
+
 	// Execute deployment
 	start := time.Now()
 	result, err := d.usecase.Deploy(ctx, options)
 	duration := time.Since(start)
-	
+
 	if err != nil {
 		colors.PrintError(fmt.Sprintf("Deployment failed: %v", err))
 		return err
 	}
-	
+
 	// Print results
 	d.printDeploymentResults(result, duration)
-	
+
 	// Print appropriate completion message based on results
 	d.printCompletionMessage(result, duration)
-	
+
 	return nil
 }
 
@@ -236,23 +236,23 @@ func (d *DeployCommand) createDeploymentUsecase() *deployment_usecase.Deployment
 	helmDriver := helm_driver.NewHelmDriver()
 	kubectlDriver := kubectl_driver.NewKubectlDriver()
 	filesystemDriver := filesystem_driver.NewFileSystemDriver()
-	
+
 	// Create logger port adapter
 	loggerPort := NewLoggerPortAdapter(d.logger)
-	
+
 	// Create gateways
 	systemGateway := system_gateway.NewSystemGateway(systemDriver, loggerPort)
 	helmGateway := helm_gateway.NewHelmGateway(helmDriver, loggerPort)
 	kubectlGateway := kubectl_gateway.NewKubectlGateway(kubectlDriver, loggerPort)
 	filesystemGateway := filesystem_gateway.NewFileSystemGateway(filesystemDriver, loggerPort)
-	
+
 	// Create usecase
 	// Create secret usecase
 	secretUsecase := secret_usecase.NewSecretUsecase(kubectlGateway, loggerPort)
-	
+
 	// Create SSL certificate usecase
 	sslUsecase := secret_usecase.NewSSLCertificateUsecase(secretUsecase, loggerPort)
-	
+
 	return deployment_usecase.NewDeploymentUsecase(
 		helmGateway,
 		kubectlGateway,
@@ -294,13 +294,13 @@ func (d *DeployCommand) printCompletionMessage(result *domain.DeploymentProgress
 // printDeploymentResults prints the deployment results
 func (d *DeployCommand) printDeploymentResults(result *domain.DeploymentProgress, duration time.Duration) {
 	colors.PrintInfo("Deployment Summary")
-	
+
 	fmt.Printf("  Total Charts: %d\n", result.TotalCharts)
 	fmt.Printf("  Successful: %s\n", colors.Green(fmt.Sprintf("%d", result.GetSuccessCount())))
 	fmt.Printf("  Failed: %s\n", colors.Red(fmt.Sprintf("%d", result.GetFailedCount())))
 	fmt.Printf("  Skipped: %s\n", colors.Yellow(fmt.Sprintf("%d", result.GetSkippedCount())))
 	fmt.Printf("  Duration: %s\n", colors.Cyan(duration.String()))
-	
+
 	// Print detailed results
 	if len(result.Results) > 0 {
 		colors.PrintInfo("Detailed Results")
@@ -314,13 +314,13 @@ func (d *DeployCommand) printDeploymentResults(result *domain.DeploymentProgress
 			case domain.DeploymentStatusSkipped:
 				status = colors.Yellow("⚠")
 			}
-			
-			fmt.Printf("  %s %s → %s (%s)\n", 
-				status, 
-				r.ChartName, 
-				r.Namespace, 
+
+			fmt.Printf("  %s %s → %s (%s)\n",
+				status,
+				r.ChartName,
+				r.Namespace,
 				r.Duration)
-				
+
 			if r.Error != nil {
 				fmt.Printf("    Error: %s\n", colors.Red(r.Error.Error()))
 			}

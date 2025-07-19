@@ -9,12 +9,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"deploy-cli/domain"
-	"deploy-cli/gateway/kubectl_gateway"
-	"deploy-cli/usecase/secret_usecase"
 	"deploy-cli/driver/kubectl_driver"
+	"deploy-cli/gateway/kubectl_gateway"
 	"deploy-cli/port/logger_port"
-	"deploy-cli/utils/logger"
+	"deploy-cli/usecase/secret_usecase"
 	"deploy-cli/utils/colors"
+	"deploy-cli/utils/logger"
 )
 
 // NewSecretsCommand creates a new secrets command
@@ -191,16 +191,16 @@ are detected, so manual execution is typically only needed for troubleshooting.`
 			}
 
 			if len(result.Conflicts) == 0 {
-				fmt.Printf("%s No secret conflicts found for environment %s\n", 
+				fmt.Printf("%s No secret conflicts found for environment %s\n",
 					colors.Green("✓"), env.String())
 				return nil
 			}
 
 			// Display conflicts
-			fmt.Printf("%s Found %d secret conflicts for environment %s:\n", 
+			fmt.Printf("%s Found %d secret conflicts for environment %s:\n",
 				colors.Yellow("⚠"), len(result.Conflicts), env.String())
 			for _, conflict := range result.Conflicts {
-				fmt.Printf("  - %s/%s: %s\n", 
+				fmt.Printf("  - %s/%s: %s\n",
 					conflict.SecretNamespace, conflict.SecretName, conflict.Description)
 			}
 
@@ -217,10 +217,10 @@ are detected, so manual execution is typically only needed for troubleshooting.`
 
 			// Resolve conflicts
 			if dryRun {
-				fmt.Printf("%s Dry run: would resolve %d conflicts\n", 
+				fmt.Printf("%s Dry run: would resolve %d conflicts\n",
 					colors.Blue("ℹ"), len(result.Conflicts))
 			} else {
-				fmt.Printf("%s Resolving %d conflicts...\n", 
+				fmt.Printf("%s Resolving %d conflicts...\n",
 					colors.Blue("→"), len(result.Conflicts))
 			}
 
@@ -380,13 +380,13 @@ Note: This is typically used as part of environment cleanup or maintenance.`,
 			}
 
 			if len(orphaned) == 0 {
-				fmt.Printf("%s No orphaned secrets found for environment %s\n", 
+				fmt.Printf("%s No orphaned secrets found for environment %s\n",
 					colors.Green("✓"), env.String())
 				return nil
 			}
 
 			// Display orphaned secrets
-			fmt.Printf("%s Found %d orphaned secrets for environment %s:\n", 
+			fmt.Printf("%s Found %d orphaned secrets for environment %s:\n",
 				colors.Yellow("⚠"), len(orphaned), env.String())
 			for _, secret := range orphaned {
 				fmt.Printf("  - %s/%s\n", secret.Namespace, secret.Name)
@@ -405,10 +405,10 @@ Note: This is typically used as part of environment cleanup or maintenance.`,
 
 			// Delete orphaned secrets
 			if dryRun {
-				fmt.Printf("%s Dry run: would delete %d orphaned secrets\n", 
+				fmt.Printf("%s Dry run: would delete %d orphaned secrets\n",
 					colors.Blue("ℹ"), len(orphaned))
 			} else {
-				fmt.Printf("%s Deleting %d orphaned secrets...\n", 
+				fmt.Printf("%s Deleting %d orphaned secrets...\n",
 					colors.Blue("→"), len(orphaned))
 
 				if err := secretUsecase.DeleteOrphanedSecrets(ctx, orphaned, dryRun); err != nil {
@@ -430,16 +430,16 @@ Note: This is typically used as part of environment cleanup or maintenance.`,
 
 // createSecretUsecase creates a secret usecase with minimal dependencies
 func createSecretUsecase(log *logger.Logger) *secret_usecase.SecretUsecase {
-	// For now, we need to adapt the logger interface. 
+	// For now, we need to adapt the logger interface.
 	// This is a temporary solution until we can unify the logger interfaces.
 	// We'll use a simple adapter to match the logger_port interface.
-	
-	// Create kubectl driver and gateway 
+
+	// Create kubectl driver and gateway
 	kubectlDriver := kubectl_driver.NewKubectlDriver()
-	
+
 	// Create a logger adapter that implements logger_port.LoggerPort
 	loggerAdapter := &LoggerAdapter{logger: log}
-	
+
 	kubectlGateway := kubectl_gateway.NewKubectlGateway(kubectlDriver, loggerAdapter)
 
 	// Create secret usecase
@@ -509,7 +509,7 @@ func displayValidationResults(result *domain.SecretValidationResult) {
 	if result.Valid {
 		fmt.Printf("%s All secrets are valid\n", colors.Green("✓"))
 	} else {
-		fmt.Printf("%s Validation failed with %d conflicts\n", 
+		fmt.Printf("%s Validation failed with %d conflicts\n",
 			colors.Red("✗"), len(result.Conflicts))
 	}
 
@@ -525,7 +525,7 @@ func displayValidationResults(result *domain.SecretValidationResult) {
 	if len(result.Conflicts) > 0 {
 		fmt.Printf("\n%s Conflicts:\n", colors.Red("✗"))
 		for _, conflict := range result.Conflicts {
-			fmt.Printf("  - %s/%s: %s\n", 
+			fmt.Printf("  - %s/%s: %s\n",
 				conflict.SecretNamespace, conflict.SecretName, conflict.Description)
 			fmt.Printf("    Type: %s\n", conflict.ConflictType.String())
 			// Display release information
@@ -565,7 +565,7 @@ func displaySecretsList(secrets []domain.SecretInfo, env domain.Environment) {
 		}
 	}
 
-	fmt.Printf("\nTotal: %d secrets across %d namespaces\n", 
+	fmt.Printf("\nTotal: %d secrets across %d namespaces\n",
 		len(secrets), len(namespaceSecrets))
 }
 
@@ -622,11 +622,11 @@ conflicts by implementing centralized secret management.`,
 
 			if dryRun {
 				// Validate current distribution state
-				fmt.Printf("%s Validating current secret distribution for %s...\n", 
+				fmt.Printf("%s Validating current secret distribution for %s...\n",
 					colors.Blue("ℹ"), env.String())
-				
+
 				// Implementation would go here for dry-run validation
-				fmt.Printf("%s Secret distribution dry-run completed for %s\n", 
+				fmt.Printf("%s Secret distribution dry-run completed for %s\n",
 					colors.Green("✓"), env.String())
 				return nil
 			}
@@ -644,12 +644,12 @@ conflicts by implementing centralized secret management.`,
 			}
 
 			// Execute distribution
-			fmt.Printf("%s Starting secret distribution for %s...\n", 
+			fmt.Printf("%s Starting secret distribution for %s...\n",
 				colors.Blue("ℹ"), env.String())
 
 			// Implementation would go here for actual distribution
 			// For now, just log the action
-			fmt.Printf("%s Secret distribution completed for %s\n", 
+			fmt.Printf("%s Secret distribution completed for %s\n",
 				colors.Green("✓"), env.String())
 
 			return nil

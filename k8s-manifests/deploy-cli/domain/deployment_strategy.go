@@ -34,11 +34,11 @@ type LayerConfiguration struct {
 	Charts                  []Chart
 	RequiresHealthCheck     bool
 	HealthCheckTimeout      time.Duration
-	WaitBetweenCharts      time.Duration
-	LayerCompletionTimeout time.Duration
+	WaitBetweenCharts       time.Duration
+	LayerCompletionTimeout  time.Duration
 	AllowParallelDeployment bool
-	SkipInEnvironment      []Environment
-	CriticalLayer          bool
+	SkipInEnvironment       []Environment
+	CriticalLayer           bool
 }
 
 // DevelopmentStrategy implements fast deployment for development environment
@@ -62,11 +62,11 @@ func (d *DevelopmentStrategy) GetLayerConfigurations(chartsDir string) []LayerCo
 				{Name: "meilisearch", Type: InfrastructureChart, Path: chartsDir + "/meilisearch", WaitReady: true},
 			},
 			RequiresHealthCheck:     true,
-			HealthCheckTimeout:      5 * time.Minute,  // Reduced for development
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 8 * time.Minute,
+			HealthCheckTimeout:      5 * time.Minute, // Reduced for development
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  8 * time.Minute,
 			AllowParallelDeployment: true,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Core Services",
@@ -76,10 +76,10 @@ func (d *DevelopmentStrategy) GetLayerConfigurations(chartsDir string) []LayerCo
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      3 * time.Minute,
-			WaitBetweenCharts:      5 * time.Second,
-			LayerCompletionTimeout: 5 * time.Minute,
+			WaitBetweenCharts:       5 * time.Second,
+			LayerCompletionTimeout:  5 * time.Minute,
 			AllowParallelDeployment: true,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Frontend & Optional Services",
@@ -89,10 +89,10 @@ func (d *DevelopmentStrategy) GetLayerConfigurations(chartsDir string) []LayerCo
 			},
 			RequiresHealthCheck:     false,
 			HealthCheckTimeout:      2 * time.Minute,
-			WaitBetweenCharts:      5 * time.Second,
-			LayerCompletionTimeout: 4 * time.Minute,
+			WaitBetweenCharts:       5 * time.Second,
+			LayerCompletionTimeout:  4 * time.Minute,
 			AllowParallelDeployment: true,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 	}
 }
@@ -137,10 +137,10 @@ func (s *StagingStrategy) GetLayerConfigurations(chartsDir string) []LayerConfig
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      12 * time.Minute,
-			WaitBetweenCharts:      25 * time.Second,
-			LayerCompletionTimeout: 18 * time.Minute,
+			WaitBetweenCharts:       25 * time.Second,
+			LayerCompletionTimeout:  18 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Configuration & Secrets",
@@ -151,10 +151,10 @@ func (s *StagingStrategy) GetLayerConfigurations(chartsDir string) []LayerConfig
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      3 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 6 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  6 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Core Services",
@@ -165,10 +165,10 @@ func (s *StagingStrategy) GetLayerConfigurations(chartsDir string) []LayerConfig
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      8 * time.Minute,
-			WaitBetweenCharts:      15 * time.Second,
-			LayerCompletionTimeout: 12 * time.Minute,
+			WaitBetweenCharts:       15 * time.Second,
+			LayerCompletionTimeout:  12 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Network & Ingress",
@@ -178,10 +178,10 @@ func (s *StagingStrategy) GetLayerConfigurations(chartsDir string) []LayerConfig
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      5 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 8 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  8 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 		{
 			Name: "Frontend Applications",
@@ -190,10 +190,10 @@ func (s *StagingStrategy) GetLayerConfigurations(chartsDir string) []LayerConfig
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      8 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 10 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  10 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 		{
 			Name: "Data Processing Services",
@@ -205,10 +205,10 @@ func (s *StagingStrategy) GetLayerConfigurations(chartsDir string) []LayerConfig
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      10 * time.Minute,
-			WaitBetweenCharts:      20 * time.Second,
-			LayerCompletionTimeout: 15 * time.Minute,
+			WaitBetweenCharts:       20 * time.Second,
+			LayerCompletionTimeout:  15 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 		{
 			Name: "Operations & Monitoring",
@@ -219,10 +219,10 @@ func (s *StagingStrategy) GetLayerConfigurations(chartsDir string) []LayerConfig
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      5 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 10 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  10 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 	}
 }
@@ -267,10 +267,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      15 * time.Minute, // Conservative timeout
-			WaitBetweenCharts:      10 * time.Second,  // Extended wait for stability
-			LayerCompletionTimeout: 25 * time.Minute,  // Extended layer timeout
+			WaitBetweenCharts:       10 * time.Second, // Extended wait for stability
+			LayerCompletionTimeout:  25 * time.Minute, // Extended layer timeout
 			AllowParallelDeployment: false,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Configuration & Secrets",
@@ -281,10 +281,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      3 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 8 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  8 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Core Services",
@@ -295,10 +295,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      12 * time.Minute,
-			WaitBetweenCharts:      30 * time.Second,
-			LayerCompletionTimeout: 20 * time.Minute,
+			WaitBetweenCharts:       30 * time.Second,
+			LayerCompletionTimeout:  20 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Network & Ingress",
@@ -308,10 +308,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      8 * time.Minute,
-			WaitBetweenCharts:      20 * time.Second,
-			LayerCompletionTimeout: 12 * time.Minute,
+			WaitBetweenCharts:       20 * time.Second,
+			LayerCompletionTimeout:  12 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 		{
 			Name: "Frontend Applications",
@@ -320,10 +320,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      10 * time.Minute,
-			WaitBetweenCharts:      15 * time.Second,
-			LayerCompletionTimeout: 15 * time.Minute,
+			WaitBetweenCharts:       15 * time.Second,
+			LayerCompletionTimeout:  15 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 		{
 			Name: "Data Processing Services",
@@ -336,10 +336,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      12 * time.Minute,
-			WaitBetweenCharts:      30 * time.Second,
-			LayerCompletionTimeout: 20 * time.Minute,
+			WaitBetweenCharts:       30 * time.Second,
+			LayerCompletionTimeout:  20 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 		{
 			Name: "Operations & Monitoring",
@@ -350,10 +350,10 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      8 * time.Minute,
-			WaitBetweenCharts:      15 * time.Second,
-			LayerCompletionTimeout: 15 * time.Minute,
+			WaitBetweenCharts:       15 * time.Second,
+			LayerCompletionTimeout:  15 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 	}
 }
@@ -395,10 +395,10 @@ func (d *DisasterRecoveryStrategy) GetLayerConfigurations(chartsDir string) []La
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      8 * time.Minute,
-			WaitBetweenCharts:      20 * time.Second,
-			LayerCompletionTimeout: 10 * time.Minute,
+			WaitBetweenCharts:       20 * time.Second,
+			LayerCompletionTimeout:  10 * time.Minute,
 			AllowParallelDeployment: true, // Speed up for emergency
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Essential Services",
@@ -408,10 +408,10 @@ func (d *DisasterRecoveryStrategy) GetLayerConfigurations(chartsDir string) []La
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      5 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 8 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  8 * time.Minute,
 			AllowParallelDeployment: true,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Basic Frontend",
@@ -421,10 +421,10 @@ func (d *DisasterRecoveryStrategy) GetLayerConfigurations(chartsDir string) []La
 			},
 			RequiresHealthCheck:     false,
 			HealthCheckTimeout:      3 * time.Minute,
-			WaitBetweenCharts:      5 * time.Second,
-			LayerCompletionTimeout: 5 * time.Minute,
+			WaitBetweenCharts:       5 * time.Second,
+			LayerCompletionTimeout:  5 * time.Minute,
 			AllowParallelDeployment: true,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 	}
 }

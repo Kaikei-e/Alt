@@ -1,9 +1,9 @@
 package deployment_usecase
 
 import (
-	"fmt"
 	"deploy-cli/domain"
 	"deploy-cli/port/logger_port"
+	"fmt"
 )
 
 // StrategyFactory creates deployment strategies based on environment or explicit strategy selection
@@ -24,19 +24,19 @@ func (f *StrategyFactory) CreateStrategy(env domain.Environment) (domain.Deploym
 	case domain.Development:
 		f.logger.InfoWithContext("creating development deployment strategy", map[string]interface{}{
 			"environment": env.String(),
-			"strategy": "development",
+			"strategy":    "development",
 		})
 		return &domain.DevelopmentStrategy{}, nil
 	case domain.Staging:
 		f.logger.InfoWithContext("creating staging deployment strategy", map[string]interface{}{
 			"environment": env.String(),
-			"strategy": "staging",
+			"strategy":    "staging",
 		})
 		return &domain.StagingStrategy{}, nil
 	case domain.Production:
 		f.logger.InfoWithContext("creating production deployment strategy", map[string]interface{}{
 			"environment": env.String(),
-			"strategy": "production",
+			"strategy":    "production",
 		})
 		return &domain.ProductionStrategy{}, nil
 	default:
@@ -78,12 +78,12 @@ func (f *StrategyFactory) ValidateStrategyForEnvironment(strategy domain.Deploym
 	if strategy.GetName() == "disaster-recovery" && env == domain.Production {
 		return nil
 	}
-	
+
 	// For other strategies, environment must match
 	if strategy.GetEnvironment() != env {
 		return fmt.Errorf("strategy '%s' is not compatible with environment '%s'", strategy.GetName(), env.String())
 	}
-	
+
 	return nil
 }
 
@@ -91,7 +91,7 @@ func (f *StrategyFactory) ValidateStrategyForEnvironment(strategy domain.Deploym
 func (f *StrategyFactory) GetAvailableStrategies() []string {
 	return []string{
 		"development",
-		"staging", 
+		"staging",
 		"production",
 		"disaster-recovery",
 	}
@@ -100,17 +100,17 @@ func (f *StrategyFactory) GetAvailableStrategies() []string {
 // GetStrategyDescription returns a description of the strategy
 func (f *StrategyFactory) GetStrategyDescription(strategyName string) (string, error) {
 	descriptions := map[string]string{
-		"development": "Fast deployment with minimal health checks, parallel processing, and reduced timeouts. Optimized for development speed.",
-		"staging": "Comprehensive validation with extended health checks, full service deployment, and thorough dependency verification. Optimized for testing.",
-		"production": "Conservative, sequential deployment with full validation, extended timeouts, and zero-downtime patterns. Optimized for reliability.",
+		"development":       "Fast deployment with minimal health checks, parallel processing, and reduced timeouts. Optimized for development speed.",
+		"staging":           "Comprehensive validation with extended health checks, full service deployment, and thorough dependency verification. Optimized for testing.",
+		"production":        "Conservative, sequential deployment with full validation, extended timeouts, and zero-downtime patterns. Optimized for reliability.",
 		"disaster-recovery": "Emergency deployment of critical services only with rapid startup and minimal dependency validation. Optimized for recovery speed.",
 	}
-	
+
 	description, exists := descriptions[strategyName]
 	if !exists {
 		return "", fmt.Errorf("unknown strategy: %s", strategyName)
 	}
-	
+
 	return description, nil
 }
 
@@ -135,7 +135,7 @@ func (f *StrategyFactory) GetStrategy(env domain.Environment) domain.DeploymentS
 		// Fallback to development strategy if creation fails
 		f.logger.WarnWithContext("failed to create strategy, falling back to development", map[string]interface{}{
 			"environment": env.String(),
-			"error": err.Error(),
+			"error":       err.Error(),
 		})
 		devStrategy, _ := f.CreateStrategy(domain.Development)
 		return devStrategy

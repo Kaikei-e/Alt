@@ -2,15 +2,16 @@ package domain
 
 import (
 	"fmt"
+	"time"
 )
 
 // SecretType represents the type of secret
 type SecretType string
 
 const (
-	DatabaseSecret SecretType = "database"
-	SSLSecret      SecretType = "ssl"
-	APISecret      SecretType = "api"
+	DatabaseSecret SecretType = "Opaque"
+	SSLSecret      SecretType = "kubernetes.io/tls"
+	APISecret      SecretType = "Opaque"
 )
 
 // Secret represents a Kubernetes secret
@@ -26,11 +27,11 @@ type Secret struct {
 // NewSecret creates a new secret
 func NewSecret(name, namespace string, secretType SecretType) *Secret {
 	return &Secret{
-		Name:      name,
-		Namespace: namespace,
-		Type:      string(secretType),
-		Data:      make(map[string]string),
-		Labels:    make(map[string]string),
+		Name:        name,
+		Namespace:   namespace,
+		Type:        string(secretType),
+		Data:        make(map[string]string),
+		Labels:      make(map[string]string),
 		Annotations: make(map[string]string),
 	}
 }
@@ -38,6 +39,29 @@ func NewSecret(name, namespace string, secretType SecretType) *Secret {
 // AddData adds data to the secret
 func (s *Secret) AddData(key, value string) {
 	s.Data[key] = value
+}
+
+// AddStandardLabels adds standard management labels to the secret
+func (s *Secret) AddStandardLabels(chartName, component string) {
+	if s.Labels == nil {
+		s.Labels = make(map[string]string)
+	}
+
+	s.Labels["app.kubernetes.io/managed-by"] = "deploy-cli"
+	s.Labels["app.kubernetes.io/name"] = chartName
+	s.Labels["app.kubernetes.io/component"] = component
+	s.Labels["app.kubernetes.io/part-of"] = "alt"
+	s.Labels["deploy-cli/auto-generated"] = "true"
+}
+
+// AddStandardAnnotations adds standard management annotations to the secret
+func (s *Secret) AddStandardAnnotations() {
+	if s.Annotations == nil {
+		s.Annotations = make(map[string]string)
+	}
+
+	s.Annotations["deploy-cli/created-at"] = time.Now().Format(time.RFC3339)
+	s.Annotations["deploy-cli/version"] = "v1.0.0"
 }
 
 // GetData returns the data for the given key
@@ -48,11 +72,11 @@ func (s *Secret) GetData(key string) (string, bool) {
 
 // DatabaseSecretConfig represents database secret configuration
 type DatabaseSecretConfig struct {
-	Name         string
-	Username     string
-	Password     string
-	KeyName      string
-	Namespace    string
+	Name      string
+	Username  string
+	Password  string
+	KeyName   string
+	Namespace string
 }
 
 // NewDatabaseSecretConfig creates a new database secret configuration
@@ -113,11 +137,11 @@ func GetMeiliSearchSecretConfig() DatabaseSecretConfig {
 
 // SSLSecretConfig represents SSL secret configuration
 type SSLSecretConfig struct {
-	Name       string
-	Namespace  string
-	CertFile   string
-	KeyFile    string
-	CAFile     string
+	Name        string
+	Namespace   string
+	CertFile    string
+	KeyFile     string
+	CAFile      string
 	ServiceName string
 }
 
@@ -213,21 +237,21 @@ func GetDefaultSSLConfigs(sslDir string) []SSLSecretConfig {
 
 // SecretValidationResult represents the result of secret validation
 type SecretValidationResult struct {
-	Environment Environment        `json:"environment"`
-	Conflicts   []SecretConflict   `json:"conflicts"`
-	Warnings    []string           `json:"warnings"`
-	Valid       bool               `json:"valid"`
+	Environment Environment      `json:"environment"`
+	Conflicts   []SecretConflict `json:"conflicts"`
+	Warnings    []string         `json:"warnings"`
+	Valid       bool             `json:"valid"`
 }
 
 // SecretConflict represents a secret ownership or distribution conflict
 type SecretConflict struct {
-	ResourceType     string      `json:"resource_type,omitempty"`  // Added to support all resource types
-	SecretName       string      `json:"secret_name"`
-	SecretNamespace  string      `json:"secret_namespace"`
-	ReleaseName      string      `json:"release_name"`
-	ReleaseNamespace string      `json:"release_namespace"`
+	ResourceType     string       `json:"resource_type,omitempty"` // Added to support all resource types
+	SecretName       string       `json:"secret_name"`
+	SecretNamespace  string       `json:"secret_namespace"`
+	ReleaseName      string       `json:"release_name"`
+	ReleaseNamespace string       `json:"release_namespace"`
 	ConflictType     ConflictType `json:"conflict_type"`
-	Description      string      `json:"description"`
+	Description      string       `json:"description"`
 }
 
 // ConflictType represents the type of secret conflict

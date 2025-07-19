@@ -4,16 +4,16 @@ import (
 	"context"
 	"fmt"
 	"time"
-	
+
 	"deploy-cli/domain"
-	"deploy-cli/port/logger_port"
-	"deploy-cli/port/filesystem_port"
+	"deploy-cli/gateway/filesystem_gateway"
 	"deploy-cli/gateway/helm_gateway"
 	"deploy-cli/gateway/kubectl_gateway"
-	"deploy-cli/gateway/filesystem_gateway"
 	"deploy-cli/gateway/system_gateway"
-	"deploy-cli/usecase/secret_usecase"
+	"deploy-cli/port/filesystem_port"
+	"deploy-cli/port/logger_port"
 	"deploy-cli/usecase/dependency_usecase"
+	"deploy-cli/usecase/secret_usecase"
 )
 
 // SSL certificate management functionality moved to ssl_management_usecase.go
@@ -21,36 +21,36 @@ import (
 
 // DeploymentUsecase handles deployment operations
 type DeploymentUsecase struct {
-	helmGateway         *helm_gateway.HelmGateway
-	kubectlGateway      *kubectl_gateway.KubectlGateway
-	filesystemGateway   *filesystem_gateway.FileSystemGateway
-	systemGateway       *system_gateway.SystemGateway
-	secretUsecase       *secret_usecase.SecretUsecase
-	sslUsecase          *secret_usecase.SSLCertificateUsecase
-	logger              logger_port.LoggerPort
-	parallelDeployer    *ParallelChartDeployer
-	cache               *DeploymentCache
-	dependencyScanner   *dependency_usecase.DependencyScanner
-	healthChecker       *HealthChecker
-	dependencyWaiter    *DependencyWaiter
-	strategyFactory     *StrategyFactory
-	metricsCollector    *MetricsCollector
-	layerMonitor        *LayerHealthMonitor
-	dependencyDetector  *DependencyFailureDetector
-	progressTracker     *ProgressTracker
-	helmOperationManager *HelmOperationManager
-	sslCertificateUsecase *SSLCertificateUsecase
-	secretManagementUsecase *SecretManagementUsecase
-	healthCheckUsecase *HealthCheckUsecase
-	infrastructureSetupUsecase *InfrastructureSetupUsecase
+	helmGateway                  *helm_gateway.HelmGateway
+	kubectlGateway               *kubectl_gateway.KubectlGateway
+	filesystemGateway            *filesystem_gateway.FileSystemGateway
+	systemGateway                *system_gateway.SystemGateway
+	secretUsecase                *secret_usecase.SecretUsecase
+	sslUsecase                   *secret_usecase.SSLCertificateUsecase
+	logger                       logger_port.LoggerPort
+	parallelDeployer             *ParallelChartDeployer
+	cache                        *DeploymentCache
+	dependencyScanner            *dependency_usecase.DependencyScanner
+	healthChecker                *HealthChecker
+	dependencyWaiter             *DependencyWaiter
+	strategyFactory              *StrategyFactory
+	metricsCollector             *MetricsCollector
+	layerMonitor                 *LayerHealthMonitor
+	dependencyDetector           *DependencyFailureDetector
+	progressTracker              *ProgressTracker
+	helmOperationManager         *HelmOperationManager
+	sslCertificateUsecase        *SSLCertificateUsecase
+	secretManagementUsecase      *SecretManagementUsecase
+	healthCheckUsecase           *HealthCheckUsecase
+	infrastructureSetupUsecase   *InfrastructureSetupUsecase
 	statefulSetManagementUsecase *StatefulSetManagementUsecase
-	deploymentStrategyUsecase *DeploymentStrategyUsecase
-	sslManagementUsecase *SSLManagementUsecase
-	enableParallel      bool
-	enableCache         bool
-	enableDependencyAware bool
-	enableMonitoring    bool
-	chartsDir           string
+	deploymentStrategyUsecase    *DeploymentStrategyUsecase
+	sslManagementUsecase         *SSLManagementUsecase
+	enableParallel               bool
+	enableCache                  bool
+	enableDependencyAware        bool
+	enableMonitoring             bool
+	chartsDir                    string
 }
 
 // NewDeploymentUsecase creates a new deployment usecase
@@ -68,64 +68,64 @@ func NewDeploymentUsecase(
 	healthChecker := NewHealthChecker(logger)
 	dependencyWaiter := NewDependencyWaiter(healthChecker, logger)
 	strategyFactory := NewStrategyFactory(logger)
-	
+
 	// Initialize monitoring components
 	metricsCollector := NewMetricsCollector(logger)
 	layerMonitor := NewLayerHealthMonitor(logger, metricsCollector)
 	dependencyDetector := NewDependencyFailureDetector(logger, metricsCollector, layerMonitor)
-	
+
 	// Initialize helm operation manager
 	helmOperationManager := NewHelmOperationManager(logger)
-	
+
 	// Initialize SSL certificate usecase
 	sslCertificateUsecase := NewSSLCertificateUsecase(logger, secretUsecase, sslUsecase)
-	
+
 	// Initialize secret management usecase
 	secretManagementUsecase := NewSecretManagementUsecase(kubectlGateway, secretUsecase, logger)
-	
+
 	// Initialize health check usecase
 	healthCheckUsecase := NewHealthCheckUsecase(logger, healthChecker)
-	
+
 	// Initialize infrastructure setup usecase
 	infrastructureSetupUsecase := NewInfrastructureSetupUsecase(kubectlGateway, systemGateway, logger, strategyFactory)
-	
+
 	// Initialize StatefulSet management usecase
 	statefulSetManagementUsecase := NewStatefulSetManagementUsecase(systemGateway, logger)
-	
+
 	// Initialize deployment strategy usecase
 	deploymentStrategyUsecase := NewDeploymentStrategyUsecase(strategyFactory, logger)
-	
+
 	// Initialize SSL management usecase
 	sslManagementUsecase := NewSSLManagementUsecase(secretUsecase, sslUsecase, logger)
-	
+
 	return &DeploymentUsecase{
-		helmGateway:           helmGateway,
-		kubectlGateway:        kubectlGateway,
-		filesystemGateway:     filesystemGateway,
-		systemGateway:         systemGateway,
-		secretUsecase:         secretUsecase,
-		sslUsecase:            sslUsecase,
-		logger:                logger,
-		dependencyScanner:     dependencyScanner,
-		healthChecker:         healthChecker,
-		dependencyWaiter:      dependencyWaiter,
-		strategyFactory:       strategyFactory,
-		metricsCollector:      metricsCollector,
-		layerMonitor:          layerMonitor,
-		dependencyDetector:    dependencyDetector,
-		progressTracker:       nil, // Will be initialized per deployment
-		helmOperationManager:    helmOperationManager,
-		sslCertificateUsecase:   sslCertificateUsecase,
-		secretManagementUsecase:    secretManagementUsecase,
-		healthCheckUsecase:         healthCheckUsecase,
-		infrastructureSetupUsecase: infrastructureSetupUsecase,
+		helmGateway:                  helmGateway,
+		kubectlGateway:               kubectlGateway,
+		filesystemGateway:            filesystemGateway,
+		systemGateway:                systemGateway,
+		secretUsecase:                secretUsecase,
+		sslUsecase:                   sslUsecase,
+		logger:                       logger,
+		dependencyScanner:            dependencyScanner,
+		healthChecker:                healthChecker,
+		dependencyWaiter:             dependencyWaiter,
+		strategyFactory:              strategyFactory,
+		metricsCollector:             metricsCollector,
+		layerMonitor:                 layerMonitor,
+		dependencyDetector:           dependencyDetector,
+		progressTracker:              nil, // Will be initialized per deployment
+		helmOperationManager:         helmOperationManager,
+		sslCertificateUsecase:        sslCertificateUsecase,
+		secretManagementUsecase:      secretManagementUsecase,
+		healthCheckUsecase:           healthCheckUsecase,
+		infrastructureSetupUsecase:   infrastructureSetupUsecase,
 		statefulSetManagementUsecase: statefulSetManagementUsecase,
-		deploymentStrategyUsecase: deploymentStrategyUsecase,
-		sslManagementUsecase: sslManagementUsecase,
-		enableParallel:             false,  // Will be configurable
-		enableCache:           false,  // Will be configurable
-		enableDependencyAware: true,   // Enable by default
-		enableMonitoring:      true,   // Enable monitoring by default
+		deploymentStrategyUsecase:    deploymentStrategyUsecase,
+		sslManagementUsecase:         sslManagementUsecase,
+		enableParallel:               false, // Will be configurable
+		enableCache:                  false, // Will be configurable
+		enableDependencyAware:        true,  // Enable by default
+		enableMonitoring:             true,  // Enable monitoring by default
 	}
 }
 
@@ -135,57 +135,57 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 	if err := u.deploymentStrategyUsecase.setupDeploymentStrategy(options); err != nil {
 		return nil, fmt.Errorf("failed to setup deployment strategy: %w", err)
 	}
-	
+
 	// Initialize monitoring for this deployment
 	deploymentID := fmt.Sprintf("deployment-%d", time.Now().Unix())
 	if u.enableMonitoring {
 		if err := u.initializeMonitoring(ctx, deploymentID, options); err != nil {
 			u.logger.WarnWithContext("failed to initialize monitoring", map[string]interface{}{
 				"deployment_id": deploymentID,
-				"error": err.Error(),
+				"error":         err.Error(),
 			})
 		}
 	}
-	
+
 	u.logger.InfoWithContext("starting deployment process", map[string]interface{}{
-		"deployment_id": deploymentID,
-		"environment": options.Environment.String(),
-		"strategy": options.GetStrategyName(),
-		"dry_run":     options.DryRun,
+		"deployment_id":      deploymentID,
+		"environment":        options.Environment.String(),
+		"strategy":           options.GetStrategyName(),
+		"dry_run":            options.DryRun,
 		"monitoring_enabled": u.enableMonitoring,
 	})
-	
+
 	// Step 1: Pre-deployment validation
 	if err := u.infrastructureSetupUsecase.preDeploymentValidation(ctx, options); err != nil {
 		return nil, fmt.Errorf("pre-deployment validation failed: %w", err)
 	}
-	
+
 	// Step 1.4: Ensure namespaces exist (moved from Step 3 for SSL certificate validation)
 	if err := u.infrastructureSetupUsecase.ensureNamespaces(ctx, options); err != nil {
 		return nil, fmt.Errorf("namespace setup failed: %w", err)
 	}
-	
+
 	// Step 1.5: SSL certificate validation and auto-generation (after namespace creation)
 	if err := u.sslCertificateUsecase.PreDeploymentSSLCheck(ctx, options); err != nil {
 		return nil, fmt.Errorf("SSL certificate validation failed: %w", err)
 	}
-	
+
 	// Step 1.6: Pre-deployment secret validation
 	charts := u.deploymentStrategyUsecase.getAllCharts(options)
 	if err := u.secretManagementUsecase.ValidateSecretsBeforeDeployment(ctx, charts); err != nil {
 		return nil, fmt.Errorf("secret validation failed: %w", err)
 	}
-	
+
 	// Step 1.7: Comprehensive secret provisioning
 	if err := u.secretManagementUsecase.provisionAllRequiredSecrets(ctx, charts); err != nil {
 		return nil, fmt.Errorf("secret provisioning failed: %w", err)
 	}
-	
+
 	// Step 1.8: SSL Certificate Management (NEW!)
 	if err := u.sslManagementUsecase.ManageCertificateLifecycle(ctx, options.Environment, options.ChartsDir); err != nil {
 		return nil, fmt.Errorf("SSL certificate management failed: %w", err)
 	}
-	
+
 	// Step 1.9: StatefulSet Recovery Preparation (NEW!)
 	if options.SkipStatefulSetRecovery {
 		u.logger.InfoWithContext("skipping StatefulSet recovery (emergency deployment mode)", map[string]interface{}{
@@ -197,71 +197,68 @@ func (u *DeploymentUsecase) Deploy(ctx context.Context, options *domain.Deployme
 			return nil, fmt.Errorf("StatefulSet recovery preparation failed: %w\n\nTroubleshooting:\n- For emergency deployments, use --skip-statefulset-recovery flag\n- Check if kubectl is properly configured and accessible\n- Verify that the specified namespaces exist", err)
 		}
 	}
-	
+
 	// Step 2: Setup storage infrastructure
 	if err := u.infrastructureSetupUsecase.setupStorageInfrastructure(ctx, options); err != nil {
 		return nil, fmt.Errorf("storage infrastructure setup failed: %w", err)
 	}
-	
+
 	// Step 3: Deploy charts (namespaces already created in Step 1.4)
 	progress, err := u.deployCharts(ctx, options)
 	if err != nil {
 		return progress, fmt.Errorf("chart deployment failed: %w", err)
 	}
-	
+
 	// Step 4: Post-deployment operations
 	if err := u.infrastructureSetupUsecase.postDeploymentOperations(ctx, options); err != nil {
 		return progress, fmt.Errorf("post-deployment operations failed: %w", err)
 	}
-	
+
 	u.logger.InfoWithContext("deployment process completed successfully", map[string]interface{}{
-		"environment":      options.Environment.String(),
+		"environment":       options.Environment.String(),
 		"successful_charts": progress.GetSuccessCount(),
-		"failed_charts":    progress.GetFailedCount(),
-		"skipped_charts":   progress.GetSkippedCount(),
+		"failed_charts":     progress.GetFailedCount(),
+		"skipped_charts":    progress.GetSkippedCount(),
 	})
-	
+
 	return progress, nil
 }
-
-
-
 
 // deployCharts deploys all charts in the correct order
 func (u *DeploymentUsecase) deployCharts(ctx context.Context, options *domain.DeploymentOptions) (*domain.DeploymentProgress, error) {
 	u.logger.InfoWithContext("deploying charts", map[string]interface{}{
-		"environment": options.Environment.String(),
+		"environment":      options.Environment.String(),
 		"dependency_aware": u.enableDependencyAware,
 	})
-	
+
 	// Get chart configuration
 	chartConfig := domain.NewChartConfig(options.ChartsDir)
 	allCharts := chartConfig.AllCharts()
-	
+
 	// Create deployment progress
 	progress := domain.NewDeploymentProgress(len(allCharts))
-	
+
 	// Use layer-aware deployment for correct ordering
 	if u.enableDependencyAware {
 		return u.deployChartsWithLayerAwareness(ctx, options, progress)
 	}
-	
+
 	// Fallback to traditional group-based deployment
 	// Deploy infrastructure charts
 	if err := u.deployChartGroup(ctx, "Infrastructure", chartConfig.InfrastructureCharts, options, progress); err != nil {
 		return progress, fmt.Errorf("infrastructure chart deployment failed: %w", err)
 	}
-	
+
 	// Deploy application charts
 	if err := u.deployChartGroup(ctx, "Application", chartConfig.ApplicationCharts, options, progress); err != nil {
 		return progress, fmt.Errorf("application chart deployment failed: %w", err)
 	}
-	
+
 	// Deploy operational charts
 	if err := u.deployChartGroup(ctx, "Operational", chartConfig.OperationalCharts, options, progress); err != nil {
 		return progress, fmt.Errorf("operational chart deployment failed: %w", err)
 	}
-	
+
 	// Validate pod updates if force update was enabled or if images were updated
 	if options.ForceUpdate || options.ShouldOverrideImage() {
 		if err := u.healthCheckUsecase.validatePodUpdates(ctx, options); err != nil {
@@ -270,14 +267,14 @@ func (u *DeploymentUsecase) deployCharts(ctx context.Context, options *domain.De
 			})
 		}
 	}
-	
+
 	u.logger.InfoWithContext("charts deployment completed", map[string]interface{}{
-		"environment":      options.Environment.String(),
+		"environment":       options.Environment.String(),
 		"successful_charts": progress.GetSuccessCount(),
-		"failed_charts":    progress.GetFailedCount(),
-		"skipped_charts":   progress.GetSkippedCount(),
+		"failed_charts":     progress.GetFailedCount(),
+		"skipped_charts":    progress.GetSkippedCount(),
 	})
-	
+
 	return progress, nil
 }
 
@@ -287,9 +284,9 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 		"group":       groupName,
 		"chart_count": len(charts),
 	})
-	
+
 	var failedCharts []string
-	
+
 	for _, chart := range charts {
 		// Check if context was cancelled
 		if ctx.Err() != nil {
@@ -300,10 +297,10 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 			})
 			return ctx.Err()
 		}
-		
+
 		progress.CurrentChart = chart.Name
 		progress.CurrentPhase = fmt.Sprintf("Deploying %s charts", groupName)
-		
+
 		// Handle multi-namespace deployment
 		if chart.MultiNamespace {
 			for _, targetNamespace := range chart.TargetNamespaces {
@@ -311,7 +308,7 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 				chartCopy.MultiNamespace = false // Disable multi-namespace for individual deployment
 				result := u.deploySingleChartToNamespace(ctx, chartCopy, targetNamespace, options)
 				progress.AddResult(result)
-				
+
 				if result.Status == domain.DeploymentStatusFailed {
 					failedCharts = append(failedCharts, fmt.Sprintf("%s-%s", chart.Name, targetNamespace))
 					u.logger.ErrorWithContext("chart deployment failed", map[string]interface{}{
@@ -320,7 +317,7 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 						"namespace": targetNamespace,
 						"error":     result.Error,
 					})
-					
+
 					// Stop on first failure if not dry run
 					if !options.DryRun {
 						return fmt.Errorf("chart deployment failed: %s", result.Error)
@@ -330,7 +327,7 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 		} else {
 			result := u.deploySingleChart(ctx, chart, options)
 			progress.AddResult(result)
-			
+
 			// Collect failed charts but continue if dry run
 			if result.Status == domain.DeploymentStatusFailed {
 				failedCharts = append(failedCharts, chart.Name)
@@ -339,7 +336,7 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 					"chart": chart.Name,
 					"error": result.Error,
 				})
-				
+
 				// Stop on first failure if not dry run
 				if !options.DryRun {
 					return fmt.Errorf("chart deployment failed: %s", result.Error)
@@ -347,14 +344,14 @@ func (u *DeploymentUsecase) deployChartGroup(ctx context.Context, groupName stri
 			}
 		}
 	}
-	
+
 	u.logger.InfoWithContext("chart group deployment completed", map[string]interface{}{
-		"group":        groupName,
-		"chart_count":  len(charts),
-		"failed_count": len(failedCharts),
+		"group":         groupName,
+		"chart_count":   len(charts),
+		"failed_count":  len(failedCharts),
 		"failed_charts": failedCharts,
 	})
-	
+
 	return nil
 }
 
@@ -367,38 +364,38 @@ func (u *DeploymentUsecase) deploySingleChart(ctx context.Context, chart domain.
 // deploySingleChartToNamespace deploys a single chart to a specific namespace
 func (u *DeploymentUsecase) deploySingleChartToNamespace(ctx context.Context, chart domain.Chart, namespace string, options *domain.DeploymentOptions) domain.DeploymentResult {
 	start := time.Now()
-	
+
 	u.logger.InfoWithContext("deploying single chart", map[string]interface{}{
 		"chart":     chart.Name,
 		"namespace": namespace,
 	})
-	
+
 	result := domain.DeploymentResult{
 		ChartName: chart.Name,
 		Namespace: namespace,
 		Status:    domain.DeploymentStatusFailed,
 		Duration:  0,
 	}
-	
+
 	// Create timeout context for individual chart deployment
 	chartTimeout := options.Timeout
 	if chartTimeout == 0 {
 		chartTimeout = 5 * time.Minute // Default timeout
 	}
-	
+
 	// Use longer timeout for StatefulSet database charts that need time to initialize
 	// This overrides the command line timeout for database charts
 	if chart.Name == "postgres" || chart.Name == "auth-postgres" || chart.Name == "kratos-postgres" || chart.Name == "clickhouse" || chart.Name == "meilisearch" {
 		chartTimeout = 10 * time.Minute // Extended timeout for database initialization
 		u.logger.InfoWithContext("using extended timeout for database chart", map[string]interface{}{
-			"chart": chart.Name,
-			"timeout": chartTimeout,
+			"chart":                           chart.Name,
+			"timeout":                         chartTimeout,
 			"overriding_command_line_timeout": options.Timeout,
 		})
 	}
 	chartCtx, cancel := context.WithTimeout(ctx, chartTimeout)
 	defer cancel()
-	
+
 	// Validate chart path
 	if err := u.filesystemGateway.ValidateChartPath(chart); err != nil {
 		result.Error = fmt.Errorf("chart path validation failed: %w", err)
@@ -406,7 +403,7 @@ func (u *DeploymentUsecase) deploySingleChartToNamespace(ctx context.Context, ch
 		result.Duration = time.Since(start)
 		return result
 	}
-	
+
 	// Validate values file
 	valuesFile, err := u.filesystemGateway.ValidateValuesFile(chart, options.Environment)
 	if err != nil {
@@ -415,11 +412,11 @@ func (u *DeploymentUsecase) deploySingleChartToNamespace(ctx context.Context, ch
 		result.Duration = time.Since(start)
 		return result
 	}
-	
+
 	// Create namespace-specific deployment options
 	nsOptions := *options
 	nsOptions.TargetNamespace = namespace
-	
+
 	// Deploy or template chart with timeout handling
 	if options.DryRun {
 		_, err = u.helmGateway.TemplateChart(chartCtx, chart, &nsOptions)
@@ -449,33 +446,25 @@ func (u *DeploymentUsecase) deploySingleChartToNamespace(ctx context.Context, ch
 			result.Message = "Chart deployed successfully"
 		}
 	}
-	
+
 	result.Duration = time.Since(start)
-	
+
 	u.logger.InfoWithContext("single chart deployment completed", map[string]interface{}{
-		"chart":     chart.Name,
-		"namespace": namespace,
-		"status":    result.Status,
-		"duration":  result.Duration,
+		"chart":       chart.Name,
+		"namespace":   namespace,
+		"status":      result.Status,
+		"duration":    result.Duration,
 		"values_file": valuesFile,
-		"timeout":   chartTimeout,
+		"timeout":     chartTimeout,
 	})
-	
+
 	return result
 }
-
-
-
-
-
-
 
 // getAllCharts gets all charts that will be deployed based on deployment options (delegated to DeploymentStrategyUsecase)
 func (u *DeploymentUsecase) getAllCharts(options *domain.DeploymentOptions) []domain.Chart {
 	return u.deploymentStrategyUsecase.getAllCharts(options)
 }
-
-
 
 // getNamespaceForChart returns the appropriate namespace for a chart
 func (u *DeploymentUsecase) getNamespaceForChart(chart domain.Chart) string {
@@ -483,7 +472,7 @@ func (u *DeploymentUsecase) getNamespaceForChart(chart domain.Chart) string {
 	if chart.MultiNamespace && len(chart.TargetNamespaces) > 0 {
 		return chart.TargetNamespaces[0]
 	}
-	
+
 	// Use chart type to determine namespace
 	switch chart.Type {
 	case domain.InfrastructureChart:
@@ -508,9 +497,6 @@ func (u *DeploymentUsecase) getNamespaceForChart(chart domain.Chart) string {
 		return "alt-apps"
 	}
 }
-
-
-
 
 // getEnvironmentFromNamespace determines the environment based on namespace
 func (u *DeploymentUsecase) getEnvironmentFromNamespace(namespace string) domain.Environment {
@@ -541,14 +527,14 @@ func (u *DeploymentUsecase) DeployWithRollback(ctx context.Context, options *dom
 
 	u.logger.InfoWithContext("deployment checkpoint created", map[string]interface{}{
 		"checkpoint_id": checkpoint.ID,
-		"timestamp": checkpoint.Timestamp,
+		"timestamp":     checkpoint.Timestamp,
 	})
 
 	// Attempt deployment
 	result, err := u.Deploy(ctx, options)
 	if err != nil {
 		u.logger.ErrorWithContext("deployment failed, initiating rollback", map[string]interface{}{
-			"error": err.Error(),
+			"error":         err.Error(),
 			"checkpoint_id": checkpoint.ID,
 		})
 
@@ -556,9 +542,9 @@ func (u *DeploymentUsecase) DeployWithRollback(ctx context.Context, options *dom
 		rollbackErr := u.rollbackToCheckpoint(ctx, checkpoint, options)
 		if rollbackErr != nil {
 			u.logger.ErrorWithContext("rollback failed", map[string]interface{}{
-				"deploy_error": err.Error(),
+				"deploy_error":   err.Error(),
 				"rollback_error": rollbackErr.Error(),
-				"checkpoint_id": checkpoint.ID,
+				"checkpoint_id":  checkpoint.ID,
 			})
 			return nil, fmt.Errorf("deployment failed and rollback failed: deploy=%w, rollback=%w", err, rollbackErr)
 		}
@@ -579,30 +565,30 @@ func (u *DeploymentUsecase) DeployWithRollback(ctx context.Context, options *dom
 // DeployWithRetry deploys a chart with retry logic and cleanup between attempts
 func (u *DeploymentUsecase) DeployWithRetry(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions, maxRetries int) error {
 	u.logger.InfoWithContext("starting chart deployment with retry", map[string]interface{}{
-		"chart": chart.Name,
+		"chart":       chart.Name,
 		"max_retries": maxRetries,
 	})
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		u.logger.InfoWithContext("attempting chart deployment", map[string]interface{}{
-			"chart": chart.Name,
-			"attempt": attempt,
+			"chart":       chart.Name,
+			"attempt":     attempt,
 			"max_retries": maxRetries,
 		})
 
 		err := u.deployChart(ctx, chart, options)
 		if err == nil {
 			u.logger.InfoWithContext("chart deployment successful", map[string]interface{}{
-				"chart": chart.Name,
+				"chart":   chart.Name,
 				"attempt": attempt,
 			})
 			return nil
 		}
 
 		u.logger.WarnWithContext("chart deployment failed", map[string]interface{}{
-			"chart": chart.Name,
+			"chart":   chart.Name,
 			"attempt": attempt,
-			"error": err.Error(),
+			"error":   err.Error(),
 		})
 
 		// Cleanup failed deployment before next attempt
@@ -610,13 +596,13 @@ func (u *DeploymentUsecase) DeployWithRetry(ctx context.Context, chart domain.Ch
 			cleanupErr := u.cleanupFailedDeployment(ctx, chart, options)
 			if cleanupErr != nil {
 				u.logger.WarnWithContext("cleanup failed", map[string]interface{}{
-					"chart": chart.Name,
-					"attempt": attempt,
+					"chart":         chart.Name,
+					"attempt":       attempt,
 					"cleanup_error": cleanupErr.Error(),
 				})
 			} else {
 				u.logger.InfoWithContext("cleanup completed", map[string]interface{}{
-					"chart": chart.Name,
+					"chart":   chart.Name,
 					"attempt": attempt,
 				})
 			}
@@ -624,8 +610,8 @@ func (u *DeploymentUsecase) DeployWithRetry(ctx context.Context, chart domain.Ch
 			// Exponential backoff
 			backoffDuration := time.Duration(attempt) * 10 * time.Second
 			u.logger.InfoWithContext("waiting before retry", map[string]interface{}{
-				"chart": chart.Name,
-				"attempt": attempt,
+				"chart":            chart.Name,
+				"attempt":          attempt,
 				"backoff_duration": backoffDuration.String(),
 			})
 			time.Sleep(backoffDuration)
@@ -638,22 +624,22 @@ func (u *DeploymentUsecase) DeployWithRetry(ctx context.Context, chart domain.Ch
 // createDeploymentCheckpoint creates a checkpoint of the current deployment state
 func (u *DeploymentUsecase) createDeploymentCheckpoint(ctx context.Context, options *domain.DeploymentOptions) (*domain.DeploymentCheckpoint, error) {
 	checkpointID := fmt.Sprintf("checkpoint-%d", time.Now().Unix())
-	
+
 	u.logger.InfoWithContext("creating deployment checkpoint", map[string]interface{}{
 		"checkpoint_id": checkpointID,
-		"environment": options.Environment.String(),
+		"environment":   options.Environment.String(),
 	})
 
 	// Get current Helm releases
 	namespaces := domain.GetNamespacesForEnvironment(options.Environment)
 	var releases []domain.HelmReleaseInfo
-	
+
 	for _, namespace := range namespaces {
 		nsReleases, err := u.helmGateway.ListReleases(ctx, namespace)
 		if err != nil {
 			u.logger.WarnWithContext("failed to list releases for checkpoint", map[string]interface{}{
 				"namespace": namespace,
-				"error": err.Error(),
+				"error":     err.Error(),
 			})
 			continue
 		}
@@ -669,8 +655,8 @@ func (u *DeploymentUsecase) createDeploymentCheckpoint(ctx context.Context, opti
 	}
 
 	u.logger.InfoWithContext("deployment checkpoint created", map[string]interface{}{
-		"checkpoint_id": checkpointID,
-		"releases_count": len(releases),
+		"checkpoint_id":    checkpointID,
+		"releases_count":   len(releases),
 		"namespaces_count": len(namespaces),
 	})
 
@@ -680,9 +666,9 @@ func (u *DeploymentUsecase) createDeploymentCheckpoint(ctx context.Context, opti
 // rollbackToCheckpoint rolls back deployment to a previous checkpoint
 func (u *DeploymentUsecase) rollbackToCheckpoint(ctx context.Context, checkpoint *domain.DeploymentCheckpoint, options *domain.DeploymentOptions) error {
 	u.logger.InfoWithContext("starting rollback to checkpoint", map[string]interface{}{
-		"checkpoint_id": checkpoint.ID,
+		"checkpoint_id":        checkpoint.ID,
 		"checkpoint_timestamp": checkpoint.Timestamp,
-		"environment": options.Environment.String(),
+		"environment":          options.Environment.String(),
 	})
 
 	// Get current releases
@@ -692,7 +678,7 @@ func (u *DeploymentUsecase) rollbackToCheckpoint(ctx context.Context, checkpoint
 		if err != nil {
 			u.logger.WarnWithContext("failed to list current releases for rollback", map[string]interface{}{
 				"namespace": namespace,
-				"error": err.Error(),
+				"error":     err.Error(),
 			})
 			continue
 		}
@@ -715,10 +701,10 @@ func (u *DeploymentUsecase) rollbackToCheckpoint(ctx context.Context, checkpoint
 			// Rollback to previous revision if different
 			if currentRelease.Revision != checkpointRelease.Revision {
 				u.logger.InfoWithContext("rolling back release", map[string]interface{}{
-					"release": currentRelease.Name,
-					"namespace": currentRelease.Namespace,
+					"release":          currentRelease.Name,
+					"namespace":        currentRelease.Namespace,
 					"current_revision": currentRelease.Revision,
-					"target_revision": checkpointRelease.Revision,
+					"target_revision":  checkpointRelease.Revision,
 				})
 
 				err := u.helmGateway.RollbackRelease(ctx, currentRelease.Name, currentRelease.Namespace, checkpointRelease.Revision)
@@ -729,7 +715,7 @@ func (u *DeploymentUsecase) rollbackToCheckpoint(ctx context.Context, checkpoint
 		} else {
 			// Release didn't exist in checkpoint, uninstall it
 			u.logger.InfoWithContext("uninstalling new release", map[string]interface{}{
-				"release": currentRelease.Name,
+				"release":   currentRelease.Name,
 				"namespace": currentRelease.Namespace,
 			})
 
@@ -754,7 +740,7 @@ func (u *DeploymentUsecase) cleanupFailedDeployment(ctx context.Context, chart d
 	})
 
 	namespace := u.getNamespaceForChart(chart)
-	
+
 	// Check if release exists
 	releases, err := u.helmGateway.ListReleases(ctx, namespace)
 	if err != nil {
@@ -771,7 +757,7 @@ func (u *DeploymentUsecase) cleanupFailedDeployment(ctx context.Context, chart d
 
 	if releaseToCleanup == nil {
 		u.logger.InfoWithContext("no release found to cleanup", map[string]interface{}{
-			"chart": chart.Name,
+			"chart":     chart.Name,
 			"namespace": namespace,
 		})
 		return nil
@@ -780,9 +766,9 @@ func (u *DeploymentUsecase) cleanupFailedDeployment(ctx context.Context, chart d
 	// Check release status
 	if releaseToCleanup.Status == "failed" || releaseToCleanup.Status == "pending-install" || releaseToCleanup.Status == "pending-upgrade" {
 		u.logger.InfoWithContext("uninstalling failed release", map[string]interface{}{
-			"release": releaseToCleanup.Name,
+			"release":   releaseToCleanup.Name,
 			"namespace": namespace,
-			"status": releaseToCleanup.Status,
+			"status":    releaseToCleanup.Status,
 		})
 
 		err := u.helmGateway.UninstallRelease(ctx, releaseToCleanup.Name, namespace)
@@ -791,7 +777,7 @@ func (u *DeploymentUsecase) cleanupFailedDeployment(ctx context.Context, chart d
 		}
 
 		u.logger.InfoWithContext("failed release uninstalled", map[string]interface{}{
-			"release": releaseToCleanup.Name,
+			"release":   releaseToCleanup.Name,
 			"namespace": namespace,
 		})
 	}
@@ -803,11 +789,11 @@ func (u *DeploymentUsecase) cleanupFailedDeployment(ctx context.Context, chart d
 func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
 	u.logger.InfoWithContext("deploying individual chart", map[string]interface{}{
 		"chart": chart.Name,
-		"type": string(chart.Type),
+		"type":  string(chart.Type),
 	})
 
 	namespace := u.getNamespaceForChart(chart)
-	
+
 	// Create namespace if it doesn't exist
 	if err := u.kubectlGateway.EnsureNamespace(ctx, namespace); err != nil {
 		return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
@@ -824,24 +810,24 @@ func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart,
 				"chart": chart.Name,
 				"error": err.Error(),
 			})
-			
+
 			// Use the secret management usecase to handle the error
 			if recoveryErr := u.secretManagementUsecase.handleSecretOwnershipError(err, chart.Name); recoveryErr != nil {
 				return fmt.Errorf("failed to deploy chart %s: %w", chart.Name, recoveryErr)
 			}
-			
+
 			// If error recovery succeeded, try deployment again
 			u.logger.InfoWithContext("retrying chart deployment after error recovery", map[string]interface{}{
-				"chart": chart.Name,
+				"chart":          chart.Name,
 				"original_error": err.Error(),
 			})
-			
+
 			if retryErr := u.helmOperationManager.ExecuteWithLock(chart.Name, namespace, "deploy-retry", func() error {
 				return u.helmGateway.DeployChart(ctx, chart, options)
 			}); retryErr != nil {
 				return fmt.Errorf("failed to deploy chart %s after error recovery: %w", chart.Name, retryErr)
 			}
-			
+
 			u.logger.InfoWithContext("chart deployment succeeded after error recovery", map[string]interface{}{
 				"chart": chart.Name,
 			})
@@ -854,7 +840,7 @@ func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart,
 	// Wait for readiness if required
 	if chart.ShouldWaitForReadinessWithOptions(options) {
 		u.logger.InfoWithContext("waiting for chart readiness", map[string]interface{}{
-			"chart": chart.Name,
+			"chart":     chart.Name,
 			"namespace": namespace,
 		})
 
@@ -868,7 +854,7 @@ func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart,
 		default:
 			err = u.healthChecker.WaitForServiceReady(ctx, chart.Name, string(chart.Type), namespace)
 		}
-		
+
 		if err != nil {
 			return fmt.Errorf("chart %s readiness check failed: %w", chart.Name, err)
 		}
@@ -877,46 +863,39 @@ func (u *DeploymentUsecase) deployChart(ctx context.Context, chart domain.Chart,
 	return nil
 }
 
-
-
-
-
-
-
-
 // validateAndFixSecrets validates secret state and automatically resolves conflicts
 func (u *DeploymentUsecase) validateAndFixSecrets(ctx context.Context, options *domain.DeploymentOptions) error {
 	u.logger.InfoWithContext("validating secret state", map[string]interface{}{
 		"environment": options.Environment.String(),
 	})
-	
+
 	// Validate current secret state
 	validationResult, err := u.secretUsecase.ValidateSecretState(ctx, options.Environment)
 	if err != nil {
 		return fmt.Errorf("failed to validate secret state: %w", err)
 	}
-	
+
 	// Log validation results
 	u.logger.InfoWithContext("secret validation results", map[string]interface{}{
-		"environment":    options.Environment.String(),
-		"conflicts":      len(validationResult.Conflicts),
-		"warnings":       len(validationResult.Warnings),
-		"valid":          validationResult.Valid,
+		"environment": options.Environment.String(),
+		"conflicts":   len(validationResult.Conflicts),
+		"warnings":    len(validationResult.Warnings),
+		"valid":       validationResult.Valid,
 	})
-	
+
 	// Handle warnings
 	for _, warning := range validationResult.Warnings {
 		u.logger.WarnWithContext("secret validation warning", map[string]interface{}{
 			"warning": warning,
 		})
 	}
-	
+
 	// If conflicts exist, attempt to resolve them
 	if len(validationResult.Conflicts) > 0 {
 		u.logger.InfoWithContext("attempting to resolve secret conflicts", map[string]interface{}{
 			"conflict_count": len(validationResult.Conflicts),
 		})
-		
+
 		for _, conflict := range validationResult.Conflicts {
 			u.logger.WarnWithContext("secret conflict detected", map[string]interface{}{
 				"secret":           conflict.SecretName,
@@ -925,17 +904,17 @@ func (u *DeploymentUsecase) validateAndFixSecrets(ctx context.Context, options *
 				"description":      conflict.Description,
 			})
 		}
-		
+
 		// Resolve conflicts automatically (only for specific safe cases)
 		if err := u.secretUsecase.ResolveConflicts(ctx, validationResult.Conflicts, options.DryRun); err != nil {
 			return fmt.Errorf("failed to resolve secret conflicts: %w", err)
 		}
-		
+
 		u.logger.InfoWithContext("secret conflicts resolved successfully", map[string]interface{}{
 			"resolved_count": len(validationResult.Conflicts),
 		})
 	}
-	
+
 	return nil
 }
 
@@ -943,9 +922,9 @@ func (u *DeploymentUsecase) validateAndFixSecrets(ctx context.Context, options *
 func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Context, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) (*domain.DeploymentProgress, error) {
 	u.logger.InfoWithContext("performing dependency analysis", map[string]interface{}{
 		"charts_dir": options.ChartsDir,
-		"timeout": options.Timeout,
+		"timeout":    options.Timeout,
 	})
-	
+
 	// Check for context cancellation before dependency scanning
 	select {
 	case <-ctx.Done():
@@ -955,7 +934,7 @@ func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Cont
 		return progress, ctx.Err()
 	default:
 	}
-	
+
 	// Scan dependencies with timeout
 	depScanCtx, depCancel := context.WithTimeout(ctx, 1*time.Minute)
 	dependencyGraph, err := u.dependencyScanner.ScanDependencies(depScanCtx, options.ChartsDir)
@@ -963,59 +942,59 @@ func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Cont
 	if err != nil {
 		if depScanCtx.Err() == context.DeadlineExceeded {
 			u.logger.ErrorWithContext("dependency scanning timed out, falling back to traditional deployment", map[string]interface{}{
-				"timeout": "1m",
+				"timeout":           "1m",
 				"fallback_strategy": "traditional_group_based",
 			})
 		} else {
 			u.logger.ErrorWithContext("dependency scanning failed, falling back to traditional deployment", map[string]interface{}{
-				"error": err.Error(),
+				"error":             err.Error(),
 				"fallback_strategy": "traditional_group_based",
 			})
 		}
 		return u.deployChartsTraditional(ctx, options, progress)
 	}
-	
+
 	u.logger.InfoWithContext("dependency analysis completed", map[string]interface{}{
 		"total_charts":       dependencyGraph.Metadata.TotalCharts,
 		"total_dependencies": dependencyGraph.Metadata.TotalDependencies,
 		"has_cycles":         dependencyGraph.Metadata.HasCycles,
 		"deployment_levels":  len(dependencyGraph.DeployOrder),
 	})
-	
+
 	// Critical check: if no deployment order calculated, fallback immediately
 	if len(dependencyGraph.DeployOrder) == 0 {
 		u.logger.ErrorWithContext("no deployment order calculated from dependency analysis, falling back to traditional deployment", map[string]interface{}{
-			"total_charts": dependencyGraph.Metadata.TotalCharts,
+			"total_charts":      dependencyGraph.Metadata.TotalCharts,
 			"fallback_strategy": "traditional_group_based",
-			"reason": "empty_deployment_order",
+			"reason":            "empty_deployment_order",
 		})
 		return u.deployChartsTraditional(ctx, options, progress)
 	}
-	
+
 	// Handle dependency cycles
 	if dependencyGraph.Metadata.HasCycles {
 		u.logger.WarnWithContext("dependency cycles detected, proceeding with calculated order", map[string]interface{}{
-			"cycles": dependencyGraph.Metadata.Cycles,
+			"cycles":   dependencyGraph.Metadata.Cycles,
 			"strategy": "break_cycles_and_continue",
 		})
 	}
-	
+
 	u.logger.InfoWithContext("starting dependency-aware deployment", map[string]interface{}{
 		"deployment_strategy": "dependency_aware",
-		"levels_to_deploy": len(dependencyGraph.DeployOrder),
+		"levels_to_deploy":    len(dependencyGraph.DeployOrder),
 	})
-	
+
 	// Deploy charts level by level according to dependency graph
 	chartConfig := domain.NewChartConfig(options.ChartsDir)
 	deployedCharts := 0
-	
+
 	for levelIndex, chartNames := range dependencyGraph.DeployOrder {
 		u.logger.InfoWithContext("deploying dependency level", map[string]interface{}{
 			"level":       levelIndex + 1,
 			"chart_count": len(chartNames),
 			"charts":      chartNames,
 		})
-		
+
 		// Convert chart names to Chart objects
 		var chartsInLevel []domain.Chart
 		for _, chartName := range chartNames {
@@ -1029,19 +1008,19 @@ func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Cont
 				})
 			}
 		}
-		
+
 		if len(chartsInLevel) == 0 {
 			u.logger.WarnWithContext("no valid charts found in level, skipping", map[string]interface{}{
-				"level": levelIndex + 1,
+				"level":                levelIndex + 1,
 				"original_chart_names": chartNames,
 			})
 			continue
 		}
-		
+
 		// Deploy charts in this level
 		levelStartTime := time.Now()
 		var deploymentErr error
-		
+
 		if u.enableParallel && len(chartsInLevel) > 1 {
 			// Deploy in parallel if enabled and multiple charts
 			deploymentErr = u.deployChartsInParallel(ctx, chartsInLevel, options, progress)
@@ -1049,39 +1028,39 @@ func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Cont
 			// Deploy sequentially
 			deploymentErr = u.deployChartsSequentially(ctx, chartsInLevel, options, progress)
 		}
-		
+
 		levelDuration := time.Since(levelStartTime)
 		deployedCharts += len(chartsInLevel)
-		
+
 		u.logger.InfoWithContext("dependency level deployment completed", map[string]interface{}{
-			"level": levelIndex + 1,
+			"level":       levelIndex + 1,
 			"chart_count": len(chartsInLevel),
-			"duration": levelDuration,
-			"success": deploymentErr == nil,
+			"duration":    levelDuration,
+			"success":     deploymentErr == nil,
 		})
-		
+
 		if deploymentErr != nil {
 			u.logger.ErrorWithContext("dependency level deployment failed", map[string]interface{}{
-				"level": levelIndex + 1,
-				"error": deploymentErr.Error(),
+				"level":                  levelIndex + 1,
+				"error":                  deploymentErr.Error(),
 				"deployed_charts_so_far": deployedCharts - len(chartsInLevel),
 			})
-			
+
 			// Don't fail immediately in dry-run mode
 			if !options.DryRun {
 				return progress, fmt.Errorf("dependency-aware deployment failed at level %d: %w", levelIndex+1, deploymentErr)
 			}
 		}
 	}
-	
+
 	u.logger.InfoWithContext("dependency-aware deployment completed", map[string]interface{}{
 		"total_levels_processed": len(dependencyGraph.DeployOrder),
-		"charts_processed": deployedCharts,
-		"successful_charts": progress.GetSuccessCount(),
-		"failed_charts": progress.GetFailedCount(),
-		"skipped_charts": progress.GetSkippedCount(),
+		"charts_processed":       deployedCharts,
+		"successful_charts":      progress.GetSuccessCount(),
+		"failed_charts":          progress.GetFailedCount(),
+		"skipped_charts":         progress.GetSkippedCount(),
 	})
-	
+
 	// Post-deployment validation
 	if options.ForceUpdate || options.ShouldOverrideImage() {
 		if err := u.healthCheckUsecase.validatePodUpdates(ctx, options); err != nil {
@@ -1090,7 +1069,7 @@ func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Cont
 			})
 		}
 	}
-	
+
 	return progress, nil
 }
 
@@ -1098,34 +1077,34 @@ func (u *DeploymentUsecase) deployChartsWithDependencyAwareness(ctx context.Cont
 func (u *DeploymentUsecase) deployChartsTraditional(ctx context.Context, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) (*domain.DeploymentProgress, error) {
 	u.logger.InfoWithContext("starting traditional group-based deployment", map[string]interface{}{
 		"deployment_strategy": "traditional_group_based",
-		"charts_dir": options.ChartsDir,
+		"charts_dir":          options.ChartsDir,
 	})
-	
+
 	chartConfig := domain.NewChartConfig(options.ChartsDir)
 	allCharts := chartConfig.AllCharts()
-	
+
 	u.logger.InfoWithContext("traditional deployment configuration", map[string]interface{}{
-		"total_charts": len(allCharts),
+		"total_charts":          len(allCharts),
 		"infrastructure_charts": len(chartConfig.InfrastructureCharts),
-		"application_charts": len(chartConfig.ApplicationCharts),
-		"operational_charts": len(chartConfig.OperationalCharts),
+		"application_charts":    len(chartConfig.ApplicationCharts),
+		"operational_charts":    len(chartConfig.OperationalCharts),
 	})
-	
+
 	var deploymentErrors []error
-	
+
 	// Deploy infrastructure charts
 	u.logger.InfoWithContext("deploying infrastructure charts", map[string]interface{}{
-		"group": "Infrastructure",
+		"group":       "Infrastructure",
 		"chart_count": len(chartConfig.InfrastructureCharts),
 	})
-	
+
 	if err := u.deployChartGroup(ctx, "Infrastructure", chartConfig.InfrastructureCharts, options, progress); err != nil {
 		deploymentErrors = append(deploymentErrors, fmt.Errorf("infrastructure chart deployment failed: %w", err))
 		u.logger.ErrorWithContext("infrastructure chart group deployment failed", map[string]interface{}{
-			"error": err.Error(),
+			"error":                    err.Error(),
 			"continue_with_next_group": !options.DryRun,
 		})
-		
+
 		// In dry-run mode, continue with other groups to see all potential issues
 		if !options.DryRun {
 			return progress, deploymentErrors[0]
@@ -1135,20 +1114,20 @@ func (u *DeploymentUsecase) deployChartsTraditional(ctx context.Context, options
 			"successful_charts": progress.GetSuccessCount(),
 		})
 	}
-	
+
 	// Deploy application charts
 	u.logger.InfoWithContext("deploying application charts", map[string]interface{}{
-		"group": "Application",
+		"group":       "Application",
 		"chart_count": len(chartConfig.ApplicationCharts),
 	})
-	
+
 	if err := u.deployChartGroup(ctx, "Application", chartConfig.ApplicationCharts, options, progress); err != nil {
 		deploymentErrors = append(deploymentErrors, fmt.Errorf("application chart deployment failed: %w", err))
 		u.logger.ErrorWithContext("application chart group deployment failed", map[string]interface{}{
-			"error": err.Error(),
+			"error":                    err.Error(),
 			"continue_with_next_group": !options.DryRun,
 		})
-		
+
 		if !options.DryRun {
 			return progress, deploymentErrors[len(deploymentErrors)-1]
 		}
@@ -1157,19 +1136,19 @@ func (u *DeploymentUsecase) deployChartsTraditional(ctx context.Context, options
 			"successful_charts": progress.GetSuccessCount(),
 		})
 	}
-	
+
 	// Deploy operational charts
 	u.logger.InfoWithContext("deploying operational charts", map[string]interface{}{
-		"group": "Operational",
+		"group":       "Operational",
 		"chart_count": len(chartConfig.OperationalCharts),
 	})
-	
+
 	if err := u.deployChartGroup(ctx, "Operational", chartConfig.OperationalCharts, options, progress); err != nil {
 		deploymentErrors = append(deploymentErrors, fmt.Errorf("operational chart deployment failed: %w", err))
 		u.logger.ErrorWithContext("operational chart group deployment failed", map[string]interface{}{
 			"error": err.Error(),
 		})
-		
+
 		if !options.DryRun {
 			return progress, deploymentErrors[len(deploymentErrors)-1]
 		}
@@ -1178,16 +1157,16 @@ func (u *DeploymentUsecase) deployChartsTraditional(ctx context.Context, options
 			"successful_charts": progress.GetSuccessCount(),
 		})
 	}
-	
+
 	// Final assessment
 	u.logger.InfoWithContext("traditional deployment completed", map[string]interface{}{
-		"total_errors": len(deploymentErrors),
+		"total_errors":      len(deploymentErrors),
 		"successful_charts": progress.GetSuccessCount(),
-		"failed_charts": progress.GetFailedCount(),
-		"skipped_charts": progress.GetSkippedCount(),
-		"dry_run": options.DryRun,
+		"failed_charts":     progress.GetFailedCount(),
+		"skipped_charts":    progress.GetSkippedCount(),
+		"dry_run":           options.DryRun,
 	})
-	
+
 	// If there were errors in dry-run mode, log them but don't fail
 	if len(deploymentErrors) > 0 && options.DryRun {
 		u.logger.WarnWithContext("deployment errors detected in dry-run mode", map[string]interface{}{
@@ -1195,12 +1174,12 @@ func (u *DeploymentUsecase) deployChartsTraditional(ctx context.Context, options
 			"first_error": deploymentErrors[0].Error(),
 		})
 	}
-	
+
 	// Return the first error if any occurred and not in dry-run
 	if len(deploymentErrors) > 0 && !options.DryRun {
 		return progress, deploymentErrors[0]
 	}
-	
+
 	return progress, nil
 }
 
@@ -1208,8 +1187,8 @@ func (u *DeploymentUsecase) deployChartsTraditional(ctx context.Context, options
 func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) (*domain.DeploymentProgress, error) {
 	u.logger.InfoWithContext("starting layer-aware deployment", map[string]interface{}{
 		"deployment_strategy": "layer_aware",
-		"charts_dir": options.ChartsDir,
-		"strategy": options.GetStrategyName(),
+		"charts_dir":          options.ChartsDir,
+		"strategy":            options.GetStrategyName(),
 	})
 
 	// Get layer configurations from the deployment strategy
@@ -1217,7 +1196,7 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 	if options.HasDeploymentStrategy() {
 		layers = options.GetLayerConfigurations()
 		u.logger.InfoWithContext("using strategy-based layer configurations", map[string]interface{}{
-			"strategy": options.GetStrategyName(),
+			"strategy":     options.GetStrategyName(),
 			"layers_count": len(layers),
 		})
 	} else {
@@ -1230,19 +1209,19 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 	}
 
 	// Now use the layer configurations directly
-	
+
 	// Get chart configuration for chart validation
 	chartConfig := domain.NewChartConfig(options.ChartsDir)
 
 	// Deploy each layer sequentially
 	for layerIndex, layer := range layers {
 		u.logger.InfoWithContext("deploying layer", map[string]interface{}{
-			"layer": layer.Name,
-			"layer_index": layerIndex + 1,
-			"total_layers": len(layers),
-			"chart_count": len(layer.Charts),
-			"requires_health_check": layer.RequiresHealthCheck,
-			"health_check_timeout": layer.HealthCheckTimeout,
+			"layer":                    layer.Name,
+			"layer_index":              layerIndex + 1,
+			"total_layers":             len(layers),
+			"chart_count":              len(layer.Charts),
+			"requires_health_check":    layer.RequiresHealthCheck,
+			"health_check_timeout":     layer.HealthCheckTimeout,
 			"layer_completion_timeout": layer.LayerCompletionTimeout,
 		})
 
@@ -1289,37 +1268,37 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 			if chart.MultiNamespace {
 				// Deploy to multiple namespaces
 				u.logger.InfoWithContext("deploying multi-namespace chart", map[string]interface{}{
-					"chart": chart.Name,
-					"layer": layer.Name,
+					"chart":             chart.Name,
+					"layer":             layer.Name,
 					"target_namespaces": chart.TargetNamespaces,
 				})
-				
+
 				for _, targetNamespace := range chart.TargetNamespaces {
 					chartCopy := chart
 					chartCopy.MultiNamespace = false // Disable multi-namespace for individual deployment
 					result := u.deploySingleChartToNamespace(layerCtx, chartCopy, targetNamespace, options)
 					progress.AddResult(result)
-					
+
 					if result.Status == domain.DeploymentStatusFailed {
 						u.logger.ErrorWithContext("multi-namespace chart deployment failed", map[string]interface{}{
-							"chart": chart.Name,
-							"layer": layer.Name,
+							"chart":     chart.Name,
+							"layer":     layer.Name,
 							"namespace": targetNamespace,
-							"error": result.Error.Error(),
+							"error":     result.Error.Error(),
 						})
-						
+
 						layerErr = result.Error
-						
+
 						// Stop on first failure if not dry run
 						if !options.DryRun {
 							break
 						}
 					} else {
 						u.logger.InfoWithContext("multi-namespace chart deployed successfully", map[string]interface{}{
-							"chart": chart.Name,
-							"layer": layer.Name,
+							"chart":     chart.Name,
+							"layer":     layer.Name,
 							"namespace": targetNamespace,
-							"duration": result.Duration,
+							"duration":  result.Duration,
 						})
 					}
 				}
@@ -1334,17 +1313,17 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 						"layer": layer.Name,
 						"error": result.Error.Error(),
 					})
-					
+
 					layerErr = result.Error
-					
+
 					// Stop on first failure in layer if not dry run
 					if !options.DryRun {
 						break
 					}
 				} else {
 					u.logger.InfoWithContext("chart deployed successfully in layer", map[string]interface{}{
-						"chart": chart.Name,
-						"layer": layer.Name,
+						"chart":    chart.Name,
+						"layer":    layer.Name,
 						"duration": result.Duration,
 					})
 				}
@@ -1353,11 +1332,11 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 			// Wait between charts in the same layer if specified
 			if chartIndex < len(layer.Charts)-1 && layer.WaitBetweenCharts > 0 {
 				u.logger.InfoWithContext("waiting between charts in layer", map[string]interface{}{
-					"chart": chart.Name,
-					"layer": layer.Name,
+					"chart":         chart.Name,
+					"layer":         layer.Name,
 					"wait_duration": layer.WaitBetweenCharts,
 				})
-				
+
 				select {
 				case <-layerCtx.Done():
 					u.logger.WarnWithContext("deployment cancelled during inter-chart wait", map[string]interface{}{
@@ -1373,17 +1352,17 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 		}
 
 		layerDuration := time.Since(layerStartTime)
-		
+
 		// If layer requires health check and deployment was successful, perform comprehensive health check
 		if layerErr == nil && layer.RequiresHealthCheck && !options.DryRun {
 			u.logger.InfoWithContext("performing layer health check", map[string]interface{}{
-				"layer": layer.Name,
+				"layer":                layer.Name,
 				"health_check_timeout": layer.HealthCheckTimeout,
 			})
-			
+
 			healthCheckCtx, healthCheckCancel := context.WithTimeout(layerCtx, layer.HealthCheckTimeout)
 			defer healthCheckCancel()
-			
+
 			if err := u.healthCheckUsecase.performLayerHealthCheck(healthCheckCtx, layer, options); err != nil {
 				u.logger.ErrorWithContext("layer health check failed", map[string]interface{}{
 					"layer": layer.Name,
@@ -1398,10 +1377,10 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 		}
 
 		u.logger.InfoWithContext("layer deployment completed", map[string]interface{}{
-			"layer": layer.Name,
-			"layer_index": layerIndex + 1,
-			"duration": layerDuration,
-			"success": layerErr == nil,
+			"layer":                  layer.Name,
+			"layer_index":            layerIndex + 1,
+			"duration":               layerDuration,
+			"success":                layerErr == nil,
 			"health_check_performed": layer.RequiresHealthCheck && !options.DryRun,
 		})
 
@@ -1413,10 +1392,10 @@ func (u *DeploymentUsecase) deployChartsWithLayerAwareness(ctx context.Context, 
 
 	u.logger.InfoWithContext("layer-aware deployment completed", map[string]interface{}{
 		"deployment_strategy": "layer_aware",
-		"total_layers": len(layers),
-		"successful_charts": progress.GetSuccessCount(),
-		"failed_charts": progress.GetFailedCount(),
-		"skipped_charts": progress.GetSkippedCount(),
+		"total_layers":        len(layers),
+		"successful_charts":   progress.GetSuccessCount(),
+		"failed_charts":       progress.GetFailedCount(),
+		"skipped_charts":      progress.GetSkippedCount(),
 	})
 
 	return progress, nil
@@ -1428,23 +1407,23 @@ func (u *DeploymentUsecase) deployChartsInParallel(ctx context.Context, charts [
 		u.logger.WarnWithContext("parallel deployer not initialized, falling back to sequential", map[string]interface{}{})
 		return u.deployChartsSequentially(ctx, charts, options, progress)
 	}
-	
+
 	u.logger.InfoWithContext("deploying charts in parallel", map[string]interface{}{
 		"chart_count": len(charts),
 	})
-	
+
 	results, err := u.parallelDeployer.deployChartsParallel(ctx, "dependency-level", charts, options, u.deploySingleChart)
 	if err != nil {
 		return fmt.Errorf("parallel deployment failed: %w", err)
 	}
-	
+
 	for _, result := range results {
 		progress.AddResult(result)
 		if result.Status == domain.DeploymentStatusFailed && !options.DryRun {
 			return fmt.Errorf("chart deployment failed: %s", result.Error)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1455,26 +1434,26 @@ func (u *DeploymentUsecase) deployChartsSequentially(ctx context.Context, charts
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		
+
 		progress.CurrentChart = chart.Name
 		progress.CurrentPhase = "Deploying chart"
-		
+
 		result := u.deploySingleChart(ctx, chart, options)
 		progress.AddResult(result)
-		
+
 		if result.Status == domain.DeploymentStatusFailed {
 			u.logger.ErrorWithContext("chart deployment failed", map[string]interface{}{
 				"chart": chart.Name,
 				"error": result.Error,
 			})
-			
+
 			// Stop on first failure if not dry run
 			if !options.DryRun {
 				return fmt.Errorf("chart deployment failed: %s", result.Error)
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1483,7 +1462,7 @@ func (u *DeploymentUsecase) EnableParallelDeployment(cacheDir string) error {
 	if u.parallelDeployer == nil {
 		u.parallelDeployer = NewParallelChartDeployer(u.logger, DefaultParallelConfig())
 	}
-	
+
 	if u.cache == nil && cacheDir != "" {
 		u.cache = NewDeploymentCache(cacheDir, u.logger)
 		if err := u.cache.Initialize(); err != nil {
@@ -1491,14 +1470,14 @@ func (u *DeploymentUsecase) EnableParallelDeployment(cacheDir string) error {
 		}
 		u.enableCache = true
 	}
-	
+
 	u.enableParallel = true
-	
+
 	u.logger.InfoWithContext("parallel deployment enabled", map[string]interface{}{
 		"cache_enabled": u.enableCache,
 		"cache_dir":     cacheDir,
 	})
-	
+
 	return nil
 }
 
@@ -1513,11 +1492,11 @@ func (u *DeploymentUsecase) SetDependencyAwareDeployment(enabled bool) {
 // GetDeploymentCapabilities returns the current deployment capabilities
 func (u *DeploymentUsecase) GetDeploymentCapabilities() map[string]interface{} {
 	return map[string]interface{}{
-		"parallel_enabled":        u.enableParallel,
-		"cache_enabled":           u.enableCache,
+		"parallel_enabled":         u.enableParallel,
+		"cache_enabled":            u.enableCache,
 		"dependency_aware_enabled": u.enableDependencyAware,
-		"parallel_deployer_ready": u.parallelDeployer != nil,
-		"cache_ready":             u.cache != nil,
+		"parallel_deployer_ready":  u.parallelDeployer != nil,
+		"cache_ready":              u.cache != nil,
 		"dependency_scanner_ready": u.dependencyScanner != nil,
 	}
 }
@@ -1545,12 +1524,12 @@ func (u *DeploymentUsecase) formatError(err error) string {
 func (u *DeploymentUsecase) deployChartWithRetry(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions, progress *domain.DeploymentProgress) domain.DeploymentResult {
 	const maxRetries = 3
 	var lastResult domain.DeploymentResult
-	
+
 	retryStartTime := time.Now()
-	
+
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		attemptStartTime := time.Now()
-		
+
 		u.logger.InfoWithContext("attempting chart deployment", map[string]interface{}{
 			"chart":       chart.Name,
 			"attempt":     attempt,
@@ -1558,36 +1537,36 @@ func (u *DeploymentUsecase) deployChartWithRetry(ctx context.Context, chart doma
 			"namespace":   options.GetNamespace(chart.Name),
 			"timeout":     options.Timeout,
 		})
-		
+
 		// Check for context cancellation before dependency wait
 		select {
 		case <-ctx.Done():
 			u.logger.WarnWithContext("deployment cancelled before dependency wait", map[string]interface{}{
-				"chart": chart.Name,
+				"chart":   chart.Name,
 				"attempt": attempt,
-				"error": ctx.Err().Error(),
+				"error":   ctx.Err().Error(),
 			})
 			lastResult.Error = fmt.Errorf("deployment cancelled: %w", ctx.Err())
 			lastResult.Status = domain.DeploymentStatusFailed
 			return lastResult
 		default:
 		}
-		
+
 		// Wait for dependencies before deploying the chart (with timeout)
 		depWaitCtx, depCancel := context.WithTimeout(ctx, 2*time.Minute)
 		if err := u.dependencyWaiter.WaitForDependencies(depWaitCtx, chart.Name); err != nil {
 			depCancel()
 			if depWaitCtx.Err() == context.DeadlineExceeded {
 				u.logger.WarnWithContext("dependency wait timed out, continuing with deployment", map[string]interface{}{
-					"chart": chart.Name,
+					"chart":   chart.Name,
 					"attempt": attempt,
 					"timeout": "2m",
 				})
 			} else {
 				u.logger.WarnWithContext("dependency wait failed, continuing with deployment", map[string]interface{}{
-					"chart": chart.Name,
+					"chart":   chart.Name,
 					"attempt": attempt,
-					"error": err.Error(),
+					"error":   err.Error(),
 				})
 			}
 			// Continue with deployment even if dependencies aren't ready
@@ -1595,24 +1574,24 @@ func (u *DeploymentUsecase) deployChartWithRetry(ctx context.Context, chart doma
 		} else {
 			depCancel()
 			u.logger.InfoWithContext("dependencies ready for chart", map[string]interface{}{
-				"chart": chart.Name,
+				"chart":   chart.Name,
 				"attempt": attempt,
 			})
 		}
-		
+
 		result := u.deploySingleChart(ctx, chart, options)
 		attemptDuration := time.Since(attemptStartTime)
-		
+
 		u.logger.InfoWithContext("chart deployment attempt completed", map[string]interface{}{
-			"chart":          chart.Name,
-			"attempt":        attempt,
-			"status":         result.Status,
-			"duration":       attemptDuration,
-			"namespace":      result.Namespace,
-			"error":          u.formatError(result.Error),
-			"will_retry":     result.Status == domain.DeploymentStatusFailed && attempt < maxRetries && u.isRetriableError(result.Error),
+			"chart":      chart.Name,
+			"attempt":    attempt,
+			"status":     result.Status,
+			"duration":   attemptDuration,
+			"namespace":  result.Namespace,
+			"error":      u.formatError(result.Error),
+			"will_retry": result.Status == domain.DeploymentStatusFailed && attempt < maxRetries && u.isRetriableError(result.Error),
 		})
-		
+
 		// If successful, return immediately
 		if result.Status == domain.DeploymentStatusSuccess {
 			totalRetryDuration := time.Since(retryStartTime)
@@ -1624,31 +1603,31 @@ func (u *DeploymentUsecase) deployChartWithRetry(ctx context.Context, chart doma
 			})
 			return result
 		}
-		
+
 		lastResult = result
-		
+
 		// Don't retry if error is not retriable or if it's the last attempt
 		if !u.isRetriableError(result.Error) || attempt == maxRetries {
 			break
 		}
-		
+
 		// Calculate retry delay with exponential backoff
 		retryDelay := time.Duration(attempt) * 5 * time.Second
 		u.logger.WarnWithContext("chart deployment failed, will retry", map[string]interface{}{
-			"chart":            chart.Name,
-			"failed_attempt":   attempt,
-			"error":            result.Error.Error(),
-			"retry_delay":      retryDelay,
-			"next_attempt":     attempt + 1,
+			"chart":          chart.Name,
+			"failed_attempt": attempt,
+			"error":          result.Error.Error(),
+			"retry_delay":    retryDelay,
+			"next_attempt":   attempt + 1,
 		})
-		
+
 		// Wait for retry delay or context cancellation
 		select {
 		case <-ctx.Done():
 			u.logger.WarnWithContext("deployment cancelled during retry wait", map[string]interface{}{
-				"chart": chart.Name,
+				"chart":   chart.Name,
 				"attempt": attempt,
-				"error": ctx.Err().Error(),
+				"error":   ctx.Err().Error(),
 			})
 			lastResult.Error = fmt.Errorf("deployment cancelled during retry: %w", ctx.Err())
 			lastResult.Status = domain.DeploymentStatusFailed
@@ -1657,7 +1636,7 @@ func (u *DeploymentUsecase) deployChartWithRetry(ctx context.Context, chart doma
 			// Continue to next attempt
 		}
 	}
-	
+
 	totalRetryDuration := time.Since(retryStartTime)
 	u.logger.ErrorWithContext("chart deployment failed after all retries", map[string]interface{}{
 		"chart":                chart.Name,
@@ -1666,7 +1645,7 @@ func (u *DeploymentUsecase) deployChartWithRetry(ctx context.Context, chart doma
 		"final_error":          lastResult.Error.Error(),
 		"namespace":            lastResult.Namespace,
 	})
-	
+
 	return lastResult
 }
 
@@ -1675,9 +1654,9 @@ func (u *DeploymentUsecase) isRetriableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	errorMsg := err.Error()
-	
+
 	// Check for retriable error patterns
 	retriablePatterns := []string{
 		"connection refused",
@@ -1689,9 +1668,9 @@ func (u *DeploymentUsecase) isRetriableError(err error) bool {
 		"internal error",
 		"network",
 	}
-	
+
 	for _, pattern := range retriablePatterns {
-		if contains(errorMsg, pattern) {
+		if containsInsensitive(errorMsg, pattern) {
 			u.logger.DebugWithContext("error classified as retriable", map[string]interface{}{
 				"error":   errorMsg,
 				"pattern": pattern,
@@ -1699,58 +1678,15 @@ func (u *DeploymentUsecase) isRetriableError(err error) bool {
 			return true
 		}
 	}
-	
+
 	u.logger.DebugWithContext("error classified as non-retriable", map[string]interface{}{
 		"error": errorMsg,
 	})
-	
+
 	return false
 }
 
-// contains checks if a string contains a substring (case-insensitive)
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		   (s == substr || 
-		    len(s) > len(substr) && 
-		    (indexOfInsensitive(s, substr) >= 0))
-}
-
-// indexOfInsensitive performs case-insensitive substring search
-func indexOfInsensitive(s, substr string) int {
-	sLower := toLower(s)
-	substrLower := toLower(substr)
-	
-	for i := 0; i <= len(sLower)-len(substrLower); i++ {
-		if sLower[i:i+len(substrLower)] == substrLower {
-			return i
-		}
-	}
-	return -1
-}
-
-// toLower converts string to lowercase
-func toLower(s string) string {
-	result := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			result[i] = c + ('a' - 'A')
-		} else {
-			result[i] = c
-		}
-	}
-	return string(result)
-}
-
-
-
-
-
-
-
-
-
-
+// Note: Utility functions moved to shared_utils.go to avoid duplication
 
 // isStatefulSetChart determines if a chart deploys a StatefulSet (delegated to StatefulSetManagementUsecase)
 func (u *DeploymentUsecase) isStatefulSetChart(chartName string) bool {
@@ -1762,7 +1698,7 @@ func (u *DeploymentUsecase) isSecretOnlyChart(chartName string) bool {
 	secretOnlyCharts := []string{
 		"common-secrets", "common-config", "common-ssl",
 	}
-	
+
 	for _, secretChart := range secretOnlyCharts {
 		if chartName == secretChart {
 			return true
@@ -1770,9 +1706,6 @@ func (u *DeploymentUsecase) isSecretOnlyChart(chartName string) bool {
 	}
 	return false
 }
-
-
-
 
 // getDefaultLayerConfigurations returns the default layer configurations for backwards compatibility
 func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.ChartConfig, chartsDir string) []domain.LayerConfiguration {
@@ -1788,10 +1721,10 @@ func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.Ch
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      15 * time.Minute,
-			WaitBetweenCharts:      30 * time.Second,
-			LayerCompletionTimeout: 20 * time.Minute,
+			WaitBetweenCharts:       30 * time.Second,
+			LayerCompletionTimeout:  20 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Configuration & Secrets",
@@ -1800,12 +1733,12 @@ func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.Ch
 				{Name: "common-config", Type: domain.InfrastructureChart, Path: chartsDir + "/common-config", WaitReady: false},
 				{Name: "common-ssl", Type: domain.InfrastructureChart, Path: chartsDir + "/common-ssl", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-database", "alt-ingress", "alt-search", "alt-auth"}},
 			},
-			RequiresHealthCheck:     true,  // Enable health check for secret charts
+			RequiresHealthCheck:     true, // Enable health check for secret charts
 			HealthCheckTimeout:      3 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 8 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  8 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Core Services",
@@ -1816,10 +1749,10 @@ func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.Ch
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      10 * time.Minute,
-			WaitBetweenCharts:      15 * time.Second,
-			LayerCompletionTimeout: 15 * time.Minute,
+			WaitBetweenCharts:       15 * time.Second,
+			LayerCompletionTimeout:  15 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          true,
+			CriticalLayer:           true,
 		},
 		{
 			Name: "Network & Ingress",
@@ -1829,10 +1762,10 @@ func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.Ch
 			},
 			RequiresHealthCheck:     false,
 			HealthCheckTimeout:      5 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 8 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  8 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 		{
 			Name: "Frontend Applications",
@@ -1841,10 +1774,10 @@ func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.Ch
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      8 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 10 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  10 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 		{
 			Name: "Data Processing Services",
@@ -1857,10 +1790,10 @@ func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.Ch
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      10 * time.Minute,
-			WaitBetweenCharts:      20 * time.Second,
-			LayerCompletionTimeout: 15 * time.Minute,
+			WaitBetweenCharts:       20 * time.Second,
+			LayerCompletionTimeout:  15 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 		{
 			Name: "Operations & Monitoring",
@@ -1871,14 +1804,13 @@ func (u *DeploymentUsecase) getDefaultLayerConfigurations(chartConfig *domain.Ch
 			},
 			RequiresHealthCheck:     true,
 			HealthCheckTimeout:      5 * time.Minute,
-			WaitBetweenCharts:      10 * time.Second,
-			LayerCompletionTimeout: 10 * time.Minute,
+			WaitBetweenCharts:       10 * time.Second,
+			LayerCompletionTimeout:  10 * time.Minute,
 			AllowParallelDeployment: false,
-			CriticalLayer:          false,
+			CriticalLayer:           false,
 		},
 	}
 }
-
 
 // initializeMonitoring initializes monitoring components for a deployment
 func (u *DeploymentUsecase) initializeMonitoring(ctx context.Context, deploymentID string, options *domain.DeploymentOptions) error {
@@ -1886,34 +1818,34 @@ func (u *DeploymentUsecase) initializeMonitoring(ctx context.Context, deployment
 	if err := u.metricsCollector.StartDeploymentMetrics(deploymentID, options); err != nil {
 		return fmt.Errorf("failed to start deployment metrics: %w", err)
 	}
-	
+
 	// Initialize dependency monitoring
 	if err := u.dependencyDetector.StartDependencyMonitoring(ctx, deploymentID); err != nil {
 		return fmt.Errorf("failed to start dependency monitoring: %w", err)
 	}
-	
+
 	// Initialize progress tracking
 	chartConfig := domain.NewChartConfig(options.ChartsDir)
 	allCharts := chartConfig.AllCharts()
 	u.progressTracker = NewProgressTracker(u.logger, deploymentID, len(allCharts), u.metricsCollector)
-	
+
 	// Set up progress callback for real-time updates
 	u.progressTracker.SetProgressCallback(func(progress *domain.DeploymentProgress) {
 		u.logger.InfoWithContext("deployment progress update", map[string]interface{}{
-			"deployment_id":     deploymentID,
-			"current_phase":     progress.CurrentPhase,
-			"current_chart":     progress.CurrentChart,
-			"completed_charts":  progress.CompletedCharts,
-			"total_charts":      progress.TotalCharts,
-			"progress_percent":  float64(progress.CompletedCharts) / float64(progress.TotalCharts) * 100.0,
+			"deployment_id":    deploymentID,
+			"current_phase":    progress.CurrentPhase,
+			"current_chart":    progress.CurrentChart,
+			"completed_charts": progress.CompletedCharts,
+			"total_charts":     progress.TotalCharts,
+			"progress_percent": float64(progress.CompletedCharts) / float64(progress.TotalCharts) * 100.0,
 		})
 	})
-	
+
 	u.logger.InfoWithContext("monitoring initialized", map[string]interface{}{
 		"deployment_id": deploymentID,
 		"total_charts":  len(allCharts),
 	})
-	
+
 	return nil
 }
 
@@ -1922,18 +1854,18 @@ func (u *DeploymentUsecase) cleanupStuckHelmOperations(ctx context.Context, opti
 	u.logger.InfoWithContext("cleaning up stuck helm operations", map[string]interface{}{
 		"environment": options.Environment.String(),
 	})
-	
+
 	// Get all charts that will be deployed
 	chartConfig := domain.NewChartConfig(options.ChartsDir)
 	allCharts := chartConfig.AllCharts()
-	
+
 	cleanupResults := make(map[string]error)
-	
+
 	// Check each chart for stuck operations
 	for _, chart := range allCharts {
 		// Create a timeout context for each chart cleanup
 		cleanupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		
+
 		// Check for pending operations
 		operation, err := u.helmGateway.DetectPendingOperation(cleanupCtx, chart, options)
 		if err != nil {
@@ -1941,16 +1873,16 @@ func (u *DeploymentUsecase) cleanupStuckHelmOperations(ctx context.Context, opti
 			cancel()
 			continue
 		}
-		
+
 		if operation != nil {
 			u.logger.WarnWithContext("detected stuck helm operation", map[string]interface{}{
-				"chart": chart.Name,
-				"operation": operation.Type,
-				"status": operation.Status,
+				"chart":      chart.Name,
+				"operation":  operation.Type,
+				"status":     operation.Status,
 				"start_time": operation.StartTime,
-				"namespace": options.GetNamespace(chart.Name),
+				"namespace":  options.GetNamespace(chart.Name),
 			})
-			
+
 			// Attempt to clean up the stuck operation
 			if err := u.helmGateway.CleanupStuckOperations(cleanupCtx, chart, options); err != nil {
 				cleanupResults[chart.Name] = fmt.Errorf("failed to cleanup stuck operation: %w", err)
@@ -1960,20 +1892,20 @@ func (u *DeploymentUsecase) cleanupStuckHelmOperations(ctx context.Context, opti
 				})
 			} else {
 				u.logger.InfoWithContext("successfully cleaned up stuck operation", map[string]interface{}{
-					"chart": chart.Name,
+					"chart":     chart.Name,
 					"operation": operation.Type,
-					"status": operation.Status,
+					"status":    operation.Status,
 				})
 			}
 		}
-		
+
 		cancel()
 	}
-	
+
 	// Report cleanup results
 	successCount := 0
 	failureCount := 0
-	
+
 	for chartName, err := range cleanupResults {
 		if err != nil {
 			failureCount++
@@ -1985,24 +1917,21 @@ func (u *DeploymentUsecase) cleanupStuckHelmOperations(ctx context.Context, opti
 			successCount++
 		}
 	}
-	
+
 	u.logger.InfoWithContext("helm operations cleanup completed", map[string]interface{}{
-		"total_charts": len(allCharts),
+		"total_charts":       len(allCharts),
 		"charts_with_issues": len(cleanupResults),
-		"cleanup_successes": successCount,
-		"cleanup_failures": failureCount,
+		"cleanup_successes":  successCount,
+		"cleanup_failures":   failureCount,
 	})
-	
+
 	// Return error only if all cleanups failed
 	if failureCount > 0 && successCount == 0 {
 		return fmt.Errorf("all helm operation cleanups failed")
 	}
-	
+
 	return nil
 }
-
-
-
 
 // secretExists checks if a secret exists in the given namespace
 func (u *DeploymentUsecase) secretExists(ctx context.Context, secretName, namespace string) bool {
@@ -2010,6 +1939,4 @@ func (u *DeploymentUsecase) secretExists(ctx context.Context, secretName, namesp
 	return err == nil
 }
 
-
 // SSL certificate management methods moved to ssl_management_usecase.go
-

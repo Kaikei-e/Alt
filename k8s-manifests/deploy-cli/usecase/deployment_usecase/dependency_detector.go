@@ -12,37 +12,37 @@ import (
 
 // DependencyFailureDetector proactively detects and reports dependency failures
 type DependencyFailureDetector struct {
-	logger               logger_port.LoggerPort
-	dependencyGraph      map[string][]string // chart -> dependencies
-	dependencyStatus     map[string]DependencyStatus
-	dependencyChecks     map[string][]DependencyCheck
-	metricsCollector     *MetricsCollector
-	layerMonitor         *LayerHealthMonitor
-	mutex                sync.RWMutex
-	alertThresholds      *DependencyAlertThresholds
+	logger           logger_port.LoggerPort
+	dependencyGraph  map[string][]string // chart -> dependencies
+	dependencyStatus map[string]DependencyStatus
+	dependencyChecks map[string][]DependencyCheck
+	metricsCollector *MetricsCollector
+	layerMonitor     *LayerHealthMonitor
+	mutex            sync.RWMutex
+	alertThresholds  *DependencyAlertThresholds
 }
 
 // DependencyStatus represents the status of a dependency
 type DependencyStatus struct {
-	Name              string
-	Status            string
-	LastCheck         time.Time
-	LastSuccess       time.Time
-	FailureCount      int
+	Name                string
+	Status              string
+	LastCheck           time.Time
+	LastSuccess         time.Time
+	FailureCount        int
 	ConsecutiveFailures int
 	AverageResponseTime time.Duration
-	ErrorHistory      []DependencyError
+	ErrorHistory        []DependencyError
 }
 
 // DependencyCheck represents a dependency check
 type DependencyCheck struct {
-	CheckType     string
-	Target        string
-	Status        string
-	Duration      time.Duration
-	Timestamp     time.Time
-	ErrorMessage  string
-	Context       map[string]interface{}
+	CheckType    string
+	Target       string
+	Status       string
+	Duration     time.Duration
+	Timestamp    time.Time
+	ErrorMessage string
+	Context      map[string]interface{}
 }
 
 // DependencyError represents a dependency error
@@ -317,9 +317,9 @@ func (d *DependencyFailureDetector) checkDependencyAlerts(dependencyName string,
 	// Alert for slow response time
 	if status.AverageResponseTime > d.alertThresholds.MaxResponseTime {
 		d.logger.WarnWithContext("dependency response time threshold exceeded", map[string]interface{}{
-			"dependency":           dependencyName,
+			"dependency":            dependencyName,
 			"average_response_time": status.AverageResponseTime,
-			"threshold":            d.alertThresholds.MaxResponseTime,
+			"threshold":             d.alertThresholds.MaxResponseTime,
 		})
 	}
 
@@ -379,7 +379,7 @@ func (d *DependencyFailureDetector) performPeriodicDependencyChecks(deploymentID
 	for _, dep := range dependencies {
 		// Determine check type based on dependency name
 		checkType := d.determineCheckType(dep)
-		
+
 		_, err := d.CheckDependency(dep, checkType)
 		if err != nil {
 			d.logger.ErrorWithContext("periodic dependency check failed", map[string]interface{}{

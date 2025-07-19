@@ -22,7 +22,7 @@ var ServiceDependencies = map[string][]ServiceDependency{
 			Timeout:     300, // 5 minutes
 		},
 	},
-	
+
 	// Alt backend needs both PostgreSQL and Meilisearch
 	"alt-backend": {
 		{
@@ -40,7 +40,7 @@ var ServiceDependencies = map[string][]ServiceDependency{
 			Timeout:     300,
 		},
 	},
-	
+
 	// Auth service needs Auth PostgreSQL
 	"auth-service": {
 		{
@@ -51,7 +51,7 @@ var ServiceDependencies = map[string][]ServiceDependency{
 			Timeout:     300,
 		},
 	},
-	
+
 	// Kratos needs Kratos PostgreSQL
 	"kratos": {
 		{
@@ -62,7 +62,7 @@ var ServiceDependencies = map[string][]ServiceDependency{
 			Timeout:     300,
 		},
 	},
-	
+
 	// Search indexer needs both PostgreSQL and Meilisearch
 	"search-indexer": {
 		{
@@ -80,7 +80,7 @@ var ServiceDependencies = map[string][]ServiceDependency{
 			Timeout:     300,
 		},
 	},
-	
+
 	// Pre-processor needs PostgreSQL and News Creator
 	"pre-processor": {
 		{
@@ -98,7 +98,7 @@ var ServiceDependencies = map[string][]ServiceDependency{
 			Timeout:     180,
 		},
 	},
-	
+
 	// Tag generator needs PostgreSQL
 	"tag-generator": {
 		{
@@ -109,7 +109,7 @@ var ServiceDependencies = map[string][]ServiceDependency{
 			Timeout:     300,
 		},
 	},
-	
+
 	// Rask log aggregator needs ClickHouse
 	"rask-log-aggregator": {
 		{
@@ -120,7 +120,7 @@ var ServiceDependencies = map[string][]ServiceDependency{
 			Timeout:     300,
 		},
 	},
-	
+
 	// Alt frontend depends on backend services for API calls
 	"alt-frontend": {
 		{
@@ -138,7 +138,7 @@ var ServiceDependencies = map[string][]ServiceDependency{
 			Timeout:     180,
 		},
 	},
-	
+
 	// Infrastructure services typically don't have dependencies
 	"postgres":        {},
 	"auth-postgres":   {},
@@ -173,13 +173,13 @@ func HasDependencies(serviceName string) bool {
 func GetRequiredDependencies(serviceName string) []ServiceDependency {
 	deps := GetServiceDependencies(serviceName)
 	var required []ServiceDependency
-	
+
 	for _, dep := range deps {
 		if dep.Required {
 			required = append(required, dep)
 		}
 	}
-	
+
 	return required
 }
 
@@ -187,12 +187,12 @@ func GetRequiredDependencies(serviceName string) []ServiceDependency {
 func GetOptionalDependencies(serviceName string) []ServiceDependency {
 	deps := GetServiceDependencies(serviceName)
 	var optional []ServiceDependency
-	
+
 	for _, dep := range deps {
 		if !dep.Required {
 			optional = append(optional, dep)
 		}
 	}
-	
+
 	return optional
 }

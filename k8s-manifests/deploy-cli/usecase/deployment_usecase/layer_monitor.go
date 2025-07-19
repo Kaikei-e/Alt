@@ -12,46 +12,46 @@ import (
 
 // LayerHealthMonitor monitors the health of deployment layers in real-time
 type LayerHealthMonitor struct {
-	logger          logger_port.LoggerPort
-	activeMonitors  map[string]*LayerMonitorState
+	logger           logger_port.LoggerPort
+	activeMonitors   map[string]*LayerMonitorState
 	metricsCollector *MetricsCollector
-	mutex           sync.RWMutex
+	mutex            sync.RWMutex
 }
 
 // LayerMonitorState represents the state of a layer monitor
 type LayerMonitorState struct {
-	DeploymentID    string
-	LayerName       string
-	StartTime       time.Time
-	Status          domain.LayerStatus
-	Charts          []string
-	ActiveCharts    map[string]*ChartMonitorState
-	HealthChecks    []domain.HealthCheckResult
-	Dependencies    []string
-	CriticalPath    []string
-	Alerts          []domain.DeploymentAlert
-	mutex           sync.RWMutex
+	DeploymentID string
+	LayerName    string
+	StartTime    time.Time
+	Status       domain.LayerStatus
+	Charts       []string
+	ActiveCharts map[string]*ChartMonitorState
+	HealthChecks []domain.HealthCheckResult
+	Dependencies []string
+	CriticalPath []string
+	Alerts       []domain.DeploymentAlert
+	mutex        sync.RWMutex
 }
 
 // ChartMonitorState represents the state of a chart monitor
 type ChartMonitorState struct {
-	ChartName     string
-	Namespace     string
-	StartTime     time.Time
-	Status        domain.DeploymentStatus
-	Phase         string
-	Retries       int
-	LastUpdate    time.Time
-	HealthChecks  []domain.HealthCheckResult
-	Dependencies  []string
-	Errors        []domain.ErrorDetail
+	ChartName    string
+	Namespace    string
+	StartTime    time.Time
+	Status       domain.DeploymentStatus
+	Phase        string
+	Retries      int
+	LastUpdate   time.Time
+	HealthChecks []domain.HealthCheckResult
+	Dependencies []string
+	Errors       []domain.ErrorDetail
 }
 
 // NewLayerHealthMonitor creates a new layer health monitor
 func NewLayerHealthMonitor(logger logger_port.LoggerPort, metricsCollector *MetricsCollector) *LayerHealthMonitor {
 	return &LayerHealthMonitor{
-		logger:          logger,
-		activeMonitors:  make(map[string]*LayerMonitorState),
+		logger:           logger,
+		activeMonitors:   make(map[string]*LayerMonitorState),
 		metricsCollector: metricsCollector,
 	}
 }
@@ -62,23 +62,23 @@ func (m *LayerHealthMonitor) StartLayerMonitoring(ctx context.Context, deploymen
 	defer m.mutex.Unlock()
 
 	monitorKey := fmt.Sprintf("%s-%s", deploymentID, layerName)
-	
+
 	chartNames := make([]string, len(charts))
 	for i, chart := range charts {
 		chartNames[i] = chart.Name
 	}
 
 	monitorState := &LayerMonitorState{
-		DeploymentID:    deploymentID,
-		LayerName:       layerName,
-		StartTime:       time.Now(),
-		Status:          domain.LayerStatusInProgress,
-		Charts:          chartNames,
-		ActiveCharts:    make(map[string]*ChartMonitorState),
-		HealthChecks:    make([]domain.HealthCheckResult, 0),
-		Dependencies:    make([]string, 0),
-		CriticalPath:    make([]string, 0),
-		Alerts:          make([]domain.DeploymentAlert, 0),
+		DeploymentID: deploymentID,
+		LayerName:    layerName,
+		StartTime:    time.Now(),
+		Status:       domain.LayerStatusInProgress,
+		Charts:       chartNames,
+		ActiveCharts: make(map[string]*ChartMonitorState),
+		HealthChecks: make([]domain.HealthCheckResult, 0),
+		Dependencies: make([]string, 0),
+		CriticalPath: make([]string, 0),
+		Alerts:       make([]domain.DeploymentAlert, 0),
 	}
 
 	m.activeMonitors[monitorKey] = monitorState
@@ -101,22 +101,22 @@ func (m *LayerHealthMonitor) StartChartMonitoring(deploymentID, layerName, chart
 	defer m.mutex.Unlock()
 
 	monitorKey := fmt.Sprintf("%s-%s", deploymentID, layerName)
-	
+
 	if layerMonitor, exists := m.activeMonitors[monitorKey]; exists {
 		layerMonitor.mutex.Lock()
 		defer layerMonitor.mutex.Unlock()
 
 		layerMonitor.ActiveCharts[chartName] = &ChartMonitorState{
-			ChartName:     chartName,
-			Namespace:     namespace,
-			StartTime:     time.Now(),
-			Status:        domain.DeploymentStatusSkipped, // Will be updated
-			Phase:         "initializing",
-			Retries:       0,
-			LastUpdate:    time.Now(),
-			HealthChecks:  make([]domain.HealthCheckResult, 0),
-			Dependencies:  make([]string, 0),
-			Errors:        make([]domain.ErrorDetail, 0),
+			ChartName:    chartName,
+			Namespace:    namespace,
+			StartTime:    time.Now(),
+			Status:       domain.DeploymentStatusSkipped, // Will be updated
+			Phase:        "initializing",
+			Retries:      0,
+			LastUpdate:   time.Now(),
+			HealthChecks: make([]domain.HealthCheckResult, 0),
+			Dependencies: make([]string, 0),
+			Errors:       make([]domain.ErrorDetail, 0),
 		}
 
 		m.logger.InfoWithContext("started chart monitoring", map[string]interface{}{
@@ -136,7 +136,7 @@ func (m *LayerHealthMonitor) UpdateChartStatus(deploymentID, layerName, chartNam
 	defer m.mutex.RUnlock()
 
 	monitorKey := fmt.Sprintf("%s-%s", deploymentID, layerName)
-	
+
 	if layerMonitor, exists := m.activeMonitors[monitorKey]; exists {
 		layerMonitor.mutex.Lock()
 		defer layerMonitor.mutex.Unlock()
@@ -168,7 +168,7 @@ func (m *LayerHealthMonitor) RecordChartError(deploymentID, layerName, chartName
 	defer m.mutex.RUnlock()
 
 	monitorKey := fmt.Sprintf("%s-%s", deploymentID, layerName)
-	
+
 	if layerMonitor, exists := m.activeMonitors[monitorKey]; exists {
 		layerMonitor.mutex.Lock()
 		defer layerMonitor.mutex.Unlock()
@@ -224,7 +224,7 @@ func (m *LayerHealthMonitor) RecordHealthCheck(deploymentID, layerName string, r
 	defer m.mutex.RUnlock()
 
 	monitorKey := fmt.Sprintf("%s-%s", deploymentID, layerName)
-	
+
 	if layerMonitor, exists := m.activeMonitors[monitorKey]; exists {
 		layerMonitor.mutex.Lock()
 		defer layerMonitor.mutex.Unlock()
@@ -257,7 +257,7 @@ func (m *LayerHealthMonitor) CompleteLayerMonitoring(deploymentID, layerName str
 	defer m.mutex.Unlock()
 
 	monitorKey := fmt.Sprintf("%s-%s", deploymentID, layerName)
-	
+
 	if layerMonitor, exists := m.activeMonitors[monitorKey]; exists {
 		layerMonitor.mutex.Lock()
 		layerMonitor.Status = status
@@ -404,7 +404,7 @@ func (m *LayerHealthMonitor) checkHealthCheckAlerts(deploymentID, layerName stri
 // generateLayerCompletionInsight generates insights when a layer completes
 func (m *LayerHealthMonitor) generateLayerCompletionInsight(deploymentID, layerName string, layerMonitor *LayerMonitorState) {
 	duration := time.Since(layerMonitor.StartTime)
-	
+
 	// Generate performance insight
 	if duration > 15*time.Minute {
 		m.logger.InfoWithContext("generating layer performance insight", map[string]interface{}{
@@ -420,7 +420,7 @@ func (m *LayerHealthMonitor) generateLayerCompletionInsight(deploymentID, layerN
 	for _, chartMonitor := range layerMonitor.ActiveCharts {
 		errorCount += len(chartMonitor.Errors)
 	}
-	
+
 	if errorCount > 0 {
 		m.logger.InfoWithContext("generating layer reliability insight", map[string]interface{}{
 			"deployment_id": deploymentID,
@@ -437,7 +437,7 @@ func (m *LayerHealthMonitor) GetLayerStatus(deploymentID, layerName string) (*La
 	defer m.mutex.RUnlock()
 
 	monitorKey := fmt.Sprintf("%s-%s", deploymentID, layerName)
-	
+
 	if layerMonitor, exists := m.activeMonitors[monitorKey]; exists {
 		layerMonitor.mutex.RLock()
 		defer layerMonitor.mutex.RUnlock()
@@ -476,7 +476,7 @@ func (m *LayerHealthMonitor) GetLayerAlerts(deploymentID, layerName string) []do
 	defer m.mutex.RUnlock()
 
 	monitorKey := fmt.Sprintf("%s-%s", deploymentID, layerName)
-	
+
 	if layerMonitor, exists := m.activeMonitors[monitorKey]; exists {
 		layerMonitor.mutex.RLock()
 		defer layerMonitor.mutex.RUnlock()

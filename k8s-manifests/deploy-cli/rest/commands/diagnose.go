@@ -65,9 +65,9 @@ func (l *DiagnoseLoggerAdapter) WithFields(fields map[string]interface{}) logger
 // NewDiagnoseCommand creates a new diagnose command
 func NewDiagnoseCommand(log *logger.Logger) *cobra.Command {
 	var diagnoseCmd = &cobra.Command{
-	Use:   "diagnose",
-	Short: "環境の包括的診断と自動修復",
-	Long: `Deploy-CLI環境の包括的診断を実行し、検出された問題の自動修復を試行します。
+		Use:   "diagnose",
+		Short: "環境の包括的診断と自動修復",
+		Long: `Deploy-CLI環境の包括的診断を実行し、検出された問題の自動修復を試行します。
 
 このコマンドは以下の項目を診断します：
 - Kubernetesクラスター接続
@@ -77,7 +77,7 @@ func NewDiagnoseCommand(log *logger.Logger) *cobra.Command {
 - デプロイメント前提条件の検証
 
 検出された問題は、可能な場合自動的に修復されます。`,
-	Example: `  # 本番環境の診断
+		Example: `  # 本番環境の診断
   deploy-cli diagnose --environment production
 
   # ステージング環境の詳細診断（JSON形式）
@@ -102,19 +102,19 @@ func NewDiagnoseCommand(log *logger.Logger) *cobra.Command {
 	}
 
 	// Environment flag
-	diagnoseCmd.Flags().StringVarP(&diagnoseEnvironment, "environment", "e", "production", 
+	diagnoseCmd.Flags().StringVarP(&diagnoseEnvironment, "environment", "e", "production",
 		"診断対象の環境 (production, staging, development)")
 
 	// Output format flag
-	diagnoseCmd.Flags().StringVarP(&diagnoseOutputFormat, "output", "o", "text", 
+	diagnoseCmd.Flags().StringVarP(&diagnoseOutputFormat, "output", "o", "text",
 		"出力形式 (text, json, yaml)")
 
 	// Auto-fix control
-	diagnoseCmd.Flags().BoolVar(&diagnoseNoAutoFix, "no-auto-fix", false, 
+	diagnoseCmd.Flags().BoolVar(&diagnoseNoAutoFix, "no-auto-fix", false,
 		"自動修復を無効化（診断のみ実行）")
 
 	// Verbose output
-	diagnoseCmd.Flags().BoolVarP(&diagnoseVerbose, "verbose", "v", false, 
+	diagnoseCmd.Flags().BoolVarP(&diagnoseVerbose, "verbose", "v", false,
 		"詳細な診断情報を表示")
 
 	return diagnoseCmd
@@ -131,13 +131,13 @@ func runDiagnose(cmd *cobra.Command, args []string, log *logger.Logger, diagnose
 	loggerAdapter := &DiagnoseLoggerAdapter{logger: log}
 
 	kubectlPort := kubectl_driver.NewKubectlDriver()
-	
+
 	namespaceEnsure := infrastructure_usecase.NewNamespaceEnsureUsecase(kubectlPort, loggerAdapter)
 	storageClassEnsure := infrastructure_usecase.NewStorageClassEnsureUsecase(kubectlPort, loggerAdapter)
-	
+
 	diagnosticUsecase := diagnostic_usecase.NewPrerequisitesDiagnosticUsecase(
 		kubectlPort,
-		namespaceEnsure, 
+		namespaceEnsure,
 		storageClassEnsure,
 		loggerAdapter,
 	)
@@ -170,7 +170,7 @@ func outputDiagnosticJSON(report *diagnostic_usecase.DiagnosticReport) error {
 	if err != nil {
 		return fmt.Errorf("JSON出力の生成に失敗: %w", err)
 	}
-	
+
 	fmt.Println(string(jsonData))
 	return nil
 }
@@ -181,14 +181,14 @@ func outputDiagnosticYAML(report *diagnostic_usecase.DiagnosticReport) error {
 	fmt.Printf("environment: %s\n", report.Environment)
 	fmt.Printf("execution_time: %s\n", report.ExecutionTime.String())
 	fmt.Printf("timestamp: %s\n", report.Timestamp.Format("2006-01-02T15:04:05Z07:00"))
-	
+
 	fmt.Println("kubernetes:")
 	fmt.Printf("  status: %s\n", report.Kubernetes.Status)
 	fmt.Printf("  version: %s\n", report.Kubernetes.Version)
 	fmt.Printf("  message: %s\n", report.Kubernetes.Message)
 	fmt.Printf("  nodes_count: %d\n", report.Kubernetes.NodesCount)
 	fmt.Printf("  cluster_ready: %t\n", report.Kubernetes.ClusterReady)
-	
+
 	if len(report.Namespaces) > 0 {
 		fmt.Println("namespaces:")
 		for _, ns := range report.Namespaces {
@@ -202,7 +202,7 @@ func outputDiagnosticYAML(report *diagnostic_usecase.DiagnosticReport) error {
 			}
 		}
 	}
-	
+
 	if len(report.StorageClasses) > 0 {
 		fmt.Println("storage_classes:")
 		for _, sc := range report.StorageClasses {
@@ -213,34 +213,34 @@ func outputDiagnosticYAML(report *diagnostic_usecase.DiagnosticReport) error {
 			fmt.Printf("    status: %s\n", sc.Status)
 		}
 	}
-	
+
 	fmt.Println("rbac:")
 	fmt.Printf("  status: %s\n", report.RBAC.Status)
 	fmt.Printf("  can_create_secrets: %t\n", report.RBAC.CanCreateSecrets)
 	fmt.Printf("  can_create_namespaces: %t\n", report.RBAC.CanCreateNS)
 	fmt.Printf("  can_list_pods: %t\n", report.RBAC.CanListPods)
-	
+
 	if len(report.RBAC.Permissions) > 0 {
 		fmt.Println("  permissions:")
 		for _, perm := range report.RBAC.Permissions {
 			fmt.Printf("    - %s\n", perm)
 		}
 	}
-	
+
 	if len(report.RBAC.Restrictions) > 0 {
 		fmt.Println("  restrictions:")
 		for _, restr := range report.RBAC.Restrictions {
 			fmt.Printf("    - %s\n", restr)
 		}
 	}
-	
+
 	if len(report.Recommendations) > 0 {
 		fmt.Println("recommendations:")
 		for _, rec := range report.Recommendations {
 			fmt.Printf("  - %s\n", rec)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -248,16 +248,16 @@ func outputDiagnosticText(report *diagnostic_usecase.DiagnosticReport, verbose b
 	// Header
 	fmt.Printf("🔍 Deploy-CLI 環境診断レポート\n")
 	fmt.Printf("===============================\n\n")
-	
+
 	// Basic info
 	fmt.Printf("📅 実行日時: %s\n", report.Timestamp.Format("2006-01-02 15:04:05"))
 	fmt.Printf("🌍 環境: %s\n", report.Environment)
 	fmt.Printf("⏱️  実行時間: %s\n", report.ExecutionTime.String())
-	
+
 	// Overall status with emoji
 	statusEmoji := getStatusEmoji(report.OverallStatus)
 	fmt.Printf("🎯 総合状態: %s %s\n\n", statusEmoji, report.OverallStatus)
-	
+
 	// Kubernetes status
 	fmt.Printf("☸️  Kubernetes クラスター\n")
 	fmt.Printf("-------------------------\n")
@@ -269,7 +269,7 @@ func outputDiagnosticText(report *diagnostic_usecase.DiagnosticReport, verbose b
 	fmt.Printf("メッセージ: %s\n", report.Kubernetes.Message)
 	fmt.Printf("ノード数: %d\n", report.Kubernetes.NodesCount)
 	fmt.Printf("クラスター準備: %t\n\n", report.Kubernetes.ClusterReady)
-	
+
 	// Namespace status
 	if len(report.Namespaces) > 0 {
 		fmt.Printf("📁 名前空間状態\n")
@@ -284,14 +284,14 @@ func outputDiagnosticText(report *diagnostic_usecase.DiagnosticReport, verbose b
 				fmt.Printf(" (アクセス不可)")
 			}
 			fmt.Printf("\n")
-			
+
 			if verbose && ns.Error != "" {
 				fmt.Printf("  エラー: %s\n", ns.Error)
 			}
 		}
 		fmt.Printf("\n")
 	}
-	
+
 	// StorageClass status
 	if len(report.StorageClasses) > 0 {
 		fmt.Printf("💾 StorageClass 状態\n")
@@ -309,19 +309,19 @@ func outputDiagnosticText(report *diagnostic_usecase.DiagnosticReport, verbose b
 		}
 		fmt.Printf("\n")
 	}
-	
+
 	// RBAC status
 	fmt.Printf("🔐 RBAC 権限状態\n")
 	fmt.Printf("---------------\n")
 	rbacEmoji := getStatusEmoji(report.RBAC.Status)
 	fmt.Printf("状態: %s %s\n", rbacEmoji, report.RBAC.Status)
-	
+
 	if verbose || report.RBAC.Status != "正常" {
 		fmt.Printf("権限:\n")
 		fmt.Printf("  • 名前空間作成: %s\n", getBooleanEmoji(report.RBAC.CanCreateNS))
 		fmt.Printf("  • Secret操作: %s\n", getBooleanEmoji(report.RBAC.CanCreateSecrets))
 		fmt.Printf("  • Pod一覧取得: %s\n", getBooleanEmoji(report.RBAC.CanListPods))
-		
+
 		if len(report.RBAC.Restrictions) > 0 {
 			fmt.Printf("制限事項:\n")
 			for _, restriction := range report.RBAC.Restrictions {
@@ -330,7 +330,7 @@ func outputDiagnosticText(report *diagnostic_usecase.DiagnosticReport, verbose b
 		}
 	}
 	fmt.Printf("\n")
-	
+
 	// Recommendations
 	if len(report.Recommendations) > 0 {
 		fmt.Printf("💡 推奨事項\n")
@@ -340,7 +340,7 @@ func outputDiagnosticText(report *diagnostic_usecase.DiagnosticReport, verbose b
 		}
 		fmt.Printf("\n")
 	}
-	
+
 	// Footer with next steps
 	fmt.Printf("🚀 次のステップ\n")
 	fmt.Printf("---------------\n")
@@ -354,7 +354,7 @@ func outputDiagnosticText(report *diagnostic_usecase.DiagnosticReport, verbose b
 		fmt.Printf("   ./deploy-cli diagnose --environment %s --output json > diagnostic-report.json\n", report.Environment)
 		fmt.Printf("   # 上記レポートを管理者に送付してください\n\n")
 	}
-	
+
 	return nil
 }
 

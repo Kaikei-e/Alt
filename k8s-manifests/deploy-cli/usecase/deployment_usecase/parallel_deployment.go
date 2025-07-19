@@ -54,14 +54,14 @@ type ChartDeployJob struct {
 
 // ChartWorkerPool manages a pool of workers for chart deployment
 type ChartWorkerPool struct {
-	workers    int
-	jobs       chan ChartDeployJob
-	results    chan domain.DeploymentResult
-	deployer   func(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) domain.DeploymentResult
-	logger     logger_port.LoggerPort
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	workers  int
+	jobs     chan ChartDeployJob
+	results  chan domain.DeploymentResult
+	deployer func(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) domain.DeploymentResult
+	logger   logger_port.LoggerPort
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
 }
 
 // NewChartWorkerPool creates a new chart worker pool
@@ -111,11 +111,11 @@ func (p *ChartWorkerPool) SubmitJob(job ChartDeployJob) {
 // worker processes chart deployment jobs
 func (p *ChartWorkerPool) worker(id int) {
 	defer p.wg.Done()
-	
+
 	p.logger.DebugWithContext("chart deployment worker started", map[string]interface{}{
 		"worker_id": id,
 	})
-	
+
 	for job := range p.jobs {
 		select {
 		case <-p.ctx.Done():
@@ -131,9 +131,9 @@ func (p *ChartWorkerPool) worker(id int) {
 				"worker_id": id,
 				"chart":     job.Chart.Name,
 			})
-			
+
 			result := p.deployer(p.ctx, job.Chart, job.Options)
-			
+
 			select {
 			case job.Result <- result:
 			case <-p.ctx.Done():
@@ -141,7 +141,7 @@ func (p *ChartWorkerPool) worker(id int) {
 			}
 		}
 	}
-	
+
 	p.logger.DebugWithContext("chart deployment worker stopped", map[string]interface{}{
 		"worker_id": id,
 	})
@@ -149,17 +149,17 @@ func (p *ChartWorkerPool) worker(id int) {
 
 // deployChartsParallel deploys charts in parallel within dependency constraints
 func (d *ParallelChartDeployer) deployChartsParallel(ctx context.Context, groupName string, charts []domain.Chart, options *domain.DeploymentOptions, deploySingleChart func(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) domain.DeploymentResult) ([]domain.DeploymentResult, error) {
-	
+
 	d.logger.InfoWithContext("starting parallel chart deployment", map[string]interface{}{
 		"group":           groupName,
 		"chart_count":     len(charts),
 		"max_concurrency": d.config.MaxConcurrency,
 	})
-	
+
 	if len(charts) == 0 {
 		return []domain.DeploymentResult{}, nil
 	}
-	
+
 	// For simplicity, we'll deploy all charts in parallel within the same group
 	// In a more sophisticated implementation, we'd analyze dependencies
 	return d.deployChartBatch(ctx, groupName, charts, options, deploySingleChart)
@@ -167,16 +167,16 @@ func (d *ParallelChartDeployer) deployChartsParallel(ctx context.Context, groupN
 
 // deployChartBatch deploys a batch of charts concurrently
 func (d *ParallelChartDeployer) deployChartBatch(ctx context.Context, groupName string, charts []domain.Chart, options *domain.DeploymentOptions, deploySingleChart func(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) domain.DeploymentResult) ([]domain.DeploymentResult, error) {
-	
+
 	// Create worker pool
 	pool := NewChartWorkerPool(d.config.MaxConcurrency, deploySingleChart, d.logger)
 	pool.Start()
 	defer pool.Stop()
-	
+
 	// Submit all jobs
 	results := make([]domain.DeploymentResult, len(charts))
 	resultChans := make([]chan domain.DeploymentResult, len(charts))
-	
+
 	for i, chart := range charts {
 		resultChans[i] = make(chan domain.DeploymentResult, 1)
 		job := ChartDeployJob{
@@ -186,7 +186,7 @@ func (d *ParallelChartDeployer) deployChartBatch(ctx context.Context, groupName 
 		}
 		pool.SubmitJob(job)
 	}
-	
+
 	// Collect results
 	for i := range charts {
 		select {
@@ -202,12 +202,12 @@ func (d *ParallelChartDeployer) deployChartBatch(ctx context.Context, groupName 
 			return results, ctx.Err()
 		}
 	}
-	
+
 	d.logger.InfoWithContext("parallel chart deployment batch completed", map[string]interface{}{
 		"group":       groupName,
 		"chart_count": len(charts),
 	})
-	
+
 	return results, nil
 }
 
@@ -226,13 +226,13 @@ func (d *ParallelChartDeployer) EstimateDeploymentTime(charts []domain.Chart) ti
 	// Simple estimation: base time per chart + overhead
 	baseTimePerChart := time.Second * 30
 	parallelOverhead := time.Second * 10
-	
+
 	if len(charts) <= d.config.MaxConcurrency {
 		// All charts can run in parallel
 		return baseTimePerChart + parallelOverhead
 	}
-	
+
 	// Charts will be processed in batches
 	batches := (len(charts) + d.config.MaxConcurrency - 1) / d.config.MaxConcurrency
-	return time.Duration(batches)*(baseTimePerChart+parallelOverhead)
+	return time.Duration(batches) * (baseTimePerChart + parallelOverhead)
 }

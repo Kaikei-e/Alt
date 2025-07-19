@@ -2,11 +2,11 @@ package commands
 
 import (
 	"fmt"
-	
+
 	"github.com/spf13/cobra"
-	
-	"deploy-cli/utils/logger"
+
 	"deploy-cli/utils/colors"
+	"deploy-cli/utils/logger"
 )
 
 // NewValidateCommand creates a new validate command
@@ -50,6 +50,6 @@ Use Cases:
 			return nil
 		},
 	}
-	
+
 	return cmd
 }
