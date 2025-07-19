@@ -135,27 +135,47 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		// Continue with deployment - Helm will handle dependency resolution
 	}
 
-	// Configure timeout - use appropriate timeout for different chart types
-	chartTimeout := options.Timeout
-	if chartTimeout == 0 {
-		chartTimeout = 3 * time.Minute // Default 3 minute timeout
-	}
+	// Configure timeout strategy based on chart type and deployment complexity
+	chartTimeout := g.calculateOptimalTimeout(chart, options)
+	
+	g.logger.InfoWithContext("timeout strategy determined", map[string]interface{}{
+		"chart":                 chart.Name,
+		"calculated_timeout":    chartTimeout,
+		"default_timeout":       options.Timeout,
+		"chart_type":           g.getChartType(chart),
+		"override_applied":     options.Timeout != 0,
+	})
 
-	// Use longer timeout for StatefulSet database charts that need time to initialize
-	if chart.Name == "postgres" || chart.Name == "auth-postgres" || chart.Name == "kratos-postgres" || chart.Name == "clickhouse" || chart.Name == "meilisearch" {
-		chartTimeout = 10 * time.Minute // Extended timeout for database initialization
-		g.logger.InfoWithContext("using extended timeout for database chart", map[string]interface{}{
-			"chart":   chart.Name,
-			"timeout": chartTimeout,
+	// Configure wait strategy based on chart type for proper lock management
+	shouldWait := true
+	shouldWaitForJobs := false
+	
+	// StatefulSet charts (databases) need proper waiting for atomic operations
+	if g.isStatefulSetChart(chart) {
+		shouldWait = true           // Essential for atomic operations on StatefulSets
+		shouldWaitForJobs = false   // Jobs not typically used in StatefulSet charts
+		g.logger.InfoWithContext("using StatefulSet wait strategy", map[string]interface{}{
+			"chart": chart.Name,
+			"wait": shouldWait,
+			"wait_for_jobs": shouldWaitForJobs,
 		})
-	}
-
-	// Use even shorter timeout for charts that often hang
-	if chart.Name == "alt-frontend" || chart.Name == "migrate" {
-		chartTimeout = 90 * time.Second // Very short timeout for problematic charts
-		g.logger.InfoWithContext("using aggressive timeout for problematic chart", map[string]interface{}{
-			"chart":   chart.Name,
-			"timeout": chartTimeout,
+	} else if chart.Name == "migrate" || chart.Name == "backup" {
+		// Job-based charts need to wait for job completion
+		shouldWait = true
+		shouldWaitForJobs = true
+		g.logger.InfoWithContext("using Job wait strategy", map[string]interface{}{
+			"chart": chart.Name,
+			"wait": shouldWait,
+			"wait_for_jobs": shouldWaitForJobs,
+		})
+	} else {
+		// Standard Deployment charts
+		shouldWait = true           // Always wait when using atomic mode
+		shouldWaitForJobs = false   // Standard deployments don't need job waiting
+		g.logger.InfoWithContext("using standard wait strategy", map[string]interface{}{
+			"chart": chart.Name,
+			"wait": shouldWait,
+			"wait_for_jobs": shouldWaitForJobs,
 		})
 	}
 
@@ -163,11 +183,11 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		ValuesFile:      g.getValuesFile(chart, options.Environment),
 		Namespace:       namespace,
 		CreateNamespace: true,
-		Wait:            false, // Disable wait to prevent hanging
-		WaitForJobs:     false, // Disable job waiting to prevent hanging
+		Wait:            shouldWait,     // ✅ Enable proper waiting for atomic operations
+		WaitForJobs:     shouldWaitForJobs, // ✅ Chart-specific job waiting strategy
 		Timeout:         chartTimeout,
 		Force:           options.ForceUpdate,
-		Atomic:          true, // Enable atomic deployment for rollback on failure
+		Atomic:          true, // ✅ Enable atomic deployment with proper waiting
 	}
 
 	// Simplified image override logic
@@ -248,7 +268,17 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 				"namespace": namespace,
 				"duration":  duration,
 				"attempt":   attempt,
+				"final_timeout_used": helmOptions.Timeout,
+				"wait_strategy": map[string]interface{}{
+					"wait": helmOptions.Wait,
+					"wait_for_jobs": helmOptions.WaitForJobs,
+					"atomic": helmOptions.Atomic,
+				},
+				"deployment_metrics": g.collectDeploymentMetrics(chart, namespace, duration, attempt),
 			})
+			
+			// Log deployment success metrics for monitoring
+			g.logDeploymentSuccess(chart, namespace, duration, attempt)
 			return nil
 		}
 
@@ -279,25 +309,60 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 			"max_retries": maxRetries,
 			"atomic":      helmOptions.Atomic,
 			"wait":        helmOptions.Wait,
+			"error_classification": g.classifyError(err),
+			"retry_strategy": g.getRetryStrategy(err),
+			"deployment_metrics": g.collectDeploymentMetrics(chart, namespace, duration, attempt),
 		})
+		
+		// Log deployment failure metrics for monitoring and alerting
+		g.logDeploymentFailure(chart, namespace, duration, attempt, err)
 
 		// Check if error is retriable
-		if !g.isRetriableError(err) || attempt == maxRetries {
+		isRetriable := g.isRetriableError(err)
+		if !isRetriable || attempt == maxRetries {
 			g.logger.WarnWithContext("not retrying chart deployment", map[string]interface{}{
 				"chart":           chart.Name,
 				"attempt":         attempt,
-				"retriable":       g.isRetriableError(err),
+				"retriable":       isRetriable,
 				"is_last_attempt": attempt == maxRetries,
+				"error_type":      g.classifyError(err),
 			})
 			break
 		}
 
-		// Exponential backoff
-		retryDelay := time.Duration(attempt) * 5 * time.Second // Shorter retry delay
+		// Enhanced retry strategy for different error types
+		retryDelay := g.calculateRetryDelay(err, attempt)
+		
+		// Special handling for lock-related errors
+		if g.isLockError(err) {
+			g.logger.InfoWithContext("detected helm lock error, performing enhanced retry", map[string]interface{}{
+				"chart":           chart.Name,
+				"attempt":         attempt,
+				"error":           err.Error(),
+			})
+			
+			// Log lock detection for monitoring
+			g.logLockDetection(chart, namespace, "helm_operation_in_progress")
+			
+			// Wait for any pending operations to complete before retrying
+			if waitErr := g.waitForLockRelease(ctx, releaseName, namespace); waitErr != nil {
+				g.logger.WarnWithContext("failed to wait for lock release", map[string]interface{}{
+					"chart":     chart.Name,
+					"error":     waitErr.Error(),
+				})
+			}
+		}
+		
+		// Log retry attempt for monitoring
+		errorType := g.classifyError(err)
+		g.logRetryAttempt(chart, namespace, attempt, errorType, retryDelay)
+
 		g.logger.WarnWithContext("retrying chart deployment", map[string]interface{}{
 			"chart":           chart.Name,
 			"attempt":         attempt,
 			"next_attempt_in": retryDelay,
+			"error_type":      g.classifyError(err),
+			"retry_strategy":  g.getRetryStrategy(err),
 		})
 
 		select {
@@ -733,21 +798,50 @@ func (g *HelmGateway) isRetriableError(err error) bool {
 		}
 	}
 
-	// Retriable conditions
+	// Retriable conditions - enhanced for lock-related errors
 	retriablePatterns := []string{
-		"another operation in progress",
-		"connection refused",
-		"timeout",
-		"temporary failure",
-		"resource temporarily unavailable",
+		"another operation in progress",        // Helm lock conflict
+		"another operation (install/upgrade/rollback) is in progress", // Full error message
+		"operation in progress",                // Partial match
+		"connection refused",                   // Network issues
+		"timeout",                             // Various timeout scenarios
+		"temporary failure",                   // Temporary issues
+		"resource temporarily unavailable",    // Resource constraints
+		"server gave http response",           // Network/connection issues
+		"no such host",                       // DNS issues
+		"connection reset by peer",           // Network issues
+		"context deadline exceeded",          // Timeout variations
+		"i/o timeout",                        // I/O timeout
+		"operation not permitted",            // Permission issues (may be temporary)
+		"resource busy",                      // Resource lock issues
+		"pending-install",                    // Helm release stuck in pending state
+		"pending-upgrade",                    // Helm release stuck in pending upgrade
 	}
 
 	for _, pattern := range retriablePatterns {
 		if strings.Contains(errorMsg, pattern) {
+			g.logger.DebugWithContext("error classified as retriable", map[string]interface{}{
+				"error":   errorMsg,
+				"pattern": pattern,
+				"reason":  "error indicates temporary condition that may resolve with retry",
+			})
 			return true
 		}
 	}
 
+	// Check for numeric timeout patterns (e.g., "timeout after 10m0s")
+	if strings.Contains(errorMsg, "timeout after") {
+		g.logger.DebugWithContext("timeout error classified as retriable", map[string]interface{}{
+			"error": errorMsg,
+			"reason": "timeout errors may succeed with longer wait times",
+		})
+		return true
+	}
+
+	g.logger.DebugWithContext("error classified as non-retriable", map[string]interface{}{
+		"error": errorMsg,
+		"reason": "error does not match known retriable patterns",
+	})
 	return false
 }
 
@@ -1064,4 +1158,453 @@ func (g *HelmGateway) RollbackRelease(ctx context.Context, releaseName, namespac
 	})
 
 	return nil
+}
+
+// calculateOptimalTimeout determines the best timeout for a chart based on its type and characteristics
+func (g *HelmGateway) calculateOptimalTimeout(chart domain.Chart, options *domain.DeploymentOptions) time.Duration {
+	// Start with user-provided timeout if available
+	if options.Timeout > 0 {
+		g.logger.DebugWithContext("using user-provided timeout", map[string]interface{}{
+			"chart":            chart.Name,
+			"user_timeout":     options.Timeout,
+		})
+		return options.Timeout
+	}
+
+	// Chart type-based timeout strategy
+	chartType := g.getChartType(chart)
+	
+	switch chartType {
+	case "statefulset":
+		// StatefulSet database charts need extended timeout for initialization
+		timeout := 12 * time.Minute
+		if chart.Name == "postgres" {
+			// Postgres may need extra time for WAL replay, index rebuilds, etc.
+			timeout = 15 * time.Minute
+		}
+		g.logger.InfoWithContext("using extended timeout for StatefulSet chart", map[string]interface{}{
+			"chart":        chart.Name,
+			"timeout":      timeout,
+			"reason":       "StatefulSet requires time for persistent volume mounting and database initialization",
+		})
+		return timeout
+		
+	case "job":
+		// Job-based charts (migrate, backup) may run for varying durations
+		timeout := 8 * time.Minute
+		if chart.Name == "migrate" {
+			// Migration jobs may need more time for large database changes
+			timeout = 10 * time.Minute
+		}
+		g.logger.InfoWithContext("using job timeout", map[string]interface{}{
+			"chart":        chart.Name,
+			"timeout":      timeout,
+			"reason":       "Job completion time varies based on workload",
+		})
+		return timeout
+		
+	case "frontend":
+		// Frontend applications should start quickly
+		timeout := 3 * time.Minute
+		g.logger.InfoWithContext("using frontend timeout", map[string]interface{}{
+			"chart":        chart.Name,
+			"timeout":      timeout,
+			"reason":       "Frontend applications have fast startup times",
+		})
+		return timeout
+		
+	case "service":
+		// Backend services and APIs
+		timeout := 5 * time.Minute
+		g.logger.InfoWithContext("using service timeout", map[string]interface{}{
+			"chart":        chart.Name,
+			"timeout":      timeout,
+			"reason":       "Service applications need moderate startup time",
+		})
+		return timeout
+		
+	case "infrastructure":
+		// Infrastructure components (nginx, auth services)
+		timeout := 4 * time.Minute
+		g.logger.InfoWithContext("using infrastructure timeout", map[string]interface{}{
+			"chart":        chart.Name,
+			"timeout":      timeout,
+			"reason":       "Infrastructure components need stable startup",
+		})
+		return timeout
+		
+	default:
+		// Default timeout for unknown chart types
+		timeout := 6 * time.Minute
+		g.logger.InfoWithContext("using default timeout for unknown chart type", map[string]interface{}{
+			"chart":        chart.Name,
+			"chart_type":   chartType,
+			"timeout":      timeout,
+			"reason":       "Unknown chart type, using conservative timeout",
+		})
+		return timeout
+	}
+}
+
+// getChartType classifies charts into deployment categories for timeout and wait strategies
+func (g *HelmGateway) getChartType(chart domain.Chart) string {
+	// StatefulSet database charts
+	statefulSetCharts := []string{"postgres", "auth-postgres", "kratos-postgres", "clickhouse", "meilisearch"}
+	for _, name := range statefulSetCharts {
+		if chart.Name == name {
+			return "statefulset"
+		}
+	}
+	
+	// Job-based charts
+	jobCharts := []string{"migrate", "backup"}
+	for _, name := range jobCharts {
+		if chart.Name == name {
+			return "job"
+		}
+	}
+	
+	// Frontend applications
+	frontendCharts := []string{"alt-frontend"}
+	for _, name := range frontendCharts {
+		if chart.Name == name {
+			return "frontend"
+		}
+	}
+	
+	// Backend services
+	serviceCharts := []string{"alt-backend", "pre-processor", "search-indexer", "tag-generator", "news-creator", "rask-log-aggregator", "rask-log-forwarder"}
+	for _, name := range serviceCharts {
+		if chart.Name == name {
+			return "service"
+		}
+	}
+	
+	// Infrastructure components
+	infrastructureCharts := []string{"nginx", "nginx-external", "auth-service", "kratos"}
+	for _, name := range infrastructureCharts {
+		if chart.Name == name {
+			return "infrastructure"
+		}
+	}
+	
+	// Unknown chart type
+	g.logger.DebugWithContext("chart type not classified", map[string]interface{}{
+		"chart": chart.Name,
+	})
+	return "unknown"
+}
+
+// isLockError determines if an error is related to Helm release locks
+func (g *HelmGateway) isLockError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	errorMsg := strings.ToLower(err.Error())
+	lockPatterns := []string{
+		"another operation in progress",
+		"another operation (install/upgrade/rollback) is in progress",
+		"operation in progress",
+		"pending-install",
+		"pending-upgrade",
+		"resource busy",
+	}
+	
+	for _, pattern := range lockPatterns {
+		if strings.Contains(errorMsg, pattern) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// classifyError provides a classification of the error for logging and decision making
+func (g *HelmGateway) classifyError(err error) string {
+	if err == nil {
+		return "none"
+	}
+	
+	errorMsg := strings.ToLower(err.Error())
+	
+	if g.isLockError(err) {
+		return "lock_conflict"
+	}
+	
+	if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "context deadline exceeded") {
+		return "timeout"
+	}
+	
+	if strings.Contains(errorMsg, "connection refused") || strings.Contains(errorMsg, "no such host") {
+		return "network"
+	}
+	
+	if strings.Contains(errorMsg, "cannot be imported") || strings.Contains(errorMsg, "invalid ownership") {
+		return "ownership_conflict"
+	}
+	
+	if strings.Contains(errorMsg, "not found") {
+		return "resource_not_found"
+	}
+	
+	return "unknown"
+}
+
+// calculateRetryDelay determines the appropriate delay before retrying based on error type
+func (g *HelmGateway) calculateRetryDelay(err error, attempt int) time.Duration {
+	errorType := g.classifyError(err)
+	
+	switch errorType {
+	case "lock_conflict":
+		// Longer delay for lock conflicts to allow operations to complete
+		baseDelay := 15 * time.Second
+		return baseDelay + time.Duration(attempt*5)*time.Second
+		
+	case "timeout":
+		// Moderate delay for timeout errors
+		baseDelay := 10 * time.Second
+		return baseDelay + time.Duration(attempt*3)*time.Second
+		
+	case "network":
+		// Shorter delay for network issues (they often resolve quickly)
+		baseDelay := 5 * time.Second
+		return baseDelay + time.Duration(attempt*2)*time.Second
+		
+	default:
+		// Standard exponential backoff for other errors
+		baseDelay := 8 * time.Second
+		return baseDelay + time.Duration(attempt*4)*time.Second
+	}
+}
+
+// getRetryStrategy returns a description of the retry strategy for an error
+func (g *HelmGateway) getRetryStrategy(err error) string {
+	errorType := g.classifyError(err)
+	
+	switch errorType {
+	case "lock_conflict":
+		return "extended_delay_with_lock_wait"
+	case "timeout":
+		return "moderate_exponential_backoff"
+	case "network":
+		return "quick_retry"
+	default:
+		return "standard_exponential_backoff"
+	}
+}
+
+// waitForLockRelease waits for any pending Helm operations to complete
+func (g *HelmGateway) waitForLockRelease(ctx context.Context, releaseName, namespace string) error {
+	maxWaitTime := 2 * time.Minute
+	pollInterval := 5 * time.Second
+	
+	g.logger.InfoWithContext("waiting for helm lock release", map[string]interface{}{
+		"release":       releaseName,
+		"namespace":     namespace,
+		"max_wait_time": maxWaitTime,
+		"poll_interval": pollInterval,
+	})
+	
+	deadline := time.Now().Add(maxWaitTime)
+	
+	for time.Now().Before(deadline) {
+		// Check if there are any pending operations
+		operation, err := g.helmPort.DetectPendingOperation(ctx, releaseName, namespace)
+		if err != nil {
+			g.logger.DebugWithContext("error checking pending operations", map[string]interface{}{
+				"release":   releaseName,
+				"namespace": namespace,
+				"error":     err.Error(),
+			})
+			// Continue waiting even if detection fails
+		} else if operation == nil {
+			g.logger.InfoWithContext("helm lock released", map[string]interface{}{
+				"release":   releaseName,
+				"namespace": namespace,
+			})
+			return nil
+		} else {
+			g.logger.DebugWithContext("helm operation still pending", map[string]interface{}{
+				"release":    releaseName,
+				"namespace":  namespace,
+				"operation":  operation.Type,
+				"status":     operation.Status,
+			})
+		}
+		
+		// Wait before next check
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(pollInterval):
+			// Continue polling
+		}
+	}
+	
+	g.logger.WarnWithContext("timeout waiting for helm lock release", map[string]interface{}{
+		"release":   releaseName,
+		"namespace": namespace,
+		"waited":    maxWaitTime,
+	})
+	
+	return fmt.Errorf("timeout waiting for helm lock release after %v", maxWaitTime)
+}
+
+// collectDeploymentMetrics collects comprehensive metrics for deployment monitoring
+func (g *HelmGateway) collectDeploymentMetrics(chart domain.Chart, namespace string, duration time.Duration, attempt int) map[string]interface{} {
+	return map[string]interface{}{
+		"chart_type":           g.getChartType(chart),
+		"is_statefulset":       g.isStatefulSetChart(chart),
+		"deployment_duration_seconds": duration.Seconds(),
+		"attempt_number":       attempt,
+		"chart_name":          chart.Name,
+		"target_namespace":    namespace,
+		"multi_namespace":     chart.MultiNamespace,
+		"supports_image_override": chart.SupportsImageOverride(),
+		"timestamp":           time.Now().Unix(),
+		"deployment_id":       g.generateDeploymentID(chart, namespace),
+	}
+}
+
+// logDeploymentSuccess logs deployment success for monitoring systems
+func (g *HelmGateway) logDeploymentSuccess(chart domain.Chart, namespace string, duration time.Duration, attempt int) {
+	// Structured log for monitoring systems (Prometheus, Grafana, etc.)
+	g.logger.InfoWithContext("DEPLOYMENT_SUCCESS_METRIC", map[string]interface{}{
+		"metric_type":         "deployment_success",
+		"chart":              chart.Name,
+		"namespace":          namespace,
+		"duration_seconds":   duration.Seconds(),
+		"attempts":           attempt,
+		"chart_type":         g.getChartType(chart),
+		"success_rate":       1.0, // 100% for successful deployments
+		"timestamp":          time.Now().Unix(),
+		"deployment_id":      g.generateDeploymentID(chart, namespace),
+	})
+	
+	// Additional success metrics
+	if duration > 5*time.Minute {
+		g.logger.WarnWithContext("DEPLOYMENT_SLOW_SUCCESS", map[string]interface{}{
+			"chart":            chart.Name,
+			"namespace":        namespace,
+			"duration_seconds": duration.Seconds(),
+			"threshold_seconds": 300, // 5 minutes
+			"performance_impact": "slow_deployment",
+		})
+	}
+}
+
+// logDeploymentFailure logs deployment failure for monitoring and alerting
+func (g *HelmGateway) logDeploymentFailure(chart domain.Chart, namespace string, duration time.Duration, attempt int, err error) {
+	// Structured log for monitoring systems
+	g.logger.ErrorWithContext("DEPLOYMENT_FAILURE_METRIC", map[string]interface{}{
+		"metric_type":         "deployment_failure",
+		"chart":              chart.Name,
+		"namespace":          namespace,
+		"duration_seconds":   duration.Seconds(),
+		"attempts":           attempt,
+		"chart_type":         g.getChartType(chart),
+		"error_type":         g.classifyError(err),
+		"error_message":      err.Error(),
+		"success_rate":       0.0, // 0% for failed deployments
+		"timestamp":          time.Now().Unix(),
+		"deployment_id":      g.generateDeploymentID(chart, namespace),
+		"alert_level":        g.determineAlertLevel(err, attempt),
+	})
+	
+	// Critical failure alerting
+	if g.isCriticalFailure(err, attempt) {
+		g.logger.ErrorWithContext("CRITICAL_DEPLOYMENT_FAILURE", map[string]interface{}{
+			"alert_type":    "critical",
+			"chart":         chart.Name,
+			"namespace":     namespace,
+			"error_type":    g.classifyError(err),
+			"requires_immediate_attention": true,
+			"escalation_needed": attempt >= 2,
+		})
+	}
+}
+
+// generateDeploymentID creates a unique deployment identifier for tracking
+func (g *HelmGateway) generateDeploymentID(chart domain.Chart, namespace string) string {
+	return fmt.Sprintf("%s-%s-%d", chart.Name, namespace, time.Now().Unix())
+}
+
+// determineAlertLevel determines the severity level for monitoring alerts
+func (g *HelmGateway) determineAlertLevel(err error, attempt int) string {
+	errorType := g.classifyError(err)
+	
+	switch errorType {
+	case "lock_conflict":
+		if attempt >= 2 {
+			return "high"
+		}
+		return "medium"
+	case "timeout":
+		if attempt >= 3 {
+			return "critical"
+		}
+		return "high"
+	case "ownership_conflict":
+		return "critical" // These usually require manual intervention
+	case "network":
+		return "medium"
+	default:
+		if attempt >= 2 {
+			return "high"
+		}
+		return "low"
+	}
+}
+
+// isCriticalFailure determines if a failure requires immediate attention
+func (g *HelmGateway) isCriticalFailure(err error, attempt int) bool {
+	errorType := g.classifyError(err)
+	
+	// Always critical
+	criticalErrors := []string{"ownership_conflict"}
+	for _, critical := range criticalErrors {
+		if errorType == critical {
+			return true
+		}
+	}
+	
+	// Critical after multiple attempts
+	if attempt >= 3 {
+		return true
+	}
+	
+	// Critical timeouts on StatefulSets
+	if errorType == "timeout" && attempt >= 2 {
+		return true
+	}
+	
+	return false
+}
+
+// logLockDetection logs when lock conflicts are detected for monitoring
+func (g *HelmGateway) logLockDetection(chart domain.Chart, namespace string, lockType string) {
+	g.logger.WarnWithContext("HELM_LOCK_DETECTED", map[string]interface{}{
+		"metric_type":    "lock_detection",
+		"chart":          chart.Name,
+		"namespace":      namespace,
+		"lock_type":      lockType,
+		"timestamp":      time.Now().Unix(),
+		"requires_retry": true,
+		"impact":         "deployment_delay",
+	})
+}
+
+// logRetryAttempt logs retry attempts for monitoring retry patterns
+func (g *HelmGateway) logRetryAttempt(chart domain.Chart, namespace string, attempt int, errorType string, delay time.Duration) {
+	g.logger.InfoWithContext("DEPLOYMENT_RETRY_METRIC", map[string]interface{}{
+		"metric_type":       "retry_attempt",
+		"chart":            chart.Name,
+		"namespace":        namespace,
+		"attempt":          attempt,
+		"error_type":       errorType,
+		"retry_delay_seconds": delay.Seconds(),
+		"timestamp":        time.Now().Unix(),
+		"retry_strategy":   g.getRetryStrategy(fmt.Errorf("error_type: %s", errorType)),
+	})
 }

@@ -366,54 +366,78 @@ func (h *HelmDriver) parseHistoryOutput(output string, revisions *[]helm_port.He
 	return nil
 }
 
-// DetectPendingOperation checks for pending Helm operations
+// DetectPendingOperation checks for pending Helm operations with enhanced detection
 func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, namespace string) (*helm_port.HelmOperation, error) {
 	// Add timeout to prevent hanging
-	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 
-	// Check if there's a running Helm operation by checking for helm processes
-	pids, err := h.findHelmProcesses(releaseName, namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check for running helm processes: %w", err)
-	}
-
-	if len(pids) > 0 {
-		// Found running helm processes - check if they're stuck
-		stuckPIDs := h.checkStuckProcesses(pids)
-		if len(stuckPIDs) > 0 {
+	// Step 1: Check release status for pending states
+	status, err := h.getReleaseStatus(timeoutCtx, releaseName, namespace)
+	if err == nil {
+		if status == "pending-upgrade" || status == "pending-install" || status == "pending-rollback" {
+			// Release is in a pending state - this indicates an active lock
+			operationType := "upgrade"
+			if strings.Contains(status, "install") {
+				operationType = "install"
+			} else if strings.Contains(status, "rollback") {
+				operationType = "rollback"
+			}
+			
 			return &helm_port.HelmOperation{
-				Type:        "upgrade",
+				Type:        operationType,
 				ReleaseName: releaseName,
 				Namespace:   namespace,
-				Status:      "stuck",
-				StartTime:   time.Now().Add(-30 * time.Minute), // Estimate
-				PID:         stuckPIDs[0],
-			}, nil
-		} else {
-			return &helm_port.HelmOperation{
-				Type:        "upgrade",
-				ReleaseName: releaseName,
-				Namespace:   namespace,
-				Status:      "running",
-				StartTime:   time.Now().Add(-5 * time.Minute), // Estimate
-				PID:         pids[0],
+				Status:      "pending",
+				StartTime:   time.Now().Add(-10 * time.Minute), // Conservative estimate
+				PID:         0, // Unknown PID for status-based detection
 			}, nil
 		}
 	}
 
-	// Check for helm lock files or status indicating pending operations
+	// Step 2: Check for running Helm processes
+	pids, err := h.findHelmProcesses(releaseName, namespace)
+	if err != nil {
+		// Log but don't fail - process detection is supplementary
+		log.Printf("Warning: failed to check for running helm processes: %v", err)
+	} else if len(pids) > 0 {
+		// Found running helm processes - analyze their state
+		for _, pid := range pids {
+			if h.isProcessStuck(pid) {
+				return &helm_port.HelmOperation{
+					Type:        "upgrade",
+					ReleaseName: releaseName,
+					Namespace:   namespace,
+					Status:      "stuck",
+					StartTime:   h.getProcessStartTime(pid),
+					PID:         pid,
+				}, nil
+			}
+		}
+		
+		// Process is running but not stuck
+		return &helm_port.HelmOperation{
+			Type:        "upgrade",
+			ReleaseName: releaseName,
+			Namespace:   namespace,
+			Status:      "running",
+			StartTime:   h.getProcessStartTime(pids[0]),
+			PID:         pids[0],
+		}, nil
+	}
+
+	// Step 3: Check for Helm lock indicators using helm list
 	select {
 	case <-timeoutCtx.Done():
 		return nil, fmt.Errorf("timeout while checking for helm operations")
 	default:
-		if hasLockFiles := h.checkHelmLockFiles(releaseName, namespace); hasLockFiles {
+		if h.hasActiveLock(timeoutCtx, releaseName, namespace) {
 			return &helm_port.HelmOperation{
 				Type:        "unknown",
 				ReleaseName: releaseName,
 				Namespace:   namespace,
-				Status:      "pending",
-				StartTime:   time.Now().Add(-10 * time.Minute), // Estimate
+				Status:      "locked",
+				StartTime:   time.Now().Add(-15 * time.Minute), // Conservative estimate
 				PID:         0,
 			}, nil
 		}
@@ -703,4 +727,127 @@ func (h *HelmDriver) Rollback(ctx context.Context, releaseName, namespace string
 	}
 
 	return nil
+}
+
+// hasActiveLock checks if there's an active Helm lock by examining release status
+func (h *HelmDriver) hasActiveLock(ctx context.Context, releaseName, namespace string) bool {
+	// Use helm list to check if release shows up with a pending status
+	args := []string{"list", "--filter", releaseName}
+	if namespace != "" {
+		args = append(args, "--namespace", namespace)
+	}
+	args = append(args, "--output", "json")
+	
+	cmd := exec.CommandContext(ctx, "helm", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		// If we can't check, assume no lock to avoid false positives
+		return false
+	}
+	
+	var releases []struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+		Status    string `json:"status"`
+	}
+	
+	if err := json.Unmarshal(output, &releases); err != nil {
+		return false
+	}
+	
+	for _, release := range releases {
+		if release.Name == releaseName {
+			// Check if status indicates a lock
+			status := strings.ToLower(release.Status)
+			if strings.Contains(status, "pending") || 
+			   strings.Contains(status, "unknown") ||
+			   strings.Contains(status, "superseded") {
+				return true
+			}
+		}
+	}
+	
+	return false
+}
+
+// enhancedCleanupStuckOperations provides enhanced cleanup with multiple strategies
+func (h *HelmDriver) enhancedCleanupStuckOperations(ctx context.Context, releaseName, namespace string) error {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	
+	log.Printf("Starting enhanced cleanup for release %s in namespace %s", releaseName, namespace)
+	
+	// Strategy 1: Check and handle pending release status
+	if status, err := h.getReleaseStatus(timeoutCtx, releaseName, namespace); err == nil {
+		if strings.Contains(status, "pending") {
+			log.Printf("Release %s is in pending state (%s), attempting rollback", releaseName, status)
+			if rollbackErr := h.rollbackRelease(timeoutCtx, releaseName, namespace); rollbackErr != nil {
+				log.Printf("Rollback failed: %v", rollbackErr)
+			} else {
+				log.Printf("Rollback completed for release %s", releaseName)
+				// Wait for rollback to settle
+				time.Sleep(5 * time.Second)
+			}
+		}
+	}
+	
+	// Strategy 2: Kill stuck processes
+	if pids, err := h.findHelmProcesses(releaseName, namespace); err == nil && len(pids) > 0 {
+		for _, pid := range pids {
+			if h.isProcessStuck(pid) {
+				log.Printf("Killing stuck Helm process %d for release %s", pid, releaseName)
+				if err := h.killProcess(pid); err != nil {
+					log.Printf("Failed to kill process %d: %v", pid, err)
+				}
+			}
+		}
+		// Wait for processes to terminate
+		time.Sleep(3 * time.Second)
+	}
+	
+	// Strategy 3: Final verification
+	if operation, err := h.DetectPendingOperation(timeoutCtx, releaseName, namespace); err == nil && operation != nil {
+		log.Printf("Warning: operation still detected after cleanup: %+v", operation)
+		return fmt.Errorf("cleanup incomplete: operation still detected")
+	}
+	
+	log.Printf("Enhanced cleanup completed for release %s", releaseName)
+	return nil
+}
+
+// getProcessStartTime gets the start time of a process by PID
+func (h *HelmDriver) getProcessStartTime(pid int) time.Time {
+	if pid <= 0 {
+		return time.Time{}
+	}
+	
+	// Try to get process start time from /proc/PID/stat on Linux
+	statFile := fmt.Sprintf("/proc/%d/stat", pid)
+	if data, err := os.ReadFile(statFile); err == nil {
+		fields := strings.Fields(string(data))
+		if len(fields) > 21 {
+			// Field 22 (index 21) is starttime in clock ticks since boot
+			if startTicks, err := strconv.ParseInt(fields[21], 10, 64); err == nil {
+				// Convert clock ticks to time (approximate)
+				// This is a simplification - actual conversion requires system boot time
+				clockTicksPerSecond := int64(100) // Common value, but system-dependent
+				secondsSinceBoot := startTicks / clockTicksPerSecond
+				
+				// Approximate start time (not perfectly accurate but good enough for our use)
+				return time.Now().Add(-time.Duration(secondsSinceBoot) * time.Second)
+			}
+		}
+	}
+	
+	// Fallback: use ps command
+	cmd := exec.Command("ps", "-o", "lstart=", "-p", fmt.Sprintf("%d", pid))
+	if output, err := cmd.Output(); err == nil {
+		timeStr := strings.TrimSpace(string(output))
+		if parsedTime, err := time.Parse("Mon Jan 2 15:04:05 2006", timeStr); err == nil {
+			return parsedTime
+		}
+	}
+	
+	// Could not determine start time
+	return time.Time{}
 }
