@@ -2,37 +2,15 @@
 
 # Cloudflare parameters.
 cloudflare:
-  # Your Cloudflare account number.
-  account: ""
-  # The name of the tunnel this instance will serve
-  tunnelName: ""
-  # The ID of the above tunnel.
-  tunnelId: ""
-  # The secret for the tunnel.
-  secret: ""
-  # If defined, no secret is created for the credentials, and instead, the secret referenced is used
-  secretName: null
-  # If true, turn on WARP routing for TCP
-  enableWarp: false
-  # Define ingress rules for the tunnel. See
-  # https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/configuration/configuration-file/ingress
-  ingress: []
-    # The first rule proxies traffic to the httpbin sample service named web-server at port 80
-    # - hostname: tunnel.example.com
-    #  service: http://web-service:80
-    # This rule sends traffic to the built-in hello-world HTTP server. This can help debug connectivity
-    # issues. If hello.example.com resolves and tunnel.example.com does not, then the problem is
-    # in the connection from cloudflared to your local service, not from the internet to cloudflared.
-    # - hostname: hello.example.com
-    #   service: hello_world
+  tunnel_token: ""
 
 image:
   repository: cloudflare/cloudflared
   pullPolicy: IfNotPresent
-  # If supplied, this overrides "appVersion"
+  # If supplied, this overrides "latest"
   tag: ""
 
-replicaCount: 1
+replicaCount: 2
 
 imagePullSecrets: []
 nameOverride: ""
@@ -62,17 +40,13 @@ securityContext:
     - ALL
   readOnlyRootFilesystem: true
 
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
 
 nodeSelector: {}
 

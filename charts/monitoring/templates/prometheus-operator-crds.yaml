@@ -1,0 +1,69 @@
+{{- if .Values.crds.enabled }}
+{{- if .Values.crds.install }}
+# Basic ServiceMonitor CRD for Alt project
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: servicemonitors.monitoring.coreos.com
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  group: monitoring.coreos.com
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              selector:
+                type: object
+              endpoints:
+                type: array
+                items:
+                  type: object
+          status:
+            type: object
+  scope: Namespaced
+  names:
+    plural: servicemonitors
+    singular: servicemonitor
+    kind: ServiceMonitor
+---
+# Basic PrometheusRule CRD for Alt project
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: prometheusrules.monitoring.coreos.com
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+spec:
+  group: monitoring.coreos.com
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              groups:
+                type: array
+                items:
+                  type: object
+          status:
+            type: object
+  scope: Namespaced
+  names:
+    plural: prometheusrules
+    singular: prometheusrule
+    kind: PrometheusRule
+{{- end }}
+{{- end }}

@@ -4,7 +4,7 @@
 # Image configuration
 image:
   repository: clickhouse/clickhouse-server
-  tag: "24.1-alpine"
+  tag: "25.6-alpine"
   pullPolicy: IfNotPresent
 
 # Replica configuration

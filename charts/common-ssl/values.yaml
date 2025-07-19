@@ -2,6 +2,8 @@
 # SSL Certificate configuration
 
 ssl:
+  enabled: true
+  
   # CA Certificate configuration
   ca:
     enabled: true
@@ -35,6 +37,37 @@ ssl:
       DNS.4 = localhost
       IP.1 = 127.0.0.1
 
+  # CSR-based certificate generation
+  csr:
+    enabled: true
+    image:
+      repository: alpine/openssl
+      tag: latest
+      pullPolicy: IfNotPresent
+    
+    # Custom signer name for CSR
+    signerName: "alt.local/ca"
+    
+    # Organization for certificates
+    organization: "Alt RSS Reader"
+    
+    # RSA key size
+    keySize: 2048
+    
+    # Default DNS names for certificates
+    dnsNames:
+      - "*.alt-apps.svc.cluster.local"
+      - "*.alt-database.svc.cluster.local"
+      - "*.alt-auth.svc.cluster.local"
+      - "*.alt-ingress.svc.cluster.local"
+      - "*.alt-production.svc.cluster.local"
+      - "localhost"
+    
+    # Default IP addresses for certificates
+    ipAddresses:
+      - "127.0.0.1"
+      - "::1"
+
 # Namespace configuration
 namespace:
   create: false
@@ -44,6 +77,7 @@ namespace:
 commonLabels:
   app.kubernetes.io/component: ssl
   app.kubernetes.io/part-of: alt
+  app.kubernetes.io/managed-by: deploy-cli
 
 commonAnnotations: {}
 

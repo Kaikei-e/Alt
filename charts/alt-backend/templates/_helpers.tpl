@@ -38,6 +38,8 @@ helm.sh/chart: {{ include "alt-backend.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/part-of: alt
+app.kubernetes.io/component: backend
 {{- with .Values.commonLabels }}
 {{ toYaml . }}
 {{- end }}

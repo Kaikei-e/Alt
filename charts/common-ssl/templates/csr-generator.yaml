@@ -1,0 +1,189 @@
+{{- if .Values.ssl.csr.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-csr-generator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "common-ssl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: csr-generator
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "common-ssl.labels" . | nindent 8 }}
+        app.kubernetes.io/component: csr-generator
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ .Release.Name }}-csr-generator
+      containers:
+      - name: csr-generator
+        image: {{ .Values.ssl.csr.image.repository }}:{{ .Values.ssl.csr.image.tag }}
+        imagePullPolicy: {{ .Values.ssl.csr.image.pullPolicy }}
+        env:
+        - name: SERVICE_NAME
+          value: {{ .Release.Name }}
+        - name: NAMESPACE
+          value: {{ .Release.Namespace }}
+        - name: DNS_NAMES
+          value: {{ join "," .Values.ssl.csr.dnsNames }}
+        - name: IP_ADDRESSES
+          value: {{ join "," .Values.ssl.csr.ipAddresses }}
+        - name: SIGNER_NAME
+          value: {{ .Values.ssl.csr.signerName | default "alt.local/ca" }}
+        - name: ORGANIZATION
+          value: {{ .Values.ssl.csr.organization | default "Alt RSS Reader" }}
+        - name: KEY_SIZE
+          value: {{ .Values.ssl.csr.keySize | default "2048" | quote }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Generating CSR for service: $SERVICE_NAME in namespace: $NAMESPACE"
+          echo "DNS Names: $DNS_NAMES"
+          echo "IP Addresses: $IP_ADDRESSES"
+          echo "Signer Name: $SIGNER_NAME"
+          
+          # Generate private key
+          openssl genrsa -out /tmp/private.key $KEY_SIZE
+          
+          # Create CSR configuration
+          cat > /tmp/csr.conf <<EOF
+          [req]
+          distinguished_name = req_distinguished_name
+          req_extensions = v3_req
+          prompt = no
+          
+          [req_distinguished_name]
+          CN = $SERVICE_NAME
+          O = $ORGANIZATION
+          
+          [v3_req]
+          keyUsage = keyEncipherment, dataEncipherment
+          extendedKeyUsage = serverAuth
+          subjectAltName = @alt_names
+          
+          [alt_names]
+          EOF
+          
+          # Add DNS names
+          dns_count=1
+          IFS=',' read -ra DNS_ARRAY <<< "$DNS_NAMES"
+          for dns in "${DNS_ARRAY[@]}"; do
+            echo "DNS.$dns_count = $dns" >> /tmp/csr.conf
+            dns_count=$((dns_count + 1))
+          done
+          
+          # Add IP addresses
+          ip_count=1
+          IFS=',' read -ra IP_ARRAY <<< "$IP_ADDRESSES"
+          for ip in "${IP_ARRAY[@]}"; do
+            echo "IP.$ip_count = $ip" >> /tmp/csr.conf
+            ip_count=$((ip_count + 1))
+          done
+          
+          # Generate CSR
+          openssl req -new -key /tmp/private.key -out /tmp/certificate.csr -config /tmp/csr.conf
+          
+          # Create Kubernetes CertificateSigningRequest
+          cat > /tmp/csr.yaml <<EOF
+          apiVersion: certificates.k8s.io/v1
+          kind: CertificateSigningRequest
+          metadata:
+            name: $SERVICE_NAME-$NAMESPACE
+          spec:
+            request: $(cat /tmp/certificate.csr | base64 | tr -d '\n')
+            signerName: $SIGNER_NAME
+            usages:
+            - digital signature
+            - key encipherment
+            - server auth
+          EOF
+          
+          # Apply CSR to Kubernetes
+          kubectl apply -f /tmp/csr.yaml
+          
+          # Store private key in secret
+          kubectl create secret generic $SERVICE_NAME-private-key \
+            --from-file=private.key=/tmp/private.key \
+            --namespace=$NAMESPACE \
+            --dry-run=client -o yaml | kubectl apply -f -
+          
+          echo "CSR generated and submitted successfully for $SERVICE_NAME"
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 50m
+            memory: 32Mi
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65534
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-csr-generator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "common-ssl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: csr-generator
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-csr-generator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "common-ssl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: csr-generator
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "update", "patch", "get"]
+- apiGroups: ["certificates.k8s.io"]
+  resources: ["certificatesigningrequests"]
+  verbs: ["create", "get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-csr-generator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "common-ssl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: csr-generator
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-csr-generator
+subjects:
+- kind: ServiceAccount
+  name: {{ .Release.Name }}-csr-generator
+  namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -218,10 +218,6 @@ spec:
         {{- if .Values.persistence.storageClass }}
         storageClassName: {{ .Values.persistence.storageClass | quote }}
         {{- end }}
-        selector:
-          matchLabels:
-            app.kubernetes.io/component: meilisearch
-            storage-type: meilisearch-data
     {{- if and .Values.snapshots.enabled .Values.snapshots.persistence.enabled }}
     - metadata:
         name: snapshots
@@ -238,10 +234,6 @@ spec:
         {{- if .Values.snapshots.persistence.storageClass }}
         storageClassName: {{ .Values.snapshots.persistence.storageClass | quote }}
         {{- end }}
-        selector:
-          matchLabels:
-            app.kubernetes.io/component: meilisearch
-            storage-type: meilisearch-snapshots
     {{- end }}
     {{- if and .Values.dumps.enabled .Values.dumps.persistence.enabled }}
     - metadata:
@@ -259,10 +251,6 @@ spec:
         {{- if .Values.dumps.persistence.storageClass }}
         storageClassName: {{ .Values.dumps.persistence.storageClass | quote }}
         {{- end }}
-        selector:
-          matchLabels:
-            app.kubernetes.io/component: meilisearch
-            storage-type: meilisearch-dumps
     {{- end }}
   {{- else }}
   volumeClaimTemplates: []
