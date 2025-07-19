@@ -48,6 +48,17 @@ func (o *DeploymentOptions) Validate() error {
 	return nil
 }
 
+// HelmReleaseStatus represents the status of a Helm release
+type HelmReleaseStatus struct {
+	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
+	Version     int    `json:"version"`
+	Status      string `json:"status"`
+	Description string `json:"description"`
+	LastUpdated string `json:"last_updated"`
+	Exists      bool   `json:"exists"`
+}
+
 // GetNamespace returns the target namespace, using override if provided
 func (o *DeploymentOptions) GetNamespace(chartName string) string {
 	if o.TargetNamespace != "" {

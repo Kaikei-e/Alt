@@ -47,7 +47,7 @@ func (s *Secret) AddStandardLabels(chartName, component string) {
 		s.Labels = make(map[string]string)
 	}
 
-	s.Labels["app.kubernetes.io/managed-by"] = "deploy-cli"
+	s.Labels["app.kubernetes.io/managed-by"] = "Helm"
 	s.Labels["app.kubernetes.io/name"] = chartName
 	s.Labels["app.kubernetes.io/component"] = component
 	s.Labels["app.kubernetes.io/part-of"] = "alt"

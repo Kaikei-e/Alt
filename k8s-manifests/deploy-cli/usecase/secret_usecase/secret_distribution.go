@@ -233,7 +233,7 @@ func (s *SecretDistributionStrategy) copySecretToNamespace(ctx context.Context, 
 		Type:      sourceSecret.Type,
 		Data:      sourceSecret.Data,
 		Labels: map[string]string{
-			"app.kubernetes.io/managed-by": "deploy-cli",
+			"app.kubernetes.io/managed-by": "Helm",
 			"app.kubernetes.io/component":  "secrets",
 			"app.kubernetes.io/part-of":    "alt",
 			"alt.deployment/source":        "centralized-distribution",

@@ -306,7 +306,7 @@ func (u *SSLCertificateUsecase) createSSLCertificate(ctx context.Context, config
 		secret.Annotations["meta.helm.sh/release-namespace"] = config.Namespace
 	} else {
 		// Default to deploy-cli management when not managed by Helm
-		secret.Labels["app.kubernetes.io/managed-by"] = "deploy-cli"
+		secret.Labels["app.kubernetes.io/managed-by"] = "Helm"
 	}
 
 	u.logger.InfoWithContext("SSL certificate generated successfully", map[string]interface{}{
