@@ -2,6 +2,7 @@ package kubectl_driver
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -299,7 +300,11 @@ func (k *KubectlDriver) GetSecret(ctx context.Context, name, namespace string) (
 	// Convert data from base64 strings to bytes
 	data := make(map[string][]byte)
 	for key, value := range secretData.Data {
-		data[key] = []byte(value)
+		decoded, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode secret data for key %s: %w", key, err)
+		}
+		data[key] = decoded
 	}
 	
 	return &kubectl_port.KubernetesSecret{

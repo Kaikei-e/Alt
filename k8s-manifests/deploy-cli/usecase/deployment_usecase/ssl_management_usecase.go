@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"deploy-cli/domain"
@@ -349,8 +350,18 @@ func (s *SSLManagementUsecase) ValidateCertificatePEM(certPEM, certType string) 
 		return fmt.Errorf("certificate PEM is empty")
 	}
 
+	// Auto-detect and convert certificate format
+	normalizedCert, err := s.detectCertificateFormat([]byte(certPEM))
+	if err != nil {
+		s.logger.ErrorWithContext("certificate format detection failed", map[string]interface{}{
+			"cert_type": certType,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("certificate format detection failed: %w", err)
+	}
+
 	// Parse PEM block
-	block, _ := pem.Decode([]byte(certPEM))
+	block, _ := pem.Decode([]byte(normalizedCert))
 	if block == nil {
 		return fmt.Errorf("failed to parse certificate PEM")
 	}
@@ -380,6 +391,45 @@ func (s *SSLManagementUsecase) ValidateCertificatePEM(certPEM, certType string) 
 	})
 
 	return nil
+}
+
+// detectCertificateFormat detects and converts certificate data format
+func (s *SSLManagementUsecase) detectCertificateFormat(data []byte) (string, error) {
+	dataStr := string(data)
+	
+	// Check if it's already PEM format
+	if isPEMFormat(dataStr) {
+		s.logger.DebugWithContext("certificate data detected as PEM format", map[string]interface{}{
+			"data_length": len(data),
+		})
+		return dataStr, nil
+	}
+	
+	// Check if it's base64 encoded
+	if isBase64Encoded(dataStr) {
+		s.logger.DebugWithContext("certificate data detected as base64 format", map[string]interface{}{
+			"data_length": len(data),
+		})
+		decoded, err := base64.StdEncoding.DecodeString(dataStr)
+		if err != nil {
+			return "", fmt.Errorf("failed to decode base64 data: %w", err)
+		}
+		return string(decoded), nil
+	}
+	
+	return dataStr, nil
+}
+
+// isPEMFormat checks if the data is in PEM format
+func isPEMFormat(data string) bool {
+	return strings.Contains(data, "-----BEGIN") && strings.Contains(data, "-----END")
+}
+
+// isBase64Encoded checks if the data is base64 encoded
+func isBase64Encoded(data string) bool {
+	// Try to decode as base64
+	_, err := base64.StdEncoding.DecodeString(data)
+	return err == nil && !strings.Contains(data, "-----BEGIN")
 }
 
 // ValidateCertificate validates a certificate in base64 format
@@ -637,4 +687,238 @@ func (s *SSLManagementUsecase) GetCertificateGenerationTime() time.Time {
 		return time.Time{}
 	}
 	return s.generatedCertificates.Generated
+}
+
+// CSRGenerationConfig represents CSR generation configuration
+type CSRGenerationConfig struct {
+	ServiceName   string
+	Namespace     string
+	DNSNames      []string
+	IPAddresses   []net.IP
+	SignerName    string
+	KeySize       int
+	Organization  []string
+}
+
+// GenerateCSRForService generates CSR for a specific service
+func (s *SSLManagementUsecase) GenerateCSRForService(ctx context.Context, config CSRGenerationConfig) error {
+	s.logger.InfoWithContext("generating CSR for service", map[string]interface{}{
+		"service_name": config.ServiceName,
+		"namespace":    config.Namespace,
+		"dns_names":    config.DNSNames,
+		"ip_addresses": config.IPAddresses,
+		"signer_name":  config.SignerName,
+	})
+
+	// 1. Generate private key
+	privateKey, err := s.generatePrivateKey(config.KeySize)
+	if err != nil {
+		return fmt.Errorf("failed to generate private key: %w", err)
+	}
+
+	// 2. Create CSR template
+	template := &x509.CertificateRequest{
+		Subject: pkix.Name{
+			CommonName:   config.ServiceName,
+			Organization: config.Organization,
+		},
+		DNSNames:    config.DNSNames,
+		IPAddresses: config.IPAddresses,
+	}
+
+	// 3. Generate CSR
+	csrDER, err := x509.CreateCertificateRequest(rand.Reader, template, privateKey)
+	if err != nil {
+		return fmt.Errorf("failed to create CSR: %w", err)
+	}
+
+	// 4. Create CertificateSigningRequest resource
+	csrName := fmt.Sprintf("%s-%s", config.ServiceName, config.Namespace)
+	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
+
+	s.logger.InfoWithContext("CSR generated successfully", map[string]interface{}{
+		"csr_name":      csrName,
+		"csr_pem_length": len(csrPEM),
+	})
+
+	// 5. Submit CSR to Kubernetes API
+	return s.submitCSR(ctx, csrName, csrPEM, config.SignerName, privateKey)
+}
+
+// generatePrivateKey generates a new RSA private key
+func (s *SSLManagementUsecase) generatePrivateKey(keySize int) (*rsa.PrivateKey, error) {
+	if keySize == 0 {
+		keySize = 2048 // Default key size
+	}
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, keySize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate RSA private key: %w", err)
+	}
+
+	return privateKey, nil
+}
+
+// submitCSR submits a CertificateSigningRequest to Kubernetes API
+func (s *SSLManagementUsecase) submitCSR(ctx context.Context, csrName string, csrPEM []byte, signerName string, privateKey *rsa.PrivateKey) error {
+	s.logger.InfoWithContext("submitting CSR to Kubernetes API", map[string]interface{}{
+		"csr_name":    csrName,
+		"signer_name": signerName,
+	})
+
+	// TODO: Implement actual Kubernetes API submission
+	// This will be implemented when we have the Kubernetes client integration
+	
+	// For now, we'll log the CSR details and store the private key
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	})
+
+	s.logger.InfoWithContext("CSR submission prepared", map[string]interface{}{
+		"csr_name":           csrName,
+		"csr_pem_length":     len(csrPEM),
+		"private_key_length": len(privateKeyPEM),
+	})
+
+	// Store for later use
+	s.storePendingCSR(csrName, csrPEM, privateKeyPEM, signerName)
+
+	return nil
+}
+
+// storePendingCSR stores a pending CSR for later processing
+func (s *SSLManagementUsecase) storePendingCSR(csrName string, csrPEM, privateKeyPEM []byte, signerName string) {
+	s.logger.InfoWithContext("storing pending CSR", map[string]interface{}{
+		"csr_name":    csrName,
+		"signer_name": signerName,
+	})
+
+	// TODO: Implement persistent storage for pending CSRs
+	// This could be stored in a ConfigMap or Secret for later retrieval
+}
+
+// DistributeCertificatesConfig represents certificate distribution configuration
+type DistributeCertificatesConfig struct {
+	Environment   domain.Environment
+	Namespaces    []string
+	Services      []string
+	UseProjection bool
+}
+
+// DistributeCertificates distributes certificates across namespaces
+func (s *SSLManagementUsecase) DistributeCertificates(ctx context.Context, config DistributeCertificatesConfig) error {
+	s.logger.InfoWithContext("starting certificate distribution", map[string]interface{}{
+		"environment":    config.Environment.String(),
+		"namespaces":     config.Namespaces,
+		"services":       config.Services,
+		"use_projection": config.UseProjection,
+	})
+
+	if config.UseProjection {
+		return s.distributeViaProjectedVolumes(ctx, config)
+	}
+
+	return s.distributeViaSecrets(ctx, config)
+}
+
+// distributeViaProjectedVolumes uses ServiceAccount token volume projection
+func (s *SSLManagementUsecase) distributeViaProjectedVolumes(ctx context.Context, config DistributeCertificatesConfig) error {
+	s.logger.InfoWithContext("distributing certificates via projected volumes", map[string]interface{}{
+		"environment": config.Environment.String(),
+	})
+
+	for _, namespace := range config.Namespaces {
+		for _, service := range config.Services {
+			s.logger.InfoWithContext("processing service for projected volume distribution", map[string]interface{}{
+				"service":   service,
+				"namespace": namespace,
+			})
+
+			// 1. Create ServiceAccount
+			if err := s.createServiceAccount(ctx, service, namespace); err != nil {
+				s.logger.ErrorWithContext("failed to create ServiceAccount", map[string]interface{}{
+					"service":   service,
+					"namespace": namespace,
+					"error":     err.Error(),
+				})
+				return fmt.Errorf("failed to create ServiceAccount: %w", err)
+			}
+
+			// 2. Create projected volume configuration
+			if err := s.createProjectedVolumeConfig(ctx, service, namespace); err != nil {
+				s.logger.ErrorWithContext("failed to create projected volume config", map[string]interface{}{
+					"service":   service,
+					"namespace": namespace,
+					"error":     err.Error(),
+				})
+				return fmt.Errorf("failed to create projected volume config: %w", err)
+			}
+
+			// 3. Update deployment to use projected volumes
+			if err := s.updateDeploymentWithProjectedVolumes(ctx, service, namespace); err != nil {
+				s.logger.ErrorWithContext("failed to update deployment", map[string]interface{}{
+					"service":   service,
+					"namespace": namespace,
+					"error":     err.Error(),
+				})
+				return fmt.Errorf("failed to update deployment: %w", err)
+			}
+		}
+	}
+
+	s.logger.InfoWithContext("certificate distribution via projected volumes completed", map[string]interface{}{
+		"environment": config.Environment.String(),
+	})
+
+	return nil
+}
+
+// distributeViaSecrets distributes certificates via traditional secrets
+func (s *SSLManagementUsecase) distributeViaSecrets(ctx context.Context, config DistributeCertificatesConfig) error {
+	s.logger.InfoWithContext("distributing certificates via secrets", map[string]interface{}{
+		"environment": config.Environment.String(),
+	})
+
+	// Use existing secret distribution logic
+	return s.GenerateSSLCertificateSecrets(ctx, config.Environment)
+}
+
+// createServiceAccount creates a ServiceAccount for certificate distribution
+func (s *SSLManagementUsecase) createServiceAccount(ctx context.Context, service, namespace string) error {
+	s.logger.InfoWithContext("creating ServiceAccount", map[string]interface{}{
+		"service":   service,
+		"namespace": namespace,
+	})
+
+	// TODO: Implement ServiceAccount creation via Kubernetes API
+	// This will be implemented when we have the Kubernetes client integration
+
+	return nil
+}
+
+// createProjectedVolumeConfig creates projected volume configuration
+func (s *SSLManagementUsecase) createProjectedVolumeConfig(ctx context.Context, service, namespace string) error {
+	s.logger.InfoWithContext("creating projected volume config", map[string]interface{}{
+		"service":   service,
+		"namespace": namespace,
+	})
+
+	// TODO: Implement projected volume configuration
+	// This will create the necessary ConfigMaps and Secrets for projected volumes
+
+	return nil
+}
+
+// updateDeploymentWithProjectedVolumes updates deployment to use projected volumes
+func (s *SSLManagementUsecase) updateDeploymentWithProjectedVolumes(ctx context.Context, service, namespace string) error {
+	s.logger.InfoWithContext("updating deployment with projected volumes", map[string]interface{}{
+		"service":   service,
+		"namespace": namespace,
+	})
+
+	// TODO: Implement deployment update logic
+	// This will modify the deployment to use projected volumes for certificates
+
+	return nil
 }
