@@ -551,40 +551,6 @@ func (u *SecretManagementUsecase) getNamespaceForChart(chart domain.Chart) strin
 		return chart.TargetNamespaces[0]
 	}
 
-	// CRITICAL FIX: Prioritize chart name mapping over chart type to prevent namespace mismatches
-	// Handle auth-postgres specifically to ensure it goes to alt-auth (not alt-database)
-	switch chart.Name {
-	case "auth-postgres", "kratos-postgres", "auth-service", "kratos":
-		return "alt-auth"
-	case "postgres", "clickhouse", "meilisearch":
-		return "alt-database"
-	case "nginx", "nginx-external":
-		return "alt-ingress"
-	case "alt-backend", "alt-frontend":
-		return "alt-apps"
-	}
-
-	// Fallback to chart type mapping
-	switch chart.Type {
-	case domain.InfrastructureChart:
-		if chart.Name == "postgres" || chart.Name == "clickhouse" || chart.Name == "meilisearch" {
-			return "alt-database"
-		}
-		if chart.Name == "nginx" || chart.Name == "nginx-external" {
-			return "alt-ingress"
-		}
-		if chart.Name == "auth-postgres" || chart.Name == "kratos-postgres" || chart.Name == "kratos" {
-			return "alt-auth"
-		}
-		return "alt-apps"
-	case domain.ApplicationChart:
-		if chart.Name == "auth-service" || chart.Name == "kratos" {
-			return "alt-auth"
-		}
-		return "alt-apps"
-	case domain.OperationalChart:
-		return "alt-apps"
-	default:
-		return "alt-apps"
-	}
+	// Use domain layer to determine namespace consistently
+	return domain.DetermineNamespace(chart.Name, domain.Production)
 }

@@ -76,11 +76,9 @@ func (h *HelmOperationManager) ExecuteWithLock(releaseName, namespace, operation
 		"operation": operation,
 	})
 
-	// Clean up operation when done
+	// Clean up operation when done (mutex already held by outer function)
 	defer func() {
-		h.mu.Lock()
 		delete(h.activeOperations, key)
-		h.mu.Unlock()
 		h.logger.InfoWithContext("completed helm operation", map[string]interface{}{
 			"release":   releaseName,
 			"namespace": namespace,

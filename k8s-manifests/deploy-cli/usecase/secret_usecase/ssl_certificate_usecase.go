@@ -230,6 +230,33 @@ func (u *SSLCertificateUsecase) CreatePostgresSSLCertificate(ctx context.Context
 	return u.createSSLCertificate(ctx, config)
 }
 
+// CreateAuthPostgresSSLCertificate creates SSL certificate for Auth Postgres
+func (u *SSLCertificateUsecase) CreateAuthPostgresSSLCertificate(ctx context.Context, namespace string, env domain.Environment) error {
+	u.logger.InfoWithContext("creating Auth Postgres SSL certificate", map[string]interface{}{
+		"namespace":   namespace,
+		"environment": env.String(),
+	})
+
+	config := &SSLCertificateConfig{
+		ServiceName: "auth-postgres",
+		Namespace:   namespace,
+		Environment: env,
+		DNSNames: []string{
+			"auth-postgres",
+			fmt.Sprintf("auth-postgres.%s", namespace),
+			fmt.Sprintf("auth-postgres.%s.svc", namespace),
+			fmt.Sprintf("auth-postgres.%s.svc.cluster.local", namespace),
+			"auth-db.alt.local",
+			"localhost",
+		},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		ValidityDays: 365,
+		ReleaseName:  "auth-postgres", // For Helm-compatible metadata
+	}
+
+	return u.createSSLCertificate(ctx, config)
+}
+
 // createSSLCertificate generates and creates SSL certificate secret
 func (u *SSLCertificateUsecase) createSSLCertificate(ctx context.Context, config *SSLCertificateConfig) error {
 	// Generate private key
@@ -285,11 +312,12 @@ func (u *SSLCertificateUsecase) createSSLCertificate(ctx context.Context, config
 	// Create CA certificate (self-signed for now)
 	caPEM := certPEM
 
-	// Create secret
-	secretName := fmt.Sprintf("%s-ssl-certs-prod", config.ServiceName)
+	// Create secret with chart-compatible naming
+	secretName := u.getChartCompatibleSecretName(config.ServiceName)
+	// Use kubernetes.io/tls type for standard TLS certificates
 	secret := domain.NewSecret(secretName, config.Namespace, domain.SSLSecret)
-	secret.AddData("server.crt", string(certPEM))
-	secret.AddData("server.key", string(privateKeyPEM))
+	secret.AddData("tls.crt", string(certPEM))
+	secret.AddData("tls.key", string(privateKeyPEM))
 	secret.AddData("ca.crt", string(caPEM))
 
 	// Add labels for management following Kubernetes standards
@@ -333,15 +361,23 @@ func (u *SSLCertificateUsecase) ValidateSSLCertificate(ctx context.Context, secr
 		return fmt.Errorf("failed to get SSL secret: %w", err)
 	}
 
-	// Validate certificate data
-	certData, exists := secret.GetData("server.crt")
+	// Validate certificate data (support both legacy and standard key names)
+	certData, exists := secret.GetData("tls.crt")
 	if !exists {
-		return fmt.Errorf("certificate data not found in secret")
+		// Fallback to legacy key name for backward compatibility
+		certData, exists = secret.GetData("server.crt")
+		if !exists {
+			return fmt.Errorf("certificate data not found in secret (checked both tls.crt and server.crt)")
+		}
 	}
 
-	keyData, exists := secret.GetData("server.key")
+	keyData, exists := secret.GetData("tls.key")
 	if !exists {
-		return fmt.Errorf("private key data not found in secret")
+		// Fallback to legacy key name for backward compatibility
+		keyData, exists = secret.GetData("server.key")
+		if !exists {
+			return fmt.Errorf("private key data not found in secret (checked both tls.key and server.key)")
+		}
 	}
 
 	// Parse certificate
@@ -445,7 +481,7 @@ func (u *SSLCertificateUsecase) ValidateCertificateExists(ctx context.Context, c
 	// Get the appropriate namespace for the service
 	namespace := domain.DetermineNamespace(serviceName, env)
 
-	secretName := fmt.Sprintf("%s-ssl-certs-prod", serviceName)
+	secretName := u.getChartCompatibleSecretName(serviceName)
 
 	u.logger.InfoWithContext("validating SSL certificate existence", map[string]interface{}{
 		"certificate_name": certName,
@@ -578,4 +614,30 @@ func (u *SSLCertificateUsecase) createCertificateConfig(certName string, namespa
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
 		ValidityDays: validityDays,
 	}
+}
+
+// getChartCompatibleSecretName returns the secret name expected by Helm charts
+func (u *SSLCertificateUsecase) getChartCompatibleSecretName(serviceName string) string {
+	// Map service names to their chart-expected secret names
+	secretNameMappings := map[string]string{
+		"postgres":         "postgres-ssl-secret",
+		"auth-postgres":    "auth-postgres-ssl-certs",
+		"kratos-postgres":  "kratos-postgres-ssl-certs",
+		"clickhouse":       "clickhouse-ssl-certs",
+		"meilisearch":      "meilisearch-ssl-certs",
+		"nginx-external":   "nginx-external-ssl-certs",
+		"nginx":            "nginx-ssl-certs",
+		"kratos":           "kratos-ssl-certs",
+		"alt-backend":      "alt-backend-ssl-certs-prod",
+		"alt-frontend":     "alt-frontend-ssl-certs-prod",
+		"auth-service":     "auth-service-ssl-certs-prod",
+	}
+
+	// Return mapped name if exists, otherwise use the old pattern as fallback
+	if mappedName, exists := secretNameMappings[serviceName]; exists {
+		return mappedName
+	}
+
+	// Fallback to old pattern for unmapped services
+	return fmt.Sprintf("%s-ssl-certs-prod", serviceName)
 }

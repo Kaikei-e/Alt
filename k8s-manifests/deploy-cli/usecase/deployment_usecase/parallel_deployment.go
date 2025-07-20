@@ -90,24 +90,90 @@ func (p *ChartWorkerPool) Start() {
 func (p *ChartWorkerPool) Stop() {
 	// First cancel the context to signal workers to stop
 	p.cancel()
-	// Close jobs channel to signal no more work
-	close(p.jobs)
-	// Wait for all workers to finish
-	p.wg.Wait()
-	// Close results channel after all workers are done
-	close(p.results)
+	
+	// Close jobs channel to signal no more work (with panic protection)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Channel already closed, ignore
+			}
+		}()
+		close(p.jobs)
+	}()
+	
+	// Wait for all workers to finish with timeout
+	done := make(chan struct{})
+	go func() {
+		p.wg.Wait()
+		close(done)
+	}()
+	
+	select {
+	case <-done:
+		// Workers finished normally
+	case <-time.After(30 * time.Second):
+		// Force shutdown after timeout
+		p.logger.WarnWithContext("worker pool shutdown timeout, forcing close", map[string]interface{}{
+			"timeout": "30s",
+		})
+	}
+	
+	// Close results channel after all workers are done (with panic protection)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Channel already closed, ignore
+			}
+		}()
+		close(p.results)
+	}()
 }
 
 // SubmitJob submits a chart deployment job
 func (p *ChartWorkerPool) SubmitJob(job ChartDeployJob) {
+	// Use defer to ensure result is always sent
+	defer func() {
+		if r := recover(); r != nil {
+			// Channel was closed, send failure result
+			select {
+			case job.Result <- domain.DeploymentResult{
+				ChartName: job.Chart.Name,
+				Status:    domain.DeploymentStatusFailed,
+				Error:     fmt.Errorf("worker pool closed during job submission"),
+				Duration:  0,
+			}:
+			case <-time.After(time.Second):
+				// Result channel may also be closed or blocked
+			}
+		}
+	}()
+	
 	select {
 	case p.jobs <- job:
+		// Job submitted successfully
 	case <-p.ctx.Done():
-		job.Result <- domain.DeploymentResult{
+		// Worker pool context cancelled
+		select {
+		case job.Result <- domain.DeploymentResult{
 			ChartName: job.Chart.Name,
 			Status:    domain.DeploymentStatusFailed,
-			Error:     fmt.Errorf("worker pool stopped"),
+			Error:     fmt.Errorf("worker pool context cancelled"),
 			Duration:  0,
+		}:
+		case <-time.After(time.Second):
+			// Result channel may be closed or blocked
+		}
+	case <-time.After(5 * time.Second):
+		// Timeout submitting job (jobs channel may be full or blocked)
+		select {
+		case job.Result <- domain.DeploymentResult{
+			ChartName: job.Chart.Name,
+			Status:    domain.DeploymentStatusFailed,
+			Error:     fmt.Errorf("timeout submitting job to worker pool"),
+			Duration:  0,
+		}:
+		case <-time.After(time.Second):
+			// Result channel may be closed or blocked
 		}
 	}
 }
@@ -123,11 +189,19 @@ func (p *ChartWorkerPool) worker(id int) {
 	for job := range p.jobs {
 		select {
 		case <-p.ctx.Done():
-			job.Result <- domain.DeploymentResult{
+			// Send result with timeout protection to prevent deadlock
+			select {
+			case job.Result <- domain.DeploymentResult{
 				ChartName: job.Chart.Name,
 				Status:    domain.DeploymentStatusFailed,
 				Error:     fmt.Errorf("worker context cancelled"),
 				Duration:  0,
+			}:
+			case <-time.After(5 * time.Second):
+				p.logger.WarnWithContext("failed to send cancellation result, channel may be blocked", map[string]interface{}{
+					"worker_id": id,
+					"chart":     job.Chart.Name,
+				})
 			}
 			return
 		default:
@@ -138,9 +212,22 @@ func (p *ChartWorkerPool) worker(id int) {
 
 			result := p.deployer(p.ctx, job.Chart, job.Options)
 
+			// Send result with timeout and context protection to prevent deadlock
 			select {
 			case job.Result <- result:
+				// Successfully sent result
 			case <-p.ctx.Done():
+				p.logger.WarnWithContext("context cancelled while sending result", map[string]interface{}{
+					"worker_id": id,
+					"chart":     job.Chart.Name,
+				})
+				return
+			case <-time.After(10 * time.Second):
+				p.logger.ErrorWithContext("timeout sending deployment result, channel may be blocked", map[string]interface{}{
+					"worker_id": id,
+					"chart":     job.Chart.Name,
+					"status":    result.Status,
+				})
 				return
 			}
 		}

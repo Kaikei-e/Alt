@@ -134,6 +134,21 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 		var layerErr error
 
 		for chartIndex, chart := range layer.Charts {
+			// Check for context cancellation before each chart
+			select {
+			case <-layerCtx.Done():
+				e.logger.WarnWithContext("layer context cancelled during chart deployment", map[string]interface{}{
+					"layer": layer.Name,
+					"chart": chart.Name,
+					"error": layerCtx.Err().Error(),
+					"charts_completed": chartIndex,
+					"total_charts": len(layer.Charts),
+				})
+				layerErr = layerCtx.Err()
+				break
+			default:
+			}
+			
 			// Check if chart directory exists
 			if _, err := chartConfig.GetChart(chart.Name); err != nil {
 				e.logger.WarnWithContext("chart not found in configuration, skipping", map[string]interface{}{
@@ -144,8 +159,18 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 				continue
 			}
 
-			// Wait for dependencies before deploying
+			// Wait for dependencies before deploying (with context check)
 			if err := e.dependencyWaiter.WaitForDependencies(layerCtx, chart.Name); err != nil {
+				// Check if error is due to context cancellation
+				if layerCtx.Err() != nil {
+					e.logger.WarnWithContext("dependency wait cancelled due to context", map[string]interface{}{
+						"chart": chart.Name,
+						"layer": layer.Name,
+						"context_error": layerCtx.Err().Error(),
+					})
+					layerErr = layerCtx.Err()
+					break
+				}
 				e.logger.WarnWithContext("dependency wait failed, continuing with deployment", map[string]interface{}{
 					"chart": chart.Name,
 					"layer": layer.Name,
@@ -236,12 +261,34 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 
 			// Wait between charts in the same layer if specified
 			if chartIndex < len(layer.Charts)-1 && layer.WaitBetweenCharts > 0 {
+				e.logger.DebugWithContext("waiting between charts", map[string]interface{}{
+					"layer": layer.Name,
+					"wait_duration": layer.WaitBetweenCharts,
+					"completed_chart": chart.Name,
+					"remaining_charts": len(layer.Charts) - chartIndex - 1,
+				})
+				
 				select {
 				case <-layerCtx.Done():
-					return progress, layerCtx.Err()
+					e.logger.WarnWithContext("context cancelled during inter-chart wait", map[string]interface{}{
+						"layer": layer.Name,
+						"cancelled_after_chart": chart.Name,
+						"error": layerCtx.Err().Error(),
+					})
+					layerErr = layerCtx.Err()
+					break
 				case <-time.After(layer.WaitBetweenCharts):
 					// Continue to next chart
+					e.logger.DebugWithContext("inter-chart wait completed", map[string]interface{}{
+						"layer": layer.Name,
+						"completed_chart": chart.Name,
+					})
 				}
+			}
+			
+			// Exit chart loop if we have an error (including context cancellation)
+			if layerErr != nil {
+				break
 			}
 		}
 
@@ -258,41 +305,69 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 
 		// If layer requires health check and deployment was successful, perform health check
 		if layerErr == nil && layer.RequiresHealthCheck && !options.DryRun && !options.SkipHealthChecks {
-			e.logger.InfoWithContext("🩺 STARTING layer health check", map[string]interface{}{
-				"layer": layer.Name,
-				"timeout": layer.HealthCheckTimeout.String(),
-				"emergency_mode": options.SkipStatefulSetRecovery,
-			})
-			
-			healthCheckCtx, healthCheckCancel := context.WithTimeout(layerCtx, layer.HealthCheckTimeout)
-			// Health check context will be cancelled explicitly after use
-
-			if err := e.performLayerHealthCheck(healthCheckCtx, layer, options); err != nil {
-				e.logger.ErrorWithContext("❌ Layer health check FAILED", map[string]interface{}{
+			// Check if layer context is still valid before health check
+			select {
+			case <-layerCtx.Done():
+				e.logger.WarnWithContext("🚨 Layer context cancelled before health check", map[string]interface{}{
 					"layer": layer.Name,
-					"error": err.Error(),
+					"error": layerCtx.Err().Error(),
+				})
+				if !options.SkipStatefulSetRecovery { // Not in emergency mode
+					layerErr = layerCtx.Err()
+				}
+			default:
+				e.logger.InfoWithContext("🩺 STARTING layer health check", map[string]interface{}{
+					"layer": layer.Name,
+					"timeout": layer.HealthCheckTimeout.String(),
 					"emergency_mode": options.SkipStatefulSetRecovery,
 				})
 				
-				if options.SkipStatefulSetRecovery { // Emergency mode
-					e.logger.WarnWithContext("🚨 SKIPPING health check in emergency mode", map[string]interface{}{
+				healthCheckCtx, healthCheckCancel := context.WithTimeout(layerCtx, layer.HealthCheckTimeout)
+				// Use defer to ensure context is always cancelled
+				defer healthCheckCancel()
+
+				if err := e.performLayerHealthCheck(healthCheckCtx, layer, options); err != nil {
+					// Check if error is due to context cancellation
+					if healthCheckCtx.Err() != nil {
+						e.logger.WarnWithContext("🚨 Health check cancelled due to context", map[string]interface{}{
+							"layer": layer.Name,
+							"context_error": healthCheckCtx.Err().Error(),
+							"original_error": err.Error(),
+							"emergency_mode": options.SkipStatefulSetRecovery,
+						})
+						if !options.SkipStatefulSetRecovery { // Not in emergency mode
+							layerErr = healthCheckCtx.Err()
+						}
+					} else {
+						e.logger.ErrorWithContext("❌ Layer health check FAILED", map[string]interface{}{
+							"layer": layer.Name,
+							"error": err.Error(),
+							"emergency_mode": options.SkipStatefulSetRecovery,
+						})
+						
+						if options.SkipStatefulSetRecovery { // Emergency mode
+							e.logger.WarnWithContext("🚨 SKIPPING health check in emergency mode", map[string]interface{}{
+								"layer": layer.Name,
+							})
+						} else {
+							layerErr = fmt.Errorf("layer health check failed: %w", err)
+						}
+					}
+				} else {
+					e.logger.InfoWithContext("✅ Layer health check PASSED", map[string]interface{}{
 						"layer": layer.Name,
 					})
-				} else {
-					layerErr = fmt.Errorf("layer health check failed: %w", err)
 				}
-			} else {
-				e.logger.InfoWithContext("✅ Layer health check PASSED", map[string]interface{}{
-					"layer": layer.Name,
-				})
 			}
-			
-			// Explicitly cancel health check context
-			healthCheckCancel()
 		} else if options.SkipHealthChecks {
 			e.logger.InfoWithContext("⏭️ SKIPPING health check (--skip-health-checks flag)", map[string]interface{}{
 				"layer": layer.Name,
 				"requires_health_check": layer.RequiresHealthCheck,
+			})
+		} else if layerErr != nil {
+			e.logger.InfoWithContext("⏭️ SKIPPING health check due to layer error", map[string]interface{}{
+				"layer": layer.Name,
+				"layer_error": layerErr.Error(),
 			})
 		}
 
@@ -334,12 +409,24 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 			})
 		}
 		
-		// Explicitly cancel the layer context at the end of each iteration
-		layerCancel()
-		e.logger.DebugWithContext("layer context cancelled", map[string]interface{}{
-			"layer": layer.Name,
-			"layer_index": layerIndex + 1,
-		})
+		// Safely cancel the layer context at the end of each iteration
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					e.logger.WarnWithContext("panic during layer context cancellation", map[string]interface{}{
+						"layer": layer.Name,
+						"layer_index": layerIndex + 1,
+						"panic": r,
+					})
+				}
+			}()
+			layerCancel()
+			e.logger.DebugWithContext("layer context cancelled safely", map[string]interface{}{
+				"layer": layer.Name,
+				"layer_index": layerIndex + 1,
+				"layer_success": layerErr == nil,
+			})
+		}()
 	}
 
 	e.logger.InfoWithContext("layer-aware deployment completed", map[string]interface{}{
@@ -690,29 +777,8 @@ func (e *DeploymentStrategyExecutor) getAllCharts(options *domain.DeploymentOpti
 
 // getNamespaceForChart returns the appropriate namespace for a chart
 func (e *DeploymentStrategyExecutor) getNamespaceForChart(chart domain.Chart) string {
-	// Use chart type to determine namespace
-	switch chart.Type {
-	case domain.InfrastructureChart:
-		if chart.Name == "postgres" || chart.Name == "clickhouse" || chart.Name == "meilisearch" {
-			return "alt-database"
-		}
-		if chart.Name == "nginx" || chart.Name == "nginx-external" {
-			return "alt-ingress"
-		}
-		if chart.Name == "auth-postgres" || chart.Name == "kratos-postgres" || chart.Name == "kratos" {
-			return "alt-auth"
-		}
-		return "alt-apps"
-	case domain.ApplicationChart:
-		if chart.Name == "auth-service" || chart.Name == "kratos" {
-			return "alt-auth"
-		}
-		return "alt-apps"
-	case domain.OperationalChart:
-		return "alt-apps"
-	default:
-		return "alt-apps"
-	}
+	// Use domain layer to determine namespace consistently
+	return domain.DetermineNamespace(chart.Name, domain.Production)
 }
 
 // isStatefulSetChart determines if a chart deploys a StatefulSet

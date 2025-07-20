@@ -40,8 +40,10 @@ func determineProductionNamespace(chartName string) string {
 	switch chartName {
 	case "alt-backend", "alt-frontend", "pre-processor", "search-indexer", "tag-generator", "news-creator", "rask-log-aggregator":
 		return "alt-apps"
-	case "postgres", "auth-postgres", "kratos-postgres", "clickhouse":
+	case "postgres", "clickhouse":
 		return "alt-database"
+	case "auth-postgres", "kratos-postgres":
+		return "alt-auth"  // 認証関連DBは alt-auth 名前空間へ
 	case "meilisearch":
 		return "alt-search"
 	case "auth-service", "kratos":

@@ -294,7 +294,7 @@ func (s *SSLLifecycleManager) GenerateSSLCertificateSecrets(ctx context.Context,
 	for _, service := range services {
 		// Get the appropriate namespace for each service
 		serviceNamespace := s.getNamespaceForService(service, environment)
-		secretName := fmt.Sprintf("%s-ssl-certs-prod", service)
+		secretName := s.getChartCompatibleSecretName(service)
 
 		if err := s.certificateManager.CreateSSLCertificateSecret(ctx, service, secretName, serviceNamespace); err != nil {
 			s.logger.WarnWithContext("failed to create SSL certificate secret", map[string]interface{}{
@@ -553,4 +553,30 @@ func (s *SSLLifecycleManager) updateDeploymentWithProjectedVolumes(ctx context.C
 func (s *SSLLifecycleManager) getNamespaceForService(serviceName string, env domain.Environment) string {
 	// Use the same logic as domain.DetermineNamespace to ensure consistency
 	return domain.DetermineNamespace(serviceName, env)
+}
+
+// getChartCompatibleSecretName returns the secret name expected by Helm charts
+func (s *SSLLifecycleManager) getChartCompatibleSecretName(serviceName string) string {
+	// Map service names to their chart-expected secret names
+	secretNameMappings := map[string]string{
+		"postgres":         "postgres-ssl-secret",
+		"auth-postgres":    "auth-postgres-ssl-certs",
+		"kratos-postgres":  "kratos-postgres-ssl-certs",
+		"clickhouse":       "clickhouse-ssl-certs",
+		"meilisearch":      "meilisearch-ssl-certs",
+		"nginx-external":   "nginx-external-ssl-certs",
+		"nginx":            "nginx-ssl-certs",
+		"kratos":           "kratos-ssl-certs",
+		"alt-backend":      "alt-backend-ssl-certs-prod",
+		"alt-frontend":     "alt-frontend-ssl-certs-prod",
+		"auth-service":     "auth-service-ssl-certs-prod",
+	}
+
+	// Return mapped name if exists, otherwise use the old pattern as fallback
+	if mappedName, exists := secretNameMappings[serviceName]; exists {
+		return mappedName
+	}
+
+	// Fallback to old pattern for unmapped services
+	return fmt.Sprintf("%s-ssl-certs-prod", serviceName)
 }

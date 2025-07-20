@@ -889,7 +889,7 @@ func (u *SecretUsecase) AdoptSecretsForChart(ctx context.Context, chartName stri
 			{secretName: "auth-postgres-secrets", namespace: "alt-auth"},
 		},
 		"kratos-postgres": {
-			{secretName: "kratos-postgres-secrets", namespace: "alt-database"},
+			{secretName: "kratos-postgres-secrets", namespace: "alt-auth"},
 		},
 		"meilisearch": {
 			{secretName: "meilisearch-credentials", namespace: "alt-database"},

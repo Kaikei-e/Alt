@@ -426,28 +426,8 @@ func (r *DeploymentRecoveryManager) recoverFromResourceConflictError(ctx context
 
 // getNamespaceForChart returns the appropriate namespace for a chart
 func (r *DeploymentRecoveryManager) getNamespaceForChart(chart domain.Chart) string {
-	switch chart.Type {
-	case domain.InfrastructureChart:
-		if chart.Name == "postgres" || chart.Name == "clickhouse" || chart.Name == "meilisearch" {
-			return "alt-database"
-		}
-		if chart.Name == "nginx" || chart.Name == "nginx-external" {
-			return "alt-ingress"
-		}
-		if chart.Name == "auth-postgres" || chart.Name == "kratos-postgres" || chart.Name == "kratos" {
-			return "alt-auth"
-		}
-		return "alt-apps"
-	case domain.ApplicationChart:
-		if chart.Name == "auth-service" || chart.Name == "kratos" {
-			return "alt-auth"
-		}
-		return "alt-apps"
-	case domain.OperationalChart:
-		return "alt-apps"
-	default:
-		return "alt-apps"
-	}
+	// Use domain layer to determine namespace consistently
+	return domain.DetermineNamespace(chart.Name, domain.Production)
 }
 
 // Note: Utility functions moved to shared_utils.go to avoid duplication

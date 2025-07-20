@@ -116,7 +116,7 @@ The generated certificate secret will be named: {service}-ssl-certs-prod`,
 				colors.Blue("🔐"), serviceName, env.String())
 
 			// Get namespace for service
-			namespace := getServiceNamespace(serviceName, env)
+			namespace := domain.DetermineNamespace(serviceName, env)
 
 			// Create SSL certificate based on service type
 			switch serviceName {
@@ -134,6 +134,8 @@ The generated certificate secret will be named: {service}-ssl-certs-prod`,
 				err = sslUsecase.CreateKratosSSLCertificate(ctx, namespace, env)
 			case "postgres":
 				err = sslUsecase.CreatePostgresSSLCertificate(ctx, namespace, env)
+			case "auth-postgres":
+				err = sslUsecase.CreateAuthPostgresSSLCertificate(ctx, namespace, env)
 			default:
 				return fmt.Errorf("SSL certificate creation for service '%s' is not yet implemented", serviceName)
 			}
@@ -401,26 +403,6 @@ func createSSLCertificateUsecase(log *logger.Logger) *secret_usecase.SSLCertific
 	return secret_usecase.NewSSLCertificateUsecase(secretUsecase, loggerAdapter)
 }
 
-// getServiceNamespace returns the namespace for a service based on environment
-func getServiceNamespace(serviceName string, env domain.Environment) string {
-	switch serviceName {
-	case "meilisearch":
-		return "alt-search"
-	case "postgres", "auth-postgres", "kratos-postgres", "clickhouse":
-		return "alt-database"
-	case "alt-backend", "alt-frontend", "pre-processor", "search-indexer", "tag-generator", "news-creator":
-		return "alt-apps"
-	case "kratos", "auth-service":
-		return "alt-auth"
-	case "nginx", "nginx-external":
-		return "alt-ingress"
-	case "monitoring":
-		return "alt-observability"
-	default:
-		// Default to alt-apps for unknown services
-		return "alt-apps"
-	}
-}
 
 // getEnvironmentNamespaces returns all namespaces for an environment
 func getEnvironmentNamespaces(env domain.Environment) []string {
