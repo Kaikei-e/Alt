@@ -100,6 +100,9 @@ Examples:
 	cmd.Flags().Bool("skip-statefulset-recovery", false, "Skip StatefulSet recovery for emergency deployments")
 	cmd.Flags().Bool("emergency-mode", false, "Emergency deployment mode: aggressive timeouts, skip non-critical checks")
 	cmd.Flags().Bool("skip-health-checks", false, "Skip all health checks for emergency deployment")
+	cmd.Flags().Bool("force-unlock", false, "Force cleanup of Helm lock conflicts before deployment")
+	cmd.Flags().Duration("lock-wait-timeout", 5*time.Minute, "Maximum time to wait for Helm lock release")
+	cmd.Flags().Int("max-lock-retries", 5, "Maximum number of lock cleanup retry attempts")
 
 	return cmd
 }
@@ -150,7 +153,15 @@ func (d *DeployCommand) preRun(cmd *cobra.Command, args []string) error {
 		options.AutoFixSecrets = true
 		options.AutoCreateNamespaces = true
 		options.Timeout = 5 * time.Minute
+		// Force unlock in emergency mode
+		options.ForceUnlock = true
+		d.logger.WarnWithContext("Emergency mode enabled: aggressive timeouts and forced lock cleanup", "timeout", options.Timeout)
 	}
+	
+	// Lock management options
+	options.ForceUnlock, _ = cmd.Flags().GetBool("force-unlock")
+	options.LockWaitTimeout, _ = cmd.Flags().GetDuration("lock-wait-timeout")
+	options.MaxLockRetries, _ = cmd.Flags().GetInt("max-lock-retries")
 
 	// Validate options
 	if err := options.Validate(); err != nil {

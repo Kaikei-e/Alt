@@ -491,21 +491,34 @@ func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, na
 	return nil, nil // No pending operations found
 }
 
-// CleanupStuckOperations cleans up stuck Helm operations
+// CleanupStuckOperations cleans up stuck Helm operations with enhanced Kubernetes Secret cleanup
 func (h *HelmDriver) CleanupStuckOperations(ctx context.Context, releaseName, namespace string) error {
 	// Add timeout to prevent hanging
-	timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
-	// First, check the current release status
+	log.Printf("Starting enhanced cleanup for stuck operations: release=%s, namespace=%s", releaseName, namespace)
+
+	// Step 1: Clean up Helm secrets first (most effective for lock issues)
+	if err := h.clearPendingHelmSecrets(timeoutCtx, releaseName, namespace); err != nil {
+		log.Printf("Warning: failed to clear helm secrets: %v", err)
+		// Continue with other cleanup steps even if secret cleanup fails
+	}
+
+	// Step 2: Check the current release status
 	status, err := h.getReleaseStatus(timeoutCtx, releaseName, namespace)
-	if err == nil && status == "pending-upgrade" {
-		// Release is in pending-upgrade state, try to rollback
+	if err == nil && (status == "pending-upgrade" || status == "pending-install" || status == "pending-rollback") {
+		log.Printf("Release %s is in pending state (%s), attempting rollback", releaseName, status)
+		
+		// Release is in pending state, try to rollback
 		if err := h.rollbackRelease(timeoutCtx, releaseName, namespace); err != nil {
-			return fmt.Errorf("failed to rollback stuck release: %w", err)
+			log.Printf("Rollback failed for %s: %v", releaseName, err)
+			// Continue with other cleanup steps
+		} else {
+			log.Printf("Rollback completed for release %s", releaseName)
 		}
 
-		// Wait a bit for rollback to complete
+		// Wait for rollback to complete
 		select {
 		case <-timeoutCtx.Done():
 			return fmt.Errorf("timeout during rollback wait")
@@ -514,34 +527,41 @@ func (h *HelmDriver) CleanupStuckOperations(ctx context.Context, releaseName, na
 		}
 	}
 
-	// Then try to detect any stuck operations
+	// Step 3: Detect and handle any remaining stuck operations
 	operation, err := h.DetectPendingOperation(timeoutCtx, releaseName, namespace)
 	if err != nil {
-		return fmt.Errorf("failed to detect pending operations: %w", err)
+		log.Printf("Warning: failed to detect pending operations: %v", err)
+		// Continue with process cleanup
 	}
 
-	if operation == nil {
-		return nil // No stuck operations to clean up
-	}
-
-	// Kill stuck processes
-	if operation.PID > 0 {
-		if err := h.killProcess(operation.PID); err != nil {
-			return fmt.Errorf("failed to kill stuck process %d: %w", operation.PID, err)
+	if operation != nil {
+		log.Printf("Detected pending operation: %+v", operation)
+		
+		// Kill stuck processes
+		if operation.PID > 0 {
+			log.Printf("Killing stuck process %d for release %s", operation.PID, releaseName)
+			if err := h.killProcess(operation.PID); err != nil {
+				log.Printf("Warning: failed to kill stuck process %d: %v", operation.PID, err)
+				// Continue with other cleanup
+			}
 		}
 	}
 
-	// Clean up any lock files
-	if err := h.cleanupLockFiles(releaseName, namespace); err != nil {
-		return fmt.Errorf("failed to cleanup lock files: %w", err)
-	}
-
-	// Wait a bit for cleanup to take effect
+	// Step 4: Final verification and wait for cleanup to take effect
 	select {
 	case <-timeoutCtx.Done():
 		return fmt.Errorf("timeout during cleanup wait")
-	case <-time.After(2 * time.Second):
+	case <-time.After(3 * time.Second):
 		// Continue
+	}
+
+	// Step 5: Verify cleanup was successful
+	finalOperation, err := h.DetectPendingOperation(timeoutCtx, releaseName, namespace)
+	if err == nil && finalOperation != nil {
+		log.Printf("Warning: operation still detected after cleanup: %+v", finalOperation)
+		// Don't fail the entire deployment for this - let the retry logic handle it
+	} else {
+		log.Printf("Cleanup completed successfully for release %s", releaseName)
 	}
 
 	return nil

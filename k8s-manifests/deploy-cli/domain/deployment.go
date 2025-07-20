@@ -18,21 +18,27 @@ type DeploymentOptions struct {
 	Timeout                 time.Duration
 	DeploymentStrategy      DeploymentStrategy
 	StrategyName            string // Override strategy selection
-	AutoFixSecrets          bool   // Enable automatic secret error recovery (Phase 4.3)
-	AutoCreateNamespaces    bool   // Enable automatic namespace creation if not exists
-	AutoFixStorage          bool   // Enable automatic StorageClass configuration
-	SkipStatefulSetRecovery bool   // Skip StatefulSet recovery for emergency deployments
-	SkipHealthChecks        bool   // Skip all health checks for emergency deployment
+	AutoFixSecrets          bool          // Enable automatic secret error recovery (Phase 4.3)
+	AutoCreateNamespaces    bool          // Enable automatic namespace creation if not exists
+	AutoFixStorage          bool          // Enable automatic StorageClass configuration
+	SkipStatefulSetRecovery bool          // Skip StatefulSet recovery for emergency deployments
+	SkipHealthChecks        bool          // Skip all health checks for emergency deployment
+	ForceUnlock             bool          // Force cleanup of Helm lock conflicts before deployment
+	LockWaitTimeout         time.Duration // Maximum time to wait for Helm lock release
+	MaxLockRetries          int           // Maximum number of lock cleanup retry attempts
 }
 
 // NewDeploymentOptions creates a new deployment options with defaults
 func NewDeploymentOptions() *DeploymentOptions {
 	return &DeploymentOptions{
-		DryRun:      false,
-		DoRestart:   false,
-		ForceUpdate: false,
-		ChartsDir:   "../charts",
-		Timeout:     300 * time.Second,
+		DryRun:          false,
+		DoRestart:       false,
+		ForceUpdate:     false,
+		ChartsDir:       "../charts",
+		Timeout:         300 * time.Second,
+		ForceUnlock:     false,
+		LockWaitTimeout: 5 * time.Minute,
+		MaxLockRetries:  5,
 	}
 }
 

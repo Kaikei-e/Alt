@@ -16,10 +16,11 @@ const (
 	ErrorTypeResource      ErrorType = "resource"       // Resource conflicts, quota exceeded
 	
 	// Transient errors that can be retried
-	ErrorTypeNetwork      ErrorType = "network"      // Network connectivity issues
-	ErrorTypeTemporary    ErrorType = "temporary"    // Temporary service unavailability
-	ErrorTypeTimeout      ErrorType = "timeout"      // Operation timeouts
-	ErrorTypeUnknown      ErrorType = "unknown"      // Unclassified errors
+	ErrorTypeNetwork      ErrorType = "network"       // Network connectivity issues
+	ErrorTypeTemporary    ErrorType = "temporary"     // Temporary service unavailability
+	ErrorTypeTimeout      ErrorType = "timeout"       // Operation timeouts
+	ErrorTypeLockConflict ErrorType = "lock_conflict" // Helm lock conflicts, another operation in progress
+	ErrorTypeUnknown      ErrorType = "unknown"       // Unclassified errors
 )
 
 // ErrorClassification contains error analysis results
@@ -137,6 +138,17 @@ func (c *ErrorClassifier) ClassifyError(err error, operation string) ErrorClassi
 			Retriable: true,
 			Reason:    "Network connectivity issue",
 			Suggestion: "Check network connectivity to Kubernetes API",
+			Timestamp: time.Now(),
+		}
+	}
+	
+	// Lock conflict errors (retry with special handling)
+	if c.isLockConflictError(errorMsg) {
+		return ErrorClassification{
+			Type:      ErrorTypeLockConflict,
+			Retriable: true,
+			Reason:    "Helm lock conflict detected",
+			Suggestion: "Clean up stale Helm secrets and retry",
 			Timestamp: time.Now(),
 		}
 	}
@@ -309,6 +321,23 @@ func (c *ErrorClassifier) isTemporaryError(errorMsg string) bool {
 	}
 	
 	return c.containsAny(errorMsg, temporaryKeywords)
+}
+
+// isLockConflictError checks for Helm lock conflict errors
+func (c *ErrorClassifier) isLockConflictError(errorMsg string) bool {
+	lockKeywords := []string{
+		"another operation in progress",
+		"another operation (install/upgrade/rollback) is in progress",
+		"operation in progress",
+		"pending-install",
+		"pending-upgrade", 
+		"pending-rollback",
+		"resource busy",
+		"helm lock",
+		"operation already in progress",
+	}
+	
+	return c.containsAny(errorMsg, lockKeywords)
 }
 
 // containsAny checks if the error message contains any of the given keywords
