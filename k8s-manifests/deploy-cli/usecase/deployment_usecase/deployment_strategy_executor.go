@@ -105,17 +105,18 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 
 	// Deploy each layer sequentially
 	for layerIndex, layer := range layers {
-		e.logger.InfoWithContext("deploying layer", map[string]interface{}{
+		e.logger.InfoWithContext("🚀 STARTING layer deployment", map[string]interface{}{
 			"layer":                 layer.Name,
 			"layer_index":           layerIndex + 1,
 			"total_layers":          len(layers),
 			"chart_count":           len(layer.Charts),
 			"requires_health_check": layer.RequiresHealthCheck,
+			"deployment_strategy":   "layer_aware_sequential",
 		})
 
 		// Create layer-specific timeout context
 		layerCtx, layerCancel := context.WithTimeout(ctx, layer.LayerCompletionTimeout)
-		defer layerCancel()
+		// Don't defer cancel here as it will be called at end of loop iteration
 
 		// Check for context cancellation
 		select {
@@ -197,7 +198,20 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 					"about_to_call": "deploySingleChart",
 				})
 				
+				e.logger.InfoWithContext("📞 CALLING deploySingleChart", map[string]interface{}{
+					"chart": chart.Name,
+					"layer": layer.Name,
+					"function": "deploySingleChart",
+				})
+				
 				result := e.deploySingleChart(layerCtx, chart, options)
+				
+				e.logger.InfoWithContext("📥 RETURNED from deploySingleChart", map[string]interface{}{
+					"chart": chart.Name,
+					"status": result.Status,
+					"duration": result.Duration.String(),
+				})
+				
 				progress.AddResult(result)
 
 				e.logger.InfoWithContext("✨ Single chart deployment completed", map[string]interface{}{
@@ -251,7 +265,7 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 			})
 			
 			healthCheckCtx, healthCheckCancel := context.WithTimeout(layerCtx, layer.HealthCheckTimeout)
-			defer healthCheckCancel()
+			// Health check context will be cancelled explicitly after use
 
 			if err := e.performLayerHealthCheck(healthCheckCtx, layer, options); err != nil {
 				e.logger.ErrorWithContext("❌ Layer health check FAILED", map[string]interface{}{
@@ -272,6 +286,9 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 					"layer": layer.Name,
 				})
 			}
+			
+			// Explicitly cancel health check context
+			healthCheckCancel()
 		} else if options.SkipHealthChecks {
 			e.logger.InfoWithContext("⏭️ SKIPPING health check (--skip-health-checks flag)", map[string]interface{}{
 				"layer": layer.Name,
@@ -287,17 +304,42 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 			"about_to_complete": true,
 		})
 
-		e.logger.InfoWithContext("layer deployment completed", map[string]interface{}{
+		e.logger.InfoWithContext("✅ LAYER DEPLOYMENT COMPLETED - proceeding to next layer", map[string]interface{}{
 			"layer":       layer.Name,
 			"layer_index": layerIndex + 1,
 			"duration":    layerDuration,
 			"success":     layerErr == nil,
+			"next_layer_index": layerIndex + 2,
+			"total_layers": len(layers),
 		})
 
 		// If layer failed and not in dry-run mode, stop deployment
 		if layerErr != nil && !options.DryRun {
 			return progress, fmt.Errorf("layer deployment failed: %s - %w", layer.Name, layerErr)
 		}
+		
+		// Add explicit logging before next iteration
+		if layerIndex+1 < len(layers) {
+			nextLayer := layers[layerIndex+1]
+			e.logger.InfoWithContext("🔄 PREPARING next layer", map[string]interface{}{
+				"current_layer":    layer.Name,
+				"next_layer":       nextLayer.Name,
+				"next_layer_index": layerIndex + 2,
+				"charts_in_next":   len(nextLayer.Charts),
+			})
+		} else {
+			e.logger.InfoWithContext("🎯 FINAL layer completed - deployment finishing", map[string]interface{}{
+				"final_layer": layer.Name,
+				"total_layers": len(layers),
+			})
+		}
+		
+		// Explicitly cancel the layer context at the end of each iteration
+		layerCancel()
+		e.logger.DebugWithContext("layer context cancelled", map[string]interface{}{
+			"layer": layer.Name,
+			"layer_index": layerIndex + 1,
+		})
 	}
 
 	e.logger.InfoWithContext("layer-aware deployment completed", map[string]interface{}{

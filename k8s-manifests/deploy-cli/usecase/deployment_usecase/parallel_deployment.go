@@ -88,10 +88,14 @@ func (p *ChartWorkerPool) Start() {
 
 // Stop gracefully stops the worker pool
 func (p *ChartWorkerPool) Stop() {
-	close(p.jobs)
-	p.wg.Wait()
-	close(p.results)
+	// First cancel the context to signal workers to stop
 	p.cancel()
+	// Close jobs channel to signal no more work
+	close(p.jobs)
+	// Wait for all workers to finish
+	p.wg.Wait()
+	// Close results channel after all workers are done
+	close(p.results)
 }
 
 // SubmitJob submits a chart deployment job
@@ -171,23 +175,49 @@ func (d *ParallelChartDeployer) deployChartBatch(ctx context.Context, groupName 
 	// Create worker pool
 	pool := NewChartWorkerPool(d.config.MaxConcurrency, deploySingleChart, d.logger)
 	pool.Start()
-	defer pool.Stop()
+	defer func() {
+		d.logger.DebugWithContext("stopping worker pool", map[string]interface{}{
+			"group": groupName,
+		})
+		pool.Stop()
+	}()
 
 	// Submit all jobs
 	results := make([]domain.DeploymentResult, len(charts))
 	resultChans := make([]chan domain.DeploymentResult, len(charts))
 
-	for i, chart := range charts {
+	// Create all result channels first
+	for i := range charts {
 		resultChans[i] = make(chan domain.DeploymentResult, 1)
+	}
+
+	// Submit jobs with proper error handling
+	for i, chart := range charts {
 		job := ChartDeployJob{
 			Chart:   chart,
 			Options: options,
 			Result:  resultChans[i],
 		}
-		pool.SubmitJob(job)
+		
+		// Check context before submitting job
+		select {
+		case <-ctx.Done():
+			// Context cancelled, return early with partial results
+			for j := i; j < len(charts); j++ {
+				results[j] = domain.DeploymentResult{
+					ChartName: charts[j].Name,
+					Status:    domain.DeploymentStatusFailed,
+					Error:     ctx.Err(),
+					Duration:  0,
+				}
+			}
+			return results, ctx.Err()
+		default:
+			pool.SubmitJob(job)
+		}
 	}
 
-	// Collect results
+	// Collect results with timeout protection
 	for i := range charts {
 		select {
 		case result := <-resultChans[i]:
@@ -199,6 +229,15 @@ func (d *ParallelChartDeployer) deployChartBatch(ctx context.Context, groupName 
 				"duration": result.Duration,
 			})
 		case <-ctx.Done():
+			// Context cancelled, fill remaining results
+			for j := i; j < len(charts); j++ {
+				results[j] = domain.DeploymentResult{
+					ChartName: charts[j].Name,
+					Status:    domain.DeploymentStatusFailed,
+					Error:     ctx.Err(),
+					Duration:  0,
+				}
+			}
 			return results, ctx.Err()
 		}
 	}
