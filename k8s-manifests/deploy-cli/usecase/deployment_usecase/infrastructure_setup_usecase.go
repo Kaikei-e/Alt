@@ -399,6 +399,7 @@ func (u *InfrastructureSetupUsecase) getRequiredNamespaces(options *domain.Deplo
 	namespaces["alt-auth"] = true
 	namespaces["alt-ingress"] = true
 	namespaces["alt-search"] = true
+	namespaces["alt-production"] = true
 
 	// Add any additional namespaces based on charts
 	charts := u.getAllCharts(options)

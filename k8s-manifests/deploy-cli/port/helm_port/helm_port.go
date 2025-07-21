@@ -37,6 +37,9 @@ type HelmPort interface {
 	// CleanupStuckOperations cleans up stuck Helm operations
 	CleanupStuckOperations(ctx context.Context, releaseName, namespace string) error
 
+	// CleanupStuckOperationsWithThreshold cleans up stuck Helm operations with age threshold
+	CleanupStuckOperationsWithThreshold(ctx context.Context, releaseName, namespace string, minAge time.Duration) error
+
 	// RetryWithBackoff retries an operation with exponential backoff
 	RetryWithBackoff(ctx context.Context, operation func() error, maxRetries int, baseDelay time.Duration) error
 }

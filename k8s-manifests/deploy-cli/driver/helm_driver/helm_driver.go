@@ -69,7 +69,7 @@ func (h *HelmDriver) Lint(ctx context.Context, chartPath string, options helm_po
 
 	cmd := exec.CommandContext(ctx, "helm", args...)
 	output, err := cmd.CombinedOutput()
-	
+
 	// Parse the output to create structured result
 	result := &helm_port.HelmLintResult{
 		Output:   string(output),
@@ -90,7 +90,7 @@ func (h *HelmDriver) Lint(ctx context.Context, chartPath string, options helm_po
 			})
 		} else if strings.Contains(line, "[ERROR]") {
 			result.Errors = append(result.Errors, helm_port.HelmLintMessage{
-				Severity: "ERROR", 
+				Severity: "ERROR",
 				Message:  strings.TrimPrefix(line, "[ERROR] "),
 				Path:     chartPath,
 			})
@@ -428,13 +428,20 @@ func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, na
 			} else if strings.Contains(status, "rollback") {
 				operationType = "rollback"
 			}
-			
+
+			// Get actual start time from Helm secret timestamp
+			actualStartTime := h.getHelmSecretStartTime(timeoutCtx, releaseName, namespace)
+			if actualStartTime.IsZero() {
+				// Fallback to conservative estimate only if we can't get actual time
+				actualStartTime = time.Now().Add(-10 * time.Minute)
+			}
+
 			return &helm_port.HelmOperation{
 				Type:        operationType,
 				ReleaseName: releaseName,
 				Namespace:   namespace,
 				Status:      "pending",
-				StartTime:   time.Now().Add(-10 * time.Minute), // Conservative estimate
+				StartTime:   actualStartTime,
 				PID:         0, // Unknown PID for status-based detection
 			}, nil
 		}
@@ -459,7 +466,7 @@ func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, na
 				}, nil
 			}
 		}
-		
+
 		// Process is running but not stuck
 		return &helm_port.HelmOperation{
 			Type:        "upgrade",
@@ -477,12 +484,19 @@ func (h *HelmDriver) DetectPendingOperation(ctx context.Context, releaseName, na
 		return nil, fmt.Errorf("timeout while checking for helm operations")
 	default:
 		if h.hasActiveLock(timeoutCtx, releaseName, namespace) {
+			// Get actual start time from Helm secret timestamp
+			actualStartTime := h.getHelmSecretStartTime(timeoutCtx, releaseName, namespace)
+			if actualStartTime.IsZero() {
+				// Fallback to conservative estimate only if we can't get actual time
+				actualStartTime = time.Now().Add(-15 * time.Minute)
+			}
+
 			return &helm_port.HelmOperation{
 				Type:        "unknown",
 				ReleaseName: releaseName,
 				Namespace:   namespace,
 				Status:      "locked",
-				StartTime:   time.Now().Add(-15 * time.Minute), // Conservative estimate
+				StartTime:   actualStartTime,
 				PID:         0,
 			}, nil
 		}
@@ -509,7 +523,7 @@ func (h *HelmDriver) CleanupStuckOperations(ctx context.Context, releaseName, na
 	status, err := h.getReleaseStatus(timeoutCtx, releaseName, namespace)
 	if err == nil && (status == "pending-upgrade" || status == "pending-install" || status == "pending-rollback") {
 		log.Printf("Release %s is in pending state (%s), attempting rollback", releaseName, status)
-		
+
 		// Release is in pending state, try to rollback
 		if err := h.rollbackRelease(timeoutCtx, releaseName, namespace); err != nil {
 			log.Printf("Rollback failed for %s: %v", releaseName, err)
@@ -536,7 +550,7 @@ func (h *HelmDriver) CleanupStuckOperations(ctx context.Context, releaseName, na
 
 	if operation != nil {
 		log.Printf("Detected pending operation: %+v", operation)
-		
+
 		// Kill stuck processes
 		if operation.PID > 0 {
 			log.Printf("Killing stuck process %d for release %s", operation.PID, releaseName)
@@ -747,19 +761,19 @@ func (h *HelmDriver) clearPendingOperations(releaseName, namespace string) error
 	// Step 3: Wait and verify cleanup
 	for attempt := 0; attempt < 3; attempt++ {
 		time.Sleep(time.Duration(2+attempt*2) * time.Second)
-		
+
 		// Verify no pending operations remain
 		operation, err := h.DetectPendingOperation(ctx, releaseName, namespace)
 		if err != nil {
 			log.Printf("Warning: failed to verify cleanup (attempt %d): %v", attempt+1, err)
 			continue
 		}
-		
+
 		if operation == nil {
 			log.Printf("Lock clearance successful for release %s", releaseName)
 			return nil
 		}
-		
+
 		log.Printf("Pending operation still detected (attempt %d): %+v", attempt+1, operation)
 	}
 
@@ -769,11 +783,11 @@ func (h *HelmDriver) clearPendingOperations(releaseName, namespace string) error
 // clearPendingHelmSecrets removes stuck Helm release secrets
 func (h *HelmDriver) clearPendingHelmSecrets(ctx context.Context, releaseName, namespace string) error {
 	// Find helm secrets for this release
-	cmd := exec.CommandContext(ctx, "kubectl", "get", "secret", 
-		"-n", namespace, 
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "secret",
+		"-n", namespace,
 		"-l", "owner=helm,name="+releaseName,
 		"-o", "jsonpath={.items[*].metadata.name}")
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to find helm secrets: %w, output: %s", err, string(output))
@@ -816,16 +830,16 @@ func (h *HelmDriver) terminateStuckHelmProcesses(ctx context.Context, releaseNam
 
 	for _, pid := range pids {
 		log.Printf("Terminating helm process %d for release %s", pid, releaseName)
-		
+
 		// First try SIGTERM
 		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
 			log.Printf("Failed to send SIGTERM to process %d: %v", pid, err)
 		} else {
 			log.Printf("Sent SIGTERM to process %d", pid)
-			
+
 			// Wait 5 seconds for graceful termination
 			time.Sleep(5 * time.Second)
-			
+
 			// Check if process still exists
 			if err := syscall.Kill(pid, 0); err == nil {
 				// Process still exists, force kill
@@ -921,36 +935,36 @@ func (h *HelmDriver) hasActiveLock(ctx context.Context, releaseName, namespace s
 		args = append(args, "--namespace", namespace)
 	}
 	args = append(args, "--output", "json")
-	
+
 	cmd := exec.CommandContext(ctx, "helm", args...)
 	output, err := cmd.Output()
 	if err != nil {
 		// If we can't check, assume no lock to avoid false positives
 		return false
 	}
-	
+
 	var releases []struct {
 		Name      string `json:"name"`
 		Namespace string `json:"namespace"`
 		Status    string `json:"status"`
 	}
-	
+
 	if err := json.Unmarshal(output, &releases); err != nil {
 		return false
 	}
-	
+
 	for _, release := range releases {
 		if release.Name == releaseName {
 			// Check if status indicates a lock
 			status := strings.ToLower(release.Status)
-			if strings.Contains(status, "pending") || 
-			   strings.Contains(status, "unknown") ||
-			   strings.Contains(status, "superseded") {
+			if strings.Contains(status, "pending") ||
+				strings.Contains(status, "unknown") ||
+				strings.Contains(status, "superseded") {
 				return true
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -958,9 +972,9 @@ func (h *HelmDriver) hasActiveLock(ctx context.Context, releaseName, namespace s
 func (h *HelmDriver) enhancedCleanupStuckOperations(ctx context.Context, releaseName, namespace string) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	
+
 	log.Printf("Starting enhanced cleanup for release %s in namespace %s", releaseName, namespace)
-	
+
 	// Strategy 1: Check and handle pending release status
 	if status, err := h.getReleaseStatus(timeoutCtx, releaseName, namespace); err == nil {
 		if strings.Contains(status, "pending") {
@@ -974,7 +988,7 @@ func (h *HelmDriver) enhancedCleanupStuckOperations(ctx context.Context, release
 			}
 		}
 	}
-	
+
 	// Strategy 2: Kill stuck processes
 	if pids, err := h.findHelmProcesses(releaseName, namespace); err == nil && len(pids) > 0 {
 		for _, pid := range pids {
@@ -988,13 +1002,13 @@ func (h *HelmDriver) enhancedCleanupStuckOperations(ctx context.Context, release
 		// Wait for processes to terminate
 		time.Sleep(3 * time.Second)
 	}
-	
+
 	// Strategy 3: Final verification
 	if operation, err := h.DetectPendingOperation(timeoutCtx, releaseName, namespace); err == nil && operation != nil {
 		log.Printf("Warning: operation still detected after cleanup: %+v", operation)
 		return fmt.Errorf("cleanup incomplete: operation still detected")
 	}
-	
+
 	log.Printf("Enhanced cleanup completed for release %s", releaseName)
 	return nil
 }
@@ -1004,7 +1018,7 @@ func (h *HelmDriver) getProcessStartTime(pid int) time.Time {
 	if pid <= 0 {
 		return time.Time{}
 	}
-	
+
 	// Try to get process start time from /proc/PID/stat on Linux
 	statFile := fmt.Sprintf("/proc/%d/stat", pid)
 	if data, err := os.ReadFile(statFile); err == nil {
@@ -1016,13 +1030,13 @@ func (h *HelmDriver) getProcessStartTime(pid int) time.Time {
 				// This is a simplification - actual conversion requires system boot time
 				clockTicksPerSecond := int64(100) // Common value, but system-dependent
 				secondsSinceBoot := startTicks / clockTicksPerSecond
-				
+
 				// Approximate start time (not perfectly accurate but good enough for our use)
 				return time.Now().Add(-time.Duration(secondsSinceBoot) * time.Second)
 			}
 		}
 	}
-	
+
 	// Fallback: use ps command
 	cmd := exec.Command("ps", "-o", "lstart=", "-p", fmt.Sprintf("%d", pid))
 	if output, err := cmd.Output(); err == nil {
@@ -1031,7 +1045,70 @@ func (h *HelmDriver) getProcessStartTime(pid int) time.Time {
 			return parsedTime
 		}
 	}
-	
+
 	// Could not determine start time
 	return time.Time{}
+}
+
+// getHelmSecretStartTime retrieves the actual start time from Helm secret creation timestamp
+func (h *HelmDriver) getHelmSecretStartTime(ctx context.Context, releaseName, namespace string) time.Time {
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "secret",
+		"-n", namespace,
+		"-l", fmt.Sprintf("owner=helm,name=%s", releaseName),
+		"-o", "jsonpath={.items[0].metadata.creationTimestamp}")
+
+	output, err := cmd.Output()
+	if err != nil {
+		return time.Time{}
+	}
+
+	timeStr := strings.TrimSpace(string(output))
+	if timeStr == "" {
+		return time.Time{}
+	}
+
+	// Parse Kubernetes timestamp format
+	parsedTime, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		return time.Time{}
+	}
+
+	return parsedTime
+}
+
+// shouldSkipCleanup determines if cleanup should be skipped based on operation age
+func (h *HelmDriver) shouldSkipCleanup(operation *helm_port.HelmOperation, minAge time.Duration) bool {
+	if operation == nil || operation.StartTime.IsZero() {
+		return false
+	}
+
+	age := time.Since(operation.StartTime)
+	return age < minAge
+}
+
+// CleanupStuckOperationsWithThreshold enhanced cleanup with age threshold checking
+func (h *HelmDriver) CleanupStuckOperationsWithThreshold(ctx context.Context, releaseName, namespace string, minAge time.Duration) error {
+	// First, detect if there's actually a pending operation
+	operation, err := h.DetectPendingOperation(ctx, releaseName, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to detect pending operations: %w", err)
+	}
+
+	// No pending operation found
+	if operation == nil {
+		return nil
+	}
+
+	// Check if operation is too young to cleanup
+	if h.shouldSkipCleanup(operation, minAge) {
+		log.Printf("Skipping cleanup for recent operation: release=%s, age=%v, min_age=%v",
+			releaseName, time.Since(operation.StartTime), minAge)
+		return nil
+	}
+
+	log.Printf("Operation is old enough for cleanup: release=%s, age=%v, proceeding with cleanup",
+		releaseName, time.Since(operation.StartTime))
+
+	// Proceed with original cleanup logic
+	return h.CleanupStuckOperations(ctx, releaseName, namespace)
 }

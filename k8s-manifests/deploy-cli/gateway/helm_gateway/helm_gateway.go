@@ -291,7 +291,7 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 	helmOptions := helm_port.HelmUpgradeOptions{
 		ValuesFile:      g.getValuesFile(chart, options.Environment),
 		Namespace:       namespace,
-		CreateNamespace: true,
+		CreateNamespace: options.AutoCreateNamespaces,
 		Wait:            shouldWait,     // ✅ Enable proper waiting for atomic operations
 		WaitForJobs:     shouldWaitForJobs, // ✅ Chart-specific job waiting strategy
 		Timeout:         chartTimeout,
@@ -741,6 +741,77 @@ func (g *HelmGateway) checkAndHandleConflicts(ctx context.Context, releaseName, 
 	return nil
 }
 
+// checkAndHandleConflictsWithOptions enhanced conflict checking with deployment options
+func (g *HelmGateway) checkAndHandleConflictsWithOptions(ctx context.Context, releaseName, namespace string, options *domain.DeploymentOptions) error {
+	g.logger.DebugWithContext("checking for helm operation conflicts with options", map[string]interface{}{
+		"release":           releaseName,
+		"namespace":         namespace,
+		"skip_cleanup":      options.SkipCleanup,
+		"cleanup_threshold": options.CleanupThreshold,
+	})
+
+	// Skip cleanup if disabled
+	if options.SkipCleanup {
+		g.logger.InfoWithContext("skipping cleanup due to skip-cleanup flag", map[string]interface{}{
+			"release":   releaseName,
+			"namespace": namespace,
+		})
+		return nil
+	}
+
+	// Check if there are any pending operations
+	operation, err := g.helmPort.DetectPendingOperation(ctx, releaseName, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to detect pending operations: %w", err)
+	}
+
+	if operation != nil {
+		g.logger.WarnWithContext("detected pending helm operation", map[string]interface{}{
+			"release":    releaseName,
+			"namespace":  namespace,
+			"operation":  operation.Type,
+			"status":     operation.Status,
+			"start_time": operation.StartTime,
+			"pid":        operation.PID,
+			"age":        time.Since(operation.StartTime),
+		})
+
+		// Use threshold-based cleanup if available
+		if options.ConservativeCleanup {
+			g.logger.InfoWithContext("using conservative cleanup with threshold", map[string]interface{}{
+				"release":   releaseName,
+				"namespace": namespace,
+				"threshold": options.CleanupThreshold,
+			})
+
+			if err := g.helmPort.CleanupStuckOperationsWithThreshold(ctx, releaseName, namespace, options.CleanupThreshold); err != nil {
+				return fmt.Errorf("failed to cleanup stuck operations with threshold: %w", err)
+			}
+		} else {
+			// Use traditional cleanup for stuck operations only
+			if operation.Status == "stuck" {
+				g.logger.InfoWithContext("cleaning up stuck helm operation", map[string]interface{}{
+					"release":   releaseName,
+					"namespace": namespace,
+					"pid":       operation.PID,
+				})
+
+				if err := g.helmPort.CleanupStuckOperations(ctx, releaseName, namespace); err != nil {
+					return fmt.Errorf("failed to cleanup stuck operations: %w", err)
+				}
+			} else {
+				g.logger.InfoWithContext("operation not stuck, skipping cleanup", map[string]interface{}{
+					"release":   releaseName,
+					"namespace": namespace,
+					"status":    operation.Status,
+				})
+			}
+		}
+	}
+
+	return nil
+}
+
 // DetectPendingOperation checks for pending Helm operations for a chart
 func (g *HelmGateway) DetectPendingOperation(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) (*helm_port.HelmOperation, error) {
 	namespace := options.GetNamespace(chart.Name)
@@ -782,6 +853,11 @@ func (g *HelmGateway) CleanupStuckOperations(ctx context.Context, chart domain.C
 		"namespace": namespace,
 	})
 
+	// Use enhanced cleanup with options if available
+	if options.ConservativeCleanup || options.SkipCleanup {
+		return g.CleanupStuckOperationsWithOptions(ctx, chart, options)
+	}
+
 	err := g.helmPort.CleanupStuckOperations(ctx, chart.Name, namespace)
 	if err != nil {
 		g.logger.ErrorWithContext("failed to cleanup stuck operations", map[string]interface{}{
@@ -793,6 +869,60 @@ func (g *HelmGateway) CleanupStuckOperations(ctx context.Context, chart domain.C
 	}
 
 	g.logger.InfoWithContext("stuck operations cleaned up", map[string]interface{}{
+		"chart":     chart.Name,
+		"namespace": namespace,
+	})
+
+	return nil
+}
+
+// CleanupStuckOperationsWithOptions cleans up stuck Helm operations with enhanced options support
+func (g *HelmGateway) CleanupStuckOperationsWithOptions(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	namespace := options.GetNamespace(chart.Name)
+
+	g.logger.InfoWithContext("cleaning up stuck operations with options", map[string]interface{}{
+		"chart":             chart.Name,
+		"namespace":         namespace,
+		"skip_cleanup":      options.SkipCleanup,
+		"cleanup_threshold": options.CleanupThreshold,
+		"conservative":      options.ConservativeCleanup,
+	})
+
+	// Skip cleanup if disabled
+	if options.SkipCleanup {
+		g.logger.InfoWithContext("skipping cleanup due to skip-cleanup flag", map[string]interface{}{
+			"chart":     chart.Name,
+			"namespace": namespace,
+		})
+		return nil
+	}
+
+	// Use threshold-based cleanup
+	if options.ConservativeCleanup {
+		err := g.helmPort.CleanupStuckOperationsWithThreshold(ctx, chart.Name, namespace, options.CleanupThreshold)
+		if err != nil {
+			g.logger.ErrorWithContext("failed to cleanup stuck operations with threshold", map[string]interface{}{
+				"chart":     chart.Name,
+				"namespace": namespace,
+				"threshold": options.CleanupThreshold,
+				"error":     err.Error(),
+			})
+			return fmt.Errorf("failed to cleanup stuck operations with threshold for %s: %w", chart.Name, err)
+		}
+	} else {
+		// Fallback to regular cleanup
+		err := g.helmPort.CleanupStuckOperations(ctx, chart.Name, namespace)
+		if err != nil {
+			g.logger.ErrorWithContext("failed to cleanup stuck operations", map[string]interface{}{
+				"chart":     chart.Name,
+				"namespace": namespace,
+				"error":     err.Error(),
+			})
+			return fmt.Errorf("failed to cleanup stuck operations for %s: %w", chart.Name, err)
+		}
+	}
+
+	g.logger.InfoWithContext("stuck operations cleaned up with options", map[string]interface{}{
 		"chart":     chart.Name,
 		"namespace": namespace,
 	})

@@ -26,19 +26,25 @@ type DeploymentOptions struct {
 	ForceUnlock             bool          // Force cleanup of Helm lock conflicts before deployment
 	LockWaitTimeout         time.Duration // Maximum time to wait for Helm lock release
 	MaxLockRetries          int           // Maximum number of lock cleanup retry attempts
+	SkipCleanup             bool          // Skip automatic Helm operation cleanup
+	CleanupThreshold        time.Duration // Minimum age for cleanup operations (default: 5 minutes)
+	ConservativeCleanup     bool          // Use conservative cleanup approach
 }
 
 // NewDeploymentOptions creates a new deployment options with defaults
 func NewDeploymentOptions() *DeploymentOptions {
 	return &DeploymentOptions{
-		DryRun:          false,
-		DoRestart:       false,
-		ForceUpdate:     false,
-		ChartsDir:       "../charts",
-		Timeout:         300 * time.Second,
-		ForceUnlock:     false,
-		LockWaitTimeout: 5 * time.Minute,
-		MaxLockRetries:  5,
+		DryRun:              false,
+		DoRestart:           false,
+		ForceUpdate:         false,
+		ChartsDir:           "../charts",
+		Timeout:             300 * time.Second,
+		ForceUnlock:         false,
+		LockWaitTimeout:     5 * time.Minute,
+		MaxLockRetries:      5,
+		SkipCleanup:         false,
+		CleanupThreshold:    15 * time.Minute, // Extended threshold to prevent self-interference
+		ConservativeCleanup: true,              // Conservative approach by default
 	}
 }
 

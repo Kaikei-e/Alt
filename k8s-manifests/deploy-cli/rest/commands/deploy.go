@@ -43,7 +43,7 @@ func NewDeployCommand(logger *logger.Logger) *cobra.Command {
 
 This command performs comprehensive deployment with automatic validation:
 • Pre-deployment secret validation and conflict resolution
-• Storage infrastructure setup and verification  
+• Storage infrastructure setup and verification
 • Namespace creation and configuration
 • Helm chart deployment in proper dependency order
 • Post-deployment health checking and validation
@@ -54,7 +54,7 @@ before deploying charts, preventing common deployment failures.
 
 Supported environments:
   - development
-  - staging  
+  - staging
   - production
 
 Examples:
@@ -67,7 +67,7 @@ Examples:
   # Preview deployment without applying changes
   deploy-cli deploy production --dry-run
 
-  # Deploy and restart all services  
+  # Deploy and restart all services
   deploy-cli deploy production --restart
 
   # Force update pods even with identical manifests
@@ -75,7 +75,7 @@ Examples:
 
   # Emergency deployment skipping StatefulSet recovery
   deploy-cli deploy production --skip-statefulset-recovery
-  
+
   # Full emergency mode with aggressive timeouts
   deploy-cli deploy production --emergency-mode`,
 		Args:    cobra.ExactArgs(1),
@@ -103,6 +103,9 @@ Examples:
 	cmd.Flags().Bool("force-unlock", false, "Force cleanup of Helm lock conflicts before deployment")
 	cmd.Flags().Duration("lock-wait-timeout", 5*time.Minute, "Maximum time to wait for Helm lock release")
 	cmd.Flags().Int("max-lock-retries", 5, "Maximum number of lock cleanup retry attempts")
+	cmd.Flags().Bool("skip-cleanup", false, "Skip automatic Helm operation cleanup")
+	cmd.Flags().Duration("cleanup-threshold", 15*time.Minute, "Minimum age for cleanup operations")
+	cmd.Flags().Bool("conservative-cleanup", true, "Use conservative cleanup approach")
 
 	return cmd
 }
@@ -145,7 +148,7 @@ func (d *DeployCommand) preRun(cmd *cobra.Command, args []string) error {
 		options.AutoCreateNamespaces = true
 		options.AutoFixStorage = true
 	}
-	
+
 	// Emergency mode processing in preRun
 	emergencyMode, _ := cmd.Flags().GetBool("emergency-mode")
 	if emergencyMode {
@@ -157,11 +160,16 @@ func (d *DeployCommand) preRun(cmd *cobra.Command, args []string) error {
 		options.ForceUnlock = true
 		d.logger.WarnWithContext("Emergency mode enabled: aggressive timeouts and forced lock cleanup", "timeout", options.Timeout)
 	}
-	
+
 	// Lock management options
 	options.ForceUnlock, _ = cmd.Flags().GetBool("force-unlock")
 	options.LockWaitTimeout, _ = cmd.Flags().GetDuration("lock-wait-timeout")
 	options.MaxLockRetries, _ = cmd.Flags().GetInt("max-lock-retries")
+
+	// Cleanup options
+	options.SkipCleanup, _ = cmd.Flags().GetBool("skip-cleanup")
+	options.CleanupThreshold, _ = cmd.Flags().GetDuration("cleanup-threshold")
+	options.ConservativeCleanup, _ = cmd.Flags().GetBool("conservative-cleanup")
 
 	// Validate options
 	if err := options.Validate(); err != nil {
@@ -207,7 +215,12 @@ func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 	}
 	options.SkipStatefulSetRecovery, _ = cmd.Flags().GetBool("skip-statefulset-recovery")
 	options.SkipHealthChecks, _ = cmd.Flags().GetBool("skip-health-checks")
-	
+
+	// Cleanup options
+	options.SkipCleanup, _ = cmd.Flags().GetBool("skip-cleanup")
+	options.CleanupThreshold, _ = cmd.Flags().GetDuration("cleanup-threshold")
+	options.ConservativeCleanup, _ = cmd.Flags().GetBool("conservative-cleanup")
+
 	// Emergency mode processing
 	emergencyMode, _ := cmd.Flags().GetBool("emergency-mode")
 	if emergencyMode {
@@ -225,7 +238,7 @@ func (d *DeployCommand) run(cmd *cobra.Command, args []string) error {
 			"emergency_timeout":         "5m",
 		})
 	}
-	
+
 	// Health check skip mode processing
 	if options.SkipHealthChecks {
 		colors.PrintWarning("⚠️ HEALTH CHECKS DISABLED - Deployment will proceed without waiting for service readiness")
