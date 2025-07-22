@@ -2,7 +2,9 @@ package domain
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 )
 
 // ChartType represents the type of chart
@@ -154,4 +156,79 @@ func (c *Chart) SupportsImageOverride() bool {
 		"alt-frontend":        true,
 	}
 	return applicationCharts[c.Name]
+}
+
+// LoadChartAnnotations loads annotations from Chart.yaml file for a given chart
+func (c *Chart) LoadChartAnnotations() error {
+	chartYamlPath := filepath.Join(c.Path, "Chart.yaml")
+	
+	content, err := os.ReadFile(chartYamlPath)
+	if err != nil {
+		// If Chart.yaml doesn't exist, it's not an error - just no annotations
+		return nil
+	}
+
+	annotations := make(map[string]string)
+	lines := strings.Split(string(content), "\n")
+	inAnnotationsSection := false
+
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		
+		// Check if we're entering the annotations section
+		if strings.HasPrefix(trimmedLine, "annotations:") {
+			inAnnotationsSection = true
+			continue
+		}
+		
+		// Exit annotations section if we hit a new top-level key (no indentation)
+		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.Contains(line, ":") && inAnnotationsSection {
+			inAnnotationsSection = false
+		}
+		
+		// Parse annotation entries (key: value format)
+		if inAnnotationsSection && strings.Contains(line, ":") {
+			// Remove leading whitespace and parse key-value
+			parts := strings.SplitN(strings.TrimSpace(line), ":", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				// Remove quotes if present
+				if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+					value = strings.Trim(value, "\"")
+				}
+				annotations[key] = value
+			}
+		}
+	}
+
+	// Update chart annotations
+	if len(annotations) > 0 {
+		c.Annotations = annotations
+	}
+
+	return nil
+}
+
+// LoadAnnotationsForAllCharts loads annotations for all charts in the configuration
+func (c *ChartConfig) LoadAnnotationsForAllCharts() error {
+	for i := range c.InfrastructureCharts {
+		if err := c.InfrastructureCharts[i].LoadChartAnnotations(); err != nil {
+			return fmt.Errorf("failed to load annotations for chart %s: %w", c.InfrastructureCharts[i].Name, err)
+		}
+	}
+	
+	for i := range c.ApplicationCharts {
+		if err := c.ApplicationCharts[i].LoadChartAnnotations(); err != nil {
+			return fmt.Errorf("failed to load annotations for chart %s: %w", c.ApplicationCharts[i].Name, err)
+		}
+	}
+	
+	for i := range c.OperationalCharts {
+		if err := c.OperationalCharts[i].LoadChartAnnotations(); err != nil {
+			return fmt.Errorf("failed to load annotations for chart %s: %w", c.OperationalCharts[i].Name, err)
+		}
+	}
+	
+	return nil
 }

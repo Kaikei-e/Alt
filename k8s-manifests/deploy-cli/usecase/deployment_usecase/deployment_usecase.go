@@ -240,6 +240,14 @@ func (u *DeploymentUsecase) deployCharts(ctx context.Context, options *domain.De
 
 	// Get chart configuration
 	chartConfig := domain.NewChartConfig(options.ChartsDir)
+	
+	// Load annotations from Chart.yaml files for health check behavior control
+	if err := chartConfig.LoadAnnotationsForAllCharts(); err != nil {
+		u.logger.WarnWithContext("failed to load chart annotations, using defaults", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+	
 	allCharts := chartConfig.AllCharts()
 
 	// Create deployment progress
