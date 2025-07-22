@@ -145,7 +145,7 @@ func (s *StagingStrategy) GetLayerConfigurations(chartsDir string) []LayerConfig
 		{
 			Name: "Configuration & Secrets",
 			Charts: []Chart{
-				{Name: "common-secrets", Type: InfrastructureChart, Path: chartsDir + "/common-secrets", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-auth"}},
+				{Name: "common-secrets", Type: InfrastructureChart, Path: chartsDir + "/common-secrets", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps"}},
 				{Name: "common-config", Type: InfrastructureChart, Path: chartsDir + "/common-config", WaitReady: false},
 				{Name: "common-ssl", Type: InfrastructureChart, Path: chartsDir + "/common-ssl", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-database", "alt-ingress", "alt-search", "alt-auth"}},
 			},
@@ -297,7 +297,7 @@ func (p *ProductionStrategy) GetLayerConfigurations(chartsDir string) []LayerCon
 		{
 			Name: "Configuration & Secrets",
 			Charts: []Chart{
-				{Name: "common-secrets", Type: InfrastructureChart, Path: chartsDir + "/common-secrets", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-auth"}},
+				{Name: "common-secrets", Type: InfrastructureChart, Path: chartsDir + "/common-secrets", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps"}},
 				{Name: "common-config", Type: InfrastructureChart, Path: chartsDir + "/common-config", WaitReady: false},
 				{Name: "common-ssl", Type: InfrastructureChart, Path: chartsDir + "/common-ssl", WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-database", "alt-ingress", "alt-search", "alt-auth"}},
 			},

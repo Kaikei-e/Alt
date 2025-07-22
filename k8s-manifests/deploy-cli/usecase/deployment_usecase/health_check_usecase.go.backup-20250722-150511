@@ -73,34 +73,6 @@ func (u *HealthCheckUsecase) performSingleNamespaceHealthCheck(ctx context.Conte
 		"namespace":  namespace,
 	})
 
-	// Check for Chart.yaml annotations to override health check behavior (HIGHEST PRIORITY)
-	if healthCheckType, exists := chart.Annotations["deploy-cli/health-check"]; exists {
-		u.logger.InfoWithContext("using annotation-based health check", map[string]interface{}{
-			"chart_name":        chart.Name,
-			"health_check_type": healthCheckType,
-		})
-		
-		switch healthCheckType {
-		case "none":
-			u.logger.InfoWithContext("skipping health check per annotation", map[string]interface{}{
-				"chart_name": chart.Name,
-			})
-			return nil
-		case "secret":
-			return u.verifySecretChart(ctx, chart.Name, namespace)
-		case "statefulset":
-			return u.performStatefulSetHealthCheck(ctx, chart.Name, namespace)
-		case "deployment":
-			return u.performDeploymentHealthCheck(ctx, chart.Name, namespace)
-		default:
-			u.logger.WarnWithContext("unknown health check annotation value, falling back to automatic detection", map[string]interface{}{
-				"chart_name":        chart.Name,
-				"health_check_type": healthCheckType,
-			})
-			// Continue to automatic detection below instead of using default
-		}
-	}
-
 	// Check if this is a StatefulSet chart
 	if u.isStatefulSetChart(chart.Name) {
 		return u.performStatefulSetHealthCheck(ctx, chart.Name, namespace)
@@ -409,10 +381,7 @@ func (u *HealthCheckUsecase) isStatefulSetChart(chartName string) bool {
 // isSecretOnlyChart checks if a chart is a secret-only chart
 func (u *HealthCheckUsecase) isSecretOnlyChart(chartName string) bool {
 	secretCharts := []string{
-		"common-secrets", // Creates K8s secrets
-		"common-ssl",     // Creates SSL certificates and secrets
-		// Note: "common-config" removed - it's a configuration chart (namespaces, network policies, storage classes)
-		// and should use the annotation-based health check strategy instead
+		"common-secrets", "common-config", "common-ssl",
 	}
 
 	for _, chart := range secretCharts {

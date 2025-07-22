@@ -654,6 +654,161 @@ func (h *HealthChecker) isStatefulSetService(serviceName string) bool {
 	return false
 }
 
+// WaitForSecretsReady waits for secrets to be created and available for secret-only charts
+func (h *HealthChecker) WaitForSecretsReady(ctx context.Context, chartName, namespace string) error {
+	h.logger.InfoWithContext("waiting for secrets to be ready", map[string]interface{}{
+		"chart":     chartName,
+		"namespace": namespace,
+	})
+
+	maxRetries := 12 // 2 minutes with 10 second intervals (shorter for secret validation)
+	for i := 0; i < maxRetries; i++ {
+		select {
+		case <-ctx.Done():
+			h.logger.ErrorWithContext("secrets readiness check cancelled", map[string]interface{}{
+				"chart":     chartName,
+				"namespace": namespace,
+				"attempt":   i + 1,
+				"error":     ctx.Err().Error(),
+			})
+			return ctx.Err()
+		default:
+		}
+
+		// Log current attempt
+		h.logger.InfoWithContext("checking secrets existence", map[string]interface{}{
+			"chart":       chartName,
+			"namespace":   namespace,
+			"attempt":     i + 1,
+			"max_retries": maxRetries,
+		})
+
+		// Check if secrets exist and are valid
+		if err := h.checkSecretsReady(namespace, chartName); err == nil {
+			h.logger.InfoWithContext("secrets are ready", map[string]interface{}{
+				"chart":     chartName,
+				"namespace": namespace,
+				"attempts":  i + 1,
+			})
+			return nil
+		} else {
+			h.logger.WarnWithContext("secrets not ready, retrying", map[string]interface{}{
+				"chart":       chartName,
+				"namespace":   namespace,
+				"attempt":     i + 1,
+				"max_retries": maxRetries,
+				"error":       err.Error(),
+				"retry_delay": "10s",
+			})
+		}
+
+		time.Sleep(10 * time.Second)
+	}
+
+	h.logger.ErrorWithContext("secrets not ready after maximum attempts", map[string]interface{}{
+		"chart":          chartName,
+		"namespace":      namespace,
+		"max_attempts":   maxRetries,
+		"total_duration": "2m",
+	})
+	return fmt.Errorf("secrets for chart %s in namespace %s not ready after %d attempts", chartName, namespace, maxRetries)
+}
+
+// checkSecretsReady checks if secrets managed by the chart exist and are valid
+func (h *HealthChecker) checkSecretsReady(namespace, chartName string) error {
+	h.logger.DebugWithContext("checking secrets for chart", map[string]interface{}{
+		"chart":     chartName,
+		"namespace": namespace,
+	})
+
+	// Get all secrets in the namespace managed by this chart
+	cmd := exec.Command("kubectl", "get", "secrets", "-n", namespace, "-l", fmt.Sprintf("app.kubernetes.io/name=%s", chartName), "-o", "name")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		h.logger.DebugWithContext("failed to get secrets", map[string]interface{}{
+			"chart":     chartName,
+			"namespace": namespace,
+			"error":     err.Error(),
+			"output":    string(output),
+		})
+		return fmt.Errorf("failed to get secrets: %w", err)
+	}
+
+	secretNames := strings.Fields(strings.TrimSpace(string(output)))
+	if len(secretNames) == 0 {
+		// If no secrets found with chart label, check for common secret patterns
+		return h.checkCommonSecrets(namespace, chartName)
+	}
+
+	// Verify that all found secrets are ready (have data)
+	for _, secretName := range secretNames {
+		// Remove "secret/" prefix if present
+		secretName = strings.TrimPrefix(secretName, "secret/")
+		
+		if err := h.checkSecretData(namespace, secretName); err != nil {
+			h.logger.DebugWithContext("secret not ready", map[string]interface{}{
+				"chart":      chartName,
+				"namespace":  namespace,
+				"secret":     secretName,
+				"error":      err.Error(),
+			})
+			return fmt.Errorf("secret %s not ready: %w", secretName, err)
+		}
+	}
+
+	h.logger.DebugWithContext("all secrets are ready", map[string]interface{}{
+		"chart":        chartName,
+		"namespace":    namespace,
+		"secret_count": len(secretNames),
+	})
+	return nil
+}
+
+// checkCommonSecrets checks for common secret patterns when no labeled secrets found
+func (h *HealthChecker) checkCommonSecrets(namespace, chartName string) error {
+	commonSecretPatterns := []string{
+		chartName + "-secrets",
+		chartName,
+		"database-secrets",
+		"api-secrets",
+		"service-secrets",
+	}
+
+	for _, secretPattern := range commonSecretPatterns {
+		cmd := exec.Command("kubectl", "get", "secret", secretPattern, "-n", namespace)
+		if err := cmd.Run(); err == nil {
+			// Found a secret with this pattern, verify it has data
+			if err := h.checkSecretData(namespace, secretPattern); err == nil {
+				h.logger.DebugWithContext("found valid secret with pattern", map[string]interface{}{
+					"chart":     chartName,
+					"namespace": namespace,
+					"secret":    secretPattern,
+				})
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("no valid secrets found for chart %s", chartName)
+}
+
+// checkSecretData verifies that a secret exists and contains data
+func (h *HealthChecker) checkSecretData(namespace, secretName string) error {
+	cmd := exec.Command("kubectl", "get", "secret", secretName, "-n", namespace, "-o", "jsonpath={.data}")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("secret %s not found or inaccessible: %w", secretName, err)
+	}
+
+	// Check if secret has any data
+	data := strings.TrimSpace(string(output))
+	if data == "" || data == "{}" {
+		return fmt.Errorf("secret %s exists but contains no data", secretName)
+	}
+
+	return nil
+}
+
 // isClickHouseSSLEnabled checks if SSL is enabled for ClickHouse by examining the configuration
 func (h *HealthChecker) isClickHouseSSLEnabled(namespace, podName string) (bool, error) {
 	// Check if SSL-related environment variables or configuration exist

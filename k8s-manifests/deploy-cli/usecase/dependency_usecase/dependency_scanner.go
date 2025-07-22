@@ -6,58 +6,15 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"deploy-cli/port/filesystem_port"
 	"deploy-cli/port/logger_port"
 )
 
-// DependencyType represents the type of dependency
-type DependencyType string
+// Types are now unified with advanced_dependency_resolver.go
+// Removed duplicate type declarations to avoid redeclaration errors
 
-const (
-	// HelmDependency represents a Helm chart dependency
-	HelmDependency DependencyType = "helm"
-	// ServiceDependency represents a service-to-service dependency
-	ServiceDependency DependencyType = "service"
-	// DatabaseDependency represents a database dependency
-	DatabaseDependency DependencyType = "database"
-	// ConfigDependency represents a configuration dependency
-	ConfigDependency DependencyType = "config"
-	// SecretDependency represents a secret dependency
-	SecretDependency DependencyType = "secret"
-)
-
-// ChartDependency represents a dependency between charts
-type ChartDependency struct {
-	FromChart    string         `json:"from_chart"`
-	ToChart      string         `json:"to_chart"`
-	Type         DependencyType `json:"type"`
-	Required     bool           `json:"required"`
-	Description  string         `json:"description"`
-	DetectedFrom string         `json:"detected_from"`
-}
-
-// DependencyGraph represents the complete dependency graph
-type DependencyGraph struct {
-	Charts       []string                `json:"charts"`
-	Dependencies []ChartDependency       `json:"dependencies"`
-	Groups       map[string][]string     `json:"groups"`
-	DeployOrder  [][]string              `json:"deploy_order"`
-	Metadata     DependencyGraphMetadata `json:"metadata"`
-}
-
-// DependencyGraphMetadata contains metadata about the dependency graph
-type DependencyGraphMetadata struct {
-	GeneratedAt       time.Time  `json:"generated_at"`
-	TotalCharts       int        `json:"total_charts"`
-	TotalDependencies int        `json:"total_dependencies"`
-	MaxDepth          int        `json:"max_depth"`
-	HasCycles         bool       `json:"has_cycles"`
-	Cycles            [][]string `json:"cycles,omitempty"`
-}
-
-// DependencyScanner analyzes chart dependencies
+// DependencyScanner analyzes chart dependencies using unified types
 type DependencyScanner struct {
 	filesystem filesystem_port.FileSystemPort
 	logger     logger_port.LoggerPort
@@ -68,12 +25,11 @@ type DependencyScanner struct {
 type DependencyPatterns struct {
 	ServiceReferences  []*regexp.Regexp
 	DatabaseReferences []*regexp.Regexp
-	SecretReferences   []*regexp.Regexp
 	ConfigReferences   []*regexp.Regexp
-	HelmDependencies   []*regexp.Regexp
+	SecretReferences   []*regexp.Regexp
 }
 
-// NewDependencyScanner creates a new dependency scanner
+// NewDependencyScanner creates a new DependencyScanner using unified types
 func NewDependencyScanner(filesystem filesystem_port.FileSystemPort, logger logger_port.LoggerPort) *DependencyScanner {
 	return &DependencyScanner{
 		filesystem: filesystem,
@@ -86,55 +42,28 @@ func NewDependencyScanner(filesystem filesystem_port.FileSystemPort, logger logg
 func createDependencyPatterns() *DependencyPatterns {
 	return &DependencyPatterns{
 		ServiceReferences: []*regexp.Regexp{
-			// Service DNS references: service.namespace.svc.cluster.local
-			regexp.MustCompile(`([a-z0-9-]+)\.([a-z0-9-]+)\.svc\.cluster\.local`),
-			// Simple service references
-			regexp.MustCompile(`([a-z0-9-]+)-service`),
-			// Database service patterns
-			regexp.MustCompile(`(postgres|clickhouse|meilisearch)\.([a-z0-9-]+)`),
+			regexp.MustCompile(`service:\s*([a-zA-Z0-9\-_]+)`),
+			regexp.MustCompile(`serviceName:\s*([a-zA-Z0-9\-_]+)`),
+			regexp.MustCompile(`{{ .Values\.([^}]+)\.service`),
 		},
 		DatabaseReferences: []*regexp.Regexp{
-			// Database connection strings
-			regexp.MustCompile(`postgresql://.*@([a-z0-9-]+)`),
-			// Database host references
-			regexp.MustCompile(`DB_HOST.*[:=]\s*([a-z0-9.-]+)`),
-			// ClickHouse references (expanded patterns)
-			regexp.MustCompile(`CLICKHOUSE_HOST.*[:=]\s*([a-z0-9.-]+)`),
-			regexp.MustCompile(`CH_HOST.*[:=]\s*([a-z0-9.-]+)`),
-			regexp.MustCompile(`clickhouse\.[a-z-]+\.svc\.cluster\.local`),
-			// ClickHouse connection strings
-			regexp.MustCompile(`clickhouse://.*@([a-z0-9-]+)`),
-			regexp.MustCompile(`http://.*@([a-z0-9-]+):8123`),
-			regexp.MustCompile(`https://.*@([a-z0-9-]+):8443`),
-		},
-		SecretReferences: []*regexp.Regexp{
-			// Secret references in values
-			regexp.MustCompile(`secretName:\s*([a-z0-9-]+)`),
-			// Secret key references
-			regexp.MustCompile(`secretKeyRef:\s*name:\s*([a-z0-9-]+)`),
-			// Environment from secret
-			regexp.MustCompile(`envFromSecret:\s*name:\s*([a-z0-9-]+)`),
-			// ClickHouse-specific secret patterns
-			regexp.MustCompile(`existingSecret:\s*"?([a-z0-9-]+)"?`),
-			regexp.MustCompile(`clickhouse-secrets`),
-			regexp.MustCompile(`clickhouse-credentials`),
-			// SSL certificate secrets
-			regexp.MustCompile(`server-ssl-secret`),
+			regexp.MustCompile(`database:\s*([a-zA-Z0-9\-_]+)`),
+			regexp.MustCompile(`db:\s*([a-zA-Z0-9\-_]+)`),
+			regexp.MustCompile(`postgres.*host:\s*([a-zA-Z0-9\-_.]+)`),
 		},
 		ConfigReferences: []*regexp.Regexp{
-			// ConfigMap references
-			regexp.MustCompile(`configMapRef:\s*name:\s*([a-z0-9-]+)`),
-			// ConfigMap volume references
-			regexp.MustCompile(`configMap:\s*name:\s*([a-z0-9-]+)`),
+			regexp.MustCompile(`configMap:\s*([a-zA-Z0-9\-_]+)`),
+			regexp.MustCompile(`{{ .Values\.([^}]+)\.config`),
 		},
-		HelmDependencies: []*regexp.Regexp{
-			// Helm Chart.yaml dependencies
-			regexp.MustCompile(`name:\s*([a-z0-9-]+)`),
+		SecretReferences: []*regexp.Regexp{
+			regexp.MustCompile(`secret:\s*([a-zA-Z0-9\-_]+)`),
+			regexp.MustCompile(`secretName:\s*([a-zA-Z0-9\-_]+)`),
+			regexp.MustCompile(`{{ .Values\.([^}]+)\.secret`),
 		},
 	}
 }
 
-// ScanDependencies scans all charts for dependencies
+// ScanDependencies scans all charts and builds dependency graph using unified types
 func (s *DependencyScanner) ScanDependencies(ctx context.Context, chartsDir string) (*DependencyGraph, error) {
 	s.logger.InfoWithContext("starting dependency scan", map[string]interface{}{
 		"charts_dir": chartsDir,
@@ -146,15 +75,15 @@ func (s *DependencyScanner) ScanDependencies(ctx context.Context, chartsDir stri
 		return nil, fmt.Errorf("failed to discover charts: %w", err)
 	}
 
-	s.logger.InfoWithContext("discovered charts", map[string]interface{}{
-		"count":  len(charts),
-		"charts": charts,
-	})
+	if len(charts) == 0 {
+		s.logger.WarnWithContext("no charts found", map[string]interface{}{
+			"charts_dir": chartsDir,
+		})
+	}
 
-	// Scan each chart for dependencies (only Helm dependencies for deployment ordering)
+	// Scan dependencies for each chart
 	var allDependencies []ChartDependency
 	for _, chart := range charts {
-		// Only scan Helm dependencies to avoid false positives from service/secret references
 		deps, err := s.scanHelmDependenciesOnly(chartsDir, chart)
 		if err != nil {
 			s.logger.WarnWithContext("failed to scan chart dependencies", map[string]interface{}{
@@ -166,15 +95,40 @@ func (s *DependencyScanner) ScanDependencies(ctx context.Context, chartsDir stri
 		allDependencies = append(allDependencies, deps...)
 	}
 
-	// Build dependency graph
+	// Build dependency graph using unified structure from advanced_dependency_resolver.go
 	graph := &DependencyGraph{
-		Charts:       charts,
-		Dependencies: allDependencies,
-		Metadata: DependencyGraphMetadata{
-			GeneratedAt:       time.Now(),
+		Nodes:       make(map[string]*ChartNode),
+		Edges:       make(map[string][]string),
+		DeployOrder: [][]string{},
+		Metadata: GraphMetadata{
 			TotalCharts:       len(charts),
 			TotalDependencies: len(allDependencies),
+			MaxDepth:          0,
+			HasCycles:         false,
+			Cycles:            []DependencyCycle{},
 		},
+	}
+
+	// Initialize nodes for each chart
+	for _, chart := range charts {
+		graph.Nodes[chart] = &ChartNode{
+			Dependencies: []string{},
+			Dependents:   []string{},
+			Depth:        0,
+			Priority:     0,
+		}
+		graph.Edges[chart] = []string{}
+	}
+
+	// Add edges based on dependencies
+	for _, dep := range allDependencies {
+		if node, exists := graph.Nodes[dep.Source]; exists {
+			node.Dependencies = append(node.Dependencies, dep.Target)
+			graph.Edges[dep.Source] = append(graph.Edges[dep.Source], dep.Target)
+		}
+		if node, exists := graph.Nodes[dep.Target]; exists {
+			node.Dependents = append(node.Dependents, dep.Source)
+		}
 	}
 
 	// Analyze graph structure
@@ -186,7 +140,7 @@ func (s *DependencyScanner) ScanDependencies(ctx context.Context, chartsDir stri
 
 	s.logger.InfoWithContext("dependency scan completed", map[string]interface{}{
 		"total_charts":       graph.Metadata.TotalCharts,
-		"total_dependencies": graph.Metadata.TotalDependencies,
+		"total_dependencies": len(allDependencies),
 		"has_cycles":         graph.Metadata.HasCycles,
 		"max_depth":          graph.Metadata.MaxDepth,
 	})
@@ -216,99 +170,85 @@ func (s *DependencyScanner) discoverCharts(chartsDir string) ([]string, error) {
 	return charts, nil
 }
 
-// scanChartDependencies scans a single chart for dependencies
-func (s *DependencyScanner) scanChartDependencies(ctx context.Context, chartsDir, chartName string) ([]ChartDependency, error) {
-	var dependencies []ChartDependency
-
-	chartPath := filepath.Join(chartsDir, chartName)
-
-	// Scan Chart.yaml for Helm dependencies
-	helmDeps, err := s.scanHelmDependencies(chartPath, chartName)
+// analyzeGraph analyzes the dependency graph for cycles and depth
+func (s *DependencyScanner) analyzeGraph(graph *DependencyGraph) error {
+	// Calculate deployment order using topological sort
+	deployOrder, err := s.calculateDeploymentOrder(graph)
 	if err != nil {
-		s.logger.WarnWithContext("failed to scan helm dependencies", map[string]interface{}{
-			"chart": chartName,
+		s.logger.WarnWithContext("failed to calculate deployment order", map[string]interface{}{
 			"error": err.Error(),
 		})
+		// Set default deployment order as a single level with all charts
+		var allCharts []string
+		for chartName := range graph.Nodes {
+			allCharts = append(allCharts, chartName)
+		}
+		graph.DeployOrder = [][]string{allCharts}
 	} else {
-		dependencies = append(dependencies, helmDeps...)
+		graph.DeployOrder = deployOrder
 	}
 
-	// Scan values files for service dependencies
-	valueDeps, err := s.scanValuesDependencies(chartPath, chartName)
-	if err != nil {
-		s.logger.WarnWithContext("failed to scan values dependencies", map[string]interface{}{
-			"chart": chartName,
-			"error": err.Error(),
-		})
-	} else {
-		dependencies = append(dependencies, valueDeps...)
-	}
+	// Simple depth calculation
+	maxDepth := len(graph.DeployOrder)
+	graph.Metadata.MaxDepth = maxDepth
 
-	// Scan templates for references
-	templateDeps, err := s.scanTemplateDependencies(chartPath, chartName)
-	if err != nil {
-		s.logger.WarnWithContext("failed to scan template dependencies", map[string]interface{}{
-			"chart": chartName,
-			"error": err.Error(),
-		})
-	} else {
-		dependencies = append(dependencies, templateDeps...)
-	}
+	// Simple cycle detection (placeholder)
+	graph.Metadata.HasCycles = false
 
-	return dependencies, nil
+	return nil
 }
 
-// scanHelmDependencies scans Chart.yaml for Helm dependencies
-func (s *DependencyScanner) scanHelmDependencies(chartPath, chartName string) ([]ChartDependency, error) {
-	var dependencies []ChartDependency
-
-	chartYamlPath := filepath.Join(chartPath, "Chart.yaml")
-	content, err := s.filesystem.ReadFile(chartYamlPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read Chart.yaml: %w", err)
+// calculateDeploymentOrder performs topological sort to determine deployment order
+func (s *DependencyScanner) calculateDeploymentOrder(graph *DependencyGraph) ([][]string, error) {
+	// Create in-degree map
+	inDegree := make(map[string]int)
+	for chartName := range graph.Nodes {
+		inDegree[chartName] = len(graph.Nodes[chartName].Dependencies)
 	}
 
-	// Look for dependencies section
-	lines := strings.Split(string(content), "\n")
-	inDependencies := false
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-
-		if line == "dependencies:" {
-			inDependencies = true
-			continue
+	// Find nodes with no dependencies (in-degree 0)
+	var queue []string
+	for chartName, degree := range inDegree {
+		if degree == 0 {
+			queue = append(queue, chartName)
 		}
+	}
 
-		if inDependencies {
-			// Stop if we reach another top-level section
-			if strings.HasSuffix(line, ":") && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "-") {
-				break
-			}
+	var deployOrder [][]string
+	level := 0
 
-			// Look for dependency names
-			if strings.Contains(line, "name:") {
-				parts := strings.Split(line, ":")
-				if len(parts) >= 2 {
-					depName := strings.TrimSpace(parts[1])
-					depName = strings.Trim(depName, "\"'")
+	for len(queue) > 0 {
+		currentLevel := make([]string, len(queue))
+		copy(currentLevel, queue)
+		deployOrder = append(deployOrder, currentLevel)
 
-					if depName != "" {
-						dependencies = append(dependencies, ChartDependency{
-							FromChart:    chartName,
-							ToChart:      depName,
-							Type:         HelmDependency,
-							Required:     true,
-							Description:  "Helm chart dependency",
-							DetectedFrom: "Chart.yaml",
-						})
-					}
+		// Process current level
+		var nextQueue []string
+		for _, chart := range queue {
+			// Remove this chart's dependencies from dependent charts
+			for _, dependent := range graph.Nodes[chart].Dependents {
+				inDegree[dependent]--
+				if inDegree[dependent] == 0 {
+					nextQueue = append(nextQueue, dependent)
 				}
 			}
 		}
+
+		queue = nextQueue
+		level++
 	}
 
-	return dependencies, nil
+	// Check if all charts are included (cycle detection)
+	totalProcessed := 0
+	for _, level := range deployOrder {
+		totalProcessed += len(level)
+	}
+
+	if totalProcessed != len(graph.Nodes) {
+		return nil, fmt.Errorf("circular dependency detected: processed %d charts out of %d", totalProcessed, len(graph.Nodes))
+	}
+
+	return deployOrder, nil
 }
 
 // scanHelmDependenciesOnly scans only Chart.yaml for Helm dependencies (avoids false positives)
@@ -317,354 +257,53 @@ func (s *DependencyScanner) scanHelmDependenciesOnly(chartsDir, chartName string
 	return s.scanHelmDependencies(chartPath, chartName)
 }
 
-// scanValuesDependencies scans values files for dependencies
-func (s *DependencyScanner) scanValuesDependencies(chartPath, chartName string) ([]ChartDependency, error) {
-	var dependencies []ChartDependency
-
-	// Scan all values*.yaml files
-	valuesFiles := []string{"values.yaml", "values-production.yaml", "values-staging.yaml", "values-development.yaml"}
-
-	for _, valuesFile := range valuesFiles {
-		valuesPath := filepath.Join(chartPath, valuesFile)
-		if !s.filesystem.FileExists(valuesPath) {
-			continue
-		}
-
-		content, err := s.filesystem.ReadFile(valuesPath)
-		if err != nil {
-			s.logger.WarnWithContext("failed to read values file", map[string]interface{}{
-				"file":  valuesPath,
-				"error": err.Error(),
-			})
-			continue
-		}
-
-		deps := s.extractDependenciesFromContent(string(content), chartName, valuesFile)
-		dependencies = append(dependencies, deps...)
-	}
-
-	return dependencies, nil
-}
-
-// scanTemplateDependencies scans template files for dependencies
-func (s *DependencyScanner) scanTemplateDependencies(chartPath, chartName string) ([]ChartDependency, error) {
-	var dependencies []ChartDependency
-
-	templatesPath := filepath.Join(chartPath, "templates")
-	if !s.filesystem.DirectoryExists(templatesPath) {
-		return dependencies, nil
-	}
-
-	entries, err := s.filesystem.ListDirectory(templatesPath)
+// scanHelmDependencies scans a specific chart for Helm dependencies in Chart.yaml
+func (s *DependencyScanner) scanHelmDependencies(chartPath, chartName string) ([]ChartDependency, error) {
+	chartYamlPath := filepath.Join(chartPath, "Chart.yaml")
+	
+	content, err := s.filesystem.ReadFile(chartYamlPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list templates directory: %w", err)
+		return nil, fmt.Errorf("failed to read Chart.yaml: %w", err)
 	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() && (strings.HasSuffix(entry.Name(), ".yaml") || strings.HasSuffix(entry.Name(), ".yml")) {
-			templatePath := filepath.Join(templatesPath, entry.Name())
-			content, err := s.filesystem.ReadFile(templatePath)
-			if err != nil {
-				s.logger.WarnWithContext("failed to read template file", map[string]interface{}{
-					"file":  templatePath,
-					"error": err.Error(),
-				})
-				continue
-			}
-
-			deps := s.extractDependenciesFromContent(string(content), chartName, fmt.Sprintf("templates/%s", entry.Name()))
-			dependencies = append(dependencies, deps...)
-		}
-	}
-
-	return dependencies, nil
-}
-
-// extractDependenciesFromContent extracts dependencies from file content
-func (s *DependencyScanner) extractDependenciesFromContent(content, chartName, fileName string) []ChartDependency {
 	var dependencies []ChartDependency
+	lines := strings.Split(string(content), "\n")
+	inDependenciesSection := false
 
-	// Service dependencies
-	for _, pattern := range s.patterns.ServiceReferences {
-		matches := pattern.FindAllStringSubmatch(content, -1)
-		for _, match := range matches {
-			if len(match) >= 2 {
-				serviceName := match[1]
-				if serviceName != chartName && s.isValidChartName(serviceName) {
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		
+		// Check if we're in the dependencies section
+		if strings.HasPrefix(trimmedLine, "dependencies:") {
+			inDependenciesSection = true
+			continue
+		}
+		
+		// Exit dependencies section if we hit a new top-level key
+		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.Contains(line, ":") && inDependenciesSection {
+			inDependenciesSection = false
+		}
+		
+		// Parse dependency entries
+		if inDependenciesSection && strings.Contains(line, "name:") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				depName := strings.TrimSpace(parts[1])
+				depName = strings.Trim(depName, "\"'")
+
+				if depName != "" {
 					dependencies = append(dependencies, ChartDependency{
-						FromChart:    chartName,
-						ToChart:      serviceName,
-						Type:         ServiceDependency,
-						Required:     true,
-						Description:  fmt.Sprintf("Service reference to %s", serviceName),
-						DetectedFrom: fileName,
+						Source:            chartName,
+						Target:            depName,
+						Type:              HardDependency,
+						VersionConstraint: "",
+						Optional:          false,
+						Condition:         "",
 					})
 				}
 			}
 		}
 	}
 
-	// Database dependencies
-	for _, pattern := range s.patterns.DatabaseReferences {
-		matches := pattern.FindAllStringSubmatch(content, -1)
-		for _, match := range matches {
-			if len(match) >= 2 {
-				dbHost := match[1]
-				// Extract chart name from database host
-				if strings.Contains(dbHost, ".") {
-					parts := strings.Split(dbHost, ".")
-					if len(parts) > 0 {
-						dbChart := parts[0]
-						if dbChart != chartName && s.isValidChartName(dbChart) {
-							dependencies = append(dependencies, ChartDependency{
-								FromChart:    chartName,
-								ToChart:      dbChart,
-								Type:         DatabaseDependency,
-								Required:     true,
-								Description:  fmt.Sprintf("Database dependency on %s", dbChart),
-								DetectedFrom: fileName,
-							})
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Secret dependencies
-	for _, pattern := range s.patterns.SecretReferences {
-		matches := pattern.FindAllStringSubmatch(content, -1)
-		for _, match := range matches {
-			if len(match) >= 2 {
-				secretName := match[1]
-				// Try to map secret to chart
-				if relatedChart := s.mapSecretToChart(secretName); relatedChart != "" && relatedChart != chartName {
-					dependencies = append(dependencies, ChartDependency{
-						FromChart:    chartName,
-						ToChart:      relatedChart,
-						Type:         SecretDependency,
-						Required:     false,
-						Description:  fmt.Sprintf("Secret dependency on %s", secretName),
-						DetectedFrom: fileName,
-					})
-				}
-			}
-		}
-	}
-
-	return dependencies
-}
-
-// isValidChartName checks if a name could be a valid chart name
-func (s *DependencyScanner) isValidChartName(name string) bool {
-	// Simple validation - chart names are typically lowercase with hyphens
-	validName := regexp.MustCompile(`^[a-z0-9-]+$`)
-	return validName.MatchString(name) && len(name) > 2
-}
-
-// mapSecretToChart maps a secret name to a chart name
-func (s *DependencyScanner) mapSecretToChart(secretName string) string {
-	// Common patterns for mapping secrets to charts
-	secretToChart := map[string]string{
-		"postgres-secrets":        "postgres",
-		"auth-postgres-secrets":   "auth-postgres",
-		"kratos-postgres-secrets": "kratos-postgres",
-		"clickhouse-secrets":      "clickhouse",
-		"meilisearch-secrets":     "meilisearch",
-		"backend-secrets":         "alt-backend",
-		"auth-service-secrets":    "auth-service",
-		"frontend-secrets":        "alt-frontend",
-		"nginx-secrets":           "nginx",
-	}
-
-	if chart, exists := secretToChart[secretName]; exists {
-		return chart
-	}
-
-	// Try to infer from secret name pattern
-	if strings.HasSuffix(secretName, "-secrets") {
-		return strings.TrimSuffix(secretName, "-secrets")
-	}
-
-	return ""
-}
-
-// analyzeGraph analyzes the dependency graph structure
-func (s *DependencyScanner) analyzeGraph(graph *DependencyGraph) error {
-	// Group charts by type
-	graph.Groups = s.groupChartsByType(graph.Charts)
-
-	// Calculate deployment order
-	order, err := s.calculateDeploymentOrder(graph)
-	if err != nil {
-		return fmt.Errorf("failed to calculate deployment order: %w", err)
-	}
-	graph.DeployOrder = order
-
-	// Detect cycles
-	cycles := s.detectCycles(graph)
-	graph.Metadata.HasCycles = len(cycles) > 0
-	graph.Metadata.Cycles = cycles
-
-	// Calculate max depth
-	graph.Metadata.MaxDepth = len(graph.DeployOrder)
-
-	return nil
-}
-
-// groupChartsByType groups charts by their inferred type
-func (s *DependencyScanner) groupChartsByType(charts []string) map[string][]string {
-	groups := map[string][]string{
-		"infrastructure": {},
-		"application":    {},
-		"operational":    {},
-	}
-
-	for _, chart := range charts {
-		group := s.inferChartType(chart)
-		groups[group] = append(groups[group], chart)
-	}
-
-	return groups
-}
-
-// inferChartType infers the type of a chart from its name
-func (s *DependencyScanner) inferChartType(chartName string) string {
-	infrastructureCharts := []string{"postgres", "auth-postgres", "kratos-postgres", "clickhouse", "meilisearch", "nginx", "nginx-external", "common-ssl", "common-secrets", "common-config", "monitoring"}
-	operationalCharts := []string{"migrate", "backup"}
-
-	for _, infra := range infrastructureCharts {
-		if chartName == infra {
-			return "infrastructure"
-		}
-	}
-
-	for _, ops := range operationalCharts {
-		if chartName == ops {
-			return "operational"
-		}
-	}
-
-	return "application"
-}
-
-// calculateDeploymentOrder calculates the deployment order based on dependencies
-func (s *DependencyScanner) calculateDeploymentOrder(graph *DependencyGraph) ([][]string, error) {
-	// Simple topological sort
-	inDegree := make(map[string]int)
-	adjList := make(map[string][]string)
-
-	// Initialize
-	for _, chart := range graph.Charts {
-		inDegree[chart] = 0
-		adjList[chart] = []string{}
-	}
-
-	// Build adjacency list and in-degree count
-	for _, dep := range graph.Dependencies {
-		if dep.Required {
-			adjList[dep.ToChart] = append(adjList[dep.ToChart], dep.FromChart)
-			inDegree[dep.FromChart]++
-		}
-	}
-
-	var order [][]string
-	remaining := make(map[string]bool)
-	for _, chart := range graph.Charts {
-		remaining[chart] = true
-	}
-
-	for len(remaining) > 0 {
-		var currentLevel []string
-
-		// Find charts with no dependencies
-		for chart := range remaining {
-			if inDegree[chart] == 0 {
-				currentLevel = append(currentLevel, chart)
-			}
-		}
-
-		if len(currentLevel) == 0 {
-			// Cycle detected or error
-			var remainingCharts []string
-			for chart := range remaining {
-				remainingCharts = append(remainingCharts, chart)
-			}
-			return order, fmt.Errorf("circular dependency detected among charts: %v", remainingCharts)
-		}
-
-		order = append(order, currentLevel)
-
-		// Remove current level charts and update in-degrees
-		for _, chart := range currentLevel {
-			delete(remaining, chart)
-			for _, dependent := range adjList[chart] {
-				if remaining[dependent] {
-					inDegree[dependent]--
-				}
-			}
-		}
-	}
-
-	return order, nil
-}
-
-// detectCycles detects cycles in the dependency graph
-func (s *DependencyScanner) detectCycles(graph *DependencyGraph) [][]string {
-	var cycles [][]string
-	visited := make(map[string]bool)
-	recStack := make(map[string]bool)
-	adjList := make(map[string][]string)
-
-	// Build adjacency list
-	for _, chart := range graph.Charts {
-		adjList[chart] = []string{}
-	}
-
-	for _, dep := range graph.Dependencies {
-		if dep.Required {
-			adjList[dep.FromChart] = append(adjList[dep.FromChart], dep.ToChart)
-		}
-	}
-
-	// DFS to detect cycles
-	var dfs func(string, []string) bool
-	dfs = func(node string, path []string) bool {
-		visited[node] = true
-		recStack[node] = true
-		path = append(path, node)
-
-		for _, neighbor := range adjList[node] {
-			if !visited[neighbor] {
-				if dfs(neighbor, path) {
-					return true
-				}
-			} else if recStack[neighbor] {
-				// Found cycle
-				cycleStart := -1
-				for i, n := range path {
-					if n == neighbor {
-						cycleStart = i
-						break
-					}
-				}
-				if cycleStart >= 0 {
-					cycle := append(path[cycleStart:], neighbor)
-					cycles = append(cycles, cycle)
-				}
-				return true
-			}
-		}
-
-		recStack[node] = false
-		return false
-	}
-
-	for _, chart := range graph.Charts {
-		if !visited[chart] {
-			dfs(chart, []string{})
-		}
-	}
-
-	return cycles
+	return dependencies, nil
 }

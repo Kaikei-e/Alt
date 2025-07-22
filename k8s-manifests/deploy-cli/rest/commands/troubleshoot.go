@@ -714,20 +714,24 @@ func (t *TroubleshootCommand) AnalyzeDependencies(ctx context.Context, env domai
 		return nil, fmt.Errorf("dependency scanning failed: %w", err)
 	}
 
+	// Convert cycles to the expected format
+	var circularDeps [][]string
+	for _, cycle := range depGraph.Metadata.Cycles {
+		circularDeps = append(circularDeps, cycle.Charts)
+	}
+
 	analysis := &DependencyAnalysis{
 		Environment:     env,
 		TotalCharts:     depGraph.Metadata.TotalCharts,
 		Dependencies:    depGraph.Metadata.TotalDependencies,
-		CircularDeps:    depGraph.Metadata.Cycles,
+		CircularDeps:    circularDeps,
 		DeploymentOrder: depGraph.DeployOrder,
 		Issues:          make([]string, 0),
 		Graph:           make(map[string][]string),
 	}
 
 	// Build dependency graph representation
-	for _, dep := range depGraph.Dependencies {
-		analysis.Graph[dep.FromChart] = append(analysis.Graph[dep.FromChart], dep.ToChart)
-	}
+	analysis.Graph = depGraph.Edges
 
 	// Identify issues
 	if depGraph.Metadata.HasCycles {

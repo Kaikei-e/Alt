@@ -32,6 +32,7 @@ type Chart struct {
 	WaitReady        bool
 	MultiNamespace   bool     // Deploy to multiple namespaces
 	TargetNamespaces []string // List of target namespaces for multi-namespace deployment
+	Annotations      map[string]string     // Chart.yaml annotations for deploy-cli behavior control
 }
 
 // HasTemplates checks if the chart has templates
@@ -60,7 +61,7 @@ func NewChartConfig(chartsDir string) *ChartConfig {
 			{Name: "clickhouse", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "clickhouse"), WaitReady: false},
 			{Name: "meilisearch", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "meilisearch"), WaitReady: false},
 			// Config/Secret Layer
-			{Name: "common-secrets", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-secrets"), WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-auth"}},
+			{Name: "common-secrets", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-secrets"), WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps"}},
 			{Name: "common-config", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-config"), WaitReady: false},
 			{Name: "common-ssl", Type: InfrastructureChart, Path: filepath.Join(chartsDir, "common-ssl"), WaitReady: false, MultiNamespace: true, TargetNamespaces: []string{"alt-apps", "alt-database", "alt-ingress", "alt-search", "alt-auth"}},
 			// Network Layer
