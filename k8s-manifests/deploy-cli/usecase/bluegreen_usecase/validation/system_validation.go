@@ -15,8 +15,8 @@ import (
 // Helmマルチネームスペースデプロイメントシステムの完全検証
 type SystemValidator struct {
 	blueGreenManager *bluegreen_usecase.BlueGreenDeploymentManager
-	dependencyUsecase dependency_usecase.DependencyUsecase
-	sslUsecase       ssl_usecase.SSLUsecase
+	dependencyResolver *dependency_usecase.AdvancedDependencyResolver
+	sslManager        *ssl_usecase.CertificateLifecycleManager
 	logger           *slog.Logger
 }
 
@@ -83,14 +83,14 @@ const (
 // NewSystemValidator creates new system validator
 func NewSystemValidator(
 	bgManager *bluegreen_usecase.BlueGreenDeploymentManager,
-	depUsecase dependency_usecase.DependencyUsecase,
-	sslUsecase ssl_usecase.SSLUsecase,
+	depResolver *dependency_usecase.AdvancedDependencyResolver,
+	sslManager *ssl_usecase.CertificateLifecycleManager,
 	logger *slog.Logger,
 ) *SystemValidator {
 	return &SystemValidator{
 		blueGreenManager:  bgManager,
-		dependencyUsecase: depUsecase,
-		sslUsecase:       sslUsecase,
+		dependencyResolver: depResolver,
+		sslManager:        sslManager,
 		logger:           logger,
 	}
 }

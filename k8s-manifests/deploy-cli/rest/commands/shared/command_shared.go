@@ -11,8 +11,6 @@ import (
 	"deploy-cli/driver/kubectl_driver"
 	"deploy-cli/driver/system_driver"
 	"deploy-cli/port/logger_port"
-	"deploy-cli/usecase/deployment_usecase"
-	"deploy-cli/usecase/secret_usecase"
 	"deploy-cli/utils/logger"
 )
 
@@ -77,7 +75,8 @@ func (s *CommandShared) PersistentPreRunE(cmd *cobra.Command, args []string) err
 	// Update log level if specified
 	if logLevel, err := cmd.Flags().GetString("log-level"); err == nil && logLevel != "" {
 		s.Config.LogLevel = logLevel
-		s.Logger.SetLevel(logLevel)
+		// Note: slog.Logger doesn't support runtime level changes
+		// Consider creating a new logger instance if dynamic level change is needed
 	}
 
 	// Update output format if specified

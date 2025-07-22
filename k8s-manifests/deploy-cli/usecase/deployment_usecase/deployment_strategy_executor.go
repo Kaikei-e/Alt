@@ -92,10 +92,16 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 			"layers_count": len(layers),
 		})
 	} else {
-		// Fallback to default configuration
+		// Fallback to annotation-aware default configuration
 		chartConfig := domain.NewChartConfig(options.ChartsDir)
-		layers = e.getDefaultLayerConfigurations(chartConfig, options.ChartsDir)
-		e.logger.InfoWithContext("using default layer configurations", map[string]interface{}{
+		// Load annotations from Chart.yaml files for health check behavior control
+		if err := chartConfig.LoadAnnotationsForAllCharts(); err != nil {
+			e.logger.WarnWithContext("failed to load chart annotations, using defaults", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+		layers = e.getAnnotationAwareLayerConfigurations(chartConfig, options.ChartsDir)
+		e.logger.InfoWithContext("using annotation-aware layer configurations", map[string]interface{}{
 			"layers_count": len(layers),
 		})
 	}
@@ -804,7 +810,26 @@ func (e *DeploymentStrategyExecutor) performLayerHealthCheck(ctx context.Context
 		"context_deadline": ctx.Err() == nil,
 	})
 
+	// Check if health checks are globally disabled
+	if options.SkipHealthChecks {
+		e.logger.InfoWithContext("⏭️ SKIPPING all health checks due to flag", map[string]interface{}{
+			"layer":  layer.Name,
+			"reason": "--skip-health-checks flag enabled",
+		})
+		return nil
+	}
+
 	for chartIndex, chart := range layer.Charts {
+		// Check if health check should be skipped via annotation
+		if annotation, exists := chart.Annotations["deploy-cli/health-check"]; exists && annotation == "none" {
+			e.logger.InfoWithContext("⏭️ SKIPPING health check due to annotation", map[string]interface{}{
+				"chart":      chart.Name,
+				"annotation": annotation,
+				"reason":     "deploy-cli/health-check=none",
+			})
+			continue // Skip health check for this chart
+		}
+		
 		if chart.WaitReady {
 			namespace := options.GetNamespace(chart.Name)
 
@@ -936,4 +961,29 @@ func (e *DeploymentStrategyExecutor) EnableParallelDeployment() {
 // SetDependencyAwareDeployment enables or disables dependency-aware deployment
 func (e *DeploymentStrategyExecutor) SetDependencyAwareDeployment(enabled bool) {
 	e.enableDependencyAware = enabled
+}
+
+// getAnnotationAwareLayerConfigurations returns layer configurations with annotations preserved
+func (e *DeploymentStrategyExecutor) getAnnotationAwareLayerConfigurations(chartConfig *domain.ChartConfig, chartsDir string) []domain.LayerConfiguration {
+	// Start with default configuration structure
+	defaultLayers := e.getDefaultLayerConfigurations(chartConfig, chartsDir)
+	
+	// Enhance each chart with loaded annotations from chartConfig
+	for layerIdx := range defaultLayers {
+		for chartIdx := range defaultLayers[layerIdx].Charts {
+			chartName := defaultLayers[layerIdx].Charts[chartIdx].Name
+			
+			// Get the chart with loaded annotations
+			if annotatedChart, err := chartConfig.GetChart(chartName); err == nil {
+				// Preserve the existing configuration but add annotations
+				defaultLayers[layerIdx].Charts[chartIdx].Annotations = annotatedChart.Annotations
+				e.logger.InfoWithContext("loaded annotations for chart", map[string]interface{}{
+					"chart":       chartName,
+					"annotations": annotatedChart.Annotations,
+				})
+			}
+		}
+	}
+	
+	return defaultLayers
 }
