@@ -26,6 +26,7 @@ const (
 // ErrorClassification contains error analysis results
 type ErrorClassification struct {
 	Type        ErrorType
+	Category    string        // Error category
 	Retriable   bool
 	Reason      string
 	Suggestion  string

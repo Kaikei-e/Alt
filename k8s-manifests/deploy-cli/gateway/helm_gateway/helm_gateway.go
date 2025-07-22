@@ -174,6 +174,24 @@ func (g *HelmGateway) DeployChart(ctx context.Context, chart domain.Chart, optio
 		return fmt.Errorf("pre-deployment validation failed for chart %s: %w", chart.Name, err)
 	}
 
+	// PHASE 2: PVC readiness validation for StatefulSet charts (ERROR HANDLING ENHANCEMENT)
+	if g.isStatefulSetChart(chart) {
+		if err := g.validatePVCReadiness(ctx, chart, options); err != nil {
+			g.logger.WarnWithContext("PVC not ready, attempting repair", map[string]interface{}{
+				"chart": chart.Name,
+				"error": err.Error(),
+			})
+			
+			if repairErr := g.repairPVCBindings(ctx, chart, options); repairErr != nil {
+				g.logger.ErrorWithContext("PVC repair failed", map[string]interface{}{
+					"chart": chart.Name,
+					"repair_error": repairErr.Error(),
+				})
+				return fmt.Errorf("StatefulSet deployment blocked by PVC issues: %w", repairErr)
+			}
+		}
+	}
+
 	// Helm lint validation before deployment
 	lintResult, err := g.LintChart(ctx, chart, options)
 	if err != nil {
@@ -573,6 +591,42 @@ func (g *HelmGateway) UninstallRelease(ctx context.Context, releaseName, namespa
 	g.logger.InfoWithContext("release uninstalled successfully", map[string]interface{}{
 		"release":   releaseName,
 		"namespace": namespace,
+	})
+
+	return nil
+}
+
+// UndeployChart undeploys a chart using the chart configuration
+func (g *HelmGateway) UndeployChart(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	g.logger.InfoWithContext("undeploying chart", map[string]interface{}{
+		"chart":     chart.Name,
+		"namespace": options.GetNamespace(chart.Name),
+	})
+
+	releaseName := g.generateReleaseName(chart, options.GetNamespace(chart.Name))
+	namespace := options.GetNamespace(chart.Name)
+
+	g.logger.DebugWithContext("undeploying chart with generated release name", map[string]interface{}{
+		"chart":        chart.Name,
+		"namespace":    namespace,
+		"release_name": releaseName,
+	})
+
+	err := g.UninstallRelease(ctx, releaseName, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("chart undeployment failed", map[string]interface{}{
+			"chart":        chart.Name,
+			"namespace":    namespace,
+			"release_name": releaseName,
+			"error":        err.Error(),
+		})
+		return fmt.Errorf("chart undeployment failed for %s: %w", chart.Name, err)
+	}
+
+	g.logger.InfoWithContext("chart undeployed successfully", map[string]interface{}{
+		"chart":        chart.Name,
+		"namespace":    namespace,
+		"release_name": releaseName,
 	})
 
 	return nil
@@ -1915,4 +1969,103 @@ func (g *HelmGateway) shouldRetryOperation(deploymentError *domain.DeploymentErr
 	}
 
 	return true
+}
+
+// Removed duplicate function - using the domain.Chart version instead
+
+// PHASE 2: PVC readiness validation (ERROR HANDLING ENHANCEMENT)
+func (g *HelmGateway) validatePVCReadiness(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	namespace := options.GetNamespace(chart.Name)
+	
+	g.logger.DebugWithContext("validating PVC readiness for StatefulSet chart", map[string]interface{}{
+		"chart":     chart.Name,
+		"namespace": namespace,
+	})
+	
+	// Common PVC naming patterns for StatefulSet charts
+	pvcNames := []string{
+		fmt.Sprintf("data-%s-0", chart.Name),
+		fmt.Sprintf("%s-data-0", chart.Name),
+		fmt.Sprintf("storage-%s-0", chart.Name),
+	}
+	
+	for _, pvcName := range pvcNames {
+		pvcStatus, err := g.helmPort.GetPVCStatus(ctx, pvcName, namespace)
+		if err != nil {
+			g.logger.DebugWithContext("PVC not found, will be created during deployment", map[string]interface{}{
+				"pvc":       pvcName,
+				"namespace": namespace,
+				"chart":     chart.Name,
+			})
+			continue
+		}
+		
+		// Check if PVC is in problematic state
+		if pvcStatus.Phase == "Pending" || pvcStatus.Phase == "Lost" {
+			g.logger.WarnWithContext("PVC in problematic state", map[string]interface{}{
+				"pvc":         pvcName,
+				"namespace":   namespace,
+				"phase":       pvcStatus.Phase,
+				"conditions":  pvcStatus.Conditions,
+			})
+			
+			return fmt.Errorf("PVC %s in namespace %s is in %s state", pvcName, namespace, pvcStatus.Phase)
+		}
+	}
+	
+	return nil
+}
+
+// PHASE 2: PVC binding repair logic (ERROR HANDLING ENHANCEMENT)
+func (g *HelmGateway) repairPVCBindings(ctx context.Context, chart domain.Chart, options *domain.DeploymentOptions) error {
+	namespace := options.GetNamespace(chart.Name)
+	
+	g.logger.InfoWithContext("attempting PVC binding repair", map[string]interface{}{
+		"chart":     chart.Name,
+		"namespace": namespace,
+	})
+	
+	// Check for Released PVs that can be rebound
+	releasedPVs, err := g.helmPort.GetReleasedPVs(ctx, namespace)
+	if err != nil {
+		g.logger.WarnWithContext("failed to get Released PVs", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return err
+	}
+	
+	repairedCount := 0
+	for _, pv := range releasedPVs {
+		// Check if PV matches the chart pattern (postgres-pv-*, auth-postgres-pv-*, etc.)
+		if strings.Contains(pv.Name, chart.Name) {
+			g.logger.InfoWithContext("clearing claimRef for Released PV", map[string]interface{}{
+				"pv":        pv.Name,
+				"chart":     chart.Name,
+				"namespace": namespace,
+			})
+			
+			if err := g.helmPort.ClearPVClaimRef(ctx, pv.Name); err != nil {
+				g.logger.ErrorWithContext("failed to clear PV claimRef", map[string]interface{}{
+					"pv":    pv.Name,
+					"error": err.Error(),
+				})
+				continue
+			}
+			
+			repairedCount++
+		}
+	}
+	
+	if repairedCount > 0 {
+		g.logger.InfoWithContext("PVC binding repair completed", map[string]interface{}{
+			"chart":          chart.Name,
+			"namespace":      namespace,
+			"repaired_count": repairedCount,
+		})
+		
+		// Wait a moment for the binding to propagate
+		time.Sleep(10 * time.Second)
+	}
+	
+	return nil
 }

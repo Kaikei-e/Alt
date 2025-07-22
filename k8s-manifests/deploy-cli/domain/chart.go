@@ -12,6 +12,13 @@ const (
 	InfrastructureChart ChartType = "infrastructure"
 	ApplicationChart    ChartType = "application"
 	OperationalChart    ChartType = "operational"
+	// Specialized chart types for dependency resolution
+	ConfigChart      ChartType = "config"
+	FrontendChart    ChartType = "frontend"
+	ServiceChart     ChartType = "service"
+	SecurityChart    ChartType = "security"
+	IngressChart     ChartType = "ingress"
+	MonitoringChart  ChartType = "monitoring"
 )
 
 // Chart represents a Helm chart configuration
@@ -21,10 +28,19 @@ type Chart struct {
 	Path             string
 	Version          string
 	ValuesPath       string
+	Values           map[string]interface{} // Chart values
 	WaitReady        bool
 	MultiNamespace   bool     // Deploy to multiple namespaces
 	TargetNamespaces []string // List of target namespaces for multi-namespace deployment
 }
+
+// HasTemplates checks if the chart has templates
+func (c *Chart) HasTemplates() bool {
+	// TODO: Implement template check logic
+	// This is a placeholder - should check if chart has template files
+	return true
+}
+
 
 // ChartConfig holds the chart deployment configuration
 type ChartConfig struct {

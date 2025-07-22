@@ -3,6 +3,8 @@ package helm_port
 import (
 	"context"
 	"time"
+	
+	"deploy-cli/domain"
 )
 
 // HelmPort defines the interface for Helm operations
@@ -42,6 +44,51 @@ type HelmPort interface {
 
 	// RetryWithBackoff retries an operation with exponential backoff
 	RetryWithBackoff(ctx context.Context, operation func() error, maxRetries int, baseDelay time.Duration) error
+
+	// InstallChart installs a chart with the given request
+	InstallChart(ctx context.Context, request *domain.HelmDeploymentRequest) error
+
+	// UninstallChart uninstalls a chart with the given request  
+	UninstallChart(ctx context.Context, request *domain.HelmUndeploymentRequest) error
+
+	// UpgradeChart upgrades a chart with the given request
+	UpgradeChart(ctx context.Context, request *domain.HelmUpgradeRequest) error
+
+	// GetChartMetadata gets chart metadata
+	GetChartMetadata(ctx context.Context, request *domain.HelmMetadataRequest) (*domain.ChartMetadata, error)
+
+	// UpdateChartMetadata updates chart metadata
+	UpdateChartMetadata(ctx context.Context, request *domain.HelmMetadataUpdateRequest) error
+
+	// GetChartDependencies gets chart dependencies
+	GetChartDependencies(ctx context.Context, request *domain.HelmDependencyRequest) ([]*domain.DependencyInfo, error)
+
+	// UpdateChartDependencies updates chart dependencies
+	UpdateChartDependencies(ctx context.Context, request *domain.HelmDependencyUpdateRequest) error
+
+	// RollbackChart rolls back a chart with the given request
+	RollbackChart(ctx context.Context, request *domain.HelmRollbackRequest) error
+
+	// GetReleaseStatus gets release status
+	GetReleaseStatus(ctx context.Context, releaseName, namespace string) (*domain.ReleaseInfo, error)
+
+	// GetChartValues gets chart values
+	GetChartValues(ctx context.Context, request *domain.HelmValuesRequest) (map[string]interface{}, error)
+
+	// ListReleases lists releases with the given options
+	ListReleases(ctx context.Context, options *domain.ReleaseListOptions) ([]*domain.ReleaseInfo, error)
+
+	// GetReleaseHistory gets release history
+	GetReleaseHistory(ctx context.Context, request *domain.HelmHistoryRequest) ([]*domain.ReleaseRevision, error)
+
+	// GetPVCStatus gets PVC status for charts  
+	GetPVCStatus(ctx context.Context, chartName, namespace string) (*PVCStatus, error)
+
+	// GetReleasedPVs gets released persistent volumes
+	GetReleasedPVs(ctx context.Context, namespace string) ([]*PersistentVolume, error)
+
+	// ClearPVClaimRef clears PV claim reference
+	ClearPVClaimRef(ctx context.Context, pvName string) error
 }
 
 // HelmTemplateOptions holds options for helm template command
@@ -126,4 +173,16 @@ type HelmOperation struct {
 	Status      string // "pending", "running", "stuck"
 	StartTime   time.Time
 	PID         int // Process ID if available
+}
+
+// PVCStatus represents the status of a Persistent Volume Claim
+type PVCStatus struct {
+	Phase      string   `json:"phase"`
+	Conditions []string `json:"conditions"`
+}
+
+// PersistentVolume represents a Kubernetes Persistent Volume
+type PersistentVolume struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }

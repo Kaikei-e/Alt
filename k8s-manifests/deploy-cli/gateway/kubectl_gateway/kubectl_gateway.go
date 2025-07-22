@@ -773,3 +773,257 @@ func (g *KubectlGateway) LabelSecret(ctx context.Context, secretName, namespace,
 
 	return nil
 }
+
+// GetPodStatus gets the status of a specific pod
+func (g *KubectlGateway) GetPodStatus(ctx context.Context, podName, namespace string) (*domain.PodStatus, error) {
+	g.logger.DebugWithContext("getting pod status", map[string]interface{}{
+		"pod":       podName,
+		"namespace": namespace,
+	})
+
+	// Get pod information from kubectl port
+	pods, err := g.kubectlPort.GetPods(ctx, namespace, "metadata.name="+podName)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get pod", map[string]interface{}{
+			"pod":       podName,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get pod %s: %w", podName, err)
+	}
+
+	if len(pods) == 0 {
+		return nil, fmt.Errorf("pod %s not found in namespace %s", podName, namespace)
+	}
+
+	pod := pods[0]
+	
+	// Convert to domain.PodStatus
+	// Note: KubernetesPod has fields: Name, Namespace, Status, Ready (string), Restarts, Age
+	podStatus := &domain.PodStatus{
+		Name:      pod.Name,
+		Namespace: pod.Namespace,
+		Phase:     pod.Status,      // Using Status as Phase
+		Ready:     pod.Ready == "Running" || pod.Ready == "1/1", // Convert string to bool
+		Status:    pod.Status,
+		NodeName:  "",              // Not available in KubernetesPod
+		PodIP:     "",              // Not available in KubernetesPod
+		StartTime: time.Time{},     // Not available in KubernetesPod
+	}
+
+	g.logger.DebugWithContext("pod status retrieved", map[string]interface{}{
+		"pod":       podName,
+		"namespace": namespace,
+		"phase":     podStatus.Phase,
+		"ready":     podStatus.Ready,
+	})
+
+	return podStatus, nil
+}
+
+// GetDeploymentsForChart gets deployments that belong to a specific chart
+func (g *KubectlGateway) GetDeploymentsForChart(ctx context.Context, chartName, namespace string) ([]*domain.Deployment, error) {
+	g.logger.DebugWithContext("getting deployments for chart", map[string]interface{}{
+		"chart":     chartName,
+		"namespace": namespace,
+	})
+
+	// Get all deployments with helm labels matching the chart
+	deployments, err := g.kubectlPort.GetDeployments(ctx, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get deployments for chart", map[string]interface{}{
+			"chart":     chartName,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get deployments for chart %s: %w", chartName, err)
+	}
+
+	var chartDeployments []*domain.Deployment
+	for _, d := range deployments {
+		// Note: KubernetesDeployment has fields: Name, Namespace, Ready, UpToDate, Available, Age, Replicas, ReadyReplicas
+		// Since we can't check Labels (not available), we'll include all deployments for now
+		deployment := &domain.Deployment{
+			Name:          d.Name,
+			Namespace:     d.Namespace,
+			Replicas:      int32(d.Replicas),            // Convert int to int32
+			ReadyReplicas: int32(d.ReadyReplicas),       // Convert int to int32
+			Status:        d.Ready,                      // Using Ready field as Status
+		}
+		chartDeployments = append(chartDeployments, deployment)
+	}
+
+	g.logger.DebugWithContext("deployments for chart retrieved", map[string]interface{}{
+		"chart":     chartName,
+		"namespace": namespace,
+		"count":     len(chartDeployments),
+	})
+
+	return chartDeployments, nil
+}
+
+// GetStatefulSetsForChart gets stateful sets that belong to a specific chart
+func (g *KubectlGateway) GetStatefulSetsForChart(ctx context.Context, chartName, namespace string) ([]*domain.StatefulSet, error) {
+	g.logger.DebugWithContext("getting stateful sets for chart", map[string]interface{}{
+		"chart":     chartName,
+		"namespace": namespace,
+	})
+
+	// Get all stateful sets with helm labels matching the chart
+	statefulSets, err := g.kubectlPort.GetStatefulSets(ctx, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get stateful sets for chart", map[string]interface{}{
+			"chart":     chartName,
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get stateful sets for chart %s: %w", chartName, err)
+	}
+
+	var chartStatefulSets []*domain.StatefulSet
+	for _, sts := range statefulSets {
+		// Note: KubernetesStatefulSet has similar fields to KubernetesDeployment
+		// Since we can't check Labels (not available), we'll include all stateful sets for now
+		statefulSet := &domain.StatefulSet{
+			Name:          sts.Name,
+			Namespace:     sts.Namespace,
+			Replicas:      int32(sts.Replicas),            // Convert int to int32
+			ReadyReplicas: int32(sts.ReadyReplicas),       // Convert int to int32  
+			Status:        "Active",                       // Default status since not available
+		}
+		chartStatefulSets = append(chartStatefulSets, statefulSet)
+	}
+
+	g.logger.DebugWithContext("stateful sets for chart retrieved", map[string]interface{}{
+		"chart":     chartName,
+		"namespace": namespace,
+		"count":     len(chartStatefulSets),
+	})
+
+	return chartStatefulSets, nil
+}
+
+// NamespaceExists checks if a namespace exists
+func (g *KubectlGateway) NamespaceExists(ctx context.Context, namespace string) (bool, error) {
+	g.logger.DebugWithContext("checking if namespace exists", map[string]interface{}{
+		"namespace": namespace,
+	})
+
+	err := g.kubectlPort.GetNamespace(ctx, namespace)
+	if err != nil {
+		// If error is "not found", namespace doesn't exist
+		g.logger.DebugWithContext("namespace not found", map[string]interface{}{
+			"namespace": namespace,
+		})
+		return false, nil
+	}
+
+	g.logger.DebugWithContext("namespace exists", map[string]interface{}{
+		"namespace": namespace,
+	})
+	return true, nil
+}
+
+// CreateNamespace creates a new namespace
+func (g *KubectlGateway) CreateNamespace(ctx context.Context, namespace string) error {
+	g.logger.InfoWithContext("creating namespace", map[string]interface{}{
+		"namespace": namespace,
+	})
+
+	err := g.kubectlPort.CreateNamespace(ctx, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to create namespace", map[string]interface{}{
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
+	}
+
+	g.logger.InfoWithContext("namespace created successfully", map[string]interface{}{
+		"namespace": namespace,
+	})
+	return nil
+}
+
+// ValidateNamespaceAccess validates access to a namespace
+func (g *KubectlGateway) ValidateNamespaceAccess(ctx context.Context, namespace string) error {
+	g.logger.DebugWithContext("validating namespace access", map[string]interface{}{
+		"namespace": namespace,
+	})
+
+	// Try to list secrets in the namespace as an access test
+	err := g.kubectlPort.ListSecrets(ctx, namespace)
+	if err != nil {
+		g.logger.ErrorWithContext("namespace access validation failed", map[string]interface{}{
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("no access to namespace %s: %w", namespace, err)
+	}
+
+	g.logger.DebugWithContext("namespace access validated", map[string]interface{}{
+		"namespace": namespace,
+	})
+	return nil
+}
+
+// GetNamespaceStatus gets the status of a namespace
+func (g *KubectlGateway) GetNamespaceStatus(ctx context.Context, namespace string) (*domain.NamespaceStatus, error) {
+	g.logger.DebugWithContext("getting namespace status", map[string]interface{}{
+		"namespace": namespace,
+	})
+
+	// Get namespace information
+	namespaces, err := g.kubectlPort.GetNamespaces(ctx)
+	if err != nil {
+		g.logger.ErrorWithContext("failed to get namespaces", map[string]interface{}{
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return nil, fmt.Errorf("failed to get namespace list: %w", err)
+	}
+
+	// Find the specific namespace
+	for _, ns := range namespaces {
+		if ns.Name == namespace {
+			status := &domain.NamespaceStatus{
+				Name:       ns.Name,
+				Phase:      ns.Status,
+				Created:    time.Now(), // Age is string, use current time as fallback
+				Labels:     make(map[string]string),
+				Ready:      ns.Status == "Active",
+				Conditions: []string{},
+			}
+
+			g.logger.DebugWithContext("namespace status retrieved", map[string]interface{}{
+				"namespace": namespace,
+				"phase":     status.Phase,
+			})
+			return status, nil
+		}
+	}
+
+	return nil, fmt.Errorf("namespace %s not found", namespace)
+}
+
+// CleanupNamespace cleans up resources in a namespace
+func (g *KubectlGateway) CleanupNamespace(ctx context.Context, namespace string) error {
+	g.logger.InfoWithContext("cleaning up namespace resources", map[string]interface{}{
+		"namespace": namespace,
+	})
+
+	// Clean up failed resources in the namespace
+	err := g.CleanupFailedResources(ctx, []string{namespace})
+	if err != nil {
+		g.logger.ErrorWithContext("namespace cleanup failed", map[string]interface{}{
+			"namespace": namespace,
+			"error":     err.Error(),
+		})
+		return fmt.Errorf("failed to cleanup namespace %s: %w", namespace, err)
+	}
+
+	g.logger.InfoWithContext("namespace cleanup completed", map[string]interface{}{
+		"namespace": namespace,
+	})
+	return nil
+}

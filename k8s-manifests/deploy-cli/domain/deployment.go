@@ -17,6 +17,7 @@ type DeploymentOptions struct {
 	ChartsDir               string
 	Timeout                 time.Duration
 	DeploymentStrategy      DeploymentStrategy
+	Strategy                DeploymentStrategy // Alternative field name for strategy
 	StrategyName            string // Override strategy selection
 	AutoFixSecrets          bool          // Enable automatic secret error recovery (Phase 4.3)
 	AutoCreateNamespaces    bool          // Enable automatic namespace creation if not exists
@@ -29,6 +30,24 @@ type DeploymentOptions struct {
 	SkipCleanup             bool          // Skip automatic Helm operation cleanup
 	CleanupThreshold        time.Duration // Minimum age for cleanup operations (default: 5 minutes)
 	ConservativeCleanup     bool          // Use conservative cleanup approach
+	
+	// Additional options needed for Helm operations
+	DeployTimeout           time.Duration // Timeout for deployment operations
+	CreateNamespace         bool          // Create namespace if it doesn't exist
+	Force                   bool          // Force deployment operations
+	DisableHooks            bool          // Disable Helm hooks
+	SkipCRDs                bool          // Skip CRD installation
+	UndeployTimeout         time.Duration // Timeout for undeployment operations
+	KeepHistory             bool          // Keep history during undeployment
+	
+	// Additional Helm options
+	Values                  map[string]interface{} // Helm values override
+	ResetValues             bool          // Reset values during upgrade
+	ReuseValues             bool          // Reuse values during upgrade
+	RollbackTimeout         time.Duration // Timeout for rollback operations
+	RecreateResources       bool          // Recreate resources during rollback
+	ImageTag                string        // Image tag override
+	WaitBetweenCharts       time.Duration // Wait time between chart deployments
 }
 
 // NewDeploymentOptions creates a new deployment options with defaults
@@ -313,4 +332,29 @@ type DeploymentCheckpoint struct {
 	Environment Environment
 	Releases    []HelmReleaseInfo
 	Namespaces  []string
+}
+
+// ChartDeploymentResult represents the result of a chart deployment operation
+type ChartDeploymentResult struct {
+	Success     bool          `json:"success"`
+	ChartName   string        `json:"chart_name"`
+	Namespace   string        `json:"namespace"`
+	Duration    time.Duration `json:"duration"`
+	Error       error         `json:"error,omitempty"`
+	Message     string        `json:"message"`
+	Resources   []string      `json:"resources"`   // Deployed resources
+	Warnings    []string      `json:"warnings"`    // Warnings during deployment
+	StartTime   time.Time     `json:"start_time"`  // Deployment start time
+	EndTime     time.Time     `json:"end_time"`    // Deployment end time
+	Status      DeploymentStatus `json:"status"`   // Deployment status
+}
+
+// NamespaceStatus represents the status of a namespace
+type NamespaceStatus struct {
+	Name       string            `json:"name"`
+	Phase      string            `json:"phase"`      // Active, Terminating, etc.
+	Labels     map[string]string `json:"labels"`
+	Created    time.Time         `json:"created"`
+	Ready      bool              `json:"ready"`
+	Conditions []string          `json:"conditions"` // Status conditions
 }
