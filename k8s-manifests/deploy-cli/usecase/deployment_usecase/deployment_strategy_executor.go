@@ -18,6 +18,7 @@ type DeploymentStrategyExecutor struct {
 	filesystemGateway     *filesystem_gateway.FileSystemGateway
 	dependencyScanner     *dependency_usecase.DependencyScanner
 	healthChecker         *HealthChecker
+	healthCheckUsecase    *HealthCheckUsecase
 	dependencyWaiter      *DependencyWaiter
 	strategyFactory       *StrategyFactory
 	parallelDeployer      *ParallelChartDeployer
@@ -33,6 +34,7 @@ func NewDeploymentStrategyExecutor(
 	filesystemGateway *filesystem_gateway.FileSystemGateway,
 	dependencyScanner *dependency_usecase.DependencyScanner,
 	healthChecker *HealthChecker,
+	healthCheckUsecase *HealthCheckUsecase,
 	dependencyWaiter *DependencyWaiter,
 	strategyFactory *StrategyFactory,
 	helmOperationManager *HelmOperationManager,
@@ -43,6 +45,7 @@ func NewDeploymentStrategyExecutor(
 		filesystemGateway:     filesystemGateway,
 		dependencyScanner:     dependencyScanner,
 		healthChecker:         healthChecker,
+		healthCheckUsecase:    healthCheckUsecase,
 		dependencyWaiter:      dependencyWaiter,
 		strategyFactory:       strategyFactory,
 		helmOperationManager:  helmOperationManager,
@@ -104,6 +107,19 @@ func (e *DeploymentStrategyExecutor) deployChartsWithLayerAwareness(ctx context.
 		e.logger.InfoWithContext("using annotation-aware layer configurations", map[string]interface{}{
 			"layers_count": len(layers),
 		})
+		
+		// DEBUG: Log common-config chart annotations
+		for _, layer := range layers {
+			for _, chart := range layer.Charts {
+				if chart.Name == "common-config" {
+					e.logger.InfoWithContext("DEBUG: common-config chart annotations", map[string]interface{}{
+						"chart":       chart.Name,
+						"annotations": chart.Annotations,
+						"layer":       layer.Name,
+					})
+				}
+			}
+		}
 	}
 
 	// Get chart configuration for chart validation
@@ -802,102 +818,16 @@ func (e *DeploymentStrategyExecutor) isStatefulSetChart(chartName string) bool {
 	return false
 }
 
-// performLayerHealthCheck performs health check for a layer
+// performLayerHealthCheck performs health check for a layer using unified HealthCheckUsecase
 func (e *DeploymentStrategyExecutor) performLayerHealthCheck(ctx context.Context, layer domain.LayerConfiguration, options *domain.DeploymentOptions) error {
-	e.logger.InfoWithContext("🩺 STARTING performLayerHealthCheck", map[string]interface{}{
+	e.logger.InfoWithContext("🩺 DELEGATING to HealthCheckUsecase", map[string]interface{}{
 		"layer": layer.Name,
 		"charts_count": len(layer.Charts),
 		"context_deadline": ctx.Err() == nil,
 	})
 
-	// Check if health checks are globally disabled
-	if options.SkipHealthChecks {
-		e.logger.InfoWithContext("⏭️ SKIPPING all health checks due to flag", map[string]interface{}{
-			"layer":  layer.Name,
-			"reason": "--skip-health-checks flag enabled",
-		})
-		return nil
-	}
-
-	for chartIndex, chart := range layer.Charts {
-		// Check if health check should be skipped via annotation
-		if annotation, exists := chart.Annotations["deploy-cli/health-check"]; exists && annotation == "none" {
-			e.logger.InfoWithContext("⏭️ SKIPPING health check due to annotation", map[string]interface{}{
-				"chart":      chart.Name,
-				"annotation": annotation,
-				"reason":     "deploy-cli/health-check=none",
-			})
-			continue // Skip health check for this chart
-		}
-		
-		if chart.WaitReady {
-			namespace := options.GetNamespace(chart.Name)
-
-			e.logger.InfoWithContext("🔍 CHECKING individual chart health", map[string]interface{}{
-				"chart": chart.Name,
-				"namespace": namespace,
-				"chart_index": chartIndex + 1,
-				"total_charts": len(layer.Charts),
-				"chart_type": string(chart.Type),
-			})
-
-			var err error
-			switch chart.Name {
-			case "postgres", "auth-postgres", "kratos-postgres":
-				e.logger.InfoWithContext("🐘 PostgreSQL health check STARTING", map[string]interface{}{
-					"chart": chart.Name,
-					"namespace": namespace,
-					"about_to_call": "WaitForPostgreSQLReady",
-				})
-				err = e.healthChecker.WaitForPostgreSQLReady(ctx, namespace, chart.Name)
-				if err != nil {
-					e.logger.ErrorWithContext("🐘 PostgreSQL health check FAILED", map[string]interface{}{
-						"chart": chart.Name,
-						"namespace": namespace,
-						"error": err.Error(),
-					})
-				} else {
-					e.logger.InfoWithContext("🐘 PostgreSQL health check PASSED", map[string]interface{}{
-						"chart": chart.Name,
-						"namespace": namespace,
-					})
-				}
-			case "meilisearch":
-				e.logger.InfoWithContext("🔍 Meilisearch health check STARTING", map[string]interface{}{
-					"chart": chart.Name,
-					"namespace": namespace,
-				})
-				err = e.healthChecker.WaitForMeilisearchReady(ctx, namespace, chart.Name)
-			default:
-				e.logger.InfoWithContext("⚙️ Service health check STARTING", map[string]interface{}{
-					"chart": chart.Name,
-					"namespace": namespace,
-					"service_type": string(chart.Type),
-				})
-				err = e.healthChecker.WaitForServiceReady(ctx, chart.Name, string(chart.Type), namespace)
-			}
-
-			if err != nil {
-				e.logger.ErrorWithContext("❌ Chart health check FAILED", map[string]interface{}{
-					"chart": chart.Name,
-					"namespace": namespace,
-					"error": err.Error(),
-				})
-				return fmt.Errorf("health check failed for chart %s: %w", chart.Name, err)
-			}
-
-			e.logger.InfoWithContext("✅ Chart health check COMPLETED", map[string]interface{}{
-				"chart": chart.Name,
-				"namespace": namespace,
-			})
-		} else {
-			e.logger.InfoWithContext("⏭️ SKIPPING health check (WaitReady=false)", map[string]interface{}{
-				"chart": chart.Name,
-			})
-		}
-	}
-
-	return nil
+	// Delegate to unified HealthCheckUsecase implementation
+	return e.healthCheckUsecase.performLayerHealthCheck(ctx, layer, options)
 }
 
 // getDefaultLayerConfigurations returns the default layer configurations
@@ -980,6 +910,11 @@ func (e *DeploymentStrategyExecutor) getAnnotationAwareLayerConfigurations(chart
 				e.logger.InfoWithContext("loaded annotations for chart", map[string]interface{}{
 					"chart":       chartName,
 					"annotations": annotatedChart.Annotations,
+				})
+			} else {
+				e.logger.WarnWithContext("failed to get chart with annotations", map[string]interface{}{
+					"chart": chartName,
+					"error": err.Error(),
 				})
 			}
 		}

@@ -199,25 +199,69 @@ func (h *HealthChecker) WaitForMeilisearchReady(ctx context.Context, namespace, 
 
 // checkMeilisearchHealth checks if Meilisearch is healthy
 func (h *HealthChecker) checkMeilisearchHealth(namespace, serviceName string) error {
-	// Try to access Meilisearch health endpoint
-	podName := serviceName + "-0" // StatefulSet naming convention
-	cmd := exec.Command("kubectl", "exec", "-n", namespace, podName, "--", "curl", "-f", "http://localhost:7700/health")
+	// EMERGENCY FIX: kubectl exec fails due to security constraints ("container breakout detected")
+	// Use service-based health check instead of pod-internal health check
+	
+	h.logger.Debug("attempting service-based Meilisearch health check",
+		"namespace", namespace,
+		"service", serviceName,
+	)
 
+	// Get service ClusterIP
+	cmd := exec.Command("kubectl", "get", "svc", serviceName, "-n", namespace, 
+		"-o", "jsonpath={.spec.clusterIP}")
+	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		h.logger.Debug("Meilisearch health check failed",
+		h.logger.Debug("failed to get service ClusterIP",
 			"namespace", namespace,
 			"service", serviceName,
 			"error", err,
-			"output", string(output),
 		)
-		return fmt.Errorf("Meilisearch health check failed: %w", err)
+		return fmt.Errorf("failed to get Meilisearch service ClusterIP: %w", err)
 	}
 
-	// Check if output contains "available"
-	if !strings.Contains(string(output), "available") {
-		return fmt.Errorf("Meilisearch not available: %s", string(output))
+	clusterIP := strings.TrimSpace(string(output))
+	if clusterIP == "" {
+		return fmt.Errorf("Meilisearch service ClusterIP is empty")
 	}
+
+	// Try to access Meilisearch health endpoint via Service
+	// Meilisearch /health endpoint returns 204 No Content (empty body) or 200 with JSON
+	// Both are considered success
+	healthURL := fmt.Sprintf("http://%s:7700/health", clusterIP)
+	cmd = exec.Command("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", healthURL)
+
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		h.logger.Debug("Meilisearch service health check failed",
+			"namespace", namespace,
+			"service", serviceName,
+			"cluster_ip", clusterIP,
+			"error", err,
+			"output", string(output),
+		)
+		return fmt.Errorf("Meilisearch service health check failed: %w", err)
+	}
+
+	// Check HTTP status code - 204 No Content and 200 OK are both success
+	statusCode := strings.TrimSpace(string(output))
+	if statusCode != "204" && statusCode != "200" {
+		h.logger.Debug("Meilisearch service health check returned unexpected status",
+			"namespace", namespace,
+			"service", serviceName,
+			"cluster_ip", clusterIP,
+			"status_code", statusCode,
+		)
+		return fmt.Errorf("Meilisearch not available via service, HTTP status: %s", statusCode)
+	}
+
+	h.logger.Debug("Meilisearch service health check passed",
+		"namespace", namespace,
+		"service", serviceName,
+		"cluster_ip", clusterIP,
+		"status_code", statusCode,
+	)
 
 	return nil
 }

@@ -32,6 +32,15 @@ func (u *HealthCheckUsecase) performLayerHealthCheck(ctx context.Context, layer 
 		"charts_count": len(layer.Charts),
 	})
 
+	// Check if health checks are globally disabled
+	if options.SkipHealthChecks {
+		u.logger.InfoWithContext("⏭️ SKIPPING all health checks due to flag", map[string]interface{}{
+			"layer":  layer.Name,
+			"reason": "--skip-health-checks flag enabled",
+		})
+		return nil
+	}
+
 	switch layer.Name {
 	case "storage":
 		return u.performStorageLayerHealthCheck(ctx, layer.Charts, options)
@@ -49,7 +58,10 @@ func (u *HealthCheckUsecase) performChartHealthCheck(ctx context.Context, chart 
 	u.logger.InfoWithContext("performing chart health check", map[string]interface{}{
 		"chart_name":      chart.Name,
 		"multi_namespace": chart.MultiNamespace,
+		"annotations":     chart.Annotations, // DEBUG: Show all annotations
 	})
+
+	// Note: Annotation checking is handled in performSingleNamespaceHealthCheck
 
 	if chart.MultiNamespace {
 		// Handle multi-namespace charts
@@ -72,6 +84,15 @@ func (u *HealthCheckUsecase) performSingleNamespaceHealthCheck(ctx context.Conte
 		"chart_name": chart.Name,
 		"namespace":  namespace,
 	})
+
+	// HOTFIX: Skip health check for known config-only charts
+	if chart.Name == "common-config" {
+		u.logger.InfoWithContext("⏭️ SKIPPING health check for config-only chart", map[string]interface{}{
+			"chart": chart.Name,
+			"reason": "known config-only chart without pods",
+		})
+		return nil
+	}
 
 	// Check for Chart.yaml annotations to override health check behavior (HIGHEST PRIORITY)
 	if healthCheckType, exists := chart.Annotations["deploy-cli/health-check"]; exists {
