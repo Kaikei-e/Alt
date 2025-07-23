@@ -12,7 +12,6 @@ if [ -z "$DB_URL" ]; then
 fi
 
 echo "データベースマイグレーションを開始します..."
-echo "DB接続先URL (マスクされていません。本番環境では注意): ${DB_URL}"
 echo "最大リトライ回数: ${MAX_RETRIES}"
 echo "リトライ間隔: ${RETRY_INTERVAL}秒"
 
