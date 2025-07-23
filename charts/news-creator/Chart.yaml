@@ -1,6 +1,0 @@
-apiVersion: v2
-name: news-creator
-description: A Helm chart for Alt News Creator service
-type: application
-version: 0.1.0
-appVersion: "production"
