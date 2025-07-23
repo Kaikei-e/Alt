@@ -5,10 +5,10 @@ set -eu
 MIGRATE_BIN="${MIGRATE_BIN:-/usr/local/bin/migrate}"
 MIGRATE_PATH="${MIGRATE_PATH:-/migrations}"
 DB_URL="${DB_URL:?環境変数 DB_URL が設定されていません。}"
-MAX_RETRIES="${MIGRATE_MAX_RETRIES:-12}"
-RETRY_INTERVAL="${MIGRATE_RETRY_INTERVAL:-5}"
-# タイムアウト（1回の migrate 実行あたり秒）
-MIGRATE_TIMEOUT="${MIGRATE_TIMEOUT:-60}"
+MAX_RETRIES="${MIGRATE_MAX_RETRIES:-3}"
+RETRY_INTERVAL="${MIGRATE_RETRY_INTERVAL:-10}"
+# migrateネイティブのlock-timeout（秒）
+LOCK_TIMEOUT="${MIGRATE_LOCK_TIMEOUT:-120}"
 
 # --- 内部関数 ---
 # DB_URL のパスワードをマスクして表示
@@ -33,18 +33,20 @@ echo "  マイグレーションパス: ${MIGRATE_PATH}"
 echo "  migrate バイナリ: ${MIGRATE_BIN}"
 echo "  最大試行回数: ${MAX_RETRIES}"
 echo "  リトライ間隔: ${RETRY_INTERVAL}s"
-echo "  タイムアウト: ${MIGRATE_TIMEOUT}s"
+echo "  ロックタイムアウト: ${LOCK_TIMEOUT}s"
 
 current_retry=0
 while [ "$current_retry" -lt "$MAX_RETRIES" ]; do
   attempt=$((current_retry + 1))
   echo "[INFO] 試行 ${attempt}/${MAX_RETRIES} — migrate を実行しています..."
 
-  # タイムアウト付きで migrate を呼び出し
-  if timeout "${MIGRATE_TIMEOUT}" \
-       "${MIGRATE_BIN}" \
-         -path "${MIGRATE_PATH}" \
-         -database "${DB_URL}" up; then
+  # migrateのネイティブlock-timeoutを使用
+  if "${MIGRATE_BIN}" \
+       -path "${MIGRATE_PATH}" \
+       -database "${DB_URL}" \
+       -lock-timeout "${LOCK_TIMEOUT}" \
+       -verbose \
+       up; then
     echo "[SUCCESS] マイグレーション成功（または変更なし）。"
     exit 0
   else
