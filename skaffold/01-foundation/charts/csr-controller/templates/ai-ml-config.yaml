@@ -1,0 +1,768 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-ai-ml-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-ml-engine
+data:
+  ai-ml-config.yaml: |
+    # AI/ML Engine Configuration
+    version: "1.0"
+    
+    # Global Configuration
+    global:
+      environment: {{ .Values.aiMlEngine.environment | default "production" | quote }}
+      debug_mode: {{ .Values.aiMlEngine.debugMode | default false }}
+      log_level: {{ .Values.aiMlEngine.logLevel | default "INFO" | quote }}
+      
+    # Machine Learning Models Configuration
+    models:
+      # Anomaly Detection Models
+      anomaly_detection:
+        enabled: {{ .Values.aiMlEngine.anomalyDetection.enabled | default true }}
+        
+        # Unsupervised Learning Models
+        unsupervised:
+          - name: "isolation_forest"
+            enabled: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.isolationForest.enabled | default true }}
+            parameters:
+              n_estimators: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.isolationForest.nEstimators | default 100 }}
+              contamination: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.isolationForest.contamination | default 0.1 }}
+              random_state: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.isolationForest.randomState | default 42 }}
+              n_jobs: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.isolationForest.nJobs | default -1 }}
+              
+          - name: "one_class_svm"
+            enabled: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.oneClassSvm.enabled | default true }}
+            parameters:
+              kernel: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.oneClassSvm.kernel | default "rbf" | quote }}
+              gamma: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.oneClassSvm.gamma | default "scale" | quote }}
+              nu: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.oneClassSvm.nu | default 0.05 }}
+              
+          - name: "local_outlier_factor"
+            enabled: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.localOutlierFactor.enabled | default true }}
+            parameters:
+              n_neighbors: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.localOutlierFactor.nNeighbors | default 20 }}
+              contamination: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.localOutlierFactor.contamination | default 0.1 }}
+              
+          - name: "dbscan"
+            enabled: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.dbscan.enabled | default true }}
+            parameters:
+              eps: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.dbscan.eps | default 0.5 }}
+              min_samples: {{ .Values.aiMlEngine.anomalyDetection.unsupervised.dbscan.minSamples | default 5 }}
+        
+        # Deep Learning Models
+        deep_learning:
+          - name: "autoencoder"
+            enabled: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.autoencoder.enabled | default true }}
+            parameters:
+              encoding_dim: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.autoencoder.encodingDim | default 32 }}
+              hidden_layers: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.autoencoder.hiddenLayers | default "[128, 64]" }}
+              activation: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.autoencoder.activation | default "relu" | quote }}
+              optimizer: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.autoencoder.optimizer | default "adam" | quote }}
+              loss: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.autoencoder.loss | default "mse" | quote }}
+              threshold_percentile: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.autoencoder.thresholdPercentile | default 95 }}
+              
+          - name: "variational_autoencoder"
+            enabled: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.variationalAutoencoder.enabled | default true }}
+            parameters:
+              latent_dim: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.variationalAutoencoder.latentDim | default 16 }}
+              intermediate_dim: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.variationalAutoencoder.intermediateDim | default 64 }}
+              kl_weight: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.variationalAutoencoder.klWeight | default 0.1 }}
+              
+          - name: "lstm_autoencoder"
+            enabled: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.lstmAutoencoder.enabled | default true }}
+            parameters:
+              sequence_length: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.lstmAutoencoder.sequenceLength | default 50 }}
+              lstm_units: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.lstmAutoencoder.lstmUnits | default 64 }}
+              dropout: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.lstmAutoencoder.dropout | default 0.2 }}
+              
+          - name: "transformer_autoencoder"
+            enabled: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.transformerAutoencoder.enabled | default true }}
+            parameters:
+              num_heads: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.transformerAutoencoder.numHeads | default 8 }}
+              num_layers: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.transformerAutoencoder.numLayers | default 4 }}
+              d_model: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.transformerAutoencoder.dModel | default 128 }}
+              d_ff: {{ .Values.aiMlEngine.anomalyDetection.deepLearning.transformerAutoencoder.dFf | default 512 }}
+      
+      # Predictive Analytics Models
+      predictive_analytics:
+        enabled: {{ .Values.aiMlEngine.predictiveAnalytics.enabled | default true }}
+        
+        # Time Series Forecasting
+        time_series:
+          - name: "arima"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.arima.enabled | default true }}
+            parameters:
+              order: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.arima.order | default "[1, 1, 1]" }}
+              seasonal_order: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.arima.seasonalOrder | default "[1, 1, 1, 12]" }}
+              
+          - name: "lstm"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.lstm.enabled | default true }}
+            parameters:
+              units: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.lstm.units | default 50 }}
+              dropout: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.lstm.dropout | default 0.2 }}
+              lookback: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.lstm.lookback | default 60 }}
+              
+          - name: "gru"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.gru.enabled | default true }}
+            parameters:
+              units: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.gru.units | default 50 }}
+              dropout: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.gru.dropout | default 0.2 }}
+              
+          - name: "transformer"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.transformer.enabled | default true }}
+            parameters:
+              num_heads: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.transformer.numHeads | default 8 }}
+              num_layers: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.transformer.numLayers | default 4 }}
+              d_model: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.transformer.dModel | default 128 }}
+              
+          - name: "prophet"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.prophet.enabled | default true }}
+            parameters:
+              changepoint_prior_scale: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.prophet.changepointPriorScale | default 0.05 }}
+              seasonality_prior_scale: {{ .Values.aiMlEngine.predictiveAnalytics.timeSeries.prophet.seasonalityPriorScale | default 10.0 }}
+              
+        # Classification Models
+        classification:
+          - name: "random_forest"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.classification.randomForest.enabled | default true }}
+            parameters:
+              n_estimators: {{ .Values.aiMlEngine.predictiveAnalytics.classification.randomForest.nEstimators | default 100 }}
+              max_depth: {{ .Values.aiMlEngine.predictiveAnalytics.classification.randomForest.maxDepth | default 10 }}
+              min_samples_split: {{ .Values.aiMlEngine.predictiveAnalytics.classification.randomForest.minSamplesSplit | default 2 }}
+              
+          - name: "gradient_boosting"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.classification.gradientBoosting.enabled | default true }}
+            parameters:
+              n_estimators: {{ .Values.aiMlEngine.predictiveAnalytics.classification.gradientBoosting.nEstimators | default 100 }}
+              learning_rate: {{ .Values.aiMlEngine.predictiveAnalytics.classification.gradientBoosting.learningRate | default 0.1 }}
+              max_depth: {{ .Values.aiMlEngine.predictiveAnalytics.classification.gradientBoosting.maxDepth | default 6 }}
+              
+          - name: "xgboost"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.classification.xgboost.enabled | default true }}
+            parameters:
+              n_estimators: {{ .Values.aiMlEngine.predictiveAnalytics.classification.xgboost.nEstimators | default 100 }}
+              learning_rate: {{ .Values.aiMlEngine.predictiveAnalytics.classification.xgboost.learningRate | default 0.1 }}
+              max_depth: {{ .Values.aiMlEngine.predictiveAnalytics.classification.xgboost.maxDepth | default 6 }}
+              
+          - name: "neural_network"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.classification.neuralNetwork.enabled | default true }}
+            parameters:
+              hidden_layer_sizes: {{ .Values.aiMlEngine.predictiveAnalytics.classification.neuralNetwork.hiddenLayerSizes | default "[100, 50]" }}
+              activation: {{ .Values.aiMlEngine.predictiveAnalytics.classification.neuralNetwork.activation | default "relu" | quote }}
+              solver: {{ .Values.aiMlEngine.predictiveAnalytics.classification.neuralNetwork.solver | default "adam" | quote }}
+        
+        # Regression Models
+        regression:
+          - name: "linear_regression"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.regression.linearRegression.enabled | default true }}
+            parameters:
+              fit_intercept: {{ .Values.aiMlEngine.predictiveAnalytics.regression.linearRegression.fitIntercept | default true }}
+              normalize: {{ .Values.aiMlEngine.predictiveAnalytics.regression.linearRegression.normalize | default false }}
+              
+          - name: "ridge_regression"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.regression.ridgeRegression.enabled | default true }}
+            parameters:
+              alpha: {{ .Values.aiMlEngine.predictiveAnalytics.regression.ridgeRegression.alpha | default 1.0 }}
+              
+          - name: "support_vector_regression"
+            enabled: {{ .Values.aiMlEngine.predictiveAnalytics.regression.supportVectorRegression.enabled | default true }}
+            parameters:
+              kernel: {{ .Values.aiMlEngine.predictiveAnalytics.regression.supportVectorRegression.kernel | default "rbf" | quote }}
+              C: {{ .Values.aiMlEngine.predictiveAnalytics.regression.supportVectorRegression.C | default 1.0 }}
+              epsilon: {{ .Values.aiMlEngine.predictiveAnalytics.regression.supportVectorRegression.epsilon | default 0.1 }}
+      
+      # Pattern Recognition Models
+      pattern_recognition:
+        enabled: {{ .Values.aiMlEngine.patternRecognition.enabled | default true }}
+        
+        # Clustering Models
+        clustering:
+          - name: "k_means"
+            enabled: {{ .Values.aiMlEngine.patternRecognition.clustering.kMeans.enabled | default true }}
+            parameters:
+              n_clusters: {{ .Values.aiMlEngine.patternRecognition.clustering.kMeans.nClusters | default 8 }}
+              init: {{ .Values.aiMlEngine.patternRecognition.clustering.kMeans.init | default "k-means++" | quote }}
+              max_iter: {{ .Values.aiMlEngine.patternRecognition.clustering.kMeans.maxIter | default 300 }}
+              
+          - name: "hierarchical_clustering"
+            enabled: {{ .Values.aiMlEngine.patternRecognition.clustering.hierarchicalClustering.enabled | default true }}
+            parameters:
+              n_clusters: {{ .Values.aiMlEngine.patternRecognition.clustering.hierarchicalClustering.nClusters | default 8 }}
+              linkage: {{ .Values.aiMlEngine.patternRecognition.clustering.hierarchicalClustering.linkage | default "ward" | quote }}
+              
+          - name: "dbscan"
+            enabled: {{ .Values.aiMlEngine.patternRecognition.clustering.dbscan.enabled | default true }}
+            parameters:
+              eps: {{ .Values.aiMlEngine.patternRecognition.clustering.dbscan.eps | default 0.5 }}
+              min_samples: {{ .Values.aiMlEngine.patternRecognition.clustering.dbscan.minSamples | default 5 }}
+        
+        # Sequence Mining
+        sequence_mining:
+          - name: "frequent_pattern_mining"
+            enabled: {{ .Values.aiMlEngine.patternRecognition.sequenceMining.frequentPatternMining.enabled | default true }}
+            parameters:
+              min_support: {{ .Values.aiMlEngine.patternRecognition.sequenceMining.frequentPatternMining.minSupport | default 0.1 }}
+              max_len: {{ .Values.aiMlEngine.patternRecognition.sequenceMining.frequentPatternMining.maxLen | default 10 }}
+              
+          - name: "association_rule_mining"
+            enabled: {{ .Values.aiMlEngine.patternRecognition.sequenceMining.associationRuleMining.enabled | default true }}
+            parameters:
+              min_support: {{ .Values.aiMlEngine.patternRecognition.sequenceMining.associationRuleMining.minSupport | default 0.1 }}
+              min_confidence: {{ .Values.aiMlEngine.patternRecognition.sequenceMining.associationRuleMining.minConfidence | default 0.7 }}
+        
+        # Graph Analysis
+        graph_analysis:
+          - name: "community_detection"
+            enabled: {{ .Values.aiMlEngine.patternRecognition.graphAnalysis.communityDetection.enabled | default true }}
+            parameters:
+              algorithm: {{ .Values.aiMlEngine.patternRecognition.graphAnalysis.communityDetection.algorithm | default "louvain" | quote }}
+              resolution: {{ .Values.aiMlEngine.patternRecognition.graphAnalysis.communityDetection.resolution | default 1.0 }}
+              
+          - name: "centrality_analysis"
+            enabled: {{ .Values.aiMlEngine.patternRecognition.graphAnalysis.centralityAnalysis.enabled | default true }}
+            parameters:
+              metrics: {{ .Values.aiMlEngine.patternRecognition.graphAnalysis.centralityAnalysis.metrics | default "betweenness,closeness,eigenvector" | quote }}
+    
+    # Natural Language Processing Configuration
+    nlp:
+      enabled: {{ .Values.aiMlEngine.nlp.enabled | default true }}
+      
+      # Text Processing
+      text_processing:
+        # Preprocessing
+        preprocessing:
+          tokenization: {{ .Values.aiMlEngine.nlp.textProcessing.preprocessing.tokenization | default true }}
+          stopword_removal: {{ .Values.aiMlEngine.nlp.textProcessing.preprocessing.stopwordRemoval | default true }}
+          stemming: {{ .Values.aiMlEngine.nlp.textProcessing.preprocessing.stemming | default true }}
+          lemmatization: {{ .Values.aiMlEngine.nlp.textProcessing.preprocessing.lemmatization | default true }}
+          
+        # Feature Extraction
+        feature_extraction:
+          - name: "tfidf"
+            enabled: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.tfidf.enabled | default true }}
+            parameters:
+              max_features: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.tfidf.maxFeatures | default 5000 }}
+              ngram_range: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.tfidf.ngramRange | default "[1, 2]" }}
+              
+          - name: "word2vec"
+            enabled: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.word2vec.enabled | default true }}
+            parameters:
+              vector_size: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.word2vec.vectorSize | default 300 }}
+              window: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.word2vec.window | default 5 }}
+              min_count: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.word2vec.minCount | default 1 }}
+              
+          - name: "bert"
+            enabled: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.bert.enabled | default true }}
+            parameters:
+              model_name: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.bert.modelName | default "bert-base-uncased" | quote }}
+              max_length: {{ .Values.aiMlEngine.nlp.textProcessing.featureExtraction.bert.maxLength | default 512 }}
+      
+      # Log Analysis
+      log_analysis:
+        enabled: {{ .Values.aiMlEngine.nlp.logAnalysis.enabled | default true }}
+        
+        # Log Classification
+        classification:
+          - name: "severity_classification"
+            enabled: {{ .Values.aiMlEngine.nlp.logAnalysis.classification.severityClassification.enabled | default true }}
+            classes: {{ .Values.aiMlEngine.nlp.logAnalysis.classification.severityClassification.classes | default "ERROR,WARN,INFO,DEBUG" | quote }}
+            
+          - name: "category_classification"
+            enabled: {{ .Values.aiMlEngine.nlp.logAnalysis.classification.categoryClassification.enabled | default true }}
+            classes: {{ .Values.aiMlEngine.nlp.logAnalysis.classification.categoryClassification.classes | default "SECURITY,PERFORMANCE,SYSTEM,APPLICATION" | quote }}
+            
+          - name: "anomaly_classification"
+            enabled: {{ .Values.aiMlEngine.nlp.logAnalysis.classification.anomalyClassification.enabled | default true }}
+            classes: {{ .Values.aiMlEngine.nlp.logAnalysis.classification.anomalyClassification.classes | default "NORMAL,ANOMALY,SUSPICIOUS" | quote }}
+        
+        # Entity Extraction
+        entity_extraction:
+          enabled: {{ .Values.aiMlEngine.nlp.logAnalysis.entityExtraction.enabled | default true }}
+          entities: {{ .Values.aiMlEngine.nlp.logAnalysis.entityExtraction.entities | default "IP_ADDRESS,USER_ID,TIMESTAMP,ERROR_CODE,FILE_PATH" | quote }}
+        
+        # Sentiment Analysis
+        sentiment_analysis:
+          enabled: {{ .Values.aiMlEngine.nlp.logAnalysis.sentimentAnalysis.enabled | default true }}
+          model: {{ .Values.aiMlEngine.nlp.logAnalysis.sentimentAnalysis.model | default "vader" | quote }}
+      
+      # Incident Analysis
+      incident_analysis:
+        enabled: {{ .Values.aiMlEngine.nlp.incidentAnalysis.enabled | default true }}
+        
+        # Incident Classification
+        classification:
+          enabled: {{ .Values.aiMlEngine.nlp.incidentAnalysis.classification.enabled | default true }}
+          categories: {{ .Values.aiMlEngine.nlp.incidentAnalysis.classification.categories | default "SECURITY,AVAILABILITY,PERFORMANCE,COMPLIANCE" | quote }}
+          
+        # Root Cause Analysis
+        root_cause_analysis:
+          enabled: {{ .Values.aiMlEngine.nlp.incidentAnalysis.rootCauseAnalysis.enabled | default true }}
+          
+        # Similar Incident Detection
+        similar_incident_detection:
+          enabled: {{ .Values.aiMlEngine.nlp.incidentAnalysis.similarIncidentDetection.enabled | default true }}
+          similarity_threshold: {{ .Values.aiMlEngine.nlp.incidentAnalysis.similarIncidentDetection.similarityThreshold | default 0.8 }}
+    
+    # Reinforcement Learning Configuration
+    reinforcement_learning:
+      enabled: {{ .Values.aiMlEngine.reinforcementLearning.enabled | default true }}
+      
+      # Policy Optimization
+      policy_optimization:
+        enabled: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.enabled | default true }}
+        
+        # Algorithms
+        algorithms:
+          - name: "q_learning"
+            enabled: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.qLearning.enabled | default true }}
+            parameters:
+              learning_rate: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.qLearning.learningRate | default 0.1 }}
+              discount_factor: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.qLearning.discountFactor | default 0.9 }}
+              epsilon: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.qLearning.epsilon | default 0.1 }}
+              
+          - name: "deep_q_network"
+            enabled: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.deepQNetwork.enabled | default true }}
+            parameters:
+              hidden_layers: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.deepQNetwork.hiddenLayers | default "[128, 64]" }}
+              learning_rate: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.deepQNetwork.learningRate | default 0.001 }}
+              batch_size: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.deepQNetwork.batchSize | default 32 }}
+              
+          - name: "actor_critic"
+            enabled: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.actorCritic.enabled | default true }}
+            parameters:
+              actor_lr: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.actorCritic.actorLr | default 0.001 }}
+              critic_lr: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.actorCritic.criticLr | default 0.001 }}
+              gamma: {{ .Values.aiMlEngine.reinforcementLearning.policyOptimization.algorithms.actorCritic.gamma | default 0.99 }}
+      
+      # Adaptive Security
+      adaptive_security:
+        enabled: {{ .Values.aiMlEngine.reinforcementLearning.adaptiveSecurity.enabled | default true }}
+        
+        # Security Policy Learning
+        security_policy_learning:
+          enabled: {{ .Values.aiMlEngine.reinforcementLearning.adaptiveSecurity.securityPolicyLearning.enabled | default true }}
+          
+        # Threat Response Optimization
+        threat_response_optimization:
+          enabled: {{ .Values.aiMlEngine.reinforcementLearning.adaptiveSecurity.threatResponseOptimization.enabled | default true }}
+          
+        # Resource Allocation Optimization
+        resource_allocation_optimization:
+          enabled: {{ .Values.aiMlEngine.reinforcementLearning.adaptiveSecurity.resourceAllocationOptimization.enabled | default true }}
+    
+    # Feature Engineering Configuration
+    feature_engineering:
+      enabled: {{ .Values.aiMlEngine.featureEngineering.enabled | default true }}
+      
+      # Feature Extraction
+      extraction:
+        # Statistical Features
+        statistical:
+          enabled: {{ .Values.aiMlEngine.featureEngineering.extraction.statistical.enabled | default true }}
+          features: {{ .Values.aiMlEngine.featureEngineering.extraction.statistical.features | default "mean,std,min,max,median,skew,kurtosis" | quote }}
+          
+        # Temporal Features
+        temporal:
+          enabled: {{ .Values.aiMlEngine.featureEngineering.extraction.temporal.enabled | default true }}
+          features: {{ .Values.aiMlEngine.featureEngineering.extraction.temporal.features | default "hour,day,week,month,quarter,year,is_weekend,is_holiday" | quote }}
+          
+        # Network Features
+        network:
+          enabled: {{ .Values.aiMlEngine.featureEngineering.extraction.network.enabled | default true }}
+          features: {{ .Values.aiMlEngine.featureEngineering.extraction.network.features | default "packet_count,byte_count,connection_duration,port_number,protocol" | quote }}
+          
+        # Certificate Features
+        certificate:
+          enabled: {{ .Values.aiMlEngine.featureEngineering.extraction.certificate.enabled | default true }}
+          features: {{ .Values.aiMlEngine.featureEngineering.extraction.certificate.features | default "validity_period,key_size,algorithm,issuer,subject,san_count" | quote }}
+      
+      # Feature Selection
+      selection:
+        enabled: {{ .Values.aiMlEngine.featureEngineering.selection.enabled | default true }}
+        
+        # Selection Methods
+        methods:
+          - name: "univariate_selection"
+            enabled: {{ .Values.aiMlEngine.featureEngineering.selection.methods.univariateSelection.enabled | default true }}
+            parameters:
+              score_func: {{ .Values.aiMlEngine.featureEngineering.selection.methods.univariateSelection.scoreFunc | default "f_classif" | quote }}
+              k: {{ .Values.aiMlEngine.featureEngineering.selection.methods.univariateSelection.k | default 10 }}
+              
+          - name: "recursive_feature_elimination"
+            enabled: {{ .Values.aiMlEngine.featureEngineering.selection.methods.recursiveFeatureElimination.enabled | default true }}
+            parameters:
+              estimator: {{ .Values.aiMlEngine.featureEngineering.selection.methods.recursiveFeatureElimination.estimator | default "RandomForestClassifier" | quote }}
+              n_features_to_select: {{ .Values.aiMlEngine.featureEngineering.selection.methods.recursiveFeatureElimination.nFeaturesToSelect | default 10 }}
+              
+          - name: "lasso_selection"
+            enabled: {{ .Values.aiMlEngine.featureEngineering.selection.methods.lassoSelection.enabled | default true }}
+            parameters:
+              alpha: {{ .Values.aiMlEngine.featureEngineering.selection.methods.lassoSelection.alpha | default 0.01 }}
+      
+      # Feature Scaling
+      scaling:
+        enabled: {{ .Values.aiMlEngine.featureEngineering.scaling.enabled | default true }}
+        
+        # Scaling Methods
+        methods:
+          - name: "standard_scaler"
+            enabled: {{ .Values.aiMlEngine.featureEngineering.scaling.methods.standardScaler.enabled | default true }}
+            
+          - name: "min_max_scaler"
+            enabled: {{ .Values.aiMlEngine.featureEngineering.scaling.methods.minMaxScaler.enabled | default true }}
+            parameters:
+              feature_range: {{ .Values.aiMlEngine.featureEngineering.scaling.methods.minMaxScaler.featureRange | default "[0, 1]" }}
+              
+          - name: "robust_scaler"
+            enabled: {{ .Values.aiMlEngine.featureEngineering.scaling.methods.robustScaler.enabled | default true }}
+    
+    # Model Training Configuration
+    model_training:
+      enabled: {{ .Values.aiMlEngine.modelTraining.enabled | default true }}
+      
+      # Training Parameters
+      parameters:
+        batch_size: {{ .Values.aiMlEngine.modelTraining.batchSize | default 32 }}
+        learning_rate: {{ .Values.aiMlEngine.modelTraining.learningRate | default 0.001 }}
+        epochs: {{ .Values.aiMlEngine.modelTraining.epochs | default 100 }}
+        validation_split: {{ .Values.aiMlEngine.modelTraining.validationSplit | default 0.2 }}
+        test_split: {{ .Values.aiMlEngine.modelTraining.testSplit | default 0.2 }}
+        random_state: {{ .Values.aiMlEngine.modelTraining.randomState | default 42 }}
+        
+      # Early Stopping
+      early_stopping:
+        enabled: {{ .Values.aiMlEngine.modelTraining.earlyStopping.enabled | default true }}
+        patience: {{ .Values.aiMlEngine.modelTraining.earlyStopping.patience | default 10 }}
+        monitor: {{ .Values.aiMlEngine.modelTraining.earlyStopping.monitor | default "val_loss" | quote }}
+        restore_best_weights: {{ .Values.aiMlEngine.modelTraining.earlyStopping.restoreBestWeights | default true }}
+        
+      # Model Checkpointing
+      checkpointing:
+        enabled: {{ .Values.aiMlEngine.modelTraining.checkpointing.enabled | default true }}
+        save_best_only: {{ .Values.aiMlEngine.modelTraining.checkpointing.saveBestOnly | default true }}
+        monitor: {{ .Values.aiMlEngine.modelTraining.checkpointing.monitor | default "val_accuracy" | quote }}
+        mode: {{ .Values.aiMlEngine.modelTraining.checkpointing.mode | default "max" | quote }}
+        
+      # Cross Validation
+      cross_validation:
+        enabled: {{ .Values.aiMlEngine.modelTraining.crossValidation.enabled | default true }}
+        folds: {{ .Values.aiMlEngine.modelTraining.crossValidation.folds | default 5 }}
+        stratified: {{ .Values.aiMlEngine.modelTraining.crossValidation.stratified | default true }}
+        
+      # Hyperparameter Tuning
+      hyperparameter_tuning:
+        enabled: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.enabled | default true }}
+        
+        # Tuning Methods
+        methods:
+          - name: "grid_search"
+            enabled: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.gridSearch.enabled | default true }}
+            parameters:
+              scoring: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.gridSearch.scoring | default "accuracy" | quote }}
+              cv: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.gridSearch.cv | default 5 }}
+              
+          - name: "random_search"
+            enabled: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.randomSearch.enabled | default true }}
+            parameters:
+              n_iter: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.randomSearch.nIter | default 100 }}
+              scoring: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.randomSearch.scoring | default "accuracy" | quote }}
+              cv: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.randomSearch.cv | default 5 }}
+              
+          - name: "bayesian_optimization"
+            enabled: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.bayesianOptimization.enabled | default true }}
+            parameters:
+              n_calls: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.bayesianOptimization.nCalls | default 100 }}
+              acquisition_function: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.methods.bayesianOptimization.acquisitionFunction | default "gp_hedge" | quote }}
+    
+    # Model Evaluation Configuration
+    model_evaluation:
+      enabled: {{ .Values.aiMlEngine.modelEvaluation.enabled | default true }}
+      
+      # Evaluation Metrics
+      metrics:
+        classification:
+          - "accuracy"
+          - "precision"
+          - "recall"
+          - "f1_score"
+          - "roc_auc"
+          - "confusion_matrix"
+          - "classification_report"
+          
+        regression:
+          - "mean_squared_error"
+          - "mean_absolute_error"
+          - "r2_score"
+          - "explained_variance_score"
+          
+        clustering:
+          - "silhouette_score"
+          - "calinski_harabasz_score"
+          - "davies_bouldin_score"
+          - "adjusted_rand_score"
+          
+        anomaly_detection:
+          - "precision_at_k"
+          - "recall_at_k"
+          - "f1_at_k"
+          - "auc_roc"
+          - "auc_pr"
+          
+      # Performance Thresholds
+      thresholds:
+        minimum_accuracy: {{ .Values.aiMlEngine.modelEvaluation.thresholds.minimumAccuracy | default 0.8 }}
+        minimum_precision: {{ .Values.aiMlEngine.modelEvaluation.thresholds.minimumPrecision | default 0.8 }}
+        minimum_recall: {{ .Values.aiMlEngine.modelEvaluation.thresholds.minimumRecall | default 0.8 }}
+        minimum_f1_score: {{ .Values.aiMlEngine.modelEvaluation.thresholds.minimumF1Score | default 0.8 }}
+        maximum_false_positive_rate: {{ .Values.aiMlEngine.modelEvaluation.thresholds.maximumFalsePositiveRate | default 0.05 }}
+        
+      # Model Comparison
+      comparison:
+        enabled: {{ .Values.aiMlEngine.modelEvaluation.comparison.enabled | default true }}
+        statistical_tests: {{ .Values.aiMlEngine.modelEvaluation.comparison.statisticalTests | default "t_test,wilcoxon" | quote }}
+        significance_level: {{ .Values.aiMlEngine.modelEvaluation.comparison.significanceLevel | default 0.05 }}
+    
+    # Model Deployment Configuration
+    model_deployment:
+      enabled: {{ .Values.aiMlEngine.modelDeployment.enabled | default true }}
+      
+      # Deployment Strategies
+      strategies:
+        - name: "blue_green"
+          enabled: {{ .Values.aiMlEngine.modelDeployment.strategies.blueGreen.enabled | default true }}
+          
+        - name: "canary"
+          enabled: {{ .Values.aiMlEngine.modelDeployment.strategies.canary.enabled | default true }}
+          parameters:
+            initial_traffic: {{ .Values.aiMlEngine.modelDeployment.strategies.canary.initialTraffic | default 10 }}
+            increment_step: {{ .Values.aiMlEngine.modelDeployment.strategies.canary.incrementStep | default 10 }}
+            
+        - name: "shadow"
+          enabled: {{ .Values.aiMlEngine.modelDeployment.strategies.shadow.enabled | default true }}
+          parameters:
+            shadow_traffic: {{ .Values.aiMlEngine.modelDeployment.strategies.shadow.shadowTraffic | default 100 }}
+      
+      # Model Serving
+      serving:
+        enabled: {{ .Values.aiMlEngine.modelDeployment.serving.enabled | default true }}
+        
+        # Serving Frameworks
+        frameworks:
+          - name: "tensorflow_serving"
+            enabled: {{ .Values.aiMlEngine.modelDeployment.serving.frameworks.tensorflowServing.enabled | default true }}
+            
+          - name: "pytorch_serve"
+            enabled: {{ .Values.aiMlEngine.modelDeployment.serving.frameworks.pytorchServe.enabled | default true }}
+            
+          - name: "onnx_runtime"
+            enabled: {{ .Values.aiMlEngine.modelDeployment.serving.frameworks.onnxRuntime.enabled | default true }}
+            
+          - name: "mlflow"
+            enabled: {{ .Values.aiMlEngine.modelDeployment.serving.frameworks.mlflow.enabled | default true }}
+        
+        # Performance Configuration
+        performance:
+          batch_size: {{ .Values.aiMlEngine.modelDeployment.serving.performance.batchSize | default 32 }}
+          max_latency: {{ .Values.aiMlEngine.modelDeployment.serving.performance.maxLatency | default 100 }}
+          target_throughput: {{ .Values.aiMlEngine.modelDeployment.serving.performance.targetThroughput | default 1000 }}
+          
+      # Model Monitoring
+      monitoring:
+        enabled: {{ .Values.aiMlEngine.modelDeployment.monitoring.enabled | default true }}
+        
+        # Monitoring Metrics
+        metrics:
+          - "prediction_latency"
+          - "prediction_throughput"
+          - "model_accuracy"
+          - "data_drift"
+          - "concept_drift"
+          - "feature_drift"
+          - "prediction_drift"
+          
+        # Drift Detection
+        drift_detection:
+          enabled: {{ .Values.aiMlEngine.modelDeployment.monitoring.driftDetection.enabled | default true }}
+          methods:
+            - "kolmogorov_smirnov"
+            - "chi_square"
+            - "jensen_shannon"
+            - "population_stability_index"
+          threshold: {{ .Values.aiMlEngine.modelDeployment.monitoring.driftDetection.threshold | default 0.05 }}
+          
+        # Alerting
+        alerting:
+          enabled: {{ .Values.aiMlEngine.modelDeployment.monitoring.alerting.enabled | default true }}
+          
+          # Alert Rules
+          rules:
+            - name: "high_prediction_latency"
+              condition: "prediction_latency > 1000ms"
+              severity: "warning"
+              
+            - name: "low_model_accuracy"
+              condition: "model_accuracy < 0.8"
+              severity: "critical"
+              
+            - name: "data_drift_detected"
+              condition: "data_drift_score > 0.1"
+              severity: "warning"
+    
+    # Continuous Learning Configuration
+    continuous_learning:
+      enabled: {{ .Values.aiMlEngine.continuousLearning.enabled | default true }}
+      
+      # Learning Strategies
+      strategies:
+        - name: "online_learning"
+          enabled: {{ .Values.aiMlEngine.continuousLearning.strategies.onlineLearning.enabled | default true }}
+          parameters:
+            learning_rate: {{ .Values.aiMlEngine.continuousLearning.strategies.onlineLearning.learningRate | default 0.001 }}
+            batch_size: {{ .Values.aiMlEngine.continuousLearning.strategies.onlineLearning.batchSize | default 32 }}
+            
+        - name: "incremental_learning"
+          enabled: {{ .Values.aiMlEngine.continuousLearning.strategies.incrementalLearning.enabled | default true }}
+          parameters:
+            update_frequency: {{ .Values.aiMlEngine.continuousLearning.strategies.incrementalLearning.updateFrequency | default "daily" | quote }}
+            
+        - name: "federated_learning"
+          enabled: {{ .Values.aiMlEngine.continuousLearning.strategies.federatedLearning.enabled | default false }}
+          parameters:
+            aggregation_method: {{ .Values.aiMlEngine.continuousLearning.strategies.federatedLearning.aggregationMethod | default "fedavg" | quote }}
+      
+      # Feedback Loop
+      feedback_loop:
+        enabled: {{ .Values.aiMlEngine.continuousLearning.feedbackLoop.enabled | default true }}
+        
+        # Feedback Sources
+        sources:
+          - "user_feedback"
+          - "expert_labels"
+          - "outcome_validation"
+          - "performance_metrics"
+          
+        # Feedback Processing
+        processing:
+          validation_threshold: {{ .Values.aiMlEngine.continuousLearning.feedbackLoop.processing.validationThreshold | default 0.8 }}
+          minimum_samples: {{ .Values.aiMlEngine.continuousLearning.feedbackLoop.processing.minimumSamples | default 100 }}
+          
+      # Model Adaptation
+      adaptation:
+        enabled: {{ .Values.aiMlEngine.continuousLearning.adaptation.enabled | default true }}
+        
+        # Adaptation Triggers
+        triggers:
+          - "performance_degradation"
+          - "concept_drift"
+          - "data_drift"
+          - "scheduled_update"
+          
+        # Adaptation Methods
+        methods:
+          - "parameter_update"
+          - "architecture_modification"
+          - "ensemble_update"
+          - "complete_retraining"
+    
+    # Explainable AI Configuration
+    explainable_ai:
+      enabled: {{ .Values.aiMlEngine.explainableAI.enabled | default true }}
+      
+      # Explanation Methods
+      methods:
+        # Model-Agnostic Methods
+        model_agnostic:
+          - name: "lime"
+            enabled: {{ .Values.aiMlEngine.explainableAI.methods.modelAgnostic.lime.enabled | default true }}
+            parameters:
+              num_features: {{ .Values.aiMlEngine.explainableAI.methods.modelAgnostic.lime.numFeatures | default 10 }}
+              num_samples: {{ .Values.aiMlEngine.explainableAI.methods.modelAgnostic.lime.numSamples | default 5000 }}
+              
+          - name: "shap"
+            enabled: {{ .Values.aiMlEngine.explainableAI.methods.modelAgnostic.shap.enabled | default true }}
+            parameters:
+              explainer_type: {{ .Values.aiMlEngine.explainableAI.methods.modelAgnostic.shap.explainerType | default "tree" | quote }}
+              
+          - name: "permutation_importance"
+            enabled: {{ .Values.aiMlEngine.explainableAI.methods.modelAgnostic.permutationImportance.enabled | default true }}
+            parameters:
+              n_repeats: {{ .Values.aiMlEngine.explainableAI.methods.modelAgnostic.permutationImportance.nRepeats | default 10 }}
+        
+        # Model-Specific Methods
+        model_specific:
+          - name: "attention_visualization"
+            enabled: {{ .Values.aiMlEngine.explainableAI.methods.modelSpecific.attentionVisualization.enabled | default true }}
+            
+          - name: "grad_cam"
+            enabled: {{ .Values.aiMlEngine.explainableAI.methods.modelSpecific.gradCam.enabled | default true }}
+            
+          - name: "feature_importance"
+            enabled: {{ .Values.aiMlEngine.explainableAI.methods.modelSpecific.featureImportance.enabled | default true }}
+      
+      # Explanation Visualization
+      visualization:
+        enabled: {{ .Values.aiMlEngine.explainableAI.visualization.enabled | default true }}
+        
+        # Visualization Types
+        types:
+          - "feature_importance_plots"
+          - "partial_dependence_plots"
+          - "individual_conditional_expectation"
+          - "accumulated_local_effects"
+          - "force_plots"
+          - "waterfall_plots"
+          
+        # Interactive Dashboards
+        dashboards:
+          enabled: {{ .Values.aiMlEngine.explainableAI.visualization.dashboards.enabled | default true }}
+          
+          # Dashboard Features
+          features:
+            - "model_performance_overview"
+            - "feature_analysis"
+            - "prediction_explanations"
+            - "model_comparisons"
+            - "bias_detection"
+            - "fairness_metrics"
+    
+    # Integration Configuration
+    integration:
+      # CSR Controller Integration
+      csr_controller:
+        enabled: {{ .Values.aiMlEngine.integration.csrController.enabled | default true }}
+        endpoint: {{ .Values.aiMlEngine.integration.csrController.endpoint | default "http://csr-controller:8080" | quote }}
+        
+      # Security Policy Engine Integration
+      security_policy_engine:
+        enabled: {{ .Values.aiMlEngine.integration.securityPolicyEngine.enabled | default true }}
+        endpoint: {{ .Values.aiMlEngine.integration.securityPolicyEngine.endpoint | default "http://security-policy-engine:8080" | quote }}
+        
+      # Zero Trust Engine Integration
+      zero_trust_engine:
+        enabled: {{ .Values.aiMlEngine.integration.zeroTrustEngine.enabled | default true }}
+        endpoint: {{ .Values.aiMlEngine.integration.zeroTrustEngine.endpoint | default "http://zero-trust-engine:8080" | quote }}
+        
+      # Advanced Audit System Integration
+      advanced_audit_system:
+        enabled: {{ .Values.aiMlEngine.integration.advancedAuditSystem.enabled | default true }}
+        endpoint: {{ .Values.aiMlEngine.integration.advancedAuditSystem.endpoint | default "http://advanced-audit-system:8080" | quote }}
+        
+      # External ML Services
+      external_services:
+        # AWS SageMaker
+        aws_sagemaker:
+          enabled: {{ .Values.aiMlEngine.integration.externalServices.awsSagemaker.enabled | default false }}
+          region: {{ .Values.aiMlEngine.integration.externalServices.awsSagemaker.region | default "us-east-1" | quote }}
+          
+        # Google Cloud ML
+        google_cloud_ml:
+          enabled: {{ .Values.aiMlEngine.integration.externalServices.googleCloudMl.enabled | default false }}
+          project_id: {{ .Values.aiMlEngine.integration.externalServices.googleCloudMl.projectId | default "" | quote }}
+          
+        # Azure ML
+        azure_ml:
+          enabled: {{ .Values.aiMlEngine.integration.externalServices.azureMl.enabled | default false }}
+          workspace_name: {{ .Values.aiMlEngine.integration.externalServices.azureMl.workspaceName | default "" | quote }}

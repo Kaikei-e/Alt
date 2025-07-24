@@ -1,0 +1,366 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-hybrid-environment-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hybrid-environment-controller
+data:
+  config.yaml: |
+    # Hybrid Environment Controller Configuration
+    hybridEnvironment:
+      enabled: {{ .Values.hybridEnvironmentController.enabled | default true }}
+      mode: {{ .Values.hybridEnvironmentController.mode | default "intelligent" }}
+      
+      # On-Premise Infrastructure Configuration
+      onPremise:
+        enabled: {{ .Values.hybridEnvironmentController.onPremise.enabled | default true }}
+        datacenters: {{ .Values.hybridEnvironmentController.onPremise.datacenters | default (list) | toYaml | nindent 10 }}
+        clusters: {{ .Values.hybridEnvironmentController.onPremise.clusters | default (list) | toYaml | nindent 10 }}
+        capacity:
+          cpu: {{ .Values.hybridEnvironmentController.onPremise.capacity.cpu | default "1000" }}
+          memory: {{ .Values.hybridEnvironmentController.onPremise.capacity.memory | default "2000Gi" }}
+          storage: {{ .Values.hybridEnvironmentController.onPremise.capacity.storage | default "10Ti" }}
+          nodes: {{ .Values.hybridEnvironmentController.onPremise.capacity.nodes | default 10 }}
+        connectivity:
+          cloudConnections: {{ .Values.hybridEnvironmentController.onPremise.connectivity.cloudConnections | default (list) | toYaml | nindent 12 }}
+          vpnGateways: {{ .Values.hybridEnvironmentController.onPremise.connectivity.vpnGateways | default (list) | toYaml | nindent 12 }}
+          directConnect: {{ .Values.hybridEnvironmentController.onPremise.connectivity.directConnect | default false }}
+        
+      # Cloud Bursting Configuration
+      cloudBursting:
+        enabled: {{ .Values.hybridEnvironmentController.cloudBursting.enabled | default true }}
+        strategy: {{ .Values.hybridEnvironmentController.cloudBursting.strategy | default "cost-optimized" }}
+        thresholds:
+          cpu: {{ .Values.hybridEnvironmentController.cloudBursting.thresholds.cpu | default 80 }}
+          memory: {{ .Values.hybridEnvironmentController.cloudBursting.thresholds.memory | default 85 }}
+          storage: {{ .Values.hybridEnvironmentController.cloudBursting.thresholds.storage | default 90 }}
+          latency: {{ .Values.hybridEnvironmentController.cloudBursting.thresholds.latency | default "100ms" }}
+        burstTargets:
+          primary: {{ .Values.hybridEnvironmentController.cloudBursting.burstTargets.primary | default "aws" }}
+          secondary: {{ .Values.hybridEnvironmentController.cloudBursting.burstTargets.secondary | default "azure" }}
+          tertiary: {{ .Values.hybridEnvironmentController.cloudBursting.burstTargets.tertiary | default "gcp" }}
+        cooldown:
+          scaleUp: {{ .Values.hybridEnvironmentController.cloudBursting.cooldown.scaleUp | default "2m" }}
+          scaleDown: {{ .Values.hybridEnvironmentController.cloudBursting.cooldown.scaleDown | default "10m" }}
+        cost:
+          budgetLimit: {{ .Values.hybridEnvironmentController.cloudBursting.cost.budgetLimit | default "1000" }}
+          currency: {{ .Values.hybridEnvironmentController.cloudBursting.cost.currency | default "USD" }}
+          alertThreshold: {{ .Values.hybridEnvironmentController.cloudBursting.cost.alertThreshold | default 80 }}
+
+      # Workload Scheduling Configuration
+      workloadScheduling:
+        enabled: {{ .Values.hybridEnvironmentController.workloadScheduling.enabled | default true }}
+        strategy: {{ .Values.hybridEnvironmentController.workloadScheduling.strategy | default "intelligent" }}
+        placement:
+          algorithm: {{ .Values.hybridEnvironmentController.workloadScheduling.placement.algorithm | default "machine-learning" }}
+          factors:
+            cost: {{ .Values.hybridEnvironmentController.workloadScheduling.placement.factors.cost | default 30 }}
+            performance: {{ .Values.hybridEnvironmentController.workloadScheduling.placement.factors.performance | default 40 }}
+            compliance: {{ .Values.hybridEnvironmentController.workloadScheduling.placement.factors.compliance | default 20 }}
+            availability: {{ .Values.hybridEnvironmentController.workloadScheduling.placement.factors.availability | default 10 }}
+        affinityRules:
+          enabled: {{ .Values.hybridEnvironmentController.workloadScheduling.affinityRules.enabled | default true }}
+          sensitiveDataOnPremise: {{ .Values.hybridEnvironmentController.workloadScheduling.affinityRules.sensitiveDataOnPremise | default true }}
+          publicCloudBurst: {{ .Values.hybridEnvironmentController.workloadScheduling.affinityRules.publicCloudBurst | default true }}
+          regionAffinity: {{ .Values.hybridEnvironmentController.workloadScheduling.affinityRules.regionAffinity | default true }}
+        constraints:
+          dataResidency: {{ .Values.hybridEnvironmentController.workloadScheduling.constraints.dataResidency | default "strict" }}
+          compliance: {{ .Values.hybridEnvironmentController.workloadScheduling.constraints.compliance | default "enforce" }}
+          latency: {{ .Values.hybridEnvironmentController.workloadScheduling.constraints.latency | default "100ms" }}
+
+      # Data Residency and Compliance
+      dataResidency:
+        enabled: {{ .Values.hybridEnvironmentController.dataResidency.enabled | default true }}
+        enforcement: {{ .Values.hybridEnvironmentController.dataResidency.enforcement | default "strict" }}
+        policies:
+          sensitive:
+            location: {{ .Values.hybridEnvironmentController.dataResidency.policies.sensitive.location | default "onpremise" }}
+            allowedRegions: {{ .Values.hybridEnvironmentController.dataResidency.policies.sensitive.allowedRegions | default (list) | toYaml | nindent 14 }}
+            encryption: {{ .Values.hybridEnvironmentController.dataResidency.policies.sensitive.encryption | default "required" }}
+          confidential:
+            location: {{ .Values.hybridEnvironmentController.dataResidency.policies.confidential.location | default "restricted-cloud" }}
+            allowedRegions: {{ .Values.hybridEnvironmentController.dataResidency.policies.confidential.allowedRegions | default (list "us-west-2" "eu-west-1") | toYaml | nindent 14 }}
+            encryption: {{ .Values.hybridEnvironmentController.dataResidency.policies.confidential.encryption | default "required" }}
+          public:
+            location: {{ .Values.hybridEnvironmentController.dataResidency.policies.public.location | default "any" }}
+            allowedRegions: {{ .Values.hybridEnvironmentController.dataResidency.policies.public.allowedRegions | default (list) | toYaml | nindent 14 }}
+            encryption: {{ .Values.hybridEnvironmentController.dataResidency.policies.public.encryption | default "optional" }}
+        classification:
+          autoDetection: {{ .Values.hybridEnvironmentController.dataResidency.classification.autoDetection | default true }}
+          labelRequired: {{ .Values.hybridEnvironmentController.dataResidency.classification.labelRequired | default true }}
+          defaultClassification: {{ .Values.hybridEnvironmentController.dataResidency.classification.defaultClassification | default "confidential" }}
+
+      # Disaster Recovery Configuration
+      disasterRecovery:
+        enabled: {{ .Values.hybridEnvironmentController.disasterRecovery.enabled | default true }}
+        strategy: {{ .Values.hybridEnvironmentController.disasterRecovery.strategy | default "hybrid-failover" }}
+        rpo: {{ .Values.hybridEnvironmentController.disasterRecovery.rpo | default "1h" }}
+        rto: {{ .Values.hybridEnvironmentController.disasterRecovery.rto | default "15m" }}
+        sites:
+          primary: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.primary | default "onpremise" }}
+          secondary: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.secondary | default "aws" }}
+          tertiary: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.tertiary | default "azure" }}
+        replication:
+          enabled: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.enabled | default true }}
+          mode: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.mode | default "async" }}
+          schedule: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.schedule | default "0 */6 * * *" }}
+          retention: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.retention | default "30d" }}
+        testing:
+          enabled: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.enabled | default true }}
+          schedule: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.schedule | default "0 2 1 * *" }}
+          scope: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.scope | default "full" }}
+
+      # Performance Optimization
+      performance:
+        enabled: {{ .Values.hybridEnvironmentController.performance.enabled | default true }}
+        monitoring:
+          interval: {{ .Values.hybridEnvironmentController.performance.monitoring.interval | default "30s" }}
+          metrics: {{ .Values.hybridEnvironmentController.performance.monitoring.metrics | default (list "cpu" "memory" "network" "storage" "latency") | toYaml | nindent 12 }}
+        optimization:
+          autoTuning: {{ .Values.hybridEnvironmentController.performance.optimization.autoTuning | default true }}
+          algorithms:
+            placement: {{ .Values.hybridEnvironmentController.performance.optimization.algorithms.placement | default "ml-based" }}
+            scaling: {{ .Values.hybridEnvironmentController.performance.optimization.algorithms.scaling | default "predictive" }}
+            routing: {{ .Values.hybridEnvironmentController.performance.optimization.algorithms.routing | default "latency-aware" }}
+        caching:
+          enabled: {{ .Values.hybridEnvironmentController.performance.caching.enabled | default true }}
+          strategy: {{ .Values.hybridEnvironmentController.performance.caching.strategy | default "intelligent" }}
+          ttl: {{ .Values.hybridEnvironmentController.performance.caching.ttl | default "1h" }}
+          size: {{ .Values.hybridEnvironmentController.performance.caching.size | default "1Gi" }}
+
+      # Security Configuration
+      security:
+        enabled: {{ .Values.hybridEnvironmentController.security.enabled | default true }}
+        encryption:
+          inTransit: {{ .Values.hybridEnvironmentController.security.encryption.inTransit | default true }}
+          atRest: {{ .Values.hybridEnvironmentController.security.encryption.atRest | default true }}
+          keyManagement: {{ .Values.hybridEnvironmentController.security.encryption.keyManagement | default "hybrid" }}
+        networkSegmentation:
+          enabled: {{ .Values.hybridEnvironmentController.security.networkSegmentation.enabled | default true }}
+          isolation: {{ .Values.hybridEnvironmentController.security.networkSegmentation.isolation | default "strict" }}
+          zones: {{ .Values.hybridEnvironmentController.security.networkSegmentation.zones | default (list "dmz" "private" "secure") | toYaml | nindent 12 }}
+        accessControl:
+          rbac: {{ .Values.hybridEnvironmentController.security.accessControl.rbac | default true }}
+          mfa: {{ .Values.hybridEnvironmentController.security.accessControl.mfa | default true }}
+          contextAware: {{ .Values.hybridEnvironmentController.security.accessControl.contextAware | default true }}
+
+      # Compliance Configuration
+      compliance:
+        enabled: {{ .Values.hybridEnvironmentController.compliance.enabled | default true }}
+        frameworks: {{ .Values.hybridEnvironmentController.compliance.frameworks | default (list "soc2" "iso27001" "gdpr") | toYaml | nindent 10 }}
+        auditing:
+          enabled: {{ .Values.hybridEnvironmentController.compliance.auditing.enabled | default true }}
+          realTime: {{ .Values.hybridEnvironmentController.compliance.auditing.realTime | default true }}
+          retention: {{ .Values.hybridEnvironmentController.compliance.auditing.retention | default "7y" }}
+        reporting:
+          enabled: {{ .Values.hybridEnvironmentController.compliance.reporting.enabled | default true }}
+          schedule: {{ .Values.hybridEnvironmentController.compliance.reporting.schedule | default "0 0 1 * *" }}
+          format: {{ .Values.hybridEnvironmentController.compliance.reporting.format | default "json" }}
+
+  workload-optimizer.yaml: |
+    # Workload Optimizer Configuration
+    workloadOptimizer:
+      enabled: {{ .Values.hybridEnvironmentController.workloadOptimizer.enabled | default true }}
+      
+      # Optimization Strategies
+      strategies:
+        costOptimized:
+          enabled: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.costOptimized.enabled | default true }}
+          factors:
+            computeCost: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.costOptimized.factors.computeCost | default 40 }}
+            storageCost: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.costOptimized.factors.storageCost | default 30 }}
+            networkCost: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.costOptimized.factors.networkCost | default 20 }}
+            operationalCost: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.costOptimized.factors.operationalCost | default 10 }}
+        performanceOptimized:
+          enabled: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.performanceOptimized.enabled | default true }}
+          factors:
+            latency: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.performanceOptimized.factors.latency | default 40 }}
+            throughput: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.performanceOptimized.factors.throughput | default 30 }}
+            reliability: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.performanceOptimized.factors.reliability | default 20 }}
+            scalability: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.performanceOptimized.factors.scalability | default 10 }}
+        balanced:
+          enabled: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.balanced.enabled | default true }}
+          factors:
+            cost: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.balanced.factors.cost | default 35 }}
+            performance: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.balanced.factors.performance | default 35 }}
+            compliance: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.balanced.factors.compliance | default 20 }}
+            sustainability: {{ .Values.hybridEnvironmentController.workloadOptimizer.strategies.balanced.factors.sustainability | default 10 }}
+
+      # Machine Learning Models
+      machineLearning:
+        enabled: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.enabled | default true }}
+        models:
+          workloadPrediction:
+            enabled: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.models.workloadPrediction.enabled | default true }}
+            algorithm: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.models.workloadPrediction.algorithm | default "lstm" }}
+            retrainingInterval: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.models.workloadPrediction.retrainingInterval | default "7d" }}
+          placementOptimization:
+            enabled: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.models.placementOptimization.enabled | default true }}
+            algorithm: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.models.placementOptimization.algorithm | default "reinforcement" }}
+            retrainingInterval: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.models.placementOptimization.retrainingInterval | default "24h" }}
+          costPrediction:
+            enabled: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.models.costPrediction.enabled | default true }}
+            algorithm: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.models.costPrediction.algorithm | default "gradient-boosting" }}
+            retrainingInterval: {{ .Values.hybridEnvironmentController.workloadOptimizer.machineLearning.models.costPrediction.retrainingInterval | default "1d" }}
+
+      # Optimization Rules
+      rules:
+        placement:
+          - name: "sensitive-data-onpremise"
+            condition: "data-classification == 'sensitive'"
+            action: "place-onpremise"
+            priority: 100
+          - name: "compliance-restricted-regions"
+            condition: "compliance-requirement in ['pci-dss', 'hipaa']"
+            action: "restrict-regions"
+            priority: 90
+          - name: "low-latency-edge"
+            condition: "latency-requirement < '50ms'"
+            action: "place-edge"
+            priority: 80
+          - name: "cost-optimize-batch"
+            condition: "workload-type == 'batch'"
+            action: "place-cheapest"
+            priority: 50
+        scaling:
+          - name: "burst-on-peak"
+            condition: "utilization > 80%"
+            action: "burst-to-cloud"
+            priority: 80
+          - name: "scale-down-idle"
+            condition: "utilization < 20% for 10m"
+            action: "scale-down"
+            priority: 70
+        migration:
+          - name: "migrate-unused-workloads"
+            condition: "utilization < 10% for 24h"
+            action: "migrate-to-cheaper"
+            priority: 60
+
+  placement-policy.yaml: |
+    # Intelligent Workload Placement Policies
+    placementPolicies:
+      enabled: {{ .Values.hybridEnvironmentController.placementPolicies.enabled | default true }}
+      
+      # Data Classification Based Placement
+      dataClassification:
+        sensitive:
+          allowedLocations: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.sensitive.allowedLocations | default (list "onpremise") | toYaml | nindent 12 }}
+          requiredEncryption: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.sensitive.requiredEncryption | default "always" }}
+          networkIsolation: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.sensitive.networkIsolation | default "strict" }}
+        confidential:
+          allowedLocations: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.confidential.allowedLocations | default (list "onpremise" "private-cloud") | toYaml | nindent 12 }}
+          requiredEncryption: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.confidential.requiredEncryption | default "always" }}
+          networkIsolation: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.confidential.networkIsolation | default "isolated" }}
+        internal:
+          allowedLocations: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.internal.allowedLocations | default (list "onpremise" "private-cloud" "hybrid-cloud") | toYaml | nindent 12 }}
+          requiredEncryption: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.internal.requiredEncryption | default "recommended" }}
+          networkIsolation: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.internal.networkIsolation | default "segmented" }}
+        public:
+          allowedLocations: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.public.allowedLocations | default (list "any") | toYaml | nindent 12 }}
+          requiredEncryption: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.public.requiredEncryption | default "optional" }}
+          networkIsolation: {{ .Values.hybridEnvironmentController.placementPolicies.dataClassification.public.networkIsolation | default "standard" }}
+
+      # Workload Type Based Placement
+      workloadTypes:
+        database:
+          preferredLocation: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.database.preferredLocation | default "onpremise" }}
+          allowCloudBurst: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.database.allowCloudBurst | default false }}
+          storageRequirements:
+            persistence: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.database.storageRequirements.persistence | default "local" }}
+            performance: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.database.storageRequirements.performance | default "high-iops" }}
+        webserver:
+          preferredLocation: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.webserver.preferredLocation | default "edge" }}
+          allowCloudBurst: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.webserver.allowCloudBurst | default true }}
+          networkRequirements:
+            latency: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.webserver.networkRequirements.latency | default "low" }}
+            bandwidth: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.webserver.networkRequirements.bandwidth | default "high" }}
+        batch:
+          preferredLocation: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.batch.preferredLocation | default "cheapest" }}
+          allowCloudBurst: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.batch.allowCloudBurst | default true }}
+          resourceRequirements:
+            priority: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.batch.resourceRequirements.priority | default "low" }}
+            preemptible: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.batch.resourceRequirements.preemptible | default true }}
+        ml:
+          preferredLocation: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.ml.preferredLocation | default "gpu-cloud" }}
+          allowCloudBurst: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.ml.allowCloudBurst | default true }}
+          resourceRequirements:
+            gpu: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.ml.resourceRequirements.gpu | default "required" }}
+            memory: {{ .Values.hybridEnvironmentController.placementPolicies.workloadTypes.ml.resourceRequirements.memory | default "high" }}
+
+      # Compliance Based Placement
+      complianceRequirements:
+        pciDss:
+          allowedLocations: {{ .Values.hybridEnvironmentController.placementPolicies.complianceRequirements.pciDss.allowedLocations | default (list "onpremise" "compliant-cloud") | toYaml | nindent 12 }}
+          auditingRequired: {{ .Values.hybridEnvironmentController.placementPolicies.complianceRequirements.pciDss.auditingRequired | default true }}
+          networkIsolation: {{ .Values.hybridEnvironmentController.placementPolicies.complianceRequirements.pciDss.networkIsolation | default "strict" }}
+        hipaa:
+          allowedLocations: {{ .Values.hybridEnvironmentController.placementPolicies.complianceRequirements.hipaa.allowedLocations | default (list "onpremise" "hipaa-cloud") | toYaml | nindent 12 }}
+          auditingRequired: {{ .Values.hybridEnvironmentController.placementPolicies.complianceRequirements.hipaa.auditingRequired | default true }}
+          encryptionRequired: {{ .Values.hybridEnvironmentController.placementPolicies.complianceRequirements.hipaa.encryptionRequired | default true }}
+        gdpr:
+          allowedLocations: {{ .Values.hybridEnvironmentController.placementPolicies.complianceRequirements.gdpr.allowedLocations | default (list "eu-regions" "onpremise-eu") | toYaml | nindent 12 }}
+          dataResidency: {{ .Values.hybridEnvironmentController.placementPolicies.complianceRequirements.gdpr.dataResidency | default "strict" }}
+          rightToErasure: {{ .Values.hybridEnvironmentController.placementPolicies.complianceRequirements.gdpr.rightToErasure | default true }}
+
+  disaster-recovery.yaml: |
+    # Hybrid Disaster Recovery Configuration
+    disasterRecovery:
+      enabled: {{ .Values.hybridEnvironmentController.disasterRecovery.enabled | default true }}
+      
+      # Recovery Sites Configuration
+      sites:
+        primary:
+          name: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.primary.name | default "onpremise-dc1" }}
+          location: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.primary.location | default "onpremise" }}
+          priority: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.primary.priority | default 1 }}
+          capacity: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.primary.capacity | default 100 }}
+        secondary:
+          name: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.secondary.name | default "aws-us-west-2" }}
+          location: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.secondary.location | default "aws" }}
+          priority: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.secondary.priority | default 2 }}
+          capacity: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.secondary.capacity | default 80 }}
+        tertiary:
+          name: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.tertiary.name | default "azure-eastus" }}
+          location: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.tertiary.location | default "azure" }}
+          priority: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.tertiary.priority | default 3 }}
+          capacity: {{ .Values.hybridEnvironmentController.disasterRecovery.sites.tertiary.capacity | default 60 }}
+
+      # Replication Strategy
+      replication:
+        strategy: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.strategy | default "hybrid-sync" }}
+        modes:
+          synchronous:
+            enabled: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.modes.synchronous.enabled | default true }}
+            targets: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.modes.synchronous.targets | default (list "secondary") | toYaml | nindent 14 }}
+            consistency: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.modes.synchronous.consistency | default "strong" }}
+          asynchronous:
+            enabled: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.modes.asynchronous.enabled | default true }}
+            targets: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.modes.asynchronous.targets | default (list "tertiary") | toYaml | nindent 14 }}
+            interval: {{ .Values.hybridEnvironmentController.disasterRecovery.replication.modes.asynchronous.interval | default "5m" }}
+
+      # Failover Configuration
+      failover:
+        automatic: {{ .Values.hybridEnvironmentController.disasterRecovery.failover.automatic | default true }}
+        thresholds:
+          siteFailed: {{ .Values.hybridEnvironmentController.disasterRecovery.failover.thresholds.siteFailed | default "3m" }}
+          serviceUnavailable: {{ .Values.hybridEnvironmentController.disasterRecovery.failover.thresholds.serviceUnavailable | default "1m" }}
+          dataLoss: {{ .Values.hybridEnvironmentController.disasterRecovery.failover.thresholds.dataLoss | default "0" }}
+        strategies:
+          priority: {{ .Values.hybridEnvironmentController.disasterRecovery.failover.strategies.priority | default "site-priority" }}
+          loadBased: {{ .Values.hybridEnvironmentController.disasterRecovery.failover.strategies.loadBased | default true }}
+          geographic: {{ .Values.hybridEnvironmentController.disasterRecovery.failover.strategies.geographic | default true }}
+
+      # Recovery Testing
+      testing:
+        schedule: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.schedule | default "0 2 1 * *" }}
+        types:
+          tabletop: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.types.tabletop | default true }}
+          simulated: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.types.simulated | default true }}
+          live: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.types.live | default false }}
+        automation:
+          enabled: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.automation.enabled | default true }}
+          scope: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.automation.scope | default "non-production" }}
+          reporting: {{ .Values.hybridEnvironmentController.disasterRecovery.testing.automation.reporting | default true }}

@@ -1,0 +1,165 @@
+# Default values for auth-postgres
+# PostgreSQL database for Authentication Service
+
+# Image configuration
+image:
+  repository: postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
+
+# Replica configuration
+replicaCount: 1
+
+# Service account
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+  annotations: {}
+  name: ""
+
+# Pod configuration
+podAnnotations:
+  app.kubernetes.io/component: "auth-database"
+
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 999  # PostgreSQL standard UID for proper directory access
+  fsGroupChangePolicy: OnRootMismatch  # Efficient ownership change only when needed
+  runAsUser: 999  # PostgreSQL official image UID (restored from 65534)
+  runAsGroup: 999
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false  # PostgreSQL needs to write logs and data
+  runAsNonRoot: true
+  runAsUser: 999  # PostgreSQL standard UID (restored from 65534)
+  runAsGroup: 999
+  seccompProfile:
+    type: RuntimeDefault
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 5432
+  annotations: {}
+
+  headless:
+    enabled: true
+    annotations: {}
+
+# Authentication configuration (auth-specific)
+auth:
+  username: "auth_db_user"
+  password: "auth_secure_password"
+  database: "auth_db"
+  existingSecret: ""
+  secretKeys:
+    password: "postgres-password"
+    username: "username"
+    database: "database"
+  replicationUser: ""
+  replicationPassword: ""
+
+# PostgreSQL configuration (smaller for auth service)
+postgres:
+  maxConnections: 50
+  sharedBuffers: "128MB"
+  effectiveCacheSize: "512MB"
+  workMem: "2MB"
+  maintenanceWorkMem: "32MB"
+  walKeepSize: "512MB"
+  loggingCollector: "on"
+  logStatement: "mod"
+  logMinDurationStatement: 1000
+  randomPageCost: 1.1
+  effectiveIoConcurrency: 200
+
+  autovacuum:
+    maxWorkers: 2
+    naptime: "1min"
+
+  customConfig: ""
+
+# pg_hba.conf configuration
+pgHba:
+  enabled: true
+  localMethod: "trust"
+  hostMethod: "md5"
+  sslMethod: "md5"
+  allowedNetworks:
+    - network: "10.0.0.0/8"
+      method: "md5"
+    - network: "172.16.0.0/12"
+      method: "md5"
+    - network: "192.168.0.0/16"
+      method: "md5"
+  customRules: ""
+
+# SSL configuration
+ssl:
+  enabled: true
+  secretName: "auth-postgres-ssl-certs"
+  mode: "require"
+  certPath: "/ssl/server.crt"
+  keyPath: "/ssl/server.key"
+  caPath: "/ssl/ca.crt"
+
+# Persistence (smaller for auth service)
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  storageClass: "standard"
+
+# Health checks - optimized for SSL and initialization time
+livenessProbe:
+  initialDelaySeconds: 120  # Allow time for readiness to succeed first
+  periodSeconds: 30         # Less frequent liveness checks
+  timeoutSeconds: 10        # Longer timeout for DB queries
+  failureThreshold: 5       # Reasonable failure tolerance
+
+readinessProbe:
+  initialDelaySeconds: 90   # Allow time for SSL setup and initialization
+  periodSeconds: 15         # Balanced frequency
+  timeoutSeconds: 10        # Sufficient time for query execution
+  failureThreshold: 8       # Higher tolerance during startup
+
+# Resources (smaller for auth service)
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# Node selection
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Extra configuration
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
+
+# Common labels and annotations
+commonLabels: {}
+
+commonAnnotations: {}
+
+# Dependencies configuration
+secrets:
+  enabled: true
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""

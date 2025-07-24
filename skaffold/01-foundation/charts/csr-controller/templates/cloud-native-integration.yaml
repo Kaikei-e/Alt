@@ -1,0 +1,521 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+spec:
+  replicas: {{ .Values.cloudNativeIntegration.replicas | default 3 }}
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cloud-native-integration
+  template:
+    metadata:
+      labels:
+        {{- include "csr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cloud-native-integration
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/cloud-native-config.yaml") . | sha256sum }}
+        sidecar.istio.io/inject: {{ .Values.cloudNativeIntegration.serviceMesh.istio.sidecarInjection | default "true" | quote }}
+        {{- if .Values.cloudNativeIntegration.serviceMesh.linkerd.enabled }}
+        linkerd.io/inject: enabled
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.cloudNativeIntegration.podSecurityContext | nindent 8 }}
+      containers:
+      - name: cloud-native-integration
+        image: "{{ .Values.cloudNativeIntegration.image.repository }}:{{ .Values.cloudNativeIntegration.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.cloudNativeIntegration.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.cloudNativeIntegration.securityContext | nindent 10 }}
+        env:
+        - name: CLOUD_NATIVE_ENABLED
+          value: {{ .Values.cloudNativeIntegration.enabled | default "true" | quote }}
+        - name: SERVICE_MESH_TYPE
+          value: {{ .Values.cloudNativeIntegration.serviceMesh.type | default "istio" }}
+        - name: OBSERVABILITY_ENABLED
+          value: {{ .Values.cloudNativeIntegration.observability.enabled | default "true" | quote }}
+        - name: PROMETHEUS_ENABLED
+          value: {{ .Values.cloudNativeIntegration.observability.prometheus.enabled | default "true" | quote }}
+        - name: JAEGER_ENABLED
+          value: {{ .Values.cloudNativeIntegration.observability.jaeger.enabled | default "true" | quote }}
+        - name: FLUENTD_ENABLED
+          value: {{ .Values.cloudNativeIntegration.observability.fluentd.enabled | default "true" | quote }}
+        - name: KNATIVE_ENABLED
+          value: {{ .Values.cloudNativeIntegration.serverless.knative.enabled | default "true" | quote }}
+        - name: OPERATOR_FRAMEWORK_ENABLED
+          value: {{ .Values.cloudNativeIntegration.operatorFramework.enabled | default "true" | quote }}
+        - name: CNCF_COMPLIANCE_ENABLED
+          value: {{ .Values.cloudNativeIntegration.cncfCompliance.enabled | default "true" | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.cloudNativeIntegration.logLevel | default "info" }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        - name: grpc
+          containerPort: 9091
+          protocol: TCP
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: health
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.cloudNativeIntegration.resources | nindent 10 }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/cloud-native-integration
+          readOnly: true
+        - name: service-mesh-config
+          mountPath: /etc/service-mesh
+          readOnly: true
+        - name: observability-config
+          mountPath: /etc/observability
+          readOnly: true
+        - name: tls-certs
+          mountPath: /etc/ssl/certs
+          readOnly: true
+        - name: ca-bundle
+          mountPath: /etc/ssl/ca-bundle
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-cloud-native-config
+      - name: service-mesh-config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-service-mesh-config
+      - name: observability-config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-observability-config
+      - name: tls-certs
+        projected:
+          sources:
+          - secret:
+              name: {{ include "csr-controller.fullname" . }}-tls-cert
+              items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+      - name: ca-bundle
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-ca-bundle
+      {{- with .Values.cloudNativeIntegration.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cloudNativeIntegration.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cloudNativeIntegration.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+  annotations:
+    {{- if .Values.cloudNativeIntegration.serviceMesh.istio.enabled }}
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+    {{- end }}
+    {{- if .Values.cloudNativeIntegration.observability.prometheus.enabled }}
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+    {{- end }}
+spec:
+  type: {{ .Values.cloudNativeIntegration.service.type | default "ClusterIP" }}
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  - port: 9091
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  selector:
+    {{- include "csr-controller.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+
+---
+{{- if .Values.cloudNativeIntegration.serviceMesh.istio.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+spec:
+  hosts:
+  - {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  {{- if .Values.cloudNativeIntegration.serviceMesh.istio.virtualService.hosts }}
+  {{- toYaml .Values.cloudNativeIntegration.serviceMesh.istio.virtualService.hosts | nindent 2 }}
+  {{- end }}
+  http:
+  - match:
+    - uri:
+        prefix: /api/v1/cloud-native
+    route:
+    - destination:
+        host: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+        port:
+          number: 8080
+    fault:
+      delay:
+        percentage:
+          value: {{ .Values.cloudNativeIntegration.serviceMesh.istio.virtualService.fault.delay.percentage | default 0.1 }}
+        fixedDelay: {{ .Values.cloudNativeIntegration.serviceMesh.istio.virtualService.fault.delay.fixedDelay | default "5s" }}
+    retries:
+      attempts: {{ .Values.cloudNativeIntegration.serviceMesh.istio.virtualService.retries.attempts | default 3 }}
+      perTryTimeout: {{ .Values.cloudNativeIntegration.serviceMesh.istio.virtualService.retries.perTryTimeout | default "10s" }}
+    timeout: {{ .Values.cloudNativeIntegration.serviceMesh.istio.virtualService.timeout | default "30s" }}
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+spec:
+  host: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  trafficPolicy:
+    tls:
+      mode: {{ .Values.cloudNativeIntegration.serviceMesh.istio.destinationRule.tls.mode | default "ISTIO_MUTUAL" }}
+    connectionPool:
+      tcp:
+        maxConnections: {{ .Values.cloudNativeIntegration.serviceMesh.istio.destinationRule.connectionPool.tcp.maxConnections | default 100 }}
+      http:
+        http1MaxPendingRequests: {{ .Values.cloudNativeIntegration.serviceMesh.istio.destinationRule.connectionPool.http.http1MaxPendingRequests | default 10 }}
+        maxRequestsPerConnection: {{ .Values.cloudNativeIntegration.serviceMesh.istio.destinationRule.connectionPool.http.maxRequestsPerConnection | default 10 }}
+    circuitBreaker:
+      consecutiveGatewayErrors: {{ .Values.cloudNativeIntegration.serviceMesh.istio.destinationRule.circuitBreaker.consecutiveGatewayErrors | default 5 }}
+      interval: {{ .Values.cloudNativeIntegration.serviceMesh.istio.destinationRule.circuitBreaker.interval | default "30s" }}
+      baseEjectionTime: {{ .Values.cloudNativeIntegration.serviceMesh.istio.destinationRule.circuitBreaker.baseEjectionTime | default "30s" }}
+      maxEjectionPercent: {{ .Values.cloudNativeIntegration.serviceMesh.istio.destinationRule.circuitBreaker.maxEjectionPercent | default 50 }}
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+spec:
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cloud-native-integration
+  mtls:
+    mode: {{ .Values.cloudNativeIntegration.serviceMesh.istio.peerAuthentication.mtls.mode | default "STRICT" }}
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+spec:
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cloud-native-integration
+  rules:
+  - from:
+    - source:
+        principals: {{ .Values.cloudNativeIntegration.serviceMesh.istio.authorizationPolicy.allowedPrincipals | default (list "cluster.local/ns/istio-system/sa/istio-proxy") | toYaml | nindent 8 }}
+    to:
+    - operation:
+        methods: {{ .Values.cloudNativeIntegration.serviceMesh.istio.authorizationPolicy.allowedMethods | default (list "GET" "POST" "PUT" "DELETE") | toYaml | nindent 8 }}
+    when:
+    - key: source.ip
+      values: {{ .Values.cloudNativeIntegration.serviceMesh.istio.authorizationPolicy.allowedSourceIPs | default (list "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16") | toYaml | nindent 8 }}
+{{- end }}
+
+---
+{{- if .Values.cloudNativeIntegration.serverless.knative.enabled }}
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-serverless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-serverless
+  annotations:
+    serving.knative.dev/creator: "csr-controller"
+    serving.knative.dev/lastModifier: "csr-controller"
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "csr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cloud-native-serverless
+      annotations:
+        autoscaling.knative.dev/minScale: {{ .Values.cloudNativeIntegration.serverless.knative.autoscaling.minScale | default "1" | quote }}
+        autoscaling.knative.dev/maxScale: {{ .Values.cloudNativeIntegration.serverless.knative.autoscaling.maxScale | default "100" | quote }}
+        autoscaling.knative.dev/target: {{ .Values.cloudNativeIntegration.serverless.knative.autoscaling.target | default "100" | quote }}
+        autoscaling.knative.dev/targetUtilizationPercentage: {{ .Values.cloudNativeIntegration.serverless.knative.autoscaling.targetUtilizationPercentage | default "70" | quote }}
+    spec:
+      serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+      containerConcurrency: {{ .Values.cloudNativeIntegration.serverless.knative.containerConcurrency | default 10 }}
+      timeoutSeconds: {{ .Values.cloudNativeIntegration.serverless.knative.timeoutSeconds | default 300 }}
+      containers:
+      - name: cloud-native-serverless
+        image: "{{ .Values.cloudNativeIntegration.serverless.image.repository }}:{{ .Values.cloudNativeIntegration.serverless.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.cloudNativeIntegration.serverless.image.pullPolicy }}
+        env:
+        - name: SERVERLESS_MODE
+          value: "true"
+        - name: FUNCTION_TYPE
+          value: {{ .Values.cloudNativeIntegration.serverless.knative.functionType | default "http" }}
+        - name: LOG_LEVEL
+          value: {{ .Values.cloudNativeIntegration.serverless.knative.logLevel | default "info" }}
+        ports:
+        - name: http1
+          containerPort: 8080
+          protocol: TCP
+        resources:
+          {{- toYaml .Values.cloudNativeIntegration.serverless.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http1
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http1
+          initialDelaySeconds: 5
+          periodSeconds: 5
+{{- end }}
+
+---
+{{- if .Values.cloudNativeIntegration.horizontalPodAutoscaler.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  minReplicas: {{ .Values.cloudNativeIntegration.horizontalPodAutoscaler.minReplicas | default 3 }}
+  maxReplicas: {{ .Values.cloudNativeIntegration.horizontalPodAutoscaler.maxReplicas | default 20 }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.cloudNativeIntegration.horizontalPodAutoscaler.targetCPUUtilizationPercentage | default 70 }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.cloudNativeIntegration.horizontalPodAutoscaler.targetMemoryUtilizationPercentage | default 80 }}
+  {{- if .Values.cloudNativeIntegration.horizontalPodAutoscaler.customMetrics.enabled }}
+  - type: Pods
+    pods:
+      metric:
+        name: requests_per_second
+      target:
+        type: AverageValue
+        averageValue: {{ .Values.cloudNativeIntegration.horizontalPodAutoscaler.customMetrics.requestsPerSecond | default "100" }}
+  - type: Pods
+    pods:
+      metric:
+        name: response_latency_p99
+      target:
+        type: AverageValue
+        averageValue: {{ .Values.cloudNativeIntegration.horizontalPodAutoscaler.customMetrics.responseLatencyP99 | default "200m" }}
+  {{- end }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+{{- end }}
+
+---
+{{- if .Values.cloudNativeIntegration.verticalPodAutoscaler.enabled }}
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  updatePolicy:
+    updateMode: {{ .Values.cloudNativeIntegration.verticalPodAutoscaler.updateMode | default "Auto" }}
+  resourcePolicy:
+    containerPolicies:
+    - containerName: cloud-native-integration
+      minAllowed:
+        cpu: {{ .Values.cloudNativeIntegration.verticalPodAutoscaler.minAllowed.cpu | default "100m" }}
+        memory: {{ .Values.cloudNativeIntegration.verticalPodAutoscaler.minAllowed.memory | default "128Mi" }}
+      maxAllowed:
+        cpu: {{ .Values.cloudNativeIntegration.verticalPodAutoscaler.maxAllowed.cpu | default "2" }}
+        memory: {{ .Values.cloudNativeIntegration.verticalPodAutoscaler.maxAllowed.memory | default "4Gi" }}
+      controlledResources: ["cpu", "memory"]
+{{- end }}
+
+---
+{{- if .Values.cloudNativeIntegration.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cloud-native-integration
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: {{ .Release.Namespace }}
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 9091
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: {{ .Release.Namespace }}
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+{{- end }}
+
+---
+{{- if .Values.cloudNativeIntegration.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-native-integration
+spec:
+  {{- if .Values.cloudNativeIntegration.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.cloudNativeIntegration.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.cloudNativeIntegration.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.cloudNativeIntegration.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cloud-native-integration
+{{- end }}

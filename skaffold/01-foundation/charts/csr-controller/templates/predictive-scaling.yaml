@@ -1,0 +1,308 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-predictive-scaling
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: predictive-scaling
+spec:
+  replicas: {{ .Values.predictiveScaling.replicas | default 2 }}
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: predictive-scaling
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+      labels:
+        {{- include "csr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: predictive-scaling
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: predictive-scaling
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.predictiveScaling.image.repository }}:{{ .Values.predictiveScaling.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.predictiveScaling.image.pullPolicy }}
+        env:
+        - name: PREDICTIVE_SCALING_ENABLED
+          value: {{ .Values.predictiveScaling.enabled | default true | quote }}
+        - name: DEMAND_FORECASTING_ENABLED
+          value: {{ .Values.predictiveScaling.demandForecasting.enabled | default true | quote }}
+        - name: RESOURCE_OPTIMIZATION_ENABLED
+          value: {{ .Values.predictiveScaling.resourceOptimization.enabled | default true | quote }}
+        - name: AUTOMATED_SCALING_ENABLED
+          value: {{ .Values.predictiveScaling.automatedScaling.enabled | default true | quote }}
+        - name: COST_OPTIMIZATION_ENABLED
+          value: {{ .Values.predictiveScaling.costOptimization.enabled | default true | quote }}
+        - name: PERFORMANCE_PREDICTION_ENABLED
+          value: {{ .Values.predictiveScaling.performancePrediction.enabled | default true | quote }}
+        - name: CAPACITY_PLANNING_ENABLED
+          value: {{ .Values.predictiveScaling.capacityPlanning.enabled | default true | quote }}
+        - name: SCALING_STRATEGY
+          value: {{ .Values.predictiveScaling.scalingStrategy | default "predictive" | quote }}
+        - name: PREDICTION_HORIZON
+          value: {{ .Values.predictiveScaling.predictionHorizon | default "24h" | quote }}
+        - name: SCALING_THRESHOLD
+          value: {{ .Values.predictiveScaling.scalingThreshold | default "0.8" | quote }}
+        - name: OPTIMIZATION_INTERVAL
+          value: {{ .Values.predictiveScaling.optimizationInterval | default "5m" | quote }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: grpc
+          containerPort: 9090
+          protocol: TCP
+        - name: metrics
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.predictiveScaling.resources | nindent 12 }}
+        volumeMounts:
+        - name: predictive-scaling-config
+          mountPath: /etc/predictive-scaling
+          readOnly: true
+        - name: metrics-data
+          mountPath: /var/lib/metrics
+        - name: models-cache
+          mountPath: /var/cache/models
+        - name: predictions-data
+          mountPath: /var/lib/predictions
+        - name: optimization-data
+          mountPath: /var/lib/optimization
+      volumes:
+      - name: predictive-scaling-config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-predictive-scaling-config
+      - name: metrics-data
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-predictive-scaling-metrics
+      - name: models-cache
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-predictive-scaling-models
+      - name: predictions-data
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-predictive-scaling-predictions
+      - name: optimization-data
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-predictive-scaling-optimization
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-predictive-scaling
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: predictive-scaling
+spec:
+  type: {{ .Values.predictiveScaling.service.type }}
+  ports:
+  - port: {{ .Values.predictiveScaling.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: {{ .Values.predictiveScaling.service.grpcPort }}
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  - port: {{ .Values.predictiveScaling.service.metricsPort }}
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  selector:
+    {{- include "csr-controller.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: predictive-scaling
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-predictive-analysis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: predictive-scaling
+spec:
+  schedule: {{ .Values.predictiveScaling.analysis.schedule | default "*/15 * * * *" | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+          containers:
+          - name: predictive-analysis
+            image: "{{ .Values.predictiveScaling.image.repository }}:{{ .Values.predictiveScaling.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.predictiveScaling.image.pullPolicy }}
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting predictive analysis pipeline..."
+              
+              # Collect current metrics
+              echo "Collecting current metrics..."
+              python /opt/predictive-scaling/scripts/metrics_collector.py \
+                --output-path=/var/lib/metrics \
+                --config-path=/etc/predictive-scaling/metrics-config.yaml
+              
+              # Generate demand forecasts
+              echo "Generating demand forecasts..."
+              python /opt/predictive-scaling/scripts/demand_forecaster.py \
+                --metrics-path=/var/lib/metrics \
+                --predictions-path=/var/lib/predictions \
+                --horizon={{ .Values.predictiveScaling.predictionHorizon | default "24h" }} \
+                --config-path=/etc/predictive-scaling/forecasting-config.yaml
+              
+              # Optimize resource allocation
+              echo "Optimizing resource allocation..."
+              python /opt/predictive-scaling/scripts/resource_optimizer.py \
+                --predictions-path=/var/lib/predictions \
+                --optimization-path=/var/lib/optimization \
+                --config-path=/etc/predictive-scaling/optimization-config.yaml
+              
+              # Generate scaling recommendations
+              echo "Generating scaling recommendations..."
+              python /opt/predictive-scaling/scripts/scaling_recommender.py \
+                --optimization-path=/var/lib/optimization \
+                --output-path=/var/lib/predictions/recommendations \
+                --config-path=/etc/predictive-scaling/scaling-config.yaml
+              
+              # Execute automated scaling actions
+              echo "Executing automated scaling actions..."
+              python /opt/predictive-scaling/scripts/auto_scaler.py \
+                --recommendations-path=/var/lib/predictions/recommendations \
+                --config-path=/etc/predictive-scaling/autoscaling-config.yaml
+              
+              echo "Predictive analysis pipeline completed successfully"
+            env:
+            - name: PREDICTION_MODEL
+              value: {{ .Values.predictiveScaling.analysis.predictionModel | default "lstm" | quote }}
+            - name: OPTIMIZATION_ALGORITHM
+              value: {{ .Values.predictiveScaling.analysis.optimizationAlgorithm | default "genetic" | quote }}
+            - name: SCALING_CONFIDENCE_THRESHOLD
+              value: {{ .Values.predictiveScaling.analysis.scalingConfidenceThreshold | default "0.8" | quote }}
+            - name: RESOURCE_CONSTRAINTS
+              value: {{ .Values.predictiveScaling.analysis.resourceConstraints | default "cpu:80%,memory:85%,storage:90%" | quote }}
+            - name: COST_OPTIMIZATION_ENABLED
+              value: {{ .Values.predictiveScaling.analysis.costOptimization.enabled | default true | quote }}
+            - name: PERFORMANCE_TARGETS
+              value: {{ .Values.predictiveScaling.analysis.performanceTargets | default "latency:100ms,throughput:1000rps" | quote }}
+            volumeMounts:
+            - name: predictive-scaling-config
+              mountPath: /etc/predictive-scaling
+              readOnly: true
+            - name: metrics-data
+              mountPath: /var/lib/metrics
+            - name: models-cache
+              mountPath: /var/cache/models
+            - name: predictions-data
+              mountPath: /var/lib/predictions
+            - name: optimization-data
+              mountPath: /var/lib/optimization
+          volumes:
+          - name: predictive-scaling-config
+            configMap:
+              name: {{ include "csr-controller.fullname" . }}-predictive-scaling-config
+          - name: metrics-data
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-predictive-scaling-metrics
+          - name: models-cache
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-predictive-scaling-models
+          - name: predictions-data
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-predictive-scaling-predictions
+          - name: optimization-data
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-predictive-scaling-optimization
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-predictive-scaling-hpa
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: predictive-scaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "csr-controller.fullname" . }}-predictive-scaling
+  minReplicas: {{ .Values.predictiveScaling.hpa.minReplicas | default 2 }}
+  maxReplicas: {{ .Values.predictiveScaling.hpa.maxReplicas | default 10 }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.predictiveScaling.hpa.targetCPUUtilization | default 70 }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.predictiveScaling.hpa.targetMemoryUtilization | default 80 }}
+  {{- if .Values.predictiveScaling.hpa.customMetrics }}
+  - type: Pods
+    pods:
+      metric:
+        name: prediction_accuracy
+      target:
+        type: AverageValue
+        averageValue: {{ .Values.predictiveScaling.hpa.customMetrics.predictionAccuracy | default "0.9" }}
+  {{- end }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.predictiveScaling.hpa.behavior.scaleDown.stabilizationWindowSeconds | default 300 }}
+      policies:
+      - type: Percent
+        value: {{ .Values.predictiveScaling.hpa.behavior.scaleDown.percent | default 10 }}
+        periodSeconds: {{ .Values.predictiveScaling.hpa.behavior.scaleDown.periodSeconds | default 60 }}
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.predictiveScaling.hpa.behavior.scaleUp.stabilizationWindowSeconds | default 60 }}
+      policies:
+      - type: Percent
+        value: {{ .Values.predictiveScaling.hpa.behavior.scaleUp.percent | default 50 }}
+        periodSeconds: {{ .Values.predictiveScaling.hpa.behavior.scaleUp.periodSeconds | default 30 }}

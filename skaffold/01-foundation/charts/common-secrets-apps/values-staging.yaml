@@ -1,0 +1,67 @@
+# Staging environment configuration
+namespace:
+  name: "alt-staging"
+
+# Use Sealed Secrets for staging (production-like security testing)
+externalSecrets:
+  enabled: false
+  
+sealedSecrets:
+  enabled: true
+  postgres:
+    username: "AgBzdGFnaW5nIGVuY3J5cHRlZCB1c2VybmFtZSBkYXRh"
+    password: "AgCzdGFnaW5nIGVuY3J5cHRlZCBwYXNzd29yZCBkYXRh"
+    database: "AgAzdGFnaW5nIGVuY3J5cHRlZCBkYXRhYmFzZSBkYXRh"
+  
+  auth:
+    jwt-secret: "AgDzdGFnaW5nIGVuY3J5cHRlZCBqd3Qgc2VjcmV0"
+    kratos-secret: "AgBzdGFnaW5nIGVuY3J5cHRlZCBrcmF0b3Mgc2VjcmV0"
+    oauth-client-id: "AgFzdGFnaW5nIGVuY3J5cHRlZCBvYXV0aCBjbGllbnQgaWQ="
+    oauth-client-secret: "AgLzdGFnaW5nIGVuY3J5cHRlZCBvYXV0aCBjbGllbnQgc2VjcmV0"
+  
+  api:
+    meilisearch-key: "AgNzdGFnaW5nIGVuY3J5cHRlZCBtZWlsaXNlYXJjaCBrZXk="
+    gemma-api-key: "AgRzdGFnaW5nIGVuY3J5cHRlZCBnZW1tYSBhcGkga2V5"
+    github-token: "AgWzdGFnaW5nIGVuY3J5cHRlZCBnaXRodWIgdG9rZW4="
+
+# Fallback staging secrets
+database:
+  postgres:
+    password: "c3RhZ2luZ1Bhc3N3b3JkMTIz"           # base64: stagingPassword123
+    appPassword: "c3RhZ2luZ0FwcFBhc3N3b3JkNDU2"   # base64: stagingAppPassword456
+    
+  authPostgres:
+    password: "c3RhZ2luZ0F1dGhQYXNzd29yZDc4OQ=="   # base64: stagingAuthPassword789
+    
+  kratosPostgres:
+    password: "c3RhZ2luZ0tyYXRvc1Bhc3N3b3JkMDAx"   # base64: stagingKratosPassword001
+    
+  clickhouse:
+    password: "c3RhZ2luZ0NsaWNrSG91c2VQYXNzd29yZA=="  # base64: stagingClickHousePassword
+    appPassword: "c3RhZ2luZ0NsaWNrSG91c2VBcHBQYXNzd29yZA=="  # base64: stagingClickHouseAppPassword
+
+apiKeys:
+  huggingFace:
+    token: "aGZfc3RhZ2luZ190b2tlbl9leGFtcGxl"    # base64: hf_staging_token_example
+    
+  meilisearch:
+    masterKey: "c3RhZ2luZ19tZWlsaXNlYXJjaF9tYXN0ZXJfa2V5"  # base64: staging_meilisearch_master_key
+    apiKey: "c3RhZ2luZ19tZWlsaXNlYXJjaF9hcGlfa2V5"        # base64: staging_meilisearch_api_key
+
+services:
+  backend:
+    secrets:
+      DB_PASSWORD: "c3RhZ2luZ1Bhc3N3b3JkMTIz"
+      POSTGRES_PASSWORD: "c3RhZ2luZ1Bhc3N3b3JkMTIz"
+      DB_APP_PASSWORD: "c3RhZ2luZ0FwcFBhc3N3b3JkNDU2"
+      HF_TOKEN: "aGZfc3RhZ2luZ190b2tlbl9leGFtcGxl"
+      MEILI_MASTER_KEY: "c3RhZ2luZ19tZWlsaXNlYXJjaF9tYXN0ZXJfa2V5"
+      MEILISEARCH_API_KEY: "c3RhZ2luZ19tZWlsaXNlYXJjaF9hcGlfa2V5"
+      
+  authService:
+    secrets:
+      DATABASE_URL: "cG9zdGdyZXNxbDovL2F1dGhfdXNlcjpzdGFnaW5nQXV0aFBhc3N3b3JkNzg5QGF1dGgtcG9zdGdyZXMuYWx0LXN0YWdpbmcuc3ZjLmNsdXN0ZXIubG9jYWw6NTQzMi9hdXRoX2Ri"
+      KRATOS_ADMIN_URL: "aHR0cDovL2tyYXRvcy1hZG1pbi5hbHQtc3RhZ2luZy5zdmMuY2x1c3Rlci5sb2NhbDo0NDM0"
+      KRATOS_PUBLIC_URL: "aHR0cDovL2tyYXRvcy1wdWJsaWMuYWx0LXN0YWdpbmcuc3ZjLmNsdXN0ZXIubG9jYWw6NDQzMw=="
+      JWT_SECRET: "c3RhZ2luZ19qd3Rfc2VjcmV0XzEyM2FiYw=="
+      CSRF_SECRET: "c3RhZ2luZ19jc3JmX3NlY3JldF80NTZkZWY="

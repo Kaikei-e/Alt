@@ -1,0 +1,22 @@
+{{- if .Values.csrController.monitoring.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csr-controller.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.csrController.monitoring.metricsPort }}
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  - port: {{ .Values.csrController.monitoring.healthPort }}
+    targetPort: health
+    protocol: TCP
+    name: health
+  selector:
+    {{- include "csr-controller.selectorLabels" . | nindent 4 }}
+{{- end }}

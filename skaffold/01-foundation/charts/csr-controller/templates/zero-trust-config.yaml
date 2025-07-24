@@ -1,0 +1,538 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-zero-trust-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: zero-trust-engine
+data:
+  zero-trust-config.yaml: |
+    # Zero Trust Configuration for CSR Controller
+    version: "1.0"
+    
+    # Core Zero Trust Principles
+    core_principles:
+      - "never_trust_always_verify"
+      - "assume_breach"
+      - "verify_explicitly"
+      - "use_least_privilege_access"
+      - "minimize_blast_radius"
+    
+    # Identity Verification Configuration
+    identity_verification:
+      enabled: {{ .Values.zeroTrustEngine.identityVerification.enabled | default true }}
+      
+      # Workload Identity
+      workload_identity:
+        required: {{ .Values.zeroTrustEngine.workloadIdentity.required | default true }}
+        
+        # SPIFFE/SPIRE Integration
+        spiffe:
+          enabled: {{ .Values.zeroTrustEngine.spiffe.enabled | default true }}
+          trust_domain: {{ .Values.zeroTrustEngine.spiffe.trustDomain | default "alt.production.local" | quote }}
+          spire_server: {{ .Values.zeroTrustEngine.spiffe.spireServer | default "spire-server.spire.svc.cluster.local:8081" | quote }}
+          
+        # Service Account Token Verification
+        service_account_token:
+          required: {{ .Values.zeroTrustEngine.serviceAccountToken.required | default true }}
+          audience: {{ .Values.zeroTrustEngine.serviceAccountToken.audience | default "alt.production.local" | quote }}
+          issuer: {{ .Values.zeroTrustEngine.serviceAccountToken.issuer | default "https://kubernetes.default.svc.cluster.local" | quote }}
+          
+        # Pod Identity Verification
+        pod_identity:
+          required: {{ .Values.zeroTrustEngine.podIdentity.required | default true }}
+          verify_node_identity: {{ .Values.zeroTrustEngine.podIdentity.verifyNodeIdentity | default true }}
+          verify_namespace_isolation: {{ .Values.zeroTrustEngine.podIdentity.verifyNamespaceIsolation | default true }}
+      
+      # Human Identity Verification
+      human_identity:
+        required: {{ .Values.zeroTrustEngine.humanIdentity.required | default true }}
+        
+        # Multi-Factor Authentication
+        mfa:
+          enabled: {{ .Values.zeroTrustEngine.mfa.enabled | default true }}
+          methods:
+            - "totp"
+            - "webauthn"
+            - "hardware_token"
+            - "biometric"
+          
+          # TOTP Configuration
+          totp:
+            enabled: {{ .Values.zeroTrustEngine.mfa.totp.enabled | default true }}
+            issuer: {{ .Values.zeroTrustEngine.mfa.totp.issuer | default "Alt RSS Reader" | quote }}
+            algorithm: {{ .Values.zeroTrustEngine.mfa.totp.algorithm | default "SHA256" | quote }}
+            digits: {{ .Values.zeroTrustEngine.mfa.totp.digits | default 6 }}
+            period: {{ .Values.zeroTrustEngine.mfa.totp.period | default 30 }}
+            
+          # WebAuthn Configuration
+          webauthn:
+            enabled: {{ .Values.zeroTrustEngine.mfa.webauthn.enabled | default true }}
+            rp_id: {{ .Values.zeroTrustEngine.mfa.webauthn.rpId | default "alt.production.local" | quote }}
+            rp_name: {{ .Values.zeroTrustEngine.mfa.webauthn.rpName | default "Alt RSS Reader" | quote }}
+            timeout: {{ .Values.zeroTrustEngine.mfa.webauthn.timeout | default 60000 }}
+            
+          # Hardware Token Configuration
+          hardware_token:
+            enabled: {{ .Values.zeroTrustEngine.mfa.hardwareToken.enabled | default true }}
+            supported_tokens:
+              - "yubikey"
+              - "feitian"
+              - "hypersecu"
+            
+          # Biometric Configuration
+          biometric:
+            enabled: {{ .Values.zeroTrustEngine.mfa.biometric.enabled | default false }}
+            methods:
+              - "fingerprint"
+              - "face_recognition"
+              - "voice_recognition"
+        
+        # Certificate-Based Authentication
+        certificate_auth:
+          enabled: {{ .Values.zeroTrustEngine.certificateAuth.enabled | default true }}
+          client_certificate_required: {{ .Values.zeroTrustEngine.certificateAuth.clientCertRequired | default true }}
+          ca_verification: {{ .Values.zeroTrustEngine.certificateAuth.caVerification | default true }}
+          ocsp_checking: {{ .Values.zeroTrustEngine.certificateAuth.ocspChecking | default true }}
+    
+    # Contextual Access Control
+    contextual_access:
+      enabled: {{ .Values.zeroTrustEngine.contextAwareAccess.enabled | default true }}
+      
+      # Contextual Factors
+      factors:
+        # Temporal Factors
+        temporal:
+          enabled: {{ .Values.zeroTrustEngine.contextualFactors.temporal.enabled | default true }}
+          business_hours_only: {{ .Values.zeroTrustEngine.contextualFactors.temporal.businessHoursOnly | default false }}
+          business_hours:
+            start: {{ .Values.zeroTrustEngine.contextualFactors.temporal.businessHours.start | default "09:00" | quote }}
+            end: {{ .Values.zeroTrustEngine.contextualFactors.temporal.businessHours.end | default "17:00" | quote }}
+            timezone: {{ .Values.zeroTrustEngine.contextualFactors.temporal.businessHours.timezone | default "UTC" | quote }}
+            days: {{ .Values.zeroTrustEngine.contextualFactors.temporal.businessHours.days | default "Monday,Tuesday,Wednesday,Thursday,Friday" | quote }}
+          
+        # Geospatial Factors
+        geospatial:
+          enabled: {{ .Values.zeroTrustEngine.contextualFactors.geospatial.enabled | default true }}
+          allowed_countries: {{ .Values.zeroTrustEngine.contextualFactors.geospatial.allowedCountries | default "US,CA,GB,DE,JP" | quote }}
+          allowed_regions: {{ .Values.zeroTrustEngine.contextualFactors.geospatial.allowedRegions | default "us-east-1,us-west-2,eu-west-1" | quote }}
+          block_tor: {{ .Values.zeroTrustEngine.contextualFactors.geospatial.blockTor | default true }}
+          block_vpn: {{ .Values.zeroTrustEngine.contextualFactors.geospatial.blockVpn | default false }}
+          
+        # Network Factors
+        network:
+          enabled: {{ .Values.zeroTrustEngine.contextualFactors.network.enabled | default true }}
+          trusted_networks:
+            - "10.0.0.0/8"
+            - "172.16.0.0/12"
+            - "192.168.0.0/16"
+          untrusted_networks:
+            - "0.0.0.0/0"
+          require_vpn: {{ .Values.zeroTrustEngine.contextualFactors.network.requireVpn | default false }}
+          
+        # Device Factors
+        device:
+          enabled: {{ .Values.zeroTrustEngine.contextualFactors.device.enabled | default true }}
+          device_registration_required: {{ .Values.zeroTrustEngine.contextualFactors.device.registrationRequired | default true }}
+          device_compliance_required: {{ .Values.zeroTrustEngine.contextualFactors.device.complianceRequired | default true }}
+          jailbreak_detection: {{ .Values.zeroTrustEngine.contextualFactors.device.jailbreakDetection | default true }}
+          
+        # Behavioral Factors
+        behavioral:
+          enabled: {{ .Values.zeroTrustEngine.contextualFactors.behavioral.enabled | default true }}
+          anomaly_detection: {{ .Values.zeroTrustEngine.contextualFactors.behavioral.anomalyDetection | default true }}
+          learning_period: {{ .Values.zeroTrustEngine.contextualFactors.behavioral.learningPeriod | default "7d" | quote }}
+          sensitivity: {{ .Values.zeroTrustEngine.contextualFactors.behavioral.sensitivity | default "medium" | quote }}
+      
+      # Access Policies
+      access_policies:
+        # Production Environment Policy
+        - name: "production_access"
+          conditions:
+            - "namespace == 'alt-production'"
+            - "resource_type == 'csr'"
+          requirements:
+            - "workload_identity_verified"
+            - "service_account_token_verified"
+            - "network_from_trusted_cidr"
+            - "business_hours_only"
+          trust_score_threshold: 0.9
+          
+        # High-Risk Operations Policy  
+        - name: "high_risk_operations"
+          conditions:
+            - "certificate_validity > '30d'"
+            - "external_dns_names"
+            - "privileged_usage"
+          requirements:
+            - "human_identity_verified"
+            - "mfa_completed"
+            - "manager_approval"
+            - "audit_trail_enabled"
+          trust_score_threshold: 0.95
+          
+        # Cross-Namespace Access Policy
+        - name: "cross_namespace_access"
+          conditions:
+            - "source_namespace != target_namespace"
+          requirements:
+            - "explicit_authorization"
+            - "network_policy_compliance"
+            - "service_mesh_mtls"
+          trust_score_threshold: 0.8
+          
+        # External Access Policy
+        - name: "external_access"
+          conditions:
+            - "source_ip_external"
+            - "certificate_external_dns"
+          requirements:
+            - "vpn_connection"
+            - "device_compliance"
+            - "human_identity_verified"
+            - "mfa_completed"
+            - "time_limited_access"
+          trust_score_threshold: 0.95
+    
+    # Continuous Verification
+    continuous_verification:
+      enabled: {{ .Values.zeroTrustEngine.continuousVerification.enabled | default true }}
+      
+      # Verification Intervals
+      intervals:
+        workload_identity: {{ .Values.zeroTrustEngine.continuousVerification.intervals.workloadIdentity | default "5m" | quote }}
+        human_identity: {{ .Values.zeroTrustEngine.continuousVerification.intervals.humanIdentity | default "15m" | quote }}
+        device_compliance: {{ .Values.zeroTrustEngine.continuousVerification.intervals.deviceCompliance | default "1h" | quote }}
+        network_context: {{ .Values.zeroTrustEngine.continuousVerification.intervals.networkContext | default "1m" | quote }}
+        behavioral_analysis: {{ .Values.zeroTrustEngine.continuousVerification.intervals.behavioralAnalysis | default "30s" | quote }}
+      
+      # Trust Score Calculation
+      trust_score:
+        algorithm: {{ .Values.zeroTrustEngine.trustScore.algorithm | default "weighted_average" | quote }}
+        threshold: {{ .Values.zeroTrustEngine.trustScore.threshold | default 0.7 }}
+        
+        # Scoring Factors
+        factors:
+          identity_verification: {{ .Values.zeroTrustEngine.trustScore.factors.identityVerification | default 0.3 }}
+          contextual_factors: {{ .Values.zeroTrustEngine.trustScore.factors.contextualFactors | default 0.2 }}
+          behavioral_analysis: {{ .Values.zeroTrustEngine.trustScore.factors.behavioralAnalysis | default 0.2 }}
+          device_compliance: {{ .Values.zeroTrustEngine.trustScore.factors.deviceCompliance | default 0.15 }}
+          network_security: {{ .Values.zeroTrustEngine.trustScore.factors.networkSecurity | default 0.15 }}
+        
+        # Dynamic Adjustment
+        dynamic_adjustment:
+          enabled: {{ .Values.zeroTrustEngine.trustScore.dynamicAdjustment.enabled | default true }}
+          risk_based_adjustment: {{ .Values.zeroTrustEngine.trustScore.dynamicAdjustment.riskBasedAdjustment | default true }}
+          time_based_decay: {{ .Values.zeroTrustEngine.trustScore.dynamicAdjustment.timeBasedDecay | default true }}
+          decay_rate: {{ .Values.zeroTrustEngine.trustScore.dynamicAdjustment.decayRate | default 0.1 }}
+      
+      # Revocation and Remediation
+      revocation:
+        enabled: {{ .Values.zeroTrustEngine.revocation.enabled | default true }}
+        
+        # Automatic Revocation Triggers
+        automatic_triggers:
+          - "trust_score_below_threshold"
+          - "security_incident_detected"
+          - "policy_violation"
+          - "anomalous_behavior"
+          - "device_compromise"
+          - "credential_compromise"
+        
+        # Revocation Actions
+        actions:
+          - "revoke_certificates"
+          - "terminate_sessions"
+          - "quarantine_workload"
+          - "block_network_access"
+          - "require_re_authentication"
+          - "escalate_to_security_team"
+    
+    # Behavioral Analysis
+    behavioral_analysis:
+      enabled: {{ .Values.zeroTrustEngine.behavioralAnalysis.enabled | default true }}
+      
+      # Machine Learning Configuration
+      machine_learning:
+        enabled: {{ .Values.zeroTrustEngine.behavioralAnalysis.machineLearning.enabled | default true }}
+        
+        # Anomaly Detection Models
+        anomaly_detection:
+          models:
+            - name: "isolation_forest"
+              enabled: {{ .Values.zeroTrustEngine.behavioralAnalysis.models.isolationForest.enabled | default true }}
+              contamination: {{ .Values.zeroTrustEngine.behavioralAnalysis.models.isolationForest.contamination | default 0.1 }}
+              
+            - name: "one_class_svm"
+              enabled: {{ .Values.zeroTrustEngine.behavioralAnalysis.models.oneClassSvm.enabled | default true }}
+              nu: {{ .Values.zeroTrustEngine.behavioralAnalysis.models.oneClassSvm.nu | default 0.05 }}
+              
+            - name: "local_outlier_factor"
+              enabled: {{ .Values.zeroTrustEngine.behavioralAnalysis.models.localOutlierFactor.enabled | default true }}
+              contamination: {{ .Values.zeroTrustEngine.behavioralAnalysis.models.localOutlierFactor.contamination | default 0.1 }}
+        
+        # Feature Engineering
+        feature_engineering:
+          features:
+            - "request_frequency"
+            - "request_timing"
+            - "request_patterns"
+            - "resource_access_patterns"
+            - "network_behavior"
+            - "authentication_patterns"
+            - "error_patterns"
+            - "session_duration"
+          
+          # Feature Normalization
+          normalization:
+            enabled: {{ .Values.zeroTrustEngine.behavioralAnalysis.featureNormalization.enabled | default true }}
+            method: {{ .Values.zeroTrustEngine.behavioralAnalysis.featureNormalization.method | default "min_max" | quote }}
+        
+        # Model Training
+        model_training:
+          enabled: {{ .Values.zeroTrustEngine.behavioralAnalysis.modelTraining.enabled | default true }}
+          training_schedule: {{ .Values.zeroTrustEngine.behavioralAnalysis.modelTraining.schedule | default "0 2 * * *" | quote }}
+          training_data_window: {{ .Values.zeroTrustEngine.behavioralAnalysis.modelTraining.dataWindow | default "30d" | quote }}
+          validation_split: {{ .Values.zeroTrustEngine.behavioralAnalysis.modelTraining.validationSplit | default 0.2 }}
+          
+        # Model Evaluation
+        model_evaluation:
+          enabled: {{ .Values.zeroTrustEngine.behavioralAnalysis.modelEvaluation.enabled | default true }}
+          evaluation_metrics:
+            - "precision"
+            - "recall"
+            - "f1_score"
+            - "auc_roc"
+            - "false_positive_rate"
+          performance_threshold: {{ .Values.zeroTrustEngine.behavioralAnalysis.modelEvaluation.performanceThreshold | default 0.8 }}
+      
+      # Behavioral Patterns
+      patterns:
+        # Normal Patterns
+        normal_patterns:
+          - "regular_working_hours_access"
+          - "consistent_source_locations"
+          - "predictable_resource_usage"
+          - "standard_authentication_flow"
+          - "expected_error_rates"
+          
+        # Suspicious Patterns
+        suspicious_patterns:
+          - "unusual_time_access"
+          - "multiple_location_access"
+          - "rapid_resource_enumeration"
+          - "failed_authentication_spikes"
+          - "privilege_escalation_attempts"
+          - "bulk_data_access"
+          - "unusual_network_patterns"
+      
+      # Risk Scoring
+      risk_scoring:
+        enabled: {{ .Values.zeroTrustEngine.behavioralAnalysis.riskScoring.enabled | default true }}
+        
+        # Risk Factors
+        risk_factors:
+          - name: "anomaly_score"
+            weight: {{ .Values.zeroTrustEngine.behavioralAnalysis.riskFactors.anomalyScore.weight | default 0.4 }}
+            
+          - name: "pattern_deviation"
+            weight: {{ .Values.zeroTrustEngine.behavioralAnalysis.riskFactors.patternDeviation.weight | default 0.3 }}
+            
+          - name: "temporal_anomaly"
+            weight: {{ .Values.zeroTrustEngine.behavioralAnalysis.riskFactors.temporalAnomaly.weight | default 0.2 }}
+            
+          - name: "contextual_anomaly"
+            weight: {{ .Values.zeroTrustEngine.behavioralAnalysis.riskFactors.contextualAnomaly.weight | default 0.1 }}
+        
+        # Risk Thresholds
+        risk_thresholds:
+          low: {{ .Values.zeroTrustEngine.behavioralAnalysis.riskThresholds.low | default 0.3 }}
+          medium: {{ .Values.zeroTrustEngine.behavioralAnalysis.riskThresholds.medium | default 0.6 }}
+          high: {{ .Values.zeroTrustEngine.behavioralAnalysis.riskThresholds.high | default 0.8 }}
+          critical: {{ .Values.zeroTrustEngine.behavioralAnalysis.riskThresholds.critical | default 0.95 }}
+    
+    # Monitoring and Alerting
+    monitoring:
+      enabled: {{ .Values.zeroTrustEngine.monitoring.enabled | default true }}
+      
+      # Metrics Collection
+      metrics:
+        enabled: {{ .Values.zeroTrustEngine.monitoring.metrics.enabled | default true }}
+        collection_interval: {{ .Values.zeroTrustEngine.monitoring.metrics.collectionInterval | default "30s" | quote }}
+        
+        # Zero Trust Metrics
+        custom_metrics:
+          - name: "zero_trust_verifications_total"
+            type: "counter"
+            description: "Total number of zero trust verifications"
+            
+          - name: "zero_trust_verification_duration_seconds"
+            type: "histogram"
+            description: "Duration of zero trust verifications"
+            
+          - name: "trust_score_current"
+            type: "gauge"
+            description: "Current trust score"
+            
+          - name: "policy_violations_total"
+            type: "counter"
+            description: "Total number of policy violations"
+            
+          - name: "mfa_challenges_total"
+            type: "counter"
+            description: "Total number of MFA challenges"
+            
+          - name: "behavioral_anomalies_total"
+            type: "counter"
+            description: "Total number of behavioral anomalies detected"
+      
+      # Alerting Configuration
+      alerting:
+        enabled: {{ .Values.zeroTrustEngine.monitoring.alerting.enabled | default true }}
+        
+        # Alert Rules
+        rules:
+          - name: "trust_score_low"
+            condition: "trust_score_current < 0.5"
+            severity: "warning"
+            description: "Trust score is below acceptable threshold"
+            
+          - name: "trust_score_critical"
+            condition: "trust_score_current < 0.3"
+            severity: "critical"
+            description: "Trust score is critically low"
+            
+          - name: "policy_violation_spike"
+            condition: "rate(policy_violations_total[5m]) > 10"
+            severity: "warning"
+            description: "High rate of policy violations detected"
+            
+          - name: "mfa_failure_spike"
+            condition: "rate(mfa_failures_total[5m]) > 5"
+            severity: "warning"
+            description: "High rate of MFA failures detected"
+            
+          - name: "behavioral_anomaly_detected"
+            condition: "behavioral_anomalies_total > 0"
+            severity: "warning"
+            description: "Behavioral anomaly detected"
+            
+          - name: "zero_trust_engine_down"
+            condition: "up{job=\"zero-trust-engine\"} == 0"
+            severity: "critical"
+            description: "Zero Trust Engine is down"
+    
+    # Integration Configuration
+    integration:
+      # CSR Controller Integration
+      csr_controller:
+        enabled: {{ .Values.zeroTrustEngine.integration.csrController.enabled | default true }}
+        endpoint: {{ .Values.zeroTrustEngine.integration.csrController.endpoint | default "http://csr-controller:8080" | quote }}
+        
+      # Policy Engine Integration
+      policy_engine:
+        enabled: {{ .Values.zeroTrustEngine.integration.policyEngine.enabled | default true }}
+        endpoint: {{ .Values.zeroTrustEngine.integration.policyEngine.endpoint | default "http://security-policy-engine:8080" | quote }}
+        
+      # HSM Integration
+      hsm:
+        enabled: {{ .Values.zeroTrustEngine.integration.hsm.enabled | default true }}
+        endpoint: {{ .Values.zeroTrustEngine.integration.hsm.endpoint | default "http://hsm-integration:8080" | quote }}
+        
+      # External Identity Providers
+      identity_providers:
+        # Active Directory
+        active_directory:
+          enabled: {{ .Values.zeroTrustEngine.integration.identityProviders.activeDirectory.enabled | default false }}
+          ldap_server: {{ .Values.zeroTrustEngine.integration.identityProviders.activeDirectory.ldapServer | default "" | quote }}
+          
+        # OAuth 2.0 / OpenID Connect
+        oauth2:
+          enabled: {{ .Values.zeroTrustEngine.integration.identityProviders.oauth2.enabled | default false }}
+          provider_url: {{ .Values.zeroTrustEngine.integration.identityProviders.oauth2.providerUrl | default "" | quote }}
+          
+        # SAML 2.0
+        saml:
+          enabled: {{ .Values.zeroTrustEngine.integration.identityProviders.saml.enabled | default false }}
+          idp_url: {{ .Values.zeroTrustEngine.integration.identityProviders.saml.idpUrl | default "" | quote }}
+      
+      # Security Information and Event Management (SIEM)
+      siem:
+        enabled: {{ .Values.zeroTrustEngine.integration.siem.enabled | default true }}
+        
+        # Splunk Integration
+        splunk:
+          enabled: {{ .Values.zeroTrustEngine.integration.siem.splunk.enabled | default false }}
+          endpoint: {{ .Values.zeroTrustEngine.integration.siem.splunk.endpoint | default "" | quote }}
+          
+        # Elastic Security Integration
+        elastic:
+          enabled: {{ .Values.zeroTrustEngine.integration.siem.elastic.enabled | default false }}
+          endpoint: {{ .Values.zeroTrustEngine.integration.siem.elastic.endpoint | default "" | quote }}
+          
+        # Azure Sentinel Integration
+        azure_sentinel:
+          enabled: {{ .Values.zeroTrustEngine.integration.siem.azureSentinel.enabled | default false }}
+          workspace_id: {{ .Values.zeroTrustEngine.integration.siem.azureSentinel.workspaceId | default "" | quote }}
+    
+    # Audit and Compliance
+    audit:
+      enabled: {{ .Values.zeroTrustEngine.audit.enabled | default true }}
+      
+      # Audit Events
+      events:
+        - "identity_verification"
+        - "mfa_challenges"
+        - "policy_evaluations"
+        - "trust_score_changes"
+        - "access_decisions"
+        - "behavioral_anomalies"
+        - "security_incidents"
+        - "configuration_changes"
+      
+      # Audit Log Configuration
+      logging:
+        format: {{ .Values.zeroTrustEngine.audit.logging.format | default "json" | quote }}
+        level: {{ .Values.zeroTrustEngine.audit.logging.level | default "info" | quote }}
+        retention: {{ .Values.zeroTrustEngine.audit.logging.retention | default "7y" | quote }}
+        encryption: {{ .Values.zeroTrustEngine.audit.logging.encryption | default true }}
+        integrity_protection: {{ .Values.zeroTrustEngine.audit.logging.integrityProtection | default true }}
+        
+      # Compliance Reporting
+      compliance:
+        enabled: {{ .Values.zeroTrustEngine.audit.compliance.enabled | default true }}
+        standards:
+          - "zero_trust_maturity_model"
+          - "nist_cybersecurity_framework"
+          - "iso_27001"
+          - "soc2"
+        
+        reporting_interval: {{ .Values.zeroTrustEngine.audit.compliance.reportingInterval | default "quarterly" | quote }}
+        
+        # Zero Trust Maturity Assessment
+        maturity_assessment:
+          enabled: {{ .Values.zeroTrustEngine.audit.compliance.maturityAssessment.enabled | default true }}
+          assessment_frequency: {{ .Values.zeroTrustEngine.audit.compliance.maturityAssessment.frequency | default "annually" | quote }}
+          
+          # Maturity Levels
+          maturity_levels:
+            - level: "traditional"
+              description: "Perimeter-based security"
+              score_range: "0-20"
+              
+            - level: "advanced"
+              description: "Some zero trust capabilities"
+              score_range: "21-40"
+              
+            - level: "initial"
+              description: "Basic zero trust implementation"
+              score_range: "41-60"
+              
+            - level: "repeatable"
+              description: "Consistent zero trust practices"
+              score_range: "61-80"
+              
+            - level: "optimal"
+              description: "Mature zero trust architecture"
+              score_range: "81-100"

@@ -1,0 +1,38 @@
+# Staging environment values for common-config
+
+environment: staging
+
+# Enable only staging namespace
+namespaces:
+  development:
+    enabled: false
+  staging:
+    enabled: true
+  production:
+    enabled: false
+  apps:
+    enabled: false
+  database:
+    enabled: false
+  search:
+    enabled: false
+  observability:
+    enabled: false
+  ingress:
+    enabled: false
+  auth:
+    enabled: false
+
+# Moderate resource quotas for staging
+resourceQuotas:
+  enabled: true
+  staging:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    persistentvolumeclaims: "10"
+
+# Enable network policies for staging
+networkPolicies:
+  enabled: true

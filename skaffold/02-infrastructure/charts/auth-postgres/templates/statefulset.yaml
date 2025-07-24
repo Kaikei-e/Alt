@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "postgres.fullname" . }}
+  name: {{ include "auth-postgres.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "postgres.labels" . | nindent 4 }}
+    {{- include "auth-postgres.labels" . | nindent 4 }}
   {{- with .Values.commonAnnotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  serviceName: {{ include "postgres.fullname" . }}
+  serviceName: {{ include "auth-postgres.fullname" . }}
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "postgres.selectorLabels" . | nindent 6 }}
+      {{- include "auth-postgres.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "postgres.selectorLabels" . | nindent 8 }}
+        {{- include "auth-postgres.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -32,13 +32,13 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "postgres.serviceAccountName" . }}
+      serviceAccountName: {{ include "auth-postgres.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      # Pod Security Standards "restricted" compliant - no init containers needed
-      # Use fsGroup + correct PostgreSQL UID for automatic permission management
+      # Init containers removed for Pod Security Standards "restricted" compliance
+      # Volume permissions managed automatically by fsGroup + fsGroupChangePolicy
       containers:
-        - name: postgres
+        - name: auth-postgres
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
@@ -53,33 +53,10 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "auth-postgres.fullname" .)) }}
                   key: {{ .Values.auth.secretKeys.password }}
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
-            # Standard PostgreSQL initialization arguments
-            - name: POSTGRES_INITDB_ARGS
-              value: "--auth-host=md5 --auth-local=trust"
-            {{- if .Values.initScripts.enabled }}
-            - name: DB_TAG_GENERATOR_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
-                  key: tag-generator-password
-                  optional: true
-            - name: PRE_PROCESSOR_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
-                  key: pre-processor-password
-                  optional: true
-            - name: SEARCH_INDEXER_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
-                  key: search-indexer-password
-                  optional: true
-            {{- end }}
             {{- if .Values.ssl.enabled }}
             - name: POSTGRES_SSL_CERT_FILE
               value: /ssl/server.crt
@@ -102,11 +79,6 @@ spec:
             - name: config
               mountPath: /etc/postgresql/pg_hba.conf
               subPath: pg_hba.conf
-              readOnly: true
-            {{- end }}
-            {{- if .Values.initScripts.enabled }}
-            - name: init-scripts
-              mountPath: /docker-entrypoint-initdb.d
               readOnly: true
             {{- end }}
             {{- if .Values.ssl.enabled }}
@@ -144,13 +116,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "postgres.fullname" . }}-config
-        {{- if .Values.initScripts.enabled }}
-        - name: init-scripts
-          configMap:
-            name: {{ include "postgres.fullname" . }}-init-scripts
-            defaultMode: 0755
-        {{- end }}
+            name: {{ include "auth-postgres.fullname" . }}-config
         {{- if .Values.ssl.enabled }}
         - name: ssl-certs
           secret:
@@ -178,7 +144,7 @@ spec:
     - metadata:
         name: data
         labels:
-          {{- include "postgres.selectorLabels" . | nindent 10 }}
+          {{- include "auth-postgres.selectorLabels" . | nindent 10 }}
       spec:
         accessModes:
           {{- range .Values.persistence.accessModes }}

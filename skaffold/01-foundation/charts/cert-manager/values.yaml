@@ -1,0 +1,32 @@
+# Values for cert-manager deployment
+cert-manager:
+  # Install CRDs as part of chart installation
+  installCRDs: true
+  
+  # Global configuration
+  global:
+    leaderElection:
+      namespace: cert-manager
+  
+  # Webhook configuration
+  webhook:
+    # Webhook timeout
+    timeoutSeconds: 30
+  
+  # Controller configuration
+  replicaCount: 1
+  
+  # Resource requests and limits
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Enable Prometheus monitoring
+  prometheus:
+    enabled: false
+    servicemonitor:
+      enabled: false

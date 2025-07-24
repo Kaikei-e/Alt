@@ -1,0 +1,123 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: alt-foundation
+profiles:
+  - name: dev
+    deploy:
+      helm:
+        releases:
+          # Install cert-manager first with CRDs
+          - name: cert-manager
+            chartPath: charts/cert-manager
+            valuesFiles:
+              - charts/cert-manager/values-dev.yaml
+              - charts/cert-manager/values.yaml
+            version: 0.1.0
+            createNamespace: true
+            namespace: cert-manager
+          # Keep config charts for now
+          - name: common-config
+            chartPath: charts/common-config
+            namespace: alt-config
+            createNamespace: true
+            valuesFiles:
+              - charts/common-config/values-development.yaml
+              - charts/common-config/values.yaml
+            version: 0.1.0
+          - name: common-secrets-apps
+            chartPath: charts/common-secrets-apps
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/common-secrets-apps/values-development.yaml
+              - charts/common-secrets-apps/values.yaml
+            version: 2.0.0
+  - name: staging
+    deploy:
+      helm:
+        releases:
+          - name: cert-manager
+            chartPath: charts/cert-manager
+            valuesFiles:
+              - charts/cert-manager/values.yaml
+            version: 0.1.0
+            createNamespace: true
+            namespace: cert-manager
+          - name: common-config
+            chartPath: charts/common-config
+            namespace: alt-config
+            createNamespace: true
+            valuesFiles:
+              - charts/common-config/values-staging.yaml
+              - charts/common-config/values.yaml
+            version: 0.1.0
+          - name: common-secrets-apps
+            chartPath: charts/common-secrets-apps
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/common-secrets-apps/values-staging.yaml
+              - charts/common-secrets-apps/values.yaml
+            version: 2.0.0
+  - name: prod
+    deploy:
+      helm:
+        releases:
+          - name: cert-manager
+            chartPath: charts/cert-manager
+            valuesFiles:
+              - charts/cert-manager/values.yaml
+            version: 0.1.0
+            createNamespace: true
+            namespace: cert-manager
+          - name: common-config
+            chartPath: charts/common-config
+            namespace: alt-config
+            createNamespace: true
+            valuesFiles:
+              - charts/common-config/values-production.yaml
+              - charts/common-config/values.yaml
+            version: 0.1.0
+          - name: common-secrets-apps
+            chartPath: charts/common-secrets-apps
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/common-secrets-apps/values-production.yaml
+              - charts/common-secrets-apps/values.yaml
+            version: 2.0.0
+build:
+  artifacts:
+    - image: migrate
+      context: ../../migrate
+      docker:
+        dockerfile: Dockerfile.migrate
+deploy:
+  helm:
+    releases:
+      - name: cert-manager
+        chartPath: charts/cert-manager
+        valuesFiles:
+          - charts/cert-manager/values.yaml
+        version: 0.1.0
+        createNamespace: true
+        namespace: cert-manager
+      - name: common-config
+        chartPath: charts/common-config
+        namespace: alt-config
+        createNamespace: true
+        valuesFiles:
+          - charts/common-config/values-development.yaml
+          - charts/common-config/values-production.yaml
+          - charts/common-config/values-staging.yaml
+          - charts/common-config/values.yaml
+        version: 0.1.0
+      - name: common-secrets-apps
+        chartPath: charts/common-secrets-apps
+        namespace: alt-apps
+        createNamespace: true
+        valuesFiles:
+          - charts/common-secrets-apps/values-production.yaml
+          - charts/common-secrets-apps/values.yaml
+        version: 2.0.0

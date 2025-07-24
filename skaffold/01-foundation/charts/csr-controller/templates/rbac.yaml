@@ -1,0 +1,82 @@
+{{- if .Values.serviceAccount.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "csr-controller.fullname" . }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+rules:
+# CSR permissions
+- apiGroups: ["certificates.k8s.io"]
+  resources: ["certificatesigningrequests"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["certificates.k8s.io"]
+  resources: ["certificatesigningrequests/approval"]
+  verbs: ["update"]
+- apiGroups: ["certificates.k8s.io"]
+  resources: ["certificatesigningrequests/status"]
+  verbs: ["update"]
+- apiGroups: ["certificates.k8s.io"]
+  resources: ["signers"]
+  resourceNames: ["{{ include "csr-controller.signerName" . }}"]
+  verbs: ["approve"]
+# Secret permissions for certificate distribution
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# ConfigMap permissions for CA bundle distribution
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+# Event permissions for logging
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+# ServiceAccount permissions for projected volumes
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+# Node permissions for kubelet certificates
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+# Pod permissions for monitoring and lifecycle management
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+# Deployment permissions for certificate rotation
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+# Job permissions for certificate lifecycle management
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Namespace permissions for cross-namespace certificate management
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+# Role and RoleBinding permissions for service-specific RBAC
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+# CSR cleanup permissions
+- apiGroups: ["certificates.k8s.io"]
+  resources: ["certificatesigningrequests"]
+  verbs: ["delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "csr-controller.fullname" . }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "csr-controller.fullname" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "csr-controller.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}

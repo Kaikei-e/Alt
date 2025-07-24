@@ -1,0 +1,35 @@
+# Staging environment values for auth-service
+
+# Staging-specific image settings
+image:
+  tag: "staging"
+  pullPolicy: IfNotPresent
+
+# Moderate resource requirements for staging
+resources:
+  limits:
+    cpu: "750m"
+    memory: "384Mi"
+  requests:
+    cpu: "75m"
+    memory: "96Mi"
+
+# Staging environment variables
+env:
+  LOG_LEVEL: "info"
+  AUTH_DATABASE_HOST: "auth-postgres.alt-staging.svc.cluster.local"
+  KRATOS_ADMIN_URL: "http://kratos.alt-staging.svc.cluster.local:4434"
+  KRATOS_PUBLIC_URL: "http://kratos.alt-staging.svc.cluster.local:4433"
+
+# Staging namespace
+namespace: alt-staging
+
+# Multiple replicas for staging
+replicaCount: 2
+
+# Enable autoscaling in staging
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70

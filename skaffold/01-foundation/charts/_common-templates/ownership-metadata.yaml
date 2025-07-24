@@ -1,0 +1,69 @@
+{{/*
+PHASE 4: Common Helm ownership metadata template
+This template provides standardized Helm metadata for all charts
+Usage: {{- include "common.helm-metadata" . | nindent 4 }}
+*/}}
+{{- define "common.helm-metadata" -}}
+labels:
+  app.kubernetes.io/managed-by: Helm
+  app.kubernetes.io/name: {{ include "common.name" . }}
+  app.kubernetes.io/instance: {{ .Release.Name }}
+  app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+  helm.sh/chart: {{ include "common.chart" . }}
+annotations:
+  meta.helm.sh/release-name: {{ .Release.Name }}
+  meta.helm.sh/release-namespace: {{ .Release.Namespace }}
+  meta.helm.sh/release-revision: {{ .Release.Revision | quote }}
+{{- end }}
+
+{{/*
+Common name template
+*/}}
+{{- define "common.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Common chart template
+*/}}
+{{- define "common.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Common selector labels
+*/}}
+{{- define "common.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "common.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Common labels with Helm metadata
+*/}}
+{{- define "common.labels" -}}
+{{ include "common.selectorLabels" . }}
+app.kubernetes.io/managed-by: Helm
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+helm.sh/chart: {{ include "common.chart" . }}
+{{- end }}
+
+{{/*
+PHASE 4: Enhanced metadata with component support
+Usage: {{- include "common.helm-metadata-with-component" (dict "context" . "component" "database") | nindent 4 }}
+*/}}
+{{- define "common.helm-metadata-with-component" -}}
+{{- $component := .component | default "" -}}
+labels:
+  {{- include "common.labels" .context | nindent 2 }}
+  {{- if $component }}
+  app.kubernetes.io/component: {{ $component }}
+  {{- end }}
+annotations:
+  meta.helm.sh/release-name: {{ .context.Release.Name }}
+  meta.helm.sh/release-namespace: {{ .context.Release.Namespace }}
+  meta.helm.sh/release-revision: {{ .context.Release.Revision | quote }}
+  # PHASE 4: Additional metadata for troubleshooting
+  deployment.phase4.alt/created-by: "deploy-cli"
+  deployment.phase4.alt/creation-timestamp: {{ now | date "2006-01-02T15:04:05Z" }}
+{{- end }}

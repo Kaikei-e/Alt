@@ -1,0 +1,28 @@
+{{- if .Values.csrController.certMonitoring.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cert-monitor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cert-monitor
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ .Values.csrController.certMonitoring.metricsPort | quote }}
+    prometheus.io/path: "/"
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.csrController.certMonitoring.metricsPort }}
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  - port: {{ .Values.csrController.certMonitoring.healthPort }}
+    targetPort: health
+    protocol: TCP
+    name: health
+  selector:
+    {{- include "csr-controller.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cert-monitor
+{{- end }}

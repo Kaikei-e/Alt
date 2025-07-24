@@ -1,0 +1,154 @@
+# storage-ownership-init.yaml - Standardized initContainer for PVC ownership issues
+# Implements TASK.md prevention strategy: PVC ownership problem initContainer reinforcement
+
+{{/*
+Common initContainer for storage ownership and readiness check
+Usage in StatefulSet templates:
+{{- include "common.storage-ownership-init" . | nindent 8 }}
+*/}}
+{{- define "common.storage-ownership-init" -}}
+- name: wait-for-storage
+  image: busybox:1.36
+  securityContext:
+    runAsUser: 0  # Required for chown operations
+    runAsGroup: 0
+    capabilities:
+      add:
+        - CHOWN
+        - DAC_OVERRIDE
+  command:
+    - sh
+    - -c
+    - |
+      echo "=== Storage Ownership & Readiness Check ==="
+      echo "Target UID:GID = {{ .Values.podSecurityContext.runAsUser | default "999" }}:{{ .Values.podSecurityContext.runAsGroup | default "999" }}"
+      echo "Data Directory = {{ .Values.persistence.mountPath | default "/data" }}"
+      
+      DATA_DIR="{{ .Values.persistence.mountPath | default "/data" }}"
+      TARGET_UID="{{ .Values.podSecurityContext.runAsUser | default "999" }}"
+      TARGET_GID="{{ .Values.podSecurityContext.runAsGroup | default "999" }}"
+      MAX_RETRIES=30
+      RETRY_INTERVAL=10
+      
+      # Create directory if it doesn't exist
+      mkdir -p "$DATA_DIR"
+      
+      # Fix ownership
+      echo "Checking current ownership..."
+      CURRENT_OWNER=$(stat -c "%u:%g" "$DATA_DIR" 2>/dev/null || echo "unknown")
+      echo "Current owner: $CURRENT_OWNER"
+      echo "Target owner: $TARGET_UID:$TARGET_GID"
+      
+      if [ "$CURRENT_OWNER" != "$TARGET_UID:$TARGET_GID" ]; then
+        echo "Fixing ownership..."
+        if chown -R "$TARGET_UID:$TARGET_GID" "$DATA_DIR"; then
+          echo "✅ Ownership fixed successfully"
+        else
+          echo "⚠️  Warning: Could not change ownership (NFS/ReadOnly filesystem?)"
+          echo "Will proceed with fsGroup fallback..."
+        fi
+      else
+        echo "✅ Ownership already correct"
+      fi
+      
+      # Set proper permissions
+      echo "Setting directory permissions..."
+      chmod 755 "$DATA_DIR" || echo "⚠️  Warning: Could not set directory permissions"
+      
+      # Storage readiness test with retry logic
+      echo "Testing storage write capability..."
+      for i in $(seq 1 $MAX_RETRIES); do
+        TEST_FILE="$DATA_DIR/.storage-test-$$"
+        if echo "test" > "$TEST_FILE" && [ -f "$TEST_FILE" ]; then
+          rm -f "$TEST_FILE"
+          echo "✅ Storage write test successful (attempt $i/$MAX_RETRIES)"
+          break
+        else
+          echo "❌ Storage write test failed (attempt $i/$MAX_RETRIES)"
+          if [ $i -eq $MAX_RETRIES ]; then
+            echo "❌ Storage not ready after $MAX_RETRIES attempts"
+            exit 1
+          fi
+          echo "Waiting $RETRY_INTERVAL seconds before retry..."
+          sleep $RETRY_INTERVAL
+        fi
+      done
+      
+      echo "=== Storage initialization completed successfully ==="
+  volumeMounts:
+    - name: {{ .Values.persistence.volumeName | default "data" }}
+      mountPath: {{ .Values.persistence.mountPath | default "/data" }}
+{{- end -}}
+
+{{/*
+SSL certificate setup initContainer for services requiring SSL
+Usage in StatefulSet templates:
+{{- if .Values.ssl.enabled }}
+{{- include "common.ssl-cert-setup" . | nindent 8 }}
+{{- end }}
+*/}}
+{{- define "common.ssl-cert-setup" -}}
+- name: ssl-cert-setup
+  image: busybox:1.36
+  command:
+    - sh
+    - -c
+    - |
+      echo "=== SSL Certificate Setup ==="
+      SSL_DIR="{{ .Values.ssl.mountPath | default "/ssl" }}"
+      echo "SSL Directory: $SSL_DIR"
+      
+      # Create SSL directory
+      mkdir -p "$SSL_DIR"
+      
+      # Copy certificates from secret to working directory
+      if [ -f "/tmp/ssl-source/tls.crt" ]; then
+        cp /tmp/ssl-source/tls.crt "$SSL_DIR/server.crt"
+        echo "✅ Server certificate copied"
+      else
+        echo "❌ Server certificate not found in secret"
+        exit 1
+      fi
+      
+      if [ -f "/tmp/ssl-source/tls.key" ]; then
+        cp /tmp/ssl-source/tls.key "$SSL_DIR/server.key"
+        chmod 600 "$SSL_DIR/server.key"
+        echo "✅ Server private key copied"
+      else
+        echo "❌ Server private key not found in secret"
+        exit 1
+      fi
+      
+      if [ -f "/tmp/ssl-source/ca.crt" ]; then
+        cp /tmp/ssl-source/ca.crt "$SSL_DIR/ca.crt"
+        echo "✅ CA certificate copied"
+      else
+        echo "⚠️  CA certificate not found, using server cert as CA"
+        cp "$SSL_DIR/server.crt" "$SSL_DIR/ca.crt"
+      fi
+      
+      # Set appropriate permissions
+      chown -R {{ .Values.podSecurityContext.runAsUser | default "999" }}:{{ .Values.podSecurityContext.runAsGroup | default "999" }} "$SSL_DIR"
+      chmod 644 "$SSL_DIR/server.crt" "$SSL_DIR/ca.crt"
+      chmod 600 "$SSL_DIR/server.key"
+      
+      echo "SSL certificates setup completed successfully"
+  volumeMounts:
+    - name: ssl-certs
+      mountPath: /tmp/ssl-source
+      readOnly: true
+    - name: ssl-working
+      mountPath: {{ .Values.ssl.mountPath | default "/ssl" }}
+{{- end -}}
+
+{{/*
+Combined storage and SSL setup for StatefulSets requiring both
+Usage in StatefulSet templates:
+{{- include "common.storage-ssl-init" . | nindent 8 }}
+*/}}
+{{- define "common.storage-ssl-init" -}}
+{{- include "common.storage-ownership-init" . }}
+{{- if .Values.ssl.enabled }}
+{{- include "common.ssl-cert-setup" . }}
+{{- end }}
+{{- end -}}

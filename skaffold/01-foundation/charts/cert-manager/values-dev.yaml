@@ -1,0 +1,16 @@
+# Development values for cert-manager
+cert-manager:
+  installCRDs: true
+  
+  # Use self-signed issuer for development
+  webhook:
+    timeoutSeconds: 30
+  
+  # Reduced resources for dev
+  resources:
+    limits:
+      cpu: 50m
+      memory: 64Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi

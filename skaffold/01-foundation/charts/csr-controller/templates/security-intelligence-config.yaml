@@ -1,0 +1,1133 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-security-intelligence-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: security-intelligence
+data:
+  security-intelligence.yaml: |
+    # Security Intelligence Configuration
+    version: "1.0"
+    
+    # Global Configuration
+    global:
+      organization: {{ .Values.securityIntelligence.organization | default "Alt RSS Reader" | quote }}
+      environment: {{ .Values.securityIntelligence.environment | default "production" | quote }}
+      security_classification: {{ .Values.securityIntelligence.securityClassification | default "confidential" | quote }}
+      
+    # Threat Detection Configuration
+    threat_detection:
+      enabled: {{ .Values.securityIntelligence.threatDetection.enabled | default true }}
+      
+      # Detection Models
+      models:
+        # Signature-based Detection
+        - name: "signature_detection"
+          type: "signature"
+          enabled: {{ .Values.securityIntelligence.threatDetection.models.signatureDetection.enabled | default true }}
+          config:
+            signature_sources:
+              - "snort"
+              - "suricata"
+              - "yara"
+              - "custom"
+            update_interval: {{ .Values.securityIntelligence.threatDetection.models.signatureDetection.updateInterval | default "1h" | quote }}
+            max_signatures: {{ .Values.securityIntelligence.threatDetection.models.signatureDetection.maxSignatures | default 10000 }}
+            
+        # Anomaly Detection
+        - name: "anomaly_detection"
+          type: "anomaly"
+          enabled: {{ .Values.securityIntelligence.threatDetection.models.anomalyDetection.enabled | default true }}
+          config:
+            algorithms:
+              - "isolation_forest"
+              - "one_class_svm"
+              - "autoencoder"
+              - "lstm_autoencoder"
+            sensitivity: {{ .Values.securityIntelligence.threatDetection.models.anomalyDetection.sensitivity | default 0.7 }}
+            baseline_period: {{ .Values.securityIntelligence.threatDetection.models.anomalyDetection.baselinePeriod | default "7d" | quote }}
+            
+        # Behavioral Analysis
+        - name: "behavioral_analysis"
+          type: "behavioral"
+          enabled: {{ .Values.securityIntelligence.threatDetection.models.behavioralAnalysis.enabled | default true }}
+          config:
+            user_behavior_analytics: {{ .Values.securityIntelligence.threatDetection.models.behavioralAnalysis.userBehaviorAnalytics | default true }}
+            entity_behavior_analytics: {{ .Values.securityIntelligence.threatDetection.models.behavioralAnalysis.entityBehaviorAnalytics | default true }}
+            network_behavior_analytics: {{ .Values.securityIntelligence.threatDetection.models.behavioralAnalysis.networkBehaviorAnalytics | default true }}
+            learning_period: {{ .Values.securityIntelligence.threatDetection.models.behavioralAnalysis.learningPeriod | default "30d" | quote }}
+            
+        # Machine Learning Detection
+        - name: "ml_detection"
+          type: "machine_learning"
+          enabled: {{ .Values.securityIntelligence.threatDetection.models.mlDetection.enabled | default true }}
+          config:
+            algorithms:
+              - "random_forest"
+              - "gradient_boosting"
+              - "neural_network"
+              - "ensemble"
+            feature_engineering: {{ .Values.securityIntelligence.threatDetection.models.mlDetection.featureEngineering | default true }}
+            model_retraining_interval: {{ .Values.securityIntelligence.threatDetection.models.mlDetection.modelRetrainingInterval | default "1w" | quote }}
+            prediction_threshold: {{ .Values.securityIntelligence.threatDetection.models.mlDetection.predictionThreshold | default 0.8 }}
+      
+      # Detection Rules
+      rules:
+        # Network Security Rules
+        - name: "network_intrusion_detection"
+          category: "network"
+          enabled: {{ .Values.securityIntelligence.threatDetection.rules.networkIntrusionDetection.enabled | default true }}
+          severity: "high"
+          conditions:
+            - "suspicious_network_traffic"
+            - "port_scanning"
+            - "ddos_attack"
+            - "data_exfiltration"
+          actions:
+            - "alert"
+            - "block_source"
+            - "log_event"
+            - "escalate"
+            
+        # Host Security Rules
+        - name: "host_intrusion_detection"
+          category: "host"
+          enabled: {{ .Values.securityIntelligence.threatDetection.rules.hostIntrusionDetection.enabled | default true }}
+          severity: "high"
+          conditions:
+            - "malware_detected"
+            - "privilege_escalation"
+            - "unauthorized_access"
+            - "suspicious_process"
+          actions:
+            - "alert"
+            - "quarantine"
+            - "log_event"
+            - "investigate"
+            
+        # Application Security Rules
+        - name: "application_security_detection"
+          category: "application"
+          enabled: {{ .Values.securityIntelligence.threatDetection.rules.applicationSecurityDetection.enabled | default true }}
+          severity: "medium"
+          conditions:
+            - "sql_injection"
+            - "xss_attack"
+            - "csrf_attack"
+            - "authentication_bypass"
+          actions:
+            - "alert"
+            - "block_request"
+            - "log_event"
+            - "analyze"
+            
+        # Data Security Rules
+        - name: "data_security_detection"
+          category: "data"
+          enabled: {{ .Values.securityIntelligence.threatDetection.rules.dataSecurityDetection.enabled | default true }}
+          severity: "critical"
+          conditions:
+            - "data_breach"
+            - "unauthorized_data_access"
+            - "data_modification"
+            - "data_deletion"
+          actions:
+            - "alert"
+            - "block_access"
+            - "log_event"
+            - "investigate"
+            - "notify_authorities"
+      
+      # Real-time Processing
+      real_time:
+        enabled: {{ .Values.securityIntelligence.threatDetection.realTime.enabled | default true }}
+        processing_pipeline:
+          - "data_ingestion"
+          - "preprocessing"
+          - "feature_extraction"
+          - "threat_detection"
+          - "correlation"
+          - "response"
+        max_latency: {{ .Values.securityIntelligence.threatDetection.realTime.maxLatency | default "100ms" | quote }}
+        throughput_target: {{ .Values.securityIntelligence.threatDetection.realTime.throughputTarget | default "10000 events/sec" | quote }}
+        
+      # Correlation Engine
+      correlation:
+        enabled: {{ .Values.securityIntelligence.threatDetection.correlation.enabled | default true }}
+        correlation_rules:
+          - name: "multi_stage_attack"
+            description: "Detect multi-stage attacks"
+            conditions:
+              - "reconnaissance_detected"
+              - "vulnerability_exploitation"
+              - "lateral_movement"
+            time_window: {{ .Values.securityIntelligence.threatDetection.correlation.multiStageAttack.timeWindow | default "1h" | quote }}
+            
+          - name: "insider_threat"
+            description: "Detect insider threats"
+            conditions:
+              - "after_hours_access"
+              - "unusual_data_access"
+              - "data_exfiltration"
+            time_window: {{ .Values.securityIntelligence.threatDetection.correlation.insiderThreat.timeWindow | default "24h" | quote }}
+            
+          - name: "apt_campaign"
+            description: "Detect APT campaigns"
+            conditions:
+              - "spear_phishing"
+              - "backdoor_installation"
+              - "command_control"
+              - "data_staging"
+            time_window: {{ .Values.securityIntelligence.threatDetection.correlation.aptCampaign.timeWindow | default "7d" | quote }}
+    
+    # Threat Intelligence Configuration
+    threat_intelligence:
+      enabled: {{ .Values.securityIntelligence.threatIntelligence.enabled | default true }}
+      
+      # Intelligence Sources
+      sources:
+        # Commercial Feeds
+        - name: "commercial_feeds"
+          type: "commercial"
+          enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.commercialFeeds.enabled | default true }}
+          providers:
+            - name: "recorded_future"
+              enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.commercialFeeds.providers.recordedFuture.enabled | default false }}
+              api_endpoint: {{ .Values.securityIntelligence.threatIntelligence.sources.commercialFeeds.providers.recordedFuture.apiEndpoint | default "" | quote }}
+              
+            - name: "crowdstrike"
+              enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.commercialFeeds.providers.crowdstrike.enabled | default false }}
+              api_endpoint: {{ .Values.securityIntelligence.threatIntelligence.sources.commercialFeeds.providers.crowdstrike.apiEndpoint | default "" | quote }}
+              
+            - name: "fireeye"
+              enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.commercialFeeds.providers.fireeye.enabled | default false }}
+              api_endpoint: {{ .Values.securityIntelligence.threatIntelligence.sources.commercialFeeds.providers.fireeye.apiEndpoint | default "" | quote }}
+              
+        # Open Source Feeds
+        - name: "open_source_feeds"
+          type: "open_source"
+          enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.openSourceFeeds.enabled | default true }}
+          providers:
+            - name: "misp"
+              enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.openSourceFeeds.providers.misp.enabled | default true }}
+              api_endpoint: {{ .Values.securityIntelligence.threatIntelligence.sources.openSourceFeeds.providers.misp.apiEndpoint | default "https://misp.alt.local" | quote }}
+              
+            - name: "otx"
+              enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.openSourceFeeds.providers.otx.enabled | default true }}
+              api_endpoint: {{ .Values.securityIntelligence.threatIntelligence.sources.openSourceFeeds.providers.otx.apiEndpoint | default "https://otx.alienvault.com" | quote }}
+              
+            - name: "abuse_ch"
+              enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.openSourceFeeds.providers.abuseCh.enabled | default true }}
+              api_endpoint: {{ .Values.securityIntelligence.threatIntelligence.sources.openSourceFeeds.providers.abuseCh.apiEndpoint | default "https://abuse.ch" | quote }}
+              
+            - name: "emergingthreats"
+              enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.openSourceFeeds.providers.emergingthreats.enabled | default true }}
+              api_endpoint: {{ .Values.securityIntelligence.threatIntelligence.sources.openSourceFeeds.providers.emergingthreats.apiEndpoint | default "https://rules.emergingthreats.net" | quote }}
+              
+        # Government Feeds
+        - name: "government_feeds"
+          type: "government"
+          enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.governmentFeeds.enabled | default true }}
+          providers:
+            - name: "cisa"
+              enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.governmentFeeds.providers.cisa.enabled | default true }}
+              api_endpoint: {{ .Values.securityIntelligence.threatIntelligence.sources.governmentFeeds.providers.cisa.apiEndpoint | default "https://us-cert.cisa.gov" | quote }}
+              
+            - name: "nist"
+              enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.governmentFeeds.providers.nist.enabled | default true }}
+              api_endpoint: {{ .Values.securityIntelligence.threatIntelligence.sources.governmentFeeds.providers.nist.apiEndpoint | default "https://nvd.nist.gov" | quote }}
+              
+        # Internal Intelligence
+        - name: "internal_intelligence"
+          type: "internal"
+          enabled: {{ .Values.securityIntelligence.threatIntelligence.sources.internalIntelligence.enabled | default true }}
+          sources:
+            - "honeypots"
+            - "incident_reports"
+            - "threat_hunting"
+            - "security_research"
+      
+      # Intelligence Processing
+      processing:
+        # Data Enrichment
+        enrichment:
+          enabled: {{ .Values.securityIntelligence.threatIntelligence.processing.enrichment.enabled | default true }}
+          enrichment_sources:
+            - "whois"
+            - "dns"
+            - "geolocation"
+            - "reputation"
+            - "malware_analysis"
+            - "sandbox_analysis"
+            
+        # Data Normalization
+        normalization:
+          enabled: {{ .Values.securityIntelligence.threatIntelligence.processing.normalization.enabled | default true }}
+          standards:
+            - "stix"
+            - "taxii"
+            - "misp"
+            - "cti"
+            
+        # Data Validation
+        validation:
+          enabled: {{ .Values.securityIntelligence.threatIntelligence.processing.validation.enabled | default true }}
+          validation_rules:
+            - "format_validation"
+            - "content_validation"
+            - "source_validation"
+            - "freshness_validation"
+            
+        # Confidence Scoring
+        confidence_scoring:
+          enabled: {{ .Values.securityIntelligence.threatIntelligence.processing.confidenceScoring.enabled | default true }}
+          scoring_factors:
+            - "source_reliability"
+            - "data_quality"
+            - "corroboration"
+            - "recency"
+          confidence_threshold: {{ .Values.securityIntelligence.threatIntelligence.processing.confidenceScoring.confidenceThreshold | default 0.7 }}
+      
+      # Intelligence Sharing
+      sharing:
+        enabled: {{ .Values.securityIntelligence.threatIntelligence.sharing.enabled | default true }}
+        
+        # Sharing Platforms
+        platforms:
+          - name: "misp"
+            enabled: {{ .Values.securityIntelligence.threatIntelligence.sharing.platforms.misp.enabled | default true }}
+            endpoint: {{ .Values.securityIntelligence.threatIntelligence.sharing.platforms.misp.endpoint | default "https://misp.alt.local" | quote }}
+            
+          - name: "stix_taxii"
+            enabled: {{ .Values.securityIntelligence.threatIntelligence.sharing.platforms.stixTaxii.enabled | default true }}
+            endpoint: {{ .Values.securityIntelligence.threatIntelligence.sharing.platforms.stixTaxii.endpoint | default "https://taxii.alt.local" | quote }}
+            
+          - name: "opencti"
+            enabled: {{ .Values.securityIntelligence.threatIntelligence.sharing.platforms.opencti.enabled | default true }}
+            endpoint: {{ .Values.securityIntelligence.threatIntelligence.sharing.platforms.opencti.endpoint | default "https://opencti.alt.local" | quote }}
+        
+        # Sharing Policies
+        policies:
+          - name: "external_sharing"
+            enabled: {{ .Values.securityIntelligence.threatIntelligence.sharing.policies.externalSharing.enabled | default false }}
+            approval_required: {{ .Values.securityIntelligence.threatIntelligence.sharing.policies.externalSharing.approvalRequired | default true }}
+            
+          - name: "internal_sharing"
+            enabled: {{ .Values.securityIntelligence.threatIntelligence.sharing.policies.internalSharing.enabled | default true }}
+            automatic_sharing: {{ .Values.securityIntelligence.threatIntelligence.sharing.policies.internalSharing.automaticSharing | default true }}
+            
+          - name: "anonymization"
+            enabled: {{ .Values.securityIntelligence.threatIntelligence.sharing.policies.anonymization.enabled | default true }}
+            anonymization_level: {{ .Values.securityIntelligence.threatIntelligence.sharing.policies.anonymization.anonymizationLevel | default "high" | quote }}
+    
+    # Behavioral Analysis Configuration
+    behavioral_analysis:
+      enabled: {{ .Values.securityIntelligence.behavioralAnalysis.enabled | default true }}
+      
+      # User Behavior Analytics (UBA)
+      uba:
+        enabled: {{ .Values.securityIntelligence.behavioralAnalysis.uba.enabled | default true }}
+        
+        # Behavioral Models
+        models:
+          - name: "authentication_behavior"
+            enabled: {{ .Values.securityIntelligence.behavioralAnalysis.uba.models.authenticationBehavior.enabled | default true }}
+            features:
+              - "login_times"
+              - "login_locations"
+              - "authentication_methods"
+              - "failure_patterns"
+            baseline_period: {{ .Values.securityIntelligence.behavioralAnalysis.uba.models.authenticationBehavior.baselinePeriod | default "30d" | quote }}
+            
+          - name: "access_behavior"
+            enabled: {{ .Values.securityIntelligence.behavioralAnalysis.uba.models.accessBehavior.enabled | default true }}
+            features:
+              - "resource_access_patterns"
+              - "access_frequency"
+              - "access_duration"
+              - "data_volume"
+            baseline_period: {{ .Values.securityIntelligence.behavioralAnalysis.uba.models.accessBehavior.baselinePeriod | default "30d" | quote }}
+            
+          - name: "network_behavior"
+            enabled: {{ .Values.securityIntelligence.behavioralAnalysis.uba.models.networkBehavior.enabled | default true }}
+            features:
+              - "network_destinations"
+              - "traffic_patterns"
+              - "protocol_usage"
+              - "bandwidth_consumption"
+            baseline_period: {{ .Values.securityIntelligence.behavioralAnalysis.uba.models.networkBehavior.baselinePeriod | default "30d" | quote }}
+        
+        # Risk Scoring
+        risk_scoring:
+          enabled: {{ .Values.securityIntelligence.behavioralAnalysis.uba.riskScoring.enabled | default true }}
+          scoring_algorithm: {{ .Values.securityIntelligence.behavioralAnalysis.uba.riskScoring.scoringAlgorithm | default "weighted_ensemble" | quote }}
+          risk_threshold: {{ .Values.securityIntelligence.behavioralAnalysis.uba.riskScoring.riskThreshold | default 0.7 }}
+          
+          # Risk Factors
+          risk_factors:
+            - name: "anomaly_score"
+              weight: {{ .Values.securityIntelligence.behavioralAnalysis.uba.riskScoring.riskFactors.anomalyScore.weight | default 0.4 }}
+              
+            - name: "privilege_level"
+              weight: {{ .Values.securityIntelligence.behavioralAnalysis.uba.riskScoring.riskFactors.privilegeLevel.weight | default 0.3 }}
+              
+            - name: "data_sensitivity"
+              weight: {{ .Values.securityIntelligence.behavioralAnalysis.uba.riskScoring.riskFactors.dataSensitivity.weight | default 0.2 }}
+              
+            - name: "historical_risk"
+              weight: {{ .Values.securityIntelligence.behavioralAnalysis.uba.riskScoring.riskFactors.historicalRisk.weight | default 0.1 }}
+      
+      # Entity Behavior Analytics (EBA)
+      eba:
+        enabled: {{ .Values.securityIntelligence.behavioralAnalysis.eba.enabled | default true }}
+        
+        # Entity Types
+        entity_types:
+          - name: "endpoints"
+            enabled: {{ .Values.securityIntelligence.behavioralAnalysis.eba.entityTypes.endpoints.enabled | default true }}
+            behavioral_features:
+              - "process_execution_patterns"
+              - "network_communication"
+              - "file_access_patterns"
+              - "system_resource_usage"
+              
+          - name: "servers"
+            enabled: {{ .Values.securityIntelligence.behavioralAnalysis.eba.entityTypes.servers.enabled | default true }}
+            behavioral_features:
+              - "service_patterns"
+              - "connection_patterns"
+              - "resource_utilization"
+              - "log_patterns"
+              
+          - name: "network_devices"
+            enabled: {{ .Values.securityIntelligence.behavioralAnalysis.eba.entityTypes.networkDevices.enabled | default true }}
+            behavioral_features:
+              - "traffic_patterns"
+              - "routing_behavior"
+              - "configuration_changes"
+              - "performance_metrics"
+              
+          - name: "applications"
+            enabled: {{ .Values.securityIntelligence.behavioralAnalysis.eba.entityTypes.applications.enabled | default true }}
+            behavioral_features:
+              - "execution_patterns"
+              - "api_usage"
+              - "data_access"
+              - "error_patterns"
+        
+        # Peer Group Analysis
+        peer_group_analysis:
+          enabled: {{ .Values.securityIntelligence.behavioralAnalysis.eba.peerGroupAnalysis.enabled | default true }}
+          grouping_criteria:
+            - "function"
+            - "location"
+            - "role"
+            - "technology"
+          deviation_threshold: {{ .Values.securityIntelligence.behavioralAnalysis.eba.peerGroupAnalysis.deviationThreshold | default 0.8 }}
+      
+      # Advanced Analytics
+      advanced_analytics:
+        enabled: {{ .Values.securityIntelligence.behavioralAnalysis.advancedAnalytics.enabled | default true }}
+        
+        # Graph Analytics
+        graph_analytics:
+          enabled: {{ .Values.securityIntelligence.behavioralAnalysis.advancedAnalytics.graphAnalytics.enabled | default true }}
+          algorithms:
+            - "community_detection"
+            - "centrality_analysis"
+            - "path_analysis"
+            - "anomaly_detection"
+            
+        # Time Series Analysis
+        time_series_analysis:
+          enabled: {{ .Values.securityIntelligence.behavioralAnalysis.advancedAnalytics.timeSeriesAnalysis.enabled | default true }}
+          techniques:
+            - "trend_analysis"
+            - "seasonality_detection"
+            - "change_point_detection"
+            - "forecasting"
+            
+        # Statistical Analysis
+        statistical_analysis:
+          enabled: {{ .Values.securityIntelligence.behavioralAnalysis.advancedAnalytics.statisticalAnalysis.enabled | default true }}
+          methods:
+            - "regression_analysis"
+            - "correlation_analysis"
+            - "hypothesis_testing"
+            - "clustering"
+    
+    # Vulnerability Analysis Configuration
+    vulnerability_analysis:
+      enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.enabled | default true }}
+      
+      # Vulnerability Sources
+      sources:
+        - name: "nist_nvd"
+          enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.sources.nistNvd.enabled | default true }}
+          api_endpoint: {{ .Values.securityIntelligence.vulnerabilityAnalysis.sources.nistNvd.apiEndpoint | default "https://services.nvd.nist.gov/rest/json/cves/2.0" | quote }}
+          
+        - name: "mitre_cve"
+          enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.sources.mitreCve.enabled | default true }}
+          api_endpoint: {{ .Values.securityIntelligence.vulnerabilityAnalysis.sources.mitreCve.apiEndpoint | default "https://cve.mitre.org" | quote }}
+          
+        - name: "exploit_db"
+          enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.sources.exploitDb.enabled | default true }}
+          api_endpoint: {{ .Values.securityIntelligence.vulnerabilityAnalysis.sources.exploitDb.apiEndpoint | default "https://www.exploit-db.com" | quote }}
+          
+        - name: "vulners"
+          enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.sources.vulners.enabled | default true }}
+          api_endpoint: {{ .Values.securityIntelligence.vulnerabilityAnalysis.sources.vulners.apiEndpoint | default "https://vulners.com/api" | quote }}
+      
+      # Vulnerability Scanning
+      scanning:
+        enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.enabled | default true }}
+        
+        # Scan Types
+        scan_types:
+          - name: "container_scanning"
+            enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.scanTypes.containerScanning.enabled | default true }}
+            scanners:
+              - "trivy"
+              - "clair"
+              - "anchore"
+              - "snyk"
+            scan_frequency: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.scanTypes.containerScanning.scanFrequency | default "daily" | quote }}
+            
+          - name: "infrastructure_scanning"
+            enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.scanTypes.infrastructureScanning.enabled | default true }}
+            scanners:
+              - "nessus"
+              - "openvas"
+              - "qualys"
+              - "rapid7"
+            scan_frequency: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.scanTypes.infrastructureScanning.scanFrequency | default "weekly" | quote }}
+            
+          - name: "application_scanning"
+            enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.scanTypes.applicationScanning.enabled | default true }}
+            scanners:
+              - "owasp_zap"
+              - "burp_suite"
+              - "checkmarx"
+              - "veracode"
+            scan_frequency: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.scanTypes.applicationScanning.scanFrequency | default "weekly" | quote }}
+        
+        # Scan Policies
+        policies:
+          - name: "critical_vulnerabilities"
+            severity: "critical"
+            scan_immediately: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.policies.criticalVulnerabilities.scanImmediately | default true }}
+            notification_required: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.policies.criticalVulnerabilities.notificationRequired | default true }}
+            
+          - name: "high_vulnerabilities"
+            severity: "high"
+            scan_frequency: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.policies.highVulnerabilities.scanFrequency | default "daily" | quote }}
+            notification_required: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.policies.highVulnerabilities.notificationRequired | default true }}
+            
+          - name: "medium_vulnerabilities"
+            severity: "medium"
+            scan_frequency: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.policies.mediumVulnerabilities.scanFrequency | default "weekly" | quote }}
+            notification_required: {{ .Values.securityIntelligence.vulnerabilityAnalysis.scanning.policies.mediumVulnerabilities.notificationRequired | default false }}
+      
+      # Risk Assessment
+      risk_assessment:
+        enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.enabled | default true }}
+        
+        # Risk Factors
+        risk_factors:
+          - name: "cvss_score"
+            weight: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.riskFactors.cvssScore.weight | default 0.4 }}
+            
+          - name: "exploitability"
+            weight: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.riskFactors.exploitability.weight | default 0.3 }}
+            
+          - name: "asset_criticality"
+            weight: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.riskFactors.assetCriticality.weight | default 0.2 }}
+            
+          - name: "threat_intelligence"
+            weight: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.riskFactors.threatIntelligence.weight | default 0.1 }}
+        
+        # Risk Scoring
+        risk_scoring:
+          scoring_method: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.riskScoring.scoringMethod | default "weighted_average" | quote }}
+          risk_thresholds:
+            critical: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.riskScoring.riskThresholds.critical | default 9.0 }}
+            high: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.riskScoring.riskThresholds.high | default 7.0 }}
+            medium: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.riskScoring.riskThresholds.medium | default 4.0 }}
+            low: {{ .Values.securityIntelligence.vulnerabilityAnalysis.riskAssessment.riskScoring.riskThresholds.low | default 0.1 }}
+      
+      # Remediation Planning
+      remediation:
+        enabled: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.enabled | default true }}
+        
+        # Remediation Strategies
+        strategies:
+          - name: "patch_management"
+            priority: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.strategies.patchManagement.priority | default 1 }}
+            automation_level: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.strategies.patchManagement.automationLevel | default "semi_automated" | quote }}
+            
+          - name: "configuration_hardening"
+            priority: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.strategies.configurationHardening.priority | default 2 }}
+            automation_level: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.strategies.configurationHardening.automationLevel | default "automated" | quote }}
+            
+          - name: "access_control"
+            priority: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.strategies.accessControl.priority | default 3 }}
+            automation_level: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.strategies.accessControl.automationLevel | default "manual" | quote }}
+            
+          - name: "network_segmentation"
+            priority: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.strategies.networkSegmentation.priority | default 4 }}
+            automation_level: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.strategies.networkSegmentation.automationLevel | default "manual" | quote }}
+        
+        # Remediation Timelines
+        timelines:
+          critical: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.timelines.critical | default "24h" | quote }}
+          high: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.timelines.high | default "7d" | quote }}
+          medium: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.timelines.medium | default "30d" | quote }}
+          low: {{ .Values.securityIntelligence.vulnerabilityAnalysis.remediation.timelines.low | default "90d" | quote }}
+    
+    # Forensic Analysis Configuration
+    forensic_analysis:
+      enabled: {{ .Values.securityIntelligence.forensicAnalysis.enabled | default true }}
+      
+      # Evidence Collection
+      evidence_collection:
+        enabled: {{ .Values.securityIntelligence.forensicAnalysis.evidenceCollection.enabled | default true }}
+        
+        # Collection Methods
+        methods:
+          - name: "memory_dump"
+            enabled: {{ .Values.securityIntelligence.forensicAnalysis.evidenceCollection.methods.memoryDump.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.forensicAnalysis.evidenceCollection.methods.memoryDump.automationLevel | default "automated" | quote }}
+            
+          - name: "disk_imaging"
+            enabled: {{ .Values.securityIntelligence.forensicAnalysis.evidenceCollection.methods.diskImaging.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.forensicAnalysis.evidenceCollection.methods.diskImaging.automationLevel | default "semi_automated" | quote }}
+            
+          - name: "network_capture"
+            enabled: {{ .Values.securityIntelligence.forensicAnalysis.evidenceCollection.methods.networkCapture.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.forensicAnalysis.evidenceCollection.methods.networkCapture.automationLevel | default "automated" | quote }}
+            
+          - name: "log_collection"
+            enabled: {{ .Values.securityIntelligence.forensicAnalysis.evidenceCollection.methods.logCollection.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.forensicAnalysis.evidenceCollection.methods.logCollection.automationLevel | default "automated" | quote }}
+        
+        # Collection Triggers
+        triggers:
+          - "security_incident"
+          - "anomaly_detected"
+          - "compliance_requirement"
+          - "manual_request"
+      
+      # Digital Forensics
+      digital_forensics:
+        enabled: {{ .Values.securityIntelligence.forensicAnalysis.digitalForensics.enabled | default true }}
+        
+        # Analysis Tools
+        tools:
+          - name: "volatility"
+            type: "memory_analysis"
+            enabled: {{ .Values.securityIntelligence.forensicAnalysis.digitalForensics.tools.volatility.enabled | default true }}
+            
+          - name: "autopsy"
+            type: "disk_analysis"
+            enabled: {{ .Values.securityIntelligence.forensicAnalysis.digitalForensics.tools.autopsy.enabled | default true }}
+            
+          - name: "wireshark"
+            type: "network_analysis"
+            enabled: {{ .Values.securityIntelligence.forensicAnalysis.digitalForensics.tools.wireshark.enabled | default true }}
+            
+          - name: "plaso"
+            type: "timeline_analysis"
+            enabled: {{ .Values.securityIntelligence.forensicAnalysis.digitalForensics.tools.plaso.enabled | default true }}
+        
+        # Analysis Workflows
+        workflows:
+          - name: "incident_response_workflow"
+            steps:
+              - "evidence_identification"
+              - "evidence_collection"
+              - "evidence_analysis"
+              - "timeline_reconstruction"
+              - "attribution_analysis"
+              - "report_generation"
+            automation_level: {{ .Values.securityIntelligence.forensicAnalysis.digitalForensics.workflows.incidentResponseWorkflow.automationLevel | default "semi_automated" | quote }}
+      
+      # Timeline Analysis
+      timeline_analysis:
+        enabled: {{ .Values.securityIntelligence.forensicAnalysis.timelineAnalysis.enabled | default true }}
+        
+        # Timeline Sources
+        sources:
+          - "system_logs"
+          - "application_logs"
+          - "network_logs"
+          - "security_events"
+          - "file_system_events"
+          - "registry_events"
+          - "process_events"
+        
+        # Timeline Visualization
+        visualization:
+          enabled: {{ .Values.securityIntelligence.forensicAnalysis.timelineAnalysis.visualization.enabled | default true }}
+          tools:
+            - "timesketch"
+            - "grafana"
+            - "kibana"
+            - "custom_dashboard"
+      
+      # Chain of Custody
+      chain_of_custody:
+        enabled: {{ .Values.securityIntelligence.forensicAnalysis.chainOfCustody.enabled | default true }}
+        
+        # Documentation Requirements
+        documentation:
+          evidence_identification: {{ .Values.securityIntelligence.forensicAnalysis.chainOfCustody.documentation.evidenceIdentification | default true }}
+          collection_procedures: {{ .Values.securityIntelligence.forensicAnalysis.chainOfCustody.documentation.collectionProcedures | default true }}
+          custody_transfers: {{ .Values.securityIntelligence.forensicAnalysis.chainOfCustody.documentation.custodyTransfers | default true }}
+          analysis_procedures: {{ .Values.securityIntelligence.forensicAnalysis.chainOfCustody.documentation.analysisProcedures | default true }}
+        
+        # Digital Signatures
+        digital_signatures:
+          enabled: {{ .Values.securityIntelligence.forensicAnalysis.chainOfCustody.digitalSignatures.enabled | default true }}
+          signing_algorithm: {{ .Values.securityIntelligence.forensicAnalysis.chainOfCustody.digitalSignatures.signingAlgorithm | default "RSA-SHA256" | quote }}
+          timestamp_authority: {{ .Values.securityIntelligence.forensicAnalysis.chainOfCustody.digitalSignatures.timestampAuthority | default "internal" | quote }}
+    
+    # Automated Response Configuration
+    automated_response:
+      enabled: {{ .Values.securityIntelligence.automatedResponse.enabled | default true }}
+      
+      # Response Policies
+      policies:
+        - name: "malware_response"
+          enabled: {{ .Values.securityIntelligence.automatedResponse.policies.malwareResponse.enabled | default true }}
+          triggers:
+            - "malware_detected"
+            - "suspicious_process"
+            - "file_hash_match"
+          actions:
+            - "isolate_host"
+            - "quarantine_file"
+            - "notify_security_team"
+            - "collect_evidence"
+          approval_required: {{ .Values.securityIntelligence.automatedResponse.policies.malwareResponse.approvalRequired | default false }}
+          
+        - name: "intrusion_response"
+          enabled: {{ .Values.securityIntelligence.automatedResponse.policies.intrusionResponse.enabled | default true }}
+          triggers:
+            - "unauthorized_access"
+            - "privilege_escalation"
+            - "lateral_movement"
+          actions:
+            - "block_source_ip"
+            - "disable_user_account"
+            - "increase_monitoring"
+            - "alert_administrators"
+          approval_required: {{ .Values.securityIntelligence.automatedResponse.policies.intrusionResponse.approvalRequired | default true }}
+          
+        - name: "data_exfiltration_response"
+          enabled: {{ .Values.securityIntelligence.automatedResponse.policies.dataExfiltrationResponse.enabled | default true }}
+          triggers:
+            - "unusual_data_transfer"
+            - "sensitive_data_access"
+            - "anomalous_network_activity"
+          actions:
+            - "block_data_transfer"
+            - "revoke_access_permissions"
+            - "notify_data_protection_officer"
+            - "initiate_investigation"
+          approval_required: {{ .Values.securityIntelligence.automatedResponse.policies.dataExfiltrationResponse.approvalRequired | default true }}
+      
+      # Response Actions
+      actions:
+        # Network Actions
+        network_actions:
+          - name: "block_ip"
+            type: "network"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.actions.networkActions.blockIp.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.automatedResponse.actions.networkActions.blockIp.automationLevel | default "automated" | quote }}
+            
+          - name: "block_domain"
+            type: "network"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.actions.networkActions.blockDomain.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.automatedResponse.actions.networkActions.blockDomain.automationLevel | default "automated" | quote }}
+            
+          - name: "network_isolation"
+            type: "network"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.actions.networkActions.networkIsolation.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.automatedResponse.actions.networkActions.networkIsolation.automationLevel | default "semi_automated" | quote }}
+        
+        # Host Actions
+        host_actions:
+          - name: "quarantine_file"
+            type: "host"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.actions.hostActions.quarantineFile.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.automatedResponse.actions.hostActions.quarantineFile.automationLevel | default "automated" | quote }}
+            
+          - name: "kill_process"
+            type: "host"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.actions.hostActions.killProcess.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.automatedResponse.actions.hostActions.killProcess.automationLevel | default "automated" | quote }}
+            
+          - name: "isolate_host"
+            type: "host"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.actions.hostActions.isolateHost.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.automatedResponse.actions.hostActions.isolateHost.automationLevel | default "semi_automated" | quote }}
+        
+        # Identity Actions
+        identity_actions:
+          - name: "disable_account"
+            type: "identity"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.actions.identityActions.disableAccount.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.automatedResponse.actions.identityActions.disableAccount.automationLevel | default "semi_automated" | quote }}
+            
+          - name: "revoke_privileges"
+            type: "identity"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.actions.identityActions.revokePrivileges.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.automatedResponse.actions.identityActions.revokePrivileges.automationLevel | default "semi_automated" | quote }}
+            
+          - name: "force_password_reset"
+            type: "identity"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.actions.identityActions.forcePasswordReset.enabled | default true }}
+            automation_level: {{ .Values.securityIntelligence.automatedResponse.actions.identityActions.forcePasswordReset.automationLevel | default "automated" | quote }}
+      
+      # Response Orchestration
+      orchestration:
+        enabled: {{ .Values.securityIntelligence.automatedResponse.orchestration.enabled | default true }}
+        
+        # Orchestration Platforms
+        platforms:
+          - name: "soar"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.orchestration.platforms.soar.enabled | default true }}
+            platform_type: {{ .Values.securityIntelligence.automatedResponse.orchestration.platforms.soar.platformType | default "phantom" | quote }}
+            
+          - name: "kubernetes"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.orchestration.platforms.kubernetes.enabled | default true }}
+            platform_type: {{ .Values.securityIntelligence.automatedResponse.orchestration.platforms.kubernetes.platformType | default "native" | quote }}
+            
+        # Playbooks
+        playbooks:
+          - name: "incident_response_playbook"
+            enabled: {{ .Values.securityIntelligence.automatedResponse.orchestration.playbooks.incidentResponsePlaybook.enabled | default true }}
+            triggers:
+              - "security_incident"
+              - "critical_alert"
+            steps:
+              - "evidence_collection"
+              - "threat_containment"
+              - "impact_assessment"
+              - "communication"
+              - "remediation"
+              - "recovery"
+              - "lessons_learned"
+    
+    # Monitoring and Alerting Configuration
+    monitoring:
+      enabled: {{ .Values.securityIntelligence.monitoring.enabled | default true }}
+      
+      # Metrics Collection
+      metrics:
+        - name: "threat_detection_rate"
+          type: "counter"
+          description: "Number of threats detected per time period"
+          
+        - name: "false_positive_rate"
+          type: "gauge"
+          description: "Percentage of false positive detections"
+          
+        - name: "mean_time_to_detection"
+          type: "histogram"
+          description: "Time taken to detect threats"
+          
+        - name: "mean_time_to_response"
+          type: "histogram"
+          description: "Time taken to respond to threats"
+          
+        - name: "security_score"
+          type: "gauge"
+          description: "Overall security posture score"
+      
+      # Alerting Rules
+      alerting:
+        enabled: {{ .Values.securityIntelligence.monitoring.alerting.enabled | default true }}
+        
+        # Alert Rules
+        rules:
+          - name: "high_threat_detection_rate"
+            condition: "threat_detection_rate > 100"
+            severity: "warning"
+            description: "High number of threats detected"
+            
+          - name: "high_false_positive_rate"
+            condition: "false_positive_rate > 0.1"
+            severity: "warning"
+            description: "High false positive rate detected"
+            
+          - name: "slow_threat_detection"
+            condition: "mean_time_to_detection > 300"
+            severity: "critical"
+            description: "Slow threat detection times"
+            
+          - name: "slow_threat_response"
+            condition: "mean_time_to_response > 600"
+            severity: "critical"
+            description: "Slow threat response times"
+            
+          - name: "low_security_score"
+            condition: "security_score < 0.7"
+            severity: "warning"
+            description: "Low security posture score"
+        
+        # Notification Channels
+        channels:
+          - name: "slack"
+            enabled: {{ .Values.securityIntelligence.monitoring.alerting.channels.slack.enabled | default true }}
+            webhook_url: {{ .Values.securityIntelligence.monitoring.alerting.channels.slack.webhookUrl | default "" | quote }}
+            channel: {{ .Values.securityIntelligence.monitoring.alerting.channels.slack.channel | default "#security-alerts" | quote }}
+            
+          - name: "email"
+            enabled: {{ .Values.securityIntelligence.monitoring.alerting.channels.email.enabled | default true }}
+            recipients:
+              - "security-team@alt.production.local"
+              - "soc-team@alt.production.local"
+              
+          - name: "webhook"
+            enabled: {{ .Values.securityIntelligence.monitoring.alerting.channels.webhook.enabled | default false }}
+            endpoint: {{ .Values.securityIntelligence.monitoring.alerting.channels.webhook.endpoint | default "" | quote }}
+            
+          - name: "siem"
+            enabled: {{ .Values.securityIntelligence.monitoring.alerting.channels.siem.enabled | default true }}
+            endpoint: {{ .Values.securityIntelligence.monitoring.alerting.channels.siem.endpoint | default "https://siem.alt.production.local" | quote }}
+      
+      # Dashboards
+      dashboards:
+        enabled: {{ .Values.securityIntelligence.monitoring.dashboards.enabled | default true }}
+        
+        # Dashboard Types
+        types:
+          - name: "threat_overview"
+            description: "Threat detection overview"
+            enabled: {{ .Values.securityIntelligence.monitoring.dashboards.types.threatOverview.enabled | default true }}
+            
+          - name: "behavioral_analysis"
+            description: "Behavioral analysis dashboard"
+            enabled: {{ .Values.securityIntelligence.monitoring.dashboards.types.behavioralAnalysis.enabled | default true }}
+            
+          - name: "vulnerability_management"
+            description: "Vulnerability management dashboard"
+            enabled: {{ .Values.securityIntelligence.monitoring.dashboards.types.vulnerabilityManagement.enabled | default true }}
+            
+          - name: "incident_response"
+            description: "Incident response dashboard"
+            enabled: {{ .Values.securityIntelligence.monitoring.dashboards.types.incidentResponse.enabled | default true }}
+            
+          - name: "threat_hunting"
+            description: "Threat hunting dashboard"
+            enabled: {{ .Values.securityIntelligence.monitoring.dashboards.types.threatHunting.enabled | default true }}
+        
+        # Dashboard Access
+        access:
+          authentication_required: {{ .Values.securityIntelligence.monitoring.dashboards.access.authenticationRequired | default true }}
+          role_based_access: {{ .Values.securityIntelligence.monitoring.dashboards.access.roleBasedAccess | default true }}
+          
+          # Access Roles
+          roles:
+            - name: "security_analyst"
+              permissions:
+                - "view_all_dashboards"
+                - "create_custom_dashboards"
+                - "manage_alerts"
+                
+            - name: "soc_analyst"
+              permissions:
+                - "view_threat_dashboards"
+                - "manage_incidents"
+                - "create_reports"
+                
+            - name: "threat_hunter"
+              permissions:
+                - "view_hunting_dashboards"
+                - "create_hunting_queries"
+                - "manage_investigations"
+                
+            - name: "security_manager"
+              permissions:
+                - "view_management_dashboards"
+                - "approve_responses"
+                - "manage_policies"
+  
+  threat-hunting-queries.yaml: |
+    # Threat Hunting Query Library
+    version: "1.0"
+    
+    # Query Categories
+    categories:
+      - name: "lateral_movement"
+        description: "Queries to detect lateral movement"
+        queries:
+          - name: "unusual_authentication_patterns"
+            description: "Detect unusual authentication patterns"
+            query: |
+              SELECT 
+                user_id,
+                source_ip,
+                COUNT(*) as login_attempts,
+                COUNT(DISTINCT destination_host) as unique_hosts
+              FROM authentication_logs
+              WHERE timestamp > NOW() - INTERVAL '24 hours'
+              GROUP BY user_id, source_ip
+              HAVING unique_hosts > 5 AND login_attempts > 20
+            severity: "medium"
+            
+          - name: "pass_the_hash_detection"
+            description: "Detect pass-the-hash attacks"
+            query: |
+              SELECT 
+                user_id,
+                source_ip,
+                authentication_type,
+                COUNT(*) as attempts
+              FROM authentication_logs
+              WHERE authentication_type = 'NTLM'
+                AND timestamp > NOW() - INTERVAL '1 hour'
+              GROUP BY user_id, source_ip, authentication_type
+              HAVING attempts > 10
+            severity: "high"
+            
+      - name: "data_exfiltration"
+        description: "Queries to detect data exfiltration"
+        queries:
+          - name: "unusual_data_transfers"
+            description: "Detect unusual data transfer patterns"
+            query: |
+              SELECT 
+                user_id,
+                destination_ip,
+                SUM(bytes_transferred) as total_bytes,
+                COUNT(*) as connections
+              FROM network_logs
+              WHERE timestamp > NOW() - INTERVAL '6 hours'
+                AND destination_ip NOT IN (SELECT ip FROM internal_networks)
+              GROUP BY user_id, destination_ip
+              HAVING total_bytes > 1000000000 OR connections > 100
+            severity: "high"
+            
+          - name: "sensitive_file_access"
+            description: "Detect access to sensitive files"
+            query: |
+              SELECT 
+                user_id,
+                file_path,
+                action,
+                COUNT(*) as access_count
+              FROM file_access_logs
+              WHERE file_path LIKE '%confidential%'
+                OR file_path LIKE '%secret%'
+                OR file_path LIKE '%password%'
+                AND timestamp > NOW() - INTERVAL '24 hours'
+              GROUP BY user_id, file_path, action
+              HAVING access_count > 5
+            severity: "medium"
+            
+      - name: "persistence"
+        description: "Queries to detect persistence mechanisms"
+        queries:
+          - name: "suspicious_scheduled_tasks"
+            description: "Detect suspicious scheduled tasks"
+            query: |
+              SELECT 
+                host_id,
+                task_name,
+                command_line,
+                user_id,
+                creation_time
+              FROM scheduled_tasks
+              WHERE creation_time > NOW() - INTERVAL '7 days'
+                AND (command_line LIKE '%powershell%'
+                     OR command_line LIKE '%cmd%'
+                     OR command_line LIKE '%wscript%')
+              ORDER BY creation_time DESC
+            severity: "medium"
+            
+          - name: "registry_persistence"
+            description: "Detect registry-based persistence"
+            query: |
+              SELECT 
+                host_id,
+                registry_key,
+                registry_value,
+                user_id,
+                modification_time
+              FROM registry_logs
+              WHERE registry_key LIKE '%Run%'
+                OR registry_key LIKE '%RunOnce%'
+                OR registry_key LIKE '%Startup%'
+                AND modification_time > NOW() - INTERVAL '24 hours'
+              ORDER BY modification_time DESC
+            severity: "high"
+            
+      - name: "privilege_escalation"
+        description: "Queries to detect privilege escalation"
+        queries:
+          - name: "unusual_admin_activities"
+            description: "Detect unusual administrative activities"
+            query: |
+              SELECT 
+                user_id,
+                action,
+                target_object,
+                COUNT(*) as activity_count
+              FROM security_logs
+              WHERE action IN ('privilege_grant', 'admin_access', 'system_change')
+                AND timestamp > NOW() - INTERVAL '12 hours'
+              GROUP BY user_id, action, target_object
+              HAVING activity_count > 5
+            severity: "high"
+            
+          - name: "token_manipulation"
+            description: "Detect token manipulation attempts"
+            query: |
+              SELECT 
+                process_id,
+                user_id,
+                action,
+                target_token,
+                timestamp
+              FROM process_logs
+              WHERE action = 'token_manipulation'
+                AND timestamp > NOW() - INTERVAL '6 hours'
+              ORDER BY timestamp DESC
+            severity: "critical"
+            
+      - name: "command_control"
+        description: "Queries to detect command and control communications"
+        queries:
+          - name: "dns_tunneling"
+            description: "Detect DNS tunneling attempts"
+            query: |
+              SELECT 
+                source_ip,
+                query_domain,
+                query_type,
+                COUNT(*) as query_count,
+                AVG(LENGTH(query_domain)) as avg_length
+              FROM dns_logs
+              WHERE timestamp > NOW() - INTERVAL '1 hour'
+              GROUP BY source_ip, query_domain, query_type
+              HAVING query_count > 100 OR avg_length > 50
+            severity: "high"
+            
+          - name: "beaconing_behavior"
+            description: "Detect beaconing behavior"
+            query: |
+              SELECT 
+                source_ip,
+                destination_ip,
+                destination_port,
+                COUNT(*) as connection_count,
+                STDDEV(EXTRACT(EPOCH FROM (timestamp - LAG(timestamp) OVER (PARTITION BY source_ip, destination_ip ORDER BY timestamp)))) as time_variance
+              FROM network_logs
+              WHERE timestamp > NOW() - INTERVAL '2 hours'
+              GROUP BY source_ip, destination_ip, destination_port
+              HAVING connection_count > 10 AND time_variance < 30
+            severity: "medium"

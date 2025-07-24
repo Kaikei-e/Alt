@@ -1,0 +1,175 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "clickhouse.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clickhouse.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  # ClickHouse server configuration
+  config.xml: |
+    <?xml version="1.0"?>
+    <clickhouse>
+        <!-- Logger -->
+        <logger>
+            <level>{{ .Values.clickhouse.logger.level }}</level>
+            <log>{{ include "clickhouse.logDir" . }}/clickhouse-server.log</log>
+            <errorlog>{{ include "clickhouse.logDir" . }}/clickhouse-server.err.log</errorlog>
+            <size>{{ .Values.clickhouse.logger.size }}</size>
+            <count>{{ .Values.clickhouse.logger.count }}</count>
+        </logger>
+
+        <!-- Ports -->
+        <http_port>8123</http_port>
+        <tcp_port>9000</tcp_port>
+        <mysql_port>9004</mysql_port>
+        <postgresql_port>9005</postgresql_port>
+        <interserver_http_port>9009</interserver_http_port>
+
+        <!-- Paths and hosts -->
+        <listen_host>0.0.0.0</listen_host>
+        <path>{{ include "clickhouse.dataDir" . }}/</path>
+        <tmp_path>{{ include "clickhouse.dataDir" . }}/tmp/</tmp_path>
+        <user_files_path>{{ include "clickhouse.dataDir" . }}/user_files/</user_files_path>
+        <format_schema_path>{{ include "clickhouse.dataDir" . }}/format_schemas/</format_schema_path>
+
+        <!-- Default database -->
+        <default_database>{{ .Values.auth.database }}</default_database>
+
+        <!-- User directories configuration (fix for Poco::Exception Code: 1000) -->
+        <user_directories>
+            <users_xml>
+                <path>/etc/clickhouse-server/users.xml</path>
+            </users_xml>
+            <local_directory>
+                <path>/var/lib/clickhouse/access/</path>
+            </local_directory>
+        </user_directories>
+
+        <!-- Performance settings moved to users.xml for ClickHouse 25.6+ compatibility -->
+        <max_concurrent_queries>{{ .Values.clickhouse.performance.maxConcurrentQueries }}</max_concurrent_queries>
+        <max_server_memory_usage>{{ .Values.clickhouse.performance.maxServerMemoryUsage }}</max_server_memory_usage>
+
+        <!-- MergeTree settings -->
+        <merge_tree>
+            <max_suspicious_broken_parts>{{ .Values.clickhouse.mergeTree.maxSuspiciousBrokenParts }}</max_suspicious_broken_parts>
+            <parts_to_delay_insert>{{ .Values.clickhouse.mergeTree.partsToDelayInsert }}</parts_to_delay_insert>
+            <parts_to_throw_insert>{{ .Values.clickhouse.mergeTree.partsToThrowInsert }}</parts_to_throw_insert>
+            <max_parts_in_total>{{ .Values.clickhouse.mergeTree.maxPartsInTotal }}</max_parts_in_total>
+            <merge_max_block_size>{{ .Values.clickhouse.mergeTree.mergeMaxBlockSize }}</merge_max_block_size>
+            <max_bytes_to_merge_at_max_space_in_pool>{{ .Values.clickhouse.mergeTree.maxBytesToMergeAtMaxSpaceInPool }}</max_bytes_to_merge_at_max_space_in_pool>
+        </merge_tree>
+
+        <!-- SSL if enabled -->
+        {{- if .Values.ssl.enabled }}
+        <https_port>8443</https_port>
+        <tcp_port_secure>9440</tcp_port_secure>
+        <openSSL>
+            <server>
+                <certificateFile>/ssl/server.crt</certificateFile>
+                <privateKeyFile>/ssl/server.key</privateKeyFile>
+                <caConfig>/ssl/ca.crt</caConfig>
+                <verificationMode>{{ .Values.ssl.verificationMode }}</verificationMode>
+                <loadDefaultCAFile>true</loadDefaultCAFile>
+                <cacheSessions>true</cacheSessions>
+                <disableProtocols>sslv2,sslv3</disableProtocols>
+                <preferServerCiphers>true</preferServerCiphers>
+            </server>
+        </openSSL>
+        {{- end }}
+
+        {{- with .Values.clickhouse.customConfig }}
+        {{ . | nindent 8 }}
+        {{- end }}
+    </clickhouse>
+
+  # Users definitions (minimal for ClickHouse 25.6 compatibility)
+  users.xml: |
+    <?xml version="1.0"?>
+    <clickhouse>
+        <users>
+            <default>
+                <password></password>
+                <networks>
+                    <ip>::1</ip>
+                    <ip>127.0.0.1</ip>
+                </networks>
+                <profile>default</profile>
+                <quota>default</quota>
+                <databases>
+                    <database>system</database>
+                </databases>
+            </default>
+        </users>
+        
+        <profiles>
+            <default>
+                <max_memory_usage>{{ .Values.clickhouse.performance.maxMemoryUsage }}</max_memory_usage>
+                <max_memory_usage_for_user>{{ .Values.clickhouse.performance.maxMemoryUsageForUser }}</max_memory_usage_for_user>
+                <use_uncompressed_cache>1</use_uncompressed_cache>
+                <load_balancing>random</load_balancing>
+                <max_execution_time>600</max_execution_time>
+                <max_block_size>131072</max_block_size>
+                <max_insert_block_size>2097152</max_insert_block_size>
+            </default>
+        </profiles>
+        
+        <quotas>
+            <default>
+                <interval>
+                    <duration>3600</duration>
+                    <queries>0</queries>
+                    <errors>0</errors>
+                    <result_rows>0</result_rows>
+                    <read_rows>0</read_rows>
+                    <execution_time>0</execution_time>
+                </interval>
+            </default>
+        </quotas>
+    </clickhouse>
+
+  # Init script for log table
+  init-logs.sh: |
+    #!/bin/bash
+    set -e
+    clickhouse client -n --database "${CLICKHOUSE_DB:-rask_logs}" <<-EOSQL
+        CREATE TABLE IF NOT EXISTS logs (
+            service_type LowCardinality(String),
+            log_type LowCardinality(String),
+            message String,
+            level Enum8('Debug' = 0, 'Info' = 1, 'Warn' = 2, 'Error' = 3, 'Fatal' = 4),
+            timestamp DateTime64(3, 'UTC'),
+            stream LowCardinality(String),
+            container_id String,
+            service_name LowCardinality(String),
+            service_group LowCardinality(String),
+            fields Map(String, String)
+        ) ENGINE = MergeTree()
+        PARTITION BY (service_group, service_name)
+        ORDER BY (timestamp)
+        TTL timestamp + INTERVAL 2 DAY DELETE;
+        ALTER TABLE logs MODIFY TTL timestamp + INTERVAL 2 DAY DELETE;
+        OPTIMIZE TABLE logs FINAL;
+    EOSQL
+
+  # Environment script and ulimits
+  env.sh: |
+    #!/bin/bash
+    set -e
+    # Set ulimits
+    ulimit -n 262144
+    # Environment variables
+    export CLICKHOUSE_DB="${CLICKHOUSE_DB:-rask_logs}"
+    export CLICKHOUSE_USER="${CLICKHOUSE_USER:-rask_user}"
+    export CLICKHOUSE_PASSWORD="${CLICKHOUSE_PASSWORD:-rask_password}"
+    export CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+
+  # Healthcheck script
+  healthcheck.sh: |
+    #!/bin/sh
+    wget --spider -q http://localhost:8123/ping || exit 1
+

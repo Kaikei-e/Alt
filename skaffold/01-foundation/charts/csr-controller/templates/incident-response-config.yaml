@@ -1,0 +1,926 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-incident-response-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: automated-incident-response
+data:
+  incident-response.yaml: |
+    # Automated Incident Response Configuration
+    version: "1.0"
+    
+    # Global Configuration
+    global:
+      organization: {{ .Values.automatedIncidentResponse.organization | default "Alt RSS Reader" | quote }}
+      environment: {{ .Values.automatedIncidentResponse.environment | default "production" | quote }}
+      incident_response_team: {{ .Values.automatedIncidentResponse.incidentResponseTeam | default "security-team@alt.production.local" | quote }}
+      
+    # Incident Detection Configuration
+    incident_detection:
+      enabled: {{ .Values.automatedIncidentResponse.incidentDetection.enabled | default true }}
+      
+      # Detection Sources
+      sources:
+        - name: "security_alerts"
+          type: "alert"
+          enabled: {{ .Values.automatedIncidentResponse.incidentDetection.sources.securityAlerts.enabled | default true }}
+          endpoint: {{ .Values.automatedIncidentResponse.incidentDetection.sources.securityAlerts.endpoint | default "http://security-intelligence:8080/alerts" | quote }}
+          polling_interval: {{ .Values.automatedIncidentResponse.incidentDetection.sources.securityAlerts.pollingInterval | default "30s" | quote }}
+          
+        - name: "monitoring_system"
+          type: "monitoring"
+          enabled: {{ .Values.automatedIncidentResponse.incidentDetection.sources.monitoringSystem.enabled | default true }}
+          endpoint: {{ .Values.automatedIncidentResponse.incidentDetection.sources.monitoringSystem.endpoint | default "http://prometheus:9090" | quote }}
+          polling_interval: {{ .Values.automatedIncidentResponse.incidentDetection.sources.monitoringSystem.pollingInterval | default "1m" | quote }}
+          
+        - name: "log_analysis"
+          type: "logs"
+          enabled: {{ .Values.automatedIncidentResponse.incidentDetection.sources.logAnalysis.enabled | default true }}
+          endpoint: {{ .Values.automatedIncidentResponse.incidentDetection.sources.logAnalysis.endpoint | default "http://elasticsearch:9200" | quote }}
+          polling_interval: {{ .Values.automatedIncidentResponse.incidentDetection.sources.logAnalysis.pollingInterval | default "2m" | quote }}
+          
+        - name: "threat_intelligence"
+          type: "threat_intel"
+          enabled: {{ .Values.automatedIncidentResponse.incidentDetection.sources.threatIntelligence.enabled | default true }}
+          endpoint: {{ .Values.automatedIncidentResponse.incidentDetection.sources.threatIntelligence.endpoint | default "http://security-intelligence:8080/threat-intel" | quote }}
+          polling_interval: {{ .Values.automatedIncidentResponse.incidentDetection.sources.threatIntelligence.pollingInterval | default "5m" | quote }}
+          
+        - name: "vulnerability_scanner"
+          type: "vulnerability"
+          enabled: {{ .Values.automatedIncidentResponse.incidentDetection.sources.vulnerabilityScanner.enabled | default true }}
+          endpoint: {{ .Values.automatedIncidentResponse.incidentDetection.sources.vulnerabilityScanner.endpoint | default "http://security-intelligence:8080/vulnerabilities" | quote }}
+          polling_interval: {{ .Values.automatedIncidentResponse.incidentDetection.sources.vulnerabilityScanner.pollingInterval | default "15m" | quote }}
+      
+      # Detection Rules
+      rules:
+        # Critical Security Incidents
+        - name: "critical_security_incident"
+          enabled: {{ .Values.automatedIncidentResponse.incidentDetection.rules.criticalSecurityIncident.enabled | default true }}
+          severity: "critical"
+          conditions:
+            - "alert_severity >= 9.0"
+            - "alert_type in ['malware_detected', 'data_breach', 'privilege_escalation']"
+            - "affected_systems > 0"
+          actions:
+            - "create_incident"
+            - "notify_security_team"
+            - "initiate_containment"
+            - "collect_evidence"
+          auto_escalation_time: {{ .Values.automatedIncidentResponse.incidentDetection.rules.criticalSecurityIncident.autoEscalationTime | default "5m" | quote }}
+          
+        # High Priority Incidents
+        - name: "high_priority_incident"
+          enabled: {{ .Values.automatedIncidentResponse.incidentDetection.rules.highPriorityIncident.enabled | default true }}
+          severity: "high"
+          conditions:
+            - "alert_severity >= 7.0"
+            - "alert_type in ['unauthorized_access', 'suspicious_activity', 'policy_violation']"
+            - "business_impact >= 'medium'"
+          actions:
+            - "create_incident"
+            - "notify_incident_team"
+            - "initiate_investigation"
+            - "apply_containment_measures"
+          auto_escalation_time: {{ .Values.automatedIncidentResponse.incidentDetection.rules.highPriorityIncident.autoEscalationTime | default "15m" | quote }}
+          
+        # Medium Priority Incidents
+        - name: "medium_priority_incident"
+          enabled: {{ .Values.automatedIncidentResponse.incidentDetection.rules.mediumPriorityIncident.enabled | default true }}
+          severity: "medium"
+          conditions:
+            - "alert_severity >= 4.0"
+            - "alert_type in ['configuration_drift', 'performance_issue', 'compliance_violation']"
+            - "business_impact >= 'low'"
+          actions:
+            - "create_incident"
+            - "notify_on_call_team"
+            - "schedule_investigation"
+            - "collect_initial_data"
+          auto_escalation_time: {{ .Values.automatedIncidentResponse.incidentDetection.rules.mediumPriorityIncident.autoEscalationTime | default "1h" | quote }}
+          
+        # Low Priority Incidents
+        - name: "low_priority_incident"
+          enabled: {{ .Values.automatedIncidentResponse.incidentDetection.rules.lowPriorityIncident.enabled | default true }}
+          severity: "low"
+          conditions:
+            - "alert_severity >= 1.0"
+            - "alert_type in ['informational', 'maintenance_required', 'optimization_opportunity']"
+          actions:
+            - "create_incident"
+            - "add_to_backlog"
+            - "schedule_review"
+          auto_escalation_time: {{ .Values.automatedIncidentResponse.incidentDetection.rules.lowPriorityIncident.autoEscalationTime | default "24h" | quote }}
+      
+      # Correlation Engine
+      correlation:
+        enabled: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.enabled | default true }}
+        
+        # Correlation Rules
+        rules:
+          - name: "multi_stage_attack_correlation"
+            description: "Correlate events that indicate a multi-stage attack"
+            enabled: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.rules.multiStageAttackCorrelation.enabled | default true }}
+            time_window: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.rules.multiStageAttackCorrelation.timeWindow | default "2h" | quote }}
+            conditions:
+              - "reconnaissance_activity AND vulnerability_exploitation"
+              - "lateral_movement AND privilege_escalation"
+              - "data_access AND data_exfiltration"
+            correlation_score_threshold: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.rules.multiStageAttackCorrelation.correlationScoreThreshold | default 0.8 }}
+            
+          - name: "insider_threat_correlation"
+            description: "Correlate events that indicate insider threat activity"
+            enabled: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.rules.insiderThreatCorrelation.enabled | default true }}
+            time_window: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.rules.insiderThreatCorrelation.timeWindow | default "24h" | quote }}
+            conditions:
+              - "after_hours_access AND sensitive_data_access"
+              - "unusual_data_download AND external_communication"
+              - "privilege_abuse AND policy_violation"
+            correlation_score_threshold: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.rules.insiderThreatCorrelation.correlationScoreThreshold | default 0.7 }}
+            
+          - name: "infrastructure_compromise_correlation"
+            description: "Correlate events that indicate infrastructure compromise"
+            enabled: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.rules.infrastructureCompromiseCorrelation.enabled | default true }}
+            time_window: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.rules.infrastructureCompromiseCorrelation.timeWindow | default "1h" | quote }}
+            conditions:
+              - "suspicious_network_traffic AND malware_detection"
+              - "unauthorized_system_changes AND backdoor_installation"
+              - "resource_abuse AND command_control_communication"
+            correlation_score_threshold: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.rules.infrastructureCompromiseCorrelation.correlationScoreThreshold | default 0.75 }}
+        
+        # Correlation Algorithms
+        algorithms:
+          - name: "time_based_correlation"
+            enabled: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.algorithms.timeBasedCorrelation.enabled | default true }}
+            weight: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.algorithms.timeBasedCorrelation.weight | default 0.4 }}
+            
+          - name: "entity_based_correlation"
+            enabled: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.algorithms.entityBasedCorrelation.enabled | default true }}
+            weight: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.algorithms.entityBasedCorrelation.weight | default 0.3 }}
+            
+          - name: "pattern_based_correlation"
+            enabled: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.algorithms.patternBasedCorrelation.enabled | default true }}
+            weight: {{ .Values.automatedIncidentResponse.incidentDetection.correlation.algorithms.patternBasedCorrelation.weight | default 0.3 }}
+    
+    # Automated Triage Configuration
+    automated_triage:
+      enabled: {{ .Values.automatedIncidentResponse.automatedTriage.enabled | default true }}
+      
+      # Triage Models
+      models:
+        # Severity Classification
+        - name: "severity_classifier"
+          type: "classification"
+          enabled: {{ .Values.automatedIncidentResponse.automatedTriage.models.severityClassifier.enabled | default true }}
+          algorithm: {{ .Values.automatedIncidentResponse.automatedTriage.models.severityClassifier.algorithm | default "gradient_boosting" | quote }}
+          features:
+            - "alert_severity"
+            - "affected_systems_count"
+            - "business_impact_score"
+            - "threat_intelligence_score"
+            - "vulnerability_score"
+            - "historical_incident_similarity"
+          confidence_threshold: {{ .Values.automatedIncidentResponse.automatedTriage.models.severityClassifier.confidenceThreshold | default 0.8 }}
+          
+        # Category Classification
+        - name: "category_classifier"
+          type: "classification"
+          enabled: {{ .Values.automatedIncidentResponse.automatedTriage.models.categoryClassifier.enabled | default true }}
+          algorithm: {{ .Values.automatedIncidentResponse.automatedTriage.models.categoryClassifier.algorithm | default "random_forest" | quote }}
+          features:
+            - "alert_type"
+            - "affected_components"
+            - "attack_techniques"
+            - "data_types_involved"
+            - "network_indicators"
+            - "host_indicators"
+          confidence_threshold: {{ .Values.automatedIncidentResponse.automatedTriage.models.categoryClassifier.confidenceThreshold | default 0.75 }}
+          
+        # Priority Scoring
+        - name: "priority_scorer"
+          type: "regression"
+          enabled: {{ .Values.automatedIncidentResponse.automatedTriage.models.priorityScorer.enabled | default true }}
+          algorithm: {{ .Values.automatedIncidentResponse.automatedTriage.models.priorityScorer.algorithm | default "neural_network" | quote }}
+          features:
+            - "severity_score"
+            - "business_criticality"
+            - "regulatory_impact"
+            - "media_exposure_risk"
+            - "customer_impact"
+            - "operational_impact"
+          confidence_threshold: {{ .Values.automatedIncidentResponse.automatedTriage.models.priorityScorer.confidenceThreshold | default 0.85 }}
+          
+        # Response Recommendation
+        - name: "response_recommender"
+          type: "recommendation"
+          enabled: {{ .Values.automatedIncidentResponse.automatedTriage.models.responseRecommender.enabled | default true }}
+          algorithm: {{ .Values.automatedIncidentResponse.automatedTriage.models.responseRecommender.algorithm | default "ensemble" | quote }}
+          features:
+            - "incident_category"
+            - "severity_level"
+            - "affected_assets"
+            - "threat_type"
+            - "business_context"
+            - "regulatory_requirements"
+          confidence_threshold: {{ .Values.automatedIncidentResponse.automatedTriage.models.responseRecommender.confidenceThreshold | default 0.7 }}
+      
+      # Triage Process
+      process:
+        steps:
+          - name: "initial_assessment"
+            enabled: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.initialAssessment.enabled | default true }}
+            timeout: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.initialAssessment.timeout | default "2m" | quote }}
+            actions:
+              - "collect_incident_data"
+              - "identify_affected_systems"
+              - "assess_initial_impact"
+              - "determine_data_sensitivity"
+              
+          - name: "classification"
+            enabled: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.classification.enabled | default true }}
+            timeout: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.classification.timeout | default "3m" | quote }}
+            actions:
+              - "classify_incident_type"
+              - "determine_attack_vector"
+              - "identify_threat_actors"
+              - "assess_intent"
+              
+          - name: "severity_assessment"
+            enabled: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.severityAssessment.enabled | default true }}
+            timeout: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.severityAssessment.timeout | default "2m" | quote }}
+            actions:
+              - "calculate_technical_impact"
+              - "assess_business_impact"
+              - "evaluate_regulatory_implications"
+              - "determine_public_exposure_risk"
+              
+          - name: "prioritization"
+            enabled: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.prioritization.enabled | default true }}
+            timeout: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.prioritization.timeout | default "1m" | quote }}
+            actions:
+              - "calculate_priority_score"
+              - "compare_with_other_incidents"
+              - "apply_business_rules"
+              - "assign_response_team"
+              
+          - name: "response_planning"
+            enabled: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.responsePlanning.enabled | default true }}
+            timeout: {{ .Values.automatedIncidentResponse.automatedTriage.process.steps.responsePlanning.timeout | default "5m" | quote }}
+            actions:
+              - "select_appropriate_playbook"
+              - "customize_response_plan"
+              - "allocate_resources"
+              - "set_response_timeline"
+      
+      # Triage Criteria
+      criteria:
+        # Severity Criteria
+        severity:
+          critical:
+            conditions:
+              - "data_breach_confirmed == true"
+              - "business_critical_systems_affected == true"
+              - "regulatory_violation_risk == 'high'"
+              - "public_exposure_risk == 'high'"
+            escalation_time: {{ .Values.automatedIncidentResponse.automatedTriage.criteria.severity.critical.escalationTime | default "immediate" | quote }}
+            
+          high:
+            conditions:
+              - "sensitive_data_at_risk == true"
+              - "key_systems_affected == true"
+              - "compliance_impact == 'medium'"
+              - "customer_impact == 'high'"
+            escalation_time: {{ .Values.automatedIncidentResponse.automatedTriage.criteria.severity.high.escalationTime | default "15m" | quote }}
+            
+          medium:
+            conditions:
+              - "non_critical_systems_affected == true"
+              - "limited_data_exposure == true"
+              - "operational_impact == 'medium'"
+            escalation_time: {{ .Values.automatedIncidentResponse.automatedTriage.criteria.severity.medium.escalationTime | default "1h" | quote }}
+            
+          low:
+            conditions:
+              - "minimal_impact == true"
+              - "no_data_exposure == true"
+              - "informational_only == true"
+            escalation_time: {{ .Values.automatedIncidentResponse.automatedTriage.criteria.severity.low.escalationTime | default "4h" | quote }}
+        
+        # Category Criteria
+        category:
+          malware:
+            indicators:
+              - "malicious_file_detected"
+              - "suspicious_process_behavior"
+              - "command_control_communication"
+              - "file_system_modification"
+              
+          data_breach:
+            indicators:
+              - "unauthorized_data_access"
+              - "data_exfiltration_detected"
+              - "database_compromise"
+              - "sensitive_file_access"
+              
+          unauthorized_access:
+            indicators:
+              - "failed_authentication_attempts"
+              - "privilege_escalation"
+              - "lateral_movement"
+              - "account_compromise"
+              
+          denial_of_service:
+            indicators:
+              - "resource_exhaustion"
+              - "service_unavailability"
+              - "network_congestion"
+              - "application_unresponsiveness"
+              
+          insider_threat:
+            indicators:
+              - "after_hours_access"
+              - "unusual_data_download"
+              - "policy_violation"
+              - "suspicious_user_behavior"
+    
+    # Response Orchestration Configuration
+    response_orchestration:
+      enabled: {{ .Values.automatedIncidentResponse.responseOrchestration.enabled | default true }}
+      
+      # Orchestration Engine
+      engine:
+        type: {{ .Values.automatedIncidentResponse.responseOrchestration.engine.type | default "workflow" | quote }}
+        max_concurrent_responses: {{ .Values.automatedIncidentResponse.responseOrchestration.engine.maxConcurrentResponses | default 10 }}
+        response_timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.engine.responseTimeout | default "2h" | quote }}
+        retry_attempts: {{ .Values.automatedIncidentResponse.responseOrchestration.engine.retryAttempts | default 3 }}
+        
+      # Workflow Definitions
+      workflows:
+        # Malware Response Workflow
+        - name: "malware_response"
+          enabled: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.malwareResponse.enabled | default true }}
+          trigger_conditions:
+            - "incident_category == 'malware'"
+          steps:
+            - name: "isolate_affected_systems"
+              type: "containment"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.malwareResponse.steps.isolateAffectedSystems.timeout | default "5m" | quote }}
+              parallel: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.malwareResponse.steps.isolateAffectedSystems.parallel | default true }}
+              
+            - name: "collect_malware_samples"
+              type: "evidence_collection"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.malwareResponse.steps.collectMalwareSamples.timeout | default "10m" | quote }}
+              dependencies: ["isolate_affected_systems"]
+              
+            - name: "analyze_malware"
+              type: "analysis"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.malwareResponse.steps.analyzeMalware.timeout | default "30m" | quote }}
+              dependencies: ["collect_malware_samples"]
+              
+            - name: "remove_malware"
+              type: "remediation"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.malwareResponse.steps.removeMalware.timeout | default "20m" | quote }}
+              dependencies: ["analyze_malware"]
+              
+            - name: "restore_systems"
+              type: "recovery"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.malwareResponse.steps.restoreSystems.timeout | default "1h" | quote }}
+              dependencies: ["remove_malware"]
+              
+        # Data Breach Response Workflow
+        - name: "data_breach_response"
+          enabled: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.dataBreachResponse.enabled | default true }}
+          trigger_conditions:
+            - "incident_category == 'data_breach'"
+          steps:
+            - name: "assess_breach_scope"
+              type: "assessment"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.dataBreachResponse.steps.assessBreachScope.timeout | default "15m" | quote }}
+              
+            - name: "contain_breach"
+              type: "containment"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.dataBreachResponse.steps.containBreach.timeout | default "10m" | quote }}
+              dependencies: ["assess_breach_scope"]
+              
+            - name: "preserve_evidence"
+              type: "evidence_collection"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.dataBreachResponse.steps.preserveEvidence.timeout | default "30m" | quote }}
+              parallel: true
+              
+            - name: "notify_stakeholders"
+              type: "communication"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.dataBreachResponse.steps.notifyStakeholders.timeout | default "5m" | quote }}
+              dependencies: ["assess_breach_scope"]
+              
+            - name: "regulatory_notification"
+              type: "compliance"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.dataBreachResponse.steps.regulatoryNotification.timeout | default "72h" | quote }}
+              dependencies: ["assess_breach_scope"]
+              
+            - name: "remediate_vulnerabilities"
+              type: "remediation"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.dataBreachResponse.steps.remediateVulnerabilities.timeout | default "2h" | quote }}
+              dependencies: ["preserve_evidence"]
+              
+        # Unauthorized Access Response Workflow
+        - name: "unauthorized_access_response"
+          enabled: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.unauthorizedAccessResponse.enabled | default true }}
+          trigger_conditions:
+            - "incident_category == 'unauthorized_access'"
+          steps:
+            - name: "disable_compromised_accounts"
+              type: "containment"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.unauthorizedAccessResponse.steps.disableCompromisedAccounts.timeout | default "2m" | quote }}
+              
+            - name: "analyze_access_patterns"
+              type: "analysis"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.unauthorizedAccessResponse.steps.analyzeAccessPatterns.timeout | default "20m" | quote }}
+              parallel: true
+              
+            - name: "review_access_logs"
+              type: "investigation"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.unauthorizedAccessResponse.steps.reviewAccessLogs.timeout | default "45m" | quote }}
+              dependencies: ["disable_compromised_accounts"]
+              
+            - name: "reset_credentials"
+              type: "remediation"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.unauthorizedAccessResponse.steps.resetCredentials.timeout | default "15m" | quote }}
+              dependencies: ["analyze_access_patterns"]
+              
+            - name: "enhance_access_controls"
+              type: "improvement"
+              timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.workflows.unauthorizedAccessResponse.steps.enhanceAccessControls.timeout | default "1h" | quote }}
+              dependencies: ["review_access_logs"]
+      
+      # Orchestration Rules
+      rules:
+        # Escalation Rules
+        escalation:
+          - name: "time_based_escalation"
+            enabled: {{ .Values.automatedIncidentResponse.responseOrchestration.rules.escalation.timeBasedEscalation.enabled | default true }}
+            conditions:
+              - "response_time > sla_threshold"
+              - "incident_severity >= 'high'"
+            actions:
+              - "escalate_to_manager"
+              - "increase_priority"
+              - "allocate_additional_resources"
+              
+          - name: "complexity_based_escalation"
+            enabled: {{ .Values.automatedIncidentResponse.responseOrchestration.rules.escalation.complexityBasedEscalation.enabled | default true }}
+            conditions:
+              - "response_complexity > threshold"
+              - "automated_actions_failed >= 2"
+            actions:
+              - "escalate_to_human_analyst"
+              - "request_expert_assistance"
+              - "switch_to_manual_mode"
+        
+        # Approval Rules
+        approval:
+          - name: "destructive_action_approval"
+            enabled: {{ .Values.automatedIncidentResponse.responseOrchestration.rules.approval.destructiveActionApproval.enabled | default true }}
+            conditions:
+              - "action_type == 'destructive'"
+              - "business_impact >= 'high'"
+            approvers:
+              - "security-manager@alt.production.local"
+              - "operations-manager@alt.production.local"
+            approval_timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.rules.approval.destructiveActionApproval.approvalTimeout | default "30m" | quote }}
+            
+          - name: "regulatory_action_approval"
+            enabled: {{ .Values.automatedIncidentResponse.responseOrchestration.rules.approval.regulatoryActionApproval.enabled | default true }}
+            conditions:
+              - "regulatory_implications == true"
+              - "public_disclosure_required == true"
+            approvers:
+              - "legal-team@alt.production.local"
+              - "compliance-officer@alt.production.local"
+            approval_timeout: {{ .Values.automatedIncidentResponse.responseOrchestration.rules.approval.regulatoryActionApproval.approvalTimeout | default "2h" | quote }}
+    
+    # Containment Automation Configuration
+    containment_automation:
+      enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.enabled | default true }}
+      
+      # Containment Strategies
+      strategies:
+        # Network Containment
+        - name: "network_isolation"
+          type: "network"
+          enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.networkIsolation.enabled | default true }}
+          automation_level: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.networkIsolation.automationLevel | default "semi_automated" | quote }}
+          actions:
+            - name: "block_malicious_ips"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.networkIsolation.actions.blockMaliciousIps.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.networkIsolation.actions.blockMaliciousIps.timeout | default "30s" | quote }}
+              
+            - name: "isolate_compromised_hosts"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.networkIsolation.actions.isolateCompromisedHosts.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.networkIsolation.actions.isolateCompromisedHosts.timeout | default "1m" | quote }}
+              
+            - name: "block_suspicious_domains"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.networkIsolation.actions.blockSuspiciousDomains.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.networkIsolation.actions.blockSuspiciousDomains.timeout | default "45s" | quote }}
+              
+        # Host Containment
+        - name: "host_isolation"
+          type: "host"
+          enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.hostIsolation.enabled | default true }}
+          automation_level: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.hostIsolation.automationLevel | default "automated" | quote }}
+          actions:
+            - name: "quarantine_malicious_files"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.hostIsolation.actions.quarantineMaliciousFiles.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.hostIsolation.actions.quarantineMaliciousFiles.timeout | default "2m" | quote }}
+              
+            - name: "terminate_suspicious_processes"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.hostIsolation.actions.terminateSuspiciousProcesses.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.hostIsolation.actions.terminateSuspiciousProcesses.timeout | default "30s" | quote }}
+              
+            - name: "disable_network_interfaces"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.hostIsolation.actions.disableNetworkInterfaces.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.hostIsolation.actions.disableNetworkInterfaces.timeout | default "1m" | quote }}
+              
+        # Identity Containment
+        - name: "identity_isolation"
+          type: "identity"
+          enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.identityIsolation.enabled | default true }}
+          automation_level: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.identityIsolation.automationLevel | default "semi_automated" | quote }}
+          actions:
+            - name: "disable_compromised_accounts"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.identityIsolation.actions.disableCompromisedAccounts.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.identityIsolation.actions.disableCompromisedAccounts.timeout | default "1m" | quote }}
+              
+            - name: "revoke_access_tokens"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.identityIsolation.actions.revokeAccessTokens.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.identityIsolation.actions.revokeAccessTokens.timeout | default "30s" | quote }}
+              
+            - name: "reset_passwords"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.identityIsolation.actions.resetPasswords.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.identityIsolation.actions.resetPasswords.timeout | default "2m" | quote }}
+              
+        # Application Containment
+        - name: "application_isolation"
+          type: "application"
+          enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.applicationIsolation.enabled | default true }}
+          automation_level: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.applicationIsolation.automationLevel | default "automated" | quote }}
+          actions:
+            - name: "scale_down_compromised_services"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.applicationIsolation.actions.scaleDownCompromisedServices.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.applicationIsolation.actions.scaleDownCompromisedServices.timeout | default "3m" | quote }}
+              
+            - name: "redirect_traffic"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.applicationIsolation.actions.redirectTraffic.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.applicationIsolation.actions.redirectTraffic.timeout | default "1m" | quote }}
+              
+            - name: "activate_maintenance_mode"
+              enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.applicationIsolation.actions.activateMaintenanceMode.enabled | default true }}
+              timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.strategies.applicationIsolation.actions.activateMaintenanceMode.timeout | default "30s" | quote }}
+      
+      # Containment Policies
+      policies:
+        # Risk-Based Containment
+        - name: "risk_based_containment"
+          enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.policies.riskBasedContainment.enabled | default true }}
+          conditions:
+            - "risk_score >= 8.0"
+            - "business_impact >= 'high'"
+          actions:
+            - "immediate_isolation"
+            - "comprehensive_containment"
+            - "enhanced_monitoring"
+          approval_required: {{ .Values.automatedIncidentResponse.containmentAutomation.policies.riskBasedContainment.approvalRequired | default false }}
+          
+        # Business Impact Containment
+        - name: "business_impact_containment"
+          enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.policies.businessImpactContainment.enabled | default true }}
+          conditions:
+            - "business_critical_systems_affected == true"
+            - "revenue_impact >= 'medium'"
+          actions:
+            - "selective_isolation"
+            - "traffic_rerouting"
+            - "service_degradation"
+          approval_required: {{ .Values.automatedIncidentResponse.containmentAutomation.policies.businessImpactContainment.approvalRequired | default true }}
+          
+        # Regulatory Containment
+        - name: "regulatory_containment"
+          enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.policies.regulatoryContainment.enabled | default true }}
+          conditions:
+            - "regulatory_data_involved == true"
+            - "compliance_violation_risk >= 'high'"
+          actions:
+            - "immediate_data_protection"
+            - "audit_trail_preservation"
+            - "regulatory_notification"
+          approval_required: {{ .Values.automatedIncidentResponse.containmentAutomation.policies.regulatoryContainment.approvalRequired | default true }}
+      
+      # Containment Verification
+      verification:
+        enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.enabled | default true }}
+        
+        # Verification Tests
+        tests:
+          - name: "network_connectivity_test"
+            enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.tests.networkConnectivityTest.enabled | default true }}
+            timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.tests.networkConnectivityTest.timeout | default "30s" | quote }}
+            retry_attempts: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.tests.networkConnectivityTest.retryAttempts | default 3 }}
+            
+          - name: "service_availability_test"
+            enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.tests.serviceAvailabilityTest.enabled | default true }}
+            timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.tests.serviceAvailabilityTest.timeout | default "1m" | quote }}
+            retry_attempts: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.tests.serviceAvailabilityTest.retryAttempts | default 3 }}
+            
+          - name: "malware_persistence_test"
+            enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.tests.malwarePersistenceTest.enabled | default true }}
+            timeout: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.tests.malwarePersistenceTest.timeout | default "5m" | quote }}
+            retry_attempts: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.tests.malwarePersistenceTest.retryAttempts | default 2 }}
+        
+        # Verification Reports
+        reporting:
+          enabled: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.reporting.enabled | default true }}
+          report_format: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.reporting.reportFormat | default "json" | quote }}
+          include_metrics: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.reporting.includeMetrics | default true }}
+          include_timestamps: {{ .Values.automatedIncidentResponse.containmentAutomation.verification.reporting.includeTimestamps | default true }}
+    
+    # Machine Learning Configuration
+    machine_learning:
+      enabled: {{ .Values.automatedIncidentResponse.machineLearning.enabled | default true }}
+      
+      # ML Models
+      models:
+        # Incident Prediction Model
+        - name: "incident_predictor"
+          type: "prediction"
+          enabled: {{ .Values.automatedIncidentResponse.machineLearning.models.incidentPredictor.enabled | default true }}
+          algorithm: {{ .Values.automatedIncidentResponse.machineLearning.models.incidentPredictor.algorithm | default "lstm" | quote }}
+          prediction_window: {{ .Values.automatedIncidentResponse.machineLearning.models.incidentPredictor.predictionWindow | default "24h" | quote }}
+          features:
+            - "historical_incidents"
+            - "security_alerts"
+            - "system_metrics"
+            - "threat_intelligence"
+            - "vulnerability_data"
+          accuracy_threshold: {{ .Values.automatedIncidentResponse.machineLearning.models.incidentPredictor.accuracyThreshold | default 0.8 }}
+          
+        # Response Effectiveness Model
+        - name: "response_effectiveness"
+          type: "evaluation"
+          enabled: {{ .Values.automatedIncidentResponse.machineLearning.models.responseEffectiveness.enabled | default true }}
+          algorithm: {{ .Values.automatedIncidentResponse.machineLearning.models.responseEffectiveness.algorithm | default "gradient_boosting" | quote }}
+          features:
+            - "response_actions"
+            - "response_timing"
+            - "incident_characteristics"
+            - "system_state"
+            - "resource_availability"
+          accuracy_threshold: {{ .Values.automatedIncidentResponse.machineLearning.models.responseEffectiveness.accuracyThreshold | default 0.75 }}
+          
+        # Anomaly Detection Model
+        - name: "anomaly_detector"
+          type: "detection"
+          enabled: {{ .Values.automatedIncidentResponse.machineLearning.models.anomalyDetector.enabled | default true }}
+          algorithm: {{ .Values.automatedIncidentResponse.machineLearning.models.anomalyDetector.algorithm | default "autoencoder" | quote }}
+          features:
+            - "network_traffic"
+            - "system_calls"
+            - "user_behavior"
+            - "application_metrics"
+            - "resource_usage"
+          sensitivity: {{ .Values.automatedIncidentResponse.machineLearning.models.anomalyDetector.sensitivity | default 0.7 }}
+          
+        # Root Cause Analysis Model
+        - name: "root_cause_analyzer"
+          type: "analysis"
+          enabled: {{ .Values.automatedIncidentResponse.machineLearning.models.rootCauseAnalyzer.enabled | default true }}
+          algorithm: {{ .Values.automatedIncidentResponse.machineLearning.models.rootCauseAnalyzer.algorithm | default "decision_tree" | quote }}
+          features:
+            - "incident_symptoms"
+            - "system_logs"
+            - "configuration_changes"
+            - "deployment_history"
+            - "dependency_graph"
+          confidence_threshold: {{ .Values.automatedIncidentResponse.machineLearning.models.rootCauseAnalyzer.confidenceThreshold | default 0.8 }}
+      
+      # Model Training
+      training:
+        enabled: {{ .Values.automatedIncidentResponse.machineLearning.training.enabled | default true }}
+        
+        # Training Schedule
+        schedule:
+          frequency: {{ .Values.automatedIncidentResponse.machineLearning.training.schedule.frequency | default "weekly" | quote }}
+          data_retention: {{ .Values.automatedIncidentResponse.machineLearning.training.schedule.dataRetention | default "1y" | quote }}
+          validation_split: {{ .Values.automatedIncidentResponse.machineLearning.training.schedule.validationSplit | default 0.2 }}
+          test_split: {{ .Values.automatedIncidentResponse.machineLearning.training.schedule.testSplit | default 0.1 }}
+          
+        # Training Data
+        data:
+          sources:
+            - "historical_incidents"
+            - "response_actions"
+            - "security_logs"
+            - "system_metrics"
+            - "threat_intelligence"
+          preprocessing:
+            - "normalization"
+            - "feature_scaling"
+            - "outlier_removal"
+            - "feature_selection"
+          augmentation:
+            enabled: {{ .Values.automatedIncidentResponse.machineLearning.training.data.augmentation.enabled | default true }}
+            techniques:
+              - "synthetic_data_generation"
+              - "noise_injection"
+              - "time_series_augmentation"
+      
+      # Model Deployment
+      deployment:
+        enabled: {{ .Values.automatedIncidentResponse.machineLearning.deployment.enabled | default true }}
+        
+        # Deployment Strategy
+        strategy: {{ .Values.automatedIncidentResponse.machineLearning.deployment.strategy | default "blue_green" | quote }}
+        rollback_threshold: {{ .Values.automatedIncidentResponse.machineLearning.deployment.rollbackThreshold | default 0.05 }}
+        canary_percentage: {{ .Values.automatedIncidentResponse.machineLearning.deployment.canaryPercentage | default 10 }}
+        
+        # Model Monitoring
+        monitoring:
+          enabled: {{ .Values.automatedIncidentResponse.machineLearning.deployment.monitoring.enabled | default true }}
+          metrics:
+            - "prediction_accuracy"
+            - "model_drift"
+            - "feature_importance"
+            - "inference_latency"
+            - "resource_usage"
+          alerting:
+            enabled: {{ .Values.automatedIncidentResponse.machineLearning.deployment.monitoring.alerting.enabled | default true }}
+            thresholds:
+              accuracy_degradation: {{ .Values.automatedIncidentResponse.machineLearning.deployment.monitoring.alerting.thresholds.accuracyDegradation | default 0.05 }}
+              drift_detection: {{ .Values.automatedIncidentResponse.machineLearning.deployment.monitoring.alerting.thresholds.driftDetection | default 0.1 }}
+              high_latency: {{ .Values.automatedIncidentResponse.machineLearning.deployment.monitoring.alerting.thresholds.highLatency | default 1000 }}
+    
+    # Communication Configuration
+    communication:
+      enabled: {{ .Values.automatedIncidentResponse.communication.enabled | default true }}
+      
+      # Communication Channels
+      channels:
+        - name: "slack"
+          enabled: {{ .Values.automatedIncidentResponse.communication.channels.slack.enabled | default true }}
+          webhook_url: {{ .Values.automatedIncidentResponse.communication.channels.slack.webhookUrl | default "" | quote }}
+          default_channel: {{ .Values.automatedIncidentResponse.communication.channels.slack.defaultChannel | default "#incident-response" | quote }}
+          escalation_channel: {{ .Values.automatedIncidentResponse.communication.channels.slack.escalationChannel | default "#security-escalation" | quote }}
+          
+        - name: "email"
+          enabled: {{ .Values.automatedIncidentResponse.communication.channels.email.enabled | default true }}
+          smtp_server: {{ .Values.automatedIncidentResponse.communication.channels.email.smtpServer | default "smtp.alt.production.local" | quote }}
+          smtp_port: {{ .Values.automatedIncidentResponse.communication.channels.email.smtpPort | default 587 }}
+          default_recipients:
+            - "incident-response@alt.production.local"
+            - "security-team@alt.production.local"
+          escalation_recipients:
+            - "security-manager@alt.production.local"
+            - "ciso@alt.production.local"
+            
+        - name: "webhook"
+          enabled: {{ .Values.automatedIncidentResponse.communication.channels.webhook.enabled | default true }}
+          endpoints:
+            - name: "ticketing_system"
+              url: {{ .Values.automatedIncidentResponse.communication.channels.webhook.endpoints.ticketingSystem.url | default "https://tickets.alt.production.local/api/incidents" | quote }}
+              authentication: {{ .Values.automatedIncidentResponse.communication.channels.webhook.endpoints.ticketingSystem.authentication | default "bearer_token" | quote }}
+              
+            - name: "siem"
+              url: {{ .Values.automatedIncidentResponse.communication.channels.webhook.endpoints.siem.url | default "https://siem.alt.production.local/api/events" | quote }}
+              authentication: {{ .Values.automatedIncidentResponse.communication.channels.webhook.endpoints.siem.authentication | default "api_key" | quote }}
+        
+        - name: "sms"
+          enabled: {{ .Values.automatedIncidentResponse.communication.channels.sms.enabled | default false }}
+          provider: {{ .Values.automatedIncidentResponse.communication.channels.sms.provider | default "twilio" | quote }}
+          emergency_contacts:
+            - "+1-555-0123"  # Security Manager
+            - "+1-555-0124"  # CISO
+            - "+1-555-0125"  # On-Call Engineer
+      
+      # Communication Templates
+      templates:
+        - name: "incident_created"
+          enabled: {{ .Values.automatedIncidentResponse.communication.templates.incidentCreated.enabled | default true }}
+          channels: ["slack", "email", "webhook"]
+          priority: {{ .Values.automatedIncidentResponse.communication.templates.incidentCreated.priority | default "medium" | quote }}
+          
+        - name: "incident_escalated"
+          enabled: {{ .Values.automatedIncidentResponse.communication.templates.incidentEscalated.enabled | default true }}
+          channels: ["slack", "email", "sms"]
+          priority: {{ .Values.automatedIncidentResponse.communication.templates.incidentEscalated.priority | default "high" | quote }}
+          
+        - name: "incident_resolved"
+          enabled: {{ .Values.automatedIncidentResponse.communication.templates.incidentResolved.enabled | default true }}
+          channels: ["slack", "email", "webhook"]
+          priority: {{ .Values.automatedIncidentResponse.communication.templates.incidentResolved.priority | default "low" | quote }}
+          
+        - name: "containment_successful"
+          enabled: {{ .Values.automatedIncidentResponse.communication.templates.containmentSuccessful.enabled | default true }}
+          channels: ["slack", "email"]
+          priority: {{ .Values.automatedIncidentResponse.communication.templates.containmentSuccessful.priority | default "medium" | quote }}
+          
+        - name: "recovery_completed"
+          enabled: {{ .Values.automatedIncidentResponse.communication.templates.recoveryCompleted.enabled | default true }}
+          channels: ["slack", "email", "webhook"]
+          priority: {{ .Values.automatedIncidentResponse.communication.templates.recoveryCompleted.priority | default "low" | quote }}
+      
+      # Communication Rules
+      rules:
+        - name: "severity_based_notification"
+          enabled: {{ .Values.automatedIncidentResponse.communication.rules.severityBasedNotification.enabled | default true }}
+          conditions:
+            - "incident_severity == 'critical'"
+          actions:
+            - "notify_all_channels"
+            - "escalate_immediately"
+            - "send_sms_alerts"
+            
+        - name: "business_hours_notification"
+          enabled: {{ .Values.automatedIncidentResponse.communication.rules.businessHoursNotification.enabled | default true }}
+          conditions:
+            - "current_time in business_hours"
+          actions:
+            - "use_standard_channels"
+            - "normal_escalation_timeline"
+            
+        - name: "after_hours_notification"
+          enabled: {{ .Values.automatedIncidentResponse.communication.rules.afterHoursNotification.enabled | default true }}
+          conditions:
+            - "current_time not in business_hours"
+            - "incident_severity >= 'high'"
+          actions:
+            - "send_sms_alerts"
+            - "accelerated_escalation"
+            - "wake_up_on_call_team"
+    
+    # Monitoring Configuration
+    monitoring:
+      enabled: {{ .Values.automatedIncidentResponse.monitoring.enabled | default true }}
+      
+      # Metrics
+      metrics:
+        - name: "incident_count"
+          type: "counter"
+          description: "Total number of incidents processed"
+          
+        - name: "response_time"
+          type: "histogram"
+          description: "Time taken to respond to incidents"
+          
+        - name: "containment_success_rate"
+          type: "gauge"
+          description: "Percentage of successful containment actions"
+          
+        - name: "automated_resolution_rate"
+          type: "gauge"
+          description: "Percentage of incidents resolved automatically"
+          
+        - name: "false_positive_rate"
+          type: "gauge"
+          description: "Percentage of false positive incident detections"
+      
+      # Alerting
+      alerting:
+        enabled: {{ .Values.automatedIncidentResponse.monitoring.alerting.enabled | default true }}
+        
+        # Alert Rules
+        rules:
+          - name: "high_incident_rate"
+            condition: "incident_count > 50"
+            time_window: "1h"
+            severity: "warning"
+            description: "High number of incidents detected"
+            
+          - name: "slow_response_time"
+            condition: "avg(response_time) > 300"
+            time_window: "30m"
+            severity: "critical"
+            description: "Slow incident response times"
+            
+          - name: "low_containment_success"
+            condition: "containment_success_rate < 0.9"
+            time_window: "1h"
+            severity: "warning"
+            description: "Low containment success rate"
+            
+          - name: "high_false_positive_rate"
+            condition: "false_positive_rate > 0.1"
+            time_window: "1h"
+            severity: "warning"
+            description: "High false positive rate"
+        
+        # Notification Channels
+        channels:
+          - name: "slack"
+            enabled: {{ .Values.automatedIncidentResponse.monitoring.alerting.channels.slack.enabled | default true }}
+            webhook_url: {{ .Values.automatedIncidentResponse.monitoring.alerting.channels.slack.webhookUrl | default "" | quote }}
+            channel: {{ .Values.automatedIncidentResponse.monitoring.alerting.channels.slack.channel | default "#incident-response-alerts" | quote }}
+            
+          - name: "email"
+            enabled: {{ .Values.automatedIncidentResponse.monitoring.alerting.channels.email.enabled | default true }}
+            recipients:
+              - "incident-response-team@alt.production.local"
+              - "security-operations@alt.production.local"

@@ -1,0 +1,463 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-edge-computing-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge-computing-controller
+spec:
+  replicas: {{ .Values.edgeComputingController.replicas | default 3 }}
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: edge-computing-controller
+  template:
+    metadata:
+      labels:
+        {{- include "csr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: edge-computing-controller
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/edge-computing-config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.edgeComputingController.podSecurityContext | nindent 8 }}
+      containers:
+      - name: edge-computing-controller
+        image: "{{ .Values.edgeComputingController.image.repository }}:{{ .Values.edgeComputingController.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.edgeComputingController.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.edgeComputingController.securityContext | nindent 10 }}
+        env:
+        - name: EDGE_ENABLED
+          value: {{ .Values.edgeComputingController.enabled | default "true" | quote }}
+        - name: EDGE_DEPLOYMENT_STRATEGY
+          value: {{ .Values.edgeComputingController.deploymentStrategy | default "geographic" }}
+        - name: LATENCY_OPTIMIZATION_ENABLED
+          value: {{ .Values.edgeComputingController.latencyOptimization.enabled | default "true" | quote }}
+        - name: BANDWIDTH_OPTIMIZATION_ENABLED
+          value: {{ .Values.edgeComputingController.bandwidthOptimization.enabled | default "true" | quote }}
+        - name: OFFLINE_CAPABILITY_ENABLED
+          value: {{ .Values.edgeComputingController.offlineCapability.enabled | default "true" | quote }}
+        - name: IOT_INTEGRATION_ENABLED
+          value: {{ .Values.edgeComputingController.iotIntegration.enabled | default "true" | quote }}
+        - name: REAL_TIME_PROCESSING_ENABLED
+          value: {{ .Values.edgeComputingController.realTimeProcessing.enabled | default "true" | quote }}
+        - name: LOCALIZATION_ENABLED
+          value: {{ .Values.edgeComputingController.localization.enabled | default "true" | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.edgeComputingController.logLevel | default "info" }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        - name: grpc
+          containerPort: 9091
+          protocol: TCP
+        - name: edge-api
+          containerPort: 8443
+          protocol: TCP
+        - name: iot-gateway
+          containerPort: 1883
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.edgeComputingController.resources | nindent 10 }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/edge-computing-controller
+          readOnly: true
+        - name: edge-certificates
+          mountPath: /etc/edge-certificates
+          readOnly: true
+        - name: tls-certs
+          mountPath: /etc/ssl/certs
+          readOnly: true
+        - name: localization-data
+          mountPath: /etc/localization
+          readOnly: true
+        - name: edge-cache
+          mountPath: /var/cache/edge
+        - name: iot-config
+          mountPath: /etc/iot-config
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-edge-computing-config
+      - name: edge-certificates
+        secret:
+          secretName: {{ include "csr-controller.fullname" . }}-edge-certificates
+      - name: tls-certs
+        projected:
+          sources:
+          - secret:
+              name: {{ include "csr-controller.fullname" . }}-tls-cert
+              items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+      - name: localization-data
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-localization-data
+      - name: edge-cache
+        emptyDir:
+          sizeLimit: {{ .Values.edgeComputingController.cache.sizeLimit | default "1Gi" }}
+      - name: iot-config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-iot-config
+      {{- with .Values.edgeComputingController.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.edgeComputingController.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.edgeComputingController.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-edge-computing-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge-computing-controller
+spec:
+  type: {{ .Values.edgeComputingController.service.type | default "ClusterIP" }}
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  - port: 9091
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  - port: 8443
+    targetPort: edge-api
+    protocol: TCP
+    name: edge-api
+  - port: 1883
+    targetPort: iot-gateway
+    protocol: TCP
+    name: iot-gateway
+  selector:
+    {{- include "csr-controller.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: edge-computing-controller
+
+---
+{{- if .Values.edgeComputingController.edgeLoadBalancer.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-edge-load-balancer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge-load-balancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    {{- if .Values.edgeComputingController.edgeLoadBalancer.annotations }}
+    {{- toYaml .Values.edgeComputingController.edgeLoadBalancer.annotations | nindent 4 }}
+    {{- end }}
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    {{- toYaml .Values.edgeComputingController.edgeLoadBalancer.sourceRanges | nindent 4 }}
+  ports:
+  - port: 443
+    targetPort: edge-api
+    protocol: TCP
+    name: edge-api-secure
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: edge-api-insecure
+  - port: 8883
+    targetPort: iot-gateway
+    protocol: TCP
+    name: iot-gateway-secure
+  selector:
+    {{- include "csr-controller.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: edge-computing-controller
+{{- end }}
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-edge-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge-agent
+spec:
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: edge-agent
+  template:
+    metadata:
+      labels:
+        {{- include "csr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: edge-agent
+    spec:
+      serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+      hostNetwork: {{ .Values.edgeComputingController.edgeAgent.hostNetwork | default false }}
+      securityContext:
+        {{- toYaml .Values.edgeComputingController.edgeAgent.podSecurityContext | nindent 8 }}
+      containers:
+      - name: edge-agent
+        image: "{{ .Values.edgeComputingController.edgeAgent.image.repository }}:{{ .Values.edgeComputingController.edgeAgent.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.edgeComputingController.edgeAgent.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.edgeComputingController.edgeAgent.securityContext | nindent 10 }}
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: EDGE_CONTROLLER_ENDPOINT
+          value: {{ include "csr-controller.fullname" . }}-edge-computing-controller.{{ .Release.Namespace }}.svc.cluster.local:9091
+        - name: LATENCY_MONITORING_ENABLED
+          value: {{ .Values.edgeComputingController.edgeAgent.latencyMonitoring.enabled | default "true" | quote }}
+        - name: BANDWIDTH_MONITORING_ENABLED
+          value: {{ .Values.edgeComputingController.edgeAgent.bandwidthMonitoring.enabled | default "true" | quote }}
+        - name: RESOURCE_MONITORING_ENABLED
+          value: {{ .Values.edgeComputingController.edgeAgent.resourceMonitoring.enabled | default "true" | quote }}
+        ports:
+        - name: metrics
+          containerPort: 9100
+          protocol: TCP
+        - name: health
+          containerPort: 8080
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: health
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.edgeComputingController.edgeAgent.resources | nindent 10 }}
+        volumeMounts:
+        - name: edge-agent-config
+          mountPath: /etc/edge-agent
+          readOnly: true
+        - name: node-metrics
+          mountPath: /host
+          readOnly: true
+        - name: edge-cache-local
+          mountPath: /var/cache/edge-local
+      volumes:
+      - name: edge-agent-config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-edge-agent-config
+      - name: node-metrics
+        hostPath:
+          path: /
+          type: Directory
+      - name: edge-cache-local
+        hostPath:
+          path: /var/cache/edge-local
+          type: DirectoryOrCreate
+      {{- with .Values.edgeComputingController.edgeAgent.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.edgeComputingController.edgeAgent.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+---
+{{- if .Values.edgeComputingController.horizontalPodAutoscaler.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-edge-computing-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge-computing-controller
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "csr-controller.fullname" . }}-edge-computing-controller
+  minReplicas: {{ .Values.edgeComputingController.horizontalPodAutoscaler.minReplicas | default 3 }}
+  maxReplicas: {{ .Values.edgeComputingController.horizontalPodAutoscaler.maxReplicas | default 20 }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.edgeComputingController.horizontalPodAutoscaler.targetCPUUtilizationPercentage | default 70 }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.edgeComputingController.horizontalPodAutoscaler.targetMemoryUtilizationPercentage | default 80 }}
+  - type: Pods
+    pods:
+      metric:
+        name: edge_latency_seconds
+      target:
+        type: AverageValue
+        averageValue: "0.1"
+  - type: Pods
+    pods:
+      metric:
+        name: edge_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "100"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+{{- end }}
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-edge-optimization
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge-optimization
+spec:
+  schedule: {{ .Values.edgeComputingController.edgeOptimization.schedule | default "*/15 * * * *" | quote }}
+  concurrencyPolicy: {{ .Values.edgeComputingController.edgeOptimization.concurrencyPolicy | default "Forbid" }}
+  successfulJobsHistoryLimit: {{ .Values.edgeComputingController.edgeOptimization.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.edgeComputingController.edgeOptimization.failedJobsHistoryLimit | default 1 }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "csr-controller.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: edge-optimization
+        spec:
+          serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.edgeComputingController.edgeOptimization.podSecurityContext | nindent 12 }}
+          restartPolicy: OnFailure
+          containers:
+          - name: edge-optimizer
+            image: "{{ .Values.edgeComputingController.edgeOptimization.image.repository }}:{{ .Values.edgeComputingController.edgeOptimization.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.edgeComputingController.edgeOptimization.image.pullPolicy }}
+            securityContext:
+              {{- toYaml .Values.edgeComputingController.edgeOptimization.securityContext | nindent 14 }}
+            env:
+            - name: OPTIMIZATION_MODE
+              value: {{ .Values.edgeComputingController.edgeOptimization.mode | default "latency-first" }}
+            - name: DRY_RUN
+              value: {{ .Values.edgeComputingController.edgeOptimization.dryRun | default "false" | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.edgeComputingController.edgeOptimization.logLevel | default "info" }}
+            resources:
+              {{- toYaml .Values.edgeComputingController.edgeOptimization.resources | nindent 14 }}
+            volumeMounts:
+            - name: optimization-config
+              mountPath: /etc/optimization
+              readOnly: true
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting edge computing optimization..."
+              
+              # Analyze edge performance metrics
+              /usr/local/bin/edge-optimizer analyze \
+                --config=/etc/optimization/config.yaml \
+                --output=/tmp/edge-analysis.json
+              
+              if [ $? -eq 0 ]; then
+                echo "Edge analysis completed successfully"
+                
+                # Apply optimization recommendations
+                if [ "$DRY_RUN" = "false" ]; then
+                  /usr/local/bin/edge-optimizer optimize \
+                    --config=/etc/optimization/config.yaml \
+                    --analysis=/tmp/edge-analysis.json \
+                    --apply
+                else
+                  echo "Dry run mode: optimization recommendations generated but not applied"
+                  /usr/local/bin/edge-optimizer optimize \
+                    --config=/etc/optimization/config.yaml \
+                    --analysis=/tmp/edge-analysis.json \
+                    --dry-run
+                fi
+                
+                # Update edge routing tables
+                /usr/local/bin/edge-optimizer update-routing \
+                  --config=/etc/optimization/config.yaml \
+                  --analysis=/tmp/edge-analysis.json
+                
+              else
+                echo "Edge analysis failed"
+                exit 1
+              fi
+              
+              echo "Edge computing optimization completed"
+          volumes:
+          - name: optimization-config
+            configMap:
+              name: {{ include "csr-controller.fullname" . }}-edge-computing-config

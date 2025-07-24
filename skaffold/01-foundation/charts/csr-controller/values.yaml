@@ -1,0 +1,411 @@
+# Default values for csr-controller
+replicaCount: 1
+
+image:
+  repository: alt/csr-controller
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65534
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# CSR Controller configuration
+csrController:
+  # Custom signer name
+  signerName: "alt.local/ca"
+  
+  # CA certificate configuration
+  ca:
+    # Secret name containing CA certificate and key
+    secretName: "alt-ca-secret"
+    # Path to CA certificate within the secret
+    certPath: "/etc/ca-certs/ca.crt"
+    # Path to CA private key within the secret
+    keyPath: "/etc/ca-certs/ca.key"
+  
+  # Certificate validity period
+  certificateValidityPeriod: "8760h"  # 1 year
+  
+  # Approval policy
+  approvalPolicy:
+    # Auto-approve CSRs matching these criteria
+    autoApprove: true
+    # Required DNS name patterns for auto-approval
+    allowedDNSPatterns:
+      - "*.alt-app.local"
+      - "*.alt-apps.svc.cluster.local"
+      - "*.alt-database.svc.cluster.local"
+      - "*.alt-auth.svc.cluster.local"
+      - "*.alt-ingress.svc.cluster.local"
+      - "*.alt-production.svc.cluster.local"
+    # Required IP addresses for auto-approval
+    allowedIPAddresses:
+      - "127.0.0.1"
+      - "::1"
+    # Required username patterns for auto-approval
+    allowedUserPatterns:
+      - "system:serviceaccount:alt-*"
+      - "system:node:*"
+  
+  # Monitoring configuration
+  monitoring:
+    enabled: true
+    # Metrics port
+    metricsPort: 8080
+    # Health check port
+    healthPort: 8081
+  
+  # Certificate rotation configuration
+  certRotation:
+    # Enable automatic certificate rotation
+    enabled: true
+    # Cron schedule for certificate rotation check (daily at 2 AM)
+    schedule: "0 2 * * *"
+    # Certificate renewal threshold (certificates expiring within this time will be rotated)
+    renewalThreshold: "720h"  # 30 days
+    # Target namespaces for certificate rotation
+    namespaces:
+      - "alt-production"
+      - "alt-apps"
+      - "alt-database"
+      - "alt-auth"
+      - "alt-ingress"
+    # Dry run mode - if true, only log what would be rotated
+    dryRun: false
+    # Log level for rotation operations
+    logLevel: "info"
+    # Image for certificate rotation job
+    image:
+      repository: "alpine/openssl"
+      tag: "latest"
+      pullPolicy: "IfNotPresent"
+  
+  # Certificate monitoring configuration
+  certMonitoring:
+    # Enable certificate monitoring
+    enabled: true
+    # Monitoring interval in seconds
+    interval: 300  # 5 minutes
+    # Alert threshold for certificate expiry
+    alertThreshold: "720h"  # 30 days
+    # Target namespaces for certificate monitoring
+    namespaces:
+      - "alt-production"
+      - "alt-apps"
+      - "alt-database"
+      - "alt-auth"
+      - "alt-ingress"
+    # Log level for monitoring operations
+    logLevel: "info"
+    # Log format
+    logFormat: "json"
+    # Metrics port
+    metricsPort: 8080
+    # Health check port
+    healthPort: 8081
+    # Image for certificate monitoring
+    image:
+      repository: "alpine/openssl"
+      tag: "latest"
+      pullPolicy: "IfNotPresent"
+    # Resource limits for monitoring pod
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 25m
+        memory: 32Mi
+    
+    # Specific certificates to monitor
+    certificates:
+      - name: "alt-backend-ssl-certs-prod"
+        namespace: "alt-apps"
+        threshold: "720h"
+        alertChannel: "#ops-alerts"
+        priority: "high"
+        dnsNames:
+          - "alt-backend"
+          - "alt-backend.alt-apps.svc.cluster.local"
+      - name: "alt-frontend-ssl-certs-prod"
+        namespace: "alt-apps"
+        threshold: "720h"
+        alertChannel: "#ops-alerts"
+        priority: "high"
+        dnsNames:
+          - "alt-frontend"
+          - "alt-frontend.alt-apps.svc.cluster.local"
+      - name: "postgres-ssl-certs-prod"
+        namespace: "alt-database"
+        threshold: "720h"
+        alertChannel: "#db-alerts"
+        priority: "critical"
+        dnsNames:
+          - "postgres"
+          - "postgres.alt-database.svc.cluster.local"
+      - name: "auth-service-ssl-certs-prod"
+        namespace: "alt-auth"
+        threshold: "720h"
+        alertChannel: "#auth-alerts"
+        priority: "high"
+        dnsNames:
+          - "auth-service"
+          - "auth-service.alt-auth.svc.cluster.local"
+      - name: "nginx-ssl-certs-production"
+        namespace: "alt-ingress"
+        threshold: "720h"
+        alertChannel: "#ingress-alerts"
+        priority: "critical"
+        dnsNames:
+          - "alt.production.local"
+          - "*.alt.production.local"
+    
+    # Alerting configuration
+    alerting:
+      # Slack alerting
+      slack:
+        enabled: true
+        channel: "#ops-alerts"
+        username: "cert-monitor"
+        icon: ":lock:"
+      
+      # Email alerting
+      email:
+        enabled: true
+        tls: true
+        recipients:
+          - "ops-team@alt.local"
+          - "platform-engineering@alt.local"
+  
+  # Certificate lifecycle management configuration
+  certLifecycle:
+    # Enable certificate lifecycle management
+    enabled: true
+    # Cron schedule for lifecycle management check (daily at 3 AM)
+    schedule: "0 3 * * *"
+    # Validation threshold (certificates expiring within this time will be flagged)
+    validationThreshold: "720h"  # 30 days
+    # Enable automatic repair of invalid certificates
+    autoRepair: true
+    # Dry run mode - if true, only log what would be repaired
+    dryRun: false
+    # Log level for lifecycle operations
+    logLevel: "info"
+    # Target namespaces for lifecycle management
+    namespaces:
+      - "alt-production"
+      - "alt-apps"
+      - "alt-database"
+      - "alt-auth"
+      - "alt-ingress"
+    # Image for certificate lifecycle management
+    image:
+      repository: "alpine/openssl"
+      tag: "latest"
+      pullPolicy: "IfNotPresent"
+    
+    # Certificate validation rules
+    validation:
+      # Enable certificate chain validation
+      chainValidation: true
+      # Enable key pair validation
+      keyPairValidation: true
+      # Enable DNS name validation
+      dnsValidation: true
+      # Enable certificate expiry validation
+      expiryValidation: true
+      # Enable certificate format validation
+      formatValidation: true
+    
+    # Repair policies
+    repair:
+      # Maximum number of repair attempts per certificate
+      maxRetries: 3
+      # Backoff delay between repair attempts (in seconds)
+      backoffDelay: 300
+      # Repair timeout (in seconds)
+      timeout: 600
+      # Preserve original certificate data in annotations
+      preserveOriginal: true
+    
+    # Cleanup policies
+    cleanup:
+      # Enable cleanup of expired CSRs
+      expiredCSRs: true
+      # CSR retention period (in hours)
+      csrRetentionPeriod: 24
+      # Enable cleanup of failed repair attempts
+      failedRepairs: true
+      # Failed repair retention period (in hours)
+      failedRepairRetentionPeriod: 72
+
+# Logging configuration
+logging:
+  level: "info"
+  format: "json"
+
+# Performance optimization configuration
+performance:
+  # Enable performance optimizations
+  enabled: true
+  
+  # Resource scaling
+  scaling:
+    # Enable horizontal pod autoscaling
+    hpa:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+    
+    # Enable vertical pod autoscaling
+    vpa:
+      enabled: false
+      updateMode: "Auto"
+      minAllowed:
+        cpu: 25m
+        memory: 32Mi
+      maxAllowed:
+        cpu: 1000m
+        memory: 1Gi
+  
+  # Caching configuration
+  caching:
+    # Enable in-memory caching
+    enabled: true
+    # Cache TTL in seconds
+    ttl: 300
+    # Maximum cache size
+    maxSize: 1000
+  
+  # Connection pooling
+  connections:
+    # Maximum number of concurrent connections
+    maxConcurrent: 10
+    # Connection timeout in seconds
+    timeout: 30
+    # Keep-alive timeout in seconds
+    keepAlive: 60
+  
+  # Batch processing
+  batching:
+    # Enable batch processing
+    enabled: true
+    # Batch size for CSR processing
+    batchSize: 5
+    # Batch timeout in seconds
+    batchTimeout: 10
+  
+  # Monitoring and profiling
+  profiling:
+    # Enable profiling endpoints
+    enabled: false
+    # Profiling port
+    port: 6060
+    # Enable CPU profiling
+    cpu: true
+    # Enable memory profiling
+    memory: true
+    # Enable goroutine profiling
+    goroutine: true
+
+# Test configuration
+tests:
+  # Enable tests
+  enabled: true
+  # Test timeout in seconds
+  timeout: 300
+  # Log level for tests
+  logLevel: "info"
+  # Image for integration tests
+  image:
+    repository: "alpine/openssl"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+  
+  # Performance test configuration
+  performance:
+    # Enable performance tests
+    enabled: true
+    # Number of concurrent requests
+    concurrentRequests: 5
+    # Total number of requests to generate
+    totalRequests: 50
+    # Test duration in seconds
+    duration: 300
+    # Log level for performance tests
+    logLevel: "info"
+    # Image for performance tests
+    image:
+      repository: "alpine/openssl"
+      tag: "latest"
+      pullPolicy: "IfNotPresent"
+    
+    # Performance thresholds
+    thresholds:
+      # Maximum average response time in milliseconds
+      maxAverageResponseTime: 5000
+      # Minimum success rate percentage
+      minSuccessRate: 95
+      # Minimum requests per second
+      minRequestsPerSecond: 1
+      # Maximum memory usage in MB
+      maxMemoryUsage: 256
+      # Maximum CPU usage percentage
+      maxCpuUsage: 80
+  
+  # Load test configuration
+  load:
+    # Enable load tests
+    enabled: false
+    # Number of concurrent requests for load testing
+    concurrentRequests: 20
+    # Total number of requests for load testing
+    totalRequests: 1000
+    # Test duration in seconds
+    duration: 600
+    # Ramp up time in seconds
+    rampUpTime: 60
+    # Target requests per second
+    targetRPS: 10

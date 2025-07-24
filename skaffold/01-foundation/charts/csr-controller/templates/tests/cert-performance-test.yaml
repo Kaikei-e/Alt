@@ -1,0 +1,307 @@
+{{- if .Values.tests.performance.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-performance-test
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: performance-test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "2"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "csr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: performance-test
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+      - name: cert-performance-test
+        image: {{ .Values.tests.performance.image.repository }}:{{ .Values.tests.performance.image.tag }}
+        imagePullPolicy: {{ .Values.tests.performance.image.pullPolicy }}
+        env:
+        - name: SIGNER_NAME
+          value: {{ include "csr-controller.signerName" . }}
+        - name: TEST_NAMESPACE
+          value: {{ .Release.Namespace }}
+        - name: CONCURRENT_REQUESTS
+          value: {{ .Values.tests.performance.concurrentRequests | quote }}
+        - name: TOTAL_REQUESTS
+          value: {{ .Values.tests.performance.totalRequests | quote }}
+        - name: TEST_DURATION
+          value: {{ .Values.tests.performance.duration | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.tests.performance.logLevel | quote }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Starting certificate system performance tests..."
+          echo "Concurrent requests: $CONCURRENT_REQUESTS"
+          echo "Total requests: $TOTAL_REQUESTS"
+          echo "Test duration: $TEST_DURATION seconds"
+          
+          # Performance metrics
+          START_TIME=$(date +%s)
+          SUCCESSFUL_REQUESTS=0
+          FAILED_REQUESTS=0
+          TOTAL_RESPONSE_TIME=0
+          MIN_RESPONSE_TIME=999999
+          MAX_RESPONSE_TIME=0
+          
+          # Create background job to track metrics
+          track_metrics() {
+            while true; do
+              # Get current metrics
+              if kubectl get pod -n $TEST_NAMESPACE -l app.kubernetes.io/name=csr-controller -o jsonpath='{.items[0].metadata.name}' >/dev/null 2>&1; then
+                csr_controller_pod=$(kubectl get pod -n $TEST_NAMESPACE -l app.kubernetes.io/name=csr-controller -o jsonpath='{.items[0].metadata.name}')
+                
+                # Get memory usage
+                memory_usage=$(kubectl top pod $csr_controller_pod -n $TEST_NAMESPACE --no-headers | awk '{print $3}')
+                
+                # Get CPU usage
+                cpu_usage=$(kubectl top pod $csr_controller_pod -n $TEST_NAMESPACE --no-headers | awk '{print $2}')
+                
+                echo "CSR Controller - CPU: $cpu_usage, Memory: $memory_usage"
+              fi
+              
+              # Get certificate monitor metrics
+              if kubectl get pod -n $TEST_NAMESPACE -l app.kubernetes.io/component=cert-monitor -o jsonpath='{.items[0].metadata.name}' >/dev/null 2>&1; then
+                cert_monitor_pod=$(kubectl get pod -n $TEST_NAMESPACE -l app.kubernetes.io/component=cert-monitor -o jsonpath='{.items[0].metadata.name}')
+                
+                # Get memory usage
+                memory_usage=$(kubectl top pod $cert_monitor_pod -n $TEST_NAMESPACE --no-headers | awk '{print $3}')
+                
+                # Get CPU usage
+                cpu_usage=$(kubectl top pod $cert_monitor_pod -n $TEST_NAMESPACE --no-headers | awk '{print $2}')
+                
+                echo "Cert Monitor - CPU: $cpu_usage, Memory: $memory_usage"
+              fi
+              
+              sleep 10
+            done
+          }
+          
+          # Start metrics tracking in background
+          track_metrics &
+          METRICS_PID=$!
+          
+          # Function to generate CSR
+          generate_csr() {
+            local request_id=$1
+            local start_time=$(date +%s%3N)
+            
+            # Generate private key
+            openssl genrsa -out /tmp/perf_test_${request_id}.key 2048 2>/dev/null
+            
+            # Create CSR configuration
+            cat > /tmp/perf_test_${request_id}.conf <<EOF
+          [req]
+          distinguished_name = req_distinguished_name
+          req_extensions = v3_req
+          prompt = no
+          
+          [req_distinguished_name]
+          CN = perf-test-${request_id}
+          O = Alt RSS Reader
+          
+          [v3_req]
+          keyUsage = keyEncipherment, dataEncipherment
+          extendedKeyUsage = serverAuth
+          subjectAltName = @alt_names
+          
+          [alt_names]
+          DNS.1 = perf-test-${request_id}
+          DNS.2 = perf-test-${request_id}.test.svc.cluster.local
+          EOF
+            
+            # Generate CSR
+            openssl req -new -key /tmp/perf_test_${request_id}.key -out /tmp/perf_test_${request_id}.csr -config /tmp/perf_test_${request_id}.conf 2>/dev/null
+            
+            # Create K8s CSR
+            csr_name="perf-test-${request_id}-$(date +%s)"
+            cat > /tmp/k8s_csr_${request_id}.yaml <<EOF
+          apiVersion: certificates.k8s.io/v1
+          kind: CertificateSigningRequest
+          metadata:
+            name: $csr_name
+            labels:
+              app.kubernetes.io/managed-by: performance-test
+              test-request-id: "${request_id}"
+          spec:
+            request: $(cat /tmp/perf_test_${request_id}.csr | base64 | tr -d '\n')
+            signerName: $SIGNER_NAME
+            usages:
+            - digital signature
+            - key encipherment
+            - server auth
+          EOF
+            
+            # Submit CSR
+            if kubectl apply -f /tmp/k8s_csr_${request_id}.yaml >/dev/null 2>&1; then
+              # Wait for approval
+              for i in {1..60}; do
+                if kubectl get csr $csr_name -o jsonpath='{.status.certificate}' 2>/dev/null | grep -q "LS0t"; then
+                  local end_time=$(date +%s%3N)
+                  local response_time=$((end_time - start_time))
+                  
+                  # Update metrics
+                  SUCCESSFUL_REQUESTS=$((SUCCESSFUL_REQUESTS + 1))
+                  TOTAL_RESPONSE_TIME=$((TOTAL_RESPONSE_TIME + response_time))
+                  
+                  if [ $response_time -lt $MIN_RESPONSE_TIME ]; then
+                    MIN_RESPONSE_TIME=$response_time
+                  fi
+                  
+                  if [ $response_time -gt $MAX_RESPONSE_TIME ]; then
+                    MAX_RESPONSE_TIME=$response_time
+                  fi
+                  
+                  # Clean up
+                  kubectl delete csr $csr_name >/dev/null 2>&1
+                  rm -f /tmp/perf_test_${request_id}.* /tmp/k8s_csr_${request_id}.yaml
+                  
+                  echo "Request $request_id completed in ${response_time}ms"
+                  return 0
+                fi
+                sleep 1
+              done
+              
+              # Timeout
+              FAILED_REQUESTS=$((FAILED_REQUESTS + 1))
+              kubectl delete csr $csr_name >/dev/null 2>&1
+              rm -f /tmp/perf_test_${request_id}.* /tmp/k8s_csr_${request_id}.yaml
+              echo "Request $request_id timed out"
+              return 1
+            else
+              FAILED_REQUESTS=$((FAILED_REQUESTS + 1))
+              rm -f /tmp/perf_test_${request_id}.* /tmp/k8s_csr_${request_id}.yaml
+              echo "Request $request_id failed to submit"
+              return 1
+            fi
+          }
+          
+          # Function to run concurrent requests
+          run_concurrent_batch() {
+            local batch_size=$1
+            local batch_start=$2
+            
+            for i in $(seq $batch_start $((batch_start + batch_size - 1))); do
+              generate_csr $i &
+            done
+            
+            # Wait for all background jobs to complete
+            wait
+          }
+          
+          # Run performance test
+          echo "Starting performance test..."
+          
+          # Calculate batches
+          batches=$((TOTAL_REQUESTS / CONCURRENT_REQUESTS))
+          remaining=$((TOTAL_REQUESTS % CONCURRENT_REQUESTS))
+          
+          current_request=1
+          
+          # Run batches
+          for batch in $(seq 1 $batches); do
+            echo "Running batch $batch of $batches..."
+            run_concurrent_batch $CONCURRENT_REQUESTS $current_request
+            current_request=$((current_request + CONCURRENT_REQUESTS))
+            
+            # Brief pause between batches
+            sleep 2
+          done
+          
+          # Run remaining requests
+          if [ $remaining -gt 0 ]; then
+            echo "Running remaining $remaining requests..."
+            run_concurrent_batch $remaining $current_request
+          fi
+          
+          # Stop metrics tracking
+          kill $METRICS_PID 2>/dev/null
+          
+          # Calculate final metrics
+          END_TIME=$(date +%s)
+          TOTAL_TIME=$((END_TIME - START_TIME))
+          
+          if [ $SUCCESSFUL_REQUESTS -gt 0 ]; then
+            AVERAGE_RESPONSE_TIME=$((TOTAL_RESPONSE_TIME / SUCCESSFUL_REQUESTS))
+          else
+            AVERAGE_RESPONSE_TIME=0
+          fi
+          
+          REQUESTS_PER_SECOND=$((TOTAL_REQUESTS / TOTAL_TIME))
+          SUCCESS_RATE=$((SUCCESSFUL_REQUESTS * 100 / TOTAL_REQUESTS))
+          
+          # Report results
+          echo ""
+          echo "=============================================="
+          echo "Performance Test Results:"
+          echo "=============================================="
+          echo "Total requests: $TOTAL_REQUESTS"
+          echo "Successful requests: $SUCCESSFUL_REQUESTS"
+          echo "Failed requests: $FAILED_REQUESTS"
+          echo "Success rate: $SUCCESS_RATE%"
+          echo "Total time: ${TOTAL_TIME}s"
+          echo "Requests per second: $REQUESTS_PER_SECOND"
+          echo "Average response time: ${AVERAGE_RESPONSE_TIME}ms"
+          echo "Min response time: ${MIN_RESPONSE_TIME}ms"
+          echo "Max response time: ${MAX_RESPONSE_TIME}ms"
+          echo "=============================================="
+          
+          # Performance thresholds
+          MAX_AVERAGE_RESPONSE_TIME=5000  # 5 seconds
+          MIN_SUCCESS_RATE=95             # 95%
+          MIN_REQUESTS_PER_SECOND=1       # 1 request per second
+          
+          # Check performance criteria
+          if [ $AVERAGE_RESPONSE_TIME -gt $MAX_AVERAGE_RESPONSE_TIME ]; then
+            echo "❌ PERFORMANCE ISSUE: Average response time too high ($AVERAGE_RESPONSE_TIME ms > $MAX_AVERAGE_RESPONSE_TIME ms)"
+            exit 1
+          fi
+          
+          if [ $SUCCESS_RATE -lt $MIN_SUCCESS_RATE ]; then
+            echo "❌ PERFORMANCE ISSUE: Success rate too low ($SUCCESS_RATE% < $MIN_SUCCESS_RATE%)"
+            exit 1
+          fi
+          
+          if [ $REQUESTS_PER_SECOND -lt $MIN_REQUESTS_PER_SECOND ]; then
+            echo "❌ PERFORMANCE ISSUE: Requests per second too low ($REQUESTS_PER_SECOND < $MIN_REQUESTS_PER_SECOND)"
+            exit 1
+          fi
+          
+          echo "✅ All performance criteria met!"
+          exit 0
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65534
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+{{- end }}

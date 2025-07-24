@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "auth-postgres.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "auth-postgres.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  postgresql.conf: |
+    # PostgreSQL Configuration for Authentication Service
+    # Connection settings
+    listen_addresses = '*'
+    port = 5432
+    max_connections = {{ .Values.postgres.maxConnections }}
+    
+    # Memory settings (optimized for auth service)
+    shared_buffers = {{ .Values.postgres.sharedBuffers }}
+    effective_cache_size = {{ .Values.postgres.effectiveCacheSize }}
+    work_mem = {{ .Values.postgres.workMem }}
+    maintenance_work_mem = {{ .Values.postgres.maintenanceWorkMem }}
+    
+    # WAL settings
+    wal_level = replica
+    max_wal_senders = 2
+    max_replication_slots = 2
+    wal_keep_size = {{ .Values.postgres.walKeepSize }}
+    
+    # Checkpoint settings
+    checkpoint_completion_target = 0.9
+    checkpoint_timeout = 15min
+    
+    # Logging settings
+    log_destination = 'stderr'
+    logging_collector = {{ .Values.postgres.loggingCollector }}
+    log_directory = '/var/log/postgresql'
+    log_filename = 'auth-postgresql-%Y-%m-%d_%H%M%S.log'
+    log_statement = {{ .Values.postgres.logStatement | quote }}
+    log_min_duration_statement = {{ .Values.postgres.logMinDurationStatement }}
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h auth-db: '
+    
+    # SSL settings
+    {{- if .Values.ssl.enabled }}
+    ssl = on
+    ssl_cert_file = '/ssl/server.crt'
+    ssl_key_file = '/ssl/server.key'
+    ssl_ca_file = '/ssl/ca.crt'
+    ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
+    ssl_prefer_server_ciphers = on
+    {{- else }}
+    ssl = off
+    {{- end }}
+    
+    # Performance tuning (auth service optimized)
+    random_page_cost = {{ .Values.postgres.randomPageCost }}
+    effective_io_concurrency = {{ .Values.postgres.effectiveIoConcurrency }}
+    
+    # Autovacuum settings (more frequent for auth tables)
+    autovacuum = on
+    autovacuum_max_workers = {{ .Values.postgres.autovacuum.maxWorkers }}
+    autovacuum_naptime = {{ .Values.postgres.autovacuum.naptime }}
+    autovacuum_vacuum_threshold = 50
+    autovacuum_analyze_threshold = 50
+    
+    # Auth-specific optimizations
+    shared_preload_libraries = 'pg_stat_statements'
+    pg_stat_statements.max = 10000
+    pg_stat_statements.track = all
+    
+    # Custom settings
+    {{- with .Values.postgres.customConfig }}
+    {{- . | nindent 4 }}
+    {{- end }}
+
+  {{- if .Values.pgHba.enabled }}
+  pg_hba.conf: |
+    # PostgreSQL Client Authentication Configuration File for Auth Service
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    
+    # Local connections
+    local   all             all                                     {{ .Values.pgHba.localMethod }}
+    
+    # IPv4 local connections
+    host    all             all             127.0.0.1/32            {{ .Values.pgHba.hostMethod }}
+    
+    # IPv6 local connections
+    host    all             all             ::1/128                 {{ .Values.pgHba.hostMethod }}
+    
+    # Kubernetes cluster connections
+    {{- range .Values.pgHba.allowedNetworks }}
+    host    all             all             {{ .network }}          {{ .method }}
+    {{- end }}
+    
+    # Auth service specific connections
+    host    {{ .Values.auth.database }}   {{ .Values.auth.username }}   10.0.0.0/8    {{ .Values.pgHba.hostMethod }}
+    host    {{ .Values.auth.database }}   {{ .Values.auth.username }}   172.16.0.0/12 {{ .Values.pgHba.hostMethod }}
+    host    {{ .Values.auth.database }}   {{ .Values.auth.username }}   192.168.0.0/16 {{ .Values.pgHba.hostMethod }}
+    
+    # SSL connections
+    {{- if .Values.ssl.enabled }}
+    hostssl {{ .Values.auth.database }}   {{ .Values.auth.username }}   0.0.0.0/0     {{ .Values.pgHba.sslMethod }}
+    hostssl all             all             0.0.0.0/0               {{ .Values.pgHba.sslMethod }}
+    {{- end }}
+    
+    # Custom HBA rules
+    {{- with .Values.pgHba.customRules }}
+    {{- . | nindent 4 }}
+    {{- end }}
+  {{- end }}

@@ -1,0 +1,363 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-service-mesh-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: service-mesh-integration
+data:
+  istio-config.yaml: |
+    # Istio Service Mesh Configuration
+    istio:
+      enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.enabled | default true }}
+      
+      # Control Plane Configuration
+      controlPlane:
+        namespace: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.namespace | default "istio-system" }}
+        revision: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.revision | default "default" }}
+        components:
+          pilot:
+            enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.pilot.enabled | default true }}
+            resources:
+              requests:
+                cpu: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.pilot.resources.requests.cpu | default "100m" }}
+                memory: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.pilot.resources.requests.memory | default "128Mi" }}
+              limits:
+                cpu: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.pilot.resources.limits.cpu | default "500m" }}
+                memory: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.pilot.resources.limits.memory | default "512Mi" }}
+          proxy:
+            enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.proxy.enabled | default true }}
+            resources:
+              requests:
+                cpu: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.proxy.resources.requests.cpu | default "100m" }}
+                memory: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.proxy.resources.requests.memory | default "128Mi" }}
+              limits:
+                cpu: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.proxy.resources.limits.cpu | default "200m" }}
+                memory: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.proxy.resources.limits.memory | default "256Mi" }}
+
+      # Gateway Configuration
+      gateways:
+        enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.enabled | default true }}
+        ingress:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.enabled | default true }}
+          loadBalancerType: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.loadBalancerType | default "LoadBalancer" }}
+          ports: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.ports | default (list (dict "port" 80 "name" "http") (dict "port" 443 "name" "https")) | toYaml | nindent 12 }}
+        egress:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.egress.enabled | default true }}
+          
+      # Security Configuration
+      security:
+        mtls:
+          mode: {{ .Values.cloudNativeIntegration.serviceMesh.istio.security.mtls.mode | default "STRICT" }}
+          autoMtls: {{ .Values.cloudNativeIntegration.serviceMesh.istio.security.mtls.autoMtls | default true }}
+        peerAuthentication:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.security.peerAuthentication.enabled | default true }}
+          mode: {{ .Values.cloudNativeIntegration.serviceMesh.istio.security.peerAuthentication.mode | default "STRICT" }}
+        authorizationPolicy:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.security.authorizationPolicy.enabled | default true }}
+          defaultDeny: {{ .Values.cloudNativeIntegration.serviceMesh.istio.security.authorizationPolicy.defaultDeny | default true }}
+
+      # Traffic Management
+      trafficManagement:
+        virtualServices:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.trafficManagement.virtualServices.enabled | default true }}
+          retries:
+            attempts: {{ .Values.cloudNativeIntegration.serviceMesh.istio.trafficManagement.virtualServices.retries.attempts | default 3 }}
+            perTryTimeout: {{ .Values.cloudNativeIntegration.serviceMesh.istio.trafficManagement.virtualServices.retries.perTryTimeout | default "10s" }}
+          timeout: {{ .Values.cloudNativeIntegration.serviceMesh.istio.trafficManagement.virtualServices.timeout | default "30s" }}
+        destinationRules:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.trafficManagement.destinationRules.enabled | default true }}
+          circuitBreaker:
+            consecutiveGatewayErrors: {{ .Values.cloudNativeIntegration.serviceMesh.istio.trafficManagement.destinationRules.circuitBreaker.consecutiveGatewayErrors | default 5 }}
+            interval: {{ .Values.cloudNativeIntegration.serviceMesh.istio.trafficManagement.destinationRules.circuitBreaker.interval | default "30s" }}
+            baseEjectionTime: {{ .Values.cloudNativeIntegration.serviceMesh.istio.trafficManagement.destinationRules.circuitBreaker.baseEjectionTime | default "30s" }}
+            maxEjectionPercent: {{ .Values.cloudNativeIntegration.serviceMesh.istio.trafficManagement.destinationRules.circuitBreaker.maxEjectionPercent | default 50 }}
+
+      # Observability
+      observability:
+        enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.observability.enabled | default true }}
+        telemetry:
+          metrics:
+            enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.observability.telemetry.metrics.enabled | default true }}
+            providers: {{ .Values.cloudNativeIntegration.serviceMesh.istio.observability.telemetry.metrics.providers | default (list "prometheus") | toYaml | nindent 14 }}
+          tracing:
+            enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.observability.telemetry.tracing.enabled | default true }}
+            providers: {{ .Values.cloudNativeIntegration.serviceMesh.istio.observability.telemetry.tracing.providers | default (list "jaeger") | toYaml | nindent 14 }}
+            sampling: {{ .Values.cloudNativeIntegration.serviceMesh.istio.observability.telemetry.tracing.sampling | default 1.0 }}
+          accessLogs:
+            enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.observability.telemetry.accessLogs.enabled | default true }}
+            format: {{ .Values.cloudNativeIntegration.serviceMesh.istio.observability.telemetry.accessLogs.format | default "json" }}
+
+  linkerd-config.yaml: |
+    # Linkerd Service Mesh Configuration
+    linkerd:
+      enabled: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.enabled | default false }}
+      
+      # Control Plane Configuration
+      controlPlane:
+        namespace: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.namespace | default "linkerd" }}
+        highAvailability: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.highAvailability | default true }}
+        components:
+          controller:
+            resources:
+              requests:
+                cpu: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.components.controller.resources.requests.cpu | default "100m" }}
+                memory: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.components.controller.resources.requests.memory | default "50Mi" }}
+              limits:
+                cpu: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.components.controller.resources.limits.cpu | default "1" }}
+                memory: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.components.controller.resources.limits.memory | default "250Mi" }}
+          proxy:
+            resources:
+              requests:
+                cpu: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.components.proxy.resources.requests.cpu | default "100m" }}
+                memory: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.components.proxy.resources.requests.memory | default "20Mi" }}
+              limits:
+                cpu: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.components.proxy.resources.limits.cpu | default "1" }}
+                memory: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.components.proxy.resources.limits.memory | default "250Mi" }}
+
+      # Security Configuration
+      security:
+        mtls:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.security.mtls.enabled | default true }}
+          trustDomain: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.security.mtls.trustDomain | default "cluster.local" }}
+        
+      # Traffic Management
+      trafficManagement:
+        retries:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.trafficManagement.retries.enabled | default true }}
+          budget: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.trafficManagement.retries.budget | default "20%" }}
+        timeouts:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.trafficManagement.timeouts.enabled | default true }}
+          request: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.trafficManagement.timeouts.request | default "10s" }}
+          response: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.trafficManagement.timeouts.response | default "10s" }}
+
+      # Observability
+      observability:
+        enabled: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.observability.enabled | default true }}
+        viz:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.observability.viz.enabled | default true }}
+          dashboard: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.observability.viz.dashboard | default true }}
+        jaeger:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.observability.jaeger.enabled | default false }}
+
+  consul-connect-config.yaml: |
+    # Consul Connect Service Mesh Configuration
+    consulConnect:
+      enabled: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.enabled | default false }}
+      
+      # Consul Configuration
+      consul:
+        datacenter: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.consul.datacenter | default "dc1" }}
+        domain: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.consul.domain | default "consul" }}
+        server:
+          replicas: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.consul.server.replicas | default 3 }}
+          bootstrapExpect: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.consul.server.bootstrapExpect | default 3 }}
+          storage: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.consul.server.storage | default "10Gi" }}
+          
+      # Connect Configuration
+      connect:
+        enabled: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.connect.enabled | default true }}
+        injector:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.connect.injector.enabled | default true }}
+        meshGateway:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.connect.meshGateway.enabled | default true }}
+          replicas: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.connect.meshGateway.replicas | default 2 }}
+
+      # Security Configuration
+      security:
+        acl:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.security.acl.enabled | default true }}
+          manageSystemACLs: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.security.acl.manageSystemACLs | default true }}
+        tls:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.security.tls.enabled | default true }}
+          verify: {{ .Values.cloudNativeIntegration.serviceMesh.consulConnect.security.tls.verify | default true }}
+
+  multi-mesh-config.yaml: |
+    # Multi-Mesh Integration Configuration
+    multiMesh:
+      enabled: {{ .Values.cloudNativeIntegration.serviceMesh.multiMesh.enabled | default false }}
+      
+      # Service Mesh Interoperability
+      interoperability:
+        enabled: {{ .Values.cloudNativeIntegration.serviceMesh.multiMesh.interoperability.enabled | default false }}
+        protocols:
+          grpc: {{ .Values.cloudNativeIntegration.serviceMesh.multiMesh.interoperability.protocols.grpc | default true }}
+          http: {{ .Values.cloudNativeIntegration.serviceMesh.multiMesh.interoperability.protocols.http | default true }}
+          tcp: {{ .Values.cloudNativeIntegration.serviceMesh.multiMesh.interoperability.protocols.tcp | default true }}
+        
+      # Federation Configuration
+      federation:
+        enabled: {{ .Values.cloudNativeIntegration.serviceMesh.multiMesh.federation.enabled | default false }}
+        trustDomains: {{ .Values.cloudNativeIntegration.serviceMesh.multiMesh.federation.trustDomains | default (list) | toYaml | nindent 10 }}
+        crossMeshCommunication:
+          enabled: {{ .Values.cloudNativeIntegration.serviceMesh.multiMesh.federation.crossMeshCommunication.enabled | default false }}
+          encryption: {{ .Values.cloudNativeIntegration.serviceMesh.multiMesh.federation.crossMeshCommunication.encryption | default "mtls" }}
+
+---
+{{- if .Values.cloudNativeIntegration.serviceMesh.istio.enabled }}
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-istio-control-plane
+  namespace: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.namespace | default "istio-system" }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: istio-control-plane
+spec:
+  revision: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.revision | default "default" }}
+  values:
+    global:
+      meshID: {{ .Values.cloudNativeIntegration.serviceMesh.istio.global.meshID | default "mesh1" }}
+      network: {{ .Values.cloudNativeIntegration.serviceMesh.istio.global.network | default "network1" }}
+      trustDomain: {{ .Values.cloudNativeIntegration.serviceMesh.istio.global.trustDomain | default "cluster.local" }}
+      defaultNodeSelector:
+        {{- toYaml .Values.cloudNativeIntegration.serviceMesh.istio.global.defaultNodeSelector | nindent 8 }}
+    pilot:
+      env:
+        EXTERNAL_ISTIOD: {{ .Values.cloudNativeIntegration.serviceMesh.istio.pilot.env.externalIstiod | default false }}
+        PILOT_ENABLE_CROSS_CLUSTER_WORKLOAD_ENTRY: {{ .Values.cloudNativeIntegration.serviceMesh.istio.pilot.env.enableCrossClusterWorkloadEntry | default true }}
+        PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION: {{ .Values.cloudNativeIntegration.serviceMesh.istio.pilot.env.enableWorkloadEntryAutoregistration | default true }}
+      resources:
+        {{- toYaml .Values.cloudNativeIntegration.serviceMesh.istio.pilot.resources | nindent 8 }}
+  components:
+    pilot:
+      k8s:
+        resources:
+          {{- toYaml .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.pilot.resources | nindent 10 }}
+        hpaSpec:
+          minReplicas: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.pilot.hpa.minReplicas | default 2 }}
+          maxReplicas: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.pilot.hpa.maxReplicas | default 5 }}
+          targetCPUUtilizationPercentage: {{ .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.pilot.hpa.targetCPUUtilizationPercentage | default 80 }}
+    proxy:
+      k8s:
+        resources:
+          {{- toYaml .Values.cloudNativeIntegration.serviceMesh.istio.controlPlane.components.proxy.resources | nindent 10 }}
+    ingressGateways:
+    - name: istio-ingressgateway
+      enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.enabled | default true }}
+      k8s:
+        service:
+          type: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.loadBalancerType | default "LoadBalancer" }}
+          ports:
+          {{- toYaml .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.ports | nindent 10 }}
+        resources:
+          {{- toYaml .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.resources | nindent 10 }}
+        hpaSpec:
+          minReplicas: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.hpa.minReplicas | default 2 }}
+          maxReplicas: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.hpa.maxReplicas | default 5 }}
+          targetCPUUtilizationPercentage: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.ingress.hpa.targetCPUUtilizationPercentage | default 80 }}
+    egressGateways:
+    - name: istio-egressgateway
+      enabled: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateways.egress.enabled | default true }}
+      k8s:
+        resources:
+          {{- toYaml .Values.cloudNativeIntegration.serviceMesh.istio.gateways.egress.resources | nindent 10 }}
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: istio-gateway
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateway.hosts | default "*" }}
+    tls:
+      httpsRedirect: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateway.httpsRedirect | default true }}
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateway.tls.mode | default "SIMPLE" }}
+      credentialName: {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateway.tls.credentialName | default "csr-controller-tls" }}
+    hosts:
+    - {{ .Values.cloudNativeIntegration.serviceMesh.istio.gateway.hosts | default "*" }}
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-default-mtls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: peer-authentication
+spec:
+  mtls:
+    mode: {{ .Values.cloudNativeIntegration.serviceMesh.istio.security.peerAuthentication.mode | default "STRICT" }}
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-default-deny
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorization-policy
+spec: {}
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-allow-all
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authorization-policy
+spec:
+  rules:
+  - from:
+    - source:
+        principals: {{ .Values.cloudNativeIntegration.serviceMesh.istio.authorizationPolicy.allowedPrincipals | default (list "cluster.local/ns/istio-system/sa/istio-proxy") | toYaml | nindent 8 }}
+    to:
+    - operation:
+        methods: {{ .Values.cloudNativeIntegration.serviceMesh.istio.authorizationPolicy.allowedMethods | default (list "GET" "POST" "PUT" "DELETE") | toYaml | nindent 8 }}
+{{- end }}
+
+---
+{{- if .Values.cloudNativeIntegration.serviceMesh.linkerd.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.namespace | default "linkerd" }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: linkerd-namespace
+    linkerd.io/control-plane-ns: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.controlPlane.namespace | default "linkerd" }}
+    config.linkerd.io/admission-webhooks: disabled
+  annotations:
+    linkerd.io/inject: disabled
+
+---
+apiVersion: linkerd.io/v1alpha2
+kind: TrafficSplit
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-traffic-split
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: linkerd-traffic-split
+spec:
+  service: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+  backends:
+  - service: {{ include "csr-controller.fullname" . }}-cloud-native-integration
+    weight: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.trafficSplit.backends.primary.weight | default 100 }}
+  {{- if .Values.cloudNativeIntegration.serviceMesh.linkerd.trafficSplit.backends.canary.enabled }}
+  - service: {{ include "csr-controller.fullname" . }}-cloud-native-integration-canary
+    weight: {{ .Values.cloudNativeIntegration.serviceMesh.linkerd.trafficSplit.backends.canary.weight | default 0 }}
+  {{- end }}
+{{- end }}

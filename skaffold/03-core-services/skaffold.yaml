@@ -1,0 +1,188 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: alt-core-services
+profiles:
+  - name: dev
+    build:
+      artifacts:
+        - image: alt-backend
+          context: ../../alt-backend
+          docker:
+            dockerfile: Dockerfile.backend
+        - image: alt-migrate
+          context: ../../migrate
+          docker:
+            dockerfile: Dockerfile.migrate
+    manifests:
+      kustomize:
+        paths:
+          - ../../auth-service/deployments/k8s/base
+    deploy:
+      helm:
+        releases:
+          - name: migrate
+            chartPath: charts/migrate
+            valuesFiles:
+              - charts/migrate/values.yaml
+            version: 0.1.0
+          - name: kratos
+            chartPath: charts/kratos
+            valuesFiles:
+              - charts/kratos/values-ssl.yaml
+              - charts/kratos/values.yaml
+            version: 0.1.0
+          - name: auth-service
+            chartPath: charts/auth-service
+            valuesFiles:
+              - charts/auth-service/values-development.yaml
+              - charts/auth-service/values-ssl.yaml
+              - charts/auth-service/values.yaml
+            version: 0.1.0
+          - name: alt-backend
+            chartPath: charts/alt-backend
+            valuesFiles:
+              - charts/alt-backend/values-development.yaml
+              - charts/alt-backend/values-ssl.yaml
+              - charts/alt-backend/values.yaml
+            version: 0.1.0
+  - name: staging
+    build:
+      artifacts:
+        - image: alt-backend
+          context: ../../alt-backend
+          docker:
+            dockerfile: Dockerfile.backend
+        - image: alt-migrate
+          context: ../../migrate
+          docker:
+            dockerfile: Dockerfile.migrate
+    manifests:
+      kustomize:
+        paths:
+          - ../../auth-service/deployments/k8s/base
+    deploy:
+      helm:
+        releases:
+          - name: migrate
+            chartPath: charts/migrate
+            valuesFiles:
+              - charts/migrate/values.yaml
+            version: 0.1.0
+          - name: kratos
+            chartPath: charts/kratos
+            valuesFiles:
+              - charts/kratos/values-ssl.yaml
+              - charts/kratos/values.yaml
+            version: 0.1.0
+          - name: auth-service
+            chartPath: charts/auth-service
+            valuesFiles:
+              - charts/auth-service/values-staging.yaml
+              - charts/auth-service/values-ssl.yaml
+              - charts/auth-service/values.yaml
+            version: 0.1.0
+          - name: alt-backend
+            chartPath: charts/alt-backend
+            valuesFiles:
+              - charts/alt-backend/values-staging.yaml
+              - charts/alt-backend/values-ssl.yaml
+              - charts/alt-backend/values.yaml
+            version: 0.1.0
+  - name: prod
+    build:
+      artifacts:
+        - image: alt-backend
+          context: ../../alt-backend
+          docker:
+            dockerfile: Dockerfile.backend
+        - image: alt-migrate
+          context: ../../migrate
+          docker:
+            dockerfile: Dockerfile.migrate
+    manifests:
+      kustomize:
+        paths:
+          - ../../auth-service/deployments/k8s/base
+    deploy:
+      helm:
+        releases:
+          - name: migrate
+            chartPath: charts/migrate
+            namespace: alt-database
+            createNamespace: true
+            setValues:
+              namespaceLabels.name: "alt-database"
+            valuesFiles:
+              - charts/migrate/values-production.yaml
+            version: 0.1.0
+          - name: kratos
+            chartPath: charts/kratos
+            valuesFiles:
+              - charts/kratos/values-production.yaml
+              - charts/kratos/values-ssl.yaml
+              - charts/kratos/values.yaml
+            version: 0.1.0
+          - name: auth-service
+            chartPath: charts/auth-service
+            valuesFiles:
+              - charts/auth-service/values-production.yaml
+              - charts/auth-service/values-ssl.yaml
+              - charts/auth-service/values.yaml
+            version: 0.1.0
+          - name: alt-backend
+            chartPath: charts/alt-backend
+            valuesFiles:
+              - charts/alt-backend/values-production.yaml
+              - charts/alt-backend/values-ssl.yaml
+              - charts/alt-backend/values.yaml
+            version: 0.1.0
+build:
+  artifacts:
+    - image: alt-backend
+      context: ../../alt-backend
+      docker:
+        dockerfile: Dockerfile.backend
+    - image: alt-migrate
+      context: ../../migrate
+      docker:
+        dockerfile: Dockerfile.migrate
+manifests:
+  kustomize:
+    paths:
+      - auth-service/deployments/k8s/base
+deploy:
+  helm:
+    releases:
+      - name: migrate
+        chartPath: charts/migrate
+        namespace: alt-database
+        createNamespace: true
+        valuesFiles:
+          - charts/migrate/values-production.yaml
+        version: 0.1.0
+      - name: kratos
+        chartPath: charts/kratos
+        valuesFiles:
+          - charts/kratos/values-production.yaml
+          - charts/kratos/values-ssl.yaml
+          - charts/kratos/values.yaml
+        version: 0.1.0
+      - name: auth-service
+        chartPath: charts/auth-service
+        valuesFiles:
+          - charts/auth-service/values-development.yaml
+          - charts/auth-service/values-production.yaml
+          - charts/auth-service/values-ssl.yaml
+          - charts/auth-service/values-staging.yaml
+          - charts/auth-service/values.yaml
+        version: 0.1.0
+      - name: alt-backend
+        chartPath: charts/alt-backend
+        valuesFiles:
+          - charts/alt-backend/values-development.yaml
+          - charts/alt-backend/values-production.yaml
+          - charts/alt-backend/values-ssl.yaml
+          - charts/alt-backend/values-staging.yaml
+          - charts/alt-backend/values.yaml
+        version: 0.1.0

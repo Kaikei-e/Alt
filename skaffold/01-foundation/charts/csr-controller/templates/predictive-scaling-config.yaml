@@ -1,0 +1,700 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-predictive-scaling-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: predictive-scaling
+data:
+  predictive-scaling.yaml: |
+    # Predictive Scaling Configuration
+    version: "1.0"
+    
+    # Global Configuration
+    global:
+      organization: {{ .Values.predictiveScaling.organization | default "Alt RSS Reader" | quote }}
+      environment: {{ .Values.predictiveScaling.environment | default "production" | quote }}
+      region: {{ .Values.predictiveScaling.region | default "us-west-2" | quote }}
+      
+    # Demand Forecasting Configuration
+    demand_forecasting:
+      enabled: {{ .Values.predictiveScaling.demandForecasting.enabled | default true }}
+      
+      # Forecasting Models
+      models:
+        # Time Series Models
+        - name: "lstm_forecaster"
+          type: "lstm"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.models.lstm.enabled | default true }}
+          config:
+            sequence_length: {{ .Values.predictiveScaling.demandForecasting.models.lstm.sequenceLength | default 72 }}
+            hidden_units: {{ .Values.predictiveScaling.demandForecasting.models.lstm.hiddenUnits | default 128 }}
+            dropout_rate: {{ .Values.predictiveScaling.demandForecasting.models.lstm.dropoutRate | default 0.2 }}
+            learning_rate: {{ .Values.predictiveScaling.demandForecasting.models.lstm.learningRate | default 0.001 }}
+            epochs: {{ .Values.predictiveScaling.demandForecasting.models.lstm.epochs | default 100 }}
+            batch_size: {{ .Values.predictiveScaling.demandForecasting.models.lstm.batchSize | default 32 }}
+          
+        - name: "arima_forecaster"
+          type: "arima"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.models.arima.enabled | default true }}
+          config:
+            p: {{ .Values.predictiveScaling.demandForecasting.models.arima.p | default 2 }}
+            d: {{ .Values.predictiveScaling.demandForecasting.models.arima.d | default 1 }}
+            q: {{ .Values.predictiveScaling.demandForecasting.models.arima.q | default 2 }}
+            seasonal_p: {{ .Values.predictiveScaling.demandForecasting.models.arima.seasonalP | default 1 }}
+            seasonal_d: {{ .Values.predictiveScaling.demandForecasting.models.arima.seasonalD | default 1 }}
+            seasonal_q: {{ .Values.predictiveScaling.demandForecasting.models.arima.seasonalQ | default 1 }}
+            seasonal_periods: {{ .Values.predictiveScaling.demandForecasting.models.arima.seasonalPeriods | default 24 }}
+          
+        - name: "prophet_forecaster"
+          type: "prophet"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.models.prophet.enabled | default true }}
+          config:
+            changepoint_prior_scale: {{ .Values.predictiveScaling.demandForecasting.models.prophet.changepointPriorScale | default 0.05 }}
+            seasonality_prior_scale: {{ .Values.predictiveScaling.demandForecasting.models.prophet.seasonalityPriorScale | default 10.0 }}
+            holidays_prior_scale: {{ .Values.predictiveScaling.demandForecasting.models.prophet.holidaysPriorScale | default 10.0 }}
+            seasonality_mode: {{ .Values.predictiveScaling.demandForecasting.models.prophet.seasonalityMode | default "additive" | quote }}
+            weekly_seasonality: {{ .Values.predictiveScaling.demandForecasting.models.prophet.weeklySeasonality | default true }}
+            daily_seasonality: {{ .Values.predictiveScaling.demandForecasting.models.prophet.dailySeasonality | default true }}
+            yearly_seasonality: {{ .Values.predictiveScaling.demandForecasting.models.prophet.yearlySeasonality | default false }}
+        
+        # Ensemble Models
+        - name: "ensemble_forecaster"
+          type: "ensemble"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.models.ensemble.enabled | default true }}
+          config:
+            base_models:
+              - "lstm_forecaster"
+              - "arima_forecaster"
+              - "prophet_forecaster"
+            aggregation_method: {{ .Values.predictiveScaling.demandForecasting.models.ensemble.aggregationMethod | default "weighted_average" | quote }}
+            weights:
+              lstm_forecaster: {{ .Values.predictiveScaling.demandForecasting.models.ensemble.weights.lstm | default 0.5 }}
+              arima_forecaster: {{ .Values.predictiveScaling.demandForecasting.models.ensemble.weights.arima | default 0.3 }}
+              prophet_forecaster: {{ .Values.predictiveScaling.demandForecasting.models.ensemble.weights.prophet | default 0.2 }}
+      
+      # Forecasting Metrics
+      metrics:
+        # Resource Metrics
+        - name: "cpu_utilization"
+          type: "resource"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.metrics.cpuUtilization.enabled | default true }}
+          source: "prometheus"
+          query: "avg(rate(container_cpu_usage_seconds_total[5m])) by (pod)"
+          window: {{ .Values.predictiveScaling.demandForecasting.metrics.cpuUtilization.window | default "1h" | quote }}
+          
+        - name: "memory_utilization"
+          type: "resource"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.metrics.memoryUtilization.enabled | default true }}
+          source: "prometheus"
+          query: "avg(container_memory_usage_bytes / container_spec_memory_limit_bytes) by (pod)"
+          window: {{ .Values.predictiveScaling.demandForecasting.metrics.memoryUtilization.window | default "1h" | quote }}
+          
+        - name: "network_io"
+          type: "resource"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.metrics.networkIO.enabled | default true }}
+          source: "prometheus"
+          query: "avg(rate(container_network_receive_bytes_total[5m]) + rate(container_network_transmit_bytes_total[5m])) by (pod)"
+          window: {{ .Values.predictiveScaling.demandForecasting.metrics.networkIO.window | default "1h" | quote }}
+          
+        # Application Metrics
+        - name: "request_rate"
+          type: "application"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.metrics.requestRate.enabled | default true }}
+          source: "prometheus"
+          query: "sum(rate(http_requests_total[5m])) by (service)"
+          window: {{ .Values.predictiveScaling.demandForecasting.metrics.requestRate.window | default "1h" | quote }}
+          
+        - name: "response_time"
+          type: "application"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.metrics.responseTime.enabled | default true }}
+          source: "prometheus"
+          query: "avg(http_request_duration_seconds) by (service)"
+          window: {{ .Values.predictiveScaling.demandForecasting.metrics.responseTime.window | default "1h" | quote }}
+          
+        - name: "error_rate"
+          type: "application"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.metrics.errorRate.enabled | default true }}
+          source: "prometheus"
+          query: "sum(rate(http_requests_total{status=~\"5..\"}[5m])) by (service)"
+          window: {{ .Values.predictiveScaling.demandForecasting.metrics.errorRate.window | default "1h" | quote }}
+          
+        # Business Metrics
+        - name: "active_users"
+          type: "business"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.metrics.activeUsers.enabled | default true }}
+          source: "prometheus"
+          query: "sum(active_users_total) by (service)"
+          window: {{ .Values.predictiveScaling.demandForecasting.metrics.activeUsers.window | default "1h" | quote }}
+          
+        - name: "transaction_volume"
+          type: "business"
+          enabled: {{ .Values.predictiveScaling.demandForecasting.metrics.transactionVolume.enabled | default true }}
+          source: "prometheus"
+          query: "sum(rate(transactions_total[5m])) by (service)"
+          window: {{ .Values.predictiveScaling.demandForecasting.metrics.transactionVolume.window | default "1h" | quote }}
+      
+      # Seasonal Patterns
+      seasonal_patterns:
+        # Daily Patterns
+        daily:
+          enabled: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.daily.enabled | default true }}
+          peak_hours: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.daily.peakHours | default "9-17" | quote }}
+          off_peak_hours: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.daily.offPeakHours | default "0-8,18-23" | quote }}
+          
+        # Weekly Patterns
+        weekly:
+          enabled: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.weekly.enabled | default true }}
+          peak_days: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.weekly.peakDays | default "1-5" | quote }}
+          off_peak_days: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.weekly.offPeakDays | default "0,6" | quote }}
+          
+        # Monthly Patterns
+        monthly:
+          enabled: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.monthly.enabled | default true }}
+          peak_weeks: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.monthly.peakWeeks | default "1,2,3" | quote }}
+          off_peak_weeks: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.monthly.offPeakWeeks | default "4" | quote }}
+          
+        # Special Events
+        special_events:
+          enabled: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.specialEvents.enabled | default true }}
+          events:
+            - name: "black_friday"
+              date: "2024-11-29"
+              impact_multiplier: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.specialEvents.blackFriday.impactMultiplier | default 3.0 }}
+              duration: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.specialEvents.blackFriday.duration | default "3d" | quote }}
+            - name: "new_year"
+              date: "2024-12-31"
+              impact_multiplier: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.specialEvents.newYear.impactMultiplier | default 2.0 }}
+              duration: {{ .Values.predictiveScaling.demandForecasting.seasonalPatterns.specialEvents.newYear.duration | default "2d" | quote }}
+    
+    # Resource Optimization Configuration
+    resource_optimization:
+      enabled: {{ .Values.predictiveScaling.resourceOptimization.enabled | default true }}
+      
+      # Optimization Objectives
+      objectives:
+        # Primary Objectives
+        - name: "cost_optimization"
+          type: "cost"
+          enabled: {{ .Values.predictiveScaling.resourceOptimization.objectives.costOptimization.enabled | default true }}
+          weight: {{ .Values.predictiveScaling.resourceOptimization.objectives.costOptimization.weight | default 0.3 }}
+          target: {{ .Values.predictiveScaling.resourceOptimization.objectives.costOptimization.target | default "minimize" | quote }}
+          
+        - name: "performance_optimization"
+          type: "performance"
+          enabled: {{ .Values.predictiveScaling.resourceOptimization.objectives.performanceOptimization.enabled | default true }}
+          weight: {{ .Values.predictiveScaling.resourceOptimization.objectives.performanceOptimization.weight | default 0.4 }}
+          target: {{ .Values.predictiveScaling.resourceOptimization.objectives.performanceOptimization.target | default "maximize" | quote }}
+          
+        - name: "availability_optimization"
+          type: "availability"
+          enabled: {{ .Values.predictiveScaling.resourceOptimization.objectives.availabilityOptimization.enabled | default true }}
+          weight: {{ .Values.predictiveScaling.resourceOptimization.objectives.availabilityOptimization.weight | default 0.3 }}
+          target: {{ .Values.predictiveScaling.resourceOptimization.objectives.availabilityOptimization.target | default "maximize" | quote }}
+      
+      # Optimization Algorithms
+      algorithms:
+        # Genetic Algorithm
+        - name: "genetic_algorithm"
+          type: "genetic"
+          enabled: {{ .Values.predictiveScaling.resourceOptimization.algorithms.genetic.enabled | default true }}
+          config:
+            population_size: {{ .Values.predictiveScaling.resourceOptimization.algorithms.genetic.populationSize | default 100 }}
+            generations: {{ .Values.predictiveScaling.resourceOptimization.algorithms.genetic.generations | default 50 }}
+            mutation_rate: {{ .Values.predictiveScaling.resourceOptimization.algorithms.genetic.mutationRate | default 0.1 }}
+            crossover_rate: {{ .Values.predictiveScaling.resourceOptimization.algorithms.genetic.crossoverRate | default 0.8 }}
+            selection_method: {{ .Values.predictiveScaling.resourceOptimization.algorithms.genetic.selectionMethod | default "tournament" | quote }}
+            elitism: {{ .Values.predictiveScaling.resourceOptimization.algorithms.genetic.elitism | default true }}
+            
+        # Particle Swarm Optimization
+        - name: "particle_swarm"
+          type: "pso"
+          enabled: {{ .Values.predictiveScaling.resourceOptimization.algorithms.pso.enabled | default true }}
+          config:
+            swarm_size: {{ .Values.predictiveScaling.resourceOptimization.algorithms.pso.swarmSize | default 50 }}
+            iterations: {{ .Values.predictiveScaling.resourceOptimization.algorithms.pso.iterations | default 100 }}
+            inertia_weight: {{ .Values.predictiveScaling.resourceOptimization.algorithms.pso.inertiaWeight | default 0.9 }}
+            cognitive_weight: {{ .Values.predictiveScaling.resourceOptimization.algorithms.pso.cognitiveWeight | default 2.0 }}
+            social_weight: {{ .Values.predictiveScaling.resourceOptimization.algorithms.pso.socialWeight | default 2.0 }}
+            
+        # Simulated Annealing
+        - name: "simulated_annealing"
+          type: "sa"
+          enabled: {{ .Values.predictiveScaling.resourceOptimization.algorithms.sa.enabled | default true }}
+          config:
+            initial_temperature: {{ .Values.predictiveScaling.resourceOptimization.algorithms.sa.initialTemperature | default 1000.0 }}
+            cooling_rate: {{ .Values.predictiveScaling.resourceOptimization.algorithms.sa.coolingRate | default 0.95 }}
+            min_temperature: {{ .Values.predictiveScaling.resourceOptimization.algorithms.sa.minTemperature | default 0.01 }}
+            max_iterations: {{ .Values.predictiveScaling.resourceOptimization.algorithms.sa.maxIterations | default 1000 }}
+      
+      # Resource Constraints
+      constraints:
+        # CPU Constraints
+        cpu:
+          min_allocation: {{ .Values.predictiveScaling.resourceOptimization.constraints.cpu.minAllocation | default "100m" | quote }}
+          max_allocation: {{ .Values.predictiveScaling.resourceOptimization.constraints.cpu.maxAllocation | default "8000m" | quote }}
+          target_utilization: {{ .Values.predictiveScaling.resourceOptimization.constraints.cpu.targetUtilization | default 0.7 }}
+          
+        # Memory Constraints
+        memory:
+          min_allocation: {{ .Values.predictiveScaling.resourceOptimization.constraints.memory.minAllocation | default "128Mi" | quote }}
+          max_allocation: {{ .Values.predictiveScaling.resourceOptimization.constraints.memory.maxAllocation | default "16Gi" | quote }}
+          target_utilization: {{ .Values.predictiveScaling.resourceOptimization.constraints.memory.targetUtilization | default 0.8 }}
+          
+        # Storage Constraints
+        storage:
+          min_allocation: {{ .Values.predictiveScaling.resourceOptimization.constraints.storage.minAllocation | default "1Gi" | quote }}
+          max_allocation: {{ .Values.predictiveScaling.resourceOptimization.constraints.storage.maxAllocation | default "100Gi" | quote }}
+          target_utilization: {{ .Values.predictiveScaling.resourceOptimization.constraints.storage.targetUtilization | default 0.85 }}
+          
+        # Network Constraints
+        network:
+          min_bandwidth: {{ .Values.predictiveScaling.resourceOptimization.constraints.network.minBandwidth | default "10Mbps" | quote }}
+          max_bandwidth: {{ .Values.predictiveScaling.resourceOptimization.constraints.network.maxBandwidth | default "10Gbps" | quote }}
+          target_utilization: {{ .Values.predictiveScaling.resourceOptimization.constraints.network.targetUtilization | default 0.8 }}
+      
+      # Cost Models
+      cost_models:
+        # Compute Costs
+        compute:
+          cpu_cost_per_core_hour: {{ .Values.predictiveScaling.resourceOptimization.costModels.compute.cpuCostPerCoreHour | default 0.05 }}
+          memory_cost_per_gb_hour: {{ .Values.predictiveScaling.resourceOptimization.costModels.compute.memoryCostPerGbHour | default 0.01 }}
+          
+        # Storage Costs
+        storage:
+          block_storage_cost_per_gb_month: {{ .Values.predictiveScaling.resourceOptimization.costModels.storage.blockStorageCostPerGbMonth | default 0.10 }}
+          object_storage_cost_per_gb_month: {{ .Values.predictiveScaling.resourceOptimization.costModels.storage.objectStorageCostPerGbMonth | default 0.023 }}
+          
+        # Network Costs
+        network:
+          ingress_cost_per_gb: {{ .Values.predictiveScaling.resourceOptimization.costModels.network.ingressCostPerGb | default 0.00 }}
+          egress_cost_per_gb: {{ .Values.predictiveScaling.resourceOptimization.costModels.network.egressCostPerGb | default 0.09 }}
+          
+        # Reserved Instance Discounts
+        reserved_instances:
+          enabled: {{ .Values.predictiveScaling.resourceOptimization.costModels.reservedInstances.enabled | default true }}
+          discount_1_year: {{ .Values.predictiveScaling.resourceOptimization.costModels.reservedInstances.discount1Year | default 0.30 }}
+          discount_3_year: {{ .Values.predictiveScaling.resourceOptimization.costModels.reservedInstances.discount3Year | default 0.50 }}
+    
+    # Automated Scaling Configuration
+    automated_scaling:
+      enabled: {{ .Values.predictiveScaling.automatedScaling.enabled | default true }}
+      
+      # Scaling Policies
+      policies:
+        # Predictive Scaling Policy
+        - name: "predictive_scaling"
+          type: "predictive"
+          enabled: {{ .Values.predictiveScaling.automatedScaling.policies.predictiveScaling.enabled | default true }}
+          config:
+            prediction_confidence_threshold: {{ .Values.predictiveScaling.automatedScaling.policies.predictiveScaling.predictionConfidenceThreshold | default 0.8 }}
+            scaling_lead_time: {{ .Values.predictiveScaling.automatedScaling.policies.predictiveScaling.scalingLeadTime | default "10m" | quote }}
+            max_scale_up_rate: {{ .Values.predictiveScaling.automatedScaling.policies.predictiveScaling.maxScaleUpRate | default 0.5 }}
+            max_scale_down_rate: {{ .Values.predictiveScaling.automatedScaling.policies.predictiveScaling.maxScaleDownRate | default 0.3 }}
+            
+        # Reactive Scaling Policy
+        - name: "reactive_scaling"
+          type: "reactive"
+          enabled: {{ .Values.predictiveScaling.automatedScaling.policies.reactiveScaling.enabled | default true }}
+          config:
+            scale_up_threshold: {{ .Values.predictiveScaling.automatedScaling.policies.reactiveScaling.scaleUpThreshold | default 0.8 }}
+            scale_down_threshold: {{ .Values.predictiveScaling.automatedScaling.policies.reactiveScaling.scaleDownThreshold | default 0.3 }}
+            scale_up_cooldown: {{ .Values.predictiveScaling.automatedScaling.policies.reactiveScaling.scaleUpCooldown | default "5m" | quote }}
+            scale_down_cooldown: {{ .Values.predictiveScaling.automatedScaling.policies.reactiveScaling.scaleDownCooldown | default "10m" | quote }}
+            
+        # Scheduled Scaling Policy
+        - name: "scheduled_scaling"
+          type: "scheduled"
+          enabled: {{ .Values.predictiveScaling.automatedScaling.policies.scheduledScaling.enabled | default true }}
+          config:
+            schedules:
+              - name: "business_hours_scale_up"
+                cron: "0 8 * * 1-5"
+                action: "scale_up"
+                target_capacity: {{ .Values.predictiveScaling.automatedScaling.policies.scheduledScaling.businessHoursTargetCapacity | default 100 }}
+                
+              - name: "after_hours_scale_down"
+                cron: "0 18 * * 1-5"
+                action: "scale_down"
+                target_capacity: {{ .Values.predictiveScaling.automatedScaling.policies.scheduledScaling.afterHoursTargetCapacity | default 30 }}
+      
+      # Scaling Targets
+      targets:
+        # Application Targets
+        - name: "csr-controller"
+          type: "deployment"
+          enabled: {{ .Values.predictiveScaling.automatedScaling.targets.csrController.enabled | default true }}
+          config:
+            namespace: {{ .Release.Namespace }}
+            deployment_name: {{ include "csr-controller.fullname" . }}
+            min_replicas: {{ .Values.predictiveScaling.automatedScaling.targets.csrController.minReplicas | default 2 }}
+            max_replicas: {{ .Values.predictiveScaling.automatedScaling.targets.csrController.maxReplicas | default 20 }}
+            target_metrics:
+              - name: "cpu_utilization"
+                type: "resource"
+                target_value: {{ .Values.predictiveScaling.automatedScaling.targets.csrController.targetCpuUtilization | default 0.7 }}
+              - name: "memory_utilization"
+                type: "resource"
+                target_value: {{ .Values.predictiveScaling.automatedScaling.targets.csrController.targetMemoryUtilization | default 0.8 }}
+              - name: "request_rate"
+                type: "application"
+                target_value: {{ .Values.predictiveScaling.automatedScaling.targets.csrController.targetRequestRate | default 1000 }}
+                
+        # Database Targets
+        - name: "database"
+          type: "statefulset"
+          enabled: {{ .Values.predictiveScaling.automatedScaling.targets.database.enabled | default true }}
+          config:
+            namespace: {{ .Release.Namespace }}
+            statefulset_name: "postgresql"
+            min_replicas: {{ .Values.predictiveScaling.automatedScaling.targets.database.minReplicas | default 1 }}
+            max_replicas: {{ .Values.predictiveScaling.automatedScaling.targets.database.maxReplicas | default 5 }}
+            target_metrics:
+              - name: "cpu_utilization"
+                type: "resource"
+                target_value: {{ .Values.predictiveScaling.automatedScaling.targets.database.targetCpuUtilization | default 0.75 }}
+              - name: "memory_utilization"
+                type: "resource"
+                target_value: {{ .Values.predictiveScaling.automatedScaling.targets.database.targetMemoryUtilization | default 0.85 }}
+              - name: "connection_count"
+                type: "application"
+                target_value: {{ .Values.predictiveScaling.automatedScaling.targets.database.targetConnectionCount | default 200 }}
+      
+      # Safety Mechanisms
+      safety:
+        # Circuit Breaker
+        circuit_breaker:
+          enabled: {{ .Values.predictiveScaling.automatedScaling.safety.circuitBreaker.enabled | default true }}
+          failure_threshold: {{ .Values.predictiveScaling.automatedScaling.safety.circuitBreaker.failureThreshold | default 5 }}
+          recovery_timeout: {{ .Values.predictiveScaling.automatedScaling.safety.circuitBreaker.recoveryTimeout | default "5m" | quote }}
+          
+        # Rate Limiting
+        rate_limiting:
+          enabled: {{ .Values.predictiveScaling.automatedScaling.safety.rateLimiting.enabled | default true }}
+          max_scaling_actions_per_hour: {{ .Values.predictiveScaling.automatedScaling.safety.rateLimiting.maxScalingActionsPerHour | default 10 }}
+          max_scaling_actions_per_day: {{ .Values.predictiveScaling.automatedScaling.safety.rateLimiting.maxScalingActionsPerDay | default 100 }}
+          
+        # Approval Workflow
+        approval_workflow:
+          enabled: {{ .Values.predictiveScaling.automatedScaling.safety.approvalWorkflow.enabled | default true }}
+          required_for_production: {{ .Values.predictiveScaling.automatedScaling.safety.approvalWorkflow.requiredForProduction | default true }}
+          approval_timeout: {{ .Values.predictiveScaling.automatedScaling.safety.approvalWorkflow.approvalTimeout | default "30m" | quote }}
+          approvers:
+            - "sre-team@alt.production.local"
+            - "platform-team@alt.production.local"
+    
+    # Performance Prediction Configuration
+    performance_prediction:
+      enabled: {{ .Values.predictiveScaling.performancePrediction.enabled | default true }}
+      
+      # Prediction Models
+      models:
+        # Regression Models
+        - name: "linear_regression"
+          type: "regression"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.models.linearRegression.enabled | default true }}
+          config:
+            features:
+              - "cpu_utilization"
+              - "memory_utilization"
+              - "request_rate"
+              - "active_connections"
+            target: "response_time"
+            regularization: {{ .Values.predictiveScaling.performancePrediction.models.linearRegression.regularization | default "l2" | quote }}
+            alpha: {{ .Values.predictiveScaling.performancePrediction.models.linearRegression.alpha | default 0.01 }}
+            
+        # Machine Learning Models
+        - name: "random_forest"
+          type: "ensemble"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.models.randomForest.enabled | default true }}
+          config:
+            n_estimators: {{ .Values.predictiveScaling.performancePrediction.models.randomForest.nEstimators | default 100 }}
+            max_depth: {{ .Values.predictiveScaling.performancePrediction.models.randomForest.maxDepth | default 10 }}
+            min_samples_split: {{ .Values.predictiveScaling.performancePrediction.models.randomForest.minSamplesSplit | default 2 }}
+            min_samples_leaf: {{ .Values.predictiveScaling.performancePrediction.models.randomForest.minSamplesLeaf | default 1 }}
+            
+        # Deep Learning Models
+        - name: "neural_network"
+          type: "neural"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.models.neuralNetwork.enabled | default true }}
+          config:
+            hidden_layers: {{ .Values.predictiveScaling.performancePrediction.models.neuralNetwork.hiddenLayers | default 3 }}
+            hidden_units: {{ .Values.predictiveScaling.performancePrediction.models.neuralNetwork.hiddenUnits | default 128 }}
+            activation: {{ .Values.predictiveScaling.performancePrediction.models.neuralNetwork.activation | default "relu" | quote }}
+            dropout_rate: {{ .Values.predictiveScaling.performancePrediction.models.neuralNetwork.dropoutRate | default 0.3 }}
+            learning_rate: {{ .Values.predictiveScaling.performancePrediction.models.neuralNetwork.learningRate | default 0.001 }}
+            epochs: {{ .Values.predictiveScaling.performancePrediction.models.neuralNetwork.epochs | default 100 }}
+            batch_size: {{ .Values.predictiveScaling.performancePrediction.models.neuralNetwork.batchSize | default 32 }}
+      
+      # Performance Metrics
+      metrics:
+        # Latency Metrics
+        - name: "p50_latency"
+          type: "latency"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.metrics.p50Latency.enabled | default true }}
+          target_threshold: {{ .Values.predictiveScaling.performancePrediction.metrics.p50Latency.targetThreshold | default 100 }}
+          
+        - name: "p95_latency"
+          type: "latency"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.metrics.p95Latency.enabled | default true }}
+          target_threshold: {{ .Values.predictiveScaling.performancePrediction.metrics.p95Latency.targetThreshold | default 500 }}
+          
+        - name: "p99_latency"
+          type: "latency"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.metrics.p99Latency.enabled | default true }}
+          target_threshold: {{ .Values.predictiveScaling.performancePrediction.metrics.p99Latency.targetThreshold | default 1000 }}
+          
+        # Throughput Metrics
+        - name: "requests_per_second"
+          type: "throughput"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.metrics.requestsPerSecond.enabled | default true }}
+          target_threshold: {{ .Values.predictiveScaling.performancePrediction.metrics.requestsPerSecond.targetThreshold | default 1000 }}
+          
+        - name: "transactions_per_second"
+          type: "throughput"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.metrics.transactionsPerSecond.enabled | default true }}
+          target_threshold: {{ .Values.predictiveScaling.performancePrediction.metrics.transactionsPerSecond.targetThreshold | default 500 }}
+          
+        # Error Metrics
+        - name: "error_rate"
+          type: "error"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.metrics.errorRate.enabled | default true }}
+          target_threshold: {{ .Values.predictiveScaling.performancePrediction.metrics.errorRate.targetThreshold | default 0.01 }}
+          
+        - name: "timeout_rate"
+          type: "error"
+          enabled: {{ .Values.predictiveScaling.performancePrediction.metrics.timeoutRate.enabled | default true }}
+          target_threshold: {{ .Values.predictiveScaling.performancePrediction.metrics.timeoutRate.targetThreshold | default 0.005 }}
+      
+      # Prediction Accuracy
+      accuracy:
+        target_accuracy: {{ .Values.predictiveScaling.performancePrediction.accuracy.targetAccuracy | default 0.9 }}
+        evaluation_metrics:
+          - "mae"  # Mean Absolute Error
+          - "mse"  # Mean Squared Error
+          - "rmse" # Root Mean Squared Error
+          - "r2"   # R-squared
+          - "mape" # Mean Absolute Percentage Error
+        evaluation_window: {{ .Values.predictiveScaling.performancePrediction.accuracy.evaluationWindow | default "7d" | quote }}
+        retraining_threshold: {{ .Values.predictiveScaling.performancePrediction.accuracy.retrainingThreshold | default 0.8 }}
+    
+    # Capacity Planning Configuration
+    capacity_planning:
+      enabled: {{ .Values.predictiveScaling.capacityPlanning.enabled | default true }}
+      
+      # Planning Horizons
+      horizons:
+        - name: "short_term"
+          duration: {{ .Values.predictiveScaling.capacityPlanning.horizons.shortTerm.duration | default "1w" | quote }}
+          confidence_level: {{ .Values.predictiveScaling.capacityPlanning.horizons.shortTerm.confidenceLevel | default 0.95 }}
+          
+        - name: "medium_term"
+          duration: {{ .Values.predictiveScaling.capacityPlanning.horizons.mediumTerm.duration | default "1m" | quote }}
+          confidence_level: {{ .Values.predictiveScaling.capacityPlanning.horizons.mediumTerm.confidenceLevel | default 0.90 }}
+          
+        - name: "long_term"
+          duration: {{ .Values.predictiveScaling.capacityPlanning.horizons.longTerm.duration | default "6m" | quote }}
+          confidence_level: {{ .Values.predictiveScaling.capacityPlanning.horizons.longTerm.confidenceLevel | default 0.85 }}
+      
+      # Growth Models
+      growth_models:
+        - name: "exponential_growth"
+          type: "exponential"
+          enabled: {{ .Values.predictiveScaling.capacityPlanning.growthModels.exponentialGrowth.enabled | default true }}
+          config:
+            base_growth_rate: {{ .Values.predictiveScaling.capacityPlanning.growthModels.exponentialGrowth.baseGrowthRate | default 0.1 }}
+            acceleration_factor: {{ .Values.predictiveScaling.capacityPlanning.growthModels.exponentialGrowth.accelerationFactor | default 1.05 }}
+            
+        - name: "linear_growth"
+          type: "linear"
+          enabled: {{ .Values.predictiveScaling.capacityPlanning.growthModels.linearGrowth.enabled | default true }}
+          config:
+            growth_rate: {{ .Values.predictiveScaling.capacityPlanning.growthModels.linearGrowth.growthRate | default 0.05 }}
+            
+        - name: "seasonal_growth"
+          type: "seasonal"
+          enabled: {{ .Values.predictiveScaling.capacityPlanning.growthModels.seasonalGrowth.enabled | default true }}
+          config:
+            base_growth_rate: {{ .Values.predictiveScaling.capacityPlanning.growthModels.seasonalGrowth.baseGrowthRate | default 0.05 }}
+            seasonal_amplitude: {{ .Values.predictiveScaling.capacityPlanning.growthModels.seasonalGrowth.seasonalAmplitude | default 0.2 }}
+            seasonal_period: {{ .Values.predictiveScaling.capacityPlanning.growthModels.seasonalGrowth.seasonalPeriod | default 365 }}
+      
+      # Scenario Planning
+      scenarios:
+        - name: "baseline"
+          description: "Expected growth scenario"
+          probability: {{ .Values.predictiveScaling.capacityPlanning.scenarios.baseline.probability | default 0.6 }}
+          growth_multiplier: {{ .Values.predictiveScaling.capacityPlanning.scenarios.baseline.growthMultiplier | default 1.0 }}
+          
+        - name: "high_growth"
+          description: "High growth scenario"
+          probability: {{ .Values.predictiveScaling.capacityPlanning.scenarios.highGrowth.probability | default 0.2 }}
+          growth_multiplier: {{ .Values.predictiveScaling.capacityPlanning.scenarios.highGrowth.growthMultiplier | default 1.5 }}
+          
+        - name: "low_growth"
+          description: "Low growth scenario"
+          probability: {{ .Values.predictiveScaling.capacityPlanning.scenarios.lowGrowth.probability | default 0.15 }}
+          growth_multiplier: {{ .Values.predictiveScaling.capacityPlanning.scenarios.lowGrowth.growthMultiplier | default 0.7 }}
+          
+        - name: "decline"
+          description: "Decline scenario"
+          probability: {{ .Values.predictiveScaling.capacityPlanning.scenarios.decline.probability | default 0.05 }}
+          growth_multiplier: {{ .Values.predictiveScaling.capacityPlanning.scenarios.decline.growthMultiplier | default 0.5 }}
+      
+      # Capacity Recommendations
+      recommendations:
+        enabled: {{ .Values.predictiveScaling.capacityPlanning.recommendations.enabled | default true }}
+        
+        # Recommendation Types
+        types:
+          - name: "infrastructure_scaling"
+            description: "Infrastructure scaling recommendations"
+            enabled: {{ .Values.predictiveScaling.capacityPlanning.recommendations.types.infrastructureScaling.enabled | default true }}
+            
+          - name: "application_optimization"
+            description: "Application optimization recommendations"
+            enabled: {{ .Values.predictiveScaling.capacityPlanning.recommendations.types.applicationOptimization.enabled | default true }}
+            
+          - name: "cost_optimization"
+            description: "Cost optimization recommendations"
+            enabled: {{ .Values.predictiveScaling.capacityPlanning.recommendations.types.costOptimization.enabled | default true }}
+            
+          - name: "architecture_changes"
+            description: "Architecture change recommendations"
+            enabled: {{ .Values.predictiveScaling.capacityPlanning.recommendations.types.architectureChanges.enabled | default true }}
+        
+        # Recommendation Delivery
+        delivery:
+          channels:
+            - "email"
+            - "slack"
+            - "dashboard"
+            - "api"
+          frequency: {{ .Values.predictiveScaling.capacityPlanning.recommendations.delivery.frequency | default "weekly" | quote }}
+          recipients:
+            - "sre-team@alt.production.local"
+            - "platform-team@alt.production.local"
+            - "management@alt.production.local"
+    
+    # Monitoring and Alerting Configuration
+    monitoring:
+      enabled: {{ .Values.predictiveScaling.monitoring.enabled | default true }}
+      
+      # Metrics Collection
+      metrics_collection:
+        interval: {{ .Values.predictiveScaling.monitoring.metricsCollection.interval | default "30s" | quote }}
+        retention: {{ .Values.predictiveScaling.monitoring.metricsCollection.retention | default "30d" | quote }}
+        
+        # Prometheus Integration
+        prometheus:
+          enabled: {{ .Values.predictiveScaling.monitoring.metricsCollection.prometheus.enabled | default true }}
+          endpoint: {{ .Values.predictiveScaling.monitoring.metricsCollection.prometheus.endpoint | default "http://prometheus:9090" | quote }}
+          
+        # Custom Metrics
+        custom_metrics:
+          - name: "prediction_accuracy"
+            type: "gauge"
+            description: "Prediction accuracy percentage"
+            
+          - name: "scaling_actions"
+            type: "counter"
+            description: "Number of scaling actions performed"
+            
+          - name: "optimization_score"
+            type: "gauge"
+            description: "Overall optimization score"
+            
+          - name: "cost_savings"
+            type: "gauge"
+            description: "Cost savings achieved"
+      
+      # Alerting Rules
+      alerting:
+        enabled: {{ .Values.predictiveScaling.monitoring.alerting.enabled | default true }}
+        
+        # Alert Rules
+        rules:
+          - name: "low_prediction_accuracy"
+            condition: "prediction_accuracy < 0.8"
+            severity: "warning"
+            description: "Prediction accuracy is below threshold"
+            
+          - name: "high_scaling_frequency"
+            condition: "rate(scaling_actions[1h]) > 10"
+            severity: "warning"
+            description: "High frequency of scaling actions"
+            
+          - name: "optimization_failure"
+            condition: "optimization_score < 0.5"
+            severity: "critical"
+            description: "Optimization score is critically low"
+            
+          - name: "cost_budget_exceeded"
+            condition: "cost_savings < -1000"
+            severity: "critical"
+            description: "Cost budget exceeded"
+        
+        # Notification Channels
+        channels:
+          - name: "slack"
+            enabled: {{ .Values.predictiveScaling.monitoring.alerting.channels.slack.enabled | default true }}
+            webhook_url: {{ .Values.predictiveScaling.monitoring.alerting.channels.slack.webhookUrl | default "" | quote }}
+            channel: {{ .Values.predictiveScaling.monitoring.alerting.channels.slack.channel | default "#predictive-scaling" | quote }}
+            
+          - name: "email"
+            enabled: {{ .Values.predictiveScaling.monitoring.alerting.channels.email.enabled | default true }}
+            recipients:
+              - "sre-team@alt.production.local"
+              - "platform-team@alt.production.local"
+              
+          - name: "webhook"
+            enabled: {{ .Values.predictiveScaling.monitoring.alerting.channels.webhook.enabled | default false }}
+            endpoint: {{ .Values.predictiveScaling.monitoring.alerting.channels.webhook.endpoint | default "" | quote }}
+      
+      # Dashboards
+      dashboards:
+        enabled: {{ .Values.predictiveScaling.monitoring.dashboards.enabled | default true }}
+        
+        # Dashboard Types
+        types:
+          - name: "overview"
+            description: "Overview dashboard"
+            enabled: {{ .Values.predictiveScaling.monitoring.dashboards.types.overview.enabled | default true }}
+            
+          - name: "predictions"
+            description: "Predictions dashboard"
+            enabled: {{ .Values.predictiveScaling.monitoring.dashboards.types.predictions.enabled | default true }}
+            
+          - name: "optimization"
+            description: "Optimization dashboard"
+            enabled: {{ .Values.predictiveScaling.monitoring.dashboards.types.optimization.enabled | default true }}
+            
+          - name: "cost_analysis"
+            description: "Cost analysis dashboard"
+            enabled: {{ .Values.predictiveScaling.monitoring.dashboards.types.costAnalysis.enabled | default true }}
+        
+        # Dashboard Access
+        access:
+          authentication_required: {{ .Values.predictiveScaling.monitoring.dashboards.access.authenticationRequired | default true }}
+          role_based_access: {{ .Values.predictiveScaling.monitoring.dashboards.access.roleBasedAccess | default true }}
+          
+          # Access Roles
+          roles:
+            - name: "sre_engineer"
+              permissions:
+                - "view_all_dashboards"
+                - "create_alerts"
+                - "manage_scaling_policies"
+                
+            - name: "platform_engineer"
+              permissions:
+                - "view_optimization_dashboards"
+                - "manage_capacity_planning"
+                - "create_reports"
+                
+            - name: "manager"
+              permissions:
+                - "view_cost_dashboards"
+                - "view_summary_reports"
+                - "approve_scaling_policies"

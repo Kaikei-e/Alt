@@ -1,0 +1,488 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-security-intelligence
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: security-intelligence
+spec:
+  replicas: {{ .Values.securityIntelligence.replicas | default 3 }}
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: security-intelligence
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+      labels:
+        {{- include "csr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: security-intelligence
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: security-intelligence
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.securityIntelligence.image.repository }}:{{ .Values.securityIntelligence.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.securityIntelligence.image.pullPolicy }}
+        env:
+        - name: THREAT_DETECTION_ENABLED
+          value: {{ .Values.securityIntelligence.threatDetection.enabled | default true | quote }}
+        - name: BEHAVIORAL_ANALYSIS_ENABLED
+          value: {{ .Values.securityIntelligence.behavioralAnalysis.enabled | default true | quote }}
+        - name: VULNERABILITY_ANALYSIS_ENABLED
+          value: {{ .Values.securityIntelligence.vulnerabilityAnalysis.enabled | default true | quote }}
+        - name: THREAT_INTELLIGENCE_ENABLED
+          value: {{ .Values.securityIntelligence.threatIntelligence.enabled | default true | quote }}
+        - name: SECURITY_ANALYTICS_ENABLED
+          value: {{ .Values.securityIntelligence.securityAnalytics.enabled | default true | quote }}
+        - name: REAL_TIME_MONITORING_ENABLED
+          value: {{ .Values.securityIntelligence.realTimeMonitoring.enabled | default true | quote }}
+        - name: AUTOMATED_RESPONSE_ENABLED
+          value: {{ .Values.securityIntelligence.automatedResponse.enabled | default true | quote }}
+        - name: FORENSIC_ANALYSIS_ENABLED
+          value: {{ .Values.securityIntelligence.forensicAnalysis.enabled | default true | quote }}
+        - name: THREAT_HUNTING_ENABLED
+          value: {{ .Values.securityIntelligence.threatHunting.enabled | default true | quote }}
+        - name: SECURITY_SCORING_ENABLED
+          value: {{ .Values.securityIntelligence.securityScoring.enabled | default true | quote }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: grpc
+          containerPort: 9090
+          protocol: TCP
+        - name: siem
+          containerPort: 514
+          protocol: TCP
+        - name: syslog
+          containerPort: 514
+          protocol: UDP
+        - name: elastic
+          containerPort: 9200
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.securityIntelligence.resources | nindent 12 }}
+        volumeMounts:
+        - name: security-intelligence-config
+          mountPath: /etc/security-intelligence
+          readOnly: true
+        - name: threat-intelligence-data
+          mountPath: /var/lib/threat-intelligence
+        - name: behavioral-models
+          mountPath: /var/lib/behavioral-models
+        - name: vulnerability-data
+          mountPath: /var/lib/vulnerability-data
+        - name: forensic-evidence
+          mountPath: /var/lib/forensic-evidence
+        - name: security-logs
+          mountPath: /var/log/security
+        - name: threat-hunting-data
+          mountPath: /var/lib/threat-hunting
+        - name: analytics-cache
+          mountPath: /var/cache/analytics
+        {{- if .Values.securityIntelligence.gpu.enabled }}
+        - name: nvidia-driver
+          mountPath: /usr/local/nvidia
+          readOnly: true
+        {{- end }}
+      volumes:
+      - name: security-intelligence-config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-security-intelligence-config
+      - name: threat-intelligence-data
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-threat-intelligence-data
+      - name: behavioral-models
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-behavioral-models
+      - name: vulnerability-data
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-vulnerability-data
+      - name: forensic-evidence
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-forensic-evidence
+      - name: security-logs
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-security-logs
+      - name: threat-hunting-data
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-threat-hunting-data
+      - name: analytics-cache
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-analytics-cache
+      {{- if .Values.securityIntelligence.gpu.enabled }}
+      - name: nvidia-driver
+        hostPath:
+          path: /usr/local/nvidia
+          type: Directory
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+        {{- if .Values.securityIntelligence.gpu.enabled }}
+        accelerator: nvidia-tesla-v100
+        {{- end }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.securityIntelligence.gpu.enabled }}
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-security-intelligence
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: security-intelligence
+spec:
+  type: {{ .Values.securityIntelligence.service.type }}
+  ports:
+  - port: {{ .Values.securityIntelligence.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: {{ .Values.securityIntelligence.service.grpcPort }}
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  - port: {{ .Values.securityIntelligence.service.siemPort }}
+    targetPort: siem
+    protocol: TCP
+    name: siem
+  - port: {{ .Values.securityIntelligence.service.syslogPort }}
+    targetPort: syslog
+    protocol: UDP
+    name: syslog
+  - port: {{ .Values.securityIntelligence.service.elasticPort }}
+    targetPort: elastic
+    protocol: TCP
+    name: elastic
+  selector:
+    {{- include "csr-controller.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: security-intelligence
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-threat-intelligence-update
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: security-intelligence
+spec:
+  schedule: {{ .Values.securityIntelligence.threatIntelligence.updateSchedule | default "0 */6 * * *" | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+          containers:
+          - name: threat-intelligence-update
+            image: "{{ .Values.securityIntelligence.image.repository }}:{{ .Values.securityIntelligence.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.securityIntelligence.image.pullPolicy }}
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting threat intelligence update..."
+              
+              # Update threat intelligence feeds
+              echo "Updating threat intelligence feeds..."
+              python /opt/security-intelligence/scripts/threat_intelligence_updater.py \
+                --config-path=/etc/security-intelligence/threat-intelligence-config.yaml \
+                --output-path=/var/lib/threat-intelligence
+              
+              # Update vulnerability databases
+              echo "Updating vulnerability databases..."
+              python /opt/security-intelligence/scripts/vulnerability_db_updater.py \
+                --config-path=/etc/security-intelligence/vulnerability-config.yaml \
+                --output-path=/var/lib/vulnerability-data
+              
+              # Update behavioral models
+              echo "Updating behavioral models..."
+              python /opt/security-intelligence/scripts/behavioral_model_updater.py \
+                --config-path=/etc/security-intelligence/behavioral-config.yaml \
+                --model-path=/var/lib/behavioral-models
+              
+              # Generate security intelligence reports
+              echo "Generating security intelligence reports..."
+              python /opt/security-intelligence/scripts/intelligence_reporter.py \
+                --threat-data-path=/var/lib/threat-intelligence \
+                --vulnerability-data-path=/var/lib/vulnerability-data \
+                --output-path=/var/lib/forensic-evidence/reports
+              
+              echo "Threat intelligence update completed successfully"
+            env:
+            - name: THREAT_FEED_SOURCES
+              value: {{ .Values.securityIntelligence.threatIntelligence.feedSources | join "," | quote }}
+            - name: VULNERABILITY_SOURCES
+              value: {{ .Values.securityIntelligence.vulnerabilityAnalysis.sources | join "," | quote }}
+            - name: UPDATE_TIMEOUT
+              value: {{ .Values.securityIntelligence.threatIntelligence.updateTimeout | default "1h" | quote }}
+            - name: PARALLEL_UPDATES
+              value: {{ .Values.securityIntelligence.threatIntelligence.parallelUpdates | default 5 | quote }}
+            - name: VALIDATION_ENABLED
+              value: {{ .Values.securityIntelligence.threatIntelligence.validationEnabled | default true | quote }}
+            volumeMounts:
+            - name: security-intelligence-config
+              mountPath: /etc/security-intelligence
+              readOnly: true
+            - name: threat-intelligence-data
+              mountPath: /var/lib/threat-intelligence
+            - name: behavioral-models
+              mountPath: /var/lib/behavioral-models
+            - name: vulnerability-data
+              mountPath: /var/lib/vulnerability-data
+            - name: forensic-evidence
+              mountPath: /var/lib/forensic-evidence
+          volumes:
+          - name: security-intelligence-config
+            configMap:
+              name: {{ include "csr-controller.fullname" . }}-security-intelligence-config
+          - name: threat-intelligence-data
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-threat-intelligence-data
+          - name: behavioral-models
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-behavioral-models
+          - name: vulnerability-data
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-vulnerability-data
+          - name: forensic-evidence
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-forensic-evidence
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-threat-hunting
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: security-intelligence
+spec:
+  schedule: {{ .Values.securityIntelligence.threatHunting.schedule | default "0 2 * * *" | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+          containers:
+          - name: threat-hunting
+            image: "{{ .Values.securityIntelligence.image.repository }}:{{ .Values.securityIntelligence.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.securityIntelligence.image.pullPolicy }}
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting threat hunting campaign..."
+              
+              # Initialize threat hunting session
+              echo "Initializing threat hunting session..."
+              python /opt/security-intelligence/scripts/threat_hunting_initializer.py \
+                --config-path=/etc/security-intelligence/threat-hunting-config.yaml \
+                --session-path=/var/lib/threat-hunting/sessions
+              
+              # Execute threat hunting queries
+              echo "Executing threat hunting queries..."
+              python /opt/security-intelligence/scripts/threat_hunting_executor.py \
+                --session-path=/var/lib/threat-hunting/sessions \
+                --query-path=/etc/security-intelligence/threat-hunting-queries.yaml \
+                --output-path=/var/lib/threat-hunting/results
+              
+              # Analyze threat hunting results
+              echo "Analyzing threat hunting results..."
+              python /opt/security-intelligence/scripts/threat_hunting_analyzer.py \
+                --results-path=/var/lib/threat-hunting/results \
+                --intelligence-path=/var/lib/threat-intelligence \
+                --output-path=/var/lib/threat-hunting/analysis
+              
+              # Generate threat hunting reports
+              echo "Generating threat hunting reports..."
+              python /opt/security-intelligence/scripts/threat_hunting_reporter.py \
+                --analysis-path=/var/lib/threat-hunting/analysis \
+                --output-path=/var/lib/forensic-evidence/threat-hunting-reports
+              
+              # Execute automated response actions
+              echo "Executing automated response actions..."
+              python /opt/security-intelligence/scripts/automated_response_executor.py \
+                --analysis-path=/var/lib/threat-hunting/analysis \
+                --config-path=/etc/security-intelligence/automated-response-config.yaml
+              
+              echo "Threat hunting campaign completed successfully"
+            env:
+            - name: HUNTING_SCOPE
+              value: {{ .Values.securityIntelligence.threatHunting.scope | default "cluster" | quote }}
+            - name: HUNTING_DEPTH
+              value: {{ .Values.securityIntelligence.threatHunting.depth | default "comprehensive" | quote }}
+            - name: HUNTING_TIMEOUT
+              value: {{ .Values.securityIntelligence.threatHunting.timeout | default "2h" | quote }}
+            - name: PARALLEL_QUERIES
+              value: {{ .Values.securityIntelligence.threatHunting.parallelQueries | default 10 | quote }}
+            - name: AUTOMATED_RESPONSE_ENABLED
+              value: {{ .Values.securityIntelligence.threatHunting.automatedResponseEnabled | default true | quote }}
+            - name: INVESTIGATION_ENABLED
+              value: {{ .Values.securityIntelligence.threatHunting.investigationEnabled | default true | quote }}
+            volumeMounts:
+            - name: security-intelligence-config
+              mountPath: /etc/security-intelligence
+              readOnly: true
+            - name: threat-intelligence-data
+              mountPath: /var/lib/threat-intelligence
+            - name: threat-hunting-data
+              mountPath: /var/lib/threat-hunting
+            - name: forensic-evidence
+              mountPath: /var/lib/forensic-evidence
+            - name: security-logs
+              mountPath: /var/log/security
+            {{- if .Values.securityIntelligence.gpu.enabled }}
+            - name: nvidia-driver
+              mountPath: /usr/local/nvidia
+              readOnly: true
+            {{- end }}
+          volumes:
+          - name: security-intelligence-config
+            configMap:
+              name: {{ include "csr-controller.fullname" . }}-security-intelligence-config
+          - name: threat-intelligence-data
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-threat-intelligence-data
+          - name: threat-hunting-data
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-threat-hunting-data
+          - name: forensic-evidence
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-forensic-evidence
+          - name: security-logs
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-security-logs
+          {{- if .Values.securityIntelligence.gpu.enabled }}
+          - name: nvidia-driver
+            hostPath:
+              path: /usr/local/nvidia
+              type: Directory
+          {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-security-intelligence-netpol
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: security-intelligence
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: security-intelligence
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: {{ .Release.Namespace }}
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: csr-controller
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: security-policy-engine
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: zero-trust-engine
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8080
+  - from: []
+    ports:
+    - protocol: TCP
+      port: 514
+    - protocol: UDP
+      port: 514
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: {{ .Release.Namespace }}
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 9200

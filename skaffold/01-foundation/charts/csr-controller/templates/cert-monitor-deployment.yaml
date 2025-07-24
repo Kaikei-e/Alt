@@ -1,0 +1,273 @@
+{{- if .Values.csrController.certMonitoring.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-cert-monitor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cert-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cert-monitor
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/cert-monitor-configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "csr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cert-monitor
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: cert-monitor
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: {{ .Values.csrController.certMonitoring.image.repository }}:{{ .Values.csrController.certMonitoring.image.tag }}
+        imagePullPolicy: {{ .Values.csrController.certMonitoring.image.pullPolicy }}
+        ports:
+        - name: metrics
+          containerPort: {{ .Values.csrController.certMonitoring.metricsPort }}
+          protocol: TCP
+        - name: health
+          containerPort: {{ .Values.csrController.certMonitoring.healthPort }}
+          protocol: TCP
+        env:
+        - name: MONITORING_INTERVAL
+          value: {{ .Values.csrController.certMonitoring.interval | quote }}
+        - name: ALERT_THRESHOLD
+          value: {{ .Values.csrController.certMonitoring.alertThreshold | quote }}
+        - name: NAMESPACES
+          value: {{ join "," .Values.csrController.certMonitoring.namespaces }}
+        - name: LOG_LEVEL
+          value: {{ .Values.csrController.certMonitoring.logLevel | quote }}
+        - name: METRICS_PORT
+          value: {{ .Values.csrController.certMonitoring.metricsPort | quote }}
+        - name: HEALTH_PORT
+          value: {{ .Values.csrController.certMonitoring.healthPort | quote }}
+        - name: SLACK_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "csr-controller.fullname" . }}-alerts
+              key: slack-webhook-url
+              optional: true
+        - name: EMAIL_SMTP_HOST
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "csr-controller.fullname" . }}-alerts
+              key: smtp-host
+              optional: true
+        - name: EMAIL_SMTP_PORT
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "csr-controller.fullname" . }}-alerts
+              key: smtp-port
+              optional: true
+        - name: EMAIL_FROM
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "csr-controller.fullname" . }}-alerts
+              key: email-from
+              optional: true
+        - name: EMAIL_TO
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "csr-controller.fullname" . }}-alerts
+              key: email-to
+              optional: true
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Certificate monitoring script
+          
+          # Create metrics endpoint
+          create_metrics_server() {
+            # Simple HTTP server for metrics
+            while true; do
+              echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n$(cat /tmp/metrics.txt 2>/dev/null || echo '# No metrics available')" | nc -l -p $METRICS_PORT
+              sleep 1
+            done &
+          }
+          
+          # Create health check endpoint
+          create_health_server() {
+            while true; do
+              echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK" | nc -l -p $HEALTH_PORT
+              sleep 1
+            done &
+          }
+          
+          # Send Slack alert
+          send_slack_alert() {
+            local message=$1
+            if [ -n "$SLACK_WEBHOOK_URL" ]; then
+              curl -X POST -H 'Content-type: application/json' \
+                --data "{\"text\":\"🔒 Certificate Alert: $message\"}" \
+                "$SLACK_WEBHOOK_URL"
+            fi
+          }
+          
+          # Send email alert
+          send_email_alert() {
+            local subject=$1
+            local message=$2
+            if [ -n "$EMAIL_SMTP_HOST" ] && [ -n "$EMAIL_FROM" ] && [ -n "$EMAIL_TO" ]; then
+              {
+                echo "From: $EMAIL_FROM"
+                echo "To: $EMAIL_TO"
+                echo "Subject: $subject"
+                echo "Content-Type: text/plain"
+                echo ""
+                echo "$message"
+              } | sendmail -H "openssl s_client -connect $EMAIL_SMTP_HOST:$EMAIL_SMTP_PORT -starttls smtp" "$EMAIL_TO"
+            fi
+          }
+          
+          # Check certificate expiry
+          check_certificate_expiry() {
+            local secret_name=$1
+            local namespace=$2
+            local threshold=$3
+            
+            # Get certificate from secret
+            cert_data=$(kubectl get secret $secret_name -n $namespace -o jsonpath='{.data.tls\.crt}' 2>/dev/null)
+            if [ $? -ne 0 ] || [ -z "$cert_data" ]; then
+              echo "cert_expiry_check{secret=\"$secret_name\",namespace=\"$namespace\",status=\"error\"} 1" >> /tmp/metrics.txt
+              return 1
+            fi
+            
+            # Decode and check expiry
+            echo "$cert_data" | base64 -d > /tmp/cert_check.pem
+            if ! openssl x509 -in /tmp/cert_check.pem -noout -text >/dev/null 2>&1; then
+              echo "cert_expiry_check{secret=\"$secret_name\",namespace=\"$namespace\",status=\"invalid\"} 1" >> /tmp/metrics.txt
+              return 1
+            fi
+            
+            # Get expiry date and calculate days until expiry
+            expiry_date=$(openssl x509 -in /tmp/cert_check.pem -noout -enddate | cut -d= -f2)
+            expiry_epoch=$(date -d "$expiry_date" +%s)
+            current_epoch=$(date +%s)
+            days_until_expiry=$(((expiry_epoch - current_epoch) / 86400))
+            
+            # Record metrics
+            echo "cert_days_until_expiry{secret=\"$secret_name\",namespace=\"$namespace\"} $days_until_expiry" >> /tmp/metrics.txt
+            echo "cert_expiry_check{secret=\"$secret_name\",namespace=\"$namespace\",status=\"ok\"} 0" >> /tmp/metrics.txt
+            
+            # Check if certificate is expiring soon
+            threshold_days=$(echo $threshold | sed 's/h//' | awk '{print $1/24}')
+            if [ $days_until_expiry -le $threshold_days ]; then
+              echo "cert_expiry_alert{secret=\"$secret_name\",namespace=\"$namespace\"} 1" >> /tmp/metrics.txt
+              
+              # Send alerts
+              alert_message="Certificate '$secret_name' in namespace '$namespace' expires in $days_until_expiry days (on $expiry_date)"
+              echo "ALERT: $alert_message"
+              send_slack_alert "$alert_message"
+              send_email_alert "Certificate Expiry Alert" "$alert_message"
+              
+              return 0
+            else
+              echo "cert_expiry_alert{secret=\"$secret_name\",namespace=\"$namespace\"} 0" >> /tmp/metrics.txt
+              return 1
+            fi
+          }
+          
+          # Main monitoring loop
+          main_monitoring_loop() {
+            echo "Starting certificate monitoring..."
+            echo "Monitoring interval: $MONITORING_INTERVAL seconds"
+            echo "Alert threshold: $ALERT_THRESHOLD"
+            echo "Target namespaces: $NAMESPACES"
+            
+            while true; do
+              echo "# Certificate monitoring metrics - $(date)" > /tmp/metrics.txt
+              echo "cert_monitor_running 1" >> /tmp/metrics.txt
+              
+              total_certs=0
+              expiring_certs=0
+              error_certs=0
+              
+              for namespace in $(echo $NAMESPACES | tr ',' ' '); do
+                echo "Checking certificates in namespace: $namespace"
+                
+                # Get all SSL certificate secrets
+                secrets=$(kubectl get secrets -n $namespace -l app.kubernetes.io/component=ssl-certificate -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+                
+                for secret in $secrets; do
+                  if [ -n "$secret" ]; then
+                    total_certs=$((total_certs + 1))
+                    
+                    if check_certificate_expiry $secret $namespace $ALERT_THRESHOLD; then
+                      expiring_certs=$((expiring_certs + 1))
+                    fi
+                  fi
+                done
+              done
+              
+              echo "cert_monitor_total_certificates $total_certs" >> /tmp/metrics.txt
+              echo "cert_monitor_expiring_certificates $expiring_certs" >> /tmp/metrics.txt
+              echo "cert_monitor_error_certificates $error_certs" >> /tmp/metrics.txt
+              echo "cert_monitor_last_check_timestamp $(date +%s)" >> /tmp/metrics.txt
+              
+              echo "Monitoring cycle completed: $total_certs total, $expiring_certs expiring, $error_certs errors"
+              sleep $MONITORING_INTERVAL
+            done
+          }
+          
+          # Start services
+          create_metrics_server
+          create_health_server
+          
+          # Start main monitoring loop
+          main_monitoring_loop
+        livenessProbe:
+          httpGet:
+            path: /
+            port: health
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.csrController.certMonitoring.resources | nindent 12 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: config
+          mountPath: /etc/cert-monitor
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-cert-monitor-config
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

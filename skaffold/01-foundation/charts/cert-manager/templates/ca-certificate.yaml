@@ -1,0 +1,31 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: alt-ca-certificate
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: ca-certificate
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "2"
+spec:
+  secretName: alt-ca-secret
+  isCA: true
+  commonName: Alt CA
+  subject:
+    countries:
+      - JP
+    localities:
+      - Tokyo
+    organizationalUnits:
+      - Security
+    organizations:
+      - Alt-Project
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io

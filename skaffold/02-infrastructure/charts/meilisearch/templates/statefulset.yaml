@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "meilisearch.fullname" . }}                # ★同じ名前で再作成
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "meilisearch.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "meilisearch.fullname" . }}-headless  # immutable — 触らない
+  replicas: {{ .Values.replicaCount }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type }}
+  selector:
+    matchLabels:
+      {{- include "meilisearch.selectorLabels" . | nindent 6 }}
+
+  template:
+    metadata:
+      labels:
+        {{- include "meilisearch.selectorLabels" . | nindent 8 }}
+        reloader.stakater.com/auto: "true"                    # Secret/CM 変更時に自動再起動 :contentReference[oaicite:7]{index=7}
+      annotations:
+        checksum/configmap: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.auth.masterKeyEnabled }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+
+    spec:
+      serviceAccountName: {{ include "meilisearch.serviceAccountName" . }}
+
+      # ───── Pod セキュリティ（自動 chown）─────
+      securityContext:                                         # Granular FS 権限制御 :contentReference[oaicite:8]{index=8}
+        fsGroup: 1000
+        fsGroupChangePolicy: "OnRootMismatch"                 # Web調査: Meilisearch公式推奨設定
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Init containers removed for Pod Security Standards "restricted" compliance
+      # Meilisearch data permissions managed by fsGroup + fsGroupChangePolicy
+
+      # ───── メインコンテナ ─────
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem | default false }}
+            seccompProfile:
+              type: RuntimeDefault
+
+          env:
+            {{- include "meilisearch.environment" . | nindent 12 }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+              scheme: {{ ternary "HTTPS" "HTTP" .Values.ssl.enabled }}
+            initialDelaySeconds: 30
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+              scheme: {{ ternary "HTTPS" "HTTP" .Values.ssl.enabled }}
+            initialDelaySeconds: 20
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.dataPath }}
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.ssl.enabled }}
+            - name: ssl-certs
+              mountPath: /ssl
+              readOnly: true
+            {{- end }}
+
+      # ───── ボリューム定義 ─────
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+        {{- if .Values.ssl.enabled }}
+        - name: ssl-certs
+          secret:
+            secretName: {{ .Values.ssl.existingSecret | default .Values.ssl.secretName }}
+            defaultMode: 0600
+        {{- end }}
+
+  # ───── PVC ─────
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass }}
+        {{- end }}
+  {{- else }}
+  volumeClaimTemplates: []
+  {{- end }}

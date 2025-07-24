@@ -1,0 +1,24 @@
+{{- if .Values.createNamespaces }}
+{{- range $namespaceName, $namespace := .Values.namespaces }}
+{{- if $namespace.enabled }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $namespace.name }}
+  labels:
+    {{- include "common-config.labels" $ | nindent 4 }}
+    {{- if $namespace.labels }}
+    {{- range $key, $value := $namespace.labels }}
+    {{- if ne $key "app.kubernetes.io/name" }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+  {{- with $.Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

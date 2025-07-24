@@ -1,0 +1,379 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-edge-computing-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge-computing-controller
+data:
+  config.yaml: |
+    # Edge Computing Controller Configuration
+    edgeComputing:
+      enabled: {{ .Values.edgeComputingController.enabled | default true }}
+      
+      # Edge Deployment Strategy
+      deployment:
+        strategy: {{ .Values.edgeComputingController.deployment.strategy | default "geographic" }}
+        replicationFactor: {{ .Values.edgeComputingController.deployment.replicationFactor | default 3 }}
+        zones: {{ .Values.edgeComputingController.deployment.zones | default (list) | toYaml | nindent 10 }}
+        regions: {{ .Values.edgeComputingController.deployment.regions | default (list) | toYaml | nindent 10 }}
+        cdnIntegration:
+          enabled: {{ .Values.edgeComputingController.deployment.cdnIntegration.enabled | default true }}
+          providers: {{ .Values.edgeComputingController.deployment.cdnIntegration.providers | default (list "cloudflare" "aws-cloudfront" "azure-cdn") | toYaml | nindent 12 }}
+
+      # Latency Optimization
+      latencyOptimization:
+        enabled: {{ .Values.edgeComputingController.latencyOptimization.enabled | default true }}
+        targetLatency: {{ .Values.edgeComputingController.latencyOptimization.targetLatency | default "50ms" }}
+        monitoring:
+          interval: {{ .Values.edgeComputingController.latencyOptimization.monitoring.interval | default "10s" }}
+          thresholds:
+            warning: {{ .Values.edgeComputingController.latencyOptimization.monitoring.thresholds.warning | default "100ms" }}
+            critical: {{ .Values.edgeComputingController.latencyOptimization.monitoring.thresholds.critical | default "200ms" }}
+        techniques:
+          preloading: {{ .Values.edgeComputingController.latencyOptimization.techniques.preloading | default true }}
+          caching: {{ .Values.edgeComputingController.latencyOptimization.techniques.caching | default true }}
+          compression: {{ .Values.edgeComputingController.latencyOptimization.techniques.compression | default true }}
+          keepAlive: {{ .Values.edgeComputingController.latencyOptimization.techniques.keepAlive | default true }}
+          http2: {{ .Values.edgeComputingController.latencyOptimization.techniques.http2 | default true }}
+          http3: {{ .Values.edgeComputingController.latencyOptimization.techniques.http3 | default false }}
+
+      # Bandwidth Optimization
+      bandwidthOptimization:
+        enabled: {{ .Values.edgeComputingController.bandwidthOptimization.enabled | default true }}
+        techniques:
+          compression:
+            enabled: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.compression.enabled | default true }}
+            algorithms: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.compression.algorithms | default (list "gzip" "brotli" "zstd") | toYaml | nindent 14 }}
+            minSize: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.compression.minSize | default "1KB" }}
+          deduplication:
+            enabled: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.deduplication.enabled | default true }}
+            windowSize: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.deduplication.windowSize | default "1MB" }}
+          deltaEncoding:
+            enabled: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.deltaEncoding.enabled | default true }}
+            threshold: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.deltaEncoding.threshold | default "10KB" }}
+          resourceOptimization:
+            imageOptimization: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.resourceOptimization.imageOptimization | default true }}
+            minification: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.resourceOptimization.minification | default true }}
+            bundling: {{ .Values.edgeComputingController.bandwidthOptimization.techniques.resourceOptimization.bundling | default true }}
+
+      # Offline Capability
+      offlineCapability:
+        enabled: {{ .Values.edgeComputingController.offlineCapability.enabled | default true }}
+        strategy: {{ .Values.edgeComputingController.offlineCapability.strategy | default "intelligent-caching" }}
+        storage:
+          type: {{ .Values.edgeComputingController.offlineCapability.storage.type | default "local-storage" }}
+          capacity: {{ .Values.edgeComputingController.offlineCapability.storage.capacity | default "10GB" }}
+          retention: {{ .Values.edgeComputingController.offlineCapability.storage.retention | default "7d" }}
+        synchronization:
+          strategy: {{ .Values.edgeComputingController.offlineCapability.synchronization.strategy | default "differential" }}
+          interval: {{ .Values.edgeComputingController.offlineCapability.synchronization.interval | default "5m" }}
+          conflictResolution: {{ .Values.edgeComputingController.offlineCapability.synchronization.conflictResolution | default "latest-wins" }}
+
+      # IoT Integration
+      iotIntegration:
+        enabled: {{ .Values.edgeComputingController.iotIntegration.enabled | default true }}
+        protocols:
+          mqtt:
+            enabled: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.enabled | default true }}
+            brokerPort: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.brokerPort | default 1883 }}
+            securePort: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.securePort | default 8883 }}
+            qos: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.qos | default 1 }}
+          coap:
+            enabled: {{ .Values.edgeComputingController.iotIntegration.protocols.coap.enabled | default true }}
+            port: {{ .Values.edgeComputingController.iotIntegration.protocols.coap.port | default 5683 }}
+            securePort: {{ .Values.edgeComputingController.iotIntegration.protocols.coap.securePort | default 5684 }}
+          websocket:
+            enabled: {{ .Values.edgeComputingController.iotIntegration.protocols.websocket.enabled | default true }}
+            port: {{ .Values.edgeComputingController.iotIntegration.protocols.websocket.port | default 8080 }}
+            securePort: {{ .Values.edgeComputingController.iotIntegration.protocols.websocket.securePort | default 8443 }}
+        deviceManagement:
+          autoDiscovery: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.autoDiscovery | default true }}
+          provisioning: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.provisioning | default "automatic" }}
+          firmware:
+            otaUpdates: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.firmware.otaUpdates | default true }}
+            rollbackCapability: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.firmware.rollbackCapability | default true }}
+        security:
+          deviceAuthentication: {{ .Values.edgeComputingController.iotIntegration.security.deviceAuthentication | default "certificate-based" }}
+          dataEncryption: {{ .Values.edgeComputingController.iotIntegration.security.dataEncryption | default true }}
+          accessControl: {{ .Values.edgeComputingController.iotIntegration.security.accessControl | default "rbac" }}
+
+      # Real-time Processing
+      realTimeProcessing:
+        enabled: {{ .Values.edgeComputingController.realTimeProcessing.enabled | default true }}
+        frameworksEnabled:
+          streamProcessing: {{ .Values.edgeComputingController.realTimeProcessing.frameworksEnabled.streamProcessing | default true }}
+          eventDriven: {{ .Values.edgeComputingController.realTimeProcessing.frameworksEnabled.eventDriven | default true }}
+          microBatch: {{ .Values.edgeComputingController.realTimeProcessing.frameworksEnabled.microBatch | default true }}
+        latencyRequirements:
+          ultraLow: {{ .Values.edgeComputingController.realTimeProcessing.latencyRequirements.ultraLow | default "1ms" }}
+          low: {{ .Values.edgeComputingController.realTimeProcessing.latencyRequirements.low | default "10ms" }}
+          moderate: {{ .Values.edgeComputingController.realTimeProcessing.latencyRequirements.moderate | default "100ms" }}
+        processing:
+          inMemory: {{ .Values.edgeComputingController.realTimeProcessing.processing.inMemory | default true }}
+          gpu: {{ .Values.edgeComputingController.realTimeProcessing.processing.gpu | default false }}
+          fpga: {{ .Values.edgeComputingController.realTimeProcessing.processing.fpga | default false }}
+          neuromorphic: {{ .Values.edgeComputingController.realTimeProcessing.processing.neuromorphic | default false }}
+
+      # Content Delivery and Caching
+      contentDelivery:
+        enabled: {{ .Values.edgeComputingController.contentDelivery.enabled | default true }}
+        caching:
+          strategy: {{ .Values.edgeComputingController.contentDelivery.caching.strategy | default "intelligent" }}
+          levels:
+            l1Cache:
+              enabled: {{ .Values.edgeComputingController.contentDelivery.caching.levels.l1Cache.enabled | default true }}
+              size: {{ .Values.edgeComputingController.contentDelivery.caching.levels.l1Cache.size | default "100MB" }}
+              ttl: {{ .Values.edgeComputingController.contentDelivery.caching.levels.l1Cache.ttl | default "5m" }}
+            l2Cache:
+              enabled: {{ .Values.edgeComputingController.contentDelivery.caching.levels.l2Cache.enabled | default true }}
+              size: {{ .Values.edgeComputingController.contentDelivery.caching.levels.l2Cache.size | default "1GB" }}
+              ttl: {{ .Values.edgeComputingController.contentDelivery.caching.levels.l2Cache.ttl | default "1h" }}
+            l3Cache:
+              enabled: {{ .Values.edgeComputingController.contentDelivery.caching.levels.l3Cache.enabled | default true }}
+              size: {{ .Values.edgeComputingController.contentDelivery.caching.levels.l3Cache.size | default "10GB" }}
+              ttl: {{ .Values.edgeComputingController.contentDelivery.caching.levels.l3Cache.ttl | default "24h" }}
+        prefetching:
+          enabled: {{ .Values.edgeComputingController.contentDelivery.prefetching.enabled | default true }}
+          algorithms:
+            predictive: {{ .Values.edgeComputingController.contentDelivery.prefetching.algorithms.predictive | default true }}
+            userBehavior: {{ .Values.edgeComputingController.contentDelivery.prefetching.algorithms.userBehavior | default true }}
+            contextAware: {{ .Values.edgeComputingController.contentDelivery.prefetching.algorithms.contextAware | default true }}
+
+      # Edge AI and Machine Learning
+      edgeAI:
+        enabled: {{ .Values.edgeComputingController.edgeAI.enabled | default true }}
+        modelDeployment:
+          strategy: {{ .Values.edgeComputingController.edgeAI.modelDeployment.strategy | default "distributed" }}
+          optimizations:
+            quantization: {{ .Values.edgeComputingController.edgeAI.modelDeployment.optimizations.quantization | default true }}
+            pruning: {{ .Values.edgeComputingController.edgeAI.modelDeployment.optimizations.pruning | default true }}
+            distillation: {{ .Values.edgeComputingController.edgeAI.modelDeployment.optimizations.distillation | default true }}
+        inferenceAcceleration:
+          gpu: {{ .Values.edgeComputingController.edgeAI.inferenceAcceleration.gpu | default false }}
+          tpu: {{ .Values.edgeComputingController.edgeAI.inferenceAcceleration.tpu | default false }}
+          npu: {{ .Values.edgeComputingController.edgeAI.inferenceAcceleration.npu | default false }}
+          cpu: {{ .Values.edgeComputingController.edgeAI.inferenceAcceleration.cpu | default true }}
+        frameworks:
+          tensorflowLite: {{ .Values.edgeComputingController.edgeAI.frameworks.tensorflowLite | default true }}
+          onnx: {{ .Values.edgeComputingController.edgeAI.frameworks.onnx | default true }}
+          coreML: {{ .Values.edgeComputingController.edgeAI.frameworks.coreML | default false }}
+          openvino: {{ .Values.edgeComputingController.edgeAI.frameworks.openvino | default true }}
+
+      # Localization Configuration
+      localization:
+        enabled: {{ .Values.edgeComputingController.localization.enabled | default true }}
+        
+        # Geographic Localization
+        geographic:
+          enabled: {{ .Values.edgeComputingController.localization.geographic.enabled | default true }}
+          geoIP:
+            enabled: {{ .Values.edgeComputingController.localization.geographic.geoIP.enabled | default true }}
+            provider: {{ .Values.edgeComputingController.localization.geographic.geoIP.provider | default "maxmind" }}
+            database: {{ .Values.edgeComputingController.localization.geographic.geoIP.database | default "GeoLite2-City" }}
+            updateInterval: {{ .Values.edgeComputingController.localization.geographic.geoIP.updateInterval | default "weekly" }}
+          routing:
+            strategy: {{ .Values.edgeComputingController.localization.geographic.routing.strategy | default "distance-based" }}
+            factors:
+              latency: {{ .Values.edgeComputingController.localization.geographic.routing.factors.latency | default 40 }}
+              distance: {{ .Values.edgeComputingController.localization.geographic.routing.factors.distance | default 30 }}
+              load: {{ .Values.edgeComputingController.localization.geographic.routing.factors.load | default 20 }}
+              cost: {{ .Values.edgeComputingController.localization.geographic.routing.factors.cost | default 10 }}
+
+        # Language and Cultural Localization
+        language:
+          enabled: {{ .Values.edgeComputingController.localization.language.enabled | default true }}
+          autoDetection: {{ .Values.edgeComputingController.localization.language.autoDetection | default true }}
+          supportedLanguages: {{ .Values.edgeComputingController.localization.language.supportedLanguages | default (list "en" "ja" "ko" "zh" "de" "fr" "es") | toYaml | nindent 12 }}
+          defaultLanguage: {{ .Values.edgeComputingController.localization.language.defaultLanguage | default "en" }}
+          fallbackLanguage: {{ .Values.edgeComputingController.localization.language.fallbackLanguage | default "en" }}
+          translation:
+            enabled: {{ .Values.edgeComputingController.localization.language.translation.enabled | default true }}
+            realTime: {{ .Values.edgeComputingController.localization.language.translation.realTime | default true }}
+            caching: {{ .Values.edgeComputingController.localization.language.translation.caching | default true }}
+            provider: {{ .Values.edgeComputingController.localization.language.translation.provider | default "ai-powered" }}
+
+        # Data and Compliance Localization
+        compliance:
+          enabled: {{ .Values.edgeComputingController.localization.compliance.enabled | default true }}
+          dataResidency:
+            enforcement: {{ .Values.edgeComputingController.localization.compliance.dataResidency.enforcement | default "strict" }}
+            regions: {{ .Values.edgeComputingController.localization.compliance.dataResidency.regions | default (dict) | toYaml | nindent 14 }}
+          regulations:
+            gdpr:
+              enabled: {{ .Values.edgeComputingController.localization.compliance.regulations.gdpr.enabled | default true }}
+              regions: {{ .Values.edgeComputingController.localization.compliance.regulations.gdpr.regions | default (list "eu") | toYaml | nindent 16 }}
+            ccpa:
+              enabled: {{ .Values.edgeComputingController.localization.compliance.regulations.ccpa.enabled | default true }}
+              regions: {{ .Values.edgeComputingController.localization.compliance.regulations.ccpa.regions | default (list "us-ca") | toYaml | nindent 16 }}
+            pipeda:
+              enabled: {{ .Values.edgeComputingController.localization.compliance.regulations.pipeda.enabled | default false }}
+              regions: {{ .Values.edgeComputingController.localization.compliance.regulations.pipeda.regions | default (list "ca") | toYaml | nindent 16 }}
+
+        # Time Zone and Temporal Localization
+        temporal:
+          enabled: {{ .Values.edgeComputingController.localization.temporal.enabled | default true }}
+          autoDetection: {{ .Values.edgeComputingController.localization.temporal.autoDetection | default true }}
+          defaultTimeZone: {{ .Values.edgeComputingController.localization.temporal.defaultTimeZone | default "UTC" }}
+          scheduling:
+            respectLocalTime: {{ .Values.edgeComputingController.localization.temporal.scheduling.respectLocalTime | default true }}
+            businessHours: {{ .Values.edgeComputingController.localization.temporal.scheduling.businessHours | default true }}
+            holidays: {{ .Values.edgeComputingController.localization.temporal.scheduling.holidays | default true }}
+
+      # Performance Monitoring and Analytics
+      monitoring:
+        enabled: {{ .Values.edgeComputingController.monitoring.enabled | default true }}
+        metrics:
+          collection:
+            interval: {{ .Values.edgeComputingController.monitoring.metrics.collection.interval | default "10s" }}
+            retention: {{ .Values.edgeComputingController.monitoring.metrics.collection.retention | default "30d" }}
+          types:
+            latency: {{ .Values.edgeComputingController.monitoring.metrics.types.latency | default true }}
+            throughput: {{ .Values.edgeComputingController.monitoring.metrics.types.throughput | default true }}
+            errorRate: {{ .Values.edgeComputingController.monitoring.metrics.types.errorRate | default true }}
+            resourceUtilization: {{ .Values.edgeComputingController.monitoring.metrics.types.resourceUtilization | default true }}
+            userExperience: {{ .Values.edgeComputingController.monitoring.metrics.types.userExperience | default true }}
+        alerting:
+          enabled: {{ .Values.edgeComputingController.monitoring.alerting.enabled | default true }}
+          channels: {{ .Values.edgeComputingController.monitoring.alerting.channels | default (list "slack" "email" "webhook") | toYaml | nindent 12 }}
+          thresholds:
+            latency: {{ .Values.edgeComputingController.monitoring.alerting.thresholds.latency | default "100ms" }}
+            errorRate: {{ .Values.edgeComputingController.monitoring.alerting.thresholds.errorRate | default "5%" }}
+            availability: {{ .Values.edgeComputingController.monitoring.alerting.thresholds.availability | default "99%" }}
+
+      # Security Configuration
+      security:
+        enabled: {{ .Values.edgeComputingController.security.enabled | default true }}
+        edgeToCore:
+          encryption: {{ .Values.edgeComputingController.security.edgeToCore.encryption | default "tls-1.3" }}
+          authentication: {{ .Values.edgeComputingController.security.edgeToCore.authentication | default "mutual-tls" }}
+          keyRotation: {{ .Values.edgeComputingController.security.edgeToCore.keyRotation | default "daily" }}
+        edgeToEdge:
+          encryption: {{ .Values.edgeComputingController.security.edgeToEdge.encryption | default "tls-1.3" }}
+          meshSecurity: {{ .Values.edgeComputingController.security.edgeToEdge.meshSecurity | default true }}
+          zeroTrust: {{ .Values.edgeComputingController.security.edgeToEdge.zeroTrust | default true }}
+        deviceSecurity:
+          attestation: {{ .Values.edgeComputingController.security.deviceSecurity.attestation | default true }}
+          trustedExecution: {{ .Values.edgeComputingController.security.deviceSecurity.trustedExecution | default true }}
+          hardwareSecurityModule: {{ .Values.edgeComputingController.security.deviceSecurity.hardwareSecurityModule | default false }}
+
+  edge-agent.yaml: |
+    # Edge Agent Configuration
+    edgeAgent:
+      enabled: {{ .Values.edgeComputingController.edgeAgent.enabled | default true }}
+      
+      # Agent Capabilities
+      capabilities:
+        monitoring: {{ .Values.edgeComputingController.edgeAgent.capabilities.monitoring | default true }}
+        dataCollection: {{ .Values.edgeComputingController.edgeAgent.capabilities.dataCollection | default true }}
+        localProcessing: {{ .Values.edgeComputingController.edgeAgent.capabilities.localProcessing | default true }}
+        caching: {{ .Values.edgeComputingController.edgeAgent.capabilities.caching | default true }}
+        synchronization: {{ .Values.edgeComputingController.edgeAgent.capabilities.synchronization | default true }}
+
+      # Network Monitoring
+      networkMonitoring:
+        enabled: {{ .Values.edgeComputingController.edgeAgent.networkMonitoring.enabled | default true }}
+        protocols: {{ .Values.edgeComputingController.edgeAgent.networkMonitoring.protocols | default (list "tcp" "udp" "icmp" "http" "https") | toYaml | nindent 10 }}
+        metrics:
+          latency: {{ .Values.edgeComputingController.edgeAgent.networkMonitoring.metrics.latency | default true }}
+          bandwidth: {{ .Values.edgeComputingController.edgeAgent.networkMonitoring.metrics.bandwidth | default true }}
+          packetLoss: {{ .Values.edgeComputingController.edgeAgent.networkMonitoring.metrics.packetLoss | default true }}
+          jitter: {{ .Values.edgeComputingController.edgeAgent.networkMonitoring.metrics.jitter | default true }}
+        targets: {{ .Values.edgeComputingController.edgeAgent.networkMonitoring.targets | default (list) | toYaml | nindent 10 }}
+
+      # Resource Monitoring
+      resourceMonitoring:
+        enabled: {{ .Values.edgeComputingController.edgeAgent.resourceMonitoring.enabled | default true }}
+        interval: {{ .Values.edgeComputingController.edgeAgent.resourceMonitoring.interval | default "30s" }}
+        metrics:
+          cpu: {{ .Values.edgeComputingController.edgeAgent.resourceMonitoring.metrics.cpu | default true }}
+          memory: {{ .Values.edgeComputingController.edgeAgent.resourceMonitoring.metrics.memory | default true }}
+          disk: {{ .Values.edgeComputingController.edgeAgent.resourceMonitoring.metrics.disk | default true }}
+          network: {{ .Values.edgeComputingController.edgeAgent.resourceMonitoring.metrics.network | default true }}
+          gpu: {{ .Values.edgeComputingController.edgeAgent.resourceMonitoring.metrics.gpu | default false }}
+
+      # Local Processing
+      localProcessing:
+        enabled: {{ .Values.edgeComputingController.edgeAgent.localProcessing.enabled | default true }}
+        maxCpu: {{ .Values.edgeComputingController.edgeAgent.localProcessing.maxCpu | default "50%" }}
+        maxMemory: {{ .Values.edgeComputingController.edgeAgent.localProcessing.maxMemory | default "1Gi" }}
+        frameworks:
+          streamProcessing: {{ .Values.edgeComputingController.edgeAgent.localProcessing.frameworks.streamProcessing | default true }}
+          ml: {{ .Values.edgeComputingController.edgeAgent.localProcessing.frameworks.ml | default true }}
+          analytics: {{ .Values.edgeComputingController.edgeAgent.localProcessing.frameworks.analytics | default true }}
+
+      # Data Synchronization
+      synchronization:
+        enabled: {{ .Values.edgeComputingController.edgeAgent.synchronization.enabled | default true }}
+        strategy: {{ .Values.edgeComputingController.edgeAgent.synchronization.strategy | default "adaptive" }}
+        compression: {{ .Values.edgeComputingController.edgeAgent.synchronization.compression | default true }}
+        encryption: {{ .Values.edgeComputingController.edgeAgent.synchronization.encryption | default true }}
+        conflictResolution: {{ .Values.edgeComputingController.edgeAgent.synchronization.conflictResolution | default "timestamp-based" }}
+
+  iot-integration.yaml: |
+    # IoT Integration Configuration
+    iotIntegration:
+      enabled: {{ .Values.edgeComputingController.iotIntegration.enabled | default true }}
+      
+      # Device Management
+      deviceManagement:
+        autoDiscovery:
+          enabled: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.autoDiscovery.enabled | default true }}
+          protocols: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.autoDiscovery.protocols | default (list "mdns" "upnp" "bluetooth" "zigbee" "z-wave") | toYaml | nindent 12 }}
+          scanInterval: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.autoDiscovery.scanInterval | default "5m" }}
+        provisioning:
+          strategy: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.provisioning.strategy | default "zero-touch" }}
+          templates: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.provisioning.templates | default (list) | toYaml | nindent 12 }}
+          security:
+            certificateBased: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.provisioning.security.certificateBased | default true }}
+            preSharedKey: {{ .Values.edgeComputingController.iotIntegration.deviceManagement.provisioning.security.preSharedKey | default false }}
+
+      # Protocol Support
+      protocols:
+        mqtt:
+          broker:
+            embedded: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.broker.embedded | default true }}
+            external: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.broker.external | default false }}
+            clustering: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.broker.clustering | default true }}
+          security:
+            tls: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.security.tls | default true }}
+            clientCertificates: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.security.clientCertificates | default true }}
+            acl: {{ .Values.edgeComputingController.iotIntegration.protocols.mqtt.security.acl | default true }}
+        coap:
+          server:
+            enabled: {{ .Values.edgeComputingController.iotIntegration.protocols.coap.server.enabled | default true }}
+            observeSupport: {{ .Values.edgeComputingController.iotIntegration.protocols.coap.server.observeSupport | default true }}
+            blockWiseTransfer: {{ .Values.edgeComputingController.iotIntegration.protocols.coap.server.blockWiseTransfer | default true }}
+          security:
+            dtls: {{ .Values.edgeComputingController.iotIntegration.protocols.coap.security.dtls | default true }}
+            psk: {{ .Values.edgeComputingController.iotIntegration.protocols.coap.security.psk | default false }}
+            rawPublicKey: {{ .Values.edgeComputingController.iotIntegration.protocols.coap.security.rawPublicKey | default true }}
+
+      # Data Processing
+      dataProcessing:
+        streaming:
+          enabled: {{ .Values.edgeComputingController.iotIntegration.dataProcessing.streaming.enabled | default true }}
+          bufferSize: {{ .Values.edgeComputingController.iotIntegration.dataProcessing.streaming.bufferSize | default "10MB" }}
+          flushInterval: {{ .Values.edgeComputingController.iotIntegration.dataProcessing.streaming.flushInterval | default "1s" }}
+        aggregation:
+          enabled: {{ .Values.edgeComputingController.iotIntegration.dataProcessing.aggregation.enabled | default true }}
+          windowSize: {{ .Values.edgeComputingController.iotIntegration.dataProcessing.aggregation.windowSize | default "1m" }}
+          functions: {{ .Values.edgeComputingController.iotIntegration.dataProcessing.aggregation.functions | default (list "avg" "min" "max" "sum" "count") | toYaml | nindent 12 }}
+        filtering:
+          enabled: {{ .Values.edgeComputingController.iotIntegration.dataProcessing.filtering.enabled | default true }}
+          rules: {{ .Values.edgeComputingController.iotIntegration.dataProcessing.filtering.rules | default (list) | toYaml | nindent 12 }}
+
+      # Analytics and AI
+      analytics:
+        enabled: {{ .Values.edgeComputingController.iotIntegration.analytics.enabled | default true }}
+        realTime:
+          anomalyDetection: {{ .Values.edgeComputingController.iotIntegration.analytics.realTime.anomalyDetection | default true }}
+          patternRecognition: {{ .Values.edgeComputingController.iotIntegration.analytics.realTime.patternRecognition | default true }}
+          predictiveAnalytics: {{ .Values.edgeComputingController.iotIntegration.analytics.realTime.predictiveAnalytics | default true }}
+        machineLearning:
+          models: {{ .Values.edgeComputingController.iotIntegration.analytics.machineLearning.models | default (list) | toYaml | nindent 12 }}
+          inference:
+            local: {{ .Values.edgeComputingController.iotIntegration.analytics.machineLearning.inference.local | default true }}
+            cloud: {{ .Values.edgeComputingController.iotIntegration.analytics.machineLearning.inference.cloud | default false }}
+            hybrid: {{ .Values.edgeComputingController.iotIntegration.analytics.machineLearning.inference.hybrid | default true }}

@@ -1,0 +1,25 @@
+{{- if .Values.storageClasses.enabled }}
+{{- range $scName, $storageClass := .Values.storageClasses }}
+{{- if and (ne $scName "enabled") $storageClass.name }}
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ $storageClass.name }}
+  labels:
+    {{- include "common-config.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: storage-class
+  {{- with $.Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+provisioner: {{ $storageClass.provisioner }}
+reclaimPolicy: {{ $storageClass.reclaimPolicy | default "Retain" }}
+allowVolumeExpansion: {{ $storageClass.allowVolumeExpansion | default true }}
+{{- if $storageClass.parameters }}
+parameters:
+  {{- toYaml $storageClass.parameters | nindent 2 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

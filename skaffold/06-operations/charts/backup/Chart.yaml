@@ -1,0 +1,6 @@
+apiVersion: v2
+name: backup
+description: A Helm chart for Alt Backup CronJob
+type: application
+version: 0.1.0
+appVersion: "latest"

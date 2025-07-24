@@ -1,0 +1,299 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-ai-ml-engine
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-ml-engine
+spec:
+  replicas: {{ .Values.aiMlEngine.replicas | default 3 }}
+  selector:
+    matchLabels:
+      {{- include "csr-controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ai-ml-engine
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+      labels:
+        {{- include "csr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ai-ml-engine
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: ai-ml-engine
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.aiMlEngine.image.repository }}:{{ .Values.aiMlEngine.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.aiMlEngine.image.pullPolicy }}
+        env:
+        - name: AI_ENGINE_MODE
+          value: {{ .Values.aiMlEngine.mode | default "production" | quote }}
+        - name: ANOMALY_DETECTION_ENABLED
+          value: {{ .Values.aiMlEngine.anomalyDetection.enabled | default true | quote }}
+        - name: PREDICTIVE_ANALYTICS_ENABLED
+          value: {{ .Values.aiMlEngine.predictiveAnalytics.enabled | default true | quote }}
+        - name: PATTERN_RECOGNITION_ENABLED
+          value: {{ .Values.aiMlEngine.patternRecognition.enabled | default true | quote }}
+        - name: DEEP_LEARNING_ENABLED
+          value: {{ .Values.aiMlEngine.deepLearning.enabled | default true | quote }}
+        - name: NLP_ENABLED
+          value: {{ .Values.aiMlEngine.nlp.enabled | default true | quote }}
+        - name: REINFORCEMENT_LEARNING_ENABLED
+          value: {{ .Values.aiMlEngine.reinforcementLearning.enabled | default true | quote }}
+        - name: AUTOMATED_OPTIMIZATION_ENABLED
+          value: {{ .Values.aiMlEngine.automatedOptimization.enabled | default true | quote }}
+        - name: CONTINUOUS_LEARNING_ENABLED
+          value: {{ .Values.aiMlEngine.continuousLearning.enabled | default true | quote }}
+        - name: MODEL_VERSIONING_ENABLED
+          value: {{ .Values.aiMlEngine.modelVersioning.enabled | default true | quote }}
+        - name: EXPLAINABLE_AI_ENABLED
+          value: {{ .Values.aiMlEngine.explainableAI.enabled | default true | quote }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: grpc
+          containerPort: 9090
+          protocol: TCP
+        - name: jupyter
+          containerPort: 8888
+          protocol: TCP
+        - name: tensorboard
+          containerPort: 6006
+          protocol: TCP
+        - name: mlflow
+          containerPort: 5000
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.aiMlEngine.resources | nindent 12 }}
+        volumeMounts:
+        - name: ai-config
+          mountPath: /etc/ai-ml
+          readOnly: true
+        - name: model-storage
+          mountPath: /var/lib/models
+        - name: training-data
+          mountPath: /var/lib/training-data
+        - name: inference-cache
+          mountPath: /var/cache/inference
+        - name: experiment-tracking
+          mountPath: /var/lib/experiments
+        - name: model-artifacts
+          mountPath: /var/lib/artifacts
+        - name: feature-store
+          mountPath: /var/lib/feature-store
+        - name: jupyter-workspace
+          mountPath: /opt/notebooks
+        {{- if .Values.aiMlEngine.gpu.enabled }}
+        - name: nvidia-driver
+          mountPath: /usr/local/nvidia
+          readOnly: true
+        {{- end }}
+      volumes:
+      - name: ai-config
+        configMap:
+          name: {{ include "csr-controller.fullname" . }}-ai-ml-config
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-ai-model-storage
+      - name: training-data
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-ai-training-data
+      - name: inference-cache
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-ai-inference-cache
+      - name: experiment-tracking
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-ai-experiment-tracking
+      - name: model-artifacts
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-ai-model-artifacts
+      - name: feature-store
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-ai-feature-store
+      - name: jupyter-workspace
+        persistentVolumeClaim:
+          claimName: {{ include "csr-controller.fullname" . }}-ai-jupyter-workspace
+      {{- if .Values.aiMlEngine.gpu.enabled }}
+      - name: nvidia-driver
+        hostPath:
+          path: /usr/local/nvidia
+          type: Directory
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+        {{- if .Values.aiMlEngine.gpu.enabled }}
+        accelerator: nvidia-tesla-k80
+        {{- end }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.aiMlEngine.gpu.enabled }}
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      {{- end }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "csr-controller.fullname" . }}-ai-model-training
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-ml-engine
+spec:
+  schedule: {{ .Values.aiMlEngine.modelTraining.schedule | default "0 2 * * *" | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "csr-controller.serviceAccountName" . }}
+          containers:
+          - name: ai-model-training
+            image: "{{ .Values.aiMlEngine.image.repository }}:{{ .Values.aiMlEngine.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.aiMlEngine.image.pullPolicy }}
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting AI model training pipeline..."
+              
+              # Data preprocessing
+              echo "Preprocessing training data..."
+              python /opt/ai-ml/scripts/data_preprocessing.py \
+                --input-path=/var/lib/training-data \
+                --output-path=/var/lib/training-data/processed \
+                --config-path=/etc/ai-ml/training-config.yaml
+              
+              # Feature engineering
+              echo "Engineering features..."
+              python /opt/ai-ml/scripts/feature_engineering.py \
+                --input-path=/var/lib/training-data/processed \
+                --output-path=/var/lib/feature-store \
+                --config-path=/etc/ai-ml/feature-config.yaml
+              
+              # Model training
+              echo "Training models..."
+              python /opt/ai-ml/scripts/model_training.py \
+                --data-path=/var/lib/feature-store \
+                --model-path=/var/lib/models \
+                --config-path=/etc/ai-ml/model-config.yaml \
+                --experiment-path=/var/lib/experiments
+              
+              # Model evaluation
+              echo "Evaluating models..."
+              python /opt/ai-ml/scripts/model_evaluation.py \
+                --model-path=/var/lib/models \
+                --test-data-path=/var/lib/feature-store/test \
+                --output-path=/var/lib/experiments/evaluation
+              
+              # Model deployment
+              echo "Deploying best models..."
+              python /opt/ai-ml/scripts/model_deployment.py \
+                --model-path=/var/lib/models \
+                --evaluation-path=/var/lib/experiments/evaluation \
+                --deployment-path=/var/lib/artifacts
+              
+              echo "AI model training pipeline completed successfully"
+            env:
+            - name: TRAINING_MODE
+              value: {{ .Values.aiMlEngine.modelTraining.mode | default "comprehensive" | quote }}
+            - name: BATCH_SIZE
+              value: {{ .Values.aiMlEngine.modelTraining.batchSize | default 1000 | quote }}
+            - name: LEARNING_RATE
+              value: {{ .Values.aiMlEngine.modelTraining.learningRate | default 0.001 | quote }}
+            - name: EPOCHS
+              value: {{ .Values.aiMlEngine.modelTraining.epochs | default 100 | quote }}
+            - name: VALIDATION_SPLIT
+              value: {{ .Values.aiMlEngine.modelTraining.validationSplit | default 0.2 | quote }}
+            - name: EARLY_STOPPING_PATIENCE
+              value: {{ .Values.aiMlEngine.modelTraining.earlyStoppingPatience | default 10 | quote }}
+            - name: MODEL_SELECTION_METRIC
+              value: {{ .Values.aiMlEngine.modelTraining.modelSelectionMetric | default "f1_score" | quote }}
+            - name: CROSS_VALIDATION_FOLDS
+              value: {{ .Values.aiMlEngine.modelTraining.crossValidationFolds | default 5 | quote }}
+            - name: HYPERPARAMETER_TUNING_ENABLED
+              value: {{ .Values.aiMlEngine.modelTraining.hyperparameterTuning.enabled | default true | quote }}
+            - name: MLFLOW_TRACKING_URI
+              value: "http://localhost:5000"
+            - name: CUDA_VISIBLE_DEVICES
+              value: {{ .Values.aiMlEngine.gpu.devices | default "0" | quote }}
+            volumeMounts:
+            - name: ai-config
+              mountPath: /etc/ai-ml
+              readOnly: true
+            - name: model-storage
+              mountPath: /var/lib/models
+            - name: training-data
+              mountPath: /var/lib/training-data
+            - name: feature-store
+              mountPath: /var/lib/feature-store
+            - name: experiment-tracking
+              mountPath: /var/lib/experiments
+            - name: model-artifacts
+              mountPath: /var/lib/artifacts
+            {{- if .Values.aiMlEngine.gpu.enabled }}
+            - name: nvidia-driver
+              mountPath: /usr/local/nvidia
+              readOnly: true
+            {{- end }}
+          volumes:
+          - name: ai-config
+            configMap:
+              name: {{ include "csr-controller.fullname" . }}-ai-ml-config
+          - name: model-storage
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-ai-model-storage
+          - name: training-data
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-ai-training-data
+          - name: feature-store
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-ai-feature-store
+          - name: experiment-tracking
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-ai-experiment-tracking
+          - name: model-artifacts
+            persistentVolumeClaim:
+              claimName: {{ include "csr-controller.fullname" . }}-ai-model-artifacts
+          {{- if .Values.aiMlEngine.gpu.enabled }}
+          - name: nvidia-driver
+            hostPath:
+              path: /usr/local/nvidia
+              type: Directory
+          {{- end }}
