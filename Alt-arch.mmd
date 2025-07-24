@@ -1,0 +1,229 @@
+graph TB
+    %% スタイル定義
+    classDef frontend fill:#4FC3F7,stroke:#0288D1,stroke-width:3px,color:#fff
+    classDef backend fill:#66BB6A,stroke:#2E7D32,stroke-width:3px,color:#fff
+    classDef ai fill:#FFB74D,stroke:#E65100,stroke-width:3px,color:#fff
+    classDef database fill:#EF5350,stroke:#B71C1C,stroke-width:3px,color:#fff
+    classDef search fill:#7E57C2,stroke:#4527A0,stroke-width:3px,color:#fff
+    classDef logging fill:#AB47BC,stroke:#6A1B9A,stroke-width:3px,color:#fff
+    classDef auth fill:#5C6BC0,stroke:#283593,stroke-width:3px,color:#fff
+    classDef infra fill:#455A64,stroke:#263238,stroke-width:3px,color:#fff
+    classDef k8s fill:#326CE5,stroke:#1976D2,stroke-width:3px,color:#fff
+    classDef helm fill:#0F1689,stroke:#0D47A1,stroke-width:3px,color:#fff
+    classDef layer fill:#ECEFF1,stroke:#607D8B,stroke-width:2px,color:#263238
+
+    %% User Interface Layer
+    subgraph ExternalAccess[External Access]
+        User[User]
+        Browser[Browser/Mobile]
+    end
+
+    %% Kubernetes Ingress Layer
+    subgraph IngressNamespace[K8s Namespace - alt-ingress]
+        IngressController[Ingress Controller<br/>SSL/TLS Termination]:::k8s
+        NginxExternal[nginx-external<br/>External Proxy]:::infra
+    end
+
+    %% Frontend Layer
+    subgraph AppsNamespace[K8s Namespace - alt-apps]
+        subgraph FrontendService[Frontend Service]
+            FrontendPod[alt-frontend Pod<br/>TypeScript/React/Next.js<br/>Mobile-first Design]:::frontend
+            FrontendSvc[alt-frontend Service<br/>ClusterIP]:::k8s
+        end
+
+        %% Backend - Clean Architecture
+        subgraph BackendService[Backend Service - Clean Architecture]
+            subgraph BackendPod[alt-backend Pod]
+                REST[REST Layer<br/>Echo Framework<br/>HTTP Handlers]:::layer
+                Usecase[Usecase Layer<br/>Business Logic<br/>Orchestration]:::layer
+                Port[Port Layer<br/>Interface Definitions<br/>Contracts]:::layer
+                Gateway[Gateway Layer<br/>Anti-Corruption Layer<br/>External Service Translation]:::layer
+                Driver[Driver Layer<br/>DB/API Integrations<br/>External Systems]:::layer
+
+                REST --> Usecase
+                Usecase --> Port
+                Port --> Gateway
+                Gateway --> Driver
+            end
+            BackendSvc[alt-backend Service<br/>ClusterIP]:::k8s
+        end
+
+        %% Data Processing Pipeline
+        subgraph DataPipeline[Data Processing Pipeline]
+            PreProcessorPod[pre-processor Pod<br/>Go Service<br/>Language Detection<br/>Auto-scoring]:::backend
+            PreProcessorSvc[pre-processor Service]:::k8s
+
+            TagGeneratorPod[tag-generator Pod<br/>Python ML Service<br/>Auto-tagging]:::ai
+            TagGeneratorSvc[tag-generator Service]:::k8s
+
+            NewsCreatorPod[news-creator Pod<br/>LLM Service<br/>Gemma3 4b Model<br/>GPU Support]:::ai
+            NewsCreatorSvc[news-creator Service]:::k8s
+
+            SearchIndexerPod[search-indexer Pod<br/>Go Service<br/>Index Management]:::backend
+            SearchIndexerSvc[search-indexer Service]:::k8s
+        end
+
+        %% Internal NGINX
+        NginxInternal[nginx Pod<br/>Internal Load Balancer<br/>Rate Limiting]:::infra
+        NginxInternalSvc[nginx Service]:::k8s
+    end
+
+    %% Authentication Layer
+    subgraph AuthNamespace[K8s Namespace - alt-auth]
+        subgraph AuthServices[Authentication Services]
+            AuthServicePod[auth-service Pod<br/>Go Service<br/>JWT Management]:::auth
+            AuthServiceSvc[auth-service Service]:::k8s
+
+            KratosPod[Kratos Pod<br/>Identity Management<br/>OAuth2/OIDC]:::auth
+            KratosSvc[kratos-public/admin Services]:::k8s
+        end
+    end
+
+    %% Database Layer
+    subgraph DatabaseNamespace[K8s Namespace - alt-database]
+        subgraph PrimaryDatabase[Primary Database]
+            PostgresPod[(PostgreSQL Pod<br/>Primary DB<br/>SSL/TLS Enabled)]:::database
+            PostgresSvc[postgres Service]:::k8s
+            PostgresPVC[postgres-data PVC<br/>SSD Storage]:::k8s
+        end
+
+        subgraph AuthDatabases[Auth Databases]
+            AuthPostgresPod[(Auth PostgreSQL<br/>User Data)]:::database
+            AuthPostgresSvc[auth-postgres Service]:::k8s
+            AuthPostgresPVC[auth-postgres PVC]:::k8s
+
+            KratosPostgresPod[(Kratos PostgreSQL<br/>Identity Data)]:::database
+            KratosPostgresSvc[kratos-postgres Service]:::k8s
+            KratosPostgresPVC[kratos-postgres PVC]:::k8s
+        end
+    end
+
+    %% Search Engine Layer
+    subgraph SearchNamespace[K8s Namespace - alt-search]
+        MeilisearchPod[Meilisearch Pod<br/>v1.15.2<br/>Full-text Search]:::search
+        MeilisearchSvc[meilisearch Service]:::k8s
+        MeilisearchPVC[meilisearch-data PVC]:::k8s
+    end
+
+    %% Logging and Monitoring Layer
+    subgraph ObservabilityNamespace[K8s Namespace - alt-observability]
+        subgraph LoggingInfra[Logging Infrastructure]
+            LogForwarderPod[rask-log-forwarder Pod<br/>Rust Service<br/>High-performance]:::logging
+            LogForwarderSvc[log-forwarder Service]:::k8s
+
+            LogAggregatorPod[rask-log-aggregator Pod<br/>Rust Service<br/>100K+ logs/sec]:::logging
+            LogAggregatorSvc[log-aggregator Service]:::k8s
+
+            ClickHousePod[(ClickHouse Pod<br/>v25.6<br/>Analytics DB)]:::database
+            ClickHouseSvc[clickhouse Service]:::k8s
+            ClickHousePVC[clickhouse-data PVC<br/>Fast SSD]:::k8s
+        end
+    end
+
+    %% Kubernetes Common Components
+    subgraph K8sCommon[K8s Common Resources]
+        subgraph ConfigManagement[Configuration Management]
+            ConfigMaps[ConfigMaps<br/>- common-config<br/>- service configs<br/>- nginx configs]:::k8s
+            Secrets[Secrets<br/>- DB credentials<br/>- API keys<br/>- SSL certificates]:::k8s
+        end
+
+        subgraph HelmManagement[Helm Charts]
+            HelmCharts[Helm Charts<br/>- alt-backend<br/>- alt-frontend<br/>- auth-service<br/>- databases<br/>- monitoring]:::helm
+        end
+
+        subgraph AutoScaling[Auto-scaling]
+            HPA[HPA<br/>CPU/Memory based<br/>Min 2 Max 10]:::k8s
+        end
+
+        subgraph StorageManagement[Storage]
+            StorageClasses[StorageClasses<br/>- standard HDD<br/>- fast SSD<br/>- ultra-fast NVMe]:::k8s
+        end
+
+        subgraph NetworkSecurity[Network Policies]
+            NetworkPolicies[Network Policies<br/>- Inter-namespace<br/>- Ingress rules<br/>- DNS allowed]:::k8s
+        end
+    end
+
+    %% Connection Flow
+    User --> Browser
+    Browser --> IngressController
+    IngressController --> NginxExternal
+    NginxExternal --> FrontendSvc
+    FrontendSvc --> FrontendPod
+
+    FrontendPod --> NginxInternalSvc
+    NginxInternalSvc --> NginxInternal
+    NginxInternal --> BackendSvc
+    BackendSvc --> REST
+
+    %% Clean Architecture Internal Flow
+    Driver --> PostgresSvc
+    Driver --> MeilisearchSvc
+    Driver --> AuthServiceSvc
+
+    %% Backend to Data Processing Pipeline
+    Gateway --> PreProcessorSvc
+    PreProcessorSvc --> PreProcessorPod
+    PreProcessorPod --> TagGeneratorSvc
+    TagGeneratorSvc --> TagGeneratorPod
+    TagGeneratorPod --> NewsCreatorSvc
+    NewsCreatorSvc --> NewsCreatorPod
+
+    %% Search Index Updates
+    PreProcessorPod --> SearchIndexerSvc
+    SearchIndexerSvc --> SearchIndexerPod
+    SearchIndexerPod --> MeilisearchSvc
+
+    %% Database Connections
+    PostgresSvc --> PostgresPod
+    AuthServicePod --> AuthPostgresSvc
+    AuthPostgresSvc --> AuthPostgresPod
+    KratosPod --> KratosPostgresSvc
+    KratosPostgresSvc --> KratosPostgresPod
+
+    %% Search Engine Connection
+    MeilisearchSvc --> MeilisearchPod
+
+    %% Logging Flow
+    BackendSvc -.-> LogForwarderSvc
+    PreProcessorPod -.-> LogForwarderSvc
+    TagGeneratorPod -.-> LogForwarderSvc
+    NewsCreatorPod -.-> LogForwarderSvc
+    SearchIndexerPod -.-> LogForwarderSvc
+
+    LogForwarderSvc --> LogForwarderPod
+    LogForwarderPod --> LogAggregatorSvc
+    LogAggregatorSvc --> LogAggregatorPod
+    LogAggregatorPod --> ClickHouseSvc
+    ClickHouseSvc --> ClickHousePod
+
+    %% Authentication Flow
+    FrontendPod --> AuthServiceSvc
+    AuthServiceSvc --> AuthServicePod
+    AuthServicePod --> KratosSvc
+    KratosSvc --> KratosPod
+
+    %% Configuration Management
+    ConfigMaps -.-> BackendSvc
+    ConfigMaps -.-> PreProcessorPod
+    ConfigMaps -.-> TagGeneratorPod
+    Secrets -.-> BackendSvc
+    Secrets -.-> PostgresPod
+
+    %% Helm Management
+    HelmCharts -.-> BackendSvc
+    HelmCharts -.-> FrontendSvc
+    HelmCharts -.-> PostgresPod
+
+    %% Auto-scaling
+    HPA -.-> BackendSvc
+    HPA -.-> FrontendSvc
+
+    %% Storage
+    StorageClasses -.-> PostgresPVC
+    StorageClasses -.-> MeilisearchPVC
+    StorageClasses -.-> ClickHousePVC
+
+    %% Network Policies
+    NetworkPolicies -.-> BackendSvc
+    NetworkPolicies -.-> PostgresSvc
