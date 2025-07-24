@@ -17,7 +17,7 @@ serviceAccount:
 replicaCount: 1
 
 # Namespace configuration
-namespace: alt-auth-dev
+namespace: alt-auth
 
 # Resource configuration
 resources:
@@ -45,15 +45,23 @@ podDisruptionBudget:
 securityContext:
   runAsNonRoot: true
   runAsUser: 10001
+  runAsGroup: 10001
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
   capabilities:
     drop:
       - ALL
+  seccompProfile:
+    type: RuntimeDefault
 
 # Pod security context
 podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
   fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
 
 # Node selector
 nodeSelector: {}
@@ -220,6 +228,19 @@ database:
   ssl_mode: "require"
   max_conns: 20
   max_idle_conns: 4
+
+# PostgreSQL configuration for DSN generation
+# SECURITY: Actual credentials are defined in values-production.yaml
+postgresql:
+  enabled: true
+  auth:
+    username: ""  # Set in values-production.yaml
+    password: ""  # Set in values-production.yaml
+    database: "kratos_db"
+  service:
+    name: "kratos-postgres.alt-auth.svc.cluster.local"
+    port: 5432
+  sslmode: "require"
 
 # Secrets configuration
 secrets:

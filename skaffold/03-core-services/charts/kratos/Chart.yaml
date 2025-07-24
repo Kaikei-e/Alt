@@ -19,9 +19,6 @@ maintainers:
   - name: Alt Team
     email: team@alt.local
 # SSL now managed by cert-manager in foundation layer
-# Secrets managed centrally without chart dependencies  
-dependencies:
-  - name: kratos-postgres
-    version: "0.1.0"
-    repository: "file://../kratos-postgres"
-    condition: database.enabled
+# Secrets managed centrally without chart dependencies
+# kratos-postgres dependency removed - now managed in Infrastructure layer
+# dependencies:

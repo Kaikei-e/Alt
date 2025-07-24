@@ -30,10 +30,26 @@ podLabels:
   io.kompose.service: "alt-backend"
 
 # Pod security context
-podSecurityContext: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
 
 # Container security context
-securityContext: {}
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false  # Alt-backend needs to write logs
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
 
 # Service configuration
 service:
@@ -97,17 +113,13 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
-# Additional volumes
-volumes:
-  - name: ssl-certs
-    secret:
-      secretName: postgres-ssl-secret
+# Additional volumes - INCIDENT 46 FIX: SSL証明書volume条件付き設定
+volumes: []
+# SSL有効時のみssl-certsボリューム追加（values-ssl.yamlで上書き）
 
-# Additional volume mounts
-volumeMounts:
-  - name: ssl-certs
-    mountPath: /app/ssl
-    readOnly: true
+# Additional volume mounts - INCIDENT 46 FIX: SSL証明書mount条件付き設定  
+volumeMounts: []
+# SSL有効時のみssl-certsマウント追加（values-ssl.yamlで上書き）
 
 # Node selector
 nodeSelector: {}
@@ -172,18 +184,15 @@ secrets:
 strategy:
   type: Recreate
 
-# Common labels
-commonLabels:
-  app.kubernetes.io/name: alt-backend
-  app.kubernetes.io/part-of: alt
-  app.kubernetes.io/component: backend
+# Common labels - avoid duplicating labels already in _helpers.tpl
+commonLabels: {}
 
 # Common annotations
 commonAnnotations: {}
 
 # Monitoring configuration
 monitoring:
-  enabled: true
+  enabled: false  # Disabled until Prometheus operator is installed
   metricsPath: "/metrics"
   scrapeInterval: 30s
   scrapeTimeout: 10s

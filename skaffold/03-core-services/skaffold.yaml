@@ -14,10 +14,6 @@ profiles:
           context: ../../migrate
           docker:
             dockerfile: Dockerfile.migrate
-    manifests:
-      kustomize:
-        paths:
-          - ../../auth-service/deployments/k8s/base
     deploy:
       helm:
         releases:
@@ -57,10 +53,6 @@ profiles:
           context: ../../migrate
           docker:
             dockerfile: Dockerfile.migrate
-    manifests:
-      kustomize:
-        paths:
-          - ../../auth-service/deployments/k8s/base
     deploy:
       helm:
         releases:
@@ -100,10 +92,6 @@ profiles:
           context: ../../migrate
           docker:
             dockerfile: Dockerfile.migrate
-    manifests:
-      kustomize:
-        paths:
-          - ../../auth-service/deployments/k8s/base
     deploy:
       helm:
         releases:
@@ -118,24 +106,30 @@ profiles:
             version: 0.1.0
           - name: kratos
             chartPath: charts/kratos
+            namespace: alt-auth
+            createNamespace: true
             valuesFiles:
-              - charts/kratos/values-production.yaml
-              - charts/kratos/values-ssl.yaml
               - charts/kratos/values.yaml
+              - charts/kratos/values-ssl.yaml
+              - charts/kratos/values-production.yaml
             version: 0.1.0
           - name: auth-service
             chartPath: charts/auth-service
+            namespace: alt-auth
+            createNamespace: true
             valuesFiles:
-              - charts/auth-service/values-production.yaml
-              - charts/auth-service/values-ssl.yaml
               - charts/auth-service/values.yaml
+              - charts/auth-service/values-ssl.yaml
+              - charts/auth-service/values-production.yaml
             version: 0.1.0
           - name: alt-backend
             chartPath: charts/alt-backend
+            namespace: alt-apps
+            createNamespace: true
             valuesFiles:
-              - charts/alt-backend/values-production.yaml
-              - charts/alt-backend/values-ssl.yaml
               - charts/alt-backend/values.yaml
+              - charts/alt-backend/values-ssl.yaml
+              - charts/alt-backend/values-production.yaml
             version: 0.1.0
 build:
   artifacts:
@@ -147,42 +141,6 @@ build:
       context: ../../migrate
       docker:
         dockerfile: Dockerfile.migrate
-manifests:
-  kustomize:
-    paths:
-      - auth-service/deployments/k8s/base
-deploy:
-  helm:
-    releases:
-      - name: migrate
-        chartPath: charts/migrate
-        namespace: alt-database
-        createNamespace: true
-        valuesFiles:
-          - charts/migrate/values-production.yaml
-        version: 0.1.0
-      - name: kratos
-        chartPath: charts/kratos
-        valuesFiles:
-          - charts/kratos/values-production.yaml
-          - charts/kratos/values-ssl.yaml
-          - charts/kratos/values.yaml
-        version: 0.1.0
-      - name: auth-service
-        chartPath: charts/auth-service
-        valuesFiles:
-          - charts/auth-service/values-development.yaml
-          - charts/auth-service/values-production.yaml
-          - charts/auth-service/values-ssl.yaml
-          - charts/auth-service/values-staging.yaml
-          - charts/auth-service/values.yaml
-        version: 0.1.0
-      - name: alt-backend
-        chartPath: charts/alt-backend
-        valuesFiles:
-          - charts/alt-backend/values-development.yaml
-          - charts/alt-backend/values-production.yaml
-          - charts/alt-backend/values-ssl.yaml
-          - charts/alt-backend/values-staging.yaml
-          - charts/alt-backend/values.yaml
-        version: 0.1.0
+# WEB SEARCH FIX: kustomize + Helm混在設定削除 (Skaffold Issue #8884対応)
+# manifests.kustomize設定を削除してHelm専用統一
+# Default deploy section削除 - プロファイル別設定のみ使用

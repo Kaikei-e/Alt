@@ -35,8 +35,6 @@ spec:
       {{- end }}
       labels:
         # Pod labels for Kubernetes Job auto-selector
-        app.kubernetes.io/name: migrate
-        app.kubernetes.io/instance: {{ .Release.Name }}
         {{- include "migrate.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}

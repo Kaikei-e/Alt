@@ -23,9 +23,8 @@ serviceAccount:
 # Pod annotations and labels
 podAnnotations: {}
 
-podLabels:
-  app.kubernetes.io/name: auth-service
-  app.kubernetes.io/component: authentication
+# Pod labels - avoid duplicating labels already in _helpers.tpl
+podLabels: {}
 
 # Pod security context
 podSecurityContext:
@@ -113,7 +112,8 @@ tolerations: []
 # Affinity
 affinity: {}
 
-# Environment variables
+# Environment variables - INCIDENT 44 FIX: 環境変数重複解消
+# KRATOS_ADMIN_URL/KRATOS_PUBLIC_URL削除（envFromSecret.keysでSecret管理統一）
 env:
   PORT: "8080"
   LOG_LEVEL: "info"
@@ -121,8 +121,6 @@ env:
   AUTH_DATABASE_PORT: "5432"
   AUTH_DATABASE_NAME: "auth"
   AUTH_DATABASE_USER: "auth_user"
-  KRATOS_ADMIN_URL: "http://kratos.alt-auth.svc.cluster.local:4434"
-  KRATOS_PUBLIC_URL: "http://kratos.alt-auth.svc.cluster.local:4433"
 
 # Secret references for environment variables
 envFromSecret:
@@ -179,11 +177,8 @@ networkPolicy:
     - alt-database
     - alt-apps
 
-# Common labels
-commonLabels:
-  app.kubernetes.io/name: auth-service
-  app.kubernetes.io/part-of: alt
-  app.kubernetes.io/component: authentication
+# Common labels - avoid duplicating labels already in _helpers.tpl
+commonLabels: {}
 
 # Common annotations
 commonAnnotations: {}

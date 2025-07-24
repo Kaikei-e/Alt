@@ -5,6 +5,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "alt-backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
   {{- with .Values.commonAnnotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
