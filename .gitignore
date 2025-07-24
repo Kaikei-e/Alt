@@ -43,3 +43,6 @@ k8s-manifests/deploy-cli/deploy-cli
 k8s-manifests/deploy-cli/deploy-cli/build
 
 pv-data/
+
+# SSL configuration files
+*/values-ssl.yaml
