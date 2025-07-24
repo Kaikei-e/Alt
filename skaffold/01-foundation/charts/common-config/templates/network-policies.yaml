@@ -82,14 +82,14 @@ spec:
         {{- range $.Values.networkPolicies.allowInterNamespace.allowedNamespaces }}
         - namespaceSelector:
             matchLabels:
-              name: {{ . }}
+              kubernetes.io/metadata.name: {{ . }}
         {{- end }}
   egress:
     - to:
         {{- range $.Values.networkPolicies.allowInterNamespace.allowedNamespaces }}
         - namespaceSelector:
             matchLabels:
-              name: {{ . }}
+              kubernetes.io/metadata.name: {{ . }}
         {{- end }}
 {{- end }}
 
@@ -115,7 +115,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: {{ $.Values.networkPolicies.allowFromIngress.ingressNamespace }}
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicies.allowFromIngress.ingressNamespace }}
 {{- end }}
 
 {{- else }}
@@ -194,14 +194,14 @@ spec:
         {{- range $.Values.networkPolicies.allowInterNamespace.allowedNamespaces }}
         - namespaceSelector:
             matchLabels:
-              name: {{ . }}
+              kubernetes.io/metadata.name: {{ . }}
         {{- end }}
   egress:
     - to:
         {{- range $.Values.networkPolicies.allowInterNamespace.allowedNamespaces }}
         - namespaceSelector:
             matchLabels:
-              name: {{ . }}
+              kubernetes.io/metadata.name: {{ . }}
         {{- end }}
 {{- end }}
 
@@ -227,7 +227,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: {{ $.Values.networkPolicies.allowFromIngress.ingressNamespace }}
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicies.allowFromIngress.ingressNamespace }}
 {{- end }}
 
 {{- end }}
