@@ -1,0 +1,97 @@
+# Default values for migrate
+image:
+  repository: alt-migrate
+  pullPolicy: Never
+  tag: "latest"
+
+# Job configuration
+completions: 1
+parallelism: 1
+backoffLimit: 3
+activeDeadlineSeconds: 3600
+restartPolicy: "Never"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+configMap:
+  create: true
+  name: migrate-config
+  data:
+    LOG_LEVEL: "info"
+    MIGRATION_TIMEOUT: "300s"
+    MIGRATION_RETRY_COUNT: "3"
+
+# Database configuration
+database:
+  maxWaitAttempts: 120
+  sleepInterval: 5
+  postgres:
+    host: "postgres.alt-database.svc.cluster.local"
+    port: 5432
+    username: "alt_db_user"
+  authPostgres:
+    host: "auth-postgres.alt-auth.svc.cluster.local"
+    port: 5432
+    username: "auth_user"
+  kratosPostgres:
+    host: "kratos-postgres.alt-auth.svc.cluster.local"
+    port: 5432
+    username: "kratos_user"
+  clickhouse:
+    host: "clickhouse.alt-analytics.svc.cluster.local"
+    port: 8123
+    username: "rask_user"
+  meilisearch:
+    host: "meilisearch.alt-search.svc.cluster.local"
+    port: 7700
+    username: "meili_admin"
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+env:
+  DB_HOST: "postgres.alt-database.svc.cluster.local"
+  DB_NAME: "alt"
+  DB_PORT: "5432"
+  DB_SSL_MODE: "require"
+  LOG_LEVEL: "info"
+  MIGRATION_TIMEOUT: "300s"
+  MIGRATION_RETRY_COUNT: "3"
+  SERVICE_NAME: "migrate"
+
+envFromSecret:
+  name: migrate-secrets
+  keys:
+    - MIGRATE_DB_PASSWORD
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 2000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+commonLabels: {}
+commonAnnotations: {}
+podLabels: {}
+podAnnotations: {}
+imagePullSecrets: []
+volumeMounts: []
+volumes: []

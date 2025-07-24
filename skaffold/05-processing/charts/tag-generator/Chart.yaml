@@ -1,0 +1,12 @@
+apiVersion: v2
+name: tag-generator
+description: A Helm chart for Alt Tag Generator service  
+type: application
+version: 0.1.0
+appVersion: "production"
+dependencies:
+  # Note: common-secrets dependency removed to eliminate cross-namespace ownership conflicts
+  # Secrets are now managed centrally via the deploy-cli tool
+  # - name: common-secrets
+  #   version: "0.1.0"
+  #   repository: "file://../common-secrets"

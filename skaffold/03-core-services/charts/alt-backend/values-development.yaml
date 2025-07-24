@@ -1,0 +1,48 @@
+# Development environment values for alt-backend
+
+# Development-specific image settings
+image:
+  tag: "development"
+  pullPolicy: Always
+
+# Reduced resource requirements for development
+resources:
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+  requests:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Development environment variables
+env:
+  DB_HOST: "db.alt-dev.svc.cluster.local"
+  LOG_LEVEL: "debug"
+
+# Disable SSL for development
+ssl:
+  enabled: false
+
+# Development-specific ConfigMap
+configMap:
+  data:
+    .env: |
+      # Alt Backend Development Configuration
+      PORT=9000
+      LOG_LEVEL=debug
+      DB_MAX_CONNECTIONS=10
+      DB_MAX_IDLE_CONNECTIONS=2
+      DB_CONNECTION_MAX_LIFETIME=5m
+      CORS_ALLOWED_ORIGINS=*
+      RATE_LIMIT_REQUESTS_PER_SECOND=1000
+      RATE_LIMIT_BURST=2000
+
+# Development namespace
+namespace: alt-dev
+
+# Single replica for development
+replicaCount: 1
+
+# Disable autoscaling in development
+autoscaling:
+  enabled: false

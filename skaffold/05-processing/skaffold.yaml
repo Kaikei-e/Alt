@@ -1,0 +1,216 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: alt-processing
+profiles:
+  - name: dev
+    build:
+      artifacts:
+        - image: pre-processor
+          context: ../../pre-processor
+          docker:
+            dockerfile: Dockerfile.preprocess
+        - image: search-indexer
+          context: ../../search-indexer
+          docker:
+            dockerfile: Dockerfile.search-indexer
+        - image: tag-generator
+          context: ../../tag-generator
+          docker:
+            dockerfile: Dockerfile.tag-generator
+        - image: news-creator
+          context: ../../news-creator
+          docker:
+            dockerfile: Dockerfile.creator
+        - image: rask-log-aggregator
+          context: ../../rask-log-aggregator
+          docker:
+            dockerfile: Dockerfile.rask-log-aggregator
+    deploy:
+      helm:
+        releases:
+          - name: pre-processor
+            chartPath: charts/pre-processor
+            valuesFiles:
+              - charts/pre-processor/values.yaml
+            version: 0.1.0
+          - name: search-indexer
+            chartPath: charts/search-indexer
+            valuesFiles:
+              - charts/search-indexer/values.yaml
+            version: 0.1.0
+          - name: tag-generator
+            chartPath: charts/tag-generator
+            valuesFiles:
+              - charts/tag-generator/values.yaml
+            version: 0.1.0
+          - name: news-creator
+            chartPath: charts/news-creator
+            valuesFiles:
+              - charts/news-creator/values.yaml
+            version: 0.1.0
+          - name: rask-log-aggregator
+            chartPath: charts/rask-log-aggregator
+            valuesFiles:
+              - charts/rask-log-aggregator/values.yaml
+            version: 0.1.0
+  - name: staging
+    build:
+      artifacts:
+        - image: pre-processor
+          context: ../../pre-processor
+          docker:
+            dockerfile: Dockerfile.preprocess
+        - image: search-indexer
+          context: ../../search-indexer
+          docker:
+            dockerfile: Dockerfile.search-indexer
+        - image: tag-generator
+          context: ../../tag-generator
+          docker:
+            dockerfile: Dockerfile.tag-generator
+        - image: news-creator
+          context: ../../news-creator
+          docker:
+            dockerfile: Dockerfile.creator
+        - image: rask-log-aggregator
+          context: ../../rask-log-aggregator
+          docker:
+            dockerfile: Dockerfile.rask-log-aggregator
+    deploy:
+      helm:
+        releases:
+          - name: pre-processor
+            chartPath: charts/pre-processor
+            valuesFiles:
+              - charts/pre-processor/values.yaml
+            version: 0.1.0
+          - name: search-indexer
+            chartPath: charts/search-indexer
+            valuesFiles:
+              - charts/search-indexer/values.yaml
+            version: 0.1.0
+          - name: tag-generator
+            chartPath: charts/tag-generator
+            valuesFiles:
+              - charts/tag-generator/values.yaml
+            version: 0.1.0
+          - name: news-creator
+            chartPath: charts/news-creator
+            valuesFiles:
+              - charts/news-creator/values.yaml
+            version: 0.1.0
+          - name: rask-log-aggregator
+            chartPath: charts/rask-log-aggregator
+            valuesFiles:
+              - charts/rask-log-aggregator/values.yaml
+            version: 0.1.0
+  - name: prod
+    build:
+      artifacts:
+        - image: pre-processor
+          context: ../../pre-processor
+          docker:
+            dockerfile: Dockerfile.preprocess
+        - image: search-indexer
+          context: ../../search-indexer
+          docker:
+            dockerfile: Dockerfile.search-indexer
+        - image: tag-generator
+          context: ../../tag-generator
+          docker:
+            dockerfile: Dockerfile.tag-generator
+        - image: news-creator
+          context: ../../news-creator
+          docker:
+            dockerfile: Dockerfile.creator
+        - image: rask-log-aggregator
+          context: ../../rask-log-aggregator
+          docker:
+            dockerfile: Dockerfile.rask-log-aggregator
+    deploy:
+      helm:
+        releases:
+          - name: pre-processor
+            chartPath: charts/pre-processor
+            valuesFiles:
+              - charts/pre-processor/values-production.yaml
+              - charts/pre-processor/values.yaml
+            version: 0.1.0
+          - name: search-indexer
+            chartPath: charts/search-indexer
+            valuesFiles:
+              - charts/search-indexer/values-production.yaml
+              - charts/search-indexer/values.yaml
+            version: 0.1.0
+          - name: tag-generator
+            chartPath: charts/tag-generator
+            valuesFiles:
+              - charts/tag-generator/values-production.yaml
+              - charts/tag-generator/values.yaml
+            version: 0.1.0
+          - name: news-creator
+            chartPath: charts/news-creator
+            valuesFiles:
+              - charts/news-creator/values-production.yaml
+              - charts/news-creator/values.yaml
+            version: 0.1.0
+          - name: rask-log-aggregator
+            chartPath: charts/rask-log-aggregator
+            valuesFiles:
+              - charts/rask-log-aggregator/values-production.yaml
+            version: 0.1.0
+build:
+  artifacts:
+    - image: pre-processor
+      context: ../../pre-processor
+      docker:
+        dockerfile: Dockerfile.preprocess
+    - image: search-indexer
+      context: ../../search-indexer
+      docker:
+        dockerfile: Dockerfile.search-indexer
+    - image: tag-generator
+      context: ../../tag-generator
+      docker:
+        dockerfile: Dockerfile.tag-generator
+    - image: news-creator
+      context: ../../news-creator
+      docker:
+        dockerfile: Dockerfile.creator
+    - image: rask-log-aggregator
+      context: ../../rask-log-aggregator
+      docker:
+        dockerfile: Dockerfile.rask-log-aggregator
+deploy:
+  helm:
+    releases:
+      - name: pre-processor
+        chartPath: charts/pre-processor
+        valuesFiles:
+          - charts/pre-processor/values-production.yaml
+          - charts/pre-processor/values.yaml
+        version: 0.1.0
+      - name: search-indexer
+        chartPath: charts/search-indexer
+        valuesFiles:
+          - charts/search-indexer/values-production.yaml
+          - charts/search-indexer/values.yaml
+        version: 0.1.0
+      - name: tag-generator
+        chartPath: charts/tag-generator
+        valuesFiles:
+          - charts/tag-generator/values-production.yaml
+          - charts/tag-generator/values.yaml
+        version: 0.1.0
+      - name: news-creator
+        chartPath: charts/news-creator
+        valuesFiles:
+          - charts/news-creator/values-production.yaml
+          - charts/news-creator/values.yaml
+        version: 0.1.0
+      - name: rask-log-aggregator
+        chartPath: charts/rask-log-aggregator
+        valuesFiles:
+          - charts/rask-log-aggregator/values-production.yaml
+        version: 0.1.0

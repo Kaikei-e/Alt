@@ -1,0 +1,201 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "postgres.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  serviceName: {{ include "postgres.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "postgres.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "postgres.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "postgres.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Pod Security Standards "restricted" compliant - no init containers needed
+      # Use fsGroup + correct PostgreSQL UID for automatic permission management
+      containers:
+        - name: postgres
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.auth.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
+                  key: {{ .Values.auth.secretKeys.password }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data
+            # Standard PostgreSQL initialization arguments
+            - name: POSTGRES_INITDB_ARGS
+              value: "--auth-host=md5 --auth-local=trust"
+            {{- if .Values.initScripts.enabled }}
+            - name: DB_TAG_GENERATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
+                  key: tag-generator-password
+                  optional: true
+            - name: PRE_PROCESSOR_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
+                  key: pre-processor-password
+                  optional: true
+            - name: SEARCH_INDEXER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
+                  key: search-indexer-password
+                  optional: true
+            {{- end }}
+            {{- if .Values.ssl.enabled }}
+            - name: POSTGRES_SSL_CERT_FILE
+              value: /ssl/server.crt
+            - name: POSTGRES_SSL_KEY_FILE
+              value: /ssl/server.key
+            - name: POSTGRES_SSL_CA_FILE
+              value: /ssl/ca.crt
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: config
+              mountPath: /etc/postgresql/postgresql.conf
+              subPath: postgresql.conf
+              readOnly: true
+            {{- if .Values.pgHba.enabled }}
+            - name: config
+              mountPath: /etc/postgresql/pg_hba.conf
+              subPath: pg_hba.conf
+              readOnly: true
+            {{- end }}
+            {{- if .Values.initScripts.enabled }}
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            {{- end }}
+            {{- if .Values.ssl.enabled }}
+            - name: ssl-data
+              mountPath: /ssl
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -h 127.0.0.1 -p 5432
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds | default 120 }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds | default 30 }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds | default 10 }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold | default 5 }}
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  # PostgreSQL basic connectivity check
+                  pg_isready -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -h 127.0.0.1 -p 5432
+                  
+                  # Verify PostgreSQL can process queries
+                  psql -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -h 127.0.0.1 -p 5432 -c "SELECT 1;" > /dev/null 2>&1
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds | default 90 }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds | default 15 }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds | default 10 }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold | default 8 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "postgres.fullname" . }}-config
+        {{- if .Values.initScripts.enabled }}
+        - name: init-scripts
+          configMap:
+            name: {{ include "postgres.fullname" . }}-init-scripts
+            defaultMode: 0755
+        {{- end }}
+        {{- if .Values.ssl.enabled }}
+        - name: ssl-certs
+          secret:
+            secretName: {{ .Values.ssl.secretName }}
+            defaultMode: 0600
+        - name: ssl-data
+          emptyDir: {}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "postgres.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- range .Values.persistence.accessModes }}
+          - {{ . | quote }}
+          {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+        {{- if .Values.persistence.storageClass }}
+        {{- if (eq "-" .Values.persistence.storageClass) }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        {{- end }}
+        {{- end }}

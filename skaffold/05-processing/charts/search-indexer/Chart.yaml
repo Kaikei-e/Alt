@@ -1,0 +1,12 @@
+apiVersion: v2
+name: search-indexer
+description: A Helm chart for Alt Search Indexer service
+type: application
+version: 0.1.0
+appVersion: "production"
+# Note: common-secrets dependency removed to eliminate cross-namespace ownership conflicts
+# Secrets are now managed centrally via the deploy-cli tool
+# dependencies:
+#   - name: common-secrets
+#     version: "0.1.0"
+#     repository: "file://../common-secrets"

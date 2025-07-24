@@ -1,0 +1,51 @@
+# Staging environment values for alt-backend
+
+# Staging-specific image settings
+image:
+  tag: "staging"
+  pullPolicy: IfNotPresent
+
+# Moderate resource requirements for staging
+resources:
+  limits:
+    cpu: "2"
+    memory: "1.5Gi"
+  requests:
+    cpu: "1"
+    memory: "768Mi"
+
+# Staging environment variables
+env:
+  DB_HOST: "db.alt-staging.svc.cluster.local"
+  LOG_LEVEL: "info"
+
+# Enable SSL for staging
+ssl:
+  enabled: true
+
+# Staging-specific ConfigMap
+configMap:
+  data:
+    .env: |
+      # Alt Backend Staging Configuration
+      PORT=9000
+      LOG_LEVEL=info
+      DB_MAX_CONNECTIONS=15
+      DB_MAX_IDLE_CONNECTIONS=3
+      DB_CONNECTION_MAX_LIFETIME=5m
+      CORS_ALLOWED_ORIGINS=https://staging.alt.local
+      RATE_LIMIT_REQUESTS_PER_SECOND=200
+      RATE_LIMIT_BURST=400
+
+# Staging namespace
+namespace: alt-staging
+
+# Multiple replicas for staging
+replicaCount: 2
+
+# Enable autoscaling in staging
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
