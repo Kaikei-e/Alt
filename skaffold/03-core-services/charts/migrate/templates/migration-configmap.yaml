@@ -80,18 +80,31 @@ data:
     CREATE TABLE IF NOT EXISTS articles (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         title TEXT NOT NULL,
-        description TEXT,
-        link TEXT NOT NULL,
-        pub_date TIMESTAMP NOT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        content TEXT NOT NULL,
+        url TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles (created_at);
-    CREATE INDEX IF NOT EXISTS idx_articles_pub_date ON articles (pub_date);
+    CREATE INDEX IF NOT EXISTS idx_articles_title_created_at ON articles (title, created_at);
+    CREATE INDEX IF NOT EXISTS idx_articles_title ON articles (title);
 
   000007_create_articles_table.down.sql: |
     DROP TABLE IF EXISTS articles;
+
+  000007_1_create_preprocessor_user.up.sql: |
+    -- Create pre_processor_user if it doesn't exist
+    DO $$ 
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'pre_processor_user') THEN
+            CREATE USER pre_processor_user WITH PASSWORD 'pre_processor_password';
+        END IF;
+    END
+    $$;
+
+  000007_1_create_preprocessor_user.down.sql: |
+    -- Drop pre_processor_user if it exists
+    DROP USER IF EXISTS pre_processor_user;
 
   000008_grant_preprocessor_permissions.up.sql: |
     GRANT SELECT, INSERT, UPDATE, DELETE ON articles TO pre_processor_user;
@@ -234,22 +247,39 @@ data:
     DROP TABLE IF EXISTS feed_tags;
 
   000025_create_article_tags_table.up.sql: |
-    CREATE TABLE IF NOT EXISTS article_tags (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        article_id UUID NOT NULL,
-        tag_name TEXT NOT NULL,
-        confidence FLOAT NOT NULL DEFAULT 0.0,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+    -- Create the article_tags junction table
+    CREATE TABLE article_tags (
+        article_id UUID     NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+        feed_tag_id     INT      NOT NULL REFERENCES feed_tags(id)     ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (article_id, feed_tag_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_article_tags_article_id ON article_tags (article_id);
-    CREATE INDEX IF NOT EXISTS idx_article_tags_tag_name ON article_tags (tag_name);
-    CREATE INDEX IF NOT EXISTS idx_article_tags_confidence ON article_tags (confidence DESC);
+    ALTER TABLE article_tags
+        OWNER TO alt_db_user;
+
+    CREATE INDEX idx_article_tags_feed_tag_id
+        ON article_tags (feed_tag_id);
+
+    CREATE INDEX idx_article_tags_created_at
+        ON article_tags (created_at);
 
   000025_create_article_tags_table.down.sql: |
     DROP TABLE IF EXISTS article_tags;
+
+  000025_1_create_tag_generator_user.up.sql: |
+    -- Create tag_generator_user if it doesn't exist
+    DO $$ 
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'tag_generator_user') THEN
+            CREATE USER tag_generator_user WITH PASSWORD 'tag_generator_password';
+        END IF;
+    END
+    $$;
+
+  000025_1_create_tag_generator_user.down.sql: |
+    -- Drop tag_generator_user if it exists
+    DROP USER IF EXISTS tag_generator_user;
 
   000026_grant_tag_generator_permissions.up.sql: |
     GRANT SELECT, INSERT, UPDATE, DELETE ON feed_tags TO tag_generator_user;
@@ -270,6 +300,20 @@ data:
   000027_fix_tags_schema.down.sql: |
     ALTER TABLE feed_tags DROP COLUMN IF EXISTS tag_type;
     ALTER TABLE article_tags DROP COLUMN IF EXISTS tag_type;
+
+  000027_1_create_search_indexer_user.up.sql: |
+    -- Create search_indexer_user if it doesn't exist  
+    DO $$ 
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'search_indexer_user') THEN
+            CREATE USER search_indexer_user WITH PASSWORD 'search_indexer_password';
+        END IF;
+    END
+    $$;
+
+  000027_1_create_search_indexer_user.down.sql: |
+    -- Drop search_indexer_user if it exists
+    DROP USER IF EXISTS search_indexer_user;
 
   000028_grant_search_indexer_permissions.up.sql: |
     GRANT SELECT ON feeds TO search_indexer_user;

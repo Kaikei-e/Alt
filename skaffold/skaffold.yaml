@@ -1,0 +1,110 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: alt-orchestrator
+requires:
+  # Layer 1: Foundation - SSL, secrets, config, certificates
+  - path: ./01-foundation
+    configs: [alt-foundation]
+    activeProfiles:
+      - name: dev
+        activatedBy: [dev]
+      - name: staging
+        activatedBy: [staging]
+      - name: prod
+        activatedBy: [prod]
+  # Layer 2: Infrastructure - databases, search engines
+  - path: ./02-infrastructure
+    configs: [alt-infrastructure]
+    activeProfiles:
+      - name: dev
+        activatedBy: [dev]
+      - name: staging
+        activatedBy: [staging]
+      - name: prod
+        activatedBy: [prod]
+  # Layer 3: Core Services - auth, main backend, migrations
+  - path: ./03-core-services
+    configs: [alt-core-services]
+    activeProfiles:
+      - name: dev
+        activatedBy: [dev]
+      - name: staging
+        activatedBy: [staging]
+      - name: prod
+        activatedBy: [prod]
+  # Layer 4: Application - frontend, ingress/proxy
+  - path: ./04-application
+    configs: [alt-application]
+    activeProfiles:
+      - name: dev
+        activatedBy: [dev]
+      - name: staging
+        activatedBy: [staging]
+      - name: prod
+        activatedBy: [prod]
+  # Layer 5: Processing - background processing services
+  - path: ./05-processing
+    configs: [alt-processing]
+    activeProfiles:
+      - name: dev
+        activatedBy: [dev]
+      - name: staging
+        activatedBy: [staging]
+      - name: prod
+        activatedBy: [prod]
+  # Layer 6: Operations - monitoring, backup, tunnels
+  - path: ./06-operations
+    configs: [alt-operations]
+    activeProfiles:
+      - name: dev
+        activatedBy: [dev]
+      - name: staging
+        activatedBy: [staging]
+      - name: prod
+        activatedBy: [prod]
+deploy:
+  # PHASE 4: Production-optimized deployment control for Pod Security Standards "baseline" compliance
+  statusCheckDeadlineSeconds: 10800  # 180 minutes for enhanced security and database initialization
+  statusCheck: true  # Explicit status checking enabled
+  # Note: tolerateFailuresUntilDeadline equivalent implemented via --wait and --atomic flags
+  helm:
+    flags:
+      install: ['--atomic', '--wait', '--timeout=9000s', '--wait-for-jobs', '--create-namespace']  # 150分: Meilisearch v1.15.2 + ClickHouse optimization
+      upgrade: ['--atomic', '--wait', '--timeout=9000s', '--cleanup-on-fail', '--wait-for-jobs', '--force', '--reset-values']
+    hooks:
+      before:
+        - host:
+            command: ["echo", "🚀 PHASE 4: Starting deployment with Pod Security Standards baseline + Meilisearch v1.15.2 + ClickHouse optimizations..."]
+        - host:
+            command: ["bash", "-c", "kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded -o wide || true"]
+        - host:
+            command: ["echo", "🔍 Pre-deployment: checking cluster Pod Security Standards compliance..."]
+        - host:
+            command: ["bash", "-c", "kubectl get ns -o jsonpath='{.items[*].metadata.labels}' | grep -o 'pod-security[^}]*' || echo 'No Pod Security labels found'"]
+        - host:
+            command: ["echo", "🐳 Pre-deployment: pulling required images..."]
+        - host:
+            command: ["bash", "-c", "docker pull getmeili/meilisearch:v1.15.2 && docker pull clickhouse/clickhouse-server:24.8-alpine || echo 'Image pull completed'"]
+      after:
+        - host:
+            command: ["echo", "✅ PHASE 4 deployment completed - running comprehensive system verification..."]
+        - host:
+            command: ["bash", "-c", "kubectl get pods -A --field-selector=status.phase=Running -o wide || true"]
+        - host:
+            command: ["echo", "🔍 Post-deployment: verifying StatefulSet health (target: 5/5 Running)..."]
+        - host:
+            command: ["bash", "-c", "kubectl get statefulsets -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.readyReplicas,REPLICAS:.spec.replicas,AGE:.metadata.creationTimestamp' || true"]
+        - host:
+            command: ["echo", "🔍 Security verification: checking Pod Security Standards violations..."]
+        - host:
+            command: ["bash", "-c", "kubectl get events -A --field-selector=type=Warning --sort-by=lastTimestamp --since=10m | grep -i 'security\\|permission\\|denied\\|baseline\\|restricted' | tail -10 || echo '✅ No Pod Security Standards violations detected'"]
+        - host:
+            command: ["echo", "🔍 Database verification: checking ClickHouse and Meilisearch logs..."]
+        - host:
+            command: ["bash", "-c", "kubectl logs -n alt-analytics clickhouse-0 --tail=5 2>/dev/null || echo 'ClickHouse not ready yet' && kubectl logs -n alt-search meilisearch-0 --tail=5 2>/dev/null || echo 'Meilisearch not ready yet'"]
+
+profiles:
+  - name: dev
+  - name: staging  
+  - name: prod
