@@ -1,0 +1,8 @@
+secret.yaml
+auth-secrets.yaml
+
+**/ssl-certs/**
+**/values-production.yaml
+**/values-ssl.yaml
+**/Chart.lock
+*.tgz
