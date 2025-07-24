@@ -25,10 +25,10 @@ podAnnotations:
 podLabels: {}
 
 podSecurityContext:
-  fsGroup: 999  # PostgreSQL standard UID for proper directory access
-  fsGroupChangePolicy: OnRootMismatch  # Efficient ownership change only when needed
-  runAsUser: 999  # PostgreSQL official image UID (restored from 65534)
-  runAsGroup: 999
+  fsGroup: 70  # INCIDENT 34 FIX: PostgreSQL Alpine UID for non-privileged fsGroup
+  fsGroupChangePolicy: OnRootMismatch  # Pod Security Standards compliant
+  runAsUser: 70  # PostgreSQL Alpine UID
+  runAsGroup: 70
   runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
@@ -40,8 +40,8 @@ securityContext:
     - ALL
   readOnlyRootFilesystem: false  # PostgreSQL needs to write logs and data
   runAsNonRoot: true
-  runAsUser: 999  # PostgreSQL standard UID (restored from 65534)
-  runAsGroup: 999
+  runAsUser: 70  # PostgreSQL Alpine UID
+  runAsGroup: 70
   seccompProfile:
     type: RuntimeDefault
 
@@ -131,13 +131,13 @@ persistence:
 
 # Health checks - optimized for SSL and initialization time
 livenessProbe:
-  initialDelaySeconds: 120  # Allow time for readiness to succeed first
+  initialDelaySeconds: 60  # Allow time for readiness to succeed first
   periodSeconds: 30         # Less frequent liveness checks
   timeoutSeconds: 10        # Longer timeout for DB queries
   failureThreshold: 5       # Reasonable failure tolerance
 
 readinessProbe:
-  initialDelaySeconds: 90   # Allow time for SSL setup and initialization
+  initialDelaySeconds: 30   # Allow time for SSL setup and initialization
   periodSeconds: 15         # Balanced frequency
   timeoutSeconds: 10        # Sufficient time for query execution
   failureThreshold: 8       # Higher tolerance during startup

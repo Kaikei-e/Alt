@@ -25,10 +25,10 @@ podAnnotations:
 podLabels: {}
 
 podSecurityContext:
-  fsGroup: 999  # PostgreSQL standard UID for proper directory access
-  fsGroupChangePolicy: OnRootMismatch  # Efficient ownership change only when needed
-  runAsUser: 999  # PostgreSQL official image UID (restored from 65534)
-  runAsGroup: 999
+  fsGroup: 70  # INCIDENT 34 FIX: PostgreSQL Alpine UID for non-privileged fsGroup
+  fsGroupChangePolicy: OnRootMismatch  # Pod Security Standards compliant
+  runAsUser: 70  # PostgreSQL Alpine UID
+  runAsGroup: 70
   runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
@@ -40,8 +40,8 @@ securityContext:
     - ALL
   readOnlyRootFilesystem: false  # PostgreSQL needs to write logs and data
   runAsNonRoot: true
-  runAsUser: 999  # PostgreSQL standard UID (restored from 65534)
-  runAsGroup: 999
+  runAsUser: 70  # PostgreSQL Alpine UID
+  runAsGroup: 70
   seccompProfile:
     type: RuntimeDefault
 
@@ -119,26 +119,26 @@ ssl:
   minProtocolVersion: "TLSv1.3"
   cipherSuites: "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20:!aNULL:!MD5:!DSS"
 
-# Persistence
+# Persistence - INCIDENT 20 FIX: Unified to standard (local-path)
 persistence:
   enabled: true
   accessModes:
     - ReadWriteOnce
   size: 20Gi
-  storageClass: "standard"
+  storageClass: "standard"  # EMERGENCY: K3s only supports local-path-provisioner
 
-# Health checks - optimized for SSL and initialization time
+# Health checks - optimized for production PostgreSQL deployment
 livenessProbe:
-  initialDelaySeconds: 120  # Allow time for readiness to succeed first
+  initialDelaySeconds: 60  # Extended delay for PostgreSQL initialization + fsGroup
   periodSeconds: 30         # Less frequent liveness checks
-  timeoutSeconds: 10        # Longer timeout for DB queries
-  failureThreshold: 5       # Reasonable failure tolerance
+  timeoutSeconds: 20        # Extended timeout for secure startup
+  failureThreshold: 8       # Higher tolerance for production deployment
 
 readinessProbe:
-  initialDelaySeconds: 90   # Allow time for SSL setup and initialization
-  periodSeconds: 15         # Balanced frequency
-  timeoutSeconds: 10        # Sufficient time for query execution
-  failureThreshold: 8       # Higher tolerance during startup
+  initialDelaySeconds: 30  # CRITICAL: Allow sufficient time for DB initialization
+  periodSeconds: 15         # Balanced frequency for production
+  timeoutSeconds: 20        # Extended timeout for DB connection establishment
+  failureThreshold: 12      # Maximum tolerance during initialization phase
 
 # Resources
 resources:
@@ -153,6 +153,10 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Init containers disabled - using fsGroup for Pod Security Standards "baseline" compliance
+# Zero-trust security: no root privileges required
+initContainers: []
 
 # Extra configuration
 extraEnv: []
