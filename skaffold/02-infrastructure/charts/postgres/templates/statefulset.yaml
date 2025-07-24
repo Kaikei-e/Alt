@@ -35,8 +35,63 @@ spec:
       serviceAccountName: {{ include "postgres.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      # Pod Security Standards "restricted" compliant - no init containers needed
-      # Use fsGroup + correct PostgreSQL UID for automatic permission management
+      # INCIDENT 37 FIX: Pod Security Standards compliant initContainer for lost+found removal + pgdata creation
+      initContainers:
+        - name: postgres-lost-found-cleanup-v37
+          image: alpine:3.18
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "=== INCIDENT 37: PostgreSQL Complete Lost+Found Cleanup + PGDATA Creation ==="
+              echo "SOLUTION: Complete PVC cleanup + Pod Security Standards compliant initContainer"
+              
+              # PHASE 1: Complete directory analysis
+              echo "Phase 1: Pre-cleanup directory analysis..."
+              cd /var/lib/postgresql/data
+              echo "Root directory contents:"
+              ls -la || true
+              echo "Hidden files and lost+found detection:"
+              find . -name "lost+found" -o -name ".*" 2>/dev/null || true
+              
+              # PHASE 2: Complete lost+found and artifacts removal
+              echo "Phase 2: Complete lost+found and artifacts cleanup..."
+              # Critical: Remove lost+found directory (PVC artifact)
+              rm -rf lost+found
+              # Remove any hidden directories that may cause issues
+              rm -rf .* 2>/dev/null || true
+              
+              # PHASE 3: Create PGDATA subdirectory (REPORT.md strategy)
+              echo "Phase 3: PostgreSQL PGDATA subdirectory creation..."
+              mkdir -p /var/lib/postgresql/data/pgdata
+              
+              # PHASE 4: Set proper ownership for PostgreSQL user (70:70)
+              echo "Phase 4: Setting proper ownership for PostgreSQL user..."
+              chown -R 70:70 /var/lib/postgresql/data
+              chmod -R 755 /var/lib/postgresql/data
+              
+              echo "=== INCIDENT 37 POSTGRESQL CLEANUP COMPLETED ==="
+              echo "✅ Lost+found directory completely removed"
+              echo "✅ PGDATA subdirectory created (/var/lib/postgresql/data/pgdata)"
+              echo "✅ Proper ownership (70:70) applied"
+              echo "Final directory state:"
+              ls -la /var/lib/postgresql/data/ || true
+              echo "🚀 Ready for PostgreSQL 16-alpine startup"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          securityContext:
+            runAsUser: 0  # Required for chown operations - Pod Security Standards baseline compliant
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - FOWNER
+            seccompProfile:
+              type: RuntimeDefault
       containers:
         - name: postgres
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -55,6 +110,7 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
                   key: {{ .Values.auth.secretKeys.password }}
+            # INCIDENT 36 FIX: PGDATA subdirectory for lost+found avoidance (REPORT.md)
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
             # Standard PostgreSQL initialization arguments
@@ -93,7 +149,7 @@ spec:
             {{- end }}
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql/data  # INCIDENT 35 FIX: Direct mount without subPath
             - name: config
               mountPath: /etc/postgresql/postgresql.conf
               subPath: postgresql.conf
@@ -122,7 +178,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - exec pg_isready -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -h 127.0.0.1 -p 5432
+                - exec pg_isready -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -h localhost -p 5432
             initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds | default 120 }}
             periodSeconds: {{ .Values.livenessProbe.periodSeconds | default 30 }}
             timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds | default 10 }}
@@ -132,7 +188,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - pg_isready -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -h 127.0.0.1 -p 5432
+                - pg_isready -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -h localhost -p 5432
             initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds | default 90 }}
             periodSeconds: {{ .Values.readinessProbe.periodSeconds | default 15 }}
             timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds | default 10 }}

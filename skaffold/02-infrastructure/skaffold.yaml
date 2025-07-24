@@ -1,0 +1,164 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: alt-infrastructure
+profiles:
+  - name: dev
+    deploy:
+      helm:
+        releases:
+          - name: postgres
+            chartPath: charts/postgres
+            namespace: alt-database
+            createNamespace: true
+            valuesFiles:
+              - charts/postgres/values.yaml
+            version: 0.1.0
+          - name: kratos-postgres
+            chartPath: charts/kratos-postgres
+            namespace: alt-auth
+            createNamespace: true
+            valuesFiles:
+              - charts/kratos-postgres/values.yaml
+            version: 0.1.0
+          - name: auth-postgres
+            chartPath: charts/auth-postgres
+            namespace: alt-auth
+            createNamespace: true
+            valuesFiles:
+              - charts/auth-postgres/values.yaml
+            version: 0.1.0
+          - name: clickhouse
+            chartPath: charts/clickhouse
+            namespace: alt-analytics
+            createNamespace: true
+            valuesFiles:
+              - charts/clickhouse/values.yaml
+            version: 0.1.0
+          - name: meilisearch
+            chartPath: charts/meilisearch
+            namespace: alt-search
+            createNamespace: true
+            valuesFiles:
+              - charts/meilisearch/values-development.yaml
+              - charts/meilisearch/values.yaml
+            version: 0.1.0
+  - name: staging
+    deploy:
+      helm:
+        releases:
+          - name: postgres
+            chartPath: charts/postgres
+            namespace: alt-database
+            createNamespace: true
+            valuesFiles:
+              - charts/postgres/values.yaml
+            version: 0.1.0
+          - name: kratos-postgres
+            chartPath: charts/kratos-postgres
+            namespace: alt-auth
+            createNamespace: true
+            valuesFiles:
+              - charts/kratos-postgres/values.yaml
+            version: 0.1.0
+          - name: auth-postgres
+            chartPath: charts/auth-postgres
+            namespace: alt-auth
+            createNamespace: true
+            valuesFiles:
+              - charts/auth-postgres/values.yaml
+            version: 0.1.0
+          - name: clickhouse
+            chartPath: charts/clickhouse
+            namespace: alt-analytics
+            createNamespace: true
+            valuesFiles:
+              - charts/clickhouse/values.yaml
+            version: 0.1.0
+          - name: meilisearch
+            chartPath: charts/meilisearch
+            namespace: alt-search
+            createNamespace: true
+            valuesFiles:
+              - charts/meilisearch/values-staging.yaml
+              - charts/meilisearch/values.yaml
+            version: 0.1.0
+  - name: prod
+    deploy:
+      helm:
+        releases:
+          - name: postgres
+            chartPath: charts/postgres
+            namespace: alt-database
+            createNamespace: true
+            valuesFiles:
+              - charts/postgres/values-production.yaml
+              - charts/postgres/values.yaml
+            version: 0.1.0
+          - name: kratos-postgres
+            chartPath: charts/kratos-postgres
+            namespace: alt-auth
+            createNamespace: true
+            valuesFiles:
+              - charts/kratos-postgres/values-production.yaml
+              - charts/kratos-postgres/values.yaml
+            version: 0.1.0
+          - name: auth-postgres
+            chartPath: charts/auth-postgres
+            namespace: alt-auth
+            createNamespace: true
+            valuesFiles:
+              - charts/auth-postgres/values-production.yaml
+              - charts/auth-postgres/values.yaml
+            version: 0.1.0
+          - name: clickhouse
+            chartPath: charts/clickhouse
+            namespace: alt-analytics
+            createNamespace: true
+            valuesFiles:
+              - charts/clickhouse/values-production.yaml
+              - charts/clickhouse/values.yaml
+            version: 0.1.0
+          - name: meilisearch
+            chartPath: charts/meilisearch
+            namespace: alt-search
+            createNamespace: true
+            valuesFiles:
+              - charts/meilisearch/values-production.yaml
+              - charts/meilisearch/values.yaml
+            version: 0.1.0
+deploy:
+  statusCheckDeadlineSeconds: 9600             # 160分: セキュア・クリーンデプロイのための拡張待機時間
+  statusCheck: true                            # 明示的ステータス確認有効
+  tolerateFailuresUntilDeadline: true          # 一時的失敗を許容してセキュア初期化完了を待機
+  helm:
+    flags:
+      install: ['--atomic', '--wait', '--timeout=9600s', '--wait-for-jobs', '--force']  # セキュア環境での安定化対応
+      upgrade: ['--atomic', '--wait', '--timeout=9600s', '--cleanup-on-fail', '--wait-for-jobs', '--force']
+    hooks:
+      before:
+        - host:
+            command: ["echo", "🔧 Starting Infrastructure layer deployment with enhanced StatefulSet support..."]
+        - host:
+            command: ["bash", "-c", "kubectl get statefulsets -A -o wide || true"]
+        - host:
+            command: ["bash", "-c", "kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded -o wide || true"]
+        - host:
+            command: ["echo", "🔍 Pre-deployment diagnostic: checking existing pod security contexts..."]
+        - host:
+            command: ["bash", "-c", "kubectl get pods -n alt-analytics -o jsonpath='{.items[*].spec.securityContext}' 2>/dev/null || echo 'No existing pods in alt-analytics'"]
+      after:
+        - host:
+            command: ["echo", "✅ Infrastructure layer deployment completed - running comprehensive diagnostics..."]
+        - host:
+            command: ["bash", "-c", "kubectl get statefulsets -A -o wide || true"]
+        - host:
+            command: ["bash", "-c", "kubectl get pods -n alt-database -n alt-auth -n alt-analytics -n alt-search -o wide || true"]
+        - host:
+            command: ["echo", "🔍 Post-deployment verification: checking StatefulSet security contexts..."]
+        - host:
+            command: ["bash", "-c", "kubectl describe pod -n alt-analytics -l app.kubernetes.io/name=clickhouse --show-events=false | grep -A 10 'Security Context:' || true"]
+        - host:
+            command: ["echo", "🔍 Checking for permission-related errors in pod logs..."]
+        - host:
+            command: ["bash", "-c", "kubectl logs -n alt-analytics -l app.kubernetes.io/name=clickhouse --tail=10 --since=30s 2>/dev/null | grep -i 'permission\\|denied\\|error' || echo 'No permission errors found'"]

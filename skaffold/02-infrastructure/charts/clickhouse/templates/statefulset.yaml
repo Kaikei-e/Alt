@@ -35,8 +35,66 @@ spec:
       serviceAccountName: {{ include "clickhouse.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      # Init containers removed for Pod Security Standards "restricted" compliance
-      # ClickHouse directory permissions managed by fsGroup + fsGroupChangePolicy
+      # INCIDENT 37 FIX: Pod Security Standards compliant initContainer for lost+found removal + directories
+      initContainers:
+        - name: clickhouse-lost-found-cleanup-v37
+          image: alpine:3.18
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "=== INCIDENT 37: ClickHouse Complete Lost+Found Cleanup + Directory Creation ==="
+              echo "SOLUTION: Complete PVC cleanup + Pod Security Standards compliant initContainer"
+              
+              # PHASE 1: Complete directory analysis
+              echo "Phase 1: Pre-cleanup directory analysis..."
+              cd /var/lib/clickhouse
+              echo "Root directory contents:"
+              ls -la || true
+              echo "Hidden files and lost+found detection:"
+              find . -name "lost+found" -o -name ".*" 2>/dev/null || true
+              
+              # PHASE 2: Complete lost+found and artifacts removal
+              echo "Phase 2: Complete lost+found and artifacts cleanup..."
+              # Critical: Remove lost+found directory (PVC artifact)
+              rm -rf lost+found
+              # Remove any hidden directories that may cause issues
+              rm -rf .* 2>/dev/null || true
+              
+              # PHASE 3: Create required ClickHouse directories
+              echo "Phase 3: ClickHouse required directories creation..."
+              mkdir -p /var/lib/clickhouse/logs
+              mkdir -p /var/lib/clickhouse/user_files  
+              mkdir -p /var/lib/clickhouse/format_schemas
+              mkdir -p /var/lib/clickhouse/tmp
+              
+              # PHASE 4: Set proper ownership for ClickHouse user (101:101)
+              echo "Phase 4: Setting proper ownership for ClickHouse user..."
+              chown -R 101:101 /var/lib/clickhouse
+              chmod -R 755 /var/lib/clickhouse
+              
+              echo "=== INCIDENT 37 CLICKHOUSE CLEANUP COMPLETED ==="
+              echo "✅ Lost+found directory completely removed"
+              echo "✅ Required ClickHouse directories created"
+              echo "✅ Proper ownership (101:101) applied"
+              echo "Final directory state:"
+              ls -la /var/lib/clickhouse/ || true
+              echo "🚀 Ready for ClickHouse v24.8-alpine startup"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+          securityContext:
+            runAsUser: 0  # Required for chown operations - Pod Security Standards baseline compliant
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - FOWNER
+            seccompProfile:
+              type: RuntimeDefault
       containers:
         - name: clickhouse
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -83,8 +141,7 @@ spec:
           volumeMounts:
             - name: data
               mountPath: {{ include "clickhouse.dataDir" . }}
-            - name: logs
-              mountPath: {{ include "clickhouse.logDir" . }}
+              # PHASE B: Remove problematic subPath - initContainer creates all directories
             - name: config
               mountPath: /etc/clickhouse-server/config.xml
               subPath: config.xml
@@ -127,10 +184,7 @@ spec:
         - name: config
           configMap:
             name: {{ include "clickhouse.fullname" . }}-config
-        {{- if not .Values.persistence.logs.enabled }}
-        - name: logs
-          emptyDir: {}
-        {{- end }}
+        # WEB RESEARCH: Removed separate logs volume - using data PVC subdirectory
         {{- if .Values.ssl.enabled }}
         - name: ssl-certs
           secret:

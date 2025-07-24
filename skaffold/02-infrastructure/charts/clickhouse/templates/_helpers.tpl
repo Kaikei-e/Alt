@@ -111,8 +111,8 @@ Create data directory path
 {{- end }}
 
 {{/*
-Create log directory path
+Create log directory path - PHASE 2: Pod Security Standards compliant
 */}}
 {{- define "clickhouse.logDir" -}}
-{{- printf "/var/log/clickhouse-server" }}
+{{- printf "/var/lib/clickhouse/logs" }}
 {{- end }}

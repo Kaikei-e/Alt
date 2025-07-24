@@ -30,16 +30,24 @@ spec:
 
       # ───── Pod セキュリティ（自動 chown）─────
       securityContext:                                         # Granular FS 権限制御 :contentReference[oaicite:8]{index=8}
-        fsGroup: 1000
-        fsGroupChangePolicy: "OnRootMismatch"                 # Web調査: Meilisearch公式推奨設定
-        runAsUser: 1000
-        runAsGroup: 1000
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
 
-      # Init containers removed for Pod Security Standards "restricted" compliance
-      # Meilisearch data permissions managed by fsGroup + fsGroupChangePolicy
+      # Init containers for secure data directory cleanup (Pod Security Standards "restricted" compliant)
+      {{- if .Values.initContainers }}
+      initContainers:
+        {{- range .Values.initContainers }}
+        {{- if .enabled }}
+        - name: {{ .name }}
+          image: {{ .image | quote }}
+          securityContext:
+            {{- toYaml .securityContext | nindent 12 }}
+          command:
+            {{- toYaml .command | nindent 12 }}
+          volumeMounts:
+            {{- toYaml .volumeMounts | nindent 12 }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
 
       # ───── メインコンテナ ─────
       containers:
