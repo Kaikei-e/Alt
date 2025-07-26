@@ -1,0 +1,370 @@
+# Default values for nginx
+# nginx internal proxy/load balancer configuration
+
+# Replica configuration
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent  # OSS公式イメージは外部pull必要
+  tag: "1.25.3-alpine"
+
+# Image pull secrets
+imagePullSecrets: []
+
+# Service account
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+# Pod annotations and labels
+podAnnotations:
+  rask.group: "nginx-proxy"
+
+podLabels:
+  io.kompose.service: "nginx-proxy"
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  runAsGroup: 101
+  fsGroup: 101
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 101
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8080
+  httpsPort: 8443
+  healthPort: 9080
+  annotations: {}
+  clusterIP: ""
+  sessionAffinity: ""
+  sessionAffinityConfig: {}
+  extraPorts: []
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: nginx.alt.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Resources configuration
+resources:
+  limits:
+    cpu: "1"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+
+# Liveness probe
+livenessProbe:
+  httpGet:
+    path: /nginx-health
+    port: 9080
+  failureThreshold: 3
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+# Readiness probe
+readinessProbe:
+  httpGet:
+    path: /nginx-health
+    port: 9080
+  failureThreshold: 3
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Additional volumes
+volumes: []
+
+# Additional volume mounts
+volumeMounts: []
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity (disabled for single-node setup)
+affinity: {}
+
+# Environment variables
+env: {}
+
+# Secret references for environment variables
+envFromSecret:
+  name: ""
+
+# ConfigMap configuration
+configMap:
+  create: true
+  name: ""
+  extraFiles: {}
+
+# Secret configuration
+secret:
+  create: false
+  name: ""
+  data: {}
+  stringData: {}
+
+# SSL configuration
+ssl:
+  enabled: true  # INCIDENT 80 FIX: cert-manager活用でSSL有効化復元
+  secretName: nginx-ssl-certs
+
+# Secrets configuration
+secrets:
+  enabled: true
+
+# Deployment strategy
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# Common labels
+commonLabels: {}  # INCIDENT 72 FIX: Helm template重複ラベル削除
+
+# Common annotations
+commonAnnotations: {}
+
+# nginx specific configuration
+nginx:
+  # Worker settings
+  workerConnections: 1024
+  keepaliveTimeout: 65
+
+  # Logging
+  logLevel: warn
+
+  # Client settings
+  clientMaxBodySize: 10m
+
+  # Rate limiting
+  rateLimitRpm: 300  # requests per minute for API endpoints
+  rateLimitRps: 10   # requests per second for general endpoints
+
+# Upstream configurations for Alt services
+upstreams:
+  - name: alt-backend
+    servers:
+      - "alt-backend.alt-apps.svc.cluster.local:9000"  # INCIDENT 78 FIX: 正しいnamespace参照
+    loadBalancing: "least_conn"
+    keepalive: 32
+
+  - name: alt-frontend
+    servers:
+      - "alt-frontend.alt-apps.svc.cluster.local:3000"  # INCIDENT 78 FIX: 正しいnamespace参照
+    loadBalancing: "least_conn"
+    keepalive: 32
+
+  - name: auth-service
+    servers:
+      - "auth-service.alt-auth.svc.cluster.local:8080"  # INCIDENT 78 FIX: 正しいnamespace参照
+    loadBalancing: "least_conn"
+    keepalive: 32
+
+  - name: meilisearch
+    servers:
+      - "meilisearch.alt-search.svc.cluster.local:7700"  # INCIDENT 78 FIX: 正しいnamespace参照
+    loadBalancing: "least_conn"
+    keepalive: 16
+
+  # INCIDENT 78 FIX: tag-generator未デプロイのためコメントアウト
+  # - name: tag-generator
+  #   servers:
+  #     - "tag-generator.tag-generator.svc.cluster.local:8000"
+  #   loadBalancing: "least_conn"
+  #   keepalive: 16
+
+# Server configurations
+servers:
+  # Main HTTP server (redirect to HTTPS)
+  - listen:
+      - "8080"
+    serverName: "alt.local *.alt.local"
+    locations:
+      - path: "/"
+        extraConfig: |
+          return 301 https://$host$request_uri;
+
+  # Health check server
+  - listen:
+      - "9080"
+    serverName: "_"
+    locations:
+      - path: "/nginx-health"
+        extraConfig: |
+          access_log off;
+          return 200 "nginx internal OK";
+          add_header Content-Type text/plain;
+
+  # INCIDENT 80 FIX: SSL設定復元 - cert-manager証明書使用
+  # Main HTTPS server
+  - listen:
+      - "8443 ssl"
+    serverName: "alt.local *.alt.local"
+    ssl:
+      certificate: "/etc/nginx/ssl/tls.crt"
+      certificateKey: "/etc/nginx/ssl/tls.key"
+      protocols: "TLSv1.2 TLSv1.3"
+      ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+    locations:
+      # Frontend routes
+      - path: "/"
+        proxyPass: "http://alt-frontend"
+        proxySetHeader:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+          - "X-Forwarded-Proto $scheme"
+          - "X-Forwarded-Host $host"
+          - "X-Forwarded-Port $server_port"
+        proxyTimeout: "30s"
+        extraConfig: |
+          proxy_buffer_size 4k;
+          proxy_buffers 8 4k;
+          proxy_busy_buffers_size 8k;
+
+      # Backend API routes
+      - path: "/api/"
+        proxyPass: "http://alt-backend/"
+        proxySetHeader:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+          - "X-Forwarded-Proto $scheme"
+          - "X-Forwarded-Host $host"
+          - "X-Forwarded-Port $server_port"
+        proxyTimeout: "60s"
+        extraConfig: |
+          limit_req zone=api burst=10 nodelay;
+          proxy_buffer_size 4k;
+          proxy_buffers 8 4k;
+          proxy_busy_buffers_size 8k;
+
+      # Backend v1 API routes
+      - path: "/v1/"
+        proxyPass: "http://alt-backend/v1/"
+        proxySetHeader:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+          - "X-Forwarded-Proto $scheme"
+          - "X-Forwarded-Host $host"
+          - "X-Forwarded-Port $server_port"
+        proxyTimeout: "60s"
+        extraConfig: |
+          limit_req zone=api burst=10 nodelay;
+          proxy_buffer_size 4k;
+          proxy_buffers 8 4k;
+          proxy_busy_buffers_size 8k;
+
+      # Auth service routes
+      - path: "/auth/"
+        proxyPass: "http://auth-service/"
+        proxySetHeader:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+          - "X-Forwarded-Proto $scheme"
+          - "X-Forwarded-Host $host"
+          - "X-Forwarded-Port $server_port"
+        proxyTimeout: "30s"
+        extraConfig: |
+          limit_req zone=api burst=20 nodelay;
+          proxy_buffer_size 4k;
+          proxy_buffers 8 4k;
+          proxy_busy_buffers_size 8k;
+
+      # MeiliSearch routes
+      - path: "/search/"
+        proxyPass: "http://meilisearch/"
+        proxySetHeader:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+          - "X-Forwarded-Proto $scheme"
+          - "X-Forwarded-Host $host"
+          - "X-Forwarded-Port $server_port"
+        proxyTimeout: "30s"
+        extraConfig: |
+          limit_req zone=api burst=15 nodelay;
+          proxy_buffer_size 4k;
+          proxy_buffers 8 4k;
+          proxy_busy_buffers_size 8k;
+
+      # INCIDENT 78 FIX: tag-generator未デプロイのためコメントアウト
+      # Tag generator routes
+      # - path: "/tags/"
+      #   proxyPass: "http://tag-generator/"
+      #   proxySetHeader:
+      #     - "Host $host"
+      #     - "X-Real-IP $remote_addr"
+      #     - "X-Forwarded-For $proxy_add_x_forwarded_for"
+      #     - "X-Forwarded-Proto $scheme"
+      #     - "X-Forwarded-Host $host"
+      #     - "X-Forwarded-Port $server_port"
+      #   proxyTimeout: "120s"
+      #   extraConfig: |
+      #     limit_req zone=api burst=5 nodelay;
+      #     proxy_buffer_size 4k;
+      #     proxy_buffers 8 4k;
+      #     proxy_busy_buffers_size 8k;
+
+      # Health check endpoint
+      - path: "/health"
+        extraConfig: |
+          access_log off;
+          return 200 "OK";
+          add_header Content-Type text/plain;
+    extraConfig: |
+      # Enable HSTS
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+      # Additional security headers
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9080"
+    prometheus.io/path: "/nginx-status"

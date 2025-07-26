@@ -1,0 +1,132 @@
+{{- if .Values.configMap.create }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nginx.configMapName" . }}
+  labels:
+    {{- include "nginx.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log {{ .Values.nginx.logLevel }};
+    pid /tmp/nginx.pid;
+
+    events {
+        worker_connections {{ .Values.nginx.workerConnections }};
+        use epoll;
+        multi_accept on;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        # Logging format
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for" '
+                        'rt=$request_time uct="$upstream_connect_time" '
+                        'uht="$upstream_header_time" urt="$upstream_response_time"';
+
+        access_log /var/log/nginx/access.log main;
+
+        # Basic settings
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout {{ .Values.nginx.keepaliveTimeout }};
+        types_hash_max_size 2048;
+        server_tokens off;
+
+        # Gzip compression
+        gzip on;
+        gzip_vary on;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types
+            text/plain
+            text/css
+            text/xml
+            text/javascript
+            application/json
+            application/javascript
+            application/xml+rss
+            application/atom+xml
+            image/svg+xml;
+
+        # Client settings
+        client_max_body_size {{ .Values.nginx.clientMaxBodySize }};
+        client_body_buffer_size 128k;
+        client_header_buffer_size 1k;
+        large_client_header_buffers 4 4k;
+
+        # Proxy settings
+        proxy_buffering on;
+        proxy_buffer_size 4k;
+        proxy_buffers 8 4k;
+        proxy_busy_buffers_size 8k;
+        proxy_temp_file_write_size 8k;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+        # Disable cache directories for non-root user
+        proxy_cache_path /tmp/nginx_cache levels=1:2 keys_zone=cache:10m max_size=10g inactive=60m use_temp_path=off;
+        client_body_temp_path /tmp/nginx_client_temp;
+        proxy_temp_path /tmp/nginx_proxy_temp;
+        fastcgi_temp_path /tmp/nginx_fastcgi_temp;
+        uwsgi_temp_path /tmp/nginx_uwsgi_temp;
+        scgi_temp_path /tmp/nginx_scgi_temp;
+
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "no-referrer-when-downgrade" always;
+        add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+
+        # Rate limiting
+        limit_req_zone $binary_remote_addr zone=api:10m rate={{ .Values.nginx.rateLimitRpm }}r/m;
+        limit_req_zone $binary_remote_addr zone=general:10m rate={{ .Values.nginx.rateLimitRps }}r/s;
+
+        # Upstream definitions
+{{ include "nginx.upstreams" . | indent 8 }}
+
+        # Server blocks
+{{ include "nginx.servers" . | indent 8 }}
+
+        # Health check endpoint
+        server {
+            listen 9080;
+            server_name localhost;
+
+            location /nginx-health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+
+            location /nginx-status {
+                stub_status on;
+                access_log off;
+                allow 127.0.0.1;
+                allow 10.0.0.0/8;
+                allow 172.16.0.0/12;
+                allow 192.168.0.0/16;
+                deny all;
+            }
+        }
+    }
+
+{{- if .Values.configMap.extraFiles }}
+{{- range $key, $value := .Values.configMap.extraFiles }}
+  {{ $key }}: |
+{{ $value | indent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

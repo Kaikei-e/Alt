@@ -1,0 +1,61 @@
+{{- if .Values.ssl.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "nginx.fullname" . }}-ssl
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nginx.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  # Secret name for storing the certificate
+  secretName: {{ .Values.ssl.secretName }}
+  
+  # Certificate issuer
+  issuerRef:
+    name: alt-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+  
+  # Certificate details
+  commonName: alt.local
+  dnsNames:
+    - alt.local
+    - "*.alt.local"
+    - nginx.{{ .Release.Namespace }}.svc.cluster.local
+    - nginx
+    - localhost
+  
+  # IP SANs for local development
+  ipAddresses:
+    - 127.0.0.1
+  
+  # Certificate usage
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+  
+  # Certificate validity period
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days before expiry
+  
+  # Key algorithm and size
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  
+  # Subject information
+  subject:
+    countries:
+      - JP
+    localities:
+      - Tokyo
+    organizationalUnits:
+      - Security
+    organizations:
+      - Alt-Project
+{{- end }}
