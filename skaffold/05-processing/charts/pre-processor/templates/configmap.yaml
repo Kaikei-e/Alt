@@ -7,8 +7,5 @@ metadata:
   labels:
     {{- include "pre-processor.labels" . | nindent 4 }}
 data:
-  .env: |
-    {{- range $key, $value := .Values.configMap.data }}
-    {{ $key }}={{ $value }}
-    {{- end }}
+{{- toYaml .Values.configMap.data | nindent 2 }}
 {{- end }}

@@ -2,9 +2,10 @@
 replicaCount: 1
 
 image:
-  repository: tag-generator
-  pullPolicy: IfNotPresent
-  tag: "production"
+  repository: kaikei/tag-generator  # INCIDENT 82 FIX: Core servicesパターン統一
+  pullPolicy: IfNotPresent  # INCIDENT 89 FIX: Skaffold auto-transform + digest-source=tag
+  # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
+  # tag: "production"
 
 service:
   type: ClusterIP
@@ -54,6 +55,19 @@ podAnnotations: {}
 imagePullSecrets: []
 volumeMounts: []
 volumes: []
+
+# ConfigMap configuration
+configMap:
+  create: true
+  name: tag-generator-config
+  data:
+    .env: |
+      # Tag Generator Configuration
+      PORT=9400
+      LOG_LEVEL=info
+      DB_MAX_CONNECTIONS=10
+      DB_MAX_IDLE_CONNECTIONS=2
+      DB_CONNECTION_MAX_LIFETIME=5m
 
 strategy:
   type: RollingUpdate

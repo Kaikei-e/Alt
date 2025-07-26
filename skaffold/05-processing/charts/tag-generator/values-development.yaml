@@ -1,0 +1,27 @@
+# Development environment values for tag-generator
+
+# Development-specific image settings
+image:
+  tag: "development"  
+  pullPolicy: Never  # INCIDENT 82 FIX: Local image強制使用 (ImagePullBackOff解決)
+
+# Reduced resource requirements for development
+resources:
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+  requests:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Development environment variables
+env:
+  DB_HOST: "db.alt-dev.svc.cluster.local"
+  LOG_LEVEL: "debug"
+  OLLAMA_HOST: "http://ollama.alt-dev.svc.cluster.local:11434"
+
+# Development namespace
+namespace: alt-dev
+
+# Single replica for development
+replicaCount: 1

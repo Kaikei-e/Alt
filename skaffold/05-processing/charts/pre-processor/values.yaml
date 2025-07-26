@@ -1,9 +1,10 @@
 # Default values for pre-processor
 replicaCount: 1
 image:
-  repository: pre-processor
-  pullPolicy: IfNotPresent
-  tag: "production"
+  repository: kaikei/pre-processor  # INCIDENT 82 FIX: Core servicesパターン統一
+  pullPolicy: IfNotPresent  # INCIDENT 89 FIX: Skaffold auto-transform + digest-source=tag
+  # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
+  # tag: "production"
 
 service:
   type: ClusterIP
@@ -51,6 +52,19 @@ podAnnotations: {}
 imagePullSecrets: []
 volumeMounts: []
 volumes: []
+
+# ConfigMap configuration
+configMap:
+  create: true
+  name: pre-processor-config
+  data:
+    .env: |
+      # Pre Processor Configuration
+      PORT=9200
+      LOG_LEVEL=info
+      DB_MAX_CONNECTIONS=10
+      DB_MAX_IDLE_CONNECTIONS=2
+      DB_CONNECTION_MAX_LIFETIME=5m
 
 strategy:
   type: RollingUpdate

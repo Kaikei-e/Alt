@@ -2,9 +2,10 @@
 replicaCount: 1
 
 image:
-  repository: news-creator
-  pullPolicy: IfNotPresent
-  tag: "latest"
+  repository: kaikei/news-creator  # INCIDENT 82 FIX: Core servicesパターン統一
+  pullPolicy: IfNotPresent  # INCIDENT 89 FIX: Skaffold auto-transform + digest-source=tag
+  # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
+  # tag: "latest"
 
 service:
   type: ClusterIP
@@ -40,9 +41,15 @@ serviceAccount:
   annotations: {}
 
 configMap:
-  create: false
-  name: ""
-  data: {}
+  create: true
+  name: news-creator-config
+  data:
+    .env: |
+      # News Creator Configuration
+      PORT=11434
+      LOG_LEVEL=info
+      OLLAMA_NUM_PARALLEL=1
+      OLLAMA_MAX_LOADED_MODELS=2
 
 podSecurityContext: {}
 securityContext: {}
