@@ -7,7 +7,7 @@ replicaCount: 2
 # Image configuration
 image:
   repository: nginx
-  pullPolicy: IfNotPresent
+  pullPolicy: IfNotPresent  # OSS公式イメージは外部pull必要
   tag: "1.25.3-alpine"
 
 # Image pull secrets
@@ -34,15 +34,17 @@ podSecurityContext:
   runAsGroup: 101
   fsGroup: 101
 
-# Container security context
+# Container security context - nginx compatibility + security hardening
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
     - ALL
-  readOnlyRootFilesystem: false
+  # INCIDENT 87 FIX: nginx初期化スクリプト対応のためfalseを維持
+  # 将来的にはreadOnlyRootFilesystem: true + 適切なvolume mountで強化可能
+  readOnlyRootFilesystem: false  
   runAsNonRoot: true
-  runAsUser: 101
+  runAsUser: 101  # nginx標準ユーザー（初期化スクリプト互換性確保）
 
 # Service configuration - exposed externally
 service:
@@ -159,11 +161,8 @@ strategy:
     maxSurge: 1
     maxUnavailable: 0
 
-# Common labels
-commonLabels:
-  app.kubernetes.io/name: nginx-external
-  app.kubernetes.io/part-of: alt
-  app.kubernetes.io/component: external-proxy
+# INCIDENT 79 FIX: Helm template重複ラベル削除 - commonLabelsとtemplate競合回避
+commonLabels: {}
 
 # Common annotations
 commonAnnotations: {}
@@ -200,29 +199,29 @@ nginx:
 
 # Upstream configurations for internal nginx or services
 upstreams:
-  # Route to internal nginx (recommended approach)
-  - name: nginx-internal
+  # Route to internal nginx (recommended approach) - INCIDENT 85+86 FIX: 正しいnamespace参照+upstream名統一
+  - name: nginx
     servers:
-      - "nginx.nginx.svc.cluster.local:80"
-      - "nginx.nginx.svc.cluster.local:443"
+      - "nginx.alt-ingress.svc.cluster.local:8080"
+      - "nginx.alt-ingress.svc.cluster.local:8443"
     loadBalancing: "least_conn"
     keepalive: 32
     healthCheck:
       enabled: true
-      path: "/health"
+      path: "/nginx-health"
       interval: "30s"
       timeout: "10s"
 
-  # Alternative: Direct routing to services (if needed)
+  # Alternative: Direct routing to services (if needed) - INCIDENT 85 FIX: 正しいnamespace参照
   - name: alt-frontend-direct
     servers:
-      - "alt-frontend.alt-frontend.svc.cluster.local:3000"
+      - "alt-frontend.alt-apps.svc.cluster.local:3000"
     loadBalancing: "least_conn"
     keepalive: 32
 
   - name: alt-backend-direct
     servers:
-      - "alt-backend.alt-backend.svc.cluster.local:9000"
+      - "alt-backend.alt-apps.svc.cluster.local:9000"
     loadBalancing: "least_conn"
     keepalive: 32
 
@@ -259,12 +258,13 @@ servers:
       sessionCache: "shared:SSL:10m"
       sessionTimeout: "1d"
       sessionTickets: "off"
-      ocspStapling: "on"
-      ocspStaplingVerify: "on"
+      # INCIDENT 87 FIX: REPORT.md指摘対応 - 中間CA証明書不足のためOCSP Stapling無効化
+      ocspStapling: "off"
+      ocspStaplingVerify: "off"
     locations:
       # Main application routes - proxy to internal nginx
       - path: "/"
-        proxyPass: "http://nginx-internal"
+        proxyPass: "http://nginx"
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -289,12 +289,12 @@ servers:
             expires 30d;
             add_header Cache-Control "public, immutable";
             add_header X-Cache-Status "STATIC";
-            proxy_pass http://nginx-internal;
+            proxy_pass http://nginx;
           }
 
       # API routes with stricter rate limiting
       - path: "/api/"
-        proxyPass: "http://nginx-internal"
+        proxyPass: "http://nginx"
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -391,3 +391,32 @@ podDisruptionBudget:
   enabled: true
   minAvailable: 1
   maxUnavailable: ""
+
+# Cloudflare Tunnel設定（subchartに渡される）
+# 本番環境では values-production.yaml で実際の認証情報を設定してください
+cloudflare-tunnel:
+  cloudflare:
+    # 2025年推奨: tunnel token方式（JWT形式のトークン）
+    # Cloudflareダッシュボードで作成したトンネルの"Configure"からtokenを取得
+    # 本番環境ではvalues-production.yamlで設定する
+    tunnel_token: ""
+    
+    # Legacy credentials方式（tunnel_tokenが空の場合のみ使用）
+    # 本番環境ではvalues-production.yamlで設定する
+    account: ""       # Cloudflare Account ID
+    tunnelId: ""      # Tunnel ID  
+    secret: ""        # Tunnel Secret
+    
+    # 既存secret使用の場合（手動でsecretを作成済みの場合）
+    secretName: ""    # 手動作成secretを使用する場合
+  
+  # セキュリティ設定（Pod Security Standards準拠）
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true

@@ -1,31 +1,49 @@
-# This configmap stores the configuration used by cloudflared.
+{{/*
+Cloudflare Tunnel Configuration ConfigMap
+This creates the tunnel configuration file used by cloudflared
+*/}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "cloudflare-tunnel.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloudflare-tunnel.labels" . | nindent 4 }}
 data:
   config.yaml: |
-    # Name of the tunnel you want to run
-    tunnel: {{ .Values.cloudflare.tunnelName }}
-    # The tunnel token for authentication
-    tunnel-token: {{ .Values.cloudflare.tunnelToken | default "" }}
-    # The location of the secret containing the tunnel credentials (fallback)
-    credentials-file: /etc/cloudflared/creds/{{ .Values.cloudflare.tunnelId }}.json
-    # General purpose TCP routing for the network
-    warp-routing:
-      enabled: {{ .Values.cloudflare.enableWarp }}
-    # Serves the metrics server under /metrics and the readiness server under /ready
-    metrics: 0.0.0.0:2000
-    # Autoupdates applied in a k8s pod will be lost when the pod is removed or restarted, so
-    # autoupdate doesn't make sense in Kubernetes. However, outside of Kubernetes, we strongly
-    # recommend using autoupdate.
-    no-autoupdate: true
-    # The `ingress` block tells cloudflared which local service to route incoming
-    # requests to. For more about ingress rules, see
-    # https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/configuration/ingress
+{{- if and .Values.cloudflare.tunnelId (not .Values.cloudflare.tunnel_token) }}
+    # Legacy authentication method (使用非推奨 - tunnel_tokenを使用してください)
+    tunnel: {{ .Values.cloudflare.tunnelId | quote }}
+    credentials-file: /etc/cloudflared/creds/credentials.json
+{{- else }}
+    # 2025年推奨: tunnel tokenによる認証 (TUNNEL_TOKEN環境変数使用)
+    # tunnel IDや認証ファイルは不要 - 環境変数で全て処理
+{{- end }}
+    
+    # Ingress rules for the tunnel
     ingress:
-      {{- with .Values.cloudflare.ingress }}
-      {{- toYaml . | nindent 6 }}
-      {{- end }}
-      # This rule matches any traffic which didn't match a previous rule, and responds with HTTP 404.
+      # Route to nginx-external service (外部SSL終端→内部SSL)
+      - hostname: "*.rss.alt.com"
+        service: http://nginx-external.alt-ingress.svc.cluster.local:8080
+      - hostname: "rss.alt.com"  
+        service: http://nginx-external.alt-ingress.svc.cluster.local:8080
+      
+      # Default catch-all rule (required)
       - service: http_status:404
+    
+    # Tunnel settings
+    warp-routing:
+      enabled: false
+    
+    # Logging configuration
+    loglevel: info
+    
+    # Health check configuration
+    metrics: 0.0.0.0:2000
+    
+    # Protocol settings
+    protocol: http2
+    
+    # Connection settings
+    retries: 5
+    grace-period: 30s
