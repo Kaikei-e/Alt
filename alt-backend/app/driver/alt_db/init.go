@@ -37,7 +37,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 					logger.Logger.Warn("Could not acquire connection to check SSL status", "error", connErr)
 				} else {
 					defer conn.Release()
-					
+
 					var sslUsed bool
 					sslErr := conn.QueryRow(ctx, "SELECT ssl_is_used()").Scan(&sslUsed)
 					if sslErr != nil {
@@ -51,7 +51,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 							"min_conns", pool.Config().MinConns)
 					}
 				}
-				
+
 				if conn == nil {
 					// SSL確認ができなかった場合の従来ログ
 					logger.Logger.Info("Connected to database with connection pool",
@@ -60,7 +60,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 						"max_conns", pool.Config().MaxConns,
 						"min_conns", pool.Config().MinConns)
 				}
-				
+
 				return pool, nil
 			}
 			// Close the pool if ping failed
@@ -92,7 +92,7 @@ func getDBConnectionString() (string, error) {
 
 	// 新しい設定構造体を使用
 	config := NewDatabaseConfigFromEnv()
-	
+
 	// SSL設定の検証
 	if err := config.ValidateSSLConfig(); err != nil {
 		logger.Logger.Error("Invalid SSL configuration", "error", err)
@@ -109,11 +109,11 @@ func getDBConnectionString() (string, error) {
 
 	// 基本接続文字列を構築
 	baseConn := config.BuildConnectionString()
-	
+
 	// 既存のプール設定を追加
 	connectionString := baseConn +
-		" pool_max_conn_lifetime=30m"+ // Maximum time connection can be reused
-		" pool_max_conn_idle_time=15m"+ // Maximum time connection can be idle
+		" pool_max_conn_lifetime=30m" + // Maximum time connection can be reused
+		" pool_max_conn_idle_time=15m" + // Maximum time connection can be idle
 		" pool_health_check_period=1m" // How often to check connection health
 
 	return connectionString, nil
