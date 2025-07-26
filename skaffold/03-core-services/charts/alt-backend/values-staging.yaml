@@ -2,8 +2,7 @@
 
 # Staging-specific image settings
 image:
-  tag: "staging"
-  pullPolicy: IfNotPresent
+  pullPolicy: Never  # Local image強制使用 (Phase A最適化)
 
 # Moderate resource requirements for staging
 resources:

@@ -2,8 +2,7 @@
 
 # Development-specific image settings
 image:
-  tag: "development"
-  pullPolicy: Always
+  pullPolicy: Never  # INCIDENT 68 FIX: ローカルイメージ強制使用
 
 # Reduced resource requirements for development
 resources:

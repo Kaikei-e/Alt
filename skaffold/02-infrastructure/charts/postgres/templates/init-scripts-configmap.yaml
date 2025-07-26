@@ -20,6 +20,14 @@ data:
 
     echo "Creating application users..."
 
+    # Install sslinfo extension for SSL status monitoring
+    echo "Installing sslinfo extension..."
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+        CREATE EXTENSION IF NOT EXISTS sslinfo;
+        -- Verify installation
+        SELECT 'sslinfo extension installed successfully' AS status;
+    EOSQL
+
     # Create tag-generator user
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
         DO \$\$

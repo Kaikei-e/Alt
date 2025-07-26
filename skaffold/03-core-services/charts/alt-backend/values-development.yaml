@@ -2,8 +2,7 @@
 
 # Development-specific image settings
 image:
-  tag: "development"
-  pullPolicy: Always
+  pullPolicy: Never  # Local image強制使用 (Phase A最適化)
 
 # Reduced resource requirements for development
 resources:

@@ -3,7 +3,7 @@
 # Staging-specific image settings
 image:
   tag: "staging"
-  pullPolicy: IfNotPresent
+  pullPolicy: Never  # INCIDENT 68 FIX: ローカルイメージ強制使用
 
 # Moderate resource requirements for staging
 resources:

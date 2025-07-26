@@ -6,9 +6,10 @@ replicaCount: 1
 
 # Image configuration
 image:
-  repository: alt-backend
-  pullPolicy: IfNotPresent
-  tag: "production"
+  repository: kaikei/alt-backend  # INCIDENT 65 FIX: サービス専用repository
+  pullPolicy: IfNotPresent  # INCIDENT 82 FIX: Skaffold動的tag対応
+  # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
+  # tag: "alt-backend-latest"
 
 # Image pull secrets
 imagePullSecrets: []
@@ -117,7 +118,7 @@ autoscaling:
 volumes: []
 # SSL有効時のみssl-certsボリューム追加（values-ssl.yamlで上書き）
 
-# Additional volume mounts - INCIDENT 46 FIX: SSL証明書mount条件付き設定  
+# Additional volume mounts - INCIDENT 46 FIX: SSL証明書mount条件付き設定
 volumeMounts: []
 # SSL有効時のみssl-certsマウント追加（values-ssl.yamlで上書き）
 

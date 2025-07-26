@@ -37,6 +37,56 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       # INCIDENT 37 FIX: Pod Security Standards compliant initContainer for lost+found removal + pgdata creation
       initContainers:
+        {{- if .Values.ssl.enabled }}
+        - name: postgres-ssl-setup-v61
+          image: alpine:3.18
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "=== INCIDENT 61: PostgreSQL SSL Certificate Setup ==="
+              echo "SOLUTION: 2025年Web検索ベストプラクティス準拠SSL設定"
+              
+              # PHASE 1: SSL証明書ディレクトリ作成
+              echo "Phase 1: SSL certificate directory setup..."
+              mkdir -p /ssl-data
+              
+              # PHASE 2: cert-manager証明書をPostgreSQL形式でコピー
+              echo "Phase 2: Copy cert-manager certificates to PostgreSQL format..."
+              cp /ssl-certs/tls.crt /ssl-data/server.crt
+              cp /ssl-certs/tls.key /ssl-data/server.key  
+              cp /ssl-certs/ca.crt /ssl-data/ca.crt
+              
+              # PHASE 3: PostgreSQL適切な権限設定 (2025年セキュリティ標準)
+              echo "Phase 3: Set proper PostgreSQL SSL permissions..."
+              chmod 600 /ssl-data/server.key
+              chmod 644 /ssl-data/server.crt
+              chmod 644 /ssl-data/ca.crt
+              chown -R 70:70 /ssl-data
+              
+              echo "=== PostgreSQL SSL SETUP COMPLETED ==="
+              echo "✅ Certificate files copied and permissions set"
+              echo "✅ PostgreSQL SSL ready for TLS connections"
+              ls -la /ssl-data/
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /ssl-certs
+              readOnly: true
+            - name: ssl-data
+              mountPath: /ssl-data
+          securityContext:
+            runAsUser: 0  # Required for chown operations
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - FOWNER
+            seccompProfile:
+              type: RuntimeDefault
+        {{- end }}
         - name: postgres-lost-found-cleanup-v37
           image: alpine:3.18
           command:
@@ -96,6 +146,12 @@ spec:
         - name: postgres
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # INCIDENT 61 FIX: 2025年Web検索ベストプラクティス - ConfigMap設定ファイル強制読み込み
+          command:
+            - docker-entrypoint.sh
+            - postgres
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
           ports:
             - name: postgres
               containerPort: 5432

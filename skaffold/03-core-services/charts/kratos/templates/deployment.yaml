@@ -69,15 +69,9 @@ spec:
               name: kratos-postgres-credentials
               key: dsn
         - name: SECRETS_COOKIE
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "kratos.fullname" . }}-secrets
-              key: cookie-secret
+          value: {{ .Values.secrets.cookieSecret | quote }}
         - name: SECRETS_CIPHER
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "kratos.fullname" . }}-secrets
-              key: cipher-secret
+          value: {{ .Values.secrets.cipherSecret | quote }}
         volumeMounts:
         - name: kratos-config
           mountPath: /etc/config/kratos

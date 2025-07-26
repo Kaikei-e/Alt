@@ -3,8 +3,9 @@ replicaCount: 1
 
 image:
   repository: alt-frontend
-  pullPolicy: IfNotPresent
-  tag: "production"
+  pullPolicy: IfNotPresent  # INCIDENT 77 FIX: ローカルイメージ使用+外部pull許可
+  # INCIDENT 80 FIX: REPORT.md指摘 - 固定tag削除、Skaffold動的tag使用
+  # tag: "production"
 
 service:
   type: ClusterIP
@@ -39,6 +40,10 @@ autoscaling:
 env:
   NEXT_PUBLIC_API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
   NEXT_PUBLIC_AUTH_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
+  NODE_ENV: "production"
+  # INCIDENT 76 FIX: API/AUTH URLs統一 - secretから環境変数に移行
+  API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
+  AUTH_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
 
 serviceAccount:
   create: true
@@ -55,10 +60,7 @@ securityContext: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
-commonLabels:
-  app.kubernetes.io/name: alt-frontend
-  app.kubernetes.io/part-of: alt
-  app.kubernetes.io/component: frontend
+commonLabels: {}  # INCIDENT 69 FIX: Helm template重複ラベル削除
 
 commonAnnotations: {}
 podLabels: {}
@@ -73,9 +75,9 @@ strategy:
     maxUnavailable: 1
     maxSurge: 1
 
-# Secret configuration (optional)
-envFromSecret:
-  name: alt-frontend-secrets
-  keys:
-    - API_URL
-    - AUTH_URL
+# INCIDENT 76 FIX: Secret configuration無効化 - 環境変数に統一
+# envFromSecret:
+#   name: alt-frontend-secrets
+#   keys:
+#     - API_URL
+#     - AUTH_URL

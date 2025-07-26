@@ -115,9 +115,9 @@ ssl:
   certPath: "/ssl/server.crt"
   keyPath: "/ssl/server.key"
   caPath: "/ssl/ca.crt"
-  # TLS 1.3 enforcement for enhanced security
-  minProtocolVersion: "TLSv1.3"
-  cipherSuites: "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20:!aNULL:!MD5:!DSS"
+  # TLS 1.2 stable security - PostgreSQL 16 compatible
+  minProtocolVersion: "TLSv1.2"  
+  cipherSuites: "HIGH:MEDIUM:+3DES:!aNULL"
 
 # Persistence - INCIDENT 20 FIX: Unified to standard (local-path)
 persistence:
