@@ -17,5 +17,5 @@ maintainers:
     email: team@alt.example.com
 dependencies:
   - name: cloudflare-tunnel
-    version: "0.3.2"  # INCIDENT 75 FIX: Version 0.1.0→0.3.2 Chart.yamlと実際の一致
+    version: "0.3.2"
     repository: "file://./charts/cloudflare-tunnel"
