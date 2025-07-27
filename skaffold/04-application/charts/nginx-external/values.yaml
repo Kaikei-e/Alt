@@ -229,7 +229,7 @@ upstreams:
 servers:
   # Main HTTPS server for external traffic
   - listen:
-      - "8443 ssl"
+      - "8443 ssl default_server"
     http2: true
     serverName: "curionoah.com"
     ssl:
