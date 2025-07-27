@@ -7,7 +7,7 @@ replicaCount: 2
 # Image configuration
 image:
   repository: nginx
-  pullPolicy: IfNotPresent  # OSS公式イメージは外部pull必要
+  pullPolicy: IfNotPresent # OSS公式イメージは外部pull必要
   tag: "1.25.3-alpine"
 
 # Image pull secrets
@@ -27,24 +27,21 @@ podAnnotations:
 podLabels:
   io.kompose.service: "nginx-external"
 
-# Pod security context
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 101
-  runAsGroup: 101
-  fsGroup: 101
+  runAsUser: 101 # nginx 非 root ユーザー
+  fsGroup: 101 # ボリュームアクセス用
+  sysctls:
+    - name: net.ipv4.ip_unprivileged_port_start
+      value: "0" # 非 root でも低番号ポートを解放
 
-# Container security context - nginx compatibility + security hardening
+# コンテナ個別のセキュリティ設定
 securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-    - ALL
-  # INCIDENT 87 FIX: nginx初期化スクリプト対応のためfalseを維持
-  # 将来的にはreadOnlyRootFilesystem: true + 適切なvolume mountで強化可能
-  readOnlyRootFilesystem: false
   runAsNonRoot: true
-  runAsUser: 101  # nginx標準ユーザー（初期化スクリプト互換性確保）
+  runAsUser: 101
+  capabilities:
+    add: ["NET_BIND_SERVICE"] # 80/443 バインド権限
+    drop: ["ALL"]
 
 # Service configuration - exposed externally
 service:
@@ -180,9 +177,9 @@ nginx:
   clientMaxBodySize: 20m
 
   # Rate limiting for external traffic (more restrictive)
-  rateLimitRpm: 600    # requests per minute for API endpoints
-  rateLimitRps: 20     # requests per second for general endpoints
-  rateLimitConnections: 50  # concurrent connections per IP
+  rateLimitRpm: 600 # requests per minute for API endpoints
+  rateLimitRps: 20 # requests per second for general endpoints
+  rateLimitConnections: 50 # concurrent connections per IP
 
   # DDoS protection settings
   ddosProtection:
@@ -229,7 +226,7 @@ upstreams:
 servers:
   # Main HTTPS server for external traffic
   - listen:
-      - "8443 ssl"
+      - "443 ssl"
     http2: true
     serverName: "curionoah.com"
     ssl:
@@ -380,20 +377,9 @@ cloudflare-tunnel:
 
     # Legacy credentials方式（tunnel_tokenが空の場合のみ使用）
     # 本番環境ではvalues-production.yamlで設定する
-    account: ""       # Cloudflare Account ID
-    tunnelId: ""      # Tunnel ID
-    secret: ""        # Tunnel Secret
+    account: "" # Cloudflare Account ID
+    tunnelId: "" # Tunnel ID
+    secret: "" # Tunnel Secret
 
     # 既存secret使用の場合（手動でsecretを作成済みの場合）
-    secretName: ""    # 手動作成secretを使用する場合
-
-  # セキュリティ設定（Pod Security Standards準拠）
-  podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 65532
-  securityContext:
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-      - ALL
-    readOnlyRootFilesystem: true
+    secretName: "" # 手動作成secretを使用する場合

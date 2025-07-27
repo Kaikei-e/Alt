@@ -15,7 +15,7 @@ profiles:
         releases:
           - name: alt-frontend
             chartPath: charts/alt-frontend
-            namespace: alt-apps  # INCIDENT 71 FIX: namespace統一
+            namespace: alt-apps # INCIDENT 71 FIX: namespace統一
             createNamespace: true
             valuesFiles:
               - charts/alt-frontend/values-development.yaml
@@ -29,18 +29,18 @@ profiles:
             version: 0.1.0
           - name: nginx
             chartPath: charts/nginx
-            namespace: alt-ingress  # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
+            namespace: alt-ingress # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
             createNamespace: true
             valuesFiles:
               - charts/nginx/values.yaml
             version: 0.1.0
           - name: nginx-external
             chartPath: charts/nginx-external
-            namespace: alt-ingress  # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
+            namespace: alt-ingress # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
             createNamespace: true
             valuesFiles:
-              - charts/nginx-external/values.yaml       # デフォルト設定（ベース）
-              - charts/nginx-external/values-ssl.yaml   # SSL設定（Devは認証情報なしSSLのみ）
+              - charts/nginx-external/values.yaml # デフォルト設定（ベース）
+              - charts/nginx-external/values-ssl.yaml # SSL設定（Devは認証情報なしSSLのみ）
             version: 0.1.0
   - name: staging
     build:
@@ -54,7 +54,7 @@ profiles:
         releases:
           - name: alt-frontend
             chartPath: charts/alt-frontend
-            namespace: alt-apps  # INCIDENT 71 FIX: namespace統一
+            namespace: alt-apps # INCIDENT 71 FIX: namespace統一
             createNamespace: true
             valuesFiles:
               - charts/alt-frontend/values-staging.yaml
@@ -69,18 +69,18 @@ profiles:
             version: 0.1.0
           - name: nginx
             chartPath: charts/nginx
-            namespace: alt-ingress  # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
+            namespace: alt-ingress # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
             createNamespace: true
             valuesFiles:
               - charts/nginx/values.yaml
             version: 0.1.0
           - name: nginx-external
             chartPath: charts/nginx-external
-            namespace: alt-ingress  # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
+            namespace: alt-ingress # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
             createNamespace: true
             valuesFiles:
-              - charts/nginx-external/values.yaml       # デフォルト設定（ベース）
-              - charts/nginx-external/values-ssl.yaml   # SSL設定（Stagingは認証情報なしSSLのみ）
+              - charts/nginx-external/values.yaml # デフォルト設定（ベース）
+              - charts/nginx-external/values-ssl.yaml # SSL設定（Stagingは認証情報なしSSLのみ）
             version: 0.1.0
   - name: prod
     build:
@@ -94,7 +94,7 @@ profiles:
         releases:
           - name: alt-frontend
             chartPath: charts/alt-frontend
-            namespace: alt-apps  # INCIDENT 71 FIX: namespace統一
+            namespace: alt-apps # INCIDENT 71 FIX: namespace統一
             createNamespace: true
             valuesFiles:
               - charts/alt-frontend/values-production.yaml
@@ -108,7 +108,7 @@ profiles:
             version: 0.1.0
           - name: nginx
             chartPath: charts/nginx
-            namespace: alt-ingress  # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
+            namespace: alt-ingress # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
             createNamespace: true
             valuesFiles:
               - charts/nginx/values-production.yaml
@@ -116,11 +116,12 @@ profiles:
             version: 0.1.0
           - name: nginx-external
             chartPath: charts/nginx-external
-            namespace: alt-ingress  # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
+            namespace: alt-ingress # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
             createNamespace: true
             valuesFiles:
-              - charts/nginx-external/values.yaml             # デフォルト設定（ベース）
-              - charts/nginx-external/values-production.yaml  # 本番設定（最優先、認証情報含む）
+              - charts/nginx-external/values.yaml # デフォルト設定（ベース）
+              - charts/nginx-external/values-cloudflare.yaml
+              - charts/nginx-external/values-production.yaml # 本番設定（最優先、認証情報含む）
             version: 0.1.0
 build:
   artifacts:
@@ -133,7 +134,7 @@ deploy:
     releases:
       - name: alt-frontend
         chartPath: charts/alt-frontend
-        namespace: alt-apps  # INCIDENT 71 FIX: namespace統一
+        namespace: alt-apps # INCIDENT 71 FIX: namespace統一
         createNamespace: true
         valuesFiles:
           - charts/alt-frontend/values-development.yaml
@@ -150,7 +151,7 @@ deploy:
         version: 0.1.0
       - name: nginx
         chartPath: charts/nginx
-        namespace: alt-ingress  # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
+        namespace: alt-ingress # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
         createNamespace: true
         valuesFiles:
           - charts/nginx/values-production.yaml
@@ -158,10 +159,11 @@ deploy:
         version: 0.1.0
       - name: nginx-external
         chartPath: charts/nginx-external
-        namespace: alt-ingress  # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
+        namespace: alt-ingress # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
         createNamespace: true
         valuesFiles:
-          - charts/nginx-external/values.yaml             # デフォルト設定（ベース）
-          - charts/nginx-external/values-ssl.yaml         # SSL設定
-          - charts/nginx-external/values-production.yaml  # 本番設定（最優先、認証情報含む）
+          - charts/nginx-external/values.yaml # デフォルト設定（ベース）
+          - charts/nginx-external/values-ssl.yaml # SSL設定
+          - charts/nginx-external/values-cloudflare.yaml
+          - charts/nginx-external/values-production.yaml # 本番設定（最優先、認証情報含む）
         version: 0.1.0

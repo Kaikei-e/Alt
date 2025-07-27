@@ -4,12 +4,12 @@
 cloudflare:
   # 2025年推奨: tunnel token方式（JWT形式）
   tunnel_token: ""  # 実際のtunnel tokenを設定
-  
+
   # Legacy credentials方式（互換性のため）
   account: ""        # Account ID
-  tunnelId: ""       # Tunnel ID  
+  tunnelId: ""       # Tunnel ID
   secret: ""         # Tunnel Secret
-  
+
   # Secret名を指定する場合（手動作成時）
   secretName: ""     # 既存secretを使用する場合
 
@@ -35,11 +35,6 @@ serviceAccount:
 podAnnotations: {}
 podLabels: {}
 
-# Security items common to everything in the pod.  Here we require that it
-# does not run as the user defined in the image, literally named "nonroot".
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 65532
 
 # Security items for one container. We lock it down.
 securityContext:
@@ -68,37 +63,37 @@ affinity: {}
 dynamicIpUpdate:
   # Enable dynamic IP range updates via CronJob
   enabled: false  # 本番環境では true に設定
-  
+
   # CronJob schedule (default: every 6 hours)
   schedule: "0 */6 * * *"
-  
+
   # Image for IP updater (kubectl + curl + jq)
   image:
     repository: bitnami/kubectl
     tag: "latest"
     pullPolicy: IfNotPresent
-  
+
   # Script URL for cloudflare-ip-fetcher.sh
   scriptUrl: "https://raw.githubusercontent.com/user/repo/main/scripts/cloudflare-ip-fetcher.sh"
-  
+
   # Whether to update NetworkPolicy automatically
   updateNetworkPolicy: true
-  
+
   # CronJob configuration
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   backoffLimit: 3
   activeDeadlineSeconds: 300
-  
+
   # Logging
   logLevel: "INFO"
-  
+
   # Security context for IP updater pods
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 65532
     fsGroup: 65532
-  
+
   securityContext:
     allowPrivilegeEscalation: false
     capabilities:
@@ -107,7 +102,7 @@ dynamicIpUpdate:
     readOnlyRootFilesystem: true
     runAsNonRoot: true
     runAsUser: 65532
-  
+
   # Resources for IP updater
   resources:
     limits:
@@ -116,9 +111,9 @@ dynamicIpUpdate:
     requests:
       cpu: 50m
       memory: 64Mi
-  
+
   # Node selector for IP updater
   nodeSelector: {}
-  
+
   # Tolerations for IP updater
   tolerations: []

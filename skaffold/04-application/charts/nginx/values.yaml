@@ -7,7 +7,7 @@ replicaCount: 2
 # Image configuration
 image:
   repository: nginx
-  pullPolicy: IfNotPresent  # OSS公式イメージは外部pull必要
+  pullPolicy: IfNotPresent # OSS公式イメージは外部pull必要
   tag: "1.25.3-alpine"
 
 # Image pull secrets
@@ -27,22 +27,21 @@ podAnnotations:
 podLabels:
   io.kompose.service: "nginx-proxy"
 
-# Pod security context
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 101
-  runAsGroup: 101
-  fsGroup: 101
+  runAsUser: 101 # nginx 非 root ユーザー
+  fsGroup: 101 # ボリュームアクセス用
+  sysctls:
+    - name: net.ipv4.ip_unprivileged_port_start
+      value: "0" # 非 root でも低番号ポートを解放
 
-# Container security context
+# コンテナ個別のセキュリティ設定
 securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-    - ALL
-  readOnlyRootFilesystem: false
   runAsNonRoot: true
   runAsUser: 101
+  capabilities:
+    add: ["NET_BIND_SERVICE"] # 80/443 バインド権限
+    drop: ["ALL"]
 
 # Service configuration
 service:
@@ -142,7 +141,7 @@ secret:
 
 # SSL configuration
 ssl:
-  enabled: true  # INCIDENT 80 FIX: cert-manager活用でSSL有効化復元
+  enabled: true # INCIDENT 80 FIX: cert-manager活用でSSL有効化復元
   secretName: nginx-ssl-certs
 
 # Secrets configuration
@@ -157,7 +156,7 @@ strategy:
     maxUnavailable: 0
 
 # Common labels
-commonLabels: {}  # INCIDENT 72 FIX: Helm template重複ラベル削除
+commonLabels: {} # INCIDENT 72 FIX: Helm template重複ラベル削除
 
 # Common annotations
 commonAnnotations: {}
@@ -175,32 +174,32 @@ nginx:
   clientMaxBodySize: 10m
 
   # Rate limiting
-  rateLimitRpm: 300  # requests per minute for API endpoints
-  rateLimitRps: 10   # requests per second for general endpoints
+  rateLimitRpm: 300 # requests per minute for API endpoints
+  rateLimitRps: 10 # requests per second for general endpoints
 
 # Upstream configurations for Alt services
 upstreams:
   - name: alt-backend
     servers:
-      - "alt-backend.alt-apps.svc.cluster.local:9000"  # INCIDENT 78 FIX: 正しいnamespace参照
+      - "alt-backend.alt-apps.svc.cluster.local:9000" # INCIDENT 78 FIX: 正しいnamespace参照
     loadBalancing: "least_conn"
     keepalive: 32
 
   - name: alt-frontend
     servers:
-      - "alt-frontend.alt-apps.svc.cluster.local:3000"  # INCIDENT 78 FIX: 正しいnamespace参照
+      - "alt-frontend.alt-apps.svc.cluster.local:3000" # INCIDENT 78 FIX: 正しいnamespace参照
     loadBalancing: "least_conn"
     keepalive: 32
 
   - name: auth-service
     servers:
-      - "auth-service.alt-auth.svc.cluster.local:8080"  # INCIDENT 78 FIX: 正しいnamespace参照
+      - "auth-service.alt-auth.svc.cluster.local:8080" # INCIDENT 78 FIX: 正しいnamespace参照
     loadBalancing: "least_conn"
     keepalive: 32
 
   - name: meilisearch
     servers:
-      - "meilisearch.alt-search.svc.cluster.local:7700"  # INCIDENT 78 FIX: 正しいnamespace参照
+      - "meilisearch.alt-search.svc.cluster.local:7700" # INCIDENT 78 FIX: 正しいnamespace参照
     loadBalancing: "least_conn"
     keepalive: 16
 
@@ -237,7 +236,7 @@ servers:
 
   # Main HTTPS server
   - listen:
-      - "8443 ssl"
+      - "443 ssl"
     serverName: "alt.local *.alt.local"
     ssl:
       certificate: "/etc/nginx/ssl/tls.crt"
