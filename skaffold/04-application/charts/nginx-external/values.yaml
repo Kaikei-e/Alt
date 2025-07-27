@@ -235,7 +235,9 @@ servers:
     ssl:
       certificate: "/etc/nginx/ssl/tls.crt"
       certificateKey: "/etc/nginx/ssl/tls.key"
-      protocols: "TLSv1.2 TLSv1.3"
+      protocols:
+        - TLSv1.2
+        - TLSv1.3
       ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
       sessionCache: "shared:SSL:10m"
       sessionTimeout: "1d"
