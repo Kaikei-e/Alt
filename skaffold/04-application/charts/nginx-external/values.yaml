@@ -230,26 +230,22 @@ servers:
   # Main HTTP server (redirect to HTTPS)
   - listen:
       - "8080"
-    serverName: "rss.alt.com www.rss.alt.com *.rss.alt.com"
+    serverName: "curionoah.com"
     extraConfig: |
       # Security headers even for redirects
       add_header X-Frame-Options "DENY" always;
       add_header X-Content-Type-Options "nosniff" always;
     locations:
-      - path: "/.well-known/acme-challenge/"
-        extraConfig: |
-          # Allow Let's Encrypt challenges
-          root /var/www/certbot;
-          try_files $uri =404;
       - path: "/"
         extraConfig: |
-          return 301 https://$host$request_uri;
+          return 301 https://curionoah.com$request_uri;
+
 
   # Main HTTPS server for external traffic
   - listen:
       - "8443 ssl"
     http2: true
-    serverName: "rss.alt.com www.rss.alt.com *.rss.alt.com"
+    serverName: "curionoah.com"
     ssl:
       certificate: "/etc/nginx/ssl/tls.crt"
       certificateKey: "/etc/nginx/ssl/tls.key"
@@ -258,7 +254,6 @@ servers:
       sessionCache: "shared:SSL:10m"
       sessionTimeout: "1d"
       sessionTickets: "off"
-      # INCIDENT 87 FIX: REPORT.md指摘対応 - 中間CA証明書不足のためOCSP Stapling無効化
       ocspStapling: "off"
       ocspStaplingVerify: "off"
     locations:

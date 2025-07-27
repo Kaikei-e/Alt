@@ -27,6 +27,8 @@ data:
         service: http://nginx-external.alt-ingress.svc.cluster.local:8080
       - hostname: "curionoah.com"
         service: https://nginx-external.alt-ingress.svc.cluster.local:8443
+        originRequest:
+          noTLSVerify: true
       # Default catch-all rule (required)
       - service: http_status:404
 
