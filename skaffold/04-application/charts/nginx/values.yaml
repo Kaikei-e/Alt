@@ -237,7 +237,7 @@ servers:
 
   # Main HTTPS server
   - listen:
-      - "443 ssl"
+      - "8443 ssl"
     serverName: "alt.local *.alt.local"
     ssl:
       certificate: "/etc/nginx/ssl/tls.crt"
