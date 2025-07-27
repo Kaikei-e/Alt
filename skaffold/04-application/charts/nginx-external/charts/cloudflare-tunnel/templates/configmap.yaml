@@ -11,24 +11,27 @@ metadata:
     {{- include "cloudflare-tunnel.labels" . | nindent 4 }}
 data:
   config.yaml: |
-{{- if and .Values.cloudflare.tunnelId (not .Values.cloudflare.tunnel_token) }}
+    {{- if and .Values.cloudflare.tunnelId (not .Values.cloudflare.tunnel_token) }}
     # Legacy authentication method (使用非推奨 - tunnel_tokenを使用してください)
     tunnel: {{ .Values.cloudflare.tunnelId | quote }}
     credentials-file: /etc/cloudflared/creds/credentials.json
-{{- else }}
+    {{- else }}
     # 2025年推奨: tunnel tokenによる認証 (TUNNEL_TOKEN環境変数使用)
     # tunnel IDや認証ファイルは不要 - 環境変数で全て処理
-{{- end }}
+    {{- end }}
 
     # Ingress rules for the tunnel
     ingress:
-      # Route to nginx-external service (外部SSL終端→内部SSL)
-      - hostname: "curionoah.com"
-        service: {{ .Values.cloudflare.ingress[0].service | quote }}
+      {{- $ingress := .Values.cloudflare.ingress }}
+      {{- range $ingress }}
+      - hostname: {{ .hostname | quote }}
+        service: {{ .service | quote }}
         originRequest:
           noTLSVerify: true
-          httpHostHeader: "curionoah.com"
-      # Default catch-all rule (required)
+          # hostname をそのまま httpHostHeader に流用
+          httpHostHeader: {{ .hostname | quote }}
+      {{- end }}
+      # デフォルト catch-all ルール
       - service: http_status:404
 
     # Tunnel settings
