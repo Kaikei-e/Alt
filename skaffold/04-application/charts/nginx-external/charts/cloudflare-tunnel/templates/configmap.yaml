@@ -24,7 +24,7 @@ data:
     ingress:
       # Route to nginx-external service (外部SSL終端→内部SSL)
       - hostname: "curionoah.com"
-        service: https://nginx-external.alt-ingress.svc.cluster.local:8443
+        service: https://nginx-external.alt-ingress.svc.cluster.local:443
         originRequest:
           noTLSVerify: true
           httpHostHeader: "curionoah.com"
