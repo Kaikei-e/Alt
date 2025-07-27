@@ -227,20 +227,6 @@ upstreams:
 
 # Server configurations for external traffic
 servers:
-  # Main HTTP server (redirect to HTTPS)
-  - listen:
-      - "8080"
-    serverName: "curionoah.com"
-    extraConfig: |
-      # Security headers even for redirects
-      add_header X-Frame-Options "DENY" always;
-      add_header X-Content-Type-Options "nosniff" always;
-    locations:
-      - path: "/"
-        extraConfig: |
-          return 301 https://curionoah.com$request_uri;
-
-
   # Main HTTPS server for external traffic
   - listen:
       - "8443 ssl"
