@@ -27,8 +27,8 @@ data:
       - hostname: {{ .hostname | quote }}
         service: {{ .service | quote }}
         originRequest:
-          noTLSVerify: true
-          # hostname をそのまま httpHostHeader に流用
+          noTLSVerify: {{ .noTLSVerify | default true }}
+          # X-Forwarded-Host を上書きする場合は指定
           httpHostHeader: {{ .hostname | quote }}
       {{- end }}
       # デフォルト catch-all ルール
