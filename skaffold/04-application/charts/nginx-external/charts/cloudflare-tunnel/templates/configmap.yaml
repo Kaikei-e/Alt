@@ -23,9 +23,7 @@ data:
     # Ingress rules for the tunnel
     ingress:
       # Route to nginx-external service (外部SSL終端→内部SSL)
-      - hostname: "*.rss.alt.com"
-        service: http://nginx-external.alt-ingress.svc.cluster.local:8080
-      - hostname: "rss.alt.com"
+      - hostname: "curionoah.com"
         service: http://nginx-external.alt-ingress.svc.cluster.local:8080
 
       # Default catch-all rule (required)
