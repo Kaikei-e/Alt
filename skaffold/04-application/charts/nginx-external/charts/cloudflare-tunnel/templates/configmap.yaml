@@ -26,12 +26,12 @@ data:
       {{- range $ingress }}
       - hostname: {{ .hostname | quote }}
         service: {{ .service | quote }}
+        {{- if .noTLSVerify }}
         originRequest:
-          noTLSVerify: {{ .noTLSVerify | default true }}
-          # X-Forwarded-Host を上書きする場合は指定
+          noTLSVerify: true
           httpHostHeader: {{ .hostname | quote }}
+        {{- end }}
       {{- end }}
-      # デフォルト catch-all ルール
       - service: http_status:404
 
     # Tunnel settings
