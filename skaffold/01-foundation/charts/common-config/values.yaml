@@ -16,15 +16,15 @@ namespaces:
     labels:
       name: alt-dev
       environment: development
-      
-  # Staging environment  
+
+  # Staging environment
   staging:
     enabled: true
     name: alt-staging
     labels:
       name: alt-staging
       environment: staging
-      
+
   # Production environment (main)
   production:
     enabled: true
@@ -32,7 +32,7 @@ namespaces:
     labels:
       name: alt-production
       environment: production
-      
+
   # Production service-specific namespaces
   apps:
     enabled: true
@@ -41,7 +41,7 @@ namespaces:
       name: alt-apps
       environment: production
       service-type: applications
-      
+
   database:
     enabled: true
     name: alt-database
@@ -49,7 +49,7 @@ namespaces:
       name: alt-database
       environment: production
       service-type: database
-      
+
   search:
     enabled: true
     name: alt-search
@@ -57,7 +57,7 @@ namespaces:
       name: alt-search
       environment: production
       service-type: search
-      
+
   observability:
     enabled: true
     name: alt-observability
@@ -65,7 +65,7 @@ namespaces:
       name: alt-observability
       environment: production
       service-type: monitoring
-      
+
   ingress:
     enabled: true
     name: alt-ingress
@@ -73,7 +73,7 @@ namespaces:
       name: alt-ingress
       environment: production
       service-type: ingress
-      
+
   auth:
     enabled: true
     name: alt-auth
@@ -99,14 +99,14 @@ resourceQuotas:
     limits.cpu: "8"
     limits.memory: 16Gi
     persistentvolumeclaims: "10"
-    
+
   staging:
     requests.cpu: "8"
     requests.memory: 16Gi
     limits.cpu: "16"
     limits.memory: 32Gi
     persistentvolumeclaims: "20"
-    
+
   production:
     requests.cpu: "16"
     requests.memory: 32Gi
@@ -117,15 +117,15 @@ resourceQuotas:
 # Network policies
 networkPolicies:
   enabled: true
-  
+
   # Default deny all ingress
   defaultDenyIngress:
     enabled: true
-    
+
   # Allow DNS resolution
   allowDns:
     enabled: true
-    
+
   # Inter-namespace communication rules
   allowInterNamespace:
     enabled: true
@@ -134,7 +134,8 @@ networkPolicies:
       - alt-database
       - alt-search
       - alt-auth
-      
+      - alt-ingress
+
   # Allow ingress from ingress namespace
   allowFromIngress:
     enabled: true
@@ -143,13 +144,13 @@ networkPolicies:
 # Storage classes configuration
 storageClasses:
   enabled: false
-  
+
   default:
     name: alt-ssd
     provisioner: kubernetes.io/no-provisioner
     reclaimPolicy: Retain
     allowVolumeExpansion: true
-    
+
   fast:
     name: alt-fast-ssd
     provisioner: kubernetes.io/no-provisioner
@@ -159,17 +160,17 @@ storageClasses:
 # Monitoring and observability configuration
 monitoring:
   enabled: false
-  
+
   # Helm Chart metrics collection
   scrapeInterval: 30s
   scrapeTimeout: 10s
-  
+
   # Metrics collection image
   image:
     repository: python
     tag: 3.11-alpine
     pullPolicy: IfNotPresent
-  
+
   # Resource limits for metrics collection
   resources:
     limits:
@@ -178,12 +179,12 @@ monitoring:
     requests:
       cpu: 50m
       memory: 64Mi
-  
+
   # Node selection and scheduling
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  
+
   # Dashboard configuration
   dashboards:
     enabled: true
@@ -200,17 +201,17 @@ serviceAccount:
 # Rollback automation configuration
 rollback:
   enabled: true
-  
+
   # Rollback validation image
   image:
     repository: alpine/k8s
     tag: 1.29.0
     pullPolicy: IfNotPresent
-  
+
   # Timing configuration
   stabilizationDelay: 30  # seconds to wait before validation
   ttlSecondsAfterFinished: 300  # cleanup job after 5 minutes
-  
+
   # Resource limits for rollback jobs
   resources:
     limits:
@@ -219,14 +220,14 @@ rollback:
     requests:
       cpu: 50m
       memory: 64Mi
-  
+
   # Health checks after rollback
   healthCheck:
     enabled: true
     endpoints:
       - "http://alt-backend.alt-apps.svc.cluster.local:9000/health"
       - "http://auth-service.alt-auth.svc.cluster.local:8080/health"
-  
+
   # Notifications
   notifications:
     enabled: false
