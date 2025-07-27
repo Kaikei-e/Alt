@@ -235,10 +235,9 @@ servers:
           return 200 "nginx internal OK";
           add_header Content-Type text/plain;
 
-  # INCIDENT 80 FIX: SSL設定復元 - cert-manager証明書使用
   # Main HTTPS server
   - listen:
-      - "8443 ssl"
+      - "443 ssl"
     serverName: "alt.local *.alt.local"
     ssl:
       certificate: "/etc/nginx/ssl/tls.crt"
