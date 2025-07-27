@@ -42,7 +42,7 @@ securityContext:
     - ALL
   # INCIDENT 87 FIX: nginx初期化スクリプト対応のためfalseを維持
   # 将来的にはreadOnlyRootFilesystem: true + 適切なvolume mountで強化可能
-  readOnlyRootFilesystem: false  
+  readOnlyRootFilesystem: false
   runAsNonRoot: true
   runAsUser: 101  # nginx標準ユーザー（初期化スクリプト互換性確保）
 
@@ -372,19 +372,15 @@ networkPolicy:
     - from: []
       ports:
         - port: 8080
-          protocol: TCP
         - port: 8443
-          protocol: TCP
   egress:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: nginx
+              name: alt-ingress
       ports:
-        - port: 80
-          protocol: TCP
-        - port: 443
-          protocol: TCP
+        - port: 8080
+        - port: 8443
 
 # Pod disruption budget
 podDisruptionBudget:
@@ -400,16 +396,16 @@ cloudflare-tunnel:
     # Cloudflareダッシュボードで作成したトンネルの"Configure"からtokenを取得
     # 本番環境ではvalues-production.yamlで設定する
     tunnel_token: ""
-    
+
     # Legacy credentials方式（tunnel_tokenが空の場合のみ使用）
     # 本番環境ではvalues-production.yamlで設定する
     account: ""       # Cloudflare Account ID
-    tunnelId: ""      # Tunnel ID  
+    tunnelId: ""      # Tunnel ID
     secret: ""        # Tunnel Secret
-    
+
     # 既存secret使用の場合（手動でsecretを作成済みの場合）
     secretName: ""    # 手動作成secretを使用する場合
-  
+
   # セキュリティ設定（Pod Security Standards準拠）
   podSecurityContext:
     runAsNonRoot: true
