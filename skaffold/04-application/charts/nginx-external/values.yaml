@@ -204,6 +204,7 @@ nginx:
 # Upstream configurations for internal nginx or services
 upstreams:
   # Route to internal nginx (recommended approach) - INCIDENT 85+86 FIX: 正しいnamespace参照+upstream名統一
+  # INCIDENT 91 FIX: nginx-external → nginx-internal HTTPS接続統一
   - name: nginx
     servers:
       - "nginx.alt-ingress.svc.cluster.local:443"
@@ -219,7 +220,6 @@ upstreams:
   - name: alt-frontend-direct
     servers:
       - "alt-frontend.alt-apps.svc.cluster.local:3000"
-    loadBalancing: "round_robin"
     keepalive: 16
     healthCheck:
       enabled: true
@@ -230,7 +230,6 @@ upstreams:
   - name: alt-backend-direct
     servers:
       - "alt-backend.alt-apps.svc.cluster.local:9000"
-    loadBalancing: "round_robin"
     keepalive: 16
     healthCheck:
       enabled: true
@@ -256,6 +255,35 @@ servers:
       ocspStapling: "off"
       ocspStaplingVerify: "off"
     locations:
+      # PERFORMANCE OPTIMIZATION: Prioritized prefix for Next.js static assets - INCIDENT 91 FIX
+      - path: "^~ /_next/static/"
+        proxyPass: "https://nginx"
+        proxySetHeader:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+          - "X-Forwarded-Proto $scheme"
+          - "X-Forwarded-Host $host"
+          - "X-Forwarded-Port $server_port"
+          - "X-Request-ID $request_id"
+        proxyTimeout: "60s"
+        extraConfig: |
+          # Static asset optimization - NO REGEX overhead
+          expires 1y;
+          add_header Cache-Control "public, immutable";
+          add_header X-Cache-Status "nginx-external-prefix";
+          
+          # Proxy settings optimized for static content
+          proxy_buffer_size 8k;
+          proxy_buffers 16 8k;
+          proxy_busy_buffers_size 16k;
+          proxy_buffering on;
+          
+          # SSL settings for static assets
+          proxy_ssl_verify off;
+          proxy_ssl_session_reuse on;
+          proxy_ssl_protocols TLSv1.2 TLSv1.3;
+
       # Main application routes - proxy to internal nginx
       - path: "/"
         proxyPass: "https://nginx"
@@ -274,26 +302,12 @@ servers:
           proxy_ssl_session_reuse on;  # TLSセッション再利用による性能向上
           proxy_ssl_protocols TLSv1.2 TLSv1.3;  # 最新TLSプロトコル使用
 
-          # 暗号化環境用バッファリング最適化
-          proxy_buffering on;
-          proxy_buffer_size 8k;
-          proxy_buffers 16 8k;
-          proxy_busy_buffers_size 16k;
-
-          # TLS接続用タイムアウト調整
-          proxy_connect_timeout 10s;  # TLSハンドシェイク考慮
-          proxy_send_timeout 30s;
-          proxy_read_timeout 30s;
-
-          # ヘッダー重複回避設定
-          proxy_hide_header "Content-Type";  # アップストリームContent-Type制御
-          add_header Content-Type $upstream_http_content_type;  # 単一Content-Type確保
-
           # 暗号化環境用エラーハンドリング
           proxy_intercept_errors off;
           proxy_next_upstream error timeout http_502 http_503 http_504;
           proxy_next_upstream_tries 3;
           proxy_next_upstream_timeout 45s;  # TLS再接続時間考慮
+
 
       # API routes with stricter rate limiting
       - path: "/api/"

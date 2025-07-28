@@ -1,7 +1,7 @@
 # Values for cert-manager deployment
 cert-manager:
-  # Install CRDs as part of chart installation
-  installCRDs: true
+  # Install CRDs as part of chart installation - DISABLED to avoid ownership conflicts
+  installCRDs: false
   
   # Global configuration
   global:

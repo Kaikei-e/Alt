@@ -14,8 +14,11 @@ profiles:
               - charts/cert-manager/values-dev.yaml
               - charts/cert-manager/values.yaml
             version: 0.1.0
-            createNamespace: true
+            createNamespace: false  # Use existing namespace
             namespace: cert-manager
+            upgradeOnChange: false  # Prevent CRD conflicts
+            setValues:
+              installCRDs: false    # Explicit CRD management
           # Keep config charts for now
           - name: common-config
             chartPath: charts/common-config
@@ -42,8 +45,11 @@ profiles:
             valuesFiles:
               - charts/cert-manager/values.yaml
             version: 0.1.0
-            createNamespace: true
+            createNamespace: false  # Use existing namespace
             namespace: cert-manager
+            upgradeOnChange: false  # Prevent CRD conflicts
+            setValues:
+              installCRDs: false    # Explicit CRD management
           - name: common-config
             chartPath: charts/common-config
             namespace: alt-config
@@ -69,8 +75,11 @@ profiles:
             valuesFiles:
               - charts/cert-manager/values.yaml
             version: 0.1.0
-            createNamespace: true
+            createNamespace: false  # Use existing namespace
             namespace: cert-manager
+            upgradeOnChange: false  # Prevent CRD conflicts
+            setValues:
+              installCRDs: false    # Explicit CRD management
           - name: common-config
             chartPath: charts/common-config
             namespace: alt-config
@@ -101,8 +110,11 @@ deploy:
         valuesFiles:
           - charts/cert-manager/values.yaml
         version: 0.1.0
-        createNamespace: true
+        createNamespace: false  # Use existing namespace
         namespace: cert-manager
+        upgradeOnChange: false  # Prevent CRD conflicts
+        setValues:
+          installCRDs: false    # Explicit CRD management
       - name: common-config
         chartPath: charts/common-config
         namespace: alt-config

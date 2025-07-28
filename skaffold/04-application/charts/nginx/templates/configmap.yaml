@@ -200,7 +200,7 @@ data:
                 proxy_hide_header Content-Security-Policy;
 
                 # 適切なCSPポリシーの設定：セキュリティを保ちながら機能性を確保
-                add_header Content-Security-Policy "default-src 'self'; manifest-src 'self'; img-src 'self' data: https:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests; script-src 'self' 'nonce-*' 'strict-dynamic'; script-src-elem 'self' 'nonce-*'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; connect-src 'self' http://alt-backend.alt-apps.svc.cluster.local:9000 ws://localhost:8080; report-uri /api/security/csp-report;" always;
+                add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src-elem 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' http://alt-backend.alt-apps.svc.cluster.local:9000 ws://localhost:8080; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
 
                 # プロキシ動作の最適化設定
                 proxy_buffering off;          # リアルタイム性の確保
@@ -361,111 +361,6 @@ data:
                 gzip_min_length 1024;
                 gzip_types text/css application/javascript application/json image/svg+xml;
             }
-
-            # # Next.js最適化ビルドファイル：動的生成静的リソース
-            # location /_next/ {
-            #     proxy_hide_header Content-Type;
-            #     proxy_hide_header Cache-Control;
-            #     proxy_hide_header Expires;
-
-            #     proxy_pass http://frontend_app;
-
-            #     proxy_set_header Host $host;
-            #     proxy_set_header X-Real-IP $remote_addr;
-            #     proxy_set_header X-Forwarded-Proto https;
-
-            #     # Next.js最適化：ハッシュベースファイル名による超長期キャッシュ
-            #     expires 1y;
-            #     add_header Cache-Control "public, immutable" always;
-            #     add_header Content-Type $upstream_http_content_type always;
-
-            #     gzip_min_length 1024;
-            #     gzip_types text/css application/javascript application/json image/svg+xml;
-            # }
-
-            # # 画像リソース専用最適化
-            # location /images/ {
-            #     proxy_hide_header Content-Type;
-            #     proxy_hide_header Cache-Control;
-            #     proxy_hide_header Expires;
-
-            #     proxy_pass http://frontend_app;
-
-            #     proxy_set_header Host $host;
-            #     proxy_set_header X-Real-IP $remote_addr;
-            #     proxy_set_header X-Forwarded-Proto https;
-
-            #     # 画像リソース用長期キャッシュ
-            #     expires 1y;
-            #     add_header Cache-Control "public, immutable" always;
-            #     add_header Content-Type $upstream_http_content_type always;
-
-            #     # 画像ファイル用圧縮：SVGのみ対象（ビットマップは既圧縮）
-            #     gzip_types image/svg+xml;
-            # }
-
-            # # CSSスタイルシート専用最適化
-            # location /css/ {
-            #     proxy_hide_header Content-Type;
-            #     proxy_hide_header Cache-Control;
-            #     proxy_hide_header Expires;
-
-            #     proxy_pass http://frontend_app;
-
-            #     proxy_set_header Host $host;
-            #     proxy_set_header X-Real-IP $remote_addr;
-            #     proxy_set_header X-Forwarded-Proto https;
-
-            #     # CSS専用長期キャッシュ
-            #     expires 1y;
-            #     add_header Cache-Control "public, immutable" always;
-            #     add_header Content-Type $upstream_http_content_type always;
-
-            #     # CSS専用圧縮設定
-            #     gzip_min_length 1024;
-            #     gzip_types text/css;
-            # }
-
-            # # JavaScript専用最適化
-            # location /js/ {
-            #     proxy_hide_header Content-Type;
-            #     proxy_hide_header Cache-Control;
-            #     proxy_hide_header Expires;
-
-            #     proxy_pass http://frontend_app;
-
-            #     proxy_set_header Host $host;
-            #     proxy_set_header X-Real-IP $remote_addr;
-            #     proxy_set_header X-Forwarded-Proto https;
-
-            #     # JavaScript専用長期キャッシュ
-            #     expires 1y;
-            #     add_header Cache-Control "public, immutable" always;
-            #     add_header Content-Type $upstream_http_content_type always;
-
-            #     # JavaScript専用圧縮設定
-            #     gzip_min_length 1024;
-            #     gzip_types application/javascript;
-            # }
-
-            # # SPAフォールバック：クライアントサイドルーティング対応
-            # # Named locationのため、URIパートを含むproxy_passは使用不可
-            # # 透過プロキシ設定でフロントエンドアプリケーションに処理委譲
-            # location @spa_fallback {
-            #     proxy_hide_header Content-Type;
-
-            #     # 重要：named locationではURIパートなしのproxy_passのみ使用可能
-            #     proxy_pass http://frontend_app;
-
-            #     proxy_set_header Host $host;
-            #     proxy_set_header X-Real-IP $remote_addr;
-            #     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            #     proxy_set_header X-Forwarded-Proto https;
-
-            #     # SPA用Content-Type強制設定
-            #     add_header Content-Type "text/html; charset=utf-8" always;
-            # }
-
 
             # SSL対応ヘルスチェックエンドポイント
             location /health {
