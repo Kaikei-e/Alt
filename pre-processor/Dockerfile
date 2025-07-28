@@ -24,8 +24,9 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 
-# Copy the binary from builder stage
+# Copy the binary from builder stage with executable permissions
 COPY --from=builder /app/pre-processor .
+RUN chmod +x pre-processor
 
 EXPOSE 9200
 
