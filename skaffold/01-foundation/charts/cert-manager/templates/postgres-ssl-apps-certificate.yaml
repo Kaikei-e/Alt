@@ -1,0 +1,43 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: postgres-ssl-apps-certificate
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: postgres-ssl-apps
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "4"
+spec:
+  secretName: postgres-ssl-secret
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days - auto renewal
+  subject:
+    countries:
+      - JP
+    localities:
+      - Tokyo
+    organizationalUnits:
+      - Security
+    organizations:
+      - Alt-Project
+  # Use cluster-internal DNS name for TLS identification
+  commonName: postgres.alt-database.svc.cluster.local
+  dnsNames:
+    - postgres.alt-database.svc.cluster.local
+    - postgres
+    - localhost
+  ipAddresses:
+    - 127.0.0.1
+  issuerRef:
+    name: alt-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+  # 2025年セキュリティ強化: クライアント証明書認証対応
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - client auth
