@@ -195,15 +195,47 @@ data:
                 proxy_set_header Upgrade $http_upgrade;
                 proxy_set_header Connection $connection_upgrade;
 
-                # Content-Type適正化
-                add_header Content-Type $upstream_http_content_type always;
-                add_header Cache-Control $upstream_http_cache_control always;
+                # CSP関連の重要なヘッダー管理
+                # アップストリームからのCSPヘッダーを尊重しつつ、必要に応じて調整
+                proxy_hide_header Content-Security-Policy;
 
-                # SPA（Single Page Application）対応：Next.js等のクライアントサイドルーティング
-                try_files $uri $uri/ @spa_fallback;
+                # 適切なCSPポリシーの設定：セキュリティを保ちながら機能性を確保
+                add_header Content-Security-Policy "default-src 'self'; manifest-src 'self'; img-src 'self' data: https:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests; script-src 'self' 'nonce-*' 'strict-dynamic'; script-src-elem 'self' 'nonce-*'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; connect-src 'self' http://alt-backend.alt-apps.svc.cluster.local:9000 ws://localhost:8080; report-uri /api/security/csp-report;" always;
 
+                # プロキシ動作の最適化設定
+                proxy_buffering off;          # リアルタイム性の確保
+                proxy_redirect off;           # リダイレクトの透過処理
+                proxy_http_version 1.1;       # 持続接続の有効化
+
+                # 適切なタイムアウト設定
+                proxy_connect_timeout 10s;
+                proxy_send_timeout 60s;
+                proxy_read_timeout 60s;
                 # 一般用レート制限適用
                 limit_req zone=general_limit burst=50 nodelay;
+            }
+
+
+            # manifest.json専用の処理
+            location = /manifest.json {
+                # manifest.jsonへの直接アクセス用設定
+                proxy_pass http://frontend_app;
+
+                # 基本的なプロキシヘッダー
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto https;
+
+                # manifest.json用の適切なヘッダー設定
+                add_header Content-Type "application/manifest+json" always;
+                add_header Cache-Control "public, max-age=3600" always;
+
+                # CSP制限の回避：manifest-srcを明示的に許可
+                add_header Content-Security-Policy "default-src 'self'; manifest-src 'self';" always;
+
+                # ログ記録（問題診断用）
+                access_log /var/log/nginx/manifest_access.log ssl_main;
             }
 
             # API専用エンドポイント：バックエンドAPI通信設定
