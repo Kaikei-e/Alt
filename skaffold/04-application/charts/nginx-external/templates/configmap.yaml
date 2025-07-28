@@ -6,74 +6,70 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "nginx-external.labels" . | nindent 4 }}
-  {{- with (include "nginx-external.annotations" .) }}
+  {{- with .Values.commonAnnotations }}
   annotations:
-    {{- . | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
   {{- end }}
 data:
   nginx.conf: |
-    # nginx external proxy configuration
+    # nginx-external main configuration
+    # 教育的設計: 明確性と保守性を重視した構造
+
+    # ワーカープロセス設定: 外部トラフィック処理最適化
     worker_processes auto;
     worker_rlimit_nofile 65535;
 
+    # ログ設定: 問題診断のための詳細ログ
     error_log /var/log/nginx/error.log {{ .Values.nginx.logLevel | default "warn" }};
     pid /tmp/nginx.pid;
 
+    # イベント処理設定: 高負荷外部トラフィック対応
     events {
         worker_connections {{ .Values.nginx.workerConnections | default 2048 }};
         use epoll;
         multi_accept on;
     }
 
+    # HTTPコンテキスト: すべてのHTTP設定を統括
     http {
+        # 基本MIME設定: ファイルタイプ認識のための基盤
         include /etc/nginx/mime.types;
         default_type application/octet-stream;
 
-        # Basic settings
+        # パフォーマンス最適化設定
         sendfile on;
         tcp_nopush on;
         tcp_nodelay on;
         keepalive_timeout {{ .Values.nginx.keepaliveTimeout | default 65 }};
         types_hash_max_size 2048;
         client_max_body_size {{ .Values.nginx.clientMaxBodySize | default "20m" }};
-
-        # Security settings
         server_tokens off;
 
-        # Real IP configuration for external load balancers
+        # Real IP設定: ロードバランサー背後での正確なクライアントIP取得
         real_ip_header X-Forwarded-For;
         real_ip_recursive on;
         set_real_ip_from 10.0.0.0/8;
         set_real_ip_from 172.16.0.0/12;
         set_real_ip_from 192.168.0.0/16;
-        {{- if eq .Values.service.type "LoadBalancer" }}
         set_real_ip_from 169.254.0.0/16; # AWS metadata service
-        {{- end }}
 
-        # Request ID generation
-        map $request_id $formatted_request_id {
-            default $request_id;
-        }
+        # ログフォーマット: トラブルシューティング用詳細ログ
+        log_format external_main '$remote_addr - $remote_user "{{`[$time_local]`}}" "$request" '
+                                '$status $body_bytes_sent "$http_referer" '
+                                '"$http_user_agent" "$http_x_forwarded_for" '
+                                'rt=$request_time upstream="$upstream_addr" '
+                                'upstream_status="$upstream_status" '
+                                'upstream_connect_time="$upstream_connect_time" '
+                                'upstream_response_time="$upstream_response_time"';
 
-        # Log format for external traffic
-        {{- if .Values.nginx.accessLogFormat }}
-        log_format main {{ .Values.nginx.accessLogFormat | quote }};
-        {{- else }}
-        log_format main '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent rt=$request_time';
-        {{- end }}
+        access_log /var/log/nginx/access.log external_main;
 
-        access_log /var/log/nginx/access.log main;
+        # レート制限設定: DDoS攻撃防止
+        limit_req_zone $binary_remote_addr zone=api_limit:10m rate={{ .Values.nginx.rateLimitRpm | default 600 }}r/m;
+        limit_req_zone $binary_remote_addr zone=general_limit:10m rate={{ .Values.nginx.rateLimitRps | default 20 }}r/s;
+        limit_conn_zone $binary_remote_addr zone=addr:10m;
 
-        # Rate limiting zones
-        {{- include "nginx-external.rateLimitZones" . | nindent 8 }}
-
-        # GeoIP configuration
-        {{- include "nginx-external.geoip" . | nindent 8 }}
-
-        # Cache configuration
-        {{- include "nginx-external.cache" . | nindent 8 }}
-
-        # Gzip compression
+        # Gzip圧縮: 帯域幅効率化
         gzip on;
         gzip_vary on;
         gzip_min_length 1024;
@@ -90,44 +86,246 @@ data:
             application/atom+xml
             image/svg+xml;
 
-        # Upstream definitions
-        {{- include "nginx-external.upstreams" . | nindent 8 }}
+        # アップストリーム定義: 内部nginx接続設定
+        # 重要: すべての通信をnginx-internalの8443ポートに統一
+        upstream nginx_internal {
+            # 教育的設計原則: 単一の責任と明確な命名
+            least_conn;
+            server nginx.alt-ingress.svc.cluster.local:443 weight=1 max_fails=3 fail_timeout=30s;
 
-        # Include additional configuration files
-        include /etc/nginx/conf.d/*.conf;
-    }
-
-  default.conf: |
-    # Default server configuration for external nginx
-    {{- include "nginx-external.servers" . | nindent 4 }}
-
-  health.conf: |
-    # Health check server on port 8080
-    server {
-        listen 8080 default_server;
-        server_name _;
-
-        access_log off;
-
-        location /nginx-health {
-            return 200 "nginx external ok\n";
-            add_header Content-Type text/plain;
-            add_header X-Health-Check "nginx-external" always;
-            add_header X-Pod-Name "$hostname" always;
+            # 接続効率化設定
+            keepalive 32;
+            keepalive_requests 100;
+            keepalive_timeout 60s;
         }
 
-        {{- if .Values.monitoring.enabled }}
-        location /nginx-status {
-            stub_status on;
-            allow 10.0.0.0/8;
-            allow 172.16.0.0/12;
-            allow 192.168.0.0/16;
-            deny all;
+        # 代替直接接続用アップストリーム（デバッグ・緊急時用）
+        upstream alt_frontend_direct {
+            server alt-frontend.alt-apps.svc.cluster.local:3000 weight=1 max_fails=2 fail_timeout=20s;
+            keepalive 16;
         }
-        {{- end }}
 
-        location / {
-            return 404;
+        upstream alt_backend_direct {
+            server alt-backend.alt-apps.svc.cluster.local:9000 weight=1 max_fails=2 fail_timeout=20s;
+            keepalive 16;
+        }
+
+        # メインHTTPSサーバー: 外部トラフィック受信
+        server {
+            # HTTPS終端設定: TLS 1.2/1.3対応
+            listen 443 ssl;
+            listen "{{`[::]:443`}}" ssl;
+            http2 on;
+            server_name "curionoah.com";
+
+            # SSL証明書設定: cert-manager管理証明書
+            ssl_certificate /etc/nginx/ssl/tls.crt;
+            ssl_certificate_key /etc/nginx/ssl/tls.key;
+
+            # 現代的TLS設定: セキュリティとパフォーマンスのバランス
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+            ssl_prefer_server_ciphers off;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 1d;
+            ssl_session_tickets off;
+
+            # セキュリティヘッダー: 包括的Web保護
+            add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+            add_header X-Frame-Options "SAMEORIGIN" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-XSS-Protection "1; mode=block" always;
+            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+            add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+
+            # CSP設定: XSS攻撃防止（Next.jsアプリケーション対応）
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'self';" always;
+
+            # リクエストID: 分散トレーシング対応
+            add_header X-Request-ID $request_id always;
+
+            # Next.js静的アセット優先処理
+            # 最高優先度のprefix matchingを使用
+            location ^~ /_next/static/ {
+                # nginx-internal経由での静的ファイル配信
+                proxy_pass https://nginx_internal;
+
+                # 静的アセット用最適化ヘッダー
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Host $host;
+                proxy_set_header X-Forwarded-Port $server_port;
+                proxy_set_header X-Request-ID $request_id;
+
+                # SSL通信設定: nginx-internal間の暗号化通信
+                proxy_ssl_verify off;
+                proxy_ssl_session_reuse on;
+                proxy_ssl_protocols TLSv1.2 TLSv1.3;
+
+                # 静的ファイル用バッファリング最適化
+                proxy_buffering on;
+                proxy_buffer_size 8k;
+                proxy_buffers 16 8k;
+                proxy_busy_buffers_size 16k;
+
+                # キャッシュ設定: 静的リソース長期保存
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+                add_header X-Cache-Status "nginx-external-static";
+
+                # タイムアウト設定: 静的ファイル用短時間設定
+                proxy_connect_timeout 10s;
+                proxy_send_timeout 30s;
+                proxy_read_timeout 30s;
+            }
+
+            # APIエンドポイント: バックエンド通信専用
+            location /api/ {
+                # nginx-internal経由でのAPI通信
+                proxy_pass https://nginx_internal;
+
+                # API用ヘッダー設定
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Request-ID $request_id;
+
+                # SSL通信設定
+                proxy_ssl_verify off;
+                proxy_ssl_session_reuse on;
+                proxy_ssl_protocols TLSv1.2 TLSv1.3;
+
+                # API用レート制限: 厳格な制御
+                limit_req zone=api_limit burst=20 nodelay;
+                limit_conn addr 10;
+
+                # API用バッファリング設定
+                proxy_buffering on;
+                proxy_buffer_size 8k;
+                proxy_buffers 16 8k;
+                proxy_busy_buffers_size 16k;
+
+                # API用タイムアウト: レスポンシブ性重視
+                proxy_connect_timeout 15s;
+                proxy_send_timeout 60s;
+                proxy_read_timeout 60s;
+
+                # エラーハンドリング: 高可用性確保
+                proxy_next_upstream error timeout http_502 http_503 http_504;
+                proxy_next_upstream_tries 3;
+                proxy_next_upstream_timeout 45s;
+            }
+
+            # メインアプリケーションルート: フロントエンド配信
+            location / {
+                # nginx-internal経由でのアプリケーション配信
+                proxy_pass https://nginx_internal;
+
+                # 基本プロキシヘッダー
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Host $host;
+                proxy_set_header X-Forwarded-Port $server_port;
+                proxy_set_header X-Request-ID $request_id;
+
+                # WebSocket対応ヘッダー（Next.js開発モード対応）
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+
+                # SSL通信設定
+                proxy_ssl_verify off;
+                proxy_ssl_session_reuse on;
+                proxy_ssl_protocols TLSv1.2 TLSv1.3;
+
+                # 一般トラフィック用レート制限
+                limit_req zone=general_limit burst=50 nodelay;
+
+                # アプリケーション用バッファリング設定
+                proxy_buffering off; # リアルタイム性重視
+                proxy_redirect off;
+                proxy_http_version 1.1;
+
+                # アプリケーション用タイムアウト
+                proxy_connect_timeout 10s;
+                proxy_send_timeout 60s;
+                proxy_read_timeout 60s;
+
+                # エラーハンドリング
+                proxy_intercept_errors off;
+                proxy_next_upstream error timeout http_502 http_503 http_504;
+                proxy_next_upstream_tries 3;
+                proxy_next_upstream_timeout 45s;
+            }
+
+            # ヘルスチェックエンドポイント
+            location /external-health {
+                access_log off;
+                return 200 "External nginx OK\nTimestamp: $time_iso8601\nUpstream: nginx-internal:8443\n";
+                add_header Content-Type "text/plain; charset=utf-8";
+                add_header X-Health-Check "external" always;
+            }
+
+            # セキュリティ: 悪意あるパスのブロック
+            location ~ /\. {
+                deny all;
+                access_log off;
+                log_not_found off;
+            }
+
+            location ~ /(wp-admin|wp-login|admin|phpmyadmin) {
+                deny all;
+                access_log off;
+                log_not_found off;
+            }
+        }
+
+        # HTTPからHTTPSへのリダイレクト
+        server {
+            listen 80;
+            listen "{{`[::]:80`}}";
+            server_name "curionoah.com";
+
+            # 全HTTPトラフィックのHTTPS化
+            return 301 https://$server_name$request_uri;
+        }
+
+        # ヘルスチェック専用サーバー（ポート8080）
+        server {
+            listen 8080 default_server;
+            listen "{{`[::]:8080`}}" default_server;
+            server_name _;
+
+            access_log off;
+
+            # Kubernetesプローブ用エンドポイント
+            location /nginx-health {
+                return 200 "nginx-external healthy\nTimestamp: $time_iso8601\nUpstream Status: nginx-internal:8443\n";
+                add_header Content-Type "text/plain; charset=utf-8";
+                add_header X-Health-Check "nginx-external" always;
+                add_header X-Pod-Name "$hostname" always;
+            }
+
+            # Prometheus監視用エンドポイント
+            {{- if .Values.monitoring.enabled }}
+            location /nginx-status {
+                stub_status on;
+                allow 10.0.0.0/8;
+                allow 172.16.0.0/12;
+                allow 192.168.0.0/16;
+                deny all;
+            }
+            {{- end }}
+
+            # デフォルトレスポンス
+            location / {
+                return 404 "Not Found\nThis is nginx-external health check port\nUse HTTPS on port 443 for application access\n";
+                add_header Content-Type "text/plain; charset=utf-8";
+            }
         }
     }
 

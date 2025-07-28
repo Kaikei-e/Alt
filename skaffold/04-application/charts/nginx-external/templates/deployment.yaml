@@ -5,125 +5,75 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "nginx-external.labels" . | nindent 4 }}
-  {{- with (include "nginx-external.annotations" .) }}
-  annotations:
-    {{- . | nindent 4 }}
-  {{- end }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
-  {{- end }}
+  replicas: {{ .Values.replicaCount | default 1 }}
   selector:
     matchLabels:
       {{- include "nginx-external.selectorLabels" . | nindent 6 }}
-  {{- with .Values.strategy }}
-  strategy:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
   template:
     metadata:
       labels:
         {{- include "nginx-external.selectorLabels" . | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-      annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- if .Values.secret.create }}
-        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
-        {{- end }}
-        {{- include "nginx-external.podAnnotations" . | nindent 8 }}
     spec:
-      {{- include "nginx-external.imagePullSecrets" . | nindent 6 }}
-      serviceAccountName: {{ include "nginx-external.serviceAccountName" . }}
-      {{- with (include "nginx-external.podSecurityContext" .) }}
-      securityContext:
-        {{- . | nindent 8 }}
-      {{- end }}
       containers:
-        - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
-            - name: http
-              containerPort: 8080
-              protocol: TCP
-            - name: https
-              containerPort: 443
-              protocol: TCP
-            - name: custom
-              containerPort: 9080
-              protocol: TCP
-          {{- with .Values.livenessProbe }}
-          livenessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.readinessProbe }}
-          readinessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.resources }}
-          resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with (include "nginx-external.securityContext" .) }}
-          securityContext:
-            {{- . | nindent 12 }}
-          {{- end }}
-          volumeMounts:
-            - name: nginx-config
-              mountPath: /etc/nginx/nginx.conf
-              subPath: nginx.conf
-              readOnly: true
-            - name: nginx-config
-              mountPath: /etc/nginx/conf.d/default.conf
-              subPath: default.conf
-              readOnly: true
-            - name: nginx-config
-              mountPath: /etc/nginx/conf.d/health.conf
-              subPath: health.conf
-              readOnly: true
-            {{- if .Values.ssl.enabled }}
-            - name: ssl-certs
-              mountPath: /etc/nginx/ssl
-              readOnly: true
-            {{- end }}
-            - name: var-cache-nginx
-              mountPath: /var/cache/nginx
-            - name: var-run
-              mountPath: /var/run
-            - name: tmp
-              mountPath: /tmp
-            {{- include "nginx-external.volumeMounts" . | nindent 12 }}
-          {{- include "nginx-external.envFromSecret" . | nindent 10 }}
-          {{- include "nginx-external.env" . | nindent 10 }}
-      volumes:
+      - name: nginx-external
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+        ports:
+        - name: https
+          containerPort: 443
+          protocol: TCP
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        - name: health
+          containerPort: 8080
+          protocol: TCP
+        volumeMounts:
+        # Mount the main nginx.conf file
         - name: nginx-config
-          configMap:
-            name: {{ include "nginx-external.configMapName" . }}
-            defaultMode: 0644
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+          readOnly: true
+        # Mount SSL certificates if using cert-manager
         {{- if .Values.ssl.enabled }}
         - name: ssl-certs
-          secret:
-            secretName: {{ .Values.ssl.secretName }}
-            defaultMode: 0644
+          mountPath: /etc/nginx/ssl
+          readOnly: true
         {{- end }}
-        - name: var-cache-nginx
-          emptyDir: {}
-        - name: var-run
-          emptyDir: {}
-        - name: tmp
-          emptyDir: {}
-        {{- include "nginx-external.volumes" . | nindent 8 }}
-      {{- with (include "nginx-external.nodeSelector" .) }}
-      nodeSelector:
-        {{- . | nindent 8 }}
-      {{- end }}
-      {{- with (include "nginx-external.affinity" .) }}
-      affinity:
-        {{- . | nindent 8 }}
-      {{- end }}
-      {{- with (include "nginx-external.tolerations" .) }}
-      tolerations:
-        {{- . | nindent 8 }}
+        # Mount additional config files if any
+        {{- if .Values.configMap.extraFiles }}
+        {{- range $name, $content := .Values.configMap.extraFiles }}
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/{{ $name }}
+          subPath: {{ $name }}
+          readOnly: true
+        {{- end }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /nginx-health
+            port: health
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /nginx-health
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      # ConfigMap volume containing nginx.conf and any extra files
+      - name: nginx-config
+        configMap:
+          name: {{ include "nginx-external.configMapName" . }}
+          defaultMode: 0644
+      # SSL certificate volume (if using cert-manager)
+      {{- if .Values.ssl.enabled }}
+      - name: ssl-certs
+        secret:
+          secretName: {{ .Values.ssl.secretName | default "nginx-external-tls" }}
+          defaultMode: 0644
       {{- end }}

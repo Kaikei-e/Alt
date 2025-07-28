@@ -207,7 +207,7 @@ upstreams:
   # INCIDENT 91 FIX: nginx-external → nginx-internal HTTPS接続統一
   - name: nginx
     servers:
-      - "nginx.alt-ingress.svc.cluster.local:443"
+      - "nginx.alt-ingress.svc.cluster.local:8443"
     loadBalancing: "least_conn"
     keepalive: 32
     healthCheck:
@@ -272,13 +272,13 @@ servers:
           expires 1y;
           add_header Cache-Control "public, immutable";
           add_header X-Cache-Status "nginx-external-prefix";
-          
+
           # Proxy settings optimized for static content
           proxy_buffer_size 8k;
           proxy_buffers 16 8k;
           proxy_busy_buffers_size 16k;
           proxy_buffering on;
-          
+
           # SSL settings for static assets
           proxy_ssl_verify off;
           proxy_ssl_session_reuse on;
