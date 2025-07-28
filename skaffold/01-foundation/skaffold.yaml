@@ -2,84 +2,84 @@ apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: alt-foundation
+# Default profile optimized for kind local development
+build:
+  local:
+    push: false  # Local development with kind
+    useDockerCLI: true
+    useBuildkit: true
+    concurrency: 0
+    tryImportMissing: true
+  tagPolicy:
+    gitCommit: {}
+  artifacts:
+    - image: migrate
+      context: ../../migrate
+      docker:
+        dockerfile: Dockerfile.migrate
+deploy:
+  statusCheckDeadlineSeconds: 600
+  helm:
+    flags:
+      install: ['--wait', '--timeout=600s']
+      upgrade: ['--wait', '--timeout=600s']
+    releases:
+      - name: cert-manager
+        chartPath: charts/cert-manager
+        valuesFiles:
+          - charts/cert-manager/values-dev.yaml
+          - charts/cert-manager/values.yaml
+        version: 0.1.0
+        createNamespace: true
+        namespace: cert-manager
+        setValues:
+          installCRDs: true  # Kind environment needs CRDs
+      - name: common-config
+        chartPath: charts/common-config
+        namespace: alt-config
+        createNamespace: true
+        valuesFiles:
+          - charts/common-config/values-development.yaml
+          - charts/common-config/values.yaml
+        version: 0.1.0
+      - name: common-secrets-apps
+        chartPath: charts/common-secrets-apps
+        namespace: alt-apps
+        createNamespace: true
+        valuesFiles:
+          - charts/common-secrets-apps/values-development.yaml
+          - charts/common-secrets-apps/values.yaml
+        version: 2.0.0
 profiles:
-  - name: dev
-    deploy:
-      helm:
-        releases:
-          # Install cert-manager first with CRDs
-          - name: cert-manager
-            chartPath: charts/cert-manager
-            valuesFiles:
-              - charts/cert-manager/values-dev.yaml
-              - charts/cert-manager/values.yaml
-            version: 0.1.0
-            createNamespace: false  # Use existing namespace
-            namespace: cert-manager
-            upgradeOnChange: false  # Prevent CRD conflicts
-            setValues:
-              installCRDs: false    # Explicit CRD management
-          # Keep config charts for now
-          - name: common-config
-            chartPath: charts/common-config
-            namespace: alt-config
-            createNamespace: true
-            valuesFiles:
-              - charts/common-config/values-development.yaml
-              - charts/common-config/values.yaml
-            version: 0.1.0
-          - name: common-secrets-apps
-            chartPath: charts/common-secrets-apps
-            namespace: alt-apps
-            createNamespace: true
-            valuesFiles:
-              - charts/common-secrets-apps/values-development.yaml
-              - charts/common-secrets-apps/values.yaml
-            version: 2.0.0
-  - name: staging
-    deploy:
-      helm:
-        releases:
-          - name: cert-manager
-            chartPath: charts/cert-manager
-            valuesFiles:
-              - charts/cert-manager/values.yaml
-            version: 0.1.0
-            createNamespace: false  # Use existing namespace
-            namespace: cert-manager
-            upgradeOnChange: false  # Prevent CRD conflicts
-            setValues:
-              installCRDs: false    # Explicit CRD management
-          - name: common-config
-            chartPath: charts/common-config
-            namespace: alt-config
-            createNamespace: true
-            valuesFiles:
-              - charts/common-config/values-staging.yaml
-              - charts/common-config/values.yaml
-            version: 0.1.0
-          - name: common-secrets-apps
-            chartPath: charts/common-secrets-apps
-            namespace: alt-apps
-            createNamespace: true
-            valuesFiles:
-              - charts/common-secrets-apps/values-staging.yaml
-              - charts/common-secrets-apps/values.yaml
-            version: 2.0.0
   - name: prod
+    build:
+      local:
+        push: false
+        useDockerCLI: false  # Docker API使用 (production最適化)
+        concurrency: 1  # Local build安定性向上
+      tagPolicy:
+        gitCommit: {}
+      artifacts:
+        - image: migrate
+          context: ../../migrate
+          docker:
+            dockerfile: Dockerfile.migrate
     deploy:
+      statusCheckDeadlineSeconds: 600
       helm:
+        flags:
+          install: ['--wait', '--timeout=600s']
+          upgrade: ['--wait', '--timeout=600s']
         releases:
           - name: cert-manager
             chartPath: charts/cert-manager
+            namespace: cert-manager
+            createNamespace: true
             valuesFiles:
               - charts/cert-manager/values.yaml
-            version: 0.1.0
-            createNamespace: false  # Use existing namespace
-            namespace: cert-manager
-            upgradeOnChange: false  # Prevent CRD conflicts
             setValues:
-              installCRDs: false    # Explicit CRD management
+              installCRDs: true
+            version: 0.1.0
           - name: common-config
             chartPath: charts/common-config
             namespace: alt-config
@@ -96,40 +96,3 @@ profiles:
               - charts/common-secrets-apps/values-production.yaml
               - charts/common-secrets-apps/values.yaml
             version: 2.0.0
-build:
-  artifacts:
-    - image: migrate
-      context: ../../migrate
-      docker:
-        dockerfile: Dockerfile.migrate
-deploy:
-  helm:
-    releases:
-      - name: cert-manager
-        chartPath: charts/cert-manager
-        valuesFiles:
-          - charts/cert-manager/values.yaml
-        version: 0.1.0
-        createNamespace: false  # Use existing namespace
-        namespace: cert-manager
-        upgradeOnChange: false  # Prevent CRD conflicts
-        setValues:
-          installCRDs: false    # Explicit CRD management
-      - name: common-config
-        chartPath: charts/common-config
-        namespace: alt-config
-        createNamespace: true
-        valuesFiles:
-          - charts/common-config/values-development.yaml
-          - charts/common-config/values-production.yaml
-          - charts/common-config/values-staging.yaml
-          - charts/common-config/values.yaml
-        version: 0.1.0
-      - name: common-secrets-apps
-        chartPath: charts/common-secrets-apps
-        namespace: alt-apps
-        createNamespace: true
-        valuesFiles:
-          - charts/common-secrets-apps/values-production.yaml
-          - charts/common-secrets-apps/values.yaml
-        version: 2.0.0

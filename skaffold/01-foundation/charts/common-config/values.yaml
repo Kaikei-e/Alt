@@ -5,13 +5,13 @@
 environment: production
 
 # Namespace creation control
-createNamespaces: false
+createNamespaces: true
 
 # Namespace configuration
 namespaces:
   # Development environment
   development:
-    enabled: true
+    enabled: false
     name: alt-dev
     labels:
       name: alt-dev
@@ -19,7 +19,7 @@ namespaces:
 
   # Staging environment
   staging:
-    enabled: true
+    enabled: false
     name: alt-staging
     labels:
       name: alt-staging
@@ -32,6 +32,15 @@ namespaces:
     labels:
       name: alt-production
       environment: production
+
+  # Foundation layer namespace
+  foundation:
+    enabled: true
+    name: alt-foundation
+    labels:
+      name: alt-foundation
+      environment: production
+      service-type: foundation
 
   # Production service-specific namespaces
   apps:
