@@ -2,6 +2,101 @@ apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: alt-processing
+# Default profile optimized for kind local development
+build:
+  local:
+    push: false  # Local development with kind
+    useDockerCLI: true
+    useBuildkit: true
+    concurrency: 0
+    tryImportMissing: true
+  tagPolicy:
+    gitCommit: {}
+  artifacts:
+    - image: kaikei/pre-processor
+      context: ../../pre-processor
+      docker:
+        dockerfile: Dockerfile.preprocess
+    - image: kaikei/search-indexer
+      context: ../../search-indexer
+      docker:
+        dockerfile: Dockerfile.search-indexer
+    - image: kaikei/tag-generator
+      context: ../../tag-generator
+      docker:
+        dockerfile: Dockerfile.tag-generator
+    - image: kaikei/news-creator
+      context: ../../news-creator
+      docker:
+        dockerfile: Dockerfile.creator
+    # rask-log-aggregator excluded - Docker Compose only
+    # - image: kaikei/rask-log-aggregator
+    #   context: ../../rask-log-aggregator
+    #   docker:
+    #     dockerfile: Dockerfile.rask-log-aggregator
+deploy:
+  statusCheckDeadlineSeconds: 600
+  helm:
+    flags:
+      install: ['--wait', '--timeout=300s']
+      upgrade: ['--wait', '--timeout=300s']
+    releases:
+      - name: pre-processor
+        chartPath: charts/pre-processor
+        valuesFiles:
+          - charts/pre-processor/values.yaml
+        namespace: alt-processing
+        setValueTemplates:
+          image.repository: "{{.IMAGE_REPO_kaikei_pre_processor}}"
+          image.tag: "{{.IMAGE_TAG_kaikei_pre_processor}}"
+        setValues:
+          image.pullPolicy: "Never"  # Kind local development
+        version: 0.1.0
+      - name: search-indexer
+        chartPath: charts/search-indexer
+        valuesFiles:
+          - charts/search-indexer/values.yaml
+        namespace: alt-processing
+        setValueTemplates:
+          image.repository: "{{.IMAGE_REPO_kaikei_search_indexer}}"
+          image.tag: "{{.IMAGE_TAG_kaikei_search_indexer}}"
+        setValues:
+          image.pullPolicy: "Never"  # Kind local development
+        version: 0.1.0
+      - name: tag-generator
+        chartPath: charts/tag-generator
+        valuesFiles:
+          - charts/tag-generator/values.yaml
+        namespace: alt-processing
+        setValueTemplates:
+          image.repository: "{{.IMAGE_REPO_kaikei_tag_generator}}"
+          image.tag: "{{.IMAGE_TAG_kaikei_tag_generator}}"
+        setValues:
+          image.pullPolicy: "Never"  # Kind local development
+        version: 0.1.0
+      - name: news-creator
+        chartPath: charts/news-creator
+        valuesFiles:
+          - charts/news-creator/values.yaml
+        namespace: alt-processing
+        setValueTemplates:
+          image.repository: "{{.IMAGE_REPO_kaikei_news_creator}}"
+          image.tag: "{{.IMAGE_TAG_kaikei_news_creator}}"
+        setValues:
+          image.pullPolicy: "Never"  # Kind local development
+        version: 0.1.0
+      # rask-log-aggregator excluded - Docker Compose only
+      # - name: rask-log-aggregator
+      #   chartPath: charts/rask-log-aggregator
+      #   valuesFiles:
+      #     - charts/rask-log-aggregator/values.yaml
+      #   namespace: alt-processing
+      #   setValueTemplates:
+      #     image.repository: "{{.IMAGE_REPO_kaikei_rask_log_aggregator}}"
+      #     image.tag: "{{.IMAGE_TAG_kaikei_rask_log_aggregator}}"
+      #   setValues:
+      #     image.pullPolicy: "Never"  # Kind local development
+      #   version: 0.1.0
 profiles:
   - name: dev
     build:
@@ -9,6 +104,7 @@ profiles:
         push: false  # INCIDENT 82 FIX: Local cluster対応
         useDockerCLI: true  # INCIDENT 82 FIX: Local build強制
         useBuildkit: true  # INCIDENT 89 FIX: 一貫したimage ID生成でSHA256問題解決
+        tryImportMissing: true  # INCIDENT 91 FIX: 2025年Skaffold best practice - ローカル画像自動活用
       tagPolicy:
         gitCommit: {}  # INCIDENT 89 FIX: SHA256無効化、03-core-servicesパターン統一
       artifacts:
@@ -28,10 +124,11 @@ profiles:
           context: ../../news-creator
           docker:
             dockerfile: Dockerfile.creator
-        - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
-          context: ../../rask-log-aggregator
-          docker:
-            dockerfile: Dockerfile.rask-log-aggregator
+        # rask-log-aggregator excluded - Docker Compose only
+        # - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
+        #   context: ../../rask-log-aggregator
+        #   docker:
+        #     dockerfile: Dockerfile.rask-log-aggregator
     deploy:
       helm:
         releases:
@@ -44,7 +141,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_pre_processor}}"
               image.tag: "{{.IMAGE_TAG_kaikei_pre_processor}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
           - name: search-indexer
             chartPath: charts/search-indexer
@@ -55,7 +152,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_search_indexer}}"
               image.tag: "{{.IMAGE_TAG_kaikei_search_indexer}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
           - name: tag-generator
             chartPath: charts/tag-generator
@@ -66,7 +163,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_tag_generator}}"
               image.tag: "{{.IMAGE_TAG_kaikei_tag_generator}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
           - name: news-creator
             chartPath: charts/news-creator
@@ -77,19 +174,20 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_news_creator}}"
               image.tag: "{{.IMAGE_TAG_kaikei_news_creator}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
-          - name: rask-log-aggregator
-            chartPath: charts/rask-log-aggregator
-            valuesFiles:
-              - charts/rask-log-aggregator/values.yaml
-            namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
-            setValueTemplates:
-              image.repository: "{{.IMAGE_REPO_kaikei_rask_log_aggregator}}"
-              image.tag: "{{.IMAGE_TAG_kaikei_rask_log_aggregator}}"
-            setValues:
-              image.pullPolicy: "IfNotPresent"
-            version: 0.1.0
+          # rask-log-aggregator excluded - Docker Compose only
+          # - name: rask-log-aggregator
+          #   chartPath: charts/rask-log-aggregator
+          #   valuesFiles:
+          #     - charts/rask-log-aggregator/values.yaml
+          #   namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
+          #   setValueTemplates:
+          #     image.repository: "{{.IMAGE_REPO_kaikei_rask_log_aggregator}}"
+          #     image.tag: "{{.IMAGE_TAG_kaikei_rask_log_aggregator}}"
+          #   setValues:
+          #     image.pullPolicy: "Never"  # ローカル開発環境強制設定
+          #   version: 0.1.0
   - name: staging
     build:
       tagPolicy:
@@ -111,10 +209,11 @@ profiles:
           context: ../../news-creator
           docker:
             dockerfile: Dockerfile.creator
-        - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
-          context: ../../rask-log-aggregator
-          docker:
-            dockerfile: Dockerfile.rask-log-aggregator
+        # rask-log-aggregator excluded - Docker Compose only
+        # - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
+        #   context: ../../rask-log-aggregator
+        #   docker:
+        #     dockerfile: Dockerfile.rask-log-aggregator
     deploy:
       helm:
         releases:
@@ -127,7 +226,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_pre_processor}}"
               image.tag: "{{.IMAGE_TAG_kaikei_pre_processor}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
           - name: search-indexer
             chartPath: charts/search-indexer
@@ -138,7 +237,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_search_indexer}}"
               image.tag: "{{.IMAGE_TAG_kaikei_search_indexer}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
           - name: tag-generator
             chartPath: charts/tag-generator
@@ -149,7 +248,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_tag_generator}}"
               image.tag: "{{.IMAGE_TAG_kaikei_tag_generator}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
           - name: news-creator
             chartPath: charts/news-creator
@@ -160,25 +259,27 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_news_creator}}"
               image.tag: "{{.IMAGE_TAG_kaikei_news_creator}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
-          - name: rask-log-aggregator
-            chartPath: charts/rask-log-aggregator
-            valuesFiles:
-              - charts/rask-log-aggregator/values.yaml
-            namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
-            setValueTemplates:
-              image.repository: "{{.IMAGE_REPO_kaikei_rask_log_aggregator}}"
-              image.tag: "{{.IMAGE_TAG_kaikei_rask_log_aggregator}}"
-            setValues:
-              image.pullPolicy: "IfNotPresent"
-            version: 0.1.0
+          # rask-log-aggregator excluded - Docker Compose only
+          # - name: rask-log-aggregator
+          #   chartPath: charts/rask-log-aggregator
+          #   valuesFiles:
+          #     - charts/rask-log-aggregator/values.yaml
+          #   namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
+          #   setValueTemplates:
+          #     image.repository: "{{.IMAGE_REPO_kaikei_rask_log_aggregator}}"
+          #     image.tag: "{{.IMAGE_TAG_kaikei_rask_log_aggregator}}"
+          #   setValues:
+          #     image.pullPolicy: "Never"  # ローカル開発環境強制設定
+          #   version: 0.1.0
   - name: prod
     build:
       local:
         push: false  # INCIDENT 82 FIX: Local cluster対応
         useDockerCLI: true  # INCIDENT 82 FIX: Local build強制
         useBuildkit: true  # INCIDENT 89 FIX: 一貫したimage ID生成でSHA256問題解決
+        tryImportMissing: true  # INCIDENT 91 FIX: 2025年Skaffold best practice - ローカル画像自動活用
       tagPolicy:
         gitCommit: {}  # INCIDENT 89 FIX: SHA256無効化、03-core-servicesパターン統一
       artifacts:
@@ -198,10 +299,11 @@ profiles:
           context: ../../news-creator
           docker:
             dockerfile: Dockerfile.creator
-        - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
-          context: ../../rask-log-aggregator
-          docker:
-            dockerfile: Dockerfile.rask-log-aggregator
+        # rask-log-aggregator excluded - Docker Compose only
+        # - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
+        #   context: ../../rask-log-aggregator
+        #   docker:
+        #     dockerfile: Dockerfile.rask-log-aggregator
     deploy:
       helm:
         releases:
@@ -215,7 +317,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_pre_processor}}"
               image.tag: "{{.IMAGE_TAG_kaikei_pre_processor}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
             version: 0.1.0
           - name: search-indexer
             chartPath: charts/search-indexer
@@ -227,7 +329,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_search_indexer}}"
               image.tag: "{{.IMAGE_TAG_kaikei_search_indexer}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
             version: 0.1.0
           - name: tag-generator
             chartPath: charts/tag-generator
@@ -239,7 +341,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_tag_generator}}"
               image.tag: "{{.IMAGE_TAG_kaikei_tag_generator}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
             version: 0.1.0
           - name: news-creator
             chartPath: charts/news-creator
@@ -251,111 +353,17 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_news_creator}}"
               image.tag: "{{.IMAGE_TAG_kaikei_news_creator}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
             version: 0.1.0
-          - name: rask-log-aggregator
-            chartPath: charts/rask-log-aggregator
-            valuesFiles:
-              - charts/rask-log-aggregator/values-production.yaml
-            namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
-            setValueTemplates:
-              image.repository: "{{.IMAGE_REPO_kaikei_rask_log_aggregator}}"
-              image.tag: "{{.IMAGE_TAG_kaikei_rask_log_aggregator}}"
-            setValues:
-              image.pullPolicy: "IfNotPresent"
-            version: 0.1.0
-build:
-  local:
-    push: false  # INCIDENT 82 FIX: Local cluster対応
-    useDockerCLI: true  # INCIDENT 82 FIX: Local build強制
-    useBuildkit: true  # INCIDENT 89 FIX: 一貫したimage ID生成でSHA256問題解決
-    concurrency: 0  # INCIDENT 82 FIX: Build並列性最大化
-  tagPolicy:
-    gitCommit: {}  # INCIDENT 89 FIX: SHA256無効化、03-core-servicesパターン統一
-  artifacts:
-    - image: kaikei/pre-processor  # INCIDENT 82 FIX: Repository統一
-      context: ../../pre-processor
-      docker:
-        dockerfile: Dockerfile.preprocess
-    - image: kaikei/search-indexer  # INCIDENT 82 FIX: Repository統一
-      context: ../../search-indexer
-      docker:
-        dockerfile: Dockerfile.search-indexer
-    - image: kaikei/tag-generator  # INCIDENT 82 FIX: Repository統一
-      context: ../../tag-generator
-      docker:
-        dockerfile: Dockerfile.tag-generator
-    - image: kaikei/news-creator  # INCIDENT 82 FIX: Repository統一
-      context: ../../news-creator
-      docker:
-        dockerfile: Dockerfile.creator
-    - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
-      context: ../../rask-log-aggregator
-      docker:
-        dockerfile: Dockerfile.rask-log-aggregator
-deploy:
-  statusCheckDeadlineSeconds: 600  # INCIDENT 89 FIX: Deploy timeout延長
-  helm:
-    flags:
-      install: ['--wait', '--timeout=300s']
-      upgrade: ['--wait', '--timeout=300s']
-    releases:
-      - name: pre-processor
-        chartPath: charts/pre-processor
-        valuesFiles:
-          - charts/pre-processor/values-production.yaml
-          - charts/pre-processor/values.yaml
-        namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
-        setValueTemplates:
-          image.repository: "{{.IMAGE_REPO_kaikei_pre_processor}}"
-          image.tag: "{{.IMAGE_TAG_kaikei_pre_processor}}"
-        setValues:
-          image.pullPolicy: "IfNotPresent"
-        version: 0.1.0
-      - name: search-indexer
-        chartPath: charts/search-indexer
-        valuesFiles:
-          - charts/search-indexer/values-production.yaml
-          - charts/search-indexer/values.yaml
-        namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
-        setValueTemplates:
-          image.repository: "{{.IMAGE_REPO_kaikei_search_indexer}}"
-          image.tag: "{{.IMAGE_TAG_kaikei_search_indexer}}"
-        setValues:
-          image.pullPolicy: "IfNotPresent"
-        version: 0.1.0
-      - name: tag-generator
-        chartPath: charts/tag-generator
-        valuesFiles:
-          - charts/tag-generator/values-production.yaml
-          - charts/tag-generator/values.yaml
-        namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
-        setValueTemplates:
-          image.repository: "{{.IMAGE_REPO_kaikei_tag_generator}}"
-          image.tag: "{{.IMAGE_TAG_kaikei_tag_generator}}"
-        setValues:
-          image.pullPolicy: "IfNotPresent"
-        version: 0.1.0
-      - name: news-creator
-        chartPath: charts/news-creator
-        valuesFiles:
-          - charts/news-creator/values-production.yaml
-          - charts/news-creator/values.yaml
-        namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
-        setValueTemplates:
-          image.repository: "{{.IMAGE_REPO_kaikei_news_creator}}"
-          image.tag: "{{.IMAGE_TAG_kaikei_news_creator}}"
-        setValues:
-          image.pullPolicy: "IfNotPresent"
-        version: 0.1.0
-      - name: rask-log-aggregator
-        chartPath: charts/rask-log-aggregator
-        valuesFiles:
-          - charts/rask-log-aggregator/values-production.yaml
-        namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
-        setValueTemplates:
-          image.repository: "{{.IMAGE_REPO_kaikei_rask_log_aggregator}}"
-          image.tag: "{{.IMAGE_TAG_kaikei_rask_log_aggregator}}"
-        setValues:
-          image.pullPolicy: "IfNotPresent"
-        version: 0.1.0
+          # rask-log-aggregator excluded - Docker Compose only
+          # - name: rask-log-aggregator
+          #   chartPath: charts/rask-log-aggregator
+          #   valuesFiles:
+          #     - charts/rask-log-aggregator/values-production.yaml
+          #   namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
+          #   setValueTemplates:
+          #     image.repository: "{{.IMAGE_REPO_kaikei_rask_log_aggregator}}"
+          #     image.tag: "{{.IMAGE_TAG_kaikei_rask_log_aggregator}}"
+          #   setValues:
+          #     image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
+          #   version: 0.1.0
