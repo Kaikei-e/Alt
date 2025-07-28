@@ -28,6 +28,7 @@ configMap:
 database:
   maxWaitAttempts: 60  # 5 minutes max wait
   sleepInterval: 5
+  password: ""  # Set in values-production.yaml for production
   postgres:
     host: "postgres.alt-database.svc.cluster.local"
     port: 5432
@@ -66,9 +67,11 @@ env:
   MIGRATION_TIMEOUT: "300s"
   MIGRATION_RETRY_COUNT: "3"
   SERVICE_NAME: "migrate"
+  username: "alt_db_user"
+  database: "alt"
 
 envFromSecret:
-  name: postgres-secret
+  name: migrate-db-secret
   keys:
     - password
 

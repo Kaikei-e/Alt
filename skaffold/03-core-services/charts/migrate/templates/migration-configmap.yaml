@@ -144,25 +144,38 @@ data:
     DROP INDEX IF EXISTS idx_feeds_link_created_desc;
 
   000013_optimize_feed_article_indexes.up.sql: |
-    CREATE INDEX IF NOT EXISTS idx_articles_link_created_desc ON articles (link, created_at DESC);
+    -- feeds: 並び替えと検索を同時に満たす複合
+    CREATE INDEX IF NOT EXISTS idx_feeds_created_at_link
+        ON feeds (created_at, link);
+
+    -- articles: 存在確認だけなので単一キー
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_url
+        ON articles (url);
 
   000013_optimize_feed_article_indexes.down.sql: |
-    DROP INDEX IF EXISTS idx_articles_link_created_desc;
+    -- Remove optimized indexes
+    DROP INDEX IF EXISTS idx_feeds_created_at_link;
+    DROP INDEX IF EXISTS idx_articles_url;
 
-  000014_add_articles_gin_trgm_indexes.up.sql: |
-    CREATE INDEX IF NOT EXISTS idx_articles_title_gin_trgm ON articles USING gin (title gin_trgm_ops);
-    CREATE INDEX IF NOT EXISTS idx_articles_description_gin_trgm ON articles USING gin (description gin_trgm_ops);
-
-  000014_add_articles_gin_trgm_indexes.down.sql: |
-    DROP INDEX IF EXISTS idx_articles_title_gin_trgm;
-    DROP INDEX IF EXISTS idx_articles_description_gin_trgm;
-
-  000015_add_feeds_link_gin_trgm_index.up.sql: |
+  000014_add_feeds_link_gin_trgm_index.up.sql: |
     CREATE EXTENSION IF NOT EXISTS pg_trgm;
     CREATE INDEX IF NOT EXISTS idx_feeds_link_gin_trgm ON feeds USING gin (link gin_trgm_ops);
 
-  000015_add_feeds_link_gin_trgm_index.down.sql: |
+  000014_add_feeds_link_gin_trgm_index.down.sql: |
     DROP INDEX IF EXISTS idx_feeds_link_gin_trgm;
+
+  000015_add_articles_gin_trgm_indexes.up.sql: |
+    -- Add GIN trigram indexes for articles table
+    -- Index on title for fast text similarity searches
+    CREATE INDEX IF NOT EXISTS idx_articles_title_gin_trgm ON articles USING gin (title gin_trgm_ops);
+
+    -- Index on url for fast text similarity searches
+    CREATE INDEX IF NOT EXISTS idx_articles_url_gin_trgm ON articles USING gin (url gin_trgm_ops);
+
+  000015_add_articles_gin_trgm_indexes.down.sql: |
+    -- Remove GIN trigram indexes for articles table
+    DROP INDEX IF EXISTS idx_articles_title_gin_trgm;
+    DROP INDEX IF EXISTS idx_articles_url_gin_trgm;
 
   000016_add_article_summaries_gin_trgm_indexes.up.sql: |
     CREATE INDEX IF NOT EXISTS idx_article_summaries_summary_gin_trgm ON article_summaries USING gin (summary gin_trgm_ops);
@@ -171,10 +184,10 @@ data:
     DROP INDEX IF EXISTS idx_article_summaries_summary_gin_trgm;
 
   000017_remove_duplicate_articles_url_index.up.sql: |
-    DROP INDEX IF EXISTS idx_articles_link_created_desc;
+    DROP INDEX IF EXISTS idx_articles_url_created_desc;
 
   000017_remove_duplicate_articles_url_index.down.sql: |
-    CREATE INDEX IF NOT EXISTS idx_articles_link_created_desc ON articles (link, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_articles_url_created_desc ON articles (url, created_at DESC);
 
   000018_add_feeds_created_desc_not_mp3_index.up.sql: |
     CREATE INDEX IF NOT EXISTS idx_feeds_created_desc_not_mp3 ON feeds (created_at DESC) WHERE link !~ '\.mp3$';
@@ -196,15 +209,11 @@ data:
 
   000021_refine_articles_indexes_add_covering.up.sql: |
     DROP INDEX IF EXISTS idx_articles_created_at;
-    DROP INDEX IF EXISTS idx_articles_pub_date;
-    CREATE INDEX IF NOT EXISTS idx_articles_created_at_covering ON articles (created_at DESC) INCLUDE (id, title, description, link, pub_date);
-    CREATE INDEX IF NOT EXISTS idx_articles_pub_date_covering ON articles (pub_date DESC) INCLUDE (id, title, description, link, created_at);
+    CREATE INDEX IF NOT EXISTS idx_articles_created_at_covering ON articles (created_at DESC) INCLUDE (id, title, content, url);
 
   000021_refine_articles_indexes_add_covering.down.sql: |
     DROP INDEX IF EXISTS idx_articles_created_at_covering;
-    DROP INDEX IF EXISTS idx_articles_pub_date_covering;
     CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles (created_at);
-    CREATE INDEX IF NOT EXISTS idx_articles_pub_date ON articles (pub_date);
 
   000022_optimize_articles_title_indexes.up.sql: |
     DROP INDEX IF EXISTS idx_articles_title_gin_trgm;
@@ -216,7 +225,7 @@ data:
 
   000023_add_feeds_desc_not_mp3_cover_index.up.sql: |
     DROP INDEX IF EXISTS idx_feeds_created_desc_not_mp3;
-    CREATE INDEX IF NOT EXISTS idx_feeds_created_desc_not_mp3_covering ON feeds (created_at DESC) INCLUDE (id, title, description, link, pub_date) WHERE link !~ '\.mp3$';
+    CREATE INDEX IF NOT EXISTS idx_feeds_created_desc_not_mp3_covering ON feeds (created_at DESC) INCLUDE (id, title, description, link) WHERE link !~ '\.mp3$';
 
   000023_add_feeds_desc_not_mp3_cover_index.down.sql: |
     DROP INDEX IF EXISTS idx_feeds_created_desc_not_mp3_covering;
