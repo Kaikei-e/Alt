@@ -3,7 +3,7 @@ replicaCount: 1
 
 image:
   repository: kaikei/search-indexer  # INCIDENT 82 FIX: Core servicesパターン統一
-  pullPolicy: IfNotPresent  # INCIDENT 89 FIX: Skaffold auto-transform + digest-source=tag
+  pullPolicy: Never  # INCIDENT 50 FIX: ローカル開発環境対応 - Docker/containerd同期問題解決
   # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
   # tag: "production"
 
@@ -21,7 +21,7 @@ resources:
     cpu: "500m"
 
 env:
-  DB_HOST: "db.alt-database.svc.cluster.local"
+  DB_HOST: "postgres.alt-database.svc.cluster.local"
   DB_NAME: "alt"
   DB_PORT: "5432"
   DB_SSL_MODE: "require"
@@ -30,6 +30,13 @@ env:
   SERVICE_NAME: "search-indexer"
   MEILISEARCH_HOST: "http://meilisearch.alt-search.svc.cluster.local:7700"
   MEILISEARCH_TIMEOUT: "60s"
+
+# Secret configuration
+secret:
+  create: true
+  name: search-indexer-secrets
+  data:
+    SEARCH_INDEXER_DB_PASSWORD: "devpassword123"  # Change in production
 
 envFromSecret:
   name: search-indexer-secrets

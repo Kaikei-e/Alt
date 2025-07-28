@@ -74,6 +74,15 @@ Standard secret name template
 {{- end }}
 
 {{/*
+Common annotations
+*/}}
+{{- define "pre-processor.annotations" -}}
+{{- with .Values.commonAnnotations }}
+{{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create environment variables from secrets
 */}}
 {{- define "pre-processor.envFromSecret" -}}

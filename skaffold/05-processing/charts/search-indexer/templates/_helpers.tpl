@@ -74,6 +74,15 @@ Standard secret name template
 {{- end }}
 
 {{/*
+Common annotations
+*/}}
+{{- define "search-indexer.annotations" -}}
+{{- with .Values.commonAnnotations }}
+{{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create environment variables from secrets
 */}}
 {{- define "search-indexer.envFromSecret" -}}

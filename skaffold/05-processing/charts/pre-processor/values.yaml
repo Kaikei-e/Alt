@@ -2,7 +2,7 @@
 replicaCount: 1
 image:
   repository: kaikei/pre-processor  # INCIDENT 82 FIX: Core servicesパターン統一
-  pullPolicy: IfNotPresent  # INCIDENT 89 FIX: Skaffold auto-transform + digest-source=tag
+  pullPolicy: Never  # INCIDENT 50 FIX: ローカル開発環境対応 - Docker/containerd同期問題解決
   # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
   # tag: "production"
 
@@ -20,15 +20,22 @@ resources:
     cpu: "500m"
 
 env:
-  DB_HOST: "db.alt-database.svc.cluster.local"
+  DB_HOST: "postgres.alt-database.svc.cluster.local"
   DB_NAME: "alt"
   DB_PORT: "5432"
   DB_SSL_MODE: "require"
   LOG_LEVEL: "info"
   PRE_PROCESSOR_DB_USER: "pre_processor_user"
   SERVICE_NAME: "pre-processor"
-  NEWS_CREATOR_HOST: "http://news-creator.alt-apps.svc.cluster.local:11434"
+  NEWS_CREATOR_HOST: "http://news-creator.alt-processing.svc.cluster.local:11434"
   NEWS_CREATOR_TIMEOUT: "120s"
+
+# Secret configuration
+secret:
+  create: true
+  name: pre-processor-secrets
+  data:
+    PRE_PROCESSOR_DB_PASSWORD: "devpassword123"  # Change in production
 
 envFromSecret:
   name: pre-processor-secrets
@@ -40,8 +47,15 @@ serviceAccount:
   name: ""
   annotations: {}
 
-podSecurityContext: {}
-securityContext: {}
+podSecurityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 0
+
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: false
+  runAsUser: 0
 nodeSelector: {}
 tolerations: []
 affinity: {}

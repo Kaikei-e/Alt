@@ -74,6 +74,15 @@ Standard secret name template
 {{- end }}
 
 {{/*
+Common annotations
+*/}}
+{{- define "news-creator.annotations" -}}
+{{- with .Values.commonAnnotations }}
+{{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create environment variables from secrets
 */}}
 {{- define "news-creator.envFromSecret" -}}

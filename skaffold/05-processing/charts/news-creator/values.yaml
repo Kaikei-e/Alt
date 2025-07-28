@@ -15,10 +15,10 @@ service:
 resources:
   limits:
     cpu: "2000m"
-    memory: "4Gi"
+    memory: "12Gi"  # Increased for gemma3:4b model loading
   requests:
     cpu: "1000m"
-    memory: "2Gi"
+    memory: "10Gi"  # Increased base memory
 
 autoscaling:
   enabled: false
@@ -29,6 +29,15 @@ autoscaling:
 env:
   OLLAMA_NUM_PARALLEL: "1"
   OLLAMA_MAX_LOADED_MODELS: "1"
+  OLLAMA_HOME: "/tmp/.ollama"
+  HOME: "/tmp"
+
+# Secret configuration
+secret:
+  create: true
+  name: huggingface-secret
+  data:
+    HF_TOKEN: "dev-token-placeholder"  # Replace with actual HF token
 
 envFromSecret:
   name: huggingface-secret
@@ -51,8 +60,15 @@ configMap:
       OLLAMA_NUM_PARALLEL=1
       OLLAMA_MAX_LOADED_MODELS=2
 
-podSecurityContext: {}
-securityContext: {}
+podSecurityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 0
+
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: false
+  runAsUser: 0
 nodeSelector: {}
 tolerations: []
 affinity: {}
@@ -61,8 +77,17 @@ commonAnnotations: {}
 podLabels: {}
 podAnnotations: {}
 imagePullSecrets: []
-volumeMounts: []
-volumes: []
+volumeMounts:
+  - name: ollama-data
+    mountPath: /tmp/.ollama
+  - name: temp-dir
+    mountPath: /tmp/cache
+
+volumes:
+  - name: ollama-data
+    emptyDir: {}
+  - name: temp-dir
+    emptyDir: {}
 
 strategy:
   type: RollingUpdate
@@ -72,7 +97,7 @@ strategy:
 
 livenessProbe:
   httpGet:
-    path: /health
+    path: /api/tags
     port: 11434
   failureThreshold: 3
   initialDelaySeconds: 30
@@ -81,7 +106,7 @@ livenessProbe:
 
 readinessProbe:
   httpGet:
-    path: /health
+    path: /api/tags
     port: 11434
   failureThreshold: 3
   initialDelaySeconds: 15
