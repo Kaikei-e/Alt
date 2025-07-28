@@ -194,13 +194,19 @@ nginx:
     allowedCountries: ["US", "CA", "GB", "DE", "FR", "JP"]
     blockedCountries: []
 
+  # Cloudflare Tunnel接続の最適化設定
+  sessionAffinity: "ClientIP" # セッション維持の最適化
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600 # 長時間セッションの維持
+  externalTrafficPolicy: Local
+
 # Upstream configurations for internal nginx or services
 upstreams:
   # Route to internal nginx (recommended approach) - INCIDENT 85+86 FIX: 正しいnamespace参照+upstream名統一
   - name: nginx
     servers:
-      - "nginx.alt-ingress.svc.cluster.local:8080"
-      - "nginx.alt-ingress.svc.cluster.local:8443"
+      - "nginx.alt-ingress.svc.cluster.local:443"
     loadBalancing: "least_conn"
     keepalive: 32
     healthCheck:
@@ -213,14 +219,24 @@ upstreams:
   - name: alt-frontend-direct
     servers:
       - "alt-frontend.alt-apps.svc.cluster.local:3000"
-    loadBalancing: "least_conn"
-    keepalive: 32
+    loadBalancing: "round_robin"
+    keepalive: 16
+    healthCheck:
+      enabled: true
+      path: "/"
+      interval: "20s"
+      timeout: "5s"
 
   - name: alt-backend-direct
     servers:
       - "alt-backend.alt-apps.svc.cluster.local:9000"
-    loadBalancing: "least_conn"
-    keepalive: 32
+    loadBalancing: "round_robin"
+    keepalive: 16
+    healthCheck:
+      enabled: true
+      path: "/"
+      interval: "20s"
+      timeout: "5s"
 
 # Server configurations for external traffic
 servers:
@@ -242,7 +258,7 @@ servers:
     locations:
       # Main application routes - proxy to internal nginx
       - path: "/"
-        proxyPass: "http://nginx"
+        proxyPass: "https://nginx"
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -253,26 +269,35 @@ servers:
           - "X-Request-ID $request_id"
         proxyTimeout: "60s"
         extraConfig: |
-          # Rate limiting for general traffic
-          limit_req zone=general burst=50 nodelay;
-          limit_conn addr 20;
+          # TLS環境対応プロキシ設定
+          proxy_ssl_verify off;  # Cert-Manager証明書の自動検証回避
+          proxy_ssl_session_reuse on;  # TLSセッション再利用による性能向上
+          proxy_ssl_protocols TLSv1.2 TLSv1.3;  # 最新TLSプロトコル使用
 
-          # Proxy settings
+          # 暗号化環境用バッファリング最適化
+          proxy_buffering on;
           proxy_buffer_size 8k;
           proxy_buffers 16 8k;
           proxy_busy_buffers_size 16k;
 
-          # Cache static content
-          location ~* \.(css|js|jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot)$ {
-            expires 30d;
-            add_header Cache-Control "public, immutable";
-            add_header X-Cache-Status "STATIC";
-            proxy_pass http://nginx;
-          }
+          # TLS接続用タイムアウト調整
+          proxy_connect_timeout 10s;  # TLSハンドシェイク考慮
+          proxy_send_timeout 30s;
+          proxy_read_timeout 30s;
+
+          # ヘッダー重複回避設定
+          proxy_hide_header "Content-Type";  # アップストリームContent-Type制御
+          add_header Content-Type $upstream_http_content_type;  # 単一Content-Type確保
+
+          # 暗号化環境用エラーハンドリング
+          proxy_intercept_errors off;
+          proxy_next_upstream error timeout http_502 http_503 http_504;
+          proxy_next_upstream_tries 3;
+          proxy_next_upstream_timeout 45s;  # TLS再接続時間考慮
 
       # API routes with stricter rate limiting
       - path: "/api/"
-        proxyPass: "http://nginx"
+        proxyPass: "https://nginx"
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
