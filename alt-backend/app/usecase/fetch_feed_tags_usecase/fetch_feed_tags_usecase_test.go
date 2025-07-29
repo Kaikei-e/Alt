@@ -26,13 +26,13 @@ func TestFetchFeedTagsUsecase_Execute(t *testing.T) {
 	// Mock data for testing
 	mockTags := []*domain.FeedTag{
 		{
-			ID:        1,
-			Name:      "Technology",
+			ID:        "1",
+			TagName:   "Technology",
 			CreatedAt: time.Now(),
 		},
 		{
-			ID:        2,
-			Name:      "Programming",
+			ID:        "2",
+			TagName:   "Programming",
 			CreatedAt: time.Now(),
 		},
 	}
