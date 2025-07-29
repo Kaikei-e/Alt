@@ -1,7 +1,7 @@
 -- Create the article_tags junction table
 CREATE TABLE article_tags (
     article_id UUID     NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    feed_tag_id     INT      NOT NULL REFERENCES feed_tags(id)     ON DELETE CASCADE,
+    feed_tag_id     UUID      NOT NULL REFERENCES feed_tags(id)     ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (article_id, feed_tag_id)
 );
