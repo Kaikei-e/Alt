@@ -22,9 +22,9 @@ func (r *AltDBRepository) FetchFeedTags(ctx context.Context, feedID string, curs
 	if cursor == nil {
 		// First page - no cursor
 		query = `
-			SELECT DISTINCT t.id, t.name, t.created_at
-			FROM tags t
-			INNER JOIN article_tags at ON t.id = at.tag_id
+			SELECT DISTINCT t.id, t.tag_name, t.created_at
+			FROM feed_tags t
+			INNER JOIN article_tags at ON t.id = at.feed_tag_id
 			INNER JOIN articles a ON at.article_id = a.id
 			WHERE a.feed_id = $1
 			ORDER BY t.created_at DESC, t.id DESC
@@ -34,9 +34,9 @@ func (r *AltDBRepository) FetchFeedTags(ctx context.Context, feedID string, curs
 	} else {
 		// Subsequent pages - use cursor
 		query = `
-			SELECT DISTINCT t.id, t.name, t.created_at
-			FROM tags t
-			INNER JOIN article_tags at ON t.id = at.tag_id
+			SELECT DISTINCT t.id, t.tag_name, t.created_at
+			FROM feed_tags t
+			INNER JOIN article_tags at ON t.id = at.feed_tag_id
 			INNER JOIN articles a ON at.article_id = a.id
 			WHERE a.feed_id = $1
 			AND t.created_at < $2
