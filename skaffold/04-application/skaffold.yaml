@@ -8,7 +8,7 @@ build:
     push: false  # Local development with kind
     useDockerCLI: true
     useBuildkit: true
-    concurrency: 0
+    concurrency: 2  # 適度な並行処理（helm処理効率化）
     tryImportMissing: true
   tagPolicy:
     gitCommit: {}
@@ -18,11 +18,11 @@ build:
       docker:
         dockerfile: Dockerfile.frontend
 deploy:
-  statusCheckDeadlineSeconds: 600
+  statusCheckDeadlineSeconds: 900  # 15分（適切な延長）
   helm:
     flags:
-      install: ['--wait', '--timeout=300s']
-      upgrade: ['--wait', '--timeout=300s']
+      install: ['--wait', '--timeout=600s', '--debug', '--atomic']  # 10分、デバッグ有効、失敗時rollback
+      upgrade: ['--wait', '--timeout=600s', '--debug', '--atomic']
     releases:
       - name: alt-frontend
         chartPath: charts/alt-frontend
@@ -51,6 +51,8 @@ deploy:
         valuesFiles:
           - charts/nginx-external/values.yaml
           - charts/nginx-external/values-ssl.yaml
+        # 処理効率化設定
+        recreatePods: false  # Pod再作成回避で高速化
         version: 0.1.0
 profiles:
   - name: prod
@@ -67,11 +69,11 @@ profiles:
           docker:
             dockerfile: Dockerfile.frontend
     deploy:
-      statusCheckDeadlineSeconds: 600
+      statusCheckDeadlineSeconds: 900  # 本番環境も適切な延長
       helm:
         flags:
-          install: ['--wait', '--timeout=600s']
-          upgrade: ['--wait', '--timeout=600s']
+          install: ['--wait', '--timeout=600s', '--debug', '--atomic']
+          upgrade: ['--wait', '--timeout=600s', '--debug', '--atomic']
         releases:
           - name: alt-frontend
             chartPath: charts/alt-frontend

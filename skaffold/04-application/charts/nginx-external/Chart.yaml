@@ -15,7 +15,17 @@ sources:
 maintainers:
   - name: Alt Team
     email: team@alt.example.com
+
+# Dependency build最適化アノテーション
+annotations:
+  helm.sh/resource-policy: keep
+  dependency.build.optimized: "true"
+
 dependencies:
   - name: cloudflare-tunnel
     version: "0.3.2"
-    repository: "file://./charts/cloudflare-tunnel"
+    repository: "file://charts/cloudflare-tunnel"
+    # Import values最適化で処理効率向上
+    import-values:
+      - child: cloudflare
+        parent: cloudflare-tunnel.cloudflare

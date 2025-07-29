@@ -118,6 +118,88 @@ spec:
               kubernetes.io/metadata.name: {{ $.Values.networkPolicies.allowFromIngress.ingressNamespace }}
 {{- end }}
 
+{{- if $.Values.networkPolicies.allowExternalHttpsEgress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-https-egress
+  namespace: {{ $targetNamespace }}
+  labels:
+    {{- include "common-config.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  annotations:
+    {{- with $.Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    description: "Secure HTTPS-only egress policy for alt-backend RSS feed access"
+    security.policy/purpose: "RSS feed external access"
+    security.policy/principle: "least-privilege"
+    rfc1918.protection: "enabled"
+spec:
+  # Target only specified pods for external access
+  podSelector:
+    {{- toYaml $.Values.networkPolicies.allowExternalHttpsEgress.targetSelector | nindent 4 }}
+  policyTypes:
+    - Egress
+  egress:
+    # Allow specified ports to external internet only
+    - ports:
+        {{- range $.Values.networkPolicies.allowExternalHttpsEgress.ports }}
+        - protocol: {{ .protocol }}
+          port: {{ .port }}
+        {{- end }}
+      to:
+        - ipBlock:
+            # Allow all external internet (0.0.0.0/0)
+            cidr: 0.0.0.0/0
+            except:
+              {{- range $.Values.networkPolicies.allowExternalHttpsEgress.blockedCidrs }}
+              - {{ . }}
+              {{- end }}
+{{- end }}
+
+{{- if $.Values.networkPolicies.allowCloudflareEgress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cloudflare-egress
+  namespace: {{ $targetNamespace }}
+  labels:
+    {{- include "common-config.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  annotations:
+    {{- with $.Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    description: "Secure egress policy for cloudflare-tunnel external access"
+    security.policy/purpose: "Cloudflare tunnel connectivity"
+    security.policy/principle: "least-privilege"
+    rfc1918.protection: "enabled"
+spec:
+  # Target only cloudflare-tunnel pods
+  podSelector:
+    {{- toYaml $.Values.networkPolicies.allowCloudflareEgress.targetSelector | nindent 4 }}
+  policyTypes:
+    - Egress
+  egress:
+    # Allow minimal required ports for Cloudflare connectivity
+    - ports:
+        {{- range $.Values.networkPolicies.allowCloudflareEgress.ports }}
+        - protocol: {{ .protocol }}
+          port: {{ .port }}
+        {{- end }}
+      to:
+        - ipBlock:
+            # Allow external internet for Cloudflare edge servers
+            cidr: 0.0.0.0/0
+            except:
+              {{- range $.Values.networkPolicies.allowCloudflareEgress.blockedCidrs }}
+              - {{ . }}
+              {{- end }}
+{{- end }}
+
 {{- else }}
 {{- /* Deploy to all enabled namespaces (legacy behavior) */ -}}
 {{- range $namespaceName, $namespace := .Values.namespaces }}
@@ -228,6 +310,88 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ $.Values.networkPolicies.allowFromIngress.ingressNamespace }}
+{{- end }}
+
+{{- if and $.Values.networkPolicies.allowExternalHttpsEgress.enabled (eq $namespaceName "apps") }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-https-egress
+  namespace: {{ $namespace.name }}
+  labels:
+    {{- include "common-config.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  annotations:
+    {{- with $.Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    description: "Secure HTTPS-only egress policy for alt-backend RSS feed access"
+    security.policy/purpose: "RSS feed external access"
+    security.policy/principle: "least-privilege"
+    rfc1918.protection: "enabled"
+spec:
+  # Target only specified pods for external access
+  podSelector:
+    {{- toYaml $.Values.networkPolicies.allowExternalHttpsEgress.targetSelector | nindent 4 }}
+  policyTypes:
+    - Egress
+  egress:
+    # Allow specified ports to external internet only
+    - ports:
+        {{- range $.Values.networkPolicies.allowExternalHttpsEgress.ports }}
+        - protocol: {{ .protocol }}
+          port: {{ .port }}
+        {{- end }}
+      to:
+        - ipBlock:
+            # Allow all external internet (0.0.0.0/0)
+            cidr: 0.0.0.0/0
+            except:
+              {{- range $.Values.networkPolicies.allowExternalHttpsEgress.blockedCidrs }}
+              - {{ . }}
+              {{- end }}
+{{- end }}
+
+{{- if and $.Values.networkPolicies.allowCloudflareEgress.enabled (eq $namespaceName "ingress") }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cloudflare-egress
+  namespace: {{ $namespace.name }}
+  labels:
+    {{- include "common-config.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  annotations:
+    {{- with $.Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    description: "Secure egress policy for cloudflare-tunnel external access"
+    security.policy/purpose: "Cloudflare tunnel connectivity"
+    security.policy/principle: "least-privilege"
+    rfc1918.protection: "enabled"
+spec:
+  # Target only cloudflare-tunnel pods
+  podSelector:
+    {{- toYaml $.Values.networkPolicies.allowCloudflareEgress.targetSelector | nindent 4 }}
+  policyTypes:
+    - Egress
+  egress:
+    # Allow minimal required ports for Cloudflare connectivity
+    - ports:
+        {{- range $.Values.networkPolicies.allowCloudflareEgress.ports }}
+        - protocol: {{ .protocol }}
+          port: {{ .port }}
+        {{- end }}
+      to:
+        - ipBlock:
+            # Allow external internet for Cloudflare edge servers
+            cidr: 0.0.0.0/0
+            except:
+              {{- range $.Values.networkPolicies.allowCloudflareEgress.blockedCidrs }}
+              - {{ . }}
+              {{- end }}
 {{- end }}
 
 {{- end }}

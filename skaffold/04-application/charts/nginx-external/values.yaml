@@ -48,6 +48,45 @@ service:
   type: LoadBalancer
   port: 80
   httpsPort: 443
+
+# Cloudflare tunnel開発環境最適化設定
+cloudflare-tunnel:
+  enabled: true  # 必須機能として維持
+  
+  # 開発環境用軽量設定
+  replicaCount: 1
+  
+  # Image pull最適化
+  image:
+    repository: cloudflare/cloudflared
+    tag: "2025.7.0"
+    pullPolicy: IfNotPresent  # ローカルcache利用
+  
+  # 軽量リソース設定
+  resources:
+    limits:
+      cpu: 100m      # 軽量化
+      memory: 128Mi  # 軽量化
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  
+  # 開発環境では不要機能無効化
+  dynamicIpUpdate:
+    enabled: false
+  
+  # ヘルスチェック最適化（高速起動）
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10  # 高速化
+    periodSeconds: 30
+    timeoutSeconds: 5
+  
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5   # 高速化
+    periodSeconds: 10
+    timeoutSeconds: 3
   healthPort: 8080
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-type: "nlb"

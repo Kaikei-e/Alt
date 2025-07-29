@@ -150,6 +150,54 @@ networkPolicies:
     enabled: true
     ingressNamespace: alt-ingress
 
+  # External HTTPS egress for RSS feed access
+  allowExternalHttpsEgress:
+    enabled: true
+    # Target only alt-backend pods for external access
+    targetSelector:
+      matchLabels:
+        app.kubernetes.io/name: alt-backend
+    # Allowed ports for external access
+    ports:
+      - protocol: TCP
+        port: 443    # HTTPS only - HTTP (80) completely blocked
+      - protocol: UDP
+        port: 53     # DNS resolution
+      - protocol: TCP
+        port: 53     # DNS over TCP
+    # Blocked CIDR ranges for security
+    blockedCidrs:
+      - 10.0.0.0/8       # RFC1918 Class A private networks
+      - 172.16.0.0/12    # RFC1918 Class B private networks  
+      - 192.168.0.0/16   # RFC1918 Class C private networks
+      - 10.96.0.0/12     # KIND default service CIDR
+      - 10.244.0.0/16    # KIND default pod CIDR
+      - 127.0.0.0/8      # Loopback addresses
+      - 169.254.0.0/16   # Link-local addresses (AWS metadata, etc.)
+      - 224.0.0.0/4      # Multicast addresses
+      - 240.0.0.0/4      # Reserved addresses
+
+  # Cloudflare tunnel egress (最小限の追加)
+  allowCloudflareEgress:
+    enabled: true
+    # Target only cloudflare-tunnel pods
+    targetSelector:
+      matchLabels:
+        app.kubernetes.io/name: cloudflare-tunnel
+    # Minimal required ports
+    ports:
+      - protocol: TCP
+        port: 443    # HTTPS to Cloudflare edge
+      - protocol: UDP
+        port: 53     # DNS resolution
+      - protocol: TCP
+        port: 53     # DNS over TCP
+    # Same security blocks as RSS egress
+    blockedCidrs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+
 # Storage classes configuration
 storageClasses:
   enabled: false
