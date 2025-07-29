@@ -66,45 +66,47 @@ class TagInserter:
         if not all(isinstance(tag, str) and tag.strip() for tag in tags):
             raise ValueError("All tags must be non-empty strings")
 
-    def _insert_tags(self, cursor: Cursor, tags: List[str]) -> None:
+    def _insert_tags(self, cursor: Cursor, tags: List[str], feed_id: str) -> None:
         """
-        Insert tags into the tags table, ignoring duplicates.
+        Insert tags into the feed_tags table, ignoring duplicates.
 
         Args:
             cursor: Database cursor
             tags: List of tag names to insert
+            feed_id: Feed UUID to associate tags with
         """
         if not tags:
             return
 
         try:
-            tag_rows = [(tag.strip(),) for tag in tags]
+            tag_rows = [(feed_id, tag.strip(), 0.5) for tag in tags]  # Default confidence 0.5
             psycopg2.extras.execute_batch(
                 cursor,
                 """
-                INSERT INTO tags (name)
-                VALUES (%s)
-                ON CONFLICT (name) DO NOTHING
+                INSERT INTO feed_tags (feed_id, tag_name, confidence)
+                VALUES (%s::uuid, %s, %s)
+                ON CONFLICT (feed_id, tag_name) DO NOTHING
                 """,
                 tag_rows,
                 page_size=self.config.page_size,
             )
-            logger.debug("Inserted tags into tags table", count=len(tag_rows))
+            logger.debug("Inserted tags into feed_tags table", count=len(tag_rows))
 
         except psycopg2.Error as e:
             logger.error("Failed to insert tags", error=e)
             raise DatabaseError(f"Failed to insert tags: {e}") from e
 
-    def _get_tag_ids(self, cursor: Cursor, tags: List[str]) -> Dict[str, int]:
+    def _get_tag_ids(self, cursor: Cursor, tags: List[str], feed_id: str) -> Dict[str, str]:
         """
-        Retrieve tag IDs for the given tag names.
+        Retrieve tag IDs for the given tag names from feed_tags table.
 
         Args:
             cursor: Database cursor
             tags: List of tag names
+            feed_id: Feed UUID to filter tags by
 
         Returns:
-            Dictionary mapping tag names to their IDs
+            Dictionary mapping tag names to their UUIDs
         """
         if not tags:
             return {}
@@ -112,10 +114,11 @@ class TagInserter:
         try:
             clean_tags = [tag.strip() for tag in tags]
             cursor.execute(
-                "SELECT id, name FROM tags WHERE name = ANY(%s)", (clean_tags,)
+                "SELECT id, tag_name FROM feed_tags WHERE tag_name = ANY(%s) AND feed_id = %s::uuid", 
+                (clean_tags, feed_id)
             )
 
-            id_map = {name: tag_id for tag_id, name in cursor.fetchall()}
+            id_map = {name: str(tag_id) for tag_id, name in cursor.fetchall()}
 
             # Check if all tags were found
             missing_tags = set(clean_tags) - set(id_map.keys())
@@ -130,7 +133,7 @@ class TagInserter:
             raise DatabaseError(f"Failed to retrieve tag IDs: {e}") from e
 
     def _insert_article_tags(
-        self, cursor: Cursor, article_id: str, tag_ids: Dict[str, int]
+        self, cursor: Cursor, article_id: str, tag_ids: Dict[str, str]
     ) -> None:
         """
         Insert article-tag relationships into the article_tags table.
@@ -138,7 +141,7 @@ class TagInserter:
         Args:
             cursor: Database cursor
             article_id: Article UUID as string
-            tag_ids: Dictionary mapping tag names to their IDs
+            tag_ids: Dictionary mapping tag names to their UUIDs
         """
         if not tag_ids:
             return
@@ -148,9 +151,9 @@ class TagInserter:
             psycopg2.extras.execute_batch(
                 cursor,
                 """
-                INSERT INTO article_tags (article_id, tag_id)
-                VALUES (%s::uuid, %s)
-                ON CONFLICT (article_id, tag_id) DO NOTHING
+                INSERT INTO article_tags (article_id, feed_tag_id)
+                VALUES (%s::uuid, %s::uuid)
+                ON CONFLICT (article_id, feed_tag_id) DO NOTHING
                 """,
                 rel_rows,
                 page_size=self.config.page_size,
