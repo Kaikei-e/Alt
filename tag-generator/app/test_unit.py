@@ -491,29 +491,29 @@ class TestTagInserter:
         inserter = TagInserter()
 
         with patch("psycopg2.extras.execute_batch") as mock_execute_batch:
-            inserter._insert_tags(mock_cursor, ["tag1", "tag2", "tag3"])
+            inserter._insert_tags(mock_cursor, ["tag1", "tag2", "tag3"], "feed-uuid-1")
 
             # Should use execute_batch with ON CONFLICT DO NOTHING
             assert mock_execute_batch.called
             call_args = mock_execute_batch.call_args
             query = call_args[0][1]
-            assert "ON CONFLICT (name) DO NOTHING" in query
+            assert "ON CONFLICT (feed_id, tag_name) DO NOTHING" in query
 
     def test_should_get_tag_ids_correctly(self):
         """Should retrieve tag IDs for given tag names."""
         mock_cursor = Mock()
-        mock_cursor.fetchall.return_value = [(1, "tag1"), (2, "tag2"), (3, "tag3")]
+        mock_cursor.fetchall.return_value = [("uuid-1", "tag1"), ("uuid-2", "tag2"), ("uuid-3", "tag3")]
 
         inserter = TagInserter()
-        result = inserter._get_tag_ids(mock_cursor, ["tag1", "tag2", "tag3"])
+        result = inserter._get_tag_ids(mock_cursor, ["tag1", "tag2", "tag3"], "feed-uuid-1")
 
-        expected = {"tag1": 1, "tag2": 2, "tag3": 3}
+        expected = {"tag1": "uuid-1", "tag2": "uuid-2", "tag3": "uuid-3"}
         assert result == expected
 
         # Should use ANY(%s) for efficient querying
         mock_cursor.execute.assert_called_once()
         query = mock_cursor.execute.call_args[0][0]
-        assert "WHERE name = ANY(%s)" in query
+        assert "WHERE tag_name = ANY(%s) AND feed_id = %s::uuid" in query
 
     def test_should_insert_article_tag_relationships(self):
         """Should insert article-tag relationships correctly."""
@@ -522,7 +522,7 @@ class TestTagInserter:
         inserter = TagInserter()
 
         with patch("psycopg2.extras.execute_batch") as mock_execute_batch:
-            tag_ids = {"tag1": 1, "tag2": 2, "tag3": 3}
+            tag_ids = {"tag1": "uuid-1", "tag2": "uuid-2", "tag3": "uuid-3"}
             inserter._insert_article_tags(mock_cursor, "uuid-1", tag_ids)
 
             # Should use execute_batch with conflict resolution
@@ -530,7 +530,7 @@ class TestTagInserter:
             call_args = mock_execute_batch.call_args
             query = call_args[0][1]
             assert "INSERT INTO article_tags" in query
-            assert "ON CONFLICT (article_id, tag_id) DO NOTHING" in query
+            assert "ON CONFLICT (article_id, feed_tag_id) DO NOTHING" in query
 
     def test_should_handle_successful_upsert_transaction(self):
         """Should handle successful upsert with proper transaction management."""
@@ -540,10 +540,10 @@ class TestTagInserter:
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.__enter__ = Mock(return_value=mock_cursor)
         mock_cursor.__exit__ = Mock(return_value=None)
-        mock_cursor.fetchall.return_value = [(1, "tag1"), (2, "tag2")]
+        mock_cursor.fetchall.return_value = [("uuid-1", "tag1"), ("uuid-2", "tag2")]
 
         inserter = TagInserter()
-        result = inserter.upsert_tags(mock_conn, "uuid-1", ["tag1", "tag2"])
+        result = inserter.upsert_tags(mock_conn, "uuid-1", ["tag1", "tag2"], "feed-uuid-1")
 
         # Should commit transaction
         mock_conn.commit.assert_called_once()
@@ -561,7 +561,7 @@ class TestTagInserter:
         inserter = TagInserter()
 
         with pytest.raises(Exception):
-            inserter.upsert_tags(mock_conn, "uuid-1", ["tag1", "tag2"])
+            inserter.upsert_tags(mock_conn, "uuid-1", ["tag1", "tag2"], "feed-uuid-1")
 
         # Should attempt rollback
         mock_conn.rollback.assert_called_once()
@@ -574,7 +574,23 @@ class TestTagInserter:
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.__enter__ = Mock(return_value=mock_cursor)
         mock_cursor.__exit__ = Mock(return_value=None)
-        mock_cursor.fetchall.return_value = [(1, "tag1"), (2, "tag2"), (3, "tag3")]
+
+        # Mock feed_id queries - each article gets a feed_id
+        mock_cursor.fetchone.side_effect = [
+            ("feed-uuid-1",),  # uuid-1's feed_id
+            ("feed-uuid-1",),  # uuid-1's feed_id (second query)
+            ("feed-uuid-2",),  # uuid-2's feed_id
+            ("feed-uuid-2",),  # uuid-2's feed_id (second query)
+            ("feed-uuid-3",),  # uuid-3's feed_id
+            ("feed-uuid-3",),  # uuid-3's feed_id (second query)
+        ]
+
+        # Mock tag ID queries - return UUIDs for tags
+        mock_cursor.fetchall.return_value = [
+            ("tag-uuid-1", "tag1"),
+            ("tag-uuid-2", "tag2"),
+            ("tag-uuid-3", "tag3")
+        ]
 
         inserter = TagInserter()
 

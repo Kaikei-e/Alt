@@ -114,7 +114,7 @@ class TagInserter:
         try:
             clean_tags = [tag.strip() for tag in tags]
             cursor.execute(
-                "SELECT id, tag_name FROM feed_tags WHERE tag_name = ANY(%s) AND feed_id = %s::uuid", 
+                "SELECT id, tag_name FROM feed_tags WHERE tag_name = ANY(%s) AND feed_id = %s::uuid",
                 (clean_tags, feed_id)
             )
 
@@ -187,7 +187,7 @@ class TagInserter:
         """
         # Validate inputs
         self._validate_inputs(article_id, tags)
-        
+
         if not feed_id or not isinstance(feed_id, str):
             raise ValueError("feed_id must be a non-empty string")
 
@@ -321,33 +321,63 @@ class TagInserter:
 
                 logger.info("Processing valid articles with unique tags", valid_articles=len(valid_article_tags), unique_tags=len(all_tags))
 
-                # Step 1: Insert all unique tags at once
-                self._insert_tags(cursor, list(all_tags))
+                # Step 1: Get feed_id for each article and group tags by feed_id
+                feed_tag_groups = {}
+                for article_data in valid_article_tags:
+                    article_id = article_data["article_id"]
+                    # Get feed_id for this article
+                    cursor.execute(
+                        "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                        (article_id,)
+                    )
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        feed_id = result[0]
+                        if feed_id not in feed_tag_groups:
+                            feed_tag_groups[feed_id] = set()
+                        feed_tag_groups[feed_id].update(article_data["tags"])
 
-                # Step 2: Get all tag IDs at once
-                tag_id_map = self._get_tag_ids(cursor, list(all_tags))
+                # Step 2: Insert tags for each feed_id
+                for feed_id, tags in feed_tag_groups.items():
+                    self._insert_tags(cursor, list(tags), feed_id)
 
-                if not tag_id_map:
+                # Step 3: Get tag IDs for each feed_id
+                all_tag_id_maps = {}
+                for feed_id, tags in feed_tag_groups.items():
+                    tag_id_map = self._get_tag_ids(cursor, list(tags), feed_id)
+                    all_tag_id_maps[feed_id] = tag_id_map
+
+                if not all_tag_id_maps:
                     raise DatabaseError("No tag IDs could be retrieved")
 
-                # Step 3: Insert all article-tag relationships
+                # Step 4: Insert all article-tag relationships
                 all_relationships = []
                 for article_data in valid_article_tags:
                     article_id = article_data["article_id"]
                     article_tags_list = article_data["tags"]
 
-                    for tag in article_tags_list:
-                        if tag in tag_id_map:
-                            all_relationships.append((article_id, tag_id_map[tag]))
+                    # Get feed_id for this article to find the correct tag_id_map
+                    cursor.execute(
+                        "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                        (article_id,)
+                    )
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        feed_id = result[0]
+                        tag_id_map = all_tag_id_maps.get(feed_id, {})
+
+                        for tag in article_tags_list:
+                            if tag in tag_id_map:
+                                all_relationships.append((article_id, tag_id_map[tag]))
 
                 if all_relationships:
                     # Batch insert all relationships at once
                     psycopg2.extras.execute_batch(
                         cursor,
                         """
-                        INSERT INTO article_tags (article_id, tag_id)
-                        VALUES (%s::uuid, %s)
-                        ON CONFLICT (article_id, tag_id) DO NOTHING
+                        INSERT INTO article_tags (article_id, feed_tag_id)
+                        VALUES (%s::uuid, %s::uuid)
+                        ON CONFLICT (article_id, feed_tag_id) DO NOTHING
                         """,
                         all_relationships,
                         page_size=self.config.page_size,
@@ -475,33 +505,63 @@ class TagInserter:
                     unique_tags=len(all_tags),
                 )
 
-                # Step 1: Insert all unique tags at once
-                self._insert_tags(cursor, list(all_tags))
+                # Step 1: Get feed_id for each article and group tags by feed_id
+                feed_tag_groups = {}
+                for article_data in valid_article_tags:
+                    article_id = article_data["article_id"]
+                    # Get feed_id for this article
+                    cursor.execute(
+                        "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                        (article_id,)
+                    )
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        feed_id = result[0]
+                        if feed_id not in feed_tag_groups:
+                            feed_tag_groups[feed_id] = set()
+                        feed_tag_groups[feed_id].update(article_data["tags"])
 
-                # Step 2: Get all tag IDs at once
-                tag_id_map = self._get_tag_ids(cursor, list(all_tags))
+                # Step 2: Insert tags for each feed_id
+                for feed_id, tags in feed_tag_groups.items():
+                    self._insert_tags(cursor, list(tags), feed_id)
 
-                if not tag_id_map:
+                # Step 3: Get tag IDs for each feed_id
+                all_tag_id_maps = {}
+                for feed_id, tags in feed_tag_groups.items():
+                    tag_id_map = self._get_tag_ids(cursor, list(tags), feed_id)
+                    all_tag_id_maps[feed_id] = tag_id_map
+
+                if not all_tag_id_maps:
                     raise DatabaseError("No tag IDs could be retrieved")
 
-                # Step 3: Insert all article-tag relationships
+                # Step 4: Insert all article-tag relationships
                 all_relationships = []
                 for article_data in valid_article_tags:
                     article_id = article_data["article_id"]
                     article_tags_list = article_data["tags"]
 
-                    for tag in article_tags_list:
-                        if tag in tag_id_map:
-                            all_relationships.append((article_id, tag_id_map[tag]))
+                    # Get feed_id for this article to find the correct tag_id_map
+                    cursor.execute(
+                        "SELECT feed_id FROM articles WHERE id = %s::uuid",
+                        (article_id,)
+                    )
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        feed_id = result[0]
+                        tag_id_map = all_tag_id_maps.get(feed_id, {})
+
+                        for tag in article_tags_list:
+                            if tag in tag_id_map:
+                                all_relationships.append((article_id, tag_id_map[tag]))
 
                 if all_relationships:
                     # Batch insert all relationships at once
                     psycopg2.extras.execute_batch(
                         cursor,
                         """
-                        INSERT INTO article_tags (article_id, tag_id)
-                        VALUES (%s::uuid, %s)
-                        ON CONFLICT (article_id, tag_id) DO NOTHING
+                        INSERT INTO article_tags (article_id, feed_tag_id)
+                        VALUES (%s::uuid, %s::uuid)
+                        ON CONFLICT (article_id, feed_tag_id) DO NOTHING
                         """,
                         all_relationships,
                         page_size=self.config.page_size,
