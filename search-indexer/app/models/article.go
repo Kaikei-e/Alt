@@ -12,7 +12,7 @@ type Article struct {
 }
 
 type Tag struct {
-	ID        int       `json:"id" db:"id"`
-	Name      string    `json:"name" db:"name"`
+	ID        string    `json:"id" db:"id"`
+	TagName   string    `json:"tag_name" db:"tag_name"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
