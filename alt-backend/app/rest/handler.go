@@ -589,7 +589,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		for i, tag := range tags {
 			tagResponses[i] = FeedTagResponse{
 				ID:        tag.ID,
-				Name:      tag.Name,
+				Name:      tag.TagName,
 				CreatedAt: tag.CreatedAt.Format(time.RFC3339),
 			}
 		}
