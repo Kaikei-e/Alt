@@ -287,7 +287,7 @@ servers:
   # Main HTTP server (redirect to HTTPS)
   - listen:
       - "443"
-    serverName: "nginx.alt-ingress.svc.cluster.local"
+    serverName: "nginx-internal.alt-ingress.svc.cluster.local"
     extraConfig: |
       # TLS環境用Content-Type統一管理
       proxy_hide_header "Content-Type";  # 重複ヘッダー除去

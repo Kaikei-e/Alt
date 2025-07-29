@@ -310,8 +310,8 @@ profiles:
           - name: pre-processor
             chartPath: charts/pre-processor
             valuesFiles:
-              - charts/pre-processor/values-production.yaml
               - charts/pre-processor/values.yaml
+              - charts/pre-processor/values-production.yaml
             namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_kaikei_pre_processor}}"
@@ -322,8 +322,8 @@ profiles:
           - name: search-indexer
             chartPath: charts/search-indexer
             valuesFiles:
-              - charts/search-indexer/values-production.yaml
               - charts/search-indexer/values.yaml
+              - charts/search-indexer/values-production.yaml
             namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_kaikei_search_indexer}}"
@@ -334,8 +334,8 @@ profiles:
           - name: tag-generator
             chartPath: charts/tag-generator
             valuesFiles:
-              - charts/tag-generator/values-production.yaml
               - charts/tag-generator/values.yaml
+              - charts/tag-generator/values-production.yaml
             namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_kaikei_tag_generator}}"
@@ -346,8 +346,8 @@ profiles:
           - name: news-creator
             chartPath: charts/news-creator
             valuesFiles:
-              - charts/news-creator/values-production.yaml
               - charts/news-creator/values.yaml
+              - charts/news-creator/values-production.yaml
             namespace: alt-processing  # INCIDENT 82 FIX: Namespace統一
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_kaikei_news_creator}}"

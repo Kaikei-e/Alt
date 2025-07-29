@@ -139,7 +139,7 @@ data:
             # SSL終端リスナー設定：IPv4およびIPv6対応（nginx-unprivileged対応）
             listen 8443 ssl;
             listen [::]:8443 ssl;
-            server_name nginx.alt-ingress.svc.cluster.local nginx-internal.local;
+            server_name nginx-internal.alt-ingress.svc.cluster.local nginx-internal.local;
 
             # TLS証明書設定：Cert-Manager管理証明書使用
             ssl_certificate /etc/nginx/ssl/tls.crt;
@@ -409,7 +409,7 @@ data:
         server {
             listen 8080;
             listen [::]:8080;
-            server_name nginx.alt-ingress.svc.cluster.local;
+            server_name nginx-internal.alt-ingress.svc.cluster.local;
 
             # 全HTTPリクエストのHTTPS化
             return 301 https://$server_name$request_uri;

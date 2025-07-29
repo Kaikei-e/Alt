@@ -94,7 +94,7 @@ data:
             least_conn;
             
             # 主要アップストリーム: nginx内部サービス
-            server nginx.alt-ingress.svc.cluster.local:443 weight=2 max_fails=1 fail_timeout=10s;
+            server nginx-internal.alt-ingress.svc.cluster.local:443 weight=2 max_fails=1 fail_timeout=10s;
             
             # バックアップアップストリーム: 直接alt-backend接続（緊急時用）
             server alt-backend.alt-apps.svc.cluster.local:9000 weight=1 max_fails=1 fail_timeout=10s backup;

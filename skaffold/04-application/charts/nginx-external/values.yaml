@@ -247,7 +247,7 @@ upstreams:
   # INCIDENT 91 FIX: nginx-external → nginx-internal HTTPS接続統一
   - name: nginx
     servers:
-      - "nginx.alt-ingress.svc.cluster.local:8443"
+      - "nginx-internal.alt-ingress.svc.cluster.local:8443"
     loadBalancing: "least_conn"
     keepalive: 32
     healthCheck:
