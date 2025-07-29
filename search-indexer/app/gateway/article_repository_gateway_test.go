@@ -34,7 +34,7 @@ func TestArticleRepositoryGateway_GetArticlesWithTags(t *testing.T) {
 		ID:        "1",
 		Title:     "Title 1",
 		Content:   "Content 1",
-		Tags:      []driver.TagModel{{Name: "tag1"}, {Name: "tag2"}},
+		Tags:      []driver.TagModel{{TagName: "tag1"}, {TagName: "tag2"}},
 		CreatedAt: now,
 	}
 
@@ -42,7 +42,7 @@ func TestArticleRepositoryGateway_GetArticlesWithTags(t *testing.T) {
 		ID:        "2",
 		Title:     "Title 2",
 		Content:   "Content 2",
-		Tags:      []driver.TagModel{{Name: "tag3"}},
+		Tags:      []driver.TagModel{{TagName: "tag3"}},
 		CreatedAt: now.Add(time.Minute),
 	}
 
@@ -95,7 +95,7 @@ func TestArticleRepositoryGateway_GetArticlesWithTags(t *testing.T) {
 					ID:        "", // empty ID should cause domain validation error
 					Title:     "Title",
 					Content:   "Content",
-					Tags:      []driver.TagModel{{Name: "tag1"}},
+					Tags:      []driver.TagModel{{TagName: "tag1"}},
 					CreatedAt: now,
 				},
 			},
@@ -158,7 +158,7 @@ func TestArticleRepositoryGateway_ConvertToDomain(t *testing.T) {
 				ID:        "test-id",
 				Title:     "Test Title",
 				Content:   "Test Content",
-				Tags:      []driver.TagModel{{Name: "tag1"}, {Name: "tag2"}},
+				Tags:      []driver.TagModel{{TagName: "tag1"}, {TagName: "tag2"}},
 				CreatedAt: now,
 			},
 			wantErr: false,
@@ -177,7 +177,7 @@ func TestArticleRepositoryGateway_ConvertToDomain(t *testing.T) {
 				ID:        "",
 				Title:     "Test Title",
 				Content:   "Test Content",
-				Tags:      []driver.TagModel{{Name: "tag1"}},
+				Tags:      []driver.TagModel{{TagName: "tag1"}},
 				CreatedAt: now,
 			},
 			wantErr: true,
@@ -188,7 +188,7 @@ func TestArticleRepositoryGateway_ConvertToDomain(t *testing.T) {
 				ID:        "test-id",
 				Title:     "",
 				Content:   "Test Content",
-				Tags:      []driver.TagModel{{Name: "tag1"}},
+				Tags:      []driver.TagModel{{TagName: "tag1"}},
 				CreatedAt: now,
 			},
 			wantErr: true,

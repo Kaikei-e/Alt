@@ -86,7 +86,7 @@ func (i *Indexer) convertToDocuments(articles []*driver.ArticleWithTags) []drive
 	for _, art := range articles {
 		tags := make([]string, len(art.Tags))
 		for j, t := range art.Tags {
-			tags[j] = t.Name
+			tags[j] = t.TagName
 		}
 
 		docs = append(docs, driver.SearchDocumentDriver{
