@@ -56,7 +56,7 @@ func (r *AltDBRepository) FetchFeedTags(ctx context.Context, feedID string, curs
 	var tags []*domain.FeedTag
 	for rows.Next() {
 		var tag domain.FeedTag
-		err := rows.Scan(&tag.ID, &tag.Name, &tag.CreatedAt)
+		err := rows.Scan(&tag.ID, &tag.TagName, &tag.CreatedAt)
 		if err != nil {
 			logger.Logger.Error("error scanning feed tag", "error", err)
 			return nil, errors.New("error scanning feed tags")
