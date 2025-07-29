@@ -167,15 +167,16 @@ class TagInserter:
             ) from e
 
     def upsert_tags(
-        self, conn: Connection, article_id: str, tags: List[str]
+        self, conn: Connection, article_id: str, tags: List[str], feed_id: str
     ) -> Dict[str, Any]:
         """
-        Upsert tags into the tags table and create article-tag relationships.
+        Upsert tags into the feed_tags table and create article-tag relationships.
 
         Args:
             conn: Database connection
             article_id: Article UUID as string
             tags: List of tag names
+            feed_id: Feed UUID as string
 
         Returns:
             Dictionary with operation results
@@ -186,6 +187,9 @@ class TagInserter:
         """
         # Validate inputs
         self._validate_inputs(article_id, tags)
+        
+        if not feed_id or not isinstance(feed_id, str):
+            raise ValueError("feed_id must be a non-empty string")
 
         # Remove duplicates and empty tags
         unique_tags = list(set(tag.strip() for tag in tags if tag.strip()))
@@ -203,10 +207,10 @@ class TagInserter:
         try:
             with self._get_cursor(conn) as cursor:
                 # Step 1: Insert tags (ignoring duplicates)
-                self._insert_tags(cursor, unique_tags)
+                self._insert_tags(cursor, unique_tags, feed_id)
 
                 # Step 2: Get tag IDs
-                tag_id_map = self._get_tag_ids(cursor, unique_tags)
+                tag_id_map = self._get_tag_ids(cursor, unique_tags, feed_id)
 
                 if not tag_id_map:
                     raise DatabaseError("No tag IDs could be retrieved")
@@ -535,8 +539,8 @@ class TagInserter:
         return results
 
 
-# Maintain backward compatibility
-def upsert_tags(conn: Connection, article_id: str, tags: List[str]) -> None:
+# Maintain backward compatibility - requires feed_id now
+def upsert_tags(conn: Connection, article_id: str, tags: List[str], feed_id: str) -> None:
     """
     Legacy function for backward compatibility.
 
@@ -544,6 +548,7 @@ def upsert_tags(conn: Connection, article_id: str, tags: List[str]) -> None:
         conn: Database connection
         article_id: Article UUID as string
         tags: List of tag names
+        feed_id: Feed UUID as string
     """
     inserter = TagInserter()
-    inserter.upsert_tags(conn, article_id, tags)
+    inserter.upsert_tags(conn, article_id, tags, feed_id)
