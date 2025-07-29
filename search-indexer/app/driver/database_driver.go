@@ -192,7 +192,7 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 		var tags []TagModel
 		for _, tagName := range tagNames {
 			if tagName != "" {
-				tags = append(tags, TagModel{Name: tagName})
+				tags = append(tags, TagModel{TagName: tagName})
 			}
 		}
 		article.Tags = tags
@@ -235,7 +235,7 @@ func (d *DatabaseDriver) parseTagsJSON(tagsJSON []byte) ([]TagModel, error) {
 
 	result := make([]TagModel, len(tags))
 	for i, tag := range tags {
-		result[i] = TagModel{Name: tag.Name}
+		result[i] = TagModel{TagName: tag.Name}
 	}
 
 	return result, nil

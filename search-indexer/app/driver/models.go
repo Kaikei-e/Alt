@@ -13,7 +13,7 @@ type ArticleWithTags struct {
 
 // TagModel represents a tag from the database
 type TagModel struct {
-	Name string
+	TagName string
 }
 
 // SearchDocumentDriver represents a search document in the search engine

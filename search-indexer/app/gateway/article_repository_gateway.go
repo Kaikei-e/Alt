@@ -53,7 +53,7 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTags(ctx context.Context, last
 func (g *ArticleRepositoryGateway) convertToDomain(driverArticle *driver.ArticleWithTags) (*domain.Article, error) {
 	tags := make([]string, len(driverArticle.Tags))
 	for i, tag := range driverArticle.Tags {
-		tags[i] = tag.Name
+		tags[i] = tag.TagName
 	}
 
 	return domain.NewArticle(
