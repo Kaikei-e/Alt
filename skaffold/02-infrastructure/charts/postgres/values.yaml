@@ -67,6 +67,10 @@ auth:
     database: "database"
   replicationUser: ""
   replicationPassword: ""
+  # Microservice user passwords
+  preProcessorPassword: "devpassword123"
+  searchIndexerPassword: "devpassword123"
+  tagGeneratorPassword: "ProductionPassword123"
 
 # Database initialization scripts
 initScripts:

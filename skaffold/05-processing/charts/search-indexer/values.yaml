@@ -67,12 +67,15 @@ configMap:
   name: search-indexer-config
   data:
     .env: |
-      # Search Indexer Configuration
+      # Search Indexer Configuration (optimized for SSL stability)
       PORT=9300
       LOG_LEVEL=info
-      DB_MAX_CONNECTIONS=10
-      DB_MAX_IDLE_CONNECTIONS=2
-      DB_CONNECTION_MAX_LIFETIME=5m
+      DB_MAX_CONNECTIONS=8       # Reduced for connection stability
+      DB_MAX_IDLE_CONNECTIONS=2  # Maintained for SSL connection reuse
+      DB_CONNECTION_MAX_LIFETIME=3m  # Shorter for faster cycling
+      DB_CONNECT_TIMEOUT=60s     # Increased for SSL handshake
+      DB_PING_TIMEOUT=30s        # Increased for network latency
+      DB_SSL_TIMEOUT=45s         # Added SSL-specific timeout
 
 strategy:
   type: RollingUpdate

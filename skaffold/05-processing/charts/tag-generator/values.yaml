@@ -3,7 +3,7 @@ replicaCount: 1
 
 image:
   repository: kaikei/tag-generator  # INCIDENT 82 FIX: Core servicesパターン統一
-  pullPolicy: IfNotPresent  # INCIDENT 89 FIX: Skaffold auto-transform + digest-source=tag
+  pullPolicy: Always  # INCIDENT 100 FIX: Force new image pull for proper SHA256 deployment
   # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
   # tag: "production"
 
@@ -21,7 +21,7 @@ resources:
     cpu: "1000m"
 
 env:
-  DB_HOST: "db.alt-database.svc.cluster.local"
+  DB_HOST: "postgres.alt-database.svc.cluster.local"
   DB_NAME: "alt"
   DB_PORT: "5432"
   DB_SSL_MODE: "require"
@@ -30,8 +30,19 @@ env:
   SERVICE_NAME: "tag-generator"
   MODEL_PATH: "/app/models"
   MODEL_NAME: "gemma:2b"
-  OLLAMA_HOST: "http://ollama.alt-apps.svc.cluster.local:11434"
+  OLLAMA_HOST: "http://news-creator.alt-processing.svc.cluster.local:11434"
   OLLAMA_TIMEOUT: "180s"
+  UV_CACHE_DIR: "/tmp/.uv-cache"
+  UV_NO_CACHE: "false"
+  UV_PROJECT_ENVIRONMENT: "/app/.venv"
+  UV_NO_SYNC: "true"
+
+# Secret configuration
+secret:
+  create: true
+  name: tag-generator-secrets
+  data:
+    DB_TAG_GENERATOR_PASSWORD: "devpassword123"  # Change in production
 
 envFromSecret:
   name: tag-generator-secrets
@@ -53,8 +64,20 @@ commonAnnotations: {}
 podLabels: {}
 podAnnotations: {}
 imagePullSecrets: []
-volumeMounts: []
-volumes: []
+volumeMounts:
+  - name: uv-cache
+    mountPath: /.cache
+  - name: temp-dir
+    mountPath: /tmp
+  - name: venv-dir
+    mountPath: /app/.venv
+volumes:
+  - name: uv-cache
+    emptyDir: {}
+  - name: temp-dir
+    emptyDir: {}
+  - name: venv-dir
+    emptyDir: {}
 
 # ConfigMap configuration
 configMap:

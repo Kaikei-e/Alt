@@ -69,6 +69,10 @@ spec:
               mountPath: /app/.env
               subPath: .env
             {{- end }}
+            # SSL certificate mount for PostgreSQL connection
+            - name: ssl-certs
+              mountPath: /ssl
+              readOnly: true
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -81,6 +85,11 @@ spec:
               - key: .env
                 path: .env
         {{- end }}
+        # SSL certificate volume for PostgreSQL connection
+        - name: ssl-certs
+          secret:
+            secretName: postgres-ssl-secret
+            defaultMode: 0400
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

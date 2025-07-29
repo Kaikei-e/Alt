@@ -92,6 +92,14 @@ namespaces:
       service-type: authentication
       app.kubernetes.io/component: authentication
 
+  processing:
+    enabled: true
+    name: alt-processing
+    labels:
+      name: alt-processing
+      environment: production
+      service-type: processing
+
 # Common labels applied to all resources
 commonLabels:
   app.kubernetes.io/part-of: alt
@@ -144,6 +152,7 @@ networkPolicies:
       - alt-search
       - alt-auth
       - alt-ingress
+      - alt-processing
 
   # Allow ingress from ingress namespace
   allowFromIngress:

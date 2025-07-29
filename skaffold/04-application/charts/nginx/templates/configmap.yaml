@@ -117,11 +117,11 @@ data:
         }
 
         upstream backend_api {
-            ip_hash;     # IPハッシュによるセッション親和性
-            server alt-backend.alt-apps.svc.cluster.local:9000 weight=2 max_fails=2 fail_timeout=20s;
-            keepalive 32;        # APIサーバー用に多めの持続接続
-            keepalive_requests 200;  # API効率化のため多めのリクエスト数
-            keepalive_timeout 75s;
+            least_conn;  # 改善：最少接続数によるより効率的な負荷分散
+            server alt-backend.alt-apps.svc.cluster.local:9000 weight=2 max_fails=1 fail_timeout=10s;  # 高速フェイルオーバー
+            keepalive 64;        # APIサーバー用に接続プール強化
+            keepalive_requests 300;  # リクエスト処理能力向上
+            keepalive_timeout 90s;   # 外部nginxと整合性確保
         }
 
         # レート制限設定：DDoS攻撃やスパム防止
@@ -207,10 +207,10 @@ data:
                 proxy_redirect off;           # リダイレクトの透過処理
                 proxy_http_version 1.1;       # 持続接続の有効化
 
-                # 適切なタイムアウト設定
+                # 統一されたタイムアウト設定（外部nginxと整合性確保）
                 proxy_connect_timeout 30s;
-                proxy_send_timeout 120s;
-                proxy_read_timeout 120s;
+                proxy_send_timeout 180s;     # 外部nginxと統一
+                proxy_read_timeout 180s;     # 外部nginxと統一
                 # 一般用レート制限適用
                 limit_req zone=general_limit burst=50 nodelay;
             }
@@ -218,6 +218,10 @@ data:
 
             # manifest.json専用の処理
             location = /manifest.json {
+                # upstream重複ヘッダー防止：Content-Typeを隠す
+                proxy_hide_header Content-Type;
+                proxy_hide_header Cache-Control;
+                
                 # manifest.jsonへの直接アクセス用設定
                 proxy_pass http://frontend_app;
 
@@ -227,7 +231,7 @@ data:
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 proxy_set_header X-Forwarded-Proto https;
 
-                # manifest.json用の適切なヘッダー設定
+                # manifest.json用の適切なヘッダー設定（重複防止）
                 add_header Content-Type "application/manifest+json" always;
                 add_header Cache-Control "public, max-age=3600" always;
 
@@ -254,9 +258,19 @@ data:
                 proxy_set_header X-API-Request-ID $request_id;
                 proxy_set_header X-SSL-Authenticated true;
 
-                # API最適化タイムアウト（RSS feed validation対応）
+                # API最適化タイムアウト（RSS feed validation対応・統一設定）
                 proxy_connect_timeout 30s;
-                proxy_read_timeout 120s;
+                proxy_send_timeout 180s;    # 外部nginxと統一
+                proxy_read_timeout 180s;    # 外部nginxと統一
+                
+                # エラーハンドリング強化
+                proxy_intercept_errors on;
+                
+                # 接続安定性向上
+                proxy_set_header Connection "";
+                
+                # 詳細ログ出力（フィード登録問題診断用）
+                access_log /var/log/nginx/api_access.log ssl_main;
 
                 # JSON API用Content-Type設定
                 add_header Content-Type $upstream_http_content_type always;

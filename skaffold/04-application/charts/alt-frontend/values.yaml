@@ -11,7 +11,7 @@ service:
   targetPort: 3000
 
 ingress:
-  enabled: true
+  enabled: false  # alt-ingressで管理するため無効化
   className: "nginx"
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
