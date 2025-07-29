@@ -5,7 +5,7 @@ export interface FeedTags {
 }
 
 export interface FeedTag {
-  id: number;
+  id: string;
   name: string;
   created_at: string;
 }
