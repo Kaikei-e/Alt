@@ -2,135 +2,27 @@ apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: alt-application
-profiles:
-  - name: dev
-    build:
-      artifacts:
-        - image: alt-frontend
-          context: ../../alt-frontend
-          docker:
-            dockerfile: Dockerfile.frontend
-    deploy:
-      helm:
-        releases:
-          - name: alt-frontend
-            chartPath: charts/alt-frontend
-            namespace: alt-apps # INCIDENT 71 FIX: namespace統一
-            createNamespace: true
-            valuesFiles:
-              - charts/alt-frontend/values-development.yaml
-              - charts/alt-frontend/values.yaml
-            setValueTemplates:
-              # INCIDENT 80 FIX: REPORT.md指摘 - alt-frontend → alt_frontend変換
-              image.repository: "{{.IMAGE_REPO_alt_frontend}}"
-              image.tag: "{{.IMAGE_TAG_alt_frontend}}"
-            setValues:
-              image.pullPolicy: "IfNotPresent"
-            version: 0.1.0
-          - name: nginx
-            chartPath: charts/nginx
-            namespace: alt-ingress # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
-            createNamespace: true
-            valuesFiles:
-              - charts/nginx/values.yaml
-            version: 0.1.0
-          - name: nginx-external
-            chartPath: charts/nginx-external
-            namespace: alt-ingress # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
-            createNamespace: true
-            valuesFiles:
-              - charts/nginx-external/values.yaml # デフォルト設定（ベース）
-              - charts/nginx-external/values-ssl.yaml # SSL設定（Devは認証情報なしSSLのみ）
-            version: 0.1.0
-  - name: staging
-    build:
-      artifacts:
-        - image: alt-frontend
-          context: ../../alt-frontend
-          docker:
-            dockerfile: Dockerfile.frontend
-    deploy:
-      helm:
-        releases:
-          - name: alt-frontend
-            chartPath: charts/alt-frontend
-            namespace: alt-apps # INCIDENT 71 FIX: namespace統一
-            createNamespace: true
-            valuesFiles:
-              - charts/alt-frontend/values-staging.yaml
-              - charts/alt-frontend/values-ssl.yaml
-              - charts/alt-frontend/values.yaml
-            setValueTemplates:
-              # INCIDENT 80 FIX: REPORT.md指摘 - alt-frontend → alt_frontend変換
-              image.repository: "{{.IMAGE_REPO_alt_frontend}}"
-              image.tag: "{{.IMAGE_TAG_alt_frontend}}"
-            setValues:
-              image.pullPolicy: "IfNotPresent"
-            version: 0.1.0
-          - name: nginx
-            chartPath: charts/nginx
-            namespace: alt-ingress # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
-            createNamespace: true
-            valuesFiles:
-              - charts/nginx/values.yaml
-            version: 0.1.0
-          - name: nginx-external
-            chartPath: charts/nginx-external
-            namespace: alt-ingress # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
-            createNamespace: true
-            valuesFiles:
-              - charts/nginx-external/values.yaml # デフォルト設定（ベース）
-              - charts/nginx-external/values-ssl.yaml # SSL設定（Stagingは認証情報なしSSLのみ）
-            version: 0.1.0
-  - name: prod
-    build:
-      artifacts:
-        - image: alt-frontend
-          context: ../../alt-frontend
-          docker:
-            dockerfile: Dockerfile.frontend
-    deploy:
-      helm:
-        releases:
-          - name: alt-frontend
-            chartPath: charts/alt-frontend
-            namespace: alt-apps # INCIDENT 71 FIX: namespace統一
-            createNamespace: true
-            valuesFiles:
-              - charts/alt-frontend/values-production.yaml
-              - charts/alt-frontend/values.yaml
-            setValueTemplates:
-              # INCIDENT 80 FIX: REPORT.md指摘 - alt-frontend → alt_frontend変換
-              image.repository: "{{.IMAGE_REPO_alt_frontend}}"
-              image.tag: "{{.IMAGE_TAG_alt_frontend}}"
-            setValues:
-              image.pullPolicy: "IfNotPresent"
-            version: 0.1.0
-          - name: nginx
-            chartPath: charts/nginx
-            namespace: alt-ingress # INCIDENT 81 FIX: nginx外部接続点 → alt-ingress配置
-            createNamespace: true
-            valuesFiles:
-              - charts/nginx/values.yaml
-              - charts/nginx/values-production.yaml
-            version: 0.1.0
-          - name: nginx-external
-            chartPath: charts/nginx-external
-            namespace: alt-ingress # INCIDENT 83 FIX: SSL証明書アクセスのためalt-ingress配置
-            createNamespace: true
-            valuesFiles:
-              - charts/nginx-external/values.yaml # デフォルト設定（ベース）
-              - charts/nginx-external/values-cloudflare.yaml
-              - charts/nginx-external/values-production.yaml # 本番設定（最優先、認証情報含む）
-            version: 0.1.0
+# Default profile optimized for kind local development
 build:
+  local:
+    push: false  # Local development with kind
+    useDockerCLI: true
+    useBuildkit: true
+    concurrency: 0
+    tryImportMissing: true
+  tagPolicy:
+    gitCommit: {}
   artifacts:
     - image: alt-frontend
       context: ../../alt-frontend
       docker:
         dockerfile: Dockerfile.frontend
 deploy:
+  statusCheckDeadlineSeconds: 600
   helm:
+    flags:
+      install: ['--wait', '--timeout=300s']
+      upgrade: ['--wait', '--timeout=300s']
     releases:
       - name: alt-frontend
         chartPath: charts/alt-frontend
@@ -138,15 +30,12 @@ deploy:
         createNamespace: true
         valuesFiles:
           - charts/alt-frontend/values-development.yaml
-          - charts/alt-frontend/values-production.yaml
-          - charts/alt-frontend/values-ssl.yaml
-          - charts/alt-frontend/values-staging.yaml
           - charts/alt-frontend/values.yaml
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_alt_frontend}}"
           image.tag: "{{.IMAGE_TAG_alt_frontend}}"
         setValues:
-          image.pullPolicy: "IfNotPresent"
+          image.pullPolicy: "Never"  # Kind local development
         version: 0.1.0
       - name: nginx
         chartPath: charts/nginx
@@ -154,15 +43,62 @@ deploy:
         createNamespace: true
         valuesFiles:
           - charts/nginx/values.yaml
-          - charts/nginx/values-production.yaml
         version: 0.1.0
       - name: nginx-external
         chartPath: charts/nginx-external
         namespace: alt-ingress
         createNamespace: true
         valuesFiles:
-          - charts/nginx-external/values.yaml # デフォルト設定（ベース）
-          - charts/nginx-external/values-ssl.yaml # SSL設定
-          - charts/nginx-external/values-cloudflare.yaml
-          - charts/nginx-external/values-production.yaml # 本番設定（最優先、認証情報含む）
+          - charts/nginx-external/values.yaml
+          - charts/nginx-external/values-ssl.yaml
         version: 0.1.0
+profiles:
+  - name: prod
+    build:
+      local:
+        push: false
+        useDockerCLI: false
+        concurrency: 1
+      tagPolicy:
+        gitCommit: {}
+      artifacts:
+        - image: kaikei/alt-frontend
+          context: ../../alt-frontend
+          docker:
+            dockerfile: Dockerfile.frontend
+    deploy:
+      statusCheckDeadlineSeconds: 600
+      helm:
+        flags:
+          install: ['--wait', '--timeout=600s']
+          upgrade: ['--wait', '--timeout=600s']
+        releases:
+          - name: alt-frontend
+            chartPath: charts/alt-frontend
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/alt-frontend/values.yaml
+              - charts/alt-frontend/values-production.yaml
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_kaikei_alt_frontend}}"
+              image.tag: "{{.IMAGE_TAG_kaikei_alt_frontend}}"
+            setValues:
+              image.pullPolicy: "IfNotPresent"
+            version: 0.1.0
+          - name: nginx
+            chartPath: charts/nginx
+            namespace: alt-ingress
+            createNamespace: true
+            valuesFiles:
+              - charts/nginx/values.yaml
+              - charts/nginx/values-production.yaml
+            version: 0.1.0
+          - name: nginx-external
+            chartPath: charts/nginx-external
+            namespace: alt-ingress
+            createNamespace: true
+            valuesFiles:
+              - charts/nginx-external/values.yaml
+              - charts/nginx-external/values-production.yaml
+            version: 0.1.0

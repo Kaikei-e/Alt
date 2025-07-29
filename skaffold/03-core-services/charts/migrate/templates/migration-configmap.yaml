@@ -45,7 +45,13 @@ data:
     DROP TABLE IF EXISTS feed_links;
 
   000003_add_unique_constraint_feeds_link.up.sql: |
-    ALTER TABLE feeds ADD CONSTRAINT unique_feeds_link UNIQUE (link);
+    DO $$ 
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_feeds_link') THEN
+            ALTER TABLE feeds ADD CONSTRAINT unique_feeds_link UNIQUE (link);
+        END IF;
+    END
+    $$;
 
   000003_add_unique_constraint_feeds_link.down.sql: |
     ALTER TABLE feeds DROP CONSTRAINT IF EXISTS unique_feeds_link;
@@ -259,7 +265,7 @@ data:
     -- Create the article_tags junction table
     CREATE TABLE article_tags (
         article_id UUID     NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-        feed_tag_id     INT      NOT NULL REFERENCES feed_tags(id)     ON DELETE CASCADE,
+        feed_tag_id     UUID      NOT NULL REFERENCES feed_tags(id)     ON DELETE CASCADE,
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (article_id, feed_tag_id)
     );

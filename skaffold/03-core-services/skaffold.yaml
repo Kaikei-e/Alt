@@ -10,7 +10,7 @@ profiles:
           context: ../../alt-backend
           docker:
             dockerfile: Dockerfile.backend
-        - image: alt-migrate
+        - image: kaikei/migrate
           context: ../../migrate
           docker:
             dockerfile: Dockerfile.migrate
@@ -61,7 +61,7 @@ profiles:
           context: ../../alt-backend
           docker:
             dockerfile: Dockerfile.backend
-        - image: alt-migrate
+        - image: kaikei/migrate
           context: ../../migrate
           docker:
             dockerfile: Dockerfile.migrate
@@ -118,7 +118,7 @@ profiles:
           context: ../../alt-backend
           docker:
             dockerfile: Dockerfile.backend
-        - image: alt-migrate
+        - image: kaikei/migrate
           context: ../../migrate
           docker:
             dockerfile: Dockerfile.migrate
@@ -135,6 +135,9 @@ profiles:
             createNamespace: true
             setValues:
               namespaceLabels.name: "alt-database"
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_kaikei_migrate}}"
+              image.tag: "{{.IMAGE_TAG_kaikei_migrate}}"
             valuesFiles:
               - charts/migrate/values-production.yaml
             version: 0.1.0
@@ -181,7 +184,7 @@ build:
       context: ../../alt-backend
       docker:
         dockerfile: Dockerfile.backend
-    - image: alt-migrate
+    - image: kaikei/migrate
       context: ../../migrate
       docker:
         dockerfile: Dockerfile.migrate
