@@ -27,7 +27,7 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 
 	// Test data
 	rssURL := "https://example.com/feed.xml"
-	
+
 	// Mock feed items that should be fetched from external URL
 	mockFeedItems := []*domain.FeedItem{
 		{
@@ -45,7 +45,7 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 			Links: []string{"https://example.com/article1"},
 		},
 		{
-			Title:           "Test Article 2", 
+			Title:           "Test Article 2",
 			Description:     "Description for article 2",
 			Link:            "https://example.com/article2",
 			Published:       "2025-01-13T11:00:00Z",
@@ -264,15 +264,15 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 
 	t.Run("large_feed_with_many_items", func(t *testing.T) {
 		rssURL := "https://news.ycombinator.com/rss"
-		
+
 		// Create 100 mock feed items
 		largeFeedItems := make([]*domain.FeedItem, 100)
 		for i := 0; i < 100; i++ {
 			largeFeedItems[i] = &domain.FeedItem{
-				Title:       fmt.Sprintf("News Item %d", i+1),
-				Description: fmt.Sprintf("Description for news item %d", i+1),
-				Link:        fmt.Sprintf("https://news.ycombinator.com/item?id=%d", i+1),
-				Published:   time.Now().Add(time.Duration(-i) * time.Hour).Format(time.RFC3339),
+				Title:           fmt.Sprintf("News Item %d", i+1),
+				Description:     fmt.Sprintf("Description for news item %d", i+1),
+				Link:            fmt.Sprintf("https://news.ycombinator.com/item?id=%d", i+1),
+				Published:       time.Now().Add(time.Duration(-i) * time.Hour).Format(time.RFC3339),
 				PublishedParsed: time.Now().Add(time.Duration(-i) * time.Hour),
 			}
 		}
@@ -311,13 +311,13 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 
 	t.Run("feed_with_special_characters", func(t *testing.T) {
 		rssURL := "https://example.com/特殊文字フィード.xml"
-		
+
 		specialFeedItems := []*domain.FeedItem{
 			{
-				Title:       "記事タイトル with émojis 🚀 and <script>tags</script>",
-				Description: "Description with special chars: ñáéíóú & HTML <b>tags</b>",
-				Link:        "https://example.com/記事/1",
-				Published:   time.Now().Format(time.RFC3339),
+				Title:           "記事タイトル with émojis 🚀 and <script>tags</script>",
+				Description:     "Description with special chars: ñáéíóú & HTML <b>tags</b>",
+				Link:            "https://example.com/記事/1",
+				Published:       time.Now().Format(time.RFC3339),
 				PublishedParsed: time.Now(),
 			},
 		}

@@ -9,9 +9,9 @@ import (
 
 func TestAppContextError_Error(t *testing.T) {
 	tests := []struct {
-		name           string
+		name            string
 		appContextError *AppContextError
-		want           string
+		want            string
 	}{
 		{
 			name: "error with cause and full context",
@@ -146,7 +146,7 @@ func TestAppContextError_ToHTTPResponse(t *testing.T) {
 func TestNewAppContextError(t *testing.T) {
 	ctx := context.Background()
 	cause := errors.New("underlying error")
-	
+
 	appErr := NewAppContextError(
 		"DATABASE_ERROR",
 		"operation failed",

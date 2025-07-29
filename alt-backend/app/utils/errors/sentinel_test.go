@@ -199,7 +199,7 @@ func TestNewDatabaseUnavailableError(t *testing.T) {
 
 func TestErrorChainUnwrapping(t *testing.T) {
 	originalCause := errors.New("connection reset")
-	
+
 	// Create a wrapped error chain
 	dbErr := NewDatabaseUnavailableError("driver", "PostgresDriver", "Query", originalCause, map[string]interface{}{
 		"query": "SELECT * FROM feeds",

@@ -8,8 +8,8 @@ import (
 // Sentinel errors following 2025 Go best practices
 // These are base errors that can be used with errors.Is() and errors.As()
 var (
-	ErrFeedNotFound                = errors.New("feed not found")
-	ErrDatabaseUnavailable         = errors.New("database unavailable")
+	ErrFeedNotFound               = errors.New("feed not found")
+	ErrDatabaseUnavailable        = errors.New("database unavailable")
 	ErrRateLimitExceeded          = errors.New("rate limit exceeded")
 	ErrExternalServiceUnavailable = errors.New("external service unavailable")
 	ErrOperationTimeout           = errors.New("operation timeout")
@@ -50,9 +50,9 @@ func IsValidationError(err error) bool {
 
 // IsRetryableError determines if an error represents a condition that can be retried
 func IsRetryableError(err error) bool {
-	return IsRateLimitError(err) || 
-		   IsTimeoutError(err) || 
-		   IsExternalServiceError(err)
+	return IsRateLimitError(err) ||
+		IsTimeoutError(err) ||
+		IsExternalServiceError(err)
 }
 
 // Helper functions to create AppContextErrors that wrap sentinel errors
@@ -81,7 +81,7 @@ func NewDatabaseUnavailableError(layer, component, operation string, cause error
 	} else {
 		wrappedCause = fmt.Errorf("%w", ErrDatabaseUnavailable)
 	}
-	
+
 	return NewAppContextError(
 		"DATABASE_ERROR",
 		"database unavailable",
@@ -101,7 +101,7 @@ func NewRateLimitExceededError(layer, component, operation string, cause error, 
 	} else {
 		wrappedCause = fmt.Errorf("%w", ErrRateLimitExceeded)
 	}
-	
+
 	return NewAppContextError(
 		"RATE_LIMIT_ERROR",
 		"rate limit exceeded",
@@ -121,7 +121,7 @@ func NewExternalServiceUnavailableError(layer, component, operation string, caus
 	} else {
 		wrappedCause = fmt.Errorf("%w", ErrExternalServiceUnavailable)
 	}
-	
+
 	return NewAppContextError(
 		"EXTERNAL_API_ERROR",
 		"external service unavailable",
@@ -141,7 +141,7 @@ func NewOperationTimeoutError(layer, component, operation string, cause error, c
 	} else {
 		wrappedCause = fmt.Errorf("%w", ErrOperationTimeout)
 	}
-	
+
 	return NewAppContextError(
 		"TIMEOUT_ERROR",
 		"operation timeout",

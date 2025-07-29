@@ -13,7 +13,7 @@ import (
 func TestSingleFeedGateway_EnhancedErrorHandling(t *testing.T) {
 	// Initialize logger for testing to prevent nil pointer dereference
 	logger.InitLogger()
-	
+
 	tests := []struct {
 		name       string
 		setup      func() *SingleFeedGateway
@@ -87,7 +87,7 @@ func TestSingleFeedGateway_EnhancedErrorHandling(t *testing.T) {
 func TestSingleFeedGateway_ErrorContextEnrichment(t *testing.T) {
 	// Initialize logger for testing to prevent nil pointer dereference
 	logger.InitLogger()
-	
+
 	// Test that errors are properly enriched with context as they bubble up through layers
 	gateway := &SingleFeedGateway{
 		alt_db:      nil, // Simulate database unavailability

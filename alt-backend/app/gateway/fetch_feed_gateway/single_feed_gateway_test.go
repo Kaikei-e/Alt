@@ -12,11 +12,11 @@ func TestSingleFeedGateway_FetchSingleFeed_LoggerNilCase(t *testing.T) {
 	// Save original logger
 	originalLogger := logger.Logger
 	originalGlobalContext := logger.GlobalContext
-	
+
 	// Set logger to nil to simulate uninitialized state
 	logger.Logger = nil
 	logger.GlobalContext = nil
-	
+
 	// Restore logger after test
 	defer func() {
 		logger.Logger = originalLogger
@@ -30,22 +30,22 @@ func TestSingleFeedGateway_FetchSingleFeed_LoggerNilCase(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	
+
 	// GREEN: This should no longer panic after the fix
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("Unexpected panic occurred: %v", r)
 		}
 	}()
-	
+
 	// This call should NOT panic after the fix
 	_, err := gateway.FetchSingleFeed(ctx)
-	
+
 	// We should get an error but no panic
 	if err == nil {
 		t.Error("Expected error but got nil")
 	}
-	
+
 	// Verify it's an AppContextError
 	if appErr, ok := err.(*errors.AppContextError); ok {
 		t.Logf("Success: Got expected AppContextError: %s", appErr.Message)

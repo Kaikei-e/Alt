@@ -79,11 +79,11 @@ type HTTPConfig struct {
 }
 
 type AuthConfig struct {
-	ServiceURL      string        `json:"service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service:9500"`
-	Timeout         time.Duration `json:"timeout" env:"AUTH_TIMEOUT" default:"30s"`
-	EnableCSRF      bool          `json:"enable_csrf" env:"AUTH_ENABLE_CSRF" default:"true"`
-	RequireAuth     bool          `json:"require_auth" env:"AUTH_REQUIRE_AUTH" default:"true"`
-	SessionCookieName string      `json:"session_cookie_name" env:"AUTH_SESSION_COOKIE_NAME" default:"ory_kratos_session"`
+	ServiceURL        string        `json:"service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service:9500"`
+	Timeout           time.Duration `json:"timeout" env:"AUTH_TIMEOUT" default:"30s"`
+	EnableCSRF        bool          `json:"enable_csrf" env:"AUTH_ENABLE_CSRF" default:"true"`
+	RequireAuth       bool          `json:"require_auth" env:"AUTH_REQUIRE_AUTH" default:"true"`
+	SessionCookieName string        `json:"session_cookie_name" env:"AUTH_SESSION_COOKIE_NAME" default:"ory_kratos_session"`
 }
 
 // NewConfig creates a new configuration by loading from environment variables

@@ -19,9 +19,9 @@ import (
 
 func TestNewClient(t *testing.T) {
 	tests := []struct {
-		name     string
-		config   *config.Config
-		wantURL  string
+		name        string
+		config      *config.Config
+		wantURL     string
 		wantTimeout time.Duration
 	}{
 		{
@@ -76,17 +76,17 @@ func TestClient_ValidateSession(t *testing.T) {
 	tests := []struct {
 		name               string
 		sessionToken       string
-		tenantID          string
+		tenantID           string
 		mockResponseStatus int
 		mockResponse       interface{}
-		wantValid         bool
-		wantUserID        string
-		wantError         bool
+		wantValid          bool
+		wantUserID         string
+		wantError          bool
 	}{
 		{
 			name:               "valid session",
 			sessionToken:       "valid-session-token",
-			tenantID:          "tenant-123",
+			tenantID:           "tenant-123",
 			mockResponseStatus: http.StatusOK,
 			mockResponse: SessionValidationResponse{
 				Valid:  true,
@@ -105,7 +105,7 @@ func TestClient_ValidateSession(t *testing.T) {
 		{
 			name:               "invalid session",
 			sessionToken:       "invalid-session-token",
-			tenantID:          "tenant-123",
+			tenantID:           "tenant-123",
 			mockResponseStatus: http.StatusOK,
 			mockResponse: SessionValidationResponse{
 				Valid: false,
@@ -117,12 +117,12 @@ func TestClient_ValidateSession(t *testing.T) {
 		{
 			name:               "auth service error",
 			sessionToken:       "test-token",
-			tenantID:          "tenant-123",
+			tenantID:           "tenant-123",
 			mockResponseStatus: http.StatusInternalServerError,
 			mockResponse:       map[string]string{"error": "internal server error"},
-			wantValid:         false,
-			wantUserID:        "",
-			wantError:         true,
+			wantValid:          false,
+			wantUserID:         "",
+			wantError:          true,
 		},
 	}
 
@@ -172,8 +172,8 @@ func TestClient_GenerateCSRFToken(t *testing.T) {
 		sessionToken       string
 		mockResponseStatus int
 		mockResponse       interface{}
-		wantToken         string
-		wantError         bool
+		wantToken          string
+		wantError          bool
 	}{
 		{
 			name:               "successful token generation",
@@ -191,8 +191,8 @@ func TestClient_GenerateCSRFToken(t *testing.T) {
 			sessionToken:       "invalid-session-token",
 			mockResponseStatus: http.StatusUnauthorized,
 			mockResponse:       map[string]string{"error": "unauthorized"},
-			wantToken:         "",
-			wantError:         true,
+			wantToken:          "",
+			wantError:          true,
 		},
 	}
 
@@ -242,8 +242,8 @@ func TestClient_ValidateCSRFToken(t *testing.T) {
 		sessionToken       string
 		mockResponseStatus int
 		mockResponse       interface{}
-		wantValid         bool
-		wantError         bool
+		wantValid          bool
+		wantError          bool
 	}{
 		{
 			name:               "valid CSRF token",
@@ -273,8 +273,8 @@ func TestClient_ValidateCSRFToken(t *testing.T) {
 			sessionToken:       "test-session",
 			mockResponseStatus: http.StatusInternalServerError,
 			mockResponse:       map[string]string{"error": "internal server error"},
-			wantValid:         false,
-			wantError:         true,
+			wantValid:          false,
+			wantError:          true,
 		},
 	}
 
@@ -322,25 +322,25 @@ func TestClient_HealthCheck(t *testing.T) {
 		name               string
 		mockResponseStatus int
 		mockResponse       interface{}
-		wantError         bool
+		wantError          bool
 	}{
 		{
 			name:               "healthy service",
 			mockResponseStatus: http.StatusOK,
 			mockResponse:       map[string]string{"status": "ok"},
-			wantError:         false,
+			wantError:          false,
 		},
 		{
 			name:               "unhealthy service",
 			mockResponseStatus: http.StatusOK,
 			mockResponse:       map[string]string{"status": "error"},
-			wantError:         true,
+			wantError:          true,
 		},
 		{
 			name:               "service unavailable",
 			mockResponseStatus: http.StatusServiceUnavailable,
 			mockResponse:       map[string]string{"error": "service unavailable"},
-			wantError:         true,
+			wantError:          true,
 		},
 	}
 

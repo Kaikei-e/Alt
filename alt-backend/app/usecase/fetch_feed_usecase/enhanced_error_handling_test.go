@@ -25,7 +25,7 @@ func (m *mockFetchSingleFeedPort) FetchSingleFeed(ctx context.Context) (*domain.
 func TestFetchSingleFeedUsecase_EnhancedErrorHandling(t *testing.T) {
 	// Initialize logger for testing to prevent nil pointer dereference
 	logger.InitLogger()
-	
+
 	tests := []struct {
 		name       string
 		portError  error
@@ -102,9 +102,9 @@ func TestFetchSingleFeedUsecase_EnhancedErrorHandling(t *testing.T) {
 			},
 		},
 		{
-			name: "unknown error gets wrapped with usecase context",
+			name:      "unknown error gets wrapped with usecase context",
 			portError: stdErrors.New("unknown error from gateway"),
-			wantErr: true,
+			wantErr:   true,
 			checkError: func(t *testing.T, err error) {
 				// Check that unknown errors get wrapped properly
 				var appContextErr *errors.AppContextError
@@ -184,7 +184,7 @@ func TestFetchSingleFeedUsecase_SuccessfulExecution(t *testing.T) {
 func TestErrorContextEnrichment(t *testing.T) {
 	// Initialize logger for testing to prevent nil pointer dereference
 	logger.InitLogger()
-	
+
 	// Test that errors are properly enriched with usecase context
 	originalErr := errors.NewDatabaseUnavailableError(
 		"gateway",

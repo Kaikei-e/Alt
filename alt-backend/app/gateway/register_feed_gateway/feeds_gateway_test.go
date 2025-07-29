@@ -260,6 +260,27 @@ func TestRegisterFeedGateway_TimeoutHandling(t *testing.T) {
 			expectedError:   "timeout",
 			wantErr:         true,
 		},
+		{
+			name:            "extended timeout - should succeed with 40s delay",
+			url:             "https://httpbin.org/delay/40", // 40 second delay - should succeed
+			timeoutDuration: 60 * time.Second,
+			expectedError:   "database connection not available",
+			wantErr:         true, // Should succeed RSS fetch but fail at database level
+		},
+		{
+			name:            "verify extended timeout capacity",
+			url:             "https://httpbin.org/delay/35", // 35 second delay - should succeed
+			timeoutDuration: 60 * time.Second,
+			expectedError:   "database connection not available",
+			wantErr:         true, // Should succeed RSS fetch but fail at database level
+		},
+		{
+			name:            "medium delay feed should succeed with extended timeouts",
+			url:             "https://httpbin.org/delay/30", // 30 second delay
+			timeoutDuration: 60 * time.Second,
+			expectedError:   "database connection not available",
+			wantErr:         true, // Should succeed RSS fetch but fail at database level
+		},
 	}
 
 	for _, tt := range tests {
@@ -269,17 +290,17 @@ func TestRegisterFeedGateway_TimeoutHandling(t *testing.T) {
 			defer cancel()
 
 			err := gateway.RegisterRSSFeedLink(ctx, tt.url)
-			
+
 			if !tt.wantErr && err != nil {
 				t.Errorf("RegisterRSSFeedLink() unexpected error = %v", err)
 				return
 			}
-			
+
 			if tt.wantErr && err == nil {
 				t.Errorf("RegisterRSSFeedLink() expected error, got nil")
 				return
 			}
-			
+
 			if tt.expectedError != "" && !strings.Contains(err.Error(), tt.expectedError) {
 				t.Errorf("RegisterRSSFeedLink() error = %v, want error containing %v", err, tt.expectedError)
 			}
@@ -335,17 +356,17 @@ func TestRegisterFeedGateway_FeedFormatValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			err := gateway.RegisterRSSFeedLink(ctx, tt.url)
-			
+
 			if !tt.wantErr && err != nil {
 				t.Errorf("RegisterRSSFeedLink() unexpected error = %v", err)
 				return
 			}
-			
+
 			if tt.wantErr && err == nil {
 				t.Errorf("RegisterRSSFeedLink() expected error, got nil")
 				return
 			}
-			
+
 			if tt.expectedError != "" && !strings.Contains(err.Error(), tt.expectedError) {
 				t.Errorf("RegisterRSSFeedLink() error = %v, want error containing %v", err, tt.expectedError)
 			}

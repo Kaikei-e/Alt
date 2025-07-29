@@ -35,7 +35,7 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 	if g.alt_db == nil {
 		dbErr := errors.NewDatabaseUnavailableError(
 			"gateway",
-			"SingleFeedGateway", 
+			"SingleFeedGateway",
 			"FetchSingleFeed",
 			nil,
 			map[string]interface{}{
@@ -51,7 +51,7 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 	if err != nil {
 		dbErr := errors.NewDatabaseUnavailableError(
 			"gateway",
-			"SingleFeedGateway", 
+			"SingleFeedGateway",
 			"FetchRSSFeedURLs",
 			err,
 			map[string]interface{}{
@@ -82,7 +82,7 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 		if err := g.rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
 			rateLimitErr := errors.NewRateLimitExceededError(
 				"gateway",
-				"SingleFeedGateway", 
+				"SingleFeedGateway",
 				"WaitForHost",
 				err,
 				map[string]interface{}{
@@ -104,7 +104,7 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 	if err != nil {
 		apiErr := errors.NewExternalServiceUnavailableError(
 			"gateway",
-			"SingleFeedGateway", 
+			"SingleFeedGateway",
 			"ParseURL",
 			err,
 			map[string]interface{}{

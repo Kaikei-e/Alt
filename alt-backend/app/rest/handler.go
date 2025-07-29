@@ -660,12 +660,12 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 				"RESTHandler",
 				"register_feed",
 				map[string]interface{}{
-					"url":          rssFeedLink.URL,
-					"reason":       err.Error(),
-					"path":         c.Request().URL.Path,
-					"method":       c.Request().Method,
-					"remote_addr":  c.Request().RemoteAddr,
-					"request_id":   c.Response().Header().Get("X-Request-ID"),
+					"url":         rssFeedLink.URL,
+					"reason":      err.Error(),
+					"path":        c.Request().URL.Path,
+					"method":      c.Request().Method,
+					"remote_addr": c.Request().RemoteAddr,
+					"request_id":  c.Response().Header().Get("X-Request-ID"),
 				},
 			)
 			logger.Logger.Error("URL validation failed", "error", securityErr.Error(), "url", rssFeedLink.URL)
@@ -704,12 +704,12 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 				"RESTHandler",
 				"register_favorite_feed",
 				map[string]interface{}{
-					"url":          payload.URL,
-					"reason":       err.Error(),
-					"path":         c.Request().URL.Path,
-					"method":       c.Request().Method,
-					"remote_addr":  c.Request().RemoteAddr,
-					"request_id":   c.Response().Header().Get("X-Request-ID"),
+					"url":         payload.URL,
+					"reason":      err.Error(),
+					"path":        c.Request().URL.Path,
+					"method":      c.Request().Method,
+					"remote_addr": c.Request().RemoteAddr,
+					"request_id":  c.Response().Header().Get("X-Request-ID"),
 				},
 			)
 			logger.Logger.Error("URL validation failed", "error", securityErr.Error(), "url", payload.URL)
@@ -860,11 +860,11 @@ func handleError(c echo.Context, err error, operation string) error {
 			"RESTHandler",
 			operation,
 			map[string]interface{}{
-				"path":         c.Request().URL.Path,
-				"method":       c.Request().Method,
-				"remote_addr":  c.Request().RemoteAddr,
-				"user_agent":   c.Request().UserAgent(),
-				"request_id":   c.Response().Header().Get("X-Request-ID"),
+				"path":        c.Request().URL.Path,
+				"method":      c.Request().Method,
+				"remote_addr": c.Request().RemoteAddr,
+				"user_agent":  c.Request().UserAgent(),
+				"request_id":  c.Response().Header().Get("X-Request-ID"),
 			},
 		)
 	} else if appErr, ok := err.(*errors.AppError); ok {
@@ -877,11 +877,11 @@ func handleError(c echo.Context, err error, operation string) error {
 			operation,
 			appErr.Cause,
 			map[string]interface{}{
-				"path":         c.Request().URL.Path,
-				"method":       c.Request().Method,
-				"remote_addr":  c.Request().RemoteAddr,
-				"user_agent":   c.Request().UserAgent(),
-				"request_id":   c.Response().Header().Get("X-Request-ID"),
+				"path":           c.Request().URL.Path,
+				"method":         c.Request().Method,
+				"remote_addr":    c.Request().RemoteAddr,
+				"user_agent":     c.Request().UserAgent(),
+				"request_id":     c.Response().Header().Get("X-Request-ID"),
 				"legacy_context": appErr.Context,
 			},
 		)
@@ -894,11 +894,11 @@ func handleError(c echo.Context, err error, operation string) error {
 			operation,
 			err,
 			map[string]interface{}{
-				"path":         c.Request().URL.Path,
-				"method":       c.Request().Method,
-				"remote_addr":  c.Request().RemoteAddr,
-				"user_agent":   c.Request().UserAgent(),
-				"request_id":   c.Response().Header().Get("X-Request-ID"),
+				"path":        c.Request().URL.Path,
+				"method":      c.Request().Method,
+				"remote_addr": c.Request().RemoteAddr,
+				"user_agent":  c.Request().UserAgent(),
+				"request_id":  c.Response().Header().Get("X-Request-ID"),
 			},
 		)
 	}
@@ -926,13 +926,13 @@ func handleValidationError(c echo.Context, message string, field string, value i
 		"RESTHandler",
 		"validateInput",
 		map[string]interface{}{
-			"field":        field,
-			"value":        value,
-			"path":         c.Request().URL.Path,
-			"method":       c.Request().Method,
-			"remote_addr":  c.Request().RemoteAddr,
-			"user_agent":   c.Request().UserAgent(),
-			"request_id":   c.Response().Header().Get("X-Request-ID"),
+			"field":       field,
+			"value":       value,
+			"path":        c.Request().URL.Path,
+			"method":      c.Request().Method,
+			"remote_addr": c.Request().RemoteAddr,
+			"user_agent":  c.Request().UserAgent(),
+			"request_id":  c.Response().Header().Get("X-Request-ID"),
 		},
 	)
 
