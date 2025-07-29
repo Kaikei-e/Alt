@@ -143,12 +143,12 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 		query = `
 			SELECT a.id, a.title, a.content, a.created_at,
 				   COALESCE(
-					   array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL),
+					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
 					   '{}'
 				   ) as tag_names
 			FROM articles a
 			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN tags t ON at.tag_id = t.id
+			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
 			GROUP BY a.id, a.title, a.content, a.created_at
 			ORDER BY a.created_at DESC, a.id DESC
 			LIMIT $1
@@ -159,12 +159,12 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 		query = `
 			SELECT a.id, a.title, a.content, a.created_at,
 				   COALESCE(
-					   array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL),
+					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
 					   '{}'
 				   ) as tag_names
 			FROM articles a
 			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN tags t ON at.tag_id = t.id
+			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
 			WHERE (a.created_at, a.id) < ($1, $2)
 			GROUP BY a.id, a.title, a.content, a.created_at
 			ORDER BY a.created_at DESC, a.id DESC
