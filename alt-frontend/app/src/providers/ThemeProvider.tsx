@@ -10,14 +10,14 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Ensure the theme is valid, fallback to liquid-beige
   const isValidTheme = (t: string | undefined): t is Theme =>
-    t === "vaporwave" || t === "liquid-beige";
-  const currentTheme = isValidTheme(theme) ? theme : "liquid-beige";
+    t === "vaporwave" || t === "alt-paper";
+  const currentTheme = isValidTheme(theme) ? theme : "alt-paper";
 
   const contextValue = {
     currentTheme,
     toggleTheme: () => {
       const nextTheme =
-        currentTheme === "liquid-beige" ? "vaporwave" : "liquid-beige";
+        currentTheme === "alt-paper" ? "vaporwave" : "alt-paper";
       setTheme(nextTheme);
     },
     setTheme,

@@ -94,11 +94,11 @@ describe("ThemeProvider", () => {
     });
 
     const themeDisplay = screen.getByTestId("theme-display");
-    expect(themeDisplay.textContent).toBe("liquid-beige");
+    expect(themeDisplay.textContent).toBe("alt-paper");
   });
 
   it("should restore theme from localStorage", async () => {
-    localStorageMock.getItem.mockReturnValue("liquid-beige");
+    localStorageMock.getItem.mockReturnValue("alt-paper");
 
     render(
       <ThemeProvider>
@@ -111,11 +111,11 @@ describe("ThemeProvider", () => {
     });
 
     const themeDisplay = screen.getByTestId("theme-display");
-    expect(themeDisplay.textContent).toBe("liquid-beige");
+    expect(themeDisplay.textContent).toBe("alt-paper");
   });
 
   it("should update body data-style attribute", async () => {
-    localStorageMock.getItem.mockReturnValue("liquid-beige");
+    localStorageMock.getItem.mockReturnValue("alt-paper");
 
     render(
       <ThemeProvider>
@@ -130,12 +130,12 @@ describe("ThemeProvider", () => {
     // Note: next-themes now handles DOM manipulation directly
     // We can verify the theme is set correctly through the context value
     const themeDisplay = screen.getByTestId("theme-display");
-    expect(themeDisplay.textContent).toBe("liquid-beige");
+    expect(themeDisplay.textContent).toBe("alt-paper");
   });
 
   it("should handle theme toggle", async () => {
     const user = userEvent.setup();
-    localStorageMock.getItem.mockReturnValue("liquid-beige");
+    localStorageMock.getItem.mockReturnValue("alt-paper");
 
     render(
       <ThemeProvider>
@@ -151,7 +151,7 @@ describe("ThemeProvider", () => {
     const themeDisplay = screen.getByTestId("theme-display");
 
     // Initial theme should be liquid-beige
-    expect(themeDisplay.textContent).toBe("liquid-beige");
+    expect(themeDisplay.textContent).toBe("alt-paper");
 
     await user.click(toggleBtn);
 
@@ -161,7 +161,7 @@ describe("ThemeProvider", () => {
     });
 
     // After toggle, should be liquid-beige
-    expect(themeDisplay.textContent).toBe("liquid-beige");
+    expect(themeDisplay.textContent).toBe("alt-paper");
   });
 
   it("should fallback to default theme for invalid stored theme", async () => {
@@ -180,6 +180,6 @@ describe("ThemeProvider", () => {
     const themeDisplay = screen.getByTestId("theme-display");
     // next-themes will use the invalid theme as-is, but our fallback logic should handle it
     // If the invalid theme is passed through, our component should fallback to liquid-beige
-    expect(themeDisplay.textContent).toBe("liquid-beige");
+    expect(themeDisplay.textContent).toBe("alt-paper");
   });
 });

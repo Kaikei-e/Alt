@@ -1,4 +1,4 @@
-export type Theme = "vaporwave" | "liquid-beige";
+export type Theme = "vaporwave" | "alt-paper";
 
 export interface ThemeConfig {
   name: Theme;
@@ -19,9 +19,9 @@ export const THEME_CONFIGS: Record<Theme, ThemeConfig> = {
     label: "Vaporwave",
     description: "Neon retro-future aesthetic",
   },
-  "liquid-beige": {
-    name: "liquid-beige",
-    label: "Liquid Beige",
+  "alt-paper": {
+    name: "alt-paper",
+    label: "Alt Paper",
     description: "Earthy luxury design",
   },
 } as const;
