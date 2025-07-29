@@ -3,7 +3,9 @@ package register_feed_gateway
 import (
 	"alt/domain"
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -221,5 +223,132 @@ func TestRegisterFeedsGateway_LargeDataset(t *testing.T) {
 	err := gateway.RegisterFeeds(context.Background(), largeFeeds)
 	if err == nil {
 		t.Error("RegisterFeedsGateway.RegisterFeeds() expected error with nil database, got nil")
+	}
+}
+
+// TDD Red Phase: RSS feed validation timeout tests
+func TestRegisterFeedGateway_TimeoutHandling(t *testing.T) {
+	gateway := &RegisterFeedGateway{
+		alt_db: nil, // Database will be mocked for timeout testing
+	}
+
+	tests := []struct {
+		name            string
+		url             string
+		timeoutDuration time.Duration
+		expectedError   string
+		wantErr         bool
+	}{
+		{
+			name:            "timeout on slow RSS feed",
+			url:             "https://httpbin.org/delay/20", // Simulates 20 second delay
+			timeoutDuration: 1 * time.Second,
+			expectedError:   "timeout",
+			wantErr:         true,
+		},
+		{
+			name:            "valid RSS feed within timeout",
+			url:             "https://feeds.feedburner.com/oreilly", // Real RSS feed
+			timeoutDuration: 30 * time.Second,
+			expectedError:   "",
+			wantErr:         true, // Still expect error due to nil database
+		},
+		{
+			name:            "context deadline exceeded",
+			url:             "https://httpbin.org/delay/15",
+			timeoutDuration: 2 * time.Second,
+			expectedError:   "timeout",
+			wantErr:         true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create context with timeout for testing
+			ctx, cancel := context.WithTimeout(context.Background(), tt.timeoutDuration)
+			defer cancel()
+
+			err := gateway.RegisterRSSFeedLink(ctx, tt.url)
+			
+			if !tt.wantErr && err != nil {
+				t.Errorf("RegisterRSSFeedLink() unexpected error = %v", err)
+				return
+			}
+			
+			if tt.wantErr && err == nil {
+				t.Errorf("RegisterRSSFeedLink() expected error, got nil")
+				return
+			}
+			
+			if tt.expectedError != "" && !strings.Contains(err.Error(), tt.expectedError) {
+				t.Errorf("RegisterRSSFeedLink() error = %v, want error containing %v", err, tt.expectedError)
+			}
+		})
+	}
+}
+
+// TDD Red Phase: Test RSS feed format validation with various formats
+func TestRegisterFeedGateway_FeedFormatValidation(t *testing.T) {
+	gateway := &RegisterFeedGateway{
+		alt_db: nil,
+	}
+
+	tests := []struct {
+		name          string
+		url           string
+		expectedError string
+		wantErr       bool
+	}{
+		{
+			name:          "invalid RSS feed format - HTML page",
+			url:           "https://httpbin.org/html",
+			expectedError: "invalid RSS feed format",
+			wantErr:       true,
+		},
+		{
+			name:          "invalid RSS feed format - JSON response",
+			url:           "https://httpbin.org/json",
+			expectedError: "database connection not available",
+			wantErr:       true,
+		},
+		{
+			name:          "unreachable URL",
+			url:           "https://nonexistent-domain-12345.com/feed.xml",
+			expectedError: "could not reach the RSS feed URL",
+			wantErr:       true,
+		},
+		{
+			name:          "malformed URL",
+			url:           "not-a-url",
+			expectedError: "URL must include a scheme",
+			wantErr:       true,
+		},
+		{
+			name:          "URL without scheme",
+			url:           "example.com/feed.xml",
+			expectedError: "URL must include a scheme",
+			wantErr:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			err := gateway.RegisterRSSFeedLink(ctx, tt.url)
+			
+			if !tt.wantErr && err != nil {
+				t.Errorf("RegisterRSSFeedLink() unexpected error = %v", err)
+				return
+			}
+			
+			if tt.wantErr && err == nil {
+				t.Errorf("RegisterRSSFeedLink() expected error, got nil")
+				return
+			}
+			
+			if tt.expectedError != "" && !strings.Contains(err.Error(), tt.expectedError) {
+				t.Errorf("RegisterRSSFeedLink() error = %v, want error containing %v", err, tt.expectedError)
+			}
+		})
 	}
 }
