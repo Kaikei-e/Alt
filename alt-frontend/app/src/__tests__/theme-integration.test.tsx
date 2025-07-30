@@ -80,17 +80,17 @@ describe("Theme Integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.getItem.mockReturnValue(null);
-    getAttributeMock.mockReturnValue("liquid-beige");
+    getAttributeMock.mockReturnValue("alt-paper");
 
-    // Setup default CSS variables for liquid-beige theme
+    // Setup default CSS variables for alt-paper theme
     mockGetComputedStyle.mockReturnValue({
       getPropertyValue: vi.fn((prop: string) => {
         const cssVars: Record<string, string> = {
           "--foreground": "#2c2c2c",
-          "--background": "#d1c0a8",
-          "--accent-primary": "#b85450",
-          "--accent-secondary": "#7c9070",
-          "--accent-tertiary": "#d4a574",
+          "--background": "#f8f6f2",
+          "--accent-primary": "#6b7280",
+          "--accent-secondary": "#9ca3af",
+          "--accent-tertiary": "#d1d5db",
         };
         return cssVars[prop] || "";
       }),
@@ -105,7 +105,7 @@ describe("Theme Integration", () => {
     window.getComputedStyle = originalGetComputedStyle;
   });
 
-  it("デフォルトでliquid-beigeテーマが適用される", async () => {
+  it("デフォルトでalt-paperテーマが適用される", async () => {
     render(
       <ThemeProvider>
         <ThemeToggle />
@@ -117,9 +117,9 @@ describe("Theme Integration", () => {
       expect(screen.getByTestId("theme-toggle-button")).toBeDefined();
     });
 
-    // Verify default theme is liquid-beige
+    // Verify default theme is alt-paper
     const toggleButton = screen.getByTestId("theme-toggle-button");
-    expect(toggleButton.getAttribute("aria-checked")).toBe("false"); // liquid-beige = false (not vaporwave)
+    expect(toggleButton.getAttribute("aria-checked")).toBe("false"); // alt-paper = false (not vaporwave)
 
     // Wait for the component to fully mount and show icon
     await waitFor(() => {
