@@ -48,8 +48,11 @@ func getEnvString(key, defaultValue string) string {
 
 func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
-		if parsed, err := strconv.Atoi(value); err == nil {
-			return parsed
+		if parsed, err := strconv.ParseInt(value, 10, 64); err == nil {
+			// Check bounds for int type (platform-dependent)
+			if parsed <= int64(^int(0)>>1) && parsed >= int64(-^int(0)>>1)-1 {
+				return int(parsed)
+			}
 		}
 	}
 

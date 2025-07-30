@@ -170,7 +170,7 @@ func parseScore(response string) (Score, error) {
 
 	if len(matches) == 2 {
 		scoreStr := matches[1]
-		score, err := strconv.Atoi(scoreStr)
+		score, err := strconv.ParseInt(scoreStr, 10, 64)
 		if err != nil {
 			logger.Logger.Error("Failed to convert score to integer", "score_str", scoreStr, "error", err)
 			return Score{}, fmt.Errorf("failed to convert score to integer: %w", err)
@@ -183,7 +183,7 @@ func parseScore(response string) (Score, error) {
 			score = 30
 		}
 
-		return Score{Overall: score}, nil
+		return Score{Overall: int(score)}, nil
 	}
 
 	// Fallback: try to find any integer in the response
@@ -192,7 +192,7 @@ func parseScore(response string) (Score, error) {
 
 	if len(matches) == 2 {
 		scoreStr := matches[1]
-		score, err := strconv.Atoi(scoreStr)
+		score, err := strconv.ParseInt(scoreStr, 10, 64)
 		if err != nil {
 			logger.Logger.Error("Failed to convert fallback score to integer", "score_str", scoreStr, "error", err)
 			return Score{}, fmt.Errorf("failed to convert fallback score to integer: %w", err)
@@ -206,7 +206,7 @@ func parseScore(response string) (Score, error) {
 		}
 
 		logger.Logger.Info("Used fallback score parsing", "score", score)
-		return Score{Overall: score}, nil
+		return Score{Overall: int(score)}, nil
 	}
 
 	logger.Logger.Error("Could not extract score from response", "response", response)
@@ -224,7 +224,7 @@ func attemptEmergencyParsing(response string) *Score {
 
 	// If we have at least 1 number, use the first one
 	if len(numbers) >= 1 {
-		score, err := strconv.Atoi(numbers[0])
+		score, err := strconv.ParseInt(numbers[0], 10, 64)
 		if err == nil {
 			// Clamp score to valid range (0-30)
 			if score < 0 {
@@ -234,7 +234,7 @@ func attemptEmergencyParsing(response string) *Score {
 			}
 
 			logger.Logger.Info("Emergency parsing successful", "number", numbers[0], "score", score)
-			return &Score{Overall: score}
+			return &Score{Overall: int(score)}
 		}
 	}
 
