@@ -56,7 +56,7 @@ export default defineConfig({
     // CI ではビルド→本番起動、ローカルでは next dev
     command: "next dev --port 3010",
     url: "http://localhost:3010",
-    reuseExistingServer: !isCI,
+    reuseExistingServer: true,
     timeout: 1200 * 1000, // 20分のWebServerタイムアウト
   },
 });
