@@ -46,3 +46,4 @@ pv-data/
 
 # SSL configuration files
 */values-ssl.yaml
+log.txt
