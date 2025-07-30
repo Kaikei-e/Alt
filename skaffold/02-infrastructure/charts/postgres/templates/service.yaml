@@ -16,6 +16,9 @@ spec:
       targetPort: postgres
       protocol: TCP
       name: postgres
+      {{- if .Values.service.appProtocol }}
+      appProtocol: {{ .Values.service.appProtocol }}
+      {{- end }}
   selector:
     {{- include "postgres.selectorLabels" . | nindent 4 }}
 ---
@@ -40,6 +43,9 @@ spec:
       targetPort: postgres
       protocol: TCP
       name: postgres
+      {{- if .Values.service.appProtocol }}
+      appProtocol: {{ .Values.service.appProtocol }}
+      {{- end }}
   selector:
     {{- include "postgres.selectorLabels" . | nindent 4 }}
 {{- end }}

@@ -21,6 +21,11 @@ serviceAccount:
 podAnnotations:
   kompose.cmd: "kompose convert -f compose.yaml --out ./k8s-manifests/"
   kompose.version: "1.36.0 (ae2a39403)"
+  linkerd.io/inject: enabled
+  # ULTRATHINK Phase 1.1: PostgreSQL完全統一設定
+  config.linkerd.io/opaque-ports: "5432"
+  config.linkerd.io/proxy-protocol-detection-timeout: "0s"
+  config.linkerd.io/proxy-inbound-connect-timeout: "60s"
 
 podLabels: {}
 
@@ -49,16 +54,22 @@ securityContext:
 service:
   type: ClusterIP
   port: 5432
-  annotations: {}
+  annotations:
+    config.linkerd.io/opaque-ports: "5432"  # PostgreSQL mTLS service protection
+    config.linkerd.io/response-timeout: "30s"  # レポートPhase 1.2: サービスタイムアウト強化
+    config.linkerd.io/proxy-protocol-detection-timeout: "0s"  # 🔥 Phase 1.5: Service Protocol Detection無効化
 
   headless:
     enabled: true
-    annotations: {}
+    annotations:
+      config.linkerd.io/opaque-ports: "5432"  # PostgreSQL mTLS headless service protection
+      config.linkerd.io/response-timeout: "30s"  # レポートPhase 1.2: ヘッドレスサービスタイムアウト強化
+      config.linkerd.io/proxy-protocol-detection-timeout: "0s"  # 🔥 Phase 1.5: Headless Protocol Detection無効化
 
-# Authentication
+# Authentication - 開発環境用基本設定
 auth:
   username: "alt_db_user"
-  password: "ProductionPassword123"
+  password: "devpassword123"  # 開発環境用パスワード
   database: "alt"
   existingSecret: ""
   secretKeys:
@@ -67,10 +78,10 @@ auth:
     database: "database"
   replicationUser: ""
   replicationPassword: ""
-  # Microservice user passwords
+  # Microservice user passwords - 開発環境用
   preProcessorPassword: "devpassword123"
   searchIndexerPassword: "devpassword123"
-  tagGeneratorPassword: "ProductionPassword123"
+  tagGeneratorPassword: "devpassword123"
 
 # Database initialization scripts
 initScripts:
@@ -94,7 +105,14 @@ postgres:
     maxWorkers: 3
     naptime: "1min"
 
-  customConfig: ""
+  customConfig: |
+    # REPORT1.md推奨TCP keepalive設定
+    tcp_keepalives_idle = 300
+    tcp_keepalives_interval = 30
+    tcp_keepalives_count = 3
+
+    # 接続プール最適化
+    shared_preload_libraries = 'pg_stat_statements'
 
 # pg_hba.conf configuration
 pgHba:
@@ -111,17 +129,15 @@ pgHba:
       method: "md5"
   customRules: ""
 
-# SSL configuration - Enhanced for 2025 security standards
+# SSL configuration - ULTRATHINK: Linkerd mTLS only, PostgreSQL SSL完全無効化
 ssl:
-  enabled: true
-  secretName: "postgres-ssl-secret"
-  mode: "require"  # Force SSL for all connections
-  certPath: "/ssl/server.crt"
-  keyPath: "/ssl/server.key"
-  caPath: "/ssl/ca.crt"
-  # TLS 1.2 stable security - PostgreSQL 16 compatible
-  minProtocolVersion: "TLSv1.2"  
-  cipherSuites: "HIGH:MEDIUM:+3DES:!aNULL"
+  enabled: false
+  mode: "disable"
+
+# PostgreSQL SSL設定完全無効化
+postgresql:
+  ssl: false
+  sslMode: "disable"
 
 # Persistence - INCIDENT 20 FIX: Unified to standard (local-path)
 persistence:
@@ -166,6 +182,8 @@ initContainers: []
 extraEnv: []
 extraVolumes: []
 extraVolumeMounts: []
+
+# SSL configuration - mTLS完全移行: 基本設定でSSL無効  # Linkerd mTLS使用、PostgreSQL SSL無効
 
 # Common labels and annotations
 commonLabels: {}

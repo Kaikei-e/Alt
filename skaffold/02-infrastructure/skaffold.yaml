@@ -92,40 +92,40 @@ profiles:
             namespace: alt-database
             createNamespace: true
             valuesFiles:
-              - charts/postgres/values-production.yaml
               - charts/postgres/values.yaml
+              - charts/postgres/values-production.yaml
             version: 0.1.0
           - name: kratos-postgres
             chartPath: charts/kratos-postgres
             namespace: alt-auth
             createNamespace: true
             valuesFiles:
-              - charts/kratos-postgres/values-production.yaml
               - charts/kratos-postgres/values.yaml
+              - charts/kratos-postgres/values-production.yaml
             version: 0.1.0
           - name: auth-postgres
             chartPath: charts/auth-postgres
             namespace: alt-auth
             createNamespace: true
             valuesFiles:
-              - charts/auth-postgres/values-production.yaml
               - charts/auth-postgres/values.yaml
+              - charts/auth-postgres/values-production.yaml
             version: 0.1.0
           - name: clickhouse
             chartPath: charts/clickhouse
             namespace: alt-analytics
             createNamespace: true
             valuesFiles:
-              - charts/clickhouse/values-production.yaml
               - charts/clickhouse/values.yaml
+              - charts/clickhouse/values-production.yaml
             version: 0.1.0
           - name: meilisearch
             chartPath: charts/meilisearch
             namespace: alt-search
             createNamespace: true
             valuesFiles:
-              - charts/meilisearch/values-production.yaml
               - charts/meilisearch/values.yaml
+              - charts/meilisearch/values-production.yaml
             version: 0.1.0
 deploy:
   statusCheckDeadlineSeconds: 9600             # 160分: セキュア・クリーンデプロイのための拡張待機時間

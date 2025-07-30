@@ -152,6 +152,8 @@ spec:
             - postgres
             - -c
             - config_file=/etc/postgresql/postgresql.conf
+            - -c
+            - hba_file=/etc/postgresql/pg_hba.conf
           ports:
             - name: postgres
               containerPort: 5432
