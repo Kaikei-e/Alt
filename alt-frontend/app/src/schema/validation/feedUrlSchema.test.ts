@@ -13,6 +13,12 @@ describe("Feed URL Schema", () => {
         { feed_url: "https://example.com/feeds/" },
         { feed_url: "https://example.com/feed" },
         { feed_url: "https://example.com/atom" },
+        { feed_url: "https://example.com/rss2" },
+        { feed_url: "https://example.com/rss20" },
+        { feed_url: "https://example.com/index.rdf" },
+        { feed_url: "https://example.com/feed.rdf" },
+        { feed_url: "https://www.techno-edge.net/rss20/index.rdf" },
+        { feed_url: "https://gihyo.jp/feed/rss2" },
       ];
 
       validRssUrls.forEach((feedUrl) => {
@@ -30,6 +36,7 @@ describe("Feed URL Schema", () => {
         { feed_url: "https://example.com/page.html" },
         { feed_url: "https://example.com/about" },
         { feed_url: "https://example.com/blog" },
+        { feed_url: "https://example.com/rssfeed" }, // rssfeed is not a valid pattern
       ];
 
       nonRssUrls.forEach((feedUrl) => {
@@ -82,9 +89,25 @@ describe("Feed URL Schema", () => {
         { feed_url: "https://example.com/rss?format=xml" },
         { feed_url: "https://example.com/feed.xml#latest" },
         { feed_url: "https://subdomain.example.com/feeds/all" },
+        { feed_url: "https://example.com/rss2?param=value" },
+        { feed_url: "https://example.com/index.rdf#section" },
       ];
 
       edgeCases.forEach((feedUrl) => {
+        const result = v.safeParse(feedUrlSchema, feedUrl);
+        expect(result.success).toBe(true);
+      });
+    });
+
+    it("should handle @ prefixed URLs", () => {
+      const atPrefixedUrls = [
+        { feed_url: "https://example.com/rss" },
+        { feed_url: "https://example.com/feed.xml" },
+        { feed_url: "https://example.com/rss2" },
+        { feed_url: "https://example.com/index.rdf" },
+      ];
+
+      atPrefixedUrls.forEach((feedUrl) => {
         const result = v.safeParse(feedUrlSchema, feedUrl);
         expect(result.success).toBe(true);
       });
