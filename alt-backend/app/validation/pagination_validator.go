@@ -2,6 +2,7 @@ package validation
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -60,8 +61,8 @@ func (v *PaginationValidator) validateLimit(limitField interface{}) *ValidationE
 		}
 	}
 
-	// Parse limit as integer
-	limit, err := strconv.Atoi(strings.TrimSpace(limitStr))
+	// Parse limit as integer with bounds checking
+	limit, err := strconv.ParseInt(strings.TrimSpace(limitStr), 10, 64)
 	if err != nil {
 		return &ValidationError{
 			Field:   "limit",
@@ -79,7 +80,7 @@ func (v *PaginationValidator) validateLimit(limitField interface{}) *ValidationE
 		}
 	}
 
-	// Check if limit is not too large
+	// Check if limit is not too large (max 1000)
 	if limit > 1000 {
 		return &ValidationError{
 			Field:   "limit",
@@ -101,8 +102,8 @@ func (v *PaginationValidator) validatePage(pageField interface{}) *ValidationErr
 		}
 	}
 
-	// Parse page as integer
-	page, err := strconv.Atoi(strings.TrimSpace(pageStr))
+	// Parse page as integer with bounds checking
+	page, err := strconv.ParseInt(strings.TrimSpace(pageStr), 10, 64)
 	if err != nil {
 		return &ValidationError{
 			Field:   "page",
@@ -116,6 +117,15 @@ func (v *PaginationValidator) validatePage(pageField interface{}) *ValidationErr
 		return &ValidationError{
 			Field:   "page",
 			Message: "Page must be a non-negative integer",
+			Value:   pageStr,
+		}
+	}
+
+	// Check if page is not too large (prevent overflow in calculations)
+	if page > math.MaxInt32 {
+		return &ValidationError{
+			Field:   "page",
+			Message: "Page number too large",
 			Value:   pageStr,
 		}
 	}

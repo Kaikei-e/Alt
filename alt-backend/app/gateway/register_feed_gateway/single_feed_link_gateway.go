@@ -16,12 +16,16 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
-type RegisterFeedGateway struct {
-	alt_db *alt_db.AltDBRepository
+// RSSFeedFetcher interface for mocking RSS feed fetching
+type RSSFeedFetcher interface {
+	FetchRSSFeed(ctx context.Context, link string) (*gofeed.Feed, error)
 }
 
-func NewRegisterFeedLinkGateway(pool *pgxpool.Pool) *RegisterFeedGateway {
-	return &RegisterFeedGateway{alt_db: alt_db.NewAltDBRepositoryWithPool(pool)}
+// DefaultRSSFeedFetcher implements RSSFeedFetcher with actual HTTP requests
+type DefaultRSSFeedFetcher struct{}
+
+func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (*gofeed.Feed, error) {
+	return f.fetchRSSFeedWithRetry(ctx, link)
 }
 
 // isRetryableError determines if an error should trigger a retry
@@ -37,7 +41,7 @@ func isRetryableError(err error) bool {
 }
 
 // fetchRSSFeedWithRetry performs RSS feed fetching with exponential backoff retry
-func (g *RegisterFeedGateway) fetchRSSFeedWithRetry(ctx context.Context, link string) (*gofeed.Feed, error) {
+func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link string) (*gofeed.Feed, error) {
 	const maxRetries = 3
 	const initialDelay = 2 * time.Second
 	const maxDelay = 30 * time.Second
@@ -102,6 +106,26 @@ func (g *RegisterFeedGateway) fetchRSSFeedWithRetry(ctx context.Context, link st
 	return nil, lastErr
 }
 
+type RegisterFeedGateway struct {
+	alt_db      *alt_db.AltDBRepository
+	feedFetcher RSSFeedFetcher
+}
+
+func NewRegisterFeedLinkGateway(pool *pgxpool.Pool) *RegisterFeedGateway {
+	return &RegisterFeedGateway{
+		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
+		feedFetcher: &DefaultRSSFeedFetcher{},
+	}
+}
+
+// NewRegisterFeedLinkGatewayWithFetcher creates a gateway with a custom RSS feed fetcher (for testing)
+func NewRegisterFeedLinkGatewayWithFetcher(pool *pgxpool.Pool, fetcher RSSFeedFetcher) *RegisterFeedGateway {
+	return &RegisterFeedGateway{
+		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
+		feedFetcher: fetcher,
+	}
+}
+
 func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link string) error {
 	// Parse and validate the URL
 	parsedURL, err := url.Parse(link)
@@ -115,7 +139,7 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 	}
 
 	// Try to fetch and parse the RSS feed with retry mechanism
-	feed, err := g.fetchRSSFeedWithRetry(ctx, link)
+	feed, err := g.feedFetcher.FetchRSSFeed(ctx, link)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such host") || strings.Contains(err.Error(), "connection refused") {
 			return errors.New("could not reach the RSS feed URL")

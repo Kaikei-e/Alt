@@ -3,6 +3,7 @@ package alt_db
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"time"
 
@@ -23,9 +24,23 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("invalid connection string: %w", err)
 	}
 
-	// プール設定を明示的に設定
-	config.MaxConns = int32(getEnvIntOrDefault("DB_MAX_CONNS", 20))
-	config.MinConns = int32(getEnvIntOrDefault("DB_MIN_CONNS", 5))
+	// プール設定を明示的に設定（bounds checking付き）
+	maxConns := getEnvIntOrDefault("DB_MAX_CONNS", 20)
+	if maxConns > math.MaxInt32 {
+		logger.Logger.Warn("DB_MAX_CONNS value too large, using maximum allowed value",
+			"provided", maxConns, "max_allowed", math.MaxInt32)
+		maxConns = math.MaxInt32
+	}
+	config.MaxConns = int32(maxConns)
+
+	minConns := getEnvIntOrDefault("DB_MIN_CONNS", 5)
+	if minConns > math.MaxInt32 {
+		logger.Logger.Warn("DB_MIN_CONNS value too large, using maximum allowed value",
+			"provided", minConns, "max_allowed", math.MaxInt32)
+		minConns = math.MaxInt32
+	}
+	config.MinConns = int32(minConns)
+
 	maxConnLifetime, _ := time.ParseDuration(getEnvOrDefault("DB_MAX_CONN_LIFE", "30m"))
 	config.MaxConnLifetime = maxConnLifetime
 	config.HealthCheckPeriod = time.Minute

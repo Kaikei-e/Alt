@@ -8,11 +8,11 @@ import (
 
 // SSL設定構造体完全削除
 type DatabaseConfig struct {
-	Host        string
-	Port        string
-	User        string
-	Password    string
-	DBName      string
+	Host     string
+	Port     string
+	User     string
+	Password string
+	DBName   string
 	// 接続プール設定追加
 	MaxConns    int
 	MinConns    int
@@ -51,8 +51,11 @@ func getEnvOrDefault(key, defaultValue string) string {
 
 func getEnvIntOrDefault(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
-		if intValue, err := strconv.Atoi(value); err == nil {
-			return intValue
+		if intValue, err := strconv.ParseInt(value, 10, 64); err == nil {
+			// Check bounds for int type (platform-dependent)
+			if intValue <= int64(^int(0)>>1) && intValue >= int64(-^int(0)>>1)-1 {
+				return int(intValue)
+			}
 		}
 	}
 	return defaultValue

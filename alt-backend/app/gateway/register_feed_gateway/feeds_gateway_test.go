@@ -3,12 +3,54 @@ package register_feed_gateway
 import (
 	"alt/domain"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mmcdole/gofeed"
 )
+
+// MockRSSFeedFetcher for testing
+type MockRSSFeedFetcher struct {
+	feeds  map[string]*gofeed.Feed
+	errors map[string]error
+}
+
+func NewMockRSSFeedFetcher() *MockRSSFeedFetcher {
+	return &MockRSSFeedFetcher{
+		feeds:  make(map[string]*gofeed.Feed),
+		errors: make(map[string]error),
+	}
+}
+
+func (m *MockRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (*gofeed.Feed, error) {
+	// Check if we should return an error for this URL
+	if err, exists := m.errors[link]; exists {
+		return nil, err
+	}
+
+	// Check if we have a mock feed for this URL
+	if feed, exists := m.feeds[link]; exists {
+		return feed, nil
+	}
+
+	// Default: return a valid mock feed
+	return &gofeed.Feed{
+		Title:    "Test Feed",
+		Link:     link,
+		FeedLink: link,
+	}, nil
+}
+
+func (m *MockRSSFeedFetcher) SetFeed(url string, feed *gofeed.Feed) {
+	m.feeds[url] = feed
+}
+
+func (m *MockRSSFeedFetcher) SetError(url string, err error) {
+	m.errors[url] = err
+}
 
 func TestRegisterFeedsGateway_RegisterFeeds(t *testing.T) {
 	gateway := &RegisterFeedsGateway{
@@ -77,9 +119,8 @@ func TestRegisterFeedsGateway_RegisterFeeds(t *testing.T) {
 }
 
 func TestRegisterFeedGateway_RegisterRSSFeedLink(t *testing.T) {
-	gateway := &RegisterFeedGateway{
-		alt_db: nil, // This will cause an error, which we can test
-	}
+	mockFetcher := NewMockRSSFeedFetcher()
+	gateway := NewRegisterFeedLinkGatewayWithFetcher(nil, mockFetcher)
 
 	type args struct {
 		ctx context.Context
@@ -87,9 +128,10 @@ func TestRegisterFeedGateway_RegisterRSSFeedLink(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
+		name      string
+		args      args
+		wantErr   bool
+		setupMock func()
 	}{
 		{
 			name: "register RSS feed link with nil database (should error)",
@@ -98,6 +140,13 @@ func TestRegisterFeedGateway_RegisterRSSFeedLink(t *testing.T) {
 				url: "https://example.com/feed.xml",
 			},
 			wantErr: true,
+			setupMock: func() {
+				mockFetcher.SetFeed("https://example.com/feed.xml", &gofeed.Feed{
+					Title:    "Test Feed",
+					Link:     "https://example.com/feed.xml",
+					FeedLink: "https://example.com/feed.xml",
+				})
+			},
 		},
 		{
 			name: "register empty URL",
@@ -106,6 +155,9 @@ func TestRegisterFeedGateway_RegisterRSSFeedLink(t *testing.T) {
 				url: "",
 			},
 			wantErr: true, // Should error with invalid URL
+			setupMock: func() {
+				// No mock needed for URL validation error
+			},
 		},
 		{
 			name: "register invalid URL format",
@@ -114,6 +166,9 @@ func TestRegisterFeedGateway_RegisterRSSFeedLink(t *testing.T) {
 				url: "not-a-valid-url",
 			},
 			wantErr: true, // Should error with invalid URL
+			setupMock: func() {
+				// No mock needed for URL validation error
+			},
 		},
 		{
 			name: "register valid URL",
@@ -122,11 +177,17 @@ func TestRegisterFeedGateway_RegisterRSSFeedLink(t *testing.T) {
 				url: "https://example.com/rss.xml",
 			},
 			wantErr: true, // Should error due to unreachable URL
+			setupMock: func() {
+				mockFetcher.SetError("https://example.com/rss.xml", errors.New("no such host"))
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Setup mock for this test
+			tt.setupMock()
+
 			err := gateway.RegisterRSSFeedLink(tt.args.ctx, tt.args.url)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RegisterFeedGateway.RegisterRSSFeedLink() error = %v, wantErr %v", err, tt.wantErr)
@@ -228,9 +289,8 @@ func TestRegisterFeedsGateway_LargeDataset(t *testing.T) {
 
 // TDD Red Phase: RSS feed validation timeout tests
 func TestRegisterFeedGateway_TimeoutHandling(t *testing.T) {
-	gateway := &RegisterFeedGateway{
-		alt_db: nil, // Database will be mocked for timeout testing
-	}
+	mockFetcher := NewMockRSSFeedFetcher()
+	gateway := NewRegisterFeedLinkGatewayWithFetcher(nil, mockFetcher)
 
 	tests := []struct {
 		name            string
@@ -238,53 +298,91 @@ func TestRegisterFeedGateway_TimeoutHandling(t *testing.T) {
 		timeoutDuration time.Duration
 		expectedError   string
 		wantErr         bool
+		setupMock       func()
 	}{
 		{
 			name:            "timeout on slow RSS feed",
-			url:             "https://httpbin.org/delay/20", // Simulates 20 second delay
+			url:             "https://httpbin.org/delay/20",
 			timeoutDuration: 1 * time.Second,
-			expectedError:   "timeout",
+			expectedError:   "RSS feed fetch timeout",
 			wantErr:         true,
+			setupMock: func() {
+				mockFetcher.SetError("https://httpbin.org/delay/20", errors.New("context deadline exceeded"))
+			},
 		},
 		{
 			name:            "valid RSS feed within timeout",
-			url:             "https://feeds.feedburner.com/oreilly", // Real RSS feed
+			url:             "https://feeds.feedburner.com/oreilly",
 			timeoutDuration: 30 * time.Second,
-			expectedError:   "",
-			wantErr:         true, // Still expect error due to nil database
+			expectedError:   "database connection not available",
+			wantErr:         true,
+			setupMock: func() {
+				mockFetcher.SetFeed("https://feeds.feedburner.com/oreilly", &gofeed.Feed{
+					Title:    "Test Feed",
+					Link:     "https://feeds.feedburner.com/oreilly",
+					FeedLink: "https://feeds.feedburner.com/oreilly",
+				})
+			},
 		},
 		{
 			name:            "context deadline exceeded",
 			url:             "https://httpbin.org/delay/15",
 			timeoutDuration: 2 * time.Second,
-			expectedError:   "timeout",
+			expectedError:   "RSS feed fetch timeout",
 			wantErr:         true,
+			setupMock: func() {
+				mockFetcher.SetError("https://httpbin.org/delay/15", errors.New("context deadline exceeded"))
+			},
 		},
 		{
 			name:            "extended timeout - should succeed with 40s delay",
-			url:             "https://httpbin.org/delay/40", // 40 second delay - should succeed
+			url:             "https://httpbin.org/delay/40",
 			timeoutDuration: 60 * time.Second,
 			expectedError:   "database connection not available",
-			wantErr:         true, // Should succeed RSS fetch but fail at database level
+			wantErr:         true,
+			setupMock: func() {
+				mockFetcher.SetFeed("https://httpbin.org/delay/40", &gofeed.Feed{
+					Title:    "Test Feed",
+					Link:     "https://httpbin.org/delay/40",
+					FeedLink: "https://httpbin.org/delay/40",
+				})
+			},
 		},
 		{
 			name:            "verify extended timeout capacity",
-			url:             "https://httpbin.org/delay/35", // 35 second delay - should succeed
+			url:             "https://httpbin.org/delay/35",
 			timeoutDuration: 60 * time.Second,
 			expectedError:   "database connection not available",
-			wantErr:         true, // Should succeed RSS fetch but fail at database level
+			wantErr:         true,
+			setupMock: func() {
+				mockFetcher.SetFeed("https://httpbin.org/delay/35", &gofeed.Feed{
+					Title:    "Test Feed",
+					Link:     "https://httpbin.org/delay/35",
+					FeedLink: "https://httpbin.org/delay/35",
+				})
+			},
 		},
 		{
 			name:            "medium delay feed should succeed with extended timeouts",
-			url:             "https://httpbin.org/delay/30", // 30 second delay
+			url:             "https://httpbin.org/delay/30",
 			timeoutDuration: 60 * time.Second,
 			expectedError:   "database connection not available",
-			wantErr:         true, // Should succeed RSS fetch but fail at database level
+			wantErr:         true,
+			setupMock: func() {
+				mockFetcher.SetFeed("https://httpbin.org/delay/30", &gofeed.Feed{
+					Title:    "Test Feed",
+					Link:     "https://httpbin.org/delay/30",
+					FeedLink: "https://httpbin.org/delay/30",
+				})
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Setup mock for this test
+			tt.setupMock()
+
 			// Create context with timeout for testing
 			ctx, cancel := context.WithTimeout(context.Background(), tt.timeoutDuration)
 			defer cancel()
@@ -310,50 +408,68 @@ func TestRegisterFeedGateway_TimeoutHandling(t *testing.T) {
 
 // TDD Red Phase: Test RSS feed format validation with various formats
 func TestRegisterFeedGateway_FeedFormatValidation(t *testing.T) {
-	gateway := &RegisterFeedGateway{
-		alt_db: nil,
-	}
+	mockFetcher := NewMockRSSFeedFetcher()
+	gateway := NewRegisterFeedLinkGatewayWithFetcher(nil, mockFetcher)
 
 	tests := []struct {
 		name          string
 		url           string
 		expectedError string
 		wantErr       bool
+		setupMock     func()
 	}{
 		{
 			name:          "invalid RSS feed format - HTML page",
 			url:           "https://httpbin.org/html",
 			expectedError: "invalid RSS feed format",
 			wantErr:       true,
+			setupMock: func() {
+				mockFetcher.SetError("https://httpbin.org/html", errors.New("Failed to detect feed type"))
+			},
 		},
 		{
 			name:          "invalid RSS feed format - JSON response",
 			url:           "https://httpbin.org/json",
-			expectedError: "database connection not available",
+			expectedError: "invalid RSS feed format",
 			wantErr:       true,
+			setupMock: func() {
+				mockFetcher.SetError("https://httpbin.org/json", errors.New("Failed to detect feed type"))
+			},
 		},
 		{
 			name:          "unreachable URL",
 			url:           "https://nonexistent-domain-12345.com/feed.xml",
 			expectedError: "could not reach the RSS feed URL",
 			wantErr:       true,
+			setupMock: func() {
+				mockFetcher.SetError("https://nonexistent-domain-12345.com/feed.xml", errors.New("no such host"))
+			},
 		},
 		{
 			name:          "malformed URL",
 			url:           "not-a-url",
 			expectedError: "URL must include a scheme",
 			wantErr:       true,
+			setupMock: func() {
+				// No mock needed for URL validation error
+			},
 		},
 		{
 			name:          "URL without scheme",
 			url:           "example.com/feed.xml",
 			expectedError: "URL must include a scheme",
 			wantErr:       true,
+			setupMock: func() {
+				// No mock needed for URL validation error
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Setup mock for this test
+			tt.setupMock()
+
 			ctx := context.Background()
 			err := gateway.RegisterRSSFeedLink(ctx, tt.url)
 

@@ -75,11 +75,19 @@ func setFieldValue(field reflect.Value, value, envName string) error {
 		field.SetBool(boolVal)
 
 	case reflect.Int:
-		intVal, err := strconv.Atoi(value)
+		intVal, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid integer value for %s: %s", envName, value)
 		}
-		field.SetInt(int64(intVal))
+		// Check bounds for int type (platform-dependent) - allow reasonable ranges
+		// For 64-bit systems, this allows values up to 2^63-1
+		// For 32-bit systems, this allows values up to 2^31-1
+		const maxInt64 = 1<<63 - 1
+		const minInt64 = -1 << 63
+		if intVal > maxInt64 || intVal < minInt64 {
+			return fmt.Errorf("integer value out of range for %s: %s (max: %d, min: %d)", envName, value, maxInt64, minInt64)
+		}
+		field.SetInt(intVal)
 
 	case reflect.Int64:
 		// Handle time.Duration specially

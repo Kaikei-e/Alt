@@ -2,6 +2,7 @@ package register_feed_gateway
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -9,38 +10,50 @@ import (
 
 // TDD Red Phase: Test retry mechanism with exponential backoff
 func TestRegisterFeedGateway_RetryMechanism(t *testing.T) {
-	gateway := &RegisterFeedGateway{
-		alt_db: nil,
-	}
+	mockFetcher := NewMockRSSFeedFetcher()
+	gateway := NewRegisterFeedLinkGatewayWithFetcher(nil, mockFetcher)
 
 	tests := []struct {
 		name          string
 		url           string
 		expectedError string
 		wantErr       bool
+		setupMock     func()
 	}{
 		{
 			name:          "transient network error should trigger retry",
 			url:           "https://httpbin.org/status/502", // Returns HTTP 502
-			expectedError: "timeout",
+			expectedError: "invalid RSS feed format",
 			wantErr:       true,
+			setupMock: func() {
+				mockFetcher.SetError("https://httpbin.org/status/502", errors.New("http error: 503 Service Unavailable"))
+			},
 		},
 		{
 			name:          "timeout error should trigger retry",
 			url:           "https://httpbin.org/delay/5", // 5 second delay
-			expectedError: "timeout",
+			expectedError: "invalid RSS feed format",
 			wantErr:       true, // Should fail after retries with short timeout
+			setupMock: func() {
+				mockFetcher.SetError("https://httpbin.org/delay/5", errors.New("http error: 503 Service Unavailable"))
+			},
 		},
 		{
 			name:          "non-retryable error should not retry",
 			url:           "invalid-url", // Malformed URL
 			expectedError: "URL must include a scheme",
 			wantErr:       true,
+			setupMock: func() {
+				// No mock needed for URL validation error
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Setup mock for this test
+			tt.setupMock()
+
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 

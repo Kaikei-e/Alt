@@ -22,7 +22,7 @@ func TestDatabaseConfig_BuildConnectionString(t *testing.T) {
 				Password: "testpass",
 				DBName:   "testdb",
 			},
-			expected: "host=localhost port=5432 user=testuser password=testpass dbname=testdb sslmode=disable search_path=public pool_max_conns=20 pool_min_conns=5",
+			expected: "host=localhost port=5432 user=testuser password=testpass dbname=testdb sslmode=disable search_path=public connect_timeout=90",
 		},
 		{
 			name: "production config HTTP-only",
@@ -33,7 +33,7 @@ func TestDatabaseConfig_BuildConnectionString(t *testing.T) {
 				Password: "ProductionPassword123",
 				DBName:   "alt",
 			},
-			expected: "host=postgres.alt-database.svc.cluster.local port=5432 user=alt_db_user password=ProductionPassword123 dbname=alt sslmode=disable search_path=public pool_max_conns=20 pool_min_conns=5",
+			expected: "host=postgres.alt-database.svc.cluster.local port=5432 user=alt_db_user password=ProductionPassword123 dbname=alt sslmode=disable search_path=public connect_timeout=90",
 		},
 	}
 
@@ -86,7 +86,7 @@ func TestHTTPOnlyConnection_Integration(t *testing.T) {
 	t.Run("HTTP-only connection string generation", func(t *testing.T) {
 		config := NewDatabaseConfigFromEnv()
 		connStr := config.BuildConnectionString()
-		
+
 		// sslmode=disableが含まれていることを確認
 		assert.Contains(t, connStr, "sslmode=disable")
 		// SSL証明書パラメータが含まれていないことを確認
