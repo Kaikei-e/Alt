@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { VirtualFeedListImpl } from "./VirtualFeedListImpl";
 import { Feed } from "@/schema/feed";
@@ -140,7 +140,9 @@ describe("VirtualFeedListImpl", () => {
 
     // Trigger error
     const errorButton = screen.getByText("Trigger Error");
-    errorButton.click();
+    await act(async () => {
+      errorButton.click();
+    });
 
     // Should fallback to fixed sizing
     await waitFor(() => {
@@ -187,7 +189,9 @@ describe("VirtualFeedListImpl", () => {
 
     // Trigger error
     const errorButton = screen.getByText("Trigger Error");
-    errorButton.click();
+    await act(async () => {
+      errorButton.click();
+    });
 
     // Wait for fallback
     await waitFor(() => {

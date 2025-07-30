@@ -19,7 +19,7 @@ export interface ThemeToggleProps {
 
 const THEME_ICONS = {
   vaporwave: Moon,
-  "liquid-beige": Sun,
+  "alt-paper": Sun,
 };
 
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({
@@ -99,11 +99,11 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
 
   const IconComponent = THEME_ICONS[currentTheme];
   const nextTheme =
-    currentTheme === "liquid-beige" ? "vaporwave" : "liquid-beige";
+    currentTheme === "alt-paper" ? "vaporwave" : "alt-paper";
   const nextThemeLabel =
-    nextTheme === "vaporwave" ? "Vaporwave" : "Liquid Beige";
+    nextTheme === "vaporwave" ? "Vaporwave" : "Alt Paper";
   const currentThemeLabel =
-    currentTheme === "vaporwave" ? "Vaporwave" : "Liquid Beige";
+    currentTheme === "vaporwave" ? "Vaporwave" : "Alt Paper";
 
   // Use CSS variables from global.css that work with data-style attribute
   const buttonStyles = {
