@@ -14,33 +14,26 @@ func TestDatabaseConfig_BuildConnectionString(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "basic SSL prefer",
+			name: "HTTP-only connection for Linkerd mTLS",
 			config: &DatabaseConfig{
 				Host:     "localhost",
 				Port:     "5432",
 				User:     "testuser",
 				Password: "testpass",
 				DBName:   "testdb",
-				SSL:      SSLConfig{Mode: "prefer"},
 			},
-			expected: "host=localhost port=5432 user=testuser password=testpass dbname=testdb sslmode=prefer search_path=public pool_max_conns=20 pool_min_conns=5",
+			expected: "host=localhost port=5432 user=testuser password=testpass dbname=testdb sslmode=disable search_path=public pool_max_conns=20 pool_min_conns=5",
 		},
 		{
-			name: "SSL with certificates",
+			name: "production config HTTP-only",
 			config: &DatabaseConfig{
-				Host:     "localhost",
+				Host:     "postgres.alt-database.svc.cluster.local",
 				Port:     "5432",
-				User:     "testuser",
-				Password: "testpass",
-				DBName:   "testdb",
-				SSL: SSLConfig{
-					Mode:     "verify-full",
-					RootCert: "/path/to/ca.crt",
-					Cert:     "/path/to/client.crt",
-					Key:      "/path/to/client.key",
-				},
+				User:     "alt_db_user",
+				Password: "ProductionPassword123",
+				DBName:   "alt",
 			},
-			expected: "host=localhost port=5432 user=testuser password=testpass dbname=testdb sslmode=verify-full sslrootcert=/path/to/ca.crt sslcert=/path/to/client.crt sslkey=/path/to/client.key search_path=public pool_max_conns=20 pool_min_conns=5",
+			expected: "host=postgres.alt-database.svc.cluster.local port=5432 user=alt_db_user password=ProductionPassword123 dbname=alt sslmode=disable search_path=public pool_max_conns=20 pool_min_conns=5",
 		},
 	}
 
@@ -53,9 +46,9 @@ func TestDatabaseConfig_BuildConnectionString(t *testing.T) {
 }
 
 func TestNewDatabaseConfigFromEnv(t *testing.T) {
-	// 環境変数設定
+	// 環境変数設定 - SSL設定は無視される
 	os.Setenv("DB_HOST", "testhost")
-	os.Setenv("DB_SSL_MODE", "require")
+	os.Setenv("DB_SSL_MODE", "require") // この設定は無視される
 	defer func() {
 		os.Unsetenv("DB_HOST")
 		os.Unsetenv("DB_SSL_MODE")
@@ -64,78 +57,25 @@ func TestNewDatabaseConfigFromEnv(t *testing.T) {
 	config := NewDatabaseConfigFromEnv()
 
 	assert.Equal(t, "testhost", config.Host)
-	assert.Equal(t, "require", config.SSL.Mode)
 	assert.Equal(t, "5432", config.Port) // デフォルト値
+	// SSL設定は完全除去されているため検証なし
 }
 
-func TestSSLConfig_ValidateSSLConfig(t *testing.T) {
-	tests := []struct {
-		name      string
-		config    *DatabaseConfig
-		wantError bool
-	}{
-		{
-			name: "valid prefer mode",
-			config: &DatabaseConfig{
-				SSL: SSLConfig{Mode: "prefer"},
-			},
-			wantError: false,
-		},
-		{
-			name: "valid verify-full with certificates",
-			config: &DatabaseConfig{
-				SSL: SSLConfig{
-					Mode:     "verify-full",
-					RootCert: "/path/to/ca.crt",
-				},
-			},
-			wantError: false,
-		},
-		{
-			name: "invalid verify-full without certificates",
-			config: &DatabaseConfig{
-				SSL: SSLConfig{
-					Mode:     "verify-full",
-					RootCert: "",
-				},
-			},
-			wantError: true,
-		},
-		{
-			name: "invalid ssl mode",
-			config: &DatabaseConfig{
-				SSL: SSLConfig{Mode: "invalid"},
-			},
-			wantError: true,
-		},
-	}
+// TestSSLConfig_ValidateSSLConfig はSSL設定除去により削除
+// Linkerd mTLSにより暗号化はプロキシレベルで自動処理される
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.config.ValidateSSLConfig()
-			if tt.wantError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestInitDBConnectionPool_Integration(t *testing.T) {
+func TestHTTPOnlyConnection_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
 
-	// テスト用の環境変数設定
-	os.Setenv("DB_SSL_MODE", "prefer")
+	// テスト用の環境変数設定 - HTTP-only接続
 	os.Setenv("DB_HOST", "localhost")
 	os.Setenv("DB_PORT", "5432")
 	os.Setenv("DB_USER", "testuser")
 	os.Setenv("DB_PASSWORD", "testpass")
 	os.Setenv("DB_NAME", "testdb")
 	defer func() {
-		os.Unsetenv("DB_SSL_MODE")
 		os.Unsetenv("DB_HOST")
 		os.Unsetenv("DB_PORT")
 		os.Unsetenv("DB_USER")
@@ -143,10 +83,15 @@ func TestInitDBConnectionPool_Integration(t *testing.T) {
 		os.Unsetenv("DB_NAME")
 	}()
 
-	// 新しいInitDB関数をテスト
-	// この時点ではまだ実装されていないのでエラーになる想定
-	t.Run("test new InitDB with SSL config", func(t *testing.T) {
-		// このテストは新しいInitDB実装後に動作する
-		t.Skip("InitDB not yet refactored to use SSL config")
+	t.Run("HTTP-only connection string generation", func(t *testing.T) {
+		config := NewDatabaseConfigFromEnv()
+		connStr := config.BuildConnectionString()
+		
+		// sslmode=disableが含まれていることを確認
+		assert.Contains(t, connStr, "sslmode=disable")
+		// SSL証明書パラメータが含まれていないことを確認
+		assert.NotContains(t, connStr, "sslrootcert")
+		assert.NotContains(t, connStr, "sslcert")
+		assert.NotContains(t, connStr, "sslkey")
 	})
 }
