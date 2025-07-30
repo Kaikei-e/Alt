@@ -1,3 +1,5 @@
+[![Playwright Tests](https://github.com/Kaikei-e/Alt/actions/workflows/playwright.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/playwright.yml)
+
 # Alt - AI-Powered RSS Knowledge Pipeline
 
 > A mobile-first RSS reader built with microservices architecture, featuring AI-powered content enhancement, high-performance logging, and intelligent content discovery.
