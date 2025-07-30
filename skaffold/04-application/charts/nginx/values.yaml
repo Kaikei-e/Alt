@@ -20,9 +20,10 @@ serviceAccount:
   annotations: {}
   name: ""
 
-# Pod annotations and labels
+# Pod annotations and labels - mTLS完全移行対応
 podAnnotations:
   rask.group: "nginx-proxy"
+  linkerd.io/inject: enabled  # Linkerd mTLS完全移行
 
 podLabels:
   io.kompose.service: "nginx-proxy"
@@ -43,11 +44,11 @@ securityContext:
     add: ["NET_BIND_SERVICE"] # 80/443 バインド権限
     drop: ["ALL"]
 
-# Service configuration
+# Service configuration - HTTP-only (mTLS移行)
 service:
   type: ClusterIP
-  port: 8080
-  httpsPort: 443
+  port: 8080  # HTTP-only
+  # httpsPort: 8443  # SSL削除 - Linkerd mTLS移行
   healthPort: 9080
   annotations: {}
   clusterIP: ""
@@ -174,10 +175,10 @@ secret:
   data: {}
   stringData: {}
 
-# SSL configuration
+# SSL configuration - 完全無効化（Linkerd mTLS移行）
 ssl:
-  enabled: true # INCIDENT 80 FIX: cert-manager活用でSSL有効化復元
-  secretName: nginx-ssl-certs
+  enabled: false  # mTLS完全移行のためSSL無効化
+  # secretName: nginx-ssl-certs  # 証明書参照削除
 
 # Secrets configuration
 secrets:
@@ -284,10 +285,17 @@ upstreams:
 
 # Server configurations
 servers:
-  # Main HTTP server (redirect to HTTPS)
+  # Main HTTP server (mTLS完全移行でSSL削除)
   - listen:
-      - "443"
+      - "8080"  # HTTPS→HTTP変更（Linkerd透明mTLS）
     serverName: "nginx-internal.alt-ingress.svc.cluster.local"
+    # SSL設定完全削除（Linkerd mTLS移行）
+    # ssl:
+    #   certificate: "/etc/nginx/ssl/tls.crt"
+    #   certificateKey: "/etc/nginx/ssl/tls.key"
+    #   clientCertificate: "/etc/nginx/ssl/ca.crt"
+    #   verifyClient: "on"
+    #   protocols: "TLSv1.2 TLSv1.3"
     extraConfig: |
       # TLS環境用Content-Type統一管理
       proxy_hide_header "Content-Type";  # 重複ヘッダー除去
@@ -302,9 +310,9 @@ servers:
       error_log /var/log/nginx/error.log info;
 
     locations:
-      # Server-Sent Events専用エンドポイント（Docker Compose設定の完全移植）
+      # Server-Sent Events専用エンドポイント（mTLS移行対応）
       - path: "/api/v1/sse/"
-        proxyPass: "https://backend/v1/sse/"
+        proxyPass: "http://alt-backend/v1/sse/"  # HTTPS→HTTP（Linkerd mTLS）
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -327,7 +335,7 @@ servers:
           add_header Content-Type "text/event-stream; charset=utf-8" always;
 
       - path: "/api/"
-        proxyPass: "https://backend/"
+        proxyPass: "http://alt-backend/"  # HTTPS→HTTP（Linkerd mTLS）
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -348,7 +356,7 @@ servers:
           add_header Access-Control-Allow-Credentials "true" always;
 
       - path: "/"
-        proxyPass: "https://frontend"
+        proxyPass: "http://alt-frontend"  # HTTPS→HTTP（Linkerd mTLS）
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -374,7 +382,7 @@ servers:
 
       # 静的アセット最適化処理（Next.js等の静的ファイル対応）
       - path: "~ ^/(assets|static|_next|images|css|js)/"
-        proxyPass: "https://frontend"
+        proxyPass: "http://alt-frontend"  # HTTPS→HTTP（Linkerd mTLS）
         extraConfig: |
           # 静的ファイル用積極的キャッシュ設定
           expires 1y;
@@ -387,160 +395,160 @@ servers:
           gzip_min_length 1024;
           gzip_types text/css application/javascript application/json image/svg+xml;
 
-  # Health check server
-  - listen:
-      - "443 ssl"
-    serverName: "alt.local"
-    ssl:
-      certificate: "/etc/nginx/ssl/tls.crt"
-      certificateKey: "/etc/nginx/ssl/tls.key"
-      protocols: "TLSv1.2 TLSv1.3"
-    locations:
-      # HTTPS接続の場合も内部はHTTP通信を維持
-      - path: "/"
-        proxyPass: "http://frontend"
-        proxySetHeader:
-          - "Host $host"
-          - "X-Real-IP $remote_addr"
-          - "X-Forwarded-For $proxy_add_x_forwarded_for"
-          - "X-Forwarded-Proto https" # HTTPSであることを明示
-        extraConfig: |
-          # HTTPS終端後のHTTPプロキシ最適化
-          proxy_buffering on;
-          proxy_buffer_size 8k;
-          proxy_buffers 16 8k;
-          proxy_http_version 1.1;
-          proxy_set_header Connection "";
-    extraConfig: |
-      # HTTPS専用セキュリティ強化
-      add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+  # Health check server - SSL削除（mTLS移行）
+  # - listen:
+  #     - "443 ssl"
+  #   serverName: "alt.local"
+  #   ssl:
+  #     certificate: "/etc/nginx/ssl/tls.crt"
+  #     certificateKey: "/etc/nginx/ssl/tls.key"
+  #     protocols: "TLSv1.2 TLSv1.3"
+  #   locations:
+  #     # HTTPS接続の場合も内部はHTTP通信を維持
+  #     - path: "/"
+  #       proxyPass: "http://frontend"
+  #       proxySetHeader:
+  #         - "Host $host"
+  #         - "X-Real-IP $remote_addr"
+  #         - "X-Forwarded-For $proxy_add_x_forwarded_for"
+  #         - "X-Forwarded-Proto https" # HTTPSであることを明示
+  #       extraConfig: |
+  #         # HTTPS終端後のHTTPプロキシ最適化
+  #         proxy_buffering on;
+  #         proxy_buffer_size 8k;
+  #         proxy_buffers 16 8k;
+  #         proxy_http_version 1.1;
+  #         proxy_set_header Connection "";
+  #   extraConfig: |
+  #     # HTTPS専用セキュリティ強化
+  #     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
 
-  # Main HTTPS server
-  - listen:
-      - "443 ssl"
-    serverName: "alt.local *.alt.local"
-    ssl:
-      certificate: "/etc/nginx/ssl/tls.crt"
-      certificateKey: "/etc/nginx/ssl/tls.key"
-      protocols: "TLSv1.2 TLSv1.3"
-      ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
-    locations:
-      # Frontend routes
-      - path: "/"
-        proxyPass: "http://alt-frontend"
-        proxySetHeader:
-          - "Host $host"
-          - "X-Real-IP $remote_addr"
-          - "X-Forwarded-For $proxy_add_x_forwarded_for"
-          - "X-Forwarded-Proto $scheme"
-          - "X-Forwarded-Host $host"
-          - "X-Forwarded-Port $server_port"
-        proxyTimeout: "30s"
-        extraConfig: |
-          proxy_buffer_size 4k;
-          proxy_buffers 8 4k;
-          proxy_busy_buffers_size 8k;
-
-      # Backend API routes
-      - path: "/api/"
-        proxyPass: "http://alt-backend/"
-        proxySetHeader:
-          - "Host $host"
-          - "X-Real-IP $remote_addr"
-          - "X-Forwarded-For $proxy_add_x_forwarded_for"
-          - "X-Forwarded-Proto $scheme"
-          - "X-Forwarded-Host $host"
-          - "X-Forwarded-Port $server_port"
-        proxyTimeout: "60s"
-        extraConfig: |
-          limit_req zone=api burst=10 nodelay;
-          proxy_buffer_size 4k;
-          proxy_buffers 8 4k;
-          proxy_busy_buffers_size 8k;
-
-      # Backend v1 API routes
-      - path: "/v1/"
-        proxyPass: "http://alt-backend/v1/"
-        proxySetHeader:
-          - "Host $host"
-          - "X-Real-IP $remote_addr"
-          - "X-Forwarded-For $proxy_add_x_forwarded_for"
-          - "X-Forwarded-Proto $scheme"
-          - "X-Forwarded-Host $host"
-          - "X-Forwarded-Port $server_port"
-        proxyTimeout: "60s"
-        extraConfig: |
-          limit_req zone=api burst=10 nodelay;
-          proxy_buffer_size 4k;
-          proxy_buffers 8 4k;
-          proxy_busy_buffers_size 8k;
-
-      # Auth service routes
-      - path: "/auth/"
-        proxyPass: "http://auth-service/"
-        proxySetHeader:
-          - "Host $host"
-          - "X-Real-IP $remote_addr"
-          - "X-Forwarded-For $proxy_add_x_forwarded_for"
-          - "X-Forwarded-Proto $scheme"
-          - "X-Forwarded-Host $host"
-          - "X-Forwarded-Port $server_port"
-        proxyTimeout: "30s"
-        extraConfig: |
-          limit_req zone=api burst=20 nodelay;
-          proxy_buffer_size 4k;
-          proxy_buffers 8 4k;
-          proxy_busy_buffers_size 8k;
-
-      # MeiliSearch routes
-      # - path: "/search/"
-      #   proxyPass: "http://meilisearch/"
-      #   proxySetHeader:
-      #     - "Host $host"
-      #     - "X-Real-IP $remote_addr"
-      #     - "X-Forwarded-For $proxy_add_x_forwarded_for"
-      #     - "X-Forwarded-Proto $scheme"
-      #     - "X-Forwarded-Host $host"
-      #     - "X-Forwarded-Port $server_port"
-      #   proxyTimeout: "30s"
-      #   extraConfig: |
-      #     limit_req zone=api burst=15 nodelay;
-      #     proxy_buffer_size 4k;
-      #     proxy_buffers 8 4k;
-      #     proxy_busy_buffers_size 8k;
-
-      # INCIDENT 78 FIX: tag-generator未デプロイのためコメントアウト
-      # Tag generator routes
-      # - path: "/tags/"
-      #   proxyPass: "http://tag-generator/"
-      #   proxySetHeader:
-      #     - "Host $host"
-      #     - "X-Real-IP $remote_addr"
-      #     - "X-Forwarded-For $proxy_add_x_forwarded_for"
-      #     - "X-Forwarded-Proto $scheme"
-      #     - "X-Forwarded-Host $host"
-      #     - "X-Forwarded-Port $server_port"
-      #   proxyTimeout: "120s"
-      #   extraConfig: |
-      #     limit_req zone=api burst=5 nodelay;
-      #     proxy_buffer_size 4k;
-      #     proxy_buffers 8 4k;
-      #     proxy_busy_buffers_size 8k;
-
-      # Health check endpoint
-      - path: "/health"
-        extraConfig: |
-          access_log off;
-          return 200 "OK";
-          add_header Content-Type text/plain;
-    extraConfig: |
-      # Enable HSTS
-      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-      # Additional security headers
-      add_header X-Frame-Options "SAMEORIGIN" always;
-      add_header X-Content-Type-Options "nosniff" always;
-      add_header X-XSS-Protection "1; mode=block" always;
+  # Main HTTPS server - SSL削除（mTLS移行）
+  # - listen:
+  #     - "443 ssl"
+  #   serverName: "alt.local *.alt.local"
+  #   ssl:
+  #     certificate: "/etc/nginx/ssl/tls.crt"
+  #     certificateKey: "/etc/nginx/ssl/tls.key"
+  #     protocols: "TLSv1.2 TLSv1.3"
+  #     ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+  #   locations:
+  #     # Frontend routes
+  #     - path: "/"
+  #       proxyPass: "http://alt-frontend"
+  #       proxySetHeader:
+  #         - "Host $host"
+  #         - "X-Real-IP $remote_addr"
+  #         - "X-Forwarded-For $proxy_add_x_forwarded_for"
+  #         - "X-Forwarded-Proto $scheme"
+  #         - "X-Forwarded-Host $host"
+  #         - "X-Forwarded-Port $server_port"
+  #       proxyTimeout: "30s"
+  #       extraConfig: |
+  #         proxy_buffer_size 4k;
+  #         proxy_buffers 8 4k;
+  #         proxy_busy_buffers_size 8k;
+  #
+  #     # Backend API routes
+  #     - path: "/api/"
+  #       proxyPass: "http://alt-backend/"
+  #       proxySetHeader:
+  #         - "Host $host"
+  #         - "X-Real-IP $remote_addr"
+  #         - "X-Forwarded-For $proxy_add_x_forwarded_for"
+  #         - "X-Forwarded-Proto $scheme"
+  #         - "X-Forwarded-Host $host"
+  #         - "X-Forwarded-Port $server_port"
+  #       proxyTimeout: "60s"
+  #       extraConfig: |
+  #         limit_req zone=api burst=10 nodelay;
+  #         proxy_buffer_size 4k;
+  #         proxy_buffers 8 4k;
+  #         proxy_busy_buffers_size 8k;
+  #
+  #     # Backend v1 API routes
+  #     - path: "/v1/"
+  #       proxyPass: "http://alt-backend/v1/"
+  #       proxySetHeader:
+  #         - "Host $host"
+  #         - "X-Real-IP $remote_addr"
+  #         - "X-Forwarded-For $proxy_add_x_forwarded_for"
+  #         - "X-Forwarded-Proto $scheme"
+  #         - "X-Forwarded-Host $host"
+  #         - "X-Forwarded-Port $server_port"
+  #       proxyTimeout: "60s"
+  #       extraConfig: |
+  #         limit_req zone=api burst=10 nodelay;
+  #         proxy_buffer_size 4k;
+  #         proxy_buffers 8 4k;
+  #         proxy_busy_buffers_size 8k;
+  #
+  #     # Auth service routes
+  #     - path: "/auth/"
+  #       proxyPass: "http://auth-service/"
+  #       proxySetHeader:
+  #         - "Host $host"
+  #         - "X-Real-IP $remote_addr"
+  #         - "X-Forwarded-For $proxy_add_x_forwarded_for"
+  #         - "X-Forwarded-Proto $scheme"
+  #         - "X-Forwarded-Host $host"
+  #         - "X-Forwarded-Port $server_port"
+  #       proxyTimeout: "30s"
+  #       extraConfig: |
+  #         limit_req zone=api burst=20 nodelay;
+  #         proxy_buffer_size 4k;
+  #         proxy_buffers 8 4k;
+  #         proxy_busy_buffers_size 8k;
+  #
+  #     # MeiliSearch routes
+  #     # - path: "/search/"
+  #     #   proxyPass: "http://meilisearch/"
+  #     #   proxySetHeader:
+  #     #     - "Host $host"
+  #     #     - "X-Real-IP $remote_addr"
+  #     #     - "X-Forwarded-For $proxy_add_x_forwarded_for"
+  #     #     - "X-Forwarded-Proto $scheme"
+  #     #     - "X-Forwarded-Host $host"
+  #     #     - "X-Forwarded-Port $server_port"
+  #     #   proxyTimeout: "30s"
+  #     #   extraConfig: |
+  #     #     limit_req zone=api burst=15 nodelay;
+  #     #     proxy_buffer_size 4k;
+  #     #     proxy_buffers 8 4k;
+  #     #     proxy_busy_buffers_size 8k;
+  #
+  #     # INCIDENT 78 FIX: tag-generator未デプロイのためコメントアウト
+  #     # Tag generator routes
+  #     # - path: "/tags/"
+  #     #   proxyPass: "http://tag-generator/"
+  #     #   proxySetHeader:
+  #     #     - "Host $host"
+  #     #     - "X-Real-IP $remote_addr"
+  #     #     - "X-Forwarded-For $proxy_add_x_forwarded_for"
+  #     #     - "X-Forwarded-Proto $scheme"
+  #     #     - "X-Forwarded-Host $host"
+  #     #     - "X-Forwarded-Port $server_port"
+  #     #   proxyTimeout: "120s"
+  #     #   extraConfig: |
+  #     #     limit_req zone=api burst=5 nodelay;
+  #     #     proxy_buffer_size 4k;
+  #     #     proxy_buffers 8 4k;
+  #     #     proxy_busy_buffers_size 8k;
+  #
+  #     # Health check endpoint
+  #     - path: "/health"
+  #       extraConfig: |
+  #         access_log off;
+  #         return 200 "OK";
+  #         add_header Content-Type text/plain;
+  #   extraConfig: |
+  #     # Enable HSTS
+  #     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  #
+  #     # Additional security headers
+  #     add_header X-Frame-Options "SAMEORIGIN" always;
+  #     - add_header X-Content-Type-Options "nosniff" always;
+  #     add_header X-XSS-Protection "1; mode=block" always;
 
 # Monitoring configuration
 monitoring:

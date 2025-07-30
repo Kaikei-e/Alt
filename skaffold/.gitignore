@@ -1,5 +1,6 @@
 secret.yaml
 auth-secrets.yaml
+values-cloudflare.yaml
 
 **/ssl-certs/**
 **/values-production.yaml

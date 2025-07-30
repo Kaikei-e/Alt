@@ -28,6 +28,7 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+      appProtocol: http  # Linkerd Protocol Detection最適化
     {{- if .Values.ssl.enabled }}
     - port: {{ .Values.service.httpsPort }}
       targetPort: https
