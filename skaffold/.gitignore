@@ -1,3 +1,5 @@
+00-workers/
+
 secret.yaml
 auth-secrets.yaml
 values-cloudflare.yaml
