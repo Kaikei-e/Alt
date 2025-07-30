@@ -1,0 +1,4 @@
+apiVersion: v2
+name: network-policies
+version: 0.1.0
+description: A chart for deploying baseline network policies

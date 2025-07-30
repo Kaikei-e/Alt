@@ -1,0 +1,256 @@
+# NetworkPolicy: Namespace Isolation Policies
+# Zero Trust Architecture - Default Deny + Selective Allow per Namespace
+
+---
+# 1. alt-apps Namespace - Default Deny All
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-alt-apps
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/name: namespace-isolation
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/namespace: "alt-apps"
+    security.policy/type: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# 2. alt-database Namespace - Default Deny All (高セキュリティ)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-alt-database
+  namespace: alt-database
+  labels:
+    app.kubernetes.io/name: namespace-isolation
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/namespace: "alt-database"
+    security.policy/type: default-deny
+    security.policy/criticality: "high"
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# 3. alt-search Namespace - Default Deny All
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-alt-search
+  namespace: alt-search
+  labels:
+    app.kubernetes.io/name: namespace-isolation
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/namespace: "alt-search"
+    security.policy/type: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# 4. alt-processing Namespace - Default Deny All
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-alt-processing
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/name: namespace-isolation
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/namespace: "alt-processing"
+    security.policy/type: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# 5. alt-operations Namespace - Default Deny All
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-alt-operations
+  namespace: alt-operations
+  labels:
+    app.kubernetes.io/name: namespace-isolation
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/namespace: "alt-operations"
+    security.policy/type: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# 6. DNS Access Policy for All Namespaces
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-alt-apps
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/name: dns-access
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: essential-service
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-alt-database
+  namespace: alt-database
+  labels:
+    app.kubernetes.io/name: dns-access
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: essential-service
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-alt-search
+  namespace: alt-search
+  labels:
+    app.kubernetes.io/name: dns-access
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: essential-service
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-alt-processing
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/name: dns-access
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: essential-service
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-alt-operations
+  namespace: alt-operations
+  labels:
+    app.kubernetes.io/name: dns-access
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: essential-service
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# 7. Linkerd Control Plane Access for All Namespaces
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-linkerd-control-plane-alt-apps
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/name: linkerd-access
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: service-mesh
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: 8443  # linkerd-proxy-injector
+    - protocol: TCP
+      port: 8080  # linkerd-controller-api
+    - protocol: TCP
+      port: 9990  # linkerd-proxy-admin
+    - protocol: TCP
+      port: 4143  # linkerd-proxy outbound

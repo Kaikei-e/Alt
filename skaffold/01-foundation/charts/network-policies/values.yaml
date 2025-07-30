@@ -1,0 +1,23 @@
+targetNamespaces:
+  - alt-config
+  - alt-apps
+  - alt-ingress
+  - alt-database
+  - alt-auth
+  - alt-analytics
+  - alt-search
+  - alt-processing
+
+# Linkerd Service Mesh integration settings (2025 Web検索結果に基づく修正版)
+linkerd:
+  enabled: true
+  controlPlaneNamespace: linkerd
+  enableControlPlanePolicy: true
+  proxyPorts:
+    inbound: 4143    # Critical: inbound proxy port for meshed traffic
+    admin: 4191      # Admin/metrics port (previously was 4143)
+    metrics: 4191    # Metrics port
+  controlPlanePorts:
+    identity: 8080
+    destination: 8086
+    policy: 8090

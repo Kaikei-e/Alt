@@ -1,0 +1,49 @@
+{{- range .Values.targetNamespaces }}
+---
+# 1. Default deny all ingress traffic for all pods in {{ . }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: {{ . }}
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+# 2. Allow all traffic from pods within the same namespace in {{ . }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: {{ . }}
+spec:
+  podSelector: {}
+  ingress:
+  - from:
+    - podSelector: {}
+---
+# 3. Allow all pods to send egress traffic to kube-dns in {{ . }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-dns
+  namespace: {{ . }}
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+{{- end }}

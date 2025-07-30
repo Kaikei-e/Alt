@@ -1,0 +1,380 @@
+# NetworkPolicy: Defense in Depth Strategy (2025年ベストプラクティス)
+# Zero Trust + Microsegmentation + Layer 3/L4/L7 Security
+
+---
+# 1. DEFAULT DENY ALL（最優先・最も厳格）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: alt-ingress
+  labels:
+    app.kubernetes.io/name: default-deny-all
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "l3-l4"
+    security.policy/type: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# 2. DNS允許（全Pod共通・最小権限）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-all
+  namespace: alt-ingress
+  labels:
+    app.kubernetes.io/name: allow-dns-all
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "l3-l4"
+    security.policy/type: essential-service
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# 3. MICROSEGMENTATION: Frontend Zone
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-zone-microsegmentation
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/name: frontend-zone-policy
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "microsegmentation"
+    security.policy/zone: "frontend"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alt-frontend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # nginx-internal → alt-frontend
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-ingress
+    - podSelector:
+        matchLabels:
+          app: nginx-internal
+    ports:
+    - protocol: TCP
+      port: 3000
+  
+  # Linkerd Service Mesh mTLS
+  - from:
+    - namespaceSelector:
+        matchExpressions:
+        - key: linkerd.io/inject
+          operator: In
+          values: ["enabled"]
+    ports:
+    - protocol: TCP
+      port: 4143
+  
+  egress:
+  # alt-frontend → alt-backend
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: alt-backend
+    ports:
+    - protocol: TCP
+      port: 9000
+  
+  # DNS (必須)
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  
+  # Linkerd Control Plane
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: 8443
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 4143
+
+---
+# 4. MICROSEGMENTATION: Backend Zone
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-zone-microsegmentation
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/name: backend-zone-policy
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "microsegmentation"
+    security.policy/zone: "backend"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alt-backend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # alt-frontend → alt-backend
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: alt-frontend
+    ports:
+    - protocol: TCP
+      port: 9000
+  
+  # Linkerd Service Mesh mTLS
+  - from:
+    - namespaceSelector:
+        matchExpressions:
+        - key: linkerd.io/inject
+          operator: In
+          values: ["enabled"]
+    ports:
+    - protocol: TCP
+      port: 4143
+  
+  egress:
+  # alt-backend → PostgreSQL (Database Zone) - REPORT1.md Strategy 3 修正
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-database
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: postgres
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL直接接続
+    - protocol: TCP
+      port: 4143  # Linkerdプロキシinbound（skip-outbound-ports使用時に必要）
+  
+  # ICMP (ping) 許可 - ネットワーク接続性テスト用
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-database
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: postgres
+  
+  # alt-backend → Meilisearch (Search Zone)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-search
+    - podSelector:
+        matchLabels:
+          app: meilisearch
+    ports:
+    - protocol: TCP
+      port: 7700
+  
+  # DNS (必須)
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  
+  # Linkerd Control Plane
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: 8443
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 4143
+
+---
+# 5. MICROSEGMENTATION: Database Zone（最高セキュリティ）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-zone-microsegmentation
+  namespace: alt-database
+  labels:
+    app.kubernetes.io/name: database-zone-policy
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "microsegmentation"
+    security.policy/zone: "database"
+    security.policy/criticality: "high"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # alt-backend → PostgreSQL（最小権限）
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: alt-backend
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  # Processing services → PostgreSQL（読み取り専用ワーカー）
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-processing
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values: ["pre-processor", "search-indexer"]
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  # Linkerd Service Mesh mTLS
+  - from:
+    - namespaceSelector:
+        matchExpressions:
+        - key: linkerd.io/inject
+          operator: In
+          values: ["enabled"]
+    ports:
+    - protocol: TCP
+      port: 4143
+  
+  egress:
+  # DNS (必須)
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  
+  # Linkerd Control Plane
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: 8443
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 4143
+
+---
+# 6. EXTERNAL EGRESS CONTROL（FQDN-based・L7セキュリティ）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: external-egress-control
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/name: external-egress-control
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "l7-fqdn"
+    security.policy/type: external-control
+spec:
+  podSelector:
+    matchLabels:
+      app: pre-processor
+  policyTypes:
+  - Egress
+  egress:
+  # RSS Feed外部取得（HTTPS必須）
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS only
+    # L7 Policy: 信頼できるRSSドメインのみ許可
+    # 注：実際のFQDNフィルタリングはCalico/Cilliumなどの高級CNI必要
+  
+  # DNS (必須)
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# 7. MONITORING & OBSERVABILITY EXEMPTION
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: monitoring-observability-access
+  namespace: alt-operations
+  labels:
+    app.kubernetes.io/name: monitoring-access-policy
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "observability"
+    security.policy/type: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+  - Egress
+  egress:
+  # 全名前空間のメトリクスエンドポイントアクセス
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8080  # 標準メトリクスポート
+    - protocol: TCP
+      port: 9090  # Prometheus
+    - protocol: TCP
+      port: 3000  # Grafana

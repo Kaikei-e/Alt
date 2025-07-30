@@ -1,0 +1,120 @@
+{{- if .Values.linkerd.enabled }}
+{{- range .Values.targetNamespaces }}
+---
+# Allow Linkerd proxy communication in {{ . }} (2025 Web検索結果に基づく修正版)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-linkerd-proxy
+  namespace: {{ . }}
+  labels:
+    linkerd.io/control-plane-ns: linkerd
+    rask.group: "linkerd-mtls"
+  annotations:
+    description: "Allow Linkerd proxy communication - 2025 best practices"
+spec:
+  podSelector:
+    matchLabels:
+      linkerd.io/control-plane-ns: linkerd
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow meshed traffic on inbound proxy port (critical for mTLS)
+  - ports:
+    - protocol: TCP
+      port: {{ $.Values.linkerd.proxyPorts.inbound }}  # 4143 - inbound proxy
+  # Allow communication from other Linkerd-injected pods in same namespace
+  - from:
+    - podSelector:
+        matchLabels:
+          linkerd.io/control-plane-ns: linkerd
+    ports:
+    - protocol: TCP
+      port: {{ $.Values.linkerd.proxyPorts.inbound }}  # 4143
+    - protocol: TCP  
+      port: {{ $.Values.linkerd.proxyPorts.admin }}   # 4191 admin
+  # Allow communication from Linkerd control plane
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: {{ $.Values.linkerd.proxyPorts.admin }}   # 4191 admin
+    - protocol: TCP  
+      port: {{ $.Values.linkerd.proxyPorts.metrics }} # 4191 metrics
+  egress:
+  # Allow communication to Linkerd control plane (essential for proxy init)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: {{ $.Values.linkerd.controlPlanePorts.identity }}    # 8080 identity
+    - protocol: TCP
+      port: {{ $.Values.linkerd.controlPlanePorts.destination }} # 8086 destination
+    - protocol: TCP
+      port: {{ $.Values.linkerd.controlPlanePorts.policy }}      # 8090 policy
+  # Allow outbound meshed traffic to other Linkerd-injected pods
+  - to:
+    - podSelector:
+        matchLabels:
+          linkerd.io/control-plane-ns: linkerd
+    ports:
+    - protocol: TCP
+      port: {{ $.Values.linkerd.proxyPorts.inbound }}  # 4143
+  # Allow cross-namespace meshed communication
+  - to:
+    - namespaceSelector:
+        matchExpressions:
+        - key: linkerd.io/inject
+          operator: In
+          values: ["enabled"]
+      podSelector:
+        matchLabels:
+          linkerd.io/control-plane-ns: linkerd
+    ports:
+    - protocol: TCP
+      port: {{ $.Values.linkerd.proxyPorts.inbound }}  # 4143
+{{- end }}
+
+{{- if .Values.linkerd.enableControlPlanePolicy }}
+---
+# Allow ingress to Linkerd control plane from injected namespaces
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: linkerd-control-plane-ingress
+  namespace: {{ $.Values.linkerd.controlPlaneNamespace }}
+  labels:
+    linkerd.io/control-plane-ns: linkerd
+    rask.group: "linkerd-control-plane"
+  annotations:
+    description: "Allow access to Linkerd control plane from injected namespaces"
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow access from Linkerd-injected namespaces
+  - from:
+    - namespaceSelector:
+        matchExpressions:
+        - key: linkerd.io/inject
+          operator: In
+          values: ["enabled"]
+    ports:
+    - protocol: TCP
+      port: {{ $.Values.linkerd.controlPlanePorts.identity }}
+    - protocol: TCP
+      port: {{ $.Values.linkerd.controlPlanePorts.destination }}
+    - protocol: TCP
+      port: {{ $.Values.linkerd.controlPlanePorts.policy }}
+  # Allow internal control plane communication
+  - from:
+    - podSelector: {}
+{{- end }}
+
+{{- end }}

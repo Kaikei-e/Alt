@@ -21,6 +21,11 @@ serviceAccount:
 podAnnotations:
   kompose.cmd: "kompose convert -f compose.yaml --out ./k8s-manifests/"
   kompose.version: "1.36.0 (ae2a39403)"
+  linkerd.io/inject: enabled
+  # ULTRATHINK Phase 1.1: PostgreSQL完全統一設定
+  config.linkerd.io/opaque-ports: "5432"
+  config.linkerd.io/proxy-protocol-detection-timeout: "0s"
+  config.linkerd.io/proxy-inbound-connect-timeout: "60s"
 
 podLabels: {}
 
@@ -49,11 +54,19 @@ securityContext:
 service:
   type: ClusterIP
   port: 5432
-  annotations: {}
+  annotations:
+    # 🔥 Phase 1.6: Service-level Linkerd統一設定
+    config.linkerd.io/opaque-ports: "5432"  # PostgreSQL mTLS service protection
+    config.linkerd.io/response-timeout: "30s"  # サービスタイムアウト強化
+    config.linkerd.io/proxy-protocol-detection-timeout: "0s"  # Service Protocol Detection無効化
 
   headless:
     enabled: true
-    annotations: {}
+    annotations:
+      # 🔥 Phase 1.6: Headless Service-level Linkerd統一設定
+      config.linkerd.io/opaque-ports: "5432"  # PostgreSQL mTLS headless service protection
+      config.linkerd.io/response-timeout: "30s"  # ヘッドレスサービスタイムアウト強化
+      config.linkerd.io/proxy-protocol-detection-timeout: "0s"  # Headless Protocol Detection無効化
 
 # Authentication
 auth:
@@ -112,14 +125,10 @@ pgHba:
       method: "md5"
   customRules: ""
 
-# SSL configuration
+# SSL configuration - Linkerd mTLS only
 ssl:
-  enabled: true
-  secretName: "kratos-postgres-ssl-certs"
-  mode: "require"
-  certPath: "/ssl/server.crt"
-  keyPath: "/ssl/server.key"
-  caPath: "/ssl/ca.crt"
+  enabled: false
+  mode: "disable"
 
 # Persistence - smaller size for identity database
 persistence:

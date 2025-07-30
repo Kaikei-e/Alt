@@ -1,0 +1,26 @@
+# templates/inter-namespace-policies.yaml
+
+# ... (既存のポリシー) ...
+
+---
+
+# Allow kratos-migrate pods to egress to kratos-postgres in alt-auth
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kratos-migrate-egress-to-postgres
+  namespace: alt-auth
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kratos # kratos Podのラベル
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: kratos-postgres # kratos-postgres Podのラベル
+    ports:
+    - protocol: TCP
+      port: 5432 # PostgreSQLのデフォルトポート

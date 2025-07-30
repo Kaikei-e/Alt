@@ -24,6 +24,14 @@ deploy:
       install: ['--wait', '--timeout=600s']
       upgrade: ['--wait', '--timeout=600s']
     releases:
+      # MetalLB disabled for security-first approach (ClusterIP + NetworkPolicy)
+      # - name: metallb
+      #   chartPath: charts/metallb
+      #   namespace: metallb-system
+      #   createNamespace: true
+      #   valuesFiles:
+      #     - charts/metallb/values.yaml
+      #   version: 0.1.0
       - name: cert-manager
         chartPath: charts/cert-manager
         valuesFiles:
@@ -50,6 +58,14 @@ deploy:
           - charts/common-secrets-apps/values-development.yaml
           - charts/common-secrets-apps/values.yaml
         version: 2.0.0
+      - name: ca-issuer
+        chartPath: charts/ca-issuer
+        namespace: cert-manager
+        version: 0.1.0
+      - name: network-policies
+        chartPath: charts/network-policies
+        namespace: default # This namespace is arbitrary as the chart creates resources in other namespaces
+        version: 0.1.0
 profiles:
   - name: prod
     build:
@@ -71,6 +87,14 @@ profiles:
           install: ['--wait', '--timeout=600s']
           upgrade: ['--wait', '--timeout=600s']
         releases:
+          # MetalLB disabled for security-first approach (ClusterIP + NetworkPolicy)
+          # - name: metallb
+          #   chartPath: charts/metallb
+          #   namespace: metallb-system
+          #   createNamespace: true
+          #   valuesFiles:
+          #     - charts/metallb/values.yaml
+          #   version: 0.1.0
           - name: cert-manager
             chartPath: charts/cert-manager
             namespace: cert-manager
@@ -96,3 +120,11 @@ profiles:
               - charts/common-secrets-apps/values-production.yaml
               - charts/common-secrets-apps/values.yaml
             version: 2.0.0
+          - name: ca-issuer
+            chartPath: charts/ca-issuer
+            namespace: cert-manager
+            version: 0.1.0
+          - name: network-policies
+            chartPath: charts/network-policies
+            namespace: default # This namespace is arbitrary as the chart creates resources in other namespaces
+            version: 0.1.0
