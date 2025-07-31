@@ -1,0 +1,45 @@
+{
+  "name": "CurioNoah RSS Reader",
+  "short_name": "CurioNoah",
+  "description": "Modern RSS reader with advanced search and tagging capabilities",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a202c",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "favicon-32x32.png", 
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": ["news", "productivity", "utilities"],
+  "lang": "ja-JP",
+  "shortcuts": [
+    {
+      "name": "Latest Feeds",
+      "short_name": "Feeds",
+      "description": "View latest RSS feeds",
+      "url": "/feeds",
+      "icons": [
+        {
+          "src": "favicon-32x32.png",
+          "sizes": "32x32"
+        }
+      ]
+    }
+  ]
+}

@@ -19,7 +19,7 @@ export function getSecurityConfig(nonce: string): SecurityConfig {
 function buildCSPHeader(isDevelopment: boolean, nonce: string): string {
   const baseDirectives = [
     "default-src 'self'",
-    "img-src 'self' data: https:",
+    "img-src 'self' blob: data: https:",
     "font-src 'self' data:",
     "frame-ancestors 'none'",
     "base-uri 'self'",
@@ -47,7 +47,7 @@ function buildCSPHeader(isDevelopment: boolean, nonce: string): string {
   // バックエンドAPIとの通信設定
   const connectDirectives = [
     `connect-src 'self' ${getBackendApiUrl()} ${getWebSocketUrl()}`,
-    "report-uri /api/security/csp-report", // CSP違反レポート
+    "report-uri /security/csp-report", // CSP違反レポート
   ];
 
   return [
