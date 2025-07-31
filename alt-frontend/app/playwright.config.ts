@@ -54,9 +54,9 @@ export default defineConfig({
   // WebServerの設定
   webServer: {
     // CI ではビルド→本番起動、ローカルでは next dev
-    command: `next dev --port ${process.env.PLAYWRIGHT_TEST_PORT ?? "3010"}`,
-    url: `http://localhost:${process.env.PLAYWRIGHT_TEST_PORT ?? "3010"}`,
-    reuseExistingServer: true,
+    command: `pnpm exec next dev --port ${process.env.PLAYWRIGHT_TEST_PORT ?? "3010"}`,
+    port: parseInt(process.env.PLAYWRIGHT_TEST_PORT ?? "3010"),
+    reuseExistingServer: !isCI,
     timeout: 1200 * 1000, // 20分のWebServerタイムアウト
   },
 });
