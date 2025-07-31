@@ -22,7 +22,7 @@ export default defineConfig({
   reporter: "html",
 
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3010",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${process.env.PLAYWRIGHT_TEST_PORT ?? "3010"}`,
     headless: true,
 
     // CIではトレースは最初のリトライ時のみ、ローカルではオフ
@@ -54,8 +54,8 @@ export default defineConfig({
   // WebServerの設定
   webServer: {
     // CI ではビルド→本番起動、ローカルでは next dev
-    command: "next dev --port 3010",
-    url: "http://localhost:3010",
+    command: `next dev --port ${process.env.PLAYWRIGHT_TEST_PORT ?? "3010"}`,
+    url: `http://localhost:${process.env.PLAYWRIGHT_TEST_PORT ?? "3010"}`,
     reuseExistingServer: true,
     timeout: 1200 * 1000, // 20分のWebServerタイムアウト
   },
