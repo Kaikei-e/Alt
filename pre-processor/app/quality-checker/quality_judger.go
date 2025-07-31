@@ -170,7 +170,7 @@ func parseScore(response string) (Score, error) {
 
 	if len(matches) == 2 {
 		scoreStr := matches[1]
-		score, err := strconv.ParseInt(scoreStr, 10, 64)
+		score, err := strconv.ParseInt(scoreStr, 10, strconv.IntSize)
 		if err != nil {
 			logger.Logger.Error("Failed to convert score to integer", "score_str", scoreStr, "error", err)
 			return Score{}, fmt.Errorf("failed to convert score to integer: %w", err)
@@ -192,7 +192,7 @@ func parseScore(response string) (Score, error) {
 
 	if len(matches) == 2 {
 		scoreStr := matches[1]
-		score, err := strconv.ParseInt(scoreStr, 10, 64)
+		score, err := strconv.ParseInt(scoreStr, 10, strconv.IntSize)
 		if err != nil {
 			logger.Logger.Error("Failed to convert fallback score to integer", "score_str", scoreStr, "error", err)
 			return Score{}, fmt.Errorf("failed to convert fallback score to integer: %w", err)
@@ -224,7 +224,7 @@ func attemptEmergencyParsing(response string) *Score {
 
 	// If we have at least 1 number, use the first one
 	if len(numbers) >= 1 {
-		score, err := strconv.ParseInt(numbers[0], 10, 64)
+		score, err := strconv.ParseInt(numbers[0], 10, strconv.IntSize)
 		if err == nil {
 			// Clamp score to valid range (0-30)
 			if score < 0 {
