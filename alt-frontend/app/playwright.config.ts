@@ -7,7 +7,7 @@ export default defineConfig({
 
   // ローカルでは並列、CIでは安定重視でシリアル実行
   fullyParallel: !isCI,
-  workers: isCI ? 1 : "90%",
+  workers: isCI ? 2 : "90%",
 
   // CI で .only が残っていると失敗
   forbidOnly: isCI,
