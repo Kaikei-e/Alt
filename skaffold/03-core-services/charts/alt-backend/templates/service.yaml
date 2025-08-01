@@ -6,10 +6,13 @@ metadata:
   labels:
     {{- include "alt-backend.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
-  {{- with .Values.commonAnnotations }}
   annotations:
+    {{- with .Values.service.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   type: {{ .Values.service.type }}
   ports:

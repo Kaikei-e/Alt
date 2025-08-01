@@ -21,11 +21,16 @@ serviceAccount:
   annotations: {}
   name: ""
 
-# Pod annotations and labels
+# Pod annotations and labels - ULTRATHINK Phase 1.1 opaque-ports統一実装
 podAnnotations:
   kompose.cmd: "kompose convert -f compose.yaml --out ./k8s-manifests/"
   kompose.version: "1.36.0 (ae2a39403)"
   rask.group: "alt-backend"
+  linkerd.io/inject: enabled
+  # ULTRATHINK Strategy: PostgreSQL mTLS維持 + Protocol Detection無効化
+  config.linkerd.io/opaque-ports: "5432,8080"
+  config.linkerd.io/proxy-protocol-detection-timeout: "0s"
+  # SKIP設定コメントアウト - production.yamlで上書き
 
 podLabels:
   io.kompose.service: "alt-backend"
@@ -64,6 +69,9 @@ service:
       port: 9001
       targetPort: 9001
       protocol: TCP
+  annotations:
+    # Linkerd opaque-ports for Envoy proxy communication
+    config.linkerd.io/opaque-ports: "8080"
 
 # Ingress configuration
 ingress:
@@ -86,25 +94,24 @@ resources:
     cpu: "2"
     memory: "1Gi"
 
-# Liveness probe
+# linkerd-await代替: 延長されたプローブ設定でLinkerdプロキシ準備待ち
 livenessProbe:
   httpGet:
     path: /v1/health
     port: 9000
-  failureThreshold: 5
-  initialDelaySeconds: 60
-  periodSeconds: 20
+  initialDelaySeconds: 120  # 延長: Linkerd + DB準備待ち
+  periodSeconds: 30
   timeoutSeconds: 10
+  failureThreshold: 5  # 許容度向上
 
-# Readiness probe
 readinessProbe:
   httpGet:
     path: /v1/health
     port: 9000
-  failureThreshold: 3
-  initialDelaySeconds: 10
-  periodSeconds: 10
+  initialDelaySeconds: 90  # 延長: 初期接続安定化待ち
+  periodSeconds: 15
   timeoutSeconds: 5
+  failureThreshold: 5  # 許容度向上
 
 # Autoscaling
 autoscaling:
@@ -114,13 +121,11 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
-# Additional volumes - INCIDENT 46 FIX: SSL証明書volume条件付き設定
+# SSL volumes削除
 volumes: []
-# SSL有効時のみssl-certsボリューム追加（values-ssl.yamlで上書き）
 
-# Additional volume mounts - INCIDENT 46 FIX: SSL証明書mount条件付き設定
+# SSL volumeMounts削除
 volumeMounts: []
-# SSL有効時のみssl-certsマウント追加（values-ssl.yamlで上書き）
 
 # Node selector
 nodeSelector: {}
@@ -131,14 +136,45 @@ tolerations: []
 # Affinity
 affinity: {}
 
-# Environment variables
+# linkerd-await代替: プローブ初期遅延を延長してLinkerdプロキシ準備待ち
+
+# Environment variables - Linkerd mTLS only
 env:
-  # Database configuration
-  DB_HOST: "db.alt-database.svc.cluster.local"
-  DB_NAME: "alt"
+  # データベース設定
+  DB_HOST: "postgres.alt-database.svc.cluster.local"
   DB_PORT: "5432"
+  DB_NAME: "alt"
   DB_USER: "alt_db_user"
-  DB_SSL_MODE: "require"
+
+  # 接続プール最適化
+  DB_MAX_CONNS: "20"
+  DB_MIN_CONNS: "5"
+  DB_MAX_CONN_LIFE: "30m"
+  
+  # Envoyプロキシ設定（アウトバウンド専用プロキシ）
+  ENVOY_PROXY_ENABLED: "true"
+  ENVOY_PROXY_URL: "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
+  
+  # RSS Egress Gateway設定 (ULTRATHINK ROOT FIX - フォールバック用)
+  EGRESS_GATEWAY_URL: "http://nginx-external.alt-ingress.svc.cluster.local:8889"
+  # nginx-external proxy（フォールバック用として無効化）
+  PROXY_ENABLED: "false"
+
+  # アプリケーション設定
+  LOG_LEVEL: "info"
+  PORT: "9000"
+
+  # mTLS完全移行: PostgreSQL SSL無効化（開発環境基本設定）
+  DB_SSL_MODE: "disable"
+  DB_SSLMODE: "disable"
+
+  # ULTRATHINK Phase 1.5: 最適化されたDB接続設定
+  DB_CONNECT_TIMEOUT: "90s"  # Protocol Detection対応
+  DB_READ_TIMEOUT: "45s"
+  DB_WRITE_TIMEOUT: "45s"
+  DB_MAX_RETRIES: "15"   # さらに増加
+  DB_RETRY_DELAY: "3s"   # 短縮して高速リトライ
+  DB_POOL_HEALTH_CHECK: "2m"  # 接続プール健全性
 
 # Secret references for environment variables
 envFromSecret:
@@ -172,10 +208,7 @@ configMap:
       RATE_LIMIT_REQUESTS_PER_SECOND=100
       RATE_LIMIT_BURST=200
 
-# SSL configuration
-ssl:
-  enabled: true
-  secretName: postgres-ssl-secret
+# SSL configuration削除 - Linkerd mTLS only
 
 # Secrets configuration
 secrets:
