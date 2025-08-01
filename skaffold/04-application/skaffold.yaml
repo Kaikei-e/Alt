@@ -5,10 +5,10 @@ metadata:
 # Default profile optimized for kind local development
 build:
   local:
-    push: false  # Local development with kind
+    push: false # Local development with kind
     useDockerCLI: true
     useBuildkit: true
-    concurrency: 2  # 適度な並行処理（helm処理効率化）
+    concurrency: 2
     tryImportMissing: true
   tagPolicy:
     gitCommit: {}
@@ -17,44 +17,51 @@ build:
       context: ../../alt-frontend
       docker:
         dockerfile: Dockerfile.frontend
-deploy:
-  statusCheckDeadlineSeconds: 900  # 15分（適切な延長）
-  helm:
-    flags:
-      install: ['--wait', '--timeout=600s', '--debug', '--atomic']  # 10分、デバッグ有効、失敗時rollback
-      upgrade: ['--wait', '--timeout=600s', '--debug', '--atomic']
-    releases:
-      - name: alt-frontend
-        chartPath: charts/alt-frontend
-        namespace: alt-apps
-        createNamespace: true
-        valuesFiles:
-          - charts/alt-frontend/values-development.yaml
-          - charts/alt-frontend/values.yaml
-        setValueTemplates:
-          image.repository: "{{.IMAGE_REPO_alt_frontend}}"
-          image.tag: "{{.IMAGE_TAG_alt_frontend}}"
-        setValues:
-          image.pullPolicy: "Never"  # Kind local development
-        version: 0.1.0
-      - name: nginx
-        chartPath: charts/nginx
-        namespace: alt-ingress
-        createNamespace: true
-        valuesFiles:
-          - charts/nginx/values.yaml
-        version: 0.1.0
-      - name: nginx-external
-        chartPath: charts/nginx-external
-        namespace: alt-ingress
-        createNamespace: true
-        valuesFiles:
-          - charts/nginx-external/values.yaml
-          - charts/nginx-external/values-ssl.yaml
-        # 処理効率化設定
-        recreatePods: false  # Pod再作成回避で高速化
-        version: 0.1.0
 profiles:
+  - name: dev
+    deploy:
+      statusCheckDeadlineSeconds: 900
+      helm:
+        flags:
+          install: ["--wait", "--timeout=900s", "--atomic"]
+          upgrade: ["--wait", "--timeout=900s", "--atomic"]
+        releases:
+          - name: alt-frontend
+            chartPath: charts/alt-frontend
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/alt-frontend/values-development.yaml
+              - charts/alt-frontend/values.yaml
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_alt_frontend}}"
+              image.tag: "{{.IMAGE_TAG_alt_frontend}}"
+            setValues:
+              image.pullPolicy: "Never"
+            version: 0.1.0
+          - name: nginx
+            chartPath: charts/nginx
+            namespace: alt-ingress
+            createNamespace: true
+            valuesFiles:
+              - charts/nginx/values.yaml
+            version: 0.1.0
+          - name: nginx-external
+            chartPath: charts/nginx-external
+            namespace: alt-ingress
+            createNamespace: true
+            valuesFiles:
+              - charts/nginx-external/values.yaml
+            recreatePods: false
+            version: 0.1.0
+          - name: nginx-certs
+            chartPath: charts/nginx-certs
+            namespace: alt-ingress
+            version: 0.1.0
+          - name: nginx-network-policy
+            chartPath: charts/nginx-network-policy
+            namespace: alt-ingress
+            version: 0.1.0
   - name: prod
     build:
       local:
@@ -69,11 +76,11 @@ profiles:
           docker:
             dockerfile: Dockerfile.frontend
     deploy:
-      statusCheckDeadlineSeconds: 900  # 本番環境も適切な延長
+      statusCheckDeadlineSeconds: 900
       helm:
         flags:
-          install: ['--wait', '--timeout=600s', '--debug', '--atomic']
-          upgrade: ['--wait', '--timeout=600s', '--debug', '--atomic']
+          install: ["--wait", "--timeout=900s", "--atomic"]
+          upgrade: ["--wait", "--timeout=900s", "--atomic"]
         releases:
           - name: alt-frontend
             chartPath: charts/alt-frontend
@@ -86,7 +93,7 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_alt_frontend}}"
               image.tag: "{{.IMAGE_TAG_kaikei_alt_frontend}}"
             setValues:
-              image.pullPolicy: "IfNotPresent"
+              image.pullPolicy: "Never"
             version: 0.1.0
           - name: nginx
             chartPath: charts/nginx
@@ -103,4 +110,12 @@ profiles:
             valuesFiles:
               - charts/nginx-external/values.yaml
               - charts/nginx-external/values-production.yaml
+            version: 0.1.0
+          - name: nginx-certs
+            chartPath: charts/nginx-certs
+            namespace: alt-ingress
+            version: 0.1.0
+          - name: nginx-network-policy
+            chartPath: charts/nginx-network-policy
+            namespace: alt-ingress
             version: 0.1.0

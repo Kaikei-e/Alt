@@ -11,465 +11,148 @@ metadata:
   {{- end }}
 data:
   nginx.conf: |
-    # メイン設定：Nginx マスタープロセス設定
-    # 注意：Dockerコンテナ環境では'user'ディレクティブは警告を出すが、動作には影響しない
-    # user nginx;  # Dockerコンテナでは非特権実行のため、このディレクティブはコメントアウト
+    # nginx-internal: try_files削除版（302リダイレクト修正）
 
-    # ワーカープロセス数：CPUコア数に自動調整
+    user nginx;
     worker_processes auto;
-
-    # エラーログ設定：情報レベルでのログ出力
-    error_log /var/log/nginx/error.log info;
-
-    # PIDファイル：一時ディレクトリに配置（書き込み権限確保）
+    worker_rlimit_nofile 16384;
+    error_log /var/log/nginx/error.log warn;
     pid /tmp/nginx.pid;
 
-    # 重要：ワーカープロセスのファイル記述子制限
-    # このディレクティブは'main'コンテキスト（最上位レベル）でのみ有効
-    # 'events'ブロック内に配置すると構文エラーとなる
-    worker_rlimit_nofile 16384;
-
-    # イベント処理設定：Nginxの基本動作パラメータ定義
-    # このセクションはワーカープロセスの接続処理方法を制御
     events {
-        # ワーカープロセスあたりの同時接続数設定
-        # この値とworker_rlimit_nofileの関係：worker_connections < worker_rlimit_nofile
-        worker_connections 2048;
-
-        # Linux環境での最適化：epollイベント処理モデル使用
-        # epollはLinuxカーネルの高性能イベント通知メカニズム
+        worker_connections 1024;
         use epoll;
-
-        # 複数接続の同時受け入れ有効化（性能向上）
-        # 単一のaccept()システムコールで複数の接続を処理
         multi_accept on;
     }
 
-    # HTTPコンテキスト：すべてのHTTP関連設定を包含
     http {
-        # 基本MIME設定：ファイルタイプ判定のための設定読み込み
+        # MIMEタイプ設定（.mjsサポート）
         include /etc/nginx/mime.types;
         default_type application/octet-stream;
 
-        # 統一ログフォーマット定義：SSL/TLS環境での詳細ログ記録
-        # すべてのアクセスログで統一されたフォーマットを使用することで、
-        # ログ解析とモニタリングの一貫性を確保
-        log_format ssl_main '$remote_addr - $remote_user [$time_local] "$request" '
-                           '$status $body_bytes_sent "$http_referer" '
-                           '"$http_user_agent" "$http_x_forwarded_for" '
-                           'rt=$request_time uct="$upstream_connect_time" '
-                           'uht="$upstream_header_time" urt="$upstream_response_time" '
-                           'ssl_protocol="$ssl_protocol" ssl_cipher="$ssl_cipher" '
-                           'content_type="$sent_http_content_type"';
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                       '$status $body_bytes_sent "$http_referer" '
+                       '"$http_user_agent" "$http_x_forwarded_for" '
+                       'rt=$request_time upstream="$upstream_addr" '
+                       'uri="$uri" redirect="$sent_http_location"';
 
-        # デフォルトアクセスログ設定
-        access_log /var/log/nginx/access.log ssl_main;
+        access_log /var/log/nginx/access.log main;
 
-        # 基本性能最適化設定
-        sendfile on;              # ゼロコピー送信の有効化
-        tcp_nopush on;           # TCPパケット最適化
-        tcp_nodelay on;          # 小パケット即座送信
-        keepalive_timeout 75;    # キープアライブタイムアウト
-        keepalive_requests 1000; # キープアライブ最大リクエスト数
-        types_hash_max_size 4096; # MIMEタイプハッシュテーブルサイズ
-        server_tokens off;       # サーバーバージョン情報非表示
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 30;
+        types_hash_max_size 2048;
+        server_tokens off;
+        client_max_body_size 10M;
 
-        # HTTP/2プロトコル有効化
-        # 最新のNginx仕様に準拠したHTTP/2設定
-        http2 on;
-
-        # Gzip圧縮設定：帯域幅使用量削減とレスポンス高速化
-        gzip on;
-        gzip_vary on;           # Vary: Accept-Encodingヘッダー追加
-        gzip_proxied any;       # プロキシ経由リクエストでも圧縮
-        gzip_comp_level 4;      # 圧縮レベル（CPU使用量とのバランス）
-        gzip_min_length 1100;   # 圧縮対象最小サイズ
-        gzip_buffers 16 8k;     # 圧縮バッファ設定
-        gzip_types
-            text/plain
-            text/css
-            text/xml
-            text/javascript
-            application/json
-            application/javascript
-            application/xml+rss
-            application/atom+xml
-            image/svg+xml;
-
-        # プロキシ設定：バックエンドサーバーとの通信最適化
         proxy_buffering on;
         proxy_buffer_size 8k;
         proxy_buffers 16 8k;
-        proxy_busy_buffers_size 16k;
-        proxy_temp_file_write_size 16k;
-        proxy_connect_timeout 30s;
-        proxy_send_timeout 120s;
-        proxy_read_timeout 120s;
-        proxy_http_version 1.1;
 
-        # アップストリーム定義：負荷分散とヘルスチェック設定
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_types
+            text/plain
+            text/css
+            text/javascript
+            application/json
+            application/javascript
+            image/svg+xml
+            application/manifest+json;
+
+        # レート制限
+        limit_req_zone $binary_remote_addr zone=internal_api:10m rate=120r/m;
+        limit_req_zone $binary_remote_addr zone=internal_general:10m rate=50r/s;
+        limit_req_zone $binary_remote_addr zone=internal_static:10m rate=200r/s;
+
+        # アップストリーム設定
         upstream frontend_app {
-            least_conn;  # 最少接続数による負荷分散
-            server alt-frontend.alt-apps.svc.cluster.local:3000 weight=1 max_fails=3 fail_timeout=30s;
-            keepalive 16;        # 持続接続数
-            keepalive_requests 100;  # 持続接続での最大リクエスト数
-            keepalive_timeout 60s;   # 持続接続タイムアウト
+            least_conn;
+            server alt-frontend.alt-apps.svc.cluster.local:3000 weight=1 max_fails=2 fail_timeout=10s;
+            keepalive 8;
+            keepalive_requests 100;
+            keepalive_timeout 60s;
         }
 
         upstream backend_api {
-            least_conn;  # 改善：最少接続数によるより効率的な負荷分散
-            server alt-backend.alt-apps.svc.cluster.local:9000 weight=2 max_fails=1 fail_timeout=10s;  # 高速フェイルオーバー
-            keepalive 64;        # APIサーバー用に接続プール強化
-            keepalive_requests 300;  # リクエスト処理能力向上
-            keepalive_timeout 90s;   # 外部nginxと整合性確保
+            least_conn;
+            server alt-backend.alt-apps.svc.cluster.local:9000 weight=1 max_fails=2 fail_timeout=10s;
+            keepalive 16;
+            keepalive_requests 100;
+            keepalive_timeout 60s;
         }
 
-        # レート制限設定：DDoS攻撃やスパム防止
-        limit_req_zone $binary_remote_addr zone=api_limit:10m rate=1200r/m;     # API用制限
-        limit_req_zone $binary_remote_addr zone=general_limit:10m rate=50r/s;   # 一般用制限
-
-        # WebSocket対応：HTTP Upgradeヘッダーマッピング
-        map $http_upgrade $connection_upgrade {
-            default upgrade;
-            '' close;
-        }
-
-        # メインHTTPSサーバーブロック：SSL終端とHTTP/2対応
-        server {
-            # SSL終端リスナー設定：IPv4およびIPv6対応（nginx-unprivileged対応）
-            listen 8443 ssl;
-            listen [::]:8443 ssl;
-            server_name nginx-internal.alt-ingress.svc.cluster.local nginx-internal.local;
-
-            # TLS証明書設定：Cert-Manager管理証明書使用
-            ssl_certificate /etc/nginx/ssl/tls.crt;
-            ssl_certificate_key /etc/nginx/ssl/tls.key;
-
-            # 現代的TLS設定：セキュリティと性能のバランス
-            ssl_protocols TLSv1.2 TLSv1.3;  # 安全なTLSバージョンのみ
-            ssl_ciphers ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
-            ssl_prefer_server_ciphers off;   # クライアント優先暗号化スイート選択
-            ssl_session_cache shared:SSL:50m; # SSL セッションキャッシュ
-            ssl_session_timeout 1d;         # セッションタイムアウト
-            ssl_session_tickets off;        # セッションチケット無効化（セキュリティ向上）
-            ssl_buffer_size 4k;             # SSL バッファサイズ最適化
-            ssl_early_data on;              # TLS 1.3 Early Data 有効化
-
-            # OCSP Stapling：証明書検証効率化
-            ssl_stapling on;
-            ssl_stapling_verify on;
-            resolver 8.8.8.8 8.8.4.4 valid=300s;
-            resolver_timeout 5s;
-
-            # セキュリティヘッダー：包括的Webセキュリティ対策
-            add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-            add_header X-Frame-Options "SAMEORIGIN" always;
-            add_header X-Content-Type-Options "nosniff" always;
-            add_header X-XSS-Protection "1; mode=block" always;
-            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-            # 統一ログフォーマット適用
-            access_log /var/log/nginx/https_access.log ssl_main;
-            error_log /var/log/nginx/https_error.log info;
-
-            # メインロケーション：フロントエンドアプリケーション
-            location / {
-                # Content-Type ヘッダー管理：適切なMIMEタイプ制御
-                proxy_hide_header Content-Type;
-                proxy_hide_header Cache-Control;
-                proxy_hide_header Expires;
-
-                # フロントエンドプロキシ設定
-                proxy_pass http://frontend_app;
-
-                # プロキシヘッダー設定：TLS環境での適切なヘッダー転送
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto https;
-                proxy_set_header X-Request-ID $request_id;
-                proxy_set_header X-SSL-Protocol $ssl_protocol;
-                proxy_set_header X-SSL-Cipher $ssl_cipher;
-
-                # WebSocket支援ヘッダー
-                proxy_set_header Upgrade $http_upgrade;
-                proxy_set_header Connection $connection_upgrade;
-
-                # CSP関連の重要なヘッダー管理
-                # アップストリームからのCSPヘッダーを尊重しつつ、必要に応じて調整
-                proxy_hide_header Content-Security-Policy;
-
-                # 適切なCSPポリシーの設定：セキュリティを保ちながら機能性を確保
-                add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src-elem 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' http://alt-backend.alt-apps.svc.cluster.local:9000 ws://localhost:8080; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
-
-                # プロキシ動作の最適化設定
-                proxy_buffering off;          # リアルタイム性の確保
-                proxy_redirect off;           # リダイレクトの透過処理
-                proxy_http_version 1.1;       # 持続接続の有効化
-
-                # 統一されたタイムアウト設定（外部nginxと整合性確保）
-                proxy_connect_timeout 30s;
-                proxy_send_timeout 180s;     # 外部nginxと統一
-                proxy_read_timeout 180s;     # 外部nginxと統一
-                # 一般用レート制限適用
-                limit_req zone=general_limit burst=50 nodelay;
-            }
-
-
-            # manifest.json専用の処理
-            location = /manifest.json {
-                # upstream重複ヘッダー防止：Content-Typeを隠す
-                proxy_hide_header Content-Type;
-                proxy_hide_header Cache-Control;
-                
-                # manifest.jsonへの直接アクセス用設定
-                proxy_pass http://frontend_app;
-
-                # 基本的なプロキシヘッダー
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto https;
-
-                # manifest.json用の適切なヘッダー設定（重複防止）
-                add_header Content-Type "application/manifest+json" always;
-                add_header Cache-Control "public, max-age=3600" always;
-
-                # CSP制限の回避：manifest-srcを明示的に許可
-                add_header Content-Security-Policy "default-src 'self'; manifest-src 'self';" always;
-
-                # ログ記録（問題診断用）
-                access_log /var/log/nginx/manifest_access.log ssl_main;
-            }
-
-            # API専用エンドポイント：バックエンドAPI通信設定
-            location /api/ {
-                proxy_hide_header Content-Type;
-                proxy_hide_header Access-Control-Allow-Origin;
-
-                # バックエンドAPIプロキシ
-                proxy_pass http://backend_api/;
-
-                # API専用ヘッダー設定
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto https;
-                proxy_set_header X-API-Request-ID $request_id;
-                proxy_set_header X-SSL-Authenticated true;
-
-                # API最適化タイムアウト（RSS feed validation対応・統一設定）
-                proxy_connect_timeout 30s;
-                proxy_send_timeout 180s;    # 外部nginxと統一
-                proxy_read_timeout 180s;    # 外部nginxと統一
-                
-                # エラーハンドリング強化
-                proxy_intercept_errors on;
-                
-                # 接続安定性向上
-                proxy_set_header Connection "";
-                
-                # 詳細ログ出力（フィード登録問題診断用）
-                access_log /var/log/nginx/api_access.log ssl_main;
-
-                # JSON API用Content-Type設定
-                add_header Content-Type $upstream_http_content_type always;
-
-                # CORS設定：クロスオリジンリクエスト対応
-                add_header Access-Control-Allow-Origin "$http_origin" always;
-                add_header Access-Control-Allow-Credentials "true" always;
-                add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
-                add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With, X-API-Key" always;
-
-                # プリフライトリクエスト処理
-                if ($request_method = 'OPTIONS') {
-                    add_header Access-Control-Allow-Origin "$http_origin" always;
-                    add_header Access-Control-Allow-Credentials "true" always;
-                    add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
-                    add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With" always;
-                    add_header Content-Length 0;
-                    add_header Content-Type "text/plain; charset=utf-8";
-                    return 200;
-                }
-
-                # API専用レート制限
-                limit_req zone=api_limit burst=100 nodelay;
-            }
-
-            # Server-Sent Events（SSE）専用設定
-            location /api/v1/sse/ {
-                proxy_hide_header Content-Type;
-
-                # SSE専用プロキシ設定
-                proxy_pass http://backend_api/v1/sse/;
-
-                # SSE最適化ヘッダー
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto https;
-                proxy_set_header Connection '';
-
-                # SSE専用設定：バッファリング無効化
-                proxy_buffering off;
-                proxy_cache off;
-                chunked_transfer_encoding off;
-
-                # 長時間接続対応タイムアウト（SSE用）
-                proxy_send_timeout 300s;
-                proxy_read_timeout 300s;
-
-                # SSE専用Content-Type
-                add_header Content-Type "text/event-stream; charset=utf-8" always;
-                add_header Cache-Control "no-cache" always;
-                add_header X-Accel-Buffering "no" always;
-
-                # SSE用CORS設定
-                add_header Access-Control-Allow-Origin "*" always;
-                add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
-            }
-            # 静的リソース配信最適化：タイプ別細分化設定
-            # 重要：すべて文字列マッチングlocationに変更（正規表現を完全排除）
-
-            # アセットディレクトリ：一般的な静的リソース
-            location /assets/ {
-                proxy_hide_header Content-Type;
-                proxy_hide_header Cache-Control;
-                proxy_hide_header Expires;
-
-                # 透過プロキシ：完全なパス保持
-                proxy_pass http://frontend_app;
-
-                # 静的リソース用基本ヘッダー
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-Proto https;
-
-                # 長期キャッシュ戦略：静的リソース最適化
-                expires 1y;
-                add_header Cache-Control "public, immutable" always;
-                add_header Content-Type $upstream_http_content_type always;
-
-                # 汎用静的リソース圧縮設定
-                gzip_min_length 1024;
-                gzip_types text/css application/javascript application/json image/svg+xml;
-            }
-
-            # 静的ディレクトリ：フレームワーク非依存リソース
-            location /static/ {
-                proxy_hide_header Content-Type;
-                proxy_hide_header Cache-Control;
-                proxy_hide_header Expires;
-
-                proxy_pass http://frontend_app;
-
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-Proto https;
-
-                # 静的リソース用積極的キャッシュ
-                expires 1y;
-                add_header Cache-Control "public, immutable" always;
-                add_header Content-Type $upstream_http_content_type always;
-
-                gzip_min_length 1024;
-                gzip_types text/css application/javascript application/json image/svg+xml;
-            }
-
-            # SSL対応ヘルスチェックエンドポイント
-            location /health {
-                access_log off;
-                return 200 "Internal nginx HTTPS healthy\nTimestamp: $time_iso8601\nServer: $hostname\nSSL Protocol: $ssl_protocol\nSSL Cipher: $ssl_cipher\n";
-                add_header Content-Type "text/plain; charset=utf-8" always;
-                add_header X-Health-Check "nginx-internal-ssl" always;
-                add_header Cache-Control "no-cache, no-store, must-revalidate" always;
-            }
-
-            # SSL統計情報エンドポイント：デバッグ用
-            location /ssl-status {
-                access_log off;
-                allow 127.0.0.1;
-                allow 10.0.0.0/8;
-                deny all;
-
-                return 200 "SSL Status: $ssl_protocol\nCipher: $ssl_cipher\nSession Reused: $ssl_session_reused\nTimestamp: $time_iso8601\n";
-                add_header Content-Type "text/plain; charset=utf-8" always;
-            }
-
-            # エラーページ処理
-            error_page 500 502 503 504 /50x.html;
-            location = /50x.html {
-                internal;
-                return 500 "Internal Server Error (HTTPS)\nTimestamp: $time_iso8601\n";
-                add_header Content-Type "text/plain; charset=utf-8" always;
-            }
-        }
-
-        # HTTP to HTTPS自動リダイレクト
+        # メインサーバー: port 8080
         server {
             listen 8080;
             listen [::]:8080;
-            server_name nginx-internal.alt-ingress.svc.cluster.local;
+            server_name curionoah.com nginx.alt-ingress.svc.cluster.local;
 
-            # 全HTTPリクエストのHTTPS化
-            return 301 https://$server_name$request_uri;
+            location ^~ /_next/ {
+                proxy_pass http://frontend_app;
+                add_header X-Upstream-CT $upstream_http_content_type always;
+            }
+
+            # ルート（SSR/静的） ※Host ヘッダは明示しても良い
+            location / {
+                proxy_pass http://frontend_app;
+                proxy_set_header Host $host;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            # API エンドポイント
+            location /api/ {
+                limit_req zone=internal_api burst=50 nodelay;
+
+                proxy_pass http://backend_api/;
+
+                proxy_connect_timeout 30s;
+                proxy_send_timeout 120s;
+                proxy_read_timeout 120s;
+
+                # CORS設定
+                add_header Access-Control-Allow-Origin "https://curionoah.com" always;
+                add_header Access-Control-Allow-Credentials "true" always;
+                add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+                add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With" always;
+
+                if ($request_method = 'OPTIONS') {
+                    add_header Content-Length 0;
+                    return 200;
+                }
+            }
+
+            # SSE エンドポイント
+            location /api/v1/sse/ {
+                proxy_pass http://backend_api/v1/sse/;
+
+                proxy_buffering off;
+                proxy_cache off;
+
+                proxy_send_timeout 300s;
+                proxy_read_timeout 300s;
+
+                add_header Cache-Control "no-cache" always;
+                add_header Access-Control-Allow-Origin "https://curionoah.com" always;
+            }
+
+            # 内部ヘルスチェック
+            location /health {
+                access_log off;
+                return 200 "internal nginx healthy\n";
+            }
         }
 
-        # Kubernetes専用ヘルスチェックサーバー
+        # Kubernetes専用ヘルスチェック
         server {
             listen 9080;
-            server_name localhost health.internal;
+            server_name localhost;
             access_log off;
 
-            # Kubernetesプローブ用エンドポイント
             location /nginx-health {
-                access_log off;
-                return 200 "nginx SSL-enabled healthy\nTimestamp: $time_iso8601\nServer: $hostname\nSSL Status: Enabled\n";
-                add_header Content-Type "text/plain; charset=utf-8" always;
-                add_header X-Health-Check "nginx-internal-ssl" always;
-                add_header X-SSL-Enabled "true" always;
-                add_header Cache-Control "no-cache, no-store, must-revalidate" always;
-            }
-
-            # 詳細ヘルスチェック情報：JSON形式
-            location /nginx-health/detailed {
-                access_log off;
-                return 200 '{
-                    "status": "healthy",
-                    "service": "nginx-internal-complete-fixed",
-                    "timestamp": "$time_iso8601",
-                    "server_hostname": "$hostname",
-                    "nginx_version": "$nginx_version",
-                    "ssl_enabled": true,
-                    "ssl_protocols": "TLSv1.2 TLSv1.3",
-                    "http2_enabled": true,
-                    "log_format": "ssl_main_unified",
-                    "syntax_status": "all_errors_resolved",
-                    "upstreams": {
-                      "frontend_app": "alt-frontend.alt-apps.svc.cluster.local:3000",
-                      "backend_api": "alt-backend.alt-apps.svc.cluster.local:9000"
-                    },
-                    "features": [
-                      "ssl_termination",
-                      "http2_modern_standard",
-                      "log_format_unified",
-                      "syntax_error_resolved",
-                      "docker_compose_migration_complete",
-                      "content_type_unified",
-                      "spa_routing_support",
-                      "sse_support",
-                      "cors_enabled",
-                      "pod_ssl_communication"
-                    ]
-                  }';
-                add_header Content-Type "application/json; charset=utf-8" always;
-                add_header X-Health-Check "nginx-detailed-ssl" always;
-            }
-
-            # デフォルトレスポンス
-            location / {
-                return 404 "SSL-enabled Health check\nHTTPS available on port 443\nTimestamp: $time_iso8601\n";
-                add_header Content-Type "text/plain; charset=utf-8" always;
+                return 200 "nginx-internal healthy\n";
             }
         }
     }
