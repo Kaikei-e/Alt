@@ -1,0 +1,150 @@
+# Envoy Outbound Proxy Configuration
+# 専用RSS Egress Gateway
+
+replicaCount: 2
+
+image:
+  repository: envoyproxy/envoy
+  tag: "v1.35.0"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  linkerd.io/inject: enabled
+  config.linkerd.io/opaque-ports: "8080,9901"
+
+podSecurityContext:
+  fsGroup: 65534
+  runAsNonRoot: true
+  runAsUser: 65534
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65534
+
+service:
+  type: ClusterIP
+  ports:
+    proxy:
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    admin:
+      port: 9901
+      targetPort: 9901
+      protocol: TCP
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - envoy-proxy
+        topologyKey: kubernetes.io/hostname
+
+# Envoy Configuration
+envoy:
+  # Dynamic Forward Proxy設定
+  admin:
+    port: 9901
+    
+  proxy:
+    port: 8080
+    
+  # 許可ドメインリスト
+  allowedDomains:
+    - "feeds.bbci.co.uk"
+    - "zenn.dev"
+    - "github.com"
+    - "feeds.feedburner.com"
+    - "rss.cnn.com"
+    - "qiita.com"
+    - "feeds.reuters.com"
+    
+  # DNS設定
+  dns:
+    resolvers:
+      - "8.8.8.8"
+      - "8.8.4.4"
+    ttl: 300s
+    
+  # タイムアウト設定
+  timeout:
+    connect: 30s
+    request: 60s
+    response: 300s
+    
+  # ログレベル
+  logLevel: info
+
+# SSL/TLS設定（一時的に無効化、テスト用）
+ssl:
+  enabled: false
+  
+# ネットワークポリシー
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: alt-apps
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: alt-backend
+      ports:
+      - protocol: TCP
+        port: 8080
+  egress:
+    - to: []  # Allow all outbound traffic
+      ports:
+      - protocol: TCP
+        port: 80
+      - protocol: TCP
+        port: 443
+      - protocol: UDP
+        port: 53  # DNS
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /stats/prometheus
+  port: admin
+  labels:
+    prometheus: kube-prometheus
