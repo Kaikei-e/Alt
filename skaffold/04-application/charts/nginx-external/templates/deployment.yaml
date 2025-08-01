@@ -12,6 +12,11 @@ spec:
       {{- include "nginx-external.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # Linkerd configuration - only mark forward proxy port as opaque
+        # Health port 8080 should be handled by Linkerd for proper HTTP routing
+        config.linkerd.io/opaque-ports: "8888,8889"
+        config.linkerd.io/skip-inbound-ports: "8889"
       labels:
         {{- include "nginx-external.selectorLabels" . | nindent 8 }}
     spec:
@@ -29,8 +34,13 @@ spec:
         - name: health
           containerPort: 8080
           protocol: TCP
+        - name: proxy
+          containerPort: 8888
+          protocol: TCP
+        - name: egress
+          containerPort: 8889
+          protocol: TCP
         volumeMounts:
-        # Mount the main nginx.conf file
         - name: nginx-config
           mountPath: /etc/nginx/nginx.conf
           subPath: nginx.conf

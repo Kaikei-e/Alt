@@ -43,26 +43,29 @@ securityContext:
     add: ["NET_BIND_SERVICE"] # 80/443 バインド権限
     drop: ["ALL"]
 
-# Service configuration - exposed externally
+# Service configuration - ClusterIP (Security First: 外界露出完全回避)
 service:
-  type: LoadBalancer
+  type: ClusterIP
   port: 80
   httpsPort: 443
   healthPort: 8080
+  # nodePort: 30443  # セキュリティ強化：外界露出回避のため削除
+  annotations:
+    nginx.ingress.kubernetes.io/service-upstream: "true"  # Linkerd Service Mesh最適化
 
-# Cloudflare tunnel開発環境最適化設定
+# Cloudflare tunnel本番環境設定
 cloudflare-tunnel:
-  enabled: true  # 必須機能として維持
-  
+  enabled: true   # 本番環境で必須機能として有効化
+
   # 開発環境用軽量設定
   replicaCount: 1
-  
+
   # Image pull最適化
   image:
     repository: cloudflare/cloudflared
     tag: "2025.7.0"
     pullPolicy: IfNotPresent  # ローカルcache利用
-  
+
   # 軽量リソース設定
   resources:
     limits:
@@ -71,18 +74,18 @@ cloudflare-tunnel:
     requests:
       cpu: 50m
       memory: 64Mi
-  
+
   # 開発環境では不要機能無効化
   dynamicIpUpdate:
     enabled: false
-  
+
   # ヘルスチェック最適化（高速起動）
   livenessProbe:
     enabled: true
     initialDelaySeconds: 10  # 高速化
     periodSeconds: 30
     timeoutSeconds: 5
-  
+
   readinessProbe:
     enabled: true
     initialDelaySeconds: 5   # 高速化
@@ -185,11 +188,11 @@ secret:
 # SSL configuration
 ssl:
   enabled: true
-  secretName: nginx-external-ssl-certs
+  secretName: nginx-external-ssl-certs-prod
 
 # Secrets configuration
 secrets:
-  enabled: true
+  enabled: false
 
 # Deployment strategy
 strategy:
@@ -244,10 +247,10 @@ nginx:
 # Upstream configurations for internal nginx or services
 upstreams:
   # Route to internal nginx (recommended approach) - INCIDENT 85+86 FIX: 正しいnamespace参照+upstream名統一
-  # INCIDENT 91 FIX: nginx-external → nginx-internal HTTPS接続統一
+  # mTLS完全移行: nginx-external → nginx-internal HTTP接続（Linkerd透明mTLS）
   - name: nginx
     servers:
-      - "nginx-internal.alt-ingress.svc.cluster.local:8443"
+      - "nginx.alt-ingress.svc.cluster.local:80"  # HTTP to nginx service port 80→8080（Linkerd透明mTLS）
     loadBalancing: "least_conn"
     keepalive: 32
     healthCheck:
@@ -255,6 +258,9 @@ upstreams:
       path: "/nginx-health"
       interval: "30s"
       timeout: "10s"
+    # SSL設定削除 - Linkerd mTLS自動適用
+    # proxySslCertificate: "/etc/nginx/ssl/tls.crt"
+    # proxySslCertificateKey: "/etc/nginx/ssl/tls.key"
 
   # Alternative: Direct routing to services (if needed) - INCIDENT 85 FIX: 正しいnamespace参照
   - name: alt-frontend-direct
@@ -287,6 +293,8 @@ servers:
     ssl:
       certificate: "/etc/nginx/ssl/tls.crt"
       certificateKey: "/etc/nginx/ssl/tls.key"
+      clientCertificate: "/etc/nginx/ssl/ca.crt"
+      verifyClient: "on"
       protocols: "TLSv1.2 TLSv1.3"
       ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
       sessionCache: "shared:SSL:10m"
@@ -295,9 +303,9 @@ servers:
       ocspStapling: "off"
       ocspStaplingVerify: "off"
     locations:
-      # PERFORMANCE OPTIMIZATION: Prioritized prefix for Next.js static assets - INCIDENT 91 FIX
+      # PERFORMANCE OPTIMIZATION: Prioritized prefix for Next.js static assets - mTLS完全移行
       - path: "^~ /_next/static/"
-        proxyPass: "https://nginx"
+        proxyPass: "http://nginx"  # HTTPS→HTTP変更（Linkerd透明mTLS）
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -306,7 +314,7 @@ servers:
           - "X-Forwarded-Host $host"
           - "X-Forwarded-Port $server_port"
           - "X-Request-ID $request_id"
-        proxyTimeout: "60s"
+        proxyTimeout: "120s"  # ULTRATHINK: DB初期化・Protocol Detection対応
         extraConfig: |
           # Static asset optimization - NO REGEX overhead
           expires 1y;
@@ -319,14 +327,13 @@ servers:
           proxy_busy_buffers_size 16k;
           proxy_buffering on;
 
-          # SSL settings for static assets
-          proxy_ssl_verify off;
-          proxy_ssl_session_reuse on;
-          proxy_ssl_protocols TLSv1.2 TLSv1.3;
+          # HTTP upstream設定（Linkerd mTLS自動適用）
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
 
       # Main application routes - proxy to internal nginx
       - path: "/"
-        proxyPass: "https://nginx"
+        proxyPass: "http://nginx"  # HTTPS→HTTP変更（Linkerd透明mTLS）
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -335,23 +342,23 @@ servers:
           - "X-Forwarded-Host $host"
           - "X-Forwarded-Port $server_port"
           - "X-Request-ID $request_id"
-        proxyTimeout: "60s"
+        proxyTimeout: "120s"  # ULTRATHINK: DB初期化・Protocol Detection対応
         extraConfig: |
-          # TLS環境対応プロキシ設定
-          proxy_ssl_verify off;  # Cert-Manager証明書の自動検証回避
-          proxy_ssl_session_reuse on;  # TLSセッション再利用による性能向上
-          proxy_ssl_protocols TLSv1.2 TLSv1.3;  # 最新TLSプロトコル使用
+          # HTTP upstream設定（Linkerd透明mTLS自動適用）
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
+          proxy_buffering on;
 
           # 暗号化環境用エラーハンドリング
           proxy_intercept_errors off;
           proxy_next_upstream error timeout http_502 http_503 http_504;
           proxy_next_upstream_tries 3;
-          proxy_next_upstream_timeout 45s;  # TLS再接続時間考慮
+          proxy_next_upstream_timeout 45s;
 
 
       # API routes with stricter rate limiting
       - path: "/api/"
-        proxyPass: "https://nginx"
+        proxyPass: "http://nginx"  # HTTPS→HTTP変更（Linkerd透明mTLS）
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -360,11 +367,11 @@ servers:
           - "X-Forwarded-Host $host"
           - "X-Forwarded-Port $server_port"
           - "X-Request-ID $request_id"
-        proxyTimeout: "60s"
+        proxyTimeout: "120s"  # ULTRATHINK: DB初期化・Protocol Detection対応
         extraConfig: |
           # Stricter rate limiting for API
           limit_req zone=api burst=20 nodelay;
-          limit_conn addr 10;
+          limit_conn addr 20;
 
           # Proxy settings
           proxy_buffer_size 8k;
@@ -414,6 +421,17 @@ servers:
       set_real_ip_from 172.16.0.0/12;
       set_real_ip_from 192.168.0.0/16;
 
+  # Health check server
+  - listen:
+      - "8080"
+    serverName: "health.check"
+    locations:
+      - path: "/nginx-health"
+        extraConfig: |
+          access_log off;
+          return 200 "External nginx health OK";
+          add_header Content-Type text/plain;
+
 # Monitoring configuration
 monitoring:
   enabled: true
@@ -422,22 +440,9 @@ monitoring:
     prometheus.io/port: "8080"
     prometheus.io/path: "/nginx-status"
 
-# Network policy for external access
+# Network policy for external access - セキュリティファースト: Cloudflare Tunnel専用
 networkPolicy:
-  enabled: true
-  ingress:
-    - from: []
-      ports:
-        - port: 8080
-        - port: 8443
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              name: alt-ingress
-      ports:
-        - port: 8080
-        - port: 8443
+  enabled: false  # 01-foundation/network-policies/cloudflare-tunnel-access-policyで制御
 
 # Pod disruption budget
 podDisruptionBudget:
@@ -446,19 +451,4 @@ podDisruptionBudget:
   maxUnavailable: ""
 
 # Cloudflare Tunnel設定（subchartに渡される）
-# 本番環境では values-production.yaml で実際の認証情報を設定してください
-cloudflare-tunnel:
-  cloudflare:
-    # 2025年推奨: tunnel token方式（JWT形式のトークン）
-    # Cloudflareダッシュボードで作成したトンネルの"Configure"からtokenを取得
-    # 本番環境ではvalues-production.yamlで設定する
-    tunnel_token: ""
-
-    # Legacy credentials方式（tunnel_tokenが空の場合のみ使用）
-    # 本番環境ではvalues-production.yamlで設定する
-    account: "" # Cloudflare Account ID
-    tunnelId: "" # Tunnel ID
-    secret: "" # Tunnel Secret
-
-    # 既存secret使用の場合（手動でsecretを作成済みの場合）
-    secretName: "" # 手動作成secretを使用する場合
+# 本番環境設定は values-production.yaml で管理
