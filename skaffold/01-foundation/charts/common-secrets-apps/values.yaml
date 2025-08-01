@@ -1,10 +1,14 @@
 # Default values for common-secrets
 # Centralized secret management
 
-# Namespace configuration
+# Namespace configuration - ROOT FIX: Multi-namespace Secret distribution
 namespace:
   create: false
-  name: "default"
+  name: "default"  # Keep for backward compatibility
+  # Multi-namespace Secret distribution strategy
+  analytics: "alt-analytics"    # ClickHouse secrets
+  auth: "alt-auth"              # auth-postgres secrets  
+  database: "alt-database"      # Main postgres secrets
 
 # Labels and annotations
 commonLabels:
@@ -33,7 +37,7 @@ database:
     
   clickhouse:
     enabled: true
-    secretName: clickhouse-secrets
+    secretName: clickhouse-secret  # ROOT FIX: Singular name to match 02-infrastructure expectation
     password: ""
     appPassword: ""
 

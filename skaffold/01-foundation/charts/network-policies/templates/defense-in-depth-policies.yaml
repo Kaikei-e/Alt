@@ -227,6 +227,14 @@ spec:
       port: 8080
     - protocol: TCP
       port: 4143
+  
+  # ROOT FIX: External HTTPS access for RSS feeds (ULTRATHINK解決)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS for RSS feeds
+    - protocol: TCP
+      port: 80   # HTTP for RSS feeds
 
 ---
 # 5. MICROSEGMENTATION: Database Zone（最高セキュリティ）
