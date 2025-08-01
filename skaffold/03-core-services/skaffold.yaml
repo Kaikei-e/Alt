@@ -54,6 +54,13 @@ profiles:
             setValues:
               image.pullPolicy: "IfNotPresent"
             version: 0.1.0
+          - name: envoy-proxy
+            chartPath: charts/envoy-proxy
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/envoy-proxy/values.yaml
+            version: 0.1.0
   - name: staging
     build:
       artifacts:
@@ -104,6 +111,13 @@ profiles:
               image.tag: "{{.IMAGE_TAG_kaikei_alt_backend}}"
             setValues:
               image.pullPolicy: "IfNotPresent"
+            version: 0.1.0
+          - name: envoy-proxy
+            chartPath: charts/envoy-proxy
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/envoy-proxy/values.yaml
             version: 0.1.0
   - name: prod
     build:
@@ -177,6 +191,13 @@ profiles:
               image.tag: "{{.IMAGE_TAG_kaikei_alt_backend}}"
             setValues:
               image.pullPolicy: "IfNotPresent"
+            version: 0.1.0
+          - name: envoy-proxy
+            chartPath: charts/envoy-proxy
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/envoy-proxy/values.yaml
             version: 0.1.0
 build:
   artifacts:
