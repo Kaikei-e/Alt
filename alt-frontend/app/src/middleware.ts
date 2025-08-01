@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { securityHeaders } from "./config/security";
 
 export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // 静的ファイルの明示的な除外処理
+  if (pathname === '/manifest.json') {
+    return NextResponse.next();
+  }
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const headers = new Headers(request.headers);
 
