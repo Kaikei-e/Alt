@@ -406,6 +406,104 @@ func TestRegisterFeedGateway_TimeoutHandling(t *testing.T) {
 	}
 }
 
+// TDD RED PHASE: Proxy functionality tests (EXPECTED TO FAIL)
+func TestDefaultRSSFeedFetcher_WithProxy_Success(t *testing.T) {
+	// Test proxy configuration from environment variables
+	t.Setenv("HTTP_PROXY", "http://nginx-external.alt-ingress.svc.cluster.local:8888")
+	t.Setenv("PROXY_ENABLED", "true")
+	
+	fetcher := &DefaultRSSFeedFetcher{} // Missing proxy config field - EXPECTED TO FAIL
+	
+	// This should fail because DefaultRSSFeedFetcher doesn't have proxy support yet
+	ctx := context.Background()
+	_, err := fetcher.FetchRSSFeed(ctx, "https://example.com/feed.xml")
+	
+	// We expect this test to fail initially (RED phase)
+	if err == nil {
+		t.Error("Expected proxy configuration to be applied but none found")
+	}
+}
+
+func TestDefaultRSSFeedFetcher_WithProxy_ProxyFailure(t *testing.T) {
+	// Test proxy connection failure handling
+	t.Setenv("HTTP_PROXY", "http://invalid-proxy.invalid:8888")
+	t.Setenv("PROXY_ENABLED", "true")
+	
+	fetcher := &DefaultRSSFeedFetcher{} // Missing proxy config field - EXPECTED TO FAIL
+	
+	ctx := context.Background()
+	_, err := fetcher.FetchRSSFeed(ctx, "https://example.com/feed.xml")
+	
+	// This test should fail because proxy support is not implemented yet
+	if err == nil {
+		t.Error("Expected proxy failure to be handled but no proxy support found")
+	}
+}
+
+func TestDefaultRSSFeedFetcher_WithProxy_ProxyTimeout(t *testing.T) {
+	// Test proxy timeout scenarios
+	t.Setenv("HTTP_PROXY", "http://nginx-external.alt-ingress.svc.cluster.local:8888")
+	t.Setenv("PROXY_ENABLED", "true")
+	
+	fetcher := &DefaultRSSFeedFetcher{} // Missing proxy config field - EXPECTED TO FAIL
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	
+	_, err := fetcher.FetchRSSFeed(ctx, "https://httpbin.org/delay/10")
+	
+	// This test should fail because proxy support is not implemented yet
+	if err == nil {
+		t.Error("Expected proxy timeout handling but no proxy support found")
+	}
+}
+
+func TestDefaultRSSFeedFetcher_ProxyConfigFromEnv(t *testing.T) {
+	tests := []struct {
+		name         string
+		httpProxy    string
+		proxyEnabled string
+		wantProxy    bool
+		wantError    bool
+	}{
+		{
+			name:         "proxy enabled with valid URL",
+			httpProxy:    "http://nginx-external.alt-ingress.svc.cluster.local:8888",
+			proxyEnabled: "true",
+			wantProxy:    true,
+			wantError:    false,
+		},
+		{
+			name:         "proxy disabled",
+			httpProxy:    "http://nginx-external.alt-ingress.svc.cluster.local:8888",
+			proxyEnabled: "false",
+			wantProxy:    false,
+			wantError:    false,
+		},
+		{
+			name:         "no proxy URL provided",
+			httpProxy:    "",
+			proxyEnabled: "true",
+			wantProxy:    false,
+			wantError:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HTTP_PROXY", tt.httpProxy)
+			t.Setenv("PROXY_ENABLED", tt.proxyEnabled)
+			
+			// This will fail because getProxyConfigFromEnv doesn't exist yet
+			config := getProxyConfigFromEnv() // EXPECTED TO FAIL - function doesn't exist
+			
+			if config == nil {
+				t.Error("Expected proxy config but got nil - proxy support not implemented")
+			}
+		})
+	}
+}
+
 // TDD Red Phase: Test RSS feed format validation with various formats
 func TestRegisterFeedGateway_FeedFormatValidation(t *testing.T) {
 	mockFetcher := NewMockRSSFeedFetcher()
