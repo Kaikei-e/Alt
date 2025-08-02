@@ -47,22 +47,4 @@ pv-data/
 # SSL configuration files
 */values-ssl.yaml
 log.txt
-argocd/applications/alt-backend-app.yaml
-argocd/applications/alt-frontend-app.yaml
-argocd/applications/auth-service-app.yaml
-argocd/applications/infrastructure-apps.yaml
-argocd/applications/processing-apps.yaml
-argocd/cli/deploy-with-rollout.sh
-argocd/cli/promote-rollout.sh
-argocd/cli/rollback-rollout.sh
-argocd/cli/status-check.sh
-argocd/docs/SETUP_GUIDE.md
-argocd/rollouts/backend-rollout.yaml
-argocd/rollouts/frontend-rollout.yaml
-argocd/rollouts/pre-processor-rollout.yaml
-argocd/rollouts/search-indexer-rollout.yaml
-argocd/rollouts/tag-generator-rollout.yaml
-argocd/setup/install-argo-rollouts.sh
-argocd/setup/install-argocd.sh
-argocd/setup/setup-cli.sh
-argocd/setup/verify-installation.sh
+argocd/
