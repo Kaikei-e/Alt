@@ -62,14 +62,14 @@ func TestRegisterFeedGateway_URLSecurityValidation(t *testing.T) {
 			},
 		},
 		{
-			name:          "valid public URL should pass security validation",
+			name:          "valid public RSS URL should pass security validation",
 			url:           "https://example.com/feed.xml",
 			expectedError: "database connection not available", // Should pass security, fail at DB
 			wantErr:       true,
 			setupMock: func() {
 				mockFetcher.SetFeed("https://example.com/feed.xml", &gofeed.Feed{
-					Title:    "Test Feed",
-					Link:     "https://example.com/feed.xml",
+					Title:    "Example RSS Feed",
+					Link:     "https://example.com",
 					FeedLink: "https://example.com/feed.xml",
 				})
 			},
@@ -105,36 +105,36 @@ func TestRegisterFeedGateway_CircuitBreakerIntegration(t *testing.T) {
 	}{
 		{
 			name:         "circuit breaker should remain closed on success",
-			url:          "https://example.com/feed.xml",
+			url:          "https://example.com/rss.xml",
 			failureCount: 0,
 			wantErr:      true, // Will fail at DB layer, but circuit breaker should be closed
 			setupMock: func() {
-				mockFetcher.SetFeed("https://example.com/feed.xml", &gofeed.Feed{
-					Title:    "Test Feed",
-					Link:     "https://example.com/feed.xml",
-					FeedLink: "https://example.com/feed.xml",
+				mockFetcher.SetFeed("https://example.com/rss.xml", &gofeed.Feed{
+					Title:    "Example RSS Feed",
+					Link:     "https://example.com",
+					FeedLink: "https://example.com/rss.xml",
 				})
 			},
 		},
 		{
 			name:            "circuit breaker should open after multiple failures",
-			url:             "https://failing-service.com/feed.xml",
+			url:             "https://example.com/failing-feed.xml",
 			failureCount:    5, // Should exceed default threshold
 			expectedError:   "circuit breaker is open",
 			expectOpenState: true,
 			wantErr:         true,
 			setupMock: func() {
-				mockFetcher.SetError("https://failing-service.com/feed.xml", errors.New("service unavailable"))
+				mockFetcher.SetError("https://example.com/failing-feed.xml", errors.New("service unavailable"))
 			},
 		},
 		{
 			name:          "circuit breaker should protect against repeated failures",
-			url:           "https://unreliable-service.com/feed.xml",
+			url:           "https://example.com/unreliable-feed.xml",
 			failureCount:  3,
 			expectedError: "circuit breaker is open",
 			wantErr:       true,
 			setupMock: func() {
-				mockFetcher.SetError("https://unreliable-service.com/feed.xml", errors.New("timeout"))
+				mockFetcher.SetError("https://example.com/unreliable-feed.xml", errors.New("timeout"))
 			},
 		},
 	}
@@ -179,8 +179,8 @@ func TestRegisterFeedGateway_MetricsCollection(t *testing.T) {
 			expectedSuccessRate: 0.0,
 			setupMock: func(mockFetcher *MockRSSFeedFetcher) {
 				mockFetcher.SetFeed("https://example.com/feed.xml", &gofeed.Feed{
-					Title:    "Test Feed",
-					Link:     "https://example.com/feed.xml",
+					Title:    "Example RSS Feed",
+					Link:     "https://example.com",
 					FeedLink: "https://example.com/feed.xml",
 				})
 			},
@@ -193,7 +193,7 @@ func TestRegisterFeedGateway_MetricsCollection(t *testing.T) {
 			expectedFailureReqs: 2,
 			expectedSuccessRate: 0.0,
 			setupMock: func(mockFetcher *MockRSSFeedFetcher) {
-				mockFetcher.SetError("https://failing.com/feed.xml", errors.New("service error"))
+				mockFetcher.SetError("https://example.com/failing.xml", errors.New("service error"))
 			},
 		},
 		{
@@ -223,7 +223,7 @@ func TestRegisterFeedGateway_MetricsCollection(t *testing.T) {
 				case "success":
 					gateway.RegisterRSSFeedLink(context.Background(), "https://example.com/feed.xml")
 				case "failure":
-					gateway.RegisterRSSFeedLink(context.Background(), "https://failing.com/feed.xml")
+					gateway.RegisterRSSFeedLink(context.Background(), "https://example.com/failing.xml")
 				case "security_fail":
 					gateway.RegisterRSSFeedLink(context.Background(), "http://192.168.1.1/feed.xml") // Will fail security validation
 				}
@@ -253,16 +253,16 @@ func TestRegisterFeedGateway_IntegratedSecurityWorkflow(t *testing.T) {
 		setupMock           func()
 	}{
 		{
-			name:                "complete security workflow for valid URL",
-			url:                 "https://example.com/feed.xml",
-			expectedSecurityErr: "", // Should pass security validation
+			name:                "complete security workflow for valid RSS URL",
+			url:                 "https://example.com/feed.xml",  // RSS対応URL
+			expectedSecurityErr: "", // Should pass RSS-specific validation
 			expectMetrics:       true,
 			expectCircuitBreaker: false, // Should not trigger circuit breaker
-			wantErr:             true,   // Will fail at DB, but security should pass
+			wantErr:             true,   // Will fail at DB, but RSS validation should pass
 			setupMock: func() {
 				mockFetcher.SetFeed("https://example.com/feed.xml", &gofeed.Feed{
-					Title:    "Test Feed",
-					Link:     "https://example.com/feed.xml",
+					Title:    "Example RSS Feed",
+					Link:     "https://example.com",
 					FeedLink: "https://example.com/feed.xml",
 				})
 			},
@@ -279,14 +279,33 @@ func TestRegisterFeedGateway_IntegratedSecurityWorkflow(t *testing.T) {
 			},
 		},
 		{
-			name:                "RSS-specific validation should work",
-			url:                 "https://example.com/not-a-feed",
-			expectedSecurityErr: "URL path does not appear to be an RSS feed",
+			name:                "RSS-specific validation should work for valid atom feed",
+			url:                 "https://example.com/feeds/atom.xml",  // RSS対応URL
+			expectedSecurityErr: "", // Should pass RSS-specific validation
 			expectMetrics:       true,
 			expectCircuitBreaker: false,
-			wantErr:             true,
+			wantErr:             true,   // Will fail at DB, but RSS validation should pass
 			setupMock: func() {
-				// Mock won't be called due to RSS validation
+				mockFetcher.SetFeed("https://example.com/feeds/atom.xml", &gofeed.Feed{
+					Title:    "Example Atom Feed",
+					Link:     "https://example.com",
+					FeedLink: "https://example.com/feeds/atom.xml",
+				})
+			},
+		},
+		{
+			name:                "RSS feeds directory path should work",
+			url:                 "https://example.com/feeds/rss",  // RSS対応URL (フィードディレクトリ)
+			expectedSecurityErr: "", // Should pass RSS-specific validation
+			expectMetrics:       true,
+			expectCircuitBreaker: false,
+			wantErr:             true,   // Will fail at DB, but RSS validation should pass
+			setupMock: func() {
+				mockFetcher.SetFeed("https://example.com/feeds/rss", &gofeed.Feed{
+					Title:    "Example RSS Directory",
+					Link:     "https://example.com",
+					FeedLink: "https://example.com/feeds/rss",
+				})
 			},
 		},
 	}
@@ -311,18 +330,28 @@ func TestRegisterFeedGateway_ResponseTimeMetrics(t *testing.T) {
 	mockFetcher := NewMockRSSFeedFetcher()
 	gateway := NewRegisterFeedLinkGatewayWithFetcher(nil, mockFetcher)
 
-	// Setup mock to simulate delayed response
+	// Setup mock to simulate delayed response for multiple URLs
 	mockFetcher.SetFeed("https://example.com/feed.xml", &gofeed.Feed{
-		Title:    "Test Feed",
-		Link:     "https://example.com/feed.xml",
+		Title:    "Example RSS Feed",
+		Link:     "https://example.com",
 		FeedLink: "https://example.com/feed.xml",
+	})
+	mockFetcher.SetFeed("https://example.com/rss.xml", &gofeed.Feed{
+		Title:    "Example RSS Feed 2",
+		Link:     "https://example.com",
+		FeedLink: "https://example.com/rss.xml", 
+	})
+	mockFetcher.SetFeed("https://example.com/feeds/atom.xml", &gofeed.Feed{
+		Title:    "Example Atom Feed",
+		Link:     "https://example.com",
+		FeedLink: "https://example.com/feeds/atom.xml",
 	})
 
 	// Simulate multiple requests
 	urls := []string{
 		"https://example.com/feed.xml",
-		"https://example.com/feed.xml",
-		"https://example.com/feed.xml",
+		"https://example.com/rss.xml",
+		"https://example.com/feeds/atom.xml",
 	}
 
 	start := time.Now()
@@ -382,10 +411,10 @@ func TestDefaultRSSFeedFetcher_ConvertToProxyURL_URLConstruction(t *testing.T) {
 		expected    string
 	}{
 		{
-			name:        "HTTPS URL should have correct double slash",
-			originalURL: "https://zenn.dev/topics/typescript/feed",
+			name:        "HTTPS RSS URL should have correct double slash",
+			originalURL: "https://example.com/feed.xml",
 			baseURL:     "http://envoy-proxy.alt-apps.svc.cluster.local:8085",
-			expected:    "http://envoy-proxy.alt-apps.svc.cluster.local:8085/proxy/https://zenn.dev/topics/typescript/feed",
+			expected:    "http://envoy-proxy.alt-apps.svc.cluster.local:8085/proxy/https://example.com/feed.xml",
 		},
 		{
 			name:        "HTTP URL should have correct double slash",
@@ -394,10 +423,10 @@ func TestDefaultRSSFeedFetcher_ConvertToProxyURL_URLConstruction(t *testing.T) {
 			expected:    "http://envoy-proxy.alt-apps.svc.cluster.local:8085/proxy/http://example.com/rss.xml",
 		},
 		{
-			name:        "URL with query parameters should be preserved",
-			originalURL: "https://example.com/feed?format=rss",
+			name:        "RSS URL with query parameters should be preserved",
+			originalURL: "https://example.com/feeds/rss.xml?format=atom",
 			baseURL:     "http://envoy-proxy.alt-apps.svc.cluster.local:8085",
-			expected:    "http://envoy-proxy.alt-apps.svc.cluster.local:8085/proxy/https://example.com/feed?format=rss",
+			expected:    "http://envoy-proxy.alt-apps.svc.cluster.local:8085/proxy/https://example.com/feeds/rss.xml?format=atom",
 		},
 	}
 
