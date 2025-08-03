@@ -151,18 +151,21 @@ env:
   DB_MIN_CONNS: "5"
   DB_MAX_CONN_LIFE: "30m"
 
-  # Envoyプロキシ設定（デフォルト無効、production.yamlで制御）
+  # Proxy設定 - 根本解決: Skaffold統合制御対応
+  # Phase 7a: Envoy Proxy統合（デフォルト無効、Skaffold setValuesで制御）
   ENVOY_PROXY_ENABLED: "false"
   ENVOY_PROXY_URL: "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
 
-  # Sidecar proxy設定（デフォルト無効、production.yamlで制御）
+  # Sidecar proxy設定（デフォルト無効、Skaffold setValuesで制御）
   SIDECAR_PROXY_ENABLED: "false"
   SIDECAR_PROXY_URL: "http://alt-backend-proxy.alt-apps.svc.cluster.local:8085"
 
+  # nginx-external proxy（フォールバック用として無効化）
+  NGINX_PROXY_ENABLED: "false"
+  PROXY_ENABLED: "false"
+
   # RSS Egress Gateway設定 (ULTRATHINK ROOT FIX - フォールバック用)
   EGRESS_GATEWAY_URL: "http://nginx-external.alt-ingress.svc.cluster.local:8889"
-  # nginx-external proxy（フォールバック用として無効化）
-  PROXY_ENABLED: "false"
 
   # アプリケーション設定
   LOG_LEVEL: "info"
