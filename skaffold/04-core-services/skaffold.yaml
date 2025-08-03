@@ -1,0 +1,80 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: alt-core-services
+
+profiles:
+  - name: prod
+    build:
+      local:
+        push: false
+        useDockerCLI: false
+        concurrency: 1
+      tagPolicy:
+        gitCommit: {}
+      artifacts:
+        - image: kaikei/alt-backend
+          context: ../../alt-backend
+          docker:
+            dockerfile: Dockerfile.backend
+    deploy:
+      statusCheckDeadlineSeconds: 600
+      statusCheck: true
+      helm:
+        releases:
+          # Phase 7a根本解決: Envoy Proxy
+          - name: envoy-proxy
+            chartPath: charts/envoy-proxy
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/envoy-proxy/values.yaml
+            setValues:
+              # Phase 7a Filter State optimization enabled
+              envoy.filterState.enabled: true
+              envoy.filterState.httpsOnly: true
+              security.httpsOnly: true
+            version: 0.1.0
+          
+          # Phase 7a根本解決: Alt-backend with完全宣言的Proxy routing
+          - name: alt-backend
+            chartPath: charts/alt-backend
+            namespace: alt-apps
+            createNamespace: true
+            valuesFiles:
+              - charts/alt-backend/values.yaml
+              - charts/alt-backend/values-production.yaml
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_kaikei_alt_backend}}"
+              image.tag: "{{.IMAGE_TAG_kaikei_alt_backend}}"
+            setValues:
+              image.pullPolicy: "IfNotPresent"
+              # 根本解決: Proxy routing統合制御（宣言的管理）
+              env.ENVOY_PROXY_ENABLED: "true"
+              env.SIDECAR_PROXY_ENABLED: "false"
+              env.ENVOY_PROXY_URL: "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
+              env.NGINX_PROXY_ENABLED: "false"
+              # ConfigMap checksum強制更新
+              forceUpdate: true
+            version: 0.1.0
+        flags:
+          install: ['--atomic', '--wait', '--timeout=600s', '--wait-for-jobs', '--create-namespace']
+          upgrade: ['--atomic', '--wait', '--timeout=600s', '--cleanup-on-fail', '--wait-for-jobs', '--force']
+        hooks:
+          before:
+            - host:
+                command: ["echo", "🚀 根本解決: Core Services デプロイメント開始"]
+          after:
+            - host:
+                command: ["echo", "✅ Core Services デプロイメント完了"]
+            - host:
+                command: ["kubectl", "get", "pods", "-n", "alt-apps", "-l", "app.kubernetes.io/name=alt-backend", "-o", "wide"]
+            - host:
+                command: ["kubectl", "get", "pods", "-n", "alt-apps", "-l", "app.kubernetes.io/name=envoy-proxy", "-o", "wide"]
+
+build:
+  artifacts:
+    - image: kaikei/alt-backend
+      context: ../../alt-backend
+      docker:
+        dockerfile: Dockerfile.backend
