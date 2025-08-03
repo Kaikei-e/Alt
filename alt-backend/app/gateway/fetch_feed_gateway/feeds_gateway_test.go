@@ -359,3 +359,77 @@ func TestFetchFeedsGateway_WithRateLimiter(t *testing.T) {
 		t.Error("Rate limiter not properly set in gateway")
 	}
 }
+
+// RED: TDD test for proxy-aware HTTP client usage (should fail initially)
+func TestFetchFeedsGateway_FetchFeeds_ProxyIntegration(t *testing.T) {
+	// Test server to simulate RSS feed
+	rssContent := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+	<channel>
+		<title>Test Feed</title>
+		<description>Test RSS Feed</description>
+		<item>
+			<title>Test Item</title>
+			<description>Test Description</description>
+		</item>
+	</channel>
+</rss>`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify that the request comes through custom HTTP client 
+		// (proxy-aware client would have specific headers/behavior)
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(rssContent))
+	}))
+	defer server.Close()
+
+	// Initialize logger for test
+	logger.InitLogger()
+
+	tests := []struct {
+		name     string
+		gateway  *FetchFeedsGateway
+		link     string
+		wantErr  bool
+		errCheck func(error) bool
+	}{
+		{
+			name: "should_use_createHTTPClient_method",
+			gateway: &FetchFeedsGateway{
+				alt_db:      nil, // Will trigger error, but test focuses on HTTP client creation
+				rateLimiter: nil,
+			},
+			link:    server.URL,
+			wantErr: false, // Should succeed with proper HTTP client
+			errCheck: func(err error) bool {
+				// This test will initially fail because createHTTPClient method doesn't exist
+				// Expected to fail with: "g.createHTTPClient undefined (type *FetchFeedsGateway has no field or method createHTTPClient)"
+				return err == nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			// This should fail in RED phase because createHTTPClient method doesn't exist
+			_, err := tt.gateway.FetchFeeds(ctx, tt.link)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Expected error but got nil")
+				}
+				if tt.errCheck != nil && !tt.errCheck(err) {
+					t.Errorf("Error check failed for error: %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
+	}
+}

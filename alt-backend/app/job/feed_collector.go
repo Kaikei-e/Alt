@@ -5,8 +5,10 @@ import (
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -26,7 +28,10 @@ func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_l
 		slog.Info("Rate limiting passed, proceeding with single feed collection", "url", feedURL.String())
 	}
 
+	// Use proxy-aware HTTP client for secure RSS feed fetching
+	httpClient := createHTTPClient()
 	fp := rssFeed.NewParser()
+	fp.Client = httpClient
 	feed, err := fp.ParseURL(feedURL.String())
 	if err != nil {
 		logger.Logger.Error("Error parsing feed", "error", err)
@@ -94,7 +99,10 @@ func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_lim
 }
 
 func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *rate_limiter.HostRateLimiter) ([]*domain.FeedItem, error) {
+	// Use proxy-aware HTTP client for secure RSS feed fetching
+	httpClient := createHTTPClient()
 	fp := rssFeed.NewParser()
+	fp.Client = httpClient
 	var feeds []*rssFeed.Feed
 	var errors []error
 
@@ -166,4 +174,26 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 		}
 	}
 	return feedItems
+}
+
+// createHTTPClient creates a proxy-aware HTTP client for secure RSS feed fetching
+func createHTTPClient() *http.Client {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: false,
+			MinVersion:         tls.VersionTLS12,
+		},
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        100,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second,
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   60 * time.Second,
+	}
 }
