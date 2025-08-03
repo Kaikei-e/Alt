@@ -76,10 +76,17 @@ func Load() (*Config, error) {
 	// CSRF configuration
 	var err error
 	csrfLengthStr := getEnvOrDefault("CSRF_TOKEN_LENGTH", "32")
-	config.CSRFTokenLength, err = strconv.Atoi(csrfLengthStr)
+	csrfLength, err := strconv.ParseInt(csrfLengthStr, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid CSRF_TOKEN_LENGTH: %w", err)
 	}
+	// Check bounds for int type (platform-dependent)
+	const maxInt64 = 1<<63 - 1
+	const minInt64 = -1 << 63
+	if csrfLength > maxInt64 || csrfLength < minInt64 {
+		return nil, fmt.Errorf("CSRF_TOKEN_LENGTH out of range: %s (max: %d, min: %d)", csrfLengthStr, maxInt64, minInt64)
+	}
+	config.CSRFTokenLength = int(csrfLength)
 
 	sessionTimeoutStr := getEnvOrDefault("SESSION_TIMEOUT", "24h")
 	config.SessionTimeout, err = time.ParseDuration(sessionTimeoutStr)
@@ -102,8 +109,19 @@ func Load() (*Config, error) {
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
 	// Validate port
-	if _, err := strconv.Atoi(c.Port); err != nil {
+	port, err := strconv.ParseInt(c.Port, 10, 64)
+	if err != nil {
 		return fmt.Errorf("invalid port: %s", c.Port)
+	}
+	// Check bounds for int type (platform-dependent)
+	const maxInt64 = 1<<63 - 1
+	const minInt64 = -1 << 63
+	if port > maxInt64 || port < minInt64 {
+		return fmt.Errorf("port out of range: %s (max: %d, min: %d)", c.Port, maxInt64, minInt64)
+	}
+	// Check port range (1-65535)
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535: %s", c.Port)
 	}
 
 	// Validate log level
