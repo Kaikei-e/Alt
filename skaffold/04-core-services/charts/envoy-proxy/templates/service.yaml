@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "envoy-proxy.fullname" . }}
+  labels:
+    {{- include "envoy-proxy.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+  - port: {{ .Values.service.ports.proxy.port }}
+    targetPort: {{ .Values.service.ports.proxy.targetPort }}
+    protocol: {{ .Values.service.ports.proxy.protocol }}
+    name: {{ .Values.service.ports.proxy.name | default "proxy" }}
+  - port: {{ .Values.service.ports.admin.port }}
+    targetPort: {{ .Values.service.ports.admin.targetPort }}
+    protocol: {{ .Values.service.ports.admin.protocol }}
+    name: {{ .Values.service.ports.admin.name | default "admin" }}
+  {{- if .Values.proxySidecar.enabled }}
+  # 🎯 Proxy Sidecar Service Ports
+  - port: {{ index .Values.service.ports "sidecar-proxy" "port" }}
+    targetPort: {{ index .Values.service.ports "sidecar-proxy" "targetPort" }}
+    protocol: {{ index .Values.service.ports "sidecar-proxy" "protocol" }}
+    name: sidecarproxy
+  - port: {{ index .Values.service.ports "sidecar-metrics" "port" }}
+    targetPort: {{ index .Values.service.ports "sidecar-metrics" "targetPort" }}
+    protocol: {{ index .Values.service.ports "sidecar-metrics" "protocol" }}
+    name: sidecarmetrics
+  - port: {{ index .Values.service.ports "sidecar-health" "port" }}
+    targetPort: {{ index .Values.service.ports "sidecar-health" "targetPort" }}
+    protocol: {{ index .Values.service.ports "sidecar-health" "protocol" }}
+    name: sidecarhealth
+  {{- end }}
+  selector:
+    {{- include "envoy-proxy.selectorLabels" . | nindent 4 }}

@@ -1,0 +1,300 @@
+# Envoy Outbound Proxy Configuration
+# 専用RSS Egress Gateway
+
+replicaCount: 2
+
+image:
+  repository: envoyproxy/envoy
+  tag: "v1.34.0"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  linkerd.io/inject: enabled
+  config.linkerd.io/opaque-ports: "9901"
+  config.linkerd.io/protocol-http: "8080"
+
+podSecurityContext:
+  fsGroup: 65534
+  runAsNonRoot: true
+  runAsUser: 65534
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65534
+
+service:
+  type: ClusterIP
+  ports:
+    proxy:
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    admin:
+      port: 9901
+      targetPort: 9901
+      protocol: TCP
+    # 🎯 Proxy Sidecar Service Ports
+    sidecar-proxy:
+      port: 8085
+      targetPort: 8085
+      protocol: TCP
+    sidecar-metrics:
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+    sidecar-health:
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - envoy-proxy
+        topologyKey: kubernetes.io/hostname
+
+# Envoy Configuration
+envoy:
+  # Dynamic Forward Proxy設定
+  admin:
+    port: 9901
+    
+  proxy:
+    port: 8080
+    
+  # 許可ドメインリスト
+  allowedDomains:
+    - "feeds.bbci.co.uk"
+    - "zenn.dev"
+    - "github.com"
+    - "feeds.feedburner.com"
+    - "rss.cnn.com"
+    - "qiita.com"
+    - "feeds.reuters.com"
+    
+  # DNS設定
+  dns:
+    resolvers:
+      - "8.8.8.8"
+      - "8.8.4.4"
+    ttl: 300s
+    
+  # タイムアウト設定
+  timeout:
+    connect: 30s
+    request: 60s
+    response: 300s
+    
+  # ログレベル
+  logLevel: info
+
+# SSL/TLS設定（一時的に無効化、テスト用）
+ssl:
+  enabled: false
+  
+# ネットワークポリシー
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: alt-apps
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: alt-backend
+      ports:
+      - protocol: TCP
+        port: 8080
+  egress:
+    - to: []  # Allow all outbound traffic
+      ports:
+      - protocol: TCP
+        port: 80
+      - protocol: TCP
+        port: 443
+      - protocol: UDP
+        port: 53  # DNS
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /stats/prometheus
+  port: admin
+  labels:
+    prometheus: kube-prometheus
+
+# 🎯 Proxy Sidecar Configuration - ISSUE_RESOLVE_PLAN.md Week 2 Phase 1
+# Lightweight Go-based proxy sidecar for upstream resolution
+proxySidecar:
+  # Enable/disable the sidecar container
+  enabled: true
+  
+  # Container image configuration (CVE-2024-34155 secure version)
+  image:
+    repository: alt-apps/proxy-sidecar
+    tag: "1.1.0-secure"
+    pullPolicy: IfNotPresent
+  
+  # Resource limits (optimized for lightweight sidecar pattern)
+  resources:
+    limits:
+      cpu: 100m        # Maximum CPU (design goal: 10-100m)
+      memory: 128Mi     # Maximum memory (design goal: 32-128MB)
+    requests:
+      cpu: 10m          # Requested CPU
+      memory: 32Mi      # Requested memory
+  
+  # Port configuration
+  ports:
+    proxy:
+      containerPort: 8085  # Different port to avoid conflict with Envoy
+      protocol: TCP
+    metrics:
+      containerPort: 9090
+      protocol: TCP
+    health:
+      containerPort: 8081
+      protocol: TCP
+  
+  # Environment configuration for the sidecar
+  config:
+    # Envoy upstream (localhost communication within the same Pod)
+    envoyUpstream: "localhost:8080"  # Connect to Envoy container in same Pod
+    
+    # DNS servers for external DNS resolution (bypassing Kubernetes DNS)
+    dnsServers:
+      - "8.8.8.8:53"
+      - "1.1.1.1:53" 
+      - "208.67.222.222:53"
+    
+    # Allowed domains for RSS feed fetching (security allowlist)
+    allowedDomains:
+      - "feeds\\\\.bbci\\\\.co\\\\.uk"
+      - "zenn\\\\.dev"
+      - "github\\\\.com"
+      - "feeds\\\\.feedburner\\\\.com"
+      - "rss\\\\.cnn\\\\.com"
+      - "qiita\\\\.com"
+      - "feeds\\\\.reuters\\\\.com"
+      - "httpbin\\\\.org"  # For testing
+    
+    # Timeouts and performance settings
+    requestTimeout: "30s"
+    dnsTimeout: "5s"
+    dnsCacheTimeout: "300s"  # 5 minutes DNS cache
+    maxRetries: 3
+    
+    # Logging configuration
+    logLevel: "info"
+    verboseLogging: true
+    debugMode: true
+  
+  # Health checks for the sidecar
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8085  # Use the same port as the proxy service
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 8085  # Use the same port as the proxy service
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  
+  # Security context for sidecar container
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 65534
+
+# 🔧 Egress Network Configuration (Infrastructure as Code)
+egress:
+  # Enable/disable egress network management
+  enabled: true
+  
+  # Linkerd EgressNetwork configuration
+  networks:
+    - cidr: "104.16.0.0/13"
+      comment: "CloudFlare range for 104.26.x.x IPs (Zenn.dev)"
+    - cidr: "172.64.0.0/13" 
+      comment: "CloudFlare range for 172.67.x.x IPs (Zenn.dev)"
+    - cidr: "8.8.8.0/24"
+      comment: "Google DNS"
+    - cidr: "1.1.1.0/24"
+      comment: "CloudFlare DNS"
+  
+  trafficPolicy: "Allow"
+  
+  # NetworkPolicy configuration
+  networkPolicy:
+    enabled: true
+    
+    # Blocked CIDR ranges (RFC1918 + Kubernetes internal)
+    blockedCidrs:
+      - "10.0.0.0/8"       # Class A private networks
+      - "172.16.0.0/12"    # Class B private networks  
+      - "192.168.0.0/16"   # Class C private networks
+      - "10.96.0.0/12"     # KIND default service CIDR
+      - "10.244.0.0/16"    # KIND default pod CIDR
+      - "127.0.0.0/8"      # Loopback addresses
+      - "169.254.0.0/16"   # Link-local addresses (AWS metadata, etc.)
+      - "224.0.0.0/4"      # Multicast addresses
+      - "240.0.0.0/4"      # Reserved addresses
+    
+    # Linkerd control plane ports
+    linkerdPorts:
+      - 8080
+      - 8086
+      - 9990
+      - 9995

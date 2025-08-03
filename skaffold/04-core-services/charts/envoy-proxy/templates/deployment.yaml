@@ -1,0 +1,192 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "envoy-proxy.fullname" . }}
+  labels:
+    {{- include "envoy-proxy.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "envoy-proxy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "envoy-proxy.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "envoy-proxy.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      {{- if .Values.proxySidecar.enabled }}
+      # 🎯 Lightweight Go Proxy Sidecar - ISSUE_RESOLVE_PLAN.md Week 2 Phase 1
+      # This sidecar solves the upstream resolution problem: "10.96.32.212:8080" → "zenn.dev:443"
+      - name: proxy-sidecar
+        image: "{{ .Values.proxySidecar.image.repository }}:{{ .Values.proxySidecar.image.tag }}"
+        imagePullPolicy: {{ .Values.proxySidecar.image.pullPolicy }}
+        ports:
+        - name: sidecar-proxy
+          containerPort: {{ .Values.proxySidecar.ports.proxy.containerPort }}
+          protocol: {{ .Values.proxySidecar.ports.proxy.protocol }}
+        - name: metrics
+          containerPort: {{ .Values.proxySidecar.ports.metrics.containerPort }}
+          protocol: {{ .Values.proxySidecar.ports.metrics.protocol }}
+        - name: health
+          containerPort: {{ .Values.proxySidecar.ports.health.containerPort }}
+          protocol: {{ .Values.proxySidecar.ports.health.protocol }}
+        env:
+        # Core configuration
+        - name: LISTEN_PORT
+          value: "{{ .Values.proxySidecar.ports.proxy.containerPort }}"
+        - name: ENVOY_UPSTREAM
+          value: "{{ .Values.proxySidecar.config.envoyUpstream }}"
+        # DNS configuration for external resolution (bypassing K8s DNS)
+        - name: DNS_SERVERS
+          value: "{{ join "," .Values.proxySidecar.config.dnsServers }}"
+        - name: DNS_TIMEOUT
+          value: "{{ .Values.proxySidecar.config.dnsTimeout }}"
+        - name: DNS_CACHE_TIMEOUT
+          value: "{{ .Values.proxySidecar.config.dnsCacheTimeout }}"
+        # Security - allowed domains
+        - name: ALLOWED_DOMAINS
+          value: "{{ join "," .Values.proxySidecar.config.allowedDomains }}"
+        # Performance settings
+        - name: REQUEST_TIMEOUT
+          value: "{{ .Values.proxySidecar.config.requestTimeout }}"
+        - name: MAX_RETRIES
+          value: "{{ .Values.proxySidecar.config.maxRetries }}"
+        # Logging configuration
+        - name: LOG_LEVEL
+          value: "{{ .Values.proxySidecar.config.logLevel }}"
+        - name: VERBOSE_LOGGING
+          value: "{{ .Values.proxySidecar.config.verboseLogging }}"
+        - name: DEBUG_MODE
+          value: "{{ .Values.proxySidecar.config.debugMode }}"
+        # Pod metadata for debugging
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        # Health checks
+        livenessProbe:
+          {{- toYaml .Values.proxySidecar.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.proxySidecar.readinessProbe | nindent 10 }}
+        # Resource limits
+        resources:
+          {{- toYaml .Values.proxySidecar.resources | nindent 10 }}
+        # Security context
+        securityContext:
+          {{- toYaml .Values.proxySidecar.securityContext | nindent 10 }}
+        # Volume mounts
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /var/cache/proxy
+      {{- end }}
+      
+      # Existing Envoy container
+      - name: envoy
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /usr/local/bin/envoy
+        args:
+        - -c
+        - /etc/envoy/envoy.yaml
+        - --service-cluster
+        - rss-outbound-proxy
+        - --service-node
+        - {{ include "envoy-proxy.fullname" . }}
+        - --log-level
+        - {{ .Values.envoy.logLevel }}
+        ports:
+        - name: proxy
+          containerPort: {{ include "envoy-proxy.proxyPort" . }}
+          protocol: TCP
+        - name: admin
+          containerPort: {{ include "envoy-proxy.adminPort" . }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: admin
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: admin
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        - name: envoy-config
+          mountPath: /etc/envoy
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+      volumes:
+      - name: envoy-config
+        configMap:
+          name: {{ include "envoy-proxy.fullname" . }}-config
+      - name: tmp
+        emptyDir: {}
+      {{- if .Values.proxySidecar.enabled }}
+      # 🎯 Proxy Sidecar Cache Volume
+      - name: cache
+        emptyDir:
+          sizeLimit: 100Mi  # Limit cache size for DNS resolution
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

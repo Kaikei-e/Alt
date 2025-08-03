@@ -1,0 +1,25 @@
+{{- if .Values.egress.enabled }}
+apiVersion: policy.linkerd.io/v1alpha1
+kind: EgressNetwork
+metadata:
+  name: {{ include "envoy-proxy.fullname" . }}-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "envoy-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: egress-policy
+  annotations:
+    description: "Linkerd EgressNetwork for RSS feed external access"
+    security.policy/purpose: "RSS feed external access via CloudFlare"
+    security.policy/principle: "least-privilege"
+    egress.policy/scope: "https-only"
+spec:
+  # CloudFlare IP ranges for RSS feed access (avoiding cluster overlap)
+  networks:
+  {{- range .Values.egress.networks }}
+  - cidr: {{ .cidr }}
+    {{- if .comment }}
+    # {{ .comment }}
+    {{- end }}
+  {{- end }}
+  trafficPolicy: {{ .Values.egress.trafficPolicy | default "Allow" }}
+{{- end }}
