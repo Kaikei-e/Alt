@@ -15,5 +15,20 @@ spec:
     targetPort: {{ .Values.service.ports.admin.targetPort }}
     protocol: {{ .Values.service.ports.admin.protocol }}
     name: {{ .Values.service.ports.admin.name | default "admin" }}
+  {{- if .Values.proxySidecar.enabled }}
+  # 🎯 Proxy Sidecar Service Ports
+  - port: {{ index .Values.service.ports "sidecar-proxy" "port" }}
+    targetPort: {{ index .Values.service.ports "sidecar-proxy" "targetPort" }}
+    protocol: {{ index .Values.service.ports "sidecar-proxy" "protocol" }}
+    name: sidecarproxy
+  - port: {{ index .Values.service.ports "sidecar-metrics" "port" }}
+    targetPort: {{ index .Values.service.ports "sidecar-metrics" "targetPort" }}
+    protocol: {{ index .Values.service.ports "sidecar-metrics" "protocol" }}
+    name: sidecarmetrics
+  - port: {{ index .Values.service.ports "sidecar-health" "port" }}
+    targetPort: {{ index .Values.service.ports "sidecar-health" "targetPort" }}
+    protocol: {{ index .Values.service.ports "sidecar-health" "protocol" }}
+    name: sidecarhealth
+  {{- end }}
   selector:
     {{- include "envoy-proxy.selectorLabels" . | nindent 4 }}

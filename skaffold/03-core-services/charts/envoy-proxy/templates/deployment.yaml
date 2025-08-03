@@ -29,6 +29,83 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
+      {{- if .Values.proxySidecar.enabled }}
+      # 🎯 Lightweight Go Proxy Sidecar - ISSUE_RESOLVE_PLAN.md Week 2 Phase 1
+      # This sidecar solves the upstream resolution problem: "10.96.32.212:8080" → "zenn.dev:443"
+      - name: proxy-sidecar
+        image: "{{ .Values.proxySidecar.image.repository }}:{{ .Values.proxySidecar.image.tag }}"
+        imagePullPolicy: {{ .Values.proxySidecar.image.pullPolicy }}
+        ports:
+        - name: sidecar-proxy
+          containerPort: {{ .Values.proxySidecar.ports.proxy.containerPort }}
+          protocol: {{ .Values.proxySidecar.ports.proxy.protocol }}
+        - name: metrics
+          containerPort: {{ .Values.proxySidecar.ports.metrics.containerPort }}
+          protocol: {{ .Values.proxySidecar.ports.metrics.protocol }}
+        - name: health
+          containerPort: {{ .Values.proxySidecar.ports.health.containerPort }}
+          protocol: {{ .Values.proxySidecar.ports.health.protocol }}
+        env:
+        # Core configuration
+        - name: LISTEN_PORT
+          value: "{{ .Values.proxySidecar.ports.proxy.containerPort }}"
+        - name: ENVOY_UPSTREAM
+          value: "{{ .Values.proxySidecar.config.envoyUpstream }}"
+        # DNS configuration for external resolution (bypassing K8s DNS)
+        - name: DNS_SERVERS
+          value: "{{ join "," .Values.proxySidecar.config.dnsServers }}"
+        - name: DNS_TIMEOUT
+          value: "{{ .Values.proxySidecar.config.dnsTimeout }}"
+        - name: DNS_CACHE_TIMEOUT
+          value: "{{ .Values.proxySidecar.config.dnsCacheTimeout }}"
+        # Security - allowed domains
+        - name: ALLOWED_DOMAINS
+          value: "{{ join "," .Values.proxySidecar.config.allowedDomains }}"
+        # Performance settings
+        - name: REQUEST_TIMEOUT
+          value: "{{ .Values.proxySidecar.config.requestTimeout }}"
+        - name: MAX_RETRIES
+          value: "{{ .Values.proxySidecar.config.maxRetries }}"
+        # Logging configuration
+        - name: LOG_LEVEL
+          value: "{{ .Values.proxySidecar.config.logLevel }}"
+        - name: VERBOSE_LOGGING
+          value: "{{ .Values.proxySidecar.config.verboseLogging }}"
+        - name: DEBUG_MODE
+          value: "{{ .Values.proxySidecar.config.debugMode }}"
+        # Pod metadata for debugging
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        # Health checks
+        livenessProbe:
+          {{- toYaml .Values.proxySidecar.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.proxySidecar.readinessProbe | nindent 10 }}
+        # Resource limits
+        resources:
+          {{- toYaml .Values.proxySidecar.resources | nindent 10 }}
+        # Security context
+        securityContext:
+          {{- toYaml .Values.proxySidecar.securityContext | nindent 10 }}
+        # Volume mounts
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /var/cache/proxy
+      {{- end }}
+      
+      # Existing Envoy container
       - name: envoy
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
@@ -95,6 +172,12 @@ spec:
           name: {{ include "envoy-proxy.fullname" . }}-config
       - name: tmp
         emptyDir: {}
+      {{- if .Values.proxySidecar.enabled }}
+      # 🎯 Proxy Sidecar Cache Volume
+      - name: cache
+        emptyDir:
+          sizeLimit: 100Mi  # Limit cache size for DNS resolution
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

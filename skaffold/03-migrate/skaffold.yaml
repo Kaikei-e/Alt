@@ -1,0 +1,46 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: alt-migrate
+
+profiles:
+  - name: prod
+    build:
+      local:
+        push: false
+        useDockerCLI: false
+        concurrency: 1
+      tagPolicy:
+        gitCommit: {}
+      artifacts:
+        - image: kaikei/migrate
+          context: ../../migrate
+          docker:
+            dockerfile: Dockerfile.migrate
+    deploy:
+      statusCheckDeadlineSeconds: 600
+      statusCheck: true
+      helm:
+        releases:
+          - name: migrate
+            chartPath: ../03-core-services/charts/migrate
+            namespace: alt-database
+            createNamespace: true
+            setValues:
+              namespaceLabels.name: "alt-database"
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_kaikei_migrate}}"
+              image.tag: "{{.IMAGE_TAG_kaikei_migrate}}"
+            valuesFiles:
+              - ../03-core-services/charts/migrate/values-production.yaml
+            version: 0.1.0
+        flags:
+          install: ['--atomic', '--wait', '--timeout=600s', '--wait-for-jobs', '--create-namespace']
+          upgrade: ['--atomic', '--wait', '--timeout=600s', '--cleanup-on-fail', '--wait-for-jobs', '--force', '--reset-values']
+
+build:
+  artifacts:
+    - image: kaikei/migrate
+      context: ../../migrate
+      docker:
+        dockerfile: Dockerfile.migrate
