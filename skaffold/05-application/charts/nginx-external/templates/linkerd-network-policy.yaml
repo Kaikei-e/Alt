@@ -1,0 +1,68 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: linkerd-nginx-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nginx-external.labels" . | nindent 4 }}
+  annotations:
+    description: "Linkerd Service Mesh最適化: nginx-external ↔ nginx-internal mTLS通信許可"
+spec:
+  podSelector: {}  # namespace内全Pod対象
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector: {}  # 全namespace許可
+    ports:
+    - protocol: TCP
+      port: 4143  # Linkerd proxy inbound
+    - protocol: TCP
+      port: 8080  # HTTP direct
+  egress:
+  - to:
+    - namespaceSelector: {}  # 全namespace許可
+    ports:
+    - protocol: TCP
+      port: 4143  # Linkerd proxy outbound
+    - protocol: TCP
+      port: 8080  # HTTP direct
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-nginx-communication
+  namespace: alt-ingress
+  labels:
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: alt
+  annotations:
+    description: "nginx-external → nginx-internal特化通信許可"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nginx  # nginx-internal
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: nginx-external
+    ports:
+    - protocol: TCP
+      port: 8080      # HTTP direct
+    - protocol: TCP
+      port: 4143      # Linkerd proxy inbound (重要!)
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+    ports:
+    - protocol: TCP
+      port: 9000      # alt-backend direct
+    - protocol: TCP
+      port: 4143      # Linkerd proxy inbound

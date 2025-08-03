@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nginx-external.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nginx-external.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "nginx-external.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # Linkerd configuration - only mark forward proxy port as opaque
+        # Health port 8080 should be handled by Linkerd for proper HTTP routing
+        config.linkerd.io/opaque-ports: "8888,8889"
+        config.linkerd.io/skip-inbound-ports: "8889"
+      labels:
+        {{- include "nginx-external.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - name: nginx-external
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+        ports:
+        - name: https
+          containerPort: 443
+          protocol: TCP
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        - name: health
+          containerPort: 8080
+          protocol: TCP
+        - name: proxy
+          containerPort: 8888
+          protocol: TCP
+        - name: egress
+          containerPort: 8889
+          protocol: TCP
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+          readOnly: true
+        # Mount SSL certificates if using cert-manager
+        {{- if .Values.ssl.enabled }}
+        - name: ssl-certs
+          mountPath: /etc/nginx/ssl
+          readOnly: true
+        {{- end }}
+        # Mount additional config files if any
+        {{- if .Values.configMap.extraFiles }}
+        {{- range $name, $content := .Values.configMap.extraFiles }}
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/{{ $name }}
+          subPath: {{ $name }}
+          readOnly: true
+        {{- end }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /nginx-health
+            port: health
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /nginx-health
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      # ConfigMap volume containing nginx.conf and any extra files
+      - name: nginx-config
+        configMap:
+          name: {{ include "nginx-external.configMapName" . }}
+          defaultMode: 0644
+      # SSL certificate volume (if using cert-manager)
+      {{- if .Values.ssl.enabled }}
+      - name: ssl-certs
+        secret:
+          secretName: {{ .Values.ssl.secretName | default "nginx-external-tls" }}
+          defaultMode: 0644
+      {{- end }}
