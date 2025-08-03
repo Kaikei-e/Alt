@@ -1,0 +1,44 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: linkerd-nginx-internal-policy  
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nginx.labels" . | nindent 4 }}
+  annotations:
+    description: "nginx-internal Linkerd mTLS通信最適化"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "nginx.selectorLabels" . | nindent 6 }}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector: {}  # 全namespace許可
+    ports:
+    - protocol: TCP
+      port: 8080      # HTTP
+    - protocol: TCP
+      port: 4143      # Linkerd proxy inbound
+    - protocol: TCP
+      port: 9080      # health check
+  egress:
+  - to:
+    - namespaceSelector: {}  # 全namespace許可
+    ports:
+    - protocol: TCP
+      port: 9000      # alt-backend
+    - protocol: TCP
+      port: 3000      # alt-frontend
+    - protocol: TCP
+      port: 8080      # auth-service
+    - protocol: TCP
+      port: 7700      # meilisearch
+    - protocol: TCP
+      port: 4143      # Linkerd proxy outbound
+    - protocol: TCP
+      port: 53        # DNS
+    - protocol: UDP
+      port: 53        # DNS

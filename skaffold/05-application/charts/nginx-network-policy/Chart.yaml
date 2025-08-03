@@ -1,0 +1,4 @@
+apiVersion: v2
+name: nginx-network-policy
+version: 0.1.0
+description: A chart for deploying network policy for nginx
