@@ -1,0 +1,4 @@
+apiVersion: v2
+name: nginx-certs
+version: 0.1.0
+description: A chart for creating nginx certificates
