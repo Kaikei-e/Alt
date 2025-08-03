@@ -1,0 +1,49 @@
+{{/*
+Cloudflare Tunnel Configuration ConfigMap
+This creates the tunnel configuration file used by cloudflared
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cloudflare-tunnel.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloudflare-tunnel.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- if .Values.cloudflare.tunnel_token }}
+    # 2025年推奨: Remotely-managed Tunnel (TUNNEL_TOKEN環境変数使用)
+    # ingress設定は無視され、Cloudflare Dashboard側で管理される
+    # 最小限の設定のみ
+    {{- else }}
+    # Legacy mode: locally-managed tunnel
+    tunnel: {{ .Values.cloudflare.tunnelId | quote }}
+    credentials-file: /etc/cloudflared/creds/credentials.json
+    
+    # Ingress rules (locally-managed tunnelのみ有効)
+    ingress:
+      {{- $ingress := .Values.cloudflare.ingress }}
+      {{- range $ingress }}
+      - hostname: {{ .hostname | quote }}
+        service: {{ .service | quote }}
+        {{- if .noTLSVerify }}
+        originRequest:
+          noTLSVerify: true
+          httpHostHeader: {{ .hostname | quote }}
+        {{- end }}
+      {{- end }}
+      - service: http_status:404
+    {{- end }}
+
+    # Health check configuration (必須)
+    metrics: 0.0.0.0:2000
+
+    # Logging configuration
+    loglevel: info
+
+    # Protocol settings
+    protocol: http2
+
+    # Connection settings
+    retries: 5
+    grace-period: 30s

@@ -1,0 +1,110 @@
+{{/*
+Cloudflare IP Ranges Dynamic Update CronJob
+This CronJob periodically fetches the latest Cloudflare IP ranges and updates ConfigMaps/NetworkPolicies
+*/}}
+{{- if .Values.dynamicIpUpdate.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "cloudflare-tunnel.fullname" . }}-ip-updater
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloudflare-tunnel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ip-updater
+  annotations:
+    rask.group: "cloudflare-tunnel"
+    description: "Dynamic Cloudflare IP ranges updater for firewall automation"
+spec:
+  schedule: {{ .Values.dynamicIpUpdate.schedule | quote }}
+  successfulJobsHistoryLimit: {{ .Values.dynamicIpUpdate.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.dynamicIpUpdate.failedJobsHistoryLimit | default 1 }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.dynamicIpUpdate.backoffLimit | default 3 }}
+      activeDeadlineSeconds: {{ .Values.dynamicIpUpdate.activeDeadlineSeconds | default 300 }}
+      template:
+        metadata:
+          labels:
+            {{- include "cloudflare-tunnel.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: ip-updater
+          annotations:
+            rask.group: "cloudflare-tunnel"
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "cloudflare-tunnel.fullname" . }}-ip-updater
+          securityContext:
+            {{- toYaml .Values.dynamicIpUpdate.podSecurityContext | nindent 12 }}
+          containers:
+          - name: ip-updater
+            image: {{ .Values.dynamicIpUpdate.image.repository }}:{{ .Values.dynamicIpUpdate.image.tag }}
+            imagePullPolicy: {{ .Values.dynamicIpUpdate.image.pullPolicy }}
+            securityContext:
+              {{- toYaml .Values.dynamicIpUpdate.securityContext | nindent 14 }}
+            env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CONFIGMAP_NAME
+              value: {{ include "cloudflare-tunnel.fullname" . }}-ip-ranges
+            - name: NETWORKPOLICY_NAME
+              value: {{ include "cloudflare-tunnel.fullname" . }}-egress
+            - name: LOG_LEVEL
+              value: {{ .Values.dynamicIpUpdate.logLevel | default "INFO" }}
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "[$(date)] Starting Cloudflare IP ranges update..."
+              
+              # Download cloudflare-ip-fetcher script
+              curl -sL {{ .Values.dynamicIpUpdate.scriptUrl | quote }} -o /tmp/cloudflare-ip-fetcher.sh
+              chmod +x /tmp/cloudflare-ip-fetcher.sh
+              
+              # Generate ConfigMap
+              echo "[$(date)] Generating ConfigMap..."
+              /tmp/cloudflare-ip-fetcher.sh --yaml > /tmp/configmap.yaml
+              
+              # Apply ConfigMap (creates or updates)
+              echo "[$(date)] Applying ConfigMap..."
+              kubectl apply -f /tmp/configmap.yaml
+              
+              {{- if .Values.dynamicIpUpdate.updateNetworkPolicy }}
+              # Generate NetworkPolicy
+              echo "[$(date)] Generating NetworkPolicy..."
+              /tmp/cloudflare-ip-fetcher.sh --network-policy > /tmp/networkpolicy.yaml
+              
+              # Apply NetworkPolicy (creates or updates)
+              echo "[$(date)] Applying NetworkPolicy..."
+              kubectl apply -f /tmp/networkpolicy.yaml
+              {{- end }}
+              
+              # Verify updates
+              echo "[$(date)] Verifying updates..."
+              kubectl get configmap $CONFIGMAP_NAME -n $NAMESPACE -o yaml | grep 'cloudflare.com/updated'
+              
+              {{- if .Values.dynamicIpUpdate.updateNetworkPolicy }}
+              kubectl get networkpolicy $NETWORKPOLICY_NAME -n $NAMESPACE -o yaml | grep 'cloudflare.com/updated'
+              {{- end }}
+              
+              echo "[$(date)] Cloudflare IP ranges update completed successfully"
+            resources:
+              {{- toYaml .Values.dynamicIpUpdate.resources | nindent 14 }}
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          volumes:
+          - name: tmp
+            emptyDir: {}
+          {{- with .Values.dynamicIpUpdate.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.dynamicIpUpdate.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
