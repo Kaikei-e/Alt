@@ -194,7 +194,7 @@
   --alt-tertiary: var(--alt-ash);
 
   /* Paper properties - no glass effects, solid backgrounds */
-  --surface-bg: #ffffff;
+  --surface-bg: #dedede;
   --surface-border: #e0e0e0;
   --surface-hover: #f8f8f8;
   --surface-blur: 0px; /* No blur for paper theme */

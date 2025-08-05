@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-touch-icon.png",
   },
-  manifest: "/manifest.json",
+  // manifest: "/manifest.json", // Disabled - not using PWA functionality
   other: {
     "theme-color": "#1a1a2e",
   },
