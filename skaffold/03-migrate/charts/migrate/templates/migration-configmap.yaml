@@ -1,0 +1,382 @@
+{{- /*
+  File: templates/migration-configmap.yaml
+  Purpose: ConfigMap containing all database migration files
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "migrate.fullname" . }}-migrations
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "migrate.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-15"  # Run before the main configmap
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  # Migration files from db/migrations/ directory
+  000001_create_feeds_table.up.sql: |
+    CREATE TABLE IF NOT EXISTS feeds (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        link TEXT NOT NULL,
+        pub_date TIMESTAMP NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_feeds_created_at ON feeds (created_at);
+    CREATE INDEX IF NOT EXISTS idx_feeds_id_link ON feeds (id, link);
+
+  000001_create_feeds_table.down.sql: |
+    DROP TABLE IF EXISTS feeds;
+
+  000002_create_feed_links.up.sql: |
+    CREATE TABLE IF NOT EXISTS feed_links (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        url TEXT NOT NULL UNIQUE,
+        CONSTRAINT idx_feed_links_id_url UNIQUE (id, url)
+    );
+
+  000002_create_feed_links.down.sql: |
+    DROP TABLE IF EXISTS feed_links;
+
+  000003_add_unique_constraint_feeds_link.up.sql: |
+    DO $$ 
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_feeds_link') THEN
+            ALTER TABLE feeds ADD CONSTRAINT unique_feeds_link UNIQUE (link);
+        END IF;
+    END
+    $$;
+
+  000003_add_unique_constraint_feeds_link.down.sql: |
+    ALTER TABLE feeds DROP CONSTRAINT IF EXISTS unique_feeds_link;
+
+  000004_create_read_status_table.up.sql: |
+    CREATE TABLE IF NOT EXISTS read_status (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        feed_id UUID NOT NULL,
+        user_id UUID NOT NULL,
+        is_read BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE
+    );
+
+  000004_create_read_status_table.down.sql: |
+    DROP TABLE IF EXISTS read_status;
+
+  000005_add_composite_index_read_status.up.sql: |
+    CREATE INDEX IF NOT EXISTS idx_read_status_feed_user ON read_status (feed_id, user_id);
+
+  000005_add_composite_index_read_status.down.sql: |
+    DROP INDEX IF EXISTS idx_read_status_feed_user;
+
+  000006_add_partial_index_read_status.up.sql: |
+    CREATE INDEX IF NOT EXISTS idx_read_status_unread ON read_status (feed_id, user_id) WHERE is_read = FALSE;
+
+  000006_add_partial_index_read_status.down.sql: |
+    DROP INDEX IF EXISTS idx_read_status_unread;
+
+  000007_create_articles_table.up.sql: |
+    CREATE TABLE IF NOT EXISTS articles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        url TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles (created_at);
+    CREATE INDEX IF NOT EXISTS idx_articles_title_created_at ON articles (title, created_at);
+    CREATE INDEX IF NOT EXISTS idx_articles_title ON articles (title);
+
+  000007_create_articles_table.down.sql: |
+    DROP TABLE IF EXISTS articles;
+
+  000008_create_preprocessor_user.up.sql: |
+    -- Create pre_processor_user if it doesn't exist
+    DO $$ 
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'pre_processor_user') THEN
+            CREATE USER pre_processor_user WITH PASSWORD 'pre_processor_password';
+        END IF;
+    END
+    $$;
+
+  000008_create_preprocessor_user.down.sql: |
+    -- Drop pre_processor_user if it exists
+    DROP USER IF EXISTS pre_processor_user;
+
+  000009_grant_preprocessor_permissions.up.sql: |
+    GRANT SELECT, INSERT, UPDATE, DELETE ON articles TO pre_processor_user;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON feeds TO pre_processor_user;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON feed_links TO pre_processor_user;
+
+  000009_grant_preprocessor_permissions.down.sql: |
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON articles FROM pre_processor_user;
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON feeds FROM pre_processor_user;
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON feed_links FROM pre_processor_user;
+
+  000010_create_article_summaries_table.up.sql: |
+    CREATE TABLE IF NOT EXISTS article_summaries (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        article_id UUID NOT NULL,
+        summary TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_article_summaries_article_id ON article_summaries (article_id);
+
+  000010_create_article_summaries_table.down.sql: |
+    DROP TABLE IF EXISTS article_summaries;
+
+  000011_grant_preprocessor_article_summaries_permissions.up.sql: |
+    GRANT SELECT, INSERT, UPDATE, DELETE ON article_summaries TO pre_processor_user;
+
+  000011_grant_preprocessor_article_summaries_permissions.down.sql: |
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON article_summaries FROM pre_processor_user;
+
+  000012_optimize_feed_article_lookup.up.sql: |
+    CREATE INDEX IF NOT EXISTS idx_feeds_link_created_desc ON feeds (link, created_at DESC);
+
+  000012_optimize_feed_article_lookup.down.sql: |
+    DROP INDEX IF EXISTS idx_feeds_link_created_desc;
+
+  000013_optimize_feed_article_indexes.up.sql: |
+    -- feeds: 並び替えと検索を同時に満たす複合
+    CREATE INDEX IF NOT EXISTS idx_feeds_created_at_link
+        ON feeds (created_at, link);
+
+    -- articles: 存在確認だけなので単一キー
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_url
+        ON articles (url);
+
+  000013_optimize_feed_article_indexes.down.sql: |
+    -- Remove optimized indexes
+    DROP INDEX IF EXISTS idx_feeds_created_at_link;
+    DROP INDEX IF EXISTS idx_articles_url;
+
+  000014_add_feeds_link_gin_trgm_index.up.sql: |
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE INDEX IF NOT EXISTS idx_feeds_link_gin_trgm ON feeds USING gin (link gin_trgm_ops);
+
+  000014_add_feeds_link_gin_trgm_index.down.sql: |
+    DROP INDEX IF EXISTS idx_feeds_link_gin_trgm;
+
+  000015_add_articles_gin_trgm_indexes.up.sql: |
+    -- Add GIN trigram indexes for articles table
+    -- Index on title for fast text similarity searches
+    CREATE INDEX IF NOT EXISTS idx_articles_title_gin_trgm ON articles USING gin (title gin_trgm_ops);
+
+    -- Index on url for fast text similarity searches
+    CREATE INDEX IF NOT EXISTS idx_articles_url_gin_trgm ON articles USING gin (url gin_trgm_ops);
+
+  000015_add_articles_gin_trgm_indexes.down.sql: |
+    -- Remove GIN trigram indexes for articles table
+    DROP INDEX IF EXISTS idx_articles_title_gin_trgm;
+    DROP INDEX IF EXISTS idx_articles_url_gin_trgm;
+
+  000016_add_article_summaries_gin_trgm_indexes.up.sql: |
+    CREATE INDEX IF NOT EXISTS idx_article_summaries_summary_gin_trgm ON article_summaries USING gin (summary gin_trgm_ops);
+
+  000016_add_article_summaries_gin_trgm_indexes.down.sql: |
+    DROP INDEX IF EXISTS idx_article_summaries_summary_gin_trgm;
+
+  000017_remove_duplicate_articles_url_index.up.sql: |
+    DROP INDEX IF EXISTS idx_articles_url_created_desc;
+
+  000017_remove_duplicate_articles_url_index.down.sql: |
+    CREATE INDEX IF NOT EXISTS idx_articles_url_created_desc ON articles (url, created_at DESC);
+
+  000018_add_feeds_created_desc_not_mp3_index.up.sql: |
+    CREATE INDEX IF NOT EXISTS idx_feeds_created_desc_not_mp3 ON feeds (created_at DESC) WHERE link !~ '\.mp3$';
+
+  000018_add_feeds_created_desc_not_mp3_index.down.sql: |
+    DROP INDEX IF EXISTS idx_feeds_created_desc_not_mp3;
+
+  000019_add_articles_created_id_desc_index.up.sql: |
+    CREATE INDEX IF NOT EXISTS idx_articles_created_id_desc ON articles (created_at DESC, id DESC);
+
+  000019_add_articles_created_id_desc_index.down.sql: |
+    DROP INDEX IF EXISTS idx_articles_created_id_desc;
+
+  000020_add_articles_id_index.up.sql: |
+    CREATE INDEX IF NOT EXISTS idx_articles_id ON articles (id);
+
+  000020_add_articles_id_index.down.sql: |
+    DROP INDEX IF EXISTS idx_articles_id;
+
+  000021_refine_articles_indexes_add_covering.up.sql: |
+    DROP INDEX IF EXISTS idx_articles_created_at;
+    CREATE INDEX IF NOT EXISTS idx_articles_created_at_covering ON articles (created_at DESC) INCLUDE (id, title, content, url);
+
+  000021_refine_articles_indexes_add_covering.down.sql: |
+    DROP INDEX IF EXISTS idx_articles_created_at_covering;
+    CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles (created_at);
+
+  000022_optimize_articles_title_indexes.up.sql: |
+    DROP INDEX IF EXISTS idx_articles_title_gin_trgm;
+    CREATE INDEX IF NOT EXISTS idx_articles_title_gin_trgm_optimized ON articles USING gin (title gin_trgm_ops) WHERE title IS NOT NULL AND length(title) > 0;
+
+  000022_optimize_articles_title_indexes.down.sql: |
+    DROP INDEX IF EXISTS idx_articles_title_gin_trgm_optimized;
+    CREATE INDEX IF NOT EXISTS idx_articles_title_gin_trgm ON articles USING gin (title gin_trgm_ops);
+
+  000023_add_feeds_desc_not_mp3_cover_index.up.sql: |
+    DROP INDEX IF EXISTS idx_feeds_created_desc_not_mp3;
+    CREATE INDEX IF NOT EXISTS idx_feeds_created_desc_not_mp3_covering ON feeds (created_at DESC) INCLUDE (id, title, description, link) WHERE link !~ '\.mp3$';
+
+  000023_add_feeds_desc_not_mp3_cover_index.down.sql: |
+    DROP INDEX IF EXISTS idx_feeds_created_desc_not_mp3_covering;
+    CREATE INDEX IF NOT EXISTS idx_feeds_created_desc_not_mp3 ON feeds (created_at DESC) WHERE link !~ '\.mp3$';
+
+  000024_grant_preprocessor_delete_article_summaries.up.sql: |
+    GRANT DELETE ON article_summaries TO pre_processor_user;
+
+  000024_grant_preprocessor_delete_article_summaries.down.sql: |
+    REVOKE DELETE ON article_summaries FROM pre_processor_user;
+
+  000025_create_feed_tags_table.up.sql: |
+    CREATE TABLE IF NOT EXISTS feed_tags (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        feed_id UUID NOT NULL,
+        tag_name TEXT NOT NULL,
+        confidence FLOAT NOT NULL DEFAULT 0.0,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_feed_tags_feed_id ON feed_tags (feed_id);
+    CREATE INDEX IF NOT EXISTS idx_feed_tags_tag_name ON feed_tags (tag_name);
+    CREATE INDEX IF NOT EXISTS idx_feed_tags_confidence ON feed_tags (confidence DESC);
+
+  000025_create_feed_tags_table.down.sql: |
+    DROP TABLE IF EXISTS feed_tags;
+
+  000026_create_article_tags_table.up.sql: |
+    -- Create the article_tags junction table
+    CREATE TABLE article_tags (
+        article_id UUID     NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+        feed_tag_id     UUID      NOT NULL REFERENCES feed_tags(id)     ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (article_id, feed_tag_id)
+    );
+
+    ALTER TABLE article_tags
+        OWNER TO alt_db_user;
+
+    CREATE INDEX idx_article_tags_feed_tag_id
+        ON article_tags (feed_tag_id);
+
+    CREATE INDEX idx_article_tags_created_at
+        ON article_tags (created_at);
+
+  000026_create_article_tags_table.down.sql: |
+    DROP TABLE IF EXISTS article_tags;
+
+  000027_create_tag_generator_user.up.sql: |
+    -- Create tag_generator_user if it doesn't exist
+    DO $$ 
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'tag_generator_user') THEN
+            CREATE USER tag_generator_user WITH PASSWORD 'tag_generator_password';
+        END IF;
+    END
+    $$;
+
+  000027_create_tag_generator_user.down.sql: |
+    -- Drop tag_generator_user if it exists
+    DROP USER IF EXISTS tag_generator_user;
+
+  000028_grant_tag_generator_permissions.up.sql: |
+    GRANT SELECT, INSERT, UPDATE, DELETE ON feed_tags TO tag_generator_user;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON article_tags TO tag_generator_user;
+    GRANT SELECT ON feeds TO tag_generator_user;
+    GRANT SELECT ON articles TO tag_generator_user;
+
+  000028_grant_tag_generator_permissions.down.sql: |
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON feed_tags FROM tag_generator_user;
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON article_tags FROM tag_generator_user;
+    REVOKE SELECT ON feeds FROM tag_generator_user;
+    REVOKE SELECT ON articles FROM tag_generator_user;
+
+  000029_fix_tags_schema.up.sql: |
+    ALTER TABLE feed_tags ADD COLUMN IF NOT EXISTS tag_type VARCHAR(50) DEFAULT 'auto';
+    ALTER TABLE article_tags ADD COLUMN IF NOT EXISTS tag_type VARCHAR(50) DEFAULT 'auto';
+
+  000029_fix_tags_schema.down.sql: |
+    ALTER TABLE feed_tags DROP COLUMN IF EXISTS tag_type;
+    ALTER TABLE article_tags DROP COLUMN IF EXISTS tag_type;
+
+  000030_create_search_indexer_user.up.sql: |
+    -- Create search_indexer_user if it doesn't exist  
+    DO $$ 
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'search_indexer_user') THEN
+            CREATE USER search_indexer_user WITH PASSWORD 'search_indexer_password';
+        END IF;
+    END
+    $$;
+
+  000030_create_search_indexer_user.down.sql: |
+    -- Drop search_indexer_user if it exists
+    DROP USER IF EXISTS search_indexer_user;
+
+  000031_grant_search_indexer_permissions.up.sql: |
+    GRANT SELECT ON feeds TO search_indexer_user;
+    GRANT SELECT ON articles TO search_indexer_user;
+    GRANT SELECT ON feed_tags TO search_indexer_user;
+    GRANT SELECT ON article_tags TO search_indexer_user;
+
+  000031_grant_search_indexer_permissions.down.sql: |
+    REVOKE SELECT ON feeds FROM search_indexer_user;
+    REVOKE SELECT ON articles FROM search_indexer_user;
+    REVOKE SELECT ON feed_tags FROM search_indexer_user;
+    REVOKE SELECT ON article_tags FROM search_indexer_user;
+
+  000032_create_favorite_feeds_table.up.sql: |
+    CREATE TABLE IF NOT EXISTS favorite_feeds (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL,
+        feed_id UUID NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE,
+        UNIQUE(user_id, feed_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_favorite_feeds_user_id ON favorite_feeds (user_id);
+    CREATE INDEX IF NOT EXISTS idx_favorite_feeds_feed_id ON favorite_feeds (feed_id);
+
+  000032_create_favorite_feeds_table.down.sql: |
+    DROP TABLE IF EXISTS favorite_feeds;
+
+  000033_add_feed_id_to_articles.up.sql: |
+    ALTER TABLE articles ADD COLUMN IF NOT EXISTS feed_id UUID;
+    DO $$ 
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_articles_feed_id') THEN
+            ALTER TABLE articles ADD CONSTRAINT fk_articles_feed_id FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE;
+        END IF;
+    END
+    $$;
+    CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles (feed_id);
+
+  000033_add_feed_id_to_articles.down.sql: |
+    ALTER TABLE articles DROP CONSTRAINT IF EXISTS fk_articles_feed_id;
+    DROP INDEX IF EXISTS idx_articles_feed_id;
+    ALTER TABLE articles DROP COLUMN IF EXISTS feed_id;
+
+  000034_update_tag_generator_permissions.up.sql: |
+    GRANT SELECT ON article_summaries TO tag_generator_user;
+
+  000034_update_tag_generator_permissions.down.sql: |
+    REVOKE SELECT ON article_summaries FROM tag_generator_user;

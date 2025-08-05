@@ -1,7 +1,7 @@
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
-  name: alt-migrate
+  name: alt-database-migration
 
 profiles:
   - name: prod
@@ -23,7 +23,7 @@ profiles:
       helm:
         releases:
           - name: migrate
-            chartPath: ../03-core-services/charts/migrate
+            chartPath: charts/migrate
             namespace: alt-database
             createNamespace: true
             setValues:
@@ -32,11 +32,22 @@ profiles:
               image.repository: "{{.IMAGE_REPO_kaikei_migrate}}"
               image.tag: "{{.IMAGE_TAG_kaikei_migrate}}"
             valuesFiles:
-              - ../03-core-services/charts/migrate/values-production.yaml
+              - charts/migrate/values-production.yaml
             version: 0.1.0
         flags:
           install: ['--atomic', '--wait', '--timeout=600s', '--wait-for-jobs', '--create-namespace']
           upgrade: ['--atomic', '--wait', '--timeout=600s', '--cleanup-on-fail', '--wait-for-jobs', '--force', '--reset-values']
+        hooks:
+          before:
+            - host:
+                command: ["echo", "🚀 Layer 03 Database Migration デプロイメント開始"]
+            - host:
+                command: ["helm", "list", "-A"]
+          after:
+            - host:
+                command: ["echo", "✅ Layer 03 Database Migration デプロイメント完了"]
+            - host:
+                command: ["kubectl", "get", "pods", "-n", "alt-database", "-l", "app.kubernetes.io/name=migrate"]
 
 build:
   artifacts:
