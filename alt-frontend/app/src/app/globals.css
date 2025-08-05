@@ -23,9 +23,9 @@
   --alt-ash: #999999;
 
   /* --- Swappable Theme Colors --- */
-  --alt-primary: #b85450; /* Defaults to Liquid-Beige */
-  --alt-secondary: #7c9070;
-  --alt-tertiary: #d4a574;
+  --alt-primary: #2F4F4F; /* Defaults to Liquid-Beige */
+  --alt-secondary: #696969;
+  --alt-tertiary: #808080;
 
   --alt-success: #00ff00;
   --alt-error: #ff0000;
