@@ -1,57 +1,43 @@
-FROM node:lts-alpine AS build
-
+# syntax=docker/dockerfile:1.6
+# ====== build stage ======
+FROM node:20-alpine AS build
 WORKDIR /app
 
-# pnpmをグローバルインストール
-RUN npm install -g pnpm
+# 推奨: corepackでpnpmを有効化（グローバルnpmインストールはしない）
+RUN corepack enable && corepack prepare pnpm@latest --activate \
+  && apk add --no-cache libc6-compat
 
-# package.jsonとpnpm-lock.yamlを先にコピー
-COPY app/package.json app/pnpm-lock.yaml ./
-
-# pnpm installを実行
-# --frozen-lockfile: lockファイルに合致しない変更を許可しない
+# 依存キャッシュ最適化
+COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-COPY app/ .
-
-# Next.jsアプリケーションをビルド
-ARG API_URL
-ARG NEXT_PUBLIC_API_BASE_URL
-ENV API_URL=${API_URL:-http://alt-backend:9000}
-ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api}
-
+# 残りのソースをコピーしてビルド
+COPY . .
+# ビルド時に注入する値（必要なら --build-arg で上書き）
+ARG API_URL=http://alt-backend:9000
+ARG NEXT_PUBLIC_API_BASE_URL=/api
+ENV API_URL=$API_URL \
+  NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 RUN pnpm run build
 
-# Production stage - run the Node.js server
-FROM node:lts-alpine AS production
-
+# ====== runtime stage ======
+FROM node:20-alpine AS runner
 WORKDIR /app
+ENV NODE_ENV=production \
+  PORT=3000 \
+  NEXT_TELEMETRY_DISABLED=1
 
-# pnpmをグローバルインストール
-RUN npm install -g pnpm
-
-# package.jsonとpnpm-lock.yamlをコピー
-COPY app/package.json app/pnpm-lock.yaml ./
-
-# 本番環境用の依存関係のみインストール
-RUN pnpm install --frozen-lockfile --prod
-
-# ビルド済みファイルをコピー
-COPY --from=build /app/.next ./.next
+# 実行に必要な成果物だけコピー（standaloneルール）
+# 重要: .next/static と public は自動同梱されないので必ずコピー
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
-COPY --from=build /app/next.config.ts ./
-COPY --from=build /app/package.json ./
-COPY --from=build /app/src ./src
 
-# 環境変数を設定
-ARG API_URL
-ARG NEXT_PUBLIC_API_BASE_URL
-ENV API_URL=${API_URL:-http://alt-backend:9000}
-ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api}
-ENV NODE_ENV=production
-ENV PORT=3000
+# 非rootユーザで動かす
+RUN addgroup -S nextjs && adduser -S nextjs -G nextjs \
+  && chown -R nextjs:nextjs /app
+USER nextjs
 
 EXPOSE 3000
-
-# Next.jsサーバーを起動
-CMD ["pnpm", "start"]
+# standaloneの最小サーバで起動（next start は使わない）
+CMD ["node", "server.js"]
