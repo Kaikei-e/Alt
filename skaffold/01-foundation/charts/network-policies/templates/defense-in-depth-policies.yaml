@@ -69,14 +69,14 @@ spec:
   - Ingress
   - Egress
   ingress:
-  # nginx-internal → alt-frontend
+  # nginx-external → alt-frontend
   - from:
     - namespaceSelector:
         matchLabels:
           name: alt-ingress
-    - podSelector:
+      podSelector:
         matchLabels:
-          app: nginx-internal
+          app.kubernetes.io/name: nginx-external
     ports:
     - protocol: TCP
       port: 3000
