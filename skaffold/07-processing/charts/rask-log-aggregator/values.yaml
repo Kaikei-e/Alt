@@ -1,0 +1,64 @@
+# Default values for rask-log-aggregator
+replicaCount: 1
+
+image:
+  repository: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Core servicesパターン統一
+  pullPolicy: Never  # INCIDENT 50 FIX: ローカル開発環境対応 - Docker/containerd同期問題解決
+  # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
+  # tag: "production"
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+env:
+  LOG_LEVEL: "info"
+  SERVICE_NAME: "rask-log-aggregator"
+  LOG_BUFFER_SIZE: "10000"
+  LOG_FLUSH_INTERVAL: "10s"
+  # Alt Clickhouse 接続設定
+  CLICKHOUSE_HOST: "clickhouse.alt-analytics.svc.cluster.local"
+  CLICKHOUSE_PORT: "9000"
+  CLICKHOUSE_DATABASE: "alt_logs"
+  CLICKHOUSE_SSL_MODE: "require"
+  # Debug settings
+  RUST_BACKTRACE: "1"
+  CONFIG_PATH: "/app/config/config.toml"
+
+envFromSecret:
+  name: rask-log-aggregator-secrets
+  keys:
+    - CLICKHOUSE_PASSWORD
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+commonLabels: {}
+commonAnnotations: {}
+podLabels: {}
+podAnnotations: {}
+imagePullSecrets: []
+volumeMounts: []
+volumes: []
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1

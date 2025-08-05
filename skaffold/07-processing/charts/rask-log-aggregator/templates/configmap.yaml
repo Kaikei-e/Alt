@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rask-log-aggregator-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "rask-log-aggregator.labels" . | nindent 4 }}
+data:
+  config.toml: |
+    [logging]
+    level = "info"
+    
+    [clickhouse]
+    host = "clickhouse.alt-analytics.svc.cluster.local"
+    port = 9000
+    database = "alt_logs"
+    ssl_mode = "require"
+    
+    [buffer]
+    size = 10000
+    flush_interval = "10s"

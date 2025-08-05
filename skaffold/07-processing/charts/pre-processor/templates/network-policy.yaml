@@ -1,0 +1,38 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pre-processor.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pre-processor.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pre-processor.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress  
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-apps
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort | default 8080 }}
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow database access
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-database
+      ports:
+        - protocol: TCP
+          port: 5432

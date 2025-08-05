@@ -1,0 +1,26 @@
+# Development environment values for rask-log-aggregator
+
+# Development-specific image settings
+image:
+  tag: "development"  
+  pullPolicy: Never  # INCIDENT 82 FIX: Local image強制使用 (ImagePullBackOff解決)
+
+# Reduced resource requirements for development
+resources:
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+  requests:
+    cpu: "250m"
+    memory: "256Mi"
+
+# Development environment variables
+env:
+  LOG_LEVEL: "debug"
+  CLICKHOUSE_HOST: "clickhouse.alt-dev.svc.cluster.local"
+
+# Development namespace
+namespace: alt-dev
+
+# Single replica for development
+replicaCount: 1

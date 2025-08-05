@@ -1,0 +1,99 @@
+# Default values for tag-generator
+replicaCount: 1
+
+image:
+  repository: kaikei/tag-generator  # INCIDENT 82 FIX: Core servicesパターン統一
+  pullPolicy: Always  # INCIDENT 100 FIX: Force new image pull for proper SHA256 deployment
+  # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
+  # tag: "production"
+
+service:
+  type: ClusterIP
+  port: 9400
+  targetPort: 9400
+
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "500m"
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
+
+env:
+  DB_HOST: "postgres.alt-database.svc.cluster.local"
+  DB_NAME: "alt"
+  DB_PORT: "5432"
+  DB_SSL_MODE: "require"
+  LOG_LEVEL: "info"
+  DB_TAG_GENERATOR_USER: "tag_generator_user"
+  SERVICE_NAME: "tag-generator"
+  MODEL_PATH: "/app/models"
+  MODEL_NAME: "gemma:2b"
+  OLLAMA_HOST: "http://news-creator.alt-processing.svc.cluster.local:11434"
+  OLLAMA_TIMEOUT: "180s"
+  UV_CACHE_DIR: "/tmp/.uv-cache"
+  UV_NO_CACHE: "false"
+  UV_PROJECT_ENVIRONMENT: "/app/.venv"
+  UV_NO_SYNC: "true"
+
+# Secret configuration
+secret:
+  create: true
+  name: tag-generator-secrets
+  data:
+    DB_TAG_GENERATOR_PASSWORD: "devpassword123"  # Change in production
+
+envFromSecret:
+  name: tag-generator-secrets
+  keys:
+    - DB_TAG_GENERATOR_PASSWORD
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+commonLabels: {}
+commonAnnotations: {}
+podLabels: {}
+podAnnotations: {}
+imagePullSecrets: []
+volumeMounts:
+  - name: uv-cache
+    mountPath: /.cache
+  - name: temp-dir
+    mountPath: /tmp
+  - name: venv-dir
+    mountPath: /app/.venv
+volumes:
+  - name: uv-cache
+    emptyDir: {}
+  - name: temp-dir
+    emptyDir: {}
+  - name: venv-dir
+    emptyDir: {}
+
+# ConfigMap configuration
+configMap:
+  create: true
+  name: tag-generator-config
+  data:
+    .env: |
+      # Tag Generator Configuration
+      PORT=9400
+      LOG_LEVEL=info
+      DB_MAX_CONNECTIONS=10
+      DB_MAX_IDLE_CONNECTIONS=2
+      DB_CONNECTION_MAX_LIFETIME=5m
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
