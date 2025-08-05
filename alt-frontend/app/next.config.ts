@@ -41,10 +41,25 @@ const nextConfig = {
     ];
   },
 
-  // Experimental optimizations
+  // REPORT.md恒久対応: App Router グローバル動的レンダリング設定
+  // HTMLキャッシュ整合性のため、全ページで動的レンダリング強制
   experimental: {
     optimizePackageImports: ["@chakra-ui/react", "@emotion/react"],
     esmExternals: true,
+  },
+
+  // Next.js 15恒久対応: experimental.serverComponentsExternalPackages → serverExternalPackages
+  // Web情報に基づく正しい設定（実験的機能から安定版へ移行）
+  serverExternalPackages: [],
+
+  // Next.js 15 App Router グローバル動的レンダリング設定
+  // React #418エラー防止 + HTMLキャッシュ整合性確保
+  output: 'standalone',  // コンテナ最適化
+  
+  // グローバル動的レンダリング強制（全ページ適用）
+  env: {
+    // 全ページでforce-dynamicを強制
+    NEXT_FORCE_DYNAMIC: 'true',
   },
 
   // Use stable turbopack
