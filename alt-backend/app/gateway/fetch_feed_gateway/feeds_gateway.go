@@ -3,14 +3,12 @@ package fetch_feed_gateway
 import (
 	"alt/domain"
 	"alt/driver/alt_db"
+	"alt/utils"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"context"
-	"crypto/tls"
 	"errors"
 	"log/slog"
-	"net"
-	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -47,8 +45,9 @@ func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*dom
 		slog.Info("Rate limiting passed, proceeding with feed request", "url", link)
 	}
 
-	// Use proxy-aware HTTP client for secure RSS feed fetching
-	httpClient := g.createHTTPClient()
+	// Use unified HTTP client factory for secure RSS feed fetching
+	factory := utils.NewHTTPClientFactory()
+	httpClient := factory.CreateHTTPClient()
 	fp := gofeed.NewParser()
 	fp.Client = httpClient
 	feed, err := fp.ParseURL(link)
@@ -236,24 +235,3 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 	return feedItems, nil
 }
 
-// createHTTPClient creates a proxy-aware HTTP client for secure RSS feed fetching
-func (g *FetchFeedsGateway) createHTTPClient() *http.Client {
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false,
-			MinVersion:         tls.VersionTLS12,
-		},
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		MaxIdleConns:        100,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 30 * time.Second,
-	}
-
-	return &http.Client{
-		Transport: transport,
-		Timeout:   60 * time.Second,
-	}
-}

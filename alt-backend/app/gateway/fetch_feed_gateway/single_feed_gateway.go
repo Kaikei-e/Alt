@@ -3,13 +3,11 @@ package fetch_feed_gateway
 import (
 	"alt/domain"
 	"alt/driver/alt_db"
+	"alt/utils"
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"context"
-	"crypto/tls"
-	"net"
-	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -102,8 +100,9 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 		logger.SafeLogInfo(ctx, "Rate limiting passed, proceeding with single feed request", "url", feedURL.String())
 	}
 
-	// Parse the RSS feed from the URL using secure HTTP client
-	httpClient := g.createHTTPClient()
+	// Parse the RSS feed from the URL using unified HTTP client factory
+	factory := utils.NewHTTPClientFactory()
+	httpClient := factory.CreateHTTPClient()
 	fp := gofeed.NewParser()
 	fp.Client = httpClient
 	
@@ -215,24 +214,3 @@ func convertGofeedToDomain(feed *gofeed.Feed) *domain.RSSFeed {
 	return domainFeed
 }
 
-// createHTTPClient creates a proxy-aware HTTP client for secure RSS feed fetching
-func (g *SingleFeedGateway) createHTTPClient() *http.Client {
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false,
-			MinVersion:         tls.VersionTLS12,
-		},
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		MaxIdleConns:        100,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 30 * time.Second,
-	}
-
-	return &http.Client{
-		Transport: transport,
-		Timeout:   60 * time.Second,
-	}
-}

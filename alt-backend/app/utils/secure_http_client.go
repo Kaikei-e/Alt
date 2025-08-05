@@ -3,17 +3,138 @@ package utils
 import (
 	"alt/config"
 	"context"
+	"crypto/tls"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
 
-// SecureHTTPClient creates an HTTP client with SSRF protection
-func SecureHTTPClient() *http.Client {
-	// Use default configuration if not provided
+// ProxyStrategy defines the proxy strategy for HTTP clients
+type ProxyStrategy string
+
+const (
+	ProxyStrategyDirect ProxyStrategy = "DIRECT"
+	ProxyStrategyEnvoy  ProxyStrategy = "ENVOY"
+)
+
+// HTTPClientFactory creates HTTP clients with unified proxy strategy
+type HTTPClientFactory struct {
+	proxyStrategy ProxyStrategy
+	envoyBaseURL  string
+}
+
+// NewHTTPClientFactory creates a new HTTP client factory with environment-based configuration
+func NewHTTPClientFactory() *HTTPClientFactory {
+	strategy := ProxyStrategy(os.Getenv("PROXY_STRATEGY"))
+	if strategy == "" {
+		strategy = ProxyStrategyDirect
+	}
+
+	envoyBaseURL := os.Getenv("ENVOY_PROXY_BASE_URL")
+	if envoyBaseURL == "" {
+		envoyBaseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
+	}
+
+	slog.Info("HTTP client factory initialized",
+		"proxy_strategy", strategy,
+		"envoy_base_url", envoyBaseURL)
+
+	return &HTTPClientFactory{
+		proxyStrategy: strategy,
+		envoyBaseURL:  envoyBaseURL,
+	}
+}
+
+// CreateHTTPClient creates an HTTP client with proxy-aware configuration
+func (f *HTTPClientFactory) CreateHTTPClient() *http.Client {
+	switch f.proxyStrategy {
+	case ProxyStrategyEnvoy:
+		return f.createEnvoyProxyClient()
+	default:
+		return f.createSecureDirectClient()
+	}
+}
+
+// createEnvoyProxyClient creates an HTTP client that routes through Envoy proxy
+func (f *HTTPClientFactory) createEnvoyProxyClient() *http.Client {
+	baseTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: false,
+			MinVersion:         tls.VersionTLS12,
+		},
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        100,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second,
+	}
+
+	// Wrap with Envoy proxy transport
+	envoyTransport := &EnvoyProxyTransport{
+		Transport:     baseTransport,
+		EnvoyBaseURL:  f.envoyBaseURL,
+	}
+
+	return &http.Client{
+		Transport: envoyTransport,
+		Timeout:   60 * time.Second,
+	}
+}
+
+// EnvoyProxyTransport implements RoundTripper to transform requests for Envoy Dynamic Forward Proxy
+type EnvoyProxyTransport struct {
+	Transport    http.RoundTripper
+	EnvoyBaseURL string
+}
+
+// RoundTrip transforms requests to route through Envoy Dynamic Forward Proxy
+func (t *EnvoyProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Clone the request to avoid modifying the original
+	clonedReq := req.Clone(req.Context())
+	
+	// Extract original URL components
+	originalHost := req.URL.Host
+	originalScheme := req.URL.Scheme
+	originalPath := req.URL.Path
+	if req.URL.RawQuery != "" {
+		originalPath += "?" + req.URL.RawQuery
+	}
+
+	// Parse Envoy base URL
+	envoyURL, err := url.Parse(t.EnvoyBaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Envoy base URL: %w", err)
+	}
+
+	// Transform URL to Envoy Dynamic Forward Proxy format
+	// Original: https://example.com/rss.xml
+	// Transformed: http://envoy-proxy:8080/proxy/https://example.com/rss.xml
+	clonedReq.URL.Scheme = envoyURL.Scheme
+	clonedReq.URL.Host = envoyURL.Host
+	clonedReq.URL.Path = "/proxy/" + originalScheme + "://" + originalHost + originalPath
+
+	// Add required X-Target-Domain header for Envoy Dynamic Forward Proxy
+	clonedReq.Header.Set("X-Target-Domain", originalHost)
+
+	slog.Info("Envoy proxy request transformation",
+		"original_url", req.URL.String(),
+		"transformed_url", clonedReq.URL.String(),
+		"target_domain", originalHost)
+
+	// Execute the transformed request
+	return t.Transport.RoundTrip(clonedReq)
+}
+
+// createSecureDirectClient creates a secure HTTP client with SSRF protection
+func (f *HTTPClientFactory) createSecureDirectClient() *http.Client {
 	cfg := &config.HTTPConfig{
 		ClientTimeout:       30 * time.Second,
 		DialTimeout:         10 * time.Second,
@@ -21,6 +142,12 @@ func SecureHTTPClient() *http.Client {
 		IdleConnTimeout:     90 * time.Second,
 	}
 	return SecureHTTPClientWithConfig(cfg)
+}
+
+// SecureHTTPClient creates an HTTP client with SSRF protection (deprecated - use factory)
+func SecureHTTPClient() *http.Client {
+	factory := NewHTTPClientFactory()
+	return factory.CreateHTTPClient()
 }
 
 // SecureHTTPClientWithConfig creates an HTTP client with SSRF protection using provided configuration
