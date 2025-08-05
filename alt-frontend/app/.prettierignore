@@ -1,5 +1,0 @@
-# Ignore artifacts:
-build
-coverage
-*.md
-pnpm-lock.yaml
