@@ -1,0 +1,831 @@
+/* Alt Theme – Global Styles (Vaporwave + Liquid Glass Beige + Alt Paper)
+   -----------------------------------------------------------------------------
+   Three-theme toggle system: Vaporwave (neon) ↔ Liquid-Beige (earthy luxury) ↔ Alt-Paper (newspaper)
+   -----------------------------------------------------------------------------*/
+
+/* ---------------------------------------------------------------------------
+   0.  ROOT  – Base design tokens
+   ---------------------------------------------------------------------------*/
+:root {
+  /* --- Base Brand Colors (Vaporwave) --- */
+  --alt-pink: #ff006e;
+  --alt-purple: #8338ec;
+  --alt-blue: #3a86ff;
+
+  /* --- Base Brand Colors (Liquid-Beige) --- */
+  --alt-terracotta: #b85450;
+  --alt-sage: #7c9070;
+  --alt-sand: #d4a574;
+
+  /* --- Base Brand Colors (Alt-Paper) --- */
+  --alt-charcoal: #1a1a1a;
+  --alt-slate: #666666;
+  --alt-ash: #999999;
+
+  /* --- Swappable Theme Colors --- */
+  --alt-primary: #2F4F4F; /* Defaults to Liquid-Beige */
+  --alt-secondary: #696969;
+  --alt-tertiary: #808080;
+
+  --alt-success: #00ff00;
+  --alt-error: #ff0000;
+  --alt-warning: #ffff00;
+
+  /* --- Spacing (Fibonacci) --- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  /* --- Typography (Fluid) --- */
+  --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+  --text-sm: clamp(0.875rem, 0.8rem + 0.375vw, 1rem);
+  --text-base: clamp(1rem, 0.925rem + 0.375vw, 1.125rem);
+  --text-lg: clamp(1.125rem, 1rem + 0.625vw, 1.375rem);
+  --text-xl: clamp(1.25rem, 1.1rem + 0.75vw, 1.625rem);
+  --text-2xl: clamp(1.5rem, 1.3rem + 1vw, 2rem);
+  --text-3xl: clamp(1.875rem, 1.6rem + 1.375vw, 2.625rem);
+  --text-4xl: clamp(2.25rem, 1.9rem + 1.75vw, 3.375rem);
+
+  /* --- Fonts --- */
+  --font-primary: "Inter Variable", system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", var(--font-primary);
+  --font-mono: "Fira Code Variable", "SF Mono", monospace;
+  --font-serif: "Georgia", "Times New Roman", serif;
+
+  /* --- Radius --- */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+  --radius-full: 9999px;
+
+  /* --- Transitions --- */
+  --transition-speed: 0.2s;
+  --transition-smooth: 0.35s;
+
+  /* -----------------------------------------------------------------------
+     1.  DEFAULT THEME TOKENS (Vaporwave as default)
+     ---------------------------------------------------------------------*/
+  --surface-bg: rgba(255, 255, 255, 0.1);
+  --surface-border: rgba(255, 255, 255, 0.2);
+  --surface-hover: rgba(255, 255, 255, 0.15);
+  --surface-blur: 20px;
+
+  --app-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+  --accent-gradient: linear-gradient(
+    45deg,
+    var(--alt-primary),
+    var(--alt-secondary),
+    var(--alt-tertiary)
+  );
+
+  --foreground: #ffffff;
+  --background: #1a1a2e;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --text-muted: rgba(255, 255, 255, 0.6);
+
+  --accent-primary: var(--alt-primary);
+  --accent-secondary: var(--alt-secondary);
+  --accent-tertiary: var(--alt-tertiary);
+}
+
+/* ---------------------------------------------------------------------------
+   2.  THEME VARIANTS  – data-style="vaporwave | liquid-beige | alt-paper"
+   ---------------------------------------------------------------------------*/
+
+/* 2-A ▸ Vaporwave Theme (Neon Cyber) */
+[data-style="vaporwave"] {
+  /* Swappable theme colors */
+  --alt-primary: var(--alt-pink);
+  --alt-secondary: var(--alt-purple);
+  --alt-tertiary: var(--alt-blue);
+
+  /* Glass properties */
+  --surface-bg: rgba(255, 255, 255, 0.1);
+  --surface-border: rgba(255, 255, 255, 0.2);
+  --surface-hover: rgba(255, 255, 255, 0.15);
+  --surface-blur: 20px;
+
+  /* Backgrounds */
+  --app-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+  --accent-gradient: linear-gradient(
+    45deg,
+    var(--alt-primary),
+    var(--alt-secondary),
+    var(--alt-tertiary)
+  );
+
+  /* Text colors */
+  --foreground: #ffffff;
+  --background: #1a1a2e;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --text-muted: rgba(255, 255, 255, 0.6);
+
+  /* Accent colors */
+  --accent-primary: var(--alt-primary);
+  --accent-secondary: var(--alt-secondary);
+  --accent-tertiary: var(--alt-tertiary);
+}
+
+/* 2-B ▸ Liquid-Beige Theme (Earthy Luxury) */
+[data-style="liquid-beige"] {
+  /* Swappable theme colors */
+  --alt-primary: var(--alt-terracotta);
+  --alt-secondary: var(--alt-sage);
+  --alt-tertiary: var(--alt-sand);
+
+  /* Glass properties - 視認性を向上 */
+  --surface-bg: rgba(255, 253, 250, 0.1); /* より明確な背景 */
+  --surface-border: rgba(139, 119, 101, 0.3); /* ボーダーを濃く */
+  --surface-hover: rgba(255, 253, 250, 0.6); /* hover時の変化を明確に */
+  --surface-blur: 12px; /* ブラーを調整 */
+
+  /* Backgrounds - より洗練されたグラデーション */
+  --app-bg: linear-gradient(
+    135deg,
+    #e8ded1 0%,
+    #dfd4c5 25%,
+    #d6c8b9 50%,
+    #cdbaa8 75%,
+    #c8b8a1 100%
+  );
+  --accent-gradient: linear-gradient(
+    135deg,
+    var(--alt-primary) 0%,
+    var(--alt-secondary) 50%,
+    var(--alt-tertiary) 100%
+  );
+
+  /* Text colors - コントラストを強化 */
+  --foreground: #2c2416;
+  --background: #e8ded1;
+  --text-primary: #1a1611; /* より濃い黒 */
+  --text-secondary: rgba(26, 22, 17, 0.85); /* 視認性向上 */
+  --text-muted: rgba(44, 36, 22, 0.65);
+
+  /* Accent colors */
+  --accent-primary: var(--alt-primary);
+  --accent-secondary: var(--alt-secondary);
+  --accent-tertiary: var(--alt-tertiary);
+
+  /* 追加のシャドウ変数 */
+  --shadow-sm: 0 1px 3px rgba(139, 119, 101, 0.12);
+  --shadow-md: 0 4px 6px rgba(139, 119, 101, 0.15);
+  --shadow-lg: 0 10px 15px rgba(139, 119, 101, 0.2);
+}
+
+/* 2-C ▸ Alt-Paper Theme (Newspaper/Instapaper Style) */
+[data-style="alt-paper"] {
+  /* Swappable theme colors */
+  --alt-primary: #2F4F4F;    /* ダークスレートグレー */
+  --alt-secondary: #696969;  /* ディムグレー */
+  --alt-tertiary: #808080;   /* グレー */
+
+  /* Paper properties - no glass effects, solid backgrounds */
+  --surface-bg: #dedede;
+  --surface-border: #e0e0e0;
+  --surface-hover: #f8f8f8;
+  --surface-blur: 0px; /* No blur for paper theme */
+
+  /* Backgrounds - clean white paper */
+  --app-bg: #ffffff;
+  --accent-gradient: linear-gradient(
+    135deg,
+    var(--alt-primary) 0%,
+    var(--alt-secondary) 50%,
+    var(--alt-tertiary) 100%
+  );
+
+  /* Text colors - high contrast black on white */
+  --foreground: #1a1a1a;
+  --background: #ffffff;
+  --text-primary: #1a1a1a;
+  --text-secondary: #333333;
+  --text-muted: #666666;
+
+  /* Accent colors */
+  --accent-primary: var(--alt-primary);
+  --accent-secondary: var(--alt-secondary);
+  --accent-tertiary: var(--alt-tertiary);
+
+  /* Paper-specific shadows - subtle and minimal */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.12);
+
+  /* Override font family for newspaper feel */
+  --font-primary: var(--font-serif);
+  --font-display: var(--font-serif);
+}
+
+/* Paper theme specific overrides */
+[data-style="alt-paper"] * {
+  border-radius: 0 !important; /* Remove all rounded corners */
+}
+
+[data-style="alt-paper"] .glass {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-speed) ease;
+}
+
+[data-style="alt-paper"] .glass:hover {
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-md);
+  border-color: var(--alt-primary);
+  transform: none; /* No transform for paper theme */
+}
+
+[data-style="alt-paper"] .card {
+  background: var(--surface-bg);
+  border: 2px solid var(--surface-border);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-style="alt-paper"] .card:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--alt-secondary);
+  transform: none;
+}
+
+[data-style="alt-paper"] .btn-primary {
+  background: var(--surface-bg);
+  border: 2px solid var(--alt-primary);
+  color: var(--text-primary);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  box-shadow: var(--shadow-sm);
+}
+
+[data-style="alt-paper"] .btn-primary:hover {
+  background: var(--alt-primary);
+  color: #ffffff;
+  box-shadow: var(--shadow-md);
+  transform: none;
+}
+
+[data-style="alt-paper"] .btn-accent {
+  background: var(--alt-primary);
+  border: 2px solid var(--alt-primary);
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+}
+
+[data-style="alt-paper"] .btn-accent:hover {
+  background: var(--alt-secondary);
+  border-color: var(--alt-secondary);
+  transform: none;
+  filter: none;
+  box-shadow: var(--shadow-md);
+}
+
+[data-style="alt-paper"] .theme-toggle {
+  background: var(--surface-bg);
+  border: 2px solid var(--surface-border);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: var(--shadow-md);
+}
+
+[data-style="alt-paper"] .theme-toggle:hover {
+  background: var(--surface-hover);
+  border-color: var(--alt-primary);
+  box-shadow: var(--shadow-lg);
+  transform: none;
+}
+
+[data-style="alt-paper"] .gradient-text {
+  background: var(--alt-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+[data-style="alt-paper"] a {
+  color: var(--alt-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  font-weight: 500;
+}
+
+[data-style="alt-paper"] a:hover {
+  color: var(--alt-secondary);
+  text-decoration-thickness: 2px;
+}
+
+[data-style="alt-paper"] ::selection {
+  background: var(--alt-primary);
+  color: #ffffff;
+}
+
+/* Paper theme typography adjustments */
+[data-style="alt-paper"] h1,
+[data-style="alt-paper"] h2,
+[data-style="alt-paper"] h3,
+[data-style="alt-paper"] h4,
+[data-style="alt-paper"] h5,
+[data-style="alt-paper"] h6 {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+
+[data-style="alt-paper"] p {
+  font-family: var(--font-serif);
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+[data-style="alt-paper"] body {
+  font-family: var(--font-serif);
+  line-height: 1.7;
+}
+
+/* ---------------------------------------------------------------------------
+   3.  BASE LAYOUT & TYPOGRAPHY
+   ---------------------------------------------------------------------------*/
+html {
+  font-family: var(--font-primary);
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  height: 100%;
+  height: 100dvh;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  /* Gradient background */
+  background: var(--app-bg);
+  /* Fallback solid color so `background-color` is never transparent */
+  background-color: var(--background);
+  color: var(--foreground);
+  font-feature-settings:
+    "rlig" 1,
+    "calt" 1;
+  background-attachment: fixed;
+  position: relative;
+  transition:
+    background var(--transition-smooth) ease,
+    color var(--transition-smooth) ease;
+
+  /* Safe area */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Background layer */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: var(--app-bg);
+  z-index: -1;
+  transition: background var(--transition-smooth) ease;
+}
+
+/* Root container */
+#__next,
+#root,
+.app-container {
+  min-height: 100vh;
+  min-height: 100dvh;
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   4.  UTILITY CLASSES
+   ---------------------------------------------------------------------------*/
+.glass {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(var(--surface-blur)) saturate(120%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(120%);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-speed) ease;
+}
+
+.glass:hover {
+  background: var(--surface-hover);
+  transform: translateY(-2px);
+}
+
+/* Gradient utilities */
+.accent-gradient {
+  background: var(--accent-gradient);
+  transition: background var(--transition-smooth) ease;
+}
+
+.gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  transition: background var(--transition-smooth) ease;
+}
+
+/* Button base */
+.btn-primary {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+  backdrop-filter: blur(var(--surface-blur));
+  -webkit-backdrop-filter: blur(var(--surface-blur));
+  border-radius: var(--radius-full);
+  padding: var(--space-3) var(--space-6);
+  font-weight: 600;
+  transition: all var(--transition-speed) ease;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: var(--surface-hover);
+  border-color: var(--alt-primary);
+  box-shadow: 0 0 20px var(--alt-primary) 33;
+  transform: translateY(-2px);
+}
+
+/* Accent button */
+.btn-accent {
+  background: var(--accent-gradient);
+  border: 2px solid transparent;
+  color: white;
+  border-radius: var(--radius-full);
+  padding: var(--space-3) var(--space-6);
+  font-weight: 700;
+  transition: all var(--transition-speed) ease;
+  cursor: pointer;
+}
+
+[data-style="liquid-beige"] .btn-accent {
+  color: var(--foreground);
+}
+
+.btn-accent:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Card component */
+.card {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(var(--surface-blur));
+  -webkit-backdrop-filter: blur(var(--surface-blur));
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  transition: all var(--transition-speed) ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(var(--surface-blur));
+  -webkit-backdrop-filter: blur(var(--surface-blur));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-speed) ease;
+  z-index: 1000;
+}
+
+.theme-toggle:hover {
+  background: var(--surface-hover);
+  border-color: var(--alt-primary);
+  transform: scale(1.05);
+}
+
+/* ---------------------------------------------------------------------------
+   5.  TYPOGRAPHY
+   ---------------------------------------------------------------------------*/
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: var(--text-4xl);
+}
+h2 {
+  font-size: var(--text-3xl);
+}
+h3 {
+  font-size: var(--text-2xl);
+}
+h4 {
+  font-size: var(--text-xl);
+}
+h5 {
+  font-size: var(--text-lg);
+}
+h6 {
+  font-size: var(--text-base);
+}
+
+p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+a {
+  color: var(--alt-primary);
+  text-decoration: none;
+  transition: color var(--transition-speed) ease;
+}
+
+a:hover {
+  color: var(--alt-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   6.  LAYOUT UTILITIES
+   ---------------------------------------------------------------------------*/
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+
+.flex {
+  display: flex;
+}
+.flex-col {
+  flex-direction: column;
+}
+.items-center {
+  align-items: center;
+}
+.justify-center {
+  justify-content: center;
+}
+.justify-between {
+  justify-content: space-between;
+}
+.gap-1 {
+  gap: var(--space-1);
+}
+.gap-2 {
+  gap: var(--space-2);
+}
+.gap-3 {
+  gap: var(--space-3);
+}
+.gap-4 {
+  gap: var(--space-4);
+}
+.gap-6 {
+  gap: var(--space-6);
+}
+.gap-8 {
+  gap: var(--space-8);
+}
+
+/* ---------------------------------------------------------------------------
+   7.  ANIMATIONS
+   ---------------------------------------------------------------------------*/
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease forwards;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   8.  RESPONSIVE & ACCESSIBILITY
+   ---------------------------------------------------------------------------*/
+@media (max-width: 768px) {
+  :root {
+    --text-scale: 0.9;
+  }
+
+  .container {
+    padding: 0 var(--space-3);
+  }
+
+  .hide-mobile {
+    display: none;
+  }
+}
+
+@media (min-width: 769px) {
+  .hide-desktop {
+    display: none;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Reduced transparency */
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .card,
+  .btn-primary,
+  .theme-toggle {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--background);
+  }
+}
+
+/* No backdrop-filter support */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass,
+  .card,
+  .btn-primary,
+  .theme-toggle {
+    background: var(--background);
+    opacity: 0.95;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   9.  RESET & NORMALIZE
+   ---------------------------------------------------------------------------*/
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Consistent placeholder style */
+input::placeholder {
+  text-align: center;
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+::selection {
+  background: var(--alt-primary);
+  color: white;
+}
+
+[data-style="liquid-beige"] ::selection {
+  background: var(--alt-primary);
+  color: var(--background);
+}
+
+[data-style="liquid-beige"] .glass {
+  box-shadow: var(--shadow-sm);
+}
+
+[data-style="liquid-beige"] .glass:hover {
+  box-shadow: var(--shadow-md);
+  border-color: rgba(139, 119, 101, 0.4);
+}
+
+[data-style="liquid-beige"] .card {
+  box-shadow: var(--shadow-md);
+  background: rgba(255, 253, 250, 0.5);
+}
+
+[data-style="liquid-beige"] .card:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: rgba(139, 119, 101, 0.45);
+}
+
+[data-style="liquid-beige"] .btn-primary {
+  background: rgba(255, 253, 250, 0.6);
+  border: 1px solid rgba(139, 119, 101, 0.35);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-style="liquid-beige"] .btn-primary:hover {
+  background: rgba(255, 253, 250, 0.8);
+  border-color: var(--alt-primary);
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 3px rgba(184, 84, 80, 0.1); /* focus ring風の効果 */
+}
+
+[data-style="liquid-beige"] .theme-toggle {
+  box-shadow: var(--shadow-md);
+  background: rgba(255, 253, 250, 0.7);
+  border: 1px solid rgba(139, 119, 101, 0.4);
+}
+
+[data-style="liquid-beige"] .theme-toggle:hover {
+  box-shadow: var(--shadow-lg);
+  background: rgba(255, 253, 250, 0.9);
+}
+
+/* アクセントカラーの調整 */
+[data-style="liquid-beige"] a {
+  font-weight: 500;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+[data-style="liquid-beige"] a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--alt-secondary);
+}
