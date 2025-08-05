@@ -1,0 +1,191 @@
+# Default values for auth-service
+# Alt Authentication Service configuration
+
+# Replica configuration
+replicaCount: 1
+
+# Image configuration
+image:
+  repository: kaikei/alt-authservice  # INCIDENT 68 FIX: 独立repository統一
+  pullPolicy: IfNotPresent  # INCIDENT 82 FIX: Skaffold動的tag対応
+  # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
+  # tag: "auth-service-latest"
+
+# Image pull secrets
+imagePullSecrets: []
+
+# Service account
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+# Pod annotations and labels
+podAnnotations: {}
+
+# Pod labels - avoid duplicating labels already in _helpers.tpl
+podLabels: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+  protocol: TCP
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: auth.alt.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Resources configuration
+resources:
+  limits:
+    cpu: "1"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+
+# Liveness probe
+livenessProbe:
+  httpGet:
+    path: /v1/health  # INCIDENT 64 FIX: Correct health endpoint
+    port: 8080
+  failureThreshold: 3
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 10
+
+# Readiness probe
+readinessProbe:
+  httpGet:
+    path: /v1/ready  # INCIDENT 64 FIX: Correct readiness endpoint
+    port: 8080
+  failureThreshold: 3
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Additional volumes
+volumes: []
+
+# Additional volume mounts
+volumeMounts: []
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Environment variables - INCIDENT 44 FIX: 環境変数重複解消
+# KRATOS_ADMIN_URL/KRATOS_PUBLIC_URL削除（envFromSecret.keysでSecret管理統一）
+env:
+  PORT: "8080"
+  LOG_LEVEL: "info"
+  AUTH_DATABASE_HOST: "auth-postgres.alt-auth.svc.cluster.local"  # INCIDENT 64 FIX: Correct namespace
+  AUTH_DATABASE_PORT: "5432"
+  AUTH_DATABASE_NAME: "auth_db"  # INCIDENT 64 FIX: Correct database name
+  AUTH_DATABASE_USER: "auth_db_user"  # INCIDENT 64 FIX: Correct user name
+  DB_HOST: "auth-postgres.alt-auth.svc.cluster.local"  # INCIDENT 64 FIX: App config mapping
+  DB_PORT: "5432"
+  DB_NAME: "auth_db"
+  DB_USER: "auth_db_user"  # INCIDENT 64 FIX: App expected environment variable
+  DB_SSL_MODE: "disable"  # INCIDENT 64 FIX: Disable SSL for now
+
+# Secret references for environment variables
+envFromSecret:
+  name: auth-service-secrets
+  keys:
+    - DATABASE_URL
+    - DB_PASSWORD
+    - KRATOS_ADMIN_URL
+    - KRATOS_PUBLIC_URL
+    - JWT_SECRET
+    - CSRF_SECRET
+
+# ConfigMap configuration
+configMap:
+  create: true
+  name: auth-service-config
+  data:
+    app.conf: |
+      # Auth Service Configuration
+      [server]
+      port = 8080
+      read_timeout = 30s
+      write_timeout = 30s
+
+      [database]
+      max_connections = 10
+      max_idle_connections = 2
+      connection_max_lifetime = 5m
+
+      [security]
+      jwt_expiry = 24h
+      csrf_token_expiry = 1h
+      bcrypt_cost = 12
+
+# SSL configuration
+ssl:
+  enabled: false
+
+# Secrets configuration
+secrets:
+  enabled: true
+
+# Deployment strategy
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+# Network policy
+networkPolicy:
+  enabled: true
+  allowedNamespaces:
+    - alt-auth
+    - alt-database
+    - alt-apps
+
+# Common labels - avoid duplicating labels already in _helpers.tpl
+commonLabels: {}
+
+# Common annotations
+commonAnnotations: {}

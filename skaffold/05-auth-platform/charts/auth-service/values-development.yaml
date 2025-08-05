@@ -1,0 +1,41 @@
+# Development environment values for auth-service
+
+# Development-specific image settings
+image:
+  tag: "development"
+  pullPolicy: Always
+
+# Reduced resource requirements for development
+resources:
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+
+# Development environment variables
+env:
+  LOG_LEVEL: "debug"
+  AUTH_DATABASE_HOST: "auth-postgres.alt-dev.svc.cluster.local"
+  KRATOS_ADMIN_URL: "http://kratos.alt-dev.svc.cluster.local:4434"
+  KRATOS_PUBLIC_URL: "http://kratos.alt-dev.svc.cluster.local:4433"
+
+# Development namespace
+namespace: alt-dev
+
+# Single replica for development
+replicaCount: 1
+
+# Disable autoscaling in development
+autoscaling:
+  enabled: false
+
+# Relaxed security context for development
+podSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: true
+  readOnlyRootFilesystem: false
