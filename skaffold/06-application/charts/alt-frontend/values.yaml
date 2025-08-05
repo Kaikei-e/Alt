@@ -1,0 +1,83 @@
+# Default values for alt-frontend
+replicaCount: 3
+
+image:
+  repository: kaikei/alt-frontend  # 恒久的設定: 正しいrepository
+  pullPolicy: IfNotPresent
+  # tag: SkaffoldがsetValueTemplatesで動的に設定
+
+service:
+  type: ClusterIP
+  port: 3000
+  targetPort: 3000
+
+ingress:
+  enabled: false  # alt-ingressで管理するため無効化
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: alt.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  limits:
+    cpu: "1"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 70
+
+env:
+  NEXT_PUBLIC_API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
+  NEXT_PUBLIC_AUTH_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
+  NODE_ENV: "production"
+  API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
+  AUTH_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+configMap:
+  create: false
+  name: ""
+  data: {}
+
+podSecurityContext: {}
+securityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+commonLabels: {}
+
+commonAnnotations: {}
+podLabels: {}
+# 恒久的Linkerd mTLS設定 - nginx-external間通信対応
+podAnnotations:
+  linkerd.io/inject: enabled
+imagePullSecrets: []
+volumeMounts: []
+volumes: []
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
+# INCIDENT 76 FIX: Secret configuration無効化 - 環境変数に統一
+# envFromSecret:
+#   name: alt-frontend-secrets
+#   keys:
+#     - API_URL
+#     - AUTH_URL

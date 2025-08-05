@@ -1,0 +1,121 @@
+{{/*
+Dynamic Cloudflare Tunnel NetworkPolicy - 恒久対応
+This NetworkPolicy is automatically generated and updated by the CronJob
+*/}}
+{{- if and .Values.dynamicIpUpdate.enabled .Values.dynamicIpUpdate.updateNetworkPolicy }}
+# Note: This template is for initial deployment only.
+# The actual NetworkPolicy is dynamically generated and managed by the CronJob.
+# Manual updates to this file will be overwritten by the automated system.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudflare-tunnel.fullname" . }}-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloudflare-tunnel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  annotations:
+    rask.group: "cloudflare-tunnel"
+    description: "Dynamic egress rules for Cloudflare Tunnel (port 7844) - managed by CronJob"
+    cloudflare.com/dynamic: "true"
+    cloudflare.com/managed-by: "{{ include "cloudflare-tunnel.fullname" . }}-ip-updater"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cloudflare-tunnel.selectorLabels" . | nindent 6 }}
+  policyTypes:
+  - Egress
+  egress:
+  # Initial placeholder - will be replaced by CronJob with dynamic IP ranges
+  # Temporary allow-all for initial deployment until CronJob updates this
+  - to: []
+    ports:
+    - port: 7844
+      protocol: TCP
+    - port: 7844
+      protocol: UDP
+  # DNS resolution (always required)
+  - to: []
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  # HTTPS for updates (always required)
+  - to: []
+    ports:
+    - port: 443
+      protocol: TCP
+  # CRITICAL: nginx-external communication (port 80)
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: nginx-external
+    ports:
+    - port: 80
+      protocol: TCP
+{{- else }}
+# Static NetworkPolicy when dynamic updates are disabled
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudflare-tunnel.fullname" . }}-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloudflare-tunnel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  annotations:
+    rask.group: "cloudflare-tunnel"
+    description: "Static egress rules for Cloudflare Tunnel (port 7844)"
+    cloudflare.com/dynamic: "false"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cloudflare-tunnel.selectorLabels" . | nindent 6 }}
+  policyTypes:
+  - Egress
+  egress:
+  # Static Cloudflare IP ranges (as of 2025-07-26)
+  # WARNING: These may become outdated. Enable dynamicIpUpdate for automatic updates.
+  {{- range list "173.245.48.0/20" "103.21.244.0/22" "103.22.200.0/22" "103.31.4.0/22" "141.101.64.0/18" "108.162.192.0/18" "190.93.240.0/20" "188.114.96.0/20" "197.234.240.0/22" "198.41.128.0/17" "162.158.0.0/15" "104.16.0.0/13" "104.24.0.0/14" "172.64.0.0/13" "131.0.72.0/22" }}
+  - to:
+    - ipBlock:
+        cidr: {{ . | quote }}
+    ports:
+    - port: 7844
+      protocol: TCP
+    - port: 7844
+      protocol: UDP
+  {{- end }}
+  {{- range list "2400:cb00::/32" "2606:4700::/32" "2803:f800::/32" "2405:b500::/32" "2405:8100::/32" "2a06:98c0::/29" "2c0f:f248::/32" }}
+  - to:
+    - ipBlock:
+        cidr: {{ . | quote }}
+    ports:
+    - port: 7844
+      protocol: TCP
+    - port: 7844
+      protocol: UDP
+  {{- end }}
+  # DNS resolution
+  - to: []
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  # HTTPS for updates
+  - to: []
+    ports:
+    - port: 443
+      protocol: TCP
+  # CRITICAL: nginx-external communication (port 80)
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: nginx-external
+    ports:
+    - port: 80
+      protocol: TCP
+{{- end }}
