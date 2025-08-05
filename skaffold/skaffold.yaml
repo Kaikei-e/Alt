@@ -23,18 +23,26 @@ requires:
         activatedBy: [staging]
       - name: prod
         activatedBy: [prod]
-  # Layer 3: Core Services - auth, main backend, migrations
-  - path: ./03-core-services
-    configs: [alt-core-services]
+  # Layer 3: Database Migration - schema initialization
+  - path: ./03-migrate
+    configs: [alt-database-migration]
     activeProfiles:
-      - name: dev
-        activatedBy: [dev]
-      - name: staging
-        activatedBy: [staging]
       - name: prod
         activatedBy: [prod]
-  # Layer 4: Application - frontend, ingress/proxy
-  - path: ./04-application
+  # Layer 4: Core Services - business logic (alt-backend + envoy-proxy)
+  - path: ./04-core-services
+    configs: [alt-core-services]
+    activeProfiles:
+      - name: prod
+        activatedBy: [prod]
+  # Layer 5: Authentication Platform - auth services (auth-service + kratos)
+  - path: ./05-auth-platform
+    configs: [alt-auth-platform]
+    activeProfiles:
+      - name: prod
+        activatedBy: [prod]
+  # Layer 6: Application - frontend, ingress/proxy
+  - path: ./06-application
     configs: [alt-application]
     activeProfiles:
       - name: dev
@@ -43,8 +51,8 @@ requires:
         activatedBy: [staging]
       - name: prod
         activatedBy: [prod]
-  # Layer 5: Processing - background processing services
-  - path: ./05-processing
+  # Layer 7: Processing - background processing services
+  - path: ./07-processing
     configs: [alt-processing]
     activeProfiles:
       - name: dev
@@ -53,8 +61,8 @@ requires:
         activatedBy: [staging]
       - name: prod
         activatedBy: [prod]
-  # Layer 6: Operations - monitoring, backup, tunnels
-  - path: ./06-operations
+  # Layer 8: Operations - monitoring, backup, tunnels
+  - path: ./08-operations
     configs: [alt-operations]
     activeProfiles:
       - name: dev
@@ -65,13 +73,13 @@ requires:
         activatedBy: [prod]
 deploy:
   # PHASE 4: Production-optimized deployment control for Pod Security Standards "baseline" compliance
-  statusCheckDeadlineSeconds: 10800  # 180 minutes for enhanced security and database initialization
+  statusCheckDeadlineSeconds: 900  # 15 minutes optimized for KIND cluster
   statusCheck: true  # Explicit status checking enabled
   # Note: tolerateFailuresUntilDeadline equivalent implemented via --wait and --atomic flags
   helm:
     flags:
-      install: ['--atomic', '--wait', '--timeout=9000s', '--wait-for-jobs', '--create-namespace']  # 150分: Meilisearch v1.15.2 + ClickHouse optimization
-      upgrade: ['--atomic', '--wait', '--timeout=9000s', '--cleanup-on-fail', '--wait-for-jobs', '--force', '--reset-values']
+      install: ['--atomic', '--wait', '--timeout=600s', '--wait-for-jobs', '--create-namespace']  # 10分: KIND cluster optimized
+      upgrade: ['--atomic', '--wait', '--timeout=600s', '--cleanup-on-fail', '--wait-for-jobs', '--force', '--reset-values']
     hooks:
       before:
         - host:

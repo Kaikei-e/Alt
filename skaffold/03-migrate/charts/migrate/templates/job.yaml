@@ -48,6 +48,29 @@ spec:
       serviceAccountName: {{ include "migrate.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Wait for PostgreSQL to be fully ready before starting migration
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL to be ready..."
+              until pg_isready -h ${DB_HOST} -p ${DB_PORT} -U ${POSTGRES_USER}; do
+                echo "PostgreSQL is not ready yet. Waiting..."
+                sleep 5
+              done
+              echo "PostgreSQL is ready!"
+          env:
+            - name: DB_HOST
+              value: {{ .Values.env.DB_HOST | quote }}
+            - name: DB_PORT
+              value: {{ .Values.env.DB_PORT | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.env.username | quote }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
       containers:
         - name: {{ .Chart.Name }}-migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
