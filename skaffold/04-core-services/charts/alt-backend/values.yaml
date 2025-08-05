@@ -167,6 +167,10 @@ env:
   # RSS Egress Gateway設定 (ULTRATHINK ROOT FIX - フォールバック用)
   EGRESS_GATEWAY_URL: "http://nginx-external.alt-ingress.svc.cluster.local:8889"
 
+  # 根本解決: 統一HTTPクライアントファクトリ戦略設定（デフォルト値）
+  PROXY_STRATEGY: "DIRECT"
+  ENVOY_PROXY_BASE_URL: "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
+
   # アプリケーション設定
   LOG_LEVEL: "info"
   PORT: "9000"
@@ -220,6 +224,19 @@ configMap:
 # Secrets configuration
 secrets:
   enabled: true
+  name: "backend-secrets"
+  data:
+    DB_PASSWORD: "postgres_secure_password"
+    POSTGRES_PASSWORD: "postgres_secure_password"
+    DB_APP_PASSWORD: "app_user_secure_password"
+    HF_TOKEN: "hf_secure_token_placeholder"
+    MEILI_MASTER_KEY: "meili_secure_master_key"
+    MEILISEARCH_API_KEY: "meili_secure_api_key"
+    PRE_PROCESSOR_DB_PASSWORD: "preprocessor_secure_password"
+    DB_TAG_GENERATOR_PASSWORD: "tag_generator_secure_password"
+    SEARCH_INDEXER_DB_PASSWORD: "search_indexer_secure_password"
+    CLICKHOUSE_PASSWORD: "clickhouse_secure_password"
+    APP_CLICKHOUSE_PASSWORD: "app_clickhouse_secure_password"
 
 # Deployment strategy
 strategy:
