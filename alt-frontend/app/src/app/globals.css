@@ -189,9 +189,9 @@
 /* 2-C ▸ Alt-Paper Theme (Newspaper/Instapaper Style) */
 [data-style="alt-paper"] {
   /* Swappable theme colors */
-  --alt-primary: var(--alt-charcoal);
-  --alt-secondary: var(--alt-slate);
-  --alt-tertiary: var(--alt-ash);
+  --alt-primary: #2F4F4F;    /* ダークスレートグレー */
+  --alt-secondary: #696969;  /* ディムグレー */
+  --alt-tertiary: #808080;   /* グレー */
 
   /* Paper properties - no glass effects, solid backgrounds */
   --surface-bg: #dedede;
