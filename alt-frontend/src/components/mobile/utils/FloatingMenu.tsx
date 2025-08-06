@@ -19,7 +19,7 @@ import {
 } from "@chakra-ui/accordion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Rss,
   Search,
@@ -48,10 +48,18 @@ export const FloatingMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isPrefetched, setIsPrefetched] = useState(false);
   const pathname = usePathname();
+  const [activeIndex, setActiveIndex] = useState(0);
 
   const handleCloseMenu = useCallback(() => {
     setIsOpen(false);
   }, []);
+
+  // Reset active accordion section when menu opens
+  useEffect(() => {
+    if (isOpen) {
+      setActiveIndex(0);
+    }
+  }, [isOpen]);
 
   // Handle keyboard interactions
   useEffect(() => {
@@ -333,7 +341,13 @@ export const FloatingMenu = () => {
               </Drawer.Header>
 
               <Drawer.Body px={6} py={4}>
-                <Accordion allowToggle defaultIndex={0}>
+                <Accordion
+                  allowToggle
+                  index={activeIndex}
+                  onChange={(index) =>
+                    setActiveIndex(Array.isArray(index) ? index[0] ?? -1 : index)
+                  }
+                >
                   {categories.map((cat, idx) => (
                     <AccordionItem key={idx} border="none" mb={4}>
                       {({ isExpanded }) => (
