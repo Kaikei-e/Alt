@@ -2,7 +2,7 @@
 replicaCount: 1
 image:
   repository: kaikei/pre-processor  # INCIDENT 82 FIX: Core servicesパターン統一
-  pullPolicy: Never  # INCIDENT 50 FIX: ローカル開発環境対応 - Docker/containerd同期問題解決
+  pullPolicy: IfNotPresent  # Production fix: 恒久対応 - ErrImageNeverPull解決
   # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
   # tag: "production"
 
@@ -23,13 +23,16 @@ env:
   DB_HOST: "postgres.alt-database.svc.cluster.local"
   DB_NAME: "alt"
   DB_PORT: "5432"
-  DB_SSL_MODE: "require"
-  DB_SSL_ROOT_CERT: "/ssl/ca.crt"  # PostgreSQL CA certificate path
+  DB_SSL_MODE: ""  # SSL/TLS廃止: Linkerd mTLS移行完了
   LOG_LEVEL: "info"
   PRE_PROCESSOR_DB_USER: "pre_processor_user"
   SERVICE_NAME: "pre-processor"
   NEWS_CREATOR_HOST: "http://news-creator.alt-processing.svc.cluster.local:11434"
   NEWS_CREATOR_TIMEOUT: "120s"
+  # Proxy-sidecar configuration for RSS feed fetching
+  HTTP_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
+  HTTPS_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
+  NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local"
 
 # Secret configuration
 secret:
@@ -61,17 +64,17 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-# SSL certificate mounting for PostgreSQL connection
-volumeMounts:
-  - name: ssl-certs
-    mountPath: /ssl
-    readOnly: true
+# SSL/TLS廃止: Linkerd mTLS移行完了
+# volumeMounts:
+#   - name: ssl-certs
+#     mountPath: /ssl 
+#     readOnly: true
 
-volumes:
-  - name: ssl-certs
-    secret:
-      secretName: postgres-ssl-secret
-      defaultMode: 0400
+# volumes:
+#   - name: ssl-certs
+#     secret:
+#       secretName: postgres-ssl-secret
+#       defaultMode: 0400
 commonLabels: {}
 commonAnnotations: {}
 podLabels: {}

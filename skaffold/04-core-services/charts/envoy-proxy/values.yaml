@@ -20,6 +20,13 @@ podAnnotations:
   linkerd.io/inject: enabled
   config.linkerd.io/opaque-ports: "9901"
   config.linkerd.io/protocol-http: "8080"
+  # Permanent fix: Linkerd proxy PostStartHook timeout solution (Web研究結果)
+  config.linkerd.io/proxy-await: "disabled"
+  config.linkerd.io/shutdown-grace-period: "30s"
+  config.linkerd.io/proxy-outbound-connect-timeout: "10s"
+  config.linkerd.io/proxy-inbound-connect-timeout: "10s"
+  # CRITICAL FIX: Linkerd Liveness probe timeout extension
+  config.linkerd.io/proxy-liveness-check-timeout: "10s"
 
 podSecurityContext:
   fsGroup: 65534

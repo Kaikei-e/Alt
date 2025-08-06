@@ -57,11 +57,25 @@ spec:
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
           env:
+            - name: NEXT_BUILD_ID
+              value: "{{ .Values.buildId | default .Chart.AppVersion }}"
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
             {{- include "alt-frontend.envFromSecret" . | nindent 12 }}
+          # 恒久対応: Graceful shutdown for Linkerd proxy coordination
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 30
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}

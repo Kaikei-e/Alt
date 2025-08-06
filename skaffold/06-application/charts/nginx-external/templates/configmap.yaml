@@ -123,103 +123,95 @@ data:
 
             # リクエストID: 分散トレーシング対応
             add_header X-Request-ID $request_id always;
+            
+            # REPORT.md対応: Pod特定用ヘッダ追加
+            add_header X-Alt-Pod $hostname always;
+            add_header X-Alt-Build $upstream_http_x_next_build_id always;
 
 
-            # 📌 JavaScript files - MIME type強制版（確実にヘッダー付与）
-            location ~ ^/_next/static/.*\.(js|mjs)$ {
-                set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
-                proxy_pass http://$frontend_upstream;
-
-                proxy_hide_header Content-Type;
-                add_header       Content-Type "application/javascript; charset=utf-8" always;
-
-                add_header Cache-Control "public, max-age=31536000, immutable" always;
-                add_header X-Content-Type-Source "nginx-js-fix" always;
-
-                # Essential proxy headers
+            # REPORT.md恒久対応A: /_next/static/ 専用location（404は404のまま返す）
+            location ^~ /_next/static/ {
+                proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;  # 末尾スラ「なし」
+                proxy_intercept_errors off;  # 念のため明示（デフォルト off）
+                
+                # 基本ヘッダー（REPORT.md最小構成）
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 proxy_set_header X-Forwarded-Proto $scheme;
                 proxy_set_header X-Request-ID $request_id;
 
-                # HTTP/1.1 settings
+                # HTTP/1.1 設定
                 proxy_http_version 1.1;
                 proxy_set_header Connection "";
 
-                # Optimized timeouts for static assets
+                # タイムアウト設定
                 proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
                 proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
                 proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
 
-                # Error handling
-                proxy_next_upstream error timeout http_502 http_503 http_504;
-                proxy_next_upstream_tries 2;
-                proxy_next_upstream_timeout 20s;
-
-                # Disable buffering for immediate response
-                proxy_buffering off;
-            }
-
-            # 🎨 CSS files - MIME type強制版
-            location ~ ^/_next/static/.*\.css$ {
-                set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
-                proxy_pass http://$frontend_upstream;
-
-                proxy_hide_header Content-Type;
-                add_header       Content-Type "text/css; charset=utf-8" always;
-                add_header Cache-Control "public, max-age=31536000, immutable" always;
-                add_header X-Content-Type-Source "nginx-css-fix" always;
-
-                # Essential proxy headers
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_set_header X-Request-ID $request_id;
-
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
-                proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
-                proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
-
+                # エラーハンドリング（上流の404はそのまま通す）
                 proxy_next_upstream error timeout http_502 http_503 http_504;
                 proxy_next_upstream_tries 2;
                 proxy_next_upstream_timeout 20s;
 
                 proxy_buffering off;
-            }
+                
+                # JavaScriptファイルのMIME修正（存在する場合のみ適用）
+                location ~ ^/_next/static/.*\.(js|mjs)$ {
+                    proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
+                    proxy_intercept_errors off;
 
-            # 📁 Other static assets - 低優先度のregex locationに変更
-            location ~ ^/_next/static/.*\.(png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-                set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
-                proxy_pass http://$frontend_upstream;
+                    proxy_hide_header Content-Type;
+                    add_header Content-Type "application/javascript; charset=utf-8" always;
+                    add_header Cache-Control "public, max-age=31536000, immutable" always;
+                    add_header X-Content-Type-Source "nginx-js-fix" always;
 
-                # Cache for other static assets
-                add_header Cache-Control "public, max-age=31536000, immutable" always;
-                add_header X-Content-Type-Source "nginx-static-assets" always;
+                    # 基本ヘッダー継承
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                    proxy_set_header X-Request-ID $request_id;
 
-                # Essential proxy headers
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_set_header X-Request-ID $request_id;
+                    proxy_http_version 1.1;
+                    proxy_set_header Connection "";
+                    proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
+                    proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
+                    proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
+                    proxy_next_upstream error timeout http_502 http_503 http_504;
+                    proxy_next_upstream_tries 2;
+                    proxy_next_upstream_timeout 20s;
+                    proxy_buffering off;
+                }
 
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
+                # CSSファイルのMIME修正（存在する場合のみ適用）
+                location ~ ^/_next/static/.*\.css$ {
+                    proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
+                    proxy_intercept_errors off;
 
-                proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
-                proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
-                proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
+                    proxy_hide_header Content-Type;
+                    add_header Content-Type "text/css; charset=utf-8" always;
+                    add_header Cache-Control "public, max-age=31536000, immutable" always;
+                    add_header X-Content-Type-Source "nginx-css-fix" always;
 
-                proxy_next_upstream error timeout http_502 http_503 http_504;
-                proxy_next_upstream_tries 2;
-                proxy_next_upstream_timeout 20s;
+                    # 基本ヘッダー継承
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                    proxy_set_header X-Request-ID $request_id;
 
-                proxy_buffering off;
+                    proxy_http_version 1.1;
+                    proxy_set_header Connection "";
+                    proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
+                    proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
+                    proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
+                    proxy_next_upstream error timeout http_502 http_503 http_504;
+                    proxy_next_upstream_tries 2;
+                    proxy_next_upstream_timeout 20s;
+                    proxy_buffering off;
+                }
             }
 
 
@@ -297,7 +289,7 @@ data:
                 add_header X-CSP-Report-Handler "nginx-external-2025" always;
             }
 
-            # 恒久最適化: 最小限動作設定（アドバイス推奨 + バランス取れたタイムアウト）
+            # REPORT.md C: 504対策 - タイムアウト延長＋GETリトライ
             location / {
                 # 簡素化proxy_pass（変数なし）
                 proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
@@ -311,14 +303,19 @@ data:
                 proxy_pass_header Cache-Control;
                 proxy_pass_header ETag;
 
-                # 基本HTTP設定
+                # REPORT.md C: HTTP/1.1設定
                 proxy_http_version 1.1;
                 proxy_set_header Connection "";
 
-                # バランス取れたタイムアウト設定（values.yamlから）
-                proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
-                proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
-                proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
+                # REPORT.md C: 504対策タイムアウト延長
+                proxy_connect_timeout 5s;
+                proxy_read_timeout 75s;
+                proxy_send_timeout 75s;
+
+                # REPORT.md C: GETのみ上流エラーを別Podへ即リトライ
+                proxy_next_upstream error timeout http_502 http_503 http_504;
+                proxy_next_upstream_tries 3;
+                proxy_next_upstream_timeout 60s;
 
                 # バッファリング無効（シンプル化）
                 proxy_buffering off;

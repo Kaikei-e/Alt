@@ -2,8 +2,8 @@
 replicaCount: 3
 
 image:
-  repository: kaikei/alt-frontend  # 恒久的設定: 正しいrepository
-  pullPolicy: IfNotPresent
+  repository: alt-frontend  # Local development用repository
+  pullPolicy: Never  # Skaffold local development
   # tag: SkaffoldがsetValueTemplatesで動的に設定
 
 service:
@@ -43,6 +43,8 @@ env:
   NODE_ENV: "production"
   API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
   AUTH_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
+  # REPORT.md恒久対応: HTMLキャッシュ整合性のため動的レンダリング強制
+  NEXT_DYNAMIC_RENDERING: "force-dynamic"
 
 serviceAccount:
   create: true
@@ -63,21 +65,62 @@ commonLabels: {}
 
 commonAnnotations: {}
 podLabels: {}
-# 恒久的Linkerd mTLS設定 - nginx-external間通信対応
+# 恒久的Linkerd mTLS設定 - 正しいバインド設定
 podAnnotations:
   linkerd.io/inject: enabled
+  # Web研究結果に基づく恒久対応: Linkerdプロキシ安定化設定
+  config.linkerd.io/proxy-await: "disabled"
+  config.linkerd.io/shutdown-grace-period: "30s"
+  # Linkerdプロキシタイムアウト延長 (恒久対応)
+  config.linkerd.io/proxy-inbound-connect-timeout: "10000ms"
+  config.linkerd.io/proxy-outbound-connect-timeout: "10000ms"
+  # HPA修正: Linkerd proxy resources for HPA CPU metrics (恒久対応)
+  config.linkerd.io/proxy-cpu-request: "10m"
+  config.linkerd.io/proxy-memory-request: "20Mi"
+  config.linkerd.io/proxy-cpu-limit: "100m"
+  config.linkerd.io/proxy-memory-limit: "128Mi"
 imagePullSecrets: []
 volumeMounts: []
 volumes: []
 
+# REPORT.md恒久対応: Next.jsのハッシュ付きアセット整合性のためRecreate戦略
+# ローリング中の「旧HTML⇄新JS」「新HTML⇄旧JS」クロス参照404を防止
 strategy:
-  type: RollingUpdate
-  rollingUpdate:
-    maxUnavailable: 1
-    maxSurge: 1
+  type: Recreate
 # INCIDENT 76 FIX: Secret configuration無効化 - 環境変数に統一
 # envFromSecret:
 #   name: alt-frontend-secrets
 #   keys:
 #     - API_URL
 #     - AUTH_URL
+
+# 恒久対応: 504エラー防止のため厳密なProbe設定
+startupProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 0
+  periodSeconds: 5
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 12  # 60秒待つ (12 * 5秒)
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 0
+  periodSeconds: 5  # より頻繁にチェック
+  timeoutSeconds: 2
+  successThreshold: 2  # 2回連続成功必要
+  failureThreshold: 3
+
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3

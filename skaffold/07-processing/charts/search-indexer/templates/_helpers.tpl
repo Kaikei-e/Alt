@@ -95,4 +95,11 @@ Create environment variables from secrets
       key: {{ . }}
 {{- end }}
 {{- end }}
+{{- if .Values.meilisearchAuth }}
+- name: MEILISEARCH_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.meilisearchAuth.secretName }}
+      key: {{ .Values.meilisearchAuth.secretKey }}
+{{- end }}
 {{- end }}

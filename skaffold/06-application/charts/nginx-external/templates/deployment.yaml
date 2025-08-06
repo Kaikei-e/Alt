@@ -19,6 +19,11 @@ spec:
         # Health port 8080 should be handled by Linkerd for proper HTTP routing
         config.linkerd.io/opaque-ports: "8888,8889"
         config.linkerd.io/skip-inbound-ports: "8889"
+        # HPA修正: Linkerd proxy resources for HPA CPU metrics (恒久対応)
+        config.linkerd.io/proxy-cpu-request: "10m"
+        config.linkerd.io/proxy-memory-request: "20Mi"
+        config.linkerd.io/proxy-cpu-limit: "100m"
+        config.linkerd.io/proxy-memory-limit: "128Mi"
       labels:
         {{- include "nginx-external.selectorLabels" . | nindent 8 }}
     spec:

@@ -3,7 +3,7 @@ replicaCount: 1
 
 image:
   repository: kaikei/news-creator # INCIDENT 82 FIX: Core servicesパターン統一
-  pullPolicy: IfNotPresent # INCIDENT 89 FIX: Skaffold auto-transform + digest-source=tag
+  pullPolicy: Never # Production fix: Skaffold local development 
   # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
   # tag: "latest"
 
@@ -31,6 +31,10 @@ env:
   OLLAMA_MAX_LOADED_MODELS: "1"
   OLLAMA_HOME: "/tmp/.ollama"
   HOME: "/tmp"
+  # Proxy-sidecar configuration for external model downloads
+  HTTP_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
+  HTTPS_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
+  NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local"
 
 # Secret configuration
 secret:
@@ -79,6 +83,9 @@ podAnnotations:
   linkerd.io/inject: enabled
   # ヘルスチェックをLinkerdプロキシからバイパス
   config.linkerd.io/skip-inbound-ports: "11434"
+  # Permanent fix: Linkerd proxy PostStartHook timeout solution (Web研究結果)
+  config.linkerd.io/proxy-await: "disabled"
+  config.linkerd.io/shutdown-grace-period: "30s"
 imagePullSecrets: []
 volumeMounts:
   - name: ollama-data

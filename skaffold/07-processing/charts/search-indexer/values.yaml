@@ -3,7 +3,7 @@ replicaCount: 1
 
 image:
   repository: kaikei/search-indexer  # INCIDENT 82 FIX: Core servicesパターン統一
-  pullPolicy: Never  # INCIDENT 50 FIX: ローカル開発環境対応 - Docker/containerd同期問題解決
+  pullPolicy: IfNotPresent  # Production fix: 恒久対応 - ErrImageNeverPull解決
   # INCIDENT 82 FIX: 固定tag削除 - Skaffold setValueTemplatesで動的tag注入
   # tag: "production"
 
@@ -24,7 +24,7 @@ env:
   DB_HOST: "postgres.alt-database.svc.cluster.local"
   DB_NAME: "alt"
   DB_PORT: "5432"
-  DB_SSL_MODE: "require"
+  DB_SSL_MODE: ""  # SSL/TLS廃止: Linkerd mTLS移行完了
   LOG_LEVEL: "info"
   SEARCH_INDEXER_DB_USER: "search_indexer_user"
   SERVICE_NAME: "search-indexer"
@@ -42,6 +42,11 @@ envFromSecret:
   name: search-indexer-secrets
   keys:
     - SEARCH_INDEXER_DB_PASSWORD
+
+# PERMANENT FIX: Meilisearch authentication configuration
+meilisearchAuth:
+  secretName: meilisearch-auth-secret
+  secretKey: MEILISEARCH_API_KEY
 
 serviceAccount:
   create: true
@@ -67,15 +72,14 @@ configMap:
   name: search-indexer-config
   data:
     .env: |
-      # Search Indexer Configuration (optimized for SSL stability)
+      # Search Indexer Configuration (optimized for Linkerd mTLS)
       PORT=9300
       LOG_LEVEL=info
-      DB_MAX_CONNECTIONS=8       # Reduced for connection stability
-      DB_MAX_IDLE_CONNECTIONS=2  # Maintained for SSL connection reuse
-      DB_CONNECTION_MAX_LIFETIME=3m  # Shorter for faster cycling
-      DB_CONNECT_TIMEOUT=60s     # Increased for SSL handshake
-      DB_PING_TIMEOUT=30s        # Increased for network latency
-      DB_SSL_TIMEOUT=45s         # Added SSL-specific timeout
+      DB_MAX_CONNECTIONS=8       # Optimized for connection stability
+      DB_MAX_IDLE_CONNECTIONS=2  # Maintained for connection reuse
+      DB_CONNECTION_MAX_LIFETIME=3m  # Optimized for faster cycling
+      DB_CONNECT_TIMEOUT=30s     # Reduced for mTLS efficiency
+      DB_PING_TIMEOUT=15s        # Reduced for network efficiency
 
 strategy:
   type: RollingUpdate

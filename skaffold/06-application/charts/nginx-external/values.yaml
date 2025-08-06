@@ -225,14 +225,14 @@ nginx:
   # Client settings for external traffic
   clientMaxBodySize: 20m
 
-  # 恒久修正: バランス取れたタイムアウト設定 (524エラー防止 + 機能保持)
+  # 恒久修正: Web研究結果に基づく504エラー対策タイムアウト設定 (2025年ベストプラクティス)
   timeouts:
-    proxyConnect: "10s"
-    proxySend: "30s" 
-    proxyRead: "30s"
+    proxyConnect: "60s"    # Web研究推奨: upstream connection establishment timeout
+    proxySend: "60s"       # Web研究推奨: request sending timeout 
+    proxyRead: "60s"       # Web研究推奨: response reading timeout
     clientHeaderTimeout: "15s"
     clientBodyTimeout: "30s"
-    sendTimeout: "30s"
+    sendTimeout: "60s"     # Web研究推奨: response sending timeout
 
   # Rate limiting for external traffic (optimized for RSS feed registration)
   rateLimitRpm: 1200 # requests per minute for API endpoints (doubled from 600)
@@ -333,9 +333,9 @@ servers:
           proxy_http_version 1.1;
           proxy_set_header Connection "";
 
-      # Main application routes - proxy to internal nginx
+      # Main application routes - REPORT.md汎用原則: フロントエンド直接接続
       - path: "/"
-        proxyPass: "http://nginx"  # HTTPS→HTTP変更（Linkerd透明mTLS）
+        proxyPass: "http://alt-frontend-direct"  # 汎用: フロントエンド直接接続
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -344,23 +344,24 @@ servers:
           - "X-Forwarded-Host $host"
           - "X-Forwarded-Port $server_port"
           - "X-Request-ID $request_id"
-        proxyTimeout: "120s"  # ULTRATHINK: DB初期化・Protocol Detection対応
+        proxyTimeout: "30s"  # REPORT.md汎用推奨: フロントエンド用タイムアウト
         extraConfig: |
-          # HTTP upstream設定（Linkerd透明mTLS自動適用）
+          # REPORT.md汎用推奨: 基本プロキシ設定
           proxy_http_version 1.1;
           proxy_set_header Connection "";
           proxy_buffering on;
-
-          # 暗号化環境用エラーハンドリング
+          proxy_pass_header Cache-Control;
+          
+          # 汎用エラーハンドリング
           proxy_intercept_errors off;
           proxy_next_upstream error timeout http_502 http_503 http_504;
           proxy_next_upstream_tries 3;
           proxy_next_upstream_timeout 45s;
 
 
-      # API routes with stricter rate limiting
+      # API routes with stricter rate limiting - REPORT.md根本修正: alt-backend直接接続 + パス変換
       - path: "/api/"
-        proxyPass: "http://nginx"  # HTTPS→HTTP変更（Linkerd透明mTLS）
+        proxyPass: "http://alt-backend-direct"  # 直接alt-backendへ転送
         proxySetHeader:
           - "Host $host"
           - "X-Real-IP $remote_addr"
@@ -369,16 +370,23 @@ servers:
           - "X-Forwarded-Host $host"
           - "X-Forwarded-Port $server_port"
           - "X-Request-ID $request_id"
-        proxyTimeout: "120s"  # ULTRATHINK: DB初期化・Protocol Detection対応
+        proxyTimeout: "60s"  # REPORT.md推奨: API用タイムアウト
         extraConfig: |
-          # Stricter rate limiting for API
+          # REPORT.md根本修正: /api/v1/* → /v1/* パス変換
+          rewrite ^/api/(.*)$ /$1 break;
+          
+          # Stricter rate limiting for API  
           limit_req zone=api burst=20 nodelay;
           limit_conn addr 20;
 
-          # Proxy settings
+          # REPORT.md推奨: 最適化されたproxy設定
+          proxy_connect_timeout 3s;
+          proxy_send_timeout    30s; 
+          proxy_read_timeout    60s;
+          proxy_buffering       on;
+          proxy_busy_buffers_size 64k;
+          proxy_buffers 16 64k;
           proxy_buffer_size 8k;
-          proxy_buffers 16 8k;
-          proxy_busy_buffers_size 16k;
 
       # Health check endpoint (external)
       - path: "/external-health"

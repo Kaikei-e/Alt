@@ -11,67 +11,136 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 data:
-  01-create-users.sh: |
-    #!/bin/bash
-    set -e
+  # Container initialization best practice: SQL-based initialization scripts
+  01-create-users.sql: |
+    -- PostgreSQL user creation for microservices
+    -- Container initialization best practice: Create users during database bootstrap
+    
+    -- Create pre-processor user
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'pre_processor_user') THEN
+            CREATE USER pre_processor_user WITH ENCRYPTED PASSWORD 'CJr6caDyoiiYFydPKG03EhuZgECQMU';
+            GRANT CONNECT ON DATABASE alt TO pre_processor_user;
+            GRANT USAGE ON SCHEMA public TO pre_processor_user;
+            GRANT CREATE ON SCHEMA public TO pre_processor_user;
+            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO pre_processor_user;
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO pre_processor_user;
+            -- Grant future privileges
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pre_processor_user;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO pre_processor_user;
+        END IF;
+    END
+    $$;
 
-    # Create application users for tag-generator and pre-processor services
-    # This script runs during database initialization and has access to environment variables
+    -- Create search-indexer user
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'search_indexer_user') THEN
+            CREATE USER search_indexer_user WITH ENCRYPTED PASSWORD 'nD2McFTQNy4dmoUPtUA0AnvHhf93aQ';
+            GRANT CONNECT ON DATABASE alt TO search_indexer_user;
+            GRANT USAGE ON SCHEMA public TO search_indexer_user;
+            GRANT CREATE ON SCHEMA public TO search_indexer_user;
+            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO search_indexer_user;
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO search_indexer_user;
+            -- Grant future privileges
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO search_indexer_user;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO search_indexer_user;
+        END IF;
+    END
+    $$;
 
-    echo "Creating application users..."
+    -- Create tag-generator user
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'tag_generator_user') THEN
+            CREATE USER tag_generator_user WITH ENCRYPTED PASSWORD '1yx7kp5TCxPkxct2PmYPss1P5CgcCA';
+            GRANT CONNECT ON DATABASE alt TO tag_generator_user;
+            GRANT USAGE ON SCHEMA public TO tag_generator_user;
+            GRANT CREATE ON SCHEMA public TO tag_generator_user;
+            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO tag_generator_user;
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO tag_generator_user;
+            -- Grant future privileges
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO tag_generator_user;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO tag_generator_user;
+        END IF;
+    END
+    $$;
 
-    # Install sslinfo extension for SSL status monitoring
-    echo "Installing sslinfo extension..."
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-        CREATE EXTENSION IF NOT EXISTS sslinfo;
-        -- Verify installation
-        SELECT 'sslinfo extension installed successfully' AS status;
-    EOSQL
+    -- Create news-creator user (if needed)
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'news_creator_user') THEN
+            CREATE USER news_creator_user WITH ENCRYPTED PASSWORD 'NewsCreator2024SecurePwd';
+            GRANT CONNECT ON DATABASE alt TO news_creator_user;
+            GRANT USAGE ON SCHEMA public TO news_creator_user;
+            GRANT CREATE ON SCHEMA public TO news_creator_user;
+            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO news_creator_user;
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO news_creator_user;
+            -- Grant future privileges
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO news_creator_user;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO news_creator_user;
+        END IF;
+    END
+    $$;
 
-    # Create tag-generator user
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-        DO \$\$
-        BEGIN
-            IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'tag_generator') THEN
-                CREATE ROLE tag_generator LOGIN PASSWORD '${DB_TAG_GENERATOR_PASSWORD:-changeme}';
-            END IF;
-        END
-        \$\$;
+    -- Create auth service user (separate from main database user)
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'auth_db_user') THEN
+            CREATE USER auth_db_user WITH ENCRYPTED PASSWORD 'AuthService2024SecurePwd';
+            GRANT CONNECT ON DATABASE alt TO auth_db_user;
+            GRANT USAGE ON SCHEMA public TO auth_db_user;
+            GRANT CREATE ON SCHEMA public TO auth_db_user;
+            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO auth_db_user;
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO auth_db_user;
+            -- Grant future privileges
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO auth_db_user;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO auth_db_user;
+        END IF;
+    END
+    $$;
 
-        -- Grant basic database connection privileges
-        GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO tag_generator;
-        GRANT USAGE ON SCHEMA public TO tag_generator;
-    EOSQL
+  # Database optimization script
+  02-optimize-database.sql: |
+    -- Database optimization for production workload
+    -- Container initialization best practice: Configure database settings during bootstrap
+    
+    -- Install essential extensions
+    CREATE EXTENSION IF NOT EXISTS sslinfo;
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    
+    -- Create indexes for better performance (if tables exist)
+    DO $$
+    BEGIN
+        -- Check if common tables exist and create indexes
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'articles') THEN
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_articles_created_at ON articles(created_at);
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_articles_status ON articles(status);
+        END IF;
+        
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'feeds') THEN
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_feeds_url ON feeds(url);
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_feeds_active ON feeds(active);
+        END IF;
+    END
+    $$;
 
-    # Create pre-processor user
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-        DO \$\$
-        BEGIN
-            IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'pre_processor_user') THEN
-                CREATE ROLE pre_processor_user LOGIN PASSWORD '${PRE_PROCESSOR_DB_PASSWORD:-changeme}';
-            END IF;
-        END
-        \$\$;
-
-        -- Grant basic database connection privileges
-        GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO pre_processor_user;
-        GRANT USAGE ON SCHEMA public TO pre_processor_user;
-    EOSQL
-
-    # Create search-indexer user
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-        DO \$\$
-        BEGIN
-            IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'search_indexer_user') THEN
-                CREATE ROLE search_indexer_user LOGIN PASSWORD '${SEARCH_INDEXER_DB_PASSWORD:-changeme}';
-            END IF;
-        END
-        \$\$;
-
-        -- Grant basic database connection privileges
-        GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO search_indexer_user;
-        GRANT USAGE ON SCHEMA public TO search_indexer_user;
-    EOSQL
-
-    echo "Application users created successfully."
+  # Health check and verification script
+  03-verify-setup.sql: |
+    -- Database setup verification
+    -- Container initialization best practice: Verify all setup completed successfully
+    
+    -- Verify all users were created
+    SELECT rolname as "Created Users" FROM pg_roles 
+    WHERE rolname IN ('pre_processor_user', 'search_indexer_user', 'tag_generator_user', 'news_creator_user', 'auth_db_user')
+    ORDER BY rolname;
+    
+    -- Verify database is ready for microservices
+    SELECT 
+        current_database() as database_name,
+        current_user as current_user,
+        version() as postgresql_version,
+        pg_size_pretty(pg_database_size(current_database())) as database_size,
+        now() as initialization_completed_at;
 {{- end }}

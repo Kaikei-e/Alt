@@ -113,18 +113,22 @@ spec:
     - protocol: TCP
       port: 53
   
-  # Linkerd Control Plane
+  # Linkerd Control Plane (恒久修正: 8086ポート追加 - linkerd-destination access)
   - to:
     - namespaceSelector:
         matchLabels:
           name: linkerd
     ports:
     - protocol: TCP
-      port: 8443
+      port: 8443  # linkerd-proxy-injector
     - protocol: TCP
-      port: 8080
+      port: 8080  # linkerd-identity
     - protocol: TCP
-      port: 4143
+      port: 8086  # linkerd-destination (Web研究結果に基づく恒久修正)
+    - protocol: TCP
+      port: 8090  # linkerd-policy
+    - protocol: TCP
+      port: 4143  # linkerd-proxy inbound
 
 ---
 # 4. MICROSEGMENTATION: Backend Zone
@@ -237,7 +241,81 @@ spec:
       port: 80   # HTTP for RSS feeds
 
 ---
-# 5. MICROSEGMENTATION: Database Zone（最高セキュリティ）
+# 3b. LINKERD CONTROL PLANE ACCESS (全Podアクセス許可 - alt-apps namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-linkerd-control-plane-alt-apps
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/name: linkerd-access
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: service-mesh
+spec:
+  podSelector: {}  # 全Pod対象
+  policyTypes:
+  - Egress
+  egress:
+  # Linkerd Control Plane (完全なポートリスト - 恒久修正)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: 8443  # linkerd-proxy-injector
+    - protocol: TCP
+      port: 8080  # linkerd-identity
+    - protocol: TCP
+      port: 8086  # linkerd-destination (CRITICAL追加)
+    - protocol: TCP
+      port: 8090  # linkerd-policy (CRITICAL追加)
+    - protocol: TCP
+      port: 4143  # linkerd-proxy inbound
+    - protocol: TCP
+      port: 9990  # linkerd-web (dashboard)
+
+---
+# 5a. MIGRATION JOB EGRESS POLICY（データベース初期化専用）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: migrate-job-egress-policy
+  namespace: alt-database
+  labels:
+    app.kubernetes.io/name: migrate-egress-policy
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "migration"
+    security.policy/type: "egress"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: migrate
+  policyTypes:
+  - Egress
+  egress:
+  # Allow connection to PostgreSQL within same namespace
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# 5b. MICROSEGMENTATION: Database Zone（最高セキュリティ）
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -267,6 +345,15 @@ spec:
     - podSelector:
         matchLabels:
           app.kubernetes.io/name: alt-backend
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  # Migration jobs → PostgreSQL（データベース初期化・マイグレーション）
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: migrate
     ports:
     - protocol: TCP
       port: 5432
@@ -319,33 +406,37 @@ spec:
       port: 4143
 
 ---
-# 6. EXTERNAL EGRESS CONTROL（FQDN-based・L7セキュリティ）
+# 6. PROXY-SIDECAR ACCESS CONTROL（pre-processor）
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: external-egress-control
+  name: pre-processor-proxy-sidecar-access
   namespace: alt-processing
   labels:
-    app.kubernetes.io/name: external-egress-control
-    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/name: pre-processor-proxy-access
+    app.kubernetes.io/version: "4.0"
     app.kubernetes.io/component: security
     app.kubernetes.io/part-of: defense-in-depth
-    security.policy/layer: "l7-fqdn"
-    security.policy/type: external-control
+    security.policy/layer: "proxy-sidecar"
+    security.policy/type: egress-control
 spec:
   podSelector:
     matchLabels:
-      app: pre-processor
+      app.kubernetes.io/name: pre-processor
   policyTypes:
   - Egress
   egress:
-  # RSS Feed外部取得（HTTPS必須）
-  - to: []
+  # Proxy-sidecar access for RSS feed fetching
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: envoy-proxy
     ports:
     - protocol: TCP
-      port: 443  # HTTPS only
-    # L7 Policy: 信頼できるRSSドメインのみ許可
-    # 注：実際のFQDNフィルタリングはCalico/Cilliumなどの高級CNI必要
+      port: 8085  # proxy-sidecar port
   
   # DNS (必須)
   - to: []
@@ -356,7 +447,78 @@ spec:
       port: 53
 
 ---
-# 7. MONITORING & OBSERVABILITY EXEMPTION
+# 7. PROXY-SIDECAR ACCESS CONTROL（news-creator）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: news-creator-proxy-sidecar-access
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/name: news-creator-proxy-access
+    app.kubernetes.io/version: "4.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "proxy-sidecar"
+    security.policy/type: egress-control
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: news-creator
+  policyTypes:
+  - Egress
+  egress:
+  # Proxy-sidecar access for Ollama model downloads
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: envoy-proxy
+    ports:
+    - protocol: TCP
+      port: 8085  # proxy-sidecar port
+  
+  # DNS (必須)
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# 7. PROCESSING TO SEARCH ACCESS POLICY（恒久対応：search-indexer → meilisearch）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-processing-to-search
+  namespace: alt-search
+  labels:
+    app.kubernetes.io/name: processing-search-access-policy
+    app.kubernetes.io/version: "3.0"
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/layer: "microsegmentation"
+    security.policy/type: service-access
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meilisearch
+  policyTypes:
+  - Ingress
+  ingress:
+  # alt-processing services → meilisearch（恒久対応）
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-processing
+    ports:
+    - protocol: TCP
+      port: 7700  # meilisearch port
+
+---
+# 8. MONITORING & OBSERVABILITY EXEMPTION
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
