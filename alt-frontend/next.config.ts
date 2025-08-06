@@ -27,6 +27,9 @@ if (process.env.ANALYZE === "true") {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // REPORT.md A: Build ID固定化でPod間整合性確保
+  generateBuildId: async () => process.env.GIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || 'local-dev',
+  
   // Enable standalone output for containerized deployment
   output: "standalone",
   
@@ -40,6 +43,22 @@ const nextConfig = {
       {
         source: "/api/csp-report",
         destination: "/api/security/csp-report",
+      },
+    ];
+  },
+
+  // REPORT.md A: Build IDヘッダ出力（ビルド時評価）
+  async headers() {
+    const buildId = process.env.GIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || 'local-dev'
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "X-Next-Build-Id",
+            value: buildId,
+          },
+        ],
       },
     ];
   },
