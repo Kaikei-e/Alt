@@ -2,27 +2,23 @@
 
 import React from "react";
 import NextLink from "next/link";
-import { Button, Icon, Text, Link as ChakraLink } from "@chakra-ui/react";
+import { Button, Icon, Text } from "@chakra-ui/react";
 
 interface ActionButtonProps {
   icon: React.ComponentType<{ size?: number }>;
   label: string;
   href: string;
+  prefetch?: boolean;
 }
 
 export const ActionButton: React.FC<ActionButtonProps> = ({
   icon,
   label,
   href,
+  prefetch = true,
 }) => {
   return (
-    <ChakraLink
-      as={NextLink}
-      href={href}
-      textDecoration="none"
-      _hover={{ textDecoration: "none" }}
-      w="full"
-    >
+    <NextLink href={href} prefetch={prefetch} style={{ width: "100%" }}>
       <Button
         data-testid="action-button"
         h="90px"
@@ -60,7 +56,7 @@ export const ActionButton: React.FC<ActionButtonProps> = ({
           {label}
         </Text>
       </Button>
-    </ChakraLink>
+    </NextLink>
   );
 };
 

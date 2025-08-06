@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import NextLink from "next/link";
 import {
   Box,
@@ -19,23 +18,9 @@ import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function Home() {
-  const router = useRouter();
   const [stats, setStats] = useState<FeedStatsSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Performance optimization: Preload /mobile/feeds route for instant navigation
-  useEffect(() => {
-    const isMobile = window.innerWidth < 768;
-    setIsMobile(isMobile);
-
-    if (isMobile) {
-      router.prefetch("/mobile/feeds");
-    } else {
-      router.prefetch("/desktop/feeds");
-    }
-  }, [router, isMobile]);
 
   useEffect(() => {
     const fetchStats = async () => {

@@ -91,6 +91,7 @@ export const DesktopHomePage: React.FC = () => {
       label: "Bookmarks",
       icon: Bookmark,
       href: "/desktop/bookmarks",
+      prefetch: false,
     },
     {
       id: 4,
