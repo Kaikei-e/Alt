@@ -1,43 +1,57 @@
 # syntax=docker/dockerfile:1.6
-# ====== build stage ======
-FROM node:20-alpine AS build
+
+##### 1) deps stage ─ npm/pnpm DL をキャッシュ #####
+FROM node:20-alpine AS deps
 WORKDIR /app
 
-# 推奨: corepackでpnpmを有効化（グローバルnpmインストールはしない）
+# pnpm を corepack で有効化（公式推奨）
 RUN corepack enable && corepack prepare pnpm@latest --activate \
-  && apk add --no-cache libc6-compat
+  && apk add --no-cache libc6-compat      # glibc 依存モジュール回避
 
-# 依存キャッシュ最適化
+# 依存キャッシュを BuildKit mount に逃がす
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+  pnpm install --frozen-lockfile
 
-# 残りのソースをコピーしてビルド
+##### 2) build stage ─ アプリをビルド #####
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# ビルド時に注入する値（必要なら --build-arg で上書き）
+
+# ビルド引数・環境変数（必要なら --build-arg で上書き）
 ARG API_URL=http://alt-backend:9000
 ARG NEXT_PUBLIC_API_BASE_URL=/api
+ARG GIT_SHA=local-dev
 ENV API_URL=$API_URL \
-  NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-RUN pnpm run build
+  NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+  GIT_SHA=$GIT_SHA
 
-# ====== runtime stage ======
+RUN pnpm run build   # next build（output: 'standalone' 前提）
+
+##### 3) runtime stage ─ 最小実行環境 #####
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
   PORT=3000 \
-  NEXT_TELEMETRY_DISABLED=1
+  NEXT_TELEMETRY_DISABLED=1 
 
-# 実行に必要な成果物だけコピー（standaloneルール）
-# 重要: .next/static と public は自動同梱されないので必ずコピー
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
+# 必要最小ファイルをコピー（standalone 方式）
+COPY --from=build --chown=1000:1000 /app/.next/standalone ./
+COPY --from=build --chown=1000:1000 /app/.next/static ./.next/static
+COPY --from=build --chown=1000:1000 /app/public ./public
 
-# 非rootユーザで動かす
-RUN addgroup -S nextjs && adduser -S nextjs -G nextjs \
-  && chown -R nextjs:nextjs /app
+# 非-root ユーザ
+RUN addgroup -g 1000 -S nextjs \
+  && adduser  -u 1000 -S -G nextjs nextjs
 USER nextjs
 
 EXPOSE 3000
-# standaloneの最小サーバで起動（next start は使わない）
+
+# /v1/health が JSON {"status":"ok"} を返す想定
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD wget -qO- http://localhost:${PORT}/v1/health \
+  | grep -q '"status":"ok"' || exit 1
+
+# Next.js standalone エントリ
 CMD ["node", "server.js"]
