@@ -5,7 +5,7 @@ replicaCount: 2
 
 image:
   repository: envoyproxy/envoy
-  tag: "v1.34.0"
+  tag: "v1.35.0"
   pullPolicy: IfNotPresent
 
 nameOverride: ""
@@ -116,6 +116,7 @@ envoy:
     - "rss.cnn.com"
     - "qiita.com"
     - "feeds.reuters.com"
+    - "wired.com"
     
   # DNS設定
   dns:
@@ -223,6 +224,7 @@ proxySidecar:
       - "rss\\\\.cnn\\\\.com"
       - "qiita\\\\.com"
       - "feeds\\\\.reuters\\\\.com"
+      - "wired\\\\.com"
       - "httpbin\\\\.org"  # For testing
     
     # Timeouts and performance settings

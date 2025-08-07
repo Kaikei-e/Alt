@@ -36,27 +36,15 @@ data:
                         %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
                         %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%"
                         "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%"
-                        upstream="%UPSTREAM_HOST%" domain="%REQ(:AUTHORITY)%" target_header="%REQ(X-TARGET-DOMAIN)%"
+                        upstream="%UPSTREAM_HOST%" domain="%REQ(:AUTHORITY)%" target_header="%REQ(X-TARGET-DOMAIN)%" 
+                        original_host="%REQ(X-ENVOY-ORIGINAL-HOST)%" filter_state_host="%FILTER_STATE(envoy.upstream.dynamic_host)%"
+                        flags="%RESPONSE_FLAGS%" dns_resolution_time="%REQUEST_DURATION%" upstream_connect_time="%REQUEST_DURATION%"
               
               # Header manipulation via route-level configuration (Envoy 1.34.0 compatible)
               
-              # HTTPフィルターチェーン - ANALYSIS_REPORT.md Phase 7a優化
+              # HTTPフィルターチェーン - シンプル化（セグメンテーション違反回避）
               http_filters:
-              # Filter State設定によるDNS解決優先順位最適化
-              - name: envoy.filters.http.set_filter_state
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.filters.http.set_filter_state.v3.Config
-                  on_request_headers:
-                    - object_key: "envoy.upstream.dynamic_host"
-                      format_string:
-                        text_format_source:
-                          inline_string: "%REQ(X-Target-Domain)%"  # プロキシ経由ホスト抽出
-                    - object_key: "envoy.upstream.dynamic_port"
-                      format_string:
-                        text_format_source:
-                          inline_string: "443"  # HTTPS専用
-
-              # Dynamic Forward Proxy filter (Filter State優先解決対応)
+              # Dynamic Forward Proxy with Host Header (シンプル版)
               - name: envoy.filters.http.dynamic_forward_proxy
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
@@ -71,8 +59,6 @@ data:
                     max_hosts: 256
                     dns_query_timeout: 5s
                     dns_min_refresh_rate: 5s
-                  # Note: allow_dynamic_host_from_filter_state removed in Envoy 1.35.0
-                  # DNS resolution is handled through standard DFP mechanisms
               
               # ルーター（最終フィルター）
               - name: envoy.filters.http.router
@@ -92,7 +78,7 @@ data:
                     direct_response:
                       status: 200
                       body:
-                        inline_string: "Envoy RSS Outbound Proxy OK\nVersion: 1.34.0 HTTPS-Only Security Mode\nDynamic Host: Host Rewrite Based\nAllowed domains: {{ join ", " .Values.envoy.allowedDomains }}\nSecurity: HTTP blocked, HTTPS enforced\n"
+                        inline_string: "Envoy RSS Outbound Proxy OK\nVersion: 1.35.0 Filter State Priority Mode\nDynamic Host: Filter State > Host Header\nAllowed domains: {{ join ", " .Values.envoy.allowedDomains }}\nSecurity: HTTP blocked, HTTPS enforced\nFeature: allow_dynamic_host_from_filter_state=true\n"
                   
                   - match:
                       path: "/ready"
@@ -101,7 +87,7 @@ data:
                       body:
                         inline_string: "Ready"
                   
-                  # HTTPS RSS feeds route with TLS cluster (ANALYSIS_REPORT.md Phase 7a対応)
+                  # HTTPS RSS feeds route with TLS cluster (XPLAN7止血策)
                   - match:
                       prefix: "/proxy/https://"
                       headers:
@@ -110,11 +96,9 @@ data:
                     route:
                       cluster: dynamic_forward_proxy_tls_cluster
                       timeout: {{ .Values.envoy.timeout.response }}
-                      # Host rewrite to use X-Target-Domain header value
+                      # 🚑 XPLAN7止血策: 基本的なhost書換でDFP解決を正す
                       host_rewrite_header: "X-Target-Domain"
-                      # Host rewrite configuration (Filter State優先、fallbackとしてHost Rewrite)
-                      # Note: typed_per_filter_config removed in Envoy 1.35.0, using host_rewrite_header instead
-                      # Path rewriting (proxy-sidecar handles header manipulation)
+                      # Path rewriting: /proxy/https://domain.com/path -> /path
                       regex_rewrite:
                         pattern:
                           google_re2: {}
@@ -157,12 +141,13 @@ data:
             "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
             common_tls_context:
               validation_context:
-                # デバッグ用: 証明書検証スキップ (本番では適切な証明書設定が必要)
-                trust_chain_verification: ACCEPT_UNTRUSTED
+                # XPLAN7.md: 基本的な証明書検証（ACCEPT_UNTRUSTED除去）
+                trust_chain_verification: VERIFY_TRUST_CHAIN
               # 最低TLSバージョン設定 (セキュリティ強化)
               tls_params:
                 tls_minimum_protocol_version: TLSv1_2
                 tls_maximum_protocol_version: TLSv1_3
+            # XPLAN7止血策: 基本TLS設定（v1.34互換）
             # SNI is automatically set by Dynamic Forward Proxy based on target host
         cluster_type:
           name: envoy.clusters.dynamic_forward_proxy
