@@ -42,23 +42,19 @@ data:
               
               # Header manipulation via route-level configuration (Envoy 1.34.0 compatible)
               
-              # HTTPフィルターチェーン - シンプル化（セグメンテーション違反回避）
+              # HTTPフィルターチェーン - DNS解決済みプロキシモード
               http_filters:
-              # Dynamic Forward Proxy with Host Header (シンプル版)
+              # Dynamic Forward Proxy（sidecar-proxyのDNS解決結果使用）
               - name: envoy.filters.http.dynamic_forward_proxy
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
                   dns_cache_config:
                     name: dynamic_forward_proxy_cache_config
                     dns_lookup_family: V4_ONLY
-                    dns_refresh_rate: {{ .Values.envoy.dns.ttl }}
-                    dns_failure_refresh_rate:
-                      base_interval: 2s
-                      max_interval: 10s
-                    host_ttl: 86400s
-                    max_hosts: 256
-                    dns_query_timeout: 5s
-                    dns_min_refresh_rate: 5s
+                    # DNS解決を最小化（sidecar-proxyが既に解決済み）
+                    dns_refresh_rate: 3600s
+                    host_ttl: 3600s
+                    max_hosts: 1024
               
               # ルーター（最終フィルター）
               - name: envoy.filters.http.router
@@ -78,7 +74,7 @@ data:
                     direct_response:
                       status: 200
                       body:
-                        inline_string: "Envoy RSS Outbound Proxy OK\nVersion: 1.35.0 Filter State Priority Mode\nDynamic Host: Filter State > Host Header\nAllowed domains: {{ join ", " .Values.envoy.allowedDomains }}\nSecurity: HTTP blocked, HTTPS enforced\nFeature: allow_dynamic_host_from_filter_state=true\n"
+                        inline_string: "Envoy RSS Outbound Proxy OK\nVersion: 1.35.0 Simplified DNS Mode\nDNS Resolution: Handled by sidecar-proxy\nAllowed domains: {{ join ", " .Values.envoy.allowedDomains }}\nSecurity: HTTP blocked, HTTPS enforced\nMode: sidecar-proxy DNS + Envoy TLS proxy\n"
                   
                   - match:
                       path: "/ready"
@@ -87,23 +83,37 @@ data:
                       body:
                         inline_string: "Ready"
                   
-                  # HTTPS RSS feeds route with TLS cluster (XPLAN7止血策)
+                  # HTTPS RSS feeds route with simple proxy (sidecar-proxy DNS解決済み)
                   - match:
                       prefix: "/proxy/https://"
                       headers:
                       - name: "X-Target-Domain"
                         present_match: true
+                      - name: "X-Resolved-IP"
+                        present_match: true
                     route:
-                      cluster: dynamic_forward_proxy_tls_cluster
+                      cluster: dynamic_forward_proxy_cluster
                       timeout: {{ .Values.envoy.timeout.response }}
-                      # 🚑 XPLAN7止血策: 基本的なhost書換でDFP解決を正す
+                      # sidecar-proxyから提供されたホスト名使用
                       host_rewrite_header: "X-Target-Domain"
-                      # Path rewriting: /proxy/https://domain.com/path -> /path
-                      regex_rewrite:
-                        pattern:
-                          google_re2: {}
-                          regex: "^/proxy/https://[^/]+(.*)$"
-                        substitution: "\\1"
+                      # Simple path rewrite: remove /proxy/https://domain.com prefix
+                      prefix_rewrite: "/"
+                  
+                  # Model download route with persistent connection (sidecar-proxy DNS解決済み)
+                  - match:
+                      prefix: "/connect/"
+                      headers:
+                      - name: "X-Target-Domain"
+                        present_match: true
+                      - name: "X-Resolved-IP"
+                        present_match: true
+                    route:
+                      cluster: dynamic_forward_proxy_cluster
+                      timeout: 600s  # 10分: Model download用の長時間接続
+                      # sidecar-proxyから提供されたホスト名使用
+                      host_rewrite_header: "X-Target-Domain"
+                      # Simple path rewrite: default to root path
+                      prefix_rewrite: "/"
                   
                   # HTTP requests are explicitly blocked (HTTPSのみ許可方針)
                   - match:
@@ -129,26 +139,22 @@ data:
                       body:
                         inline_string: "RSS Outbound Proxy - HTTPS Only\nSupported format: /proxy/https://domain.com/path\nRequired header: X-Target-Domain\nAllowed domains: {{ join ", " .Values.envoy.allowedDomains }}\nSecurity: HTTP blocked for security reasons\n"
 
-      # Dynamic Forward Proxyクラスター（HTTPS専用 - セキュリティ強化）
+      # 動的フォワードプロキシクラスター（sidecar-proxyのDNS解決結果使用）
       clusters:
-      - name: dynamic_forward_proxy_tls_cluster
+      - name: dynamic_forward_proxy_cluster
         connect_timeout: {{ .Values.envoy.timeout.connect }}
         lb_policy: CLUSTER_PROVIDED
-        # TLS transport socket for HTTPS upstream connections (セキュリティ強化)
+        # TLS transport socket for HTTPS upstream connections
         transport_socket:
           name: envoy.transport_sockets.tls
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
             common_tls_context:
               validation_context:
-                # XPLAN7.md: 基本的な証明書検証（ACCEPT_UNTRUSTED除去）
                 trust_chain_verification: VERIFY_TRUST_CHAIN
-              # 最低TLSバージョン設定 (セキュリティ強化)
               tls_params:
                 tls_minimum_protocol_version: TLSv1_2
                 tls_maximum_protocol_version: TLSv1_3
-            # XPLAN7止血策: 基本TLS設定（v1.34互換）
-            # SNI is automatically set by Dynamic Forward Proxy based on target host
         cluster_type:
           name: envoy.clusters.dynamic_forward_proxy
           typed_config:
@@ -156,14 +162,10 @@ data:
             dns_cache_config:
               name: dynamic_forward_proxy_cache_config
               dns_lookup_family: V4_ONLY
-              dns_refresh_rate: {{ .Values.envoy.dns.ttl }}  
-              dns_failure_refresh_rate:
-                base_interval: 2s
-                max_interval: 10s
-              host_ttl: 86400s
-              max_hosts: 256
-              dns_query_timeout: 5s
-              dns_min_refresh_rate: 5s
+              # DNS解決を無効化（sidecar-proxyが既に解決済み）
+              dns_refresh_rate: 3600s  # 1時間：事実上無効化
+              host_ttl: 3600s
+              max_hosts: 1024
         # アップストリーム接続設定
         upstream_connection_options:
           tcp_keepalive:
