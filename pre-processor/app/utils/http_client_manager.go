@@ -61,6 +61,7 @@ func (m *HTTPClientManager) GetFeedClient() *http.Client {
 func (m *HTTPClientManager) createOptimizedClient(timeout time.Duration) *http.Client {
 	transport := &optimizedTransport{
 		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment, // 統一プロキシ戦略サポート（HTTP_PROXY環境変数）
 			MaxIdleConns:          100,
 			MaxIdleConnsPerHost:   10,
 			IdleConnTimeout:       90 * time.Second,
