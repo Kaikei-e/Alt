@@ -8,14 +8,16 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate \
   && apk add --no-cache libc6-compat      # glibc 依存モジュール回避
 
-# 依存キャッシュを BuildKit mount に逃がす
 COPY package.json pnpm-lock.yaml ./
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-  pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 ##### 2) build stage ─ アプリをビルド #####
 FROM node:20-alpine AS build
 WORKDIR /app
+
+# pnpm を corepack で有効化（build stage でも必要）
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -27,23 +29,23 @@ ENV API_URL=$API_URL \
   NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
   GIT_SHA=$GIT_SHA
 
-RUN pnpm run build   # next build（output: 'standalone' 前提）
+RUN pnpm run build
 
 ##### 3) runtime stage ─ 最小実行環境 #####
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
   PORT=3000 \
-  NEXT_TELEMETRY_DISABLED=1 
+  NEXT_TELEMETRY_DISABLED=1
 
 # 必要最小ファイルをコピー（standalone 方式）
-COPY --from=build --chown=1000:1000 /app/.next/standalone ./
-COPY --from=build --chown=1000:1000 /app/.next/static ./.next/static
-COPY --from=build --chown=1000:1000 /app/public ./public
+COPY --from=build --chown=1001:1001 /app/.next/standalone ./
+COPY --from=build --chown=1001:1001 /app/.next/static ./.next/static
+COPY --from=build --chown=1001:1001 /app/public ./public
 
 # 非-root ユーザ
-RUN addgroup -g 1000 -S nextjs \
-  && adduser  -u 1000 -S -G nextjs nextjs
+RUN addgroup -g 1001 -S nextjs \
+  && adduser  -u 1001 -S -G nextjs nextjs
 USER nextjs
 
 EXPOSE 3000
