@@ -9,7 +9,7 @@ import (
 func (r *AltDBRepository) FetchFeedSummary(ctx context.Context, feedURL *url.URL) (*domain.FeedSummary, error) {
 	query := `
 		SELECT
-			summary_japanese
+			summary
 		FROM
 			article_summaries
 		LEFT JOIN

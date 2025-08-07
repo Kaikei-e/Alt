@@ -19,14 +19,16 @@ import (
 type ProxyStrategy string
 
 const (
-	ProxyStrategyDirect ProxyStrategy = "DIRECT"
-	ProxyStrategyEnvoy  ProxyStrategy = "ENVOY"
+	ProxyStrategyDirect  ProxyStrategy = "DIRECT"
+	ProxyStrategyEnvoy   ProxyStrategy = "ENVOY"
+	ProxyStrategySidecar ProxyStrategy = "SIDECAR"
 )
 
 // HTTPClientFactory creates HTTP clients with unified proxy strategy
 type HTTPClientFactory struct {
-	proxyStrategy ProxyStrategy
-	envoyBaseURL  string
+	proxyStrategy    ProxyStrategy
+	envoyBaseURL     string
+	sidecarProxyURL  string
 }
 
 // NewHTTPClientFactory creates a new HTTP client factory with environment-based configuration
@@ -41,13 +43,20 @@ func NewHTTPClientFactory() *HTTPClientFactory {
 		envoyBaseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
 	}
 
+	sidecarProxyURL := os.Getenv("SIDECAR_PROXY_URL")
+	if sidecarProxyURL == "" {
+		sidecarProxyURL = "http://localhost:8085"
+	}
+
 	slog.Info("HTTP client factory initialized",
 		"proxy_strategy", strategy,
-		"envoy_base_url", envoyBaseURL)
+		"envoy_base_url", envoyBaseURL,
+		"sidecar_proxy_url", sidecarProxyURL)
 
 	return &HTTPClientFactory{
-		proxyStrategy: strategy,
-		envoyBaseURL:  envoyBaseURL,
+		proxyStrategy:    strategy,
+		envoyBaseURL:     envoyBaseURL,
+		sidecarProxyURL:  sidecarProxyURL,
 	}
 }
 
@@ -56,6 +65,8 @@ func (f *HTTPClientFactory) CreateHTTPClient() *http.Client {
 	switch f.proxyStrategy {
 	case ProxyStrategyEnvoy:
 		return f.createEnvoyProxyClient()
+	case ProxyStrategySidecar:
+		return f.createSidecarProxyClient()
 	default:
 		return f.createSecureDirectClient()
 	}
@@ -128,6 +139,76 @@ func (t *EnvoyProxyTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		"original_url", req.URL.String(),
 		"transformed_url", clonedReq.URL.String(),
 		"target_domain", originalHost)
+
+	// Execute the transformed request
+	return t.Transport.RoundTrip(clonedReq)
+}
+
+// createSidecarProxyClient creates an HTTP client that routes through sidecar proxy
+func (f *HTTPClientFactory) createSidecarProxyClient() *http.Client {
+	baseTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: false,
+			MinVersion:         tls.VersionTLS12,
+		},
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        100,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second,
+	}
+
+	// Wrap with Sidecar proxy transport
+	sidecarTransport := &SidecarProxyTransport{
+		Transport:        baseTransport,
+		SidecarProxyURL:  f.sidecarProxyURL,
+	}
+
+	return &http.Client{
+		Transport: sidecarTransport,
+		Timeout:   60 * time.Second,
+	}
+}
+
+// SidecarProxyTransport implements RoundTripper to route requests through the sidecar proxy
+type SidecarProxyTransport struct {
+	Transport       http.RoundTripper
+	SidecarProxyURL string
+}
+
+// RoundTrip transforms requests to route through the sidecar proxy at localhost:8085
+func (t *SidecarProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Clone the request to avoid modifying the original
+	clonedReq := req.Clone(req.Context())
+	
+	// Extract original URL components
+	originalURL := req.URL.String()
+	
+	// Parse sidecar proxy URL
+	sidecarURL, err := url.Parse(t.SidecarProxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse sidecar proxy URL: %w", err)
+	}
+
+	// Transform URL to sidecar proxy format
+	// Original: https://example.com/rss.xml
+	// Transformed: http://localhost:8085/proxy/https://example.com/rss.xml
+	clonedReq.URL.Scheme = sidecarURL.Scheme
+	clonedReq.URL.Host = sidecarURL.Host
+	clonedReq.URL.Path = "/proxy/" + originalURL
+
+	// Preserve original Host header for the target
+	clonedReq.Header.Set("X-Original-Host", req.Host)
+	
+	// Add trace header for debugging
+	clonedReq.Header.Set("X-Proxy-Via", "sidecar-proxy")
+
+	slog.Info("Sidecar proxy request transformation",
+		"original_url", originalURL,
+		"transformed_url", clonedReq.URL.String(),
+		"sidecar_proxy", t.SidecarProxyURL)
 
 	// Execute the transformed request
 	return t.Transport.RoundTrip(clonedReq)

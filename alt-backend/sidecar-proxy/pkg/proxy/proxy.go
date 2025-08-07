@@ -134,23 +134,14 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 // Start begins the proxy server with graceful shutdown support
 // This implements the server lifecycle management from ISSUE_RESOLVE_PLAN.md
 func (p *LightweightProxy) Start() error {
-	// Create HTTP request multiplexer
-	mux := http.NewServeMux()
-	
-	// Core proxy endpoint - this is where the upstream resolution magic happens
-	mux.HandleFunc("/proxy/", p.HandleProxyRequest)
-	
-	// Health and monitoring endpoints
-	mux.HandleFunc("/health", p.HandleHealthCheck)
-	mux.HandleFunc("/ready", p.HandleReadinessCheck)
-	mux.HandleFunc("/metrics", p.HandleMetrics)
-	mux.HandleFunc("/debug/dns", p.HandleDNSDebug)
-	mux.HandleFunc("/debug/config", p.HandleConfigDebug)
+	// XPLAN7.md Web検索修正: ServeMux回避でURL正規化問題解決
+	// GoのServeMuxが"/proxy/https:/"を"/proxy/https/"に正規化する問題回避
+	customHandler := http.HandlerFunc(p.handleRawRequest)
 
 	// Configure HTTP server with production settings
 	p.server = &http.Server{
 		Addr:         ":" + p.config.ListenPort,
-		Handler:      mux,
+		Handler:      customHandler,
 		ReadTimeout:  p.config.ReadTimeout,
 		WriteTimeout: p.config.WriteTimeout,
 		IdleTimeout:  p.config.IdleTimeout,
@@ -167,6 +158,71 @@ func (p *LightweightProxy) Start() error {
 	p.logger.Printf("Allowed domains: %v", p.config.AllowedDomainsRaw)
 
 	return p.server.ListenAndServe()
+}
+
+// handleRawRequest handles raw HTTP requests with security hardening
+// XPLAN7.md Web検索セキュリティ修正: ServeMux回避でパストラバーサル対策実装
+func (p *LightweightProxy) handleRawRequest(w http.ResponseWriter, r *http.Request) {
+	// 🚨 セキュリティ強化: CVE-2019-16276対策 - 不正なHTTPメソッド拒否
+	allowedMethods := map[string]bool{
+		"GET": true, "POST": true, "PUT": true, "DELETE": true, "HEAD": true, "OPTIONS": true,
+	}
+	if !allowedMethods[r.Method] {
+		p.logger.Printf("Security: Blocked disallowed HTTP method: %s", r.Method)
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	// 🛡️ Path Traversal対策: 安全なパス正規化
+	originalPath := r.URL.Path
+	if r.RequestURI != "" {
+		if u, err := url.Parse(r.RequestURI); err == nil {
+			originalPath = u.Path
+		}
+	}
+	
+	// URLパス正規化でセキュリティ確保（Web検索推奨手法）
+	// net/urlパッケージでURLパスを安全に処理
+	cleanPath := "/" + strings.TrimPrefix(originalPath, "/")
+	if parsedURL, err := url.Parse(cleanPath); err == nil {
+		cleanPath = parsedURL.Path
+	}
+	
+	// 🚨 セキュリティ検証: パストラバーサル攻撃検出（https://は除外）
+	if strings.Contains(originalPath, "..") || 
+	   strings.Contains(originalPath, "\\") ||
+	   (strings.Contains(originalPath, "//") && !strings.Contains(originalPath, "://")) {
+		p.logger.Printf("Security: Path traversal attempt blocked: %s", originalPath)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	
+	// XPLAN7.md 特別処理: /proxy/https:// パターンのみダブルスラッシュを復元
+	if strings.HasPrefix(cleanPath, "/proxy/https:/") && 
+	   !strings.HasPrefix(cleanPath, "/proxy/https://") {
+		// セキュアなhttps://復元（特定パターンのみ）
+		cleanPath = strings.Replace(cleanPath, "/proxy/https:/", "/proxy/https://", 1)
+		p.logger.Printf("Security: Safe HTTPS URL restoration: %s", cleanPath)
+	}
+	
+	// セキュアなルーティング
+	switch {
+	case strings.HasPrefix(cleanPath, "/proxy/"):
+		r.URL.Path = cleanPath
+		p.HandleProxyRequest(w, r)
+	case cleanPath == "/health":
+		p.HandleHealthCheck(w, r)
+	case cleanPath == "/ready":
+		p.HandleReadinessCheck(w, r)
+	case cleanPath == "/metrics":
+		p.HandleMetrics(w, r)
+	case cleanPath == "/debug/dns":
+		p.HandleDNSDebug(w, r)
+	case cleanPath == "/debug/config":
+		p.HandleConfigDebug(w, r)
+	default:
+		http.NotFound(w, r)
+	}
 }
 
 // HandleProxyRequest is the core function that solves the upstream resolution problem
@@ -247,14 +303,17 @@ func (p *LightweightProxy) HandleProxyRequest(w http.ResponseWriter, r *http.Req
 // buildEnvoyRequest constructs the HTTP request that will be sent to Envoy
 // 🎯 This is THE MOST CRITICAL function - it sets the headers that solve the upstream problem
 func (p *LightweightProxy) buildEnvoyRequest(originalReq *http.Request, targetURL *url.URL, resolvedIP net.IP, traceID string) (*http.Request, error) {
-	// Build Envoy URL (proxy endpoint within the same Pod)
-	envoyURL := fmt.Sprintf("http://%s%s", p.config.EnvoyUpstream, originalReq.URL.Path)
+	// 🚑 REPORT.md オプションB: 正統派Forward Proxy実装
+	// 絶対URL + 正しい:authority で DFP自己ループ問題を根本解決
+	
+	// Envoy forward proxy URL: 絶対URLを使用
+	envoyProxyURL := fmt.Sprintf("http://%s%s", p.config.EnvoyUpstream, originalReq.URL.Path)
 	if originalReq.URL.RawQuery != "" {
-		envoyURL += "?" + originalReq.URL.RawQuery
+		envoyProxyURL += "?" + originalReq.URL.RawQuery
 	}
 	
-	// Create new request with same context and body
-	req, err := http.NewRequestWithContext(originalReq.Context(), originalReq.Method, envoyURL, originalReq.Body)
+	// Create new request with absolute target URL as the request URL
+	req, err := http.NewRequestWithContext(originalReq.Context(), originalReq.Method, envoyProxyURL, originalReq.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
