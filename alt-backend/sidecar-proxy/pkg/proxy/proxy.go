@@ -320,7 +320,7 @@ func (p *LightweightProxy) buildEnvoyRequest(originalReq *http.Request, targetUR
 	// 🚑 REPORT.md オプションB: 正統派Forward Proxy実装
 	// 絶対URL + 正しい:authority で DFP自己ループ問題を根本解決
 	
-	// Envoy forward proxy URL: 絶対URLを使用
+	// Envoy forward proxy URL: /proxy/ パスを保持したまま転送
 	envoyProxyURL := fmt.Sprintf("http://%s%s", p.config.EnvoyUpstream, originalReq.URL.Path)
 	if originalReq.URL.RawQuery != "" {
 		envoyProxyURL += "?" + originalReq.URL.RawQuery
