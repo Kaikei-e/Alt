@@ -4,9 +4,9 @@
 package proxy
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/autolearn"
 	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/config"
 	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/dns"
 	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/metrics"
@@ -34,6 +35,9 @@ type LightweightProxy struct {
 	logger      *log.Logger
 	server      *http.Server
 	metrics     *metrics.Collector
+	
+	// 自動学習機能
+	autoLearner *autolearn.AutoLearner
 	
 	// Request processing state
 	shutdownChan chan struct{}
@@ -120,12 +124,27 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 	// Initialize metrics collector
 	metricsCollector := metrics.NewCollector("proxy_sidecar")
 
+	// Initialize auto-learner for transparent domain learning (in-memory)
+	autoLearnerConfig := &autolearn.Config{
+		MaxDomains:        1000,
+		LearningEnabled:   true,
+		SecurityLevel:     "moderate",
+		RateLimitPerHour:  50,
+		CooldownMinutes:   10,
+	}
+	
+	autoLearner, err := autolearn.NewAutoLearner(autoLearnerConfig, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize auto-learner: %w", err)
+	}
+
 	proxy := &LightweightProxy{
 		config:       cfg,
 		httpClient:   httpClient,
 		dnsResolver:  dnsResolver,
 		logger:       logger,
 		metrics:      metricsCollector,
+		autoLearner:  autoLearner,
 		shutdownChan: make(chan struct{}),
 		ready:        false,
 	}
@@ -208,14 +227,26 @@ func (p *LightweightProxy) handleRawRequest(w http.ResponseWriter, r *http.Reque
 		p.logger.Printf("Security: Safe HTTPS URL restoration: %s", cleanPath)
 	}
 	
-	// 🆕 CONNECT Method 専用処理（統一プロキシ戦略実装）
-	if r.Method == "CONNECT" {
+	// 🆕 責務分離: パス別処理振り分け（アーキテクチャ統一戦略）
+	switch {
+	case strings.HasPrefix(cleanPath, "/proxy/https://"):
+		// RSS取得系: 単発HTTP通信 (既存処理)
+		p.HandleProxyRequest(w, r)
+		return
+		
+	case strings.HasPrefix(cleanPath, "/connect/"):
+		// Model Download系: 持続的TCP通信 (新規処理)
+		p.HandlePersistentTunnelRequest(w, r)
+		return
+		
+	case r.Method == "CONNECT":
+		// CONNECTメソッド: /connect/パスへリダイレクト
 		if !p.config.EnableCONNECT {
 			p.logger.Printf("Security: CONNECT method disabled")
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		p.HandleCONNECTRequest(w, r)
+		p.HandleCONNECTRedirect(w, r)
 		return
 	}
 	
@@ -234,6 +265,10 @@ func (p *LightweightProxy) handleRawRequest(w http.ResponseWriter, r *http.Reque
 		p.HandleDNSDebug(w, r)
 	case cleanPath == "/debug/config":
 		p.HandleConfigDebug(w, r)
+	case strings.HasPrefix(cleanPath, "/admin/domains"):
+		p.HandleAutoLearnAdmin(w, r)
+	case cleanPath == "/admin/metrics":
+		p.HandleAutoLearnMetrics(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -258,11 +293,22 @@ func (p *LightweightProxy) HandleProxyRequest(w http.ResponseWriter, r *http.Req
 	
 	p.logger.Printf("[%s] Target URL extracted: %s", traceID, targetURL.String())
 	
-	// 🎯 CRITICAL: Security validation - check if domain is allowed
-	if !p.config.IsDomainAllowed(targetURL.Host) {
-		p.logger.Printf("[%s] Domain not allowed: %s", traceID, targetURL.Host)
-		p.writeErrorResponse(w, http.StatusForbidden, fmt.Sprintf("Domain not allowed: %s", targetURL.Host), traceID)
-		return
+	// 🎯 CRITICAL: Transparent auto-learning domain validation
+	domain := extractDomainFromURL(targetURL.String())
+	
+	// Check static allowlist first (fastest path)
+	if !p.config.IsDomainAllowed(domain) {
+		// Check auto-learned domains (second fastest path)
+		if !p.autoLearner.IsAllowed(domain) {
+			// 🧠 TRANSPARENT AUTO-LEARNING: Learn new domain
+			if err := p.autoLearner.LearnDomain(domain, targetURL.String(), traceID); err != nil {
+				p.logger.Printf("[%s] 🚫 Auto-learning failed for domain %s: %v", traceID, domain, err)
+				p.writeErrorResponse(w, http.StatusForbidden, 
+					fmt.Sprintf("Domain learning failed: %v", err), traceID)
+				return
+			}
+			p.logger.Printf("[%s] 🧠 Auto-learned new domain: %s", traceID, domain)
+		}
 	}
 	
 	// 🌐 CRITICAL: External DNS resolution to bypass Kubernetes internal DNS
@@ -770,14 +816,173 @@ func (p *LightweightProxy) HandleDNSDebug(w http.ResponseWriter, r *http.Request
 
 func (p *LightweightProxy) HandleConfigDebug(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"allowed_domains": %v, "dns_servers": %v, "envoy_upstream": "%s"}`, 
-		p.config.AllowedDomainsRaw, p.config.DNSServers, p.config.EnvoyUpstream)
+	
+	// Include auto-learning status in config debug
+	learnedCount := len(p.autoLearner.GetLearnedDomains())
+	
+	fmt.Fprintf(w, `{
+		"static_allowed_domains": %v, 
+		"dns_servers": %v, 
+		"envoy_upstream": "%s",
+		"auto_learning": {
+			"enabled": true,
+			"learned_domains_count": %d,
+			"csv_path": "/etc/sidecar-proxy/learned_domains.csv"
+		}
+	}`, p.config.AllowedDomainsRaw, p.config.DNSServers, p.config.EnvoyUpstream, learnedCount)
+}
+
+// HandleAutoLearnAdmin handles auto-learning administration API
+func (p *LightweightProxy) HandleAutoLearnAdmin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	switch r.Method {
+	case http.MethodGet:
+		// Return all learned domains
+		domains := p.autoLearner.GetLearnedDomains()
+		response := struct {
+			Success bool                         `json:"success"`
+			Count   int                          `json:"count"`
+			Domains []*autolearn.LearnedDomain   `json:"domains"`
+		}{
+			Success: true,
+			Count:   len(domains),
+			Domains: domains,
+		}
+		
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
+		
+	case http.MethodPost:
+		// Manual domain blocking
+		var request struct {
+			Domain string `json:"domain"`
+			Reason string `json:"reason"`
+		}
+		
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		
+		if request.Domain == "" {
+			http.Error(w, "Domain is required", http.StatusBadRequest)
+			return
+		}
+		
+		traceID := p.generateTraceID()
+		if err := p.autoLearner.BlockDomain(request.Domain, request.Reason, traceID); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to block domain: %v", err), http.StatusBadRequest)
+			return
+		}
+		
+		response := struct {
+			Success bool   `json:"success"`
+			Message string `json:"message"`
+			Domain  string `json:"domain"`
+		}{
+			Success: true,
+			Message: "Domain blocked successfully",
+			Domain:  request.Domain,
+		}
+		
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+		
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleAutoLearnMetrics handles auto-learning metrics endpoint
+func (p *LightweightProxy) HandleAutoLearnMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	
+	domains := p.autoLearner.GetLearnedDomains()
+	
+	// Calculate metrics
+	activeCount := 0
+	blockedCount := 0
+	totalAccess := int64(0)
+	
+	for _, domain := range domains {
+		switch domain.Status {
+		case "active":
+			activeCount++
+		case "blocked":
+			blockedCount++
+		}
+		totalAccess += domain.AccessCount
+	}
+	
+	metrics := struct {
+		TotalDomains    int     `json:"total_domains"`
+		ActiveDomains   int     `json:"active_domains"`
+		BlockedDomains  int     `json:"blocked_domains"`
+		TotalAccess     int64   `json:"total_access"`
+		LearningEnabled bool    `json:"learning_enabled"`
+		StorageType     string  `json:"storage_type"`
+		LastUpdate      string  `json:"last_update"`
+	}{
+		TotalDomains:    len(domains),
+		ActiveDomains:   activeCount,
+		BlockedDomains:  blockedCount,
+		TotalAccess:     totalAccess,
+		LearningEnabled: true,
+		StorageType:     "in-memory",
+		LastUpdate:      time.Now().Format(time.RFC3339),
+	}
+	
+	json.NewEncoder(w).Encode(metrics)
 }
 
 // Utility functions
 
 func (p *LightweightProxy) generateTraceID() string {
 	return fmt.Sprintf("proxy-%d", time.Now().UnixNano())
+}
+
+// extractDomainFromURL extracts domain from full URL for auto-learning
+func extractDomainFromURL(targetURL string) string {
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil {
+		// Fallback: try to extract domain from string directly
+		if strings.HasPrefix(targetURL, "https://") {
+			targetURL = strings.TrimPrefix(targetURL, "https://")
+		} else if strings.HasPrefix(targetURL, "http://") {
+			targetURL = strings.TrimPrefix(targetURL, "http://")
+		}
+		
+		// Extract domain part (before first '/')
+		if slashIndex := strings.Index(targetURL, "/"); slashIndex != -1 {
+			targetURL = targetURL[:slashIndex]
+		}
+		
+		// Remove port if present
+		if colonIndex := strings.Index(targetURL, ":"); colonIndex != -1 {
+			targetURL = targetURL[:colonIndex]
+		}
+		
+		return targetURL
+	}
+
+	host := parsedURL.Host
+	if host == "" {
+		return targetURL
+	}
+
+	// Remove port if present
+	if colonIndex := strings.Index(host, ":"); colonIndex != -1 {
+		host = host[:colonIndex]
+	}
+
+	return host
 }
 
 func (p *LightweightProxy) writeErrorResponse(w http.ResponseWriter, status int, message string, traceID string) {
@@ -804,13 +1009,12 @@ func (p *LightweightProxy) setupGracefulShutdown() {
 	close(p.shutdownChan)
 }
 
-// HandleCONNECTRequest implements HTTPS CONNECT tunneling for unified proxy strategy
-// This enables pre-processor & news-creator to access external HTTPS sites via sidecar-proxy
+// HandleCONNECTRequest implements unified proxy strategy by converting CONNECT to /proxy/https:// format
+// This enables news-creator and other services to use the same Envoy path as RSS feeds
 func (p *LightweightProxy) HandleCONNECTRequest(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
 	traceID := p.generateTraceID()
 	
-	p.logger.Printf("[%s] CONNECT tunnel request: %s", traceID, r.Host)
+	p.logger.Printf("[%s] CONNECT tunnel request: %s (converting to unified /proxy/https:// format)", traceID, r.Host)
 	
 	// 1. Parse host:port from CONNECT request
 	targetHost, targetPort, err := p.parseCONNECTTarget(r.Host)
@@ -820,49 +1024,241 @@ func (p *LightweightProxy) HandleCONNECTRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 	
-	// 2. Security: Validate allowed domains
+	// 2. Security: Validate allowed domains (consistent with RSS feeds)
 	if !p.config.IsDomainAllowed(targetHost) {
 		p.logger.Printf("[%s] Security: Blocked disallowed domain: %s", traceID, targetHost)
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 	
-	// 3. DNS Resolution (external DNS bypass)
+	// 3. Only support HTTPS CONNECT (port 443) for security consistency with Envoy
+	if targetPort != "443" {
+		p.logger.Printf("[%s] Security: Only HTTPS (port 443) CONNECT supported, got port %s", traceID, targetPort)
+		http.Error(w, "Only HTTPS CONNECT supported", http.StatusBadRequest)
+		return
+	}
+	
+	// 4. DNS Resolution (same as RSS feeds)
 	ips, err := p.dnsResolver.ResolveExternal(context.Background(), targetHost)
 	if err != nil || len(ips) == 0 {
 		p.logger.Printf("[%s] DNS resolution failed for %s: %v", traceID, targetHost, err)
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
-	resolvedIP := ips[0] // Use first resolved IP
+	resolvedIP := ips[0]
 	
-	p.logger.Printf("[%s] DNS resolved: %s -> %s", traceID, targetHost, resolvedIP.String())
+	p.logger.Printf("[%s] DNS resolved: %s -> %s (unified proxy path)", traceID, targetHost, resolvedIP.String())
 	
-	// 4. Establish upstream CONNECT tunnel via Envoy
-	upstreamConn, err := p.establishUpstreamCONNECT(targetHost, targetPort, resolvedIP, traceID)
+	// 5. Convert CONNECT to unified /connect/ path format
+	connectPath := fmt.Sprintf("/connect/%s:443/", targetHost)
+	
+	// Create new request with /connect/ path
+	connectReq, err := http.NewRequestWithContext(r.Context(), "GET", connectPath, nil)
 	if err != nil {
-		p.logger.Printf("[%s] Upstream CONNECT failed: %v", traceID, err)
+		p.logger.Printf("[%s] Failed to create /connect/ request: %v", traceID, err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	
+	// Set required headers
+	connectReq.Header.Set("X-Target-Domain", targetHost)
+	connectReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
+	connectReq.Header.Set("X-Request-ID", traceID)
+	
+	// Process through unified /connect/ path
+	connectReq.URL.Path = connectPath
+	p.HandlePersistentTunnelRequest(w, connectReq)
+}
+
+// HandlePersistentTunnelRequest handles /connect/ path requests for persistent connections
+// Routes through unified Envoy architecture with path-based responsibility separation
+func (p *LightweightProxy) HandlePersistentTunnelRequest(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	traceID := p.generateTraceID()
+	
+	p.logger.Printf("[%s] Persistent tunnel request: %s %s", traceID, r.Method, r.URL.Path)
+	
+	// 1. Parse /connect/registry.ollama.ai:443/path format
+	targetPath := strings.TrimPrefix(r.URL.Path, "/connect/")
+	if targetPath == "" {
+		p.logger.Printf("[%s] Empty /connect/ path", traceID)
+		http.Error(w, "Bad Request: /connect/ path required", http.StatusBadRequest)
+		return
+	}
+	
+	// Extract target host from path (registry.ollama.ai:443)
+	pathParts := strings.SplitN(targetPath, "/", 2)
+	hostPort := pathParts[0]
+	remainingPath := "/"
+	if len(pathParts) > 1 {
+		remainingPath = "/" + pathParts[1]
+	}
+	
+	// 2. Parse host:port
+	targetHost, targetPort, err := p.parseCONNECTTarget(hostPort)
+	if err != nil {
+		p.logger.Printf("[%s] Invalid target format: %v", traceID, err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+	
+	// 3. Security: Validate allowed domains
+	if !p.config.IsDomainAllowed(targetHost) {
+		p.logger.Printf("[%s] Security: Blocked disallowed domain: %s", traceID, targetHost)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	
+	// 4. Only support HTTPS (port 443) for security
+	if targetPort != "443" {
+		p.logger.Printf("[%s] Security: Only HTTPS (port 443) supported, got port %s", traceID, targetPort)
+		http.Error(w, "Only HTTPS supported", http.StatusBadRequest)
+		return
+	}
+	
+	// 5. Forward to Envoy using unified /connect/ path
+	err = p.forwardToEnvoyConnect(w, r, targetHost, remainingPath, traceID, startTime)
+	if err != nil {
+		p.logger.Printf("[%s] Envoy forward failed: %v", traceID, err)
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
-	defer upstreamConn.Close()
-	
-	// 5. HTTP/1.1 200 Connection established
-	w.WriteHeader(http.StatusOK)
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
+}
+
+// forwardToEnvoyConnect forwards /connect/ requests to Envoy with optimized settings
+func (p *LightweightProxy) forwardToEnvoyConnect(w http.ResponseWriter, r *http.Request, targetHost, remainingPath, traceID string, startTime time.Time) error {
+	// Create new request to Envoy - preserve the full /connect/ path
+	envoyURL := fmt.Sprintf("http://%s%s", p.config.EnvoyUpstream, r.URL.Path)
+	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, envoyURL, r.Body)
+	if err != nil {
+		return fmt.Errorf("failed to create proxy request: %w", err)
 	}
 	
-	// 6. Hijack connection for TCP tunneling
-	clientConn, err := p.hijackConnection(w)
+	// Copy headers from original request
+	for k, vv := range r.Header {
+		if k == "Connection" || k == "Upgrade" || k == "Proxy-Connection" {
+			continue // Skip connection-specific headers
+		}
+		for _, v := range vv {
+			proxyReq.Header.Add(k, v)
+		}
+	}
+	
+	// Set required headers for Envoy dynamic forward proxy
+	proxyReq.Header.Set("X-Target-Domain", targetHost)
+	proxyReq.Header.Set("Host", targetHost)
+	proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
+	proxyReq.Header.Set("X-Request-ID", traceID)
+	
+	// Use HTTP client with extended timeout for persistent connections
+	client := &http.Client{
+		Timeout: 10 * time.Minute, // Extended timeout for model downloads
+		Transport: &http.Transport{
+			DisableKeepAlives:   false, // Enable keep-alives for persistent connections
+			MaxIdleConns:        10,
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 30 * time.Second,
+			ExpectContinueTimeout: 10 * time.Second,
+		},
+	}
+	
+	p.logger.Printf("[%s] Forwarding to Envoy: %s with target %s", traceID, envoyURL, targetHost)
+	
+	// Execute request
+	resp, err := client.Do(proxyReq)
 	if err != nil {
-		p.logger.Printf("[%s] Connection hijack failed: %v", traceID, err)
+		return fmt.Errorf("envoy request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// Copy response headers
+	for k, vv := range resp.Header {
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
+	}
+	
+	// Set response status
+	w.WriteHeader(resp.StatusCode)
+	
+	// Stream response body
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		p.logger.Printf("[%s] Response streaming error: %v", traceID, err)
+		return err
+	}
+	
+	duration := time.Since(startTime)
+	p.logger.Printf("[%s] Persistent tunnel completed: %d in %v", traceID, resp.StatusCode, duration)
+	
+	return nil
+}
+
+// HandleCONNECTRedirect converts CONNECT method to /connect/ path for unified architecture
+func (p *LightweightProxy) HandleCONNECTRedirect(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	traceID := p.generateTraceID()
+	
+	p.logger.Printf("[%s] CONNECT redirect: %s %s", traceID, r.Method, r.Host)
+	
+	// 1. Parse CONNECT target host:port
+	targetHost, targetPort, err := p.parseCONNECTTarget(r.Host)
+	if err != nil {
+		p.logger.Printf("[%s] Invalid CONNECT target: %v", traceID, err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
-	defer clientConn.Close()
 	
-	// 7. Bidirectional TCP proxy
-	p.startTCPTunnel(clientConn, upstreamConn, traceID, startTime)
+	// 2. Security: Only support HTTPS CONNECT (port 443)
+	if targetPort != "443" {
+		p.logger.Printf("[%s] Security: Only HTTPS CONNECT supported, got port %s", traceID, targetPort)
+		http.Error(w, "Only HTTPS CONNECT supported", http.StatusBadRequest)
+		return
+	}
+	
+	// 3. Security: Validate allowed domains
+	if !p.config.IsDomainAllowed(targetHost) {
+		p.logger.Printf("[%s] Security: Blocked disallowed domain: %s", traceID, targetHost)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	
+	// 4. Convert CONNECT to /connect/ path format
+	connectPath := fmt.Sprintf("/connect/%s:%s/", targetHost, targetPort)
+	
+	// 5. Create new request with /connect/ path
+	connectReq, err := http.NewRequestWithContext(r.Context(), "GET", connectPath, nil)
+	if err != nil {
+		p.logger.Printf("[%s] Failed to create /connect/ request: %v", traceID, err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	
+	// Copy relevant headers
+	connectReq.Header.Set("X-Target-Domain", targetHost)
+	connectReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
+	connectReq.Header.Set("X-Request-ID", traceID)
+	connectReq.Header.Set("Connection", "Upgrade")
+	connectReq.Header.Set("Upgrade", "tcp")
+	
+	// Copy original headers (selective)
+	for k, vv := range r.Header {
+		if k == "Host" || k == "Connection" || k == "Upgrade" {
+			continue // Skip, we set these above
+		}
+		for _, v := range vv {
+			connectReq.Header.Add(k, v)
+		}
+	}
+	
+	p.logger.Printf("[%s] Redirecting CONNECT %s:%s to /connect/ path", traceID, targetHost, targetPort)
+	
+	// 6. Process through /connect/ path (unified architecture)
+	connectReq.URL.Path = connectPath
+	p.HandlePersistentTunnelRequest(w, connectReq)
+	
+	duration := time.Since(startTime)
+	p.logger.Printf("[%s] CONNECT redirect completed in %v", traceID, duration)
 }
 
 // parseCONNECTTarget parses CONNECT request format "host:port"
@@ -889,64 +1285,6 @@ func (p *LightweightProxy) parseCONNECTTarget(hostPort string) (host, port strin
 	return host, port, nil
 }
 
-// establishUpstreamCONNECT establishes CONNECT tunnel via Envoy upstream
-func (p *LightweightProxy) establishUpstreamCONNECT(targetHost, targetPort string, resolvedIP net.IP, traceID string) (net.Conn, error) {
-	// Create CONNECT request to Envoy
-	connectReq := fmt.Sprintf("CONNECT %s:%s HTTP/1.1\r\nHost: %s:%s\r\nX-Target-Domain: %s\r\nX-Resolved-IP: %s\r\n\r\n", 
-		targetHost, targetPort, targetHost, targetPort, targetHost, resolvedIP.String())
-	
-	// Connect to Envoy upstream
-	envoyConn, err := net.DialTimeout("tcp", p.config.EnvoyUpstream, p.config.CONNECTTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("envoy connection failed: %w", err)
-	}
-	
-	// Send CONNECT request
-	_, err = envoyConn.Write([]byte(connectReq))
-	if err != nil {
-		envoyConn.Close()
-		return nil, fmt.Errorf("CONNECT request failed: %w", err)
-	}
-	
-	// Read CONNECT response
-	response, err := p.readCONNECTResponse(envoyConn)
-	if err != nil {
-		envoyConn.Close()
-		return nil, fmt.Errorf("CONNECT response failed: %w", err)
-	}
-	
-	if !strings.Contains(response, "200 Connection established") {
-		envoyConn.Close()
-		return nil, fmt.Errorf("CONNECT failed: %s", response)
-	}
-	
-	p.logger.Printf("[%s] Upstream CONNECT established: %s:%s via %s", traceID, targetHost, targetPort, p.config.EnvoyUpstream)
-	return envoyConn, nil
-}
-
-// readCONNECTResponse reads HTTP response from CONNECT request
-func (p *LightweightProxy) readCONNECTResponse(conn net.Conn) (string, error) {
-	conn.SetReadDeadline(time.Now().Add(p.config.CONNECTTimeout))
-	
-	reader := bufio.NewReader(conn)
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		return "", fmt.Errorf("reading CONNECT response: %w", err)
-	}
-	
-	// Read headers until empty line
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return response, fmt.Errorf("reading CONNECT headers: %w", err)
-		}
-		if strings.TrimSpace(line) == "" {
-			break
-		}
-	}
-	
-	return response, nil
-}
 
 // hijackConnection hijacks HTTP connection for raw TCP tunneling
 func (p *LightweightProxy) hijackConnection(w http.ResponseWriter) (net.Conn, error) {
