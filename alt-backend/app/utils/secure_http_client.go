@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -43,9 +44,9 @@ func NewHTTPClientFactory() *HTTPClientFactory {
 		envoyBaseURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
 	}
 
-	sidecarProxyURL := os.Getenv("SIDECAR_PROXY_URL")
+	sidecarProxyURL := os.Getenv("SIDECAR_PROXY_BASE_URL")
 	if sidecarProxyURL == "" {
-		sidecarProxyURL = "http://localhost:8085"
+		sidecarProxyURL = "http://sidecar-proxy.alt-apps.svc.cluster.local:8085"
 	}
 
 	slog.Info("HTTP client factory initialized",
@@ -330,13 +331,7 @@ func isPrivateHost(hostname string) bool {
 	}
 
 	// Check if any resolved IP is private
-	for _, ip := range ips {
-		if isPrivateIPAddress(ip) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(ips, isPrivateIPAddress)
 }
 
 // isPrivateIPAddress checks if an IP address is in private ranges
