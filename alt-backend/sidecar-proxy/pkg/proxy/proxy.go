@@ -4,6 +4,7 @@
 package proxy
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -164,8 +166,9 @@ func (p *LightweightProxy) Start() error {
 // XPLAN7.md Web検索セキュリティ修正: ServeMux回避でパストラバーサル対策実装
 func (p *LightweightProxy) handleRawRequest(w http.ResponseWriter, r *http.Request) {
 	// 🚨 セキュリティ強化: CVE-2019-16276対策 - 不正なHTTPメソッド拒否
+	// CONNECT追加: HTTPS tunneling (OLLAMA model download) サポート
 	allowedMethods := map[string]bool{
-		"GET": true, "POST": true, "PUT": true, "DELETE": true, "HEAD": true, "OPTIONS": true,
+		"GET": true, "POST": true, "PUT": true, "DELETE": true, "HEAD": true, "OPTIONS": true, "CONNECT": true,
 	}
 	if !allowedMethods[r.Method] {
 		p.logger.Printf("Security: Blocked disallowed HTTP method: %s", r.Method)
@@ -203,6 +206,17 @@ func (p *LightweightProxy) handleRawRequest(w http.ResponseWriter, r *http.Reque
 		// セキュアなhttps://復元（特定パターンのみ）
 		cleanPath = strings.Replace(cleanPath, "/proxy/https:/", "/proxy/https://", 1)
 		p.logger.Printf("Security: Safe HTTPS URL restoration: %s", cleanPath)
+	}
+	
+	// 🆕 CONNECT Method 専用処理（統一プロキシ戦略実装）
+	if r.Method == "CONNECT" {
+		if !p.config.EnableCONNECT {
+			p.logger.Printf("Security: CONNECT method disabled")
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		p.HandleCONNECTRequest(w, r)
+		return
 	}
 	
 	// セキュアなルーティング
@@ -788,4 +802,194 @@ func (p *LightweightProxy) setupGracefulShutdown() {
 	}
 	
 	close(p.shutdownChan)
+}
+
+// HandleCONNECTRequest implements HTTPS CONNECT tunneling for unified proxy strategy
+// This enables pre-processor & news-creator to access external HTTPS sites via sidecar-proxy
+func (p *LightweightProxy) HandleCONNECTRequest(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	traceID := p.generateTraceID()
+	
+	p.logger.Printf("[%s] CONNECT tunnel request: %s", traceID, r.Host)
+	
+	// 1. Parse host:port from CONNECT request
+	targetHost, targetPort, err := p.parseCONNECTTarget(r.Host)
+	if err != nil {
+		p.logger.Printf("[%s] Invalid CONNECT target: %v", traceID, err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+	
+	// 2. Security: Validate allowed domains
+	if !p.config.IsDomainAllowed(targetHost) {
+		p.logger.Printf("[%s] Security: Blocked disallowed domain: %s", traceID, targetHost)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	
+	// 3. DNS Resolution (external DNS bypass)
+	ips, err := p.dnsResolver.ResolveExternal(context.Background(), targetHost)
+	if err != nil || len(ips) == 0 {
+		p.logger.Printf("[%s] DNS resolution failed for %s: %v", traceID, targetHost, err)
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+		return
+	}
+	resolvedIP := ips[0] // Use first resolved IP
+	
+	p.logger.Printf("[%s] DNS resolved: %s -> %s", traceID, targetHost, resolvedIP.String())
+	
+	// 4. Establish upstream CONNECT tunnel via Envoy
+	upstreamConn, err := p.establishUpstreamCONNECT(targetHost, targetPort, resolvedIP, traceID)
+	if err != nil {
+		p.logger.Printf("[%s] Upstream CONNECT failed: %v", traceID, err)
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+		return
+	}
+	defer upstreamConn.Close()
+	
+	// 5. HTTP/1.1 200 Connection established
+	w.WriteHeader(http.StatusOK)
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	
+	// 6. Hijack connection for TCP tunneling
+	clientConn, err := p.hijackConnection(w)
+	if err != nil {
+		p.logger.Printf("[%s] Connection hijack failed: %v", traceID, err)
+		return
+	}
+	defer clientConn.Close()
+	
+	// 7. Bidirectional TCP proxy
+	p.startTCPTunnel(clientConn, upstreamConn, traceID, startTime)
+}
+
+// parseCONNECTTarget parses CONNECT request format "host:port"
+func (p *LightweightProxy) parseCONNECTTarget(hostPort string) (host, port string, err error) {
+	// Parse "registry.ollama.ai:443" format
+	parts := strings.Split(hostPort, ":")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid host:port format: %s", hostPort)
+	}
+	
+	host = strings.TrimSpace(parts[0])
+	port = strings.TrimSpace(parts[1])
+	
+	// Validate host
+	if host == "" || strings.Contains(host, "/") {
+		return "", "", fmt.Errorf("invalid host: %s", host)
+	}
+	
+	// Validate port
+	if portNum, err := strconv.Atoi(port); err != nil || portNum <= 0 || portNum > 65535 {
+		return "", "", fmt.Errorf("invalid port: %s", port)
+	}
+	
+	return host, port, nil
+}
+
+// establishUpstreamCONNECT establishes CONNECT tunnel via Envoy upstream
+func (p *LightweightProxy) establishUpstreamCONNECT(targetHost, targetPort string, resolvedIP net.IP, traceID string) (net.Conn, error) {
+	// Create CONNECT request to Envoy
+	connectReq := fmt.Sprintf("CONNECT %s:%s HTTP/1.1\r\nHost: %s:%s\r\nX-Target-Domain: %s\r\nX-Resolved-IP: %s\r\n\r\n", 
+		targetHost, targetPort, targetHost, targetPort, targetHost, resolvedIP.String())
+	
+	// Connect to Envoy upstream
+	envoyConn, err := net.DialTimeout("tcp", p.config.EnvoyUpstream, p.config.CONNECTTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("envoy connection failed: %w", err)
+	}
+	
+	// Send CONNECT request
+	_, err = envoyConn.Write([]byte(connectReq))
+	if err != nil {
+		envoyConn.Close()
+		return nil, fmt.Errorf("CONNECT request failed: %w", err)
+	}
+	
+	// Read CONNECT response
+	response, err := p.readCONNECTResponse(envoyConn)
+	if err != nil {
+		envoyConn.Close()
+		return nil, fmt.Errorf("CONNECT response failed: %w", err)
+	}
+	
+	if !strings.Contains(response, "200 Connection established") {
+		envoyConn.Close()
+		return nil, fmt.Errorf("CONNECT failed: %s", response)
+	}
+	
+	p.logger.Printf("[%s] Upstream CONNECT established: %s:%s via %s", traceID, targetHost, targetPort, p.config.EnvoyUpstream)
+	return envoyConn, nil
+}
+
+// readCONNECTResponse reads HTTP response from CONNECT request
+func (p *LightweightProxy) readCONNECTResponse(conn net.Conn) (string, error) {
+	conn.SetReadDeadline(time.Now().Add(p.config.CONNECTTimeout))
+	
+	reader := bufio.NewReader(conn)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return "", fmt.Errorf("reading CONNECT response: %w", err)
+	}
+	
+	// Read headers until empty line
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return response, fmt.Errorf("reading CONNECT headers: %w", err)
+		}
+		if strings.TrimSpace(line) == "" {
+			break
+		}
+	}
+	
+	return response, nil
+}
+
+// hijackConnection hijacks HTTP connection for raw TCP tunneling
+func (p *LightweightProxy) hijackConnection(w http.ResponseWriter) (net.Conn, error) {
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		return nil, fmt.Errorf("connection hijacking not supported")
+	}
+	
+	clientConn, _, err := hijacker.Hijack()
+	if err != nil {
+		return nil, fmt.Errorf("hijack failed: %w", err)
+	}
+	
+	return clientConn, nil
+}
+
+// startTCPTunnel handles bidirectional TCP data transfer
+func (p *LightweightProxy) startTCPTunnel(clientConn, upstreamConn net.Conn, traceID string, startTime time.Time) {
+	p.logger.Printf("[%s] Starting TCP tunnel", traceID)
+	
+	// Set connection timeouts
+	deadline := time.Now().Add(p.config.CONNECTIdleTimeout)
+	clientConn.SetDeadline(deadline)
+	upstreamConn.SetDeadline(deadline)
+	
+	// Bidirectional copy
+	done := make(chan error, 2)
+	
+	// Client -> Upstream
+	go func() {
+		_, err := io.Copy(upstreamConn, clientConn)
+		done <- err
+	}()
+	
+	// Upstream -> Client
+	go func() {
+		_, err := io.Copy(clientConn, upstreamConn)
+		done <- err
+	}()
+	
+	// Wait for one direction to close
+	<-done
+	
+	duration := time.Since(startTime)
+	p.logger.Printf("[%s] TCP tunnel closed, duration: %v", traceID, duration)
 }

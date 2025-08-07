@@ -52,6 +52,12 @@ type ProxyConfig struct {
 
 	// Performance Configuration  
 	WorkerPoolSize     int `json:"worker_pool_size"`
+	
+	// CONNECT Tunneling Configuration
+	CONNECTTimeout     time.Duration `json:"connect_timeout"`
+	CONNECTMaxConns    int           `json:"connect_max_conns"`
+	CONNECTIdleTimeout time.Duration `json:"connect_idle_timeout"`
+	EnableCONNECT      bool          `json:"enable_connect"`
 	BufferSize         int `json:"buffer_size"`
 	MaxConcurrentReqs  int `json:"max_concurrent_reqs"`
 
@@ -102,6 +108,12 @@ func LoadConfig() (*ProxyConfig, error) {
 		WorkerPoolSize:    getIntOrDefault("WORKER_POOL_SIZE", 10),
 		BufferSize:        getIntOrDefault("BUFFER_SIZE", 4096),
 		MaxConcurrentReqs: getIntOrDefault("MAX_CONCURRENT_REQS", 100),
+		
+		// CONNECT Tunneling defaults
+		CONNECTTimeout:     getDurationOrDefault("CONNECT_TIMEOUT", 30*time.Second),
+		CONNECTMaxConns:    getIntOrDefault("CONNECT_MAX_CONNS", 10),
+		CONNECTIdleTimeout: getDurationOrDefault("CONNECT_IDLE_TIMEOUT", 300*time.Second),
+		EnableCONNECT:      getBoolOrDefault("ENABLE_CONNECT", true),
 
 		// Development defaults
 		DebugMode:      getBoolOrDefault("DEBUG_MODE", false),
