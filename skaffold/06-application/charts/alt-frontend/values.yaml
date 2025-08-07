@@ -11,17 +11,6 @@ service:
   port: 3000
   targetPort: 3000
 
-ingress:
-  enabled: false  # alt-ingressで管理するため無効化
-  className: "nginx"
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-  hosts:
-    - host: alt.local
-      paths:
-        - path: /
-          pathType: Prefix
-
 resources:
   limits:
     cpu: "1"
@@ -83,21 +72,16 @@ imagePullSecrets: []
 volumeMounts: []
 volumes: []
 
-# REPORT.md恒久対応: Next.jsのハッシュ付きアセット整合性のためRecreate戦略
-# ローリング中の「旧HTML⇄新JS」「新HTML⇄旧JS」クロス参照404を防止
 strategy:
-  type: Recreate
-# INCIDENT 76 FIX: Secret configuration無効化 - 環境変数に統一
-# envFromSecret:
-#   name: alt-frontend-secrets
-#   keys:
-#     - API_URL
-#     - AUTH_URL
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0   # 常に少なくとも1Pod稼働
+    maxSurge: 1
 
 # 恒久対応: 504エラー防止のため厳密なProbe設定
 startupProbe:
   httpGet:
-    path: /api/health
+    path: /v1/health
     port: 3000
   initialDelaySeconds: 0
   periodSeconds: 5
@@ -107,7 +91,7 @@ startupProbe:
 
 readinessProbe:
   httpGet:
-    path: /api/health
+    path: /v1/health
     port: 3000
   initialDelaySeconds: 0
   periodSeconds: 5  # より頻繁にチェック
@@ -117,7 +101,7 @@ readinessProbe:
 
 livenessProbe:
   httpGet:
-    path: /api/health
+    path: /v1/health
     port: 3000
   initialDelaySeconds: 30
   periodSeconds: 30

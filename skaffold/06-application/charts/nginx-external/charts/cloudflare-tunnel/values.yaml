@@ -19,7 +19,7 @@ image:
   # If supplied, this overrides "latest"
   tag: ""
 
-replicaCount: 2
+replicaCount: 1
 
 imagePullSecrets: []
 nameOverride: ""
