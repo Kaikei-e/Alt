@@ -8,15 +8,15 @@ import (
 // RateLimiter implements learning rate limiting to prevent abuse
 type RateLimiter struct {
 	// ドメイン別学習履歴
-	domainLearning    map[string]time.Time  // ドメイン別最終学習時刻
-	globalLearnings   []time.Time           // 全体学習履歴（時系列）
-	
+	domainLearning  map[string]time.Time // ドメイン別最終学習時刻
+	globalLearnings []time.Time          // 全体学習履歴（時系列）
+
 	// 制限設定
-	globalLimit       int           // 全体学習数制限（1時間あたり）
-	domainCooldown    time.Duration // 同一ドメイン学習間隔
-	
+	globalLimit    int           // 全体学習数制限（1時間あたり）
+	domainCooldown time.Duration // 同一ドメイン学習間隔
+
 	// 並行安全性
-	mutex             sync.RWMutex
+	mutex sync.RWMutex
 }
 
 // NewRateLimiter creates a new rate limiter with specified limits
@@ -105,10 +105,10 @@ func (rl *RateLimiter) GetRateLimitStatus(domain string) *RateLimitStatus {
 
 	now := time.Now()
 	status := &RateLimitStatus{
-		Domain:           domain,
-		CheckTime:        now,
-		GlobalLimit:      rl.globalLimit,
-		DomainCooldown:   rl.domainCooldown,
+		Domain:         domain,
+		CheckTime:      now,
+		GlobalLimit:    rl.globalLimit,
+		DomainCooldown: rl.domainCooldown,
 	}
 
 	// ドメイン固有の状態
@@ -142,20 +142,20 @@ func (rl *RateLimiter) GetRateLimitStatus(domain string) *RateLimitStatus {
 
 // RateLimitStatus represents the current rate limiting status
 type RateLimitStatus struct {
-	Domain                   string        `json:"domain"`
-	CheckTime                time.Time     `json:"check_time"`
-	LearningAllowed          bool          `json:"learning_allowed"`
-	
+	Domain          string    `json:"domain"`
+	CheckTime       time.Time `json:"check_time"`
+	LearningAllowed bool      `json:"learning_allowed"`
+
 	// ドメイン固有制限
-	DomainAllowed            bool          `json:"domain_allowed"`
-	DomainLastLearning       time.Time     `json:"domain_last_learning,omitempty"`
-	DomainCooldown           time.Duration `json:"domain_cooldown"`
-	DomainCooldownRemaining  time.Duration `json:"domain_cooldown_remaining"`
-	
+	DomainAllowed           bool          `json:"domain_allowed"`
+	DomainLastLearning      time.Time     `json:"domain_last_learning,omitempty"`
+	DomainCooldown          time.Duration `json:"domain_cooldown"`
+	DomainCooldownRemaining time.Duration `json:"domain_cooldown_remaining"`
+
 	// 全体制限
-	GlobalAllowed            bool          `json:"global_allowed"`
-	GlobalLimit              int           `json:"global_limit"`
-	GlobalRecentCount        int           `json:"global_recent_count"`
+	GlobalAllowed     bool `json:"global_allowed"`
+	GlobalLimit       int  `json:"global_limit"`
+	GlobalRecentCount int  `json:"global_recent_count"`
 }
 
 // GetGlobalStats returns global rate limiting statistics
@@ -165,10 +165,10 @@ func (rl *RateLimiter) GetGlobalStats() *GlobalRateLimitStats {
 
 	now := time.Now()
 	stats := &GlobalRateLimitStats{
-		CheckTime:             now,
-		GlobalLimit:           rl.globalLimit,
-		TotalDomainsTracked:   len(rl.domainLearning),
-		DomainCooldownPeriod:  rl.domainCooldown,
+		CheckTime:            now,
+		GlobalLimit:          rl.globalLimit,
+		TotalDomainsTracked:  len(rl.domainLearning),
+		DomainCooldownPeriod: rl.domainCooldown,
 	}
 
 	// 時間帯別の学習数を計算
@@ -200,14 +200,14 @@ func (rl *RateLimiter) GetGlobalStats() *GlobalRateLimitStats {
 
 // GlobalRateLimitStats represents global rate limiting statistics
 type GlobalRateLimitStats struct {
-	CheckTime             time.Time     `json:"check_time"`
-	GlobalLimit           int           `json:"global_limit"`
-	TotalDomainsTracked   int           `json:"total_domains_tracked"`
-	DomainsInCooldown     int           `json:"domains_in_cooldown"`
-	DomainCooldownPeriod  time.Duration `json:"domain_cooldown_period"`
-	LearningsLast1Hour    int           `json:"learnings_last_1_hour"`
-	LearningsLast6Hours   int           `json:"learnings_last_6_hours"`
-	LearningsLast24Hours  int           `json:"learnings_last_24_hours"`
+	CheckTime            time.Time     `json:"check_time"`
+	GlobalLimit          int           `json:"global_limit"`
+	TotalDomainsTracked  int           `json:"total_domains_tracked"`
+	DomainsInCooldown    int           `json:"domains_in_cooldown"`
+	DomainCooldownPeriod time.Duration `json:"domain_cooldown_period"`
+	LearningsLast1Hour   int           `json:"learnings_last_1_hour"`
+	LearningsLast6Hours  int           `json:"learnings_last_6_hours"`
+	LearningsLast24Hours int           `json:"learnings_last_24_hours"`
 }
 
 // ResetDomainCooldown manually resets cooldown for a specific domain (admin function)
@@ -243,17 +243,17 @@ func (rl *RateLimiter) GetTopDomainsByLearningFrequency(limit int) []DomainFrequ
 	// 実際の実装では、学習履歴をより詳細に追跡する必要がある
 	// 今回は簡易実装として、現在追跡中のドメインを返す
 	result := make([]DomainFrequency, 0)
-	
+
 	for domain, lastLearning := range rl.domainLearning {
 		if lastLearning.After(oneDayAgo) {
 			result = append(result, DomainFrequency{
 				Domain:       domain,
 				LastLearning: lastLearning,
 				// 簡易実装：頻度カウントは省略
-				Count:        1,
+				Count: 1,
 			})
 		}
-		
+
 		if len(result) >= limit {
 			break
 		}

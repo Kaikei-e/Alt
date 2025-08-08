@@ -2,26 +2,26 @@ package domain
 
 import (
 	"encoding/json"
-	"net/http"
-	"time"
-	"strings"
 	"fmt"
+	"net/http"
 	"os"
+	"strings"
+	"time"
 )
 
 // Metrics represents domain management metrics
 type Metrics struct {
-	TotalDomains         int64             `json:"total_domains"`
-	StaticDomains        int64             `json:"static_domains"`
-	DynamicDomains       int64             `json:"dynamic_domains"`
-	ActiveDomains        int64             `json:"active_domains"`
-	InactiveDomains      int64             `json:"inactive_domains"`
-	LastReloadTime       time.Time         `json:"last_reload_time"`
-	ReloadCount          int64             `json:"reload_count"`
-	ReloadErrors         int64             `json:"reload_errors"`
-	DomainAdditionsToday int64             `json:"domain_additions_today"`
-	TopDomains           []*DomainUsage    `json:"top_domains"`
-	DomainsBySource      map[string]int64  `json:"domains_by_source"`
+	TotalDomains         int64            `json:"total_domains"`
+	StaticDomains        int64            `json:"static_domains"`
+	DynamicDomains       int64            `json:"dynamic_domains"`
+	ActiveDomains        int64            `json:"active_domains"`
+	InactiveDomains      int64            `json:"inactive_domains"`
+	LastReloadTime       time.Time        `json:"last_reload_time"`
+	ReloadCount          int64            `json:"reload_count"`
+	ReloadErrors         int64            `json:"reload_errors"`
+	DomainAdditionsToday int64            `json:"domain_additions_today"`
+	TopDomains           []*DomainUsage   `json:"top_domains"`
+	DomainsBySource      map[string]int64 `json:"domains_by_source"`
 }
 
 // DomainUsage represents domain usage statistics
@@ -38,10 +38,10 @@ func (dm *Manager) GetMetrics() *Metrics {
 	defer dm.mutex.RUnlock()
 
 	metrics := &Metrics{
-		TotalDomains:       int64(len(dm.domains)),
-		LastReloadTime:     time.Now(), // TODO: track actual reload time
-		DomainsBySource:    make(map[string]int64),
-		TopDomains:         make([]*DomainUsage, 0),
+		TotalDomains:    int64(len(dm.domains)),
+		LastReloadTime:  time.Now(), // TODO: track actual reload time
+		DomainsBySource: make(map[string]int64),
+		TopDomains:      make([]*DomainUsage, 0),
 	}
 
 	today := time.Now().Truncate(24 * time.Hour)
@@ -169,21 +169,21 @@ func sprintf(format string, args ...interface{}) string {
 
 // HealthCheck returns domain manager health status
 type HealthStatus struct {
-	Status        string            `json:"status"`
-	DomainsLoaded bool              `json:"domains_loaded"`
-	CSVReadable   bool              `json:"csv_readable"`
-	LastCheck     time.Time         `json:"last_check"`
-	Errors        []string          `json:"errors,omitempty"`
-	Statistics    map[string]int64  `json:"statistics"`
+	Status        string           `json:"status"`
+	DomainsLoaded bool             `json:"domains_loaded"`
+	CSVReadable   bool             `json:"csv_readable"`
+	LastCheck     time.Time        `json:"last_check"`
+	Errors        []string         `json:"errors,omitempty"`
+	Statistics    map[string]int64 `json:"statistics"`
 }
 
 // GetHealthStatus returns the health status of the domain manager
 func (dm *Manager) GetHealthStatus() *HealthStatus {
 	status := &HealthStatus{
-		Status:      "healthy",
-		LastCheck:   time.Now(),
-		Errors:      make([]string, 0),
-		Statistics:  make(map[string]int64),
+		Status:     "healthy",
+		LastCheck:  time.Now(),
+		Errors:     make([]string, 0),
+		Statistics: make(map[string]int64),
 	}
 
 	dm.mutex.RLock()

@@ -10,9 +10,9 @@ import (
 
 // DomainValidator handles security validation for auto-learned domains
 type DomainValidator struct {
-	blacklist      map[string]bool       // 危険ドメインブラックリスト
-	whitelist      map[string]bool       // 事前承認ドメインホワイトリスト
-	logger         *log.Logger           // セキュリティログ
+	blacklist map[string]bool // 危険ドメインブラックリスト
+	whitelist map[string]bool // 事前承認ドメインホワイトリスト
+	logger    *log.Logger     // セキュリティログ
 }
 
 // NewDomainValidator creates a new domain validator with security rules
@@ -25,7 +25,7 @@ func NewDomainValidator(logger *log.Logger) *DomainValidator {
 
 	// Initialize default blacklist
 	dv.initializeBlacklist()
-	
+
 	// Initialize default whitelist
 	dv.initializeWhitelist()
 
@@ -89,20 +89,20 @@ func (dv *DomainValidator) initializeBlacklist() {
 		"127.0.0.1",
 		"::1",
 		"0.0.0.0",
-		
+
 		// 既知の悪意のあるドメイン（例）
 		"malware.com",
 		"phishing.net",
 		"suspicious.org",
 		"badactor.io",
-		
+
 		// テスト・開発ドメイン
 		"test.local",
 		"dev.internal",
 		"staging.private",
-		
+
 		// 一般的な危険パターン
-		"bit.do",      // 短縮URL（セキュリティリスク）
+		"bit.do",       // 短縮URL（セキュリティリスク）
 		"grabify.link", // IPロガー
 		"iplogger.org", // IPロガー
 	}
@@ -123,7 +123,7 @@ func (dv *DomainValidator) initializeWhitelist() {
 		"rss.cnn.com",
 		"feeds.reuters.com",
 		"feeds.feedburner.com",
-		
+
 		// 技術サイト
 		"github.com",
 		"qiita.com",
@@ -131,12 +131,12 @@ func (dv *DomainValidator) initializeWhitelist() {
 		"wired.com",
 		"techcrunch.com",
 		"hacker-news.firebaseio.com",
-		
+
 		// ブログプラットフォーム
 		"medium.com",
 		"dev.to",
 		"hashnode.com",
-		
+
 		// テストドメイン（開発用）
 		"httpbin.org",
 		"jsonplaceholder.typicode.com",
@@ -158,7 +158,7 @@ func (dv *DomainValidator) validateDomainFormat(domain string) error {
 	// RFC 1035 準拠のドメイン形式検証（簡易版）
 	// 完全な実装ではないが、基本的な攻撃を防ぐには十分
 	domainRegex := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$`)
-	
+
 	if !domainRegex.MatchString(domain) {
 		return fmt.Errorf("invalid domain format: %s", domain)
 	}
@@ -195,27 +195,27 @@ func (dv *DomainValidator) checkDangerousPatterns(domain string) error {
 		{".test", "test domain"},
 		{".example", "example domain"},
 		{".invalid", "invalid domain"},
-		
+
 		// セキュリティ脅威
 		{"malware", "malware-related"},
 		{"phishing", "phishing-related"},
 		{"suspicious", "suspicious activity"},
 		{"badactor", "known bad actor"},
 		{"c2server", "command and control"},
-		
+
 		// 一般的な攻撃パターン
 		{"admin", "administrative interface"},
 		{"login", "login interface"},
 		{"secure", "fake security"},
 		{"bank", "banking impersonation"},
 		{"paypal", "payment impersonation"},
-		
+
 		// URL短縮・リダイレクト
 		{"bit.ly", "URL shortener"},
 		{"tinyurl", "URL shortener"},
 		{"t.co", "URL shortener"},
 		{"goo.gl", "URL shortener"},
-		
+
 		// 一時・使い捨てサービス
 		{"temp", "temporary service"},
 		{"disposable", "disposable service"},
@@ -284,7 +284,7 @@ func (dv *DomainValidator) isIPAddress(domain string) bool {
 // isExcessiveSubdomains checks for suspicious subdomain depth
 func (dv *DomainValidator) isExcessiveSubdomains(domain string) bool {
 	parts := strings.Split(domain, ".")
-	
+
 	// 5つ以上のサブドメインは疑わしい（例: a.b.c.d.e.com）
 	if len(parts) > 5 {
 		dv.logger.Printf("[DomainValidator] ⚠️  Excessive subdomains detected: %s (%d levels)", domain, len(parts))
@@ -297,7 +297,7 @@ func (dv *DomainValidator) isExcessiveSubdomains(domain string) bool {
 // isBlacklisted checks if domain is in blacklist
 func (dv *DomainValidator) isBlacklisted(domain string) bool {
 	lowerDomain := strings.ToLower(domain)
-	
+
 	// 完全一致チェック
 	if dv.blacklist[lowerDomain] {
 		return true
@@ -318,7 +318,7 @@ func (dv *DomainValidator) isBlacklisted(domain string) bool {
 // isWhitelisted checks if domain is in whitelist
 func (dv *DomainValidator) isWhitelisted(domain string) bool {
 	lowerDomain := strings.ToLower(domain)
-	
+
 	// 完全一致チェック
 	if dv.whitelist[lowerDomain] {
 		return true

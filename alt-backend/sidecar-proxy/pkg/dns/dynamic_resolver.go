@@ -17,19 +17,19 @@ import (
 type DynamicResolver struct {
 	// Static domain patterns from configuration
 	staticDomains []*regexp.Regexp
-	
+
 	// Dynamic learned domains (on-memory cache)
 	learnedDomains map[string]*LearnedDomain
 	learnedMutex   sync.RWMutex
-	
+
 	// DNS resolution cache
 	dnsCache      map[string]*DNSEntry
 	dnsCacheMutex sync.RWMutex
-	
+
 	// Configuration
-	dnsServers       []string
-	cacheTimeout     time.Duration
-	maxCacheEntries  int
+	dnsServers        []string
+	cacheTimeout      time.Duration
+	maxCacheEntries   int
 	maxLearnedDomains int
 }
 
@@ -43,10 +43,10 @@ type LearnedDomain struct {
 
 // DNSEntry represents a cached DNS resolution result
 type DNSEntry struct {
-	Domain    string    `json:"domain"`
-	IPs       []string  `json:"ips"`
-	ResolvedAt time.Time `json:"resolved_at"`
-	TTL       time.Duration `json:"ttl"`
+	Domain     string        `json:"domain"`
+	IPs        []string      `json:"ips"`
+	ResolvedAt time.Time     `json:"resolved_at"`
+	TTL        time.Duration `json:"ttl"`
 }
 
 // NewDynamicResolver creates a new dynamic DNS resolver
@@ -71,24 +71,24 @@ func (dr *DynamicResolver) IsDomainAllowed(domain string) (allowed bool, learned
 			return true, false
 		}
 	}
-	
+
 	// 2. Check learned domains
 	dr.learnedMutex.RLock()
 	_, exists := dr.learnedDomains[domain]
 	dr.learnedMutex.RUnlock()
-	
+
 	if exists {
 		// Update last seen time
 		dr.updateLearnedDomain(domain)
 		return true, false
 	}
-	
+
 	// 3. Dynamic learning: Check if domain should be auto-learned
 	if dr.shouldLearnDomain(domain) {
 		dr.addLearnedDomain(domain)
 		return true, true
 	}
-	
+
 	return false, false
 }
 
@@ -99,12 +99,12 @@ func (dr *DynamicResolver) shouldLearnDomain(domain string) bool {
 	if len(domain) == 0 || len(domain) > 253 {
 		return false
 	}
-	
+
 	// Must contain at least one dot
 	if !strings.Contains(domain, ".") {
 		return false
 	}
-	
+
 	// Check for known safe TLDs and patterns
 	safeTLDs := []string{".com", ".org", ".net", ".ai", ".co", ".dev", ".io"}
 	for _, tld := range safeTLDs {
@@ -112,7 +112,7 @@ func (dr *DynamicResolver) shouldLearnDomain(domain string) bool {
 			return true
 		}
 	}
-	
+
 	// Check for known safe patterns (RSS feeds, API endpoints)
 	safePatterns := []string{
 		"feeds.", "api.", "registry.", "cdn.", "static.", "assets.",
@@ -122,7 +122,7 @@ func (dr *DynamicResolver) shouldLearnDomain(domain string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -130,13 +130,13 @@ func (dr *DynamicResolver) shouldLearnDomain(domain string) bool {
 func (dr *DynamicResolver) addLearnedDomain(domain string) {
 	dr.learnedMutex.Lock()
 	defer dr.learnedMutex.Unlock()
-	
+
 	// Check if we're at capacity
 	if len(dr.learnedDomains) >= dr.maxLearnedDomains {
 		// Remove oldest domain
 		dr.evictOldestLearnedDomain()
 	}
-	
+
 	now := time.Now()
 	dr.learnedDomains[domain] = &LearnedDomain{
 		Domain:    domain,
@@ -150,7 +150,7 @@ func (dr *DynamicResolver) addLearnedDomain(domain string) {
 func (dr *DynamicResolver) updateLearnedDomain(domain string) {
 	dr.learnedMutex.Lock()
 	defer dr.learnedMutex.Unlock()
-	
+
 	if entry, exists := dr.learnedDomains[domain]; exists {
 		entry.LastSeen = time.Now()
 		entry.UseCount++
@@ -161,14 +161,14 @@ func (dr *DynamicResolver) updateLearnedDomain(domain string) {
 func (dr *DynamicResolver) evictOldestLearnedDomain() {
 	var oldestDomain string
 	var oldestTime time.Time = time.Now()
-	
+
 	for domain, entry := range dr.learnedDomains {
 		if entry.LastSeen.Before(oldestTime) {
 			oldestTime = entry.LastSeen
 			oldestDomain = domain
 		}
 	}
-	
+
 	if oldestDomain != "" {
 		delete(dr.learnedDomains, oldestDomain)
 	}
@@ -186,38 +186,38 @@ func (dr *DynamicResolver) PreResolveDomain(domain string) error {
 		}
 	}
 	dr.dnsCacheMutex.RUnlock()
-	
+
 	// Perform DNS resolution
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	ips, err := net.DefaultResolver.LookupIPAddr(ctx, domain)
 	if err != nil {
 		return fmt.Errorf("DNS resolution failed for %s: %w", domain, err)
 	}
-	
+
 	// Convert to string slice
 	ipStrings := make([]string, len(ips))
 	for i, ip := range ips {
 		ipStrings[i] = ip.IP.String()
 	}
-	
+
 	// Cache the result
 	dr.dnsCacheMutex.Lock()
 	defer dr.dnsCacheMutex.Unlock()
-	
+
 	// Check if we're at capacity
 	if len(dr.dnsCache) >= dr.maxCacheEntries {
 		dr.evictOldestDNSEntry()
 	}
-	
+
 	dr.dnsCache[domain] = &DNSEntry{
 		Domain:     domain,
 		IPs:        ipStrings,
 		ResolvedAt: time.Now(),
 		TTL:        dr.cacheTimeout,
 	}
-	
+
 	return nil
 }
 
@@ -225,14 +225,14 @@ func (dr *DynamicResolver) PreResolveDomain(domain string) error {
 func (dr *DynamicResolver) evictOldestDNSEntry() {
 	var oldestDomain string
 	var oldestTime time.Time = time.Now()
-	
+
 	for domain, entry := range dr.dnsCache {
 		if entry.ResolvedAt.Before(oldestTime) {
 			oldestTime = entry.ResolvedAt
 			oldestDomain = domain
 		}
 	}
-	
+
 	if oldestDomain != "" {
 		delete(dr.dnsCache, oldestDomain)
 	}
@@ -242,7 +242,7 @@ func (dr *DynamicResolver) evictOldestDNSEntry() {
 func (dr *DynamicResolver) GetLearnedDomains() map[string]*LearnedDomain {
 	dr.learnedMutex.RLock()
 	defer dr.learnedMutex.RUnlock()
-	
+
 	result := make(map[string]*LearnedDomain)
 	for k, v := range dr.learnedDomains {
 		result[k] = &LearnedDomain{
@@ -259,12 +259,12 @@ func (dr *DynamicResolver) GetLearnedDomains() map[string]*LearnedDomain {
 func (dr *DynamicResolver) GetDNSCacheStats() map[string]interface{} {
 	dr.dnsCacheMutex.RLock()
 	defer dr.dnsCacheMutex.RUnlock()
-	
+
 	return map[string]interface{}{
-		"cache_size":     len(dr.dnsCache),
-		"max_entries":    dr.maxCacheEntries,
-		"cache_timeout":  dr.cacheTimeout.String(),
-		"learned_count":  len(dr.learnedDomains),
-		"max_learned":    dr.maxLearnedDomains,
+		"cache_size":    len(dr.dnsCache),
+		"max_entries":   dr.maxCacheEntries,
+		"cache_timeout": dr.cacheTimeout.String(),
+		"learned_count": len(dr.learnedDomains),
+		"max_learned":   dr.maxLearnedDomains,
 	}
 }

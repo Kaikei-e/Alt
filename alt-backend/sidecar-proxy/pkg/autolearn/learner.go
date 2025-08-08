@@ -11,35 +11,34 @@ import (
 
 // LearnedDomain represents an auto-learned domain entry
 type LearnedDomain struct {
-	Domain        string    `csv:"domain" json:"domain"`
-	SourceURL     string    `csv:"source_url" json:"source_url"`
-	LearnedAt     time.Time `csv:"learned_at" json:"learned_at"`
-	FirstAccess   time.Time `csv:"first_access" json:"first_access"`
-	LastAccess    time.Time `csv:"last_access" json:"last_access"`
-	AccessCount   int64     `csv:"access_count" json:"access_count"`
-	Status        string    `csv:"status" json:"status"`         // "active", "blocked", "pending"
-	LearningType  string    `csv:"learning_type" json:"learning_type"` // "auto", "manual"
-	RiskLevel     string    `csv:"risk_level" json:"risk_level"`       // "low", "medium", "high"
+	Domain       string    `csv:"domain" json:"domain"`
+	SourceURL    string    `csv:"source_url" json:"source_url"`
+	LearnedAt    time.Time `csv:"learned_at" json:"learned_at"`
+	FirstAccess  time.Time `csv:"first_access" json:"first_access"`
+	LastAccess   time.Time `csv:"last_access" json:"last_access"`
+	AccessCount  int64     `csv:"access_count" json:"access_count"`
+	Status       string    `csv:"status" json:"status"`               // "active", "blocked", "pending"
+	LearningType string    `csv:"learning_type" json:"learning_type"` // "auto", "manual"
+	RiskLevel    string    `csv:"risk_level" json:"risk_level"`       // "low", "medium", "high"
 }
-
 
 // AutoLearner handles transparent domain learning
 type AutoLearner struct {
-	domains       map[string]*LearnedDomain  // 学習済みドメインキャッシュ（オンメモリのみ）
-	mutex         sync.RWMutex               // 並行安全性
-	validator     *DomainValidator           // セキュリティ検証
-	rateLimiter   *RateLimiter              // 学習レート制限
-	logger        *log.Logger                // 学習ログ
-	config        *Config                    // 設定
+	domains     map[string]*LearnedDomain // 学習済みドメインキャッシュ（オンメモリのみ）
+	mutex       sync.RWMutex              // 並行安全性
+	validator   *DomainValidator          // セキュリティ検証
+	rateLimiter *RateLimiter              // 学習レート制限
+	logger      *log.Logger               // 学習ログ
+	config      *Config                   // 設定
 }
 
 // Config holds configuration for auto-learner
 type Config struct {
-	MaxDomains        int
-	LearningEnabled   bool
-	SecurityLevel     string // "strict", "moderate", "permissive"
-	RateLimitPerHour  int
-	CooldownMinutes   int
+	MaxDomains       int
+	LearningEnabled  bool
+	SecurityLevel    string // "strict", "moderate", "permissive"
+	RateLimitPerHour int
+	CooldownMinutes  int
 }
 
 // NewAutoLearner creates a new auto-learning engine with in-memory storage
@@ -135,7 +134,7 @@ func (al *AutoLearner) LearnDomain(domain, sourceURL, traceID string) error {
 	al.domains[domain] = learned
 
 	// 7. Log learning event
-	al.logger.Printf("[AutoLearner][%s] 🧠 In-memory learned new domain: %s from %s (risk: %s)", 
+	al.logger.Printf("[AutoLearner][%s] 🧠 In-memory learned new domain: %s from %s (risk: %s)",
 		traceID, domain, sourceURL, riskLevel)
 	al.logSecurityEvent("DOMAIN_LEARNED", domain, fmt.Sprintf("Auto-learned from %s", sourceURL), traceID)
 
@@ -211,7 +210,6 @@ func (al *AutoLearner) updateAccessStats(domain string) {
 	}
 }
 
-
 // GetLearnedDomains returns all learned domains
 func (al *AutoLearner) GetLearnedDomains() []*LearnedDomain {
 	al.mutex.RLock()
@@ -236,7 +234,7 @@ func (al *AutoLearner) BlockDomain(domain, reason, traceID string) error {
 		entry.Status = "blocked"
 		al.logger.Printf("[AutoLearner][%s] 🚫 Blocked domain: %s (reason: %s)", traceID, domain, reason)
 		al.logSecurityEvent("DOMAIN_BLOCKED", domain, reason, traceID)
-		
+
 		return nil
 	}
 

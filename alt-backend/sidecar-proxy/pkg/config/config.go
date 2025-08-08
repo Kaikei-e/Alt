@@ -17,12 +17,12 @@ import (
 // and operational parameters as specified in ISSUE_RESOLVE_PLAN.md
 type ProxyConfig struct {
 	// Server Configuration
-	ListenPort      string        `json:"listen_port"`
-	RequestTimeout  time.Duration `json:"request_timeout"`
-	ReadTimeout     time.Duration `json:"read_timeout"`
-	WriteTimeout    time.Duration `json:"write_timeout"`
-	IdleTimeout     time.Duration `json:"idle_timeout"`
-	MaxRetries      int           `json:"max_retries"`
+	ListenPort     string        `json:"listen_port"`
+	RequestTimeout time.Duration `json:"request_timeout"`
+	ReadTimeout    time.Duration `json:"read_timeout"`
+	WriteTimeout   time.Duration `json:"write_timeout"`
+	IdleTimeout    time.Duration `json:"idle_timeout"`
+	MaxRetries     int           `json:"max_retries"`
 
 	// Envoy Integration
 	EnvoyUpstream     string        `json:"envoy_upstream"`
@@ -30,42 +30,42 @@ type ProxyConfig struct {
 	EnvoyMaxConns     int           `json:"envoy_max_conns"`
 	EnvoyMaxIdleConns int           `json:"envoy_max_idle_conns"`
 
-	// DNS Configuration  
+	// DNS Configuration
 	DNSServers         []string      `json:"dns_servers"`
 	DNSTimeout         time.Duration `json:"dns_timeout"`
 	DNSCacheTimeout    time.Duration `json:"dns_cache_timeout"`
 	DNSMaxCacheEntries int           `json:"dns_max_cache_entries"`
 
 	// Security Configuration
-	AllowedDomains     []*regexp.Regexp `json:"-"` // Not serializable due to regexp
-	AllowedDomainsRaw  []string         `json:"allowed_domains_raw"`
-	MaxRequestSize     int64            `json:"max_request_size"`
-	HeaderTimeoutSec   int              `json:"header_timeout_sec"`
+	AllowedDomains    []*regexp.Regexp `json:"-"` // Not serializable due to regexp
+	AllowedDomainsRaw []string         `json:"allowed_domains_raw"`
+	MaxRequestSize    int64            `json:"max_request_size"`
+	HeaderTimeoutSec  int              `json:"header_timeout_sec"`
 
 	// Monitoring Configuration
-	MetricsEnabled  bool   `json:"metrics_enabled"`
-	MetricsPort     string `json:"metrics_port"`
-	HealthPort      string `json:"health_port"`
-	LogLevel        string `json:"log_level"`
-	LogFormat       string `json:"log_format"`
-	StructuredLogs  bool   `json:"structured_logs"`
+	MetricsEnabled bool   `json:"metrics_enabled"`
+	MetricsPort    string `json:"metrics_port"`
+	HealthPort     string `json:"health_port"`
+	LogLevel       string `json:"log_level"`
+	LogFormat      string `json:"log_format"`
+	StructuredLogs bool   `json:"structured_logs"`
 
-	// Performance Configuration  
-	WorkerPoolSize     int `json:"worker_pool_size"`
-	
+	// Performance Configuration
+	WorkerPoolSize int `json:"worker_pool_size"`
+
 	// CONNECT Tunneling Configuration
 	CONNECTTimeout     time.Duration `json:"connect_timeout"`
 	CONNECTMaxConns    int           `json:"connect_max_conns"`
 	CONNECTIdleTimeout time.Duration `json:"connect_idle_timeout"`
 	EnableCONNECT      bool          `json:"enable_connect"`
-	BufferSize         int `json:"buffer_size"`
-	MaxConcurrentReqs  int `json:"max_concurrent_reqs"`
+	BufferSize         int           `json:"buffer_size"`
+	MaxConcurrentReqs  int           `json:"max_concurrent_reqs"`
 
 	// Development/Debug Configuration
-	DebugMode       bool   `json:"debug_mode"`
-	DryRunMode      bool   `json:"dry_run_mode"`
-	VerboseLogging  bool   `json:"verbose_logging"`
-	TraceHeaders    bool   `json:"trace_headers"`
+	DebugMode      bool `json:"debug_mode"`
+	DryRunMode     bool `json:"dry_run_mode"`
+	VerboseLogging bool `json:"verbose_logging"`
+	TraceHeaders   bool `json:"trace_headers"`
 }
 
 // LoadConfig loads configuration from environment variables with sensible defaults
@@ -96,7 +96,7 @@ func LoadConfig() (*ProxyConfig, error) {
 		MaxRequestSize:   getInt64OrDefault("MAX_REQUEST_SIZE", 10*1024*1024), // 10MB
 		HeaderTimeoutSec: getIntOrDefault("HEADER_TIMEOUT_SEC", 10),
 
-		// Monitoring defaults  
+		// Monitoring defaults
 		MetricsEnabled: getBoolOrDefault("METRICS_ENABLED", true),
 		MetricsPort:    getEnvOrDefault("METRICS_PORT", "9090"),
 		HealthPort:     getEnvOrDefault("HEALTH_PORT", "8081"),
@@ -108,7 +108,7 @@ func LoadConfig() (*ProxyConfig, error) {
 		WorkerPoolSize:    getIntOrDefault("WORKER_POOL_SIZE", 10),
 		BufferSize:        getIntOrDefault("BUFFER_SIZE", 4096),
 		MaxConcurrentReqs: getIntOrDefault("MAX_CONCURRENT_REQS", 100),
-		
+
 		// CONNECT Tunneling defaults
 		CONNECTTimeout:     getDurationOrDefault("CONNECT_TIMEOUT", 30*time.Second),
 		CONNECTMaxConns:    getIntOrDefault("CONNECT_MAX_CONNS", 10),
@@ -138,9 +138,9 @@ func LoadConfig() (*ProxyConfig, error) {
 // parseAllowedDomains processes the ALLOWED_DOMAINS environment variable
 // and compiles regex patterns for domain matching as specified in the plan
 func (c *ProxyConfig) parseAllowedDomains() error {
-	allowedDomainsStr := getEnvOrDefault("ALLOWED_DOMAINS", 
+	allowedDomainsStr := getEnvOrDefault("ALLOWED_DOMAINS",
 		"feeds\\.bbci\\.co\\.uk,zenn\\.dev,github\\.com,feeds\\.feedburner\\.com,rss\\.cnn\\.com,qiita\\.com,feeds\\.reuters\\.com,httpbin\\.org")
-	
+
 	c.AllowedDomainsRaw = strings.Split(allowedDomainsStr, ",")
 	c.AllowedDomains = make([]*regexp.Regexp, 0, len(c.AllowedDomainsRaw))
 
@@ -275,7 +275,7 @@ func getDurationOrDefault(key string, defaultValue time.Duration) time.Duration 
 func parseDNSServers(serversStr string) []string {
 	servers := strings.Split(serversStr, ",")
 	result := make([]string, 0, len(servers))
-	
+
 	for _, server := range servers {
 		server = strings.TrimSpace(server)
 		if server != "" {
@@ -286,6 +286,6 @@ func parseDNSServers(serversStr string) []string {
 			result = append(result, server)
 		}
 	}
-	
+
 	return result
 }

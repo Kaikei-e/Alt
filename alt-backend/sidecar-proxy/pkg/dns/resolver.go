@@ -18,22 +18,22 @@ import (
 type ExternalDNSResolver struct {
 	// upstreamServers contains the list of external DNS servers to use
 	upstreamServers []string
-	
+
 	// cache stores DNS resolution results with TTL-based expiration
 	cache map[string]*CachedRecord
-	
+
 	// cacheMutex protects concurrent access to the cache
 	cacheMutex sync.RWMutex
-	
+
 	// cacheTTL defines how long DNS records are cached
 	cacheTTL time.Duration
-	
+
 	// timeout for individual DNS queries
 	timeout time.Duration
-	
+
 	// maxCacheEntries limits cache size to prevent memory exhaustion
 	maxCacheEntries int
-	
+
 	// client for DNS queries
 	client *dns.Client
 }
@@ -48,13 +48,13 @@ type CachedRecord struct {
 
 // DNSMetrics tracks DNS resolution performance and statistics
 type DNSMetrics struct {
-	TotalQueries    int64         `json:"total_queries"`
-	CacheHits       int64         `json:"cache_hits"`
-	CacheMisses     int64         `json:"cache_misses"`
-	Failures        int64         `json:"failures"`
-	AverageLatency  time.Duration `json:"average_latency"`
-	LastQueryTime   time.Time     `json:"last_query_time"`
-	CacheSize       int           `json:"cache_size"`
+	TotalQueries   int64         `json:"total_queries"`
+	CacheHits      int64         `json:"cache_hits"`
+	CacheMisses    int64         `json:"cache_misses"`
+	Failures       int64         `json:"failures"`
+	AverageLatency time.Duration `json:"average_latency"`
+	LastQueryTime  time.Time     `json:"last_query_time"`
+	CacheSize      int           `json:"cache_size"`
 }
 
 // NewExternalDNSResolver creates a new DNS resolver with external server configuration
@@ -175,7 +175,7 @@ func (r *ExternalDNSResolver) cacheResult(domain string, ips []net.IP) {
 	// Check cache size limit and clean up if necessary
 	if len(r.cache) >= r.maxCacheEntries {
 		r.cleanupExpiredEntries()
-		
+
 		// If still over limit, remove oldest entries
 		if len(r.cache) >= r.maxCacheEntries {
 			r.removeOldestEntries(r.maxCacheEntries / 4) // Remove 25% of entries
@@ -270,7 +270,7 @@ func (r *ExternalDNSResolver) ResolveBatch(ctx context.Context, domains []string
 
 	results := make(map[string][]net.IP)
 	errors := make(map[string]error)
-	
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
@@ -279,9 +279,9 @@ func (r *ExternalDNSResolver) ResolveBatch(ctx context.Context, domains []string
 		wg.Add(1)
 		go func(d string) {
 			defer wg.Done()
-			
+
 			ips, err := r.ResolveExternal(ctx, d)
-			
+
 			mu.Lock()
 			if err != nil {
 				errors[d] = err

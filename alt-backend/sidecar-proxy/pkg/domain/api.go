@@ -113,7 +113,7 @@ func (h *APIHandler) handleAddDomain(w http.ResponseWriter, r *http.Request) {
 
 	// Log successful operation
 	clientIP := getClientIP(r)
-	h.logger.Printf("[DomainAPI] Domain added successfully: %s (source: %s, client: %s)", 
+	h.logger.Printf("[DomainAPI] Domain added successfully: %s (source: %s, client: %s)",
 		req.Domain, req.Source, clientIP)
 
 	// Return success response
