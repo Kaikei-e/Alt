@@ -47,10 +47,22 @@ interface MenuItem {
 export const FloatingMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isPrefetched, setIsPrefetched] = useState(false);
+  // Track which accordion section is expanded
+  const [activeCategory, setActiveCategory] = useState<number | null>(0);
   const pathname = usePathname();
 
   const handleCloseMenu = useCallback(() => {
     setIsOpen(false);
+  }, []);
+
+  // Handle accordion state changes
+  const handleAccordionChange = useCallback((index: number | number[]) => {
+    const newIndex = Array.isArray(index) ? index[0] : index;
+    if (newIndex === -1 || typeof newIndex === "undefined") {
+      setActiveCategory(null);
+    } else {
+      setActiveCategory(newIndex);
+    }
   }, []);
 
   // Handle keyboard interactions
@@ -333,7 +345,11 @@ export const FloatingMenu = () => {
               </Drawer.Header>
 
               <Drawer.Body px={6} py={4}>
-                <Accordion allowToggle defaultIndex={0}>
+                <Accordion
+                  allowToggle
+                  index={activeCategory === null ? undefined : activeCategory}
+                  onChange={handleAccordionChange}
+                >
                   {categories.map((cat, idx) => (
                     <AccordionItem key={idx} border="none" mb={4}>
                       {({ isExpanded }) => (
