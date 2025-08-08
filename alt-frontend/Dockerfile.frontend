@@ -36,6 +36,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
   PORT=3000 \
+  HOSTNAME=0.0.0.0 \
   NEXT_TELEMETRY_DISABLED=1
 
 # 必要最小ファイルをコピー（standalone 方式）
@@ -50,9 +51,9 @@ USER nextjs
 
 EXPOSE 3000
 
-# /v1/health が JSON {"status":"ok"} を返す想定
+# /api/health が JSON {"status":"ok"} を返す想定（REPORT.md修正対応）
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD wget -qO- http://localhost:${PORT}/v1/health \
+  CMD wget -qO- http://localhost:${PORT}/api/health \
   | grep -q '"status":"ok"' || exit 1
 
 # Next.js standalone エントリ
