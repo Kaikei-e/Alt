@@ -52,7 +52,7 @@ func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error
 			Name string `json:"name"`
 		} `json:"models"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		s.logger.Error("failed to decode health response", "error", err)
 		return fmt.Errorf("failed to decode health response: %w", err)

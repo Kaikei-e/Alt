@@ -80,7 +80,7 @@ func main() {
 	)
 
 	healthCheckerService := service.NewHealthCheckerService(
-		cfg.NewsCreator.Host,  // 設定から正しいURLを使用
+		cfg.NewsCreator.Host, // 設定から正しいURLを使用
 		logger.Logger,
 	)
 
