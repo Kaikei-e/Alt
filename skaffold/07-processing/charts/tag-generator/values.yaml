@@ -26,7 +26,7 @@ env:
   DB_PORT: "5432"
   DB_SSL_MODE: "require"
   LOG_LEVEL: "info"
-  DB_TAG_GENERATOR_USER: "tag_generator_user"
+  TAG_GENERATOR_DB_USER: "tag_generator_user"
   SERVICE_NAME: "tag-generator"
   MODEL_PATH: "/app/models"
   MODEL_NAME: "gemma:2b"
@@ -42,12 +42,12 @@ secret:
   create: true
   name: tag-generator-secrets
   data:
-    DB_TAG_GENERATOR_PASSWORD: "devpassword123"  # Change in production
+    TAG_GENERATOR_DB_PASSWORD: "devpassword123"  # Change in production
 
 envFromSecret:
   name: tag-generator-secrets
   keys:
-    - DB_TAG_GENERATOR_PASSWORD
+    - TAG_GENERATOR_DB_PASSWORD
 
 serviceAccount:
   create: true

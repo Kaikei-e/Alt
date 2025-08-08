@@ -123,11 +123,11 @@ data:
 
             # リクエストID: 分散トレーシング対応
             add_header X-Request-ID $request_id always;
-            
+
             # REPORT.md対応: Pod特定用ヘッダ追加
             add_header X-Alt-Pod $hostname always;
             add_header X-Alt-Build $upstream_http_x_next_build_id always;
-            # REPORT.md最新版: 詳細デバッグヘッダ追加  
+            # REPORT.md最新版: 詳細デバッグヘッダ追加
             add_header X-Upstream-Addr $upstream_addr always;
             add_header X-Upstream-Status $upstream_status always;
 
@@ -139,14 +139,14 @@ data:
                 proxy_hide_header Content-Type;
                 add_header Content-Type "application/javascript; charset=utf-8" always;
                 add_header Cache-Control "public, max-age=31536000, immutable" always;
-                
+
                 # 基本プロキシヘッダ
                 proxy_set_header Host $host;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 proxy_set_header X-Forwarded-Proto $scheme;
                 proxy_http_version 1.1;
                 proxy_set_header Connection "";
-                
+
                 # タイムアウト
                 proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
                 proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
@@ -159,14 +159,14 @@ data:
                 proxy_hide_header Content-Type;
                 add_header Content-Type "text/css; charset=utf-8" always;
                 add_header Cache-Control "public, max-age=31536000, immutable" always;
-                
+
                 # 基本プロキシヘッダ
                 proxy_set_header Host $host;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 proxy_set_header X-Forwarded-Proto $scheme;
                 proxy_http_version 1.1;
                 proxy_set_header Connection "";
-                
+
                 # タイムアウト
                 proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
                 proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
@@ -176,22 +176,20 @@ data:
             # 上記以外の /_next/static/（画像など）
             location ^~ /_next/static/ {
                 proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
-                
+
                 # 基本プロキシヘッダ
                 proxy_set_header Host $host;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 proxy_set_header X-Forwarded-Proto $scheme;
                 proxy_http_version 1.1;
                 proxy_set_header Connection "";
-                
+
                 # タイムアウト
                 proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
                 proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
                 proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
             }
 
-
-            # 🚨 ULTRA CRITICAL FIX: API path rewriting - /api/v1/xxx → /v1/xxx (2025年Echo対応)
             location /api/ {
                 # 🚀 2025年ベストプラクティス: 変数ベースproxy_pass (動的DNS解決)
                 set $backend_upstream "alt-backend.alt-apps.svc.cluster.local:9000";
@@ -217,7 +215,7 @@ data:
                 proxy_set_header Connection "";
 
                 # API用レート制限: 緩和された制御
-                limit_req zone=api_limit burst=30 nodelay;  # Increased from 20
+                limit_req zone=api_limit burst=300 nodelay;
                 limit_conn addr 20;  # Increased from 10
 
                 # API用バッファリング設定
@@ -265,7 +263,7 @@ data:
                 add_header X-CSP-Report-Handler "nginx-external-2025" always;
             }
 
-            # REPORT.md C: 504対策 - タイムアウト延長＋GETリトライ
+
             location / {
                 # 簡素化proxy_pass（変数なし）
                 proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
@@ -363,7 +361,7 @@ data:
             # deny all;
 
             # Rate limiting for proxy requests
-            limit_req zone=proxy_requests burst=20 nodelay;
+            limit_req zone=proxy_requests burst=2000 nodelay;
             limit_conn addr 10;
 
             # Health check for proxy functionality (must come before catch-all)
@@ -451,7 +449,6 @@ data:
             }
         }
 
-        # ULTRATHINK ROOT FIX: Egress Gateway for RSS Feeds (Zero Trust Architecture)
         server {
             listen 8889;
             server_name egress.nginx-external.internal;
@@ -461,10 +458,6 @@ data:
             allow 172.16.0.0/12;     # Service CIDR
             allow 192.168.0.0/16;    # Additional internal networks
             deny all;
-
-            # Rate limiting for RSS egress requests
-            limit_req zone=proxy_requests burst=20 nodelay;
-            limit_conn addr 10;
 
             # Security headers for egress gateway
             add_header X-Frame-Options "DENY" always;

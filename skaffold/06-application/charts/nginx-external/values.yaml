@@ -228,7 +228,7 @@ nginx:
   # 恒久修正: Web研究結果に基づく504エラー対策タイムアウト設定 (2025年ベストプラクティス)
   timeouts:
     proxyConnect: "60s"    # Web研究推奨: upstream connection establishment timeout
-    proxySend: "60s"       # Web研究推奨: request sending timeout 
+    proxySend: "60s"       # Web研究推奨: request sending timeout
     proxyRead: "60s"       # Web研究推奨: response reading timeout
     clientHeaderTimeout: "15s"
     clientBodyTimeout: "30s"
@@ -351,7 +351,7 @@ servers:
           proxy_set_header Connection "";
           proxy_buffering on;
           proxy_pass_header Cache-Control;
-          
+
           # 汎用エラーハンドリング
           proxy_intercept_errors off;
           proxy_next_upstream error timeout http_502 http_503 http_504;
@@ -374,14 +374,14 @@ servers:
         extraConfig: |
           # REPORT.md根本修正: /api/v1/* → /v1/* パス変換
           rewrite ^/api/(.*)$ /$1 break;
-          
-          # Stricter rate limiting for API  
-          limit_req zone=api burst=20 nodelay;
+
+          # Stricter rate limiting for API
+          limit_req zone=api burst=2000 nodelay;
           limit_conn addr 20;
 
           # REPORT.md推奨: 最適化されたproxy設定
           proxy_connect_timeout 3s;
-          proxy_send_timeout    30s; 
+          proxy_send_timeout    30s;
           proxy_read_timeout    60s;
           proxy_buffering       on;
           proxy_busy_buffers_size 64k;

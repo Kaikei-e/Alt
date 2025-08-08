@@ -81,7 +81,7 @@ strategy:
 # 恒久対応: 504エラー防止のため厳密なProbe設定
 startupProbe:
   httpGet:
-    path: /v1/health
+    path: /api/health
     port: 3000
   initialDelaySeconds: 0
   periodSeconds: 5
@@ -91,7 +91,7 @@ startupProbe:
 
 readinessProbe:
   httpGet:
-    path: /v1/health
+    path: /api/health
     port: 3000
   initialDelaySeconds: 0
   periodSeconds: 5  # より頻繁にチェック
@@ -101,7 +101,7 @@ readinessProbe:
 
 livenessProbe:
   httpGet:
-    path: /v1/health
+    path: /api/health
     port: 3000
   initialDelaySeconds: 30
   periodSeconds: 30

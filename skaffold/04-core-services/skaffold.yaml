@@ -75,6 +75,8 @@ profiles:
               env.SIDECAR_PROXY_ENABLED: "false"
               env.ENVOY_PROXY_URL: "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
               env.NGINX_PROXY_ENABLED: "false"
+              # Phase 2.2: Update to use independent sidecar-proxy service
+              env.SIDECAR_PROXY_URL: "http://sidecar-proxy.alt-apps.svc.cluster.local:8085"
               # ConfigMap checksum強制更新
               forceUpdate: true
             version: 0.1.0

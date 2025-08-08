@@ -45,7 +45,7 @@ data:
     DROP TABLE IF EXISTS feed_links;
 
   000003_add_unique_constraint_feeds_link.up.sql: |
-    DO $$ 
+    DO $$
     BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_feeds_link') THEN
             ALTER TABLE feeds ADD CONSTRAINT unique_feeds_link UNIQUE (link);
@@ -100,7 +100,7 @@ data:
 
   000008_create_preprocessor_user.up.sql: |
     -- Create pre_processor_user if it doesn't exist
-    DO $$ 
+    DO $$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'pre_processor_user') THEN
             CREATE USER pre_processor_user WITH PASSWORD 'pre_processor_password';
@@ -284,7 +284,7 @@ data:
 
   000027_create_tag_generator_user.up.sql: |
     -- Create tag_generator_user if it doesn't exist
-    DO $$ 
+    DO $$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'tag_generator_user') THEN
             CREATE USER tag_generator_user WITH PASSWORD 'tag_generator_password';
@@ -317,8 +317,8 @@ data:
     ALTER TABLE article_tags DROP COLUMN IF EXISTS tag_type;
 
   000030_create_search_indexer_user.up.sql: |
-    -- Create search_indexer_user if it doesn't exist  
-    DO $$ 
+    -- Create search_indexer_user if it doesn't exist
+    DO $$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'search_indexer_user') THEN
             CREATE USER search_indexer_user WITH PASSWORD 'search_indexer_password';
@@ -361,7 +361,7 @@ data:
 
   000033_add_feed_id_to_articles.up.sql: |
     ALTER TABLE articles ADD COLUMN IF NOT EXISTS feed_id UUID;
-    DO $$ 
+    DO $$
     BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_articles_feed_id') THEN
             ALTER TABLE articles ADD CONSTRAINT fk_articles_feed_id FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE;
@@ -380,3 +380,23 @@ data:
 
   000034_update_tag_generator_permissions.down.sql: |
     REVOKE SELECT ON article_summaries FROM tag_generator_user;
+
+  000035_add_summary_japanese_column.up.sql: |
+    ALTER TABLE article_summaries ADD COLUMN IF NOT EXISTS summary_japanese TEXT;
+    CREATE INDEX IF NOT EXISTS idx_article_summaries_summary_japanese_gin_trgm ON article_summaries USING gin (summary_japanese gin_trgm_ops);
+
+  000035_add_summary_japanese_column.down.sql: |
+    DROP INDEX IF EXISTS idx_article_summaries_summary_japanese_gin_trgm;
+    ALTER TABLE article_summaries DROP COLUMN IF EXISTS summary_japanese;
+
+  000036_add_read_status_unique_constraint.up.sql: |
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_read_status_feed_user') THEN
+            ALTER TABLE read_status ADD CONSTRAINT unique_read_status_feed_user UNIQUE (feed_id, user_id);
+        END IF;
+    END
+    $$;
+
+  000036_add_read_status_unique_constraint.down.sql: |
+    ALTER TABLE read_status DROP CONSTRAINT IF EXISTS unique_read_status_feed_user;

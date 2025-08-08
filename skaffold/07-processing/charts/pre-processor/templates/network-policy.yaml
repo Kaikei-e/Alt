@@ -36,3 +36,43 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    
+    # 恒久修正: Allow news-creator access (internal services)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-processing
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: news-creator
+      ports:
+        - protocol: TCP
+          port: 11434
+    
+    # 恒久修正: Allow linkerd control plane access
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: linkerd
+      ports:
+        - protocol: TCP
+          port: 8080  # linkerd-identity
+        - protocol: TCP
+          port: 8086  # linkerd-destination
+        - protocol: TCP
+          port: 8090  # linkerd-policy
+    
+    # 恒久修正: Allow proxy chain access ONLY (プロキシチェーン強制)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-apps
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: envoy-proxy
+      ports:
+        - protocol: TCP
+          port: 8085  # proxy-sidecar port (カスタムGoプロキシ)
+    
+    # 恒久修正: Block all other external traffic (外部直接接続完全ブロック)
+    # 注意: `to: []` の wildcard egress rule は削除済み

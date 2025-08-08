@@ -1,7 +1,7 @@
 # Envoy Outbound Proxy Configuration
 # 専用RSS Egress Gateway
 
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: envoyproxy/envoy

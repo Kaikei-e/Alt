@@ -24,3 +24,226 @@ spec:
     ports:
     - protocol: TCP
       port: 5432 # PostgreSQLのデフォルトポート
+
+---
+
+# 恒久修正: Allow alt-processing pods to access alt-apps envoy-proxy (プロキシチェーン)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alt-processing-to-alt-apps-proxy
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/component: security
+    app.kubernetes.io/name: cross-namespace-proxy-access
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: egress-control
+    security.policy/layer: cross-namespace
+spec:
+  podSelector: {}  # Apply to all pods in alt-processing
+  policyTypes:
+  - Egress
+  egress:
+  # Allow access to envoy-proxy in alt-apps namespace (プロキシチェーン用)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: envoy-proxy
+    ports:
+    - protocol: TCP
+      port: 8085  # proxy-sidecar port (カスタムGoプロキシ)
+    - protocol: TCP
+      port: 8080  # envoy port (DFP)
+    - protocol: TCP
+      port: 9901  # admin port (診断用)
+
+---
+
+# 恒久修正: pre-processor外部接続を完全にプロキシ経由のみに制限
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pre-processor-proxy-only-external-access
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/component: security
+    app.kubernetes.io/name: proxy-enforcement
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: egress-control
+    security.policy/layer: proxy-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: pre-processor
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS (required for all operations)
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  
+  # Allow database access (internal services)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-database
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  # Allow news-creator access (internal services)  
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-processing
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: news-creator
+    ports:
+    - protocol: TCP
+      port: 11434
+  
+  # Allow linkerd control plane access
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: 8080  # linkerd-identity
+    - protocol: TCP
+      port: 8086  # linkerd-destination
+    - protocol: TCP
+      port: 8090  # linkerd-policy
+  
+  # Allow proxy chain access ONLY (external access blocked)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: envoy-proxy
+    ports:
+    - protocol: TCP
+      port: 8085  # proxy-sidecar port (プロキシチェーン強制)
+  
+  # Block all other external traffic (no wildcard 'to: []' for external IPs)
+
+---
+
+# 恒久修正: Allow alt-apps envoy-proxy to receive traffic from alt-processing (Ingress側)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alt-apps-proxy-from-alt-processing
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/component: security
+    app.kubernetes.io/name: cross-namespace-proxy-ingress
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: ingress-control
+    security.policy/layer: cross-namespace
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: envoy-proxy  # envoy-proxy podsのみに適用
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow traffic from alt-processing namespace (プロキシチェーン用)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-processing
+    ports:
+    - protocol: TCP
+      port: 8085  # proxy-sidecar port (カスタムGoプロキシ)
+    - protocol: TCP
+      port: 8080  # envoy port (DFP)
+    - protocol: TCP
+      port: 9901  # admin port (診断用)
+
+---
+
+# 恒久修正: pre-processor外部接続を完全にプロキシ経由のみに制限
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pre-processor-proxy-only-external-access
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/component: security
+    app.kubernetes.io/name: proxy-enforcement
+    app.kubernetes.io/part-of: defense-in-depth
+    security.policy/type: egress-control
+    security.policy/layer: proxy-enforcement
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: pre-processor
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS (required for all operations)
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  
+  # Allow database access (internal services)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-database
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  # Allow news-creator access (internal services)  
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-processing
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: news-creator
+    ports:
+    - protocol: TCP
+      port: 11434
+  
+  # Allow linkerd control plane access
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: 8080  # linkerd-identity
+    - protocol: TCP
+      port: 8086  # linkerd-destination
+    - protocol: TCP
+      port: 8090  # linkerd-policy
+  
+  # Allow proxy chain access ONLY (external access blocked)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: envoy-proxy
+    ports:
+    - protocol: TCP
+      port: 8085  # proxy-sidecar port (プロキシチェーン強制)
+  
+  # Block all other external traffic (no wildcard 'to: []' for external IPs)

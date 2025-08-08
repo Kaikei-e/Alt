@@ -15,6 +15,11 @@ spec:
     targetPort: {{ .Values.service.ports.admin.targetPort }}
     protocol: {{ .Values.service.ports.admin.protocol }}
     name: {{ .Values.service.ports.admin.name | default "admin" }}
+  # REPORT.md恒久対応: 明示プロキシポート（Ollama用HTTPS_PROXY）
+  - port: 8082
+    targetPort: 8081
+    protocol: TCP
+    name: explicit-proxy
   {{- if .Values.proxySidecar.enabled }}
   # 🎯 Proxy Sidecar Service Ports
   - port: {{ index .Values.service.ports "sidecar-proxy" "port" }}

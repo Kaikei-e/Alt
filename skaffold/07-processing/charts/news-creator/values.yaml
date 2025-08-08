@@ -31,9 +31,8 @@ env:
   OLLAMA_MAX_LOADED_MODELS: "1"
   OLLAMA_HOME: "/tmp/.ollama"
   HOME: "/tmp"
-  # Proxy-sidecar configuration for external model downloads
-  HTTP_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
-  HTTPS_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8085"
+  # CONFIRMED: Ollama DOES use CONNECT method via http.DefaultClient - explicit proxy required
+  HTTPS_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8082" # 明示プロキシでCONNECT対応
   NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local"
 
 # Secret configuration
