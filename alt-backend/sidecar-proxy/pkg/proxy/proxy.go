@@ -39,6 +39,9 @@ type LightweightProxy struct {
 	// 自動学習機能
 	autoLearner *autolearn.AutoLearner
 	
+	// オンメモリDNS管理: 動的ドメイン解決システム
+	dynamicDNS *dns.DynamicResolver
+	
 	// Request processing state
 	shutdownChan chan struct{}
 	ready        bool
@@ -137,6 +140,15 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize auto-learner: %w", err)
 	}
+	
+	// Initialize dynamic DNS resolver for on-memory domain management
+	// オンメモリDNS管理システムの初期化
+	dynamicDNS := dns.NewDynamicResolver(
+		cfg.AllowedDomains,  // Static domain patterns
+		cfg.DNSServers,      // DNS servers for resolution
+		cfg.DNSCacheTimeout, // Cache timeout
+		cfg.DNSMaxCacheEntries, // Max cache entries
+	)
 
 	proxy := &LightweightProxy{
 		config:       cfg,
@@ -145,6 +157,7 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 		logger:       logger,
 		metrics:      metricsCollector,
 		autoLearner:  autoLearner,
+		dynamicDNS:   dynamicDNS,
 		shutdownChan: make(chan struct{}),
 		ready:        false,
 	}
@@ -240,13 +253,8 @@ func (p *LightweightProxy) handleRawRequest(w http.ResponseWriter, r *http.Reque
 		return
 		
 	case r.Method == "CONNECT":
-		// CONNECTメソッド: /connect/パスへリダイレクト
-		if !p.config.EnableCONNECT {
-			p.logger.Printf("Security: CONNECT method disabled")
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		p.HandleCONNECTRedirect(w, r)
+		// オンメモリDNS管理: 動的ドメイン許可システム
+		p.HandleDynamicCONNECTRequest(w, r)
 		return
 	}
 	
@@ -810,8 +818,19 @@ func (p *LightweightProxy) HandleMetrics(w http.ResponseWriter, r *http.Request)
 
 func (p *LightweightProxy) HandleDNSDebug(w http.ResponseWriter, r *http.Request) {
 	dnsMetrics := p.dnsResolver.GetMetrics()
+	dynamicDNSStats := p.dynamicDNS.GetDNSCacheStats()
+	learnedDomains := p.dynamicDNS.GetLearnedDomains()
+	
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"dns_metrics": %+v}`, dnsMetrics)
+	
+	debugInfo := map[string]interface{}{
+		"external_dns_metrics": dnsMetrics,
+		"dynamic_dns_stats":    dynamicDNSStats,
+		"learned_domains":      learnedDomains,
+		"learned_domain_count": len(learnedDomains),
+	}
+	
+	json.NewEncoder(w).Encode(debugInfo)
 }
 
 func (p *LightweightProxy) HandleConfigDebug(w http.ResponseWriter, r *http.Request) {
@@ -1259,6 +1278,81 @@ func (p *LightweightProxy) HandleCONNECTRedirect(w http.ResponseWriter, r *http.
 	
 	duration := time.Since(startTime)
 	p.logger.Printf("[%s] CONNECT redirect completed in %v", traceID, duration)
+}
+
+// HandleDynamicCONNECTRequest implements on-memory DNS management with dynamic domain resolution
+// オンメモリDNS管理: 動的ドメイン許可システム
+func (p *LightweightProxy) HandleDynamicCONNECTRequest(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	traceID := p.generateTraceID()
+	
+	p.logger.Printf("[%s] Dynamic CONNECT request: %s %s", traceID, r.Method, r.Host)
+	
+	// 1. Parse CONNECT target host:port
+	targetHost, targetPort, err := p.parseCONNECTTarget(r.Host)
+	if err != nil {
+		p.logger.Printf("[%s] Invalid CONNECT target: %v", traceID, err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+	
+	// 2. Security: Only support HTTPS CONNECT (port 443)
+	if targetPort != "443" {
+		p.logger.Printf("[%s] Security: Only HTTPS CONNECT supported, got port %s", traceID, targetPort)
+		http.Error(w, "Only HTTPS CONNECT supported", http.StatusBadRequest)
+		return
+	}
+	
+	// 3. オンメモリDNS管理: 動的ドメイン解決と学習
+	allowed, learned := p.dynamicDNS.IsDomainAllowed(targetHost)
+	if !allowed {
+		p.logger.Printf("[%s] Security: Blocked disallowed domain: %s", traceID, targetHost)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	
+	if learned {
+		p.logger.Printf("[%s] Dynamic learning: Added new domain to cache: %s", traceID, targetHost)
+	}
+	
+	// 4. DNS Pre-resolution for on-memory caching
+	if err := p.dynamicDNS.PreResolveDomain(targetHost); err != nil {
+		p.logger.Printf("[%s] DNS pre-resolution failed for %s: %v", traceID, targetHost, err)
+		// Continue anyway - Envoy will handle DNS resolution
+	}
+	
+	// 5. Convert CONNECT to /connect/ path format
+	connectPath := fmt.Sprintf("/connect/%s:%s/", targetHost, targetPort)
+	
+	// 6. Create new request with /connect/ path
+	connectReq, err := http.NewRequestWithContext(r.Context(), "GET", connectPath, nil)
+	if err != nil {
+		p.logger.Printf("[%s] Failed to create /connect/ request: %v", traceID, err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	
+	// Copy relevant headers
+	connectReq.Header.Set("X-Target-Domain", targetHost)
+	connectReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
+	connectReq.Header.Set("X-Request-ID", traceID)
+	connectReq.Header.Set("Connection", "Upgrade")
+	connectReq.Header.Set("Upgrade", "tcp")
+	
+	// Copy original headers (selective)
+	for k, vv := range r.Header {
+		if k == "Host" || k == "Connection" || k == "Upgrade" {
+			continue // Skip, we set these above
+		}
+		connectReq.Header[k] = vv
+	}
+	
+	// 7. Forward to persistent tunnel handler
+	p.logger.Printf("[%s] Forwarding dynamic CONNECT to tunnel handler: %s", traceID, connectPath)
+	p.HandlePersistentTunnelRequest(w, connectReq)
+	
+	duration := time.Since(startTime)
+	p.logger.Printf("[%s] Dynamic CONNECT completed in %v", traceID, duration)
 }
 
 // parseCONNECTTarget parses CONNECT request format "host:port"

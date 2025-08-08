@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+	"strings"
+	"fmt"
+	"os"
 )
 
 // Metrics represents domain management metrics
@@ -114,7 +117,7 @@ func (h *APIHandler) HandleMetrics(w http.ResponseWriter, r *http.Request) {
 // PrometheusMetrics generates Prometheus-compatible metrics
 func (dm *Manager) PrometheusMetrics() string {
 	metrics := dm.GetMetrics()
-	
+
 	prometheusMetrics := `# HELP sidecar_proxy_dynamic_domains_total Total number of dynamic domains
 # TYPE sidecar_proxy_dynamic_domains_total gauge
 sidecar_proxy_dynamic_domains_total{status="active"} %d
@@ -128,7 +131,7 @@ sidecar_proxy_dynamic_domains_total{status="inactive"} %d
 	dm.mutex.RLock()
 	for _, entry := range dm.domains {
 		if entry.RequestCount > 0 {
-			prometheusMetrics += `sidecar_proxy_domain_requests_total{domain="` + entry.Domain + `",status="` + entry.Status + `"} ` + 
+			prometheusMetrics += `sidecar_proxy_domain_requests_total{domain="` + entry.Domain + `",status="` + entry.Status + `"} ` +
 				string(rune(entry.RequestCount)) + "\n"
 		}
 	}
@@ -140,9 +143,9 @@ sidecar_proxy_dynamic_domains_total{status="inactive"} %d
 sidecar_proxy_domain_additions_today %d
 `
 
-	return sprintf(prometheusMetrics, 
-		metrics.ActiveDomains, 
-		metrics.InactiveDomains, 
+	return sprintf(prometheusMetrics,
+		metrics.ActiveDomains,
+		metrics.InactiveDomains,
 		metrics.DomainAdditionsToday)
 }
 
