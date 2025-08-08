@@ -2,9 +2,11 @@ package gateway
 
 import (
 	"context"
+	"log/slog"
 	"search-indexer/domain"
 	"search-indexer/driver"
 	"search-indexer/port"
+	"strings"
 	"time"
 )
 
