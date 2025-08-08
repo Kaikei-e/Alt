@@ -101,7 +101,7 @@ func (i *Indexer) convertToDocuments(articles []*driver.ArticleWithTags) []drive
 }
 
 func (i *Indexer) indexDocuments(docs []driver.SearchDocumentDriver) error {
-	task, err := i.index.AddDocuments(docs)
+	task, err := i.index.AddDocuments(docs, nil)
 	if err != nil {
 		return err
 	}

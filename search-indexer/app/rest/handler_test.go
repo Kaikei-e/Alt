@@ -91,15 +91,15 @@ func TestSafeExtractSearchHit(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "hit is not map",
-			hit:  "invalid",
-			want: SearchArticlesHit{},
+			name:    "hit is not map",
+			hit:     "invalid",
+			want:    SearchArticlesHit{},
 			wantErr: true,
 		},
 		{
-			name: "hit is nil",
-			hit:  nil,
-			want: SearchArticlesHit{},
+			name:    "hit is nil",
+			hit:     nil,
+			want:    SearchArticlesHit{},
 			wantErr: true,
 		},
 		{
@@ -154,7 +154,7 @@ func TestSafeExtractSearchHit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := safeExtractSearchHit(tt.hit)
-			
+
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("safeExtractSearchHit() error = %v, wantErr %v", err, tt.wantErr)

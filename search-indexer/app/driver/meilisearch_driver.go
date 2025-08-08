@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"encoding/json"
 	"search-indexer/search_engine"
 
 	"github.com/meilisearch/meilisearch-go"
@@ -24,7 +25,7 @@ func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDoc
 		return nil
 	}
 
-	task, err := d.index.AddDocuments(docs)
+	task, err := d.index.AddDocuments(docs, nil)
 	if err != nil {
 		return &DriverError{
 			Op:  "IndexDocuments",
@@ -60,16 +61,11 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 
 	docs := make([]SearchDocumentDriver, 0, len(result.Hits))
 	for _, hit := range result.Hits {
-		hitMap, ok := hit.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
 		doc := SearchDocumentDriver{
-			ID:      d.getString(hitMap, "id"),
-			Title:   d.getString(hitMap, "title"),
-			Content: d.getString(hitMap, "content"),
-			Tags:    d.getStringSlice(hitMap, "tags"),
+			ID:      d.getString(hit, "id"),
+			Title:   d.getString(hit, "title"),
+			Content: d.getString(hit, "content"),
+			Tags:    d.getStringSlice(hit, "tags"),
 		}
 		docs = append(docs, doc)
 	}
@@ -79,7 +75,7 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 
 func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]SearchDocumentDriver, error) {
 	filter := d.buildSecureFilter(filters)
-	
+
 	searchRequest := &meilisearch.SearchRequest{
 		Query: query,
 		Limit: int64(limit),
@@ -100,16 +96,11 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 
 	docs := make([]SearchDocumentDriver, 0, len(result.Hits))
 	for _, hit := range result.Hits {
-		hitMap, ok := hit.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
 		doc := SearchDocumentDriver{
-			ID:      d.getString(hitMap, "id"),
-			Title:   d.getString(hitMap, "title"),
-			Content: d.getString(hitMap, "content"),
-			Tags:    d.getStringSlice(hitMap, "tags"),
+			ID:      d.getString(hit, "id"),
+			Title:   d.getString(hit, "title"),
+			Content: d.getString(hit, "content"),
+			Tags:    d.getStringSlice(hit, "tags"),
 		}
 		docs = append(docs, doc)
 	}
@@ -131,7 +122,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 			},
 		}
 
-		task, err := d.index.AddDocuments(dummyDoc)
+		task, err := d.index.AddDocuments(dummyDoc, nil)
 		if err != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
@@ -156,7 +147,8 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	}
 
 	// Set filterable attributes for tags
-	_, err = d.index.UpdateFilterableAttributes(&[]string{"tags"})
+	filterableAttrs := []interface{}{"tags"}
+	_, err = d.index.UpdateFilterableAttributes(&filterableAttrs)
 	if err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
@@ -167,25 +159,21 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	return nil
 }
 
-func (d *MeilisearchDriver) getString(m map[string]interface{}, key string) string {
+func (d *MeilisearchDriver) getString(m meilisearch.Hit, key string) string {
 	if v, ok := m[key]; ok {
-		if s, ok := v.(string); ok {
+		var s string
+		if err := json.Unmarshal(v, &s); err == nil {
 			return s
 		}
 	}
 	return ""
 }
 
-func (d *MeilisearchDriver) getStringSlice(m map[string]interface{}, key string) []string {
+func (d *MeilisearchDriver) getStringSlice(m meilisearch.Hit, key string) []string {
 	if v, ok := m[key]; ok {
-		if slice, ok := v.([]interface{}); ok {
-			result := make([]string, 0, len(slice))
-			for _, item := range slice {
-				if s, ok := item.(string); ok {
-					result = append(result, s)
-				}
-			}
-			return result
+		var slice []string
+		if err := json.Unmarshal(v, &slice); err == nil {
+			return slice
 		}
 	}
 	return []string{}

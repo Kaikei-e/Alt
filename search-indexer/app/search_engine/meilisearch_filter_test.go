@@ -210,7 +210,7 @@ func TestValidateFilterTags(t *testing.T) {
 
 func BenchmarkMakeSecureSearchFilter(b *testing.B) {
 	tags := []string{"technology", "programming", "web-development", "data-science", "machine-learning"}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		MakeSecureSearchFilter(tags)
@@ -219,7 +219,7 @@ func BenchmarkMakeSecureSearchFilter(b *testing.B) {
 
 func BenchmarkEscapeMeilisearchValue(b *testing.B) {
 	value := "tech\"nology\\with\\\"special\\characters"
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		EscapeMeilisearchValue(value)
@@ -229,34 +229,34 @@ func BenchmarkEscapeMeilisearchValue(b *testing.B) {
 // Security-focused tests
 func TestSecurityVulnerabilityPrevention(t *testing.T) {
 	securityTests := []struct {
-		name        string
+		name         string
 		maliciousTag string
-		description string
+		description  string
 	}{
 		{
-			name:        "XSS attempt",
+			name:         "XSS attempt",
 			maliciousTag: "<script>alert('xss')</script>",
-			description: "Should escape HTML/JS injection attempts",
+			description:  "Should escape HTML/JS injection attempts",
 		},
 		{
-			name:        "SQL injection attempt",
+			name:         "SQL injection attempt",
 			maliciousTag: "'; DROP TABLE articles; --",
-			description: "Should escape SQL injection attempts",
+			description:  "Should escape SQL injection attempts",
 		},
 		{
-			name:        "Meilisearch filter bypass",
+			name:         "Meilisearch filter bypass",
 			maliciousTag: "tag\" OR \"admin",
-			description: "Should escape Meilisearch filter injection",
+			description:  "Should escape Meilisearch filter injection",
 		},
 		{
-			name:        "Null byte injection",
+			name:         "Null byte injection",
 			maliciousTag: "tag\x00malicious",
-			description: "Should handle null byte injection",
+			description:  "Should handle null byte injection",
 		},
 		{
-			name:        "Unicode control characters",
+			name:         "Unicode control characters",
 			maliciousTag: "tag\u0000\u0001\u0002malicious",
-			description: "Should handle Unicode control characters",
+			description:  "Should handle Unicode control characters",
 		},
 	}
 
