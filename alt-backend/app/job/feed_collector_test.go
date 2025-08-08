@@ -364,6 +364,6 @@ func containsSuspiciousContent(title, description string) bool {
 	descLower := strings.ToLower(description)
 
 	return strings.Contains(descLower, "404 page not found") ||
-		   strings.Contains(titleLower, "404") ||
-		   strings.Contains(titleLower, "not found")
+		strings.Contains(titleLower, "404") ||
+		strings.Contains(titleLower, "not found")
 }

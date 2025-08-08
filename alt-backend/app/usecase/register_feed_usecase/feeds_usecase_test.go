@@ -130,7 +130,7 @@ func TestRegisterFeedUsecase_WithProxyEnabled(t *testing.T) {
 	// Test usecase behavior when proxy is enabled
 	t.Setenv("HTTP_PROXY", "http://nginx-external.alt-ingress.svc.cluster.local:8888")
 	t.Setenv("PROXY_ENABLED", "true")
-	
+
 	logger.InitLogger()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -174,11 +174,11 @@ func TestRegisterFeedUsecase_WithProxyEnabled(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.mockSetup()
-			
+
 			// This should work with existing usecase but will test proxy-aware gateway
 			r := NewRegisterFeedsUsecase(mockRegisterFeedLinkPort, mockRegisterFeedsPort, mockFetchFeedGateway)
 			err := r.Execute(tt.ctx, tt.link)
-			
+
 			// This test may not fail immediately since usecase delegates to gateway
 			// But it establishes the expected behavior
 			if (err != nil) != tt.wantErr {
@@ -192,9 +192,9 @@ func TestRegisterFeedUsecase_ProxyFailover(t *testing.T) {
 	// Test failover behavior when proxy fails
 	t.Setenv("HTTP_PROXY", "http://invalid-proxy.invalid:8888")
 	t.Setenv("PROXY_ENABLED", "true")
-	
+
 	logger.InitLogger()
-	ctrl := gomock.NewController(t)  
+	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockFetchFeedGateway := mocks.NewMockFetchFeedsPort(ctrl)
@@ -206,7 +206,7 @@ func TestRegisterFeedUsecase_ProxyFailover(t *testing.T) {
 
 	r := NewRegisterFeedsUsecase(mockRegisterFeedLinkPort, mockRegisterFeedsPort, mockFetchFeedGateway)
 	err := r.Execute(context.Background(), "https://example.com/rss")
-	
+
 	// This should fail because proxy failover is not implemented yet
 	if err == nil {
 		t.Error("Expected proxy failover handling but none implemented")

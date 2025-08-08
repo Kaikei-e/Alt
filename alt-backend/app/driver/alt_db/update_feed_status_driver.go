@@ -35,7 +35,7 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 	// Option C: Safe UPSERT pattern using merge-style approach
 	// Uses a default user_id to match the current table schema: (feed_id, user_id) composite
 	defaultUserID := "00000000-0000-0000-0000-000000000001"
-	
+
 	updateFeedStatusQuery := `
 		WITH upsert AS (
 			UPDATE read_status 

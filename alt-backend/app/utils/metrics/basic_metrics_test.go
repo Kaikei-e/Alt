@@ -82,7 +82,7 @@ func TestBasicMetricsCollector_ResponseTimeTracking(t *testing.T) {
 
 func TestBasicMetricsCollector_ConcurrentAccess(t *testing.T) {
 	collector := NewBasicMetricsCollector()
-	
+
 	// Test concurrent access to ensure thread safety
 	done := make(chan bool, 10)
 
@@ -118,10 +118,10 @@ func TestBasicMetricsCollector_ConcurrentAccess(t *testing.T) {
 
 func TestBasicMetricsCollector_GetSuccessRate(t *testing.T) {
 	tests := []struct {
-		name            string
-		successes       int
-		failures        int
-		expectedRate    float64
+		name         string
+		successes    int
+		failures     int
+		expectedRate float64
 	}{
 		{
 			name:         "100% success rate",

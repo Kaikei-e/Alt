@@ -11,7 +11,7 @@ import (
 
 func TestSimpleCircuitBreaker_InitialState(t *testing.T) {
 	cb := NewSimpleCircuitBreaker(DefaultCircuitBreakerConfig())
-	
+
 	assert.Equal(t, StateClosed, cb.GetState(), "Initial state should be Closed")
 	assert.Equal(t, 0, cb.GetFailureCount(), "Initial failure count should be 0")
 	assert.True(t, cb.CanExecute(), "Should be able to execute initially")
@@ -33,8 +33,8 @@ func TestSimpleCircuitBreaker_SuccessfulExecution(t *testing.T) {
 
 func TestSimpleCircuitBreaker_FailureHandling(t *testing.T) {
 	config := &CircuitBreakerConfig{
-		FailureThreshold: 3,
-		ResetTimeout:     100 * time.Millisecond,
+		FailureThreshold:      3,
+		ResetTimeout:          100 * time.Millisecond,
 		MaxConcurrentRequests: 1,
 	}
 	cb := NewSimpleCircuitBreaker(config)
@@ -52,8 +52,8 @@ func TestSimpleCircuitBreaker_FailureHandling(t *testing.T) {
 
 func TestSimpleCircuitBreaker_OpenOnMultipleFailures(t *testing.T) {
 	config := &CircuitBreakerConfig{
-		FailureThreshold: 3,
-		ResetTimeout:     100 * time.Millisecond,
+		FailureThreshold:      3,
+		ResetTimeout:          100 * time.Millisecond,
 		MaxConcurrentRequests: 1,
 	}
 	cb := NewSimpleCircuitBreaker(config)
@@ -73,8 +73,8 @@ func TestSimpleCircuitBreaker_OpenOnMultipleFailures(t *testing.T) {
 
 func TestSimpleCircuitBreaker_RejectRequestsWhenOpen(t *testing.T) {
 	config := &CircuitBreakerConfig{
-		FailureThreshold: 1,
-		ResetTimeout:     100 * time.Millisecond,
+		FailureThreshold:      1,
+		ResetTimeout:          100 * time.Millisecond,
 		MaxConcurrentRequests: 1,
 	}
 	cb := NewSimpleCircuitBreaker(config)
@@ -98,8 +98,8 @@ func TestSimpleCircuitBreaker_RejectRequestsWhenOpen(t *testing.T) {
 
 func TestSimpleCircuitBreaker_HalfOpenTransition(t *testing.T) {
 	config := &CircuitBreakerConfig{
-		FailureThreshold: 1,
-		ResetTimeout:     50 * time.Millisecond,
+		FailureThreshold:      1,
+		ResetTimeout:          50 * time.Millisecond,
 		MaxConcurrentRequests: 1,
 	}
 	cb := NewSimpleCircuitBreaker(config)
@@ -116,7 +116,7 @@ func TestSimpleCircuitBreaker_HalfOpenTransition(t *testing.T) {
 	time.Sleep(60 * time.Millisecond)
 
 	assert.True(t, cb.CanExecute(), "Should be able to execute after reset timeout")
-	
+
 	// Execute should trigger Half-Open state
 	err := cb.Execute(ctx, func() error {
 		return nil
@@ -128,8 +128,8 @@ func TestSimpleCircuitBreaker_HalfOpenTransition(t *testing.T) {
 
 func TestSimpleCircuitBreaker_HalfOpenFailure(t *testing.T) {
 	config := &CircuitBreakerConfig{
-		FailureThreshold: 1,
-		ResetTimeout:     50 * time.Millisecond,
+		FailureThreshold:      1,
+		ResetTimeout:          50 * time.Millisecond,
 		MaxConcurrentRequests: 1,
 	}
 	cb := NewSimpleCircuitBreaker(config)
@@ -154,8 +154,8 @@ func TestSimpleCircuitBreaker_HalfOpenFailure(t *testing.T) {
 
 func TestSimpleCircuitBreaker_ConcurrentRequestLimiting(t *testing.T) {
 	config := &CircuitBreakerConfig{
-		FailureThreshold: 5,
-		ResetTimeout:     100 * time.Millisecond,
+		FailureThreshold:      5,
+		ResetTimeout:          100 * time.Millisecond,
 		MaxConcurrentRequests: 1,
 	}
 	cb := NewSimpleCircuitBreaker(config)
@@ -188,8 +188,8 @@ func TestSimpleCircuitBreaker_ConcurrentRequestLimiting(t *testing.T) {
 
 func TestSimpleCircuitBreaker_Reset(t *testing.T) {
 	config := &CircuitBreakerConfig{
-		FailureThreshold: 1,
-		ResetTimeout:     100 * time.Millisecond,
+		FailureThreshold:      1,
+		ResetTimeout:          100 * time.Millisecond,
 		MaxConcurrentRequests: 1,
 	}
 	cb := NewSimpleCircuitBreaker(config)

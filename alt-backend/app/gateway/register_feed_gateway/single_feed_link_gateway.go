@@ -5,7 +5,7 @@ import (
 	"alt/utils/logger"
 	"alt/utils/metrics"
 	"alt/utils/resilience"
-	"alt/utils/security" 
+	"alt/utils/security"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -55,9 +55,9 @@ type EnvoyProxyConfig struct {
 type ProxyMode string
 
 const (
-	ProxyModeSidecar ProxyMode = "sidecar"
-	ProxyModeEnvoy   ProxyMode = "envoy"
-	ProxyModeNginx   ProxyMode = "nginx"
+	ProxyModeSidecar  ProxyMode = "sidecar"
+	ProxyModeEnvoy    ProxyMode = "envoy"
+	ProxyModeNginx    ProxyMode = "nginx"
 	ProxyModeDisabled ProxyMode = "disabled"
 )
 
@@ -133,7 +133,7 @@ func getProxyStrategy() *ProxyStrategy {
 // REFACTORED: Now uses flexible proxy strategy pattern
 func getEnvoyProxyConfigFromEnv() *EnvoyProxyConfig {
 	strategy := getProxyStrategy()
-	
+
 	// Convert strategy to legacy EnvoyProxyConfig for backward compatibility
 	if !strategy.Enabled {
 		return &EnvoyProxyConfig{
@@ -154,7 +154,7 @@ type RSSFeedFetcher interface {
 }
 
 // DefaultRSSFeedFetcher implements RSSFeedFetcher with actual HTTP requests
-type DefaultRSSFeedFetcher struct{
+type DefaultRSSFeedFetcher struct {
 	proxyConfig      *ProxyConfig
 	envoyProxyConfig *EnvoyProxyConfig
 	proxyStrategy    *ProxyStrategy
@@ -240,7 +240,7 @@ func (f *DefaultRSSFeedFetcher) createHTTPClient() *http.Client {
 func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (*gofeed.Feed, error) {
 	// ISSUE_RESOLVE_PLAN.md ROOT SOLUTION: Use proxy-sidecar exclusively
 	// This eliminates upstream="10.96.32.212:8080" and achieves upstream="zenn.dev:443"
-	
+
 	// Safety check to prevent panic in tests with incomplete initialization
 	if f.proxyStrategy == nil {
 		logger.SafeWarn("Proxy strategy not initialized, using direct connection")
@@ -256,11 +256,11 @@ func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (
 	// ROOT SOLUTION: Use strategic proxy configuration based on environment
 	if f.proxyStrategy.Enabled {
 		proxyURL := f.convertToProxyURL(link, f.proxyStrategy)
-		
+
 		// Extract expected upstream from original URL (without port 443 for HTTPS)
 		u, _ := url.Parse(link)
 		expectedUpstream := u.Host
-		
+
 		logger.SafeInfo("Using strategic proxy for RSS fetching",
 			"strategy_mode", string(f.proxyStrategy.Mode),
 			"original_url", link,
@@ -320,7 +320,7 @@ func (f *DefaultRSSFeedFetcher) convertToProxyURL(originalURL string, strategy *
 	// SECURITY: Manual path construction with security validation (CVE-2024-34155 safe)
 	// JoinPath treats URL schemes incorrectly, so we manually construct the path
 	proxyPath := "/proxy/" + targetURLStr
-	
+
 	// SECURITY: Parse the complete proxy URL to ensure proper validation
 	proxyURL, err := url.Parse(baseURL.String() + proxyPath)
 	if err != nil {
@@ -366,7 +366,7 @@ func (f *DefaultRSSFeedFetcher) convertToEgressGatewayURL(originalURL string) st
 	if egressGatewayBase == "" {
 		egressGatewayBase = "http://nginx-external.alt-ingress.svc.cluster.local:8889"
 	}
-	
+
 	egressPath := fmt.Sprintf("/rss-proxy/%s://%s%s", u.Scheme, u.Host, u.Path)
 	if u.RawQuery != "" {
 		egressPath += "?" + u.RawQuery
@@ -529,7 +529,7 @@ func NewRegisterFeedLinkGatewayWithFetcher(pool *pgxpool.Pool, fetcher RSSFeedFe
 
 func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link string) error {
 	start := time.Now()
-	
+
 	// SECURITY INTEGRATION: Comprehensive URL validation using URLSecurityValidator
 	if g.urlValidator != nil {
 		if err := g.urlValidator.ValidateRSSURL(link); err != nil {
@@ -538,7 +538,7 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 			logger.SafeWarn("URL security validation failed", "url", link, "error", err.Error())
 			return err
 		}
-		
+
 		// Additional RSS-specific validation
 		if err := g.urlValidator.ValidateForRSSFeed(link); err != nil {
 			g.metricsCollector.RecordFailure()
@@ -604,13 +604,13 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 	// METRICS INTEGRATION: Record operation results and response time
 	responseTime := time.Since(start)
 	g.metricsCollector.RecordResponseTime(responseTime)
-	
+
 	if err != nil {
 		g.metricsCollector.RecordFailure()
 		logger.SafeError("RSS feed registration failed", "url", link, "error", err.Error(), "response_time", responseTime)
 		return err
 	}
-	
+
 	g.metricsCollector.RecordSuccess()
 	logger.SafeInfo("RSS feed registration successful", "url", link, "response_time", responseTime)
 	return nil

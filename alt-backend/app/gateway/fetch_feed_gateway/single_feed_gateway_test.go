@@ -115,7 +115,7 @@ func TestSingleFeedGateway_FetchSingleFeed_ProxyIntegration(t *testing.T) {
 </rss>`
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify that the request comes through custom HTTP client 
+		// Verify that the request comes through custom HTTP client
 		// (proxy-aware client would have specific headers/behavior)
 		w.Header().Set("Content-Type", "application/rss+xml")
 		w.WriteHeader(http.StatusOK)

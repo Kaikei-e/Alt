@@ -27,9 +27,9 @@ const (
 
 // HTTPClientFactory creates HTTP clients with unified proxy strategy
 type HTTPClientFactory struct {
-	proxyStrategy    ProxyStrategy
-	envoyBaseURL     string
-	sidecarProxyURL  string
+	proxyStrategy   ProxyStrategy
+	envoyBaseURL    string
+	sidecarProxyURL string
 }
 
 // NewHTTPClientFactory creates a new HTTP client factory with environment-based configuration
@@ -55,9 +55,9 @@ func NewHTTPClientFactory() *HTTPClientFactory {
 		"sidecar_proxy_url", sidecarProxyURL)
 
 	return &HTTPClientFactory{
-		proxyStrategy:    strategy,
-		envoyBaseURL:     envoyBaseURL,
-		sidecarProxyURL:  sidecarProxyURL,
+		proxyStrategy:   strategy,
+		envoyBaseURL:    envoyBaseURL,
+		sidecarProxyURL: sidecarProxyURL,
 	}
 }
 
@@ -91,8 +91,8 @@ func (f *HTTPClientFactory) createEnvoyProxyClient() *http.Client {
 
 	// Wrap with Envoy proxy transport
 	envoyTransport := &EnvoyProxyTransport{
-		Transport:     baseTransport,
-		EnvoyBaseURL:  f.envoyBaseURL,
+		Transport:    baseTransport,
+		EnvoyBaseURL: f.envoyBaseURL,
 	}
 
 	return &http.Client{
@@ -111,7 +111,7 @@ type EnvoyProxyTransport struct {
 func (t *EnvoyProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Clone the request to avoid modifying the original
 	clonedReq := req.Clone(req.Context())
-	
+
 	// Extract original URL components
 	originalHost := req.URL.Host
 	originalScheme := req.URL.Scheme
@@ -163,8 +163,8 @@ func (f *HTTPClientFactory) createSidecarProxyClient() *http.Client {
 
 	// Wrap with Sidecar proxy transport
 	sidecarTransport := &SidecarProxyTransport{
-		Transport:        baseTransport,
-		SidecarProxyURL:  f.sidecarProxyURL,
+		Transport:       baseTransport,
+		SidecarProxyURL: f.sidecarProxyURL,
 	}
 
 	return &http.Client{
@@ -183,10 +183,10 @@ type SidecarProxyTransport struct {
 func (t *SidecarProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Clone the request to avoid modifying the original
 	clonedReq := req.Clone(req.Context())
-	
+
 	// Extract original URL components
 	originalURL := req.URL.String()
-	
+
 	// Parse sidecar proxy URL
 	sidecarURL, err := url.Parse(t.SidecarProxyURL)
 	if err != nil {
@@ -202,7 +202,7 @@ func (t *SidecarProxyTransport) RoundTrip(req *http.Request) (*http.Response, er
 
 	// Preserve original Host header for the target
 	clonedReq.Header.Set("X-Original-Host", req.Host)
-	
+
 	// Add trace header for debugging
 	clonedReq.Header.Set("X-Proxy-Via", "sidecar-proxy")
 

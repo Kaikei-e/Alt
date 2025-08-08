@@ -23,7 +23,7 @@ func TestRegisterFeedGateway_RetryMechanism(t *testing.T) {
 		{
 			name:          "transient network error should trigger retry",
 			url:           "https://example.com/feeds/rss.xml", // RSS対応URL
-			expectedError: "invalid RSS feed format", // Current behavior: mock error translates to format error
+			expectedError: "invalid RSS feed format",           // Current behavior: mock error translates to format error
 			wantErr:       true,
 			setupMock: func() {
 				mockFetcher.SetError("https://example.com/feeds/rss.xml", errors.New("http error: 503 Service Unavailable"))
@@ -32,15 +32,15 @@ func TestRegisterFeedGateway_RetryMechanism(t *testing.T) {
 		{
 			name:          "timeout error should trigger retry",
 			url:           "https://example.com/slow-feed.xml", // RSS対応URL with delay simulation
-			expectedError: "invalid RSS feed format", // Current behavior: mock error translates to format error
-			wantErr:       true, // Should fail after retries with short timeout
+			expectedError: "invalid RSS feed format",           // Current behavior: mock error translates to format error
+			wantErr:       true,                                // Should fail after retries with short timeout
 			setupMock: func() {
 				mockFetcher.SetError("https://example.com/slow-feed.xml", errors.New("http error: 503 Service Unavailable"))
 			},
 		},
 		{
 			name:          "non-retryable error should not retry",
-			url:           "invalid-url", // Malformed URL
+			url:           "invalid-url",                         // Malformed URL
 			expectedError: "only HTTP and HTTPS schemes allowed", // Updated error message from security validator
 			wantErr:       true,
 			setupMock: func() {

@@ -34,12 +34,12 @@ func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
 
 // SimpleCircuitBreaker implements a basic circuit breaker pattern
 type SimpleCircuitBreaker struct {
-	config           *CircuitBreakerConfig
-	state            CircuitBreakerState
-	failureCount     int
-	lastFailureTime  time.Time
-	concurrentReqs   int
-	mutex            sync.RWMutex
+	config          *CircuitBreakerConfig
+	state           CircuitBreakerState
+	failureCount    int
+	lastFailureTime time.Time
+	concurrentReqs  int
+	mutex           sync.RWMutex
 }
 
 // NewSimpleCircuitBreaker creates a new circuit breaker instance

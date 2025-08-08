@@ -29,7 +29,7 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 	for _, feedItem := range feeds {
 		// Additional validation: Skip feeds with empty titles as a safety net
 		if strings.TrimSpace(feedItem.Title) == "" {
-			logger.Logger.Warn("Skipping feed registration with empty title", 
+			logger.Logger.Warn("Skipping feed registration with empty title",
 				"link", feedItem.Link,
 				"description", feedItem.Description)
 			continue

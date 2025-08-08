@@ -105,10 +105,10 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 	httpClient := factory.CreateHTTPClient()
 	fp := gofeed.NewParser()
 	fp.Client = httpClient
-	
+
 	feedCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	
+
 	feed, err := fp.ParseURLWithContext(feedURL.String(), feedCtx)
 	if err != nil {
 		apiErr := errors.NewExternalServiceUnavailableError(
@@ -213,4 +213,3 @@ func convertGofeedToDomain(feed *gofeed.Feed) *domain.RSSFeed {
 
 	return domainFeed
 }
-

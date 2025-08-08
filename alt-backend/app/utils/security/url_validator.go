@@ -9,7 +9,7 @@ import (
 
 // URLSecurityValidator provides comprehensive URL security validation functionality
 // for RSS feed registration endpoints. It implements multiple layers of security
-// validation including scheme validation, private network detection, and 
+// validation including scheme validation, private network detection, and
 // malicious URL pattern detection.
 type URLSecurityValidator struct {
 	// Future: Add configurable allow/block lists

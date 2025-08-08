@@ -234,4 +234,3 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 
 	return feedItems, nil
 }
-

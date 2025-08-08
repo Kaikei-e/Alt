@@ -162,13 +162,13 @@ func TestRegisterFeedGateway_CircuitBreakerIntegration(t *testing.T) {
 
 func TestRegisterFeedGateway_MetricsCollection(t *testing.T) {
 	tests := []struct {
-		name                 string
-		operations           []string // "success" or "failure" 
-		expectedTotalReqs    int64
-		expectedSuccessReqs  int64
-		expectedFailureReqs  int64
-		expectedSuccessRate  float64
-		setupMock            func(*MockRSSFeedFetcher)
+		name                string
+		operations          []string // "success" or "failure"
+		expectedTotalReqs   int64
+		expectedSuccessReqs int64
+		expectedFailureReqs int64
+		expectedSuccessRate float64
+		setupMock           func(*MockRSSFeedFetcher)
 	}{
 		{
 			name:                "metrics should track failed operations (all fail at DB layer)",
@@ -214,7 +214,7 @@ func TestRegisterFeedGateway_MetricsCollection(t *testing.T) {
 			// Create fresh instances for each test to avoid metric accumulation
 			mockFetcher := NewMockRSSFeedFetcher()
 			gateway := NewRegisterFeedLinkGatewayWithFetcher(nil, mockFetcher)
-			
+
 			tt.setupMock(mockFetcher)
 
 			// Perform operations
@@ -244,21 +244,21 @@ func TestRegisterFeedGateway_IntegratedSecurityWorkflow(t *testing.T) {
 	gateway := NewRegisterFeedLinkGatewayWithFetcher(nil, mockFetcher)
 
 	tests := []struct {
-		name                string
-		url                 string
-		expectedSecurityErr string
-		expectMetrics       bool
+		name                 string
+		url                  string
+		expectedSecurityErr  string
+		expectMetrics        bool
 		expectCircuitBreaker bool
-		wantErr             bool
-		setupMock           func()
+		wantErr              bool
+		setupMock            func()
 	}{
 		{
-			name:                "complete security workflow for valid RSS URL",
-			url:                 "https://example.com/feed.xml",  // RSS対応URL
-			expectedSecurityErr: "", // Should pass RSS-specific validation
-			expectMetrics:       true,
+			name:                 "complete security workflow for valid RSS URL",
+			url:                  "https://example.com/feed.xml", // RSS対応URL
+			expectedSecurityErr:  "",                             // Should pass RSS-specific validation
+			expectMetrics:        true,
 			expectCircuitBreaker: false, // Should not trigger circuit breaker
-			wantErr:             true,   // Will fail at DB, but RSS validation should pass
+			wantErr:              true,  // Will fail at DB, but RSS validation should pass
 			setupMock: func() {
 				mockFetcher.SetFeed("https://example.com/feed.xml", &gofeed.Feed{
 					Title:    "Example RSS Feed",
@@ -268,23 +268,23 @@ func TestRegisterFeedGateway_IntegratedSecurityWorkflow(t *testing.T) {
 			},
 		},
 		{
-			name:                "security validation should block malicious URL",
-			url:                 "http://127.0.0.1/feed.xml",
-			expectedSecurityErr: "private network access denied",
-			expectMetrics:       true, // Should still collect metrics
+			name:                 "security validation should block malicious URL",
+			url:                  "http://127.0.0.1/feed.xml",
+			expectedSecurityErr:  "private network access denied",
+			expectMetrics:        true, // Should still collect metrics
 			expectCircuitBreaker: false,
-			wantErr:             true,
+			wantErr:              true,
 			setupMock: func() {
 				// Mock won't be called due to security validation
 			},
 		},
 		{
-			name:                "RSS-specific validation should work for valid atom feed",
-			url:                 "https://example.com/feeds/atom.xml",  // RSS対応URL
-			expectedSecurityErr: "", // Should pass RSS-specific validation
-			expectMetrics:       true,
+			name:                 "RSS-specific validation should work for valid atom feed",
+			url:                  "https://example.com/feeds/atom.xml", // RSS対応URL
+			expectedSecurityErr:  "",                                   // Should pass RSS-specific validation
+			expectMetrics:        true,
 			expectCircuitBreaker: false,
-			wantErr:             true,   // Will fail at DB, but RSS validation should pass
+			wantErr:              true, // Will fail at DB, but RSS validation should pass
 			setupMock: func() {
 				mockFetcher.SetFeed("https://example.com/feeds/atom.xml", &gofeed.Feed{
 					Title:    "Example Atom Feed",
@@ -294,12 +294,12 @@ func TestRegisterFeedGateway_IntegratedSecurityWorkflow(t *testing.T) {
 			},
 		},
 		{
-			name:                "RSS feeds directory path should work",
-			url:                 "https://example.com/feeds/rss",  // RSS対応URL (フィードディレクトリ)
-			expectedSecurityErr: "", // Should pass RSS-specific validation
-			expectMetrics:       true,
+			name:                 "RSS feeds directory path should work",
+			url:                  "https://example.com/feeds/rss", // RSS対応URL (フィードディレクトリ)
+			expectedSecurityErr:  "",                              // Should pass RSS-specific validation
+			expectMetrics:        true,
 			expectCircuitBreaker: false,
-			wantErr:             true,   // Will fail at DB, but RSS validation should pass
+			wantErr:              true, // Will fail at DB, but RSS validation should pass
 			setupMock: func() {
 				mockFetcher.SetFeed("https://example.com/feeds/rss", &gofeed.Feed{
 					Title:    "Example RSS Directory",
@@ -317,7 +317,7 @@ func TestRegisterFeedGateway_IntegratedSecurityWorkflow(t *testing.T) {
 			err := gateway.RegisterRSSFeedLink(context.Background(), tt.url)
 
 			assert.Error(t, err, "Expected error for integrated workflow test")
-			
+
 			if tt.expectedSecurityErr != "" {
 				// This will fail until security integration is complete
 				assert.Contains(t, err.Error(), tt.expectedSecurityErr, "Error should indicate security validation failure")
@@ -339,7 +339,7 @@ func TestRegisterFeedGateway_ResponseTimeMetrics(t *testing.T) {
 	mockFetcher.SetFeed("https://example.com/rss.xml", &gofeed.Feed{
 		Title:    "Example RSS Feed 2",
 		Link:     "https://example.com",
-		FeedLink: "https://example.com/rss.xml", 
+		FeedLink: "https://example.com/rss.xml",
 	})
 	mockFetcher.SetFeed("https://example.com/feeds/atom.xml", &gofeed.Feed{
 		Title:    "Example Atom Feed",
@@ -375,28 +375,28 @@ func TestRegisterFeedGateway_SecurityValidationIntegration(t *testing.T) {
 	// This test will fail until integration is complete
 
 	maliciousURLs := []string{
-		"http://192.168.1.1/feed.xml",     // Private IP
-		"http://10.0.0.1/feed.xml",        // Private IP
-		"http://172.16.0.1/feed.xml",      // Private IP
-		"http://localhost/feed.xml",       // Localhost
-		"http://127.0.0.1/feed.xml",       // Loopback
-		"ftp://example.com/feed.xml",      // Non-HTTP scheme
-		"javascript:alert('xss')",         // Malicious scheme
-		"file:///etc/passwd",              // File scheme
-		"http://metadata.amazonaws.com/",   // Metadata server
+		"http://192.168.1.1/feed.xml",    // Private IP
+		"http://10.0.0.1/feed.xml",       // Private IP
+		"http://172.16.0.1/feed.xml",     // Private IP
+		"http://localhost/feed.xml",      // Localhost
+		"http://127.0.0.1/feed.xml",      // Loopback
+		"ftp://example.com/feed.xml",     // Non-HTTP scheme
+		"javascript:alert('xss')",        // Malicious scheme
+		"file:///etc/passwd",             // File scheme
+		"http://metadata.amazonaws.com/", // Metadata server
 	}
 
 	for _, url := range maliciousURLs {
 		t.Run("should block "+url, func(t *testing.T) {
 			err := gateway.RegisterRSSFeedLink(context.Background(), url)
-			
+
 			// This assertion will fail until security integration is complete
 			assert.Error(t, err, "Malicious URL should be blocked: %s", url)
-			assert.True(t, 
+			assert.True(t,
 				strings.Contains(err.Error(), "private network access denied") ||
-				strings.Contains(err.Error(), "only HTTP and HTTPS schemes allowed") ||
-				strings.Contains(err.Error(), "metadata server access denied") ||
-				strings.Contains(err.Error(), "invalid URL format"),
+					strings.Contains(err.Error(), "only HTTP and HTTPS schemes allowed") ||
+					strings.Contains(err.Error(), "metadata server access denied") ||
+					strings.Contains(err.Error(), "invalid URL format"),
 				"Error should indicate security validation failure for URL: %s, got: %s", url, err.Error())
 		})
 	}
@@ -444,9 +444,9 @@ func TestDefaultRSSFeedFetcher_ConvertToProxyURL_URLConstruction(t *testing.T) {
 			}
 
 			result := fetcher.convertToProxyURL(tt.originalURL, strategy)
-			
+
 			// This assertion will fail if URL construction has bugs
-			assert.Equal(t, tt.expected, result, 
+			assert.Equal(t, tt.expected, result,
 				"URL construction should produce correct proxy URL format")
 		})
 	}

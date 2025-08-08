@@ -90,7 +90,7 @@ func TestURLSecurityValidator_ValidateRSSURL(t *testing.T) {
 			errMsg:  "URL contains dangerous pattern",
 		},
 		{
-			name:    "URL with metadata server should fail", 
+			name:    "URL with metadata server should fail",
 			url:     "http://metadata.google.internal/",
 			wantErr: true,
 			errMsg:  "metadata server access denied",

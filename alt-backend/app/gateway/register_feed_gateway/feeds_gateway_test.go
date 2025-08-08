@@ -411,13 +411,13 @@ func TestDefaultRSSFeedFetcher_WithProxy_Success(t *testing.T) {
 	// Test proxy configuration from environment variables
 	t.Setenv("HTTP_PROXY", "http://nginx-external.alt-ingress.svc.cluster.local:8888")
 	t.Setenv("PROXY_ENABLED", "true")
-	
+
 	fetcher := &DefaultRSSFeedFetcher{} // Missing proxy config field - EXPECTED TO FAIL
-	
+
 	// This should fail because DefaultRSSFeedFetcher doesn't have proxy support yet
 	ctx := context.Background()
 	_, err := fetcher.FetchRSSFeed(ctx, "https://example.com/feed.xml")
-	
+
 	// We expect this test to fail initially (RED phase)
 	if err == nil {
 		t.Error("Expected proxy configuration to be applied but none found")
@@ -428,12 +428,12 @@ func TestDefaultRSSFeedFetcher_WithProxy_ProxyFailure(t *testing.T) {
 	// Test proxy connection failure handling
 	t.Setenv("HTTP_PROXY", "http://invalid-proxy.invalid:8888")
 	t.Setenv("PROXY_ENABLED", "true")
-	
+
 	fetcher := &DefaultRSSFeedFetcher{} // Missing proxy config field - EXPECTED TO FAIL
-	
+
 	ctx := context.Background()
 	_, err := fetcher.FetchRSSFeed(ctx, "https://example.com/feed.xml")
-	
+
 	// This test should fail because proxy support is not implemented yet
 	if err == nil {
 		t.Error("Expected proxy failure to be handled but no proxy support found")
@@ -444,14 +444,14 @@ func TestDefaultRSSFeedFetcher_WithProxy_ProxyTimeout(t *testing.T) {
 	// Test proxy timeout scenarios
 	t.Setenv("HTTP_PROXY", "http://nginx-external.alt-ingress.svc.cluster.local:8888")
 	t.Setenv("PROXY_ENABLED", "true")
-	
+
 	fetcher := &DefaultRSSFeedFetcher{} // Missing proxy config field - EXPECTED TO FAIL
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	
+
 	_, err := fetcher.FetchRSSFeed(ctx, "https://example.com/feeds/proxy-test.xml")
-	
+
 	// This test should fail because proxy support is not implemented yet
 	if err == nil {
 		t.Error("Expected proxy timeout handling but no proxy support found")
@@ -493,10 +493,10 @@ func TestDefaultRSSFeedFetcher_ProxyConfigFromEnv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("HTTP_PROXY", tt.httpProxy)
 			t.Setenv("PROXY_ENABLED", tt.proxyEnabled)
-			
+
 			// This will fail because getProxyConfigFromEnv doesn't exist yet
 			config := getProxyConfigFromEnv() // EXPECTED TO FAIL - function doesn't exist
-			
+
 			if config == nil {
 				t.Error("Expected proxy config but got nil - proxy support not implemented")
 			}
@@ -526,7 +526,7 @@ func TestRegisterFeedGateway_FeedFormatValidation(t *testing.T) {
 			},
 		},
 		{
-			name:          "another non-RSS URL should fail RSS validation", 
+			name:          "another non-RSS URL should fail RSS validation",
 			url:           "https://example.com/api/json",
 			expectedError: "URL path does not appear to be an RSS feed",
 			wantErr:       true,

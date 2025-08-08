@@ -7,22 +7,22 @@ import (
 
 // MetricsSnapshot represents a point-in-time snapshot of metrics
 type MetricsSnapshot struct {
-	TotalRequests        int64         `json:"total_requests"`
-	SuccessfulRequests   int64         `json:"successful_requests"`
-	FailedRequests       int64         `json:"failed_requests"`
-	SuccessRate          float64       `json:"success_rate"`
-	AverageResponseTime  time.Duration `json:"average_response_time"`
+	TotalRequests       int64         `json:"total_requests"`
+	SuccessfulRequests  int64         `json:"successful_requests"`
+	FailedRequests      int64         `json:"failed_requests"`
+	SuccessRate         float64       `json:"success_rate"`
+	AverageResponseTime time.Duration `json:"average_response_time"`
 }
 
 // BasicMetricsCollector provides thread-safe basic metrics collection
 // for RSS feed operations. It tracks request counts, success rates,
 // and response time statistics.
 type BasicMetricsCollector struct {
-	totalRequests       int64
-	successfulRequests  int64
-	failedRequests      int64
-	totalResponseTime   time.Duration
-	responseTimeCount   int64
+	totalRequests      int64
+	successfulRequests int64
+	failedRequests     int64
+	totalResponseTime  time.Duration
+	responseTimeCount  int64
 	mutex              sync.RWMutex
 }
 
@@ -35,7 +35,7 @@ func NewBasicMetricsCollector() *BasicMetricsCollector {
 func (c *BasicMetricsCollector) RecordSuccess() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	c.totalRequests++
 	c.successfulRequests++
 }
@@ -44,7 +44,7 @@ func (c *BasicMetricsCollector) RecordSuccess() {
 func (c *BasicMetricsCollector) RecordFailure() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	c.totalRequests++
 	c.failedRequests++
 }
@@ -53,7 +53,7 @@ func (c *BasicMetricsCollector) RecordFailure() {
 func (c *BasicMetricsCollector) RecordResponseTime(duration time.Duration) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	c.totalResponseTime += duration
 	c.responseTimeCount++
 }
@@ -62,7 +62,7 @@ func (c *BasicMetricsCollector) RecordResponseTime(duration time.Duration) {
 func (c *BasicMetricsCollector) GetTotalRequests() int64 {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
-	
+
 	return c.totalRequests
 }
 
@@ -70,7 +70,7 @@ func (c *BasicMetricsCollector) GetTotalRequests() int64 {
 func (c *BasicMetricsCollector) GetSuccessfulRequests() int64 {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
-	
+
 	return c.successfulRequests
 }
 
@@ -78,7 +78,7 @@ func (c *BasicMetricsCollector) GetSuccessfulRequests() int64 {
 func (c *BasicMetricsCollector) GetFailedRequests() int64 {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
-	
+
 	return c.failedRequests
 }
 
@@ -86,11 +86,11 @@ func (c *BasicMetricsCollector) GetFailedRequests() int64 {
 func (c *BasicMetricsCollector) GetSuccessRate() float64 {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
-	
+
 	if c.totalRequests == 0 {
 		return 0.0
 	}
-	
+
 	return float64(c.successfulRequests) / float64(c.totalRequests)
 }
 
@@ -98,11 +98,11 @@ func (c *BasicMetricsCollector) GetSuccessRate() float64 {
 func (c *BasicMetricsCollector) GetAverageResponseTime() time.Duration {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
-	
+
 	if c.responseTimeCount == 0 {
 		return time.Duration(0)
 	}
-	
+
 	return c.totalResponseTime / time.Duration(c.responseTimeCount)
 }
 
@@ -110,7 +110,7 @@ func (c *BasicMetricsCollector) GetAverageResponseTime() time.Duration {
 func (c *BasicMetricsCollector) Reset() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	c.totalRequests = 0
 	c.successfulRequests = 0
 	c.failedRequests = 0
@@ -122,7 +122,7 @@ func (c *BasicMetricsCollector) Reset() {
 func (c *BasicMetricsCollector) GetSnapshot() MetricsSnapshot {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
-	
+
 	// Calculate success rate directly
 	var successRate float64
 	if c.totalRequests == 0 {
@@ -130,7 +130,7 @@ func (c *BasicMetricsCollector) GetSnapshot() MetricsSnapshot {
 	} else {
 		successRate = float64(c.successfulRequests) / float64(c.totalRequests)
 	}
-	
+
 	// Calculate average response time directly
 	var avgResponseTime time.Duration
 	if c.responseTimeCount == 0 {
@@ -138,7 +138,7 @@ func (c *BasicMetricsCollector) GetSnapshot() MetricsSnapshot {
 	} else {
 		avgResponseTime = c.totalResponseTime / time.Duration(c.responseTimeCount)
 	}
-	
+
 	return MetricsSnapshot{
 		TotalRequests:       c.totalRequests,
 		SuccessfulRequests:  c.successfulRequests,

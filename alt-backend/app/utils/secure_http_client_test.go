@@ -16,36 +16,36 @@ import (
 
 func TestHTTPClientFactory_CreateHTTPClient_ProxyStrategy(t *testing.T) {
 	tests := []struct {
-		name                string
-		proxyStrategyEnv    string
-		envoyBaseURLEnv     string
-		expectedStrategy    ProxyStrategy
-		expectedTimeout     time.Duration
-		expectDirectClient  bool
+		name               string
+		proxyStrategyEnv   string
+		envoyBaseURLEnv    string
+		expectedStrategy   ProxyStrategy
+		expectedTimeout    time.Duration
+		expectDirectClient bool
 	}{
 		{
-			name:                "should_use_envoy_strategy_when_configured",
-			proxyStrategyEnv:    "ENVOY",
-			envoyBaseURLEnv:     "http://test-envoy:8080",
-			expectedStrategy:    ProxyStrategyEnvoy,
-			expectedTimeout:     60 * time.Second,
-			expectDirectClient:  false,
+			name:               "should_use_envoy_strategy_when_configured",
+			proxyStrategyEnv:   "ENVOY",
+			envoyBaseURLEnv:    "http://test-envoy:8080",
+			expectedStrategy:   ProxyStrategyEnvoy,
+			expectedTimeout:    60 * time.Second,
+			expectDirectClient: false,
 		},
 		{
-			name:                "should_use_direct_strategy_when_configured",
-			proxyStrategyEnv:    "DIRECT",
-			envoyBaseURLEnv:     "",
-			expectedStrategy:    ProxyStrategyDirect,
-			expectedTimeout:     30 * time.Second,
-			expectDirectClient:  true,
+			name:               "should_use_direct_strategy_when_configured",
+			proxyStrategyEnv:   "DIRECT",
+			envoyBaseURLEnv:    "",
+			expectedStrategy:   ProxyStrategyDirect,
+			expectedTimeout:    30 * time.Second,
+			expectDirectClient: true,
 		},
 		{
-			name:                "should_default_to_direct_when_env_not_set",
-			proxyStrategyEnv:    "",
-			envoyBaseURLEnv:     "",
-			expectedStrategy:    ProxyStrategyDirect,
-			expectedTimeout:     30 * time.Second,
-			expectDirectClient:  true,
+			name:               "should_default_to_direct_when_env_not_set",
+			proxyStrategyEnv:   "",
+			envoyBaseURLEnv:    "",
+			expectedStrategy:   ProxyStrategyDirect,
+			expectedTimeout:    30 * time.Second,
+			expectDirectClient: true,
 		},
 	}
 
@@ -202,22 +202,22 @@ func TestHTTPClientFactory_EnvoyProxyRequestTransformation(t *testing.T) {
 	// Should be transformed to: {envoyServer.URL}/proxy/https://example.com/rss.xml
 	// With header: X-Target-Domain: example.com
 	targetURL := "https://example.com/rss.xml"
-	
+
 	req, err := http.NewRequestWithContext(context.Background(), "GET", targetURL, nil)
 	require.NoError(t, err)
 
-	// Execute the request - this should fail initially because CreateHTTPClient 
+	// Execute the request - this should fail initially because CreateHTTPClient
 	// doesn't transform requests to go through Envoy proxy
 	resp, err := client.Do(req)
-	
+
 	// We expect this to succeed (transformation working)
 	assert.NoError(t, err, "Expected request to succeed through Envoy proxy")
 	assert.NotNil(t, resp, "Expected response to be non-nil")
-	
+
 	if resp != nil {
 		defer resp.Body.Close()
 		assert.Equal(t, http.StatusOK, resp.StatusCode, "Expected successful response")
-		
+
 		body, err := io.ReadAll(resp.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, "RSS feed content", string(body))

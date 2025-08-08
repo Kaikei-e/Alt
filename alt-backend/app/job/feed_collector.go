@@ -157,8 +157,8 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 		for _, item := range feed.Items {
 			// Skip items with empty or invalid titles
 			if strings.TrimSpace(item.Title) == "" {
-				logger.Logger.Warn("Skipping feed item with empty title", 
-					"link", item.Link, 
+				logger.Logger.Warn("Skipping feed item with empty title",
+					"link", item.Link,
 					"description", truncateString(item.Description, 100))
 				continue
 			}
@@ -167,8 +167,8 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 			if strings.Contains(strings.ToLower(item.Description), "404 page not found") ||
 				strings.Contains(strings.ToLower(item.Title), "404") ||
 				strings.Contains(strings.ToLower(item.Title), "not found") {
-				logger.Logger.Warn("Skipping feed item with 404/not found content", 
-					"title", item.Title, 
+				logger.Logger.Warn("Skipping feed item with 404/not found content",
+					"title", item.Title,
 					"link", item.Link)
 				continue
 			}
@@ -199,4 +199,3 @@ func truncateString(s string, maxLength int) string {
 	}
 	return s[:maxLength] + "..."
 }
-
