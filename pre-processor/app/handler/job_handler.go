@@ -114,8 +114,12 @@ func (h *jobHandler) Stop() error {
 
 // runFeedProcessingLoop runs the feed processing loop.
 func (h *jobHandler) runFeedProcessingLoop() {
+	h.logger.Info("runFeedProcessingLoop: Starting feed processing loop goroutine")
+	
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
+
+	h.logger.Info("runFeedProcessingLoop: Ticker created, waiting for first tick in 5 minutes")
 
 	for {
 		select {
@@ -123,6 +127,7 @@ func (h *jobHandler) runFeedProcessingLoop() {
 			h.logger.Info("feed processing job stopped")
 			return
 		case <-ticker.C:
+			h.logger.Info("runFeedProcessingLoop: Ticker fired, calling processFeedsBatch")
 			h.processFeedsBatch()
 		}
 	}
@@ -162,6 +167,14 @@ func (h *jobHandler) runQualityCheckLoop() {
 
 // processFeedsBatch processes a batch of feeds.
 func (h *jobHandler) processFeedsBatch() {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logger.Error("panic in processFeedsBatch", "panic", r)
+		}
+	}()
+	
+	h.logger.Info("Starting feed processing batch", "batch_size", h.batchSize)
+	
 	result, err := h.feedProcessor.ProcessFeeds(h.ctx, h.batchSize)
 	if err != nil {
 		h.logger.Error("feed processing failed", "error", err)
