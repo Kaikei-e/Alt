@@ -22,6 +22,6 @@ jobs:
   test:
     uses: ./.github/workflows/reusable-test-frontend.yaml
     with:
-      working-directory: 'alt-frontend/app'
+      working-directory: 'alt-frontend/src'
       test-type: 'vitest'
       node-version: '20'

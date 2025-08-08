@@ -22,7 +22,7 @@ jobs:
   test:
     uses: ./.github/workflows/reusable-test-frontend.yaml
     with:
-      working-directory: 'alt-frontend/app'
+      working-directory: 'alt-frontend/src'
       test-type: 'playwright'
       node-version: '20'
       workflow-name: 'Alt Frontend Playwright Tests'
