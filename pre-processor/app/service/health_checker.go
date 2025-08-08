@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -30,7 +31,7 @@ func NewHealthCheckerService(newsCreatorURL string, logger *slog.Logger) HealthC
 func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error {
 	s.logger.Debug("checking news creator health", "url", s.newsCreatorURL)
 
-	// GREEN PHASE: Minimal implementation
+	// IMPROVED: Check if models are actually loaded, not just if service is up
 	healthURL := s.newsCreatorURL + "/api/tags"
 
 	resp, err := s.client.Get(healthURL)
@@ -45,8 +46,25 @@ func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error
 		return fmt.Errorf("news creator not healthy: status %d", resp.StatusCode)
 	}
 
-	s.logger.Debug("news creator is healthy")
+	// Check if models are loaded
+	var response struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		s.logger.Error("failed to decode health response", "error", err)
+		return fmt.Errorf("failed to decode health response: %w", err)
+	}
 
+	// Service is healthy only if models are loaded
+	if len(response.Models) == 0 {
+		s.logger.Warn("news creator service is up but no models are loaded")
+		return fmt.Errorf("no models loaded in news creator service")
+	}
+
+	s.logger.Debug("news creator is healthy", "models", len(response.Models))
 	return nil
 }
 
