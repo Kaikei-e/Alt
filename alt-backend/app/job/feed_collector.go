@@ -155,6 +155,24 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
 		for _, item := range feed.Items {
+			// Skip items with empty or invalid titles
+			if strings.TrimSpace(item.Title) == "" {
+				logger.Logger.Warn("Skipping feed item with empty title", 
+					"link", item.Link, 
+					"description", truncateString(item.Description, 100))
+				continue
+			}
+
+			// Skip items with suspicious content that indicates 404 errors
+			if strings.Contains(strings.ToLower(item.Description), "404 page not found") ||
+				strings.Contains(strings.ToLower(item.Title), "404") ||
+				strings.Contains(strings.ToLower(item.Title), "not found") {
+				logger.Logger.Warn("Skipping feed item with 404/not found content", 
+					"title", item.Title, 
+					"link", item.Link)
+				continue
+			}
+
 			var author domain.Author
 			var authors []domain.Author
 			if item.Author != nil {
@@ -162,7 +180,7 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 				authors = append(authors, author)
 			}
 			feedItems = append(feedItems, &domain.FeedItem{
-				Title:           item.Title,
+				Title:           strings.TrimSpace(item.Title),
 				Description:     item.Description,
 				Link:            item.Link,
 				PublishedParsed: *item.PublishedParsed,
@@ -172,5 +190,13 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 		}
 	}
 	return feedItems
+}
+
+// truncateString truncates a string to the specified length
+func truncateString(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	return s[:maxLength] + "..."
 }
 

@@ -7,6 +7,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,8 +27,16 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 	}
 	var items []models.Feed
 	for _, feedItem := range feeds {
+		// Additional validation: Skip feeds with empty titles as a safety net
+		if strings.TrimSpace(feedItem.Title) == "" {
+			logger.Logger.Warn("Skipping feed registration with empty title", 
+				"link", feedItem.Link,
+				"description", feedItem.Description)
+			continue
+		}
+
 		feedModel := &models.Feed{
-			Title:       feedItem.Title,
+			Title:       strings.TrimSpace(feedItem.Title),
 			Description: feedItem.Description,
 			Link:        feedItem.Link,
 			PubDate:     feedItem.PublishedParsed,
