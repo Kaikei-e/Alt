@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"pre-processor-sidecar/models"
 	"pre-processor-sidecar/mocks"
+	"pre-processor-sidecar/models"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -19,12 +19,12 @@ import (
 // setupSubscriptionMock sets up a standard subscription mock for testing
 func setupSubscriptionMock(subscriptionRepo *mocks.MockSubscriptionRepository) {
 	subscriptionRepo.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*models.Subscription{
+		GetAllSubscriptions(gomock.Any()).
+		Return([]models.InoreaderSubscription{
 			{
-				ID:          uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				DatabaseID:  uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
 				InoreaderID: "feed/http://example.com/rss",
-				FeedURL:     "http://example.com/rss",
+				URL:         "http://example.com/rss",
 				Title:       "Example Feed",
 			},
 		}, nil).AnyTimes()
@@ -32,24 +32,24 @@ func setupSubscriptionMock(subscriptionRepo *mocks.MockSubscriptionRepository) {
 
 func TestArticleFetchService_FetchArticles(t *testing.T) {
 	tests := map[string]struct {
-		streamID             string
-		maxArticles          int
+		streamID              string
+		maxArticles           int
 		mockInoreaderResponse []map[string]interface{}
 		mockContinuationToken string
-		mockSyncState        *models.SyncState
-		mockSetup            func(*mocks.MockOAuth2Driver, *mocks.MockArticleRepository, *mocks.MockSyncStateRepository, *mocks.MockSubscriptionRepository)
-		expectError          bool
-		expectedArticleCount int
-		expectedContinuation string
+		mockSyncState         *models.SyncState
+		mockSetup             func(*mocks.MockOAuth2Driver, *mocks.MockArticleRepository, *mocks.MockSyncStateRepository, *mocks.MockSubscriptionRepository)
+		expectError           bool
+		expectedArticleCount  int
+		expectedContinuation  string
 	}{
 		"successful_first_fetch": {
 			streamID:    "user/-/state/com.google/reading-list",
 			maxArticles: 100,
 			mockInoreaderResponse: []map[string]interface{}{
 				{
-					"id":      "tag:google.com,2005:reader/item/feed/http://example.com/rss#article1",
-					"title":   "First Article",
-					"author":  "John Doe",
+					"id":        "tag:google.com,2005:reader/item/feed/http://example.com/rss#article1",
+					"title":     "First Article",
+					"author":    "John Doe",
 					"published": float64(1672531200), // Unix timestamp
 					"alternate": []interface{}{
 						map[string]interface{}{
@@ -63,9 +63,9 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 					},
 				},
 				{
-					"id":      "tag:google.com,2005:reader/item/feed/http://example.com/rss#article2",
-					"title":   "Second Article", 
-					"author":  "Jane Smith",
+					"id":        "tag:google.com,2005:reader/item/feed/http://example.com/rss#article2",
+					"title":     "Second Article",
+					"author":    "Jane Smith",
 					"published": float64(1672617600),
 					"alternate": []interface{}{
 						map[string]interface{}{
@@ -84,13 +84,13 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 			mockSetup: func(oauth2Client *mocks.MockOAuth2Driver, articleRepo *mocks.MockArticleRepository, syncRepo *mocks.MockSyncStateRepository, subscriptionRepo *mocks.MockSubscriptionRepository) {
 				// Setup subscription mock
 				setupSubscriptionMock(subscriptionRepo)
-				
+
 				// Mock Inoreader API call
 				oauth2Client.EXPECT().
 					MakeAuthenticatedRequest(
 						gomock.Any(),
 						"valid_token",
-						"/stream/contents/user/-/state/com.google/reading-list",
+						"/stream/contents/user%2F-%2Fstate%2Fcom.google%2Freading-list",
 						map[string]string{
 							"output": "json",
 							"n":      "100",
@@ -99,9 +99,9 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 					Return(map[string]interface{}{
 						"items": []interface{}{
 							map[string]interface{}{
-								"id":      "tag:google.com,2005:reader/item/feed/http://example.com/rss#article1",
-								"title":   "First Article",
-								"author":  "John Doe",
+								"id":        "tag:google.com,2005:reader/item/feed/http://example.com/rss#article1",
+								"title":     "First Article",
+								"author":    "John Doe",
 								"published": float64(1672531200),
 								"alternate": []interface{}{
 									map[string]interface{}{
@@ -115,9 +115,9 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 								},
 							},
 							map[string]interface{}{
-								"id":      "tag:google.com,2005:reader/item/feed/http://example.com/rss#article2",
-								"title":   "Second Article",
-								"author":  "Jane Smith",
+								"id":        "tag:google.com,2005:reader/item/feed/http://example.com/rss#article2",
+								"title":     "Second Article",
+								"author":    "Jane Smith",
 								"published": float64(1672617600),
 								"alternate": []interface{}{
 									map[string]interface{}{
@@ -168,9 +168,9 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 			maxArticles: 100,
 			mockInoreaderResponse: []map[string]interface{}{
 				{
-					"id":      "tag:google.com,2005:reader/item/feed/http://example.com/rss#article3",
-					"title":   "Third Article",
-					"author":  "Bob Wilson",
+					"id":        "tag:google.com,2005:reader/item/feed/http://example.com/rss#article3",
+					"title":     "Third Article",
+					"author":    "Bob Wilson",
 					"published": float64(1672704000),
 					"alternate": []interface{}{
 						map[string]interface{}{
@@ -193,13 +193,13 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 			mockSetup: func(oauth2Client *mocks.MockOAuth2Driver, articleRepo *mocks.MockArticleRepository, syncRepo *mocks.MockSyncStateRepository, subscriptionRepo *mocks.MockSubscriptionRepository) {
 				// Setup subscription mock
 				setupSubscriptionMock(subscriptionRepo)
-				
+
 				// Mock Inoreader API call with continuation token
 				oauth2Client.EXPECT().
 					MakeAuthenticatedRequest(
 						gomock.Any(),
 						"valid_token",
-						"/stream/contents/user/-/state/com.google/reading-list",
+						"/stream/contents/user%2F-%2Fstate%2Fcom.google%2Freading-list",
 						map[string]string{
 							"output": "json",
 							"n":      "100",
@@ -209,9 +209,9 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 					Return(map[string]interface{}{
 						"items": []interface{}{
 							map[string]interface{}{
-								"id":      "tag:google.com,2005:reader/item/feed/http://example.com/rss#article3",
-								"title":   "Third Article",
-								"author":  "Bob Wilson",
+								"id":        "tag:google.com,2005:reader/item/feed/http://example.com/rss#article3",
+								"title":     "Third Article",
+								"author":    "Bob Wilson",
 								"published": float64(1672704000),
 								"alternate": []interface{}{
 									map[string]interface{}{
@@ -255,19 +255,19 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 			expectedContinuation: "", // Last page
 		},
 		"api_rate_limit_error": {
-			streamID:    "user/-/state/com.google/reading-list",
-			maxArticles: 100,
+			streamID:      "user/-/state/com.google/reading-list",
+			maxArticles:   100,
 			mockSyncState: nil,
 			mockSetup: func(oauth2Client *mocks.MockOAuth2Driver, articleRepo *mocks.MockArticleRepository, syncRepo *mocks.MockSyncStateRepository, subscriptionRepo *mocks.MockSubscriptionRepository) {
 				// Setup subscription mock
 				setupSubscriptionMock(subscriptionRepo)
-				
+
 				// Mock rate limit exceeded
 				oauth2Client.EXPECT().
 					MakeAuthenticatedRequest(
 						gomock.Any(),
 						"valid_token",
-						"/stream/contents/user/-/state/com.google/reading-list",
+						"/stream/contents/user%2F-%2Fstate%2Fcom.google%2Freading-list",
 						map[string]string{
 							"output": "json",
 							"n":      "100",
@@ -285,19 +285,19 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 			expectedContinuation: "",
 		},
 		"duplicate_article_skip": {
-			streamID:    "user/-/state/com.google/reading-list",
-			maxArticles: 100,
+			streamID:      "user/-/state/com.google/reading-list",
+			maxArticles:   100,
 			mockSyncState: nil,
 			mockSetup: func(oauth2Client *mocks.MockOAuth2Driver, articleRepo *mocks.MockArticleRepository, syncRepo *mocks.MockSyncStateRepository, subscriptionRepo *mocks.MockSubscriptionRepository) {
 				// Setup subscription mock
 				setupSubscriptionMock(subscriptionRepo)
-				
+
 				// Mock Inoreader API call
 				oauth2Client.EXPECT().
 					MakeAuthenticatedRequest(
 						gomock.Any(),
 						"valid_token",
-						"/stream/contents/user/-/state/com.google/reading-list",
+						"/stream/contents/user%2F-%2Fstate%2Fcom.google%2Freading-list",
 						map[string]string{
 							"output": "json",
 							"n":      "100",
@@ -306,9 +306,9 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 					Return(map[string]interface{}{
 						"items": []interface{}{
 							map[string]interface{}{
-								"id":      "tag:google.com,2005:reader/item/feed/http://example.com/rss#existing",
-								"title":   "Existing Article",
-								"author":  "Author Name",
+								"id":        "tag:google.com,2005:reader/item/feed/http://example.com/rss#existing",
+								"title":     "Existing Article",
+								"author":    "Author Name",
 								"published": float64(1672531200),
 								"alternate": []interface{}{
 									map[string]interface{}{
@@ -363,8 +363,9 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 
 			tc.mockSetup(mockOAuth2Client, mockArticleRepo, mockSyncRepo, mockSubscriptionRepo)
 
-			// Create Inoreader service
-			inoreaderService := NewInoreaderService(mockOAuth2Client, nil, nil)
+			// Create Inoreader service using client wrapper over OAuth2Driver mock
+			inoreaderClient := NewInoreaderClient(mockOAuth2Client, nil)
+			inoreaderService := NewInoreaderService(inoreaderClient, nil, nil)
 			inoreaderService.SetCurrentToken(&models.OAuth2Token{
 				AccessToken: "valid_token",
 				TokenType:   "Bearer",
@@ -405,11 +406,11 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 
 func TestArticleFetchService_ProcessArticleBatch(t *testing.T) {
 	tests := map[string]struct {
-		articles             []*models.Article
-		mockSetup           func(*mocks.MockArticleRepository)
-		expectError         bool
-		expectedProcessed   int
-		expectedSkipped     int
+		articles          []*models.Article
+		mockSetup         func(*mocks.MockArticleRepository)
+		expectError       bool
+		expectedProcessed int
+		expectedSkipped   int
 	}{
 		"process_all_new_articles": {
 			articles: []*models.Article{
@@ -422,7 +423,7 @@ func TestArticleFetchService_ProcessArticleBatch(t *testing.T) {
 				{
 					InoreaderID:    "article2",
 					SubscriptionID: uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
-					Title:          "Article 2", 
+					Title:          "Article 2",
 					ArticleURL:     "http://example.com/2",
 				},
 			},

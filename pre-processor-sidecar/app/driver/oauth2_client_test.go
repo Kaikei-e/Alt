@@ -8,13 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"pre-processor-sidecar/models"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewOAuth2Client(t *testing.T) {
 	client := NewOAuth2Client("test_client_id", "test_client_secret", "https://test.example.com")
-	
+
 	assert.Equal(t, "test_client_id", client.clientID)
 	assert.Equal(t, "test_client_secret", client.clientSecret)
 	assert.Equal(t, "https://test.example.com", client.baseURL)
@@ -23,9 +25,9 @@ func TestNewOAuth2Client(t *testing.T) {
 
 func TestOAuth2Client_RefreshToken(t *testing.T) {
 	tests := map[string]struct {
-		refreshToken     string
-		mockResponse     func() *httptest.Server
-		expectError      bool
+		refreshToken      string
+		mockResponse      func() *httptest.Server
+		expectError       bool
 		expectAccessToken string
 		expectExpiresIn   int
 	}{
@@ -36,22 +38,22 @@ func TestOAuth2Client_RefreshToken(t *testing.T) {
 					// Verify request method and content type
 					assert.Equal(t, http.MethodPost, r.Method)
 					assert.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
-					
+
 					// Parse form data
 					err := r.ParseForm()
 					require.NoError(t, err)
-					
+
 					// Verify required parameters
 					assert.Equal(t, "refresh_token", r.Form.Get("grant_type"))
 					assert.Equal(t, "valid_refresh_token", r.Form.Get("refresh_token"))
 					assert.Equal(t, "test_client_id", r.Form.Get("client_id"))
 					assert.Equal(t, "test_client_secret", r.Form.Get("client_secret"))
-					
+
 					// Return mock OAuth2 response
 					response := map[string]interface{}{
-						"access_token": "new_access_token_123",
-						"token_type":   "Bearer",
-						"expires_in":   3600,
+						"access_token":  "new_access_token_123",
+						"token_type":    "Bearer",
+						"expires_in":    3600,
 						"refresh_token": "new_refresh_token_456",
 					}
 					w.Header().Set("Content-Type", "application/json")
@@ -128,10 +130,11 @@ func TestOAuth2Client_RefreshToken(t *testing.T) {
 				assert.Equal(t, "Bearer", tokenResponse.TokenType)
 				assert.Equal(t, tc.expectExpiresIn, tokenResponse.ExpiresIn)
 				assert.Equal(t, "new_refresh_token_456", tokenResponse.RefreshToken)
-				
-				// Verify token expiration calculation
+
+				// Verify token expiration calculation via domain model
 				expectedExpiry := time.Now().Add(time.Duration(tc.expectExpiresIn) * time.Second)
-				assert.WithinDuration(t, expectedExpiry, tokenResponse.ExpiresAt, 5*time.Second)
+				oauthToken := models.NewOAuth2Token(*tokenResponse, tokenResponse.RefreshToken)
+				assert.WithinDuration(t, expectedExpiry, oauthToken.ExpiresAt, 5*time.Second)
 			}
 		})
 	}
@@ -151,12 +154,12 @@ func TestOAuth2Client_ValidateToken(t *testing.T) {
 					// Verify authorization header
 					authHeader := r.Header.Get("Authorization")
 					assert.Equal(t, "Bearer valid_access_token", authHeader)
-					
+
 					// Return user info (token is valid)
 					w.WriteHeader(http.StatusOK)
 					userInfo := map[string]interface{}{
-						"userId":   "123456789",
-						"userName": "test_user",
+						"userId":    "123456789",
+						"userName":  "test_user",
 						"userEmail": "test@example.com",
 					}
 					json.NewEncoder(w).Encode(userInfo)
@@ -252,7 +255,7 @@ func TestOAuth2Client_MakeAuthenticatedRequest(t *testing.T) {
 					authHeader := r.Header.Get("Authorization")
 					assert.Equal(t, "Bearer valid_token", authHeader)
 					assert.Equal(t, "/subscription/list", r.URL.Path)
-					
+
 					// Return API response
 					w.WriteHeader(http.StatusOK)
 					response := map[string]interface{}{
@@ -346,9 +349,9 @@ func TestOAuth2Client_MakeAuthenticatedRequest(t *testing.T) {
 
 func TestOAuth2Client_HandleRateLimitHeaders(t *testing.T) {
 	tests := map[string]struct {
-		headers         map[string]string
-		expectedUsage   int
-		expectedLimit   int
+		headers           map[string]string
+		expectedUsage     int
+		expectedLimit     int
 		expectedRemaining int
 	}{
 		"with_rate_limit_headers": {

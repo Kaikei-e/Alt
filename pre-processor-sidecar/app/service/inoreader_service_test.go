@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"pre-processor-sidecar/models"
 	"pre-processor-sidecar/mocks"
+	"pre-processor-sidecar/models"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -16,7 +16,7 @@ import (
 func TestInoreaderService_RefreshTokenIfNeeded(t *testing.T) {
 	tests := map[string]struct {
 		currentToken       *models.OAuth2Token
-		mockSetup          func(*mocks.MockOAuth2Driver)
+		mockSetup          func(*mocks.MockInoreaderClient)
 		expectError        bool
 		expectTokenRefresh bool
 	}{
@@ -28,7 +28,7 @@ func TestInoreaderService_RefreshTokenIfNeeded(t *testing.T) {
 				ExpiresAt:    time.Now().Add(10 * time.Minute),
 				IssuedAt:     time.Now().Add(-50 * time.Minute),
 			},
-			mockSetup: func(client *mocks.MockOAuth2Driver) {
+			mockSetup: func(client *mocks.MockInoreaderClient) {
 				// No calls expected
 			},
 			expectError:        false,
@@ -42,7 +42,7 @@ func TestInoreaderService_RefreshTokenIfNeeded(t *testing.T) {
 				ExpiresAt:    time.Now().Add(2 * time.Minute), // Within 5-minute buffer
 				IssuedAt:     time.Now().Add(-58 * time.Minute),
 			},
-			mockSetup: func(client *mocks.MockOAuth2Driver) {
+			mockSetup: func(client *mocks.MockInoreaderClient) {
 				response := &models.InoreaderTokenResponse{
 					AccessToken:  "new_access_token",
 					TokenType:    "Bearer",
@@ -63,7 +63,7 @@ func TestInoreaderService_RefreshTokenIfNeeded(t *testing.T) {
 				ExpiresAt:    time.Now().Add(-5 * time.Minute), // Expired
 				IssuedAt:     time.Now().Add(-65 * time.Minute),
 			},
-			mockSetup: func(client *mocks.MockOAuth2Driver) {
+			mockSetup: func(client *mocks.MockInoreaderClient) {
 				client.EXPECT().RefreshToken(gomock.Any(), "invalid_refresh_token").
 					Return(nil, fmt.Errorf("OAuth2 refresh token failed with status 400"))
 			},
@@ -77,10 +77,10 @@ func TestInoreaderService_RefreshTokenIfNeeded(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockOAuth2Client := mocks.NewMockOAuth2Driver(ctrl)
-			tc.mockSetup(mockOAuth2Client)
+			mockInoreaderClient := mocks.NewMockInoreaderClient(ctrl)
+			tc.mockSetup(mockInoreaderClient)
 
-			service := NewInoreaderService(mockOAuth2Client, nil, nil)
+			service := NewInoreaderService(mockInoreaderClient, nil, nil)
 			service.SetCurrentToken(tc.currentToken)
 
 			ctx := context.Background()
@@ -173,24 +173,36 @@ func TestInoreaderService_FetchSubscriptions(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockOAuth2Client := mocks.NewMockOAuth2Driver(ctrl)
+			mockInoreaderClient := mocks.NewMockInoreaderClient(ctrl)
 
 			// Setup expectations
 			if tc.expectError && tc.rateLimitHeaders != nil {
-				mockOAuth2Client.EXPECT().
-					MakeAuthenticatedRequest(gomock.Any(), "valid_token", "/subscription/list", nil).
+				mockInoreaderClient.EXPECT().
+					FetchSubscriptionList(gomock.Any(), "valid_token").
 					Return(nil, fmt.Errorf("API rate limit exceeded (Zone 1: 100/100)"))
 			} else if tc.expectError {
-				mockOAuth2Client.EXPECT().
-					MakeAuthenticatedRequest(gomock.Any(), "valid_token", "/subscription/list", nil).
+				mockInoreaderClient.EXPECT().
+					FetchSubscriptionList(gomock.Any(), "valid_token").
 					Return(nil, fmt.Errorf("authentication failed: token may be expired or invalid"))
 			} else {
-				mockOAuth2Client.EXPECT().
-					MakeAuthenticatedRequest(gomock.Any(), "valid_token", "/subscription/list", nil).
+				mockInoreaderClient.EXPECT().
+					FetchSubscriptionList(gomock.Any(), "valid_token").
 					Return(tc.mockResponse, nil)
+				if tc.expectedCount > 0 {
+					mockInoreaderClient.EXPECT().
+						ParseSubscriptionsResponse(tc.mockResponse).
+						Return([]*models.Subscription{
+							{InoreaderID: "feed/http://example.com/rss", FeedURL: "http://example.com/rss", Title: "Example Tech News", Category: "Tech"},
+							{InoreaderID: "feed/http://blog.example.org/feed", FeedURL: "http://blog.example.org/feed", Title: "Development Blog", Category: "Development"},
+						}, nil)
+				} else {
+					mockInoreaderClient.EXPECT().
+						ParseSubscriptionsResponse(tc.mockResponse).
+						Return([]*models.Subscription{}, nil)
+				}
 			}
 
-			service := NewInoreaderService(mockOAuth2Client, nil, nil)
+			service := NewInoreaderService(mockInoreaderClient, nil, nil)
 			service.SetCurrentToken(&models.OAuth2Token{
 				AccessToken: "valid_token",
 				TokenType:   "Bearer",
@@ -293,19 +305,19 @@ func TestInoreaderService_CheckAPIRateLimit(t *testing.T) {
 
 func TestInoreaderService_UpdateAPIUsageFromHeaders(t *testing.T) {
 	tests := map[string]struct {
-		endpoint        string
-		headers         map[string]string
-		existingUsage   *models.APIUsageTracking
-		mockSetup       func(*mocks.MockAPIUsageRepository)
-		expectError     bool
-		expectedZone1   int
-		expectedZone2   int
+		endpoint      string
+		headers       map[string]string
+		existingUsage *models.APIUsageTracking
+		mockSetup     func(*mocks.MockAPIUsageRepository)
+		expectError   bool
+		expectedZone1 int
+		expectedZone2 int
 	}{
 		"new_usage_record_zone1_endpoint": {
 			endpoint: "/subscription/list",
 			headers: map[string]string{
 				"X-Reader-Zone1-Usage":     "25",
-				"X-Reader-Zone1-Limit":     "100", 
+				"X-Reader-Zone1-Limit":     "100",
 				"X-Reader-Zone1-Remaining": "75",
 			},
 			existingUsage: nil,
@@ -314,12 +326,12 @@ func TestInoreaderService_UpdateAPIUsageFromHeaders(t *testing.T) {
 				repo.EXPECT().
 					GetTodaysUsage(gomock.Any()).
 					Return(nil, fmt.Errorf("not found"))
-				
+
 				// Create new record
 				repo.EXPECT().
 					CreateUsageRecord(gomock.Any(), gomock.Any()).
 					Return(nil)
-				
+
 				// Update record after increment
 				repo.EXPECT().
 					UpdateUsageRecord(gomock.Any(), gomock.Any()).
@@ -349,7 +361,7 @@ func TestInoreaderService_UpdateAPIUsageFromHeaders(t *testing.T) {
 						Zone2Requests: 2,
 						Date:          time.Now(),
 					}, nil)
-				
+
 				// Update record after increment
 				repo.EXPECT().
 					UpdateUsageRecord(gomock.Any(), gomock.Any()).
@@ -379,17 +391,34 @@ func TestInoreaderService_UpdateAPIUsageFromHeaders(t *testing.T) {
 			var mockRepo *mocks.MockAPIUsageRepository
 			var service *InoreaderService
 
-			if name == "repository_not_configured" {
-				// Test with nil repository
-				service = NewInoreaderService(nil, nil, nil)
-			} else {
+            if name == "repository_not_configured" {
+                // Test with nil repository
+                service = NewInoreaderService(nil, nil, nil)
+            } else {
 				mockRepo = mocks.NewMockAPIUsageRepository(ctrl)
 				tc.mockSetup(mockRepo)
 				service = NewInoreaderService(nil, mockRepo, nil)
 			}
 
 			ctx := context.Background()
-			err := service.UpdateAPIUsageFromHeaders(ctx, tc.headers, tc.endpoint)
+			// Mock client call to fetch headers when repo configured
+            if mockRepo != nil {
+				mockClient := mocks.NewMockInoreaderClient(ctrl)
+				service.inoreaderClient = mockClient
+				service.SetCurrentToken(&models.OAuth2Token{AccessToken: "valid_token", TokenType: "Bearer", ExpiresAt: time.Now().Add(1 * time.Hour)})
+				mockClient.EXPECT().
+					MakeAuthenticatedRequestWithHeaders(gomock.Any(), "valid_token", tc.endpoint, gomock.Nil()).
+					Return(nil, tc.headers, nil)
+            } else {
+                // Even with nil repo, the method will still try to fetch headers; provide a client and token
+                mockClient := mocks.NewMockInoreaderClient(ctrl)
+                service.inoreaderClient = mockClient
+                service.SetCurrentToken(&models.OAuth2Token{AccessToken: "valid_token", TokenType: "Bearer", ExpiresAt: time.Now().Add(1 * time.Hour)})
+                mockClient.EXPECT().
+                    MakeAuthenticatedRequestWithHeaders(gomock.Any(), "valid_token", tc.endpoint, gomock.Nil()).
+                    Return(nil, tc.headers, nil)
+			}
+			err := service.UpdateAPIUsageFromHeaders(ctx, tc.endpoint)
 
 			if tc.expectError {
 				assert.Error(t, err)
@@ -488,7 +517,8 @@ func TestInoreaderService_isReadOnlyEndpoint(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := isReadOnlyEndpoint(tc.endpoint)
+			svc := NewInoreaderService(nil, nil, nil)
+			result := svc.isReadOnlyEndpoint(tc.endpoint)
 			assert.Equal(t, tc.expected, result)
 		})
 	}

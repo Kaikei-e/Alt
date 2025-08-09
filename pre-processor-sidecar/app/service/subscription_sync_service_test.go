@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"pre-processor-sidecar/models"
 	"pre-processor-sidecar/mocks"
+	"pre-processor-sidecar/models"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -17,13 +17,13 @@ import (
 
 func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 	tests := map[string]struct {
-		inoreaderResponse    []*models.Subscription
+		inoreaderResponse     []*models.Subscription
 		existingSubscriptions []*models.Subscription
-		mockSetup            func(*mocks.MockOAuth2Driver, *mocks.MockSubscriptionRepository)
-		expectError          bool
-		expectedCreated      int
-		expectedUpdated      int
-		expectedDeleted      int
+		mockSetup             func(*mocks.MockInoreaderClient, *mocks.MockSubscriptionRepository)
+		expectError           bool
+		expectedCreated       int
+		expectedUpdated       int
+		expectedDeleted       int
 	}{
 		"successful_sync_new_subscriptions": {
 			inoreaderResponse: []*models.Subscription{
@@ -35,16 +35,16 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 				},
 				{
 					InoreaderID: "feed/http://blog.example.org/feed",
-					FeedURL:     "http://blog.example.org/feed", 
+					FeedURL:     "http://blog.example.org/feed",
 					Title:       "Development Blog",
 					Category:    "Development",
 				},
 			},
 			existingSubscriptions: []*models.Subscription{},
-			mockSetup: func(oauth2Client *mocks.MockOAuth2Driver, repo *mocks.MockSubscriptionRepository) {
+			mockSetup: func(oauth2Client *mocks.MockInoreaderClient, repo *mocks.MockSubscriptionRepository) {
 				// Mock Inoreader API call
 				oauth2Client.EXPECT().
-					MakeAuthenticatedRequest(gomock.Any(), gomock.Any(), "/subscription/list", nil).
+					FetchSubscriptionList(gomock.Any(), gomock.Any()).
 					Return(map[string]interface{}{
 						"subscriptions": []interface{}{
 							map[string]interface{}{
@@ -72,20 +72,19 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 						},
 					}, nil)
 
-				// Mock repository calls for new subscriptions
+				// Expect parsing and bulk save
+				oauth2Client.EXPECT().
+					ParseSubscriptionsResponse(gomock.Any()).
+					Return([]*models.Subscription{
+						{InoreaderID: "feed/http://example.com/rss", FeedURL: "http://example.com/rss", Title: "Example Tech News", Category: "Tech"},
+						{InoreaderID: "feed/http://blog.example.org/feed", FeedURL: "http://blog.example.org/feed", Title: "Development Blog", Category: "Development"},
+					}, nil)
 				repo.EXPECT().
-					FindByInoreaderID(gomock.Any(), "feed/http://example.com/rss").
-					Return(nil, fmt.Errorf("not found"))
-				repo.EXPECT().
-					Create(gomock.Any(), gomock.Any()).
+					SaveSubscriptions(gomock.Any(), gomock.Any()).
 					Return(nil)
-				
 				repo.EXPECT().
-					FindByInoreaderID(gomock.Any(), "feed/http://blog.example.org/feed").
-					Return(nil, fmt.Errorf("not found"))
-				repo.EXPECT().
-					Create(gomock.Any(), gomock.Any()).
-					Return(nil)
+					GetAllSubscriptions(gomock.Any()).
+					Return([]models.InoreaderSubscription{}, nil).AnyTimes()
 			},
 			expectError:     false,
 			expectedCreated: 2,
@@ -109,10 +108,10 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 					Category:    "Tech",
 				},
 			},
-			mockSetup: func(oauth2Client *mocks.MockOAuth2Driver, repo *mocks.MockSubscriptionRepository) {
+			mockSetup: func(oauth2Client *mocks.MockInoreaderClient, repo *mocks.MockSubscriptionRepository) {
 				// Mock Inoreader API call
 				oauth2Client.EXPECT().
-					MakeAuthenticatedRequest(gomock.Any(), gomock.Any(), "/subscription/list", nil).
+					FetchSubscriptionList(gomock.Any(), gomock.Any()).
 					Return(map[string]interface{}{
 						"subscriptions": []interface{}{
 							map[string]interface{}{
@@ -129,19 +128,17 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 						},
 					}, nil)
 
-				// Mock repository calls for existing subscription
-				existingSub := &models.Subscription{
-					InoreaderID: "feed/http://example.com/rss",
-					FeedURL:     "http://example.com/rss",
-					Title:       "Example Tech News",
-					Category:    "Tech",
-				}
+				oauth2Client.EXPECT().
+					ParseSubscriptionsResponse(gomock.Any()).
+					Return([]*models.Subscription{
+						{InoreaderID: "feed/http://example.com/rss", FeedURL: "http://example.com/rss", Title: "Updated Tech News", Category: "Technology"},
+					}, nil)
 				repo.EXPECT().
-					FindByInoreaderID(gomock.Any(), "feed/http://example.com/rss").
-					Return(existingSub, nil)
-				repo.EXPECT().
-					Update(gomock.Any(), gomock.Any()).
+					SaveSubscriptions(gomock.Any(), gomock.Any()).
 					Return(nil)
+				repo.EXPECT().
+					GetAllSubscriptions(gomock.Any()).
+					Return([]models.InoreaderSubscription{}, nil).AnyTimes()
 			},
 			expectError:     false,
 			expectedCreated: 0,
@@ -149,12 +146,12 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 			expectedDeleted: 0,
 		},
 		"api_rate_limit_error": {
-			inoreaderResponse: []*models.Subscription{},
+			inoreaderResponse:     []*models.Subscription{},
 			existingSubscriptions: []*models.Subscription{},
-			mockSetup: func(oauth2Client *mocks.MockOAuth2Driver, repo *mocks.MockSubscriptionRepository) {
+			mockSetup: func(oauth2Client *mocks.MockInoreaderClient, repo *mocks.MockSubscriptionRepository) {
 				// Mock rate limit exceeded
 				oauth2Client.EXPECT().
-					MakeAuthenticatedRequest(gomock.Any(), gomock.Any(), "/subscription/list", nil).
+					FetchSubscriptionList(gomock.Any(), gomock.Any()).
 					Return(nil, fmt.Errorf("API rate limit exceeded (Zone 1: 100/100)"))
 			},
 			expectError:     true,
@@ -163,12 +160,12 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 			expectedDeleted: 0,
 		},
 		"oauth2_token_expired": {
-			inoreaderResponse: []*models.Subscription{},
+			inoreaderResponse:     []*models.Subscription{},
 			existingSubscriptions: []*models.Subscription{},
-			mockSetup: func(oauth2Client *mocks.MockOAuth2Driver, repo *mocks.MockSubscriptionRepository) {
+			mockSetup: func(oauth2Client *mocks.MockInoreaderClient, repo *mocks.MockSubscriptionRepository) {
 				// Mock token expired error
 				oauth2Client.EXPECT().
-					MakeAuthenticatedRequest(gomock.Any(), gomock.Any(), "/subscription/list", nil).
+					FetchSubscriptionList(gomock.Any(), gomock.Any()).
 					Return(nil, fmt.Errorf("authentication failed: token may be expired or invalid"))
 			},
 			expectError:     true,
@@ -183,7 +180,7 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockOAuth2Client := mocks.NewMockOAuth2Driver(ctrl)
+			mockOAuth2Client := mocks.NewMockInoreaderClient(ctrl)
 			mockRepo := mocks.NewMockSubscriptionRepository(ctrl)
 
 			tc.mockSetup(mockOAuth2Client, mockRepo)
@@ -283,7 +280,7 @@ func TestSubscriptionSyncService_IsSubscriptionChanged(t *testing.T) {
 			incoming: &models.Subscription{
 				InoreaderID: "feed/http://example.com/rss",
 				FeedURL:     "http://example.com/feed.xml",
-				Title:       "Tech News", 
+				Title:       "Tech News",
 				Category:    "Technology",
 			},
 			expected: true,
@@ -307,9 +304,9 @@ func TestSubscriptionSyncService_GetSyncStats(t *testing.T) {
 	// Initialize sync stats
 	syncService.lastSyncTime = time.Now().Add(-30 * time.Minute)
 	syncService.syncStats = &SubscriptionSyncStats{
-		LastSyncTime:     syncService.lastSyncTime,
-		TotalSyncs:       5,
-		SuccessfulSyncs:  4,
+		LastSyncTime:    syncService.lastSyncTime,
+		TotalSyncs:      5,
+		SuccessfulSyncs: 4,
 		FailedSyncs:     1,
 		Created:         10,
 		Updated:         3,

@@ -27,12 +27,15 @@ type InoreaderSubscriptionResponse struct {
 
 // InoreaderSubscription represents a single subscription from Inoreader API
 type InoreaderSubscription struct {
-	ID         string                    `json:"id"`         // e.g., "feed/http://example.com/rss"
-	Title      string                    `json:"title"`      // Feed title
-	Categories []InoreaderCategory       `json:"categories"` // Folder/label information
-	URL        string                    `json:"url"`        // XML feed URL
-	HTMLURL    string                    `json:"htmlUrl"`    // Website URL
-	IconURL    string                    `json:"iconUrl"`    // Favicon URL
+	DatabaseID  uuid.UUID                 `json:"database_id" db:"id"`   // Database primary key UUID
+	InoreaderID string                    `json:"id"`                    // e.g., "feed/http://example.com/rss" from API
+	Title       string                    `json:"title"`                 // Feed title
+	Categories  []InoreaderCategory       `json:"categories"`            // Folder/label information
+	URL         string                    `json:"url"`                   // XML feed URL
+	HTMLURL     string                    `json:"htmlUrl"`               // Website URL
+	IconURL     string                    `json:"iconUrl"`               // Favicon URL
+	CreatedAt   time.Time                 `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time                 `json:"updated_at" db:"updated_at"`
 }
 
 // InoreaderCategory represents a category/folder in Inoreader
@@ -68,7 +71,7 @@ func NewSubscriptionFromAPI(inoreaderSub InoreaderSubscription) *Subscription {
 
 	return &Subscription{
 		ID:          uuid.New(),
-		InoreaderID: inoreaderSub.ID,
+		InoreaderID: inoreaderSub.InoreaderID,
 		FeedURL:     inoreaderSub.URL,
 		Title:       inoreaderSub.Title,
 		Category:    category,

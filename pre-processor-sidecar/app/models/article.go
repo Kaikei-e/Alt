@@ -115,3 +115,18 @@ func NewArticleFromAPI(inoreaderItem InoreaderItem, subscriptionID uuid.UUID) *A
 		Processed:      false,
 	}
 }
+
+// NewUUID creates a new UUID
+func NewUUID() uuid.UUID {
+	return uuid.New()
+}
+
+// Now returns the current time
+func Now() time.Time {
+	return time.Now()
+}
+
+// TimeFromUnix converts Unix timestamp to time.Time
+func TimeFromUnix(timestamp int64) time.Time {
+	return time.Unix(timestamp, 0)
+}

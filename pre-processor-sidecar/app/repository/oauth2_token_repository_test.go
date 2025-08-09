@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
-	"github.com/google/uuid"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +23,7 @@ func TestOAuth2TokenRepository_GetCurrentToken(t *testing.T) {
 	}{
 		"valid_token_exists": {
 			setupFunc: func() OAuth2TokenRepository {
-				// Will implement SecretBasedTokenRepository here
-				return NewInMemoryTokenRepository() // Test implementation
+				return NewInMemoryTokenRepositoryWithToken()
 			},
 			expectedError: false,
 			validateFunc: func(t *testing.T, token *models.OAuth2Token, err error) {
@@ -36,7 +35,7 @@ func TestOAuth2TokenRepository_GetCurrentToken(t *testing.T) {
 		},
 		"no_token_exists": {
 			setupFunc: func() OAuth2TokenRepository {
-				return NewEmptyTokenRepository() // Test implementation
+				return NewInMemoryTokenRepository()
 			},
 			expectedError: true,
 			validateFunc: func(t *testing.T, token *models.OAuth2Token, err error) {
@@ -50,7 +49,7 @@ func TestOAuth2TokenRepository_GetCurrentToken(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			repo := tc.setupFunc()
 			ctx := context.Background()
-			
+
 			token, err := repo.GetCurrentToken(ctx)
 			tc.validateFunc(t, token, err)
 		})
@@ -93,14 +92,14 @@ func TestOAuth2TokenRepository_SaveToken(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			repo := NewInMemoryTokenRepository()
 			ctx := context.Background()
-			
+
 			err := repo.SaveToken(ctx, tc.token)
-			
+
 			if tc.expectedError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				
+
 				// Verify token was saved by retrieving it
 				savedToken, err := repo.GetCurrentToken(ctx)
 				require.NoError(t, err)
@@ -115,7 +114,7 @@ func TestOAuth2TokenRepository_SaveToken(t *testing.T) {
 func TestOAuth2TokenRepository_UpdateToken(t *testing.T) {
 	repo := NewInMemoryTokenRepository()
 	ctx := context.Background()
-	
+
 	// Save initial token
 	initialToken := &models.OAuth2Token{
 		AccessToken:  "initial_access_token",
@@ -126,10 +125,10 @@ func TestOAuth2TokenRepository_UpdateToken(t *testing.T) {
 		Scope:        "read",
 		IssuedAt:     time.Now(),
 	}
-	
+
 	err := repo.SaveToken(ctx, initialToken)
 	require.NoError(t, err)
-	
+
 	// Update token
 	updatedToken := &models.OAuth2Token{
 		AccessToken:  "updated_access_token",
@@ -140,10 +139,10 @@ func TestOAuth2TokenRepository_UpdateToken(t *testing.T) {
 		Scope:        "read",
 		IssuedAt:     time.Now(),
 	}
-	
+
 	err = repo.UpdateToken(ctx, updatedToken)
 	require.NoError(t, err)
-	
+
 	// Verify token was updated
 	retrievedToken, err := repo.GetCurrentToken(ctx)
 	require.NoError(t, err)
@@ -155,7 +154,7 @@ func TestOAuth2TokenRepository_UpdateToken(t *testing.T) {
 func TestOAuth2TokenRepository_DeleteToken(t *testing.T) {
 	repo := NewInMemoryTokenRepository()
 	ctx := context.Background()
-	
+
 	// Save a token first
 	token := &models.OAuth2Token{
 		AccessToken:  "test_access_token",
@@ -166,84 +165,17 @@ func TestOAuth2TokenRepository_DeleteToken(t *testing.T) {
 		Scope:        "read",
 		IssuedAt:     time.Now(),
 	}
-	
+
 	err := repo.SaveToken(ctx, token)
 	require.NoError(t, err)
-	
+
 	// Delete the token
 	err = repo.DeleteToken(ctx)
 	require.NoError(t, err)
-	
+
 	// Verify token was deleted
 	_, err = repo.GetCurrentToken(ctx)
 	require.Error(t, err)
 }
 
-// --- TEST IMPLEMENTATIONS ---
-
-// InMemoryTokenRepository is a test implementation for OAuth2TokenRepository
-type InMemoryTokenRepository struct {
-	token *models.OAuth2Token
-}
-
-// NewInMemoryTokenRepository creates a new in-memory token repository with a test token
-func NewInMemoryTokenRepository() OAuth2TokenRepository {
-	return &InMemoryTokenRepository{
-		token: &models.OAuth2Token{
-			AccessToken:  "test_access_token_" + uuid.New().String(),
-			RefreshToken: "test_refresh_token_" + uuid.New().String(),
-			TokenType:    "Bearer",
-			ExpiresIn:    3600,
-			ExpiresAt:    time.Now().Add(1 * time.Hour),
-			Scope:        "read",
-			IssuedAt:     time.Now(),
-		},
-	}
-}
-
-// NewEmptyTokenRepository creates a new in-memory token repository without a token
-func NewEmptyTokenRepository() OAuth2TokenRepository {
-	return &InMemoryTokenRepository{
-		token: nil,
-	}
-}
-
-func (r *InMemoryTokenRepository) GetCurrentToken(ctx context.Context) (*models.OAuth2Token, error) {
-	if r.token == nil {
-		return nil, ErrTokenNotFound
-	}
-	return r.token, nil
-}
-
-func (r *InMemoryTokenRepository) SaveToken(ctx context.Context, token *models.OAuth2Token) error {
-	if token == nil {
-		return ErrInvalidToken
-	}
-	if token.AccessToken == "" {
-		return ErrInvalidToken
-	}
-	r.token = token
-	return nil
-}
-
-func (r *InMemoryTokenRepository) UpdateToken(ctx context.Context, token *models.OAuth2Token) error {
-	if token == nil {
-		return ErrInvalidToken
-	}
-	if token.AccessToken == "" {
-		return ErrInvalidToken
-	}
-	r.token = token
-	return nil
-}
-
-func (r *InMemoryTokenRepository) DeleteToken(ctx context.Context) error {
-	r.token = nil
-	return nil
-}
-
-// Repository errors
-var (
-	ErrTokenNotFound = assert.AnError // Will define proper errors later
-	ErrInvalidToken  = assert.AnError
-)
+// (Removed duplicate test-only repository and errors; using production in-memory repository instead)

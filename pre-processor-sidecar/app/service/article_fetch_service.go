@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
+	"pre-processor-sidecar/repository"
+
 	"github.com/google/uuid"
 )
 
@@ -32,38 +34,40 @@ type SyncStateRepository interface {
 
 // ArticleFetchResult represents the result of an article fetch operation
 type ArticleFetchResult struct {
-	NewArticles       int       `json:"new_articles"`
-	TotalProcessed    int       `json:"total_processed"`
-	ContinuationToken string    `json:"continuation_token,omitempty"`
-	SyncTime          time.Time `json:"sync_time"`
+	NewArticles       int           `json:"new_articles"`
+	TotalProcessed    int           `json:"total_processed"`
+	ContinuationToken string        `json:"continuation_token,omitempty"`
+	SyncTime          time.Time     `json:"sync_time"`
 	Duration          time.Duration `json:"duration"`
-	Errors            []string  `json:"errors,omitempty"`
+	Errors            []string      `json:"errors,omitempty"`
 }
 
 // SubscriptionMapping represents the cache for mapping Inoreader stream IDs to subscription UUIDs
 type SubscriptionMapping struct {
-	InoreaderIDToUUID map[string]uuid.UUID  // "feed/http://example.com/rss" -> UUID
-	UUIDToInoreaderID map[uuid.UUID]string  // UUID -> "feed/http://example.com/rss"
-	LoadedAt          time.Time              // Cache creation timestamp
-	TotalCount        int                    // Number of subscriptions loaded
+	InoreaderIDToUUID map[string]uuid.UUID // "feed/http://example.com/rss" -> UUID
+	UUIDToInoreaderID map[uuid.UUID]string // UUID -> "feed/http://example.com/rss"
+	LoadedAt          time.Time            // Cache creation timestamp
+	TotalCount        int                  // Number of subscriptions loaded
 }
 
 // ArticleFetchService handles fetching articles from Inoreader API with continuation tokens
 type ArticleFetchService struct {
-	inoreaderService   *InoreaderService
-	articleRepo        ArticleRepository
-	syncStateRepo      SyncStateRepository
-	subscriptionRepo   SubscriptionRepository  // Added for UUID resolution
-	logger             *slog.Logger
-	mu                 sync.RWMutex
+	inoreaderService *InoreaderService
+	articleRepo      ArticleRepository
+	syncStateRepo    SyncStateRepository
+	subscriptionRepo repository.SubscriptionRepository // Added for UUID resolution
+	logger           *slog.Logger
+	mu               sync.RWMutex
 }
+
+// (removed SubscriptionQueryRepository; use repository.SubscriptionRepository directly)
 
 // NewArticleFetchService creates a new article fetch service
 func NewArticleFetchService(
 	inoreaderService *InoreaderService,
 	articleRepo ArticleRepository,
 	syncStateRepo SyncStateRepository,
-	subscriptionRepo SubscriptionRepository,
+	subscriptionRepo repository.SubscriptionRepository,
 	logger *slog.Logger,
 ) *ArticleFetchService {
 	// Use default logger if none provided
@@ -76,7 +80,7 @@ func NewArticleFetchService(
 		articleRepo:      articleRepo,
 		syncStateRepo:    syncStateRepo,
 		subscriptionRepo: subscriptionRepo,
-		logger:          logger,
+		logger:           logger,
 	}
 }
 
@@ -186,11 +190,11 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 // buildSubscriptionMapping builds a cache mapping Inoreader stream IDs to subscription UUIDs
 func (s *ArticleFetchService) buildSubscriptionMapping(ctx context.Context) (*SubscriptionMapping, error) {
 	s.logger.Debug("Building subscription mapping cache")
-	
+
 	startTime := time.Now()
-	
+
 	// Fetch all subscriptions from database in a single query
-	subscriptions, err := s.subscriptionRepo.GetAll(ctx)
+	subscriptions, err := s.subscriptionRepo.GetAllSubscriptions(ctx)
 	if err != nil {
 		s.logger.Error("Failed to fetch all subscriptions", "error", err)
 		return nil, fmt.Errorf("failed to fetch subscriptions for mapping: %w", err)
@@ -205,8 +209,8 @@ func (s *ArticleFetchService) buildSubscriptionMapping(ctx context.Context) (*Su
 	}
 
 	for _, subscription := range subscriptions {
-		mapping.InoreaderIDToUUID[subscription.InoreaderID] = subscription.ID
-		mapping.UUIDToInoreaderID[subscription.ID] = subscription.InoreaderID
+		mapping.InoreaderIDToUUID[subscription.InoreaderID] = subscription.DatabaseID
+		mapping.UUIDToInoreaderID[subscription.DatabaseID] = subscription.InoreaderID
 	}
 
 	s.logger.Info("Subscription mapping cache built successfully",

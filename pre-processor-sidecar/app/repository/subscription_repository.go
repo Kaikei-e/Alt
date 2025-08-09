@@ -19,6 +19,8 @@ import (
 type SubscriptionRepository interface {
 	SaveSubscriptions(ctx context.Context, subscriptions []models.InoreaderSubscription) error
 	GetAllSubscriptions(ctx context.Context) ([]models.InoreaderSubscription, error)
+	// GetAll is an alias for GetAllSubscriptions for backward compatibility
+	GetAll(ctx context.Context) ([]models.InoreaderSubscription, error)
 	UpdateSubscription(ctx context.Context, subscription models.InoreaderSubscription) error
 	DeleteSubscription(ctx context.Context, inoreaderID string) error
 }
@@ -53,7 +55,7 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 	// Prepare upsert statement (INSERT ... ON CONFLICT DO UPDATE)
 	query := `
 		INSERT INTO inoreader_subscriptions (
-			id, inoreader_id, title, category, feed_url, 
+			id, inoreader_id, title, category, feed_url,
 			synced_at, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (inoreader_id) DO UPDATE SET
@@ -84,16 +86,16 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 
 		_, err := stmt.ExecContext(ctx,
 			id,
-			sub.ID,        // Inoreader ID
+			sub.InoreaderID, // Inoreader ID
 			sub.Title,
-			category,      // Extracted from Categories
-			sub.URL,       // Feed URL
-			now,          // synced_at
-			now,          // created_at
+			category, // Extracted from Categories
+			sub.URL,  // Feed URL
+			now,      // synced_at
+			now,      // created_at
 		)
 		if err != nil {
 			r.logger.Error("Failed to save subscription",
-				"inoreader_id", sub.ID,
+				"inoreader_id", sub.InoreaderID,
 				"title", sub.Title,
 				"error", err)
 			continue
@@ -115,7 +117,7 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 // GetAllSubscriptions retrieves all subscriptions from database
 func (r *PostgreSQLSubscriptionRepository) GetAllSubscriptions(ctx context.Context) ([]models.InoreaderSubscription, error) {
 	query := `
-		SELECT id, inoreader_id, title, category, feed_url, 
+		SELECT id, inoreader_id, title, category, feed_url,
 		       synced_at, created_at
 		FROM inoreader_subscriptions
 		ORDER BY title
@@ -135,8 +137,8 @@ func (r *PostgreSQLSubscriptionRepository) GetAllSubscriptions(ctx context.Conte
 		var dbID string
 
 		err := rows.Scan(
-			&dbID,        // Database UUID (not used in API)
-			&sub.ID,      // Inoreader ID
+			&dbID,            // Database UUID (not used in API)
+			&sub.InoreaderID, // Inoreader ID
 			&sub.Title,
 			&category,
 			&sub.URL,
@@ -165,6 +167,11 @@ func (r *PostgreSQLSubscriptionRepository) GetAllSubscriptions(ctx context.Conte
 	return subscriptions, nil
 }
 
+// GetAll is an alias for GetAllSubscriptions (backward compatibility)
+func (r *PostgreSQLSubscriptionRepository) GetAll(ctx context.Context) ([]models.InoreaderSubscription, error) {
+	return r.GetAllSubscriptions(ctx)
+}
+
 // UpdateSubscription updates a single subscription
 func (r *PostgreSQLSubscriptionRepository) UpdateSubscription(ctx context.Context, subscription models.InoreaderSubscription) error {
 	// Extract category from categories slice (use first category if multiple)
@@ -174,16 +181,16 @@ func (r *PostgreSQLSubscriptionRepository) UpdateSubscription(ctx context.Contex
 	}
 
 	query := `
-		UPDATE inoreader_subscriptions 
+		UPDATE inoreader_subscriptions
 		SET title = $2, category = $3, feed_url = $4, synced_at = $5
 		WHERE inoreader_id = $1
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
-		subscription.ID,      // Inoreader ID
+		subscription.InoreaderID, // Inoreader ID
 		subscription.Title,
-		category,            // Extracted from Categories
-		subscription.URL,     // Feed URL
+		category,         // Extracted from Categories
+		subscription.URL, // Feed URL
 		time.Now(),
 	)
 	if err != nil {

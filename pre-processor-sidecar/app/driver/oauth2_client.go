@@ -278,3 +278,38 @@ func (c *OAuth2Client) GetRateLimitInfo() map[string]interface{} {
 		"zone1_remaining": 100,
 	}
 }
+
+// DebugDirectRequest makes a direct API call without proxy for debugging
+func (c *OAuth2Client) DebugDirectRequest(ctx context.Context, accessToken, endpoint string) error {
+	// Create a direct HTTP client without proxy
+	directClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 2,
+			IdleConnTimeout:     30 * time.Second,
+			// No proxy configuration
+		},
+	}
+
+	reqURL := c.baseURL + endpoint
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create direct debug request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("User-Agent", "pre-processor-sidecar/1.0")
+
+	resp, err := directClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("direct debug request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		return nil // Success
+	}
+	
+	return fmt.Errorf("direct debug request failed with status %d", resp.StatusCode)
+}

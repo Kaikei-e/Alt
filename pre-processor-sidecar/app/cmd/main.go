@@ -13,6 +13,7 @@ import (
 
 	"pre-processor-sidecar/config"
 	"pre-processor-sidecar/driver"
+	"pre-processor-sidecar/handler"
 	"pre-processor-sidecar/models"
 	"pre-processor-sidecar/repository"
 	"pre-processor-sidecar/service"
@@ -24,6 +25,7 @@ func main() {
 	// Parse command line flags
 	healthCheck := flag.Bool("health-check", false, "Perform health check and exit")
 	oauth2Init := flag.Bool("oauth2-init", false, "Initialize OAuth2 tokens and exit")
+	scheduleMode := flag.Bool("schedule-mode", false, "Run in continuous scheduling mode (dual schedules)")
 	flag.Parse()
 
 	// Setup structured logging
@@ -62,19 +64,34 @@ func main() {
 		return
 	}
 
-	logger.Info("Pre-processor-sidecar CronJob starting", 
-		"service", cfg.ServiceName,
-		"sync_interval", cfg.RateLimit.SyncInterval,
-		"api_daily_limit", cfg.RateLimit.DailyLimit)
-
-	// Run the CronJob task
 	ctx := context.Background()
-	if err := runCronJobTask(ctx, cfg, logger); err != nil {
-		logger.Error("CronJob task failed", "error", err)
-		os.Exit(1)
-	}
 
-	logger.Info("Pre-processor-sidecar CronJob completed successfully")
+	if *scheduleMode {
+		logger.Info("Pre-processor-sidecar Scheduler starting",
+			"service", cfg.ServiceName,
+			"subscription_sync_interval", "4h",
+			"article_fetch_interval", "30m",
+			"api_daily_limit", cfg.RateLimit.DailyLimit)
+
+		// Run in continuous scheduling mode
+		if err := runScheduleMode(ctx, cfg, logger); err != nil {
+			logger.Error("Schedule mode failed", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		logger.Info("Pre-processor-sidecar CronJob starting", 
+			"service", cfg.ServiceName,
+			"sync_interval", cfg.RateLimit.SyncInterval,
+			"api_daily_limit", cfg.RateLimit.DailyLimit)
+
+		// Run the single CronJob task
+		if err := runCronJobTask(ctx, cfg, logger); err != nil {
+			logger.Error("CronJob task failed", "error", err)
+			os.Exit(1)
+		}
+
+		logger.Info("Pre-processor-sidecar CronJob completed successfully")
+	}
 }
 
 func performHealthCheck() {
@@ -280,7 +297,8 @@ func runCronJobTask(ctx context.Context, cfg *config.Config, logger *slog.Logger
 		"token_type", token.TokenType)
 	
 	// Initialize Inoreader service with token management
-	inoreaderService := service.NewInoreaderService(oauth2Client, nil, logger)
+	inoreaderClient := service.NewInoreaderClient(oauth2Client, logger)
+	inoreaderService := service.NewInoreaderService(inoreaderClient, nil, logger)
 	inoreaderService.SetCurrentToken(token)
 	
 	// Initialize subscription repository for database storage
@@ -301,13 +319,16 @@ func runCronJobTask(ctx context.Context, cfg *config.Config, logger *slog.Logger
 	inoreaderSubs := make([]models.InoreaderSubscription, len(subscriptions))
 	for i, sub := range subscriptions {
 		inoreaderSubs[i] = models.InoreaderSubscription{
-			ID:       sub.InoreaderID,
-			Title:    sub.Title,
-			URL:      sub.FeedURL,
-			IconURL:  "", // Not available from Subscription model
+			DatabaseID:  sub.ID,           // 修正: DatabaseIDフィールドを使用
+			InoreaderID: sub.InoreaderID,  // Set InoreaderID from API
+			Title:       sub.Title,
+			URL:         sub.FeedURL,
+			IconURL:     "", // Not available from Subscription model
 			Categories: []models.InoreaderCategory{
 				{Label: sub.Category},
 			},
+			CreatedAt:  sub.CreatedAt,
+			UpdatedAt:  time.Now(),
 		}
 	}
 
@@ -333,5 +354,152 @@ func runCronJobTask(ctx context.Context, cfg *config.Config, logger *slog.Logger
 		"database_saved", "success")
 	
 	logger.Info("CronJob task completed - Full OAuth2 integration and database storage operational")
+	return nil
+}
+
+// runScheduleMode runs the service in continuous scheduling mode with dual schedules
+func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
+	logger.Info("Initializing dual schedule processing system")
+	
+	// Wait for Linkerd proxy initialization
+	logger.Info("Waiting for Linkerd proxy initialization...")
+	time.Sleep(10 * time.Second)
+	
+	// Initialize database connection
+	dbConnectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Database.Host, cfg.Database.Port, 
+		cfg.Database.User, cfg.Database.Password, 
+		cfg.Database.Name, cfg.Database.SSLMode)
+	
+	logger.Info("Attempting database connection", 
+		"host", cfg.Database.Host,
+		"port", cfg.Database.Port,
+		"user", cfg.Database.User,
+		"dbname", cfg.Database.Name,
+		"sslmode", cfg.Database.SSLMode)
+	
+	db, err := sql.Open("postgres", dbConnectionString)
+	if err != nil {
+		return fmt.Errorf("failed to open database connection: %w", err)
+	}
+	defer db.Close()
+	
+	// Test database connection with retry
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		if err := db.PingContext(ctx); err != nil {
+			logger.Warn("Database ping failed, retrying...", "attempt", i+1, "error", err)
+			if i == maxRetries-1 {
+				return fmt.Errorf("failed to ping database after %d attempts: %w", maxRetries, err)
+			}
+			time.Sleep(time.Duration(i+1) * 5 * time.Second)
+			continue
+		}
+		break
+	}
+	logger.Info("Database connection established", "user", cfg.Database.User)
+
+	// Create HTTP client with proxy configuration
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy: func(req *http.Request) (*url.URL, error) {
+				return url.Parse(cfg.Proxy.HTTPSProxy)
+			},
+		},
+	}
+
+	logger.Info("HTTP client configured", "proxy", cfg.Proxy.HTTPSProxy)
+
+	// Initialize Kubernetes client for OAuth2 token storage
+	k8sConfig := config.LoadKubernetesConfig()
+	logger.Info("Initializing Kubernetes client for token storage",
+		"in_cluster", k8sConfig.InCluster,
+		"namespace", k8sConfig.Namespace,
+		"secret_name", k8sConfig.TokenSecretName)
+
+	var tokenRepo repository.OAuth2TokenRepository
+	kubeClient, err := k8sConfig.CreateKubernetesClient()
+	if err != nil {
+		logger.Warn("Failed to create Kubernetes client, falling back to in-memory storage", 
+			"error", err,
+			"fallback", "InMemoryTokenRepository")
+		tokenRepo = repository.NewInMemoryTokenRepository()
+	} else {
+		logger.Info("Kubernetes client created successfully, using Secret-based token storage")
+		tokenRepo = repository.NewSecretBasedTokenRepository(kubeClient, k8sConfig.Namespace, k8sConfig.TokenSecretName)
+	}
+
+	// Initialize OAuth2 and services
+	oauth2Client := driver.NewOAuth2Client(cfg.Inoreader.ClientID, cfg.Inoreader.ClientSecret, cfg.Inoreader.BaseURL)
+	oauth2Client.SetHTTPClient(httpClient)
+	
+	tokenManager := service.NewTokenManagementService(tokenRepo, oauth2Client, logger)
+	
+	// Ensure we have a valid OAuth2 token
+	logger.Info("Ensuring valid OAuth2 token for API access")
+	token, err := tokenManager.EnsureValidToken(ctx)
+	if err != nil {
+		logger.Error("Failed to ensure valid OAuth2 token", 
+			"error", err,
+			"hint", "Run oauth-init tool if this is the first time")
+		return fmt.Errorf("OAuth2 token management failed: %w", err)
+	}
+	
+	logger.Info("OAuth2 token validated successfully",
+		"expires_at", token.ExpiresAt,
+		"time_to_expiry", token.TimeUntilExpiry(),
+		"token_type", token.TokenType)
+
+	// Initialize repositories
+	articleRepo := repository.NewPostgreSQLArticleRepository(db, logger)
+	syncStateRepo := repository.NewPostgreSQLSyncStateRepository(db, logger)
+	subscriptionRepo := repository.NewPostgreSQLSubscriptionRepository(db, logger)
+
+	// Initialize service layer components
+	inoreaderClient := service.NewInoreaderClient(oauth2Client, logger)
+	inoreaderService := service.NewInoreaderService(inoreaderClient, nil, logger)
+	inoreaderService.SetCurrentToken(token)
+
+	subscriptionSyncService := service.NewSubscriptionSyncService(inoreaderService, subscriptionRepo, logger)
+	rateLimitManager := service.NewRateLimitManager(nil, logger)
+
+	// Initialize handler layer
+	articleFetchHandler := handler.NewArticleFetchHandler(
+		inoreaderService,
+		subscriptionSyncService,
+		rateLimitManager,
+		articleRepo,
+		syncStateRepo,
+		logger,
+	)
+
+	scheduleHandler := handler.NewScheduleHandler(articleFetchHandler, logger)
+
+	// Add job result callback for monitoring
+	scheduleHandler.AddJobResultCallback(func(result *handler.JobResult) {
+		logger.Info("Scheduled job completed",
+			"job_type", result.JobType,
+			"success", result.Success,
+			"duration", result.Duration,
+			"error", result.Error)
+	})
+
+	// Start the dual schedule processing
+	logger.Info("Starting dual schedule processing", 
+		"subscription_sync_interval", "4h",
+		"article_fetch_interval", "30m")
+	
+	if err := scheduleHandler.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start schedule handler: %w", err)
+	}
+	
+	// Wait for context cancellation or termination signal
+	logger.Info("Dual schedule processing started successfully - running indefinitely")
+	<-ctx.Done()
+	
+	logger.Info("Shutting down dual schedule processing")
+	scheduleHandler.Stop()
+	
 	return nil
 }

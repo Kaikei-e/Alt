@@ -1,4 +1,5 @@
-//go:generate mockgen -source=inoreader_service.go -destination=../mocks/oauth2_driver_mock.go -package=mocks OAuth2Driver,APIUsageRepository
+// ABOUTME: Business logic service for Inoreader API interactions
+// ABOUTME: Orchestrates API calls, token management, and rate limiting
 
 package service
 
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
-	"github.com/google/uuid"
 )
 
 // OAuth2Driver interface for OAuth2 client operations
@@ -28,9 +28,21 @@ type APIUsageRepository interface {
 	UpdateUsageRecord(ctx context.Context, usage *models.APIUsageTracking) error
 }
 
-// InoreaderService handles Inoreader API interactions with OAuth2 and rate limiting
+// InoreaderClientInterface defines interface for HTTP communication layer
+type InoreaderClientInterface interface {
+	FetchSubscriptionList(ctx context.Context, accessToken string) (map[string]interface{}, error)
+	FetchStreamContents(ctx context.Context, accessToken, streamID, continuationToken string, maxArticles int) (map[string]interface{}, error)
+	FetchUnreadStreamContents(ctx context.Context, accessToken, streamID, continuationToken string, maxArticles int) (map[string]interface{}, error)
+	RefreshToken(ctx context.Context, refreshToken string) (*models.InoreaderTokenResponse, error)
+	ValidateToken(ctx context.Context, accessToken string) (bool, error)
+	MakeAuthenticatedRequestWithHeaders(ctx context.Context, accessToken, endpoint string, params map[string]string) (map[string]interface{}, map[string]string, error)
+	ParseSubscriptionsResponse(response map[string]interface{}) ([]*models.Subscription, error)
+	ParseStreamContentsResponse(response map[string]interface{}) ([]*models.Article, string, error)
+}
+
+// InoreaderService handles business logic for Inoreader API interactions
 type InoreaderService struct {
-	oauth2Client           OAuth2Driver
+	inoreaderClient        InoreaderClientInterface
 	apiUsageRepo           APIUsageRepository
 	logger                 *slog.Logger
 	currentToken           *models.OAuth2Token
@@ -42,14 +54,14 @@ type InoreaderService struct {
 }
 
 // NewInoreaderService creates a new Inoreader API service
-func NewInoreaderService(oauth2Client OAuth2Driver, apiUsageRepo APIUsageRepository, logger *slog.Logger) *InoreaderService {
+func NewInoreaderService(inoreaderClient InoreaderClientInterface, apiUsageRepo APIUsageRepository, logger *slog.Logger) *InoreaderService {
 	// Use default logger if none provided
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	return &InoreaderService{
-		oauth2Client:          oauth2Client,
+		inoreaderClient:       inoreaderClient,
 		apiUsageRepo:          apiUsageRepo,
 		logger:               logger,
 		tokenRefreshBuffer:   5 * time.Minute, // Refresh 5 minutes before expiry
@@ -83,8 +95,8 @@ func (s *InoreaderService) RefreshTokenIfNeeded(ctx context.Context) error {
 		"expires_at", s.currentToken.ExpiresAt,
 		"buffer", s.tokenRefreshBuffer)
 
-	// Refresh the token
-	response, err := s.oauth2Client.RefreshToken(ctx, s.currentToken.RefreshToken)
+	// Refresh the token using client layer
+	response, err := s.inoreaderClient.RefreshToken(ctx, s.currentToken.RefreshToken)
 	if err != nil {
 		s.logger.Error("Failed to refresh OAuth2 token", "error", err)
 		return fmt.Errorf("OAuth2 token refresh failed: %w", err)
@@ -119,20 +131,15 @@ func (s *InoreaderService) FetchSubscriptions(ctx context.Context) ([]*models.Su
 
 	s.logger.Info("Fetching subscription list from Inoreader API")
 
-	// Make API call to fetch subscriptions
-	response, err := s.oauth2Client.MakeAuthenticatedRequest(
-		ctx,
-		s.currentToken.AccessToken,
-		"/subscription/list",
-		nil,
-	)
+	// Make API call using client layer
+	response, err := s.inoreaderClient.FetchSubscriptionList(ctx, s.currentToken.AccessToken)
 	if err != nil {
 		s.logger.Error("Failed to fetch subscriptions", "error", err)
 		return nil, fmt.Errorf("subscription fetch failed: %w", err)
 	}
 
-	// Parse subscriptions from response
-	subscriptions, err := s.parseSubscriptionsResponse(response)
+	// Parse subscriptions using client layer
+	subscriptions, err := s.inoreaderClient.ParseSubscriptionsResponse(response)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse subscriptions: %w", err)
 	}
@@ -165,21 +172,13 @@ func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, co
 		"stream_id", streamID,
 		"continuation_token", continuationToken != "")
 
-	// Prepare API parameters
-	params := map[string]string{
-		"output": "json",
-		"n":      strconv.Itoa(s.maxArticlesPerRequest),
-	}
-	if continuationToken != "" {
-		params["c"] = continuationToken
-	}
-
-	// Make API call to fetch stream contents
-	response, err := s.oauth2Client.MakeAuthenticatedRequest(
-		ctx,
-		s.currentToken.AccessToken,
-		"/stream/contents/"+streamID,
-		params,
+	// Make API call using client layer
+	response, err := s.inoreaderClient.FetchStreamContents(
+		ctx, 
+		s.currentToken.AccessToken, 
+		streamID, 
+		continuationToken, 
+		s.maxArticlesPerRequest,
 	)
 	if err != nil {
 		s.logger.Error("Failed to fetch stream contents",
@@ -188,13 +187,70 @@ func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, co
 		return nil, "", fmt.Errorf("stream contents fetch failed: %w", err)
 	}
 
-	// Parse articles and continuation token from response
-	articles, nextContinuation, err := s.parseStreamContentsResponse(response)
+	// Parse articles using client layer
+	articles, nextContinuation, err := s.inoreaderClient.ParseStreamContentsResponse(response)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to parse stream contents: %w", err)
 	}
 
+	// Resolve subscription UUIDs for articles
+	articles = s.resolveSubscriptionUUIDs(articles)
+
 	s.logger.Info("Successfully fetched stream contents",
+		"stream_id", streamID,
+		"articles_count", len(articles),
+		"has_next_page", nextContinuation != "",
+		"api_usage", s.rateLimitInfo.Zone1Usage)
+
+	return articles, nextContinuation, nil
+}
+
+// FetchUnreadStreamContents retrieves only unread stream contents from Inoreader API
+func (s *InoreaderService) FetchUnreadStreamContents(ctx context.Context, streamID, continuationToken string) ([]*models.Article, string, error) {
+	// Ensure we have a valid token
+	if err := s.RefreshTokenIfNeeded(ctx); err != nil {
+		return nil, "", fmt.Errorf("token refresh failed: %w", err)
+	}
+
+	// Check rate limits
+	if allowed, remaining := s.CheckAPIRateLimit(); !allowed {
+		s.logger.Warn("API rate limit exceeded for unread stream contents",
+			"stream_id", streamID,
+			"zone1_usage", s.rateLimitInfo.Zone1Usage,
+			"remaining_safe", remaining)
+		return nil, "", fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)",
+			s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit)
+	}
+
+	s.logger.Info("Fetching unread stream contents from Inoreader API",
+		"stream_id", streamID,
+		"continuation_token", continuationToken != "")
+
+	// Make API call using client layer for unread items
+	response, err := s.inoreaderClient.FetchUnreadStreamContents(
+		ctx, 
+		s.currentToken.AccessToken, 
+		streamID, 
+		continuationToken, 
+		s.maxArticlesPerRequest,
+	)
+	if err != nil {
+		s.logger.Error("Failed to fetch unread stream contents",
+			"stream_id", streamID,
+			"error", err)
+		return nil, "", fmt.Errorf("unread stream contents fetch failed: %w", err)
+	}
+
+	// Parse articles using client layer
+	articles, nextContinuation, err := s.inoreaderClient.ParseStreamContentsResponse(response)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to parse unread stream contents: %w", err)
+	}
+
+	// Resolve subscription UUIDs for articles
+	articles = s.resolveSubscriptionUUIDs(articles)
+
+	s.logger.Info("Successfully fetched unread stream contents",
 		"stream_id", streamID,
 		"articles_count", len(articles),
 		"has_next_page", nextContinuation != "",
@@ -216,110 +272,43 @@ func (s *InoreaderService) CheckAPIRateLimit() (allowed bool, remaining int) {
 	return allowed, remainingWithBuffer
 }
 
-// parseSubscriptionsResponse parses the subscription list response from Inoreader API
-func (s *InoreaderService) parseSubscriptionsResponse(response map[string]interface{}) ([]*models.Subscription, error) {
-	subscriptionsData, ok := response["subscriptions"].([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid subscriptions response format")
+// resolveSubscriptionUUIDs resolves OriginStreamID to SubscriptionID for articles
+// TODO: Implement subscription mapping cache for UUID resolution
+func (s *InoreaderService) resolveSubscriptionUUIDs(articles []*models.Article) []*models.Article {
+	// Placeholder: For now, articles keep uuid.Nil for SubscriptionID
+	// This will be implemented when subscription mapping cache is available
+	for _, article := range articles {
+		if article.OriginStreamID != "" {
+			s.logger.Debug("Article needs UUID resolution",
+				"inoreader_id", article.InoreaderID,
+				"origin_stream_id", article.OriginStreamID)
+			// TODO: Look up UUID from OriginStreamID using subscription cache
+			// article.SubscriptionID = lookupUUID(article.OriginStreamID)
+		}
 	}
-
-	var subscriptions []*models.Subscription
-
-	for _, subData := range subscriptionsData {
-		subMap, ok := subData.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		// Extract basic subscription info
-		inoreaderID, _ := subMap["id"].(string)
-		feedURL, _ := subMap["url"].(string)
-		title, _ := subMap["title"].(string)
-
-		// Extract category (use first category if multiple)
-		var category string
-		if categories, ok := subMap["categories"].([]interface{}); ok && len(categories) > 0 {
-			if categoryMap, ok := categories[0].(map[string]interface{}); ok {
-				category, _ = categoryMap["label"].(string)
-			}
-		}
-
-		// Create subscription model
-		subscription := models.NewSubscription(inoreaderID, feedURL, title, category)
-		subscriptions = append(subscriptions, subscription)
-	}
-
-	return subscriptions, nil
-}
-
-// parseStreamContentsResponse parses stream contents response from Inoreader API
-func (s *InoreaderService) parseStreamContentsResponse(response map[string]interface{}) ([]*models.Article, string, error) {
-	itemsData, ok := response["items"].([]interface{})
-	if !ok {
-		return nil, "", fmt.Errorf("invalid stream contents response format")
-	}
-
-	var articles []*models.Article
-
-	for _, itemData := range itemsData {
-		itemMap, ok := itemData.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		// Extract basic article info
-		inoreaderID, _ := itemMap["id"].(string)
-		title, _ := itemMap["title"].(string)
-		author, _ := itemMap["author"].(string)
-
-		// Extract article URL from alternate links
-		var articleURL string
-		if alternates, ok := itemMap["alternate"].([]interface{}); ok && len(alternates) > 0 {
-			if altMap, ok := alternates[0].(map[string]interface{}); ok {
-				articleURL, _ = altMap["href"].(string)
-			}
-		}
-
-		// Extract published timestamp
-		var publishedAt time.Time
-		if published, ok := itemMap["published"].(float64); ok {
-			publishedAt = time.Unix(int64(published), 0)
-		}
-
-		// Extract subscription ID from origin for UUID resolution
-		var originStreamID string
-		if origin, ok := itemMap["origin"].(map[string]interface{}); ok {
-			originStreamID, _ = origin["streamId"].(string)
-		}
-
-		// Create article with OriginStreamID for later UUID resolution
-		// SubscriptionID will be resolved by ArticleFetchService using subscription mapping cache
-		article := &models.Article{
-			ID:             uuid.New(),
-			InoreaderID:    inoreaderID,
-			SubscriptionID: uuid.Nil, // Will be resolved later by UUID mapping
-			ArticleURL:     articleURL,
-			Title:          title,
-			Author:         author,
-			PublishedAt:    &publishedAt,
-			FetchedAt:      time.Now(),
-			Processed:      false,
-			OriginStreamID: originStreamID, // Set for UUID resolution
-		}
-		articles = append(articles, article)
-	}
-
-	// Extract continuation token for pagination
-	var continuationToken string
-	if continuation, ok := response["continuation"].(string); ok {
-		continuationToken = continuation
-	}
-
-	return articles, continuationToken, nil
+	return articles
 }
 
 // UpdateAPIUsageFromHeaders updates API usage tracking from response headers
-func (s *InoreaderService) UpdateAPIUsageFromHeaders(ctx context.Context, headers map[string]string, endpoint string) error {
+func (s *InoreaderService) UpdateAPIUsageFromHeaders(ctx context.Context, endpoint string) error {
+	// Fetch headers using client with header support
+	_, headers, err := s.inoreaderClient.MakeAuthenticatedRequestWithHeaders(
+		ctx,
+		s.currentToken.AccessToken,
+		endpoint,
+		nil,
+	)
+	if err != nil {
+		s.logger.Error("Failed to fetch headers for API usage tracking", "error", err)
+		return fmt.Errorf("failed to fetch headers: %w", err)
+	}
+
+	// Process the headers for rate limit tracking
+	return s.processAPIUsageHeaders(ctx, headers, endpoint)
+}
+
+// processAPIUsageHeaders processes API response headers for usage tracking
+func (s *InoreaderService) processAPIUsageHeaders(ctx context.Context, headers map[string]string, endpoint string) error {
 	if s.apiUsageRepo == nil {
 		s.logger.Debug("API usage repository not configured, skipping usage tracking")
 		return nil
@@ -351,7 +340,7 @@ func (s *InoreaderService) UpdateAPIUsageFromHeaders(ctx context.Context, header
 	usage.UpdateRateLimitHeaders(headerMap)
 
 	// Increment appropriate usage counter based on endpoint
-	if isReadOnlyEndpoint(endpoint) {
+	if s.isReadOnlyEndpoint(endpoint) {
 		usage.IncrementZone1Usage()
 		s.logger.Debug("Incremented Zone 1 API usage", "endpoint", endpoint, "new_count", usage.Zone1Requests)
 	} else {
@@ -383,26 +372,26 @@ func (s *InoreaderService) UpdateAPIUsageFromHeaders(ctx context.Context, header
 func (s *InoreaderService) updateRateLimitInfoFromHeaders(headers map[string]string, usage *models.APIUsageTracking) {
 	// Parse Inoreader-specific rate limit headers
 	if zone1Usage, ok := headers["X-Reader-Zone1-Usage"]; ok {
-		if parsed, err := strconv.Atoi(zone1Usage); err == nil {
-			s.rateLimitInfo.Zone1Usage = parsed
+		if parsed, err := strconv.ParseInt(zone1Usage, 10, 32); err == nil {
+			s.rateLimitInfo.Zone1Usage = int(parsed)
 		}
 	}
 	
 	if zone1Limit, ok := headers["X-Reader-Zone1-Limit"]; ok {
-		if parsed, err := strconv.Atoi(zone1Limit); err == nil {
-			s.rateLimitInfo.Zone1Limit = parsed
+		if parsed, err := strconv.ParseInt(zone1Limit, 10, 32); err == nil {
+			s.rateLimitInfo.Zone1Limit = int(parsed)
 		}
 	}
 
 	if zone1Remaining, ok := headers["X-Reader-Zone1-Remaining"]; ok {
-		if parsed, err := strconv.Atoi(zone1Remaining); err == nil {
-			s.rateLimitInfo.Zone1Remaining = parsed
+		if parsed, err := strconv.ParseInt(zone1Remaining, 10, 32); err == nil {
+			s.rateLimitInfo.Zone1Remaining = int(parsed)
 		}
 	}
 
 	if zone2Usage, ok := headers["X-Reader-Zone2-Usage"]; ok {
-		if parsed, err := strconv.Atoi(zone2Usage); err == nil {
-			s.rateLimitInfo.Zone2Usage = parsed
+		if parsed, err := strconv.ParseInt(zone2Usage, 10, 32); err == nil {
+			s.rateLimitInfo.Zone2Usage = int(parsed)
 		}
 	}
 
@@ -416,7 +405,7 @@ func (s *InoreaderService) updateRateLimitInfoFromHeaders(headers map[string]str
 }
 
 // isReadOnlyEndpoint determines if an endpoint is read-only (Zone 1) or write (Zone 2)
-func isReadOnlyEndpoint(endpoint string) bool {
+func (s *InoreaderService) isReadOnlyEndpoint(endpoint string) bool {
 	readOnlyEndpoints := []string{
 		"/subscription/list",
 		"/stream/contents/",
