@@ -1,0 +1,63 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pre-processor-sidecar.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pre-processor-sidecar.labels" . | nindent 4 }}
+  annotations:
+    description: "Network policy for pre-processor-sidecar CronJob - Envoy proxy egress only"
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-2"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pre-processor-sidecar.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    
+    # Allow database access (PostgreSQL)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-database
+      ports:
+        - protocol: TCP
+          port: 5432
+    
+    # Allow linkerd control plane access (mTLS)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: linkerd
+      ports:
+        - protocol: TCP
+          port: 8080  # linkerd-identity
+        - protocol: TCP
+          port: 8086  # linkerd-destination
+        - protocol: TCP
+          port: 8090  # linkerd-policy
+    
+    # CRITICAL: Allow ONLY Envoy proxy egress for Inoreader API (HTTPS_PROXY)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-apps
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: envoy-proxy
+      ports:
+        - protocol: TCP
+          port: 8081  # envoy explicit forward proxy port
+    
+    # Block all other external traffic - Inoreader access MUST go through Envoy RBAC
+    # No wildcard egress rules - security by default

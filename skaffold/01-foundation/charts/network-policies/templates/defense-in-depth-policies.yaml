@@ -372,6 +372,18 @@ spec:
     - protocol: TCP
       port: 5432
   
+  # pre-processor-sidecar → PostgreSQL（Inoreader API統合専用）
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-processing
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: pre-processor-sidecar
+    ports:
+    - protocol: TCP
+      port: 5432
+  
   # Linkerd Service Mesh mTLS
   - from:
     - namespaceSelector:

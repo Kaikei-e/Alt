@@ -17,6 +17,10 @@ build:
       context: ../../pre-processor
       docker:
         dockerfile: Dockerfile.preprocess
+    - image: kaikei/pre-processor-sidecar
+      context: ../../pre-processor-sidecar
+      docker:
+        dockerfile: Dockerfile
     - image: kaikei/search-indexer
       context: ../../search-indexer
       docker:
@@ -49,6 +53,17 @@ deploy:
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_kaikei_pre_processor}}"
           image.tag: "{{.IMAGE_TAG_kaikei_pre_processor}}"
+        setValues:
+          image.pullPolicy: "Never"  # Kind local development
+        version: 0.1.0
+      - name: pre-processor-sidecar
+        chartPath: charts/pre-processor-sidecar
+        valuesFiles:
+          - charts/pre-processor-sidecar/values.yaml
+        namespace: alt-processing
+        setValueTemplates:
+          image.repository: "{{.IMAGE_REPO_kaikei_pre_processor_sidecar}}"
+          image.tag: "{{.IMAGE_TAG_kaikei_pre_processor_sidecar}}"
         setValues:
           image.pullPolicy: "Never"  # Kind local development
         version: 0.1.0
@@ -287,6 +302,10 @@ profiles:
           context: ../../pre-processor
           docker:
             dockerfile: Dockerfile.preprocess
+        - image: kaikei/pre-processor-sidecar  # OAuth2統合版追加
+          context: ../../pre-processor-sidecar
+          docker:
+            dockerfile: Dockerfile
         - image: kaikei/search-indexer  # INCIDENT 82 FIX: Repository統一
           context: ../../search-indexer
           docker:
@@ -316,6 +335,18 @@ profiles:
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_kaikei_pre_processor}}"
               image.tag: "{{.IMAGE_TAG_kaikei_pre_processor}}"
+            setValues:
+              image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
+            version: 0.1.0
+          - name: pre-processor-sidecar
+            chartPath: charts/pre-processor-sidecar
+            valuesFiles:
+              - charts/pre-processor-sidecar/values.yaml
+              - charts/pre-processor-sidecar/values-production.yaml
+            namespace: alt-processing  # OAuth2統合CronJob
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_kaikei_pre_processor_sidecar}}"
+              image.tag: "{{.IMAGE_TAG_kaikei_pre_processor_sidecar}}"
             setValues:
               image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
             version: 0.1.0
@@ -367,3 +398,33 @@ profiles:
           #   setValues:
           #     image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
           #   version: 0.1.0
+  - name: schedule-mode
+    build:
+      local:
+        push: false  # Local cluster対応
+        useDockerCLI: true
+        useBuildkit: true
+        tryImportMissing: true
+      tagPolicy:
+        gitCommit: {}
+      artifacts:
+        - image: kaikei/pre-processor-sidecar  # Schedule-mode専用
+          context: ../../pre-processor-sidecar
+          docker:
+            dockerfile: Dockerfile
+    deploy:
+      helm:
+        releases:
+          - name: pre-processor-sidecar-schedule
+            chartPath: charts/pre-processor-sidecar
+            valuesFiles:
+              - charts/pre-processor-sidecar/values.yaml
+              - charts/pre-processor-sidecar/values-schedule-mode.yaml
+            namespace: alt-processing
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_kaikei_pre_processor_sidecar}}"
+              image.tag: "{{.IMAGE_TAG_kaikei_pre_processor_sidecar}}"
+            setValues:
+              image.pullPolicy: "Never"  # Local cluster最適化
+              deploymentMode: "deployment"  # Enable deployment mode
+            version: 0.1.0

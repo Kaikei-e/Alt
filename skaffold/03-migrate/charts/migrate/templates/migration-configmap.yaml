@@ -400,3 +400,198 @@ data:
 
   000036_add_read_status_unique_constraint.down.sql: |
     ALTER TABLE read_status DROP CONSTRAINT IF EXISTS unique_read_status_feed_user;
+
+  # Inoreader API integration tables (pre-processor-sidecar)
+  000037_create_inoreader_subscriptions_table.up.sql: |
+    -- Create inoreader_subscriptions table for storing Inoreader feed subscriptions
+    CREATE TABLE IF NOT EXISTS inoreader_subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        inoreader_id TEXT UNIQUE NOT NULL,
+        feed_url TEXT NOT NULL,
+        title TEXT,
+        category TEXT,
+        synced_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
+    -- Create indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_inoreader_subscriptions_inoreader_id ON inoreader_subscriptions(inoreader_id);
+    CREATE INDEX IF NOT EXISTS idx_inoreader_subscriptions_feed_url ON inoreader_subscriptions(feed_url);
+    CREATE INDEX IF NOT EXISTS idx_inoreader_subscriptions_synced_at ON inoreader_subscriptions(synced_at DESC);
+
+    -- Add comments for documentation
+    COMMENT ON TABLE inoreader_subscriptions IS 'Stores RSS feed subscriptions synchronized from Inoreader API';
+    COMMENT ON COLUMN inoreader_subscriptions.id IS 'Internal UUID primary key';
+    COMMENT ON COLUMN inoreader_subscriptions.inoreader_id IS 'Unique identifier from Inoreader API (e.g., feed/http://example.com/rss)';
+    COMMENT ON COLUMN inoreader_subscriptions.feed_url IS 'XML RSS feed URL';
+    COMMENT ON COLUMN inoreader_subscriptions.title IS 'Feed title from Inoreader';
+    COMMENT ON COLUMN inoreader_subscriptions.category IS 'Feed category/folder from Inoreader';
+    COMMENT ON COLUMN inoreader_subscriptions.synced_at IS 'Last synchronization timestamp';
+    COMMENT ON COLUMN inoreader_subscriptions.created_at IS 'Record creation timestamp';
+
+  000037_create_inoreader_subscriptions_table.down.sql: |
+    -- Drop inoreader_subscriptions table and related indexes
+    DROP INDEX IF EXISTS idx_inoreader_subscriptions_synced_at;
+    DROP INDEX IF EXISTS idx_inoreader_subscriptions_feed_url;
+    DROP INDEX IF EXISTS idx_inoreader_subscriptions_inoreader_id;
+    DROP TABLE IF EXISTS inoreader_subscriptions;
+
+  000038_create_inoreader_articles_table.up.sql: |
+    -- Create inoreader_articles table for storing article metadata from Inoreader
+    CREATE TABLE IF NOT EXISTS inoreader_articles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        inoreader_id TEXT UNIQUE NOT NULL,
+        subscription_id UUID REFERENCES inoreader_subscriptions(id) ON DELETE CASCADE,
+        article_url TEXT NOT NULL,
+        title TEXT,
+        author TEXT,
+        published_at TIMESTAMP WITH TIME ZONE,
+        fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        processed BOOLEAN DEFAULT FALSE
+    );
+
+    -- Create indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_inoreader_articles_inoreader_id ON inoreader_articles(inoreader_id);
+    CREATE INDEX IF NOT EXISTS idx_inoreader_articles_subscription_id ON inoreader_articles(subscription_id);
+    CREATE INDEX IF NOT EXISTS idx_inoreader_articles_article_url ON inoreader_articles(article_url);
+    CREATE INDEX IF NOT EXISTS idx_inoreader_articles_published_at ON inoreader_articles(published_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_inoreader_articles_fetched_at ON inoreader_articles(fetched_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_inoreader_articles_processed ON inoreader_articles(processed) WHERE processed = FALSE;
+
+    -- Add comments for documentation
+    COMMENT ON TABLE inoreader_articles IS 'Stores article metadata fetched from Inoreader stream contents API';
+    COMMENT ON COLUMN inoreader_articles.id IS 'Internal UUID primary key';
+    COMMENT ON COLUMN inoreader_articles.inoreader_id IS 'Unique article identifier from Inoreader API';
+    COMMENT ON COLUMN inoreader_articles.subscription_id IS 'Reference to inoreader_subscriptions table';
+    COMMENT ON COLUMN inoreader_articles.article_url IS 'URL to the original article';
+    COMMENT ON COLUMN inoreader_articles.title IS 'Article title from Inoreader';
+    COMMENT ON COLUMN inoreader_articles.author IS 'Article author';
+    COMMENT ON COLUMN inoreader_articles.published_at IS 'Original publication timestamp';
+    COMMENT ON COLUMN inoreader_articles.fetched_at IS 'When this record was fetched from Inoreader';
+    COMMENT ON COLUMN inoreader_articles.processed IS 'Whether this article has been processed by other services';
+
+  000038_create_inoreader_articles_table.down.sql: |
+    -- Drop inoreader_articles table and related indexes
+    DROP INDEX IF EXISTS idx_inoreader_articles_processed;
+    DROP INDEX IF EXISTS idx_inoreader_articles_fetched_at;
+    DROP INDEX IF EXISTS idx_inoreader_articles_published_at;
+    DROP INDEX IF EXISTS idx_inoreader_articles_article_url;
+    DROP INDEX IF EXISTS idx_inoreader_articles_subscription_id;
+    DROP INDEX IF EXISTS idx_inoreader_articles_inoreader_id;
+    DROP TABLE IF EXISTS inoreader_articles;
+
+  000039_create_sync_state_table.up.sql: |
+    -- Create sync_state table for managing continuation tokens and synchronization state
+    CREATE TABLE IF NOT EXISTS sync_state (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        stream_id TEXT UNIQUE NOT NULL,
+        continuation_token TEXT,
+        last_sync TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
+    -- Create indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_sync_state_stream_id ON sync_state(stream_id);
+    CREATE INDEX IF NOT EXISTS idx_sync_state_last_sync ON sync_state(last_sync DESC);
+
+    -- Add comments for documentation
+    COMMENT ON TABLE sync_state IS 'Stores synchronization state and continuation tokens for Inoreader stream pagination';
+    COMMENT ON COLUMN sync_state.id IS 'Internal UUID primary key';
+    COMMENT ON COLUMN sync_state.stream_id IS 'Stream identifier (e.g., user/-/state/com.google/reading-list)';
+    COMMENT ON COLUMN sync_state.continuation_token IS 'Continuation token for pagination from Inoreader API';
+    COMMENT ON COLUMN sync_state.last_sync IS 'Last successful synchronization timestamp';
+
+  000039_create_sync_state_table.down.sql: |
+    -- Drop sync_state table and related indexes
+    DROP INDEX IF EXISTS idx_sync_state_last_sync;
+    DROP INDEX IF EXISTS idx_sync_state_stream_id;
+    DROP TABLE IF EXISTS sync_state;
+
+  000040_create_api_usage_tracking_table.up.sql: |
+    -- Create api_usage_tracking table for monitoring Inoreader API rate limits
+    CREATE TABLE IF NOT EXISTS api_usage_tracking (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        date DATE DEFAULT CURRENT_DATE,
+        zone1_requests INTEGER DEFAULT 0,
+        zone2_requests INTEGER DEFAULT 0,
+        last_reset TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        rate_limit_headers JSONB DEFAULT '{}'::JSONB
+    );
+
+    -- Create unique constraint to ensure one record per date
+    ALTER TABLE api_usage_tracking ADD CONSTRAINT uq_api_usage_tracking_date UNIQUE (date);
+
+    -- Create indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_api_usage_tracking_date ON api_usage_tracking(date DESC);
+    CREATE INDEX IF NOT EXISTS idx_api_usage_tracking_last_reset ON api_usage_tracking(last_reset DESC);
+
+    -- Add comments for documentation
+    COMMENT ON TABLE api_usage_tracking IS 'Tracks daily API usage for Inoreader rate limit monitoring (Zone 1: 100/day, Zone 2: 100/day)';
+    COMMENT ON COLUMN api_usage_tracking.id IS 'Internal UUID primary key';
+    COMMENT ON COLUMN api_usage_tracking.date IS 'Date for this usage tracking record (YYYY-MM-DD)';
+    COMMENT ON COLUMN api_usage_tracking.zone1_requests IS 'Number of Zone 1 API requests made (read operations like /subscription/list, /stream/contents)';
+    COMMENT ON COLUMN api_usage_tracking.zone2_requests IS 'Number of Zone 2 API requests made (write operations like /subscription/edit)';
+    COMMENT ON COLUMN api_usage_tracking.last_reset IS 'Last time the counters were reset or updated';
+    COMMENT ON COLUMN api_usage_tracking.rate_limit_headers IS 'JSON object storing rate limit headers from Inoreader API responses';
+
+  000040_create_api_usage_tracking_table.down.sql: |
+    -- Drop api_usage_tracking table and related constraints/indexes
+    DROP INDEX IF EXISTS idx_api_usage_tracking_last_reset;
+    DROP INDEX IF EXISTS idx_api_usage_tracking_date;
+    ALTER TABLE IF EXISTS api_usage_tracking DROP CONSTRAINT IF EXISTS uq_api_usage_tracking_date;
+    DROP TABLE IF EXISTS api_usage_tracking;
+
+  000041_create_pre_processor_sidecar_user.up.sql: |
+    -- Create user for pre-processor-sidecar service
+    DO $$
+    BEGIN
+       IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'pre_processor_sidecar_user') THEN
+          CREATE USER pre_processor_sidecar_user WITH LOGIN PASSWORD '{{ .Values.database.passwords.preProcessorSidecar | required "database.passwords.preProcessorSidecar is required" }}';
+       END IF;
+    END $$;
+
+    -- Add comments for documentation
+    COMMENT ON ROLE pre_processor_sidecar_user IS 'Database user for pre-processor-sidecar CronJob service - Inoreader API integration';
+
+  000041_create_pre_processor_sidecar_user.down.sql: |
+    -- Drop pre_processor_sidecar_user
+    DROP USER IF EXISTS pre_processor_sidecar_user;
+
+  000042_grant_pre_processor_sidecar_permissions.up.sql: |
+    -- Grant permissions to pre_processor_sidecar_user for Inoreader integration tables
+
+    -- Grant permissions on inoreader_subscriptions table
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE inoreader_subscriptions TO pre_processor_sidecar_user;
+
+    -- Grant permissions on inoreader_articles table  
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE inoreader_articles TO pre_processor_sidecar_user;
+
+    -- Grant permissions on sync_state table
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sync_state TO pre_processor_sidecar_user;
+
+    -- Grant permissions on api_usage_tracking table
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE api_usage_tracking TO pre_processor_sidecar_user;
+
+    -- Grant CONNECT permission on database
+    GRANT CONNECT ON DATABASE alt TO pre_processor_sidecar_user;
+
+    -- Grant USAGE on public schema
+    GRANT USAGE ON SCHEMA public TO pre_processor_sidecar_user;
+
+  000042_grant_pre_processor_sidecar_permissions.down.sql: |
+    -- Revoke permissions from pre_processor_sidecar_user
+
+    -- Revoke schema permissions
+    REVOKE USAGE ON SCHEMA public FROM pre_processor_sidecar_user;
+    REVOKE CONNECT ON DATABASE alt FROM pre_processor_sidecar_user;
+
+    -- Revoke permissions on api_usage_tracking table
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE api_usage_tracking FROM pre_processor_sidecar_user;
+
+    -- Revoke permissions on sync_state table
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE sync_state FROM pre_processor_sidecar_user;
+
+    -- Revoke permissions on inoreader_articles table
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE inoreader_articles FROM pre_processor_sidecar_user;
+
+    -- Revoke permissions on inoreader_subscriptions table
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE inoreader_subscriptions FROM pre_processor_sidecar_user;

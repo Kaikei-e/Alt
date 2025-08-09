@@ -1,0 +1,70 @@
+# OAuth2 Initialization Job
+# Permanent solution: Proper OAuth2 token initialization before CronJob execution
+{{- if .Values.oauth2Init.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "pre-processor-sidecar.fullname" . }}-oauth2-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pre-processor-sidecar.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-init
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  {{- end }}
+spec:
+  ttlSecondsAfterFinished: {{ .Values.oauth2Init.ttlSecondsAfterFinished | default 300 }}
+  backoffLimit: {{ .Values.oauth2Init.backoffLimit | default 3 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pre-processor-sidecar.labels" . | nindent 8 }}
+        app.kubernetes.io/component: oauth2-init
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "pre-processor-sidecar.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: oauth2-init
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/app/pre-processor-sidecar"]
+          args: ["--oauth2-init"]
+          env:
+            # Database connection for OAuth2 token storage
+            - name: DB_HOST
+              value: {{ .Values.env.DB_HOST | quote }}
+            - name: DB_NAME
+              value: {{ .Values.env.DB_NAME | quote }}
+            - name: DB_PORT
+              value: {{ .Values.env.DB_PORT | quote }}
+            - name: DB_SSL_MODE
+              value: {{ .Values.env.DB_SSL_MODE | quote }}
+            - name: PRE_PROCESSOR_SIDECAR_DB_USER
+              value: {{ .Values.env.PRE_PROCESSOR_SIDECAR_DB_USER | quote }}
+            
+            # OAuth2 configuration
+            - name: KUBERNETES_IN_CLUSTER
+              value: "true"
+            - name: KUBERNETES_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: OAUTH2_TOKEN_SECRET_NAME
+              value: {{ .Values.env.OAUTH2_TOKEN_SECRET_NAME | default "pre-processor-sidecar-oauth2-token" | quote }}
+            
+            # Service configuration
+            - name: LOG_LEVEL
+              value: {{ .Values.env.LOG_LEVEL | quote }}
+            - name: SERVICE_NAME
+              value: "oauth2-init"
+            
+            {{- include "pre-processor-sidecar.envFromSecret" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.oauth2Init.resources | nindent 12 }}
+{{- end }}

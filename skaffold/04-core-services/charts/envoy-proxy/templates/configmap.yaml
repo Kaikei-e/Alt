@@ -136,6 +136,44 @@ data:
                         upstream="%UPSTREAM_HOST%"
               
               http_filters:
+              # RBAC filter for Inoreader domain authorization (pre-processor-sidecar)
+              - name: envoy.filters.http.rbac
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
+                  action: ALLOW
+                  rules:
+                    policies:
+                      "inoreader_domains_policy":
+                        permissions:
+                        - any: true
+                        principals:
+                        - any: true
+                        condition:
+                          or_ids:
+                            ids:
+                            - header:
+                                name: ":authority"
+                                string_match:
+                                  exact: "www.inoreader.com"
+                            - header:
+                                name: ":authority"
+                                string_match:
+                                  exact: "inoreader.com" 
+                            - header:
+                                name: ":authority"
+                                string_match:
+                                  exact: "auth.inoreader.com"
+                      "localhost_policy":
+                        permissions:
+                        - any: true
+                        principals:
+                        - any: true
+                        condition:
+                          header:
+                            name: ":authority"
+                            string_match:
+                              prefix: "127.0.0.1"
+
               - name: envoy.filters.http.dynamic_forward_proxy
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
