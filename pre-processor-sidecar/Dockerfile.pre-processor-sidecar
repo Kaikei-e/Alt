@@ -1,0 +1,43 @@
+FROM golang:1.24.3-alpine AS builder
+
+WORKDIR /app
+
+# Install git for go mod download
+RUN apk add --no-cache git
+
+# Copy go mod files first for better caching
+COPY ./app/go.mod ./app/go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY ./app ./
+
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o pre-processor-sidecar ./cmd
+
+# Final stage
+FROM alpine:3.20
+
+# Add ca-certificates for HTTPS requests
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app/
+
+# Copy the binary
+COPY --from=builder /app/pre-processor-sidecar .
+
+# Create non-root user for security
+RUN addgroup -g 1000 app && adduser -D -s /bin/sh -u 1000 -G app app
+
+# Create temp directory for writable filesystem
+RUN mkdir -p /tmp && chown -R app:app /tmp
+
+USER app
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD ./pre-processor-sidecar --health-check || exit 1
+
+ENTRYPOINT ["./pre-processor-sidecar"]
