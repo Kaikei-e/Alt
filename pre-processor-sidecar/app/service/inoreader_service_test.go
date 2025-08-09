@@ -391,10 +391,10 @@ func TestInoreaderService_UpdateAPIUsageFromHeaders(t *testing.T) {
 			var mockRepo *mocks.MockAPIUsageRepository
 			var service *InoreaderService
 
-            if name == "repository_not_configured" {
-                // Test with nil repository
-                service = NewInoreaderService(nil, nil, nil)
-            } else {
+			if name == "repository_not_configured" {
+				// Test with nil repository
+				service = NewInoreaderService(nil, nil, nil)
+			} else {
 				mockRepo = mocks.NewMockAPIUsageRepository(ctrl)
 				tc.mockSetup(mockRepo)
 				service = NewInoreaderService(nil, mockRepo, nil)
@@ -402,21 +402,21 @@ func TestInoreaderService_UpdateAPIUsageFromHeaders(t *testing.T) {
 
 			ctx := context.Background()
 			// Mock client call to fetch headers when repo configured
-            if mockRepo != nil {
+			if mockRepo != nil {
 				mockClient := mocks.NewMockInoreaderClient(ctrl)
 				service.inoreaderClient = mockClient
 				service.SetCurrentToken(&models.OAuth2Token{AccessToken: "valid_token", TokenType: "Bearer", ExpiresAt: time.Now().Add(1 * time.Hour)})
 				mockClient.EXPECT().
 					MakeAuthenticatedRequestWithHeaders(gomock.Any(), "valid_token", tc.endpoint, gomock.Nil()).
 					Return(nil, tc.headers, nil)
-            } else {
-                // Even with nil repo, the method will still try to fetch headers; provide a client and token
-                mockClient := mocks.NewMockInoreaderClient(ctrl)
-                service.inoreaderClient = mockClient
-                service.SetCurrentToken(&models.OAuth2Token{AccessToken: "valid_token", TokenType: "Bearer", ExpiresAt: time.Now().Add(1 * time.Hour)})
-                mockClient.EXPECT().
-                    MakeAuthenticatedRequestWithHeaders(gomock.Any(), "valid_token", tc.endpoint, gomock.Nil()).
-                    Return(nil, tc.headers, nil)
+			} else {
+				// Even with nil repo, the method will still try to fetch headers; provide a client and token
+				mockClient := mocks.NewMockInoreaderClient(ctrl)
+				service.inoreaderClient = mockClient
+				service.SetCurrentToken(&models.OAuth2Token{AccessToken: "valid_token", TokenType: "Bearer", ExpiresAt: time.Now().Add(1 * time.Hour)})
+				mockClient.EXPECT().
+					MakeAuthenticatedRequestWithHeaders(gomock.Any(), "valid_token", tc.endpoint, gomock.Nil()).
+					Return(nil, tc.headers, nil)
 			}
 			err := service.UpdateAPIUsageFromHeaders(ctx, tc.endpoint)
 
