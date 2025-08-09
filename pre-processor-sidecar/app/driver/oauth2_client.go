@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"pre-processor-sidecar/models"
 )
 
 // OAuth2TokenResponse represents the response from OAuth2 token endpoint
@@ -46,7 +48,7 @@ func NewOAuth2Client(clientID, clientSecret, baseURL string) *OAuth2Client {
 }
 
 // RefreshToken exchanges a refresh token for a new access token
-func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*OAuth2TokenResponse, error) {
+func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*models.InoreaderTokenResponse, error) {
 	// Prepare form data for OAuth2 refresh token request
 	data := url.Values{
 		"grant_type":    {"refresh_token"},
@@ -82,10 +84,16 @@ func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*
 		return nil, fmt.Errorf("OAuth2 refresh token failed with status %d", resp.StatusCode)
 	}
 
-	// Calculate expiration time
-	tokenResponse.ExpiresAt = time.Now().Add(time.Duration(tokenResponse.ExpiresIn) * time.Second)
+	// Convert to models.InoreaderTokenResponse
+	inoreaderResponse := &models.InoreaderTokenResponse{
+		AccessToken:  tokenResponse.AccessToken,
+		TokenType:    tokenResponse.TokenType,
+		ExpiresIn:    tokenResponse.ExpiresIn,
+		RefreshToken: tokenResponse.RefreshToken,
+		Scope:        "", // Will be populated if available in response
+	}
 
-	return &tokenResponse, nil
+	return inoreaderResponse, nil
 }
 
 // ValidateToken checks if an access token is valid by making a test API call
@@ -199,6 +207,65 @@ func (c *OAuth2Client) handleRateLimitHeaders(headers map[string]string) (usage,
 // SetHTTPClient allows injecting a custom HTTP client (useful for testing with proxies)
 func (c *OAuth2Client) SetHTTPClient(client *http.Client) {
 	c.httpClient = client
+}
+
+// MakeAuthenticatedRequestWithHeaders makes an authenticated API request and returns response with headers
+func (c *OAuth2Client) MakeAuthenticatedRequestWithHeaders(ctx context.Context, accessToken, endpoint string, params map[string]string) (map[string]interface{}, map[string]string, error) {
+	// Build request URL with parameters
+	reqURL := c.baseURL + endpoint
+	if len(params) > 0 {
+		values := url.Values{}
+		for key, value := range params {
+			values.Set(key, value)
+		}
+		reqURL += "?" + values.Encode()
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create authenticated request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("User-Agent", "pre-processor-sidecar/1.0")
+
+	// Execute request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to execute authenticated request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Extract headers
+	headers := make(map[string]string)
+	for key, values := range resp.Header {
+		if len(values) > 0 {
+			headers[key] = values[0]
+		}
+	}
+
+	// Check for rate limit or authentication errors
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, headers, fmt.Errorf("API rate limit exceeded (Zone 1: %s/%s)", 
+			resp.Header.Get("X-Reader-Zone1-Usage"), resp.Header.Get("X-Reader-Zone1-Limit"))
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, headers, fmt.Errorf("authentication failed: token may be expired or invalid")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, headers, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
+
+	// Parse JSON response
+	var responseData map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+		return nil, headers, fmt.Errorf("failed to decode API response: %w", err)
+	}
+
+	return responseData, headers, nil
 }
 
 // GetRateLimitInfo returns current rate limit information from the last API call

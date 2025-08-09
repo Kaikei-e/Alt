@@ -27,6 +27,12 @@ type Config struct {
 
 	// Rate limiting configuration
 	RateLimit RateLimitConfig
+
+	// Kubernetes configuration
+	Kubernetes KubernetesConfig
+
+	// OAuth2 configuration
+	OAuth2 OAuth2Config
 }
 
 // DatabaseConfig holds database connection settings
@@ -61,6 +67,22 @@ type RateLimitConfig struct {
 	SyncInterval time.Duration
 }
 
+// KubernetesConfig holds Kubernetes integration settings
+type KubernetesConfig struct {
+	InCluster       bool
+	Namespace       string
+	TokenSecretName string
+}
+
+// OAuth2Config holds OAuth2 token management settings
+type OAuth2Config struct {
+	ClientID        string
+	ClientSecret    string
+	RefreshToken    string
+	RefreshBuffer   time.Duration
+	TokenSecretName string
+}
+
 // LoadConfig loads configuration from environment variables
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
@@ -71,9 +93,9 @@ func LoadConfig() (*Config, error) {
 			Host:     getEnvOrDefault("DB_HOST", "postgres.alt-database.svc.cluster.local"),
 			Port:     getEnvOrDefault("DB_PORT", "5432"),
 			Name:     getEnvOrDefault("DB_NAME", "alt"),
-			User:     getEnvOrDefault("PRE_PROCESSOR_SIDECAR_DB_USER", "pre_processor_user"),
+			User:     getEnvOrDefault("PRE_PROCESSOR_SIDECAR_DB_USER", "pre_processor_sidecar_user"), // FIXED: Correct default user
 			Password: os.Getenv("PRE_PROCESSOR_SIDECAR_DB_PASSWORD"), // Required from secret
-			SSLMode:  getEnvOrDefault("DB_SSL_MODE", ""),
+			SSLMode:  getEnvOrDefault("DB_SSL_MODE", "disable"), // FIXED: Default to disable for Linkerd mTLS
 		},
 
 		Inoreader: InoreaderConfig{
@@ -90,6 +112,19 @@ func LoadConfig() (*Config, error) {
 
 		RateLimit: RateLimitConfig{
 			DailyLimit: 100, // Zone 1 limit
+		},
+
+		Kubernetes: KubernetesConfig{
+			InCluster:       getEnvOrDefault("KUBERNETES_IN_CLUSTER", "false") == "true",
+			Namespace:       getEnvOrDefault("KUBERNETES_NAMESPACE", "alt-processing"),
+			TokenSecretName: getEnvOrDefault("OAUTH2_TOKEN_SECRET_NAME", "pre-processor-sidecar-oauth2-token"),
+		},
+
+		OAuth2: OAuth2Config{
+			ClientID:        os.Getenv("INOREADER_CLIENT_ID"),     // Required from secret
+			ClientSecret:    os.Getenv("INOREADER_CLIENT_SECRET"), // Required from secret
+			RefreshToken:    os.Getenv("INOREADER_REFRESH_TOKEN"), // Required from secret
+			TokenSecretName: getEnvOrDefault("OAUTH2_TOKEN_SECRET_NAME", "pre-processor-sidecar-oauth2-token"),
 		},
 	}
 
@@ -115,15 +150,19 @@ func LoadConfig() (*Config, error) {
 		cfg.RateLimit.SyncInterval = 30 * time.Minute
 	}
 
-	// Parse token refresh buffer
+	// Parse token refresh buffer for both Inoreader and OAuth2
 	if buffer := os.Getenv("OAUTH2_TOKEN_REFRESH_BUFFER"); buffer != "" {
 		if bufferSeconds, err := strconv.Atoi(buffer); err == nil {
-			cfg.Inoreader.TokenRefreshBuffer = time.Duration(bufferSeconds) * time.Second
+			bufferDuration := time.Duration(bufferSeconds) * time.Second
+			cfg.Inoreader.TokenRefreshBuffer = bufferDuration
+			cfg.OAuth2.RefreshBuffer = bufferDuration
 		} else {
 			cfg.Inoreader.TokenRefreshBuffer = 5 * time.Minute // Default
+			cfg.OAuth2.RefreshBuffer = 5 * time.Minute // Default
 		}
 	} else {
 		cfg.Inoreader.TokenRefreshBuffer = 5 * time.Minute
+		cfg.OAuth2.RefreshBuffer = 5 * time.Minute
 	}
 
 	// Validate required configuration
