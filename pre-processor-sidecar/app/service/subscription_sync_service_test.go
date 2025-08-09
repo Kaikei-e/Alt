@@ -70,7 +70,7 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 								},
 							},
 						},
-					}, nil)
+					}, nil).Times(2)
 
 				// Expect parsing and bulk save
 				oauth2Client.EXPECT().
@@ -78,7 +78,7 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 					Return([]*models.Subscription{
 						{InoreaderID: "feed/http://example.com/rss", FeedURL: "http://example.com/rss", Title: "Example Tech News", Category: "Tech"},
 						{InoreaderID: "feed/http://blog.example.org/feed", FeedURL: "http://blog.example.org/feed", Title: "Development Blog", Category: "Development"},
-					}, nil)
+					}, nil).Times(2)
 				repo.EXPECT().
 					SaveSubscriptions(gomock.Any(), gomock.Any()).
 					Return(nil)
@@ -126,13 +126,13 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 								},
 							},
 						},
-					}, nil)
+					}, nil).Times(2)
 
 				oauth2Client.EXPECT().
 					ParseSubscriptionsResponse(gomock.Any()).
 					Return([]*models.Subscription{
 						{InoreaderID: "feed/http://example.com/rss", FeedURL: "http://example.com/rss", Title: "Updated Tech News", Category: "Technology"},
-					}, nil)
+					}, nil).Times(2)
 				repo.EXPECT().
 					SaveSubscriptions(gomock.Any(), gomock.Any()).
 					Return(nil)
