@@ -1,0 +1,180 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pre-processor-sidecar
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/name: pre-processor-sidecar
+    app.kubernetes.io/component: cronjob
+    app.kubernetes.io/part-of: alt-processing
+    app.kubernetes.io/version: "oauth2-enabled"
+spec:
+  schedule: "*/30 * * * *"  # 30分間隔実行
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: pre-processor-sidecar
+            app.kubernetes.io/version: oauth2-enabled
+          annotations:
+            linkerd.io/inject: enabled
+            # Skip HTTPS port (443) for envoy proxy, PostgreSQL (5432) for direct connection
+            config.linkerd.io/skip-outbound-ports: "443,5432"
+        spec:
+          serviceAccountName: pre-processor-sidecar
+          restartPolicy: OnFailure
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+          - name: pre-processor-sidecar
+            image: pre-processor-sidecar:oauth2-latest
+            imagePullPolicy: Always
+            command: ["/app/pre-processor-sidecar"]
+            env:
+            # OAuth2 & Kubernetes Configuration
+            - name: LOG_LEVEL
+              value: "info"
+            - name: KUBERNETES_IN_CLUSTER
+              value: "true"
+            - name: KUBERNETES_NAMESPACE
+              value: "alt-processing"
+            - name: OAUTH2_TOKEN_SECRET_NAME
+              value: "pre-processor-sidecar-oauth2-token"
+            
+            # Database Configuration
+            - name: DB_HOST
+              value: "postgres.alt-database.svc.cluster.local"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "alt"
+            - name: PRE_PROCESSOR_SIDECAR_DB_USER
+              value: "pre_processor_sidecar_user"
+            - name: PRE_PROCESSOR_SIDECAR_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pre-processor-sidecar-secrets
+                  key: PRE_PROCESSOR_SIDECAR_DB_PASSWORD
+            - name: DB_SSL_MODE
+              value: "disable"
+            
+            # Inoreader API Configuration (from secrets)
+            - name: INOREADER_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: pre-processor-sidecar-secrets
+                  key: INOREADER_CLIENT_ID
+            - name: INOREADER_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pre-processor-sidecar-secrets
+                  key: INOREADER_CLIENT_SECRET
+            - name: INOREADER_BASE_URL
+              value: "https://www.inoreader.com/reader/api/0"
+            
+            # Proxy Configuration (Envoy)
+            - name: HTTPS_PROXY
+              value: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
+            - name: NO_PROXY
+              value: "localhost,127.0.0.1,.svc.cluster.local"
+            
+            # Performance Configuration
+            - name: MAX_ARTICLES_PER_REQUEST
+              value: "100"
+            - name: SYNC_INTERVAL
+              value: "30m"
+            - name: OAUTH2_TOKEN_REFRESH_BUFFER
+              value: "300"  # 5 minutes in seconds
+            
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "50m"
+              limits:
+                memory: "128Mi"
+                cpu: "100m"
+            
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+            
+            # Health Check
+            livenessProbe:
+              exec:
+                command:
+                - /app/pre-processor-sidecar
+                - --health-check
+              initialDelaySeconds: 30
+              periodSeconds: 60
+              timeoutSeconds: 10
+              failureThreshold: 3
+            
+            # Readiness is not needed for CronJob, but we can add startup probe
+            startupProbe:
+              exec:
+                command:
+                - /app/pre-processor-sidecar
+                - --health-check
+              initialDelaySeconds: 5
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 30
+
+---
+# ServiceAccount with OAuth2 permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pre-processor-sidecar
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/name: pre-processor-sidecar
+    app.kubernetes.io/component: serviceaccount
+
+---
+# RBAC for OAuth2 token management
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: alt-processing
+  name: pre-processor-sidecar-oauth2
+  labels:
+    app.kubernetes.io/name: pre-processor-sidecar
+    app.kubernetes.io/component: rbac
+rules:
+# OAuth2 token secret management - 最小権限原則に従い特定シークレットのみアクセス許可
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["pre-processor-sidecar-oauth2-token"]
+  verbs: ["create", "get", "update", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pre-processor-sidecar-oauth2
+  namespace: alt-processing
+  labels:
+    app.kubernetes.io/name: pre-processor-sidecar
+    app.kubernetes.io/component: rbac
+subjects:
+- kind: ServiceAccount
+  name: pre-processor-sidecar
+  namespace: alt-processing
+roleRef:
+  kind: Role
+  name: pre-processor-sidecar-oauth2
+  apiGroup: rbac.authorization.k8s.io
