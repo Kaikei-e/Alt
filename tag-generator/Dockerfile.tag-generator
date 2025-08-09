@@ -1,32 +1,30 @@
 FROM python:3.13-slim
 
-# Install build dependencies for C++ compilation and system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    g++ \
-    wget \
-    mecab \
-    libmecab-dev \
-    mecab-ipadic-utf8 \
-    && rm -rf /var/lib/apt/lists/*
+# Minimal OS deps (mecab etc. omitted for brevity)
+RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY app/pyproject.toml app/uv.lock ./
 
-COPY app/uv.lock .
-COPY app/pyproject.toml .
+RUN pip install --no-cache-dir uv && uv sync --locked
 
-RUN pip install uv && uv sync
+# === install binary wheels ====================================================
+# PyTorch first (custom index)
+RUN uv pip install --system --no-cache-dir torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cpu
+# Install all project dependencies to system Python
+RUN uv pip install --system --no-cache-dir sentence-transformers unidic
+# Sync project dependencies (including structlog, psycopg2-binary, etc.)
+RUN uv sync --locked
+# Install project dependencies to system Python  
+RUN uv pip install --system --no-cache-dir -e .
 
-# Download required models and data using uv environment
-RUN uv run python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt'); nltk.download('punkt_tab')"
-
-# Install UniDic for Japanese text processing (alternative to the default ipadic)
-RUN uv run python -c "import unidic; unidic.download()" || echo "UniDic download may have failed, will try alternative approach"
-
-# Pre-download SentenceTransformer model to avoid runtime download issues
-# Force CPU-only to prevent GPU memory issues
-RUN uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu'); print('SentenceTransformer model cached successfully')"
+# Optional: pre‑cache the SBERT model
+RUN python - <<'PY'
+from sentence_transformers import SentenceTransformer
+SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu')
+print('✅ SBERT model cached')
+PY
 
 COPY app/ .
-
-CMD ["uv", "run", "main.py"]
+CMD ["python", "main.py"]
