@@ -48,3 +48,6 @@ pv-data/
 */values-ssl.yaml
 log.txt
 argocd/
+node_modules/
+pre-processor-sidecar/setup-oauth.sh
+pre-processor-sidecar/cmd/oauth-initializer/
