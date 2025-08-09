@@ -26,7 +26,7 @@
   "dependencies": {
     "@chakra-ui/accordion": "^2.3.1",
     "@chakra-ui/progress": "^2.2.0",
-    "@chakra-ui/react": "^3.23.0",
+    "@chakra-ui/react": "^3.24.2",
     "@chakra-ui/transition": "^2.1.0",
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
@@ -44,9 +44,9 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
-    "@next/bundle-analyzer": "^15.4.4",
-    "@next/eslint-plugin-next": "^15.3.3",
-    "@playwright/test": "^1.54.1",
+    "@next/bundle-analyzer": "^15.4.6",
+    "@next/eslint-plugin-next": "^15.4.6",
+    "@playwright/test": "^1.54.2",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
@@ -55,13 +55,13 @@
     "@types/react-dom": "^19.1.7",
     "@types/sanitize-html": "^2.16.0",
     "@vitest/browser": "^3.2.3",
-    "eslint": "^9.32.0",
+    "eslint": "^9.33.0",
     "eslint-config-next": "15.3.3",
     "eslint-plugin-react-hooks": "^4.6.0",
     "jsdom": "^26.1.0",
-    "playwright": "^1.54.1",
+    "playwright": "^1.54.2",
     "prettier": "3.5.3",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
   "engines": {
