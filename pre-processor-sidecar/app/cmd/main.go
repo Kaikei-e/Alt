@@ -257,24 +257,13 @@ func runCronJobTask(ctx context.Context, cfg *config.Config, logger *slog.Logger
 		"status_code", resp.StatusCode,
 		"content_length", resp.ContentLength)
 
-	// Initialize Kubernetes client for OAuth2 token storage
-	k8sConfig := config.LoadKubernetesConfig()
-	logger.Info("Initializing Kubernetes client for token storage",
-		"in_cluster", k8sConfig.InCluster,
-		"namespace", k8sConfig.Namespace,
-		"secret_name", k8sConfig.TokenSecretName)
-
-	var tokenRepo repository.OAuth2TokenRepository
-	kubeClient, err := k8sConfig.CreateKubernetesClient()
-	if err != nil {
-		logger.Warn("Failed to create Kubernetes client, falling back to in-memory storage", 
-			"error", err,
-			"fallback", "InMemoryTokenRepository")
-		tokenRepo = repository.NewInMemoryTokenRepository()
-	} else {
-		logger.Info("Kubernetes client created successfully, using Secret-based token storage")
-		tokenRepo = repository.NewSecretBasedTokenRepository(kubeClient, k8sConfig.Namespace, k8sConfig.TokenSecretName)
+	// Use .env file-based OAuth2 token storage (no Kubernetes dependency)
+	tokenStoragePath := "/tmp/.env" // Default path
+	if cfg.TokenStoragePath != "" {
+		tokenStoragePath = cfg.TokenStoragePath
 	}
+	logger.Info("Using .env file-based token storage for OAuth2 tokens", "path", tokenStoragePath)
+	tokenRepo := repository.NewEnvFileTokenRepository(tokenStoragePath, logger)
 
 	oauth2Client := driver.NewOAuth2Client(cfg.Inoreader.ClientID, cfg.Inoreader.ClientSecret, cfg.Inoreader.BaseURL)
 	oauth2Client.SetHTTPClient(httpClient) // Use proxy-configured HTTP client
@@ -411,24 +400,13 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 
 	logger.Info("HTTP client configured", "proxy", cfg.Proxy.HTTPSProxy)
 
-	// Initialize Kubernetes client for OAuth2 token storage
-	k8sConfig := config.LoadKubernetesConfig()
-	logger.Info("Initializing Kubernetes client for token storage",
-		"in_cluster", k8sConfig.InCluster,
-		"namespace", k8sConfig.Namespace,
-		"secret_name", k8sConfig.TokenSecretName)
-
-	var tokenRepo repository.OAuth2TokenRepository
-	kubeClient, err := k8sConfig.CreateKubernetesClient()
-	if err != nil {
-		logger.Warn("Failed to create Kubernetes client, falling back to in-memory storage", 
-			"error", err,
-			"fallback", "InMemoryTokenRepository")
-		tokenRepo = repository.NewInMemoryTokenRepository()
-	} else {
-		logger.Info("Kubernetes client created successfully, using Secret-based token storage")
-		tokenRepo = repository.NewSecretBasedTokenRepository(kubeClient, k8sConfig.Namespace, k8sConfig.TokenSecretName)
+	// Use .env file-based OAuth2 token storage (no Kubernetes dependency)
+	tokenStoragePath := "/tmp/.env" // Default path
+	if cfg.TokenStoragePath != "" {
+		tokenStoragePath = cfg.TokenStoragePath
 	}
+	logger.Info("Using .env file-based token storage for OAuth2 tokens", "path", tokenStoragePath)
+	tokenRepo := repository.NewEnvFileTokenRepository(tokenStoragePath, logger)
 
 	// Initialize OAuth2 and services
 	oauth2Client := driver.NewOAuth2Client(cfg.Inoreader.ClientID, cfg.Inoreader.ClientSecret, cfg.Inoreader.BaseURL)

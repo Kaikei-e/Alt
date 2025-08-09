@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"sync"
 	"time"
 )
@@ -18,6 +19,77 @@ type ScheduleConfig struct {
 	EnableSubscriptionSync   bool          `json:"enable_subscription_sync"`
 	EnableArticleFetch       bool          `json:"enable_article_fetch"`
 	MaxConcurrentJobs        int           `json:"max_concurrent_jobs"`
+}
+
+// RateLimitAwareScheduler implements intelligent scheduling with exponential backoff
+type RateLimitAwareScheduler struct {
+	baseInterval      time.Duration
+	currentInterval   time.Duration
+	errorCount        int
+	lastSuccessTime   time.Time
+	backoffMultiplier float64
+	maxInterval       time.Duration
+	mu                sync.Mutex
+}
+
+// NewRateLimitAwareScheduler creates a new intelligent scheduler
+func NewRateLimitAwareScheduler(baseInterval time.Duration) *RateLimitAwareScheduler {
+	return &RateLimitAwareScheduler{
+		baseInterval:      baseInterval,
+		currentInterval:   baseInterval,
+		backoffMultiplier: 1.5,
+		maxInterval:       6 * time.Hour, // Max 6 hours backoff
+	}
+}
+
+// NextInterval calculates the next execution interval with exponential backoff
+func (s *RateLimitAwareScheduler) NextInterval() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.errorCount == 0 {
+		s.currentInterval = s.baseInterval
+		return s.currentInterval
+	}
+
+	// Exponential backoff calculation
+	backoffDuration := time.Duration(
+		float64(s.baseInterval) * 
+		math.Pow(s.backoffMultiplier, float64(s.errorCount)),
+	)
+
+	if backoffDuration > s.maxInterval {
+		backoffDuration = s.maxInterval
+	}
+
+	s.currentInterval = backoffDuration
+	return s.currentInterval
+}
+
+// RecordSuccess resets the error count and updates last success time
+func (s *RateLimitAwareScheduler) RecordSuccess() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	s.errorCount = 0
+	s.lastSuccessTime = time.Now()
+	s.currentInterval = s.baseInterval
+}
+
+// RecordError increments error count for backoff calculation
+func (s *RateLimitAwareScheduler) RecordError() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	s.errorCount++
+}
+
+// GetStatus returns current scheduler status
+func (s *RateLimitAwareScheduler) GetStatus() (int, time.Duration, time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	return s.errorCount, s.currentInterval, s.lastSuccessTime
 }
 
 // ScheduleStatus represents current scheduling status
@@ -60,6 +132,9 @@ type ScheduleHandler struct {
 	cancel                 context.CancelFunc
 	mu                     sync.RWMutex
 	jobResultCallbacks     []func(*JobResult)
+	// Intelligent schedulers with rate limit awareness
+	subscriptionScheduler  *RateLimitAwareScheduler
+	articleFetchScheduler  *RateLimitAwareScheduler
 }
 
 // NewScheduleHandler creates a new schedule handler
@@ -88,11 +163,13 @@ func NewScheduleHandler(
 	}
 
 	return &ScheduleHandler{
-		config:              config,
-		articleFetchHandler: articleFetchHandler,
-		status:              status,
-		logger:              logger,
-		jobResultCallbacks:  make([]func(*JobResult), 0),
+		config:                config,
+		articleFetchHandler:   articleFetchHandler,
+		status:                status,
+		logger:                logger,
+		jobResultCallbacks:    make([]func(*JobResult), 0),
+		subscriptionScheduler: NewRateLimitAwareScheduler(config.SubscriptionSyncInterval),
+		articleFetchScheduler: NewRateLimitAwareScheduler(config.ArticleFetchInterval),
 	}
 }
 
@@ -186,18 +263,42 @@ func (h *ScheduleHandler) runSubscriptionSyncScheduler() {
 	}
 }
 
-// runArticleFetchScheduler runs the article fetch scheduler
+// runArticleFetchScheduler runs the article fetch scheduler with dynamic intervals
 func (h *ScheduleHandler) runArticleFetchScheduler() {
-	h.logger.Info("Article fetch scheduler started")
+	h.logger.Info("Article fetch scheduler started with dynamic interval adjustment")
+
+	// Use dynamic timer instead of fixed ticker
+	nextInterval := h.articleFetchScheduler.NextInterval()
+	timer := time.NewTimer(nextInterval)
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-h.ctx.Done():
 			h.logger.Info("Article fetch scheduler stopped")
 			return
-		case <-h.articleFetchTicker.C:
+		case <-timer.C:
 			if h.config.EnableArticleFetch && !h.status.ArticleFetchRunning {
-				go h.executeArticleFetch()
+				go func() {
+					h.executeArticleFetch()
+					
+					// Reset timer with updated interval after execution
+					h.mu.RLock()
+					nextInterval := h.articleFetchScheduler.NextInterval()
+					errorCount, _, lastSuccess := h.articleFetchScheduler.GetStatus()
+					h.mu.RUnlock()
+					
+					h.logger.Debug("Rescheduling article fetch",
+						"next_interval", nextInterval,
+						"error_count", errorCount,
+						"last_success", lastSuccess)
+					
+					timer.Reset(nextInterval)
+				}()
+			} else {
+				// Reset timer even if skipped
+				nextInterval := h.articleFetchScheduler.NextInterval()
+				timer.Reset(nextInterval)
 			}
 		}
 	}
@@ -290,17 +391,30 @@ func (h *ScheduleHandler) executeArticleFetch() {
 	h.mu.Lock()
 	h.status.ArticleFetchRunning = false
 	h.status.LastArticleFetch = endTime
-	h.status.NextArticleFetch = endTime.Add(h.config.ArticleFetchInterval)
 
 	if err != nil {
 		result.Error = err.Error()
 		h.status.FailedArticleFetches++
 		h.status.LastError = err.Error()
-		h.logger.Error("Scheduled article fetch failed",
+		
+		// Record error in intelligent scheduler for backoff calculation
+		h.articleFetchScheduler.RecordError()
+		nextInterval := h.articleFetchScheduler.NextInterval()
+		h.status.NextArticleFetch = endTime.Add(nextInterval)
+		
+		errorCount, _, lastSuccess := h.articleFetchScheduler.GetStatus()
+		h.logger.Error("Scheduled article fetch failed - applying intelligent backoff",
 			"duration", result.Duration,
-			"error", err)
+			"error", err,
+			"consecutive_errors", errorCount,
+			"next_interval", nextInterval,
+			"last_success", lastSuccess)
 	} else {
-		h.logger.Info("Scheduled article fetch completed successfully",
+		// Record success in intelligent scheduler to reset backoff
+		h.articleFetchScheduler.RecordSuccess()
+		h.status.NextArticleFetch = endTime.Add(h.config.ArticleFetchInterval)
+		
+		h.logger.Info("Scheduled article fetch completed successfully - backoff reset",
 			"duration", result.Duration,
 			"subscriptions_processed", batchResult.SubscriptionsProcessed,
 			"total_articles_fetched", batchResult.TotalArticlesFetched,

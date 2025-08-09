@@ -28,11 +28,11 @@ type Config struct {
 	// Rate limiting configuration
 	RateLimit RateLimitConfig
 
-	// Kubernetes configuration
-	Kubernetes KubernetesConfig
-
 	// OAuth2 configuration
 	OAuth2 OAuth2Config
+
+	// Token storage configuration
+	TokenStoragePath string
 }
 
 // DatabaseConfig holds database connection settings
@@ -47,12 +47,12 @@ type DatabaseConfig struct {
 
 // InoreaderConfig holds Inoreader API settings
 type InoreaderConfig struct {
-	BaseURL              string
-	ClientID             string
-	ClientSecret         string
-	RefreshToken         string
+	BaseURL               string
+	ClientID              string
+	ClientSecret          string
+	RefreshToken          string
 	MaxArticlesPerRequest int
-	TokenRefreshBuffer   time.Duration
+	TokenRefreshBuffer    time.Duration
 }
 
 // ProxyConfig holds proxy settings for Envoy integration
@@ -67,20 +67,12 @@ type RateLimitConfig struct {
 	SyncInterval time.Duration
 }
 
-// KubernetesConfig holds Kubernetes integration settings
-type KubernetesConfig struct {
-	InCluster       bool
-	Namespace       string
-	TokenSecretName string
-}
-
 // OAuth2Config holds OAuth2 token management settings
 type OAuth2Config struct {
-	ClientID        string
-	ClientSecret    string
-	RefreshToken    string
-	RefreshBuffer   time.Duration
-	TokenSecretName string
+	ClientID      string
+	ClientSecret  string
+	RefreshToken  string
+	RefreshBuffer time.Duration
 }
 
 // LoadConfig loads configuration from environment variables
@@ -94,8 +86,8 @@ func LoadConfig() (*Config, error) {
 			Port:     getEnvOrDefault("DB_PORT", "5432"),
 			Name:     getEnvOrDefault("DB_NAME", "alt"),
 			User:     getEnvOrDefault("PRE_PROCESSOR_SIDECAR_DB_USER", "pre_processor_sidecar_user"), // FIXED: Correct default user
-			Password: os.Getenv("PRE_PROCESSOR_SIDECAR_DB_PASSWORD"), // Required from secret
-			SSLMode:  getEnvOrDefault("DB_SSL_MODE", "disable"), // FIXED: Default to disable for Linkerd mTLS
+			Password: os.Getenv("PRE_PROCESSOR_SIDECAR_DB_PASSWORD"),                                 // Required from secret
+			SSLMode:  getEnvOrDefault("DB_SSL_MODE", "disable"),                                      // FIXED: Default to disable for Linkerd mTLS
 		},
 
 		Inoreader: InoreaderConfig{
@@ -114,18 +106,13 @@ func LoadConfig() (*Config, error) {
 			DailyLimit: 100, // Zone 1 limit
 		},
 
-		Kubernetes: KubernetesConfig{
-			InCluster:       getEnvOrDefault("KUBERNETES_IN_CLUSTER", "false") == "true",
-			Namespace:       getEnvOrDefault("KUBERNETES_NAMESPACE", "alt-processing"),
-			TokenSecretName: getEnvOrDefault("OAUTH2_TOKEN_SECRET_NAME", "pre-processor-sidecar-oauth2-token"),
+		OAuth2: OAuth2Config{
+			ClientID:     os.Getenv("INOREADER_CLIENT_ID"),     // Required from secret
+			ClientSecret: os.Getenv("INOREADER_CLIENT_SECRET"), // Required from secret
+			RefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"), // Required from secret
 		},
 
-		OAuth2: OAuth2Config{
-			ClientID:        os.Getenv("INOREADER_CLIENT_ID"),     // Required from secret
-			ClientSecret:    os.Getenv("INOREADER_CLIENT_SECRET"), // Required from secret
-			RefreshToken:    os.Getenv("INOREADER_REFRESH_TOKEN"), // Required from secret
-			TokenSecretName: getEnvOrDefault("OAUTH2_TOKEN_SECRET_NAME", "pre-processor-sidecar-oauth2-token"),
-		},
+		TokenStoragePath: getEnvOrDefault("TOKEN_STORAGE_PATH", "/tmp/oauth2_token.env"),
 	}
 
 	// Parse integer configurations
@@ -158,7 +145,7 @@ func LoadConfig() (*Config, error) {
 			cfg.OAuth2.RefreshBuffer = bufferDuration
 		} else {
 			cfg.Inoreader.TokenRefreshBuffer = 5 * time.Minute // Default
-			cfg.OAuth2.RefreshBuffer = 5 * time.Minute // Default
+			cfg.OAuth2.RefreshBuffer = 5 * time.Minute         // Default
 		}
 	} else {
 		cfg.Inoreader.TokenRefreshBuffer = 5 * time.Minute
