@@ -77,7 +77,7 @@ func main() {
 
 	fmt.Println("✅ Tokens obtained successfully!")
 	fmt.Println()
-	
+
 	// Step 4: Display results
 	fmt.Println("📋 Step 3: Token Information")
 	fmt.Printf("Access Token: %s\n", tokens.AccessToken)
@@ -96,18 +96,18 @@ func main() {
 	fmt.Printf("    \"INOREADER_CLIENT_ID\": \"%s\",\n", base64Encode(clientID))
 	fmt.Printf("    \"INOREADER_CLIENT_SECRET\": \"%s\",\n", base64Encode(clientSecret))
 	fmt.Printf("    \"INOREADER_REFRESH_TOKEN\": \"%s\",\n", base64Encode(tokens.RefreshToken))
-	fmt.Printf("    \"PRE_PROCESSOR_SIDECAR_DB_PASSWORD\": \"%s\"\n", base64Encode("CJr6caDyoiiYFydPKG03EhuZgECQMU"))
+	fmt.Printf("    \"PRE_PROCESSOR_SIDECAR_DB_PASSWORD\": \"%s\"\n", base64Encode(""))
 	fmt.Printf("  }\n")
 	fmt.Printf("}'\n")
 	fmt.Println()
-	
+
 	// Step 5: Kubernetes Integration
 	fmt.Println("📋 Step 5: Kubernetes Integration")
 	namespace := os.Getenv("KUBERNETES_NAMESPACE")
 	if namespace == "" {
 		namespace = "alt-processing"
 	}
-	secretName := os.Getenv("OAUTH2_TOKEN_SECRET_NAME") 
+	secretName := os.Getenv("OAUTH2_TOKEN_SECRET_NAME")
 	if secretName == "" {
 		secretName = "pre-processor-sidecar-oauth2-token"
 	}
@@ -118,7 +118,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("⚠️  Failed to initialize Kubernetes client: %v\n", err)
 		fmt.Println("Falling back to manual kubectl commands...")
-		
+
 		// Fallback to displaying kubectl commands
 		fmt.Println()
 		fmt.Println("📋 Manual Kubernetes Secret Setup:")
