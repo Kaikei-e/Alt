@@ -8,7 +8,7 @@ image:
 
 # Deployment mode configuration
 # Possible values: "cronjob", "deployment"
-deploymentMode: "cronjob"  # Default: CronJob for periodic execution
+deploymentMode: "deployment"  # UPDATED: Continuous Pod operation for rate limit management
 
 # Deployment specific configuration (when deploymentMode is "deployment")
 deployment:
