@@ -57,17 +57,19 @@ func TestLoadConfig(t *testing.T) {
 			},
 			expectError: true,
 		},
-		"default_values": {
-			envVars: map[string]string{
-				"PRE_PROCESSOR_SIDECAR_DB_PASSWORD": "test_password",
-				"INOREADER_CLIENT_ID":               "test_client_id",
-				"INOREADER_CLIENT_SECRET":           "test_client_secret",
-				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
-			},
-			expectError: false,
-			validate: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, "pre-processor-sidecar", cfg.ServiceName)
-				assert.Equal(t, "info", cfg.LogLevel)
+                "default_values": {
+                        envVars: map[string]string{
+                                "PRE_PROCESSOR_SIDECAR_DB_PASSWORD": "test_password",
+                                "INOREADER_CLIENT_ID":               "test_client_id",
+                                "INOREADER_CLIENT_SECRET":           "test_client_secret",
+                                "INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+                                // Ensure global HTTPS_PROXY doesn't override default
+                                "HTTPS_PROXY":                        "",
+                        },
+                        expectError: false,
+                        validate: func(t *testing.T, cfg *Config) {
+                                assert.Equal(t, "pre-processor-sidecar", cfg.ServiceName)
+                                assert.Equal(t, "info", cfg.LogLevel)
 				assert.Equal(t, 100, cfg.Inoreader.MaxArticlesPerRequest)
 				assert.Equal(t, 30*time.Minute, cfg.RateLimit.SyncInterval)
 				assert.Equal(t, 5*time.Minute, cfg.Inoreader.TokenRefreshBuffer)
