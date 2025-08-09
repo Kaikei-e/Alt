@@ -138,7 +138,14 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 					Return(nil)
 				repo.EXPECT().
 					GetAllSubscriptions(gomock.Any()).
-					Return([]models.InoreaderSubscription{}, nil).AnyTimes()
+					Return([]models.InoreaderSubscription{
+						{
+							InoreaderID: "feed/http://example.com/rss",
+							URL:         "http://example.com/rss",
+							Title:       "Example Tech News",
+							Categories:  []models.InoreaderCategory{{Label: "Tech"}},
+						},
+					}, nil).AnyTimes()
 			},
 			expectError:     false,
 			expectedCreated: 0,

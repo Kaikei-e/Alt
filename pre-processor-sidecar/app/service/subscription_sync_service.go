@@ -12,6 +12,7 @@ import (
 
 	"pre-processor-sidecar/models"
 	"pre-processor-sidecar/repository"
+
 	"github.com/google/uuid"
 )
 
@@ -19,47 +20,47 @@ import (
 
 // SubscriptionSyncResult represents the result of a subscription synchronization
 type SubscriptionSyncResult struct {
-	Created      int       `json:"created"`
-	Updated      int       `json:"updated"`
-	Deleted      int       `json:"deleted"`
-	TotalProcessed int     `json:"total_processed"`
-	SyncTime     time.Time `json:"sync_time"`
-	Duration     time.Duration `json:"duration"`
-	Errors       []string  `json:"errors,omitempty"`
+	Created        int           `json:"created"`
+	Updated        int           `json:"updated"`
+	Deleted        int           `json:"deleted"`
+	TotalProcessed int           `json:"total_processed"`
+	SyncTime       time.Time     `json:"sync_time"`
+	Duration       time.Duration `json:"duration"`
+	Errors         []string      `json:"errors,omitempty"`
 }
 
 // SubscriptionSyncStats represents synchronization statistics
 type SubscriptionSyncStats struct {
-	LastSyncTime     time.Time `json:"last_sync_time"`
-	TotalSyncs       int64     `json:"total_syncs"`
-	SuccessfulSyncs  int64     `json:"successful_syncs"`
-	FailedSyncs      int64     `json:"failed_syncs"`
-	Created          int       `json:"total_created"`
-	Updated          int       `json:"total_updated"`
-	Deleted          int       `json:"total_deleted"`
-	LastError        string    `json:"last_error,omitempty"`
-	NextSyncTime     time.Time `json:"next_sync_time"`
+	LastSyncTime    time.Time `json:"last_sync_time"`
+	TotalSyncs      int64     `json:"total_syncs"`
+	SuccessfulSyncs int64     `json:"successful_syncs"`
+	FailedSyncs     int64     `json:"failed_syncs"`
+	Created         int       `json:"total_created"`
+	Updated         int       `json:"total_updated"`
+	Deleted         int       `json:"total_deleted"`
+	LastError       string    `json:"last_error,omitempty"`
+	NextSyncTime    time.Time `json:"next_sync_time"`
 }
 
 // SubscriptionSyncService handles subscription synchronization and UUID mapping
 type SubscriptionSyncService struct {
-	inoreaderService      *InoreaderService
-	subscriptionRepo      repository.SubscriptionRepository
-	logger                *slog.Logger
-	subscriptionCache     map[string]uuid.UUID  // InoreaderID -> UUID mapping
+	inoreaderService     *InoreaderService
+	subscriptionRepo     repository.SubscriptionRepository
+	logger               *slog.Logger
+	subscriptionCache    map[string]uuid.UUID // InoreaderID -> UUID mapping
 	cacheLastUpdated     time.Time
 	cacheMutex           sync.RWMutex
 	syncInterval         time.Duration
 	cacheRefreshInterval time.Duration
 	lastSyncTime         time.Time
-	syncStats           *SubscriptionSyncStats
-	mu                  sync.RWMutex
+	syncStats            *SubscriptionSyncStats
+	mu                   sync.RWMutex
 }
 
 // NewSubscriptionSyncService creates a new subscription synchronization service
 func NewSubscriptionSyncService(
-	inoreaderService *InoreaderService, 
-	subscriptionRepo repository.SubscriptionRepository, 
+	inoreaderService *InoreaderService,
+	subscriptionRepo repository.SubscriptionRepository,
 	logger *slog.Logger,
 ) *SubscriptionSyncService {
 	// Use default logger if none provided
@@ -68,11 +69,11 @@ func NewSubscriptionSyncService(
 	}
 
 	return &SubscriptionSyncService{
-		inoreaderService: inoreaderService,
-		subscriptionRepo: subscriptionRepo,
-		logger:          logger,
-		syncInterval:    4 * time.Hour,  // 4-hour sync interval as requested
-		subscriptionCache: make(map[string]uuid.UUID),
+		inoreaderService:     inoreaderService,
+		subscriptionRepo:     subscriptionRepo,
+		logger:               logger,
+		syncInterval:         4 * time.Hour, // 4-hour sync interval as requested
+		subscriptionCache:    make(map[string]uuid.UUID),
 		cacheRefreshInterval: 30 * time.Minute, // Refresh cache every 30 minutes
 		syncStats: &SubscriptionSyncStats{
 			TotalSyncs:      0,
@@ -113,17 +114,55 @@ func (s *SubscriptionSyncService) SyncSubscriptions(ctx context.Context) (*Subsc
 		return nil, fmt.Errorf("failed to fetch subscriptions from Inoreader: %w", err)
 	}
 
-	s.logger.Info("Fetched subscriptions from Inoreader API", 
+	s.logger.Info("Fetched subscriptions from Inoreader API",
 		"count", len(inoreaderSubscriptions))
 
-	// Use the new SyncSubscriptionsNew method instead
+	// Get existing subscriptions from database to determine what's new vs updated
+	existingSubscriptions, err := s.subscriptionRepo.GetAllSubscriptions(ctx)
+	if err != nil {
+		s.logger.Error("Failed to get existing subscriptions from database", "error", err)
+		s.syncStats.FailedSyncs++
+		s.syncStats.LastError = err.Error()
+		return nil, fmt.Errorf("failed to get existing subscriptions: %w", err)
+	}
+
+	// Create a map of existing subscriptions by InoreaderID for quick lookup
+	existingMap := make(map[string]models.InoreaderSubscription)
+	for _, sub := range existingSubscriptions {
+		existingMap[sub.InoreaderID] = sub
+	}
+
+	// Determine what's new vs updated
+	created := 0
+	updated := 0
+
+	for _, subscription := range inoreaderSubscriptions {
+		if existing, exists := existingMap[subscription.InoreaderID]; exists {
+			// Check if subscription has changed (comparing simplified Subscription with InoreaderSubscription)
+			existingCategory := ""
+			if len(existing.Categories) > 0 {
+				existingCategory = existing.Categories[0].Label
+			}
+
+			if existing.Title != subscription.Title ||
+				existing.URL != subscription.FeedURL ||
+				existingCategory != subscription.Category {
+				updated++
+			}
+		} else {
+			created++
+		}
+	}
+
+	// Use the new SyncSubscriptionsNew method to perform the actual sync
 	if err := s.SyncSubscriptionsNew(ctx); err != nil {
 		errorMsg := fmt.Sprintf("Failed to sync subscriptions: %v", err)
 		s.logger.Error("Subscription sync error", "error", err)
 		result.Errors = append(result.Errors, errorMsg)
 		result.TotalProcessed = len(inoreaderSubscriptions)
 	} else {
-		result.Created = len(inoreaderSubscriptions) // Simplified - actual count would need more tracking
+		result.Created = created
+		result.Updated = updated
 		result.TotalProcessed = len(inoreaderSubscriptions)
 	}
 
@@ -194,7 +233,7 @@ func (s *SubscriptionSyncService) GetNextSyncTime() time.Time {
 func (s *SubscriptionSyncService) SetSyncInterval(interval time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.syncInterval = interval
 	s.logger.Info("Sync interval updated", "new_interval", interval)
 }
@@ -203,11 +242,11 @@ func (s *SubscriptionSyncService) SetSyncInterval(interval time.Duration) {
 func (s *SubscriptionSyncService) IsReadyForSync() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.lastSyncTime.IsZero() {
 		return true // First sync
 	}
-	
+
 	return time.Since(s.lastSyncTime) >= s.syncInterval
 }
 
@@ -215,7 +254,7 @@ func (s *SubscriptionSyncService) IsReadyForSync() bool {
 func (s *SubscriptionSyncService) ResetStats() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.syncStats = &SubscriptionSyncStats{
 		TotalSyncs:      0,
 		SuccessfulSyncs: 0,
@@ -225,7 +264,7 @@ func (s *SubscriptionSyncService) ResetStats() {
 		Deleted:         0,
 		LastError:       "",
 	}
-	
+
 	s.logger.Info("Synchronization statistics reset")
 }
 
@@ -245,7 +284,7 @@ func (s *SubscriptionSyncService) RefreshSubscriptionCache(ctx context.Context) 
 	// Clear and rebuild cache
 	s.subscriptionCache = make(map[string]uuid.UUID)
 	for _, subscription := range subscriptions {
-		s.subscriptionCache[subscription.InoreaderID] = subscription.DatabaseID  // 修正: DatabaseIDを使用
+		s.subscriptionCache[subscription.InoreaderID] = subscription.DatabaseID // 修正: DatabaseIDを使用
 	}
 
 	s.cacheLastUpdated = time.Now()
@@ -268,7 +307,7 @@ func (s *SubscriptionSyncService) GetSubscriptionUUID(inoreaderID string) (uuid.
 		s.logger.Debug("Subscription cache expired, triggering refresh",
 			"last_updated", s.cacheLastUpdated,
 			"refresh_interval", s.cacheRefreshInterval)
-		
+
 		// Try to refresh cache (async to avoid blocking)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -277,7 +316,7 @@ func (s *SubscriptionSyncService) GetSubscriptionUUID(inoreaderID string) (uuid.
 				s.logger.Error("Async cache refresh failed", "error", err)
 			}
 		}()
-		
+
 		s.cacheMutex.RLock()
 	}
 
@@ -328,22 +367,22 @@ func (s *SubscriptionSyncService) GetCacheStatus() map[string]interface{} {
 	defer s.cacheMutex.RUnlock()
 
 	return map[string]interface{}{
-		"cache_size":         len(s.subscriptionCache),
-		"last_updated":       s.cacheLastUpdated,
-		"refresh_interval":   s.cacheRefreshInterval,
-		"cache_age_minutes":  int(time.Since(s.cacheLastUpdated).Minutes()),
-		"needs_refresh":      time.Since(s.cacheLastUpdated) > s.cacheRefreshInterval,
+		"cache_size":        len(s.subscriptionCache),
+		"last_updated":      s.cacheLastUpdated,
+		"refresh_interval":  s.cacheRefreshInterval,
+		"cache_age_minutes": int(time.Since(s.cacheLastUpdated).Minutes()),
+		"needs_refresh":     time.Since(s.cacheLastUpdated) > s.cacheRefreshInterval,
 	}
 }
 
 // InitializeCache initializes the subscription cache on service startup
 func (s *SubscriptionSyncService) InitializeCache(ctx context.Context) error {
 	s.logger.Info("Initializing subscription cache")
-	
+
 	if err := s.RefreshSubscriptionCache(ctx); err != nil {
 		return fmt.Errorf("failed to initialize subscription cache: %w", err)
 	}
-	
+
 	s.logger.Info("Subscription cache initialized successfully")
 	return nil
 }
@@ -392,9 +431,9 @@ func (s *SubscriptionSyncService) convertToRepositoryFormat(subscriptions []*mod
 
 	for _, subscription := range subscriptions {
 		repoSub := models.InoreaderSubscription{
-			DatabaseID:  subscription.ID,        // 修正: DatabaseIDフィールドを使用
+			DatabaseID:  subscription.ID, // 修正: DatabaseIDフィールドを使用
 			InoreaderID: subscription.InoreaderID,
-			URL:         subscription.FeedURL,    // Use URL instead of FeedURL
+			URL:         subscription.FeedURL, // Use URL instead of FeedURL
 			Title:       subscription.Title,
 			Categories:  []models.InoreaderCategory{{Label: subscription.Category}}, // Convert to Categories slice
 			CreatedAt:   subscription.CreatedAt,
