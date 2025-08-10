@@ -146,10 +146,10 @@ func NewScheduleHandler(
 		logger = slog.Default()
 	}
 
-	// Default configuration as requested
+	// Default configuration - extended intervals to avoid rate limiting
 	config := &ScheduleConfig{
-		SubscriptionSyncInterval: 4 * time.Hour,   // 4 hours as requested
-		ArticleFetchInterval:     30 * time.Minute, // 30 minutes for article fetching
+		SubscriptionSyncInterval: 4 * time.Hour, // 4 hours as requested
+		ArticleFetchInterval:     1 * time.Hour, // Extended to 1 hour to avoid 403 rate limit errors
 		EnableSubscriptionSync:   true,
 		EnableArticleFetch:       true,
 		MaxConcurrentJobs:        2, // Allow subscription sync and article fetch to run concurrently

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -73,15 +74,17 @@ func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*
 	}
 	defer resp.Body.Close()
 
-	// Parse response
+	// Check for HTTP errors FIRST before parsing JSON
+	if resp.StatusCode != http.StatusOK {
+		// Read error response for debugging
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("OAuth2 refresh token failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse JSON response only after confirming success
 	var tokenResponse OAuth2TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
 		return nil, fmt.Errorf("failed to decode token response: %w", err)
-	}
-
-	// Check for HTTP errors
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OAuth2 refresh token failed with status %d", resp.StatusCode)
 	}
 
 	// Convert to models.InoreaderTokenResponse

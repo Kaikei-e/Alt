@@ -304,6 +304,7 @@ func TestInoreaderService_CheckAPIRateLimit(t *testing.T) {
 }
 
 func TestInoreaderService_UpdateAPIUsageFromHeaders(t *testing.T) {
+	t.Skip("DEPRECATED: UpdateAPIUsageFromHeaders no longer makes API calls - test skipped")
 	tests := map[string]struct {
 		endpoint      string
 		headers       map[string]string

@@ -139,12 +139,13 @@ func (h *ArticleFetchHandler) ExecuteArticleFetch(ctx context.Context, streamID 
 	totalSaved := 0
 	rounds := 0
 
-	// CRITICAL SAFETY: Limit pagination rounds to prevent API overuse
-	maxSafeRounds := 3 // Reduced from 10 to 3 to prevent API overuse
+	// EMERGENCY FIX: Limit pagination to 1 round only to prevent API overuse
+	maxSafeRounds := 1 // EMERGENCY: Reduced from 3 to 1 to prevent API overuse
 	if h.maxContinuationRounds > maxSafeRounds {
-		h.logger.Warn("Limiting pagination rounds for API safety",
+		h.logger.Warn("EMERGENCY: Limiting pagination rounds for API safety",
 			"original_max", h.maxContinuationRounds,
-			"safe_max", maxSafeRounds)
+			"emergency_max", maxSafeRounds,
+			"reason", "API_OVERUSE_PREVENTION")
 		h.maxContinuationRounds = maxSafeRounds
 	}
 
@@ -288,13 +289,13 @@ func (h *ArticleFetchHandler) ExecuteBatchArticleFetch(ctx context.Context) (*Ba
 	h.logger.Info("Processing subscriptions for article fetching",
 		"subscription_count", len(subscriptions))
 
-	// CRITICAL SAFETY: Limit to maximum 5 subscriptions per batch to prevent API overuse
-	maxSubscriptionsPerBatch := 5
+	// EMERGENCY FIX: Drastically limit to 1 subscription per batch to prevent API overuse
+	maxSubscriptionsPerBatch := 1
 	if len(subscriptions) > maxSubscriptionsPerBatch {
-		h.logger.Warn("Limiting subscription processing to prevent API overuse",
+		h.logger.Warn("EMERGENCY: Limiting subscription processing to prevent API overuse",
 			"total_subscriptions", len(subscriptions),
 			"max_per_batch", maxSubscriptionsPerBatch,
-			"api_safety", "CRITICAL")
+			"emergency_reason", "API_OVERUSE_PREVENTION")
 		subscriptions = subscriptions[:maxSubscriptionsPerBatch]
 	}
 
@@ -308,13 +309,13 @@ func (h *ArticleFetchHandler) ExecuteBatchArticleFetch(ctx context.Context) (*Ba
 			break
 		}
 
-		// SAFETY CHECK: Hard limit on API requests per batch
-		if result.SubscriptionsProcessed >= 5 {
-			h.logger.Warn("Hard limit reached: stopping batch processing",
+		// EMERGENCY SAFETY CHECK: Hard limit on API requests per batch
+		if result.SubscriptionsProcessed >= 1 {
+			h.logger.Warn("EMERGENCY: Hard limit reached: stopping batch processing",
 				"processed", result.SubscriptionsProcessed,
-				"hard_limit", 5,
+				"emergency_hard_limit", 1,
 				"safety_reason", "API_OVERUSE_PREVENTION")
-			result.Errors = append(result.Errors, "Hard limit reached (5 subscriptions per batch)")
+			result.Errors = append(result.Errors, "EMERGENCY: Hard limit reached (1 subscription per batch)")
 			break
 		}
 

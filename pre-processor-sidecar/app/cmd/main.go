@@ -257,15 +257,21 @@ func runCronJobTask(ctx context.Context, cfg *config.Config, logger *slog.Logger
 		"status_code", resp.StatusCode,
 		"content_length", resp.ContentLength)
 
-	// Use .env file-based OAuth2 token storage (no Kubernetes dependency)
-	tokenStoragePath := "/tmp/.env" // Default path
-	if cfg.TokenStoragePath != "" {
-		tokenStoragePath = cfg.TokenStoragePath
-	}
-	logger.Info("Using .env file-based token storage for OAuth2 tokens", "path", tokenStoragePath)
-	tokenRepo := repository.NewEnvFileTokenRepository(tokenStoragePath, logger)
+	// PERMANENT FIX: Use environment variable-based OAuth2 token storage (Kubernetes secrets)
+	logger.Info("Using environment variable-based token storage for OAuth2 tokens", "source", "Kubernetes secrets")
+	tokenRepo := repository.NewEnvVarTokenRepository(logger)
 
-	oauth2Client := driver.NewOAuth2Client(cfg.Inoreader.ClientID, cfg.Inoreader.ClientSecret, cfg.Inoreader.BaseURL)
+	// Get OAuth2 credentials from environment variables (Kubernetes secrets)
+	clientID := os.Getenv("INOREADER_CLIENT_ID")
+	clientSecret := os.Getenv("INOREADER_CLIENT_SECRET")
+	if clientID == "" || clientSecret == "" {
+		logger.Error("Missing OAuth2 credentials in environment variables",
+			"has_client_id", clientID != "",
+			"has_client_secret", clientSecret != "")
+		return fmt.Errorf("missing OAuth2 credentials")
+	}
+	
+	oauth2Client := driver.NewOAuth2Client(clientID, clientSecret, cfg.Inoreader.BaseURL)
 	oauth2Client.SetHTTPClient(httpClient) // Use proxy-configured HTTP client
 	
 	tokenManager := service.NewTokenManagementService(tokenRepo, oauth2Client, logger)
@@ -400,16 +406,22 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 
 	logger.Info("HTTP client configured", "proxy", cfg.Proxy.HTTPSProxy)
 
-	// Use .env file-based OAuth2 token storage (no Kubernetes dependency)
-	tokenStoragePath := "/tmp/.env" // Default path
-	if cfg.TokenStoragePath != "" {
-		tokenStoragePath = cfg.TokenStoragePath
-	}
-	logger.Info("Using .env file-based token storage for OAuth2 tokens", "path", tokenStoragePath)
-	tokenRepo := repository.NewEnvFileTokenRepository(tokenStoragePath, logger)
+	// PERMANENT FIX: Use environment variable-based OAuth2 token storage (Kubernetes secrets)
+	logger.Info("Using environment variable-based token storage for OAuth2 tokens", "source", "Kubernetes secrets")
+	tokenRepo := repository.NewEnvVarTokenRepository(logger)
 
 	// Initialize OAuth2 and services
-	oauth2Client := driver.NewOAuth2Client(cfg.Inoreader.ClientID, cfg.Inoreader.ClientSecret, cfg.Inoreader.BaseURL)
+	// Get OAuth2 credentials from environment variables (Kubernetes secrets)
+	clientID := os.Getenv("INOREADER_CLIENT_ID")
+	clientSecret := os.Getenv("INOREADER_CLIENT_SECRET")
+	if clientID == "" || clientSecret == "" {
+		logger.Error("Missing OAuth2 credentials in environment variables",
+			"has_client_id", clientID != "",
+			"has_client_secret", clientSecret != "")
+		return fmt.Errorf("missing OAuth2 credentials")
+	}
+	
+	oauth2Client := driver.NewOAuth2Client(clientID, clientSecret, cfg.Inoreader.BaseURL)
 	oauth2Client.SetHTTPClient(httpClient)
 	
 	tokenManager := service.NewTokenManagementService(tokenRepo, oauth2Client, logger)

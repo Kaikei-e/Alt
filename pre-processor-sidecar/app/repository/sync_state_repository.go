@@ -31,7 +31,7 @@ func NewPostgreSQLSyncStateRepository(db *sql.DB, logger *slog.Logger) SyncState
 // Create creates a new sync state record
 func (r *PostgreSQLSyncStateRepository) Create(ctx context.Context, syncState *models.SyncState) error {
 	query := `
-		INSERT INTO sync_state (id, stream_id, continuation_token, last_sync_at, created_at)
+		INSERT INTO sync_state (id, stream_id, continuation_token, last_sync, created_at)
 		VALUES ($1, $2, $3, $4, $5)`
 
 	now := time.Now()
@@ -60,7 +60,7 @@ func (r *PostgreSQLSyncStateRepository) Create(ctx context.Context, syncState *m
 // FindByStreamID finds a sync state by stream ID
 func (r *PostgreSQLSyncStateRepository) FindByStreamID(ctx context.Context, streamID string) (*models.SyncState, error) {
 	query := `
-		SELECT id, stream_id, continuation_token, last_sync_at
+		SELECT id, stream_id, continuation_token, last_sync
 		FROM sync_state
 		WHERE stream_id = $1`
 
@@ -85,7 +85,7 @@ func (r *PostgreSQLSyncStateRepository) FindByStreamID(ctx context.Context, stre
 // FindByID finds a sync state by its UUID
 func (r *PostgreSQLSyncStateRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.SyncState, error) {
 	query := `
-		SELECT id, stream_id, continuation_token, last_sync_at
+		SELECT id, stream_id, continuation_token, last_sync
 		FROM sync_state
 		WHERE id = $1`
 
@@ -110,9 +110,9 @@ func (r *PostgreSQLSyncStateRepository) FindByID(ctx context.Context, id uuid.UU
 // GetAll retrieves all sync states
 func (r *PostgreSQLSyncStateRepository) GetAll(ctx context.Context) ([]*models.SyncState, error) {
 	query := `
-		SELECT id, stream_id, continuation_token, last_sync_at
+		SELECT id, stream_id, continuation_token, last_sync
 		FROM sync_state
-		ORDER BY last_sync_at DESC`
+		ORDER BY last_sync DESC`
 
 	return r.querySyncStates(ctx, query)
 }
@@ -120,10 +120,10 @@ func (r *PostgreSQLSyncStateRepository) GetAll(ctx context.Context) ([]*models.S
 // GetStaleStates retrieves sync states that are older than specified time
 func (r *PostgreSQLSyncStateRepository) GetStaleStates(ctx context.Context, olderThan time.Time) ([]*models.SyncState, error) {
 	query := `
-		SELECT id, stream_id, continuation_token, last_sync_at
+		SELECT id, stream_id, continuation_token, last_sync
 		FROM sync_state
-		WHERE last_sync_at < $1
-		ORDER BY last_sync_at ASC`
+		WHERE last_sync < $1
+		ORDER BY last_sync ASC`
 
 	return r.querySyncStates(ctx, query, olderThan)
 }
@@ -132,7 +132,7 @@ func (r *PostgreSQLSyncStateRepository) GetStaleStates(ctx context.Context, olde
 func (r *PostgreSQLSyncStateRepository) Update(ctx context.Context, syncState *models.SyncState) error {
 	query := `
 		UPDATE sync_state
-		SET continuation_token = $2, last_sync_at = $3
+		SET continuation_token = $2, last_sync = $3
 		WHERE stream_id = $1`
 
 	result, err := r.db.ExecContext(ctx, query,
@@ -168,7 +168,7 @@ func (r *PostgreSQLSyncStateRepository) Update(ctx context.Context, syncState *m
 func (r *PostgreSQLSyncStateRepository) UpdateContinuationToken(ctx context.Context, streamID, token string) error {
 	query := `
 		UPDATE sync_state
-		SET continuation_token = $2, last_sync_at = $3
+		SET continuation_token = $2, last_sync = $3
 		WHERE stream_id = $1`
 
 	now := time.Now()
@@ -243,7 +243,7 @@ func (r *PostgreSQLSyncStateRepository) DeleteByStreamID(ctx context.Context, st
 
 // DeleteStale deletes sync states older than specified time
 func (r *PostgreSQLSyncStateRepository) DeleteStale(ctx context.Context, olderThan time.Time) (int, error) {
-	query := `DELETE FROM sync_state WHERE last_sync_at < $1`
+	query := `DELETE FROM sync_state WHERE last_sync < $1`
 
 	result, err := r.db.ExecContext(ctx, query, olderThan)
 	if err != nil {
