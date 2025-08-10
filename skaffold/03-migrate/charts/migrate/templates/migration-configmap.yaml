@@ -595,3 +595,22 @@ data:
 
     -- Revoke permissions on inoreader_subscriptions table
     REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE inoreader_subscriptions FROM pre_processor_sidecar_user;
+
+  000043_add_created_at_to_sync_state.up.sql: |
+    -- Add created_at column to sync_state table for pre-processor-sidecar compatibility
+    -- EMERGENCY FIX: Adds missing created_at column that caused article insertion failures
+    ALTER TABLE sync_state ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+
+    -- Create index for performance on the new column
+    CREATE INDEX IF NOT EXISTS idx_sync_state_created_at ON sync_state(created_at DESC);
+
+    -- Update existing records to have created_at value (use last_sync as fallback)
+    UPDATE sync_state SET created_at = COALESCE(last_sync, NOW()) WHERE created_at IS NULL;
+
+    -- Add comment for documentation
+    COMMENT ON COLUMN sync_state.created_at IS 'Timestamp when the sync state record was first created - EMERGENCY FIX for pre-processor-sidecar article insertion';
+
+  000043_add_created_at_to_sync_state.down.sql: |
+    -- Remove created_at column from sync_state table
+    DROP INDEX IF EXISTS idx_sync_state_created_at;
+    ALTER TABLE sync_state DROP COLUMN IF EXISTS created_at;
