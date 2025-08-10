@@ -32,29 +32,19 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 		}
 	}()
 
-	// Option C: Safe UPSERT pattern using merge-style approach
-	// Uses a default user_id to match the current table schema: (feed_id, user_id) composite
-	defaultUserID := "00000000-0000-0000-0000-000000000001"
-
+	// Upsert read status for the feed
 	updateFeedStatusQuery := `
-		WITH upsert AS (
-			UPDATE read_status 
-			SET is_read = TRUE, updated_at = CURRENT_TIMESTAMP
-			WHERE feed_id = $1 AND user_id = $2
-			RETURNING *
-		)
-		INSERT INTO read_status (feed_id, user_id, is_read, created_at, updated_at)
-		SELECT $1, $2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-		WHERE NOT EXISTS (SELECT * FROM upsert)
-	`
-	_, err = tx.Exec(ctx, updateFeedStatusQuery, feedID, defaultUserID)
-	if err != nil {
+                INSERT INTO read_status (feed_id, is_read, read_at, created_at)
+                VALUES ($1, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (feed_id) DO UPDATE
+                SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
+        `
+	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID); err != nil {
 		logger.SafeError("Error updating feed status", "error", err, "feedID", feedID)
 		return err
 	}
 
-	err = tx.Commit(ctx)
-	if err != nil {
+	if err = tx.Commit(ctx); err != nil {
 		logger.SafeError("Error committing transaction", "error", err)
 		return err
 	}
