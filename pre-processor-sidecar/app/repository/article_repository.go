@@ -34,8 +34,8 @@ func (r *PostgreSQLArticleRepository) Create(ctx context.Context, article *model
 	query := `
 		INSERT INTO inoreader_articles (
 			id, inoreader_id, subscription_id, article_url, title, author,
-			published_at, fetched_at, processed
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+			published_at, fetched_at, processed, content, content_length, content_type
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 
 	_, err := r.db.ExecContext(ctx, query,
 		article.ID,
@@ -47,6 +47,9 @@ func (r *PostgreSQLArticleRepository) Create(ctx context.Context, article *model
 		article.PublishedAt,
 		article.FetchedAt,
 		article.Processed,
+		article.Content,
+		article.ContentLength,
+		article.ContentType,
 	)
 
 	if err != nil {
@@ -174,7 +177,7 @@ func (r *PostgreSQLArticleRepository) isForeignKeyError(err error) bool {
 func (r *PostgreSQLArticleRepository) FindByInoreaderID(ctx context.Context, inoreaderID string) (*models.Article, error) {
 	query := `
 		SELECT id, inoreader_id, subscription_id, article_url, title, author,
-		       published_at, fetched_at, processed
+		       published_at, fetched_at, processed, content, content_length, content_type
 		FROM inoreader_articles
 		WHERE inoreader_id = $1`
 
@@ -189,6 +192,9 @@ func (r *PostgreSQLArticleRepository) FindByInoreaderID(ctx context.Context, ino
 		&article.PublishedAt,
 		&article.FetchedAt,
 		&article.Processed,
+		&article.Content,
+		&article.ContentLength,
+		&article.ContentType,
 	)
 
 	if err != nil {
@@ -205,7 +211,7 @@ func (r *PostgreSQLArticleRepository) FindByInoreaderID(ctx context.Context, ino
 func (r *PostgreSQLArticleRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.Article, error) {
 	query := `
 		SELECT id, inoreader_id, subscription_id, article_url, title, author,
-		       published_at, fetched_at, processed
+		       published_at, fetched_at, processed, content, content_length, content_type
 		FROM inoreader_articles
 		WHERE id = $1`
 
@@ -220,6 +226,9 @@ func (r *PostgreSQLArticleRepository) FindByID(ctx context.Context, id uuid.UUID
 		&article.PublishedAt,
 		&article.FetchedAt,
 		&article.Processed,
+		&article.Content,
+		&article.ContentLength,
+		&article.ContentType,
 	)
 
 	if err != nil {
@@ -236,7 +245,7 @@ func (r *PostgreSQLArticleRepository) FindByID(ctx context.Context, id uuid.UUID
 func (r *PostgreSQLArticleRepository) GetUnprocessed(ctx context.Context, limit int) ([]*models.Article, error) {
 	query := `
 		SELECT id, inoreader_id, subscription_id, article_url, title, author,
-		       published_at, fetched_at, processed
+		       published_at, fetched_at, processed, content, content_length, content_type
 		FROM inoreader_articles
 		WHERE processed = false
 		ORDER BY fetched_at ASC
@@ -249,7 +258,7 @@ func (r *PostgreSQLArticleRepository) GetUnprocessed(ctx context.Context, limit 
 func (r *PostgreSQLArticleRepository) GetBySubscriptionID(ctx context.Context, subscriptionID uuid.UUID, limit int, offset int) ([]*models.Article, error) {
 	query := `
 		SELECT id, inoreader_id, subscription_id, article_url, title, author,
-		       published_at, fetched_at, processed
+		       published_at, fetched_at, processed, content, content_length, content_type
 		FROM inoreader_articles
 		WHERE subscription_id = $1
 		ORDER BY published_at DESC NULLS LAST, fetched_at DESC
@@ -262,7 +271,7 @@ func (r *PostgreSQLArticleRepository) GetBySubscriptionID(ctx context.Context, s
 func (r *PostgreSQLArticleRepository) GetRecentArticles(ctx context.Context, since time.Time, limit int) ([]*models.Article, error) {
 	query := `
 		SELECT id, inoreader_id, subscription_id, article_url, title, author,
-		       published_at, fetched_at, processed
+		       published_at, fetched_at, processed, content, content_length, content_type
 		FROM inoreader_articles
 		WHERE fetched_at >= $1
 		ORDER BY fetched_at DESC
@@ -276,7 +285,7 @@ func (r *PostgreSQLArticleRepository) Update(ctx context.Context, article *model
 	query := `
 		UPDATE inoreader_articles
 		SET subscription_id = $2, article_url = $3, title = $4, author = $5,
-		    published_at = $6, processed = $7
+		    published_at = $6, processed = $7, content = $8, content_length = $9, content_type = $10
 		WHERE inoreader_id = $1`
 
 	result, err := r.db.ExecContext(ctx, query,
@@ -287,6 +296,9 @@ func (r *PostgreSQLArticleRepository) Update(ctx context.Context, article *model
 		article.Author,
 		article.PublishedAt,
 		article.Processed,
+		article.Content,
+		article.ContentLength,
+		article.ContentType,
 	)
 
 	if err != nil {
@@ -496,6 +508,9 @@ func (r *PostgreSQLArticleRepository) queryArticles(ctx context.Context, query s
 			&article.PublishedAt,
 			&article.FetchedAt,
 			&article.Processed,
+			&article.Content,
+			&article.ContentLength,
+			&article.ContentType,
 		)
 		if err != nil {
 			r.logger.Error("Failed to scan article row", "error", err)
