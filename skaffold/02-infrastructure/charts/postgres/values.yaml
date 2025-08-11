@@ -190,6 +190,56 @@ commonLabels: {}
 
 commonAnnotations: {}
 
+# Atlas Migration Configuration - ローカル専用設定
+migration:
+  enabled: true
+  image:
+    repository: alt-atlas-migrations
+    tag: latest
+    pullPolicy: Never  # ローカルビルド専用設定
+  
+  # Migration hook settings
+  hooks:
+    preUpgrade:
+      enabled: true
+      weight: -10
+      deletePolicy: before-hook-creation,hook-succeeded
+    preInstall:
+      enabled: true 
+      weight: -10
+      deletePolicy: before-hook-creation,hook-succeeded
+  
+  # Migration job resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Migration timeout settings
+  activeDeadlineSeconds: 600
+  backoffLimit: 3
+  
+  # Security context for migration job
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    readOnlyRootFilesystem: false
+    allowPrivilegeEscalation: false
+  
+  # Service account for migrations
+  serviceAccount:
+    create: true
+    name: atlas-migration-sa
+    annotations: {}
+  
+  # RBAC for migration job
+  rbac:
+    create: true
+
 # Dependencies configuration
 secrets:
   enabled: true

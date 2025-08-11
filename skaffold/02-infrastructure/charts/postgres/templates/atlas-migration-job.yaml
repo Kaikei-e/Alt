@@ -1,0 +1,110 @@
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "postgres.fullname" . }}-atlas-migration
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+    component: atlas-migration
+  annotations:
+    # Helm hooks for pre-install and pre-upgrade
+    {{- if .Values.migration.hooks.preInstall.enabled }}
+    "helm.sh/hook": pre-install{{ if .Values.migration.hooks.preUpgrade.enabled }},pre-upgrade{{ end }}
+    {{- else if .Values.migration.hooks.preUpgrade.enabled }}
+    "helm.sh/hook": pre-upgrade
+    {{- end }}
+    "helm.sh/hook-weight": "{{ .Values.migration.hooks.preUpgrade.weight }}"
+    "helm.sh/hook-delete-policy": "{{ .Values.migration.hooks.preUpgrade.deletePolicy }}"
+spec:
+  # Job execution settings
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  
+  # Ensure single execution (no parallelism)
+  parallelism: 1
+  completions: 1
+  
+  template:
+    metadata:
+      labels:
+        {{- include "postgres.selectorLabels" . | nindent 8 }}
+        component: atlas-migration
+    spec:
+      # Service account for RBAC
+      {{- if .Values.migration.serviceAccount.create }}
+      serviceAccountName: {{ .Values.migration.serviceAccount.name }}
+      {{- end }}
+      
+      # Security context
+      securityContext:
+        {{- toYaml .Values.migration.securityContext | nindent 8 }}
+      
+      # Restart policy for Jobs
+      restartPolicy: Never
+      
+      # Init container to wait for PostgreSQL
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:16-alpine
+        command:
+          - /bin/sh
+          - -c
+          - |
+            echo "Waiting for PostgreSQL to be ready..."
+            until pg_isready -h {{ include "postgres.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local -p 5432 -U {{ .Values.auth.username }}; do
+              echo "PostgreSQL is not ready yet. Waiting..."
+              sleep 5
+            done
+            echo "PostgreSQL is ready!"
+        securityContext:
+          {{- toYaml .Values.migration.securityContext | nindent 10 }}
+      
+      containers:
+      - name: atlas-migration
+        image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag }}"
+        imagePullPolicy: {{ .Values.migration.image.pullPolicy }}
+        
+        # Migration command using custom script
+        command: ["/scripts/migrate.sh"]
+        args: ["apply"]
+        
+        # Environment variables
+        env:
+        - name: DB_USERNAME
+          value: {{ .Values.auth.username | quote }}
+        
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "postgres.secretName" . }}
+              key: {{ .Values.auth.secretKeys.password }}
+        
+        - name: DB_HOST
+          value: "{{ include "postgres.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local"
+        
+        - name: DB_PORT
+          value: "5432"
+        
+        - name: DB_NAME
+          value: {{ .Values.auth.database | quote }}
+          
+        - name: DB_SSLMODE
+          value: {{ .Values.ssl.mode | default "disable" | quote }}
+        
+        - name: DATABASE_URL
+          value: "postgres://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)"
+        
+        - name: ATLAS_ENV
+          value: "kubernetes"
+          
+        - name: MIGRATION_TIMEOUT
+          value: "{{ .Values.migration.activeDeadlineSeconds }}"
+          
+        # Resource limits
+        resources:
+          {{- toYaml .Values.migration.resources | nindent 10 }}
+        
+        # Security context for container
+        securityContext:
+          {{- toYaml .Values.migration.securityContext | nindent 10 }}
+{{- end }}

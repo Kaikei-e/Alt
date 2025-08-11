@@ -2,6 +2,20 @@ apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: alt-infrastructure
+  
+build:
+  local:
+    push: false
+    useDockerCLI: false
+    concurrency: 1
+  tagPolicy:
+    gitCommit: {}
+  artifacts:
+    - image: alt-atlas-migrations
+      context: ../../migrations-atlas/docker
+      docker:
+        dockerfile: Dockerfile
+
 profiles:
   - name: dev
     deploy:
@@ -11,6 +25,9 @@ profiles:
             chartPath: charts/postgres
             namespace: alt-database
             createNamespace: true
+            setValueTemplates:
+              migration.image.repository: "{{.IMAGE_REPO_alt_atlas_migrations}}"
+              migration.image.tag: "{{.IMAGE_TAG_alt_atlas_migrations}}"
             valuesFiles:
               - charts/postgres/values.yaml
             version: 0.1.0
@@ -51,6 +68,9 @@ profiles:
             chartPath: charts/postgres
             namespace: alt-database
             createNamespace: true
+            setValueTemplates:
+              migration.image.repository: "{{.IMAGE_REPO_alt_atlas_migrations}}"
+              migration.image.tag: "{{.IMAGE_TAG_alt_atlas_migrations}}"
             valuesFiles:
               - charts/postgres/values.yaml
             version: 0.1.0
@@ -91,6 +111,9 @@ profiles:
             chartPath: charts/postgres
             namespace: alt-database
             createNamespace: true
+            setValueTemplates:
+              migration.image.repository: "{{.IMAGE_REPO_alt_atlas_migrations}}"
+              migration.image.tag: "{{.IMAGE_TAG_alt_atlas_migrations}}"
             valuesFiles:
               - charts/postgres/values.yaml
               - charts/postgres/values-production.yaml

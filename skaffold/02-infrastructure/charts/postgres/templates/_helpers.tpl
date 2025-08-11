@@ -81,3 +81,14 @@ Create SSL connection string
 {{- include "postgres.connectionString" . }}
 {{- end }}
 {{- end }}
+
+{{/*
+Create the name of the secret for database authentication
+*/}}
+{{- define "postgres.secretName" -}}
+{{- if .Values.auth.existingSecret }}
+{{- .Values.auth.existingSecret }}
+{{- else }}
+{{- printf "%s-secret" (include "postgres.fullname" .) }}
+{{- end }}
+{{- end }}
