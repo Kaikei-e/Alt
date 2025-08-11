@@ -1,0 +1,187 @@
+# Rotation Mode values for pre-processor-sidecar
+# 40 subscriptions with 20-minute interval rotation processing + article content extraction
+
+# Enable deployment mode with rotation processing
+deploymentMode: "deployment"
+
+image:
+  repository: kaikei/pre-processor-sidecar
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Deployment configuration for rotation processing
+deployment:
+  replicas: 1
+  scheduleMode: false  # Disable schedule mode, use rotation mode instead
+  
+# Rotation mode configuration (new)
+rotationMode:
+  enabled: true                              # Enable rotation processing
+  intervalMinutes: 20                        # 20-minute intervals
+  maxSubscriptionsPerDay: 40                 # Process 40 subscriptions daily
+  estimatedCompletionHours: 13.33           # 40 * 20min = 13.33 hours
+
+# Production resources for rotation processing
+resources:
+  requests:
+    memory: "256Mi"                          # More memory for content processing
+    cpu: "150m"                              # Adequate CPU for rotation
+  limits:
+    memory: "512Mi"                          # Higher limit for article content
+    cpu: "300m"                              # Higher CPU for content processing
+
+# Environment variables optimized for rotation mode
+env:
+  # Database connection
+  DB_HOST: "postgres.alt-database.svc.cluster.local"
+  DB_NAME: "alt"
+  DB_PORT: "5432"
+  DB_SSL_MODE: "disable"
+  PRE_PROCESSOR_SIDECAR_DB_USER: "pre_processor_sidecar_user"
+
+  # Service configuration
+  LOG_LEVEL: "info"
+  SERVICE_NAME: "pre-processor-sidecar-rotation"
+
+  # OAuth2 & Kubernetes configuration
+  KUBERNETES_IN_CLUSTER: "true"
+  KUBERNETES_NAMESPACE: "alt-processing"
+  OAUTH2_TOKEN_SECRET_NAME: "pre-processor-sidecar-oauth2-token"
+  OAUTH2_TOKEN_REFRESH_BUFFER: "300"        # 5 minutes in seconds
+  
+  # Token management configuration
+  TOKEN_MANAGEMENT_ENABLED: "true"
+  TOKEN_AUTO_REFRESH: "true"
+
+  # Inoreader API configuration - Rotation mode optimized
+  INOREADER_BASE_URL: "https://www.inoreader.com/reader/api/0"
+  MAX_ARTICLES_PER_REQUEST: "100"           # Inoreader max per subscription
+  API_DAILY_LIMIT: "100"                    # Zone 1 limit monitoring
+  
+  # ROTATION MODE: API usage optimization
+  ROTATION_ENABLED: "true"                  # Enable rotation processing
+  ROTATION_INTERVAL_MINUTES: "20"          # 20-minute intervals
+  ROTATION_DAILY_BUDGET: "40"              # 40 API requests for articles
+  SUBSCRIPTION_SYNC_BUDGET: "6"            # 6 API requests for subscription sync
+  API_SAFETY_BUFFER: "54"                  # 100 - 40 - 6 = 54 remaining
+
+  # CONTENT PROCESSING: Article content extraction
+  CONTENT_EXTRACTION_ENABLED: "true"       # Enable content extraction from summary.content
+  MAX_CONTENT_LENGTH: "50000"              # 50KB content limit per article
+  CONTENT_TYPE_DETECTION: "true"           # Detect HTML/RTL content types
+  CONTENT_TRUNCATION_ENABLED: "true"       # Enable content size optimization
+
+  # CRITICAL: Proxy configuration - Envoy egress ONLY
+  HTTPS_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
+  NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local,*.alt-processing.svc.cluster.local,*.alt-apps.svc.cluster.local,*.alt-database.svc.cluster.local"
+
+# Use existing secret configuration
+secret:
+  create: false  # Use existing secret
+  name: pre-processor-sidecar-secrets
+
+envFromSecret:
+  name: pre-processor-sidecar-secrets
+  keys:
+    - INOREADER_CLIENT_ID
+    - INOREADER_CLIENT_SECRET
+    - INOREADER_REFRESH_TOKEN
+    - PRE_PROCESSOR_SIDECAR_DB_PASSWORD
+
+# Production ConfigMap with rotation settings
+configMap:
+  create: true
+  data:
+    LOG_LEVEL: "info"
+    SERVICE_NAME: "pre-processor-sidecar-rotation"
+    PROCESSING_MODE: "rotation"             # Enable rotation mode
+    
+    # Rotation schedule configuration
+    ROTATION_ENABLED: "true"
+    ROTATION_INTERVAL: "20m"                # 20-minute intervals
+    SUBSCRIPTIONS_PER_DAY: "40"             # Process 40 subscriptions daily
+    ROTATION_SHUFFLE_DAILY: "true"          # Randomize daily processing order
+    
+    # API budget management
+    DAILY_API_BUDGET: "100"                 # Total daily API limit
+    ROTATION_API_BUDGET: "40"               # Articles: 40 requests/day
+    SUBSCRIPTION_SYNC_BUDGET: "6"           # Subscription sync: 6 requests/day  
+    API_SAFETY_BUFFER: "54"                 # Remaining buffer
+    
+    # Content processing configuration
+    CONTENT_PROCESSING_ENABLED: "true"
+    MAX_CONTENT_LENGTH: "50000"             # 50KB limit
+    CONTENT_COMPRESSION: "none"             # No compression for simplicity
+    CONTENT_TYPE_HANDLING: "preserve"       # Preserve HTML/RTL types
+    
+    # Performance optimizations
+    BATCH_PROCESSING_ENABLED: "true"
+    CONCURRENT_SUBSCRIPTIONS: "1"           # Process one at a time for API safety
+    RETRY_FAILED_SUBSCRIPTIONS: "true"      # Retry failed subscriptions
+
+# Service account with minimal permissions
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: true       # Required for OAuth2 token management
+
+# Production security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 2000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Production pod configuration
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Production labels and annotations
+commonLabels:
+  environment: production
+  component: rotation-processor
+  mode: article-content-rotation
+
+commonAnnotations:
+  description: "Rotation processor - 40 subscriptions × 20min intervals with article content extraction"
+  contact: "team@alt.local"
+  api-strategy: "rotation-optimized"
+  content-extraction: "enabled"
+
+podLabels:
+  processing-type: rotation
+  content-extraction: enabled
+
+podAnnotations:
+  linkerd.io/inject: enabled
+  # Critical: Skip HTTPS (443) to use envoy proxy, PostgreSQL (5432) for direct connection
+  config.linkerd.io/skip-outbound-ports: "443,5432"
+  # Add production monitoring annotations
+  prometheus.io/scrape: "false"           # No metrics for personal use
+
+imagePullSecrets: []
+
+# OAuth2 Initialization Job (disabled for rotation mode)
+oauth2Init:
+  enabled: false  # Not needed for continuous deployment
+
+# Startup command for rotation mode
+startupCommand:
+  args:
+    - "--rotation-mode"                   # Enable rotation processor
+    - "--interval=20m"                    # 20-minute intervals
+    - "--subscriptions-per-day=40"       # Daily target
+    - "--content-extraction"             # Enable content extraction
+    - "--api-budget=40"                  # API budget for articles
