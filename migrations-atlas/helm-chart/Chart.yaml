@@ -1,0 +1,25 @@
+apiVersion: v2
+name: alt-atlas-migrations
+description: Kubernetes-native database migrations for Alt RSS Reader using Atlas
+type: application
+version: 1.0.0
+appVersion: "v0.35"
+
+keywords:
+  - database
+  - migration
+  - atlas
+  - postgresql
+  - kubernetes
+
+home: https://github.com/alt-rss-reader/infrastructure
+sources:
+  - https://github.com/ariga/atlas
+
+maintainers:
+  - name: Alt RSS Reader Team
+    email: dev@alt-rss-reader.com
+
+annotations:
+  category: Database
+  licenses: Apache-2.0

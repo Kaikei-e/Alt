@@ -1,0 +1,49 @@
+{{- if and .Values.serviceAccount.create .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "alt-atlas-migrations.fullname" . }}-migration
+  labels:
+    {{- include "alt-atlas-migrations.labels" . | nindent 4 }}
+rules:
+# Allow reading secrets for database credentials
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+  resourceNames: 
+    - "{{ .Values.secrets.existingSecret | default .Values.secrets.name }}"
+    - "postgres-secrets"
+    - "postgres-secret"
+
+# Allow reading configmaps for migration configuration
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+  resourceNames:
+    - "{{ include "alt-atlas-migrations.fullname" . }}-migrations"
+    - "{{ include "alt-atlas-migrations.fullname" . }}-config"
+
+# Allow creating/updating migration status (if using custom resources)
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+
+{{- with .Values.rbac.rules }}
+{{ toYaml . }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "alt-atlas-migrations.fullname" . }}-migration
+  labels:
+    {{- include "alt-atlas-migrations.labels" . | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "alt-atlas-migrations.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "alt-atlas-migrations.fullname" . }}-migration
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

@@ -1,0 +1,117 @@
+# Atlas Configuration for Alt RSS Reader Database
+# Kubernetes-native PostgreSQL migration management
+
+# Environment-specific configuration
+env "local" {
+  # Local development environment
+  src = "file://schema.hcl"
+  url = "postgres://postgres:password@localhost:5432/alt_db?sslmode=disable"
+  dev = "postgres://postgres:password@localhost:5433/atlas_dev?sslmode=disable"
+  
+  migration {
+    dir = "file://migrations"
+  }
+  
+  format {
+    migrate {
+      diff = "{{ sql . \"  \" }}"
+    }
+  }
+}
+
+env "kubernetes" {
+  # Kubernetes environment - uses environment variables
+  src = "file://schema.hcl" 
+  url = env("DATABASE_URL")
+  
+  migration {
+    dir = "file://migrations"
+    baseline = "20240101000000"  # Baseline for existing database
+  }
+  
+  # Transaction safety settings
+  diff {
+    concurrent_index {
+      create = false  # Disable CONCURRENTLY for transaction safety
+      drop = false    # Disable CONCURRENTLY for transaction safety
+    }
+  }
+  
+  format {
+    migrate {
+      diff = "{{ sql . \"  \" }}"
+    }
+  }
+  
+  lint {
+    destructive {
+      error = true  # Fail on destructive changes
+    }
+    
+    data_depend {
+      error = true  # Fail on data-dependent changes
+    }
+    
+    naming {
+      error = false  # Allow flexible naming
+    }
+  }
+}
+
+# Default environment for CLI usage
+env "default" {
+  for_each = toset(["local", "kubernetes"])
+  url      = atlas.env[each.key].url
+  src      = atlas.env[each.key].src
+  
+  migration {
+    dir = atlas.env[each.key].migration.dir
+  }
+}
+
+# Migration execution settings
+exec {
+  # Global execution settings
+  schema = ["public"]  # PostgreSQL public schema
+  
+  # Hook configurations for Kubernetes
+  pre_apply = [
+    "echo 'Starting Alt RSS Reader database migration...'",
+    "echo 'Target URL: ${DATABASE_URL}'"
+  ]
+  
+  post_apply = [
+    "echo 'Migration completed successfully for Alt RSS Reader'",
+    "atlas migrate status --url $DATABASE_URL --dir file://migrations"
+  ]
+}
+
+# Schema comparison settings
+diff {
+  # Skip specific differences that are environment-specific
+  skip_changes {
+    # Skip changes to specific system objects
+    drop_schema = true
+    drop_table  = false  # We want to track table drops
+  }
+  
+  # Concurrent index handling for Kubernetes
+  concurrent_index {
+    create = false  # Use regular CREATE INDEX for transaction safety
+    drop   = false  # Use regular DROP INDEX for transaction safety
+  }
+}
+
+# Formatting configuration
+format {
+  migrate {
+    # Format SQL migrations with consistent styling
+    apply = format(
+      "-- Migration: %s\n-- Created: %s\n-- Atlas Version: %s\n\n%s",
+      "{{ .Name }}",
+      "{{ .Time }}",  
+      "{{ .Version }}",
+      "{{ sql . \"  \" }}"
+    )
+  }
+}

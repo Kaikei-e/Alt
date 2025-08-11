@@ -1,0 +1,162 @@
+{{- if or .Values.hooks.preInstall.enabled .Values.hooks.preUpgrade.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "alt-atlas-migrations.fullname" . }}-{{ .Values.migration.command }}
+  labels:
+    {{- include "alt-atlas-migrations.labels" . | nindent 4 }}
+    component: migration
+    migration.command: {{ .Values.migration.command }}
+  annotations:
+    # Helm hooks for pre-install and pre-upgrade
+    {{- if .Values.hooks.preInstall.enabled }}
+    "helm.sh/hook": pre-install{{ if .Values.hooks.preUpgrade.enabled }},pre-upgrade{{ end }}
+    {{- else if .Values.hooks.preUpgrade.enabled }}
+    "helm.sh/hook": pre-upgrade
+    {{- end }}
+    "helm.sh/hook-weight": "{{ .Values.hooks.preUpgrade.weight }}"
+    "helm.sh/hook-delete-policy": "{{ .Values.hooks.preUpgrade.deletePolicy }}"
+    {{- with .Values.podAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  # Job execution settings
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  
+  # Ensure single execution (no parallelism)
+  parallelism: 1
+  completions: 1
+  
+  template:
+    metadata:
+      labels:
+        {{- include "alt-atlas-migrations.selectorLabels" . | nindent 8 }}
+        component: migration
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      # Service account for RBAC
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- end }}
+      
+      # Security context
+      securityContext:
+        {{- toYaml .Values.migration.securityContext | nindent 8 }}
+      
+      # Restart policy for Jobs
+      restartPolicy: Never
+      
+      # Node scheduling
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      containers:
+      - name: atlas-migration
+        # Use custom image if enabled, otherwise use official Atlas image
+        {{- if .Values.migration.customImage.enabled }}
+        image: "{{ .Values.migration.customImage.repository }}:{{ .Values.migration.customImage.tag }}"
+        imagePullPolicy: {{ .Values.migration.customImage.pullPolicy }}
+        {{- else }}
+        image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag }}"
+        imagePullPolicy: {{ .Values.migration.image.pullPolicy }}
+        {{- end }}
+        
+        # Migration command
+        {{- if .Values.migration.customImage.enabled }}
+        # Use custom script if using custom image
+        command: ["/scripts/migrate.sh"]
+        args: ["{{ .Values.migration.command }}"]
+        {{- else }}
+        # Direct Atlas commands for official image
+        command: ["atlas"]
+        args:
+          - "migrate"
+          - "{{ .Values.migration.command }}"
+          - "--url"
+          - "$(DATABASE_URL)"
+          - "--dir"
+          - "file:///migrations"
+          {{- if eq .Values.migration.command "apply" }}
+          - "--tx-mode"
+          - "file"  # Transaction-safe mode
+          {{- end }}
+        {{- end }}
+        
+        # Environment variables
+        env:
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secrets.existingSecret | default .Values.secrets.name }}
+              key: {{ .Values.secrets.keys.username }}
+        
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secrets.existingSecret | default .Values.secrets.name }}
+              key: {{ .Values.secrets.keys.password }}
+        
+        - name: DB_HOST
+          value: "{{ .Values.database.host }}"
+        
+        - name: DB_PORT
+          value: "{{ .Values.database.port }}"
+        
+        - name: DB_NAME
+          value: "{{ .Values.database.name }}"
+          
+        - name: DB_SSLMODE
+          value: "{{ .Values.database.sslMode }}"
+        
+        - name: DATABASE_URL
+          value: "postgres://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)"
+        
+        - name: ATLAS_ENV
+          value: "kubernetes"
+          
+        - name: MIGRATION_TIMEOUT
+          value: "{{ .Values.migration.activeDeadlineSeconds }}"
+          
+        # Resource limits
+        resources:
+          {{- toYaml .Values.migration.resources | nindent 10 }}
+        
+        # Security context for container
+        securityContext:
+          {{- toYaml .Values.migration.securityContext | nindent 10 }}
+        
+        # Volume mounts for migrations (if using official image)
+        {{- if not .Values.migration.customImage.enabled }}
+        volumeMounts:
+        - name: migrations
+          mountPath: /migrations
+          readOnly: true
+        - name: atlas-config
+          mountPath: /atlas
+          readOnly: true
+        {{- end }}
+      
+      # Volumes (if using official Atlas image)
+      {{- if not .Values.migration.customImage.enabled }}
+      volumes:
+      - name: migrations
+        configMap:
+          name: {{ include "alt-atlas-migrations.fullname" . }}-migrations
+      - name: atlas-config
+        configMap:
+          name: {{ include "alt-atlas-migrations.fullname" . }}-config
+      {{- end }}
+{{- end }}

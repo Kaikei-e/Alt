@@ -1,0 +1,146 @@
+# Atlas Migration Chart Configuration
+# Kubernetes-native database migration management
+
+# Migration job configuration
+migration:
+  # Atlas Docker image configuration
+  image:
+    repository: arigaio/atlas
+    tag: latest-alpine
+    pullPolicy: Always
+    
+  # Custom migration image (when using custom built image)
+  customImage:
+    enabled: false
+    repository: alt-migrations
+    tag: latest
+    pullPolicy: Always
+  
+  # Migration command to execute
+  command: "apply"  # Options: status, validate, apply, init
+  
+  # Resource limits for migration jobs
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    readOnlyRootFilesystem: false
+    allowPrivilegeEscalation: false
+  
+  # Migration timeout in seconds
+  activeDeadlineSeconds: 300
+  
+  # Number of retry attempts
+  backoffLimit: 3
+
+# Database configuration
+database:
+  # Connection configuration
+  host: postgres.alt-database.svc.cluster.local
+  port: 5432
+  name: alt
+  
+  # Authentication
+  # These will be overridden by environment-specific values
+  username: alt_db_user
+  password: ""  # Set via secret
+  
+  # SSL configuration
+  sslMode: require
+  
+  # Connection string template (will be populated from above values)
+  urlTemplate: "postgres://{{ .username }}:{{ .password }}@{{ .host }}:{{ .port }}/{{ .name }}?sslmode={{ .sslMode }}"
+
+# Secret configuration for database credentials
+secrets:
+  # Existing secret containing database credentials
+  existingSecret: postgres-secret
+  
+  # Keys in the existing secret
+  keys:
+    username: username
+    password: password
+    
+  # Create new secret if existingSecret is not provided
+  create: false
+  name: atlas-migration-secrets
+
+# Helm hook configuration
+hooks:
+  # Pre-upgrade hook settings
+  preUpgrade:
+    enabled: true
+    weight: -10
+    deletePolicy: before-hook-creation,hook-succeeded
+    
+  # Pre-install hook settings  
+  preInstall:
+    enabled: true
+    weight: -10
+    deletePolicy: before-hook-creation,hook-succeeded
+
+# Service account configuration
+serviceAccount:
+  # Whether to create a service account
+  create: true
+  
+  # Name of the service account
+  name: atlas-migration-sa
+  
+  # Annotations for the service account
+  annotations: {}
+  
+# RBAC configuration
+rbac:
+  # Whether to create RBAC resources
+  create: true
+  
+  # Additional rules for the ClusterRole
+  rules: []
+
+# Pod annotations and labels
+podAnnotations: {}
+podLabels: {}
+
+# Node selector for migration pods
+nodeSelector: {}
+
+# Tolerations for migration pods  
+tolerations: []
+
+# Affinity rules for migration pods
+affinity: {}
+
+# Environment-specific configurations
+environments:
+  # Development environment
+  development:
+    database:
+      host: localhost
+      sslMode: disable
+    migration:
+      resources:
+        limits:
+          cpu: 200m
+          memory: 256Mi
+          
+  # Production environment
+  production:
+    database:
+      host: postgres.alt-database.svc.cluster.local
+      sslMode: require
+    migration:
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+      activeDeadlineSeconds: 600  # Longer timeout for production
