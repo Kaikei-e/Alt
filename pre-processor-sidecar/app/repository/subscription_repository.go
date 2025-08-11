@@ -23,6 +23,7 @@ type SubscriptionRepository interface {
 	GetAllSubscriptions(ctx context.Context) ([]models.InoreaderSubscription, error)
 	// GetAll is an alias for GetAllSubscriptions for backward compatibility
 	GetAll(ctx context.Context) ([]models.InoreaderSubscription, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*models.InoreaderSubscription, error)
 	UpdateSubscription(ctx context.Context, subscription models.InoreaderSubscription) error
 	DeleteSubscription(ctx context.Context, inoreaderID string) error
 	// CreateSubscription creates a single subscription record for auto-creation functionality
@@ -173,6 +174,49 @@ func (r *PostgreSQLSubscriptionRepository) GetAllSubscriptions(ctx context.Conte
 // GetAll is an alias for GetAllSubscriptions (backward compatibility)
 func (r *PostgreSQLSubscriptionRepository) GetAll(ctx context.Context) ([]models.InoreaderSubscription, error) {
 	return r.GetAllSubscriptions(ctx)
+}
+
+// FindByID retrieves a subscription by database UUID
+func (r *PostgreSQLSubscriptionRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.InoreaderSubscription, error) {
+	query := `
+		SELECT id, inoreader_id, title, category, feed_url,
+		       synced_at, created_at
+		FROM inoreader_subscriptions
+		WHERE id = $1
+	`
+
+	var sub models.InoreaderSubscription
+	var createdAt, syncedAt time.Time
+	var category string
+
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&sub.DatabaseID,  // Database UUID
+		&sub.InoreaderID, // Inoreader ID
+		&sub.Title,
+		&category,
+		&sub.URL,
+		&syncedAt,
+		&createdAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("subscription not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to query subscription: %w", err)
+	}
+
+	// Convert category string back to Categories slice
+	if category != "" {
+		sub.Categories = []models.InoreaderCategory{
+			{Label: category},
+		}
+	}
+
+	sub.CreatedAt = createdAt
+	sub.UpdatedAt = syncedAt
+
+	return &sub, nil
 }
 
 // UpdateSubscription updates a single subscription

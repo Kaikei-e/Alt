@@ -21,6 +21,11 @@ type Article struct {
 	FetchedAt        time.Time  `json:"fetched_at" db:"fetched_at"`
 	Processed        bool       `json:"processed" db:"processed"`
 	
+	// Phase 1: Article content fields for storing full content from summary.content
+	Content          string     `json:"content" db:"content"`
+	ContentLength    int        `json:"content_length" db:"content_length"`
+	ContentType      string     `json:"content_type" db:"content_type"`
+	
 	// Internal fields for processing (not stored in database)
 	OriginStreamID   string     `json:"-" db:"-"`  // Temporary field for UUID resolution
 }
@@ -83,6 +88,10 @@ func NewArticle(inoreaderID, subscriptionID, articleURL, title, author string, p
 		PublishedAt:    &publishedAt,
 		FetchedAt:      now,
 		Processed:      false,
+		// Phase 1: Initialize content fields with defaults
+		Content:        "",
+		ContentLength:  0,
+		ContentType:    "html",
 	}
 }
 
@@ -103,6 +112,21 @@ func NewArticleFromAPI(inoreaderItem InoreaderItem, subscriptionID uuid.UUID) *A
 		publishedAt = &published
 	}
 
+	// Phase 1: Extract content from summary.content field
+	var content string
+	var contentLength int
+	var contentType string = "html"
+	
+	if inoreaderItem.Summary.Content != "" {
+		content = inoreaderItem.Summary.Content
+		contentLength = len(content)
+		
+		// Set content type based on direction
+		if inoreaderItem.Summary.Direction == "rtl" {
+			contentType = "html_rtl"
+		}
+	}
+
 	return &Article{
 		ID:             uuid.New(),
 		InoreaderID:    inoreaderItem.ID,
@@ -113,6 +137,10 @@ func NewArticleFromAPI(inoreaderItem InoreaderItem, subscriptionID uuid.UUID) *A
 		PublishedAt:    publishedAt,
 		FetchedAt:      now,
 		Processed:      false,
+		// Phase 1: Store extracted content
+		Content:        content,
+		ContentLength:  contentLength,
+		ContentType:    contentType,
 	}
 }
 

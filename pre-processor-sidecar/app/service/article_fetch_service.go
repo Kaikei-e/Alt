@@ -62,6 +62,10 @@ type ArticleFetchService struct {
 	uuidResolutionUseCase *usecase.ArticleUUIDResolutionUseCase // Clean Architecture UUID resolution
 	logger               *slog.Logger
 	mu                   sync.RWMutex
+	
+	// Phase 3: Rotation processing components
+	subscriptionRotator  *SubscriptionRotator  // 40 subscriptions rotation processor
+	rotationEnabled      bool                  // Enable rotation mode
 }
 
 // SlogAdapter adapts slog.Logger to domain.LoggerInterface
@@ -104,6 +108,9 @@ func NewArticleFetchService(
 	uuidResolver := domain.NewSubscriptionUUIDResolver(autoCreatorAdapter, loggerAdapter)
 	uuidResolutionUseCase := usecase.NewArticleUUIDResolutionUseCase(uuidResolver, subscriptionRepo, loggerAdapter)
 
+	// Phase 3: Initialize SubscriptionRotator for rotation processing
+	subscriptionRotator := NewSubscriptionRotator(logger)
+
 	return &ArticleFetchService{
 		inoreaderService:      inoreaderService,
 		articleRepo:           articleRepo,
@@ -111,6 +118,9 @@ func NewArticleFetchService(
 		subscriptionRepo:      subscriptionRepo,
 		uuidResolutionUseCase: uuidResolutionUseCase,
 		logger:                logger,
+		// Phase 3: Rotation processing initialization
+		subscriptionRotator:   subscriptionRotator,
+		rotationEnabled:       false, // Disabled by default, enabled via configuration
 	}
 }
 
@@ -325,4 +335,169 @@ func (s *ArticleFetchService) DeleteOldArticles(ctx context.Context, olderThan t
 		"older_than", olderThan)
 
 	return deletedCount, nil
+}
+
+// Phase 3: Rotation Processing Methods
+
+// EnableRotationMode enables subscription rotation processing
+func (s *ArticleFetchService) EnableRotationMode(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.rotationEnabled {
+		s.logger.Info("Rotation mode already enabled")
+		return nil
+	}
+
+	// Load all subscriptions into rotator
+	subscriptions, err := s.subscriptionRepo.GetAll(ctx)
+	if err != nil {
+		s.logger.Error("Failed to load subscriptions for rotation", "error", err)
+		return fmt.Errorf("failed to load subscriptions: %w", err)
+	}
+
+	// Extract UUIDs for rotator
+	subscriptionIDs := make([]uuid.UUID, len(subscriptions))
+	for i, sub := range subscriptions {
+		subscriptionIDs[i] = sub.DatabaseID
+	}
+
+	// Load subscriptions into rotator
+	if err := s.subscriptionRotator.LoadSubscriptions(ctx, subscriptionIDs); err != nil {
+		s.logger.Error("Failed to load subscriptions into rotator", "error", err)
+		return fmt.Errorf("failed to initialize rotator: %w", err)
+	}
+
+	s.rotationEnabled = true
+	
+	s.logger.Info("Rotation mode enabled successfully",
+		"total_subscriptions", len(subscriptionIDs),
+		"interval_minutes", s.subscriptionRotator.GetInterval())
+
+	return nil
+}
+
+// StartRotationProcessor starts the 20-minute interval rotation processor
+func (s *ArticleFetchService) StartRotationProcessor(ctx context.Context) error {
+	if !s.rotationEnabled {
+		if err := s.EnableRotationMode(ctx); err != nil {
+			return fmt.Errorf("failed to enable rotation mode: %w", err)
+		}
+	}
+
+	intervalMinutes := s.subscriptionRotator.GetInterval()
+	ticker := time.NewTicker(time.Duration(intervalMinutes) * time.Minute)
+	defer ticker.Stop()
+
+	s.logger.Info("Started subscription rotation processor", 
+		"interval_minutes", intervalMinutes,
+		"rotation_enabled", s.rotationEnabled)
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("Rotation processor stopped", "reason", ctx.Err())
+			return ctx.Err()
+
+		case <-ticker.C:
+			if err := s.processNextSubscriptionRotation(ctx); err != nil {
+				s.logger.Error("Failed to process subscription rotation", "error", err)
+				// Continue processing despite errors to maintain schedule
+			}
+		}
+	}
+}
+
+// processNextSubscriptionRotation processes the next subscription in rotation
+func (s *ArticleFetchService) processNextSubscriptionRotation(ctx context.Context) error {
+	// Check if we should wait more before next processing
+	if !s.subscriptionRotator.IsReadyForNext() {
+		s.logger.Debug("Not ready for next subscription processing, skipping interval")
+		return nil
+	}
+
+	// Get next subscription from rotator
+	subID, hasNext := s.subscriptionRotator.GetNextSubscription()
+	if !hasNext {
+		s.logger.Info("All subscriptions processed for today",
+			"status", s.subscriptionRotator.GetProcessingStatus())
+		return nil
+	}
+
+	// Get subscription details
+	subscription, err := s.subscriptionRepo.FindByID(ctx, subID)
+	if err != nil {
+		s.logger.Error("Subscription not found in rotation", 
+			"subscription_id", subID, 
+			"error", err)
+		return fmt.Errorf("subscription not found: %w", err)
+	}
+
+	// Process this specific subscription
+	streamID := subscription.InoreaderID
+	startTime := time.Now()
+	
+	s.logger.Info("Processing subscription in rotation",
+		"subscription_id", subID,
+		"stream_id", streamID,
+		"title", subscription.Title,
+		"rotation_status", s.subscriptionRotator.GetProcessingStatus())
+
+	// Fetch articles for this subscription (max 100 articles)
+	result, err := s.FetchArticles(ctx, streamID, 100)
+	if err != nil {
+		s.logger.Error("Failed to fetch articles for rotated subscription", 
+			"subscription_id", subID,
+			"stream_id", streamID,
+			"error", err)
+		return fmt.Errorf("failed to fetch articles for subscription %s: %w", subID, err)
+	}
+
+	duration := time.Since(startTime)
+	
+	s.logger.Info("Completed subscription rotation processing",
+		"subscription_id", subID,
+		"title", subscription.Title,
+		"new_articles", result.NewArticles,
+		"total_processed", result.TotalProcessed,
+		"processing_duration", duration,
+		"rotation_status", s.subscriptionRotator.GetProcessingStatus())
+
+	return nil
+}
+
+// GetRotationStats returns current rotation processing statistics
+func (s *ArticleFetchService) GetRotationStats() RotationStats {
+	if !s.rotationEnabled {
+		return RotationStats{}
+	}
+	
+	return s.subscriptionRotator.GetStats()
+}
+
+// SetRotationInterval updates the rotation processing interval
+func (s *ArticleFetchService) SetRotationInterval(minutes int) {
+	if s.subscriptionRotator != nil {
+		s.subscriptionRotator.SetInterval(minutes)
+		s.logger.Info("Updated rotation interval", "new_interval_minutes", minutes)
+	}
+}
+
+// IsRotationEnabled returns whether rotation mode is currently enabled
+func (s *ArticleFetchService) IsRotationEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.rotationEnabled
+}
+
+// FetchSingleSubscriptionArticles processes articles for a specific subscription (used in rotation)
+func (s *ArticleFetchService) FetchSingleSubscriptionArticles(ctx context.Context, subscriptionID uuid.UUID) (*ArticleFetchResult, error) {
+	// Get subscription details
+	subscription, err := s.subscriptionRepo.FindByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, fmt.Errorf("subscription not found: %w", err)
+	}
+
+	// Use existing FetchArticles method with the subscription's stream ID
+	return s.FetchArticles(ctx, subscription.InoreaderID, 100)
 }

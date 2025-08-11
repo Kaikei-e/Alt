@@ -57,6 +57,12 @@ type Config struct {
 	EnableScheduleMode bool
 	EnableDebugMode    bool
 	EnableHealthCheck  bool
+	
+	// Phase 5: Rotation processing configuration
+	Rotation RotationConfig
+	
+	// Phase 5: Content processing configuration 
+	Content ContentConfig
 }
 
 // DatabaseConfig holds database connection settings
@@ -133,6 +139,25 @@ type MonitoringConfig struct {
 	MetricsBatchSize  int
 	FlushInterval     time.Duration
 	RetentionDuration time.Duration
+}
+
+// Phase 5: RotationConfig holds rotation processing configuration
+type RotationConfig struct {
+	Enabled                bool          // Enable rotation mode
+	IntervalMinutes        int           // Processing interval in minutes (default: 20)
+	MaxSubscriptionsPerDay int           // Maximum subscriptions to process daily (default: 40)
+	APIBudget              int           // API requests budget for rotation (default: 40)
+	ShuffleDailyOrder      bool          // Shuffle subscription order daily (default: true)
+	RetryFailedSubscriptions bool        // Retry failed subscriptions (default: true)
+}
+
+// Phase 5: ContentConfig holds article content processing configuration
+type ContentConfig struct {
+	ExtractionEnabled    bool          // Enable content extraction from summary.content
+	MaxContentLength     int           // Maximum content length in bytes (default: 50KB)
+	ContentTypeDetection bool          // Enable content type detection (HTML/RTL)
+	TruncationEnabled    bool          // Enable content truncation for large articles
+	CompressionEnabled   bool          // Enable content compression (future feature)
 }
 
 // LoadConfig loads configuration from environment variables
@@ -253,6 +278,25 @@ func LoadConfig() (*Config, error) {
 	} else {
 		cfg.Inoreader.TokenRefreshBuffer = 5 * time.Minute
 		cfg.OAuth2.RefreshBuffer = 5 * time.Minute
+	}
+
+	// Phase 5: Load rotation processing configuration
+	cfg.Rotation = RotationConfig{
+		Enabled:                getEnvOrDefaultBool("ROTATION_ENABLED", false),
+		IntervalMinutes:        getEnvOrDefaultInt("ROTATION_INTERVAL_MINUTES", 20),
+		MaxSubscriptionsPerDay: getEnvOrDefaultInt("SUBSCRIPTIONS_PER_DAY", 40),
+		APIBudget:              getEnvOrDefaultInt("ROTATION_API_BUDGET", 40),
+		ShuffleDailyOrder:      getEnvOrDefaultBool("ROTATION_SHUFFLE_DAILY", true),
+		RetryFailedSubscriptions: getEnvOrDefaultBool("RETRY_FAILED_SUBSCRIPTIONS", true),
+	}
+
+	// Phase 5: Load content processing configuration
+	cfg.Content = ContentConfig{
+		ExtractionEnabled:    getEnvOrDefaultBool("CONTENT_EXTRACTION_ENABLED", false),
+		MaxContentLength:     getEnvOrDefaultInt("MAX_CONTENT_LENGTH", 50000),
+		ContentTypeDetection: getEnvOrDefaultBool("CONTENT_TYPE_DETECTION", true),
+		TruncationEnabled:    getEnvOrDefaultBool("CONTENT_TRUNCATION_ENABLED", true),
+		CompressionEnabled:   getEnvOrDefaultBool("CONTENT_COMPRESSION_ENABLED", false),
 	}
 
 	// Validate required configuration
