@@ -146,6 +146,111 @@ Helper applications are built with different architectures for specific purposes
 - **Containerization:** Use Docker for consistent environments
 - **Progressive Deployment:** Use feature flags and canary releases
 
+## Local Development Environment
+
+### Kind-based Development Setup
+
+This project uses **kind (Kubernetes IN Docker)** for local development, providing a lightweight Kubernetes environment optimized for rapid iteration.
+
+#### Quick Start
+```bash
+# 1. Setup development environment (one-time)
+./setup-dev-env.sh
+
+# 2. Build and load all images
+./auto-build-alt.sh --all
+
+# 3. Deploy services
+cd skaffold/05-processing && skaffold run
+```
+
+#### Development Commands
+- **Environment Setup**: `./setup-dev-env.sh`
+- **Build Images**: `./auto-build-alt.sh --all`
+- **Deploy Services**: `skaffold run`
+- **Check Status**: `kubectl get pods -n alt-processing`
+- **View Logs**: `kubectl logs -f <pod-name> -n alt-processing`
+
+#### Kind Cluster Management
+```bash
+# List clusters
+kind get clusters
+
+# Switch context
+kubectl config use-context kind-alt-prod
+
+# Cluster info
+kubectl cluster-info --context kind-alt-prod
+
+# Delete cluster (if needed)
+kind delete cluster --name alt-prod
+```
+
+### Database Migration with Atlas
+
+This project uses **Atlas** for modern, Kubernetes-native database migration management with transaction safety and automated deployment integration.
+
+#### Migration System Overview
+- **Atlas CLI Integration**: Professional-grade database schema management
+- **Helm Pre-upgrade Hooks**: Automatic migration execution before application deployment
+- **Transaction Safety**: CONCURRENTLY operations converted to transaction-safe equivalents
+- **Local Build**: No external registry dependencies, uses local Docker images
+- **Security**: Dedicated RBAC and credentials isolation
+
+#### Atlas Migration Commands
+```bash
+# Build Atlas migration container
+./auto-build-alt.sh --services alt-atlas-migrations
+
+# Test migration syntax (offline)
+docker run --rm alt-atlas-migrations:latest syntax-check
+
+# Deploy infrastructure with automatic migrations
+cd skaffold/02-infrastructure && skaffold run -p prod
+```
+
+#### Migration Development Workflow
+1. **Add New Migration**: Create SQL file in `migrations-atlas/migrations/`
+   ```sql
+   -- 20250812000100_add_new_feature.sql
+   -- Migration: Add new feature table
+   -- Created: 2025-08-12 00:01:00
+   -- Atlas Version: v0.35
+   
+   CREATE TABLE new_feature (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       name TEXT NOT NULL,
+       created_at TIMESTAMP DEFAULT NOW()
+   );
+   ```
+
+2. **Test Locally**: Validate migration syntax
+   ```bash
+   docker run --rm alt-atlas-migrations:latest syntax-check
+   ```
+
+3. **Deploy**: Migrations run automatically via pre-upgrade hooks
+   ```bash
+   cd skaffold/02-infrastructure && skaffold run -p prod
+   ```
+
+#### Migration Files Location
+- **Source**: `migrations-atlas/migrations/`
+- **Docker Context**: `migrations-atlas/docker/`
+- **Helm Integration**: `skaffold/02-infrastructure/charts/postgres/`
+
+#### Troubleshooting Migrations
+```bash
+# Check migration job status
+kubectl get jobs -n alt-database -l component=atlas-migration
+
+# View migration logs
+kubectl logs -n alt-database -l component=atlas-migration
+
+# Manual migration status check (requires running database)
+kubectl run atlas-debug --rm -it --image=alt-atlas-migrations:latest -- status
+```
+
 ## Working with Claude Code
 
 ### Effective Prompting
