@@ -11,8 +11,8 @@ import (
 
 func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
 	identifyFeedQuery := `
-		SELECT id FROM feeds WHERE link = $1
-	`
+                SELECT id FROM feeds WHERE link = $1
+        `
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		logger.SafeError("Error beginning transaction", "error", err)
@@ -33,12 +33,12 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 		}
 	}()
 
-	// Upsert read status for the feed with dummy user ID
+	// Upsert read status for the feed
 	updateFeedStatusQuery := `
-                INSERT INTO read_status (feed_id, user_id, is_read, updated_at, created_at)
+                INSERT INTO read_status (feed_id, user_id, is_read, read_at, created_at)
                 VALUES ($1, $2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (feed_id, user_id) DO UPDATE
-                SET is_read = TRUE, updated_at = CURRENT_TIMESTAMP
+                SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
         `
 	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID, utils.DUMMY_USER_ID); err != nil {
 		logger.SafeError("Error updating feed status", "error", err, "feedID", feedID)
