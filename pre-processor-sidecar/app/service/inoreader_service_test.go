@@ -80,7 +80,7 @@ func TestInoreaderService_RefreshTokenIfNeeded(t *testing.T) {
 			mockInoreaderClient := mocks.NewMockInoreaderClient(ctrl)
 			tc.mockSetup(mockInoreaderClient)
 
-			service := NewInoreaderService(mockInoreaderClient, nil, nil)
+			service := NewInoreaderService(mockInoreaderClient, nil, nil, nil)
 			service.SetCurrentToken(tc.currentToken)
 
 			ctx := context.Background()
@@ -202,7 +202,7 @@ func TestInoreaderService_FetchSubscriptions(t *testing.T) {
 				}
 			}
 
-			service := NewInoreaderService(mockInoreaderClient, nil, nil)
+			service := NewInoreaderService(mockInoreaderClient, nil, nil, nil)
 			service.SetCurrentToken(&models.OAuth2Token{
 				AccessToken: "valid_token",
 				TokenType:   "Bearer",
@@ -286,7 +286,7 @@ func TestInoreaderService_CheckAPIRateLimit(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			service := NewInoreaderService(nil, nil, nil)
+			service := NewInoreaderService(nil, nil, nil, nil)
 			service.apiDailyLimit = tc.dailyLimit
 			service.safetyBuffer = tc.safetyBuffer
 			service.rateLimitInfo = &models.APIRateLimitInfo{
@@ -394,11 +394,11 @@ func TestInoreaderService_UpdateAPIUsageFromHeaders(t *testing.T) {
 
 			if name == "repository_not_configured" {
 				// Test with nil repository
-				service = NewInoreaderService(nil, nil, nil)
+				service = NewInoreaderService(nil, nil, nil, nil)
 			} else {
 				mockRepo = mocks.NewMockAPIUsageRepository(ctrl)
 				tc.mockSetup(mockRepo)
-				service = NewInoreaderService(nil, mockRepo, nil)
+				service = NewInoreaderService(nil, mockRepo, nil, nil)
 			}
 
 			ctx := context.Background()
@@ -480,12 +480,12 @@ func TestInoreaderService_GetCurrentAPIUsageInfo(t *testing.T) {
 			var service *InoreaderService
 
 			if name == "repository_not_configured" {
-				service = NewInoreaderService(nil, nil, nil)
+				service = NewInoreaderService(nil, nil, nil, nil)
 				service.rateLimitInfo.Zone1Usage = 25
 			} else {
 				mockRepo := mocks.NewMockAPIUsageRepository(ctrl)
 				tc.mockSetup(mockRepo)
-				service = NewInoreaderService(nil, mockRepo, nil)
+				service = NewInoreaderService(nil, mockRepo, nil, nil)
 			}
 
 			ctx := context.Background()
@@ -518,7 +518,7 @@ func TestInoreaderService_isReadOnlyEndpoint(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			svc := NewInoreaderService(nil, nil, nil)
+			svc := NewInoreaderService(nil, nil, nil, nil)
 			result := svc.isReadOnlyEndpoint(tc.endpoint)
 			assert.Equal(t, tc.expected, result)
 		})

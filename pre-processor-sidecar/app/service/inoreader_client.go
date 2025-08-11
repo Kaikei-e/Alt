@@ -7,17 +7,29 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"strconv"
+	"strings"
+	"time"
 
 	"pre-processor-sidecar/models"
 )
+
+// RetryConfig defines retry behavior for API requests
+type RetryConfig struct {
+	MaxRetries    int
+	InitialDelay  time.Duration
+	MaxDelay      time.Duration
+	Multiplier    float64
+}
 
 // InoreaderClient handles low-level HTTP communication with Inoreader API
 type InoreaderClient struct {
 	oauth2Driver OAuth2Driver
 	logger       *slog.Logger
 	baseURL      string
+	retryConfig  *RetryConfig
 }
 
 // NewInoreaderClient creates a new Inoreader API client
@@ -26,10 +38,19 @@ func NewInoreaderClient(oauth2Driver OAuth2Driver, logger *slog.Logger) *Inoread
 		logger = slog.Default()
 	}
 
+	// デフォルトのリトライ設定
+	defaultRetryConfig := &RetryConfig{
+		MaxRetries:   3,
+		InitialDelay: 5 * time.Second, // レート制限準拠
+		MaxDelay:     30 * time.Second,
+		Multiplier:   2.0,
+	}
+
 	return &InoreaderClient{
 		oauth2Driver: oauth2Driver,
-		logger:      logger,
-		baseURL:     "", // Empty - OAuth2Client already has full base URL
+		logger:       logger,
+		baseURL:      "", // Empty - OAuth2Client already has full base URL
+		retryConfig:  defaultRetryConfig,
 	}
 }
 
@@ -382,4 +403,62 @@ func (c *InoreaderClient) getResponseKeys(response map[string]interface{}) []str
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+// FetchSubscriptionListWithRetry fetches subscription list with retry logic
+func (c *InoreaderClient) FetchSubscriptionListWithRetry(ctx context.Context, accessToken string) (map[string]interface{}, error) {
+	var lastErr error
+	
+	for attempt := 0; attempt <= c.retryConfig.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := time.Duration(float64(c.retryConfig.InitialDelay) * math.Pow(c.retryConfig.Multiplier, float64(attempt-1)))
+			if delay > c.retryConfig.MaxDelay {
+				delay = c.retryConfig.MaxDelay
+			}
+			
+			c.logger.Info("リトライ実行", 
+				"attempt", attempt,
+				"delay_seconds", delay.Seconds())
+			
+			time.Sleep(delay)
+		}
+		
+		result, err := c.FetchSubscriptionList(ctx, accessToken)
+		if err == nil {
+			return result, nil
+		}
+		
+		// リトライ可能なエラーかチェック
+		if isRetryableError(err) {
+			lastErr = err
+			continue
+		}
+		
+		return nil, err
+	}
+	
+	return nil, fmt.Errorf("最大リトライ回数超過 (%d回): %w", c.retryConfig.MaxRetries, lastErr)
+}
+
+// SetRetryConfig sets the retry configuration
+func (c *InoreaderClient) SetRetryConfig(config RetryConfig) {
+	c.retryConfig = &config
+}
+
+// GetRetryConfig returns the current retry configuration
+func (c *InoreaderClient) GetRetryConfig() *RetryConfig {
+	return c.retryConfig
+}
+
+// isRetryableError determines if an error should trigger a retry
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	errStr := err.Error()
+	return strings.Contains(errStr, "403") ||
+		   strings.Contains(errStr, "408") ||
+		   strings.Contains(errStr, "timeout") ||
+		   strings.Contains(errStr, "connection refused")
 }

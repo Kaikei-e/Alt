@@ -193,12 +193,8 @@ func TestSubscriptionSyncService_SyncSubscriptions(t *testing.T) {
 			tc.mockSetup(mockOAuth2Client, mockRepo)
 
 			// Create subscription sync service
-			inoreaderService := NewInoreaderService(mockOAuth2Client, nil, nil)
-			inoreaderService.SetCurrentToken(&models.OAuth2Token{
-				AccessToken: "valid_token",
-				TokenType:   "Bearer",
-				ExpiresAt:   time.Now().Add(30 * time.Minute),
-			})
+			inoreaderService := NewInoreaderService(mockOAuth2Client, nil, nil, nil)
+			// Token management is now handled by SimpleTokenService
 
 			// Set rate limit to allow requests
 			inoreaderService.rateLimitInfo = &models.APIRateLimitInfo{

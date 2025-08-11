@@ -221,10 +221,10 @@ func (s *TokenManagementService) performTokenRefresh(ctx context.Context, token 
 }
 
 // GetTokenStatus returns current token status for monitoring
-func (s *TokenManagementService) GetTokenStatus(ctx context.Context) (*TokenStatus, error) {
+func (s *TokenManagementService) GetTokenStatus(ctx context.Context) (*OldTokenStatus, error) {
 	token, err := s.loadTokenFromStorage(ctx)
 	if err != nil {
-		return &TokenStatus{
+		return &OldTokenStatus{
 			Exists:        false,
 			IsValid:       false,
 			IsExpired:     true,
@@ -233,7 +233,7 @@ func (s *TokenManagementService) GetTokenStatus(ctx context.Context) (*TokenStat
 		}, nil
 	}
 
-	return &TokenStatus{
+	return &OldTokenStatus{
 		Exists:        true,
 		IsValid:       token.IsValid(),
 		IsExpired:     token.IsExpired(),
@@ -245,8 +245,8 @@ func (s *TokenManagementService) GetTokenStatus(ctx context.Context) (*TokenStat
 	}, nil
 }
 
-// TokenStatus represents the current status of OAuth2 token
-type TokenStatus struct {
+// OldTokenStatus represents the current status of OAuth2 token from old service
+type OldTokenStatus struct {
 	Exists        bool          `json:"exists"`
 	IsValid       bool          `json:"is_valid"`
 	IsExpired     bool          `json:"is_expired"`

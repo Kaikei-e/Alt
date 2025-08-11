@@ -393,6 +393,56 @@ func TestOAuth2Client_HandleRateLimitHeaders(t *testing.T) {
 	}
 }
 
+// RED TEST: タイムアウト処理テスト - 失敗が期待される (SetTimeoutメソッド未実装)
+func TestOAuth2Client_TimeoutHandling(t *testing.T) {
+	tests := []struct {
+		name           string
+		serverDelay    time.Duration
+		clientTimeout  time.Duration
+		expectTimeout  bool
+	}{
+		{
+			name:          "リクエストがタイムアウト内完了",
+			serverDelay:   100 * time.Millisecond,
+			clientTimeout: 30 * time.Second,
+			expectTimeout: false,
+		},
+		{
+			name:          "リクエストがタイムアウト超過",
+			serverDelay:   45 * time.Second,
+			clientTimeout: 30 * time.Second, 
+			expectTimeout: true,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// モックサーバーを指定遅延で設定
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				time.Sleep(tt.serverDelay)
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"access_token":"test_token","token_type":"Bearer","expires_in":3600,"refresh_token":"test_refresh"}`))
+			}))
+			defer server.Close()
+
+			client := NewOAuth2Client("test", "test", server.URL)
+			client.SetTimeout(tt.clientTimeout) // 未実装メソッド - このテストは失敗する予定
+
+			ctx, cancel := context.WithTimeout(context.Background(), tt.clientTimeout+5*time.Second)
+			defer cancel()
+
+			_, err := client.RefreshToken(ctx, "refresh_token")
+			
+			if tt.expectTimeout {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "timeout")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 // Benchmark tests for performance
 func BenchmarkOAuth2Client_RefreshToken(b *testing.B) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

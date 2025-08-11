@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
+	"pre-processor-sidecar/utils"
 )
 
 // OAuth2Driver interface for OAuth2 client operations
@@ -44,27 +45,40 @@ type InoreaderClientInterface interface {
 type InoreaderService struct {
 	inoreaderClient        InoreaderClientInterface
 	apiUsageRepo           APIUsageRepository
+	tokenService           *SimpleTokenService
 	logger                 *slog.Logger
-	currentToken           *models.OAuth2Token
-	tokenRefreshBuffer     time.Duration
 	apiDailyLimit          int
 	maxArticlesPerRequest  int
 	safetyBuffer          int
 	rateLimitInfo         *models.APIRateLimitInfo
+	circuitBreaker        *utils.CircuitBreaker // TDD Phase 3 - REFACTOR: Circuit Breaker
+	monitor               *utils.Monitor        // TDD Phase 3 - REFACTOR: Structured Logging & Monitoring
 }
 
 // NewInoreaderService creates a new Inoreader API service
-func NewInoreaderService(inoreaderClient InoreaderClientInterface, apiUsageRepo APIUsageRepository, logger *slog.Logger) *InoreaderService {
+func NewInoreaderService(inoreaderClient InoreaderClientInterface, apiUsageRepo APIUsageRepository, tokenService *SimpleTokenService, logger *slog.Logger) *InoreaderService {
 	// Use default logger if none provided
 	if logger == nil {
 		logger = slog.Default()
 	}
 
+	// TDD Phase 3 - REFACTOR: Initialize Circuit Breaker
+	circuitBreakerConfig := &utils.CircuitBreakerConfig{
+		FailureThreshold: 3,              // 3回連続失敗でOPEN
+		SuccessThreshold: 2,              // HALF_OPENで2回成功すればCLOSED  
+		Timeout:          60 * time.Second, // 1分でHALF_OPENに移行
+		MaxRequests:      1,              // HALF_OPENで1つのリクエストを許可
+	}
+
+	// TDD Phase 3 - REFACTOR: Initialize Monitoring
+	monitoringConfig := utils.DefaultMonitoringConfig()
+	monitor := utils.NewMonitor(monitoringConfig, logger)
+
 	return &InoreaderService{
 		inoreaderClient:       inoreaderClient,
 		apiUsageRepo:          apiUsageRepo,
+		tokenService:          tokenService,
 		logger:               logger,
-		tokenRefreshBuffer:   5 * time.Minute, // Refresh 5 minutes before expiry
 		apiDailyLimit:        100,             // Zone 1 API limit
 		maxArticlesPerRequest: 100,            // Inoreader max per request
 		safetyBuffer:         10,              // Safety buffer to avoid hitting exact limit
@@ -72,152 +86,195 @@ func NewInoreaderService(inoreaderClient InoreaderClientInterface, apiUsageRepo 
 			Zone1Limit: 100,
 			Zone2Limit: 100,
 		},
+		circuitBreaker: utils.NewCircuitBreaker(circuitBreakerConfig, logger), // TDD Phase 3
+		monitor:        monitor, // TDD Phase 3 - REFACTOR: Structured Logging & Monitoring
 	}
 }
 
-// SetCurrentToken sets the current OAuth2 token
-func (s *InoreaderService) SetCurrentToken(token *models.OAuth2Token) {
-	s.currentToken = token
-}
-
-// RefreshTokenIfNeeded checks if the OAuth2 token needs refresh and refreshes if necessary
-func (s *InoreaderService) RefreshTokenIfNeeded(ctx context.Context) error {
-	if s.currentToken == nil {
-		return fmt.Errorf("no current token available")
+// GetValidToken retrieves a valid OAuth2 token from SimpleTokenService
+func (s *InoreaderService) GetValidToken(ctx context.Context) (*models.OAuth2Token, error) {
+	if s.tokenService == nil {
+		return nil, fmt.Errorf("no token service configured")
 	}
-
-	// Check if token needs refresh (with buffer time)
-	if !s.currentToken.NeedsRefresh(s.tokenRefreshBuffer) {
-		return nil // Token is still valid
-	}
-
-	s.logger.Info("OAuth2 token needs refresh",
-		"expires_at", s.currentToken.ExpiresAt,
-		"buffer", s.tokenRefreshBuffer)
-
-	// Refresh the token using client layer
-	response, err := s.inoreaderClient.RefreshToken(ctx, s.currentToken.RefreshToken)
+	
+	token, err := s.tokenService.GetValidToken(ctx)
 	if err != nil {
-		s.logger.Error("Failed to refresh OAuth2 token", "error", err)
-		return fmt.Errorf("OAuth2 token refresh failed: %w", err)
+		s.logger.Error("Failed to get valid token from token service", "error", err)
+		return nil, fmt.Errorf("token retrieval failed: %w", err)
 	}
+	
+	return token, nil
+}
 
-	// Update current token with new values
-	s.currentToken.UpdateFromRefresh(*response)
-
-	s.logger.Info("OAuth2 token refreshed successfully",
-		"expires_at", s.currentToken.ExpiresAt,
-		"token_type", s.currentToken.TokenType)
-
-	return nil
+// EnsureValidToken ensures we have a valid token (wrapper for SimpleTokenService)
+func (s *InoreaderService) EnsureValidToken(ctx context.Context) (*models.OAuth2Token, error) {
+	if s.tokenService == nil {
+		return nil, fmt.Errorf("no token service configured")
+	}
+	
+	token, err := s.tokenService.EnsureValidToken(ctx)
+	if err != nil {
+		s.logger.Error("Failed to ensure valid token", "error", err)
+		return nil, fmt.Errorf("token validation failed: %w", err)
+	}
+	
+	return token, nil
 }
 
 // FetchSubscriptions retrieves user's subscription list from Inoreader API
 func (s *InoreaderService) FetchSubscriptions(ctx context.Context) ([]*models.Subscription, error) {
-	// Ensure we have a valid token
-	if err := s.RefreshTokenIfNeeded(ctx); err != nil {
-		return nil, fmt.Errorf("token refresh failed: %w", err)
-	}
+	var subscriptions []*models.Subscription
+	
+	// TDD Phase 3 - REFACTOR: Monitor operation start time
+	startTime := time.Now()
+	
+	// TDD Phase 3 - REFACTOR: Wrap API call with Circuit Breaker
+	err := s.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
+		// Ensure we have a valid token
+		token, err := s.EnsureValidToken(ctx)
+		if err != nil {
+			return fmt.Errorf("token validation failed: %w", err)
+		}
 
-	// Check rate limits
-	if allowed, remaining := s.CheckAPIRateLimit(); !allowed {
-		s.logger.Warn("API rate limit exceeded",
-			"zone1_usage", s.rateLimitInfo.Zone1Usage,
-			"zone1_limit", s.rateLimitInfo.Zone1Limit,
-			"remaining_safe", remaining)
-		return nil, fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)",
-			s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit)
-	}
+		// Check rate limits
+		if allowed, remaining := s.CheckAPIRateLimit(); !allowed {
+			s.logger.Warn("API rate limit exceeded",
+				"zone1_usage", s.rateLimitInfo.Zone1Usage,
+				"zone1_limit", s.rateLimitInfo.Zone1Limit,
+				"remaining_safe", remaining)
+			return fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)",
+				s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit)
+		}
 
-	s.logger.Info("Fetching subscription list from Inoreader API")
+		s.logger.Info("Fetching subscription list from Inoreader API")
 
-	// Make API call using client layer
-	response, err := s.inoreaderClient.FetchSubscriptionList(ctx, s.currentToken.AccessToken)
+		// Make API call using client layer
+		response, err := s.inoreaderClient.FetchSubscriptionList(ctx, token.AccessToken)
+		if err != nil {
+			s.logger.Error("Failed to fetch subscriptions", "error", err)
+			// TDD Phase 3 - REFACTOR: Log API request failure
+			s.monitor.LogAPIRequest(ctx, "GET", "/subscription/list", 500, time.Since(startTime), err)
+			return fmt.Errorf("subscription fetch failed: %w", err)
+		}
+
+		// Parse subscriptions using client layer
+		var parseErr error
+		subscriptions, parseErr = s.inoreaderClient.ParseSubscriptionsResponse(response)
+		if parseErr != nil {
+			return fmt.Errorf("failed to parse subscriptions: %w", parseErr)
+		}
+
+		// CRITICAL FIX: Update API usage tracking after each API call
+		if updateErr := s.UpdateAPIUsageFromHeaders(ctx, "/subscription/list"); updateErr != nil {
+			s.logger.Warn("Failed to update API usage from headers", "error", updateErr)
+			// Increment local counter as fallback
+			s.rateLimitInfo.Zone1Usage++
+			s.logger.Debug("Incremented local API usage counter", "zone1_usage", s.rateLimitInfo.Zone1Usage)
+		}
+
+		s.logger.Info("Successfully fetched subscriptions",
+			"count", len(subscriptions),
+			"api_usage", s.rateLimitInfo.Zone1Usage)
+
+		// TDD Phase 3 - REFACTOR: Log successful API request
+		s.monitor.LogAPIRequest(ctx, "GET", "/subscription/list", 200, time.Since(startTime), nil)
+
+		return nil
+	})
+
 	if err != nil {
-		s.logger.Error("Failed to fetch subscriptions", "error", err)
-		return nil, fmt.Errorf("subscription fetch failed: %w", err)
+		// Check if circuit breaker is open
+		if err == utils.ErrCircuitBreakerOpen {
+			s.logger.Warn("Circuit breaker is open, rejecting subscription request")
+			// TDD Phase 3 - REFACTOR: Log circuit breaker rejection
+			s.monitor.LogAPIRequest(ctx, "GET", "/subscription/list", 503, time.Since(startTime), err)
+			return nil, fmt.Errorf("service temporarily unavailable: %w", err)
+		}
+		return nil, err
 	}
-
-	// Parse subscriptions using client layer
-	subscriptions, err := s.inoreaderClient.ParseSubscriptionsResponse(response)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse subscriptions: %w", err)
-	}
-
-	// CRITICAL FIX: Update API usage tracking after each API call
-	if err := s.UpdateAPIUsageFromHeaders(ctx, "/subscription/list"); err != nil {
-		s.logger.Warn("Failed to update API usage from headers", "error", err)
-		// Increment local counter as fallback
-		s.rateLimitInfo.Zone1Usage++
-		s.logger.Debug("Incremented local API usage counter", "zone1_usage", s.rateLimitInfo.Zone1Usage)
-	}
-
-	s.logger.Info("Successfully fetched subscriptions",
-		"count", len(subscriptions),
-		"api_usage", s.rateLimitInfo.Zone1Usage)
 
 	return subscriptions, nil
 }
 
 // FetchStreamContents retrieves stream contents (articles) from Inoreader API
 func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, continuationToken string) ([]*models.Article, string, error) {
-	// Ensure we have a valid token
-	if err := s.RefreshTokenIfNeeded(ctx); err != nil {
-		return nil, "", fmt.Errorf("token refresh failed: %w", err)
-	}
+	var articles []*models.Article
+	var nextContinuation string
+	
+	// TDD Phase 3 - REFACTOR: Wrap API call with Circuit Breaker
+	err := s.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
+		// Ensure we have a valid token
+		token, err := s.EnsureValidToken(ctx)
+		if err != nil {
+			return fmt.Errorf("token validation failed: %w", err)
+		}
 
-	// Check rate limits
-	if allowed, remaining := s.CheckAPIRateLimit(); !allowed {
-		s.logger.Warn("API rate limit exceeded for stream contents",
+		// Check rate limits
+		if allowed, remaining := s.CheckAPIRateLimit(); !allowed {
+			s.logger.Warn("API rate limit exceeded for stream contents",
+				"stream_id", streamID,
+				"zone1_usage", s.rateLimitInfo.Zone1Usage,
+				"remaining_safe", remaining)
+			return fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)",
+				s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit)
+		}
+
+		s.logger.Info("Fetching stream contents from Inoreader API",
 			"stream_id", streamID,
-			"zone1_usage", s.rateLimitInfo.Zone1Usage,
-			"remaining_safe", remaining)
-		return nil, "", fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)",
-			s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit)
-	}
+			"continuation_token", continuationToken != "")
 
-	s.logger.Info("Fetching stream contents from Inoreader API",
-		"stream_id", streamID,
-		"continuation_token", continuationToken != "")
+		// Make API call using client layer
+		response, err := s.inoreaderClient.FetchStreamContents(
+			ctx, 
+			token.AccessToken, 
+			streamID, 
+			continuationToken, 
+			s.maxArticlesPerRequest,
+		)
+		if err != nil {
+			s.logger.Error("Failed to fetch stream contents",
+				"stream_id", streamID,
+				"error", err)
+			return fmt.Errorf("stream contents fetch failed: %w", err)
+		}
 
-	// Make API call using client layer
-	response, err := s.inoreaderClient.FetchStreamContents(
-		ctx, 
-		s.currentToken.AccessToken, 
-		streamID, 
-		continuationToken, 
-		s.maxArticlesPerRequest,
-	)
-	if err != nil {
-		s.logger.Error("Failed to fetch stream contents",
+		// Parse articles using client layer
+		var parseErr error
+		articles, nextContinuation, parseErr = s.inoreaderClient.ParseStreamContentsResponse(response)
+		if parseErr != nil {
+			return fmt.Errorf("failed to parse stream contents: %w", parseErr)
+		}
+
+		// Resolve subscription UUIDs for articles
+		articles = s.resolveSubscriptionUUIDs(articles)
+
+		// CRITICAL FIX: Update API usage tracking after each API call
+		endpoint := "/stream/contents/" + streamID
+		if updateErr := s.UpdateAPIUsageFromHeaders(ctx, endpoint); updateErr != nil {
+			s.logger.Warn("Failed to update API usage from headers", "error", updateErr, "stream_id", streamID)
+			// Increment local counter as fallback
+			s.rateLimitInfo.Zone1Usage++
+			s.logger.Debug("Incremented local API usage counter", "zone1_usage", s.rateLimitInfo.Zone1Usage)
+		}
+
+		s.logger.Info("Successfully fetched stream contents",
 			"stream_id", streamID,
-			"error", err)
-		return nil, "", fmt.Errorf("stream contents fetch failed: %w", err)
-	}
+			"articles_count", len(articles),
+			"has_next_page", nextContinuation != "",
+			"api_usage", s.rateLimitInfo.Zone1Usage)
 
-	// Parse articles using client layer
-	articles, nextContinuation, err := s.inoreaderClient.ParseStreamContentsResponse(response)
+		return nil
+	})
+
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to parse stream contents: %w", err)
+		// Check if circuit breaker is open
+		if err == utils.ErrCircuitBreakerOpen {
+			s.logger.Warn("Circuit breaker is open, rejecting stream contents request",
+				"stream_id", streamID)
+			return nil, "", fmt.Errorf("service temporarily unavailable: %w", err)
+		}
+		return nil, "", err
 	}
-
-	// Resolve subscription UUIDs for articles
-	articles = s.resolveSubscriptionUUIDs(articles)
-
-	// CRITICAL FIX: Update API usage tracking after each API call
-	endpoint := "/stream/contents/" + streamID
-	if err := s.UpdateAPIUsageFromHeaders(ctx, endpoint); err != nil {
-		s.logger.Warn("Failed to update API usage from headers", "error", err, "stream_id", streamID)
-		// Increment local counter as fallback
-		s.rateLimitInfo.Zone1Usage++
-		s.logger.Debug("Incremented local API usage counter", "zone1_usage", s.rateLimitInfo.Zone1Usage)
-	}
-
-	s.logger.Info("Successfully fetched stream contents",
-		"stream_id", streamID,
-		"articles_count", len(articles),
-		"has_next_page", nextContinuation != "",
-		"api_usage", s.rateLimitInfo.Zone1Usage)
 
 	return articles, nextContinuation, nil
 }
@@ -225,8 +282,9 @@ func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, co
 // FetchUnreadStreamContents retrieves only unread stream contents from Inoreader API
 func (s *InoreaderService) FetchUnreadStreamContents(ctx context.Context, streamID, continuationToken string) ([]*models.Article, string, error) {
 	// Ensure we have a valid token
-	if err := s.RefreshTokenIfNeeded(ctx); err != nil {
-		return nil, "", fmt.Errorf("token refresh failed: %w", err)
+	token, err := s.EnsureValidToken(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("token validation failed: %w", err)
 	}
 
 	// Check rate limits
@@ -246,7 +304,7 @@ func (s *InoreaderService) FetchUnreadStreamContents(ctx context.Context, stream
 	// Make API call using client layer for unread items
 	response, err := s.inoreaderClient.FetchUnreadStreamContents(
 		ctx, 
-		s.currentToken.AccessToken, 
+		token.AccessToken, 
 		streamID, 
 		continuationToken, 
 		s.maxArticlesPerRequest,
@@ -463,4 +521,32 @@ func (s *InoreaderService) GetCurrentAPIUsageInfo(ctx context.Context) (*models.
 	}
 
 	return usage.GetUsageInfo(), nil
+}
+
+// TDD Phase 3 - REFACTOR: GetCircuitBreakerStats returns circuit breaker statistics for monitoring
+func (s *InoreaderService) GetCircuitBreakerStats() utils.CircuitBreakerStats {
+	return s.circuitBreaker.GetStats()
+}
+
+// TDD Phase 3 - REFACTOR: ResetCircuitBreaker resets the circuit breaker (for admin use)
+func (s *InoreaderService) ResetCircuitBreaker() {
+	s.logger.Info("Resetting circuit breaker via admin request")
+	s.circuitBreaker.Reset()
+}
+
+// TDD Phase 3 - REFACTOR: GetMonitoringMetrics returns monitoring metrics for observability
+func (s *InoreaderService) GetMonitoringMetrics() map[string]*utils.Metric {
+	return s.monitor.GetMetrics()
+}
+
+// TDD Phase 3 - REFACTOR: GetMonitoringHealthCheck returns monitoring system health
+func (s *InoreaderService) GetMonitoringHealthCheck() map[string]interface{} {
+	return s.monitor.HealthCheck()
+}
+
+// TDD Phase 3 - REFACTOR: Close gracefully shuts down monitoring resources
+func (s *InoreaderService) Close() {
+	if s.monitor != nil {
+		s.monitor.Close()
+	}
 }

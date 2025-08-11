@@ -56,6 +56,21 @@ func (mr *MockArticleRepositoryMockRecorder) Create(ctx, article any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockArticleRepository)(nil).Create), ctx, article)
 }
 
+// CreateBatch mocks base method.
+func (m *MockArticleRepository) CreateBatch(ctx context.Context, articles []*models.Article) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBatch", ctx, articles)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateBatch indicates an expected call of CreateBatch.
+func (mr *MockArticleRepositoryMockRecorder) CreateBatch(ctx, articles any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBatch", reflect.TypeOf((*MockArticleRepository)(nil).CreateBatch), ctx, articles)
+}
+
 // DeleteOld mocks base method.
 func (m *MockArticleRepository) DeleteOld(ctx context.Context, olderThan time.Time) (int, error) {
 	m.ctrl.T.Helper()

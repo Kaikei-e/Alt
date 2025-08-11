@@ -1,3 +1,5 @@
+//go:generate mockgen -source=subscription_repository.go -destination=../mocks/subscription_repository_mock.go -package=mocks SubscriptionRepository
+
 // ABOUTME: This file handles subscription data persistence for Inoreader subscriptions
 // ABOUTME: Implements database operations for storing and retrieving subscription data
 
@@ -23,6 +25,8 @@ type SubscriptionRepository interface {
 	GetAll(ctx context.Context) ([]models.InoreaderSubscription, error)
 	UpdateSubscription(ctx context.Context, subscription models.InoreaderSubscription) error
 	DeleteSubscription(ctx context.Context, inoreaderID string) error
+	// CreateSubscription creates a single subscription record for auto-creation functionality
+	CreateSubscription(ctx context.Context, subscription *models.Subscription) error
 }
 
 // PostgreSQLSubscriptionRepository implements SubscriptionRepository using PostgreSQL
@@ -134,10 +138,9 @@ func (r *PostgreSQLSubscriptionRepository) GetAllSubscriptions(ctx context.Conte
 		var sub models.InoreaderSubscription
 		var createdAt, syncedAt time.Time
 		var category string
-		var dbID string
 
 		err := rows.Scan(
-			&dbID,            // Database UUID (not used in API)
+			&sub.DatabaseID,  // Database UUID - directly scan into UUID field
 			&sub.InoreaderID, // Inoreader ID
 			&sub.Title,
 			&category,
@@ -217,6 +220,43 @@ func (r *PostgreSQLSubscriptionRepository) DeleteSubscription(ctx context.Contex
 	if rowsAffected == 0 {
 		return fmt.Errorf("subscription not found: %s", inoreaderID)
 	}
+
+	return nil
+}
+
+// CreateSubscription creates a single subscription record for auto-creation functionality
+func (r *PostgreSQLSubscriptionRepository) CreateSubscription(ctx context.Context, subscription *models.Subscription) error {
+	query := `
+		INSERT INTO inoreader_subscriptions (
+			id, inoreader_id, feed_url, title, category, synced_at, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (inoreader_id) DO UPDATE SET
+			feed_url = EXCLUDED.feed_url,
+			title = EXCLUDED.title,
+			category = EXCLUDED.category,
+			synced_at = EXCLUDED.synced_at`
+
+	_, err := r.db.ExecContext(ctx, query,
+		subscription.ID,
+		subscription.InoreaderID,
+		subscription.FeedURL,
+		subscription.Title,
+		subscription.Category,
+		subscription.SyncedAt,
+		subscription.CreatedAt,
+	)
+
+	if err != nil {
+		r.logger.Error("Failed to create subscription",
+			"inoreader_id", subscription.InoreaderID,
+			"error", err)
+		return fmt.Errorf("failed to create subscription: %w", err)
+	}
+
+	r.logger.Info("Successfully created subscription",
+		"inoreader_id", subscription.InoreaderID,
+		"title", subscription.Title,
+		"feed_url", subscription.FeedURL)
 
 	return nil
 }

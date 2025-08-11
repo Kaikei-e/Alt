@@ -38,11 +38,13 @@ func NewOAuth2Client(clientID, clientSecret, baseURL string) *OAuth2Client {
 		clientSecret: clientSecret,
 		baseURL:      baseURL,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 60 * time.Second, // 30秒から60秒に増加
 			Transport: &http.Transport{
-				MaxIdleConns:        10,
-				MaxIdleConnsPerHost: 2,
-				IdleConnTimeout:     30 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ResponseHeaderTimeout: 30 * time.Second,
+				IdleConnTimeout:       90 * time.Second, // キー修正: 30秒から90秒に増加
+				MaxIdleConns:          10,
+				MaxIdleConnsPerHost:   2,
 			},
 		},
 	}
@@ -210,6 +212,11 @@ func (c *OAuth2Client) handleRateLimitHeaders(headers map[string]string) (usage,
 // SetHTTPClient allows injecting a custom HTTP client (useful for testing with proxies)
 func (c *OAuth2Client) SetHTTPClient(client *http.Client) {
 	c.httpClient = client
+}
+
+// SetTimeout sets the HTTP client timeout for testing purposes
+func (c *OAuth2Client) SetTimeout(timeout time.Duration) {
+	c.httpClient.Timeout = timeout
 }
 
 // MakeAuthenticatedRequestWithHeaders makes an authenticated API request and returns response with headers

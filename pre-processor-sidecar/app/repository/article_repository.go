@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"pre-processor-sidecar/models"
@@ -62,67 +63,111 @@ func (r *PostgreSQLArticleRepository) Create(ctx context.Context, article *model
 	return nil
 }
 
-// CreateBatch creates multiple articles in a single transaction
+// CreateBatch creates multiple articles using individual transactions for resilience
 func (r *PostgreSQLArticleRepository) CreateBatch(ctx context.Context, articles []*models.Article) (int, error) {
 	if len(articles) == 0 {
 		return 0, nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	query := `
-		INSERT INTO inoreader_articles (
-			id, inoreader_id, subscription_id, article_url, title, author,
-			published_at, fetched_at, processed
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		ON CONFLICT (inoreader_id) DO NOTHING`
-
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return 0, fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
+	r.logger.Info("Starting resilient batch article creation",
+		"total_articles", len(articles))
 
 	created := 0
-	for _, article := range articles {
-		result, err := stmt.ExecContext(ctx,
-			article.ID,
-			article.InoreaderID,
-			article.SubscriptionID,
-			article.ArticleURL,
-			article.Title,
-			article.Author,
-			article.PublishedAt,
-			article.FetchedAt,
-			article.Processed,
-		)
-		if err != nil {
-			r.logger.Warn("Failed to insert article in batch",
+	failed := 0
+	var lastError error
+
+	// Process each article in its own transaction to avoid cascade failures
+	for i, article := range articles {
+		if err := r.createArticleWithValidation(ctx, article); err != nil {
+			// Check if it's a duplicate (expected and acceptable)
+			if r.isDuplicateError(err) {
+				r.logger.Debug("Article already exists, skipping",
+					"inoreader_id", article.InoreaderID,
+					"title", article.Title)
+				continue
+			}
+
+			// Check if it's a foreign key violation (subscription missing)
+			if r.isForeignKeyError(err) {
+				r.logger.Error("Foreign key violation - subscription missing",
+					"inoreader_id", article.InoreaderID,
+					"subscription_id", article.SubscriptionID,
+					"error", err)
+				failed++
+				lastError = err
+				continue
+			}
+
+			// Other errors
+			r.logger.Error("Failed to create article",
 				"inoreader_id", article.InoreaderID,
+				"article_index", i+1,
 				"error", err)
+			failed++
+			lastError = err
 			continue
 		}
 
-		rowsAffected, _ := result.RowsAffected()
-		if rowsAffected > 0 {
-			created++
-		}
+		created++
+		r.logger.Debug("Article created successfully",
+			"inoreader_id", article.InoreaderID,
+			"subscription_id", article.SubscriptionID,
+			"progress", fmt.Sprintf("%d/%d", i+1, len(articles)))
 	}
 
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	r.logger.Info("Batch article creation completed",
+	r.logger.Info("Resilient batch article creation completed",
 		"total_articles", len(articles),
 		"created", created,
-		"skipped", len(articles)-created)
+		"failed", failed,
+		"success_rate", fmt.Sprintf("%.1f%%", float64(created)/float64(len(articles))*100))
+
+	// If all articles failed, return the last error for debugging
+	if created == 0 && failed > 0 && lastError != nil {
+		return 0, fmt.Errorf("all articles failed to create, last error: %w", lastError)
+	}
 
 	return created, nil
+}
+
+// createArticleWithValidation creates a single article with pre-validation
+func (r *PostgreSQLArticleRepository) createArticleWithValidation(ctx context.Context, article *models.Article) error {
+	// Pre-validation: Check for nil UUID (invalid subscription)
+	if article.SubscriptionID == uuid.Nil {
+		return fmt.Errorf("invalid subscription ID: nil UUID for inoreader_id %s", article.InoreaderID)
+	}
+
+	// Validate required fields
+	if article.InoreaderID == "" {
+		return fmt.Errorf("invalid article: empty inoreader_id")
+	}
+	if article.ArticleURL == "" {
+		return fmt.Errorf("invalid article: empty article_url for inoreader_id %s", article.InoreaderID)
+	}
+
+	// Create article using existing Create method (with its own transaction)
+	return r.Create(ctx, article)
+}
+
+// isDuplicateError checks if error is due to duplicate inoreader_id
+func (r *PostgreSQLArticleRepository) isDuplicateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := fmt.Sprintf("%v", err)
+	// Check for PostgreSQL unique constraint violation (error code 23505)
+	return strings.Contains(errStr, "duplicate key value violates unique constraint") ||
+		strings.Contains(errStr, "inoreader_articles_inoreader_id_key")
+}
+
+// isForeignKeyError checks if error is due to foreign key constraint violation  
+func (r *PostgreSQLArticleRepository) isForeignKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := fmt.Sprintf("%v", err)
+	// Check for PostgreSQL foreign key constraint violation (error code 23503)
+	return strings.Contains(errStr, "violates foreign key constraint") ||
+		strings.Contains(errStr, "inoreader_articles_subscription_id_fkey")
 }
 
 // FindByInoreaderID finds an article by its Inoreader ID

@@ -365,12 +365,8 @@ func TestArticleFetchService_FetchArticles(t *testing.T) {
 
 			// Create Inoreader service using client wrapper over OAuth2Driver mock
 			inoreaderClient := NewInoreaderClient(mockOAuth2Client, nil)
-			inoreaderService := NewInoreaderService(inoreaderClient, nil, nil)
-			inoreaderService.SetCurrentToken(&models.OAuth2Token{
-				AccessToken: "valid_token",
-				TokenType:   "Bearer",
-				ExpiresAt:   time.Now().Add(30 * time.Minute),
-			})
+			inoreaderService := NewInoreaderService(inoreaderClient, nil, nil, nil)
+			// Token management is now handled by SimpleTokenService
 
 			// Set rate limit to allow requests
 			inoreaderService.rateLimitInfo = &models.APIRateLimitInfo{
