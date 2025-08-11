@@ -21,6 +21,11 @@ data:
               "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
               stat_prefix: rss_outbound_proxy
 
+              # TDD Phase 2 - GREEN: RSS Outbound Timeout Configuration
+              stream_idle_timeout: 600s       # 10分のストリームアイドルタイムアウト
+              request_timeout: 120s           # 2分のリクエストタイムアウト
+              request_headers_timeout: 30s    # ヘッダー受信タイムアウト
+
               access_log:
               - name: envoy.access_loggers.stdout
                 typed_config:
@@ -135,6 +140,11 @@ data:
                         "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%"
                         upstream="%UPSTREAM_HOST%"
               
+              # TDD Phase 2 - GREEN: Timeout Configuration for Inoreader API
+              stream_idle_timeout: 600s       # 10分のストリームアイドルタイムアウト
+              request_timeout: 120s           # 2分のリクエストタイムアウト
+              request_headers_timeout: 30s    # ヘッダー受信タイムアウト
+
               http_filters:
               # RBAC filter for Inoreader domain authorization (pre-processor-sidecar)
               - name: envoy.filters.http.rbac

@@ -49,9 +49,9 @@ env:
   MAX_ARTICLES_PER_REQUEST: "100"
   API_DAILY_LIMIT: "100"  # Zone 1 limit
   
-  # Proxy configuration (CRITICAL: Envoy egress only)
+  # Proxy configuration (CRITICAL: Envoy egress only)  
   HTTPS_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
-  NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local,*.alt-processing.svc.cluster.local,*.alt-apps.svc.cluster.local,*.alt-database.svc.cluster.local"
+  NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local,*.alt-processing.svc.cluster.local,*.alt-apps.svc.cluster.local,*.alt-database.svc.cluster.local,www.inoreader.com"
 
 # Secret configuration (OAuth2 credentials)
 secret:
@@ -65,6 +65,7 @@ envFromSecret:
   keys:
     - INOREADER_CLIENT_ID
     - INOREADER_CLIENT_SECRET
+    - INOREADER_ACCESS_TOKEN
     - INOREADER_REFRESH_TOKEN
     - PRE_PROCESSOR_SIDECAR_DB_PASSWORD
 
