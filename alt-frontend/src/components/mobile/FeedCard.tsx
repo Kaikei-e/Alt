@@ -91,7 +91,7 @@ const FeedCard = function FeedCard({
               flexShrink={0}
               data-testid={`feed-link-icon-${feed.id}`}
             >
-              <SquareArrowOutUpRight color="var(--alt-primary)" size={24} />
+              <SquareArrowOutUpRight color="var(--alt-primary)" size={16} />
             </Box>
             <Link
               href={feed.link}
