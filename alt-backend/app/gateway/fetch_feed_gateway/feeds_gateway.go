@@ -138,16 +138,12 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 	if g.alt_db == nil {
 		return nil, errors.New("database connection not available")
 	}
-	// Try to fetch unread feeds first, fallback to all feeds if read_status table has issues
+	
+	// TDD Fix: No dangerous fallback! Only fetch unread feeds
 	feeds, err := g.alt_db.FetchUnreadFeedsListPage(ctx, page)
 	if err != nil {
-		logger.SafeWarn("Error fetching unread feeds, falling back to all feeds", "error", err)
-		// Fallback to regular paginated feeds if read_status table has issues
-		feeds, err = g.alt_db.FetchFeedsListPage(ctx, page)
-		if err != nil {
-			logger.SafeError("Error fetching feeds list page", "error", err)
-			return nil, errors.New("error fetching feeds list page")
-		}
+		logger.SafeError("Error fetching unread feeds", "error", err)
+		return nil, errors.New("error fetching unread feeds list page")
 	}
 
 	var feedItems []*domain.FeedItem
@@ -172,6 +168,30 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 	if err != nil {
 		logger.SafeError("Error fetching feeds with cursor", "error", err)
 		return nil, errors.New("error fetching feeds with cursor")
+	}
+
+	var feedItems []*domain.FeedItem
+	for _, feed := range feeds {
+		feedItems = append(feedItems, &domain.FeedItem{
+			Title:       feed.Title,
+			Description: feed.Description,
+			Link:        feed.Link,
+			Published:   feed.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	return feedItems, nil
+}
+
+func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	if g.alt_db == nil {
+		return nil, errors.New("database connection not available")
+	}
+
+	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit)
+	if err != nil {
+		logger.SafeError("Error fetching unread feeds with cursor", "error", err)
+		return nil, errors.New("error fetching unread feeds with cursor")
 	}
 
 	var feedItems []*domain.FeedItem

@@ -49,6 +49,7 @@ type ApplicationComponents struct {
 	FetchSingleFeedUsecase              *fetch_feed_usecase.FetchSingleFeedUsecase
 	FetchFeedsListUsecase               *fetch_feed_usecase.FetchFeedsListUsecase
 	FetchFeedsListCursorUsecase         *fetch_feed_usecase.FetchFeedsListCursorUsecase
+	FetchUnreadFeedsListCursorUsecase   *fetch_feed_usecase.FetchUnreadFeedsListCursorUsecase
 	FetchReadFeedsListCursorUsecase     *fetch_feed_usecase.FetchReadFeedsListCursorUsecase
 	FetchFavoriteFeedsListCursorUsecase *fetch_feed_usecase.FetchFavoriteFeedsListCursorUsecase
 	RegisterFeedsUsecase                *register_feed_usecase.RegisterFeedsUsecase
@@ -89,6 +90,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchSingleFeedUsecase := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGatewayImpl)
 	fetchFeedsListUsecase := fetch_feed_usecase.NewFetchFeedsListUsecase(fetchFeedsListGatewayImpl)
 	fetchFeedsListCursorUsecase := fetch_feed_usecase.NewFetchFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
+	fetchUnreadFeedsListCursorUsecase := fetch_feed_usecase.NewFetchUnreadFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 	fetchReadFeedsListCursorUsecase := fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 	fetchFavoriteFeedsListCursorUsecase := fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 
@@ -147,6 +149,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchSingleFeedUsecase:              fetchSingleFeedUsecase,
 		FetchFeedsListUsecase:               fetchFeedsListUsecase,
 		FetchFeedsListCursorUsecase:         fetchFeedsListCursorUsecase,
+		FetchUnreadFeedsListCursorUsecase:   fetchUnreadFeedsListCursorUsecase,
 		FetchReadFeedsListCursorUsecase:     fetchReadFeedsListCursorUsecase,
 		FetchFavoriteFeedsListCursorUsecase: fetchFavoriteFeedsListCursorUsecase,
 		RegisterFeedsUsecase:                registerFeedsUsecase,

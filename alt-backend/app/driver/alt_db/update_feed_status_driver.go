@@ -1,6 +1,7 @@
 package alt_db
 
 import (
+	"alt/utils"
 	"alt/utils/logger"
 	"context"
 	"net/url"
@@ -32,14 +33,14 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 		}
 	}()
 
-	// Upsert read status for the feed
+	// Upsert read status for the feed with dummy user ID
 	updateFeedStatusQuery := `
-                INSERT INTO read_status (feed_id, is_read, read_at, created_at)
-                VALUES ($1, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ON CONFLICT (feed_id) DO UPDATE
-                SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
+                INSERT INTO read_status (feed_id, user_id, is_read, updated_at, created_at)
+                VALUES ($1, $2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (feed_id, user_id) DO UPDATE
+                SET is_read = TRUE, updated_at = CURRENT_TIMESTAMP
         `
-	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID); err != nil {
+	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID, utils.DUMMY_USER_ID); err != nil {
 		logger.SafeError("Error updating feed status", "error", err, "feedID", feedID)
 		return err
 	}

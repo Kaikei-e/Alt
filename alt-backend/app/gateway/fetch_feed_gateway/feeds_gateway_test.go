@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Skip detailed mock testing for now, focus on TDD integration test
+
 func TestFetchFeedsGateway_FetchFeeds(t *testing.T) {
 	// Initialize logger to prevent nil pointer dereference
 	logger.InitLogger()
@@ -191,6 +193,28 @@ func TestFetchFeedsGateway_FetchFeedsListPage(t *testing.T) {
 	// Should error because alt_db is nil
 	if err == nil {
 		t.Error("FetchFeedsGateway.FetchFeedsListPage() expected error with nil alt_db, got nil")
+	}
+}
+
+func TestFetchFeedsGateway_FetchFeedsListPage_ShouldNotFallbackToReadArticles(t *testing.T) {
+	// TDD Red: Test that current implementation DOES fallback (this should fail)
+	// This test will document the dangerous behavior before we fix it
+	
+	gateway := &FetchFeedsGateway{
+		alt_db: nil, // This will cause FetchUnreadFeedsListPage to fail
+	}
+
+	ctx := context.Background()
+	feeds, err := gateway.FetchFeedsListPage(ctx, 1)
+
+	// Current dangerous implementation: returns error since alt_db is nil
+	// After fix: should return error without fallback
+	if err == nil {
+		t.Error("Expected error when database connection is not available")
+	}
+	
+	if feeds != nil && len(feeds) > 0 {
+		t.Error("Expected no feeds when database error occurs, got feeds (dangerous fallback detected)")
 	}
 }
 

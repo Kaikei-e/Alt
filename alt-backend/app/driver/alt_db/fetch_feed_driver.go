@@ -2,6 +2,7 @@ package alt_db
 
 import (
 	"alt/driver/models"
+	"alt/utils"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -115,13 +116,14 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 			SELECT 1
 			FROM read_status rs
 			WHERE rs.feed_id = f.id
+			AND rs.user_id = $3
 			AND rs.is_read = TRUE
 		)
 		ORDER BY f.created_at DESC
 		LIMIT $1 OFFSET $2
 	`
 
-	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page)
+	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page, utils.DUMMY_USER_ID)
 	if err != nil {
 		logger.Logger.Error("error fetching unread feeds list page", "error", err)
 		return nil, errors.New("error fetching feeds list page")
@@ -157,12 +159,13 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				SELECT 1
 				FROM read_status rs
 				WHERE rs.feed_id = f.id
+				AND rs.user_id = $2
 				AND rs.is_read = TRUE
 			)
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
 		`
-		args = []interface{}{limit}
+		args = []interface{}{limit, utils.DUMMY_USER_ID}
 	} else {
 		// Subsequent pages - use cursor
 		query = `
@@ -172,13 +175,14 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				SELECT 1
 				FROM read_status rs
 				WHERE rs.feed_id = f.id
+				AND rs.user_id = $3
 				AND rs.is_read = TRUE
 			)
 			AND f.created_at < $1
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
 		`
-		args = []interface{}{cursor, limit}
+		args = []interface{}{cursor, limit, utils.DUMMY_USER_ID}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -215,10 +219,11 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
+			AND rs.user_id = $2
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
 		`
-		args = []interface{}{limit}
+		args = []interface{}{limit, utils.DUMMY_USER_ID}
 	} else {
 		// Subsequent pages: cursor-based pagination
 		query = `
@@ -226,11 +231,12 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
+			AND rs.user_id = $3
 			AND f.created_at < $1
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
 		`
-		args = []interface{}{cursor, limit}
+		args = []interface{}{cursor, limit, utils.DUMMY_USER_ID}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)

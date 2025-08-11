@@ -256,8 +256,8 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 			c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15 minutes for other pages
 		}
 
-		logger.Logger.Info("Fetching feeds with cursor", "cursor", cursor, "limit", limit)
-		feeds, err := container.FetchFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
+		logger.Logger.Info("Fetching unread feeds with cursor", "cursor", cursor, "limit", limit)
+		feeds, err := container.FetchUnreadFeedsListCursorUsecase.Execute(c.Request().Context(), cursor, limit)
 		if err != nil {
 			logger.Logger.Error("Error fetching feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feeds with cursor"})

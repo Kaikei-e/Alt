@@ -21,7 +21,7 @@ func (r *AltDBRepository) FetchFeedSummary(ctx context.Context, feedURL *url.URL
 	`
 
 	var summary domain.FeedSummary
-	err := r.pool.QueryRow(ctx, query, feedURL).Scan(&summary.Summary)
+	err := r.pool.QueryRow(ctx, query, feedURL.String()).Scan(&summary.Summary)
 	if err != nil {
 		return nil, err
 	}

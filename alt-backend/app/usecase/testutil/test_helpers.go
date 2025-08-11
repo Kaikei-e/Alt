@@ -2,8 +2,10 @@ package testutil
 
 import (
 	"alt/domain"
+	"alt/driver/models"
 	"context"
 	"errors"
+	"time"
 )
 
 // Common test data generators
@@ -79,4 +81,28 @@ func CommonSuccessTestCases() []TestCase {
 			WantErr: false,
 		},
 	}
+}
+
+// Models.Feed test data generators
+func CreateMockFeeds(count int) []*models.Feed {
+	now := time.Now()
+	feeds := make([]*models.Feed, count)
+	
+	for i := 0; i < count; i++ {
+		feeds[i] = &models.Feed{
+			ID:          "test-feed-id-" + string(rune('0'+i)),
+			Title:       "Test Feed " + string(rune('0'+i+1)),
+			Description: "Test Description " + string(rune('0'+i+1)),
+			Link:        "https://test.com/feed" + string(rune('0'+i+1)),
+			PubDate:     now,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+	}
+	
+	return feeds
+}
+
+func CreateEmptyFeeds() []*models.Feed {
+	return []*models.Feed{}
 }
