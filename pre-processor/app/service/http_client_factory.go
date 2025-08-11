@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"pre-processor/config"
@@ -94,7 +95,11 @@ func (f *HTTPClientFactory) CreateHealthCheckClient() HTTPClient {
 // createDirectClient creates standard direct HTTP client
 func (f *HTTPClientFactory) createDirectClient() HTTPClient {
 	clientManager := utils.NewHTTPClientManager()
-	return &HTTPClientWrapper{clientManager.GetFeedClient()}
+	return &HTTPClientWrapper{
+		Client:    clientManager.GetFeedClient(),
+		UserAgent: "", // Use config default
+		Config:    &f.config.HTTP,
+	}
 }
 
 // createOptimizedDirectClient creates optimized direct HTTP client for article fetching
@@ -112,10 +117,15 @@ func (f *HTTPClientFactory) createOptimizedDirectClient() HTTPClient {
 		Timeout:   f.config.HTTP.Timeout,
 	}
 
+	// Initialize User-Agent rotator
+	userAgentRotator := config.NewUserAgentRotator(&f.config.HTTP)
+
 	return &OptimizedHTTPClientWrapper{
-		Client:    client,
-		UserAgent: f.config.HTTP.UserAgent,
-		Logger:    f.logger,
+		Client:           client,
+		UserAgent:        f.config.HTTP.UserAgent,
+		Logger:           f.logger,
+		Config:           &f.config.HTTP,
+		UserAgentRotator: userAgentRotator,
 	}
 }
 
@@ -130,27 +140,41 @@ func (f *HTTPClientFactory) createHealthCheckClient() HTTPClient {
 		},
 	}
 
+	// Initialize User-Agent rotator
+	userAgentRotator := config.NewUserAgentRotator(&f.config.HTTP)
+
 	return &OptimizedHTTPClientWrapper{
-		Client:    client,
-		UserAgent: f.config.HTTP.UserAgent,
-		Logger:    f.logger,
+		Client:           client,
+		UserAgent:        f.config.HTTP.UserAgent,
+		Logger:           f.logger,
+		Config:           &f.config.HTTP,
+		UserAgentRotator: userAgentRotator,
 	}
 }
 
 // OptimizedHTTPClientWrapper implements HTTPClient with enhanced logging and error handling
 type OptimizedHTTPClientWrapper struct {
-	Client    *http.Client
-	UserAgent string
-	Logger    *slog.Logger
+	Client           *http.Client
+	UserAgent        string
+	Logger           *slog.Logger
+	Config           *config.HTTPConfig
+	UserAgentRotator *config.UserAgentRotator
 }
 
 // Get implements HTTPClient.Get with enhanced logging
 func (w *OptimizedHTTPClientWrapper) Get(url string) (*http.Response, error) {
 	start := time.Now()
 
+	// Get User-Agent (rotated if available, otherwise use default)
+	userAgent := w.UserAgent
+	if w.UserAgentRotator != nil {
+		userAgent = w.UserAgentRotator.GetUserAgent()
+	}
+
 	w.Logger.Debug("OptimizedHTTPClient: starting direct request", 
 		"url", url,
-		"user_agent", w.UserAgent)
+		"user_agent", userAgent,
+		"rotation_enabled", w.UserAgentRotator != nil)
 
 	// Get global metrics instance for tracking
 	metrics := GetGlobalProxyMetrics(w.Logger)
@@ -164,30 +188,80 @@ func (w *OptimizedHTTPClientWrapper) Get(url string) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set User-Agent
-	req.Header.Set("User-Agent", w.UserAgent)
+	// Set headers (including rotated User-Agent)
+	if w.Config != nil && w.Config.EnableBrowserHeaders {
+		headers := w.Config.GetBrowserHeaders(userAgent)
+		for key, value := range headers {
+			req.Header.Set(key, value)
+		}
+	} else {
+		req.Header.Set("User-Agent", userAgent)
+	}
 
 	resp, err := w.Client.Do(req)
 	duration := time.Since(start)
 
 	if err != nil {
+		// Determine error type for domain-specific tracking
+		var errorType ProxyErrorType
+		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
+			errorType = ProxyErrorTimeout
+		} else if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "connection reset") {
+			errorType = ProxyErrorConnection
+		} else {
+			errorType = ProxyErrorConnection // Default to connection error
+		}
+		
 		w.Logger.Error("OptimizedHTTPClient: request failed", 
 			"url", url,
 			"duration_ms", duration.Milliseconds(),
 			"error", err)
+		
+		// Record both general and domain-specific metrics
 		metrics.RecordDirectRequest(duration, false)
+		metrics.RecordDomainRequest(url, duration, false, errorType)
+		
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
 
-	// Record successful request
+	// Check for HTTP errors if skip error responses is enabled
+	if w.Config != nil && w.Config.SkipErrorResponses && resp.StatusCode >= 400 {
+		w.Logger.Error("OptimizedHTTPClient: HTTP error response detected", 
+			"url", url,
+			"status_code", resp.StatusCode,
+			"duration_ms", duration.Milliseconds())
+		
+		// Record as failed request (both general and domain-specific)
+		metrics.RecordDirectRequest(duration, false)
+		
+		// Record domain-specific metrics with bot detection logic
+		errorType := ProxyErrorConnection // Default to connection error for HTTP errors
+		if resp.StatusCode == 403 || resp.StatusCode == 429 {
+			errorType = ProxyErrorConnection // Bot detection typically shows as connection issues
+		}
+		metrics.RecordDomainRequest(url, duration, false, errorType)
+		
+		// Close response body to prevent resource leak
+		resp.Body.Close()
+		
+		// Return error instead of the response to prevent saving error content
+		return nil, fmt.Errorf("HTTP error response: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+
+	// Record successful request (both general and domain-specific)
 	success := resp.StatusCode >= 200 && resp.StatusCode < 400
 	metrics.RecordDirectRequest(duration, success)
+	
+	if success {
+		metrics.RecordDomainRequest(url, duration, true, ProxyErrorConfig) // No error type for success
+	}
 
 	w.Logger.Debug("OptimizedHTTPClient: request completed", 
 		"url", url,
 		"status_code", resp.StatusCode,
 		"duration_ms", duration.Milliseconds(),
-		"content_length", resp.ContentLength)
+		"content_length", resp.ContentLength,
+		"user_agent", userAgent)
 
 	return resp, nil
 }

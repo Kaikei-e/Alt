@@ -5,8 +5,10 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,7 +37,23 @@ type HTTPConfig struct {
 	IdleConnTimeout       time.Duration `json:"idle_conn_timeout" env:"HTTP_IDLE_CONN_TIMEOUT" default:"90s"`
 	TLSHandshakeTimeout   time.Duration `json:"tls_handshake_timeout" env:"HTTP_TLS_HANDSHAKE_TIMEOUT" default:"10s"`
 	ExpectContinueTimeout time.Duration `json:"expect_continue_timeout" env:"HTTP_EXPECT_CONTINUE_TIMEOUT" default:"1s"`
-	UserAgent             string        `json:"user_agent" env:"HTTP_USER_AGENT" default:"pre-processor/1.0 (+https://alt.example.com/bot)"`
+	UserAgent             string        `json:"user_agent" env:"HTTP_USER_AGENT" default:"Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)"`
+	// User-Agent rotation configuration
+	UserAgentRotation     bool          `json:"user_agent_rotation" env:"HTTP_USER_AGENT_ROTATION" default:"true"`
+	UserAgents            []string      `json:"user_agents" env:"HTTP_USER_AGENTS"`
+	// Request headers configuration  
+	EnableBrowserHeaders  bool          `json:"enable_browser_headers" env:"HTTP_ENABLE_BROWSER_HEADERS" default:"true"`
+	// HTTP error handling configuration
+	SkipErrorResponses    bool          `json:"skip_error_responses" env:"HTTP_SKIP_ERROR_RESPONSES" default:"true"`
+	MinContentLength      int           `json:"min_content_length" env:"HTTP_MIN_CONTENT_LENGTH" default:"500"`
+	// Redirect handling configuration
+	MaxRedirects          int           `json:"max_redirects" env:"HTTP_MAX_REDIRECTS" default:"5"`
+	FollowRedirects       bool          `json:"follow_redirects" env:"HTTP_FOLLOW_REDIRECTS" default:"true"`
+	// Envoy Proxy Configuration
+	UseEnvoyProxy         bool          `json:"use_envoy_proxy" env:"USE_ENVOY_PROXY" default:"false"`
+	EnvoyProxyURL         string        `json:"envoy_proxy_url" env:"ENVOY_PROXY_URL" default:"http://envoy-proxy.alt-apps.svc.cluster.local:8080"`
+	EnvoyProxyPath        string        `json:"envoy_proxy_path" env:"ENVOY_PROXY_PATH" default:"/proxy/https://"`
+	EnvoyTimeout          time.Duration `json:"envoy_timeout" env:"ENVOY_TIMEOUT" default:"300s"`
 }
 
 type RetryConfig struct {
@@ -199,7 +217,123 @@ func loadFromEnv(config *Config) error {
 	if agent := os.Getenv("HTTP_USER_AGENT"); agent != "" {
 		config.HTTP.UserAgent = agent
 	} else {
-		config.HTTP.UserAgent = "pre-processor/1.0 (+https://alt.example.com/bot)"
+		config.HTTP.UserAgent = "Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)"
+	}
+
+	// User-Agent rotation config
+	if rotation := os.Getenv("HTTP_USER_AGENT_ROTATION"); rotation != "" {
+		if r, err := strconv.ParseBool(rotation); err == nil {
+			config.HTTP.UserAgentRotation = r
+		} else {
+			return fmt.Errorf("invalid HTTP_USER_AGENT_ROTATION: %s", rotation)
+		}
+	} else {
+		config.HTTP.UserAgentRotation = true
+	}
+
+	// User-Agents list from environment (comma-separated)
+	if agents := os.Getenv("HTTP_USER_AGENTS"); agents != "" {
+		config.HTTP.UserAgents = strings.Split(agents, ",")
+		// Trim whitespace from each agent string
+		for i, agent := range config.HTTP.UserAgents {
+			config.HTTP.UserAgents[i] = strings.TrimSpace(agent)
+		}
+	} else {
+		// Default User-Agent list for rotation
+		config.HTTP.UserAgents = []string{
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
+			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0",
+			"Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)",
+		}
+	}
+
+	// Browser headers config
+	if browserHeaders := os.Getenv("HTTP_ENABLE_BROWSER_HEADERS"); browserHeaders != "" {
+		if b, err := strconv.ParseBool(browserHeaders); err == nil {
+			config.HTTP.EnableBrowserHeaders = b
+		} else {
+			return fmt.Errorf("invalid HTTP_ENABLE_BROWSER_HEADERS: %s", browserHeaders)
+		}
+	} else {
+		config.HTTP.EnableBrowserHeaders = true
+	}
+
+	// Error response handling config
+	if skipErrors := os.Getenv("HTTP_SKIP_ERROR_RESPONSES"); skipErrors != "" {
+		if s, err := strconv.ParseBool(skipErrors); err == nil {
+			config.HTTP.SkipErrorResponses = s
+		} else {
+			return fmt.Errorf("invalid HTTP_SKIP_ERROR_RESPONSES: %s", skipErrors)
+		}
+	} else {
+		config.HTTP.SkipErrorResponses = true
+	}
+
+	if minLength := os.Getenv("HTTP_MIN_CONTENT_LENGTH"); minLength != "" {
+		if m, err := strconv.Atoi(minLength); err == nil {
+			config.HTTP.MinContentLength = m
+		} else {
+			return fmt.Errorf("invalid HTTP_MIN_CONTENT_LENGTH: %s", minLength)
+		}
+	} else {
+		config.HTTP.MinContentLength = 500
+	}
+
+	// Redirect handling config
+	if maxRedirects := os.Getenv("HTTP_MAX_REDIRECTS"); maxRedirects != "" {
+		if m, err := strconv.Atoi(maxRedirects); err == nil {
+			config.HTTP.MaxRedirects = m
+		} else {
+			return fmt.Errorf("invalid HTTP_MAX_REDIRECTS: %s", maxRedirects)
+		}
+	} else {
+		config.HTTP.MaxRedirects = 5
+	}
+
+	if followRedirects := os.Getenv("HTTP_FOLLOW_REDIRECTS"); followRedirects != "" {
+		if f, err := strconv.ParseBool(followRedirects); err == nil {
+			config.HTTP.FollowRedirects = f
+		} else {
+			return fmt.Errorf("invalid HTTP_FOLLOW_REDIRECTS: %s", followRedirects)
+		}
+	} else {
+		config.HTTP.FollowRedirects = true
+	}
+
+	// Envoy Proxy config
+	if useProxy := os.Getenv("USE_ENVOY_PROXY"); useProxy != "" {
+		if use, err := strconv.ParseBool(useProxy); err == nil {
+			config.HTTP.UseEnvoyProxy = use
+		} else {
+			return fmt.Errorf("invalid USE_ENVOY_PROXY: %s", useProxy)
+		}
+	} else {
+		config.HTTP.UseEnvoyProxy = false
+	}
+
+	if proxyURL := os.Getenv("ENVOY_PROXY_URL"); proxyURL != "" {
+		config.HTTP.EnvoyProxyURL = proxyURL
+	} else {
+		config.HTTP.EnvoyProxyURL = "http://envoy-proxy.alt-apps.svc.cluster.local:8080"
+	}
+
+	if proxyPath := os.Getenv("ENVOY_PROXY_PATH"); proxyPath != "" {
+		config.HTTP.EnvoyProxyPath = proxyPath
+	} else {
+		config.HTTP.EnvoyProxyPath = "/proxy/https://"
+	}
+
+	if timeout := os.Getenv("ENVOY_TIMEOUT"); timeout != "" {
+		if t, err := time.ParseDuration(timeout); err == nil {
+			config.HTTP.EnvoyTimeout = t
+		} else {
+			return fmt.Errorf("invalid ENVOY_TIMEOUT: %s", timeout)
+		}
+	} else {
+		config.HTTP.EnvoyTimeout = 300 * time.Second
 	}
 
 	// Retry config
@@ -413,6 +547,39 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("news creator timeout must be positive: %v", config.NewsCreator.Timeout)
 	}
 
+	// HTTP configuration validation
+	if config.HTTP.MinContentLength < 0 {
+		return fmt.Errorf("min content length must be non-negative: %d", config.HTTP.MinContentLength)
+	}
+
+	if config.HTTP.MaxRedirects < 0 {
+		return fmt.Errorf("max redirects must be non-negative: %d", config.HTTP.MaxRedirects)
+	}
+
+	if config.HTTP.UserAgentRotation && len(config.HTTP.UserAgents) == 0 {
+		return fmt.Errorf("user agent rotation enabled but no user agents configured")
+	}
+
+	// Validate User-Agent strings are not empty
+	for i, agent := range config.HTTP.UserAgents {
+		if strings.TrimSpace(agent) == "" {
+			return fmt.Errorf("user agent at index %d cannot be empty", i)
+		}
+	}
+
+	// Envoy Proxy validation
+	if config.HTTP.UseEnvoyProxy {
+		if config.HTTP.EnvoyProxyURL == "" {
+			return fmt.Errorf("envoy proxy URL cannot be empty when USE_ENVOY_PROXY is true")
+		}
+		if config.HTTP.EnvoyProxyPath == "" {
+			return fmt.Errorf("envoy proxy path cannot be empty when USE_ENVOY_PROXY is true")
+		}
+		if config.HTTP.EnvoyTimeout <= 0 {
+			return fmt.Errorf("envoy timeout must be positive: %v", config.HTTP.EnvoyTimeout)
+		}
+	}
+
 	return nil
 }
 
@@ -459,4 +626,80 @@ func (cm *ConfigManager) UpdateConfig(newConfig *Config) error {
 	}
 
 	return nil
+}
+
+// UserAgentRotator handles User-Agent rotation with thread safety
+type UserAgentRotator struct {
+	config *HTTPConfig
+	index  int
+	mu     sync.Mutex
+}
+
+// NewUserAgentRotator creates a new User-Agent rotator
+func NewUserAgentRotator(httpConfig *HTTPConfig) *UserAgentRotator {
+	return &UserAgentRotator{
+		config: httpConfig,
+		index:  0,
+	}
+}
+
+// GetUserAgent returns the current User-Agent or rotates if enabled
+func (uar *UserAgentRotator) GetUserAgent() string {
+	if !uar.config.UserAgentRotation || len(uar.config.UserAgents) == 0 {
+		return uar.config.UserAgent
+	}
+
+	uar.mu.Lock()
+	defer uar.mu.Unlock()
+
+	userAgent := uar.config.UserAgents[uar.index]
+	uar.index = (uar.index + 1) % len(uar.config.UserAgents)
+	
+	return userAgent
+}
+
+// GetRandomUserAgent returns a random User-Agent from the list
+func (uar *UserAgentRotator) GetRandomUserAgent() string {
+	if !uar.config.UserAgentRotation || len(uar.config.UserAgents) == 0 {
+		return uar.config.UserAgent
+	}
+
+	// Initialize random seed if not already done
+	rand.Seed(time.Now().UnixNano())
+	
+	uar.mu.Lock()
+	defer uar.mu.Unlock()
+	
+	index := rand.Intn(len(uar.config.UserAgents))
+	return uar.config.UserAgents[index]
+}
+
+// GetBrowserHeaders returns appropriate browser headers based on configuration
+func (config *HTTPConfig) GetBrowserHeaders(userAgent string) map[string]string {
+	if !config.EnableBrowserHeaders {
+		return map[string]string{
+			"User-Agent": userAgent,
+		}
+	}
+
+	headers := map[string]string{
+		"User-Agent":      userAgent,
+		"Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+		"Accept-Language": "en-US,en;q=0.9",
+		"Accept-Encoding": "gzip, deflate, br",
+		"DNT":             "1",
+		"Connection":      "keep-alive",
+		"Upgrade-Insecure-Requests": "1",
+	}
+
+	// Add browser-specific headers based on User-Agent
+	if strings.Contains(userAgent, "Chrome") {
+		headers["sec-ch-ua"] = `"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"`
+		headers["sec-ch-ua-mobile"] = "?0"
+		headers["sec-ch-ua-platform"] = `"Windows"`
+	} else if strings.Contains(userAgent, "Firefox") {
+		headers["Cache-Control"] = "max-age=0"
+	}
+
+	return headers
 }

@@ -19,9 +19,10 @@ import (
 
 // EnvoyHTTPClient implements HTTPClient interface for Envoy proxy routing
 type EnvoyHTTPClient struct {
-	config     *config.HTTPConfig
-	logger     *slog.Logger
-	httpClient *http.Client
+	config        *config.HTTPConfig
+	logger        *slog.Logger
+	httpClient    *http.Client
+	userAgentRotator *config.UserAgentRotator
 }
 
 // NewEnvoyHTTPClient creates a new Envoy-enabled HTTP client
@@ -51,12 +52,26 @@ func NewEnvoyHTTPClient(cfg *config.HTTPConfig, logger *slog.Logger) HTTPClient 
 			TLSHandshakeTimeout:   cfg.TLSHandshakeTimeout,
 			ExpectContinueTimeout: cfg.ExpectContinueTimeout,
 		},
+		// Configure redirect handling
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= cfg.MaxRedirects {
+				return fmt.Errorf("stopped after %d redirects", cfg.MaxRedirects)
+			}
+			if !cfg.FollowRedirects {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
 	}
 
+	// Initialize User-Agent rotator
+	userAgentRotator := config.NewUserAgentRotator(cfg)
+
 	return &EnvoyHTTPClient{
-		config:     cfg,
-		logger:     logger,
-		httpClient: httpClient,
+		config:           cfg,
+		logger:           logger,
+		httpClient:       httpClient,
+		userAgentRotator: userAgentRotator,
 	}
 }
 
@@ -137,15 +152,27 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set required headers for Envoy
+	// Get User-Agent (rotated or configured)
+	userAgent := c.userAgentRotator.GetUserAgent()
+	
+	// Get browser headers based on configuration
+	headers := c.config.GetBrowserHeaders(userAgent)
+	
+	// Set all browser headers
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	
+	// Set required Envoy proxy headers
 	req.Header.Set("X-Target-Domain", parsedURL.Hostname())
 	req.Header.Set("X-Resolved-IP", resolvedIP)
-	req.Header.Set("User-Agent", c.config.UserAgent)
 
 	c.logger.Debug("EnvoyHTTPClient: sending request", 
 		"proxy_url", proxyURL.String(),
 		"target_domain", parsedURL.Hostname(),
 		"resolved_ip", resolvedIP,
+		"user_agent", userAgent,
+		"browser_headers_enabled", c.config.EnableBrowserHeaders,
 		"headers", req.Header)
 
 	// Execute request
@@ -154,12 +181,16 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 
 	if err != nil {
 		// Categorize error type for metrics
+		var errorType ProxyErrorType
 		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
+			errorType = ProxyErrorTimeout
 			metrics.RecordError(ProxyErrorTimeout)
 		} else if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "connection reset") {
+			errorType = ProxyErrorConnection
 			metrics.RecordError(ProxyErrorConnection)
 		} else {
-			metrics.RecordError(ProxyErrorConnection) // Default to connection error
+			errorType = ProxyErrorConnection // Default to connection error
+			metrics.RecordError(ProxyErrorConnection)
 		}
 		
 		c.logger.Error("EnvoyHTTPClient: request failed", 
@@ -169,13 +200,47 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 			"dns_duration_ms", dnsResolutionTime.Milliseconds(),
 			"error", err)
 		
+		// Record both general and domain-specific metrics
 		metrics.RecordEnvoyRequest(duration, false, dnsResolutionTime)
+		metrics.RecordDomainRequest(targetURL, duration, false, errorType)
+		
 		return nil, fmt.Errorf("Envoy proxy request failed: %w", err)
 	}
 
-	// Record successful request
+	// Check for HTTP errors if skip error responses is enabled
+	if c.config.SkipErrorResponses && resp.StatusCode >= 400 {
+		c.logger.Error("EnvoyHTTPClient: HTTP error response detected", 
+			"target_url", targetURL,
+			"proxy_url", proxyURL.String(),
+			"status_code", resp.StatusCode,
+			"duration_ms", duration.Milliseconds(),
+			"dns_duration_ms", dnsResolutionTime.Milliseconds(),
+			"content_length", resp.ContentLength)
+		
+		// Record as failed request (both general and domain-specific)
+		metrics.RecordEnvoyRequest(duration, false, dnsResolutionTime)
+		
+		// Record domain-specific metrics with bot detection logic
+		errorType := ProxyErrorConnection // Default to connection error for HTTP errors
+		if resp.StatusCode == 403 || resp.StatusCode == 429 {
+			errorType = ProxyErrorConnection // Bot detection typically shows as connection issues
+		}
+		metrics.RecordDomainRequest(targetURL, duration, false, errorType)
+		
+		// Close response body to prevent resource leak
+		resp.Body.Close()
+		
+		// Return error instead of the response to prevent saving error content
+		return nil, fmt.Errorf("HTTP error response: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+
+	// Record successful request (both general and domain-specific)
 	success := resp.StatusCode >= 200 && resp.StatusCode < 400
 	metrics.RecordEnvoyRequest(duration, success, dnsResolutionTime)
+	
+	if success {
+		metrics.RecordDomainRequest(targetURL, duration, true, ProxyErrorConfig) // No error type for success
+	}
 
 	c.logger.Info("EnvoyHTTPClient: request completed", 
 		"target_url", targetURL,
@@ -183,7 +248,8 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 		"status_code", resp.StatusCode,
 		"duration_ms", duration.Milliseconds(),
 		"dns_duration_ms", dnsResolutionTime.Milliseconds(),
-		"content_length", resp.ContentLength)
+		"content_length", resp.ContentLength,
+		"user_agent", userAgent)
 
 	return resp, nil
 }

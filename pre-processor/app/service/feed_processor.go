@@ -58,8 +58,21 @@ func NewFeedProcessorService(
 	}
 }
 
-// ProcessFeeds processes a batch of feeds.
+// ProcessFeeds processes a batch of feeds - DISABLED FOR ETHICAL COMPLIANCE
 func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) (*ProcessingResult, error) {
+	// Feed processing temporarily disabled for ethical compliance
+	s.logger.Info("Feed processing temporarily disabled for ethical compliance")
+	
+	// Return empty result to maintain interface compatibility
+	return &ProcessingResult{
+		ProcessedCount: 0,
+		SuccessCount:   0,
+		ErrorCount:     0,
+		Errors:         []error{},
+		HasMore:        false,
+	}, nil
+
+	/*
 	// Add operation context and start timing
 	ctx = utilsLogger.WithOperation(ctx, "process_batch")
 	timer := s.performanceLogger.StartTimer(ctx, "process_batch")
@@ -182,6 +195,7 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 		"has_more", result.HasMore)
 
 	return result, nil
+	*/
 }
 
 // GetProcessingStats returns current processing statistics.

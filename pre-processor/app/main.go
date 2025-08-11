@@ -61,7 +61,7 @@ func main() {
 	feedProcessorService := service.NewFeedProcessorService(
 		feedRepo,
 		articleRepo,
-		service.NewArticleFetcherService(logger.Logger),
+		service.NewArticleFetcherServiceWithFactory(cfg, logger.Logger),
 		logger.Logger,
 	)
 
@@ -79,8 +79,8 @@ func main() {
 		logger.Logger,
 	)
 
-	healthCheckerService := service.NewHealthCheckerService(
-		cfg.NewsCreator.Host, // 設定から正しいURLを使用
+	healthCheckerService := service.NewHealthCheckerServiceWithFactory(
+		cfg, cfg.NewsCreator.Host, // 設定から正しいURLを使用
 		logger.Logger,
 	)
 
@@ -108,11 +108,15 @@ func main() {
 	// Start jobs
 	logger.Logger.Info("Starting background jobs")
 
-	// Start feed processing job
+	// Start feed processing job - DISABLED FOR ETHICAL COMPLIANCE
+	// Article collection temporarily suspended for ethical reasons
+	logger.Logger.Info("Feed processing job disabled for ethical compliance")
+	/*
 	if err := jobHandler.StartFeedProcessingJob(ctx); err != nil {
 		logger.Logger.Error("Failed to start feed processing job", "error", err)
 		panic(err)
 	}
+	*/
 
 	// Start summarization job
 	if err := jobHandler.StartSummarizationJob(ctx); err != nil {

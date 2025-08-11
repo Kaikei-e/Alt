@@ -165,7 +165,7 @@ func (h *jobHandler) runQualityCheckLoop() {
 	}
 }
 
-// processFeedsBatch processes a batch of feeds.
+// processFeedsBatch processes a batch of feeds - DISABLED FOR ETHICAL COMPLIANCE
 func (h *jobHandler) processFeedsBatch() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -173,6 +173,11 @@ func (h *jobHandler) processFeedsBatch() {
 		}
 	}()
 
+	// Feed processing temporarily disabled for ethical compliance
+	h.logger.Info("Feed processing temporarily disabled for ethical compliance")
+	return
+
+	/*
 	h.logger.Info("Starting feed processing batch", "batch_size", h.batchSize)
 
 	result, err := h.feedProcessor.ProcessFeeds(h.ctx, h.batchSize)
@@ -196,6 +201,7 @@ func (h *jobHandler) processFeedsBatch() {
 			h.logger.Error("failed to reset feed processor pagination", "error", err)
 		}
 	}
+	*/
 }
 
 // processSummarizationBatch processes a batch of articles for summarization.

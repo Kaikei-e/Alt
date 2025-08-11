@@ -7,12 +7,14 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"pre-processor/config"
 )
 
 // HealthCheckerService implementation.
 type healthCheckerService struct {
 	logger         *slog.Logger
-	client         *http.Client
+	client         HTTPClient
 	newsCreatorURL string
 }
 
@@ -21,9 +23,29 @@ func NewHealthCheckerService(newsCreatorURL string, logger *slog.Logger) HealthC
 	return &healthCheckerService{
 		logger:         logger,
 		newsCreatorURL: newsCreatorURL,
-		client: &http.Client{
-			Timeout: 30 * time.Second,
+		client: &HTTPClientWrapper{
+			Client: &http.Client{
+				Timeout: 30 * time.Second,
+			},
 		},
+	}
+}
+
+// NewHealthCheckerServiceWithFactory creates a new health checker service with HTTPClientFactory
+// This enables automatic Envoy proxy vs direct HTTP switching based on configuration
+func NewHealthCheckerServiceWithFactory(cfg *config.Config, newsCreatorURL string, logger *slog.Logger) HealthCheckerService {
+	factory := NewHTTPClientFactory(cfg, logger)
+	httpClient := factory.CreateHealthCheckClient()
+
+	logger.Info("HealthCheckerService: initialized with factory",
+		"envoy_enabled", cfg.HTTP.UseEnvoyProxy,
+		"proxy_url", cfg.HTTP.EnvoyProxyURL,
+		"news_creator_url", newsCreatorURL)
+
+	return &healthCheckerService{
+		logger:         logger,
+		client:         httpClient,
+		newsCreatorURL: newsCreatorURL,
 	}
 }
 
