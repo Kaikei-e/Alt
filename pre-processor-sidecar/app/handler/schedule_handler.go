@@ -10,6 +10,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"pre-processor-sidecar/service"
 )
 
 // ScheduleConfig represents scheduling configuration
@@ -123,7 +125,8 @@ type JobResult struct {
 // ScheduleHandler manages dual schedule processing for subscriptions and articles
 type ScheduleHandler struct {
 	config                 *ScheduleConfig
-	articleFetchHandler    *ArticleFetchHandler
+	articleFetchHandler    *ArticleFetchHandler   // Legacy handler for subscription sync
+	articleFetchService    *service.ArticleFetchService  // New service for rotation processing
 	status                 *ScheduleStatus
 	logger                 *slog.Logger
 	subscriptionTicker     *time.Ticker
@@ -137,19 +140,20 @@ type ScheduleHandler struct {
 	articleFetchScheduler  *RateLimitAwareScheduler
 }
 
-// NewScheduleHandler creates a new schedule handler
+// NewScheduleHandler creates a new schedule handler with rotation support
 func NewScheduleHandler(
 	articleFetchHandler *ArticleFetchHandler,
+	articleFetchService *service.ArticleFetchService,
 	logger *slog.Logger,
 ) *ScheduleHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	// Default configuration - extended intervals to avoid rate limiting
+	// Default configuration - now with 20-minute rotation intervals
 	config := &ScheduleConfig{
-		SubscriptionSyncInterval: 4 * time.Hour, // 4 hours as requested
-		ArticleFetchInterval:     1 * time.Hour, // Extended to 1 hour to avoid 403 rate limit errors
+		SubscriptionSyncInterval: 4 * time.Hour, // 4 hours for subscription sync
+		ArticleFetchInterval:     20 * time.Minute, // 20-minute rotation intervals
 		EnableSubscriptionSync:   true,
 		EnableArticleFetch:       true,
 		MaxConcurrentJobs:        2, // Allow subscription sync and article fetch to run concurrently
@@ -165,6 +169,7 @@ func NewScheduleHandler(
 	return &ScheduleHandler{
 		config:                config,
 		articleFetchHandler:   articleFetchHandler,
+		articleFetchService:   articleFetchService,
 		status:                status,
 		logger:                logger,
 		jobResultCallbacks:    make([]func(*JobResult), 0),
@@ -198,11 +203,18 @@ func (h *ScheduleHandler) Start(ctx context.Context) error {
 			"interval", h.config.SubscriptionSyncInterval)
 	}
 
-	// Start article fetch scheduler
+	// Start article fetch scheduler with rotation processing
 	if h.config.EnableArticleFetch {
+		// Enable rotation mode on ArticleFetchService
+		if err := h.articleFetchService.EnableRotationMode(ctx); err != nil {
+			h.logger.Error("Failed to enable rotation mode", "error", err)
+			return fmt.Errorf("failed to enable rotation mode: %w", err)
+		}
+		h.logger.Info("Article fetch rotation mode enabled")
+		
 		h.articleFetchTicker = time.NewTicker(h.config.ArticleFetchInterval)
 		go h.runArticleFetchScheduler()
-		h.logger.Info("Article fetch scheduler started",
+		h.logger.Info("Article fetch scheduler started with rotation processing",
 			"interval", h.config.ArticleFetchInterval)
 	}
 
@@ -357,7 +369,7 @@ func (h *ScheduleHandler) executeSubscriptionSync() {
 	h.notifyJobResult(result)
 }
 
-// executeArticleFetch executes article fetching
+// executeArticleFetch executes article fetching with rotation processing
 func (h *ScheduleHandler) executeArticleFetch() {
 	h.mu.Lock()
 	if h.status.ArticleFetchRunning {
@@ -375,18 +387,18 @@ func (h *ScheduleHandler) executeArticleFetch() {
 		StartTime: startTime,
 	}
 
-	h.logger.Info("Starting scheduled article fetching")
+	h.logger.Info("Starting scheduled article fetching with rotation processing")
 
-	ctx, cancel := context.WithTimeout(h.ctx, 30*time.Minute) // 30-minute timeout
+	ctx, cancel := context.WithTimeout(h.ctx, 10*time.Minute) // 10-minute timeout for single subscription
 	defer cancel()
 
-	batchResult, err := h.articleFetchHandler.ExecuteBatchArticleFetch(ctx)
+	// Use rotation processing instead of batch processing
+	err := h.processNextSubscriptionRotation(ctx, result)
 
 	endTime := time.Now()
 	result.EndTime = endTime
 	result.Duration = endTime.Sub(startTime)
 	result.Success = err == nil
-	result.Details = batchResult
 
 	h.mu.Lock()
 	h.status.ArticleFetchRunning = false
@@ -414,17 +426,86 @@ func (h *ScheduleHandler) executeArticleFetch() {
 		h.articleFetchScheduler.RecordSuccess()
 		h.status.NextArticleFetch = endTime.Add(h.config.ArticleFetchInterval)
 		
-		h.logger.Info("Scheduled article fetch completed successfully - backoff reset",
+		rotationStats := h.articleFetchService.GetRotationStats()
+		h.logger.Info("Scheduled article fetch completed successfully with rotation",
 			"duration", result.Duration,
-			"subscriptions_processed", batchResult.SubscriptionsProcessed,
-			"total_articles_fetched", batchResult.TotalArticlesFetched,
-			"total_articles_saved", batchResult.TotalArticlesSaved,
+			"processed_today", rotationStats.ProcessedToday,
+			"remaining_today", rotationStats.RemainingToday,
+			"total_subscriptions", rotationStats.TotalSubscriptions,
+			"next_processing", rotationStats.NextProcessingTime.Format("15:04:05"),
+			"estimated_completion", rotationStats.EstimatedCompletionTime.Format("15:04:05"),
 			"next_fetch", h.status.NextArticleFetch)
 	}
 	h.mu.Unlock()
 
 	// Notify callbacks
 	h.notifyJobResult(result)
+}
+
+// processNextSubscriptionRotation processes the next subscription in the rotation queue
+func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, result *JobResult) error {
+	// Check if rotation processing is ready
+	if !h.articleFetchService.IsRotationEnabled() {
+		h.logger.Warn("Rotation mode not enabled, attempting to enable")
+		if err := h.articleFetchService.EnableRotationMode(ctx); err != nil {
+			return fmt.Errorf("failed to enable rotation mode: %w", err)
+		}
+	}
+
+	// Get rotation statistics before processing
+	statsBefore := h.articleFetchService.GetRotationStats()
+	h.logger.Debug("Rotation stats before processing",
+		"processed_today", statsBefore.ProcessedToday,
+		"remaining_today", statsBefore.RemainingToday,
+		"total_subscriptions", statsBefore.TotalSubscriptions)
+
+	// Check if ready for next processing (20-minute interval check)
+	if statsBefore.TotalSubscriptions == 0 {
+		h.logger.Warn("No subscriptions loaded for rotation")
+		return fmt.Errorf("no subscriptions available for rotation")
+	}
+
+	if statsBefore.RemainingToday == 0 {
+		h.logger.Info("All subscriptions processed for today",
+			"processed_today", statsBefore.ProcessedToday,
+			"total_subscriptions", statsBefore.TotalSubscriptions,
+			"next_reset", statsBefore.EstimatedCompletionTime.Format("15:04:05"))
+		
+		// Create successful result even when all done for today
+		result.Details = map[string]interface{}{
+			"status": "all_subscriptions_completed_today",
+			"processed_today": statsBefore.ProcessedToday,
+			"total_subscriptions": statsBefore.TotalSubscriptions,
+		}
+		return nil
+	}
+
+	// Use ArticleFetchService's exposed rotation processing method
+	err := h.articleFetchService.ProcessNextSubscriptionRotation(ctx)
+	if err != nil {
+		h.logger.Error("Rotation processing failed", "error", err)
+		return fmt.Errorf("rotation processing failed: %w", err)
+	}
+
+	// Get rotation statistics after processing
+	statsAfter := h.articleFetchService.GetRotationStats()
+
+	// Update result with processing details
+	result.Details = map[string]interface{}{
+		"processed_today": statsAfter.ProcessedToday,
+		"remaining_today": statsAfter.RemainingToday,
+		"total_subscriptions": statsAfter.TotalSubscriptions,
+		"next_processing_time": statsAfter.NextProcessingTime.Format("15:04:05"),
+		"estimated_completion": statsAfter.EstimatedCompletionTime.Format("15:04:05"),
+		"current_index": statsAfter.CurrentIndex,
+	}
+
+	h.logger.Info("Rotation processing completed successfully",
+		"processed_today", statsAfter.ProcessedToday,
+		"remaining_today", statsAfter.RemainingToday,
+		"next_processing", statsAfter.NextProcessingTime.Format("15:04:05"))
+
+	return nil
 }
 
 // GetStatus returns current scheduling status

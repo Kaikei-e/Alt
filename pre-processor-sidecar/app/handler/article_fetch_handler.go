@@ -139,15 +139,8 @@ func (h *ArticleFetchHandler) ExecuteArticleFetch(ctx context.Context, streamID 
 	totalSaved := 0
 	rounds := 0
 
-	// EMERGENCY FIX: Limit pagination to 1 round only to prevent API overuse
-	maxSafeRounds := 1 // EMERGENCY: Reduced from 3 to 1 to prevent API overuse
-	if h.maxContinuationRounds > maxSafeRounds {
-		h.logger.Warn("EMERGENCY: Limiting pagination rounds for API safety",
-			"original_max", h.maxContinuationRounds,
-			"emergency_max", maxSafeRounds,
-			"reason", "API_OVERUSE_PREVENTION")
-		h.maxContinuationRounds = maxSafeRounds
-	}
+	// Pagination rounds limit (restored to reasonable value)
+	// Note: ScheduleHandler now uses ArticleFetchService with rotation, so this handler is only for direct calls
 
 	// Fetch articles with strict pagination limits
 	for rounds < h.maxContinuationRounds {
@@ -166,8 +159,7 @@ func (h *ArticleFetchHandler) ExecuteArticleFetch(ctx context.Context, streamID 
 			h.logger.Debug("Rate limit check passed",
 				"stream_id", streamID,
 				"remaining", remaining,
-				"round", rounds,
-				"max_safe_rounds", maxSafeRounds)
+				"round", rounds)
 		}
 
 		// Fetch articles from Inoreader API
@@ -289,15 +281,10 @@ func (h *ArticleFetchHandler) ExecuteBatchArticleFetch(ctx context.Context) (*Ba
 	h.logger.Info("Processing subscriptions for article fetching",
 		"subscription_count", len(subscriptions))
 
-	// EMERGENCY FIX: Drastically limit to 1 subscription per batch to prevent API overuse
-	maxSubscriptionsPerBatch := 1
-	if len(subscriptions) > maxSubscriptionsPerBatch {
-		h.logger.Warn("EMERGENCY: Limiting subscription processing to prevent API overuse",
-			"total_subscriptions", len(subscriptions),
-			"max_per_batch", maxSubscriptionsPerBatch,
-			"emergency_reason", "API_OVERUSE_PREVENTION")
-		subscriptions = subscriptions[:maxSubscriptionsPerBatch]
-	}
+	// Restored normal batch processing (emergency limits removed)
+	// Note: This method is now only used for direct calls, as ScheduleHandler uses ArticleFetchService rotation
+	h.logger.Info("Processing all subscriptions in batch (emergency limits removed)",
+		"total_subscriptions", len(subscriptions))
 
 	// Process each subscription with strict rate limiting
 	for i, subscription := range subscriptions {
@@ -309,19 +296,11 @@ func (h *ArticleFetchHandler) ExecuteBatchArticleFetch(ctx context.Context) (*Ba
 			break
 		}
 
-		// EMERGENCY SAFETY CHECK: Hard limit on API requests per batch
-		if result.SubscriptionsProcessed >= 1 {
-			h.logger.Warn("EMERGENCY: Hard limit reached: stopping batch processing",
-				"processed", result.SubscriptionsProcessed,
-				"emergency_hard_limit", 1,
-				"safety_reason", "API_OVERUSE_PREVENTION")
-			result.Errors = append(result.Errors, "EMERGENCY: Hard limit reached (1 subscription per batch)")
-			break
-		}
+		// Normal processing continues (emergency hard limits removed)
 
-		h.logger.Info("Processing subscription with safety limits",
+		h.logger.Info("Processing subscription in batch",
 			"subscription_index", i+1,
-			"total_limited", len(subscriptions),
+			"total_subscriptions", len(subscriptions),
 			"inoreader_id", subscription.InoreaderID,
 			"title", subscription.Title)
 
@@ -353,9 +332,9 @@ func (h *ArticleFetchHandler) ExecuteBatchArticleFetch(ctx context.Context) (*Ba
 
 		result.SubscriptionsProcessed++
 
-		// LONGER delay between subscriptions for API safety (5 seconds)
-		h.logger.Debug("API safety delay between subscriptions", "delay", "5s")
-		time.Sleep(5 * time.Second)
+		// Standard delay between subscriptions for API courtesy (2 seconds)
+		h.logger.Debug("Standard delay between subscriptions", "delay", "2s")
+		time.Sleep(2 * time.Second)
 	}
 
 	result.TotalProcessingTime = time.Since(startTime)

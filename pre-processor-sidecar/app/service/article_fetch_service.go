@@ -108,8 +108,10 @@ func NewArticleFetchService(
 	uuidResolver := domain.NewSubscriptionUUIDResolver(autoCreatorAdapter, loggerAdapter)
 	uuidResolutionUseCase := usecase.NewArticleUUIDResolutionUseCase(uuidResolver, subscriptionRepo, loggerAdapter)
 
-	// Phase 3: Initialize SubscriptionRotator for rotation processing
+	// Phase 3: Initialize SubscriptionRotator for rotation processing with 20-minute intervals
 	subscriptionRotator := NewSubscriptionRotator(logger)
+	// Ensure 20-minute interval is set correctly
+	subscriptionRotator.SetInterval(20)
 
 	return &ArticleFetchService{
 		inoreaderService:      inoreaderService,
@@ -120,7 +122,7 @@ func NewArticleFetchService(
 		logger:                logger,
 		// Phase 3: Rotation processing initialization
 		subscriptionRotator:   subscriptionRotator,
-		rotationEnabled:       false, // Disabled by default, enabled via configuration
+		rotationEnabled:       false, // Will be enabled by ScheduleHandler on startup
 	}
 }
 
@@ -370,9 +372,15 @@ func (s *ArticleFetchService) EnableRotationMode(ctx context.Context) error {
 
 	s.rotationEnabled = true
 	
+	// Get initial rotation stats for logging
+	initialStats := s.subscriptionRotator.GetStats()
+	
 	s.logger.Info("Rotation mode enabled successfully",
 		"total_subscriptions", len(subscriptionIDs),
-		"interval_minutes", s.subscriptionRotator.GetInterval())
+		"interval_minutes", s.subscriptionRotator.GetInterval(),
+		"estimated_completion_hours", float64(len(subscriptionIDs)*20)/60.0,
+		"subscriptions_per_day", len(subscriptionIDs),
+		"next_processing_time", initialStats.NextProcessingTime.Format("15:04:05"))
 
 	return nil
 }
@@ -400,7 +408,7 @@ func (s *ArticleFetchService) StartRotationProcessor(ctx context.Context) error 
 			return ctx.Err()
 
 		case <-ticker.C:
-			if err := s.processNextSubscriptionRotation(ctx); err != nil {
+			if err := s.ProcessNextSubscriptionRotation(ctx); err != nil {
 				s.logger.Error("Failed to process subscription rotation", "error", err)
 				// Continue processing despite errors to maintain schedule
 			}
@@ -408,8 +416,8 @@ func (s *ArticleFetchService) StartRotationProcessor(ctx context.Context) error 
 	}
 }
 
-// processNextSubscriptionRotation processes the next subscription in rotation
-func (s *ArticleFetchService) processNextSubscriptionRotation(ctx context.Context) error {
+// ProcessNextSubscriptionRotation processes the next subscription in rotation (exposed for ScheduleHandler)
+func (s *ArticleFetchService) ProcessNextSubscriptionRotation(ctx context.Context) error {
 	// Check if we should wait more before next processing
 	if !s.subscriptionRotator.IsReadyForNext() {
 		s.logger.Debug("Not ready for next subscription processing, skipping interval")

@@ -263,7 +263,16 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	subscriptionSyncService := service.NewSubscriptionSyncService(inoreaderService, subscriptionRepo, logger)
 	rateLimitManager := service.NewRateLimitManager(nil, logger)
 
-	// Initialize handler layer
+	// Initialize service layer with rotation support
+	articleFetchService := service.NewArticleFetchService(
+		inoreaderService,
+		articleRepo,
+		syncStateRepo,
+		subscriptionRepo,
+		logger,
+	)
+
+	// Initialize handler layer (keep legacy handler for subscription sync)
 	articleFetchHandler := handler.NewArticleFetchHandler(
 		inoreaderService,
 		subscriptionSyncService,
@@ -273,7 +282,7 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		logger,
 	)
 
-	scheduleHandler := handler.NewScheduleHandler(articleFetchHandler, logger)
+	scheduleHandler := handler.NewScheduleHandler(articleFetchHandler, articleFetchService, logger)
 
 	// Add job result callback for monitoring
 	scheduleHandler.AddJobResultCallback(func(result *handler.JobResult) {
