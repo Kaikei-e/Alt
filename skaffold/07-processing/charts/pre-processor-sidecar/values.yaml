@@ -1,33 +1,21 @@
 # Default values for pre-processor-sidecar
-# Supports both CronJob and Deployment (schedule-mode) configurations
+# Deployment mode only - continuous scheduling
 
 image:
   repository: kaikei/pre-processor-sidecar  # UPDATED: Match skaffold registry
   pullPolicy: IfNotPresent
   tag: "oauth2-latest"  # UPDATED: OAuth2-enabled version
 
-# Deployment mode configuration
-# Possible values: "cronjob", "deployment"
-deploymentMode: "deployment"  # UPDATED: Continuous Pod operation for rate limit management
+# Deployment configuration - continuous scheduling mode
+deploymentMode: "deployment"
 
 # Deployment specific configuration (when deploymentMode is "deployment")
 deployment:
   replicas: 1
   scheduleMode: true  # Enable --schedule-mode flag for dual schedule processing
   
-# CronJob specific configuration (when deploymentMode is "cronjob")
-cronJob:
-  schedule: "*/30 * * * *"  # Every 30 minutes
-  timeZone: "UTC"
-  concurrencyPolicy: "Forbid"  # Prevent overlapping jobs
-  startingDeadlineSeconds: 1800  # 30 minutes
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  backoffLimit: 2
-  activeDeadlineSeconds: 1500  # 25 minutes max execution time
-  restartPolicy: "OnFailure"
 
-# Resource configuration (lightweight for personal use)
+# Resource configuration (optimized for continuous deployment)
 resources:
   requests:
     memory: "64Mi"   # Reduced for CronJob

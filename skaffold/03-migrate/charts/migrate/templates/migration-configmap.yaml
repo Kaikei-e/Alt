@@ -614,3 +614,23 @@ data:
     -- Remove created_at column from sync_state table
     DROP INDEX IF EXISTS idx_sync_state_created_at;
     ALTER TABLE sync_state DROP COLUMN IF EXISTS created_at;
+
+  000044_fix_read_status_user_id.up.sql: |
+    -- EMERGENCY FIX: Add dummy user_id to existing read_status records for compatibility
+    -- This migration fixes the read status functionality broken by migration 000036
+    
+    -- Update existing read_status records that have NULL user_id
+    UPDATE read_status 
+    SET user_id = '00000000-0000-0000-0000-000000000001' 
+    WHERE user_id IS NULL;
+    
+    -- Make user_id NOT NULL to prevent future NULL insertions
+    ALTER TABLE read_status ALTER COLUMN user_id SET NOT NULL;
+    
+    -- Add comment for documentation
+    COMMENT ON COLUMN read_status.user_id IS 'User ID for read status - uses dummy ID for single-user mode compatibility';
+
+  000044_fix_read_status_user_id.down.sql: |
+    -- Rollback read_status user_id fix
+    ALTER TABLE read_status ALTER COLUMN user_id DROP NOT NULL;
+    UPDATE read_status SET user_id = NULL WHERE user_id = '00000000-0000-0000-0000-000000000001';

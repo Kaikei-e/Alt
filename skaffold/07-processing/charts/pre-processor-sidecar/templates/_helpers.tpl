@@ -92,7 +92,7 @@ Create environment variables from secrets
 - name: {{ . }}
   valueFrom:
     secretKeyRef:
-      name: {{ include "pre-processor-sidecar.secretName" $ }}
+      name: {{ $.Values.envFromSecret.name }}
       key: {{ . }}
 {{- end }}
 {{- end }}

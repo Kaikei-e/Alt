@@ -45,6 +45,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- if .Values.deployment.scheduleMode }}
           args: ["--schedule-mode"]  # Enable dual schedule processing
+          {{- else if .Values.startupCommand.args }}
+          args:
+            {{- toYaml .Values.startupCommand.args | nindent 12 }}
           {{- end }}
           env:
             {{- range $key, $value := .Values.env }}
