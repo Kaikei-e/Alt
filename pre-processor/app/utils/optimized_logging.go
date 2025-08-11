@@ -129,8 +129,13 @@ func (l *OptimizedLogger) log(level string, msg string, args ...interface{}) {
 		return
 	}
 
-	// Prepare arguments with context fields
-	allArgs := make([]interface{}, 0, len(args)+len(l.contextFields)*2+2)
+	// Prepare arguments with context fields while guarding against overflow
+	const maxInt = int(^uint(0) >> 1)
+	cap := uint64(len(args)) + uint64(len(l.contextFields))*2 + 2
+	if cap > uint64(maxInt) {
+		cap = uint64(maxInt)
+	}
+	allArgs := make([]interface{}, 0, int(cap))
 	allArgs = append(allArgs, "component", l.component)
 
 	// Add context fields
