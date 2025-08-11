@@ -11,6 +11,9 @@ service:
   port: 3000
   targetPort: 3000
 
+ingress:
+  enabled: false
+
 resources:
   limits:
     cpu: "1"
