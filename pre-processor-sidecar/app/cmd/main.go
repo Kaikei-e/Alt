@@ -18,6 +18,8 @@ import (
 	"pre-processor-sidecar/repository"
 	"pre-processor-sidecar/security"
 	"pre-processor-sidecar/service"
+	
+	"encoding/json"
 
 	_ "github.com/lib/pq"
 )
@@ -316,6 +318,53 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("/admin/oauth2/refresh-token", adminAPIHandler.HandleRefreshTokenUpdate)
 	adminMux.HandleFunc("/admin/oauth2/token-status", adminAPIHandler.HandleTokenStatus)
+	
+	// Manual trigger endpoints for testing
+	adminMux.HandleFunc("/admin/trigger/article-fetch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		
+		logger.Info("Manual article fetch triggered via Admin API")
+		err := scheduleHandler.TriggerArticleFetch()
+		if err != nil {
+			logger.Error("Failed to trigger article fetch", "error", err)
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "triggered",
+			"message": "Article fetch (rotation) has been triggered manually",
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+	
+	adminMux.HandleFunc("/admin/trigger/subscription-sync", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		
+		logger.Info("Manual subscription sync triggered via Admin API")
+		err := scheduleHandler.TriggerSubscriptionSync()
+		if err != nil {
+			logger.Error("Failed to trigger subscription sync", "error", err)
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "triggered",
+			"message": "Subscription sync has been triggered manually", 
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	})
 	
 	adminServer := &http.Server{
 		Addr:    ":8080",
