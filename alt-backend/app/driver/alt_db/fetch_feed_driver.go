@@ -2,6 +2,7 @@ package alt_db
 
 import (
 	"alt/driver/models"
+	"alt/utils"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -109,19 +110,20 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 	// For now, keeping the original OFFSET-based implementation for backward compatibility
 	// Consider migrating to cursor-based pagination (FetchUnreadFeedsListCursor) for better performance
 	query := `
-                SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
-                FROM feeds f
-                WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM read_status rs
-                        WHERE rs.feed_id = f.id
-                        AND rs.is_read = TRUE
-                )
-                ORDER BY f.created_at DESC
-                LIMIT $1 OFFSET $2
-        `
+		SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+		FROM feeds f
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM read_status rs
+			WHERE rs.feed_id = f.id
+			AND rs.user_id = $3
+			AND rs.is_read = TRUE
+		)
+		ORDER BY f.created_at DESC
+		LIMIT $1 OFFSET $2
+	`
 
-	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page)
+	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page, utils.DUMMY_USER_ID)
 	if err != nil {
 		logger.Logger.Error("error fetching unread feeds list page", "error", err)
 		return nil, errors.New("error fetching feeds list page")
@@ -151,34 +153,36 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 	if cursor == nil {
 		// First page - no cursor
 		query = `
-                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
-                        FROM feeds f
-                        WHERE NOT EXISTS (
-                                SELECT 1
-                                FROM read_status rs
-                                WHERE rs.feed_id = f.id
-                                AND rs.is_read = TRUE
-                        )
-                        ORDER BY f.created_at DESC, f.id DESC
-                        LIMIT $1
-                `
-		args = []interface{}{limit}
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			FROM feeds f
+			WHERE NOT EXISTS (
+				SELECT 1
+				FROM read_status rs
+				WHERE rs.feed_id = f.id
+				AND rs.user_id = $2
+				AND rs.is_read = TRUE
+			)
+			ORDER BY f.created_at DESC, f.id DESC
+			LIMIT $1
+		`
+		args = []interface{}{limit, utils.DUMMY_USER_ID}
 	} else {
 		// Subsequent pages - use cursor
 		query = `
-                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
-                        FROM feeds f
-                        WHERE NOT EXISTS (
-                                SELECT 1
-                                FROM read_status rs
-                                WHERE rs.feed_id = f.id
-                                AND rs.is_read = TRUE
-                        )
-                        AND f.created_at < $1
-                        ORDER BY f.created_at DESC, f.id DESC
-                        LIMIT $2
-                `
-		args = []interface{}{cursor, limit}
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			FROM feeds f
+			WHERE NOT EXISTS (
+				SELECT 1
+				FROM read_status rs
+				WHERE rs.feed_id = f.id
+				AND rs.user_id = $3
+				AND rs.is_read = TRUE
+			)
+			AND f.created_at < $1
+			ORDER BY f.created_at DESC, f.id DESC
+			LIMIT $2
+		`
+		args = []interface{}{cursor, limit, utils.DUMMY_USER_ID}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -211,26 +215,28 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 	if cursor == nil {
 		// Initial fetch: INNER JOIN for performance optimization
 		query = `
-                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
-                        FROM feeds f
-                        INNER JOIN read_status rs ON rs.feed_id = f.id
-                        WHERE rs.is_read = TRUE
-                        ORDER BY f.created_at DESC, f.id DESC
-                        LIMIT $1
-                `
-		args = []interface{}{limit}
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			FROM feeds f
+			INNER JOIN read_status rs ON rs.feed_id = f.id
+			WHERE rs.is_read = TRUE
+			AND rs.user_id = $2
+			ORDER BY f.created_at DESC, f.id DESC
+			LIMIT $1
+		`
+		args = []interface{}{limit, utils.DUMMY_USER_ID}
 	} else {
 		// Subsequent pages: cursor-based pagination
 		query = `
-                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
-                        FROM feeds f
-                        INNER JOIN read_status rs ON rs.feed_id = f.id
-                        WHERE rs.is_read = TRUE
-                        AND f.created_at < $1
-                        ORDER BY f.created_at DESC, f.id DESC
-                        LIMIT $2
-                `
-		args = []interface{}{cursor, limit}
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			FROM feeds f
+			INNER JOIN read_status rs ON rs.feed_id = f.id
+			WHERE rs.is_read = TRUE
+			AND rs.user_id = $3
+			AND f.created_at < $1
+			ORDER BY f.created_at DESC, f.id DESC
+			LIMIT $2
+		`
+		args = []interface{}{cursor, limit, utils.DUMMY_USER_ID}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)

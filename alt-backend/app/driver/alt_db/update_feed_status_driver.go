@@ -1,6 +1,7 @@
 package alt_db
 
 import (
+	"alt/utils"
 	"alt/utils/logger"
 	"context"
 	"net/url"
@@ -10,8 +11,8 @@ import (
 
 func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
 	identifyFeedQuery := `
-		SELECT id FROM feeds WHERE link = $1
-	`
+                SELECT id FROM feeds WHERE link = $1
+        `
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		logger.SafeError("Error beginning transaction", "error", err)
@@ -34,12 +35,12 @@ func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL)
 
 	// Upsert read status for the feed
 	updateFeedStatusQuery := `
-                INSERT INTO read_status (feed_id, is_read, read_at, created_at)
-                VALUES ($1, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ON CONFLICT (feed_id) DO UPDATE
+                INSERT INTO read_status (feed_id, user_id, is_read, read_at, created_at)
+                VALUES ($1, $2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (feed_id, user_id) DO UPDATE
                 SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
         `
-	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID); err != nil {
+	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID, utils.DUMMY_USER_ID); err != nil {
 		logger.SafeError("Error updating feed status", "error", err, "feedID", feedID)
 		return err
 	}
