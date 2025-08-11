@@ -3,6 +3,7 @@ import {
   SanitizedFeed,
   FeedDetails,
   FeedURLPayload,
+  FetchArticleSummaryResponse,
   sanitizeFeed,
 } from "@/schema/feed";
 import { FeedSearchResult } from "@/schema/search";
@@ -394,10 +395,30 @@ export const feedsApi = {
     return apiClient.post("/v1/feeds/read", { feed_url: url });
   },
 
-  async getFeedDetails(payload: FeedURLPayload): Promise<FeedDetails> {
-    return apiClient.post<FeedDetails>(`/v1/feeds/fetch/details`, {
-      feed_url: payload.feed_url,
+  async getArticleSummary(feedUrl: string): Promise<FetchArticleSummaryResponse> {
+    return apiClient.post<FetchArticleSummaryResponse>("/v1/feeds/fetch/summary/provided", {
+      feed_urls: [feedUrl]
     });
+  },
+
+  /** @deprecated Use getArticleSummary instead */
+  async getFeedDetails(payload: FeedURLPayload): Promise<FeedDetails> {
+    try {
+      // 新しいエンドポイントを使用して後方互換性を保つ
+      const response = await this.getArticleSummary(payload.feed_url);
+      if (response.matched_articles.length > 0) {
+        return {
+          feed_url: payload.feed_url,
+          summary: response.matched_articles[0].content
+        };
+      }
+      throw new ApiClientError("No summary found for this article");
+    } catch (error) {
+      // 既存のエラーハンドリングを維持
+      throw new ApiClientError(
+        error instanceof Error ? error.message : "Failed to fetch feed details"
+      );
+    }
   },
 
   async searchArticles(query: string): Promise<Article[]> {

@@ -36,6 +36,30 @@ export interface FeedURLPayload {
   feed_url: string;
 }
 
+// 汎用的な記事サマリーレスポンス型（内部実装を隠蔽）
+export interface ArticleSummaryItem {
+  article_url: string;
+  title: string;
+  author?: string;
+  content: string;
+  content_type: string;
+  published_at: string;
+  fetched_at: string;
+  source_id: string; // 内部IDを汎用化
+}
+
+// 汎用記事サマリーAPI リクエスト/レスポンス型
+export interface FetchArticleSummaryRequest {
+  feed_urls: string[];
+}
+
+export interface FetchArticleSummaryResponse {
+  matched_articles: ArticleSummaryItem[];
+  total_matched: number;
+  requested_count: number;
+}
+
+/** @deprecated Use ArticleSummaryItem instead */
 export interface FeedDetails {
   feed_url: string;
   summary: string;

@@ -1,11 +1,12 @@
 import { HStack, Text, Box, Portal, Button } from "@chakra-ui/react";
 import { useState, useEffect, useCallback } from "react";
 import { X, Star } from "lucide-react";
-import { FeedDetails as FeedDetailsType, FeedURLPayload } from "@/schema/feed";
+import { FetchArticleSummaryResponse } from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
+import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
 
 export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
-  const [feedDetails, setFeedDetails] = useState<FeedDetailsType | null>(null);
+  const [articleSummary, setArticleSummary] = useState<FetchArticleSummaryResponse | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFavoriting, setIsFavoriting] = useState(false);
@@ -43,35 +44,18 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
     setError(null);
 
     try {
-      const details = await feedsApi.getFeedDetails({
-        feed_url: feedURL,
-      } as FeedURLPayload);
-      setFeedDetails(details);
+      const summary = await feedsApi.getArticleSummary(feedURL);
+      setArticleSummary(summary);
     } catch (err) {
-      console.error("Error fetching feed details:", err);
+      console.error("Error fetching article summary:", err);
       setError("Summary not available for this article");
-      setFeedDetails(null);
+      setArticleSummary(null);
     } finally {
       setIsLoading(false);
       setIsOpen(true);
     }
   };
 
-  const getDisplayContent = () => {
-    if (isLoading) {
-      return "Loading summary...";
-    }
-
-    if (error) {
-      return error;
-    }
-
-    if (feedDetails?.summary) {
-      return feedDetails.summary;
-    }
-
-    return "No summary available for this article";
-  };
 
   // Create unique test IDs based on feedURL to avoid conflicts
   const uniqueId = feedURL ? btoa(feedURL).slice(0, 8) : "default";
@@ -234,23 +218,95 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   bottom="0"
                   zIndex="-1"
                 />
-                <Text
-                  data-testid={`summary-text-${uniqueId}`}
-                  className="summary-text"
-                  color={
-                    error ? "var(--alt-text-secondary)" : "var(--text-primary)"
-                  }
-                  fontSize="md"
-                  lineHeight="1.7"
-                  fontStyle={
-                    error || !feedDetails?.summary ? "italic" : "normal"
-                  }
-                  textAlign="justify"
-                  letterSpacing="0.3px"
-                  pb="16px" // Reduced padding since button is now in modal footer
-                >
-                  {getDisplayContent()}
-                </Text>
+                
+                {/* Article Metadata - only show if we have article data */}
+                {articleSummary?.matched_articles && articleSummary.matched_articles.length > 0 && !error && (
+                  <Box
+                    mb={4}
+                    p={3}
+                    bg="rgba(255, 255, 255, 0.05)"
+                    borderRadius="12px"
+                    border="1px solid rgba(255, 255, 255, 0.1)"
+                  >
+                    <Text
+                      fontSize="lg"
+                      fontWeight="bold"
+                      color="var(--text-primary)"
+                      mb={2}
+                      lineHeight="1.4"
+                    >
+                      {articleSummary.matched_articles[0].title}
+                    </Text>
+                    
+                    <HStack gap={3} fontSize="sm" color="var(--alt-text-secondary)">
+                      {articleSummary.matched_articles[0].author && (
+                        <Text>
+                          By {articleSummary.matched_articles[0].author}
+                        </Text>
+                      )}
+                      
+                      <Text>
+                        {new Date(articleSummary.matched_articles[0].published_at).toLocaleDateString('ja-JP', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </Text>
+                      
+                      <Text
+                        px={2}
+                        py={1}
+                        bg="var(--accent-primary)"
+                        borderRadius="full"
+                        fontSize="xs"
+                        fontWeight="semibold"
+                      >
+                        {articleSummary.matched_articles[0].content_type}
+                      </Text>
+                    </HStack>
+                  </Box>
+                )}
+
+                {/* Smart Content Rendering */}
+                {isLoading ? (
+                  <Text
+                    fontStyle="italic"
+                    color="var(--alt-text-secondary)"
+                    textAlign="center"
+                    py={8}
+                  >
+                    Loading summary...
+                  </Text>
+                ) : error ? (
+                  <Text
+                    fontStyle="italic"
+                    color="var(--alt-text-secondary)"
+                    textAlign="center"
+                    py={8}
+                  >
+                    {error}
+                  </Text>
+                ) : articleSummary?.matched_articles && articleSummary.matched_articles.length > 0 ? (
+                  <SmartContentRenderer
+                    content={articleSummary.matched_articles[0].content}
+                    contentType={articleSummary.matched_articles[0].content_type}
+                    className="article-content"
+                    maxHeight="60vh"
+                    showMetadata={true}
+                    onError={(error) => {
+                      console.error('Content rendering error:', error);
+                    }}
+                  />
+                ) : (
+                  <Text
+                    fontStyle="italic"
+                    color="var(--alt-text-secondary)"
+                    textAlign="center"
+                    py={8}
+                  >
+                    No summary available for this article
+                  </Text>
+                )}
               </Box>
 
               {/* Modal Footer with Fave and Hide Details buttons */}

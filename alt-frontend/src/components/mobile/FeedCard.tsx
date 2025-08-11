@@ -100,7 +100,7 @@ const FeedCard = function FeedCard({
               aria-label={`Open ${feed.title} in external link`}
             >
               <Text
-                fontSize="md"
+                fontSize="sm"
                 fontWeight="semibold"
                 color="var(--accent-primary)"
                 _hover={{ textDecoration: "underline" }}
@@ -114,7 +114,7 @@ const FeedCard = function FeedCard({
 
           {/* Description */}
           <Text
-            fontSize="sm"
+            fontSize="xs"
             color="var(--text-primary)"
             lineHeight="1.5"
             wordBreak="break-word"

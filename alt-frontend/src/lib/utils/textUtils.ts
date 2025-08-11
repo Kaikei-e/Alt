@@ -11,7 +11,7 @@
  */
 export const truncateText = (
   text: string,
-  maxLength: number = 200,
+  maxLength: number = 100,
   suffix: string = "...",
 ): string => {
   if (text.length <= maxLength) {
@@ -28,5 +28,5 @@ export const truncateText = (
  * @returns Truncated description
  */
 export const truncateFeedDescription = (description: string): string => {
-  return truncateText(description, 200);
+  return truncateText(description, 100);
 };
