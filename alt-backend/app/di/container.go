@@ -15,6 +15,7 @@ import (
 	"alt/gateway/fetch_feed_detail_gateway"
 	"alt/gateway/fetch_feed_gateway"
 	"alt/gateway/fetch_feed_tags_gateway"
+	"alt/gateway/fetch_inoreader_summary_gateway"
 	"alt/gateway/rate_limiter_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
@@ -27,6 +28,7 @@ import (
 	"alt/usecase/fetch_feed_stats_usecase"
 	"alt/usecase/fetch_feed_tags_usecase"
 	"alt/usecase/fetch_feed_usecase"
+	"alt/usecase/fetch_inoreader_summary_usecase"
 	"alt/usecase/reading_status"
 	"alt/usecase/register_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
@@ -63,6 +65,7 @@ type ApplicationComponents struct {
 	TodayUnreadArticlesCountUsecase     *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
 	FeedSearchUsecase                   *search_feed_usecase.SearchFeedMeilisearchUsecase
 	FetchFeedTagsUsecase                *fetch_feed_tags_usecase.FetchFeedTagsUsecase
+	FetchInoreaderSummaryUsecase        fetch_inoreader_summary_usecase.FetchInoreaderSummaryUsecase
 	CSRFTokenUsecase                    *csrf_token_usecase.CSRFTokenUsecase
 }
 
@@ -131,6 +134,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchFeedTagsGatewayImpl := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDBRepository)
 	fetchFeedTagsUsecase := fetch_feed_tags_usecase.NewFetchFeedTagsUsecase(feedURLToIDGatewayImpl, fetchFeedTagsGatewayImpl)
 
+	// Fetch inoreader summary components
+	fetchInoreaderSummaryGatewayImpl := fetch_inoreader_summary_gateway.NewInoreaderSummaryGateway(altDBRepository)
+	fetchInoreaderSummaryUsecase := fetch_inoreader_summary_usecase.NewFetchInoreaderSummaryUsecase(fetchInoreaderSummaryGatewayImpl)
+
 	// CSRF token components
 	csrfTokenDriver := csrf_token_driver.NewInMemoryCSRFTokenDriver()
 	csrfTokenGateway := csrf_token_gateway.NewCSRFTokenGateway(csrfTokenDriver)
@@ -163,6 +170,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		TodayUnreadArticlesCountUsecase:     todayUnreadArticlesCountUsecase,
 		FeedSearchUsecase:                   feedSearchUsecase,
 		FetchFeedTagsUsecase:                fetchFeedTagsUsecase,
+		FetchInoreaderSummaryUsecase:        fetchInoreaderSummaryUsecase,
 		CSRFTokenUsecase:                    csrfTokenUsecase,
 	}
 }

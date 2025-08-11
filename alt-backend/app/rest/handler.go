@@ -724,6 +724,89 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		return c.JSON(http.StatusOK, map[string]string{"message": "favorite feed registered"})
 	})
 
+	// New endpoint: Fetch inoreader summaries for provided feed URLs
+	v1.POST("/feeds/fetch/summary/provided", func(c echo.Context) error {
+		var req FeedSummaryRequest
+		if err := c.Bind(&req); err != nil {
+			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
+		}
+
+		// Manual validation - check if feed_urls is provided and within limits
+		if len(req.FeedURLs) == 0 {
+			return handleValidationError(c, "feed_urls is required and cannot be empty", "feed_urls", req.FeedURLs)
+		}
+		if len(req.FeedURLs) > 50 {
+			return handleValidationError(c, "Maximum 50 URLs allowed per request", "feed_urls", len(req.FeedURLs))
+		}
+
+		// SSRF protection for all URLs
+		for _, feedURL := range req.FeedURLs {
+			parsedURL, err := url.Parse(feedURL)
+			if err != nil {
+				return handleValidationError(c, "Invalid URL format", "feed_urls", feedURL)
+			}
+
+			if err := isAllowedURL(parsedURL); err != nil {
+				securityErr := errors.NewValidationContextError(
+					"URL not allowed for security reasons",
+					"rest",
+					"RESTHandler", 
+					"fetch_inoreader_summary",
+					map[string]interface{}{
+						"url":         feedURL,
+						"reason":      err.Error(),
+						"path":        c.Request().URL.Path,
+						"method":      c.Request().Method,
+						"remote_addr": c.Request().RemoteAddr,
+						"request_id":  c.Response().Header().Get("X-Request-ID"),
+					},
+				)
+				logger.Logger.Error("URL validation failed", "error", securityErr.Error(), "url", feedURL)
+				return c.JSON(securityErr.HTTPStatusCode(), securityErr.ToHTTPResponse())
+			}
+		}
+
+		// Execute usecase
+		summaries, err := container.FetchInoreaderSummaryUsecase.Execute(c.Request().Context(), req.FeedURLs)
+		if err != nil {
+			return handleError(c, err, "fetch_inoreader_summary")
+		}
+
+		// Convert domain entities to response DTOs
+		responses := make([]InoreaderSummaryResponse, 0, len(summaries))
+		for _, summary := range summaries {
+			authorStr := ""
+			if summary.Author != nil {
+				authorStr = *summary.Author
+			}
+			
+			resp := InoreaderSummaryResponse{
+				ArticleURL:  summary.ArticleURL,
+				Title:       summary.Title,
+				Author:      authorStr,
+				Content:     summary.Content,
+				ContentType: summary.ContentType,
+				PublishedAt: summary.PublishedAt.Format(time.RFC3339),
+				FetchedAt:   summary.FetchedAt.Format(time.RFC3339),
+				InoreaderID: summary.InoreaderID,
+			}
+			responses = append(responses, resp)
+		}
+
+		// Build final response
+		finalResponse := FeedSummaryProvidedResponse{
+			MatchedArticles: responses,
+			TotalMatched:    len(responses),
+			RequestedCount:  len(req.FeedURLs),
+		}
+
+		// Set caching headers (15 minutes as per XPLAN11.md)
+		c.Response().Header().Set("Cache-Control", "public, max-age=900")
+		c.Response().Header().Set("Content-Type", "application/json")
+
+		return c.JSON(http.StatusOK, finalResponse)
+	})
+
 	// Add SSE endpoint with proper Echo SSE handling
 	v1.GET("/sse/feeds/stats", func(c echo.Context) error {
 		// Set SSE headers using Echo's response

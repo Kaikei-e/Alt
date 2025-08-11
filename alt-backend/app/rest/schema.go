@@ -65,3 +65,24 @@ type FeedTagResponse struct {
 	Name      string `json:"name"`
 	CreatedAt string `json:"created_at"`
 }
+
+type FeedSummaryRequest struct {
+	FeedURLs []string `json:"feed_urls" validate:"required,min=1,max=50,dive,required,url"`
+}
+
+type InoreaderSummaryResponse struct {
+	ArticleURL     string `json:"article_url"`
+	Title          string `json:"title"`
+	Author         string `json:"author,omitempty"`
+	Content        string `json:"content"`
+	ContentType    string `json:"content_type"`
+	PublishedAt    string `json:"published_at"`
+	FetchedAt      string `json:"fetched_at"`
+	InoreaderID    string `json:"inoreader_id"`
+}
+
+type FeedSummaryProvidedResponse struct {
+	MatchedArticles []InoreaderSummaryResponse `json:"matched_articles"`
+	TotalMatched    int                        `json:"total_matched"`
+	RequestedCount  int                        `json:"requested_count"`
+}
