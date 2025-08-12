@@ -720,10 +720,17 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 			return handleError(c, err, "image_fetch")
 		}
 
-		// Return the image data directly with proper content type
+		// Return the image data directly with proper content type and COEP compliance
 		c.Response().Header().Set("Content-Type", result.ContentType)
 		c.Response().Header().Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 		c.Response().Header().Set("X-Image-Source", "alt-backend-proxy") // For debugging
+		
+		// COEP (Cross-Origin Embedder Policy) compliance headers
+		c.Response().Header().Set("Cross-Origin-Resource-Policy", "cross-origin") // Allow cross-origin usage
+		c.Response().Header().Set("Access-Control-Allow-Origin", "*") // CORS support
+		c.Response().Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		c.Response().Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		
 		return c.Blob(http.StatusOK, result.ContentType, result.Data)
 	})
 
