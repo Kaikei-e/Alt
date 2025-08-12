@@ -82,6 +82,6 @@ export function securityHeaders(nonce: string): Record<string, string> {
     "Permissions-Policy":
       "camera=(), microphone=(), geolocation=(), payment=()",
     "Cross-Origin-Opener-Policy": "same-origin",
-    "Cross-Origin-Embedder-Policy": "require-corp",
+    "Cross-Origin-Embedder-Policy": "unsafe-none", // COEP緩和: 外部画像フォールバック表示を可能にする
   };
 }

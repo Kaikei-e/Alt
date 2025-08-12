@@ -447,6 +447,42 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
     const container = containerRef.current;
     const proxyImages = container.querySelectorAll('img[data-proxy-url]');
 
+    // Setup CSP-compliant event handlers for proxy images
+    const setupImageEventHandlers = (img: HTMLImageElement) => {
+      const originalUrl = img.getAttribute('data-proxy-url');
+      const fallbackSrc = img.getAttribute('data-fallback-src');
+      
+      if (!originalUrl) return;
+
+      // Success handler
+      const handleImageLoad = () => {
+        img.style.opacity = '1';
+        img.removeAttribute('data-proxy-url');
+        img.removeAttribute('data-fallback-src');
+        img.removeEventListener('load', handleImageLoad);
+        img.removeEventListener('error', handleImageError);
+      };
+
+      // Error handler with fallback
+      const handleImageError = () => {
+        console.warn('Proxy image load failed, falling back to original URL:', originalUrl);
+        if (fallbackSrc) {
+          img.src = fallbackSrc;
+        }
+        img.removeAttribute('data-proxy-url');
+        img.removeAttribute('data-fallback-src');
+        img.style.opacity = '1';
+        img.style.border = '2px solid #ff6b6b';
+        img.title = 'Failed to load via proxy, showing original image';
+        img.removeEventListener('load', handleImageLoad);
+        img.removeEventListener('error', handleImageError);
+      };
+
+      // Attach event handlers
+      img.addEventListener('load', handleImageLoad);
+      img.addEventListener('error', handleImageError);
+    };
+
     // Setup intersection observer for lazy loading
     const imageObserver = new IntersectionObserver(
       async (entries) => {
@@ -457,6 +493,9 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
             
             if (originalUrl) {
               imageObserver.unobserve(img);
+              // Setup event handlers first
+              setupImageEventHandlers(img);
+              // Then load the proxy image
               await loadProxyImage(img, originalUrl);
             }
           }
@@ -476,6 +515,12 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
     // Cleanup
     return () => {
       imageObserver.disconnect();
+      // Clean up any remaining event listeners
+      proxyImages.forEach(img => {
+        const imgElement = img as HTMLImageElement;
+        imgElement.removeEventListener('load', () => {});
+        imgElement.removeEventListener('error', () => {});
+      });
     };
   }, [html]);
 
@@ -523,12 +568,16 @@ async function loadProxyImage(img: HTMLImageElement, originalUrl: string): Promi
 
     // Get the binary image data
     const imageBlob = await response.blob();
+    
+    // Validate that we actually got image data
+    if (!imageBlob.type.startsWith('image/')) {
+      throw new Error(`Invalid content type: ${imageBlob.type}`);
+    }
+    
     const imageUrl = URL.createObjectURL(imageBlob);
 
-    // Update the image source
+    // Update the image source - this will trigger the event handlers set up earlier
     img.src = imageUrl;
-    img.removeAttribute('data-proxy-url');
-    img.style.opacity = '1';
 
     // Debug logging in development
     if (process.env.NODE_ENV === 'development') {
@@ -539,21 +588,23 @@ async function loadProxyImage(img: HTMLImageElement, originalUrl: string): Promi
       });
     }
 
-    // Clean up object URL after image loads
-    img.onload = () => {
+    // Set up cleanup for object URL (CSP compliant)
+    const cleanupObjectUrl = () => {
       URL.revokeObjectURL(imageUrl);
     };
+    
+    // Use addEventListener instead of onload property (CSP compliant)
+    img.addEventListener('load', cleanupObjectUrl, { once: true });
+    img.addEventListener('error', cleanupObjectUrl, { once: true });
 
   } catch (error) {
     console.error('Failed to load proxy image:', originalUrl, error);
     
-    // Fallback to original URL
-    img.src = originalUrl;
-    img.removeAttribute('data-proxy-url');
-    img.style.opacity = '1';
+    // Trigger error handler by setting a non-existent src
+    // This will cause the error event handler to fire, which will handle fallback
+    img.src = 'data:image/gif;base64,invalid';
     
-    // Add error indicator
-    img.style.border = '2px solid #ff6b6b';
-    img.title = `Failed to load via proxy, showing original: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    // Store error details for debugging
+    img.setAttribute('data-proxy-error', error instanceof Error ? error.message : 'Unknown error');
   }
 }
