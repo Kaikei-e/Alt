@@ -13,26 +13,36 @@ build:
   tagPolicy:
     gitCommit: {}
   artifacts:
+    # 共有認証ライブラリベースイメージ
+    - image: kaikei/shared-auth-go
+      context: ../../
+      docker:
+        dockerfile: Dockerfile.shared-auth-go
+    - image: kaikei/shared-auth-python
+      context: ../../
+      docker:
+        dockerfile: Dockerfile.shared-auth-python
+    # マイクロサービス（ルートコンテキストから）
     - image: kaikei/pre-processor
-      context: ../../pre-processor
+      context: ../../
       docker:
-        dockerfile: Dockerfile.preprocess
+        dockerfile: pre-processor/Dockerfile.preprocess
     - image: kaikei/pre-processor-sidecar
-      context: ../../pre-processor-sidecar
+      context: ../../
       docker:
-        dockerfile: Dockerfile
+        dockerfile: pre-processor-sidecar/Dockerfile
     - image: kaikei/search-indexer
-      context: ../../search-indexer
+      context: ../../
       docker:
-        dockerfile: Dockerfile.search-indexer
+        dockerfile: search-indexer/Dockerfile.search-indexer
     - image: kaikei/tag-generator
-      context: ../../tag-generator
+      context: ../../
       docker:
-        dockerfile: Dockerfile.tag-generator
+        dockerfile: tag-generator/Dockerfile.tag-generator
     - image: kaikei/news-creator
-      context: ../../news-creator
+      context: ../../
       docker:
-        dockerfile: Dockerfile.creator
+        dockerfile: news-creator/Dockerfile.creator
     # rask-log-aggregator excluded - Docker Compose only
     # - image: kaikei/rask-log-aggregator
     #   context: ../../rask-log-aggregator
