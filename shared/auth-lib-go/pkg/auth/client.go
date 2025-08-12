@@ -42,6 +42,32 @@ type ServiceToken struct {
 	IssuedAt    time.Time `json:"iat"`
 	ExpiresAt   time.Time `json:"exp"`
 	Permissions []string  `json:"permissions"`
+	jwt.RegisteredClaims
+}
+
+// JWT v5 Claims interface implementation
+func (st ServiceToken) GetExpirationTime() (*jwt.NumericDate, error) {
+	return jwt.NewNumericDate(st.ExpiresAt), nil
+}
+
+func (st ServiceToken) GetIssuedAt() (*jwt.NumericDate, error) {
+	return jwt.NewNumericDate(st.IssuedAt), nil
+}
+
+func (st ServiceToken) GetNotBefore() (*jwt.NumericDate, error) {
+	return nil, nil
+}
+
+func (st ServiceToken) GetIssuer() (string, error) {
+	return st.ServiceName, nil
+}
+
+func (st ServiceToken) GetSubject() (string, error) {
+	return st.ServiceName, nil
+}
+
+func (st ServiceToken) GetAudience() (jwt.ClaimStrings, error) {
+	return jwt.ClaimStrings{}, nil
 }
 
 func NewClient(config Config) *Client {
