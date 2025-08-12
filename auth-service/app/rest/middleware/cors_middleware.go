@@ -22,6 +22,11 @@ func DefaultCORSConfig() CORSConfig {
 			"http://localhost:3000",
 			"https://alt.local",
 			"https://*.alt.local",
+			"http://alt-frontend.alt-apps.svc.cluster.local:3000",
+			"https://alt-frontend.alt-apps.svc.cluster.local:3000",
+			"http://alt.example.com",
+			"https://alt.example.com",
+			"https://app.alt.example.com",
 		},
 		AllowMethods: []string{
 			echo.GET,

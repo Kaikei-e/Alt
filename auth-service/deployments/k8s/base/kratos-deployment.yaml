@@ -2,9 +2,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kratos
-  namespace: alt-auth-dev
+  namespace: alt-auth
   labels:
     app: kratos
+    app.kubernetes.io/name: kratos
     version: v1.3.1
 spec:
   replicas: 1
@@ -15,19 +16,20 @@ spec:
     metadata:
       labels:
         app: kratos
+        app.kubernetes.io/name: kratos
         version: v1.2.0
     spec:
       initContainers:
       - name: kratos-migrate
         image: oryd/kratos:v1.2.0
         command: ["kratos"]
-        args: ["migrate", "sql", "-e", "--yes"]
+        args: ["migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
         env:
-        - name: DSN
+        - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: kratos-postgres-credentials
-              key: dsn
+              name: kratos-secrets
+              key: POSTGRES_PASSWORD
         volumeMounts:
         - name: kratos-config
           mountPath: /etc/config/kratos
@@ -37,28 +39,33 @@ spec:
       - name: kratos
         image: oryd/kratos:v1.2.0
         command: ["kratos"]
-        args: ["serve", "all", "--dev", "--config", "/etc/config/kratos/kratos.yml"]
+        args: ["serve", "all", "--config", "/etc/config/kratos/kratos.yml"]
         ports:
         - containerPort: 4433
           name: public
         - containerPort: 4434
           name: admin
         env:
-        - name: DSN
-          valueFrom:
-            secretKeyRef:
-              name: kratos-postgres-credentials
-              key: dsn
-        - name: SECRETS_COOKIE
+        - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
               name: kratos-secrets
-              key: cookie-secret
-        - name: SECRETS_CIPHER
+              key: POSTGRES_PASSWORD
+        - name: KRATOS_COOKIE_SECRET
           valueFrom:
             secretKeyRef:
               name: kratos-secrets
-              key: cipher-secret
+              key: KRATOS_COOKIE_SECRET
+        - name: KRATOS_CIPHER_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kratos-secrets
+              key: KRATOS_CIPHER_SECRET
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kratos-secrets
+              key: SMTP_PASSWORD
         volumeMounts:
         - name: kratos-config
           mountPath: /etc/config/kratos
