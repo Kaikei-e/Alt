@@ -29,9 +29,14 @@ var (
 	ErrInsufficientRole   = errors.New("insufficient role")
 
 	// Tenant errors
-	ErrTenantNotFound     = errors.New("tenant not found")
-	ErrTenantDisabled     = errors.New("tenant disabled")
-	ErrTenantQuotaExceeded = errors.New("tenant quota exceeded")
+	ErrTenantNotFound             = errors.New("tenant not found")
+	ErrTenantDisabled             = errors.New("tenant disabled")
+	ErrTenantQuotaExceeded        = errors.New("tenant quota exceeded")
+	ErrTenantSlugExists           = errors.New("tenant with this slug already exists")
+	ErrTenantUserLimitExceeded    = errors.New("tenant user limit exceeded")
+	ErrInvalidTenantSlug          = errors.New("invalid tenant slug format")
+	ErrTenantSuspended            = errors.New("tenant is suspended")
+	ErrTenantDeleted              = errors.New("tenant is deleted")
 
 	// Validation errors
 	ErrInvalidInput       = errors.New("invalid input")

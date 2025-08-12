@@ -27,6 +27,7 @@ type UserUsecase interface {
 // UserGateway defines user gateway interface
 type UserGateway interface {
 	// User operations
+	Create(ctx context.Context, user *domain.User) error
 	CreateUser(ctx context.Context, user *domain.User) error
 	GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 	GetUserByEmail(ctx context.Context, email string, tenantID uuid.UUID) (*domain.User, error)
@@ -34,6 +35,11 @@ type UserGateway interface {
 	UpdateUser(ctx context.Context, user *domain.User) error
 	DeleteUser(ctx context.Context, userID uuid.UUID) error
 	ListUsersByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.User, error)
+	
+	// Tenant specific operations
+	CountUsersByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
+	CreateUserInvitation(ctx context.Context, tenantID uuid.UUID, req interface{}) error
+	HashPassword(password string) (string, error)
 }
 
 // UserRepositoryPort defines user data access interface

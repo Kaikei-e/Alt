@@ -56,7 +56,7 @@ func (u *TenantUsecase) CreateTenant(ctx context.Context, req CreateTenantReques
 	u.logger.Info("creating new tenant", "slug", req.Slug, "name", req.Name)
 
 	// スラグの重複チェック
-	existing, err := u.tenantGateway.GetBySlug(ctx, req.Slug)
+	existing, err := u.tenantGateway.GetTenantBySlug(ctx, req.Slug)
 	if err != nil && !errors.Is(err, domain.ErrTenantNotFound) {
 		return nil, fmt.Errorf("failed to check tenant slug: %w", err)
 	}
@@ -72,14 +72,12 @@ func (u *TenantUsecase) CreateTenant(ctx context.Context, req CreateTenantReques
 		Description:      req.Description,
 		Status:           domain.TenantStatusActive,
 		SubscriptionTier: req.SubscriptionTier,
-		MaxUsers:         getMaxUsers(req.SubscriptionTier),
-		MaxFeeds:         getMaxFeeds(req.SubscriptionTier),
-		Settings:         getDefaultSettings(req.SubscriptionTier),
+		Settings:         getDefaultSettingsStruct(req.SubscriptionTier),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
 
-	if err := u.tenantGateway.Create(ctx, tenant); err != nil {
+	if err := u.tenantGateway.CreateTenant(ctx, tenant); err != nil {
 		return nil, fmt.Errorf("failed to create tenant: %w", err)
 	}
 
@@ -87,7 +85,7 @@ func (u *TenantUsecase) CreateTenant(ctx context.Context, req CreateTenantReques
 	adminUser, err := u.createAdminUser(ctx, tenant.ID, req.AdminUser)
 	if err != nil {
 		// テナント作成ロールバック
-		u.tenantGateway.Delete(ctx, tenant.ID)
+		u.tenantGateway.DeleteTenant(ctx, tenant.ID)
 		return nil, fmt.Errorf("failed to create admin user: %w", err)
 	}
 
@@ -106,26 +104,26 @@ func (u *TenantUsecase) InviteUser(ctx context.Context, tenantID uuid.UUID, req 
 	}
 
 	// テナントの制限チェック
-	tenant, err := u.tenantGateway.GetByID(ctx, tenantID)
+	tenant, err := u.tenantGateway.GetTenantByID(ctx, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to get tenant: %w", err)
 	}
 
-	userCount, err := u.userGateway.CountByTenant(ctx, tenantID)
+	userCount, err := u.userGateway.CountUsersByTenant(ctx, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to count users: %w", err)
 	}
 
-	if userCount >= tenant.MaxUsers {
+	if userCount >= tenant.Settings.Limits.MaxUsers {
 		return domain.ErrTenantUserLimitExceeded
 	}
 
 	// 招待処理
-	return u.userGateway.CreateInvitation(ctx, tenantID, req)
+	return u.userGateway.CreateUserInvitation(ctx, tenantID, req)
 }
 
 func (u *TenantUsecase) GetTenant(ctx context.Context, tenantID uuid.UUID) (*domain.Tenant, error) {
-	tenant, err := u.tenantGateway.GetByID(ctx, tenantID)
+	tenant, err := u.tenantGateway.GetTenantByID(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tenant: %w", err)
 	}
@@ -140,7 +138,28 @@ func (u *TenantUsecase) UpdateTenant(ctx context.Context, tenantID uuid.UUID, up
 		return domain.ErrUnauthorized
 	}
 
-	return u.tenantGateway.Update(ctx, tenantID, updates)
+	// Get existing tenant first
+	existing, err := u.tenantGateway.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("failed to get existing tenant: %w", err)
+	}
+
+	// Apply updates
+	if updates.Name != nil {
+		existing.Name = *updates.Name
+	}
+	if updates.Description != nil {
+		existing.Description = *updates.Description
+	}
+	if updates.SubscriptionTier != nil {
+		existing.SubscriptionTier = *updates.SubscriptionTier
+	}
+	if updates.Settings != nil {
+		existing.Settings = *updates.Settings
+	}
+	existing.UpdatedAt = time.Now()
+
+	return u.tenantGateway.UpdateTenant(ctx, existing)
 }
 
 func (u *TenantUsecase) createAdminUser(ctx context.Context, tenantID uuid.UUID, req CreateUserRequest) (*domain.User, error) {
@@ -177,7 +196,7 @@ func getMaxUsers(tier domain.SubscriptionTier) int {
 		return 25
 	case domain.SubscriptionTierPremium:
 		return 100
-	case domain.SubscriptionTierEnterprise:
+	case domain.SubscriptionTierBusiness:
 		return 1000
 	default:
 		return 5
@@ -192,33 +211,34 @@ func getMaxFeeds(tier domain.SubscriptionTier) int {
 		return 200
 	case domain.SubscriptionTierPremium:
 		return 1000
-	case domain.SubscriptionTierEnterprise:
+	case domain.SubscriptionTierBusiness:
 		return 10000
 	default:
 		return 50
 	}
 }
 
-func getDefaultSettings(tier domain.SubscriptionTier) map[string]interface{} {
-	settings := map[string]interface{}{
-		"theme":               "light",
-		"language":            "en",
-		"notifications":       true,
-		"analytics_enabled":   false,
-		"api_rate_limit":      1000,
+func getDefaultSettingsStruct(tier domain.SubscriptionTier) domain.TenantSettings {
+	features := []string{"rss_feeds", "ai_summary", "tags"}
+	limits := domain.TenantLimits{
+		MaxUsers: getMaxUsers(tier),
+		MaxFeeds: getMaxFeeds(tier),
 	}
 
 	// ティア別設定
 	switch tier {
-	case domain.SubscriptionTierPremium, domain.SubscriptionTierEnterprise:
-		settings["analytics_enabled"] = true
-		settings["api_rate_limit"] = 5000
-	case domain.SubscriptionTierEnterprise:
-		settings["api_rate_limit"] = 10000
-		settings["custom_branding"] = true
+	case domain.SubscriptionTierPremium:
+		features = append(features, "analytics", "advanced_search")
+	case domain.SubscriptionTierBusiness:
+		features = append(features, "analytics", "advanced_search", "custom_branding", "api_access")
 	}
 
-	return settings
+	return domain.TenantSettings{
+		Features: features,
+		Limits:   limits,
+		Timezone: "Asia/Tokyo",
+		Language: "ja",
+	}
 }
 
 func getCurrentUser(ctx context.Context) *domain.UserContext {

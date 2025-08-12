@@ -18,6 +18,16 @@ const (
 	TenantStatusDeleted   TenantStatus = "deleted"
 )
 
+// SubscriptionTier represents different subscription levels
+type SubscriptionTier string
+
+const (
+	SubscriptionTierFree     SubscriptionTier = "free"
+	SubscriptionTierBasic    SubscriptionTier = "basic"
+	SubscriptionTierPremium  SubscriptionTier = "premium"
+	SubscriptionTierBusiness SubscriptionTier = "business"
+)
+
 // TenantLimits defines resource limits for a tenant
 type TenantLimits struct {
 	MaxFeeds int `json:"max_feeds"`
@@ -34,14 +44,17 @@ type TenantSettings struct {
 
 // Tenant represents a tenant in the multi-tenant system
 type Tenant struct {
-	ID        uuid.UUID      `json:"id"`
-	Slug      string         `json:"slug"`
-	Name      string         `json:"name"`
-	Status    TenantStatus   `json:"status"`
-	Settings  TenantSettings `json:"settings"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt *time.Time     `json:"deleted_at,omitempty"`
+	ID               uuid.UUID        `json:"id"`
+	Slug             string           `json:"slug"`
+	Name             string           `json:"name"`
+	Description      string           `json:"description,omitempty"`
+	Status           TenantStatus     `json:"status"`
+	SubscriptionTier SubscriptionTier `json:"subscription_tier"`
+	MaxUsers         int              `json:"max_users"`
+	Settings         TenantSettings   `json:"settings"`
+	CreatedAt        time.Time        `json:"created_at"`
+	UpdatedAt        time.Time        `json:"updated_at"`
+	DeletedAt        *time.Time       `json:"deleted_at,omitempty"`
 }
 
 // slugRegex validates tenant slugs (lowercase, alphanumeric, hyphens only)
@@ -184,3 +197,13 @@ func (t *Tenant) UpdateName(name string) error {
 	t.UpdatedAt = time.Now()
 	return nil
 }
+
+// TenantUpdates represents updates to apply to a tenant
+type TenantUpdates struct {
+	Name             *string           `json:"name,omitempty"`
+	Description      *string           `json:"description,omitempty"`
+	SubscriptionTier *SubscriptionTier `json:"subscription_tier,omitempty"`
+	MaxUsers         *int              `json:"max_users,omitempty"`
+	Settings         *TenantSettings   `json:"settings,omitempty"`
+}
+

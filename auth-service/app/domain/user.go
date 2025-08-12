@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"fmt"
 	"net/mail"
 	"time"
@@ -178,4 +179,32 @@ func (u *User) SoftDelete() {
 // IsDeleted returns true if the user is soft deleted
 func (u *User) IsDeleted() bool {
 	return u.DeletedAt != nil
+}
+
+// IsAdmin returns true if the user has admin role
+func (u *User) IsAdmin() bool {
+	return u.Role == UserRoleAdmin || u.Role == UserRoleTenantAdmin
+}
+
+// GetUserFromContext extracts user context from context
+func GetUserFromContext(ctx context.Context) (*UserContext, error) {
+	user, ok := ctx.Value("user").(*UserContext)
+	if !ok {
+		return nil, ErrUnauthorized
+	}
+	return user, nil
+}
+
+// GetTenantFromContext extracts tenant context from context
+func GetTenantFromContext(ctx context.Context) (*Tenant, error) {
+	tenant, ok := ctx.Value("tenant").(*Tenant)
+	if !ok {
+		return nil, ErrTenantNotFound
+	}
+	return tenant, nil
+}
+
+// SetTenantContext sets tenant context in context
+func SetTenantContext(ctx context.Context, tenant *Tenant) context.Context {
+	return context.WithValue(ctx, "tenant", tenant)
 }

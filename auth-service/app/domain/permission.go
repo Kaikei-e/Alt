@@ -100,9 +100,11 @@ func (r *Role) HasPermission(permission Permission) bool {
 
 // UserContext represents the authenticated user context for permission checks
 type UserContext struct {
-	UserID   uuid.UUID `json:"user_id"`
-	TenantID uuid.UUID `json:"tenant_id"`
-	Role     UserRole  `json:"role"`
+	UserID    uuid.UUID `json:"user_id"`
+	TenantID  uuid.UUID `json:"tenant_id"`
+	Email     string    `json:"email"`
+	Role      UserRole  `json:"role"`
+	SessionID string    `json:"session_id"`
 }
 
 // ユーザーが特定の権限を持っているかチェック
