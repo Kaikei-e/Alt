@@ -52,3 +52,4 @@ node_modules/
 pre-processor-sidecar/setup-oauth.sh
 pre-processor-sidecar/cmd/oauth-initializer/
 migrations-atlas/migrations/atlas.sum
+auth-service/deployments/k8s/base/kratos-secrets.yaml
