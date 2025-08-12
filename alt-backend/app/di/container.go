@@ -16,6 +16,7 @@ import (
 	"alt/gateway/fetch_feed_gateway"
 	"alt/gateway/fetch_feed_tags_gateway"
 	"alt/gateway/fetch_inoreader_summary_gateway"
+	"alt/gateway/image_fetch_gateway"
 	"alt/gateway/rate_limiter_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
@@ -29,11 +30,14 @@ import (
 	"alt/usecase/fetch_feed_tags_usecase"
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/fetch_inoreader_summary_usecase"
+	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/reading_status"
 	"alt/usecase/register_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
 	"alt/usecase/search_feed_usecase"
 	"alt/utils/rate_limiter"
+	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -66,6 +70,7 @@ type ApplicationComponents struct {
 	FeedSearchUsecase                   *search_feed_usecase.SearchFeedMeilisearchUsecase
 	FetchFeedTagsUsecase                *fetch_feed_tags_usecase.FetchFeedTagsUsecase
 	FetchInoreaderSummaryUsecase        fetch_inoreader_summary_usecase.FetchInoreaderSummaryUsecase
+	ImageFetchUsecase                   image_fetch_usecase.ImageFetchUsecaseInterface
 	CSRFTokenUsecase                    *csrf_token_usecase.CSRFTokenUsecase
 }
 
@@ -143,6 +148,13 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	csrfTokenGateway := csrf_token_gateway.NewCSRFTokenGateway(csrfTokenDriver)
 	csrfTokenUsecase := csrf_token_usecase.NewCSRFTokenUsecase(csrfTokenGateway)
 
+	// Image fetch components
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	imageFetchGateway := image_fetch_gateway.NewImageFetchGateway(httpClient)
+	imageFetchUsecase := image_fetch_usecase.NewImageFetchUsecase(imageFetchGateway)
+
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
@@ -171,6 +183,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FeedSearchUsecase:                   feedSearchUsecase,
 		FetchFeedTagsUsecase:                fetchFeedTagsUsecase,
 		FetchInoreaderSummaryUsecase:        fetchInoreaderSummaryUsecase,
+		ImageFetchUsecase:                   imageFetchUsecase,
 		CSRFTokenUsecase:                    csrfTokenUsecase,
 	}
 }

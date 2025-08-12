@@ -86,3 +86,22 @@ type FeedSummaryProvidedResponse struct {
 	TotalMatched    int                        `json:"total_matched"`
 	RequestedCount  int                        `json:"requested_count"`
 }
+
+// ImageFetchRequest represents the request payload for image fetching endpoint
+type ImageFetchRequest struct {
+	URL     string              `json:"url" validate:"required,url"`
+	Options *ImageFetchOptions  `json:"options,omitempty"`
+}
+
+// ImageFetchOptions represents optional parameters for image fetching
+type ImageFetchOptions struct {
+	MaxSize int `json:"max_size,omitempty" validate:"omitempty,min=1,max=10485760"` // 10MB max
+	Timeout int `json:"timeout,omitempty" validate:"omitempty,min=1,max=60000"`     // 60 seconds max
+}
+
+// ImageFetchErrorResponse represents error response for image fetching
+type ImageFetchErrorResponse struct {
+	Code    string      `json:"code"`
+	Message string      `json:"message"`
+	Details interface{} `json:"details,omitempty"`
+}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"alt/domain"
+	"alt/mocks"
 )
 
 // インターフェース契約のテスト
@@ -97,7 +98,7 @@ func TestFetchFeedsPortContract(t *testing.T) {
 // インターフェース実装の確認テスト
 func TestFetchFeedsPortImplementation(t *testing.T) {
 	// モックの実装があることを確認
-	var _ FetchFeedsPort = (*mockFetchFeedsPort)(nil)
+	var _ FetchFeedsPort = (*mocks.MockFetchFeedsPort)(nil)
 }
 
 // テスト用の簡単なモック実装
