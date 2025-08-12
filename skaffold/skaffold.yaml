@@ -23,12 +23,7 @@ requires:
         activatedBy: [staging]
       - name: prod
         activatedBy: [prod]
-  # Layer 3: Database Migration - schema initialization
-  - path: ./03-migrate
-    configs: [alt-database-migration]
-    activeProfiles:
-      - name: prod
-        activatedBy: [prod]
+  # Layer 3: Removed - Database Migration now integrated into Layer 2 Infrastructure
   # Layer 4: Core Services - business logic (alt-backend + envoy-proxy)
   - path: ./04-core-services
     configs: [alt-core-services]
