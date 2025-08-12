@@ -1,0 +1,339 @@
+/**
+ * Security utilities for frontend authentication
+ * Implements security best practices for the authentication system
+ */
+
+// Input validation patterns
+export const ValidationPatterns = {
+  email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+  password: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+  name: /^[a-zA-Z\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]{1,100}$/,
+} as const;
+
+// Security configuration
+export const SecurityConfig = {
+  maxLoginAttempts: 5,
+  lockoutDuration: 15 * 60 * 1000, // 15 minutes
+  sessionTimeout: 30 * 60 * 1000, // 30 minutes
+  passwordMinLength: 8,
+  csrfTokenHeader: 'X-CSRF-Token',
+} as const;
+
+// Input sanitization
+export function sanitizeInput(input: string): string {
+  return input
+    .trim()
+    .replace(/[<>\"'&]/g, (match) => {
+      const entityMap: Record<string, string> = {
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#x27;',
+        '&': '&amp;',
+      };
+      return entityMap[match] || match;
+    });
+}
+
+// Email validation
+export function validateEmail(email: string): {
+  isValid: boolean;
+  error?: string;
+} {
+  const sanitized = sanitizeInput(email);
+  
+  if (!sanitized) {
+    return { isValid: false, error: 'メールアドレスを入力してください' };
+  }
+  
+  if (sanitized.length > 254) {
+    return { isValid: false, error: 'メールアドレスが長すぎます' };
+  }
+  
+  if (!ValidationPatterns.email.test(sanitized)) {
+    return { isValid: false, error: '有効なメールアドレスを入力してください' };
+  }
+  
+  return { isValid: true };
+}
+
+// Password validation
+export function validatePassword(password: string): {
+  isValid: boolean;
+  error?: string;
+  strength: 'weak' | 'medium' | 'strong';
+} {
+  if (!password) {
+    return { isValid: false, error: 'パスワードを入力してください', strength: 'weak' };
+  }
+  
+  if (password.length < SecurityConfig.passwordMinLength) {
+    return { 
+      isValid: false, 
+      error: `パスワードは${SecurityConfig.passwordMinLength}文字以上である必要があります`, 
+      strength: 'weak' 
+    };
+  }
+  
+  if (password.length > 128) {
+    return { 
+      isValid: false, 
+      error: 'パスワードが長すぎます', 
+      strength: 'weak' 
+    };
+  }
+  
+  // Check for common weak patterns
+  const weakPatterns = [
+    /^(.)\1+$/, // All same character
+    /^(012|123|234|345|456|567|678|789|890|abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz)/i,
+    /^(password|pass|admin|user|test|demo|guest|login|qwerty|asdf|zxcv)/i,
+  ];
+  
+  if (weakPatterns.some(pattern => pattern.test(password))) {
+    return { 
+      isValid: false, 
+      error: '一般的なパスワードは使用できません', 
+      strength: 'weak' 
+    };
+  }
+  
+  // Calculate strength
+  let strength: 'weak' | 'medium' | 'strong' = 'weak';
+  let score = 0;
+  
+  if (/[a-z]/.test(password)) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/\d/.test(password)) score++;
+  if (/[@$!%*?&]/.test(password)) score++;
+  if (password.length >= 12) score++;
+  
+  if (score >= 4) {
+    strength = 'strong';
+  } else if (score >= 3) {
+    strength = 'medium';
+  }
+  
+  // Require at least medium strength
+  if (score < 3) {
+    return { 
+      isValid: false, 
+      error: 'パスワードは大文字、小文字、数字、特殊文字を含む必要があります', 
+      strength 
+    };
+  }
+  
+  return { isValid: true, strength };
+}
+
+// Name validation
+export function validateName(name: string): {
+  isValid: boolean;
+  error?: string;
+} {
+  const sanitized = sanitizeInput(name);
+  
+  if (!sanitized) {
+    return { isValid: false, error: '名前を入力してください' };
+  }
+  
+  if (sanitized.length > 100) {
+    return { isValid: false, error: '名前が長すぎます' };
+  }
+  
+  if (!ValidationPatterns.name.test(sanitized)) {
+    return { isValid: false, error: '有効な名前を入力してください' };
+  }
+  
+  return { isValid: true };
+}
+
+// Rate limiting utilities
+export class RateLimiter {
+  private attempts: Map<string, { count: number; firstAttempt: number; lockedUntil?: number }> = new Map();
+  
+  constructor(
+    private maxAttempts: number = SecurityConfig.maxLoginAttempts,
+    private windowMs: number = 15 * 60 * 1000, // 15 minutes
+    private lockoutMs: number = SecurityConfig.lockoutDuration
+  ) {}
+  
+  isBlocked(identifier: string): boolean {
+    const record = this.attempts.get(identifier);
+    if (!record) return false;
+    
+    // Check if lockout has expired
+    if (record.lockedUntil && Date.now() > record.lockedUntil) {
+      this.attempts.delete(identifier);
+      return false;
+    }
+    
+    return !!record.lockedUntil;
+  }
+  
+  recordAttempt(identifier: string): {
+    allowed: boolean;
+    attemptsRemaining: number;
+    resetTime?: number;
+  } {
+    const now = Date.now();
+    const record = this.attempts.get(identifier);
+    
+    if (!record) {
+      this.attempts.set(identifier, { count: 1, firstAttempt: now });
+      return { allowed: true, attemptsRemaining: this.maxAttempts - 1 };
+    }
+    
+    // Reset if window has expired
+    if (now - record.firstAttempt > this.windowMs) {
+      this.attempts.set(identifier, { count: 1, firstAttempt: now });
+      return { allowed: true, attemptsRemaining: this.maxAttempts - 1 };
+    }
+    
+    // Check if already locked
+    if (record.lockedUntil && now < record.lockedUntil) {
+      return { 
+        allowed: false, 
+        attemptsRemaining: 0, 
+        resetTime: record.lockedUntil 
+      };
+    }
+    
+    record.count++;
+    
+    // Lock if max attempts reached
+    if (record.count >= this.maxAttempts) {
+      record.lockedUntil = now + this.lockoutMs;
+      return { 
+        allowed: false, 
+        attemptsRemaining: 0, 
+        resetTime: record.lockedUntil 
+      };
+    }
+    
+    return { 
+      allowed: true, 
+      attemptsRemaining: this.maxAttempts - record.count 
+    };
+  }
+  
+  reset(identifier: string): void {
+    this.attempts.delete(identifier);
+  }
+}
+
+// Secure storage utilities
+export class SecureStorage {
+  private static readonly prefix = 'alt_auth_';
+  
+  static setItem(key: string, value: string, encrypt: boolean = true): void {
+    try {
+      const storageKey = this.prefix + key;
+      const storageValue = encrypt ? this.encrypt(value) : value;
+      localStorage.setItem(storageKey, storageValue);
+    } catch (error) {
+      console.warn('Failed to store item securely:', error);
+    }
+  }
+  
+  static getItem(key: string, decrypt: boolean = true): string | null {
+    try {
+      const storageKey = this.prefix + key;
+      const value = localStorage.getItem(storageKey);
+      if (!value) return null;
+      return decrypt ? this.decrypt(value) : value;
+    } catch (error) {
+      console.warn('Failed to retrieve item securely:', error);
+      return null;
+    }
+  }
+  
+  static removeItem(key: string): void {
+    try {
+      const storageKey = this.prefix + key;
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      console.warn('Failed to remove item securely:', error);
+    }
+  }
+  
+  static clearAll(): void {
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(this.prefix)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+    } catch (error) {
+      console.warn('Failed to clear secure storage:', error);
+    }
+  }
+  
+  private static encrypt(value: string): string {
+    // Simple base64 encoding (not cryptographically secure, but better than plain text)
+    // In production, use proper encryption with a key derived from user session
+    try {
+      return btoa(encodeURIComponent(value));
+    } catch (error) {
+      return value;
+    }
+  }
+  
+  private static decrypt(value: string): string {
+    try {
+      return decodeURIComponent(atob(value));
+    } catch (error) {
+      return value;
+    }
+  }
+}
+
+// Content Security Policy helpers
+export function generateNonce(): string {
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// Security headers validation
+export function validateSecurityHeaders(response: Response): boolean {
+  const requiredHeaders = [
+    'x-frame-options',
+    'x-content-type-options',
+    'x-xss-protection',
+  ];
+  
+  return requiredHeaders.every(header => 
+    response.headers.has(header)
+  );
+}
+
+// CSRF token management
+export class CSRFManager {
+  private static token: string | null = null;
+  
+  static setToken(token: string): void {
+    this.token = token;
+    SecureStorage.setItem('csrf_token', token);
+  }
+  
+  static getToken(): string | null {
+    if (this.token) return this.token;
+    
+    this.token = SecureStorage.getItem('csrf_token');
+    return this.token;
+  }
+  
+  static clearToken(): void {
+    this.token = null;
+    SecureStorage.removeItem('csrf_token');
+  }
+  
+  static getHeaders(): Record<string, string> {
+    const token = this.getToken();
+    return token ? { [SecurityConfig.csrfTokenHeader]: token } : {};
+  }
+}

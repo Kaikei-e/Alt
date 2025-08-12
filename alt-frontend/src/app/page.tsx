@@ -16,8 +16,12 @@ import { FeedStatsSummary } from "@/schema/feedStats";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { AuthGuard } from "@/components/auth";
+import { useAuth } from "@/contexts/auth-context";
+import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 
 export default function Home() {
+  const { isAuthenticated, user } = useAuth();
   const [stats, setStats] = useState<FeedStatsSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,68 +44,51 @@ export default function Home() {
   }, []);
 
   return (
-    <Box
-      minH="100vh"
-      minHeight="100dvh"
-      bg="var(--app-bg)"
-      position="relative"
-      pt="env(safe-area-inset-top)"
-      pb="env(safe-area-inset-bottom)"
-      background="var(--alt-gradient-bg)"
-    >
+    <AuthenticatedLayout>
       <Box
-        as="a"
-        position="absolute"
-        top="-40px"
-        left="6px"
-        bg="var(--gradient-bg)"
-        color="var(--text-primary)"
-        p={2}
-        borderRadius="xs"
-        zIndex={1000}
-        textDecoration="none"
-        transition="top 0.2s ease"
-        _focus={{
-          top: "6px",
-          outline: "2px solid",
-          outlineColor: "accent.default",
-        }}
-        onClick={(e) => {
-          e.preventDefault();
-          const mainContent = document.getElementById("main-content");
-          if (mainContent) {
-            mainContent.setAttribute("tabindex", "-1");
-            mainContent.focus();
-          }
-        }}
-      >
-        Skip to main content
-      </Box>
-
-      {/* Theme Toggle Button */}
-      <Box
-        position="absolute"
-        top="env(safe-area-inset-top, 16px)"
-        right="16px"
-        zIndex={100}
-      >
-        <ThemeToggle size="md" />
-      </Box>
-      {/* Main Content */}
-      <Box
-        id="main-content"
-        as="main"
+        minH="60vh"
         position="relative"
-        zIndex={1}
-        maxW="container.sm"
-        mx="auto"
-        px={4}
-        py={6}
-        width="100%"
-        maxWidth="100%"
         role="main"
         aria-label="Alt RSS Reader Home Page"
       >
+        <Box
+          as="a"
+          position="absolute"
+          top="-40px"
+          left="6px"
+          bg="var(--gradient-bg)"
+          color="var(--text-primary)"
+          p={2}
+          borderRadius="xs"
+          zIndex={1000}
+          textDecoration="none"
+          transition="top 0.2s ease"
+          _focus={{
+            top: "6px",
+            outline: "2px solid",
+            outlineColor: "accent.default",
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            const mainContent = document.getElementById("main-content");
+            if (mainContent) {
+              mainContent.setAttribute("tabindex", "-1");
+              mainContent.focus();
+            }
+          }}
+        >
+          Skip to main content
+        </Box>
+
+        {/* Theme Toggle Button */}
+        <Box
+          position="absolute"
+          top="16px"
+          right="16px"
+          zIndex={100}
+        >
+          <ThemeToggle size="md" />
+        </Box>
         {/* Hero Section - Refined & Elegant */}
         <VStack as="section" gap={2} mb={6} textAlign="center">
           <Text
@@ -123,101 +110,111 @@ export default function Home() {
             maxW="300px"
             lineHeight="1.5"
           >
-            AI-powered RSS reader with modern aesthetics
+            {isAuthenticated && user
+              ? `おかえりなさい、${user.name || 'ユーザー'}さん`
+              : 'AI-powered RSS reader with modern aesthetics'
+            }
           </Text>
         </VStack>
 
-        {/* Navigation Section - Refined Glass Card */}
-        <Box as="nav" aria-label="Main navigation" mb={6}>
-          <ChakraLink
-            as={NextLink}
-            href="/mobile/feeds"
-            data-testid="nav-card"
-            bg="var(--alt-glass)"
-            border="1px solid"
-            borderColor="var(--alt-glass-border)"
-            backdropFilter="blur(12px) saturate(1.2)"
-            p={4}
-            borderRadius="lg"
-            color="fg.default"
-            cursor="pointer"
-            transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-            minH="44px"
-            w="full"
-            textAlign="left"
-            textDecoration="none"
-            display="block"
-            position="relative"
-            overflow="hidden"
-            _hover={{
-              transform: "translateY(-1px)",
-              bg: "var(--alt-glass)",
-              borderColor: "var(--alt-glass-border)",
-              boxShadow: "0 4px 20px var(--alt-glass-shadow)",
-              textDecoration: "none",
-            }}
-            _focus={{
-              outline: "2px solid",
-              outlineColor: "var(--alt-primary)",
-              outlineOffset: "2px",
-            }}
-            _active={{
-              transform: "translateY(0)",
-            }}
-          >
-            {/* Subtle gradient overlay */}
-            <Box
-              position="absolute"
-              top={0}
-              left={0}
-              right={0}
-              bottom={0}
-              bgGradient="linear(45deg, transparent 0%, var(--alt-glass) 50%, transparent 100%)"
-              opacity={0}
-              transition="opacity 0.2s ease"
-              _hover={{ opacity: 1 }}
-            />
-
-            <Flex
-              align="center"
-              justify="space-between"
-              position="relative"
-              zIndex={1}
-            >
-              <HStack gap={3}>
-                <Box
-                  color="var(--alt-primary)"
-                  p={2}
-                  borderRadius="sm"
-                  bg="var(--alt-glass)"
-                >
-                  <Rss size={18} />
-                </Box>
-                <VStack align="start" gap={0}>
-                  <Text
-                    fontSize="lg"
-                    fontWeight="semibold"
-                    fontFamily="heading"
-                    color="var(--text-primary)"
-                  >
-                    Browse Feeds
-                  </Text>
-                  <Text
-                    fontSize="xs"
-                    color="var(--text-primary)"
-                    fontFamily="body"
-                  >
-                    Explore RSS subscriptions
-                  </Text>
-                </VStack>
-              </HStack>
-
-              <Box color="var(--alt-primary)" opacity={0.6}>
-                <ArrowRight size={16} />
-              </Box>
-            </Flex>
-          </ChakraLink>
+        {/* Authentication Section */}
+        <Box as="section" mb={6} aria-label="Authentication">
+          <AuthGuard />
         </Box>
+
+        {/* Navigation Section - Refined Glass Card */}
+        {isAuthenticated && (
+          <Box as="nav" aria-label="Main navigation" mb={6}>
+            <ChakraLink
+              as={NextLink}
+              href="/mobile/feeds"
+              data-testid="nav-card"
+              bg="var(--alt-glass)"
+              border="1px solid"
+              borderColor="var(--alt-glass-border)"
+              backdropFilter="blur(12px) saturate(1.2)"
+              p={4}
+              borderRadius="lg"
+              color="fg.default"
+              cursor="pointer"
+              transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+              minH="44px"
+              w="full"
+              textAlign="left"
+              textDecoration="none"
+              display="block"
+              position="relative"
+              overflow="hidden"
+              _hover={{
+                transform: "translateY(-1px)",
+                bg: "var(--alt-glass)",
+                borderColor: "var(--alt-glass-border)",
+                boxShadow: "0 4px 20px var(--alt-glass-shadow)",
+                textDecoration: "none",
+              }}
+              _focus={{
+                outline: "2px solid",
+                outlineColor: "var(--alt-primary)",
+                outlineOffset: "2px",
+              }}
+              _active={{
+                transform: "translateY(0)",
+              }}
+            >
+              {/* Subtle gradient overlay */}
+              <Box
+                position="absolute"
+                top={0}
+                left={0}
+                right={0}
+                bottom={0}
+                bgGradient="linear(45deg, transparent 0%, var(--alt-glass) 50%, transparent 100%)"
+                opacity={0}
+                transition="opacity 0.2s ease"
+                _hover={{ opacity: 1 }}
+              />
+
+              <Flex
+                align="center"
+                justify="space-between"
+                position="relative"
+                zIndex={1}
+              >
+                <HStack gap={3}>
+                  <Box
+                    color="var(--alt-primary)"
+                    p={2}
+                    borderRadius="sm"
+                    bg="var(--alt-glass)"
+                  >
+                    <Rss size={18} />
+                  </Box>
+                  <VStack align="start" gap={0}>
+                    <Text
+                      fontSize="lg"
+                      fontWeight="semibold"
+                      fontFamily="heading"
+                      color="var(--text-primary)"
+                    >
+                      あなたのフィード
+                    </Text>
+                    <Text
+                      fontSize="xs"
+                      color="var(--text-primary)"
+                      fontFamily="body"
+                    >
+                      パーソナライズされたRSSフィード
+                    </Text>
+                  </VStack>
+                </HStack>
+
+                <Box color="var(--alt-primary)" opacity={0.6}>
+                  <ArrowRight size={16} />
+                </Box>
+              </Flex>
+            </ChakraLink>
+          </Box>
+        )}
 
         {/* Dashboard Section - Refined Stats Grid */}
         <VStack as="section" gap={3} mb={6} aria-labelledby="dashboard-heading">
@@ -231,7 +228,7 @@ export default function Home() {
             alignSelf="flex-start"
             mb={1}
           >
-            Dashboard
+            {isAuthenticated ? "あなたのダッシュボード" : "プラットフォーム統計"}
           </Text>
 
           {isLoading ? (
@@ -442,10 +439,10 @@ export default function Home() {
             </VStack>
           )}
         </VStack>
+        
+        {/* Floating Menu */}
+        <FloatingMenu />
       </Box>
-
-      {/* Floating Menu */}
-      <FloatingMenu />
-    </Box>
+    </AuthenticatedLayout>
   );
 }
