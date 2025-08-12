@@ -263,6 +263,20 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   private static externalDomainsCache: string[] | null = null;
 
   /**
+   * Escape HTML to prevent XSS in data attributes
+   * @param str - String to escape
+   * @returns HTML-escaped string
+   */
+  private escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
    * Decode HTML entities specifically for URLs (separate from general content decoding)
    * Prevents double encoding issues with &amp; -> %26amp%3B
    * @param url - URL with potential HTML entities
