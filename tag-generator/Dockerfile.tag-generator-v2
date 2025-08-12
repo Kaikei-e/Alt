@@ -1,0 +1,86 @@
+# ==============================================================================
+# Tag Generator Service - Kubernetes-Ready Multi-Stage Build with Shared Auth
+# ==============================================================================
+
+# ベースステージ: 共有認証ライブラリをビルド
+FROM python:3.13-slim AS shared-auth-builder
+
+WORKDIR /shared-auth
+
+# システム依存関係
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# 共有認証ライブラリをコピーしてビルド
+COPY shared/auth-lib-python/ ./
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -e .
+
+# ==============================================================================
+# アプリケーションビルドステージ
+FROM python:3.13-slim AS app-builder
+
+WORKDIR /app
+
+# システム依存関係（最小限）
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# アプリケーション依存関係を先にインストール（キャッシュ効率化）
+COPY tag-generator/app/pyproject.toml tag-generator/app/uv.lock* ./
+RUN pip install --no-cache-dir uv
+RUN uv sync --locked || pip install -r requirements.txt 2>/dev/null || true
+
+# 共有認証ライブラリをコピー
+COPY --from=shared-auth-builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+
+# ML依存関係のインストール（必要に応じて）
+RUN pip install --no-cache-dir \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# オプション: SentenceTransformersをインストールしてモデルをキャッシュ
+RUN pip install --no-cache-dir sentence-transformers unidic
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu'); print('✅ SBERT model cached')"
+
+# アプリケーションコードをコピー
+COPY tag-generator/app/ ./
+
+# ==============================================================================
+# ランタイムステージ（最小限）
+FROM python:3.13-slim AS runtime
+
+# 最小限のシステムパッケージ
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Python依存関係をコピー
+COPY --from=app-builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=app-builder /usr/local/bin /usr/local/bin
+
+# アプリケーションをコピー  
+COPY --from=app-builder /app ./
+
+# 共有認証ライブラリへのパスを設定
+ENV PYTHONPATH="${PYTHONPATH}:/usr/local/lib/python3.13/site-packages"
+
+# 認証設定（Kubernetes環境向け）
+ENV AUTH_SERVICE_URL="http://auth-service.alt-auth.svc.cluster.local:8080"
+ENV SERVICE_SECRET=""
+
+# ヘルスチェック
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)" || exit 1
+
+# 非rootユーザーで実行（Kubernetes Security Context対応）
+RUN groupadd -g 1001 appgroup && useradd -r -u 1001 -g appgroup appuser
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+EXPOSE 8000
+
+CMD ["python", "auth_service.py"]
