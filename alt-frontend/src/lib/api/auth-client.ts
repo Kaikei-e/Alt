@@ -4,7 +4,21 @@ export class AuthAPIClient {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL || 'http://auth-service:9500';
+    // フロントエンド用の正しいauth-serviceエンドポイント
+    this.baseURL = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
+  }
+
+  // 接続テスト機能追加 (X1.md 1.3.2 実装)
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseURL}/v1/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   async initiateLogin(): Promise<LoginFlow> {
@@ -119,13 +133,20 @@ export class AuthAPIClient {
       config.body = JSON.stringify(body);
     }
 
-    const response = await fetch(url, config);
+    try {
+      const response = await fetch(url, config);
 
-    if (!response.ok) {
-      throw new Error(`${this.getMethodDescription(method, endpoint)}`);
+      if (!response.ok) {
+        const errorContext = this.getMethodDescription(method, endpoint);
+        const error = new Error(`HTTP ${response.status}: ${errorContext}`);
+        throw this.handleError(error, errorContext);
+      }
+
+      return await response.json();
+    } catch (error) {
+      const errorContext = this.getMethodDescription(method, endpoint);
+      throw this.handleError(error, errorContext);
     }
-
-    return await response.json();
   }
 
   private async getCSRFTokenInternal(): Promise<string | null> {
@@ -145,6 +166,17 @@ export class AuthAPIClient {
     } catch {
       return null;
     }
+  }
+
+  // 詳細エラーログ追加 (X1.md 1.3.2 実装)
+  private handleError(error: unknown, context: string): Error {
+    console.error(`Auth API Error [${context}]:`, error);
+    
+    if (error instanceof Error) {
+      return new Error(`${context}: ${error.message}`);
+    }
+    
+    return new Error(`${context}: Unknown error occurred`);
   }
 
   private getMethodDescription(method: string, endpoint: string): string {
