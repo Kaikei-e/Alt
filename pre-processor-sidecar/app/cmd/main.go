@@ -15,10 +15,11 @@ import (
 	"pre-processor-sidecar/config"
 	"pre-processor-sidecar/driver"
 	"pre-processor-sidecar/handler"
+	"pre-processor-sidecar/mocks"
 	"pre-processor-sidecar/repository"
 	"pre-processor-sidecar/security"
 	"pre-processor-sidecar/service"
-	
+
 	"encoding/json"
 
 	_ "github.com/lib/pq"
@@ -143,17 +144,17 @@ func performHealthCheck() {
 
 func performOAuth2Initialization(cfg *config.Config, logger *slog.Logger) {
 	logger.Info("OAuth2 initialization starting", "service", "oauth2-init")
-	
+
 	// Wait for Linkerd proxy initialization
 	logger.Info("Waiting for Linkerd proxy initialization...")
 	time.Sleep(10 * time.Second)
-	
+
 	// Initialize database connection (Clean Architecture - use config values)
 	dbConnectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port, 
-		cfg.Database.User, cfg.Database.Password, 
+		cfg.Database.Host, cfg.Database.Port,
+		cfg.Database.User, cfg.Database.Password,
 		cfg.Database.Name, cfg.Database.SSLMode)
-	
+
 	// Create database connection
 	logger.Info("Attempting database connection",
 		"host", cfg.Database.Host,
@@ -161,20 +162,20 @@ func performOAuth2Initialization(cfg *config.Config, logger *slog.Logger) {
 		"user", cfg.Database.User,
 		"dbname", cfg.Database.Name,
 		"sslmode", cfg.Database.SSLMode)
-	
+
 	db, err := sql.Open("postgres", dbConnectionString)
 	if err != nil {
 		logger.Error("Failed to create database connection", "error", err)
 		os.Exit(1)
 	}
 	defer db.Close()
-	
+
 	// Test database connection with retry logic
 	maxRetries := 3
 	for i := 1; i <= maxRetries; i++ {
 		if err := db.Ping(); err != nil {
-			logger.Warn("Database ping failed, retrying...", 
-				"attempt", i, 
+			logger.Warn("Database ping failed, retrying...",
+				"attempt", i,
 				"error", err)
 			if i == maxRetries {
 				logger.Error("OAuth2 initialization failed", "error", fmt.Errorf("failed to ping database after %d attempts: %w", maxRetries, err))
@@ -185,39 +186,39 @@ func performOAuth2Initialization(cfg *config.Config, logger *slog.Logger) {
 		}
 		break
 	}
-	
+
 	logger.Info("Database connection established successfully")
-	
+
 	// OAuth2 initialization completed
 }
 
 // runScheduleMode は新しい統合トークンシステムでスケジュールモードを実行
 func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logger, simpleTokenService *service.SimpleTokenService) error {
 	logger.Info("Initializing dual schedule processing system")
-	
+
 	// Wait for Linkerd proxy initialization
 	logger.Info("Waiting for Linkerd proxy initialization...")
 	time.Sleep(10 * time.Second)
-	
+
 	// Initialize database connection
 	dbConnectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port, 
-		cfg.Database.User, cfg.Database.Password, 
+		cfg.Database.Host, cfg.Database.Port,
+		cfg.Database.User, cfg.Database.Password,
 		cfg.Database.Name, cfg.Database.SSLMode)
-	
-	logger.Info("Attempting database connection", 
+
+	logger.Info("Attempting database connection",
 		"host", cfg.Database.Host,
 		"port", cfg.Database.Port,
 		"user", cfg.Database.User,
 		"dbname", cfg.Database.Name,
 		"sslmode", cfg.Database.SSLMode)
-	
+
 	db, err := sql.Open("postgres", dbConnectionString)
 	if err != nil {
 		return fmt.Errorf("failed to open database connection: %w", err)
 	}
 	defer db.Close()
-	
+
 	// Test database connection with retry
 	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
@@ -258,9 +259,10 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 
 	// Enhanced Token Serviceを使用したInoreaderサービス
 	inoreaderClient := service.NewInoreaderClient(oauth2Client, logger)
-	
-	// APIUsageRepositoryは不要、SimpleTokenServiceを渡す
-	inoreaderService := service.NewInoreaderService(inoreaderClient, nil, simpleTokenService, logger)
+
+	// Create a mock APIUsageRepository since it's not needed
+	mockAPIUsageRepo := &mocks.MockAPIUsageRepository{}
+	inoreaderService := service.NewInoreaderService(inoreaderClient, mockAPIUsageRepo, simpleTokenService, logger)
 
 	subscriptionSyncService := service.NewSubscriptionSyncService(inoreaderService, subscriptionRepo, logger)
 	rateLimitManager := service.NewRateLimitManager(nil, logger)
@@ -318,14 +320,14 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("/admin/oauth2/refresh-token", adminAPIHandler.HandleRefreshTokenUpdate)
 	adminMux.HandleFunc("/admin/oauth2/token-status", adminAPIHandler.HandleTokenStatus)
-	
+
 	// Manual trigger endpoints for testing
 	adminMux.HandleFunc("/admin/trigger/article-fetch", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		
+
 		logger.Info("Manual article fetch triggered via Admin API")
 		err := scheduleHandler.TriggerArticleFetch()
 		if err != nil {
@@ -333,22 +335,22 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "triggered",
-			"message": "Article fetch (rotation) has been triggered manually",
+			"status":    "triggered",
+			"message":   "Article fetch (rotation) has been triggered manually",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 		})
 	})
-	
+
 	adminMux.HandleFunc("/admin/trigger/subscription-sync", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		
+
 		logger.Info("Manual subscription sync triggered via Admin API")
 		err := scheduleHandler.TriggerSubscriptionSync()
 		if err != nil {
@@ -356,19 +358,19 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "triggered",
-			"message": "Subscription sync has been triggered manually", 
+			"status":    "triggered",
+			"message":   "Subscription sync has been triggered manually",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 		})
 	})
-	
+
 	adminServer := &http.Server{
-		Addr:    ":8080",
-		Handler: adminMux,
+		Addr:         ":8080",
+		Handler:      adminMux,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
@@ -396,15 +398,15 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	}()
 
 	// Start the dual schedule processing
-	logger.Info("Starting dual schedule processing", 
+	logger.Info("Starting dual schedule processing",
 		"subscription_sync_interval", "4h",
 		"article_fetch_interval", "30m",
 		"admin_api_address", ":8080")
-	
+
 	if err := scheduleHandler.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start schedule handler: %w", err)
 	}
-	
+
 	// サービス状態の定期ログ
 	statusTicker := time.NewTicker(10 * time.Minute)
 	defer statusTicker.Stop()
@@ -423,13 +425,13 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 			}
 		}
 	}()
-	
+
 	// Wait for context cancellation or termination signal
 	logger.Info("Dual schedule processing started successfully - running indefinitely")
 	<-ctx.Done()
-	
+
 	logger.Info("Shutting down dual schedule processing")
 	scheduleHandler.Stop()
-	
+
 	return nil
 }
