@@ -1,0 +1,63 @@
+# Skaffold ignore file for monorepo build optimization
+
+# Documentation and README files
+**/*.md
+!README.md
+**/docs/
+**/documentation/
+
+# IDE and editor files
+.vscode/
+.idea/
+**/*.swp
+**/*.swo
+
+# Version control
+.git/
+.gitignore
+
+# Test artifacts
+**/test-results/
+**/coverage/
+**/.pytest_cache/
+**/target/debug/
+**/target/release/
+
+# Development containers and compose files
+**/docker-compose*.yml
+**/.devcontainer/
+
+# Cache and temporary files
+**/.cache/
+**/tmp/
+**/temp/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Large model files (except when needed)
+**/cached_models/
+**/models/blobs/
+**/*.bin
+**/*.safetensors
+
+# Node modules
+**/node_modules/
+
+# Build artifacts
+**/dist/
+**/build/
+**/target/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Keep shared directories
+!shared/
+!shared/**
+
+# Logs
+**/*.log
+**/logs/

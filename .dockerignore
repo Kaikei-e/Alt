@@ -1,0 +1,125 @@
+# Global .dockerignore for monorepo build context
+# This file is used when building from the root directory
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+**/*.md
+!README.md
+**/docs/
+**/documentation/
+
+# IDE and editor files
+.vscode/
+.idea/
+**/*.swp
+**/*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+**/logs/
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# Runtime data
+**/pids/
+**/*.pid
+**/*.seed
+**/*.pid.lock
+
+# Coverage directory used by tools like istanbul
+**/coverage/
+**/.nyc_output/
+
+# Dependency directories
+**/node_modules/
+**/vendor/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+**/build/
+**/develop-eggs/
+**/dist/
+**/downloads/
+**/eggs/
+**/.eggs/
+**/lib/
+**/lib64/
+**/parts/
+**/sdist/
+**/var/
+**/wheels/
+
+# Go build artifacts
+**/*.exe
+**/*.exe~
+**/*.dll
+**/*.so
+**/*.dylib
+**/main
+**/.env
+
+# Python
+**/*.py[cod]
+**/*$py.class
+**/*.so
+**/.Python
+**/env/
+**/venv/
+**/ENV/
+**/env.bak/
+**/venv.bak/
+
+# Rust
+**/target/
+**/*.rs.bk
+
+# Test artifacts
+**/test-results/
+**/coverage/
+**/.coverage
+**/.pytest_cache/
+
+# Cache directories
+**/.cache/
+**/tmp/
+**/temp/
+
+# Lock files (keep only essential ones)
+**/*.lock
+!**/go.sum
+!**/Cargo.lock
+!**/package-lock.json
+!**/yarn.lock
+!**/uv.lock
+
+# Development containers
+**/docker-compose.override.yml
+**/docker-compose.dev.yml
+**/.devcontainer/
+
+# Exclude cached models and large files
+**/cached_models/
+**/models/blobs/
+**/*.bin
+**/*.safetensors
+
+# But include shared directories
+!shared/
+!shared/**
