@@ -20,6 +20,20 @@ const (
 	SubscriptionTierEnterprise SubscriptionTier = "enterprise"
 )
 
+// TenantLimits defines resource limits for a tenant
+type TenantLimits struct {
+	MaxFeeds int `json:"max_feeds"`
+	MaxUsers int `json:"max_users"`
+}
+
+// TenantSettings holds tenant-specific configuration
+type TenantSettings struct {
+	Features []string               `json:"features"`
+	Limits   TenantLimits          `json:"limits"`
+	Timezone string                `json:"timezone"`
+	Language string                `json:"language"`
+}
+
 type Tenant struct {
 	ID               uuid.UUID                  `json:"id"`
 	Name             string                     `json:"name"`
@@ -29,7 +43,7 @@ type Tenant struct {
 	SubscriptionTier SubscriptionTier           `json:"subscription_tier"`
 	MaxUsers         int                        `json:"max_users"`
 	MaxFeeds         int                        `json:"max_feeds"`
-	Settings         map[string]interface{}     `json:"settings"`
+	Settings         TenantSettings             `json:"settings"`
 	CreatedAt        time.Time                  `json:"created_at"`
 	UpdatedAt        time.Time                  `json:"updated_at"`
 }
@@ -38,7 +52,17 @@ type TenantUpdates struct {
 	Name         *string                    `json:"name,omitempty"`
 	Description  *string                    `json:"description,omitempty"`
 	Status       *TenantStatus              `json:"status,omitempty"`
-	Settings     *map[string]interface{}    `json:"settings,omitempty"`
+	Settings     *TenantSettings            `json:"settings,omitempty"`
+}
+
+// TenantUsage represents current resource usage for a tenant
+type TenantUsage struct {
+	TenantID       uuid.UUID `json:"tenant_id"`
+	UserCount      int       `json:"user_count"`
+	FeedCount      int       `json:"feed_count"`
+	StorageUsed    int64     `json:"storage_used"` // in bytes
+	RequestsPerDay int       `json:"requests_per_day"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // コンテキストキー
@@ -57,4 +81,20 @@ func GetTenantFromContext(ctx context.Context) (*Tenant, error) {
 		return nil, ErrTenantNotFound
 	}
 	return tenant, nil
+}
+
+// IsActive returns true if the tenant is active
+func (t *Tenant) IsActive() bool {
+	return t.Status == TenantStatusActive
+}
+
+// IsWithinLimits checks if the tenant is within its resource limits
+func (t *Tenant) IsWithinLimits(userCount, feedCount int) bool {
+	if userCount > t.MaxUsers {
+		return false
+	}
+	if feedCount > t.MaxFeeds {
+		return false
+	}
+	return true
 }

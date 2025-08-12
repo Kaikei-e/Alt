@@ -3,12 +3,13 @@ package middleware
 
 import (
 	"context"
-	"strings"
-	"alt/domain"
 	"net/http"
+	"strings"
 
-	"github.com/labstack/echo/v4"
+	"alt/domain"
+
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 	"log/slog"
 )
 
@@ -19,6 +20,8 @@ type TenantMiddleware struct {
 
 type TenantService interface {
 	GetTenant(ctx context.Context, tenantID uuid.UUID) (*domain.Tenant, error)
+	GetTenantBySlug(ctx context.Context, slug string) (*domain.Tenant, error)
+	GetTenantUsage(ctx context.Context, tenantID uuid.UUID) (*domain.TenantUsage, error)
 }
 
 func NewTenantMiddleware(tenantService TenantService, logger *slog.Logger) *TenantMiddleware {

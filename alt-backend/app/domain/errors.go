@@ -8,6 +8,7 @@ var (
 	ErrTenantSlugExists         = errors.New("tenant slug already exists")
 	ErrTenantUserLimitExceeded  = errors.New("tenant user limit exceeded")
 	ErrTenantFeedLimitExceeded  = errors.New("tenant feed limit exceeded")
+	ErrTenantQuotaExceeded      = errors.New("tenant quota exceeded")
 	
 	// 認証・認可エラー
 	ErrUnauthorized             = errors.New("unauthorized")
