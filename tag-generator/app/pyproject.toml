@@ -25,6 +25,13 @@ dependencies = [
     # Security
     "bleach>=6.1.0",
 
+    # Authentication and API
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "aiohttp>=3.9.0",
+    "PyJWT>=2.8.0",
+    "python-multipart>=0.0.6",
+
     # NOTE: Heavy ML packages removed for ultra-minimal build
     # keybert, sentence-transformers, transformers must be installed in external models
     # or use runtime installation with lazy loading
