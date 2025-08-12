@@ -1,0 +1,19 @@
+# 共有認証ライブラリ用ベースイメージ - Go版
+FROM golang:1.24-alpine AS auth-lib-go-builder
+
+# 作業ディレクトリを設定
+WORKDIR /build
+
+# 共有認証ライブラリをコピー
+COPY shared/auth-lib-go/ ./
+
+# 依存関係をインストール
+RUN go mod tidy
+
+# ライブラリをビルド（静的解析やテスト含む）
+RUN go build -o /dev/null ./pkg/...
+
+# ランタイムイメージを作成
+FROM golang:1.24-alpine AS auth-lib-go-runtime
+COPY --from=auth-lib-go-builder /build /usr/local/lib/alt-auth-go
+ENV ALT_AUTH_GO_PATH=/usr/local/lib/alt-auth-go

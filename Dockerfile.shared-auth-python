@@ -1,0 +1,24 @@
+# 共有認証ライブラリ用ベースイメージ - Python版
+FROM python:3.13-slim AS auth-lib-python-builder
+
+# 作業ディレクトリを設定
+WORKDIR /build
+
+# システム依存関係をインストール
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# 共有認証ライブラリをコピー
+COPY shared/auth-lib-python/ ./
+
+# Python依存関係をインストール
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -e .
+
+# ランタイムイメージを作成
+FROM python:3.13-slim AS auth-lib-python-runtime
+COPY --from=auth-lib-python-builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=auth-lib-python-builder /build /usr/local/lib/alt-auth-python
+ENV ALT_AUTH_PYTHON_PATH=/usr/local/lib/alt-auth-python
+ENV PYTHONPATH="${PYTHONPATH}:/usr/local/lib/alt-auth-python"
