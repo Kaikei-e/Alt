@@ -13,13 +13,47 @@ spec:
     - Ingress  
     - Egress  
   ingress:
+    # Allow traffic from alt-backend through Linkerd proxy
     - from:
         - namespaceSelector:
             matchLabels:
               name: alt-apps
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alt-backend
       ports:
         - protocol: TCP
           port: {{ .Values.service.targetPort | default 8080 }}
+    
+    # Allow traffic from other processing services through Linkerd
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-processing
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort | default 8080 }}
+    
+    # Allow Linkerd proxy inbound connections
+    - from:
+        - podSelector:
+            matchLabels:
+              linkerd.io/proxy-deployment: {{ include "news-creator.fullname" . }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort | default 8080 }}
+    
+    # Allow Linkerd control plane access for proxy initialization and metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: linkerd
+      ports:
+        - protocol: TCP
+          port: 4190  # Linkerd admin port
+        - protocol: TCP
+          port: 4191  # Linkerd outbound proxy port
+
   egress:
     # Allow DNS resolution
     - to: []
@@ -28,7 +62,58 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # Allow database access
+    
+    # Allow Linkerd control plane communication
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: linkerd
+      ports:
+        - protocol: TCP
+          port: 8443  # linkerd-policy-controller
+        - protocol: TCP
+          port: 8444  # linkerd-policy-validator
+        - protocol: TCP
+          port: 9443  # linkerd-sp-validator
+        - protocol: TCP
+          port: 9090  # linkerd-controller metrics
+        - protocol: TCP
+          port: 4191  # linkerd-proxy
+    
+    # Allow communication to auth-service (through Linkerd mTLS)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-auth
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: auth-service
+      ports:
+        - protocol: TCP
+          port: 8080
+    
+    # Allow communication to other processing services (through Linkerd mTLS)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-processing
+      ports:
+        - protocol: TCP
+          port: 8080
+    
+    # Allow communication to alt-backend (through Linkerd mTLS)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-apps
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alt-backend
+      ports:
+        - protocol: TCP
+          port: 8080
+    
+    # Allow database access (may be outside Linkerd mesh)
     - to:
         - namespaceSelector:
             matchLabels:
@@ -36,3 +121,22 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    
+    # Allow HTTPS egress for external APIs (LLM services) through envoy-proxy
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: alt-apps
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: envoy-proxy
+      ports:
+        - protocol: TCP
+          port: 8082  # Envoy proxy for external access
+    
+    # Allow Linkerd proxy outbound connections
+    - ports:
+        - protocol: TCP
+          port: 4140  # Linkerd proxy outbound
+        - protocol: TCP
+          port: 4143  # Linkerd proxy inbound

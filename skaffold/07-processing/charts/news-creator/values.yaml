@@ -31,21 +31,29 @@ env:
   OLLAMA_MAX_LOADED_MODELS: "1"
   OLLAMA_HOME: "/tmp/.ollama"
   HOME: "/tmp"
+  LOG_LEVEL: "info"
+  ENVIRONMENT: "development"
+  # Kubernetes service discovery URLs
+  AUTH_SERVICE_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
+  PRE_PROCESSOR_URL: "http://pre-processor.alt-processing.svc.cluster.local:8080"
+  SEARCH_INDEXER_URL: "http://search-indexer.alt-processing.svc.cluster.local:8080"
+  TAG_GENERATOR_URL: "http://tag-generator.alt-processing.svc.cluster.local:8080"
+  ALT_BACKEND_URL: "http://alt-backend.alt-apps.svc.cluster.local:8080"
   # CONFIRMED: Ollama DOES use CONNECT method via http.DefaultClient - explicit proxy required
   HTTPS_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8082" # 明示プロキシでCONNECT対応
   NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local"
 
-# Secret configuration
+# Secret configuration - development defaults
 secret:
-  create: true
-  name: huggingface-secret
-  data:
-    HF_TOKEN: "dev-token-placeholder" # Replace with actual HF token
+  create: false  # Secrets managed externally
+  name: news-creator-secrets
 
 envFromSecret:
-  name: huggingface-secret
+  name: news-creator-secrets
   keys:
+    - SERVICE_SECRET
     - HF_TOKEN
+    - LLM_API_KEY
 
 serviceAccount:
   create: true

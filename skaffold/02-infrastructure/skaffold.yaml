@@ -12,9 +12,9 @@ build:
     gitCommit: {}
   artifacts:
     - image: alt-atlas-migrations
-      context: ../../migrations-atlas/docker
+      context: ../../migrations-atlas
       docker:
-        dockerfile: Dockerfile
+        dockerfile: docker/Dockerfile
 
 profiles:
   - name: dev
