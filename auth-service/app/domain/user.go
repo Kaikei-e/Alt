@@ -12,9 +12,10 @@ import (
 type UserRole string
 
 const (
-	UserRoleAdmin    UserRole = "admin"
-	UserRoleUser     UserRole = "user"
-	UserRoleReadonly UserRole = "readonly"
+	UserRoleAdmin       UserRole = "admin"
+	UserRoleUser        UserRole = "user"
+	UserRoleReadonly    UserRole = "readonly"
+	UserRoleTenantAdmin UserRole = "tenant_admin"
 )
 
 // UserStatus represents the status of a user
@@ -54,6 +55,7 @@ type User struct {
 	TenantID         uuid.UUID       `json:"tenant_id"`
 	Email            string          `json:"email"`
 	Name             string          `json:"name"`
+	PasswordHash     string          `json:"-"`                         // Exclude from JSON
 	Role             UserRole        `json:"role"`
 	Status           UserStatus      `json:"status"`
 	Preferences      UserPreferences `json:"preferences"`
@@ -132,7 +134,7 @@ func (u *User) RecordLogin(loginTime time.Time) {
 
 // ChangeRole changes the user's role with validation
 func (u *User) ChangeRole(role UserRole) error {
-	validRoles := []UserRole{UserRoleAdmin, UserRoleUser, UserRoleReadonly}
+	validRoles := []UserRole{UserRoleAdmin, UserRoleUser, UserRoleReadonly, UserRoleTenantAdmin}
 	
 	for _, validRole := range validRoles {
 		if role == validRole {
