@@ -7,14 +7,8 @@ metadata:
     {{- include "postgres.labels" . | nindent 4 }}
     component: atlas-migration
   annotations:
-    # Helm hooks for pre-install and pre-upgrade
-    {{- if .Values.migration.hooks.preInstall.enabled }}
-    "helm.sh/hook": pre-install{{ if .Values.migration.hooks.preUpgrade.enabled }},pre-upgrade{{ end }}
-    {{- else if .Values.migration.hooks.preUpgrade.enabled }}
-    "helm.sh/hook": pre-upgrade
-    {{- end }}
-    "helm.sh/hook-weight": "{{ .Values.migration.hooks.preUpgrade.weight }}"
-    "helm.sh/hook-delete-policy": "{{ .Values.migration.hooks.preUpgrade.deletePolicy }}"
+    # Regular Job - not a Helm hook, will be managed like normal Kubernetes resources
+    # This ensures PostgreSQL StatefulSet is deployed before migration Job
 spec:
   # Job execution settings
   backoffLimit: {{ .Values.migration.backoffLimit }}
@@ -27,8 +21,12 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "postgres.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/name: migrate
+        app.kubernetes.io/instance: {{ .Release.Name }}
         component: atlas-migration
+      annotations:
+        # Disable Linkerd injection to avoid PostgreSQL connection issues
+        linkerd.io/inject: "disabled"
     spec:
       # Service account for RBAC
       {{- if .Values.migration.serviceAccount.create }}

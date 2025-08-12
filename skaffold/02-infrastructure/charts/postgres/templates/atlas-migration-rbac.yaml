@@ -7,14 +7,10 @@ metadata:
   labels:
     {{- include "postgres.labels" . | nindent 4 }}
     component: atlas-migration
+  {{- with .Values.migration.serviceAccount.annotations }}
   annotations:
-    # Ensure ServiceAccount is created before migration Job
-    "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-weight": "-20"
-    "helm.sh/hook-delete-policy": before-hook-creation
-    {{- with .Values.migration.serviceAccount.annotations }}
     {{- toYaml . | nindent 4 }}
-    {{- end }}
+  {{- end }}
 automountServiceAccountToken: true
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -25,11 +21,6 @@ metadata:
   labels:
     {{- include "postgres.labels" . | nindent 4 }}
     component: atlas-migration
-  annotations:
-    # Ensure Role is created before migration Job
-    "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-weight": "-20"
-    "helm.sh/hook-delete-policy": before-hook-creation
 rules:
 # Allow reading secrets for database credentials
 - apiGroups: [""]
@@ -52,11 +43,6 @@ metadata:
   labels:
     {{- include "postgres.labels" . | nindent 4 }}
     component: atlas-migration
-  annotations:
-    # Ensure RoleBinding is created before migration Job
-    "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-weight": "-20"
-    "helm.sh/hook-delete-policy": before-hook-creation
 subjects:
 - kind: ServiceAccount
   name: {{ .Values.migration.serviceAccount.name }}
