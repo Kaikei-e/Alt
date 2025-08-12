@@ -12,8 +12,10 @@ import (
 type UserRole string
 
 const (
-	UserRoleUser  UserRole = "user"
-	UserRoleAdmin UserRole = "admin"
+	UserRoleUser        UserRole = "user"
+	UserRoleAdmin       UserRole = "admin"
+	UserRoleTenantAdmin UserRole = "tenant_admin"
+	UserRoleReadOnly    UserRole = "readonly"
 )
 
 // UserContext represents the authenticated user context for requests
