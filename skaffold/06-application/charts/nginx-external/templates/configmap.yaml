@@ -80,7 +80,7 @@ data:
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=1200r/m;
         limit_req_zone $binary_remote_addr zone=general_limit:10m rate=40r/s;
         limit_req_zone $binary_remote_addr zone=feed_register:10m rate=60r/m;  # Special zone for feed registration
-        limit_req_zone $binary_remote_addr zone=proxy_requests:10m rate=30r/m; # Forward proxy rate limiting
+        # DEPRECATED: proxy_requests zone removed - image proxy now handled by alt-backend
         limit_conn_zone $binary_remote_addr zone=addr:10m;
 
         # Gzip圧縮: 帯域幅効率化
@@ -190,6 +190,29 @@ data:
                 proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
             }
 
+            # DEPRECATED: /api/image-proxy removed - now using POST /v1/images/fetch endpoint
+            # The new implementation uses alt-backend with Envoy proxy integration for better COEP bypass
+
+            # Frontend API Routes (Next.js health check)
+            location /api/health {
+                # Route to alt-frontend for health checks
+                set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
+                proxy_pass http://$frontend_upstream;
+
+                proxy_set_header Host $host;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_http_version 1.1;
+                proxy_set_header Connection "";
+
+                proxy_connect_timeout 5s;
+                proxy_send_timeout 10s;
+                proxy_read_timeout 10s;
+
+                add_header X-Health-Source "alt-frontend" always;
+            }
+
+            # Backend API Routes (Go Echo backend) - all other /api/* paths
             location /api/ {
                 # 🚀 2025年ベストプラクティス: 変数ベースproxy_pass (動的DNS解決)
                 set $backend_upstream "alt-backend.alt-apps.svc.cluster.local:9000";
@@ -360,8 +383,8 @@ data:
             # allow 192.168.0.0/16;    # Additional internal networks
             # deny all;
 
-            # Rate limiting for proxy requests
-            limit_req zone=proxy_requests burst=2000 nodelay;
+            # Rate limiting for proxy requests - using general_limit instead of deprecated proxy_requests zone
+            limit_req zone=general_limit burst=50 nodelay;
             limit_conn addr 10;
 
             # Health check for proxy functionality (must come before catch-all)
