@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,4 +48,27 @@ func (uc *UserContext) HasPermission(permission string) bool {
 		}
 	}
 	return false
+}
+
+// コンテキストキー
+type contextKey string
+
+const UserContextKey contextKey = "user_context"
+
+// ヘルパー関数
+func GetUserFromContext(ctx context.Context) (*UserContext, error) {
+	user, ok := ctx.Value(UserContextKey).(*UserContext)
+	if !ok || user == nil {
+		return nil, fmt.Errorf("user context not found")
+	}
+	
+	if !user.IsValid() {
+		return nil, fmt.Errorf("invalid user context")
+	}
+	
+	return user, nil
+}
+
+func SetUserContext(ctx context.Context, user *UserContext) context.Context {
+	return context.WithValue(ctx, UserContextKey, user)
 }

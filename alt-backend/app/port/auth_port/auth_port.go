@@ -8,6 +8,13 @@ import (
 
 //go:generate mockgen -source=auth_port.go -destination=../../mocks/mock_auth_client.go -package=mocks
 
+// AuthPort defines the interface for authentication operations
+type AuthPort interface {
+	ValidateSession(ctx context.Context, sessionToken string) (*domain.UserContext, error)
+	RefreshSession(ctx context.Context, sessionToken string) (*domain.UserContext, error)
+	GetUserByID(ctx context.Context, userID string) (*domain.UserContext, error)
+}
+
 // AuthClient defines the interface for authentication operations
 type AuthClient interface {
 	// ValidateSession validates a session token and returns user context

@@ -3,18 +3,10 @@ package rest
 import (
 	"alt/config"
 	"alt/di"
-	"alt/domain"
-	"alt/driver/search_indexer"
 	middleware_custom "alt/middleware"
 	"alt/utils/errors"
-	"alt/utils/html_parser"
 	"alt/utils/logger"
-	"context"
-	"encoding/json"
-	stderrors "errors"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -22,120 +14,44 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
-func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *config.Config) {
+func registerFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+	// 認証ミドルウェアの初期化
+	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger)
 
-	// 1. Request ID middleware first - すべてのリクエストにIDを付与
-	e.Use(middleware_custom.RequestIDMiddleware())
+	// Public endpoints (no authentication required)
+	public := v1.Group("")
+	public.GET("/feeds/fetch/single", handleFetchSingleFeed(container, cfg))
+	public.GET("/feeds/fetch/list", handleFetchFeedsList(container, cfg))
+	public.GET("/feeds/fetch/limit/:limit", handleFetchFeedsLimit(container, cfg))
+	public.GET("/feeds/fetch/page/:page", handleFetchFeedsPage(container))
 
-	// 2. Recovery middleware early - パニックを早期に捕捉
-	e.Use(middleware.Recover())
+	// User-specific endpoints (authentication required)
+	private := v1.Group("")
+	private.Use(authMiddleware.RequireAuth())
 
-	// 3. Security headers - セキュリティ設定を早期に適用
-	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
-		XSSProtection:         "1; mode=block",
-		ContentTypeNosniff:    "nosniff",
-		XFrameOptions:         "DENY",
-		HSTSMaxAge:            31536000,
-		ContentSecurityPolicy: "default-src 'self'",
-	}))
+	private.GET("/feeds/fetch/cursor", handleFetchUnreadFeedsCursor(container))
+	private.GET("/feeds/fetch/viewed/cursor", handleFetchReadFeedsCursor(container))
+	private.GET("/feeds/fetch/favorites/cursor", handleFetchFavoriteFeedsCursor(container))
+	private.POST("/feeds/read", handleMarkFeedAsRead(container))
+	private.GET("/feeds/count/unreads", handleUnreadCount(container))
+	private.POST("/feeds/register/favorite", handleRegisterFavoriteFeed(container))
 
-	// 4. CORS middleware - クロスオリジン制御
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://curionoah.com"},
-		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, "Cache-Control", "Authorization", "X-Requested-With", "X-CSRF-Token"},
-		MaxAge:       86400, // Cache preflight for 24 hours
-	}))
+	// Optional authentication endpoints (for personalized results)
+	optional := v1.Group("")
+	optional.Use(authMiddleware.OptionalAuth())
 
-	// 5. DOS protection - 悪意のあるリクエストを早期にブロック
-	dosConfig := cfg.RateLimit.DOSProtection
-	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/", "/security/csp-report"}
-	e.Use(middleware_custom.DOSProtectionMiddleware(middleware_custom.ConvertConfigDOSProtection(dosConfig)))
+	optional.POST("/feeds/search", handleSearchFeeds(container))
+	optional.POST("/feeds/fetch/details", handleFetchFeedDetails(container))
+	optional.GET("/feeds/stats", handleFeedStats(container, cfg))
+	optional.POST("/feeds/tags", handleFetchFeedTags(container))
+	optional.POST("/rss-feed-link/register", handleRegisterRSSFeed(container))
+	optional.POST("/feeds/fetch/summary/provided", handleFetchInoreaderSummary(container))
+}
 
-	// 6. CSRF protection - 認証が必要な場合 Temporarily disabled for development
-	// e.Use(middleware_custom.CSRFMiddleware(container.CSRFTokenUsecase))
-
-	// 7. Request timeout - リクエスト処理時間の制限
-	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
-		Timeout: cfg.Server.ReadTimeout,
-		Skipper: func(c echo.Context) bool {
-			return strings.Contains(c.Path(), "/sse/")
-		},
-	}))
-
-	// 8. Validation middleware - リクエスト内容の検証
-	e.Use(middleware_custom.ValidationMiddleware())
-
-	// 9. Logging middleware - 処理内容をログに記録
-	e.Use(middleware_custom.LoggingMiddleware(logger.Logger))
-
-	// 10. Compression middleware last - レスポンス時の圧縮（最後に実行）
-	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
-		Level: 5, // Balanced compression level
-		Skipper: func(c echo.Context) bool {
-			// Skip compression for already compressed content and SSE endpoints
-			return strings.Contains(c.Request().Header.Get("Accept-Encoding"), "br") ||
-				strings.Contains(c.Path(), "/health") ||
-				strings.Contains(c.Path(), "/sse/")
-		},
-	}))
-
-	v1 := e.Group("/v1")
-
-	// CSRF token generation endpoint
-	v1.GET("/csrf-token", middleware_custom.CSRFTokenHandler(container.CSRFTokenUsecase))
-
-	// Health check with database connectivity test
-	v1.GET("/health", func(c echo.Context) error {
-		// Set cache headers for health check
-		c.Response().Header().Set("Cache-Control", "public, max-age=30")
-
-		response := map[string]string{
-			"status": "healthy",
-		}
-
-		response["database"] = "connected"
-		return c.JSON(http.StatusOK, response)
-	})
-
-	// CSP report endpoint
-	e.POST("/security/csp-report", func(c echo.Context) error {
-		// Read raw body for debugging
-		body, err := io.ReadAll(c.Request().Body)
-		if err != nil {
-			logger.Logger.Error("Failed to read request body", "error", err)
-			return echo.NewHTTPError(http.StatusBadRequest, "Failed to read request body")
-		}
-
-		// Log raw body for debugging
-		logger.Logger.Info("CSP Report Raw Body", "body", string(body))
-
-		// Try to parse as JSON
-		var report map[string]interface{}
-		if len(body) > 0 {
-			if err := json.Unmarshal(body, &report); err != nil {
-				logger.Logger.Warn("CSP Report - Invalid JSON", "body", string(body), "error", err)
-				// Return 204 even for invalid JSON to prevent browser retries
-				return c.NoContent(http.StatusNoContent)
-			}
-		}
-
-		// Log CSP violation report
-		logger.Logger.Warn("CSP Violation Report",
-			"timestamp", time.Now().Format(time.RFC3339),
-			"report", report,
-			"user_agent", c.Request().UserAgent(),
-			"ip", c.RealIP(),
-		)
-
-		// Return 204 No Content for CSP reports
-		return c.NoContent(http.StatusNoContent)
-	})
-
-	v1.GET("/feeds/fetch/single", func(c echo.Context) error {
+func handleFetchSingleFeed(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		// Add caching headers
 		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
 		c.Response().Header().Set("ETag", `"single-feed"`)
@@ -145,9 +61,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 			return handleError(c, err, "fetch_single_feed")
 		}
 		return c.JSON(http.StatusOK, feed)
-	})
+	}
+}
 
-	v1.GET("/feeds/fetch/list", func(c echo.Context) error {
+func handleFetchFeedsList(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		// Add caching headers for feed list
 		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.SearchCacheExpiry.Seconds())))
 		c.Response().Header().Set("ETag", `"feeds-list"`)
@@ -160,9 +78,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		// Optimize response size
 		optimizedFeeds := optimizeFeedsResponse(feeds)
 		return c.JSON(http.StatusOK, optimizedFeeds)
-	})
+	}
+}
 
-	v1.GET("/feeds/fetch/limit/:limit", func(c echo.Context) error {
+func handleFetchFeedsLimit(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		limit, err := strconv.Atoi(c.Param("limit"))
 		if err != nil {
 			return handleValidationError(c, "Invalid limit parameter", "limit", c.Param("limit"))
@@ -185,9 +105,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 		optimizedFeeds := optimizeFeedsResponse(feeds)
 		return c.JSON(http.StatusOK, optimizedFeeds)
-	})
+	}
+}
 
-	v1.GET("/feeds/fetch/page/:page", func(c echo.Context) error {
+func handleFetchFeedsPage(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		page, err := strconv.Atoi(c.Param("page"))
 		if err != nil {
 			logger.Logger.Error("Invalid page parameter", "error", err, "page", c.Param("page"))
@@ -211,11 +133,12 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		}
 
 		optimizedFeeds := optimizeFeedsResponse(feeds)
-
 		return c.JSON(http.StatusOK, optimizedFeeds)
-	})
+	}
+}
 
-	v1.GET("/feeds/fetch/cursor", func(c echo.Context) error {
+func handleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		// Parse query parameters
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")
@@ -280,9 +203,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		}
 
 		return c.JSON(http.StatusOK, response)
-	})
+	}
+}
 
-	v1.GET("/feeds/fetch/viewed/cursor", func(c echo.Context) error {
+func handleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		// Parse query parameters - 既存パターンと同じ
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")
@@ -317,9 +242,6 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		}
 
 		// キャッシング戦略 - 既読記事の特性を考慮
-		// read_statusテーブルの更新頻度：
-		// - 新規既読: ユーザーアクションによる（低頻度）
-		// - 状態変更: is_read更新のみ（フィードコンテンツは不変）
 		if cursor == nil {
 			c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15分（初回）
 		} else {
@@ -349,9 +271,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		}
 
 		return c.JSON(http.StatusOK, response)
-	})
+	}
+}
 
-	v1.GET("/feeds/fetch/favorites/cursor", func(c echo.Context) error {
+func handleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")
 
@@ -408,9 +332,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		}
 
 		return c.JSON(http.StatusOK, response)
-	})
+	}
+}
 
-	v1.POST("/feeds/read", func(c echo.Context) error {
+func handleMarkFeedAsRead(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		var readStatus ReadStatus
 		err := c.Bind(&readStatus)
 		if err != nil {
@@ -433,9 +359,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		// Invalidate cache after update
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		return c.JSON(http.StatusOK, map[string]string{"message": "Feed read status updated"})
-	})
+	}
+}
 
-	v1.POST("/feeds/search", func(c echo.Context) error {
+func handleSearchFeeds(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		var payload FeedSearchPayload
 		err := c.Bind(&payload)
 		if err != nil {
@@ -454,14 +382,13 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 
-		// Clean HTML from search results using goquery
-		cleanedResults := html_parser.CleanSearchResultsWithGoquery(results)
+		logger.Logger.Info("Feed search completed successfully", "query", payload.Query, "results_count", len(results))
+		return c.JSON(http.StatusOK, results)
+	}
+}
 
-		logger.Logger.Info("Feed search completed successfully", "query", payload.Query, "results_count", len(cleanedResults))
-		return c.JSON(http.StatusOK, cleanedResults)
-	})
-
-	v1.POST("/feeds/fetch/details", func(c echo.Context) error {
+func handleFetchFeedDetails(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		var payload FeedUrlPayload
 		err := c.Bind(&payload)
 		if err != nil {
@@ -486,24 +413,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, details)
-	})
+	}
+}
 
-	v1.GET("/articles/search", func(c echo.Context) error {
-		query := c.QueryParam("q")
-		if query == "" {
-			logger.Logger.Error("Search query must not be empty")
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Search query must not be empty"})
-		}
-
-		results, err := search_indexer.SearchArticles(query)
-		if err != nil {
-			return handleError(c, err, "search_articles")
-		}
-
-		return c.JSON(http.StatusOK, results)
-	})
-
-	v1.GET("/feeds/stats", func(c echo.Context) error {
+func handleFeedStats(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		// Add caching headers for stats
 		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
 		c.Response().Header().Set("ETag", `"feeds-stats"`)
@@ -533,9 +447,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 			"summarized_count", summarizedCount)
 
 		return c.JSON(http.StatusOK, stats)
-	})
+	}
+}
 
-	v1.POST("/feeds/tags", func(c echo.Context) error {
+func handleFetchFeedTags(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		// Parse request body
 		var req FeedTagsPayload
 		if err := c.Bind(&req); err != nil {
@@ -608,9 +524,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 		logger.Logger.Info("Feed tags retrieved successfully", "feed_url", req.FeedURL, "count", len(tags))
 		return c.JSON(http.StatusOK, response)
-	})
+	}
+}
 
-	v1.GET("/feeds/count/unreads", func(c echo.Context) error {
+func handleUnreadCount(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		sinceStr := c.QueryParam("since")
 		var since time.Time
 		var err error
@@ -632,9 +550,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		}
 
 		return c.JSON(http.StatusOK, map[string]int{"count": count})
-	})
+	}
+}
 
-	v1.POST("/rss-feed-link/register", func(c echo.Context) error {
+func handleRegisterRSSFeed(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		var rssFeedLink RssFeedLink
 		err := c.Bind(&rssFeedLink)
 		if err != nil {
@@ -680,61 +600,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		// Invalidate cache after registration
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		return c.JSON(http.StatusOK, map[string]string{"message": "RSS feed link registered"})
-	})
+	}
+}
 
-	// Image fetch endpoint for COEP bypass
-	v1.POST("/images/fetch", func(c echo.Context) error {
-		var req ImageFetchRequest
-		if err := c.Bind(&req); err != nil {
-			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
-		}
-
-		// Basic validation
-		if req.URL == "" {
-			return handleValidationError(c, "URL is required", "url", req.URL)
-		}
-
-		// Parse and validate URL
-		parsedURL, err := url.Parse(req.URL)
-		if err != nil {
-			return handleValidationError(c, "Invalid URL format", "url", req.URL)
-		}
-
-		// Apply SSRF protection
-		if err := isAllowedURL(parsedURL); err != nil {
-			return handleValidationError(c, fmt.Sprintf("URL not allowed: %v", err), "url", req.URL)
-		}
-
-		// Convert options from schema to domain
-		var options *domain.ImageFetchOptions
-		if req.Options != nil {
-			options = &domain.ImageFetchOptions{
-				MaxSize: req.Options.MaxSize,
-				Timeout: time.Duration(req.Options.Timeout) * time.Second,
-			}
-		}
-
-		// Execute usecase
-		result, err := container.ImageFetchUsecase.Execute(c.Request().Context(), req.URL, options)
-		if err != nil {
-			return handleError(c, err, "image_fetch")
-		}
-
-		// Return the image data directly with proper content type and COEP compliance
-		c.Response().Header().Set("Content-Type", result.ContentType)
-		c.Response().Header().Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour
-		c.Response().Header().Set("X-Image-Source", "alt-backend-proxy") // For debugging
-		
-		// COEP (Cross-Origin Embedder Policy) compliance headers
-		c.Response().Header().Set("Cross-Origin-Resource-Policy", "cross-origin") // Allow cross-origin usage
-		c.Response().Header().Set("Access-Control-Allow-Origin", "*") // CORS support
-		c.Response().Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		c.Response().Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
-		return c.Blob(http.StatusOK, result.ContentType, result.Data)
-	})
-
-	v1.POST("/feeds/register/favorite", func(c echo.Context) error {
+func handleRegisterFavoriteFeed(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		var payload RssFeedLink
 		if err := c.Bind(&payload); err != nil {
 			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
@@ -774,10 +644,11 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		return c.JSON(http.StatusOK, map[string]string{"message": "favorite feed registered"})
-	})
+	}
+}
 
-	// New endpoint: Fetch inoreader summaries for provided feed URLs
-	v1.POST("/feeds/fetch/summary/provided", func(c echo.Context) error {
+func handleFetchInoreaderSummary(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		var req FeedSummaryRequest
 		if err := c.Bind(&req); err != nil {
 			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
@@ -802,7 +673,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 				securityErr := errors.NewValidationContextError(
 					"URL not allowed for security reasons",
 					"rest",
-					"RESTHandler", 
+					"RESTHandler",
 					"fetch_inoreader_summary",
 					map[string]interface{}{
 						"url":         feedURL,
@@ -831,7 +702,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 			if summary.Author != nil {
 				authorStr = *summary.Author
 			}
-			
+
 			resp := InoreaderSummaryResponse{
 				ArticleURL:  summary.ArticleURL,
 				Title:       summary.Title,
@@ -857,359 +728,6 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		c.Response().Header().Set("Content-Type", "application/json")
 
 		return c.JSON(http.StatusOK, finalResponse)
-	})
-
-	// Add SSE endpoint with proper Echo SSE handling
-	v1.GET("/sse/feeds/stats", func(c echo.Context) error {
-		// Set SSE headers using Echo's response
-		c.Response().Header().Set("Content-Type", "text/event-stream")
-		c.Response().Header().Set("Cache-Control", "no-cache")
-		c.Response().Header().Set("Connection", "keep-alive")
-		c.Response().Header().Set("Access-Control-Allow-Origin", "*")
-		c.Response().Header().Set("Access-Control-Allow-Headers", "Cache-Control")
-
-		// Don't let Echo write its own status
-		c.Response().WriteHeader(http.StatusOK)
-
-		// Get the underlying response writer for flushing
-		w := c.Response().Writer
-		flusher, canFlush := w.(http.Flusher)
-		if !canFlush {
-			logger.Logger.Error("Response writer doesn't support flushing")
-			return c.String(http.StatusInternalServerError, "Streaming not supported")
-		}
-
-		// Send initial data
-		amount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
-		if err != nil {
-			logger.Logger.Error("Error fetching initial feed amount", "error", err)
-			amount = 0
-		}
-
-		unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
-		if err != nil {
-			logger.Logger.Error("Error fetching initial unsummarized articles count", "error", err)
-			unsummarizedCount = 0
-		}
-
-		totalArticlesCount, err := container.TotalArticlesCountUsecase.Execute(c.Request().Context())
-		if err != nil {
-			logger.Logger.Error("Error fetching initial total articles count", "error", err)
-			totalArticlesCount = 0
-		}
-
-		initialStats := UnsummarizedFeedStatsSummary{
-			FeedAmount:             feedAmount{Amount: amount},
-			UnsummarizedFeedAmount: unsummarizedFeedAmount{Amount: unsummarizedCount},
-			ArticleAmount:          articleAmount{Amount: totalArticlesCount},
-		}
-
-		// Send initial data
-		if jsonData, err := json.Marshal(initialStats); err == nil {
-			c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
-			flusher.Flush()
-		}
-
-		// Create ticker for periodic updates
-		ticker := time.NewTicker(cfg.Server.SSEInterval)
-		defer ticker.Stop()
-
-		// Create heartbeat ticker to keep connection alive (every 10 seconds)
-		heartbeatTicker := time.NewTicker(10 * time.Second)
-		defer heartbeatTicker.Stop()
-
-		// Keep connection alive
-		for {
-			select {
-			case <-heartbeatTicker.C:
-				// Send heartbeat comment to keep connection alive
-				_, err := c.Response().Write([]byte(": heartbeat\n\n"))
-				if err != nil {
-					logger.Logger.Info("Client disconnected during heartbeat", "error", err)
-					return nil
-				}
-				flusher.Flush()
-
-			case <-ticker.C:
-				// Fetch fresh data
-				amount, err := container.FeedAmountUsecase.Execute(c.Request().Context())
-				if err != nil {
-					logger.Logger.Error("Error fetching feed amount", "error", err)
-					continue
-				}
-
-				unsummarizedCount, err := container.UnsummarizedArticlesCountUsecase.Execute(c.Request().Context())
-				if err != nil {
-					logger.Logger.Error("Error fetching unsummarized articles count", "error", err)
-					continue
-				}
-
-				totalArticlesCount, err := container.TotalArticlesCountUsecase.Execute(c.Request().Context())
-				if err != nil {
-					logger.Logger.Error("Error fetching total articles count", "error", err)
-					continue
-				}
-
-				stats := UnsummarizedFeedStatsSummary{
-					FeedAmount:             feedAmount{Amount: amount},
-					UnsummarizedFeedAmount: unsummarizedFeedAmount{Amount: unsummarizedCount},
-					ArticleAmount:          articleAmount{Amount: totalArticlesCount},
-				}
-
-				// Convert to JSON and send
-				jsonData, err := json.Marshal(stats)
-				if err != nil {
-					logger.Logger.Error("Error marshaling stats", "error", err)
-					continue
-				}
-
-				// Write in SSE format
-				_, err = c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
-				if err != nil {
-					logger.Logger.Info("Client disconnected", "error", err)
-					return nil
-				}
-
-				// Flush the data
-				flusher.Flush()
-
-			case <-c.Request().Context().Done():
-				logger.Logger.Info("SSE connection closed by client")
-				return nil
-			}
-		}
-	})
-
-}
-
-// handleError converts errors to appropriate HTTP responses using enhanced error handling
-func handleError(c echo.Context, err error, operation string) error {
-	// Enrich error with REST layer context
-	var enrichedErr *errors.AppContextError
-
-	// Check if it's already an AppContextError and enrich it with REST context
-	if appContextErr, ok := err.(*errors.AppContextError); ok {
-		enrichedErr = errors.EnrichWithContext(
-			appContextErr,
-			"rest",
-			"RESTHandler",
-			operation,
-			map[string]interface{}{
-				"path":        c.Request().URL.Path,
-				"method":      c.Request().Method,
-				"remote_addr": c.Request().RemoteAddr,
-				"user_agent":  c.Request().UserAgent(),
-				"request_id":  c.Response().Header().Get("X-Request-ID"),
-			},
-		)
-	} else if appErr, ok := err.(*errors.AppError); ok {
-		// Handle legacy AppError by converting to AppContextError
-		enrichedErr = errors.NewAppContextError(
-			string(appErr.Code),
-			appErr.Message,
-			"rest",
-			"RESTHandler",
-			operation,
-			appErr.Cause,
-			map[string]interface{}{
-				"path":           c.Request().URL.Path,
-				"method":         c.Request().Method,
-				"remote_addr":    c.Request().RemoteAddr,
-				"user_agent":     c.Request().UserAgent(),
-				"request_id":     c.Response().Header().Get("X-Request-ID"),
-				"legacy_context": appErr.Context,
-			},
-		)
-	} else {
-		// Handle unknown errors
-		enrichedErr = errors.NewUnknownContextError(
-			"internal server error",
-			"rest",
-			"RESTHandler",
-			operation,
-			err,
-			map[string]interface{}{
-				"path":        c.Request().URL.Path,
-				"method":      c.Request().Method,
-				"remote_addr": c.Request().RemoteAddr,
-				"user_agent":  c.Request().UserAgent(),
-				"request_id":  c.Response().Header().Get("X-Request-ID"),
-			},
-		)
-	}
-
-	// Log the enriched error with context
-	logger.Logger.Error("REST handler error",
-		"error", enrichedErr.Error(),
-		"error_code", enrichedErr.Code,
-		"layer", enrichedErr.Layer,
-		"component", enrichedErr.Component,
-		"operation", enrichedErr.Operation,
-		"path", c.Request().URL.Path,
-		"method", c.Request().Method,
-		"is_retryable", enrichedErr.IsRetryable(),
-	)
-
-	return c.JSON(enrichedErr.HTTPStatusCode(), enrichedErr.ToHTTPResponse())
-}
-
-// handleValidationError creates a validation error response with enhanced context
-func handleValidationError(c echo.Context, message string, field string, value interface{}) error {
-	validationErr := errors.NewValidationContextError(
-		message,
-		"rest",
-		"RESTHandler",
-		"validateInput",
-		map[string]interface{}{
-			"field":       field,
-			"value":       value,
-			"path":        c.Request().URL.Path,
-			"method":      c.Request().Method,
-			"remote_addr": c.Request().RemoteAddr,
-			"user_agent":  c.Request().UserAgent(),
-			"request_id":  c.Response().Header().Get("X-Request-ID"),
-		},
-	)
-
-	logger.Logger.Error("REST validation error",
-		"error", validationErr.Error(),
-		"field", field,
-		"value", value,
-		"path", c.Request().URL.Path,
-	)
-	return c.JSON(validationErr.HTTPStatusCode(), validationErr.ToHTTPResponse())
-}
-
-// Optimize feeds response by truncating descriptions and removing unnecessary fields
-func optimizeFeedsResponse(feeds []*domain.FeedItem) []*domain.FeedItem {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	for _, feed := range feeds {
-		feed.Title = strings.TrimSpace(feed.Title)
-		feed.Description = sanitizeAndExtract(ctx, feed.Description)
-	}
-	return feeds
-}
-
-// Determine cache age based on limit to optimize caching strategy
-func getCacheAgeForLimit(limit int) int {
-	switch {
-	case limit <= 20:
-		return 600 // 10 minutes for small requests
-	case limit <= 100:
-		return 900 // 15 minutes for medium requests
-	default:
-		return 1800 // 30 minutes for large requests
 	}
 }
 
-func sanitizeAndExtract(ctx context.Context, raw string) string {
-	if !strings.Contains(raw, "<") { // HTML でなければ早期 return
-		return truncate(strings.TrimSpace(raw))
-	}
-	const ctype = "text/html; charset=utf-8"
-	paras, err := html_parser.ExtractPTags(ctx, strings.NewReader(raw), ctype)
-	if err != nil || len(paras) == 0 {
-		return truncate(strings.TrimSpace(html_parser.StripTags(raw)))
-	}
-	clean := strings.Join(paras, "\n")
-	return truncate(strings.TrimSpace(clean))
-}
-
-// truncate は従来の 500 文字丸めロジック（流用）
-func truncate(s string) string {
-	if len(s) > 500 {
-		return s[:500] + "..."
-	}
-	return s
-}
-
-func isAllowedURL(u *url.URL) error {
-	// Allow both HTTP and HTTPS
-	if u.Scheme != "https" && u.Scheme != "http" {
-		return stderrors.New("only HTTP and HTTPS schemes allowed")
-	}
-
-	// Block private networks
-	if isPrivateIP(u.Hostname()) {
-		return stderrors.New("access to private networks not allowed")
-	}
-
-	// Block localhost variations
-	hostname := strings.ToLower(u.Hostname())
-	if hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127.") {
-		return stderrors.New("access to localhost not allowed")
-	}
-
-	// Block metadata endpoints (AWS, GCP, Azure)
-	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" {
-		return stderrors.New("access to metadata endpoint not allowed")
-	}
-
-	// Block common internal domains
-	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
-	for _, domain := range internalDomains {
-		if strings.HasSuffix(hostname, domain) {
-			return stderrors.New("access to internal domains not allowed")
-		}
-	}
-
-	return nil
-}
-
-func isPrivateIP(hostname string) bool {
-	// Try to parse as IP first
-	ip := net.ParseIP(hostname)
-	if ip != nil {
-		return isPrivateIPAddress(ip)
-	}
-
-	// If it's a hostname, resolve it to IPs
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		// Block on resolution failure as a security measure
-		return true
-	}
-
-	// Check if any resolved IP is private
-	for _, ip := range ips {
-		if isPrivateIPAddress(ip) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func isPrivateIPAddress(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	// Check for private IPv4 ranges
-	if ip.To4() != nil {
-		// 10.0.0.0/8
-		if ip[0] == 10 {
-			return true
-		}
-		// 172.16.0.0/12
-		if ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
-			return true
-		}
-		// 192.168.0.0/16
-		if ip[0] == 192 && ip[1] == 168 {
-			return true
-		}
-	}
-
-	// Check for private IPv6 ranges
-	if ip.To16() != nil && ip.To4() == nil {
-		// Check for unique local addresses (fc00::/7)
-		if ip[0] == 0xfc || ip[0] == 0xfd {
-			return true
-		}
-	}
-
-	return false
-}

@@ -1,8 +1,8 @@
 package alt_db
 
 import (
+	"alt/domain"
 	"alt/driver/models"
-	"alt/utils"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -105,6 +105,12 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 }
 
 func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		logger.Logger.Error("user context not found", "error", err)
+		return nil, errors.New("authentication required")
+	}
+
 	const pageSize = 10
 
 	// For now, keeping the original OFFSET-based implementation for backward compatibility
@@ -123,9 +129,9 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 		LIMIT $1 OFFSET $2
 	`
 
-	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page, utils.DUMMY_USER_ID)
+	rows, err := r.pool.Query(ctx, query, pageSize, pageSize*page, user.UserID)
 	if err != nil {
-		logger.Logger.Error("error fetching unread feeds list page", "error", err)
+		logger.Logger.Error("error fetching unread feeds list page", "error", err, "user_id", user.UserID)
 		return nil, errors.New("error fetching feeds list page")
 	}
 	defer rows.Close()
@@ -145,6 +151,12 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 }
 
 func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		logger.Logger.Error("user context not found", "error", err)
+		return nil, errors.New("authentication required")
+	}
+
 	// Cursor-based pagination for better performance
 	// Uses created_at as cursor to avoid OFFSET performance issues
 	var query string
@@ -165,7 +177,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
 		`
-		args = []interface{}{limit, utils.DUMMY_USER_ID}
+		args = []interface{}{limit, user.UserID}
 	} else {
 		// Subsequent pages - use cursor
 		query = `
@@ -182,12 +194,12 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
 		`
-		args = []interface{}{cursor, limit, utils.DUMMY_USER_ID}
+		args = []interface{}{cursor, limit, user.UserID}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.Error("error fetching unread feeds with cursor", "error", err, "cursor", cursor)
+		logger.Logger.Error("error fetching unread feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
 		return nil, errors.New("error fetching feeds list")
 	}
 	defer rows.Close()
@@ -209,6 +221,12 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 // FetchReadFeedsListCursor retrieves read feeds using cursor-based pagination
 // This method uses INNER JOIN with read_status table for better performance
 func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		logger.Logger.Error("user context not found", "error", err)
+		return nil, errors.New("authentication required")
+	}
+
 	var query string
 	var args []interface{}
 
@@ -223,7 +241,7 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
 		`
-		args = []interface{}{limit, utils.DUMMY_USER_ID}
+		args = []interface{}{limit, user.UserID}
 	} else {
 		// Subsequent pages: cursor-based pagination
 		query = `
@@ -236,12 +254,12 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
 		`
-		args = []interface{}{cursor, limit, utils.DUMMY_USER_ID}
+		args = []interface{}{cursor, limit, user.UserID}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.Error("error fetching read feeds with cursor", "error", err, "cursor", cursor)
+		logger.Logger.Error("error fetching read feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
 		return nil, errors.New("error fetching read feeds list")
 	}
 	defer rows.Close()
@@ -261,6 +279,12 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 }
 
 func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		logger.Logger.Error("user context not found", "error", err)
+		return nil, errors.New("authentication required")
+	}
+
 	var query string
 	var args []interface{}
 
@@ -269,10 +293,11 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
+                       WHERE ff.user_id = $2
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $1
                `
-		args = []interface{}{limit}
+		args = []interface{}{limit, user.UserID}
 	} else {
 		// Fixed: Use proper cursor-based pagination that handles edge cases
 		// Order by ff.created_at since that's what we're using for the cursor
@@ -280,16 +305,16 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
-                       WHERE ff.created_at < $1
+                       WHERE ff.user_id = $3 AND ff.created_at < $1
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $2
                `
-		args = []interface{}{cursor, limit}
+		args = []interface{}{cursor, limit, user.UserID}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.Error("error fetching favorite feeds with cursor", "error", err, "cursor", cursor)
+		logger.Logger.Error("error fetching favorite feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
 		return nil, errors.New("error fetching favorite feeds list")
 	}
 	defer rows.Close()

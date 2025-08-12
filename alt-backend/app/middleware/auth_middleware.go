@@ -1,10 +1,8 @@
 package middleware
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -14,71 +12,43 @@ import (
 
 // AuthMiddleware provides authentication middleware functionality
 type AuthMiddleware struct {
-	authClient auth_port.AuthClient
-	logger     *slog.Logger
+	authService auth_port.AuthPort
+	logger      *slog.Logger
 }
 
 // NewAuthMiddleware creates a new authentication middleware
-func NewAuthMiddleware(authClient auth_port.AuthClient, logger *slog.Logger) *AuthMiddleware {
+func NewAuthMiddleware(authService auth_port.AuthPort, logger *slog.Logger) *AuthMiddleware {
 	return &AuthMiddleware{
-		authClient: authClient,
-		logger:     logger,
+		authService: authService,
+		logger:      logger,
 	}
 }
 
-// Middleware returns authentication middleware that requires valid session
-func (m *AuthMiddleware) Middleware() echo.MiddlewareFunc {
+// RequireAuth returns authentication middleware that requires valid session
+func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Extract session token
-			sessionToken := m.extractSessionToken(c)
-			if sessionToken == "" {
-				m.logger.Warn("missing session token",
-					"path", c.Request().URL.Path,
-					"method", c.Request().Method,
-					"remote_addr", c.Request().RemoteAddr)
-				return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
-					"error":   "authentication_required",
-					"message": "Session token is required",
-				})
-			}
-
-			// Extract tenant ID from request (if available)
-			tenantID := m.extractTenantID(c)
-
-			// Validate session with auth-service
-			response, err := m.authClient.ValidateSession(c.Request().Context(), sessionToken, tenantID)
+			// セッションからユーザー情報を取得
+			sessionCookie, err := c.Cookie("ory_kratos_session")
 			if err != nil {
-				m.logger.Warn("session validation failed",
-					"error", err,
-					"path", c.Request().URL.Path,
-					"remote_addr", c.Request().RemoteAddr)
-				return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
-					"error":   "session_invalid",
-					"message": "Invalid or expired session",
-				})
+				m.logger.Warn("session cookie not found", "error", err)
+				return echo.NewHTTPError(http.StatusUnauthorized, "Authentication required")
 			}
 
-			if !response.Valid {
-				m.logger.Warn("session validation returned invalid",
-					"path", c.Request().URL.Path,
-					"remote_addr", c.Request().RemoteAddr)
-				return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
-					"error":   "session_invalid",
-					"message": "Session is not valid",
-				})
+			// auth-serviceでセッション検証
+			userContext, err := m.authService.ValidateSession(c.Request().Context(), sessionCookie.Value)
+			if err != nil {
+				m.logger.Warn("session validation failed", "error", err)
+				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid session")
 			}
 
-			// Store user context in request context
-			c.Set("user_context", response.Context)
-			c.Set("user_id", response.UserID)
-			c.Set("tenant_id", response.Context.TenantID.String())
-			c.Set("user_email", response.Email)
-			c.Set("user_role", response.Role)
+			// コンテキストにユーザー情報を設定
+			ctx := domain.SetUserContext(c.Request().Context(), userContext)
+			c.SetRequest(c.Request().WithContext(ctx))
 
-			m.logger.Debug("authentication successful",
-				"user_id", response.UserID,
-				"user_email", response.Email,
+			m.logger.Info("user authenticated",
+				"user_id", userContext.UserID,
+				"email", userContext.Email,
 				"path", c.Request().URL.Path)
 
 			return next(c)
@@ -86,81 +56,33 @@ func (m *AuthMiddleware) Middleware() echo.MiddlewareFunc {
 	}
 }
 
-// OptionalAuth provides optional authentication (for public endpoints)
 func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			sessionToken := m.extractSessionToken(c)
-			if sessionToken != "" {
-				tenantID := m.extractTenantID(c)
-
-				response, err := m.authClient.ValidateSession(c.Request().Context(), sessionToken, tenantID)
-				if err == nil && response.Valid {
-					// Store user context if session is valid
-					c.Set("user_context", response.Context)
-					c.Set("user_id", response.UserID)
-					c.Set("tenant_id", response.Context.TenantID.String())
-					c.Set("user_email", response.Email)
-					c.Set("user_role", response.Role)
-
-					m.logger.Debug("optional authentication successful",
-						"user_id", response.UserID,
-						"path", c.Request().URL.Path)
-				} else {
-					m.logger.Debug("optional authentication failed, continuing without auth",
-						"error", err,
-						"path", c.Request().URL.Path)
-				}
+			sessionCookie, err := c.Cookie("ory_kratos_session")
+			if err != nil {
+				// セッションがない場合は続行（匿名ユーザー）
+				return next(c)
 			}
+
+			userContext, err := m.authService.ValidateSession(c.Request().Context(), sessionCookie.Value)
+			if err != nil {
+				m.logger.Debug("optional auth failed", "error", err)
+				// 認証失敗でも続行
+				return next(c)
+			}
+
+			ctx := domain.SetUserContext(c.Request().Context(), userContext)
+			c.SetRequest(c.Request().WithContext(ctx))
 
 			return next(c)
 		}
 	}
 }
 
-// extractSessionToken extracts session token from cookie or Authorization header
-func (m *AuthMiddleware) extractSessionToken(c echo.Context) string {
-	// Try cookie first (Kratos default session cookie)
-	if cookie, err := c.Cookie("ory_kratos_session"); err == nil {
-		return cookie.Value
-	}
-
-	// Try Authorization header as fallback
-	auth := c.Request().Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimPrefix(auth, "Bearer ")
-	}
-
-	return ""
-}
-
-// extractTenantID extracts tenant ID from various sources
-func (m *AuthMiddleware) extractTenantID(c echo.Context) string {
-	// Try header first
-	if tenantID := c.Request().Header.Get("X-Tenant-ID"); tenantID != "" {
-		return tenantID
-	}
-
-	// Try query parameter
-	if tenantID := c.QueryParam("tenant_id"); tenantID != "" {
-		return tenantID
-	}
-
-	// Try path parameter (if defined in route)
-	if tenantID := c.Param("tenant_id"); tenantID != "" {
-		return tenantID
-	}
-
-	return ""
-}
-
-// GetUserContext extracts user context from echo context
+// GetUserContext extracts user context from request context
 func GetUserContext(c echo.Context) (*domain.UserContext, error) {
-	userCtx, ok := c.Get("user_context").(*domain.UserContext)
-	if !ok || userCtx == nil {
-		return nil, fmt.Errorf("user context not found")
-	}
-	return userCtx, nil
+	return domain.GetUserFromContext(c.Request().Context())
 }
 
 // RequireAuth checks if user is authenticated and returns user context
