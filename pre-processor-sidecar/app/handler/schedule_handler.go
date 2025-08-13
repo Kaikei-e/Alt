@@ -150,10 +150,10 @@ func NewScheduleHandler(
 		logger = slog.Default()
 	}
 
-	// Default configuration - now with 20-minute rotation intervals
+	// Default configuration - API optimized with 18-minute rotation intervals
 	config := &ScheduleConfig{
-		SubscriptionSyncInterval: 4 * time.Hour,    // 4 hours for subscription sync
-		ArticleFetchInterval:     20 * time.Minute, // 20-minute rotation intervals
+		SubscriptionSyncInterval: 12 * time.Hour,   // 12 hours for subscription sync (API optimized)
+		ArticleFetchInterval:     18 * time.Minute, // 18-minute rotation intervals (API optimized)
 		EnableSubscriptionSync:   true,
 		EnableArticleFetch:       true,
 		MaxConcurrentJobs:        2, // Allow subscription sync and article fetch to run concurrently
@@ -480,14 +480,17 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 		return nil
 	}
 
-	// Check rotation status and process if ready
-	stats := h.articleFetchService.GetRotationStats()
-	if stats.RemainingToday == 0 {
-		h.logger.Info("All subscriptions processed for today")
-		return nil
+	// *** CRITICAL FIX: Actually call the processing method ***
+	h.logger.Info("Executing next subscription rotation processing")
+	
+	// Execute the actual rotation processing
+	err := h.articleFetchService.ProcessNextSubscriptionRotation(ctx)
+	if err != nil {
+		h.logger.Error("Failed to process subscription rotation", "error", err)
+		return fmt.Errorf("rotation processing failed: %w", err)
 	}
 
-	// Get rotation statistics after processing
+	// Get rotation statistics after actual processing
 	statsAfter := h.articleFetchService.GetRotationStats()
 
 	// Update result with processing details

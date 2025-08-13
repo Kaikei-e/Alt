@@ -108,10 +108,10 @@ func NewArticleFetchService(
 	uuidResolver := domain.NewSubscriptionUUIDResolver(autoCreatorAdapter, loggerAdapter)
 	uuidResolutionUseCase := usecase.NewArticleUUIDResolutionUseCase(uuidResolver, subscriptionRepo, loggerAdapter)
 
-	// Phase 3: Initialize SubscriptionRotator for rotation processing with 20-minute intervals
+	// Phase 3: Initialize SubscriptionRotator for rotation processing with 18-minute intervals (API optimized)
 	subscriptionRotator := NewSubscriptionRotator(logger)
-	// Ensure 20-minute interval is set correctly
-	subscriptionRotator.SetInterval(20)
+	// Ensure 18-minute interval is set correctly for API efficiency
+	subscriptionRotator.SetInterval(18)
 
 	return &ArticleFetchService{
 		inoreaderService:      inoreaderService,
