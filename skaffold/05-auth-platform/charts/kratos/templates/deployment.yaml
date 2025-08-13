@@ -27,58 +27,6 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- if or .Values.migration.enabled .Values.initContainers.enabled }}
       initContainers:
-      {{- if .Values.initContainers.dbSetup.enabled }}
-      - name: kratos-db-setup
-        image: "{{ .Values.initContainers.dbSetup.image }}"
-        command: ["/bin/bash"]
-        args:
-        - -c
-        - |
-          echo "Setting up Kratos database user..."
-          
-          # Wait for PostgreSQL to be ready  
-          until pg_isready -h kratos-postgres.alt-auth.svc.cluster.local -p 5432 -U kratos_db_user; do
-            echo "Waiting for PostgreSQL..."
-            sleep 2
-          done
-          
-          # Create kratos_db_user if it doesn't exist (idempotent)
-          psql -h kratos-postgres.alt-auth.svc.cluster.local -U kratos_db_user -d kratos_db -c "
-          DO \$\$ BEGIN
-            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'kratos_db_user') THEN
-              CREATE USER kratos_db_user WITH PASSWORD '$KRATOS_DB_PASSWORD';
-              GRANT CONNECT ON DATABASE kratos_db TO kratos_db_user;
-              GRANT USAGE ON SCHEMA public TO kratos_db_user;
-              GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO kratos_db_user;
-              GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO kratos_db_user;
-              GRANT ALL PRIVILEGES ON SCHEMA public TO kratos_db_user;
-              ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO kratos_db_user;
-              ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO kratos_db_user;
-              GRANT CREATE ON DATABASE kratos_db TO kratos_db_user;
-              GRANT TEMPORARY ON DATABASE kratos_db TO kratos_db_user;
-              GRANT CONNECT ON DATABASE kratos_db TO kratos_db_user;
-              ECHO 'User kratos_db_user created successfully';
-            ELSE
-              ECHO 'User kratos_db_user already exists';
-            END IF;
-          END \$\$;
-          "
-          echo "Kratos database user setup completed."
-        env:
-        {{- with .Values.initContainers.dbSetup.env }}
-        {{- range $key, $value := . }}
-        - name: {{ $key }}
-          {{- if $value.valueFrom }}
-          valueFrom:
-            {{- toYaml $value.valueFrom | nindent 12 }}
-          {{- else }}
-          value: {{ $value | quote }}
-          {{- end }}
-        {{- end }}
-        {{- end }}
-        securityContext:
-          allowPrivilegeEscalation: true
-      {{- end }}
       {{- if .Values.migration.enabled }}
       - name: kratos-migrate
         image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag }}"
