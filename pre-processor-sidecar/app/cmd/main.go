@@ -106,6 +106,10 @@ func main() {
 		BaseURL:             cfg.Inoreader.BaseURL,
 		RefreshBuffer:       5 * time.Minute,
 		CheckInterval:       1 * time.Minute,
+		
+		// OAuth2 Secret設定 - auth-token-manager連携
+		OAuth2SecretName:    cfg.OAuth2SecretName,
+		KubernetesNamespace: os.Getenv("KUBERNETES_NAMESPACE"),
 	}
 
 	simpleTokenService, err := service.NewSimpleTokenService(simpleTokenConfig, logger)

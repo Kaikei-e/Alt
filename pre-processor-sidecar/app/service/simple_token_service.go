@@ -17,11 +17,12 @@ import (
 
 // SimpleTokenService は簡易版統合トークンサービス
 type SimpleTokenService struct {
-	inMemoryManager *InMemoryTokenManager
-	recoveryManager *RecoveryManager
-	oauth2Client    *driver.OAuth2Client
-	logger          *slog.Logger
-	isStarted       bool
+	inMemoryManager  *InMemoryTokenManager
+	recoveryManager  *RecoveryManager
+	oauth2Client     *driver.OAuth2Client
+	oauth2SecretSvc  *OAuth2SecretService
+	logger           *slog.Logger
+	isStarted        bool
 }
 
 // SimpleTokenConfig は簡易版設定
@@ -33,6 +34,10 @@ type SimpleTokenConfig struct {
 	BaseURL             string
 	RefreshBuffer       time.Duration
 	CheckInterval       time.Duration
+	
+	// OAuth2 Secret設定
+	OAuth2SecretName string
+	KubernetesNamespace string
 }
 
 // NewSimpleTokenService は新しい簡易統合サービスを作成
@@ -63,13 +68,41 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 		oauth2Client.SetHTTPClient(httpClient)
 		logger.Info("OAuth2 client configured with proxy", "proxy", httpsProxy)
 	}
+	
+	// OAuth2 Secretサービスの初期化
+	oauth2SecretSvc, err := NewOAuth2SecretService(OAuth2SecretConfig{
+		Namespace:  config.KubernetesNamespace,
+		SecretName: config.OAuth2SecretName,
+		Logger:     logger,
+	})
+	if err != nil {
+		logger.Warn("Failed to initialize OAuth2SecretService, using environment variables only", "error", err)
+		oauth2SecretSvc = nil
+	}
+
+	// トークンの読み込み - OAuth2 Secretを優先
+	initialAccessToken := config.InitialAccessToken
+	initialRefreshToken := config.InitialRefreshToken
+	
+	// OAuth2 Secretからトークンを読み込み（利用可能であれば）
+	if oauth2SecretSvc != nil {
+		ctx := context.Background()
+		secretToken, err := oauth2SecretSvc.LoadOAuth2Token(ctx)
+		if err != nil {
+			logger.Warn("Failed to load token from OAuth2 Secret, falling back to environment variables", "error", err)
+		} else {
+			logger.Info("Successfully loaded tokens from OAuth2 Secret - auth-token-manager integration active")
+			initialAccessToken = secretToken.AccessToken
+			initialRefreshToken = secretToken.RefreshToken
+		}
+	}
 
 	// InMemoryTokenManagerの作成
 	tokenManagerConfig := InMemoryTokenManagerConfig{
 		ClientID:         config.ClientID,
 		ClientSecret:     config.ClientSecret,
-		AccessToken:      config.InitialAccessToken,
-		RefreshToken:     config.InitialRefreshToken,
+		AccessToken:      initialAccessToken,
+		RefreshToken:     initialRefreshToken,
 		RefreshBuffer:    config.RefreshBuffer,
 		CheckInterval:    config.CheckInterval,
 		OAuth2Client:     oauth2Client,
@@ -92,10 +125,11 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 	)
 
 	service := &SimpleTokenService{
-		inMemoryManager: inMemoryManager,
-		recoveryManager: recoveryManager,
-		oauth2Client:    oauth2Client,
-		logger:          logger,
+		inMemoryManager:  inMemoryManager,
+		recoveryManager:  recoveryManager,
+		oauth2Client:     oauth2Client,
+		oauth2SecretSvc:  oauth2SecretSvc,
+		logger:           logger,
 	}
 
 	logger.Info("SimpleTokenService created successfully",
