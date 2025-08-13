@@ -3,19 +3,19 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ───────────────────────────────────────────────────────────
-# build-images.sh — Pattern‑B (単一リポジトリ) 用ビルド & プッシュスクリプト
-# • 1 つのリポジトリ (IMAGE_PREFIX) に各サービスを「<service>-<timestamp>-<sha>」形式のタグで格納
-# • <service>-latest タグも追加
-# • SKIP_PUSH=true でリモート push をスキップ
-# • ビルドしたイメージは containerd(k8s.io) にインポート
+# build-images.sh — SHA256タグ付けビルド & Kindロードスクリプト
+# • 各サービスを「<service>:sha256-<hash>」形式でタグ付け
+# • <service>:latest タグも追加
+# • 自動的にkindクラスターにロード
+# • IMAGE_PREFIX不要のシンプル設計
 #
 # 使い方例:
-#   IMAGE_PREFIX=myuser/project-alt ./build-images.sh all
-#   IMAGE_PREFIX=myuser/project-alt SKIP_PUSH=true ./build-images.sh alt-backend,alt-frontend
+#   ./build-images.sh all
+#   ./build-images.sh alt-backend,alt-frontend
+#   ./build-images.sh auth-token-manager
 #
-# 必要な環境変数:
-#   IMAGE_PREFIX : <namespace>/<repo> 形式 (必須)
-#   SKIP_PUSH    : true で push をスキップ (省略時 push 実行)
+# オプション環境変数:
+#   KIND_CLUSTER_NAME : kindクラスター名 (デフォルト: alt-prod)
 # ───────────────────────────────────────────────────────────
 
 # ----- カラー -----
@@ -24,14 +24,14 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; CY
 # ----- グローバル変数 -----
 TIMESTAMP="$(date +%Y%m%d%H%M%S)"
 GIT_SHA="$(git rev-parse --short=HEAD 2>/dev/null || echo 'nogit')"
-SKIP_PUSH="${SKIP_PUSH:-false}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-}"
+KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-alt-prod}"
 
 # ----- サービス → Dockerfile パス -----
 declare -A SERVICE_CONFIGS=(
   [alt-backend]="alt-backend/Dockerfile.backend"
   [alt-frontend]="alt-frontend/Dockerfile.frontend"
   [auth-service]="auth-service/Dockerfile"
+  [auth-token-manager]="auth-token-manager/Dockerfile"
   [pre-processor]="pre-processor/Dockerfile"
   [news-creator]="news-creator/Dockerfile.creator"
   [search-indexer]="search-indexer/Dockerfile.search-indexer"
@@ -44,31 +44,52 @@ declare -A SERVICE_CONFIGS=(
 # ----- 関数 -----
 usage() {
   cat <<EOF
-Usage: IMAGE_PREFIX=<namespace/repo> [SKIP_PUSH=true] $0 [all|svc1,svc2]
-  IMAGE_PREFIX : 必須。例 myuser/project-alt など
-  SKIP_PUSH    : true で push をスキップ (省略時 push 実施)
+Usage: [KIND_CLUSTER_NAME=cluster-name] $0 [all|svc1,svc2]
   all          : 全サービスをビルド
   svc1,svc2    : カンマ区切りで特定サービスのみビルド
+  
+Examples:
+  ./build-images.sh all                    # 全サービスビルド
+  ./build-images.sh auth-token-manager     # auth-token-managerのみ
+  ./build-images.sh alt-backend,alt-frontend
+  
+Environment:
+  KIND_CLUSTER_NAME : kindクラスター名 (デフォルト: alt-prod)
 EOF
   exit 1
 }
 
 check_deps() {
-  for cmd in docker ctr git date; do
+  for cmd in docker kind git date sha256sum; do
     if ! command -v "$cmd" &>/dev/null; then
       echo -e "${RED}✗ $cmd が必要です${NC}" >&2
       exit 1
     fi
   done
-  echo -e "${GREEN}✓ 依存コマンド OK${NC}"
+  
+  # kindクラスター存在確認
+  if ! kind get clusters | grep -q "^${KIND_CLUSTER_NAME}$"; then
+    echo -e "${YELLOW}⚠ kindクラスター '${KIND_CLUSTER_NAME}' が見つかりません${NC}"
+    echo -e "${BLUE}利用可能なクラスター:${NC}"
+    kind get clusters | sed 's/^/  /'
+    exit 1
+  fi
+  
+  echo -e "${GREEN}✓ 依存コマンド & kindクラスター OK${NC}"
 }
 
-tag_for() {
+generate_sha256_tag() {
   local svc="$1"
-  printf '%s-%s-%s' "$svc" "$TIMESTAMP" "$GIT_SHA"
+  local context="$2"
+  
+  # ディレクトリの内容からSHA256ハッシュを生成
+  local content_hash=$(find "$context" -type f \( -name "*.ts" -o -name "*.go" -o -name "*.py" -o -name "*.rs" -o -name "Dockerfile*" -o -name "*.json" -o -name "*.yaml" \) \
+    -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 | head -c 16)
+  
+  printf 'sha256-%s' "$content_hash"
 }
 
-build_and_push() {
+build_and_load() {
   local svc="$1"
   local df_path="${SERVICE_CONFIGS[$svc]-}"
 
@@ -85,52 +106,50 @@ build_and_push() {
     return
   fi
 
-  # 画像名 & タグ組み立て
-  local tag="$(tag_for "$svc")"
-  local full_image="${IMAGE_PREFIX}:${tag}"
-  local latest_image="${IMAGE_PREFIX}:${svc}-latest"
+  # SHA256タグ生成
+  local sha_tag="$(generate_sha256_tag "$svc" "$dir")"
+  local sha_image="${svc}:${sha_tag}"
+  local latest_image="${svc}:latest"
 
   # ビルド
-  echo -e "${BLUE}▶ Building $svc → $full_image${NC}"
+  echo -e "${BLUE}▶ Building $svc → $sha_image${NC}"
   pushd "$dir" >/dev/null
-  docker build --pull -f "$(basename "$df_path")" -t "$full_image" .
-  docker tag "$full_image" "$latest_image"
+  docker build --pull -f "$(basename "$df_path")" -t "$sha_image" .
+  docker tag "$sha_image" "$latest_image"
   popd >/dev/null
 
-  # push
-  if [[ "$SKIP_PUSH" != true ]]; then
-    echo -e "${CYAN}↪ Pushing $full_image${NC}"
-    docker push "$full_image" && docker push "$latest_image" || {
-      echo -e "${RED}✗ push 失敗: $full_image${NC}" >&2
-      exit 1
-    }
-    echo -e "${GREEN}✓ push 成功${NC}"
-  else
-    echo -e "${YELLOW}⚠ push スキップ (SKIP_PUSH=true)${NC}"
-  fi
+  # kindクラスターにロード
+  echo -e "${CYAN}↪ Loading to kind cluster: $KIND_CLUSTER_NAME${NC}"
+  kind load docker-image "$sha_image" --name "$KIND_CLUSTER_NAME"
+  kind load docker-image "$latest_image" --name "$KIND_CLUSTER_NAME"
 
-  # containerd import
-  echo -e "${CYAN}↪ Import to containerd${NC}"
-  docker save "$full_image" | sudo ctr -n k8s.io images import -
-  echo -e "${GREEN}✓ 完了: $svc${NC}\n"
+  echo -e "${GREEN}✓ 完了: $svc${NC}"
+  echo -e "${GREEN}  📦 Image: $sha_image${NC}"
+  echo -e "${GREEN}  📦 Latest: $latest_image${NC}"
+  echo -e "${GREEN}  🔄 Loaded to kind cluster: $KIND_CLUSTER_NAME${NC}\n"
 }
 
 main() {
-  # IMAGE_PREFIX 必須
-  [[ -z "$IMAGE_PREFIX" ]] && { echo -e "${RED}IMAGE_PREFIX 必須${NC}"; usage; }
   [[ $# -eq 0 ]] && usage
 
   check_deps
 
   local target="$1"
+  
+  echo -e "${BLUE}🚀 Starting build process${NC}"
+  echo -e "${BLUE}Kind cluster: ${KIND_CLUSTER_NAME}${NC}"
+  echo -e "${BLUE}Git SHA: ${GIT_SHA}${NC}\n"
+  
   if [[ "$target" == all ]]; then
-    for svc in "${!SERVICE_CONFIGS[@]}"; do build_and_push "$svc"; done
+    echo -e "${BLUE}Building all services...${NC}"
+    for svc in "${!SERVICE_CONFIGS[@]}"; do build_and_load "$svc"; done
   else
     IFS=',' read -ra list <<<"$target"
-    for svc in "${list[@]}"; do build_and_push "${svc// /}"; done
+    for svc in "${list[@]}"; do build_and_load "${svc// /}"; done
   fi
 
-  echo -e "${GREEN}All services completed (${TIMESTAMP})${NC}"
+  echo -e "${GREEN}🎉 All services completed!${NC}"
+  echo -e "${GREEN}Images loaded to kind cluster: ${KIND_CLUSTER_NAME}${NC}"
 }
 
 main "$@"
