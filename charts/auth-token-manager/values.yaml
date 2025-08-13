@@ -41,6 +41,18 @@ logging:
   level: INFO
   format: JSON
 
+# Network Configuration
+network:
+  proxy:
+    enabled: true
+    httpProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
+    httpsProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
+    noProxy: "10.96.0.1,kubernetes.default.svc.cluster.local,kubernetes.default,localhost,127.0.0.1"
+  timeouts:
+    http: 30000
+    connectivity: 10000
+    connectivityCheck: true
+
 # CronJob Configuration
 cronjob:
   schedule: "0 */6 * * *"  # Every 6 hours
