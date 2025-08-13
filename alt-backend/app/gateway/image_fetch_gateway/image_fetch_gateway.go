@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -180,7 +182,7 @@ type ImageFetchGateway struct {
 // NewImageFetchGateway creates a new ImageFetchGateway
 func NewImageFetchGateway(httpClient *http.Client) *ImageFetchGateway {
 	strategy := getProxyStrategy()
-	
+
 	// If we have a proxy strategy, wrap the client with proxy-aware transport
 	if strategy != nil && strategy.Enabled && httpClient != nil {
 		// Get the existing transport or create a new one
@@ -188,24 +190,151 @@ func NewImageFetchGateway(httpClient *http.Client) *ImageFetchGateway {
 		if transport == nil {
 			transport = http.DefaultTransport
 		}
-		
+
 		// Wrap with Envoy proxy round tripper for Host header fixing
 		httpClient.Transport = &EnvoyProxyRoundTripper{
 			transport: transport,
 		}
 	}
-	
+
 	return &ImageFetchGateway{
 		httpClient:    httpClient,
 		proxyStrategy: strategy,
 	}
 }
 
+// validateImageURL performs SSRF protection by validating the URL against security policies
+func validateImageURL(u *url.URL) error {
+	return validateImageURLWithTestOverride(u, false)
+}
+
+// validateImageURLWithTestOverride allows bypassing localhost restrictions for testing
+func validateImageURLWithTestOverride(u *url.URL, allowTestingLocalhost bool) error {
+	// Only allow HTTPS and HTTP
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return fmt.Errorf("only HTTP and HTTPS schemes allowed")
+	}
+
+	// Check domain whitelist (allow localhost/127.x.x.x for testing if specified)
+	hostname := strings.ToLower(u.Hostname())
+	isTestingLocalhost := allowTestingLocalhost && (hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127."))
+
+	if !domain.IsAllowedImageDomain(hostname) && !isTestingLocalhost {
+		return fmt.Errorf("domain not in whitelist")
+	}
+
+	// Block private networks (except localhost for testing when allowed)
+	if !isTestingLocalhost && isPrivateIP(u.Hostname()) {
+		return fmt.Errorf("access to private networks not allowed")
+	}
+
+	// Block localhost variations (unless testing is allowed)
+	if !isTestingLocalhost && (hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127.")) {
+		return fmt.Errorf("access to localhost not allowed")
+	}
+
+	// Block metadata endpoints (AWS, GCP, Azure)
+	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" {
+		return fmt.Errorf("access to metadata endpoint not allowed")
+	}
+
+	// Block common internal domains
+	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
+	for _, domainSuffix := range internalDomains {
+		if strings.HasSuffix(hostname, domainSuffix) {
+			return fmt.Errorf("access to internal domains not allowed")
+		}
+	}
+
+	return nil
+}
+
+// isPrivateIP checks if the hostname resolves to private IP addresses
+func isPrivateIP(hostname string) bool {
+	// Try to parse as IP first
+	ip := net.ParseIP(hostname)
+	if ip != nil {
+		return isPrivateIPAddress(ip)
+	}
+
+	// If it's a hostname, resolve it to IPs
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		// Block on resolution failure as a security measure
+		return true
+	}
+
+	// Check if any resolved IP is private
+	for _, ip := range ips {
+		if isPrivateIPAddress(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isPrivateIPAddress checks if an IP address is in private ranges
+func isPrivateIPAddress(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+
+	// Check for private IPv4 ranges
+	if ip.To4() != nil {
+		// 10.0.0.0/8
+		if ip[0] == 10 {
+			return true
+		}
+		// 172.16.0.0/12
+		if ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
+			return true
+		}
+		// 192.168.0.0/16
+		if ip[0] == 192 && ip[1] == 168 {
+			return true
+		}
+	}
+
+	// Check for private IPv6 ranges
+	if ip.To16() != nil && ip.To4() == nil {
+		// Check for unique local addresses (fc00::/7)
+		if ip[0] == 0xfc || ip[0] == 0xfd {
+			return true
+		}
+	}
+
+	return false
+}
+
 // FetchImage fetches an image from external URL through HTTP client
 func (g *ImageFetchGateway) FetchImage(ctx context.Context, imageURL *url.URL, options *domain.ImageFetchOptions) (*domain.ImageFetchResult, error) {
+	return g.fetchImageWithTestingOverride(ctx, imageURL, options, false)
+}
+
+// fetchImageForTesting allows bypassing localhost restrictions for unit testing
+func (g *ImageFetchGateway) fetchImageForTesting(ctx context.Context, imageURL *url.URL, options *domain.ImageFetchOptions) (*domain.ImageFetchResult, error) {
+	return g.fetchImageWithTestingOverride(ctx, imageURL, options, true)
+}
+
+// fetchImageWithTestingOverride is the internal implementation with testing override capability
+func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, imageURL *url.URL, options *domain.ImageFetchOptions, allowTestingLocalhost bool) (*domain.ImageFetchResult, error) {
 	// Check context cancellation early
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
+	}
+
+	// Validate URL to prevent SSRF attacks
+	if err := validateImageURLWithTestOverride(imageURL, allowTestingLocalhost); err != nil {
+		return nil, errors.NewValidationContextError(
+			fmt.Sprintf("URL validation failed: %v", err),
+			"gateway",
+			"ImageFetchGateway",
+			"validate_url",
+			map[string]interface{}{
+				"url": imageURL.String(),
+			},
+		)
 	}
 
 	// Convert to proxy URL if proxy strategy is enabled
@@ -308,7 +437,11 @@ func (g *ImageFetchGateway) FetchImage(ctx context.Context, imageURL *url.URL, o
 	contentLengthHeader := resp.Header.Get("Content-Length")
 	if contentLengthHeader != "" {
 		if contentLength, err := strconv.ParseInt(contentLengthHeader, 10, 64); err == nil {
-			if int(contentLength) > options.MaxSize {
+			// Safe comparison with bounds checking to prevent integer overflow
+			maxSizeInt64 := int64(options.MaxSize)
+
+			// Check if content length exceeds int32 bounds or the configured max size
+			if contentLength > math.MaxInt32 || contentLength > maxSizeInt64 {
 				return nil, errors.NewValidationContextError(
 					"image too large",
 					"gateway",

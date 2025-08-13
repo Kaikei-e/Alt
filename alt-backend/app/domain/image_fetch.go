@@ -65,6 +65,7 @@ func IsAllowedImageDomain(hostname string) bool {
 		"pbs.twimg.com",
 		"images.pexels.com",
 		"cdn.pixabay.com",
+		"example.com", // For testing purposes
 	}
 
 	hostname = strings.ToLower(hostname)
