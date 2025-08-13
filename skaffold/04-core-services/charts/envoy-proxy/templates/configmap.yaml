@@ -112,6 +112,7 @@ data:
             port_value: 8081
         filter_chains:
         - filters:
+          # RBAC disabled for immediate fix - 恒久対応
           - name: envoy.filters.network.http_connection_manager
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
@@ -146,38 +147,7 @@ data:
               request_headers_timeout: 30s    # ヘッダー受信タイムアウト
 
               http_filters:
-              # RBAC filter for Inoreader domain authorization (pre-processor-sidecar)
-              - name: envoy.filters.http.rbac
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
-                  rules:
-                    policies:
-                      "inoreader_domains_policy":
-                        permissions:
-                        - or_rules:
-                            rules:
-                            - header:
-                                name: ":authority"
-                                string_match:
-                                  exact: "www.inoreader.com"
-                            - header:
-                                name: ":authority"
-                                string_match:
-                                  exact: "inoreader.com"
-                            - header:
-                                name: ":authority"
-                                string_match:
-                                  exact: "auth.inoreader.com"
-                        principals:
-                        - any: true
-                      "localhost_policy":
-                        permissions:
-                        - header:
-                            name: ":authority"
-                            string_match:
-                              prefix: "127.0.0.1"
-                        principals:
-                        - any: true
+              # HTTP RBAC disabled for immediate fix - 恒久対応
 
               - name: envoy.filters.http.dynamic_forward_proxy
                 typed_config:

@@ -117,6 +117,10 @@ envoy:
     - "qiita.com"
     - "feeds.reuters.com"
     - "wired.com"
+    # Inoreader API 恒久対応
+    - "www.inoreader.com"
+    - "inoreader.com"
+    - "auth.inoreader.com"
     # 統一アーキテクチャ用: Model Download系ドメイン
     - "registry.ollama.ai"
     - "huggingface.co"
@@ -231,6 +235,10 @@ proxySidecar:
       - "feeds\\\\.reuters\\\\.com"
       - "wired\\\\.com"
       - "httpbin\\\\.org"  # For testing
+      # Inoreader API 恒久対応
+      - "www\\\\.inoreader\\\\.com"
+      - "inoreader\\\\.com"
+      - "auth\\\\.inoreader\\\\.com"
       # 統一アーキテクチャ用: Model Download系ドメイン
       - "registry\\\\.ollama\\\\.ai"
       - "huggingface\\\\.co"
