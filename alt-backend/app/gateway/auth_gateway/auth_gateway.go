@@ -28,7 +28,12 @@ func NewAuthGateway(authClient auth.AuthClient, logger *slog.Logger) auth_port.A
 }
 
 func (g *AuthGateway) ValidateSession(ctx context.Context, sessionToken string) (*domain.UserContext, error) {
-	g.logger.Debug("validating session", "token_prefix", sessionToken[:10]+"...")
+	// Safely log session token prefix
+	tokenPrefix := sessionToken
+	if len(sessionToken) > 10 {
+		tokenPrefix = sessionToken[:10] + "..."
+	}
+	g.logger.Debug("validating session", "token_prefix", tokenPrefix)
 	
 	response, err := g.authClient.ValidateSession(ctx, sessionToken, "")
 	if err != nil {

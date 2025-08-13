@@ -115,16 +115,51 @@ func TestClient_ValidateSession(t *testing.T) {
 			wantError:  false,
 		},
 		{
-			name:               "auth service error",
+			name:               "empty session token",
+			sessionToken:       "",
+			tenantID:           "tenant-123",
+			mockResponseStatus: http.StatusOK, // This won't be called due to early return
+			mockResponse:       SessionValidationResponse{Valid: true},
+			wantValid:          false,
+			wantUserID:         "",
+			wantError:          false, // Should handle gracefully, not error
+		},
+		{
+			name:               "auth service error - graceful fallback",
 			sessionToken:       "test-token",
 			tenantID:           "tenant-123",
 			mockResponseStatus: http.StatusInternalServerError,
 			mockResponse:       map[string]string{"error": "internal server error"},
 			wantValid:          false,
 			wantUserID:         "",
-			wantError:          true,
+			wantError:          false, // Changed: should handle gracefully for OptionalAuth compatibility
 		},
 	}
+
+	// Test service unavailable scenario separately
+	t.Run("auth service unavailable", func(t *testing.T) {
+		// Create client with non-existent server URL
+		config := &config.Config{
+			Auth: config.AuthConfig{
+				ServiceURL: "http://non-existent-server:99999",
+				Timeout:    1 * time.Second,
+			},
+		}
+		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		client := NewClient(config, logger)
+
+		// Call ValidateSession
+		ctx := context.Background()
+		result, err := client.ValidateSession(ctx, "test-token", "")
+
+		// Should handle gracefully for OptionalAuth compatibility
+		assert.NoError(t, err, "ValidateSession should handle service unavailable gracefully")
+		require.NotNil(t, result)
+		assert.False(t, result.Valid, "Should return invalid session when service unavailable")
+		assert.Empty(t, result.UserID)
+		assert.Empty(t, result.Email)
+		assert.Empty(t, result.Role)
+	})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -331,16 +366,16 @@ func TestClient_HealthCheck(t *testing.T) {
 			wantError:          false,
 		},
 		{
-			name:               "unhealthy service",
+			name:               "unhealthy service - graceful handling",
 			mockResponseStatus: http.StatusOK,
 			mockResponse:       map[string]string{"status": "error"},
-			wantError:          true,
+			wantError:          false, // Changed: should handle gracefully
 		},
 		{
-			name:               "service unavailable",
+			name:               "service unavailable - graceful handling",
 			mockResponseStatus: http.StatusServiceUnavailable,
 			mockResponse:       map[string]string{"error": "service unavailable"},
-			wantError:          true,
+			wantError:          false, // Changed: should handle gracefully
 		},
 	}
 

@@ -92,6 +92,11 @@ func NewClient(config *config.Config, logger *slog.Logger) *Client {
 
 // ValidateSession validates a session token with the Auth Service
 func (c *Client) ValidateSession(ctx context.Context, sessionToken string, tenantID string) (*SessionValidationResponse, error) {
+	// Input validation
+	if sessionToken == "" {
+		return c.createInvalidSessionResponse(), nil // Return invalid session for empty token
+	}
+
 	req := SessionValidationRequest{
 		SessionToken: sessionToken,
 		TenantID:     tenantID,
@@ -99,15 +104,17 @@ func (c *Client) ValidateSession(ctx context.Context, sessionToken string, tenan
 
 	response, err := c.makeRequest(ctx, "POST", "/api/v1/session/validate", req)
 	if err != nil {
-		c.logger.Error("session validation failed",
+		c.logger.Warn("auth service unavailable, returning invalid session for OptionalAuth compatibility",
 			"error", err,
 			"session_token_prefix", sessionToken[:min(len(sessionToken), 8)])
-		return nil, fmt.Errorf("failed to validate session: %w", err)
+		// Return invalid session instead of error for OptionalAuth middleware compatibility
+		return c.createInvalidSessionResponse(), nil
 	}
 
 	var result SessionValidationResponse
 	if err := json.Unmarshal(response, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal session validation response: %w", err)
+		c.logger.Error("failed to unmarshal session validation response", "error", err)
+		return c.createInvalidSessionResponse(), nil
 	}
 
 	return &result, nil
@@ -166,19 +173,23 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 
 	response, err := c.makeRequest(ctx, "GET", "/health", nil)
 	if err != nil {
-		return fmt.Errorf("auth service health check failed: %w", err)
+		c.logger.Debug("auth service health check failed, service may be unavailable", "error", err)
+		return nil // Graceful handling - service unavailability is not a fatal error for the application
 	}
 
 	var healthResponse map[string]interface{}
 	if err := json.Unmarshal(response, &healthResponse); err != nil {
-		return fmt.Errorf("failed to parse health response: %w", err)
+		c.logger.Debug("failed to parse auth service health response", "error", err)
+		return nil // Graceful handling
 	}
 
 	status, ok := healthResponse["status"].(string)
 	if !ok || status != "ok" {
-		return fmt.Errorf("auth service is unhealthy: status=%v", healthResponse["status"])
+		c.logger.Debug("auth service is unhealthy", "status", healthResponse["status"])
+		return nil // Graceful handling
 	}
 
+	c.logger.Debug("auth service is healthy")
 	return nil
 }
 
@@ -224,6 +235,17 @@ func (c *Client) makeRequest(ctx context.Context, method, endpoint string, paylo
 	}
 
 	return responseBody, nil
+}
+
+// createInvalidSessionResponse creates a response for invalid/failed sessions
+// This is used for graceful handling when the auth service is unavailable
+func (c *Client) createInvalidSessionResponse() *SessionValidationResponse {
+	return &SessionValidationResponse{
+		Valid:  false,
+		UserID: "",
+		Email:  "",
+		Role:   "",
+	}
 }
 
 // min returns the minimum of two integers (helper function for Go versions < 1.21)
