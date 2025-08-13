@@ -1,0 +1,129 @@
+# Auth Token Manager Configuration
+image:
+  repository: auth-token-manager
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# OAuth Configuration
+oauth:
+  # These will be provided via secrets
+  inoreader:
+    clientId: ""
+    clientSecret: ""
+    username: ""
+    password: ""
+    redirectUri: "urn:ietf:wg:oauth:2.0:oob"
+
+# Kubernetes Configuration
+kubernetes:
+  namespace: alt-processing
+  secretName: pre-processor-sidecar-oauth2-token
+
+# Browser Configuration
+browser:
+  headless: true
+  viewport:
+    width: 1920
+    height: 1080
+  userAgent: "Auth-Token-Manager/2.0.0 (Playwright)"
+  locale: "en-US"
+  timezone: "UTC"
+
+# Retry Configuration
+retry:
+  maxAttempts: 3
+  initialDelay: 1000
+  maxDelay: 5000
+  backoffFactor: 2
+
+# Logging Configuration
+logging:
+  level: INFO
+  format: JSON
+
+# Network Configuration
+network:
+  proxy:
+    enabled: true
+    httpProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
+    httpsProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
+    noProxy: "10.96.0.1,kubernetes.default.svc.cluster.local,kubernetes.default,localhost,127.0.0.1"
+  timeouts:
+    http: 30000
+    connectivity: 10000
+    connectivityCheck: true
+
+# CronJob Configuration
+cronjob:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 1
+  suspend: false
+  backoffLimit: 2
+  activeDeadlineSeconds: 900  # 15 minutes timeout
+
+# Resource Configuration
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "200m"
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
+
+# Test Job Configuration
+testJob:
+  enabled: true
+  command: ["health"]
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Security Configuration
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false  # Playwright needs write access
+  capabilities:
+    drop:
+      - ALL
+    add:
+      - SYS_ADMIN  # Required for Chromium sandbox
+
+# Node Selection
+nodeSelector:
+  kubernetes.io/os: linux
+
+tolerations:
+  - key: "kubernetes.io/arch"
+    operator: "Equal"
+    value: "amd64"
+    effect: "NoSchedule"
+
+# Service Account
+serviceAccount:
+  create: true
+  name: auth-token-manager
+
+# RBAC
+rbac:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["secrets"]
+      verbs: ["get", "list", "create", "update", "patch"]
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["batch"]
+      resources: ["jobs", "cronjobs"]
+      verbs: ["get", "list", "watch"]
