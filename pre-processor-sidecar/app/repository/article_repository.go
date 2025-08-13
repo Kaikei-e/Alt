@@ -29,15 +29,39 @@ func NewPostgreSQLArticleRepository(db *sql.DB, logger *slog.Logger) ArticleRepo
 	}
 }
 
-// Create creates a new article in the database
+// UpsertResult represents the result of an upsert operation
+type UpsertResult struct {
+	WasInserted bool // true if new record was inserted, false if existing record was updated
+}
+
+// Create creates a new article in the database using UPSERT for idempotency
 func (r *PostgreSQLArticleRepository) Create(ctx context.Context, article *models.Article) error {
+	_, err := r.CreateWithResult(ctx, article)
+	return err
+}
+
+// CreateWithResult creates an article and returns whether it was inserted or updated
+func (r *PostgreSQLArticleRepository) CreateWithResult(ctx context.Context, article *models.Article) (*UpsertResult, error) {
 	query := `
 		INSERT INTO inoreader_articles (
 			id, inoreader_id, subscription_id, article_url, title, author,
 			published_at, fetched_at, processed, content, content_length, content_type
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		ON CONFLICT (inoreader_id) 
+		DO UPDATE SET
+			subscription_id = EXCLUDED.subscription_id,
+			article_url = EXCLUDED.article_url,
+			title = EXCLUDED.title,
+			author = EXCLUDED.author,
+			published_at = EXCLUDED.published_at,
+			fetched_at = EXCLUDED.fetched_at,
+			content = EXCLUDED.content,
+			content_length = EXCLUDED.content_length,
+			content_type = EXCLUDED.content_type
+		RETURNING (xmax = 0) AS was_inserted`
 
-	_, err := r.db.ExecContext(ctx, query,
+	var wasInserted bool
+	err := r.db.QueryRowContext(ctx, query,
 		article.ID,
 		article.InoreaderID,
 		article.SubscriptionID,
@@ -50,108 +74,135 @@ func (r *PostgreSQLArticleRepository) Create(ctx context.Context, article *model
 		article.Content,
 		article.ContentLength,
 		article.ContentType,
-	)
+	).Scan(&wasInserted)
 
 	if err != nil {
-		r.logger.Error("Failed to create article",
+		r.logger.Error("Failed to upsert article",
 			"inoreader_id", article.InoreaderID,
 			"error", err)
-		return fmt.Errorf("failed to create article: %w", err)
+		return nil, fmt.Errorf("failed to upsert article: %w", err)
 	}
 
-	r.logger.Debug("Created article successfully",
-		"inoreader_id", article.InoreaderID,
-		"subscription_id", article.SubscriptionID)
+	if wasInserted {
+		r.logger.Debug("Created new article",
+			"inoreader_id", article.InoreaderID,
+			"subscription_id", article.SubscriptionID)
+	} else {
+		r.logger.Debug("Updated existing article",
+			"inoreader_id", article.InoreaderID,
+			"subscription_id", article.SubscriptionID)
+	}
 	
-	return nil
+	return &UpsertResult{WasInserted: wasInserted}, nil
 }
 
-// CreateBatch creates multiple articles using individual transactions for resilience
+// BatchResult contains statistics about batch operation
+type BatchResult struct {
+	Total     int
+	Inserted  int
+	Updated   int
+	Failed    int
+	LastError error
+}
+
+// CreateBatch creates multiple articles using UPSERT for efficient duplicate handling
 func (r *PostgreSQLArticleRepository) CreateBatch(ctx context.Context, articles []*models.Article) (int, error) {
+	result := r.CreateBatchWithResult(ctx, articles)
+	return result.Inserted + result.Updated, result.LastError
+}
+
+// CreateBatchWithResult creates multiple articles and returns detailed statistics
+func (r *PostgreSQLArticleRepository) CreateBatchWithResult(ctx context.Context, articles []*models.Article) *BatchResult {
+	result := &BatchResult{Total: len(articles)}
+
 	if len(articles) == 0 {
-		return 0, nil
+		return result
 	}
 
 	r.logger.Info("Starting resilient batch article creation",
 		"total_articles", len(articles))
 
-	created := 0
-	failed := 0
-	var lastError error
-
-	// Process each article in its own transaction to avoid cascade failures
+	// Process each article using UPSERT with detailed tracking
 	for i, article := range articles {
-		if err := r.createArticleWithValidation(ctx, article); err != nil {
-			// Check if it's a duplicate (expected and acceptable)
-			if r.isDuplicateError(err) {
-				r.logger.Debug("Article already exists, skipping",
-					"inoreader_id", article.InoreaderID,
-					"title", article.Title)
-				continue
-			}
-
+		upsertResult, err := r.createArticleWithValidationAndResult(ctx, article)
+		if err != nil {
 			// Check if it's a foreign key violation (subscription missing)
 			if r.isForeignKeyError(err) {
-				r.logger.Error("Foreign key violation - subscription missing",
+				r.logger.Warn("Foreign key violation - subscription missing",
 					"inoreader_id", article.InoreaderID,
 					"subscription_id", article.SubscriptionID,
 					"error", err)
-				failed++
-				lastError = err
-				continue
+			} else {
+				// Other errors (should be rare with UPSERT)
+				r.logger.Error("Failed to upsert article",
+					"inoreader_id", article.InoreaderID,
+					"article_index", i+1,
+					"error", err)
 			}
-
-			// Other errors
-			r.logger.Error("Failed to create article",
-				"inoreader_id", article.InoreaderID,
-				"article_index", i+1,
-				"error", err)
-			failed++
-			lastError = err
+			result.Failed++
+			result.LastError = err
 			continue
 		}
 
-		created++
-		r.logger.Debug("Article created successfully",
+		if upsertResult.WasInserted {
+			result.Inserted++
+		} else {
+			result.Updated++
+		}
+
+		r.logger.Debug("Article upserted successfully",
 			"inoreader_id", article.InoreaderID,
 			"subscription_id", article.SubscriptionID,
+			"was_new", upsertResult.WasInserted,
 			"progress", fmt.Sprintf("%d/%d", i+1, len(articles)))
 	}
 
+	successCount := result.Inserted + result.Updated
 	r.logger.Info("Resilient batch article creation completed",
-		"total_articles", len(articles),
-		"created", created,
-		"failed", failed,
-		"success_rate", fmt.Sprintf("%.1f%%", float64(created)/float64(len(articles))*100))
+		"total_articles", result.Total,
+		"inserted", result.Inserted,
+		"updated", result.Updated,
+		"failed", result.Failed,
+		"success_rate", fmt.Sprintf("%.1f%%", float64(successCount)/float64(result.Total)*100),
+		"new_vs_duplicate_ratio", fmt.Sprintf("%d:%d", result.Inserted, result.Updated))
 
-	// If all articles failed, return the last error for debugging
-	if created == 0 && failed > 0 && lastError != nil {
-		return 0, fmt.Errorf("all articles failed to create, last error: %w", lastError)
+	// Set error only if all articles failed
+	if successCount == 0 && result.Failed > 0 && result.LastError != nil {
+		result.LastError = fmt.Errorf("all articles failed to upsert, last error: %w", result.LastError)
+	} else {
+		result.LastError = nil
 	}
 
-	return created, nil
+	return result
 }
 
 // createArticleWithValidation creates a single article with pre-validation
 func (r *PostgreSQLArticleRepository) createArticleWithValidation(ctx context.Context, article *models.Article) error {
+	_, err := r.createArticleWithValidationAndResult(ctx, article)
+	return err
+}
+
+// createArticleWithValidationAndResult creates a single article with pre-validation and returns result
+func (r *PostgreSQLArticleRepository) createArticleWithValidationAndResult(ctx context.Context, article *models.Article) (*UpsertResult, error) {
 	// Pre-validation: Check for nil UUID (invalid subscription)
 	if article.SubscriptionID == uuid.Nil {
-		return fmt.Errorf("invalid subscription ID: nil UUID for inoreader_id %s", article.InoreaderID)
+		return nil, fmt.Errorf("invalid subscription ID: nil UUID for inoreader_id %s", article.InoreaderID)
 	}
 
 	// Validate required fields
 	if article.InoreaderID == "" {
-		return fmt.Errorf("invalid article: empty inoreader_id")
+		return nil, fmt.Errorf("invalid article: empty inoreader_id")
 	}
 	if article.ArticleURL == "" {
-		return fmt.Errorf("invalid article: empty article_url for inoreader_id %s", article.InoreaderID)
+		return nil, fmt.Errorf("invalid article: empty article_url for inoreader_id %s", article.InoreaderID)
 	}
 
-	// Create article using existing Create method (with its own transaction)
-	return r.Create(ctx, article)
+	// Create article using UPSERT with result tracking
+	return r.CreateWithResult(ctx, article)
 }
 
-// isDuplicateError checks if error is due to duplicate inoreader_id
+// isDuplicateError is deprecated - no longer needed with UPSERT implementation
+// Left for compatibility with existing code that might call it
 func (r *PostgreSQLArticleRepository) isDuplicateError(err error) bool {
 	if err == nil {
 		return false
