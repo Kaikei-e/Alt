@@ -36,6 +36,9 @@ type Config struct {
 
 	// OAuth2 configuration
 	OAuth2 OAuth2Config
+	
+	// OAuth2 Secret configuration (for auth-token-manager integration)
+	OAuth2SecretName string
 
 	// Token storage configuration
 	TokenStoragePath string
@@ -200,9 +203,10 @@ func LoadConfig() (*Config, error) {
 		OAuth2: OAuth2Config{
 			ClientID:     os.Getenv("INOREADER_CLIENT_ID"),     // Required from secret
 			ClientSecret: os.Getenv("INOREADER_CLIENT_SECRET"), // Required from secret
-			RefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"), // Required from secret
+			RefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"), // Optional - managed by auth-token-manager
 		},
 
+		OAuth2SecretName: getEnvOrDefault("OAUTH2_TOKEN_SECRET_NAME", "pre-processor-sidecar-oauth2-token"),
 		TokenStoragePath: getEnvOrDefault("TOKEN_STORAGE_PATH", "/tmp/oauth2_token.env"),
 
 		// TDD Phase 3 - REFACTOR: Enhanced Configuration Management
@@ -329,9 +333,10 @@ func (c *Config) Validate() error {
 	if c.Inoreader.ClientSecret == "" {
 		return fmt.Errorf("INOREADER_CLIENT_SECRET is required")
 	}
-	if c.Inoreader.RefreshToken == "" {
-		return fmt.Errorf("INOREADER_REFRESH_TOKEN is required")
-	}
+	// OAuth2 refresh token now optional - managed by auth-token-manager via OAuth2 Secret
+	// if c.Inoreader.RefreshToken == "" {
+	//     return fmt.Errorf("INOREADER_REFRESH_TOKEN is required")
+	// }
 
 	// Validate proxy configuration
 	if c.Proxy.HTTPSProxy == "" {
