@@ -95,5 +95,7 @@ data:
     {{- with .Values.pgHba.customRules }}
     {{- . | nindent 4 }}
     {{- end }}
+    
+    # SCRAM-SHA-256統一: Remove legacy md5 override rule
   {{- end }}
 

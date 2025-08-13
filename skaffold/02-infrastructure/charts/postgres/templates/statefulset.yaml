@@ -171,9 +171,9 @@ spec:
             # INCIDENT 36 FIX: PGDATA subdirectory for lost+found avoidance (REPORT.md)
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
-            # Standard PostgreSQL initialization arguments
+            # SCRAM-SHA-256統一: PostgreSQL initialization arguments
             - name: POSTGRES_INITDB_ARGS
-              value: "--auth-host=md5 --auth-local=trust"
+              value: "--auth-host=scram-sha-256 --auth-local=trust"
             {{- if .Values.initScripts.enabled }}
             - name: DB_TAG_GENERATOR_PASSWORD
               valueFrom:
