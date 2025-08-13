@@ -118,15 +118,15 @@ postgres:
 pgHba:
   enabled: true
   localMethod: "trust"
-  hostMethod: "md5"
-  sslMethod: "md5"
+  hostMethod: "scram-sha-256"
+  sslMethod: "scram-sha-256"
   allowedNetworks:
     - network: "10.0.0.0/8"
-      method: "md5"
+      method: "scram-sha-256"
     - network: "172.16.0.0/12"
-      method: "md5"
+      method: "scram-sha-256"
     - network: "192.168.0.0/16"
-      method: "md5"
+      method: "scram-sha-256"
   customRules: ""
 
 # SSL configuration - ULTRATHINK: Linkerd mTLS only, PostgreSQL SSL完全無効化
