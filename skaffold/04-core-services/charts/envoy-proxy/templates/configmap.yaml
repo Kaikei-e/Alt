@@ -150,17 +150,12 @@ data:
               - name: envoy.filters.http.rbac
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
-                  action: ALLOW
                   rules:
                     policies:
                       "inoreader_domains_policy":
                         permissions:
-                        - any: true
-                        principals:
-                        - any: true
-                        condition:
-                          or_ids:
-                            ids:
+                        - or_rules:
+                            rules:
                             - header:
                                 name: ":authority"
                                 string_match:
@@ -168,21 +163,21 @@ data:
                             - header:
                                 name: ":authority"
                                 string_match:
-                                  exact: "inoreader.com" 
+                                  exact: "inoreader.com"
                             - header:
                                 name: ":authority"
                                 string_match:
                                   exact: "auth.inoreader.com"
-                      "localhost_policy":
-                        permissions:
-                        - any: true
                         principals:
                         - any: true
-                        condition:
-                          header:
+                      "localhost_policy":
+                        permissions:
+                        - header:
                             name: ":authority"
                             string_match:
                               prefix: "127.0.0.1"
+                        principals:
+                        - any: true
 
               - name: envoy.filters.http.dynamic_forward_proxy
                 typed_config:
