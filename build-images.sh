@@ -33,6 +33,7 @@ declare -A SERVICE_CONFIGS=(
   [auth-service]="auth-service/Dockerfile"
   [auth-token-manager]="auth-token-manager/Dockerfile"
   [pre-processor]="pre-processor/Dockerfile"
+  [pre-processor-sidecar]="pre-processor-sidecar/Dockerfile.pre-processor-sidecar"
   [news-creator]="news-creator/Dockerfile.creator"
   [search-indexer]="search-indexer/Dockerfile.search-indexer"
   [tag-generator]="tag-generator/Dockerfile.tag-generator-balanced"
