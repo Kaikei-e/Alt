@@ -27,6 +27,12 @@ export interface BrowserConfig {
   user_agent?: string;
   locale?: string;
   timezone?: string;
+  timeouts: {
+    navigation: number;
+    element_wait: number;
+    authorization_code: number;
+    consent_form: number;
+  };
 }
 
 export interface AuthenticationResult {
@@ -45,6 +51,12 @@ export interface RetryConfig {
   base_delay: number;
   max_delay: number;
   backoff_factor: number;
+}
+
+export interface NetworkConfig {
+  http_timeout: number;
+  connectivity_check: boolean;
+  connectivity_timeout: number;
 }
 
 export interface K8sSecretData {

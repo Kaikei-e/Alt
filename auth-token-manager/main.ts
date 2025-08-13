@@ -62,8 +62,13 @@ async function runTokenRefresh() {
     const configOptions = await config.loadConfig();
     const credentials = config.getInoreaderCredentials();
     
-    // Initialize OAuth automator
-    const oauthAutomator = new InoreaderOAuthAutomator(credentials, configOptions.browser);
+    // Initialize OAuth automator with enhanced configuration
+    const oauthAutomator = new InoreaderOAuthAutomator(
+      credentials, 
+      configOptions.browser,
+      configOptions.network,
+      configOptions.retry
+    );
     
     console.log('🔧 Initializing browser automation...');
     await oauthAutomator.initializeBrowser();

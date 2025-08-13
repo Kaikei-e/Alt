@@ -2,7 +2,7 @@
  * Configuration management for auth-token-manager
  */
 
-import type { BrowserConfig, InoreaderCredentials, RetryConfig } from '../auth/types.ts';
+import type { BrowserConfig, InoreaderCredentials, RetryConfig, NetworkConfig } from '../auth/types.ts';
 
 export interface LoggerConfig {
   level: string;
@@ -15,6 +15,7 @@ export interface ConfigOptions {
   secret_name: string;
   browser: BrowserConfig;
   retry: RetryConfig;
+  network: NetworkConfig;
   logger: LoggerConfig;
 }
 
@@ -49,12 +50,23 @@ class ConfigManager {
         user_agent: Deno.env.get('BROWSER_USER_AGENT'),
         locale: Deno.env.get('BROWSER_LOCALE') || 'en-US',
         timezone: Deno.env.get('BROWSER_TIMEZONE') || 'UTC',
+        timeouts: {
+          navigation: parseInt(Deno.env.get('BROWSER_NAVIGATION_TIMEOUT') || '90000'), // 90s
+          element_wait: parseInt(Deno.env.get('BROWSER_ELEMENT_TIMEOUT') || '30000'), // 30s
+          authorization_code: parseInt(Deno.env.get('BROWSER_AUTH_CODE_TIMEOUT') || '45000'), // 45s
+          consent_form: parseInt(Deno.env.get('BROWSER_CONSENT_TIMEOUT') || '15000'), // 15s
+        },
       },
       retry: {
         max_attempts: parseInt(Deno.env.get('RETRY_MAX_ATTEMPTS') || '3'),
         base_delay: parseInt(Deno.env.get('RETRY_BASE_DELAY') || '1000'),
         max_delay: parseInt(Deno.env.get('RETRY_MAX_DELAY') || '30000'),
         backoff_factor: parseFloat(Deno.env.get('RETRY_BACKOFF_FACTOR') || '2'),
+      },
+      network: {
+        http_timeout: parseInt(Deno.env.get('HTTP_TIMEOUT') || '30000'), // 30s
+        connectivity_check: Deno.env.get('CONNECTIVITY_CHECK') !== 'false',
+        connectivity_timeout: parseInt(Deno.env.get('CONNECTIVITY_TIMEOUT') || '10000'), // 10s
       },
       logger: {
         level: Deno.env.get('LOG_LEVEL') || 'INFO',
