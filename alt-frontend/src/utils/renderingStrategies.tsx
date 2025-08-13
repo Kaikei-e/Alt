@@ -73,15 +73,14 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   /**
    * Decode HTML entities (XPLAN11: Pre-sanitization step)
    */
-  private decodeHtmlEntities(str: string): string {
+  public decodeHtmlEntities(str: string): string {
     if (typeof window !== 'undefined') {
       const textarea = document.createElement('textarea');
       textarea.innerHTML = str;
       return textarea.value;
     }
-    // Enhanced fallback for server-side rendering (more entities covered)
+    // SECURITY FIX: Safe fallback with correct decoding order (decode &amp; last)
     return str
-      .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
@@ -89,7 +88,8 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       .replace(/&nbsp;/g, ' ')
       .replace(/&copy;/g, '©')
       .replace(/&reg;/g, '®')
-      .replace(/&trade;/g, '™');
+      .replace(/&trade;/g, '™')
+      .replace(/&amp;/g, '&'); // CRITICAL: Decode &amp; LAST to prevent double-decoding
   }
 
   /**
@@ -282,7 +282,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
    * @param url - URL with potential HTML entities
    * @returns Decoded URL
    */
-  private decodeHtmlEntitiesFromUrl(url: string): string {
+  public decodeHtmlEntitiesFromUrl(url: string): string {
     if (typeof window !== 'undefined') {
       // Browser environment: use textarea method
       const textarea = document.createElement('textarea');
@@ -290,9 +290,8 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       return textarea.value;
     }
     
-    // Server-side: manual replacement with focus on common URL entities
+    // SECURITY FIX: Safe URL decoding with correct order (decode ampersands last)
     return url
-      .replace(/&amp;/g, '&')      // Most common in URLs
       .replace(/&lt;/g, '<')       // Less common but possible
       .replace(/&gt;/g, '>')       // Less common but possible
       .replace(/&quot;/g, '"')     // Can appear in URL parameters
@@ -300,7 +299,8 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       .replace(/&nbsp;/g, ' ')     // Space encoding
       .replace(/&#x3D;/g, '=')     // Equals sign
       .replace(/&#x26;/g, '&')     // Alternative ampersand encoding
-      .replace(/&#38;/g, '&');     // Decimal ampersand encoding
+      .replace(/&#38;/g, '&')      // Decimal ampersand encoding
+      .replace(/&amp;/g, '&');     // CRITICAL: Decode &amp; LAST to prevent double-decoding
   }
 
 }
@@ -524,11 +524,21 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
     };
   }, [html]);
 
+  // SECURITY FIX: Sanitize HTML before using dangerouslySetInnerHTML
+  const sanitizedHtml = React.useMemo(() => {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre'],
+      ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'target', 'rel'],
+      FORBID_ATTR: ['onclick', 'onload', 'onerror', 'onmouseover', 'onmouseout', 'onfocus', 'onblur'],
+      FORBID_TAGS: ['script', 'object', 'embed', 'form', 'input', 'textarea', 'button', 'select', 'option']
+    });
+  }, [html]);
+
   return (
     <div 
       ref={containerRef}
       className="smart-content-html"
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
       style={{
         lineHeight: '1.7',
         color: 'var(--text-primary)'
