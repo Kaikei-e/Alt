@@ -1,0 +1,16 @@
+apiVersion: v2
+name: auth-token-manager
+description: Automated OAuth token refresh system using Playwright + Deno 2.0
+version: 1.0.0
+appVersion: "2.0.0"
+keywords:
+  - oauth
+  - authentication
+  - playwright
+  - deno
+  - automation
+home: https://github.com/Kaikei-e/Alt
+sources:
+  - https://github.com/Kaikei-e/Alt
+maintainers:
+  - name: Alt RSS Reader Team
