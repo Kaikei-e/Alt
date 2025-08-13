@@ -6,7 +6,7 @@ export interface ApiConfig {
 }
 
 export const defaultApiConfig: ApiConfig = {
-  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api",
+  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9000",
   defaultCacheTtl: 5, // minutes
   requestTimeout: 30000, // 30 seconds
   maxRetries: 3,
@@ -33,5 +33,5 @@ export interface SseConfig {
 export const defaultSseConfig: SseConfig = {
   maxReconnectAttempts: 5,
   reconnectDelay: 2000, // 2 seconds
-  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api",
+  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9000",
 };

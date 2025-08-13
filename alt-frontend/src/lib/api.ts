@@ -197,6 +197,18 @@ class ApiClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        // Global 401 interceptor - redirect to login with return URL (2025 best practice)
+        if (response.status === 401) {
+          // Server-side execution check (critical for Next.js App Directory compatibility)
+          if (typeof window !== 'undefined') {
+            const currentUrl = window.location.pathname + window.location.search;
+            const returnUrl = encodeURIComponent(currentUrl);
+            window.location.href = `/login?returnUrl=${returnUrl}`;
+            return response; // Return response without throwing error for redirect
+          }
+          // On server-side, let the error propagate for proper SSR handling
+        }
+        
         throw new ApiClientError(
           `API request failed: ${response.status} ${response.statusText}`,
           response.status,

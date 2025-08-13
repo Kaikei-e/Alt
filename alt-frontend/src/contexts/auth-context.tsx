@@ -180,6 +180,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error: unknown) {
       const authError = mapErrorToAuthError(error, retryCount);
       
+      // 401 Unauthorized handling - redirect to login (2025 best practice)
+      if (authError.type === 'INVALID_CREDENTIALS' && typeof window !== 'undefined') {
+        // Session expired or invalid, redirect to login with current URL
+        const currentUrl = window.location.pathname + window.location.search;
+        const returnUrl = encodeURIComponent(currentUrl);
+        window.location.href = `/login?returnUrl=${returnUrl}`;
+        return;
+      }
+      
       // 再試行可能なエラーで再試行回数が3回未満の場合は再試行
       if (authError.isRetryable && retryCount < 3) {
         setTimeout(() => {
