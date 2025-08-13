@@ -43,6 +43,10 @@ build:
       context: ../../
       docker:
         dockerfile: news-creator/Dockerfile.creator
+    - image: kaikei/auth-token-manager
+      context: ../../
+      docker:
+        dockerfile: auth-token-manager/Dockerfile
     # rask-log-aggregator excluded - Docker Compose only
     # - image: kaikei/rask-log-aggregator
     #   context: ../../rask-log-aggregator
@@ -110,6 +114,17 @@ deploy:
         setValues:
           image.pullPolicy: "Never"  # Kind local development
         version: 0.1.0
+      - name: auth-token-manager
+        chartPath: charts/auth-token-manager
+        valuesFiles:
+          - charts/auth-token-manager/values.yaml
+        namespace: alt-processing
+        setValueTemplates:
+          image.repository: "{{.IMAGE_REPO_kaikei_auth_token_manager}}"
+          image.tag: "{{.IMAGE_TAG_kaikei_auth_token_manager}}"
+        setValues:
+          image.pullPolicy: "Never"  # Kind local development
+        version: 0.1.0
       # rask-log-aggregator excluded - Docker Compose only
       # - name: rask-log-aggregator
       #   chartPath: charts/rask-log-aggregator
@@ -149,6 +164,14 @@ profiles:
           context: ../../news-creator
           docker:
             dockerfile: Dockerfile.creator
+        - image: kaikei/auth-token-manager  # OAuth自動化システム
+          context: ../../auth-token-manager
+          docker:
+            dockerfile: Dockerfile
+        - image: kaikei/auth-token-manager  # OAuth自動化システム
+          context: ../../auth-token-manager
+          docker:
+            dockerfile: Dockerfile
         # rask-log-aggregator excluded - Docker Compose only
         # - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
         #   context: ../../rask-log-aggregator
@@ -198,6 +221,17 @@ profiles:
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_kaikei_news_creator}}"
               image.tag: "{{.IMAGE_TAG_kaikei_news_creator}}"
+            setValues:
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
+            version: 0.1.0
+          - name: auth-token-manager
+            chartPath: charts/auth-token-manager
+            valuesFiles:
+              - charts/auth-token-manager/values.yaml
+            namespace: alt-processing  # OAuth自動化システム
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_kaikei_auth_token_manager}}"
+              image.tag: "{{.IMAGE_TAG_kaikei_auth_token_manager}}"
             setValues:
               image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
@@ -234,6 +268,10 @@ profiles:
           context: ../../news-creator
           docker:
             dockerfile: Dockerfile.creator
+        - image: kaikei/auth-token-manager  # OAuth自動化システム
+          context: ../../auth-token-manager
+          docker:
+            dockerfile: Dockerfile
         # rask-log-aggregator excluded - Docker Compose only
         # - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
         #   context: ../../rask-log-aggregator
@@ -283,6 +321,17 @@ profiles:
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_kaikei_news_creator}}"
               image.tag: "{{.IMAGE_TAG_kaikei_news_creator}}"
+            setValues:
+              image.pullPolicy: "Never"  # ローカル開発環境強制設定
+            version: 0.1.0
+          - name: auth-token-manager
+            chartPath: charts/auth-token-manager
+            valuesFiles:
+              - charts/auth-token-manager/values.yaml
+            namespace: alt-processing  # OAuth自動化システム
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_kaikei_auth_token_manager}}"
+              image.tag: "{{.IMAGE_TAG_kaikei_auth_token_manager}}"
             setValues:
               image.pullPolicy: "Never"  # ローカル開発環境強制設定
             version: 0.1.0
@@ -328,6 +377,10 @@ profiles:
           context: ../../news-creator
           docker:
             dockerfile: Dockerfile.creator
+        - image: kaikei/auth-token-manager  # OAuth自動化システム
+          context: ../../auth-token-manager
+          docker:
+            dockerfile: Dockerfile
         # rask-log-aggregator excluded - Docker Compose only
         # - image: kaikei/rask-log-aggregator  # INCIDENT 82 FIX: Repository統一
         #   context: ../../rask-log-aggregator
@@ -393,6 +446,18 @@ profiles:
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_kaikei_news_creator}}"
               image.tag: "{{.IMAGE_TAG_kaikei_news_creator}}"
+            setValues:
+              image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
+            version: 0.1.0
+          - name: auth-token-manager
+            chartPath: charts/auth-token-manager
+            valuesFiles:
+              - charts/auth-token-manager/values.yaml
+              - charts/auth-token-manager/values-production.yaml
+            namespace: alt-processing  # OAuth自動化システム - Production
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_kaikei_auth_token_manager}}"
+              image.tag: "{{.IMAGE_TAG_kaikei_auth_token_manager}}"
             setValues:
               image.pullPolicy: "Never"  # 2025年Skaffold best practice: local cluster最適化
             version: 0.1.0
