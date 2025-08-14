@@ -265,9 +265,9 @@ postgresql:
 # Secrets configuration
 secrets:
   enabled: true
-  # For development - will be overridden in production
-  cookie: "youReallyNeedToChangeThis"
-  cipher: "32-LONG-SECRET-NOT-SECURE-AT-ALL"
+  # For development - will be overridden in production values-production.yaml
+  cookieSecret: "youReallyNeedToChangeThis-DEV-ONLY"
+  cipherSecret: "32-LONG-SECRET-NOT-SECURE-AT-ALL-DEV"
 
 # SSL configuration
 ssl:
