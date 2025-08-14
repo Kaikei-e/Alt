@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
         'Accept': 'application/json',
         'Cookie': request.headers.get('cookie') || '',
       },
+      credentials: 'include',
       signal: AbortSignal.timeout(10000),
     });
 
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    
+
     // Validate Kratos login flow response
     if (!data || !data.id || !data.ui) {
       console.error('Invalid Kratos login flow response:', data);
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
         { status: 502 }
       );
     }
-    
+
     // Forward cookies from Kratos
     const headers = new Headers();
     const setCookie = response.headers.get('set-cookie');
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
     // Return the login flow with CSRF token - ULTRATHINK FIX: 防御的プログラミング
     const csrfNode = data.ui?.nodes?.find((node: any) => node?.attributes?.name === 'csrf_token');
     const csrfToken = csrfNode?.attributes?.value;
-    
+
     return NextResponse.json({
       data: {
         csrf_token: csrfToken,
@@ -67,14 +68,14 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
       kratosUrl: KRATOS_PUBLIC_URL
     });
-    
+
     if (error instanceof Error && error.name === 'AbortError') {
       return NextResponse.json(
         { error: 'Request timeout', code: 'TIMEOUT' },
         { status: 408 }
       );
     }
-    
+
     return NextResponse.json(
       { error: 'Failed to get CSRF token', code: 'INTERNAL_ERROR' },
       { status: 500 }

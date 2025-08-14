@@ -15,34 +15,35 @@ export async function POST(request: NextRequest) {
         'Accept': 'application/json',
         'Cookie': request.headers.get('cookie') || '',
       },
+      credentials: 'include', // SPA用Cookie送信確実化
       signal: AbortSignal.timeout(10000), // 10秒タイムアウト
     });
 
     // 🚨 レスポンス検証強化
     if (!response.ok) {
       console.error(`Kratos login flow error: ${response.status} ${response.statusText}`);
-      
+
       if (response.status === 401) {
         return NextResponse.json(
           { error: 'Authentication required', code: 'AUTH_REQUIRED' },
           { status: 401 }
         );
       }
-      
+
       if (response.status === 403) {
         return NextResponse.json(
           { error: 'Access forbidden', code: 'ACCESS_FORBIDDEN' },
           { status: 403 }
         );
       }
-      
+
       if (response.status >= 500) {
         return NextResponse.json(
           { error: 'Kratos service unavailable', code: 'SERVICE_UNAVAILABLE' },
           { status: 502 }
         );
       }
-      
+
       // その他のクライアントエラー
       return NextResponse.json(
         { error: 'Login initiation failed', code: 'LOGIN_INIT_FAILED' },
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    
+
     // 🚨 Kratosレスポンスデータの検証
     if (!data || !data.id || !data.ui) {
       console.error('Kratos login flow response missing required fields:', data);
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
         { status: 502 }
       );
     }
-    
+
     // Forward Set-Cookie headers
     const headers = new Headers();
     const setCookie = response.headers.get('set-cookie');
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
       headers.set('Set-Cookie', setCookie);
     }
     headers.set('Content-Type', 'application/json');
-    
+
     console.log('[LOGIN-ROUTE] Login flow initiated successfully:', { flowId: data.id, timestamp: new Date().toISOString() });
 
     return NextResponse.json({
@@ -85,14 +86,14 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
       kratosUrl: KRATOS_PUBLIC_URL
     });
-    
+
     if (error instanceof Error && error.name === 'AbortError') {
       return NextResponse.json(
         { error: 'Request timeout', code: 'TIMEOUT' },
         { status: 408 }
       );
     }
-    
+
     return NextResponse.json(
       { error: 'Internal server error', code: 'INTERNAL_ERROR' },
       { status: 500 }
