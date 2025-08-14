@@ -238,7 +238,7 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 	})
 }
 
-// ValidateSession validates session token for other services
+// ValidateSession validates session token for other services (Phase 6.1.1 Enhanced)
 // @Summary Validate session
 // @Description Validate session token for internal service authentication
 // @Tags authentication
@@ -247,7 +247,7 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 // @Header 200 {string} X-User-ID "User ID"
 // @Header 200 {string} X-Tenant-ID "Tenant ID"
 // @Success 200 {object} domain.SessionContext
-// @Failure 401 {object} ErrorResponse
+// @Failure 401 {object} DetailedErrorResponse
 // @Router /v1/auth/validate [get]
 func (h *AuthHandler) ValidateSession(c echo.Context) error {
 	ctx := c.Request().Context()
@@ -255,23 +255,76 @@ func (h *AuthHandler) ValidateSession(c echo.Context) error {
 	// Extract session token from cookie or header
 	sessionToken := h.extractSessionToken(c)
 	if sessionToken == "" {
-		return c.JSON(http.StatusUnauthorized, ErrorResponse{
-			Error: "session token required",
+		h.logger.Warn("session validation failed: no session token",
+			"ip", c.RealIP(),
+			"user_agent", c.Request().Header.Get("User-Agent"),
+			"path", c.Request().URL.Path)
+		return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
+			Error:   "No session found",
+			Code:    "SESSION_NOT_FOUND",
+			Details: "Session token is required for authentication",
 		})
 	}
 
 	sessionCtx, err := h.authUsecase.ValidateSession(ctx, sessionToken)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, ErrorResponse{
-			Error: "invalid session",
+		h.logger.Error("session validation failed",
+			"error", err,
+			"session_token_present", sessionToken != "",
+			"ip", c.RealIP(),
+			"user_agent", c.Request().Header.Get("User-Agent"))
+			
+		// Handle specific domain errors
+		if authErr, ok := err.(*domain.AuthError); ok {
+			switch authErr.Code {
+			case domain.ErrCodeSessionExpired:
+				return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
+					Error:   "Session expired",
+					Code:    "SESSION_EXPIRED",
+					Details: "Your session has expired. Please log in again.",
+				})
+			case domain.ErrCodeSessionInvalid:
+				return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
+					Error:   "Invalid session",
+					Code:    "SESSION_INVALID",
+					Details: "The session token is invalid or malformed.",
+				})
+			}
+		}
+		
+		return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
+			Error:   "Authentication failed",
+			Code:    "AUTH_FAILED",
+			Details: "Unable to validate session. Please log in again.",
 		})
 	}
+
+	// Success logging
+	h.logger.Info("session validation successful",
+		"user_id", sessionCtx.UserID,
+		"session_id", sessionCtx.SessionID,
+		"ip", c.RealIP())
 
 	// Set headers for downstream services
 	c.Response().Header().Set("X-User-ID", sessionCtx.UserID.String())
 	c.Response().Header().Set("X-Tenant-ID", sessionCtx.TenantID.String())
+	c.Response().Header().Set("X-User-Email", sessionCtx.Email)
+	c.Response().Header().Set("X-Session-ID", sessionCtx.SessionID)
 
-	return c.JSON(http.StatusOK, sessionCtx)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"authenticated": true,
+		"user": map[string]interface{}{
+			"id":       sessionCtx.UserID,
+			"email":    sessionCtx.Email,
+			"name":     sessionCtx.Name,
+			"tenant_id": sessionCtx.TenantID,
+		},
+		"session": map[string]interface{}{
+			"id":         sessionCtx.SessionID,
+			"expires_at": sessionCtx.ExpiresAt.Unix(),
+			"active":     sessionCtx.IsActive,
+		},
+	})
 }
 
 // RefreshSession refreshes the current session
@@ -385,13 +438,14 @@ func (h *AuthHandler) setSessionCookie(c echo.Context, sessionID string) {
 		Name:     "ory_kratos_session",
 		Value:    sessionID,
 		Path:     "/",
-		Domain:   "alt.local",
+		Domain:   "curionoah.com", // Updated for production domain
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   86400, // 24 hours
 	}
 	c.SetCookie(cookie)
+	h.logger.Info("session cookie set", "session_id", sessionID)
 }
 
 func (h *AuthHandler) clearSessionCookie(c echo.Context) {
@@ -399,23 +453,43 @@ func (h *AuthHandler) clearSessionCookie(c echo.Context) {
 		Name:     "ory_kratos_session",
 		Value:    "",
 		Path:     "/",
-		Domain:   "alt.local",
+		Domain:   "curionoah.com", // Updated for production domain
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1, // Delete cookie
 	}
 	c.SetCookie(cookie)
+	h.logger.Info("session cookie cleared")
 }
 
 func (h *AuthHandler) extractSessionToken(c echo.Context) string {
-	// Try cookie first
-	if cookie, err := c.Cookie("ory_kratos_session"); err == nil {
+	// Try cookie first (preferred for browsers)
+	if cookie, err := c.Cookie("ory_kratos_session"); err == nil && cookie.Value != "" {
+		h.logger.Debug("session token extracted from cookie")
 		return cookie.Value
 	}
 
-	// Try Authorization header
-	return c.Request().Header.Get("Authorization")
+	// Try Authorization header (for API clients)
+	authHeader := c.Request().Header.Get("Authorization")
+	if authHeader != "" {
+		h.logger.Debug("session token extracted from authorization header")
+		// Remove "Bearer " prefix if present
+		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+			return authHeader[7:]
+		}
+		return authHeader
+	}
+
+	// Try custom session header (for service-to-service)
+	sessionHeader := c.Request().Header.Get("X-Session-Token")
+	if sessionHeader != "" {
+		h.logger.Debug("session token extracted from X-Session-Token header")
+		return sessionHeader
+	}
+
+	h.logger.Debug("no session token found in cookie, Authorization, or X-Session-Token headers")
+	return ""
 }
 
 func (h *AuthHandler) extractSessionID(c echo.Context) string {
