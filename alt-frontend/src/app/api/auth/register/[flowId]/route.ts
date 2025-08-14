@@ -8,10 +8,10 @@ const AUTH_SERVICE_URL = process.env.AUTH_URL || 'http://auth-service.alt-auth.s
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { flowId: string } }
+  { params }: { params: Promise<{ flowId: string }> }
 ) {
   try {
-    const { flowId } = params;
+    const { flowId } = await params;
     const body = await request.text();
 
     const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/register/${flowId}`, {
