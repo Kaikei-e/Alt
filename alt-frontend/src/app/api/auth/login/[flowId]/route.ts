@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
 
 /**
  * Complete login flow with credentials
@@ -31,7 +31,7 @@ export async function POST(
       console.warn('Could not parse request body for CSRF token:', e);
     }
 
-    const response = await fetch(`${KRATOS_PUBLIC_URL}/self-service/login?flow=${encodeURIComponent(flowId)}`, {
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/login/${encodeURIComponent(flowId)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -46,7 +46,7 @@ export async function POST(
 
     // レスポンス検証強化
     if (!response.ok) {
-      console.error(`Kratos login completion error: ${response.status} ${response.statusText}`, { flowId });
+      console.error(`Auth-service login completion error: ${response.status} ${response.statusText}`, { flowId });
 
       if (response.status === 400) {
         const errorData = await response.json().catch(() => ({}));
@@ -56,7 +56,7 @@ export async function POST(
 
         try {
           // Create new login flow automatically
-          const newFlowResponse = await fetch(`${KRATOS_PUBLIC_URL}/self-service/login/browser`, {
+          const newFlowResponse = await fetch(`${AUTH_SERVICE_URL}/v1/login`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',
@@ -142,7 +142,7 @@ export async function POST(
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString(),
-      kratosUrl: KRATOS_PUBLIC_URL
+      authServiceUrl: AUTH_SERVICE_URL
     });
 
     // タイムアウトエラー処理

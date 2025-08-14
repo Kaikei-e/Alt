@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
 
 /**
  * Validate current user session
@@ -8,7 +8,7 @@ const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public
  */
 export async function GET(request: NextRequest) {
   try {
-    const response = await fetch(`${KRATOS_PUBLIC_URL}/sessions/whoami`, {
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/validate`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!response.ok) {
-      console.error(`Kratos whoami error: ${response.status} ${response.statusText}`);
+      console.error(`Auth-service validate error: ${response.status} ${response.statusText}`);
       return NextResponse.json(
         { error: 'Session validation failed', code: 'VALIDATION_FAILED' },
         { status: response.status }
@@ -32,24 +32,16 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
 
-    // 防御的プログラミング - Kratosセッションデータの安全な変換
+    // 防御的プログラミング - auth-serviceレスポンスデータの安全な変換
     if (!data || typeof data !== 'object') {
-      console.error('Invalid Kratos session response:', data);
+      console.error('Invalid auth-service session response:', data);
       return NextResponse.json(
         { error: 'Invalid session data', code: 'INVALID_SESSION_DATA' },
         { status: 502 }
       );
     }
 
-    // Transform Kratos session data to frontend user format
-    const user = {
-      id: data.identity?.id || null,
-      email: data.identity?.traits?.email || null,
-      name: data.identity?.traits?.name || null,
-      active: Boolean(data.active)
-    };
-
-    // Forward cookies if Kratos sets any
+    // Forward cookies from auth-service
     const headers = new Headers();
     const setCookie = response.headers.get('set-cookie');
     if (setCookie) {
@@ -57,9 +49,8 @@ export async function GET(request: NextRequest) {
     }
     headers.set('Content-Type', 'application/json');
 
-    return NextResponse.json({
-      data: user
-    }, {
+    // auth-serviceは既に適切なフォーマットでレスポンスを返すため、そのまま使用
+    return NextResponse.json(data, {
       status: response.status,
       headers,
     });
@@ -69,7 +60,7 @@ export async function GET(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString(),
-      kratosUrl: KRATOS_PUBLIC_URL
+      authServiceUrl: AUTH_SERVICE_URL
     });
 
     // タイムアウトエラー処理

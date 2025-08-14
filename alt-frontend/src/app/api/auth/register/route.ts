@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
 
 /**
  * Initiate registration flow
@@ -8,8 +8,8 @@ const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public
  */
 export async function POST(request: NextRequest) {
   try {
-    // 🚨 強化されたエラーハンドリング: Kratosへの直接アクセス
-    const response = await fetch(`${KRATOS_PUBLIC_URL}/self-service/registration/browser`, {
+    // 🚨 強化されたエラーハンドリング: auth-serviceへのアクセス
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/register`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     // 🚨 レスポンス検証強化
     if (!response.ok) {
-      console.error(`Kratos registration flow error: ${response.status} ${response.statusText}`);
+      console.error(`Auth-service registration flow error: ${response.status} ${response.statusText}`);
       
       if (response.status === 400) {
         return NextResponse.json(
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       
       if (response.status >= 500) {
         return NextResponse.json(
-          { error: 'Kratos service unavailable', code: 'SERVICE_UNAVAILABLE' },
+          { error: 'Authentication service unavailable', code: 'SERVICE_UNAVAILABLE' },
           { status: 502 }
         );
       }
@@ -52,9 +52,9 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json();
     
-    // 🚨 Kratosレスポンスデータの検証
-    if (!data || !data.id || !data.ui) {
-      console.error('Kratos registration flow response missing required fields:', data);
+    // 🚨 auth-serviceレスポンスデータの検証
+    if (!data || !data.data) {
+      console.error('Auth-service registration flow response missing required fields:', data);
       return NextResponse.json(
         { error: 'Invalid registration flow response', code: 'INVALID_FLOW' },
         { status: 502 }
@@ -69,11 +69,9 @@ export async function POST(request: NextRequest) {
     }
     headers.set('Content-Type', 'application/json');
     
-    console.log('[REGISTER-ROUTE] Registration flow initiated successfully:', { flowId: data.id, timestamp: new Date().toISOString() });
+    console.log('[REGISTER-ROUTE] Registration flow initiated successfully:', { flowId: data.data?.id, timestamp: new Date().toISOString() });
 
-    return NextResponse.json({
-      data: data
-    }, {
+    return NextResponse.json(data, {
       status: response.status,
       headers,
     });
@@ -83,7 +81,7 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString(),
-      kratosUrl: KRATOS_PUBLIC_URL
+      authServiceUrl: AUTH_SERVICE_URL
     });
     
     if (error instanceof Error && error.name === 'AbortError') {

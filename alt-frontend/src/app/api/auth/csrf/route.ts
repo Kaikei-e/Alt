@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
 
 /**
  * Get CSRF token for secure form submissions
@@ -8,8 +8,8 @@ const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get CSRF token directly from Kratos login flow
-    const response = await fetch(`${KRATOS_PUBLIC_URL}/self-service/login/browser`, {
+    // Get CSRF token from auth-service
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/csrf`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -20,25 +20,25 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      console.error(`Kratos CSRF error: ${response.status} ${response.statusText}`);
+      console.error(`Auth-service CSRF error: ${response.status} ${response.statusText}`);
       return NextResponse.json(
-        { error: 'Failed to get CSRF token from Kratos', code: 'KRATOS_CSRF_FAILED' },
+        { error: 'Failed to get CSRF token from auth-service', code: 'AUTH_CSRF_FAILED' },
         { status: response.status }
       );
     }
 
     const data = await response.json();
 
-    // Validate Kratos login flow response
-    if (!data || !data.id || !data.ui) {
-      console.error('Invalid Kratos login flow response:', data);
+    // Validate auth-service CSRF response
+    if (!data || !data.data) {
+      console.error('Invalid auth-service CSRF response:', data);
       return NextResponse.json(
         { error: 'Invalid CSRF response format', code: 'INVALID_CSRF_RESPONSE' },
         { status: 502 }
       );
     }
 
-    // Forward cookies from Kratos
+    // Forward cookies from auth-service
     const headers = new Headers();
     const setCookie = response.headers.get('set-cookie');
     if (setCookie) {
@@ -46,17 +46,8 @@ export async function POST(request: NextRequest) {
     }
     headers.set('Content-Type', 'application/json');
 
-    // Return the login flow with CSRF token - ULTRATHINK FIX: 防御的プログラミング
-    const csrfNode = data.ui?.nodes?.find((node: any) => node?.attributes?.name === 'csrf_token');
-    const csrfToken = csrfNode?.attributes?.value;
-
-    return NextResponse.json({
-      data: {
-        csrf_token: csrfToken,
-        flow_id: data.id,
-        ui: data.ui
-      }
-    }, {
+    // Return auth-service CSRF response directly
+    return NextResponse.json(data, {
       status: 200,
       headers,
     });
@@ -66,7 +57,7 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString(),
-      kratosUrl: KRATOS_PUBLIC_URL
+      authServiceUrl: AUTH_SERVICE_URL
     });
 
     if (error instanceof Error && error.name === 'AbortError') {

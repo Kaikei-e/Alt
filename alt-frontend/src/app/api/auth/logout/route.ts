@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
 
 /**
  * Logout user and clear session
@@ -8,42 +8,24 @@ const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public
  */
 export async function POST(request: NextRequest) {
   try {
-    // First get logout URL from Kratos
-    const logoutUrlResponse = await fetch(`${KRATOS_PUBLIC_URL}/self-service/logout/browser`, {
-      method: 'GET',
+    // Logout via auth-service
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/logout`, {
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Cookie': request.headers.get('cookie') || '',
       },
     });
 
-    if (!logoutUrlResponse.ok) {
-      console.error(`Kratos logout URL error: ${logoutUrlResponse.status} ${logoutUrlResponse.statusText}`);
+    if (!response.ok) {
+      console.error(`Auth-service logout error: ${response.status} ${response.statusText}`);
       return NextResponse.json(
-        { error: 'Failed to initiate logout', code: 'LOGOUT_INIT_FAILED' },
-        { status: logoutUrlResponse.status }
+        { error: 'Failed to logout', code: 'LOGOUT_FAILED' },
+        { status: response.status }
       );
     }
 
-    const logoutData = await logoutUrlResponse.json();
-    const logoutToken = logoutData.logout_token;
-
-    if (!logoutToken) {
-      console.error('Logout token missing from Kratos response:', logoutData);
-      return NextResponse.json(
-        { error: 'Invalid logout response', code: 'INVALID_LOGOUT_RESPONSE' },
-        { status: 502 }
-      );
-    }
-
-    // Execute logout with token
-    const response = await fetch(`${KRATOS_PUBLIC_URL}/self-service/logout?token=${logoutToken}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Cookie': request.headers.get('cookie') || '',
-      },
-    });
+    const data = await response.json().catch(() => ({ success: true, message: 'Logout successful' }));
 
     // Forward headers to clear auth cookies
     const headers = new Headers();
@@ -54,7 +36,7 @@ export async function POST(request: NextRequest) {
     headers.set('Content-Type', 'application/json');
 
     return NextResponse.json({
-      data: { success: true, message: 'Logout successful' }
+      data: data
     }, {
       status: 200,
       headers,
@@ -65,7 +47,7 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString(),
-      kratosUrl: KRATOS_PUBLIC_URL
+      authServiceUrl: AUTH_SERVICE_URL
     });
     return NextResponse.json(
       { error: 'Failed to logout', code: 'INTERNAL_ERROR' },
