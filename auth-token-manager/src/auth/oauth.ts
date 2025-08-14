@@ -13,6 +13,8 @@ import type {
   RetryConfig,
 } from "./types.ts";
 
+import { logger } from "../utils/logger.ts";
+
 export class InoreaderOAuthAutomator {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
@@ -39,25 +41,27 @@ export class InoreaderOAuthAutomator {
       // Import playwright dynamically for Deno compatibility
       const { chromium } = await import("playwright");
 
-      console.log("🔧 Initializing browser...");
+        logger.info("Initializing browser");
 
       // Check for proxy configuration
-      const proxyUrl =
-        Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
+        const proxyUrl =
+          Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
       let browserOptions: any = {
         headless: this.browserConfig.headless,
         args: this.browserConfig.args,
       };
 
-      // Add proxy configuration if available
-      if (proxyUrl) {
-        console.log(`🌐 Configuring browser proxy: ${proxyUrl}`);
-        const proxyUrlObj = new URL(proxyUrl);
-        browserOptions.proxy = {
-          server: proxyUrl,
-          bypass: "localhost,127.0.0.1,*.local",
-        };
-      }
+        // Add proxy configuration if available
+        if (proxyUrl) {
+          const proxyUrlObj = new URL(proxyUrl);
+          logger.info("Configuring browser proxy", {
+            proxy_host: proxyUrlObj.host,
+          });
+          browserOptions.proxy = {
+            server: proxyUrl,
+            bypass: "localhost,127.0.0.1,*.local",
+          };
+        }
 
       this.browser = await chromium.launch(browserOptions);
 
@@ -71,7 +75,7 @@ export class InoreaderOAuthAutomator {
 
       this.page = await this.context.newPage();
 
-      console.log("✅ Browser initialized successfully");
+        logger.info("Browser initialized successfully");
     } catch (error) {
       throw new Error(`Failed to initialize browser: ${error}`);
     }
@@ -83,30 +87,30 @@ export class InoreaderOAuthAutomator {
     try {
       // Network connectivity check
       if (this.networkConfig.connectivity_check) {
-        console.log("🌐 Checking network connectivity...");
+          logger.info("Checking network connectivity");
         await this.checkNetworkConnectivity();
-        console.log("✅ Network connectivity verified");
+          logger.info("Network connectivity verified");
       }
 
       // First try refresh token approach if available
-      console.log("🔄 Attempting refresh token flow first...");
+        logger.info("Attempting refresh token flow first");
 
       try {
         const refreshResult = await this.tryRefreshTokenFlow();
         if (refreshResult.success) {
           const duration = Date.now() - startTime;
-          console.log(
-            `✅ Refresh token flow completed successfully in ${duration}ms`,
-          );
+            logger.info("Refresh token flow completed successfully", {
+              duration_ms: duration,
+            });
           return refreshResult;
         }
-        console.log(
-          "⚠️ Refresh token flow failed, falling back to browser automation...",
-        );
+          logger.warn(
+            "Refresh token flow failed, falling back to browser automation",
+          );
       } catch (refreshError) {
-        console.log(
-          "⚠️ Refresh token not available, using browser automation...",
-        );
+          logger.warn(
+            "Refresh token not available, using browser automation",
+          );
       }
 
       // Fallback to browser automation flow with retry logic
@@ -117,34 +121,34 @@ export class InoreaderOAuthAutomator {
           );
         }
 
-        console.log("🔐 Starting OAuth browser flow...");
+        logger.info("Starting OAuth browser flow");
 
         // Step 1: Navigate to Inoreader OAuth authorization
         const authUrl = this.buildAuthUrl();
-        console.log("📍 Navigating to authorization URL");
+        logger.info("Navigating to authorization URL");
         await this.page.goto(authUrl, {
           waitUntil: "networkidle",
           timeout: this.browserConfig.timeouts.navigation,
         });
 
         // Step 2: Handle login form
-        console.log("🔑 Handling login form...");
+        logger.info("Handling login form");
         await this.handleLoginForm();
 
         // Step 3: Handle authorization consent
-        console.log("✅ Handling authorization consent...");
+        logger.info("Handling authorization consent");
         await this.handleAuthorizationConsent();
 
         // Step 4: Capture authorization code from redirect
-        console.log("📋 Capturing authorization code...");
+        logger.info("Capturing authorization code");
         const authCode = await this.captureAuthorizationCode();
 
         // Step 5: Exchange authorization code for tokens
-        console.log("🔄 Exchanging code for tokens...");
+        logger.info("Exchanging code for tokens");
         const tokens = await this.exchangeCodeForTokens(authCode);
 
         const duration = Date.now() - startTime;
-        console.log(`✅ OAuth flow completed successfully in ${duration}ms`);
+        logger.info("OAuth flow completed successfully", { duration_ms: duration });
 
         return {
           success: true,
@@ -162,7 +166,7 @@ export class InoreaderOAuthAutomator {
         error instanceof Error ? error.message : String(error);
 
       // Avoid logging sensitive error details
-      console.error(`❌ OAuth flow failed after ${duration}ms`);
+        logger.error("OAuth flow failed", { duration_ms: duration });
 
       return {
         success: false,
@@ -221,7 +225,7 @@ export class InoreaderOAuthAutomator {
       );
 
       if (consentButton) {
-        console.log("🎯 Found consent button, clicking...");
+          logger.info("Found consent button, clicking");
         await consentButton.click();
         await this.page.waitForNavigation({
           waitUntil: "networkidle",
@@ -229,7 +233,7 @@ export class InoreaderOAuthAutomator {
         });
       }
     } catch (error) {
-      console.log("ℹ️ No consent page found, proceeding...");
+        logger.info("No consent page found, proceeding");
     }
   }
 
@@ -257,7 +261,7 @@ export class InoreaderOAuthAutomator {
             (await codeElement.textContent()) ||
             (await codeElement.getAttribute("value"));
           if (code && code.trim()) {
-            console.log("📋 Found authorization code via OOB flow");
+              logger.info("Found authorization code via OOB flow");
             return code.trim();
           }
         }
@@ -266,13 +270,13 @@ export class InoreaderOAuthAutomator {
         const pageContent = (await this.page.textContent("body")) || "";
         const codeMatch = pageContent.match(/\b[A-Za-z0-9]{20,}\b/);
         if (codeMatch) {
-          console.log("📋 Found authorization code in page content");
+            logger.info("Found authorization code in page content");
           return codeMatch[0];
         }
 
         throw new Error("Authorization code not found in OOB response");
       } catch (error) {
-        console.error("🔍 OOB code capture failed, trying URL-based capture");
+          logger.error("OOB code capture failed, trying URL-based capture");
         // Fallback to URL-based capture
       }
     }
@@ -349,7 +353,7 @@ export class InoreaderOAuthAutomator {
         throw new Error("No existing refresh token found");
       }
 
-      console.log("🔄 Found existing refresh token, attempting refresh...");
+        logger.info("Found existing refresh token, attempting refresh");
 
       // Use refresh token to get new access token
       const response = await this.fetchWithTimeout(
@@ -388,7 +392,7 @@ export class InoreaderOAuthAutomator {
         scope: data.scope || "read write",
       };
 
-      console.log("✅ Refresh token flow successful");
+        logger.info("Refresh token flow successful");
 
       return {
         success: true,
@@ -402,7 +406,7 @@ export class InoreaderOAuthAutomator {
       };
     } catch (error) {
       // Do not expose detailed error information in logs
-      console.error("⚠️ Refresh token flow failed");
+        logger.error("Refresh token flow failed");
       throw error;
     }
   }
@@ -424,10 +428,10 @@ export class InoreaderOAuthAutomator {
         this.browser = null;
       }
 
-      console.log("🧹 Browser cleanup completed");
-    } catch (error) {
-      console.warn("⚠️ Error during browser cleanup:", error);
-    }
+        logger.info("Browser cleanup completed");
+      } catch {
+        logger.warn("Error during browser cleanup");
+      }
   }
 
   // Utility methods for network operations and retry logic
@@ -444,17 +448,22 @@ export class InoreaderOAuthAutomator {
 
     try {
       // Use proxy configuration from environment if available
-      const proxyUrl =
-        Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
+        const proxyUrl =
+          Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
 
-      let fetchOptions: RequestInit = {
-        ...options,
-        signal: controller.signal,
-      };
+        let fetchOptions: RequestInit = {
+          ...options,
+          signal: controller.signal,
+        };
 
-      // For proxy support in Deno, we need to handle this differently
-      if (proxyUrl) {
-        console.log(`🌐 Using proxy: ${proxyUrl} for ${url}`);
+        // For proxy support in Deno, we need to handle this differently
+        if (proxyUrl) {
+          const proxyHost = new URL(proxyUrl).host;
+          const targetHost = new URL(url).host;
+          logger.info("Using proxy for request", {
+            proxy_host: proxyHost,
+            target_host: targetHost,
+          });
 
         // For HTTPS URLs through HTTP proxy, we need to use CONNECT method
         if (url.startsWith("https://") && proxyUrl.startsWith("http://")) {
@@ -472,9 +481,10 @@ export class InoreaderOAuthAutomator {
             headers: connectHeaders,
           };
 
-          console.log(
-            `🔗 Connecting via proxy CONNECT to ${targetUrl.hostname}:${targetUrl.port || "443"}`,
-          );
+            logger.info("Connecting via proxy CONNECT", {
+              target_host: targetUrl.hostname,
+              target_port: targetUrl.port || "443",
+            });
         }
       }
 
@@ -495,11 +505,12 @@ export class InoreaderOAuthAutomator {
   private async checkNetworkConnectivity(): Promise<void> {
     try {
       // Check if we're using a proxy
-      const proxyUrl =
-        Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
-      if (proxyUrl) {
-        console.log(`🔍 Connectivity check via proxy: ${proxyUrl}`);
-      }
+        const proxyUrl =
+          Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
+        if (proxyUrl) {
+          const proxyHost = new URL(proxyUrl).host;
+          logger.info("Connectivity check via proxy", { proxy_host: proxyHost });
+        }
 
       const response = await this.fetchWithTimeout(
         "https://www.inoreader.com",
@@ -512,9 +523,9 @@ export class InoreaderOAuthAutomator {
         throw new Error(`Inoreader server error: ${response.status}`);
       }
 
-      console.log(
-        `✅ Network connectivity verified (status: ${response.status})`,
-      );
+        logger.info("Network connectivity verified", {
+          status: response.status,
+        });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -530,15 +541,18 @@ export class InoreaderOAuthAutomator {
 
     for (let attempt = 1; attempt <= this.retryConfig.max_attempts; attempt++) {
       try {
-        console.log(`🔄 Attempt ${attempt}/${this.retryConfig.max_attempts}`);
+        logger.info(
+          `Attempt ${attempt}/${this.retryConfig.max_attempts}`,
+          { operation: operationName },
+        );
         return await operation();
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
         if (attempt === this.retryConfig.max_attempts) {
-          console.error(
-            `❌ All ${this.retryConfig.max_attempts} attempts failed`,
-          );
+          logger.error(`All ${this.retryConfig.max_attempts} attempts failed`, {
+            operation: operationName,
+          });
           throw lastError;
         }
 
@@ -548,7 +562,10 @@ export class InoreaderOAuthAutomator {
           this.retryConfig.max_delay,
         );
 
-        console.warn(`⚠️ Attempt ${attempt} failed. Retrying in ${delay}ms...`);
+        logger.warn(`Attempt ${attempt} failed`, {
+          operation: operationName,
+          next_delay_ms: delay,
+        });
         await this.sleep(delay);
 
         // Reset browser state for next attempt if it's a browser operation
@@ -558,8 +575,8 @@ export class InoreaderOAuthAutomator {
         ) {
           try {
             await this.resetBrowserState();
-          } catch (resetError) {
-            console.warn("⚠️ Browser state reset failed");
+          } catch {
+            logger.warn("Browser state reset failed", { operation: operationName });
           }
         }
       }
@@ -573,11 +590,11 @@ export class InoreaderOAuthAutomator {
       try {
         // Navigate to blank page to reset state
         await this.page.goto("about:blank", { timeout: 10000 });
-      } catch (error) {
-        console.warn("⚠️ Failed to reset page state");
+        } catch {
+          logger.warn("Failed to reset page state", { operation: "resetBrowserState" });
+        }
       }
     }
-  }
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));

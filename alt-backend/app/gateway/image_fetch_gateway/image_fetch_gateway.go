@@ -35,6 +35,13 @@ type ProxyStrategy struct {
 	Enabled      bool
 }
 
+// allowedProxyHosts defines known safe proxy hosts that may be used for image fetching.
+// This prevents unexpected hosts from being targeted when proxy mode is enabled.
+var allowedProxyHosts = map[string]struct{}{
+	"envoy-proxy.alt-apps.svc.cluster.local:8085": {},
+	"envoy-proxy.alt-apps.svc.cluster.local:8080": {},
+}
+
 // getProxyStrategy determines the appropriate proxy strategy based on environment configuration
 func getProxyStrategy() *ProxyStrategy {
 	// Priority order: SIDECAR > ENVOY > NGINX > DISABLED
@@ -365,14 +372,26 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 	}
 	if g.proxyStrategy != nil && g.proxyStrategy.Enabled {
 		proxyBase, err := url.Parse(g.proxyStrategy.BaseURL)
-		if err != nil || !strings.EqualFold(parsedReqURL.Host, proxyBase.Host) {
+		if err != nil {
+			return nil, errors.NewValidationContextError(
+				"invalid proxy base URL",
+				"gateway",
+				"ImageFetchGateway",
+				"validate_proxy_host",
+				map[string]interface{}{
+					"base_url": g.proxyStrategy.BaseURL,
+				},
+			)
+		}
+		proxyHost := strings.ToLower(proxyBase.Host)
+		if _, ok := allowedProxyHosts[proxyHost]; !ok || !strings.EqualFold(parsedReqURL.Host, proxyBase.Host) {
 			return nil, errors.NewValidationContextError(
 				"proxy host not allowed",
 				"gateway",
 				"ImageFetchGateway",
 				"validate_proxy_host",
 				map[string]interface{}{
-					"url": requestURL,
+					"host": proxyHost,
 				},
 			)
 		}
