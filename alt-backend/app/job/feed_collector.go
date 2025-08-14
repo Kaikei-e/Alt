@@ -87,7 +87,7 @@ func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_lim
 	// Check if content type suggests this might be an RSS/XML feed
 	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	if contentType != "" && !strings.Contains(contentType, "xml") && !strings.Contains(contentType, "rss") && !strings.Contains(contentType, "atom") {
-		logger.Logger.Warn("Content type may not be RSS/XML",
+		logger.SafeWarn("Content type may not be RSS/XML",
 			"url", feedURL.String(),
 			"content_type", contentType)
 	}
@@ -157,7 +157,7 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 		for _, item := range feed.Items {
 			// Skip items with empty or invalid titles
 			if strings.TrimSpace(item.Title) == "" {
-				logger.Logger.Warn("Skipping feed item with empty title",
+				logger.SafeWarn("Skipping feed item with empty title",
 					"link", item.Link,
 					"description", truncateString(item.Description, 100))
 				continue
@@ -167,7 +167,7 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 			if strings.Contains(strings.ToLower(item.Description), "404 page not found") ||
 				strings.Contains(strings.ToLower(item.Title), "404") ||
 				strings.Contains(strings.ToLower(item.Title), "not found") {
-				logger.Logger.Warn("Skipping feed item with 404/not found content",
+				logger.SafeWarn("Skipping feed item with 404/not found content",
 					"title", item.Title,
 					"link", item.Link)
 				continue
