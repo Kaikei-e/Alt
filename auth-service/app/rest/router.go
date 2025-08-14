@@ -9,6 +9,7 @@ import (
 	"auth-service/app/port"
 	"auth-service/app/rest/handlers"
 	custommw "auth-service/app/rest/middleware"
+	"auth-service/app/utils/security"
 )
 
 // RouterConfig holds router configuration
@@ -38,6 +39,10 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	// Create middleware
 	authMiddleware := custommw.NewAuthMiddleware(config.AuthUsecase, config.Logger)
 	csrfMiddleware := custommw.NewCSRFMiddleware(config.AuthUsecase, config.Logger)
+	
+	// Create security components
+	rateLimiter := custommw.NewRateLimiter()
+	ids := security.NewIDS(config.Logger)
 
 	// Global middleware
 	e.Use(middleware.Logger())
@@ -45,23 +50,36 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	e.Use(middleware.RequestID())
 	e.Use(custommw.DefaultCORS())
 
+	// Enhanced security middleware
+	e.Use(custommw.SecurityHeaders())
+	e.Use(rateLimiter.RateLimit())
+	
+	// IDS middleware
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			ip := c.RealIP()
+			userAgent := c.Request().Header.Get("User-Agent")
+			path := c.Request().URL.Path
+			
+			// Body reading for IDS (simplified for now)
+			body := ""
+			
+			// Check if request should be blocked
+			if !ids.AnalyzeRequest(c.Request().Context(), ip, userAgent, path, body) {
+				return c.JSON(403, map[string]interface{}{
+					"error": "Request blocked by security policy",
+					"code":  "SECURITY_VIOLATION",
+				})
+			}
+			
+			return next(c)
+		}
+	})
+
 	// Add custom middleware for request logging
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
 		Format: "method=${method}, uri=${uri}, status=${status}, latency=${latency_human}, error=${error}\n",
 	}))
-
-	// Security headers
-	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
-		XSSProtection:         "1; mode=block",
-		ContentTypeNosniff:    "nosniff",
-		XFrameOptions:         "DENY",
-		HSTSMaxAge:           31536000,
-		HSTSExcludeSubdomains: false,
-		HSTSPreloadEnabled:    false,
-	}))
-
-	// Rate limiting (basic)
-	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(20)))
 
 	// API versioning
 	v1 := e.Group("/v1")
