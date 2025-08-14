@@ -207,6 +207,13 @@ func (ids *IntrusionDetectionSystem) isAllowedUserAgent(userAgent string) bool {
 		// 内部サービス
 		regexp.MustCompile(`(?i)linkerd-proxy/`),
 		regexp.MustCompile(`(?i)envoy/`),
+		// Node.js内部通信 - Phase 6.4.3 Fix
+		regexp.MustCompile(`^node$`),                    // user-agent: "node"
+		regexp.MustCompile(`(?i)node/[0-9]`),           // node/18.x など
+		regexp.MustCompile(`(?i)node\.js/[0-9]`),       // node.js/18.x など
+		regexp.MustCompile(`(?i)next\.js/`),            // Next.js internal
+		regexp.MustCompile(`(?i)npm/[0-9]`),            // npm client
+		regexp.MustCompile(`(?i)yarn/[0-9]`),           // yarn client
 		// テスト・開発ツール
 		regexp.MustCompile(`(?i).*compatible.*browser`),
 	}
