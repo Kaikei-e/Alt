@@ -723,32 +723,6 @@ export function createComponentLogger(component: string): StructuredLogger {
 }
 
 /**
- * Log configuration on startup
- */
-export function logStartup(config: AppConfig): void {
-  logger.info("Auth Token Manager starting up", {
-    environment: config.environment,
-    log_level: config.log_level,
-    browser_type: config.browser?.browser_type,
-    browser_headless: config.browser?.headless,
-    k8s_namespace: config.k8s?.namespace,
-    monitoring_enabled: config.monitoring?.enabled,
-    component: "startup",
-  });
-}
-
-/**
- * Log shutdown
- */
-export function logShutdown(reason: string): void {
-  logger.info("Auth Token Manager shutting down", {
-    reason,
-    timestamp: new Date().toISOString(),
-    component: "shutdown",
-  });
-}
-
-/**
  * Export DataSanitizer for testing purposes
  */
 export { DataSanitizer };
