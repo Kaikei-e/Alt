@@ -19,7 +19,7 @@ import {
   Link as ChakraLink,
   Icon,
 } from "@chakra-ui/react";
-import NextLink from "next/link";
+import NextLink from "next/link.js";
 
 interface NavItem {
   id: number;

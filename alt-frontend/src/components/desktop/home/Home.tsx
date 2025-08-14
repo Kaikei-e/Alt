@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import NextLink from "next/link";
+import NextLink from "next/link.js";
 import {
   Box,
   Flex,
