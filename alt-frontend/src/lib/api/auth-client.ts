@@ -24,17 +24,17 @@ export class AuthAPIClient {
 
   async initiateLogin(): Promise<LoginFlow> {
     const response = await this.makeRequest('POST', '/login');
-    
+
     // 防御的プログラミング: レスポンスデータの検証
     if (!response || !response.data || typeof response.data !== 'object') {
       throw new Error('Invalid login flow response format');
     }
-    
+
     const loginFlow = response.data as LoginFlow;
     if (!loginFlow.id) {
       throw new Error('Login flow response missing required ID');
     }
-    
+
     return loginFlow;
   }
 
@@ -52,41 +52,89 @@ export class AuthAPIClient {
 
   async initiateRegistration(): Promise<RegistrationFlow> {
     const response = await this.makeRequest('POST', '/register');
-    
+
     // 防御的プログラミング: レスポンスデータの検証
     if (!response || !response.data || typeof response.data !== 'object') {
       throw new Error('Invalid registration flow response format');
     }
-    
+
     const registrationFlow = response.data as RegistrationFlow;
     if (!registrationFlow.id) {
       throw new Error('Registration flow response missing required ID');
     }
-    
+
     return registrationFlow;
   }
 
   async completeRegistration(flowId: string, email: string, password: string, name?: string): Promise<User> {
+    // 送信前の詳細検証とログ出力
+    console.log('[AUTH-CLIENT] Registration data validation:', {
+      flowId: flowId ? 'present' : 'missing',
+      email: email ? 'present' : 'missing',
+      password: password ? 'present' : 'missing',
+      name: name || 'not provided',
+      timestamp: new Date().toISOString()
+    });
+
+    // 基本バリデーション
+    if (!flowId || flowId.trim() === '') {
+      throw new Error('VALIDATION_FAILED: Flow ID is required');
+    }
+
+    if (!email || email.trim() === '' || !email.includes('@')) {
+      throw new Error('VALIDATION_FAILED: Valid email address is required');
+    }
+
+    if (!password || password.length < 8) {
+      throw new Error('VALIDATION_FAILED: Password must be at least 8 characters');
+    }
+
     // Kratos traits形式に変換
     const payload = {
       traits: {
-        email: email,
+        email: email.trim(),
         name: name ? {
-          first: name.split(' ')[0] || '',
-          last: name.split(' ').slice(1).join(' ') || ''
+          first: name.split(' ')[0]?.trim() || '',
+          last: name.split(' ').slice(1).join(' ')?.trim() || ''
         } : undefined
       },
       password: password,
-      method: 'password'
+      method: 'profile'  // X1.md修正: 'password' → 'profile' (Kratos正式形式)
     };
 
     // undefinedフィールドを除去
-    if (!payload.traits.name) {
+    if (!payload.traits.name || (!payload.traits.name.first && !payload.traits.name.last)) {
       delete payload.traits.name;
     }
 
-    const response = await this.makeRequest('POST', `/register/${flowId}`, payload);
-    return response.data as User;
+    // 送信前の最終検証ログ
+    console.log('[AUTH-CLIENT] Sending registration payload:', {
+      flowId: flowId,
+      traits: {
+        email: payload.traits.email ? 'present' : 'missing',
+        name: payload.traits.name ? 'present' : 'missing'
+      },
+      method: payload.method,
+      password: 'present'
+    });
+
+    try {
+      const response = await this.makeRequest('POST', `/register/${flowId}`, payload);
+      console.log('[AUTH-CLIENT] Registration response received successfully:', {
+        hasData: !!response.data,
+        timestamp: new Date().toISOString()
+      });
+      return response.data as User;
+    } catch (error) {
+      // エラー時の詳細診断ログ
+      console.error('[AUTH-CLIENT] Registration request failed:', {
+        error: error,
+        flowId: flowId,
+        email: email ? 'provided' : 'missing',
+        timestamp: new Date().toISOString()
+      });
+      throw error;
+    }
   }
 
   async logout(): Promise<void> {
@@ -122,19 +170,19 @@ export class AuthAPIClient {
   async getCSRFToken(): Promise<string | null> {
     try {
       const response = await this.makeRequest('POST', '/csrf');
-      
+
       // 防御的プログラミング: CSRF レスポンスの検証強化
       if (!response || !response.data || typeof response.data !== 'object') {
         console.warn('CSRF response invalid format:', response);
         return null;
       }
-      
+
       const csrfData = response.data as { csrf_token?: string };
       if (!csrfData.csrf_token || typeof csrfData.csrf_token !== 'string') {
         console.warn('CSRF response missing token:', csrfData);
         return null;
       }
-      
+
       return csrfData.csrf_token;
     } catch (error: unknown) {
       console.warn('Failed to get CSRF token:', error);
@@ -221,14 +269,49 @@ export class AuthAPIClient {
     }
   }
 
-  // 詳細エラーログ追加 (X1.md 1.3.2 実装)
+  // 詳細エラー分析とKratos固有エラー変換
   private handleError(error: unknown, context: string): Error {
+    // 詳細診断ログ
     console.error(`Auth API Error [${context}]:`, error);
-    
+    console.error(`Auth API Error [${context}] - Type:`, typeof error);
+
     if (error instanceof Error) {
+      console.error(`Auth API Error [${context}] - Message:`, error.message);
+      console.error(`Auth API Error [${context}] - Name:`, error.name);
+
+      // Kratos固有エラーの判定と適切な変換
+      if (error.message.includes('Property email is missing')) {
+        return new Error(`VALIDATION_FAILED: Property email is missing - ${context}`);
+      }
+
+      if (error.message.includes('already registered') || error.message.includes('User already exists')) {
+        return new Error(`USER_ALREADY_EXISTS: User already exists - ${context}`);
+      }
+
+      if (error.message.includes('flow expired') || error.message.includes('410')) {
+        return new Error(`FLOW_EXPIRED: Registration flow expired - ${context}`);
+      }
+
+      if (error.message.includes('502') || error.message.includes('503')) {
+        return new Error(`KRATOS_SERVICE_ERROR: Authentication service unavailable - ${context}`);
+      }
+
+      // HTTPステータスコード別の処理
+      if (error.message.includes('HTTP 400')) {
+        return new Error(`VALIDATION_FAILED: Bad request - ${context}: ${error.message}`);
+      }
+
+      if (error.message.includes('HTTP 409')) {
+        return new Error(`USER_ALREADY_EXISTS: Conflict - ${context}: ${error.message}`);
+      }
+
+      if (error.message.includes('HTTP 410')) {
+        return new Error(`FLOW_EXPIRED: Gone - ${context}: ${error.message}`);
+      }
+
       return new Error(`${context}: ${error.message}`);
     }
-    
+
     return new Error(`${context}: Unknown error occurred`);
   }
 
