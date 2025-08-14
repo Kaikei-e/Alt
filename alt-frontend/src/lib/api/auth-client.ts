@@ -4,14 +4,15 @@ export class AuthAPIClient {
   private baseURL: string;
 
   constructor() {
-    // フロントエンド用の正しいauth-serviceエンドポイント
-    this.baseURL = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
+    // Use relative API proxy endpoints for secure HTTPS communication
+    // This avoids mixed content issues and keeps internal URLs secure
+    this.baseURL = '/api/auth';
   }
 
   // 接続テスト機能追加 (X1.md 1.3.2 実装)
   async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseURL}/v1/health`, {
+      const response = await fetch(`${this.baseURL}`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000)
       });
@@ -22,12 +23,12 @@ export class AuthAPIClient {
   }
 
   async initiateLogin(): Promise<LoginFlow> {
-    const response = await this.makeRequest('POST', '/v1/auth/login');
+    const response = await this.makeRequest('POST', '/login');
     return response.data as LoginFlow;
   }
 
   async completeLogin(flowId: string, email: string, password: string): Promise<User> {
-    const response = await this.makeRequest('POST', `/v1/auth/login/${flowId}`, {
+    const response = await this.makeRequest('POST', `/login/${flowId}`, {
       email,
       password,
     });
@@ -35,7 +36,7 @@ export class AuthAPIClient {
   }
 
   async initiateRegistration(): Promise<RegistrationFlow> {
-    const response = await this.makeRequest('POST', '/v1/auth/register');
+    const response = await this.makeRequest('POST', '/register');
     return response.data as RegistrationFlow;
   }
 
@@ -45,17 +46,17 @@ export class AuthAPIClient {
       payload.name = name;
     }
 
-    const response = await this.makeRequest('POST', `/v1/auth/register/${flowId}`, payload);
+    const response = await this.makeRequest('POST', `/register/${flowId}`, payload);
     return response.data as User;
   }
 
   async logout(): Promise<void> {
-    await this.makeRequest('POST', '/v1/auth/logout');
+    await this.makeRequest('POST', '/logout');
   }
 
   async getCurrentUser(): Promise<User | null> {
     try {
-      const url = `${this.baseURL}/v1/auth/validate`;
+      const url = `${this.baseURL}/validate`;
       const response = await fetch(url, {
         method: 'GET',
         credentials: 'include',
@@ -66,7 +67,7 @@ export class AuthAPIClient {
       }
 
       if (!response.ok) {
-        throw new Error(this.getMethodDescription('GET', '/v1/auth/validate'));
+        throw new Error(this.getMethodDescription('GET', '/validate'));
       }
 
       const data = await response.json();
@@ -81,7 +82,7 @@ export class AuthAPIClient {
 
   async getCSRFToken(): Promise<string | null> {
     try {
-      const response = await this.makeRequest('POST', '/v1/auth/csrf');
+      const response = await this.makeRequest('POST', '/csrf');
       return (response.data as { csrf_token: string }).csrf_token;
     } catch (error: unknown) {
       console.warn('Failed to get CSRF token:', error);
@@ -90,17 +91,17 @@ export class AuthAPIClient {
   }
 
   async updateProfile(profile: Partial<User>): Promise<User> {
-    const response = await this.makeRequest('PUT', '/v1/user/profile', profile);
+    const response = await this.makeRequest('PUT', '/profile', profile);
     return response.data as User;
   }
 
   async getUserSettings(): Promise<UserPreferences> {
-    const response = await this.makeRequest('GET', '/v1/user/settings');
+    const response = await this.makeRequest('GET', '/settings');
     return response.data as UserPreferences;
   }
 
   async updateUserSettings(settings: UserPreferences): Promise<void> {
-    await this.makeRequest('PUT', '/v1/user/settings', settings);
+    await this.makeRequest('PUT', '/settings', settings);
   }
 
   private async makeRequest(method: string, endpoint: string, body?: unknown): Promise<{ data: unknown }> {
@@ -151,7 +152,7 @@ export class AuthAPIClient {
 
   private async getCSRFTokenInternal(): Promise<string | null> {
     try {
-      const url = `${this.baseURL}/v1/auth/csrf`;
+      const url = `${this.baseURL}/csrf`;
       const response = await fetch(url, {
         method: 'POST',
         credentials: 'include',
