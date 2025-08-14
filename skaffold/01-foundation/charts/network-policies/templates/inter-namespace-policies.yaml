@@ -91,6 +91,8 @@ spec:
     - protocol: TCP
       port: 8080  # envoy port (DFP)
     - protocol: TCP
+      port: 8081  # HTTP proxy port (auth-token-manager用)
+    - protocol: TCP
       port: 9901  # admin port (診断用)
 
 ---
@@ -201,6 +203,8 @@ spec:
       port: 8085  # proxy-sidecar port (カスタムGoプロキシ)
     - protocol: TCP
       port: 8080  # envoy port (DFP)
+    - protocol: TCP
+      port: 8081  # HTTP proxy port (auth-token-manager用)
     - protocol: TCP
       port: 9901  # admin port (診断用)
 
