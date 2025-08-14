@@ -138,6 +138,19 @@ spec:
       port: 587  # SMTP
     - protocol: TCP
       port: 465  # SMTPS
+  
+  # 🚨 CRITICAL FIX: Allow Linkerd control plane communication (認証エラー修正)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: linkerd
+    ports:
+    - protocol: TCP
+      port: 8080  # Linkerd identity service
+    - protocol: TCP
+      port: 8086  # Linkerd destination service  
+    - protocol: TCP
+      port: 8090  # Linkerd policy service
 
 ---
 # 3. RBAC for Kratos minimal permissions

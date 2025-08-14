@@ -19,6 +19,14 @@ replicaCount: 1
 # Namespace configuration
 namespace: alt-auth
 
+# Pod annotations - 🚨 CRITICAL: Linkerd injection optimization
+podAnnotations:
+  linkerd.io/inject: enabled
+  config.linkerd.io/proxy-inbound-connect-timeout: 30000ms
+  config.linkerd.io/proxy-outbound-connect-timeout: 30000ms
+  config.linkerd.io/proxy-protocol-detection-timeout: 0s
+  config.linkerd.io/skip-outbound-ports: "5432"  # Skip postgres port
+
 # Resource configuration
 resources:
   requests:
@@ -132,13 +140,14 @@ kratos:
         privileged_session_max_age: "15m"
         required_aal: "highest_available"
   
-  # Session configuration
+  # Session configuration - Development/default values
   session:
     lifespan: "24h"
     cookie:
       persistent: true
       same_site: "Lax"
-      domain: ".alt.local"
+      domain: ".alt.local"  # Development domain
+      # secure/http_only: Override in values-production.yaml
   
   # CORS configuration
   cors:
@@ -192,24 +201,32 @@ identitySchema:
     id: "default"
     url: "file:///etc/config/kratos/schemas/identity.schema.json"
 
-# Health check configuration
+# Health check configuration - 🚨 OPTIMIZED for Linkerd stability
 healthCheck:
-  livenessProbe:
+  startupProbe:
     httpGet:
       path: /health/alive
       port: 4434
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
+    failureThreshold: 30  # Allow 5 minutes for startup
+  livenessProbe:
+    httpGet:
+      path: /health/alive
+      port: 4434
+    initialDelaySeconds: 120  # Wait for startup to complete
+    periodSeconds: 30
+    timeoutSeconds: 10
     failureThreshold: 3
   readinessProbe:
     httpGet:
       path: /health/ready
       port: 4434
-    initialDelaySeconds: 5
-    periodSeconds: 5
-    timeoutSeconds: 3
-    failureThreshold: 3
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 5
 
 # Migration configuration - 公式パターン実装: Official Ory automigration
 automigration:
@@ -236,7 +253,7 @@ migration:
   manualJob: false  # 公式automigrationに移行
   image:
     repository: oryd/kratos
-    tag: "v1.3.1"
+    tag: "v1.3.1"  # ✅ メインイメージと統一
 
 # Database configuration (connects to kratos-postgres chart)
 database:
