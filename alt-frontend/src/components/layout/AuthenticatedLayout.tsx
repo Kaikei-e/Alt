@@ -9,14 +9,11 @@ import {
   Text,
   Button,
   IconButton,
+  CloseButton,
   Drawer,
-  DrawerBody,
-  DrawerHeader,
-  DrawerOverlay,
-  DrawerContent,
-  DrawerCloseButton,
+  Portal,
+  Separator,
   useDisclosure,
-  Divider,
 } from '@chakra-ui/react';
 import { 
   Menu, 
@@ -103,7 +100,7 @@ export function AuthenticatedLayout({
   maxWidth = "1200px",
 }: AuthenticatedLayoutProps) {
   const { user, isAuthenticated, logout, lastActivity, sessionTimeout } = useAuth();
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const { open, onOpen, onClose } = useDisclosure();
   const [activeNavItem, setActiveNavItem] = useState<string>('home');
 
   const handleNavItemClick = (item: NavigationItem) => {
@@ -229,11 +226,12 @@ export function AuthenticatedLayout({
               <Flex align="center" gap={3}>
                 <IconButton
                   aria-label="メニューを開く"
-                  icon={<Menu size={20} />}
                   variant="ghost"
                   display={{ base: "flex", md: "none" }}
                   onClick={onOpen}
-                />
+                >
+                  <Menu size={20} />
+                </IconButton>
                 <Text
                   fontSize="xl"
                   fontWeight="bold"
@@ -273,7 +271,6 @@ export function AuthenticatedLayout({
                     
                     <IconButton
                       aria-label="ログアウト"
-                      icon={<LogOut size={16} />}
                       variant="ghost"
                       size="sm"
                       color="var(--text-muted)"
@@ -282,7 +279,9 @@ export function AuthenticatedLayout({
                         color: "semantic.error",
                         bg: "var(--alt-glass)",
                       }}
-                    />
+                    >
+                      <LogOut size={16} />
+                    </IconButton>
                   </HStack>
                 ) : (
                   <Button
@@ -306,64 +305,70 @@ export function AuthenticatedLayout({
       )}
 
       {/* Mobile Drawer */}
-      <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
-        <DrawerOverlay />
-        <DrawerContent
-          bg="var(--alt-glass)"
-          backdropFilter="blur(12px)"
-          border="1px solid"
-          borderColor="var(--alt-glass-border)"
-        >
-          <DrawerCloseButton color="var(--text-primary)" />
-          <DrawerHeader>
-            <Text
-              fontSize="lg"
-              fontWeight="bold"
-              fontFamily="heading"
-              color="var(--alt-primary)"
+      <Drawer.Root open={open} onOpenChange={({ open }) => { if (!open) onClose(); }} placement="start">
+        <Portal>
+          <Drawer.Backdrop />
+          <Drawer.Positioner>
+            <Drawer.Content
+              bg="var(--alt-glass)"
+              backdropFilter="blur(12px)"
+              border="1px solid"
+              borderColor="var(--alt-glass-border)"
             >
-              Alt Reader
-            </Text>
-          </DrawerHeader>
+              <Drawer.CloseTrigger asChild>
+                <CloseButton color="var(--text-primary)" />
+              </Drawer.CloseTrigger>
+              <Drawer.Header>
+                <Text
+                  fontSize="lg"
+                  fontWeight="bold"
+                  fontFamily="heading"
+                  color="var(--alt-primary)"
+                >
+                  Alt Reader
+                </Text>
+              </Drawer.Header>
 
-          <DrawerBody>
-            <VStack gap={4} align="stretch">
-              {/* User Profile in Mobile */}
-              {isAuthenticated && user ? (
-                <Box>
-                  <UserProfile />
-                  <Divider my={4} borderColor="var(--alt-glass-border)" />
-                </Box>
-              ) : (
-                <Box>
-                  <Button
-                    w="full"
-                    bg="var(--alt-primary)"
-                    color="white"
-                    fontFamily="body"
-                    onClick={() => {
-                      onClose();
-                      window.location.href = '/login';
-                    }}
-                    _hover={{
-                      bg: "var(--alt-primary)",
-                      transform: "translateY(-1px)",
-                    }}
-                  >
-                    ログイン
-                  </Button>
-                  <Divider my={4} borderColor="var(--alt-glass-border)" />
-                </Box>
-              )}
+              <Drawer.Body>
+                <VStack gap={4} align="stretch">
+                  {/* User Profile in Mobile */}
+                  {isAuthenticated && user ? (
+                    <Box>
+                      <UserProfile />
+                      <Separator my={4} borderColor="var(--alt-glass-border)" />
+                    </Box>
+                  ) : (
+                    <Box>
+                      <Button
+                        w="full"
+                        bg="var(--alt-primary)"
+                        color="white"
+                        fontFamily="body"
+                        onClick={() => {
+                          onClose();
+                          window.location.href = '/login';
+                        }}
+                        _hover={{
+                          bg: "var(--alt-primary)",
+                          transform: "translateY(-1px)",
+                        }}
+                      >
+                        ログイン
+                      </Button>
+                      <Separator my={4} borderColor="var(--alt-glass-border)" />
+                    </Box>
+                  )}
 
-              {/* Mobile Navigation */}
-              <VStack gap={2} align="stretch">
-                {getFilteredNavigationItems().map(item => renderNavigationItem(item, true))}
-              </VStack>
-            </VStack>
-          </DrawerBody>
-        </DrawerContent>
-      </Drawer>
+                  {/* Mobile Navigation */}
+                  <VStack gap={2} align="stretch">
+                    {getFilteredNavigationItems().map(item => renderNavigationItem(item, true))}
+                  </VStack>
+                </VStack>
+              </Drawer.Body>
+            </Drawer.Content>
+          </Drawer.Positioner>
+        </Portal>
+      </Drawer.Root>
 
       {/* Main Content */}
       <Box

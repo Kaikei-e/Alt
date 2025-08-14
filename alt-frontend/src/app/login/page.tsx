@@ -1,16 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Box, VStack, Text, Flex } from '@chakra-ui/react'
 import { useAuth } from '@/contexts/auth-context'
+import { AuthForm } from '@/components/auth/AuthForm'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
-  
-  const { login, isAuthenticated } = useAuth()
+  const { isAuthenticated } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   
@@ -24,91 +21,118 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, router, returnUrl])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError('')
-
-    try {
-      await login(email, password)
-      // On successful login, redirect to return URL
-      router.push(returnUrl)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Login failed')
-    } finally {
-      setIsLoading(false)
-    }
+  const handleLoginSuccess = () => {
+    // On successful login, redirect to return URL
+    router.push(returnUrl)
   }
 
   if (isAuthenticated) {
-    return <div>Redirecting...</div>
+    return (
+      <Flex
+        minH="100vh"
+        align="center"
+        justify="center"
+        bg="var(--alt-glass-bg)"
+      >
+        <Text color="var(--text-primary)" fontFamily="body">
+          リダイレクト中...
+        </Text>
+      </Flex>
+    )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            ログイン
-          </h2>
-          {returnUrl !== '/' && (
-            <p className="mt-2 text-center text-sm text-gray-600">
-              続行するにはログインが必要です
-            </p>
-          )}
-        </div>
-        
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="email" className="sr-only">
-                メールアドレス
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="メールアドレス"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="sr-only">
-                パスワード
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="パスワード"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-          </div>
+    <Box
+      minH="100vh"
+      bg="var(--alt-glass-bg)"
+      bgImage="radial-gradient(circle at 25% 25%, var(--alt-glass) 0%, transparent 70%), radial-gradient(circle at 75% 75%, var(--alt-primary-alpha) 0%, transparent 70%)"
+      position="relative"
+      overflow="hidden"
+    >
+      {/* Background Pattern */}
+      <Box
+        position="absolute"
+        top="0"
+        left="0"
+        right="0"
+        bottom="0"
+        bgImage="url('data:image/svg+xml;charset=utf-8,%3Csvg width=%2760%27 height=%2760%27 viewBox=%270 0 60 60%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cg fill=%27none%27 fill-rule=%27evenodd%27%3E%3Cg fill=%27%23ffffff%27 fill-opacity=%270.03%27%3E%3Ccircle cx=%2730%27 cy=%2730%27 r=%271%27/%3E%3C/g%3E%3C/svg%3E')"
+        pointerEvents="none"
+      />
 
-          {error && (
-            <div className="text-red-600 text-sm text-center">{error}</div>
-          )}
-
-          <div>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+      <Flex
+        minH="100vh"
+        align="center"
+        justify="center"
+        p={4}
+        position="relative"
+        zIndex={1}
+      >
+        <VStack gap={8} w="full" maxW="400px">
+          {/* Header */}
+          <VStack gap={4} textAlign="center">
+            <Text
+              fontSize="2xl"
+              fontWeight="bold"
+              fontFamily="heading"
+              color="var(--alt-primary)"
+              textShadow="0 2px 4px rgba(0,0,0,0.1)"
             >
-              {isLoading ? 'ログイン中...' : 'ログイン'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+              Alt Reader
+            </Text>
+            
+            <VStack gap={2}>
+              <Text
+                fontSize="lg"
+                fontWeight="semibold"
+                fontFamily="heading"
+                color="var(--text-primary)"
+              >
+                ログイン
+              </Text>
+              
+              {returnUrl !== '/' && (
+                <Box
+                  bg="var(--alt-glass)"
+                  border="1px solid"
+                  borderColor="var(--alt-glass-border)"
+                  borderRadius="md"
+                  px={3}
+                  py={2}
+                  backdropFilter="blur(8px)"
+                >
+                  <Text
+                    fontSize="sm"
+                    color="var(--text-muted)"
+                    fontFamily="body"
+                    textAlign="center"
+                  >
+                    続行するにはログインが必要です
+                  </Text>
+                </Box>
+              )}
+            </VStack>
+          </VStack>
+
+          {/* Login Form */}
+          <AuthForm
+            initialMode="login"
+            onSuccess={handleLoginSuccess}
+          />
+
+          {/* Footer */}
+          <Box textAlign="center">
+            <Text
+              fontSize="xs"
+              color="var(--text-muted)"
+              fontFamily="body"
+              opacity={0.8}
+            >
+              © 2025 Alt Reader. All rights reserved.
+            </Text>
+          </Box>
+        </VStack>
+      </Flex>
+    </Box>
   )
 }
