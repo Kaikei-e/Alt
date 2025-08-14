@@ -95,6 +95,7 @@ func NewAuthError(code, message string, cause error) *AuthError {
 const (
 	ErrCodeInvalidCredentials = "INVALID_CREDENTIALS"
 	ErrCodeSessionExpired     = "SESSION_EXPIRED"
+	ErrCodeSessionInvalid     = "SESSION_INVALID"
 	ErrCodeCSRFInvalid        = "CSRF_INVALID"
 	ErrCodeUnauthorized       = "UNAUTHORIZED"
 	ErrCodeForbidden          = "FORBIDDEN"
