@@ -5,13 +5,44 @@ import (
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"context"
+	"errors"
+	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type mockTransport struct {
+	responses map[string]string
+}
+
+func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if body, ok := m.responses[req.URL.String()]; ok {
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/xml"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	}
+	return nil, errors.New("unknown URL")
+}
+
+type spyTransport struct {
+	called bool
+	body   string
+}
+
+func (s *spyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.called = true
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"application/rss+xml"}},
+		Body:       io.NopCloser(strings.NewReader(s.body)),
+	}, nil
+}
 
 // Skip detailed mock testing for now, focus on TDD integration test
 
@@ -41,22 +72,16 @@ func TestFetchFeedsGateway_FetchFeeds(t *testing.T) {
 	</channel>
 </rss>`
 
-	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/xml")
-		w.Write([]byte(testRSSFeed))
-	}))
-	defer server.Close()
-
-	// Create test server for invalid XML
-	invalidServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/xml")
-		w.Write([]byte("invalid xml"))
-	}))
-	defer invalidServer.Close()
+	// Prepare mock HTTP client with predefined responses
+	responses := map[string]string{
+		"http://example.com/rss":         testRSSFeed,
+		"http://invalid.example.com/rss": "invalid xml",
+	}
+	client := &http.Client{Transport: &mockTransport{responses: responses}}
 
 	gateway := &FetchFeedsGateway{
-		alt_db: nil, // Not used in FetchFeeds method
+		alt_db:     nil, // Not used in FetchFeeds method
+		httpClient: client,
 	}
 
 	type args struct {
@@ -74,7 +99,7 @@ func TestFetchFeedsGateway_FetchFeeds(t *testing.T) {
 			name: "successful feed parsing",
 			args: args{
 				ctx:  context.Background(),
-				link: server.URL,
+				link: "http://example.com/rss",
 			},
 			want: []*domain.FeedItem{
 				{
@@ -113,7 +138,7 @@ func TestFetchFeedsGateway_FetchFeeds(t *testing.T) {
 			name: "invalid XML response",
 			args: args{
 				ctx:  context.Background(),
-				link: invalidServer.URL,
+				link: "http://invalid.example.com/rss",
 			},
 			want:    nil,
 			wantErr: true,
@@ -131,7 +156,7 @@ func TestFetchFeedsGateway_FetchFeeds(t *testing.T) {
 			name: "non-existent URL",
 			args: args{
 				ctx:  context.Background(),
-				link: "http://localhost:99999/nonexistent",
+				link: "http://unknown.example.com/nonexistent",
 			},
 			want:    nil,
 			wantErr: true,
@@ -199,7 +224,7 @@ func TestFetchFeedsGateway_FetchFeedsListPage(t *testing.T) {
 func TestFetchFeedsGateway_FetchFeedsListPage_ShouldNotFallbackToReadArticles(t *testing.T) {
 	// TDD Red: Test that current implementation DOES fallback (this should fail)
 	// This test will document the dangerous behavior before we fix it
-	
+
 	gateway := &FetchFeedsGateway{
 		alt_db: nil, // This will cause FetchUnreadFeedsListPage to fail
 	}
@@ -212,7 +237,7 @@ func TestFetchFeedsGateway_FetchFeedsListPage_ShouldNotFallbackToReadArticles(t 
 	if err == nil {
 		t.Error("Expected error when database connection is not available")
 	}
-	
+
 	if feeds != nil && len(feeds) > 0 {
 		t.Error("Expected no feeds when database error occurs, got feeds (dangerous fallback detected)")
 	}
@@ -276,63 +301,54 @@ func TestFetchFeedsGateway_RateLimiting(t *testing.T) {
 	// Create a test RSS feed XML
 	testRSSFeed := `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
-	<channel>
-		<title>Test Feed</title>
-		<description>Test Description</description>
-		<item>
-			<title>Test Item</title>
-			<description>Test Description</description>
-			<link>https://example.com/item</link>
-		</item>
-	</channel>
+        <channel>
+                <title>Test Feed</title>
+                <description>Test Description</description>
+                <item>
+                        <title>Test Item</title>
+                        <description>Test Description</description>
+                        <link>https://example.com/item</link>
+                </item>
+        </channel>
 </rss>`
 
-	// Create test server for same host testing
-	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/xml")
-		w.Write([]byte(testRSSFeed))
-	}))
-	defer server1.Close()
-
-	// Create another test server for different host testing
-	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/xml")
-		w.Write([]byte(testRSSFeed))
-	}))
-	defer server2.Close()
+	responses := map[string]string{
+		"http://host1.com/rss": testRSSFeed,
+		"http://host2.com/rss": testRSSFeed,
+	}
+	client := &http.Client{Transport: &mockTransport{responses: responses}}
 
 	// Test that rate limiter is called for external API calls
 	t.Run("gateway should use rate limiter for external calls", func(t *testing.T) {
 		rateLimiter := rate_limiter.NewHostRateLimiter(100 * time.Millisecond)
 		gateway := &FetchFeedsGateway{
 			alt_db:      nil,
-			rateLimiter: rateLimiter, // This field doesn't exist yet - should cause compile error
+			rateLimiter: rateLimiter,
+			httpClient:  client,
 		}
 
 		ctx := context.Background()
 
 		// First call should succeed
 		start := time.Now()
-		_, err := gateway.FetchFeeds(ctx, server1.URL)
+		_, err := gateway.FetchFeeds(ctx, "http://host1.com/rss")
 		if err != nil {
 			t.Fatalf("First FetchFeeds call failed: %v", err)
 		}
 		firstCallDuration := time.Since(start)
 
-		// Should be relatively fast (less than 50ms)
 		if firstCallDuration > 50*time.Millisecond {
 			t.Errorf("First call took too long: %v", firstCallDuration)
 		}
 
 		// Second call to same host should be rate limited
 		start = time.Now()
-		_, err = gateway.FetchFeeds(ctx, server1.URL)
+		_, err = gateway.FetchFeeds(ctx, "http://host1.com/rss")
 		if err != nil {
 			t.Fatalf("Second FetchFeeds call failed: %v", err)
 		}
 		secondCallDuration := time.Since(start)
 
-		// Should wait for rate limit (approximately 100ms)
 		if secondCallDuration < 80*time.Millisecond {
 			t.Errorf("Second call was not rate limited: %v", secondCallDuration)
 		}
@@ -342,26 +358,26 @@ func TestFetchFeedsGateway_RateLimiting(t *testing.T) {
 		rateLimiter := rate_limiter.NewHostRateLimiter(200 * time.Millisecond)
 		gateway := &FetchFeedsGateway{
 			alt_db:      nil,
-			rateLimiter: rateLimiter, // This field doesn't exist yet - should cause compile error
+			rateLimiter: rateLimiter,
+			httpClient:  client,
 		}
 
 		ctx := context.Background()
 
 		// Call to first host
-		_, err := gateway.FetchFeeds(ctx, server1.URL)
+		_, err := gateway.FetchFeeds(ctx, "http://host1.com/rss")
 		if err != nil {
 			t.Fatalf("First host call failed: %v", err)
 		}
 
 		// Call to second host should be immediate (different host)
 		start := time.Now()
-		_, err = gateway.FetchFeeds(ctx, server2.URL)
+		_, err = gateway.FetchFeeds(ctx, "http://host2.com/rss")
 		if err != nil {
 			t.Fatalf("Second host call failed: %v", err)
 		}
 		duration := time.Since(start)
 
-		// Should be immediate for different host
 		if duration > 50*time.Millisecond {
 			t.Errorf("Different host call took too long: %v", duration)
 		}
@@ -386,74 +402,35 @@ func TestFetchFeedsGateway_WithRateLimiter(t *testing.T) {
 
 // RED: TDD test for proxy-aware HTTP client usage (should fail initially)
 func TestFetchFeedsGateway_FetchFeeds_ProxyIntegration(t *testing.T) {
-	// Test server to simulate RSS feed
 	rssContent := `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
-	<channel>
-		<title>Test Feed</title>
-		<description>Test RSS Feed</description>
-		<item>
-			<title>Test Item</title>
-			<description>Test Description</description>
-		</item>
-	</channel>
+        <channel>
+                <title>Test Feed</title>
+                <description>Test RSS Feed</description>
+                <item>
+                        <title>Test Item</title>
+                        <description>Test Description</description>
+                </item>
+        </channel>
 </rss>`
+	transport := &spyTransport{body: rssContent}
+	client := &http.Client{Transport: transport}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify that the request comes through custom HTTP client
-		// (proxy-aware client would have specific headers/behavior)
-		w.Header().Set("Content-Type", "application/rss+xml")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(rssContent))
-	}))
-	defer server.Close()
-
-	// Initialize logger for test
 	logger.InitLogger()
 
-	tests := []struct {
-		name     string
-		gateway  *FetchFeedsGateway
-		link     string
-		wantErr  bool
-		errCheck func(error) bool
-	}{
-		{
-			name: "should_use_createHTTPClient_method",
-			gateway: &FetchFeedsGateway{
-				alt_db:      nil, // Will trigger error, but test focuses on HTTP client creation
-				rateLimiter: nil,
-			},
-			link:    server.URL,
-			wantErr: false, // Should succeed with proper HTTP client
-			errCheck: func(err error) bool {
-				// This test will initially fail because createHTTPClient method doesn't exist
-				// Expected to fail with: "g.createHTTPClient undefined (type *FetchFeedsGateway has no field or method createHTTPClient)"
-				return err == nil
-			},
-		},
+	gateway := &FetchFeedsGateway{
+		alt_db:     nil,
+		httpClient: client,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-			// This should fail in RED phase because createHTTPClient method doesn't exist
-			_, err := tt.gateway.FetchFeeds(ctx, tt.link)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("Expected error but got nil")
-				}
-				if tt.errCheck != nil && !tt.errCheck(err) {
-					t.Errorf("Error check failed for error: %v", err)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Expected no error but got: %v", err)
-				}
-			}
-		})
+	_, err := gateway.FetchFeeds(ctx, "http://example.com/rss")
+	if err != nil {
+		t.Fatalf("Expected no error but got: %v", err)
+	}
+	if !transport.called {
+		t.Error("custom HTTP client was not used")
 	}
 }

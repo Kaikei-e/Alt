@@ -108,7 +108,7 @@ func TestImageFetchGateway_FetchImage_SSRF_Advanced(t *testing.T) {
 		{
 			name:        "URL with tricky characters in domain",
 			imageURL:    "https://127.0.0.1.nip.io/image.jpg", // nip.io resolves to the IP
-			expectedErr: "access to private networks not allowed",
+			expectedErr: "domain not in whitelist",
 		},
 	}
 
@@ -129,7 +129,6 @@ func TestImageFetchGateway_FetchImage_SSRF_Advanced(t *testing.T) {
 		})
 	}
 }
-
 
 func TestImageFetchGateway_FetchImage_IntegerOverflow(t *testing.T) {
 	tests := []struct {
