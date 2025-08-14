@@ -314,6 +314,14 @@
   transform: none;
 }
 
+/* Preserve circular loading indicator and apply theme colors */
+[data-style="alt-paper"] .chakra-spinner {
+  border: 2px solid var(--alt-secondary);
+  border-top-color: var(--alt-primary);
+  border-radius: var(--radius-full) !important;
+  animation: spin 0.8s linear infinite;
+}
+
 [data-style="alt-paper"] .gradient-text {
   background: var(--alt-primary);
   -webkit-background-clip: text;
