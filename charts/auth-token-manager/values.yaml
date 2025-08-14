@@ -48,6 +48,7 @@ network:
     httpProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
     httpsProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
     noProxy: "10.96.0.1,kubernetes.default.svc.cluster.local,kubernetes.default,localhost,127.0.0.1"
+    fallbackToDirect: true  # 恒久対応: プロキシ失敗時の直接接続フォールバック
   timeouts:
     http: 30000
     connectivity: 10000

@@ -447,55 +447,105 @@ export class InoreaderOAuthAutomator {
     );
 
     try {
-      // Use proxy configuration from environment if available
-        const proxyUrl =
-          Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
+      // 恒久対応: プロキシ接続とフォールバック戦略
+      const proxyUrl = Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
+      const fallbackToDirect = Deno.env.get("NETWORK_FALLBACK_TO_DIRECT") === "true";
+      
+      let fetchOptions: RequestInit = {
+        ...options,
+        signal: controller.signal,
+      };
 
-        let fetchOptions: RequestInit = {
-          ...options,
-          signal: controller.signal,
-        };
-
-        // For proxy support in Deno, we need to handle this differently
-        if (proxyUrl) {
+      // First attempt: Try with proxy if configured
+      if (proxyUrl) {
+        try {
           const proxyHost = new URL(proxyUrl).host;
           const targetHost = new URL(url).host;
-          logger.info("Using proxy for request", {
+          logger.info("Attempting proxy connection", {
             proxy_host: proxyHost,
             target_host: targetHost,
           });
 
-        // For HTTPS URLs through HTTP proxy, we need to use CONNECT method
-        if (url.startsWith("https://") && proxyUrl.startsWith("http://")) {
-          const targetUrl = new URL(url);
-          const proxyUrlObj = new URL(proxyUrl);
+          // Test proxy connectivity first with shorter timeout
+          const proxyTestController = new AbortController();
+          const proxyTestTimeout = setTimeout(
+            () => proxyTestController.abort(),
+            10000, // 10 second proxy test timeout
+          );
 
-          // First establish a CONNECT tunnel through the proxy
-          const connectUrl = `${proxyUrl}${targetUrl.pathname}${targetUrl.search}`;
-          const connectHeaders = new Headers(options.headers);
-          connectHeaders.set("Host", targetUrl.hostname);
-
-          fetchOptions = {
-            ...options,
-            signal: controller.signal,
-            headers: connectHeaders,
-          };
-
-            logger.info("Connecting via proxy CONNECT", {
-              target_host: targetUrl.hostname,
-              target_port: targetUrl.port || "443",
+          try {
+            await fetch(url, {
+              ...fetchOptions,
+              signal: proxyTestController.signal,
             });
+            clearTimeout(proxyTestTimeout);
+            
+            // Proxy works, use normal timeout for actual request
+            const response = await fetch(url, fetchOptions);
+            logger.info("Proxy connection successful");
+            return response;
+            
+          } catch (proxyError) {
+            clearTimeout(proxyTestTimeout);
+            logger.warn("Proxy connection failed", {
+              error: proxyError instanceof Error ? proxyError.message : String(proxyError),
+            });
+            
+            if (!fallbackToDirect) {
+              throw proxyError;
+            }
+            
+            logger.info("Attempting direct connection fallback");
+          }
+        } catch (proxySetupError) {
+          logger.warn("Proxy setup failed", {
+            error: proxySetupError instanceof Error ? proxySetupError.message : String(proxySetupError),
+          });
+          
+          if (!fallbackToDirect) {
+            throw proxySetupError;
+          }
         }
       }
 
-      const response = await fetch(url, fetchOptions);
-      return response;
+      // Second attempt: Direct connection (either no proxy configured or fallback enabled)
+      logger.info("Using direct connection", { target_url: url });
+      
+      // Remove proxy-related environment variables temporarily for direct connection
+      const originalHttpProxy = Deno.env.get("HTTP_PROXY");
+      const originalHttpsProxy = Deno.env.get("HTTPS_PROXY");
+      
+      if (fallbackToDirect && (originalHttpProxy || originalHttpsProxy)) {
+        logger.info("Temporarily disabling proxy for direct connection");
+        if (originalHttpProxy) Deno.env.delete("HTTP_PROXY");
+        if (originalHttpsProxy) Deno.env.delete("HTTPS_PROXY");
+      }
+
+      try {
+        const directFetchOptions: RequestInit = {
+          ...options,
+          signal: controller.signal,
+        };
+        
+        const response = await fetch(url, directFetchOptions);
+        logger.info("Direct connection successful");
+        return response;
+      } finally {
+        // Restore proxy environment variables
+        if (fallbackToDirect) {
+          if (originalHttpProxy) Deno.env.set("HTTP_PROXY", originalHttpProxy);
+          if (originalHttpsProxy) Deno.env.set("HTTPS_PROXY", originalHttpsProxy);
+        }
+      }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(
           `HTTP request timed out after ${this.networkConfig.http_timeout}ms: ${url}`,
         );
       }
+      logger.error("All connection attempts failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     } finally {
       clearTimeout(timeoutId);

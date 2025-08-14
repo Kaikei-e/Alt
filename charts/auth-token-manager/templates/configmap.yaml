@@ -17,6 +17,7 @@ data:
   HTTP_PROXY: {{ .Values.network.proxy.httpProxy | quote }}
   HTTPS_PROXY: {{ .Values.network.proxy.httpsProxy | quote }}
   NO_PROXY: {{ .Values.network.proxy.noProxy | quote }}
+  NETWORK_FALLBACK_TO_DIRECT: {{ .Values.network.proxy.fallbackToDirect | quote }}
   {{- end }}
   NETWORK_HTTP_TIMEOUT: {{ .Values.network.timeouts.http | quote }}
   NETWORK_CONNECTIVITY_TIMEOUT: {{ .Values.network.timeouts.connectivity | quote }}
