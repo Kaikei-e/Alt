@@ -197,16 +197,33 @@ class ApiClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        // Global 401 interceptor - redirect to login with return URL (2025 best practice)
+        // Enhanced Global 401 interceptor - redirect to login with return URL (2025 best practice)
         if (response.status === 401) {
+          console.warn('[AUTH] 401 Unauthorized detected, initiating login redirect');
+          
           // Server-side execution check (critical for Next.js App Directory compatibility)
           if (typeof window !== 'undefined') {
             const currentUrl = window.location.pathname + window.location.search;
             const returnUrl = encodeURIComponent(currentUrl);
-            window.location.href = `/login?returnUrl=${returnUrl}`;
-            return response; // Return response without throwing error for redirect
+            const loginUrl = `/login?returnUrl=${returnUrl}`;
+            
+            console.log('[AUTH] Redirecting to login:', loginUrl);
+            
+            // Use window.location.replace for cleaner navigation history
+            window.location.replace(loginUrl);
+            
+            // Return a special response to indicate redirect is happening
+            return new Response(JSON.stringify({ 
+              redirected: true, 
+              loginUrl,
+              message: 'Redirecting to login page due to authentication required' 
+            }), {
+              status: 401,
+              headers: { 'Content-Type': 'application/json' }
+            });
           }
           // On server-side, let the error propagate for proper SSR handling
+          console.warn('[AUTH] Server-side 401 detected, letting error propagate for SSR');
         }
         
         throw new ApiClientError(

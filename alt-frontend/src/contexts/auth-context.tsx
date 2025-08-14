@@ -180,12 +180,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error: unknown) {
       const authError = mapErrorToAuthError(error, retryCount);
       
-      // 401 Unauthorized handling - redirect to login (2025 best practice)
-      if (authError.type === 'INVALID_CREDENTIALS' && typeof window !== 'undefined') {
+      // Enhanced 401 Unauthorized handling - redirect to login (2025 best practice)
+      const is401Error = authError.type === 'INVALID_CREDENTIALS' || 
+                        (error instanceof Error && 
+                         (error.message.includes('401') || error.message.includes('Unauthorized')));
+      
+      if (is401Error && typeof window !== 'undefined') {
+        console.warn('[AUTH-CONTEXT] 401/Unauthorized detected in checkAuthStatus, redirecting to login');
+        
         // Session expired or invalid, redirect to login with current URL
         const currentUrl = window.location.pathname + window.location.search;
         const returnUrl = encodeURIComponent(currentUrl);
-        window.location.href = `/login?returnUrl=${returnUrl}`;
+        const loginUrl = `/login?returnUrl=${returnUrl}`;
+        
+        console.log('[AUTH-CONTEXT] Redirecting to login:', loginUrl);
+        
+        // Use replace for cleaner navigation history
+        window.location.replace(loginUrl);
         return;
       }
       
