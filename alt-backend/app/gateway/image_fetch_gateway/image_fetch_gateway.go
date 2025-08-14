@@ -35,6 +35,13 @@ type ProxyStrategy struct {
 	Enabled      bool
 }
 
+// allowedProxyHosts defines known safe proxy hosts that may be used for image fetching.
+// This prevents unexpected hosts from being targeted when proxy mode is enabled.
+var allowedProxyHosts = map[string]struct{}{
+	"envoy-proxy.alt-apps.svc.cluster.local:8085": {},
+	"envoy-proxy.alt-apps.svc.cluster.local:8080": {},
+}
+
 // getProxyStrategy determines the appropriate proxy strategy based on environment configuration
 func getProxyStrategy() *ProxyStrategy {
 	// Priority order: SIDECAR > ENVOY > NGINX > DISABLED
@@ -350,8 +357,60 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 			"original_url", imageURL.String())
 	}
 
+	// Parse and validate the final request URL to guard against SSRF
+	parsedReqURL, err := url.Parse(requestURL)
+	if err != nil {
+		return nil, errors.NewValidationContextError(
+			fmt.Sprintf("invalid request URL: %v", err),
+			"gateway",
+			"ImageFetchGateway",
+			"parse_request_url",
+			map[string]interface{}{
+				"url": requestURL,
+			},
+		)
+	}
+	if g.proxyStrategy != nil && g.proxyStrategy.Enabled {
+		proxyBase, err := url.Parse(g.proxyStrategy.BaseURL)
+		if err != nil {
+			return nil, errors.NewValidationContextError(
+				"invalid proxy base URL",
+				"gateway",
+				"ImageFetchGateway",
+				"validate_proxy_host",
+				map[string]interface{}{
+					"base_url": g.proxyStrategy.BaseURL,
+				},
+			)
+		}
+		proxyHost := strings.ToLower(proxyBase.Host)
+		if _, ok := allowedProxyHosts[proxyHost]; !ok || !strings.EqualFold(parsedReqURL.Host, proxyBase.Host) {
+			return nil, errors.NewValidationContextError(
+				"proxy host not allowed",
+				"gateway",
+				"ImageFetchGateway",
+				"validate_proxy_host",
+				map[string]interface{}{
+					"host": proxyHost,
+				},
+			)
+		}
+	} else {
+		if err := validateImageURLWithTestOverride(parsedReqURL, allowTestingLocalhost); err != nil {
+			return nil, errors.NewValidationContextError(
+				fmt.Sprintf("URL validation failed: %v", err),
+				"gateway",
+				"ImageFetchGateway",
+				"validate_request_url",
+				map[string]interface{}{
+					"url": parsedReqURL.String(),
+				},
+			)
+		}
+	}
+
 	// Create HTTP request with proper headers
-	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", parsedReqURL.String(), nil)
 	if err != nil {
 		return nil, errors.NewExternalAPIContextError(
 			"failed to create HTTP request",
