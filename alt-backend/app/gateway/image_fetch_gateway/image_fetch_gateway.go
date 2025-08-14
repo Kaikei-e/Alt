@@ -350,8 +350,48 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 			"original_url", imageURL.String())
 	}
 
+	// Parse and validate the final request URL to guard against SSRF
+	parsedReqURL, err := url.Parse(requestURL)
+	if err != nil {
+		return nil, errors.NewValidationContextError(
+			fmt.Sprintf("invalid request URL: %v", err),
+			"gateway",
+			"ImageFetchGateway",
+			"parse_request_url",
+			map[string]interface{}{
+				"url": requestURL,
+			},
+		)
+	}
+	if g.proxyStrategy != nil && g.proxyStrategy.Enabled {
+		proxyBase, err := url.Parse(g.proxyStrategy.BaseURL)
+		if err != nil || !strings.EqualFold(parsedReqURL.Host, proxyBase.Host) {
+			return nil, errors.NewValidationContextError(
+				"proxy host not allowed",
+				"gateway",
+				"ImageFetchGateway",
+				"validate_proxy_host",
+				map[string]interface{}{
+					"url": requestURL,
+				},
+			)
+		}
+	} else {
+		if err := validateImageURLWithTestOverride(parsedReqURL, allowTestingLocalhost); err != nil {
+			return nil, errors.NewValidationContextError(
+				fmt.Sprintf("URL validation failed: %v", err),
+				"gateway",
+				"ImageFetchGateway",
+				"validate_request_url",
+				map[string]interface{}{
+					"url": parsedReqURL.String(),
+				},
+			)
+		}
+	}
+
 	// Create HTTP request with proper headers
-	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", parsedReqURL.String(), nil)
 	if err != nil {
 		return nil, errors.NewExternalAPIContextError(
 			"failed to create HTTP request",

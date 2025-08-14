@@ -142,8 +142,11 @@ class DataSanitizer {
         if (match.length <= 8) {
           return "[REDACTED]";
         }
-        return match.substring(0, 4) + "[REDACTED]" +
-          match.substring(match.length - 4);
+        return (
+          match.substring(0, 4) +
+          "[REDACTED]" +
+          match.substring(match.length - 4)
+        );
       });
     });
 
@@ -221,10 +224,11 @@ class JsonFormatter {
       level: logRecord.levelName,
       message: sanitizedMessage,
       logger: logRecord.loggerName,
-      ...(sanitizedExtra && Object.keys(sanitizedExtra).length > 0 &&
-        { ...sanitizedExtra }),
-      ...(logRecord.correlation_id &&
-        { correlation_id: logRecord.correlation_id }),
+      ...(sanitizedExtra &&
+        Object.keys(sanitizedExtra).length > 0 && { ...sanitizedExtra }),
+      ...(logRecord.correlation_id && {
+        correlation_id: logRecord.correlation_id,
+      }),
       ...(logRecord.session_id && {
         session_id: DataSanitizer.sanitize(logRecord.session_id),
       }),
@@ -502,14 +506,21 @@ export class StructuredLogger {
     const logger = globalThis.console;
     const contextData = this.context.getAllContext();
 
+    // Sanitize message and context data before logging
+    const sanitizedMessage =
+      typeof message === "string"
+        ? (DataSanitizer.sanitize(message) as string)
+        : message;
+    const sanitizedExtra = DataSanitizer.sanitize({ ...contextData, ...extra });
+
     const enhancedRecord = {
-      msg: message,
+      msg: sanitizedMessage,
       args: [],
       datetime: new Date(),
       level: this.mapLogLevel(level),
       levelName: level,
       loggerName: this.loggerName,
-      extra: { ...contextData, ...extra },
+      extra: sanitizedExtra,
     } as unknown as EnhancedLogRecord;
 
     const formattedMessage = new JsonFormatter().format(enhancedRecord);
@@ -538,12 +549,12 @@ export class StructuredLogger {
    */
   private mapLogLevel(levelName: LevelName): number {
     const levels: Record<LevelName, number> = {
-      "NOTSET": 0,
-      "DEBUG": 10,
-      "INFO": 20,
-      "WARN": 30,
-      "ERROR": 40,
-      "CRITICAL": 50,
+      NOTSET: 0,
+      DEBUG: 10,
+      INFO: 20,
+      WARN: 30,
+      ERROR: 40,
+      CRITICAL: 50,
     };
     return levels[levelName] || 20;
   }
@@ -553,10 +564,13 @@ export class StructuredLogger {
  * Initialize logging system with configuration
  */
 export async function initializeLogging(config?: AppConfig): Promise<void> {
-  const logLevel = (config?.log_level || Deno.env.get("LOG_LEVEL") || "INFO")
-    .toUpperCase() as LevelName;
-  const environment = config?.environment || Deno.env.get("ENVIRONMENT") ||
-    "development";
+  const logLevel = (
+    config?.log_level ||
+    Deno.env.get("LOG_LEVEL") ||
+    "INFO"
+  ).toUpperCase() as LevelName;
+  const environment =
+    config?.environment || Deno.env.get("ENVIRONMENT") || "development";
 
   // Console handler for all environments
   const handlers: Record<string, any> = {
@@ -586,15 +600,15 @@ export async function initializeLogging(config?: AppConfig): Promise<void> {
         level: logLevel,
         handlers: Object.keys(handlers),
       },
-      "browser": {
+      browser: {
         level: logLevel,
         handlers: Object.keys(handlers),
       },
-      "oauth": {
+      oauth: {
         level: logLevel,
         handlers: Object.keys(handlers),
       },
-      "k8s": {
+      k8s: {
         level: logLevel,
         handlers: Object.keys(handlers),
       },
