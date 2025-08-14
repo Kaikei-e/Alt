@@ -39,10 +39,14 @@ export class AuthAPIClient {
   }
 
   async completeLogin(flowId: string, email: string, password: string): Promise<User> {
-    const response = await this.makeRequest('POST', `/login/${flowId}`, {
-      email,
-      password,
-    });
+    // Kratos login形式に変換
+    const payload = {
+      identifier: email,
+      password: password,
+      method: 'password'
+    };
+
+    const response = await this.makeRequest('POST', `/login/${flowId}`, payload);
     return response.data as User;
   }
 
@@ -63,9 +67,22 @@ export class AuthAPIClient {
   }
 
   async completeRegistration(flowId: string, email: string, password: string, name?: string): Promise<User> {
-    const payload: { email: string; password: string; name?: string } = { email, password };
-    if (name) {
-      payload.name = name;
+    // Kratos traits形式に変換
+    const payload = {
+      traits: {
+        email: email,
+        name: name ? {
+          first: name.split(' ')[0] || '',
+          last: name.split(' ').slice(1).join(' ') || ''
+        } : undefined
+      },
+      password: password,
+      method: 'password'
+    };
+
+    // undefinedフィールドを除去
+    if (!payload.traits.name) {
+      delete payload.traits.name;
     }
 
     const response = await this.makeRequest('POST', `/register/${flowId}`, payload);

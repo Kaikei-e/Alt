@@ -93,6 +93,16 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
       };
     }
     
+    // データ形式エラー（"Property email is missing"等）の検出
+    if (error.message.includes('Property email is missing') || error.message.includes('missing properties') || error.message.includes('VALIDATION_FAILED')) {
+      return {
+        type: 'VALIDATION_ERROR',
+        message: '登録情報の形式に問題があります。メールアドレスとパスワードを確認してください',
+        isRetryable: true,
+        retryCount
+      };
+    }
+    
     // バリデーションエラーの検出
     if (error.message.includes('validation') || error.message.includes('invalid format')) {
       return {

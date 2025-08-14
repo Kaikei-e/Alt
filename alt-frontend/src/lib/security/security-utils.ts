@@ -15,7 +15,7 @@ export const SecurityConfig = {
   maxLoginAttempts: 5,
   lockoutDuration: 15 * 60 * 1000, // 15 minutes
   sessionTimeout: 30 * 60 * 1000, // 30 minutes
-  passwordMinLength: 8,
+  passwordMinLength: 20, // 🔧 Phase 7B: 8文字 → 20文字に変更
   csrfTokenHeader: 'X-CSRF-Token',
 } as const;
 
@@ -57,7 +57,7 @@ export function validateEmail(email: string): {
   return { isValid: true };
 }
 
-// Password validation
+// Password validation - 🔧 Phase 7B: 20文字以上のシンプル判定のみ
 export function validatePassword(password: string): {
   isValid: boolean;
   error?: string;
@@ -67,6 +67,7 @@ export function validatePassword(password: string): {
     return { isValid: false, error: 'パスワードを入力してください', strength: 'weak' };
   }
   
+  // 🔧 Phase 7B: 20文字以上の長さチェックのみ
   if (password.length < SecurityConfig.passwordMinLength) {
     return { 
       isValid: false, 
@@ -75,53 +76,18 @@ export function validatePassword(password: string): {
     };
   }
   
+  // 上限チェックのみ残す（DoS攻撃対策）
   if (password.length > 128) {
     return { 
       isValid: false, 
-      error: 'パスワードが長すぎます', 
+      error: 'パスワードが長すぎます（128文字以下にしてください）', 
       strength: 'weak' 
     };
   }
   
-  // Check for common weak patterns
-  const weakPatterns = [
-    /^(.)\1+$/, // All same character
-    /^(012|123|234|345|456|567|678|789|890|abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz)/i,
-    /^(password|pass|admin|user|test|demo|guest|login|qwerty|asdf|zxcv)/i,
-  ];
-  
-  if (weakPatterns.some(pattern => pattern.test(password))) {
-    return { 
-      isValid: false, 
-      error: '一般的なパスワードは使用できません', 
-      strength: 'weak' 
-    };
-  }
-  
-  // Calculate strength
-  let strength: 'weak' | 'medium' | 'strong' = 'weak';
-  let score = 0;
-  
-  if (/[a-z]/.test(password)) score++;
-  if (/[A-Z]/.test(password)) score++;
-  if (/\d/.test(password)) score++;
-  if (/[@$!%*?&]/.test(password)) score++;
-  if (password.length >= 12) score++;
-  
-  if (score >= 4) {
-    strength = 'strong';
-  } else if (score >= 3) {
-    strength = 'medium';
-  }
-  
-  // Require at least medium strength
-  if (score < 3) {
-    return { 
-      isValid: false, 
-      error: 'パスワードは大文字、小文字、数字、特殊文字を含む必要があります', 
-      strength 
-    };
-  }
+  // 🔧 Phase 7B: 20文字以上なら強度問わず受け入れ
+  // 長いパスワード = 強いとみなす（エントロピー理論に基づく）
+  const strength: 'strong' = 'strong';
   
   return { isValid: true, strength };
 }

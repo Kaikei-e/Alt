@@ -477,7 +477,7 @@ export function AuthForm({ onSuccess, initialMode = 'login' }: AuthFormProps) {
                     type={showPassword ? 'text' : 'password'}
                     value={formData.password}
                     onChange={handleInputChange('password')}
-                    placeholder={mode === 'register' ? "8文字以上" : "••••••••"}
+                    placeholder={mode === 'register' ? "20文字以上" : "••••••••"}
                     bg="var(--alt-glass)"
                     border="1px solid"
                     borderColor={validationErrors.password ? "semantic.error" : "var(--alt-glass-border)"}
