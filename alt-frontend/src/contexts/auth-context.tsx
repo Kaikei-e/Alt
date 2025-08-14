@@ -225,11 +225,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      // Initiate login flow
+      // Initiate login flow with validation
       const loginFlow = await authAPI.initiateLogin();
+      
+      // 🚨 防御的プログラミング: flow オブジェクト検証強化
+      if (!loginFlow || !loginFlow.id) {
+        throw new Error('Login flow initialization failed: missing flow ID');
+      }
+      
+      console.log('[AUTH-CONTEXT] Login flow initialized:', { flowId: loginFlow.id, timestamp: new Date().toISOString() });
       
       // Complete login with credentials
       const user = await authAPI.completeLogin(loginFlow.id, email, password);
+      
+      // 🚨 防御的プログラミング: user オブジェクト検証
+      if (!user) {
+        throw new Error('Login completed but user data is missing');
+      }
       
       setAuthState(prev => ({
         ...prev,
@@ -240,9 +252,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         lastActivity: new Date(),
       }));
       
+      console.log('[AUTH-CONTEXT] Login successful:', { userId: user.id, timestamp: new Date().toISOString() });
+      
       // ログイン成功時は前回のアクションをクリア
       setLastAction(null);
     } catch (error: unknown) {
+      console.error('[AUTH-CONTEXT] Login failed:', error);
       const authError = mapErrorToAuthError(error);
       setAuthState(prev => ({
         ...prev,
@@ -259,11 +274,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      // Initiate registration flow
+      // Initiate registration flow with validation
       const registrationFlow = await authAPI.initiateRegistration();
+      
+      // 🚨 防御的プログラミング: flow オブジェクト検証強化
+      if (!registrationFlow || !registrationFlow.id) {
+        throw new Error('Registration flow initialization failed: missing flow ID');
+      }
+      
+      console.log('[AUTH-CONTEXT] Registration flow initialized:', { flowId: registrationFlow.id, timestamp: new Date().toISOString() });
       
       // Complete registration with user data
       const user = await authAPI.completeRegistration(registrationFlow.id, email, password, name);
+      
+      // 🚨 防御的プログラミング: user オブジェクト検証
+      if (!user) {
+        throw new Error('Registration completed but user data is missing');
+      }
       
       setAuthState(prev => ({
         ...prev,
@@ -274,9 +301,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         lastActivity: new Date(),
       }));
       
+      console.log('[AUTH-CONTEXT] Registration successful:', { userId: user.id, timestamp: new Date().toISOString() });
+      
       // 登録成功時は前回のアクションをクリア
       setLastAction(null);
     } catch (error: unknown) {
+      console.error('[AUTH-CONTEXT] Registration failed:', error);
       const authError = mapErrorToAuthError(error);
       setAuthState(prev => ({
         ...prev,

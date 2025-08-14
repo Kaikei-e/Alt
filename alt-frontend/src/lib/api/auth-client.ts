@@ -24,7 +24,18 @@ export class AuthAPIClient {
 
   async initiateLogin(): Promise<LoginFlow> {
     const response = await this.makeRequest('POST', '/login');
-    return response.data as LoginFlow;
+    
+    // 防御的プログラミング: レスポンスデータの検証
+    if (!response || !response.data || typeof response.data !== 'object') {
+      throw new Error('Invalid login flow response format');
+    }
+    
+    const loginFlow = response.data as LoginFlow;
+    if (!loginFlow.id) {
+      throw new Error('Login flow response missing required ID');
+    }
+    
+    return loginFlow;
   }
 
   async completeLogin(flowId: string, email: string, password: string): Promise<User> {
@@ -37,7 +48,18 @@ export class AuthAPIClient {
 
   async initiateRegistration(): Promise<RegistrationFlow> {
     const response = await this.makeRequest('POST', '/register');
-    return response.data as RegistrationFlow;
+    
+    // 防御的プログラミング: レスポンスデータの検証
+    if (!response || !response.data || typeof response.data !== 'object') {
+      throw new Error('Invalid registration flow response format');
+    }
+    
+    const registrationFlow = response.data as RegistrationFlow;
+    if (!registrationFlow.id) {
+      throw new Error('Registration flow response missing required ID');
+    }
+    
+    return registrationFlow;
   }
 
   async completeRegistration(flowId: string, email: string, password: string, name?: string): Promise<User> {
@@ -83,7 +105,20 @@ export class AuthAPIClient {
   async getCSRFToken(): Promise<string | null> {
     try {
       const response = await this.makeRequest('POST', '/csrf');
-      return (response.data as { csrf_token: string }).csrf_token;
+      
+      // 防御的プログラミング: CSRF レスポンスの検証強化
+      if (!response || !response.data || typeof response.data !== 'object') {
+        console.warn('CSRF response invalid format:', response);
+        return null;
+      }
+      
+      const csrfData = response.data as { csrf_token?: string };
+      if (!csrfData.csrf_token || typeof csrfData.csrf_token !== 'string') {
+        console.warn('CSRF response missing token:', csrfData);
+        return null;
+      }
+      
+      return csrfData.csrf_token;
     } catch (error: unknown) {
       console.warn('Failed to get CSRF token:', error);
       return null;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const AUTH_SERVICE_URL = process.env.AUTH_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
+const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433';
 
 /**
  * Validate current user session
@@ -8,16 +8,37 @@ const AUTH_SERVICE_URL = process.env.AUTH_URL || 'http://auth-service.alt-auth.s
  */
 export async function GET(request: NextRequest) {
   try {
-    const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/validate`, {
+    const response = await fetch(`${KRATOS_PUBLIC_URL}/sessions/whoami`, {
       method: 'GET',
       headers: {
+        'Accept': 'application/json',
         'Cookie': request.headers.get('cookie') || '',
       },
     });
 
-    const data = await response.text();
+    if (response.status === 401) {
+      return NextResponse.json(null, { status: 401 });
+    }
+
+    if (!response.ok) {
+      console.error(`Kratos whoami error: ${response.status} ${response.statusText}`);
+      return NextResponse.json(
+        { error: 'Session validation failed', code: 'VALIDATION_FAILED' },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
     
-    // Forward cookies if auth service sets any
+    // Transform Kratos session data to frontend user format
+    const user = {
+      id: data.identity?.id,
+      email: data.identity?.traits?.email,
+      name: data.identity?.traits?.name,
+      active: data.active || false
+    };
+    
+    // Forward cookies if Kratos sets any
     const headers = new Headers();
     const setCookie = response.headers.get('set-cookie');
     if (setCookie) {
@@ -25,15 +46,22 @@ export async function GET(request: NextRequest) {
     }
     headers.set('Content-Type', 'application/json');
 
-    return new NextResponse(data, {
+    return NextResponse.json({
+      data: user
+    }, {
       status: response.status,
       headers,
     });
 
   } catch (error) {
-    console.error('User validation error:', error);
+    console.error('[USER-VALIDATION] User validation error:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString(),
+      kratosUrl: KRATOS_PUBLIC_URL
+    });
     return NextResponse.json(
-      { error: 'Failed to validate user' },
+      { error: 'Failed to validate user', code: 'INTERNAL_ERROR' },
       { status: 500 }
     );
   }

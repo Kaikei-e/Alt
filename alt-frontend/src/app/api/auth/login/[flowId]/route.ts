@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const AUTH_SERVICE_URL = process.env.AUTH_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
+const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433';
 
 /**
  * Complete login flow with credentials
@@ -14,17 +14,17 @@ export async function POST(
     const { flowId } = await params;
     const body = await request.text();
 
-    const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/login/${flowId}`, {
+    const response = await fetch(`${KRATOS_PUBLIC_URL}/self-service/login?flow=${flowId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'Cookie': request.headers.get('cookie') || '',
-        'X-CSRF-Token': request.headers.get('x-csrf-token') || '',
       },
       body,
     });
 
-    const data = await response.text();
+    const data = await response.json();
     
     // Forward authentication headers
     const headers = new Headers();
@@ -34,15 +34,22 @@ export async function POST(
     }
     headers.set('Content-Type', 'application/json');
 
-    return new NextResponse(data, {
+    return NextResponse.json({
+      data: data
+    }, {
       status: response.status,
       headers,
     });
 
   } catch (error) {
-    console.error('Login completion error:', error);
+    console.error('[LOGIN-COMPLETION] Login completion error:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString(),
+      kratosUrl: KRATOS_PUBLIC_URL
+    });
     return NextResponse.json(
-      { error: 'Failed to complete login' },
+      { error: 'Failed to complete login', code: 'INTERNAL_ERROR' },
       { status: 500 }
     );
   }
