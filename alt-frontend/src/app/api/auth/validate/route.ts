@@ -8,7 +8,7 @@ const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.al
  */
 export async function GET(request: NextRequest) {
   try {
-    const response = await fetch(`${AUTH_SERVICE_URL}/v1/validate`, {
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/validate`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',

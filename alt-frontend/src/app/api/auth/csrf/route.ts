@@ -9,8 +9,8 @@ const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.al
 export async function POST(request: NextRequest) {
   try {
     // Get CSRF token from auth-service
-    const response = await fetch(`${AUTH_SERVICE_URL}/v1/csrf`, {
-      method: 'GET',
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/csrf`, {
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Cookie': request.headers.get('cookie') || '',

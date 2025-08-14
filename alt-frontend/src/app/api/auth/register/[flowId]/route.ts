@@ -31,7 +31,7 @@ export async function POST(
       console.warn('Could not parse request body for CSRF token:', e);
     }
 
-    const response = await fetch(`${AUTH_SERVICE_URL}/v1/register/${encodeURIComponent(flowId)}`, {
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/register/${encodeURIComponent(flowId)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -56,7 +56,7 @@ export async function POST(
 
         try {
           // Create new registration flow automatically
-          const newFlowResponse = await fetch(`${AUTH_SERVICE_URL}/v1/register`, {
+          const newFlowResponse = await fetch(`${AUTH_SERVICE_URL}/v1/auth/register`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',
@@ -112,7 +112,7 @@ export async function POST(
         const errorData = await response.json().catch(() => ({}));
         
         try {
-          const newFlowResponse = await fetch(`${AUTH_SERVICE_URL}/v1/register`, {
+          const newFlowResponse = await fetch(`${AUTH_SERVICE_URL}/v1/auth/register`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',

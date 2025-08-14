@@ -9,7 +9,7 @@ const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.al
 export async function POST(request: NextRequest) {
   try {
     // Logout via auth-service
-    const response = await fetch(`${AUTH_SERVICE_URL}/v1/logout`, {
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/logout`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',

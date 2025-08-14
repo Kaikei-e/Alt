@@ -9,7 +9,7 @@ const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.al
 export async function POST(request: NextRequest) {
   try {
     // 🚨 強化されたエラーハンドリング: auth-serviceへのアクセス
-    const response = await fetch(`${AUTH_SERVICE_URL}/v1/register`, {
+    const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/register`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
