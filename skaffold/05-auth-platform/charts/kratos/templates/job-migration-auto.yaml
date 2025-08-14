@@ -1,0 +1,77 @@
+{{- if and .Values.automigration.enabled (eq .Values.automigration.type "job") }}
+# 公式Ory Kratosパターン準拠: 自動マイグレーション Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kratos.fullname" . }}-automigrate
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kratos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: automigration
+  annotations:
+    # 公式パターン: pre-install hook でマイグレーション実行
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    kratos.ory.sh/migration-type: "automigration"
+    kratos.ory.sh/version: "{{ .Values.image.tag }}"
+spec:
+  # Job設定: 1回のみ実行、失敗時は自動リトライ
+  completions: 1
+  parallelism: 1
+  backoffLimit: 3
+  activeDeadlineSeconds: 900  # 15分でタイムアウト
+  template:
+    metadata:
+      labels:
+        {{- include "kratos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: automigration
+      annotations:
+        # Linkerd無効化（データベース直接接続）
+        linkerd.io/inject: disabled
+        # 公式パターン設定
+        kratos.ory.sh/migration-version: "{{ .Values.image.tag }}"
+        kratos.ory.sh/database-target: "{{ .Values.database.host }}"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "kratos.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: kratos-automigrate
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["kratos"]
+        args: 
+        - "migrate"
+        - "sql"
+        - "-e"
+        - "--yes"
+        - "--config"
+        - "/etc/config/kratos/kratos.yml"
+        env:
+        - name: DSN
+          valueFrom:
+            secretKeyRef:
+              name: kratos-postgres-credentials
+              key: dsn
+        {{- with .Values.automigration.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        volumeMounts:
+        - name: kratos-config
+          mountPath: /etc/config/kratos
+        - name: kratos-schemas  
+          mountPath: /etc/config/kratos/schemas
+        resources:
+          {{- toYaml .Values.automigration.resources | nindent 10 }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+      volumes:
+      - name: kratos-config
+        configMap:
+          name: {{ include "kratos.fullname" . }}-config
+      - name: kratos-schemas
+        configMap:
+          name: {{ include "kratos.fullname" . }}-schemas
+{{- end }}

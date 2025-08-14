@@ -4,26 +4,59 @@
 
 ---
 
-# Allow kratos-migrate pods to egress to kratos-postgres in alt-auth
+# Allow kratos-migrate pods to egress to kratos-postgres in alt-auth (公式パターン準拠)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-kratos-migrate-egress-to-postgres
   namespace: alt-auth
+  labels:
+    app.kubernetes.io/component: security
+    app.kubernetes.io/name: kratos-network-access
+    app.kubernetes.io/part-of: kratos-migration
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: kratos # kratos Podのラベル
+      app.kubernetes.io/name: kratos # 統一されたラベルセレクタ（migration pod対応）
   policyTypes:
   - Egress
   egress:
   - to:
     - podSelector:
         matchLabels:
-          app.kubernetes.io/name: kratos-postgres # kratos-postgres Podのラベル
+          app.kubernetes.io/name: auth-postgres # auth-postgres Podのラベル
     ports:
     - protocol: TCP
       port: 5432 # PostgreSQLのデフォルトポート
+
+---
+
+# Allow PostgreSQL ingress from Kratos migration pods (必須: default-deny-ingress対策)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-postgres-ingress-from-kratos
+  namespace: alt-auth
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: auth-postgres
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: kratos
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Also allow temporary test pods to connect
+  - from:
+    - podSelector: {} # Allow all pods in same namespace for testing
+    ports:
+    - protocol: TCP
+      port: 5432
 
 ---
 

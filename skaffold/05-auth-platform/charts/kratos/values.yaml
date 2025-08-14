@@ -1,10 +1,10 @@
 # Default values for kratos
 # This is a YAML-formatted file.
 
-# Image configuration
+# Image configuration - 公式パターン準拠: バージョン統一
 image:
   repository: oryd/kratos
-  tag: "v1.2.0"
+  tag: "v1.3.1"  # Migration imageと統一
   pullPolicy: IfNotPresent
 
 # Service account configuration
@@ -211,12 +211,32 @@ healthCheck:
     timeoutSeconds: 3
     failureThreshold: 3
 
-# Migration configuration
+# Migration configuration - 公式パターン実装: Official Ory automigration
+automigration:
+  enabled: true  # 公式推奨: 自動マイグレーション有効化
+  type: job      # 公式推奨: Kubernetes Job形式で実行
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    - name: KRATOS_LOG_LEVEL
+      value: "debug"
+    - name: KRATOS_DATABASE_TIMEOUT
+      value: "60s"
+    - name: KRATOS_DATABASE_MAX_OPEN_CONNS
+      value: "1"
+        
+# Legacy migration configuration (deprecated)
 migration:
-  enabled: true
+  enabled: false  # 公式パターンに移行: 手動Job無効化
+  manualJob: false  # 公式automigrationに移行
   image:
     repository: oryd/kratos
-    tag: "v1.2.0"
+    tag: "v1.3.1"
 
 # Database configuration (connects to kratos-postgres chart)
 database:
@@ -253,6 +273,10 @@ secrets:
 ssl:
   enabled: false
   secretName: "kratos-ssl-certs"
+
+# Init containers configuration
+initContainers:
+  enabled: false
 
 # Monitoring configuration
 monitoring:
