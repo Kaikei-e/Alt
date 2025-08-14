@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
         'Accept': 'application/json',
         'Cookie': request.headers.get('cookie') || '',
       },
+      signal: AbortSignal.timeout(8000), // 8秒タイムアウト
     });
 
     if (response.status === 401) {
@@ -30,12 +31,21 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
     
+    // ULTRATHINK FIX: 防御的プログラミング - Kratosセッションデータの安全な変換
+    if (!data || typeof data !== 'object') {
+      console.error('Invalid Kratos session response:', data);
+      return NextResponse.json(
+        { error: 'Invalid session data', code: 'INVALID_SESSION_DATA' },
+        { status: 502 }
+      );
+    }
+    
     // Transform Kratos session data to frontend user format
     const user = {
-      id: data.identity?.id,
-      email: data.identity?.traits?.email,
-      name: data.identity?.traits?.name,
-      active: data.active || false
+      id: data.identity?.id || null,
+      email: data.identity?.traits?.email || null,
+      name: data.identity?.traits?.name || null,
+      active: Boolean(data.active)
     };
     
     // Forward cookies if Kratos sets any
@@ -60,6 +70,15 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
       kratosUrl: KRATOS_PUBLIC_URL
     });
+    
+    // ULTRATHINK FIX: タイムアウトエラー処理
+    if (error instanceof Error && error.name === 'AbortError') {
+      return NextResponse.json(
+        { error: 'Session validation timeout', code: 'TIMEOUT' },
+        { status: 408 }
+      );
+    }
+    
     return NextResponse.json(
       { error: 'Failed to validate user', code: 'INTERNAL_ERROR' },
       { status: 500 }

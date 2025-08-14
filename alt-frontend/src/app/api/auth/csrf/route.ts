@@ -45,10 +45,13 @@ export async function POST(request: NextRequest) {
     }
     headers.set('Content-Type', 'application/json');
 
-    // Return the login flow with CSRF token
+    // Return the login flow with CSRF token - ULTRATHINK FIX: 防御的プログラミング
+    const csrfNode = data.ui?.nodes?.find((node: any) => node?.attributes?.name === 'csrf_token');
+    const csrfToken = csrfNode?.attributes?.value;
+    
     return NextResponse.json({
       data: {
-        csrf_token: data.ui.nodes.find((node: any) => node.attributes.name === 'csrf_token')?.attributes.value,
+        csrf_token: csrfToken,
         flow_id: data.id,
         ui: data.ui
       }
