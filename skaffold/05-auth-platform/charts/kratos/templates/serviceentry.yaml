@@ -1,0 +1,49 @@
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: kratos-external-services
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "kratos.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "kratos.chart" . }}
+    app.kubernetes.io/part-of: alt
+    rask.group: kratos-external
+spec:
+  hosts:
+  - api.pwnedpasswords.com
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  - number: 80
+    name: http
+    protocol: HTTP
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: kratos-smtp-services
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "kratos.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "kratos.chart" . }}
+    app.kubernetes.io/part-of: alt
+    rask.group: kratos-external
+spec:
+  hosts:
+  - smtp.alt.example.com
+  ports:
+  - number: 587
+    name: smtp
+    protocol: TCP
+  - number: 465
+    name: smtps
+    protocol: TCP
+  location: MESH_EXTERNAL
+  resolution: DNS

@@ -1,0 +1,197 @@
+# Frontend → Authentication Service Communication Policies
+# 認証フロー修復: alt-frontend → Kratos 通信許可
+
+# 1. alt-frontend → Kratos egress policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-kratos-auth
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/name: allow-frontend-to-kratos-auth
+    app.kubernetes.io/part-of: alt-security
+    rask.group: network-security
+    policy.layer: authentication
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alt-frontend
+  policyTypes:
+  - Egress
+  egress:
+  # Allow alt-frontend to reach Kratos for authentication
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-auth
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: kratos
+    ports:
+    - protocol: TCP
+      port: 4433  # Kratos public API
+
+---
+# 2. Kratos ingress policy (comprehensive)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kratos-auth-ingress-policy
+  namespace: alt-auth
+  labels:
+    app.kubernetes.io/name: kratos-auth-ingress-policy
+    app.kubernetes.io/part-of: alt-security
+    rask.group: network-security
+    policy.layer: authentication
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kratos
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from alt-frontend (認証UI → Kratos API)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: alt-frontend
+    ports:
+    - protocol: TCP
+      port: 4433  # Kratos public API
+  
+  # Allow from alt-backend (バックエンドサービス → Kratos API)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps  
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: alt-backend
+    ports:
+    - protocol: TCP
+      port: 4433  # Kratos public API
+  
+  # Allow from nginx-external (プロキシ経由でのアクセス)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-ingress
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: nginx-external
+    ports:
+    - protocol: TCP
+      port: 4433  # Kratos public API
+  
+  # Allow from monitoring (metrics)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9000  # Metrics port (if exists)
+  
+  # Allow health checks from same namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-auth
+    ports:
+    - protocol: TCP
+      port: 4433
+      
+  egress:
+  # Allow to auth-postgres database (必須)
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: auth-postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  # Allow DNS resolution (必須)
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53   # DNS
+    - protocol: TCP
+      port: 53   # DNS over TCP
+  
+  # Allow to external APIs (api.pwnedpasswords.com等)
+  - to: []  # External destinations
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS APIs
+    - protocol: TCP
+      port: 80   # HTTP (redirects)
+  
+  # Allow SMTP for email delivery (設定されている場合)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 587  # SMTP
+    - protocol: TCP
+      port: 465  # SMTPS
+
+---
+# 3. RBAC for Kratos minimal permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kratos-minimal
+  namespace: alt-auth
+  labels:
+    app.kubernetes.io/name: kratos-minimal
+    app.kubernetes.io/part-of: alt-security
+    rask.group: rbac-security
+automountServiceAccountToken: true
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kratos-minimal-permissions
+  namespace: alt-auth
+  labels:
+    app.kubernetes.io/name: kratos-minimal-permissions
+    app.kubernetes.io/part-of: alt-security
+    rask.group: rbac-security
+rules:
+# Minimal permissions for Kratos operation
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+  resourceNames: []
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+  resourceNames: ["kratos-postgres-credentials", "kratos-smtp-secrets"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get"]
+  resourceNames: ["kratos-config"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kratos-minimal-binding
+  namespace: alt-auth
+  labels:
+    app.kubernetes.io/name: kratos-minimal-binding
+    app.kubernetes.io/part-of: alt-security
+    rask.group: rbac-security
+subjects:
+- kind: ServiceAccount
+  name: kratos-minimal
+  namespace: alt-auth
+roleRef:
+  kind: Role
+  name: kratos-minimal-permissions
+  apiGroup: rbac.authorization.k8s.io
