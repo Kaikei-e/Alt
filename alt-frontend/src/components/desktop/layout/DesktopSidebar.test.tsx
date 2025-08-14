@@ -7,7 +7,7 @@ import { DesktopSidebar } from "./DesktopSidebar";
 import { Home, Rss } from "lucide-react";
 
 // Mock Next.js Link component
-vi.mock("next/link", () => ({
+vi.mock("next/link.js", () => ({
   default: ({
     children,
     href,

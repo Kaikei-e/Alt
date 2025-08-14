@@ -22,10 +22,7 @@
       "@/*": ["./src/*"]
     },
     "types": [
-      "node",
-      "@vitest/browser/providers/playwright",
-      "vitest/globals",
-      "@testing-library/jest-dom"
+      "node"
     ]
   },
   "include": [

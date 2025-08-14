@@ -17,7 +17,7 @@ import {
   AccordionPanel,
   AccordionIcon,
 } from "@chakra-ui/accordion";
-import Link from "next/link";
+import Link from "next/link.js";
 import { usePathname } from "next/navigation";
 import { useState, useCallback, useEffect } from "react";
 import {
