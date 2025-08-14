@@ -1,3 +1,4 @@
+{{- if .Values.istio.enabled }}
 apiVersion: networking.istio.io/v1beta1
 kind: ServiceEntry
 metadata:
@@ -37,7 +38,7 @@ metadata:
     rask.group: kratos-external
 spec:
   hosts:
-  - smtp.alt.example.com
+  - smtp.curionoah.com
   ports:
   - number: 587
     name: smtp
@@ -47,3 +48,4 @@ spec:
     protocol: TCP
   location: MESH_EXTERNAL
   resolution: DNS
+{{- end }}
