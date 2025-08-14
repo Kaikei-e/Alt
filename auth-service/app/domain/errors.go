@@ -53,6 +53,15 @@ var (
 	ErrNotImplemented     = errors.New("not implemented")
 	ErrResourceNotFound   = errors.New("resource not found")
 	ErrConflict           = errors.New("resource conflict")
+
+	// Kratos統合固有エラー
+	ErrFlowExpired        = errors.New("authentication flow expired")
+	ErrFlowNotFound       = errors.New("authentication flow not found")
+	ErrIdentityNotFound   = errors.New("identity not found")
+	ErrPasswordPolicy     = errors.New("password does not meet policy requirements")
+	ErrFlowMismatch       = errors.New("flow method mismatch")
+	ErrServiceUnavailable = errors.New("authentication service unavailable")
+	ErrTimeout            = errors.New("request timeout")
 )
 
 // AuthError represents authentication-related errors with additional context
@@ -85,12 +94,24 @@ func NewAuthError(code, message string, cause error) *AuthError {
 // Common auth error codes
 const (
 	ErrCodeInvalidCredentials = "INVALID_CREDENTIALS"
-	ErrCodeSessionExpired     = "SESSION_EXPIRED" 
+	ErrCodeSessionExpired     = "SESSION_EXPIRED"
 	ErrCodeCSRFInvalid        = "CSRF_INVALID"
 	ErrCodeUnauthorized       = "UNAUTHORIZED"
 	ErrCodeForbidden          = "FORBIDDEN"
 	ErrCodeRateLimit          = "RATE_LIMIT"
 	ErrCodeInternal           = "INTERNAL_ERROR"
+
+	// Kratos integration specific error codes
+	ErrCodeUserExists         = "USER_EXISTS"
+	ErrCodeFlowExpired        = "FLOW_EXPIRED"
+	ErrCodeFlowNotFound       = "FLOW_NOT_FOUND"
+	ErrCodePasswordPolicy     = "PASSWORD_POLICY"
+	ErrCodeValidation         = "VALIDATION_ERROR"
+	ErrCodeUnknown            = "UNKNOWN_ERROR"
+	ErrCodeNotFound           = "NOT_FOUND"
+	ErrCodeConflict           = "CONFLICT"
+	ErrCodeServiceUnavailable = "SERVICE_UNAVAILABLE"
+	ErrCodeTimeout            = "TIMEOUT"
 )
 
 // ValidationError represents validation errors with field-specific details

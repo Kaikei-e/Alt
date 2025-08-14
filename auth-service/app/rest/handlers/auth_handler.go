@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
 
+	"auth-service/app/domain"
 	"auth-service/app/port"
 )
 
@@ -46,7 +48,7 @@ func (h *AuthHandler) InitiateLogin(c echo.Context) error {
 	return c.JSON(http.StatusOK, flow)
 }
 
-// CompleteLogin completes the login flow
+// CompleteLogin completes the login flow (X2.md Phase 2.4.1 強化)
 // @Summary Complete login flow
 // @Description Complete Kratos login flow with user credentials
 // @Tags authentication
@@ -55,9 +57,9 @@ func (h *AuthHandler) InitiateLogin(c echo.Context) error {
 // @Param flowId path string true "Flow ID"
 // @Param body body LoginRequest true "Login credentials"
 // @Success 200 {object} domain.SessionContext
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 400 {object} DetailedErrorResponse
+// @Failure 401 {object} DetailedErrorResponse
+// @Failure 500 {object} DetailedErrorResponse
 // @Router /v1/auth/login/{flowId} [post]
 func (h *AuthHandler) CompleteLogin(c echo.Context) error {
 	ctx := c.Request().Context()
@@ -65,18 +67,47 @@ func (h *AuthHandler) CompleteLogin(c echo.Context) error {
 
 	var loginReq LoginRequest
 	if err := c.Bind(&loginReq); err != nil {
-		return c.JSON(http.StatusBadRequest, ErrorResponse{
-			Error: "invalid request body",
+		h.logger.Error("failed to bind login request", 
+			"flowId", flowID, 
+			"error", err,
+			"content_type", c.Request().Header.Get("Content-Type"))
+		return c.JSON(http.StatusBadRequest, DetailedErrorResponse{
+			Error:   "Invalid request format",
+			Code:    "INVALID_REQUEST",
+			Details: "Request body could not be parsed as JSON",
+		})
+	}
+
+	// バリデーション
+	if err := h.validateLoginRequest(&loginReq); err != nil {
+		h.logger.Error("login request validation failed",
+			"flowId", flowID,
+			"error", err,
+			"email", loginReq.Email)
+		return c.JSON(http.StatusBadRequest, DetailedErrorResponse{
+			Error:   "Validation failed",
+			Code:    "VALIDATION_ERROR", 
+			Details: err.Error(),
 		})
 	}
 
 	sessionCtx, err := h.authUsecase.CompleteLogin(ctx, flowID, &loginReq)
 	if err != nil {
-		h.logger.Error("failed to complete login", "flowId", flowID, "error", err)
-		return c.JSON(http.StatusUnauthorized, ErrorResponse{
-			Error: "login failed",
-		})
+		h.logger.Error("failed to complete login", 
+			"flowId", flowID, 
+			"email", loginReq.Email,
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err))
+			
+		// ドメインエラーに基づく詳細レスポンス
+		return h.handleAuthError(c, err)
 	}
+
+	// 成功ログ
+	h.logger.Info("login completed successfully",
+		"flowId", flowID,
+		"userId", sessionCtx.UserID,
+		"email", loginReq.Email)
 
 	// Set session cookie
 	h.setSessionCookie(c, sessionCtx.SessionID)
@@ -107,7 +138,7 @@ func (h *AuthHandler) InitiateRegistration(c echo.Context) error {
 	return c.JSON(http.StatusOK, flow)
 }
 
-// CompleteRegistration completes the registration flow
+// CompleteRegistration completes the registration flow (X2.md Phase 2.4.1 強化)
 // @Summary Complete registration flow
 // @Description Complete Kratos registration flow with user details
 // @Tags authentication
@@ -116,9 +147,9 @@ func (h *AuthHandler) InitiateRegistration(c echo.Context) error {
 // @Param flowId path string true "Flow ID"
 // @Param body body RegistrationRequest true "Registration details"
 // @Success 201 {object} domain.SessionContext
-// @Failure 400 {object} ErrorResponse
-// @Failure 409 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 400 {object} DetailedErrorResponse
+// @Failure 409 {object} DetailedErrorResponse
+// @Failure 500 {object} DetailedErrorResponse
 // @Router /v1/auth/register/{flowId} [post]
 func (h *AuthHandler) CompleteRegistration(c echo.Context) error {
 	ctx := c.Request().Context()
@@ -126,22 +157,49 @@ func (h *AuthHandler) CompleteRegistration(c echo.Context) error {
 
 	var regReq RegistrationRequest
 	if err := c.Bind(&regReq); err != nil {
-		return c.JSON(http.StatusBadRequest, ErrorResponse{
-			Error: "invalid request body",
+		h.logger.Error("failed to bind registration request", 
+			"flowId", flowID, 
+			"error", err,
+			"content_type", c.Request().Header.Get("Content-Type"))
+		return c.JSON(http.StatusBadRequest, DetailedErrorResponse{
+			Error:   "Invalid request format",
+			Code:    "INVALID_REQUEST",
+			Details: "Request body could not be parsed as JSON",
+		})
+	}
+
+	// バリデーション
+	if err := h.validateRegistrationRequest(&regReq); err != nil {
+		h.logger.Error("registration request validation failed",
+			"flowId", flowID,
+			"error", err,
+			"email", regReq.Email)
+		return c.JSON(http.StatusBadRequest, DetailedErrorResponse{
+			Error:   "Validation failed",
+			Code:    "VALIDATION_ERROR", 
+			Details: err.Error(),
 		})
 	}
 
 	sessionCtx, err := h.authUsecase.CompleteRegistration(ctx, flowID, &regReq)
 	if err != nil {
-		h.logger.Error("failed to complete registration", "flowId", flowID, "error", err)
-		return c.JSON(http.StatusConflict, ErrorResponse{
-			Error: "registration failed",
-		})
+		h.logger.Error("failed to complete registration",
+			"flowId", flowID,
+			"email", regReq.Email,
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err))
+
+		// ドメインエラーに基づく詳細レスポンス
+		return h.handleAuthError(c, err)
 	}
 
-	// Set session cookie
-	h.setSessionCookie(c, sessionCtx.SessionID)
+	// 成功ログ
+	h.logger.Info("registration completed successfully",
+		"flowId", flowID,
+		"userId", sessionCtx.UserID,
+		"email", regReq.Email)
 
+	h.setSessionCookie(c, sessionCtx.SessionID)
 	return c.JSON(http.StatusCreated, sessionCtx)
 }
 
@@ -387,7 +445,140 @@ type ErrorResponse struct {
 	Details string `json:"details,omitempty"`
 }
 
+// X2.md Phase 2.4.1: 詳細エラーレスポンス型
+type DetailedErrorResponse struct {
+	Error   string      `json:"error"`
+	Code    string      `json:"code"`
+	Details string      `json:"details"`
+	Field   string      `json:"field,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
 type SuccessResponse struct {
 	Message string `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
+}
+
+// X2.md Phase 2.4.1: 詳細エラーハンドリング
+func (h *AuthHandler) handleAuthError(c echo.Context, err error) error {
+	// ドメインエラーの詳細処理
+	if authErr, ok := err.(*domain.AuthError); ok {
+		switch authErr.Code {
+		case domain.ErrCodeUserExists:
+			return c.JSON(http.StatusConflict, DetailedErrorResponse{
+				Error:   "User already exists",
+				Code:    authErr.Code,
+				Details: "A user with this email address is already registered. Please use the login flow instead.",
+			})
+		case domain.ErrCodeFlowExpired:
+			return c.JSON(http.StatusGone, DetailedErrorResponse{
+				Error:   "Flow expired",
+				Code:    authErr.Code,
+				Details: "The registration flow has expired. Please start a new registration.",
+			})
+		case domain.ErrCodeValidation:
+			return c.JSON(http.StatusBadRequest, DetailedErrorResponse{
+				Error:   "Validation error",
+				Code:    authErr.Code,
+				Details: authErr.Message,
+			})
+		case domain.ErrCodeInvalidCredentials:
+			return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
+				Error:   "Invalid credentials",
+				Code:    authErr.Code,
+				Details: "The provided email or password is incorrect.",
+			})
+		case domain.ErrCodeSessionExpired:
+			return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
+				Error:   "Session expired",
+				Code:    authErr.Code,
+				Details: "Your session has expired. Please log in again.",
+			})
+		case domain.ErrCodeServiceUnavailable:
+			return c.JSON(http.StatusServiceUnavailable, DetailedErrorResponse{
+				Error:   "Service temporarily unavailable",
+				Code:    authErr.Code,
+				Details: "The authentication service is temporarily unavailable. Please try again later.",
+			})
+		}
+	}
+
+	// バリデーションエラーの処理
+	if valErr, ok := err.(*domain.ValidationError); ok {
+		return c.JSON(http.StatusBadRequest, DetailedErrorResponse{
+			Error:   "Field validation error",
+			Code:    "FIELD_VALIDATION",
+			Details: fmt.Sprintf("Field '%s': %s", valErr.Field, valErr.Message),
+			Field:   valErr.Field,
+		})
+	}
+
+	// 汎用エラー
+	return c.JSON(http.StatusInternalServerError, DetailedErrorResponse{
+		Error:   "Internal error",
+		Code:    "INTERNAL_ERROR",
+		Details: "An internal error occurred. Please try again later.",
+	})
+}
+
+// X2.md Phase 2.4.1: バリデーション関数
+
+// validateRegistrationRequest validates registration request
+func (h *AuthHandler) validateRegistrationRequest(req *RegistrationRequest) error {
+	if req.Email == "" {
+		return domain.NewValidationError("email", req.Email, "email is required")
+	}
+	if req.Password == "" {
+		return domain.NewValidationError("password", nil, "password is required")
+	}
+	if len(req.Password) < 8 {
+		return domain.NewValidationError("password", nil, "password must be at least 8 characters")
+	}
+	
+	// 基本的なメール形式検証
+	if !h.isValidEmail(req.Email) {
+		return domain.NewValidationError("email", req.Email, "invalid email format")
+	}
+	
+	return nil
+}
+
+// validateLoginRequest validates login request
+func (h *AuthHandler) validateLoginRequest(req *LoginRequest) error {
+	if req.Email == "" {
+		return domain.NewValidationError("email", req.Email, "email is required")
+	}
+	if req.Password == "" {
+		return domain.NewValidationError("password", nil, "password is required")
+	}
+	
+	// 基本的なメール形式検証
+	if !h.isValidEmail(req.Email) {
+		return domain.NewValidationError("email", req.Email, "invalid email format")
+	}
+	
+	return nil
+}
+
+// isValidEmail performs basic email format validation
+func (h *AuthHandler) isValidEmail(email string) bool {
+	// 非常に基本的なメール検証 - 実際のプロダクションではより厳密な検証を使用
+	return len(email) > 3 && 
+		   len(email) < 255 && 
+		   len(email) > len("a@b") &&
+		   email[0] != '@' && 
+		   email[len(email)-1] != '@' &&
+		   countChar(email, '@') == 1 &&
+		   countChar(email, '.') >= 1
+}
+
+// countChar counts occurrences of character in string
+func countChar(s string, c byte) int {
+	count := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			count++
+		}
+	}
+	return count
 }

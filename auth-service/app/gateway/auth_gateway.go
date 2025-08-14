@@ -63,67 +63,128 @@ func (g *AuthGateway) CreateRegistrationFlow(ctx context.Context) (*domain.Regis
 	return kratosFlow, nil
 }
 
-// SubmitLoginFlow submits a login flow to Kratos
+// SubmitLoginFlow submits a login flow to Kratos (X2.md Phase 2.3.1 強化)
 func (g *AuthGateway) SubmitLoginFlow(ctx context.Context, flowID string, body interface{}) (*domain.KratosSession, error) {
-	g.logger.Info("submitting login flow", "flow_id", flowID)
+	g.logger.Info("submitting login flow", 
+		"flow_id", flowID,
+		"body_type", fmt.Sprintf("%T", body))
 
-	// Convert body to map[string]interface{} for Kratos client
-	bodyMap, ok := body.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid body type: expected map[string]interface{}, got %T", body)
+	// 型安全な変換とログインボディ検証
+	bodyMap, err := g.validateAndTransformLoginBody(body)
+	if err != nil {
+		g.logger.Error("invalid request body for login", 
+			"flow_id", flowID, 
+			"error", err,
+			"body_type", fmt.Sprintf("%T", body))
+		return nil, fmt.Errorf("invalid request body: %w", err)
 	}
 
+	// Kratos呼び出し
 	kratosSession, err := g.kratosClient.SubmitLoginFlow(ctx, flowID, bodyMap)
 	if err != nil {
-		g.logger.Error("failed to submit login flow", "flow_id", flowID, "error", err)
-		return nil, fmt.Errorf("failed to submit login flow: %w", err)
+		// エラーの詳細ログ
+		g.logger.Error("kratos login flow submission failed",
+			"flow_id", flowID,
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err))
+			
+		// ドメインエラーに変換（上位層への伝達）
+		if domainErr, ok := err.(*domain.AuthError); ok {
+			return nil, domainErr
+		}
+		
+		return nil, fmt.Errorf("login flow submission failed: %w", err)
 	}
 
 	g.logger.Info("login flow submitted successfully",
 		"flow_id", flowID,
 		"session_id", kratosSession.ID,
-		"user_id", kratosSession.Identity.ID)
+		"user_id", kratosSession.Identity.ID,
+		"identity_state", kratosSession.Identity.State)
 
 	return kratosSession, nil
 }
 
-// SubmitRegistrationFlow submits a registration flow to Kratos
+// SubmitRegistrationFlow submits a registration flow to Kratos (X2.md Phase 2.3.1 強化)
 func (g *AuthGateway) SubmitRegistrationFlow(ctx context.Context, flowID string, body interface{}) (*domain.KratosSession, error) {
-	g.logger.Info("submitting registration flow", "flow_id", flowID)
+	g.logger.Info("submitting registration flow", 
+		"flow_id", flowID,
+		"body_type", fmt.Sprintf("%T", body))
 
-	// Convert body to map[string]interface{} for Kratos client
-	bodyMap, ok := body.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid body type: expected map[string]interface{}, got %T", body)
+	// 型安全な変換
+	bodyMap, err := g.validateAndTransformBody(body)
+	if err != nil {
+		g.logger.Error("invalid request body for registration", 
+			"flow_id", flowID, 
+			"error", err,
+			"body", fmt.Sprintf("%+v", body))
+		return nil, fmt.Errorf("invalid request body: %w", err)
 	}
 
+	// Kratos呼び出し
 	kratosSession, err := g.kratosClient.SubmitRegistrationFlow(ctx, flowID, bodyMap)
 	if err != nil {
-		g.logger.Error("failed to submit registration flow", "flow_id", flowID, "error", err)
-		return nil, fmt.Errorf("failed to submit registration flow: %w", err)
+		// エラーの詳細ログ
+		g.logger.Error("kratos registration flow submission failed",
+			"flow_id", flowID,
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err))
+			
+		// ドメインエラーに変換（上位層への伝達）
+		if domainErr, ok := err.(*domain.AuthError); ok {
+			return nil, domainErr
+		}
+		
+		return nil, fmt.Errorf("registration flow submission failed: %w", err)
 	}
 
 	g.logger.Info("registration flow submitted successfully",
 		"flow_id", flowID,
 		"session_id", kratosSession.ID,
-		"user_id", kratosSession.Identity.ID)
+		"user_id", kratosSession.Identity.ID,
+		"identity_state", kratosSession.Identity.State)
 
 	return kratosSession, nil
 }
 
-// GetSession retrieves a session from Kratos
+// GetSession retrieves a session from Kratos (X2.md Phase 2.3.1 強化)
 func (g *AuthGateway) GetSession(ctx context.Context, sessionToken string) (*domain.KratosSession, error) {
-	g.logger.Info("retrieving session")
+	g.logger.Info("retrieving session",
+		"session_token_present", sessionToken != "")
+
+	// セッショントークン検証
+	if err := g.validateSessionToken(sessionToken); err != nil {
+		g.logger.Error("invalid session token", "error", err)
+		return nil, fmt.Errorf("invalid session token: %w", err)
+	}
 
 	kratosSession, err := g.kratosClient.GetSession(ctx, sessionToken)
 	if err != nil {
-		g.logger.Error("failed to retrieve session", "error", err)
+		g.logger.Error("failed to retrieve session", 
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err))
+			
+		// ドメインエラーに変換
+		if domainErr, ok := err.(*domain.AuthError); ok {
+			return nil, domainErr
+		}
+		
 		return nil, fmt.Errorf("failed to retrieve session: %w", err)
+	}
+
+	// セッション検証
+	if err := g.validateSessionIntegrity(kratosSession); err != nil {
+		g.logger.Error("session integrity validation failed", 
+			"session_id", kratosSession.ID,
+			"error", err)
+		return nil, fmt.Errorf("session validation failed: %w", err)
 	}
 
 	g.logger.Info("session retrieved successfully",
 		"session_id", kratosSession.ID,
-		"user_id", kratosSession.Identity.ID)
+		"user_id", kratosSession.Identity.ID,
+		"identity_state", kratosSession.Identity.State,
+		"session_active", kratosSession.Active)
 
 	return kratosSession, nil
 }
@@ -139,5 +200,136 @@ func (g *AuthGateway) RevokeSession(ctx context.Context, sessionID string) error
 	}
 
 	g.logger.Info("session revoked successfully", "session_id", sessionID)
+	return nil
+}
+
+// X2.md Phase 2.3.1: バリデーション機能とヘルパー関数
+
+// validateAndTransformBody validates and transforms request body for registration
+func (g *AuthGateway) validateAndTransformBody(body interface{}) (map[string]interface{}, error) {
+	bodyMap, ok := body.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected map[string]interface{}, got %T", body)
+	}
+	
+	// 必須フィールドの検証
+	if err := g.validateRegistrationBody(bodyMap); err != nil {
+		return nil, err
+	}
+	
+	// Kratos形式への変換確認
+	if traits, ok := bodyMap["traits"]; ok {
+		g.logger.Debug("registration traits present", "traits", traits)
+	} else {
+		g.logger.Warn("registration traits missing, may cause Kratos validation error")
+	}
+	
+	return bodyMap, nil
+}
+
+// validateAndTransformLoginBody validates and transforms request body for login
+func (g *AuthGateway) validateAndTransformLoginBody(body interface{}) (map[string]interface{}, error) {
+	bodyMap, ok := body.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected map[string]interface{}, got %T", body)
+	}
+	
+	// 必須フィールドの検証
+	if err := g.validateLoginBody(bodyMap); err != nil {
+		return nil, err
+	}
+	
+	// ログイン情報のログ出力（パスワードは除外）
+	g.logger.Debug("login body validated", 
+		"has_identifier", bodyMap["identifier"] != nil,
+		"has_password", bodyMap["password"] != nil,
+		"method", bodyMap["method"])
+	
+	return bodyMap, nil
+}
+
+// validateRegistrationBody validates registration request body
+func (g *AuthGateway) validateRegistrationBody(body map[string]interface{}) error {
+	// traitsの存在確認
+	traits, ok := body["traits"]
+	if !ok {
+		return domain.NewValidationError("traits", nil, "traits field is required")
+	}
+	
+	traitsMap, ok := traits.(map[string]interface{})
+	if !ok {
+		return domain.NewValidationError("traits", traits, "traits must be an object")
+	}
+	
+	// emailの存在確認
+	if email, ok := traitsMap["email"]; !ok || email == "" {
+		return domain.NewValidationError("email", email, "email is required in traits")
+	}
+	
+	// passwordの存在確認
+	if password, ok := body["password"]; !ok || password == "" {
+		return domain.NewValidationError("password", nil, "password is required")
+	}
+	
+	return nil
+}
+
+// validateLoginBody validates login request body
+func (g *AuthGateway) validateLoginBody(body map[string]interface{}) error {
+	// identifierの存在確認
+	if identifier, ok := body["identifier"]; !ok || identifier == "" {
+		return domain.NewValidationError("identifier", identifier, "identifier is required")
+	}
+	
+	// passwordの存在確認
+	if password, ok := body["password"]; !ok || password == "" {
+		return domain.NewValidationError("password", nil, "password is required")
+	}
+	
+	// methodの存在確認（デフォルトは"password"）
+	if _, ok := body["method"]; !ok {
+		body["method"] = "password"
+	}
+	
+	return nil
+}
+
+// validateSessionToken validates session token format and presence
+func (g *AuthGateway) validateSessionToken(sessionToken string) error {
+	if sessionToken == "" {
+		return domain.NewValidationError("session_token", sessionToken, "session token is required")
+	}
+	
+	// 基本的なフォーマット検証（実装に応じて調整）
+	if len(sessionToken) < 10 {
+		return domain.NewValidationError("session_token", sessionToken, "session token format invalid")
+	}
+	
+	return nil
+}
+
+// validateSessionIntegrity validates session object integrity
+func (g *AuthGateway) validateSessionIntegrity(session *domain.KratosSession) error {
+	if session == nil {
+		return fmt.Errorf("session is nil")
+	}
+	
+	if session.ID == "" {
+		return fmt.Errorf("session missing ID")
+	}
+	
+	if session.Identity == nil {
+		return fmt.Errorf("session missing identity")
+	}
+	
+	if session.Identity.ID == "" {
+		return fmt.Errorf("session identity missing ID")
+	}
+	
+	// セッション有効性の確認
+	if !session.IsValid() {
+		return domain.NewAuthError(domain.ErrCodeSessionExpired, "session is expired or inactive", nil)
+	}
+	
 	return nil
 }

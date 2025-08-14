@@ -460,3 +460,200 @@ func NewExpirationTime(minutesFromNow int) time.Time {
 func NewCurrentTime() time.Time {
 	return time.Now()
 }
+
+// X2.md Phase 2.2.2 強化: フロー状態管理とバリデーション
+
+// FlowStateManager provides centralized flow state management
+type FlowStateManager struct {
+	maxFlowAge time.Duration
+}
+
+// NewFlowStateManager creates a new flow state manager
+func NewFlowStateManager(maxFlowAge time.Duration) *FlowStateManager {
+	return &FlowStateManager{
+		maxFlowAge: maxFlowAge,
+	}
+}
+
+// ValidateFlowState validates flow state and expiration
+func (fsm *FlowStateManager) ValidateFlowState(flow interface{}) error {
+	switch f := flow.(type) {
+	case *LoginFlow:
+		if f.IsExpired() {
+			return ErrFlowExpired
+		}
+		return f.validateFlowIntegrity()
+	case *RegistrationFlow:
+		if f.IsExpired() {
+			return ErrFlowExpired
+		}
+		return f.validateFlowIntegrity()
+	case *RecoveryFlow:
+		if f.IsExpired() {
+			return ErrFlowExpired
+		}
+		return f.validateFlowIntegrity()
+	case *VerificationFlow:
+		if f.IsExpired() {
+			return ErrFlowExpired
+		}
+		return f.validateFlowIntegrity()
+	case *SettingsFlow:
+		if f.IsExpired() {
+			return ErrFlowExpired
+		}
+		return f.validateFlowIntegrity()
+	default:
+		return fmt.Errorf("unsupported flow type: %T", flow)
+	}
+}
+
+// validateFlowIntegrity validates login flow integrity
+func (lf *LoginFlow) validateFlowIntegrity() error {
+	if lf.ID == "" {
+		return fmt.Errorf("login flow missing ID")
+	}
+	if lf.UI == nil {
+		return fmt.Errorf("login flow missing UI configuration")
+	}
+	if lf.TenantID == (uuid.UUID{}) {
+		return fmt.Errorf("login flow missing tenant ID")
+	}
+	return nil
+}
+
+// validateFlowIntegrity validates registration flow integrity
+func (rf *RegistrationFlow) validateFlowIntegrity() error {
+	if rf.ID == "" {
+		return fmt.Errorf("registration flow missing ID")
+	}
+	if rf.UI == nil {
+		return fmt.Errorf("registration flow missing UI configuration")
+	}
+	if rf.TenantID == (uuid.UUID{}) {
+		return fmt.Errorf("registration flow missing tenant ID")
+	}
+	return nil
+}
+
+// validateFlowIntegrity validates recovery flow integrity
+func (rf *RecoveryFlow) validateFlowIntegrity() error {
+	if rf.ID == "" {
+		return fmt.Errorf("recovery flow missing ID")
+	}
+	if rf.UI == nil {
+		return fmt.Errorf("recovery flow missing UI configuration")
+	}
+	if rf.TenantID == (uuid.UUID{}) {
+		return fmt.Errorf("recovery flow missing tenant ID")
+	}
+	return nil
+}
+
+// validateFlowIntegrity validates verification flow integrity
+func (vf *VerificationFlow) validateFlowIntegrity() error {
+	if vf.ID == "" {
+		return fmt.Errorf("verification flow missing ID")
+	}
+	if vf.UI == nil {
+		return fmt.Errorf("verification flow missing UI configuration")
+	}
+	if vf.TenantID == (uuid.UUID{}) {
+		return fmt.Errorf("verification flow missing tenant ID")
+	}
+	return nil
+}
+
+// validateFlowIntegrity validates settings flow integrity
+func (sf *SettingsFlow) validateFlowIntegrity() error {
+	if sf.ID == "" {
+		return fmt.Errorf("settings flow missing ID")
+	}
+	if sf.UI == nil {
+		return fmt.Errorf("settings flow missing UI configuration")
+	}
+	if sf.TenantID == (uuid.UUID{}) {
+		return fmt.Errorf("settings flow missing tenant ID")
+	}
+	if sf.Identity == nil {
+		return fmt.Errorf("settings flow missing identity")
+	}
+	return nil
+}
+
+// GetFlowAge returns the age of a flow since creation
+func GetFlowAge(flow interface{}) time.Duration {
+	now := time.Now()
+	
+	switch f := flow.(type) {
+	case *LoginFlow:
+		return now.Sub(f.IssuedAt)
+	case *RegistrationFlow:
+		return now.Sub(f.IssuedAt)
+	case *RecoveryFlow:
+		return now.Sub(f.IssuedAt)
+	case *VerificationFlow:
+		return now.Sub(f.IssuedAt)
+	case *SettingsFlow:
+		return now.Sub(f.IssuedAt)
+	default:
+		return 0
+	}
+}
+
+// GetFlowType returns the flow type as string
+func GetFlowType(flow interface{}) string {
+	switch flow.(type) {
+	case *LoginFlow:
+		return "login"
+	case *RegistrationFlow:
+		return "registration"
+	case *RecoveryFlow:
+		return "recovery"
+	case *VerificationFlow:
+		return "verification"
+	case *SettingsFlow:
+		return "settings"
+	default:
+		return "unknown"
+	}
+}
+
+// FlowSecurityContext provides security context for flows
+type FlowSecurityContext struct {
+	IPAddress     string    `json:"ip_address"`
+	UserAgent     string    `json:"user_agent"`
+	SessionToken  string    `json:"session_token,omitempty"`
+	CSRFToken     string    `json:"csrf_token,omitempty"`
+	RequestID     string    `json:"request_id"`
+	Timestamp     time.Time `json:"timestamp"`
+	TenantID      uuid.UUID `json:"tenant_id"`
+}
+
+// NewFlowSecurityContext creates a new flow security context
+func NewFlowSecurityContext(ipAddr, userAgent, requestID string, tenantID uuid.UUID) *FlowSecurityContext {
+	return &FlowSecurityContext{
+		IPAddress: ipAddr,
+		UserAgent: userAgent,
+		RequestID: requestID,
+		Timestamp: time.Now(),
+		TenantID:  tenantID,
+	}
+}
+
+// ValidateSecurityContext validates the security context
+func (fsc *FlowSecurityContext) ValidateSecurityContext() error {
+	if fsc.IPAddress == "" {
+		return fmt.Errorf("security context missing IP address")
+	}
+	if fsc.UserAgent == "" {
+		return fmt.Errorf("security context missing user agent")
+	}
+	if fsc.RequestID == "" {
+		return fmt.Errorf("security context missing request ID")
+	}
+	if fsc.TenantID == (uuid.UUID{}) {
+		return fmt.Errorf("security context missing tenant ID")
+	}
+	return nil
+}

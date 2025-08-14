@@ -63,7 +63,7 @@ func NewContainer(cfg *config.Config, logger *slog.Logger) (*Container, error) {
 	authRepository := postgres.NewAuthRepository(container.DB.Pool(), logger)
 	
 	// Initialize gateways
-	kratosClientAdapter := kratos.NewKratosClientAdapter(container.KratosClient)
+	kratosClientAdapter := kratos.NewKratosClientAdapter(container.KratosClient, logger)
 	container.AuthGateway = gateway.NewAuthGateway(kratosClientAdapter, logger)
 	
 	// Initialize usecases
