@@ -54,7 +54,7 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	e.Use(custommw.SecurityHeaders())
 	e.Use(rateLimiter.RateLimit())
 	
-	// IDS middleware
+	// IDS middleware - Phase 6.0.2: 段階的脅威レベル対応
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ip := c.RealIP()
@@ -64,15 +64,38 @@ func NewRouter(config RouterConfig) *echo.Echo {
 			// Body reading for IDS (simplified for now)
 			body := ""
 			
-			// Check if request should be blocked
-			if !ids.AnalyzeRequest(c.Request().Context(), ip, userAgent, path, body) {
-				return c.JSON(403, map[string]interface{}{
-					"error": "Request blocked by security policy",
-					"code":  "SECURITY_VIOLATION",
-				})
-			}
+			// 段階的脅威レベル判定
+			threatLevel := ids.AnalyzeRequest(c.Request().Context(), ip, userAgent, path, body)
 			
-			return next(c)
+			switch threatLevel {
+			case security.ThreatLevelSafe:
+				// 安全 - 通常処理継続
+				return next(c)
+			case security.ThreatLevelSuspect:
+				// 疑わしい - ログのみ、ブロックしない
+				config.Logger.Warn("Suspicious activity detected",
+					"ip", ip,
+					"user_agent", userAgent,
+					"path", path)
+				return next(c)
+			case security.ThreatLevelDangerous:
+				// 危険 - レート制限
+				return c.JSON(429, map[string]interface{}{
+					"error": "Rate limited due to suspicious activity",
+					"code":  "RATE_LIMITED",
+					"details": "Please reduce request frequency",
+				})
+			case security.ThreatLevelMalicious:
+				// 悪意のある - 完全ブロック
+				return c.JSON(403, map[string]interface{}{
+					"error": "Access denied by security policy",
+					"code":  "SECURITY_VIOLATION",
+					"details": "Request blocked due to malicious pattern detection",
+				})
+			default:
+				// 未知のレベル - 安全側に倒す
+				return next(c)
+			}
 		}
 	})
 

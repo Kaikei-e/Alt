@@ -27,10 +27,15 @@ type SuspiciousActivity struct {
 type ThreatLevel int
 
 const (
-	ThreatLevelLow ThreatLevel = iota
-	ThreatLevelMedium
-	ThreatLevelHigh
-	ThreatLevelCritical
+	ThreatLevelSafe ThreatLevel = iota      // 0: 許可
+	ThreatLevelSuspect                      // 1: ログのみ
+	ThreatLevelDangerous                    // 2: レート制限
+	ThreatLevelMalicious                    // 3: 完全ブロック
+	// 旧レベル維持（後方互換）
+	ThreatLevelLow      = ThreatLevelSafe
+	ThreatLevelMedium   = ThreatLevelSuspect
+	ThreatLevelHigh     = ThreatLevelDangerous
+	ThreatLevelCritical = ThreatLevelMalicious
 )
 
 func NewIDS(logger *slog.Logger) *IntrusionDetectionSystem {
@@ -45,46 +50,60 @@ func NewIDS(logger *slog.Logger) *IntrusionDetectionSystem {
 	return ids
 }
 
-func (ids *IntrusionDetectionSystem) AnalyzeRequest(ctx context.Context, ip, userAgent, path, body string) bool {
-	suspicious := false
+// Phase 6.0.1: 段階的脅威レベル判定に変更
+func (ids *IntrusionDetectionSystem) AnalyzeRequest(ctx context.Context, ip, userAgent, path, body string) ThreatLevel {
+	threatLevel := ThreatLevelSafe
 	patterns := []string{}
 
 	// SQLインジェクション検知
 	if ids.detectSQLInjection(body) {
-		suspicious = true
+		threatLevel = ThreatLevelMalicious
 		patterns = append(patterns, "SQL_INJECTION")
 	}
 
 	// XSS検知
 	if ids.detectXSS(body) {
-		suspicious = true
+		threatLevel = ThreatLevelMalicious
 		patterns = append(patterns, "XSS_ATTACK")
 	}
 
 	// パストラバーサル検知
 	if ids.detectPathTraversal(path) {
-		suspicious = true
+		threatLevel = ThreatLevelMalicious
 		patterns = append(patterns, "PATH_TRAVERSAL")
 	}
 
-	// 異常なUser-Agent検知
+	// User-Agent検知（段階的判定）
 	if ids.detectSuspiciousUserAgent(userAgent) {
-		suspicious = true
-		patterns = append(patterns, "SUSPICIOUS_UA")
+		// 実際の攻撃ツールの場合のみMalicious
+		threatLevel = ThreatLevelMalicious
+		patterns = append(patterns, "MALICIOUS_UA")
+	} else if !ids.isAllowedUserAgent(userAgent) && userAgent != "" {
+		// 未知のUser-Agentは疑わしいが、ログのみ
+		threatLevel = ThreatLevelSuspect
+		patterns = append(patterns, "UNKNOWN_UA")
 	}
 
 	// ブルートフォース検知
 	if ids.detectBruteForce(ip, path) {
-		suspicious = true
+		if threatLevel < ThreatLevelDangerous {
+			threatLevel = ThreatLevelDangerous
+		}
 		patterns = append(patterns, "BRUTE_FORCE")
 	}
 
-	if suspicious {
+	// 疑わしい活動を記録（Safe以外）
+	if threatLevel > ThreatLevelSafe {
 		ids.recordSuspiciousActivity(ip, patterns)
-		return false // リクエストをブロック
 	}
 
-	return true // リクエストを許可
+	return threatLevel
+}
+
+// Phase 6.0.1: 後方互換のためのLegacy function
+func (ids *IntrusionDetectionSystem) AnalyzeRequestLegacy(ctx context.Context, ip, userAgent, path, body string) bool {
+	threatLevel := ids.AnalyzeRequest(ctx, ip, userAgent, path, body)
+	return threatLevel <= ThreatLevelSuspect // Suspect以下は許可
 }
 
 func (ids *IntrusionDetectionSystem) detectSQLInjection(input string) bool {
@@ -139,20 +158,65 @@ func (ids *IntrusionDetectionSystem) detectPathTraversal(path string) bool {
 }
 
 func (ids *IntrusionDetectionSystem) detectSuspiciousUserAgent(userAgent string) bool {
-	suspiciousPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)sqlmap`),
-		regexp.MustCompile(`(?i)nmap`),
-		regexp.MustCompile(`(?i)nikto`),
-		regexp.MustCompile(`(?i)burp`),
-		regexp.MustCompile(`(?i)wget`),
-		regexp.MustCompile(`(?i)curl.*bot`),
+	// Phase 6.0.1: 許可リスト優先チェック
+	if ids.isAllowedUserAgent(userAgent) {
+		return false // 許可リストにある場合は安全
 	}
 
-	for _, pattern := range suspiciousPatterns {
+	// 実際の攻撃ツールのみを検知（過敏検知修正）
+	maliciousPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)sqlmap`),
+		regexp.MustCompile(`(?i)nikto`),
+		regexp.MustCompile(`(?i)burpsuite`),
+		regexp.MustCompile(`(?i)masscan`),
+		regexp.MustCompile(`(?i)nmap.*scanner`),
+		regexp.MustCompile(`(?i)zap.*proxy`),
+		regexp.MustCompile(`(?i)w3af`),
+		regexp.MustCompile(`(?i)havij`),
+		regexp.MustCompile(`(?i)acunetix`),
+		// 明確な攻撃パターンのみ（curl, wgetは除外）
+		regexp.MustCompile(`(?i)attack.*bot`),
+		regexp.MustCompile(`(?i)exploit.*scanner`),
+	}
+
+	for _, pattern := range maliciousPatterns {
 		if pattern.MatchString(userAgent) {
 			return true
 		}
 	}
+	return false
+}
+
+// Phase 6.0.1: 許可リスト機能追加
+func (ids *IntrusionDetectionSystem) isAllowedUserAgent(userAgent string) bool {
+	// 正当なブラウザとツール
+	allowedPatterns := []*regexp.Regexp{
+		// ブラウザ
+		regexp.MustCompile(`(?i)mozilla/.*firefox`),
+		regexp.MustCompile(`(?i)mozilla/.*chrome`),
+		regexp.MustCompile(`(?i)mozilla/.*safari`),
+		regexp.MustCompile(`(?i)mozilla/.*edge`),
+		// 正当なAPI client
+		regexp.MustCompile(`(?i)curl/[0-9]`),        // curl/7.x など
+		regexp.MustCompile(`(?i)wget/[0-9]`),        // wget/1.x など
+		regexp.MustCompile(`(?i)postmanruntime/`),
+		regexp.MustCompile(`(?i)insomnia/`),
+		// Kubernetes系
+		regexp.MustCompile(`(?i)kube-probe/`),
+		regexp.MustCompile(`(?i)go-http-client/`),
+		// 内部サービス
+		regexp.MustCompile(`(?i)linkerd-proxy/`),
+		regexp.MustCompile(`(?i)envoy/`),
+		// テスト・開発ツール
+		regexp.MustCompile(`(?i).*compatible.*browser`),
+	}
+
+	for _, pattern := range allowedPatterns {
+		if pattern.MatchString(userAgent) {
+			return true
+		}
+	}
+
 	return false
 }
 
