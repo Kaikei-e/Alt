@@ -31,9 +31,9 @@ browser:
 
 # Retry Configuration
 retry:
-  maxAttempts: 3
+  maxAttempts: 5  # Increased from 3 to 5 for better reliability
   initialDelay: 1000
-  maxDelay: 5000
+  maxDelay: 30000  # Increased from 5s to 30s for network issues
   backoffFactor: 2
 
 # Logging Configuration
@@ -48,10 +48,12 @@ network:
     httpProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
     httpsProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
     noProxy: "10.96.0.1,kubernetes.default.svc.cluster.local,kubernetes.default,localhost,127.0.0.1"
+    fallbackToDirect: true  # 恒久対応: プロキシ失敗時の直接接続フォールバック
   timeouts:
-    http: 30000
-    connectivity: 10000
+    http: 60000  # Increased from 30s to 60s for proxy stability
+    connectivity: 20000  # Increased from 10s to 20s
     connectivityCheck: true
+    proxyConnectTimeout: 10000  # プロキシ接続専用タイムアウト
 
 # CronJob Configuration
 cronjob:
@@ -61,8 +63,8 @@ cronjob:
   failedJobsHistoryLimit: 3
   successfulJobsHistoryLimit: 1
   suspend: false
-  backoffLimit: 2
-  activeDeadlineSeconds: 900  # 15 minutes timeout
+  backoffLimit: 5  # Increased from 2 to 5 for better retry
+  activeDeadlineSeconds: 1800  # 30 minutes timeout (increased from 15 minutes)
 
 # Resource Configuration
 resources:
