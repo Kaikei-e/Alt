@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,12 +19,14 @@ import (
 type FetchFeedsGateway struct {
 	alt_db      *alt_db.AltDBRepository
 	rateLimiter *rate_limiter.HostRateLimiter
+	httpClient  *http.Client
 }
 
 func NewFetchFeedsGateway(pool *pgxpool.Pool) *FetchFeedsGateway {
 	return &FetchFeedsGateway{
 		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
 		rateLimiter: nil, // No rate limiting for backward compatibility
+		httpClient:  nil,
 	}
 }
 
@@ -31,6 +34,7 @@ func NewFetchFeedsGatewayWithRateLimiter(pool *pgxpool.Pool, rateLimiter *rate_l
 	return &FetchFeedsGateway{
 		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
 		rateLimiter: rateLimiter,
+		httpClient:  nil,
 	}
 }
 
@@ -45,9 +49,13 @@ func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*dom
 		slog.Info("Rate limiting passed, proceeding with feed request", "url", link)
 	}
 
-	// Use unified HTTP client factory for secure RSS feed fetching
-	factory := utils.NewHTTPClientFactory()
-	httpClient := factory.CreateHTTPClient()
+	// Use provided HTTP client if available, otherwise create a secure one
+	httpClient := g.httpClient
+	if httpClient == nil {
+		factory := utils.NewHTTPClientFactory()
+		httpClient = factory.CreateHTTPClient()
+	}
+
 	fp := gofeed.NewParser()
 	fp.Client = httpClient
 	feed, err := fp.ParseURL(link)
@@ -138,7 +146,7 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 	if g.alt_db == nil {
 		return nil, errors.New("database connection not available")
 	}
-	
+
 	// TDD Fix: No dangerous fallback! Only fetch unread feeds
 	feeds, err := g.alt_db.FetchUnreadFeedsListPage(ctx, page)
 	if err != nil {
