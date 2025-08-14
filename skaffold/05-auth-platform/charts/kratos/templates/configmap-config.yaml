@@ -54,6 +54,8 @@ data:
             haveibeenpwned_enabled: {{ .Values.kratos.selfservice.methods.password.haveibeenpwned_enabled }}
             max_breaches: {{ .Values.kratos.selfservice.methods.password.max_breaches }}
             ignore_network_errors: {{ .Values.kratos.selfservice.methods.password.ignore_network_errors }}
+            min_password_length: {{ .Values.kratos.selfservice.methods.password.min_password_length | default 20 }}
+            identifier_similarity_check_enabled: false
 
         totp:
           config:
