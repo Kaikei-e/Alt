@@ -25,9 +25,9 @@ spec:
       serviceAccountName: {{ include "kratos.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      {{- if or .Values.migration.enabled .Values.initContainers.enabled }}
+      {{- if or (and .Values.migration.enabled (not .Values.migration.runAsJob)) .Values.initContainers.enabled }}
       initContainers:
-      {{- if .Values.migration.enabled }}
+      {{- if and .Values.migration.enabled (not .Values.migration.runAsJob) }}
       - name: kratos-migrate
         image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag }}"
         command: ["kratos"]
@@ -80,9 +80,11 @@ spec:
         {{- with .Values.env }}
         {{- range $key, $value := . }}
         - name: {{ $key }}
-          {{- if $value.valueFrom }}
+          {{- if and (kindIs "map" $value) $value.valueFrom }}
           valueFrom:
             {{- toYaml $value.valueFrom | nindent 12 }}
+          {{- else if and (kindIs "map" $value) $value.value }}
+          value: {{ $value.value | quote }}
           {{- else }}
           value: {{ $value | quote }}
           {{- end }}
@@ -93,10 +95,26 @@ spec:
           mountPath: /etc/config/kratos
         - name: kratos-schemas
           mountPath: /etc/config/kratos/schemas
+        # フェーズ3.3: startupProbe追加（Linkerd + マイグレーション対応）
+        {{- if .Values.healthCheck.startupProbe }}
+        startupProbe:
+          {{- toYaml .Values.healthCheck.startupProbe | nindent 10 }}
+        {{- end }}
         livenessProbe:
           {{- toYaml .Values.healthCheck.livenessProbe | nindent 10 }}
         readinessProbe:
           {{- toYaml .Values.healthCheck.readinessProbe | nindent 10 }}
+        # フェーズ1.3: Linkerdプロキシとの協調的シャットダウン
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - "/bin/sh"
+              - "-c"
+              - |
+                # Linkerdプロキシに graceful shutdown シグナル送信
+                sleep 5
+                # アプリケーション終了前の待機時間
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
         securityContext:

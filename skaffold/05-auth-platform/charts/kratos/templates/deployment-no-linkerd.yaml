@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kratos-no-linkerd
+  namespace: alt-auth
+  labels:
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/instance: kratos-no-linkerd
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/part-of: alt
+    app.kubernetes.io/version: v1.2.0
+    helm.sh/chart: kratos-0.1.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: kratos-no-linkerd
+      app.kubernetes.io/name: kratos
+  template:
+    metadata:
+      annotations:
+        linkerd.io/inject: disabled  # Disable Linkerd injection
+      labels:
+        app.kubernetes.io/instance: kratos-no-linkerd
+        app.kubernetes.io/name: kratos
+    spec:
+      serviceAccount: kratos
+      serviceAccountName: kratos
+      securityContext:
+        fsGroup: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      tolerations:
+      - effect: NoSchedule
+        key: auth-service
+        operator: Equal
+        value: kratos
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                - auth-service
+            weight: 100
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kratos
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+      - name: kratos
+        image: oryd/kratos:v1.3.1
+        command:
+        - kratos
+        args:
+        - serve
+        - all
+        - --config
+        - /etc/config/kratos/kratos.yml
+        ports:
+        - name: public
+          containerPort: 4433
+          protocol: TCP
+        - name: admin
+          containerPort: 4434
+          protocol: TCP
+        env:
+        # Fix: Single DSN configuration
+        - name: DSN
+          valueFrom:
+            secretKeyRef:
+              name: kratos-postgres-credentials
+              key: dsn
+        # Fix: Correct secret values (no map wrapper)
+        - name: SECRETS_COOKIE
+          value: "7TXwEy8eO8RSVC21PTrgq+CATzo1utZ9"
+        - name: SECRETS_CIPHER
+          value: "H1aDWIYgckEU0d4vObXdzoDl7upGJHsN"
+        # Fix: Correct Kratos environment variables
+        - name: KRATOS_LOG_LEVEL
+          value: "warning"
+        - name: KRATOS_PRODUCTION_MODE
+          value: "true"
+        livenessProbe:
+          httpGet:
+            path: /health/alive
+            port: 4434
+            scheme: HTTP
+          initialDelaySeconds: 30  # Reduced for faster startup
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 4434
+            scheme: HTTP
+          initialDelaySeconds: 15  # Reduced for faster startup
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsGroup: 10001
+          runAsNonRoot: true
+          runAsUser: 10001
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - name: kratos-config
+          mountPath: /etc/config/kratos
+        - name: kratos-schemas
+          mountPath: /etc/config/kratos/schemas
+      volumes:
+      - name: kratos-config
+        configMap:
+          name: kratos-config
+      - name: kratos-schemas
+        configMap:
+          name: kratos-schemas

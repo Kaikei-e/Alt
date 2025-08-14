@@ -9,7 +9,8 @@ data:
   kratos.yml: |
     version: {{ .Chart.AppVersion | replace "v" "" }}
 
-    dsn: postgres://{{ .Values.database.username }}:$(POSTGRES_PASSWORD)@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.database }}?sslmode={{ .Values.database.ssl_mode }}&max_conns={{ .Values.database.max_conns }}&max_idle_conns={{ .Values.database.max_idle_conns }}
+    # DSN will be provided via environment variable - remove from config file per Ory Kratos best practice
+    # dsn: Configuration moved to environment variables
 
     serve:
       public:
@@ -120,11 +121,8 @@ data:
       format: {{ .Values.kratos.log.format }}
       leak_sensitive_values: {{ .Values.kratos.log.leak_sensitive_values }}
 
-    secrets:
-      cookie:
-        - $(SECRETS_COOKIE)
-      cipher:
-        - $(SECRETS_CIPHER)
+    # Secrets will be provided via environment variables - remove from config file per Ory Kratos best practice
+    # secrets: Configuration moved to environment variables
 
     ciphers:
       algorithm: {{ .Values.kratos.ciphers.algorithm }}
