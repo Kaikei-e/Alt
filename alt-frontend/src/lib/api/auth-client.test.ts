@@ -243,7 +243,7 @@ describe('AuthAPIClient', () => {
       const result = await client.getCurrentUser();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringMatching(/\/v1\/auth\/validate$/),
+        expect.stringMatching(/\/api\/auth\/validate$/),
         expect.objectContaining({
           method: 'GET',
           credentials: 'include',
@@ -287,7 +287,7 @@ describe('AuthAPIClient', () => {
       const result = await client.getCSRFToken();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringMatching(/\/v1\/auth\/csrf$/),
+        expect.stringMatching(/\/api\/auth\/csrf$/),
         expect.objectContaining({
           method: 'POST',
           credentials: 'include',
@@ -355,7 +355,7 @@ describe('AuthAPIClient', () => {
       const result = await client.getUserSettings();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringMatching(/\/v1\/user\/settings$/),
+        expect.stringMatching(/\/api\/auth\/settings$/),
         expect.objectContaining({
           method: 'GET',
           credentials: 'include',
@@ -407,14 +407,14 @@ describe('AuthAPIClient', () => {
       // Should have made CSRF token request first
       expect(mockFetch).toHaveBeenNthCalledWith(
         1,
-        expect.stringMatching(/\/v1\/auth\/csrf$/),
+        expect.stringMatching(/\/api\/auth\/csrf$/),
         expect.objectContaining({ method: 'POST' })
       );
 
       // Should have made logout request with CSRF token
       expect(mockFetch).toHaveBeenNthCalledWith(
         2,
-        expect.stringMatching(/\/v1\/auth\/logout$/),
+        expect.stringMatching(/\/api\/auth\/logout$/),
         expect.objectContaining({
           headers: expect.objectContaining({
             'X-CSRF-Token': mockCSRFToken,
@@ -441,7 +441,7 @@ describe('AuthAPIClient', () => {
       // Should still make the logout request without CSRF token
       expect(mockFetch).toHaveBeenNthCalledWith(
         2,
-        expect.stringMatching(/\/v1\/auth\/logout$/),
+        expect.stringMatching(/\/api\/auth\/logout$/),
         expect.objectContaining({
           method: 'POST',
         })

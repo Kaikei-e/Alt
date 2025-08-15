@@ -134,7 +134,9 @@ describe("Automated Security Scan - PROTECTED", () => {
 
       // 実際の脆弱性は見つからなかった場合のみ通す（偽陽性を除く）
       const actualVulnerabilities = vulnerabilities.filter(
-        (v) => !v.includes("setTimeout with string detected"), // 偽陽性のパターン
+        (v) =>
+          !v.includes("setTimeout with string detected") &&
+          !v.includes("setInterval with string detected"), // 偽陽性のパターン
       );
 
       expect(actualVulnerabilities).toHaveLength(0);

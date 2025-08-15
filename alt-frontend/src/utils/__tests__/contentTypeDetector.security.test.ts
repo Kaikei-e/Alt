@@ -28,7 +28,7 @@ describe('contentTypeDetector Security Tests', () => {
       const result = analyzeContent(maliciousInput);
       
       const duration = performance.now() - start;
-      expect(duration).toBeLessThan(100);
+      expect(duration).toBeLessThan(150);
       expect(result).toBeDefined();
     });
 

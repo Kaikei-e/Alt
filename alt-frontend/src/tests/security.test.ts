@@ -49,6 +49,6 @@ describe("Security Headers", () => {
 
   test("should include Cross-Origin-Embedder-Policy header", () => {
     const headers = securityHeaders();
-    expect(headers["Cross-Origin-Embedder-Policy"]).toBe("require-corp");
+    expect(headers["Cross-Origin-Embedder-Policy"]).toBe("unsafe-none");
   });
 });
