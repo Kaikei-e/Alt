@@ -3,19 +3,21 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ───────────────────────────────────────────────────────────
-# build-images.sh — SHA256タグ付けビルド & Kindロードスクリプト
-# • 各サービスを「<service>:sha256-<hash>」形式でタグ付け
-# • <service>:latest タグも追加
+# build-images.sh — 恒久運用対応ビルド & デプロイスクリプト
+# • 各サービスを「<service>:latest」形式で統一タグ付け
+# • IMAGE_PREFIX対応でレジストリプッシュ機能
 # • 自動的にkindクラスターにロード
-# • IMAGE_PREFIX不要のシンプル設計
+# • 恒久運用のための統一戦略
 #
 # 使い方例:
 #   ./build-images.sh all
 #   ./build-images.sh alt-backend,alt-frontend
-#   ./build-images.sh auth-token-manager
+#   IMAGE_PREFIX=kaikei/project-alt ./build-images.sh all
 #
 # オプション環境変数:
 #   KIND_CLUSTER_NAME : kindクラスター名 (デフォルト: alt-prod)
+#   IMAGE_PREFIX      : レジストリプレフィックス (例: kaikei/project-alt)
+#   SKIP_PUSH         : プッシュをスキップ (デフォルト: false)
 # ───────────────────────────────────────────────────────────
 
 # ----- カラー -----
@@ -109,24 +111,57 @@ build_and_load() {
 
   # SHA256タグ生成
   local sha_tag="$(generate_sha256_tag "$svc" "$dir")"
-  local sha_image="${svc}:${sha_tag}"
-  local latest_image="${svc}:latest"
+  local local_sha_image="${svc}:${sha_tag}"
+  local local_latest_image="${svc}:latest"
+  
+  # IMAGE_PREFIX対応: レジストリ用タグ生成
+  local registry_sha_image="${local_sha_image}"
+  local registry_latest_image="${local_latest_image}"
+  if [[ -n "${IMAGE_PREFIX:-}" ]]; then
+    registry_sha_image="${IMAGE_PREFIX}/${svc}:${sha_tag}"
+    registry_latest_image="${IMAGE_PREFIX}/${svc}:latest"
+  fi
 
-  # ビルド
-  echo -e "${BLUE}▶ Building $svc → $sha_image${NC}"
+  # ビルド（ローカルタグでビルド）
+  echo -e "${BLUE}▶ Building $svc → $local_sha_image${NC}"
   pushd "$dir" >/dev/null
-  docker build --pull -f "$(basename "$df_path")" -t "$sha_image" .
-  docker tag "$sha_image" "$latest_image"
+  docker build --pull -f "$(basename "$df_path")" -t "$local_sha_image" .
+  docker tag "$local_sha_image" "$local_latest_image"
+  
+  # IMAGE_PREFIX設定時はレジストリ用タグも作成
+  if [[ -n "${IMAGE_PREFIX:-}" ]]; then
+    echo -e "${CYAN}🏷 Registry tagging: ${IMAGE_PREFIX}/${svc}${NC}"
+    docker tag "$local_sha_image" "$registry_sha_image"
+    docker tag "$local_latest_image" "$registry_latest_image"
+  fi
   popd >/dev/null
 
-  # kindクラスターにロード
+  # kindクラスターにロード（ローカルタグを使用）
   echo -e "${CYAN}↪ Loading to kind cluster: $KIND_CLUSTER_NAME${NC}"
-  kind load docker-image "$sha_image" --name "$KIND_CLUSTER_NAME"
-  kind load docker-image "$latest_image" --name "$KIND_CLUSTER_NAME"
+  kind load docker-image "$local_sha_image" --name "$KIND_CLUSTER_NAME"
+  kind load docker-image "$local_latest_image" --name "$KIND_CLUSTER_NAME"
+  
+  # IMAGE_PREFIX設定時はレジストリ用タグもロード
+  if [[ -n "${IMAGE_PREFIX:-}" ]]; then
+    kind load docker-image "$registry_sha_image" --name "$KIND_CLUSTER_NAME"
+    kind load docker-image "$registry_latest_image" --name "$KIND_CLUSTER_NAME"
+  fi
+
+  # SKIP_PUSH設定されていない場合、レジストリにプッシュ
+  if [[ -n "${IMAGE_PREFIX:-}" && "${SKIP_PUSH:-false}" != "true" ]]; then
+    echo -e "${YELLOW}📤 Pushing to registry...${NC}"
+    docker push "$registry_sha_image"
+    docker push "$registry_latest_image"
+    echo -e "${GREEN}✅ Registry push completed${NC}"
+  fi
 
   echo -e "${GREEN}✓ 完了: $svc${NC}"
-  echo -e "${GREEN}  📦 Image: $sha_image${NC}"
-  echo -e "${GREEN}  📦 Latest: $latest_image${NC}"
+  echo -e "${GREEN}  📦 Local SHA256: $local_sha_image${NC}"
+  echo -e "${GREEN}  📦 Local Latest: $local_latest_image${NC}"
+  if [[ -n "${IMAGE_PREFIX:-}" ]]; then
+    echo -e "${GREEN}  🌐 Registry SHA256: $registry_sha_image${NC}"
+    echo -e "${GREEN}  🌐 Registry Latest: $registry_latest_image${NC}"
+  fi
   echo -e "${GREEN}  🔄 Loaded to kind cluster: $KIND_CLUSTER_NAME${NC}\n"
 }
 
@@ -139,7 +174,18 @@ main() {
   
   echo -e "${BLUE}🚀 Starting build process${NC}"
   echo -e "${BLUE}Kind cluster: ${KIND_CLUSTER_NAME}${NC}"
-  echo -e "${BLUE}Git SHA: ${GIT_SHA}${NC}\n"
+  echo -e "${BLUE}Git SHA: ${GIT_SHA}${NC}"
+  if [[ -n "${IMAGE_PREFIX:-}" ]]; then
+    echo -e "${BLUE}Registry prefix: ${IMAGE_PREFIX}${NC}"
+    if [[ "${SKIP_PUSH:-false}" == "true" ]]; then
+      echo -e "${BLUE}Push enabled: disabled${NC}"
+    else
+      echo -e "${BLUE}Push enabled: enabled${NC}"
+    fi
+  else
+    echo -e "${BLUE}Registry prefix: none (local build only)${NC}"
+  fi
+  echo
   
   if [[ "$target" == all ]]; then
     echo -e "${BLUE}Building all services...${NC}"
