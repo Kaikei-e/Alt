@@ -83,7 +83,7 @@ func (h *AuthHandler) CompleteLogin(c echo.Context) error {
 		h.logger.Error("login request validation failed",
 			"flowId", flowID,
 			"error", err,
-			"email", loginReq.Email)
+			"email", h.extractEmailFromLoginRequest(&loginReq))
 		return c.JSON(http.StatusBadRequest, DetailedErrorResponse{
 			Error:   "Validation failed",
 			Code:    "VALIDATION_ERROR", 
@@ -95,7 +95,7 @@ func (h *AuthHandler) CompleteLogin(c echo.Context) error {
 	if err != nil {
 		h.logger.Error("failed to complete login", 
 			"flowId", flowID, 
-			"email", loginReq.Email,
+			"email", h.extractEmailFromLoginRequest(&loginReq),
 			"error", err,
 			"error_type", fmt.Sprintf("%T", err))
 			
@@ -107,7 +107,7 @@ func (h *AuthHandler) CompleteLogin(c echo.Context) error {
 	h.logger.Info("login completed successfully",
 		"flowId", flowID,
 		"userId", sessionCtx.UserID,
-		"email", loginReq.Email)
+		"email", h.extractEmailFromLoginRequest(&loginReq))
 
 	// Set session cookie
 	h.setSessionCookie(c, sessionCtx.SessionID)
@@ -498,9 +498,13 @@ func (h *AuthHandler) extractSessionID(c echo.Context) string {
 
 // Request/Response types
 type LoginRequest struct {
-	Email     string `json:"email" validate:"required,email"`
-	Password  string `json:"password" validate:"required,min=8"`
-	CSRFToken string `json:"csrf_token,omitempty"`
+	// HAR分析により判明: フロントエンドは"identifier"フィールドで送信している
+	// X17.md Phase 17.1: Login API修正
+	Email      string `json:"email,omitempty"`           // 既存フィールド（後方互換性）
+	Identifier string `json:"identifier,omitempty"`     // フロントエンドが実際に送信するフィールド
+	Password   string `json:"password" validate:"required,min=8"`
+	Method     string `json:"method,omitempty"`          // Kratosプロトコル用
+	CSRFToken  string `json:"csrf_token,omitempty"`
 }
 
 type RegistrationRequest struct {
@@ -618,20 +622,33 @@ func (h *AuthHandler) validateRegistrationRequest(req *RegistrationRequest) erro
 }
 
 // validateLoginRequest validates login request
+// X17.md Phase 17.1: identifier/email フィールド両方対応
 func (h *AuthHandler) validateLoginRequest(req *LoginRequest) error {
-	if req.Email == "" {
-		return domain.NewValidationError("email", req.Email, "email is required")
+	// identifierまたはemailフィールドからemail値を取得
+	email := h.extractEmailFromLoginRequest(req)
+	if email == "" {
+		return domain.NewValidationError("email", email, "email is required")
 	}
 	if req.Password == "" {
 		return domain.NewValidationError("password", nil, "password is required")
 	}
 	
 	// 基本的なメール形式検証
-	if !h.isValidEmail(req.Email) {
-		return domain.NewValidationError("email", req.Email, "invalid email format")
+	if !h.isValidEmail(email) {
+		return domain.NewValidationError("email", email, "invalid email format")
 	}
 	
 	return nil
+}
+
+// extractEmailFromLoginRequest extracts email from either identifier or email field
+// X17.md Phase 17.1: HAR分析に基づくフィールドマッピング
+func (h *AuthHandler) extractEmailFromLoginRequest(req *LoginRequest) string {
+	// 優先順位: identifier > email (フロントエンドが実際に送信するのはidentifier)
+	if req.Identifier != "" {
+		return req.Identifier
+	}
+	return req.Email
 }
 
 // isValidEmail performs basic email format validation
