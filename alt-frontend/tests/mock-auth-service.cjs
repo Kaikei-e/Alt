@@ -17,3 +17,8 @@ server.listen(port, () => {
   console.log(`Mock auth service running on port ${port}`);
 });
 
+// Gracefully shut down on termination signals
+const close = () => server.close(() => process.exit(0));
+process.on("SIGINT", close);
+process.on("SIGTERM", close);
+

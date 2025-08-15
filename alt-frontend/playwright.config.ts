@@ -56,13 +56,15 @@ export default defineConfig({
     {
       command: "node tests/mock-auth-service.cjs",
       port: 4545,
-      reuseExistingServer: true,
+      reuseExistingServer: !isCI,
     },
     {
       // CI ではビルド→本番起動、ローカルでは next dev
-      command: "next dev --port 3010",
+      command: isCI
+        ? "next build && next start -p 3010"
+        : "next dev --port 3010",
       url: "http://localhost:3010",
-      reuseExistingServer: true,
+      reuseExistingServer: !isCI,
       timeout: 1200 * 1000, // 20分のWebServerタイムアウト
       env: {
         AUTH_SERVICE_URL: "http://localhost:4545",
