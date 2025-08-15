@@ -10,7 +10,7 @@ export default function LoginPage() {
   const { isAuthenticated } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
-  
+
   // Get return URL from query parameters
   const returnUrl = searchParams.get('returnUrl') || '/'
 
@@ -78,9 +78,9 @@ export default function LoginPage() {
               color="var(--alt-primary)"
               textShadow="0 2px 4px rgba(0,0,0,0.1)"
             >
-              Alt Reader
+              Alt
             </Text>
-            
+
             <VStack gap={2}>
               <Text
                 fontSize="lg"
@@ -90,7 +90,7 @@ export default function LoginPage() {
               >
                 ログイン
               </Text>
-              
+
               {returnUrl !== '/' && (
                 <Box
                   bg="var(--alt-glass)"
