@@ -4,9 +4,13 @@ const port = process.env.MOCK_AUTH_PORT || 4545;
 
 const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/v1/auth/validate") {
-    res.statusCode = 401;
+    res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
-    res.end("null");
+    // Mimic auth-service session cookie so downstream requests are authenticated
+    res.setHeader("Set-Cookie", "auth_session=mock; HttpOnly");
+    res.end(
+      JSON.stringify({ id: "mock-user", name: "Mock User" })
+    );
     return;
   }
   res.statusCode = 404;
