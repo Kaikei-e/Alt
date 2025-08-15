@@ -18,7 +18,7 @@ news-creator/models/*
 *.p12
 *.srl
 
-.har
+*.har
 
 # real data
 backup.sql
