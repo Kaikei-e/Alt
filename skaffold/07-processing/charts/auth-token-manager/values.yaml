@@ -44,27 +44,27 @@ logging:
 # Network Configuration
 network:
   proxy:
-    enabled: true
+    enabled: true   # 恒久対応: 外界接続はEnvoyプロキシ経由のみ許可
     httpProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
     httpsProxy: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
     noProxy: "10.96.0.1,kubernetes.default.svc.cluster.local,kubernetes.default,localhost,127.0.0.1"
-    fallbackToDirect: true  # 恒久対応: プロキシ失敗時の直接接続フォールバック
+    fallbackToDirect: false  # 恒久対応: 外界接続はEnvoy経由のみ許可、直接接続禁止
   timeouts:
-    http: 60000  # Increased from 30s to 60s for proxy stability
-    connectivity: 20000  # Increased from 10s to 20s
+    http: 120000  # 120s - 恒久対応: Envoyプロキシ経由のため長めに設定
+    connectivity: 30000  # 30s - 恒久対応: 接続性チェックのタイムアウト延長
     connectivityCheck: true
-    proxyConnectTimeout: 10000  # プロキシ接続専用タイムアウト
+    proxyConnectTimeout: 30000  # 30s - 恒久対応: プロキシ接続タイムアウト延長
 
 # CronJob Configuration
 cronjob:
-  schedule: "0 */6 * * *"  # Every 6 hours
+  schedule: "0 0,6,12,18 * * *"  # 4 times daily at 00:00, 06:00, 12:00, 18:00 - 恒久対応: プリエンプティブ更新
   timeZone: "UTC"
   concurrencyPolicy: Forbid
   failedJobsHistoryLimit: 3
   successfulJobsHistoryLimit: 1
   suspend: false
   backoffLimit: 5  # Increased from 2 to 5 for better retry
-  activeDeadlineSeconds: 1800  # 30 minutes timeout (increased from 15 minutes)
+  activeDeadlineSeconds: 3600  # 60 minutes timeout - 恒久対応: プロキシ経由のため時間延長
 
 # Resource Configuration
 resources:

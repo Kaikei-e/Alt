@@ -25,7 +25,10 @@ spec:
           restartPolicy: Never
           shareProcessNamespace: true  # Required for Playwright browser process management
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+            runAsUser: {{ .Values.securityContext.runAsUser }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup }}
+            fsGroup: {{ .Values.securityContext.fsGroup }}
           containers:
           - name: {{ .Chart.Name }}
             image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -41,8 +44,6 @@ spec:
             securityContext:
               allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}
               readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem }}
-              runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
-              runAsUser: {{ .Values.securityContext.runAsUser }}
               capabilities:
                 {{- toYaml .Values.securityContext.capabilities | nindent 16 }}
             volumeMounts:
