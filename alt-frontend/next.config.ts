@@ -27,8 +27,15 @@ if (process.env.ANALYZE === "true") {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // REPORT.md A: Build ID固定化でPod間整合性確保
-  generateBuildId: async () => process.env.GIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || 'local-dev',
+  // X17.md Phase 17.2: HAR実証済み - local-devを回避する本番ビルドID生成
+  generateBuildId: async () => {
+    const buildId = process.env.GIT_SHA || 
+                   process.env.VERCEL_GIT_COMMIT_SHA || 
+                   process.env.BUILD_ID || 
+                   `production-${Date.now().toString(36)}`;
+    console.log(`🏗️ Generated Build ID: ${buildId}`);
+    return buildId;
+  },
   
   // Enable standalone output for containerized deployment
   output: "standalone",
@@ -47,9 +54,12 @@ const nextConfig = {
     ];
   },
 
-  // REPORT.md A: Build IDヘッダ出力（ビルド時評価）
+  // X17.md Phase 17.2: HAR実証済み - local-devを回避するヘッダ設定  
   async headers() {
-    const buildId = process.env.GIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || 'local-dev'
+    const buildId = process.env.GIT_SHA || 
+                   process.env.VERCEL_GIT_COMMIT_SHA || 
+                   process.env.BUILD_ID || 
+                   `production-${Date.now().toString(36)}`
     return [
       {
         source: "/(.*)",

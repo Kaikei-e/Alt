@@ -9,6 +9,7 @@ export type AuthErrorType =
   | 'USER_ALREADY_EXISTS'          // 新規: 既存ユーザー専用
   | 'REGISTRATION_FAILED'          // 汎用的な登録エラー
   | 'SESSION_EXPIRED'
+  | 'SESSION_NOT_FOUND'            // 新規: セッションが見つからない（401エラー）
   | 'VALIDATION_ERROR'
   | 'FLOW_EXPIRED'                 // 新規: フロー期限切れ
   | 'KRATOS_SERVICE_ERROR'         // 新規: Kratosサービスエラー
@@ -21,12 +22,26 @@ export interface AuthError {
   message: string;
   isRetryable: boolean;
   retryCount?: number;
+  // 🔄 Phase 4: 詳細エラー情報
+  technicalInfo?: string;
+  errorCode?: string;
+  suggestions?: string[];
+  retryAfter?: number;
 }
 
 interface ExtendedAuthState extends Omit<AuthState, 'error'> {
   error: AuthError | null;
   lastActivity: Date | null;
   sessionTimeout: number; // minutes
+}
+
+// 🔄 Phase 3: フロー管理状態
+interface FlowState {
+  registrationFlow: any | null;
+  loginFlow: any | null;
+  expiresAt: Date | null;
+  isExpired: boolean;
+  lastRefreshTime: Date | null;
 }
 
 interface AuthContextType extends ExtendedAuthState {
@@ -36,6 +51,13 @@ interface AuthContextType extends ExtendedAuthState {
   refresh: () => Promise<void>;
   clearError: () => void;
   retryLastAction: () => Promise<void>;
+  // 🔍 ULTRA-DIAGNOSTIC: 開発者向けデバッグ機能
+  debugDiagnoseRegistrationFlow: () => Promise<any>;
+  debugCaptureNextRequest: (enable: boolean) => void;
+  // 🔄 Phase 3: フロー管理機能
+  ensureValidRegistrationFlow: () => Promise<any>;
+  ensureValidLoginFlow: () => Promise<any>;
+  isFlowValid: (flow: any) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -47,24 +69,120 @@ interface AuthProviderProps {
 // エラーマッピング関数 - 詳細診断ログ付き
 const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
   // 詳細診断ログ
-  console.log('[AUTH-CONTEXT] Error mapping - Input error:', error);
-  console.log('[AUTH-CONTEXT] Error mapping - Error type:', typeof error);
-  console.log('[AUTH-CONTEXT] Error mapping - Retry count:', retryCount);
+  console.groupCollapsed('[AUTH-CONTEXT] 🔍 Error Mapping Analysis');
+  console.log('Input error:', error);
+  console.log('Error type:', typeof error);
+  console.log('Retry count:', retryCount);
 
   if (error instanceof Error) {
-    console.log('[AUTH-CONTEXT] Error mapping - Error message:', error.message);
-    console.log('[AUTH-CONTEXT] Error mapping - Error name:', error.name);
-    // ネットワークエラーの検出
-    if (error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
+    console.log('Error message:', error.message);
+    console.log('Error name:', error.name);
+
+    // 🔄 Phase 4: バックエンドからの詳細エラー情報を抽出
+    const extractDetailedErrorInfo = (errorMessage: string) => {
+      // "[ERROR_TYPE]: message" パターンをチェック
+      const detailedErrorMatch = errorMessage.match(/\[([A-Z_]+)\]: (.+)/);
+      if (detailedErrorMatch) {
+        const [, errorType, message] = detailedErrorMatch;
+        console.log('🎯 Detailed error detected:', { errorType, message });
+        return { errorType, message };
+      }
+      return null;
+    };
+
+    const detailedInfo = extractDetailedErrorInfo(error.message);
+
+    // 🔄 Phase 4: 詳細エラー情報がある場合の処理
+    if (detailedInfo) {
+      console.log('✅ Using detailed error info for mapping');
+      const baseError: AuthError = {
+        type: detailedInfo.errorType as AuthErrorType,
+        message: detailedInfo.message,
+        isRetryable: true, // デフォルト値、後で調整
+        retryCount,
+        technicalInfo: `Backend error: ${detailedInfo.errorType}`,
+        errorCode: detailedInfo.errorType,
+      };
+
+      // 詳細エラータイプ別の調整
+      switch (detailedInfo.errorType) {
+        case 'MISSING_EMAIL_FIELD':
+          baseError.type = 'DATA_FORMAT_ERROR';
+          baseError.isRetryable = true;
+          baseError.suggestions = [
+            'メールアドレスフィールドが正しく送信されているか確認してください',
+            'フォームを再読み込みして再試行してください',
+          ];
+          break;
+        case 'USER_ALREADY_EXISTS':
+          baseError.type = 'USER_ALREADY_EXISTS';
+          baseError.isRetryable = false;
+          baseError.suggestions = [
+            '別のメールアドレスを使用してください',
+            '既にアカウントをお持ちの場合はログインしてください',
+          ];
+          break;
+        case 'FLOW_EXPIRED':
+          baseError.type = 'FLOW_EXPIRED';
+          baseError.isRetryable = true;
+          baseError.suggestions = [
+            'ページを再読み込みして新しい登録フローを開始してください',
+          ];
+          break;
+        case 'SESSION_NOT_FOUND':
+          baseError.type = 'SESSION_NOT_FOUND';
+          baseError.isRetryable = true;
+          baseError.suggestions = [
+            '認証が必要です。ログインしてください',
+            'ページを再読み込みしてください',
+          ];
+          break;
+        default:
+          baseError.isRetryable = true;
+      }
+
+      console.groupEnd();
+      return baseError;
+    }
+
+    // 🚨 FIX: 404 エラーの正確な処理（認証サービス利用不可）
+    if (error.message.includes('404') || error.message.includes('Not Found')) {
       return {
-        type: 'NETWORK_ERROR',
-        message: 'ネットワーク接続を確認してください',
+        type: 'KRATOS_SERVICE_ERROR',
+        message: '認証サービスに接続できません。しばらく後にもう一度お試しください',
         isRetryable: true,
-        retryCount
+        retryCount,
+        technicalInfo: 'Authentication service endpoints not accessible',
+        suggestions: ['しばらく待ってから再試行してください', 'サポートにお問い合わせください']
       };
     }
 
-    // 認証エラーの検出
+    // ネットワークエラーの検出
+    if (error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
+      const networkError: AuthError = {
+        type: 'NETWORK_ERROR',
+        message: 'ネットワーク接続を確認してください',
+        isRetryable: true,
+        retryCount,
+        technicalInfo: 'Network connectivity issue',
+        suggestions: ['インターネット接続を確認してください', '再試行してください'],
+      };
+      console.groupEnd();
+      return networkError;
+    }
+
+    // 認証エラーの検出 - より精密な分類
+    if (error.message.includes('SESSION_NOT_FOUND') || error.message.includes('Authentication required')) {
+      return {
+        type: 'SESSION_NOT_FOUND',
+        message: '認証が必要です。ログインしてください',
+        isRetryable: true,
+        retryCount,
+        technicalInfo: 'Session not found - authentication required',
+        suggestions: ['ログインページに移動してください', 'ページを再読み込みしてください']
+      };
+    }
+
     if (error.message.includes('401') || error.message.includes('Unauthorized') || error.message.includes('Invalid credentials')) {
       return {
         type: 'INVALID_CREDENTIALS',
@@ -94,16 +212,18 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
       };
     }
 
-    // 精密なエラー分類 - 既存ユーザーの明確な検出
-    if (error.message.includes('User already exists') ||
-        error.message.includes('already registered') ||
-        error.message.includes('email already taken') ||
-        error.message.includes('409')) {
+    // 🚨 FIX: より厳密な既存ユーザー検出 - HTTP 409 Conflict 専用
+    if ((error.message.includes('409') && 
+         (error.message.includes('User already exists') || 
+          error.message.includes('already registered') || 
+          error.message.includes('email already taken'))) ||
+        error.message.includes('USER_ALREADY_EXISTS')) {
       return {
         type: 'USER_ALREADY_EXISTS',
         message: 'このメールアドレスは既に登録されています。ログインをお試しください',
         isRetryable: false,
-        retryCount
+        retryCount,
+        technicalInfo: 'User conflict detected from authentication service'
       };
     }
 
@@ -166,20 +286,28 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
       };
     }
 
-    return {
-      type: 'UNKNOWN_ERROR',
+    const mappedError = {
+      type: 'UNKNOWN_ERROR' as AuthErrorType,
       message: error.message || '予期しないエラーが発生しました',
       isRetryable: true,
       retryCount
     };
+    
+    console.log('🎯 Final Mapped Error:', mappedError);
+    console.groupEnd();
+    return mappedError;
   }
 
-  return {
-    type: 'UNKNOWN_ERROR',
+  const mappedError = {
+    type: 'UNKNOWN_ERROR' as AuthErrorType,
     message: '予期しないエラーが発生しました',
     isRetryable: true,
     retryCount
   };
+  
+  console.log('🎯 Final Mapped Error:', mappedError);
+  console.groupEnd();
+  return mappedError;
 };
 
 export function AuthProvider({ children }: AuthProviderProps) {
@@ -197,6 +325,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
     type: 'login' | 'register' | 'refresh';
     params: any[];
   } | null>(null);
+
+  // 🔍 ULTRA-DIAGNOSTIC: デバッグ状態管理
+  const [debugCaptureEnabled, setDebugCaptureEnabled] = useState(false);
+
+  // 🔄 Phase 3: フロー管理状態管理
+  const [flowState, setFlowState] = useState<FlowState>({
+    registrationFlow: null,
+    loginFlow: null,
+    expiresAt: null,
+    isExpired: false,
+    lastRefreshTime: null
+  });
 
   // 自動セッション確認
   useEffect(() => {
@@ -220,12 +360,158 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [authState.isAuthenticated, authState.lastActivity, authState.sessionTimeout]);
 
+  // 🔄 Phase 3: フロー期限監視システム
+  useEffect(() => {
+    const checkFlowExpiration = () => {
+      const now = new Date();
+      
+      // 登録フロー期限チェック
+      if (flowState.registrationFlow && flowState.expiresAt) {
+        const timeToExpiry = flowState.expiresAt.getTime() - now.getTime();
+        const isExpiring = timeToExpiry < 5 * 60 * 1000; // 5分以内に期限切れ
+        
+        if (isExpiring && !flowState.isExpired) {
+          console.warn('🔄 [FLOW-MANAGER] Registration flow expiring soon:', {
+            flowId: flowState.registrationFlow.id,
+            expiresAt: flowState.expiresAt.toISOString(),
+            timeToExpiry: `${Math.round(timeToExpiry / 1000)}s`
+          });
+          
+          setFlowState(prev => ({ ...prev, isExpired: true }));
+        }
+      }
+      
+      // ログインフロー期限チェック
+      if (flowState.loginFlow && flowState.expiresAt) {
+        const timeToExpiry = flowState.expiresAt.getTime() - now.getTime();
+        const isExpiring = timeToExpiry < 5 * 60 * 1000; // 5分以内に期限切れ
+        
+        if (isExpiring && !flowState.isExpired) {
+          console.warn('🔄 [FLOW-MANAGER] Login flow expiring soon:', {
+            flowId: flowState.loginFlow.id,
+            expiresAt: flowState.expiresAt.toISOString(),
+            timeToExpiry: `${Math.round(timeToExpiry / 1000)}s`
+          });
+          
+          setFlowState(prev => ({ ...prev, isExpired: true }));
+        }
+      }
+    };
+
+    // 30秒毎にフロー期限をチェック
+    const flowCheckInterval = setInterval(checkFlowExpiration, 30000);
+
+    return () => clearInterval(flowCheckInterval);
+  }, [flowState.registrationFlow, flowState.loginFlow, flowState.expiresAt, flowState.isExpired]);
+
   // アクティビティ更新
   const updateActivity = useCallback(() => {
     if (authState.isAuthenticated) {
       setAuthState(prev => ({ ...prev, lastActivity: new Date() }));
     }
   }, [authState.isAuthenticated]);
+
+  // 🔄 Phase 3: フロー有効性チェック
+  const isFlowValid = useCallback((flow: any): boolean => {
+    if (!flow || !flow.expiresAt) {
+      console.log('🔍 [FLOW-MANAGER] Flow invalid: missing flow or expiresAt', { flow: !!flow, expiresAt: flow?.expiresAt });
+      return false;
+    }
+    
+    const now = new Date();
+    const expiresAt = new Date(flow.expiresAt);
+    const isValid = expiresAt > now;
+    
+    console.log('🔍 [FLOW-MANAGER] Flow validity check:', {
+      flowId: flow.id,
+      expiresAt: expiresAt.toISOString(),
+      now: now.toISOString(),
+      isValid,
+      timeToExpiry: `${Math.round((expiresAt.getTime() - now.getTime()) / 1000)}s`
+    });
+    
+    return isValid;
+  }, []);
+
+  // 🔄 Phase 3: 有効な登録フロー確保
+  const ensureValidRegistrationFlow = useCallback(async (): Promise<any> => {
+    const flowManagerId = `REG-FLOW-${Date.now()}`;
+    console.log(`🔄 [FLOW-MANAGER] Ensuring valid registration flow - ${flowManagerId}`);
+    
+    // 既存フローの有効性チェック
+    if (isFlowValid(flowState.registrationFlow)) {
+      console.log(`✅ [FLOW-MANAGER] Current registration flow is valid - ${flowManagerId}`, {
+        flowId: flowState.registrationFlow.id,
+        expiresAt: flowState.registrationFlow.expiresAt
+      });
+      return flowState.registrationFlow;
+    }
+
+    console.log(`🔄 [FLOW-MANAGER] Registration flow expired or invalid, regenerating... - ${flowManagerId}`);
+    
+    try {
+      const newFlow = await authAPI.initiateRegistration();
+      
+      setFlowState(prev => ({
+        ...prev,
+        registrationFlow: newFlow,
+        expiresAt: new Date(newFlow.expiresAt),
+        isExpired: false,
+        lastRefreshTime: new Date()
+      }));
+
+      console.log(`✅ [FLOW-MANAGER] New registration flow created - ${flowManagerId}`, {
+        flowId: newFlow.id,
+        expiresAt: newFlow.expiresAt,
+        timeToExpiry: `${Math.round((new Date(newFlow.expiresAt).getTime() - Date.now()) / 1000)}s`
+      });
+
+      return newFlow;
+    } catch (error) {
+      console.error(`❌ [FLOW-MANAGER] Failed to create registration flow - ${flowManagerId}`, error);
+      throw error;
+    }
+  }, [flowState.registrationFlow, isFlowValid]);
+
+  // 🔄 Phase 3: 有効なログインフロー確保
+  const ensureValidLoginFlow = useCallback(async (): Promise<any> => {
+    const flowManagerId = `LOGIN-FLOW-${Date.now()}`;
+    console.log(`🔄 [FLOW-MANAGER] Ensuring valid login flow - ${flowManagerId}`);
+    
+    // 既存フローの有効性チェック
+    if (isFlowValid(flowState.loginFlow)) {
+      console.log(`✅ [FLOW-MANAGER] Current login flow is valid - ${flowManagerId}`, {
+        flowId: flowState.loginFlow.id,
+        expiresAt: flowState.loginFlow.expiresAt
+      });
+      return flowState.loginFlow;
+    }
+
+    console.log(`🔄 [FLOW-MANAGER] Login flow expired or invalid, regenerating... - ${flowManagerId}`);
+    
+    try {
+      const newFlow = await authAPI.initiateLogin();
+      
+      setFlowState(prev => ({
+        ...prev,
+        loginFlow: newFlow,
+        expiresAt: new Date(newFlow.expiresAt),
+        isExpired: false,
+        lastRefreshTime: new Date()
+      }));
+
+      console.log(`✅ [FLOW-MANAGER] New login flow created - ${flowManagerId}`, {
+        flowId: newFlow.id,
+        expiresAt: newFlow.expiresAt,
+        timeToExpiry: `${Math.round((new Date(newFlow.expiresAt).getTime() - Date.now()) / 1000)}s`
+      });
+
+      return newFlow;
+    } catch (error) {
+      console.error(`❌ [FLOW-MANAGER] Failed to create login flow - ${flowManagerId}`, error);
+      throw error;
+    }
+  }, [flowState.loginFlow, isFlowValid]);
 
   // 再試行付きのチェック認証
   const checkAuthStatus = async (retryCount = 0): Promise<void> => {
@@ -288,15 +574,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
 
-      // Initiate login flow with validation
-      const loginFlow = await authAPI.initiateLogin();
+      // 🔄 Phase 3: 有効なログインフロー確保
+      const loginFlow = await ensureValidLoginFlow();
 
       // 🚨 防御的プログラミング: flow オブジェクト検証強化
       if (!loginFlow || !loginFlow.id) {
         throw new Error('Login flow initialization failed: missing flow ID');
       }
 
-      console.log('[AUTH-CONTEXT] Login flow initialized:', { flowId: loginFlow.id, timestamp: new Date().toISOString() });
+      console.log('[AUTH-CONTEXT] Using valid login flow:', { 
+        flowId: loginFlow.id, 
+        expiresAt: loginFlow.expiresAt,
+        timestamp: new Date().toISOString() 
+      });
 
       // Complete login with credentials
       const user = await authAPI.completeLogin(loginFlow.id, email, password);
@@ -337,18 +627,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
 
-      // Initiate registration flow with validation
-      const registrationFlow = await authAPI.initiateRegistration();
+      // 🔄 Phase 3: 有効な登録フロー確保
+      const registrationFlow = await ensureValidRegistrationFlow();
 
       // 🚨 防御的プログラミング: flow オブジェクト検証強化
       if (!registrationFlow || !registrationFlow.id) {
         throw new Error('Registration flow initialization failed: missing flow ID');
       }
 
-      console.log('[AUTH-CONTEXT] Registration flow initialized:', { flowId: registrationFlow.id, timestamp: new Date().toISOString() });
+      console.log('[AUTH-CONTEXT] Using valid registration flow:', { 
+        flowId: registrationFlow.id, 
+        expiresAt: registrationFlow.expiresAt,
+        timestamp: new Date().toISOString() 
+      });
 
       // Complete registration with user data
-      const user = await authAPI.completeRegistration(registrationFlow.id, email, password, name);
+      const user = debugCaptureEnabled 
+        ? await authAPI.captureKratosResponse(`/register/${registrationFlow.id}`, 'POST', {
+            traits: {
+              email: email.trim(),
+              name: name ? {
+                first: name.split(' ')[0]?.trim() || '',
+                last: name.split(' ').slice(1).join(' ')?.trim() || ''
+              } : undefined
+            },
+            password: password,
+            method: 'profile'
+          }).then(response => response.data as any)
+        : await authAPI.completeRegistration(registrationFlow.id, email, password, name);
 
       // 🚨 防御的プログラミング: user オブジェクト検証
       if (!user) {
@@ -459,6 +765,114 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setAuthState(prev => ({ ...prev, error: null }));
   };
 
+  // 🔍 ULTRA-DIAGNOSTIC: 開発者向け診断機能
+  const debugDiagnoseRegistrationFlow = async (): Promise<any> => {
+    const diagnosticId = `DIAG-CTX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    console.groupCollapsed(`🔬 [AUTH-CONTEXT-DIAGNOSTIC] Full System Diagnosis ${diagnosticId}`);
+    console.log('🚀 Starting comprehensive registration flow diagnosis...');
+    
+    try {
+      // システム状態の診断
+      const systemState = {
+        diagnosticId,
+        timestamp: new Date().toISOString(),
+        authState: {
+          isAuthenticated: authState.isAuthenticated,
+          isLoading: authState.isLoading,
+          hasUser: !!authState.user,
+          hasError: !!authState.error,
+          errorType: authState.error?.type || null,
+          lastActivity: authState.lastActivity?.toISOString() || null
+        },
+        browserState: {
+          userAgent: navigator.userAgent,
+          cookieEnabled: navigator.cookieEnabled,
+          onLine: navigator.onLine,
+          language: navigator.language,
+          currentUrl: window.location.href,
+          sessionStorageKeys: Object.keys(sessionStorage),
+          localStorageKeys: Object.keys(localStorage),
+          documentCookies: document.cookie.split(';').length
+        },
+        lastAction: lastAction || null
+      };
+      
+      console.log('📊 Current System State:', systemState);
+      
+      // バックエンド診断の実行
+      const backendDiagnostic = await authAPI.diagnoseRegistrationFlow();
+      console.log('🔧 Backend Diagnostic Results:', backendDiagnostic);
+      
+      // 統合診断結果
+      const fullDiagnostic = {
+        diagnosticId,
+        timestamp: new Date().toISOString(),
+        frontend: systemState,
+        backend: backendDiagnostic,
+        recommendations: generateDiagnosticRecommendations(systemState, backendDiagnostic)
+      };
+      
+      console.log('🎯 Complete Diagnostic Results:', fullDiagnostic);
+      console.groupEnd();
+      
+      return fullDiagnostic;
+      
+    } catch (error) {
+      console.error('❌ Diagnostic failed:', error);
+      console.groupEnd();
+      throw error;
+    }
+  };
+
+  const debugCaptureNextRequest = (enable: boolean) => {
+    setDebugCaptureEnabled(enable);
+    console.log(`🎥 Request capture ${enable ? 'ENABLED' : 'DISABLED'}`);
+    
+    if (enable) {
+      console.log('🔍 Next registration request will be fully captured');
+      console.log('💡 Use authAPI.captureKratosResponse() directly for manual capture');
+    }
+  };
+
+  // 診断結果に基づく推奨事項生成
+  const generateDiagnosticRecommendations = (frontendState: any, backendDiagnostic: any): string[] => {
+    const recommendations: string[] = [];
+
+    // フロントエンドの状態チェック
+    if (frontendState.authState.hasError) {
+      recommendations.push(`🔧 現在のエラー "${frontendState.authState.errorType}" を確認してください`);
+    }
+
+    if (!frontendState.browserState.cookieEnabled) {
+      recommendations.push('🍪 ブラウザのクッキーが無効になっています。有効にしてください');
+    }
+
+    if (!frontendState.browserState.onLine) {
+      recommendations.push('🌐 ネットワーク接続を確認してください');
+    }
+
+    // バックエンドの状態チェック
+    if (backendDiagnostic?.kratosStatus?.isConnected === false) {
+      recommendations.push('🔌 Kratos認証サービスへの接続に問題があります');
+    }
+
+    if (backendDiagnostic?.flowTest?.testStatus === 'PARTIAL_FAILURE') {
+      recommendations.push('⚠️ 登録フローテストで部分的な失敗が検出されました');
+    }
+
+    if (backendDiagnostic?.databaseTest?.isConnected === false) {
+      recommendations.push('🗃️ データベース接続に問題があります');
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push('✅ システムは正常に動作しているようです');
+      recommendations.push('💡 実際の登録試行時のログを確認してください');
+    }
+
+    return recommendations;
+  };
+
   const contextValue: AuthContextType = {
     ...authState,
     login,
@@ -467,6 +881,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     refresh,
     clearError,
     retryLastAction,
+    debugDiagnoseRegistrationFlow,
+    debugCaptureNextRequest,
+    // 🔄 Phase 3: フロー管理機能
+    ensureValidRegistrationFlow,
+    ensureValidLoginFlow,
+    isFlowValid,
   };
 
   return (

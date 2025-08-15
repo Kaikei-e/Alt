@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   try {
     // 🚨 強化されたエラーハンドリング: auth-serviceへのアクセス
     const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/login`, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Cookie': request.headers.get('cookie') || '',
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
 
     // 🚨 auth-serviceレスポンスデータの検証
-    if (!data || !data.data) {
+    if (!data || !data.id) {
       console.error('Auth-service login flow response missing required fields:', data);
       return NextResponse.json(
         { error: 'Invalid login flow response', code: 'INVALID_FLOW' },
@@ -70,9 +70,10 @@ export async function POST(request: NextRequest) {
     }
     headers.set('Content-Type', 'application/json');
 
-    console.log('[LOGIN-ROUTE] Login flow initiated successfully:', { flowId: data.data?.id, timestamp: new Date().toISOString() });
+    console.log('[LOGIN-ROUTE] Login flow initiated successfully:', { flowId: data.id, timestamp: new Date().toISOString() });
 
-    return NextResponse.json(data, {
+    // Wrap response in expected format
+    return NextResponse.json({ data }, {
       status: response.status,
       headers,
     });

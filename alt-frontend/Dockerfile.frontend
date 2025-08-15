@@ -24,10 +24,12 @@ COPY . .
 # ビルド引数・環境変数（必要なら --build-arg で上書き）
 ARG API_URL=http://alt-backend:9000
 ARG NEXT_PUBLIC_API_BASE_URL=/api
-ARG GIT_SHA=local-dev
+ARG GIT_SHA
+ARG BUILD_ID
 ENV API_URL=$API_URL \
   NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
-  GIT_SHA=$GIT_SHA
+  GIT_SHA=${GIT_SHA} \
+  BUILD_ID=${BUILD_ID}
 
 RUN pnpm run build
 
