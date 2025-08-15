@@ -18,6 +18,8 @@ news-creator/models/*
 *.p12
 *.srl
 
+.har
+
 # real data
 backup.sql
 rask-log-aggregator/logs/*
