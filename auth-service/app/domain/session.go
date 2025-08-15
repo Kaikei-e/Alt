@@ -9,20 +9,47 @@ import (
 	"github.com/google/uuid"
 )
 
+// SessionSyncStatus represents the synchronization status with Kratos
+type SessionSyncStatus string
+
+const (
+	SessionSyncStatusSynced    SessionSyncStatus = "synced"
+	SessionSyncStatusPending   SessionSyncStatus = "pending"
+	SessionSyncStatusFailed    SessionSyncStatus = "failed"
+	SessionSyncStatusConflict  SessionSyncStatus = "conflict"
+)
+
 // Session represents a user session
 type Session struct {
-	ID              uuid.UUID `json:"id"`
-	UserID          uuid.UUID `json:"user_id"`
-	KratosSessionID string    `json:"kratos_session_id"`
-	Active          bool      `json:"active"`
-	CreatedAt       time.Time `json:"created_at"`
-	ExpiresAt       time.Time `json:"expires_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	LastActivityAt  time.Time `json:"last_activity_at"`
-	IPAddress       *string   `json:"ip_address,omitempty"`
-	UserAgent       *string   `json:"user_agent,omitempty"`
-	DeviceInfo      *string   `json:"device_info,omitempty"`
-	SessionMetadata *string   `json:"session_metadata,omitempty"`
+	ID              uuid.UUID         `json:"id"`
+	UserID          uuid.UUID         `json:"user_id"`
+	KratosSessionID string            `json:"kratos_session_id"`
+	Active          bool              `json:"active"`
+	CreatedAt       time.Time         `json:"created_at"`
+	ExpiresAt       time.Time         `json:"expires_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
+	LastActivityAt  time.Time         `json:"last_activity_at"`
+	IPAddress       *string           `json:"ip_address,omitempty"`
+	UserAgent       *string           `json:"user_agent,omitempty"`
+	DeviceInfo      *string           `json:"device_info,omitempty"`
+	SessionMetadata *string           `json:"session_metadata,omitempty"`
+	// 🔄 Phase 3.2: セッション同期関連フィールド
+	LastSyncAt      time.Time         `json:"last_sync_at"`
+	SyncStatus      SessionSyncStatus `json:"sync_status"`
+}
+
+// SessionHealthStatus represents the health status of session synchronization
+type SessionHealthStatus struct {
+	TotalSessions     int       `json:"total_sessions"`
+	ActiveSessions    int       `json:"active_sessions"`
+	OutdatedSyncCount int       `json:"outdated_sync_count"`
+	HealthScore       float64   `json:"health_score"`
+	CheckedAt         time.Time `json:"checked_at"`
+}
+
+// IsActive is an alias for Active field for compatibility
+func (s *Session) IsActive() bool {
+	return s.Active
 }
 
 // SessionContext represents session context for requests

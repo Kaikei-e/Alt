@@ -44,4 +44,11 @@ type SessionRepositoryPort interface {
 	Delete(ctx context.Context, sessionID string) error
 	ListActiveByUser(ctx context.Context, userID uuid.UUID) ([]*domain.Session, error)
 	DeleteExpired(ctx context.Context) error
+	// 🔄 Phase 3.2: セッション同期関連メソッド
+	GetActiveSessions(ctx context.Context) ([]*domain.Session, error)
+	GetSessionCount(ctx context.Context) (int, error)
+	GetSessionsBySyncStatus(ctx context.Context, status domain.SessionSyncStatus) ([]*domain.Session, error)
 }
+
+// SessionRepository is an alias for backward compatibility
+type SessionRepository = SessionRepositoryPort

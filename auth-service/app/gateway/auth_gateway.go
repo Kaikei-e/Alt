@@ -7,6 +7,7 @@ import (
 
 	"auth-service/app/domain"
 	"auth-service/app/port"
+	"auth-service/app/driver/kratos"
 
 	"github.com/google/uuid"
 )
@@ -14,15 +15,17 @@ import (
 // AuthGateway implements port.AuthGateway interface
 // It acts as an anti-corruption layer between the domain and external auth services
 type AuthGateway struct {
-	kratosClient port.KratosClient
-	logger       *slog.Logger
+	kratosClient       port.KratosClient
+	errorTransparifier *kratos.ErrorTransparifier
+	logger             *slog.Logger
 }
 
 // NewAuthGateway creates a new AuthGateway instance
 func NewAuthGateway(kratosClient port.KratosClient, logger *slog.Logger) *AuthGateway {
 	return &AuthGateway{
-		kratosClient: kratosClient,
-		logger:       logger.With("component", "auth_gateway"),
+		kratosClient:       kratosClient,
+		errorTransparifier: kratos.NewErrorTransparifier(logger),
+		logger:             logger.With("component", "auth_gateway"),
 	}
 }
 
@@ -38,7 +41,16 @@ func (g *AuthGateway) CreateLoginFlow(ctx context.Context) (*domain.LoginFlow, e
 	kratosFlow, err := g.kratosClient.CreateLoginFlow(ctx, tenantID, refresh, returnTo)
 	if err != nil {
 		g.logger.Error("failed to create login flow", "error", err)
-		return nil, fmt.Errorf("failed to create login flow: %w", err)
+		
+		// 🔄 Phase 4: Kratos エラー完全透過
+		detailedError := g.errorTransparifier.TransparifyKratosError(err)
+		g.logger.Error("login flow creation failed with detailed error",
+			"error_type", detailedError.Type,
+			"error_code", detailedError.ErrorCode,
+			"is_retryable", detailedError.IsRetryable,
+			"technical_info", detailedError.TechnicalInfo)
+		
+		return nil, fmt.Errorf("failed to create login flow [%s]: %s", detailedError.Type, detailedError.Message)
 	}
 
 	g.logger.Info("login flow created successfully", "flow_id", kratosFlow.ID)
@@ -56,7 +68,16 @@ func (g *AuthGateway) CreateRegistrationFlow(ctx context.Context) (*domain.Regis
 	kratosFlow, err := g.kratosClient.CreateRegistrationFlow(ctx, tenantID, returnTo)
 	if err != nil {
 		g.logger.Error("failed to create registration flow", "error", err)
-		return nil, fmt.Errorf("failed to create registration flow: %w", err)
+		
+		// 🔄 Phase 4: Kratos エラー完全透過
+		detailedError := g.errorTransparifier.TransparifyKratosError(err)
+		g.logger.Error("registration flow creation failed with detailed error",
+			"error_type", detailedError.Type,
+			"error_code", detailedError.ErrorCode,
+			"is_retryable", detailedError.IsRetryable,
+			"technical_info", detailedError.TechnicalInfo)
+		
+		return nil, fmt.Errorf("failed to create registration flow [%s]: %s", detailedError.Type, detailedError.Message)
 	}
 
 	g.logger.Info("registration flow created successfully", "flow_id", kratosFlow.ID)
@@ -87,13 +108,23 @@ func (g *AuthGateway) SubmitLoginFlow(ctx context.Context, flowID string, body i
 			"flow_id", flowID,
 			"error", err,
 			"error_type", fmt.Sprintf("%T", err))
+		
+		// 🔄 Phase 4: Kratos エラー完全透過
+		detailedError := g.errorTransparifier.TransparifyKratosError(err)
+		g.logger.Error("login flow submission failed with detailed error",
+			"flow_id", flowID,
+			"error_type", detailedError.Type,
+			"error_code", detailedError.ErrorCode,
+			"is_retryable", detailedError.IsRetryable,
+			"technical_info", detailedError.TechnicalInfo,
+			"suggestions_count", len(detailedError.Suggestions))
 			
 		// ドメインエラーに変換（上位層への伝達）
 		if domainErr, ok := err.(*domain.AuthError); ok {
 			return nil, domainErr
 		}
 		
-		return nil, fmt.Errorf("login flow submission failed: %w", err)
+		return nil, fmt.Errorf("login flow submission failed [%s]: %s", detailedError.Type, detailedError.Message)
 	}
 
 	g.logger.Info("login flow submitted successfully",
@@ -129,13 +160,23 @@ func (g *AuthGateway) SubmitRegistrationFlow(ctx context.Context, flowID string,
 			"flow_id", flowID,
 			"error", err,
 			"error_type", fmt.Sprintf("%T", err))
+		
+		// 🔄 Phase 4: Kratos エラー完全透過
+		detailedError := g.errorTransparifier.TransparifyKratosError(err)
+		g.logger.Error("registration flow submission failed with detailed error",
+			"flow_id", flowID,
+			"error_type", detailedError.Type,
+			"error_code", detailedError.ErrorCode,
+			"is_retryable", detailedError.IsRetryable,
+			"technical_info", detailedError.TechnicalInfo,
+			"suggestions_count", len(detailedError.Suggestions))
 			
 		// ドメインエラーに変換（上位層への伝達）
 		if domainErr, ok := err.(*domain.AuthError); ok {
 			return nil, domainErr
 		}
 		
-		return nil, fmt.Errorf("registration flow submission failed: %w", err)
+		return nil, fmt.Errorf("registration flow submission failed [%s]: %s", detailedError.Type, detailedError.Message)
 	}
 
 	g.logger.Info("registration flow submitted successfully",

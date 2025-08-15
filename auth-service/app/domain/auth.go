@@ -68,6 +68,7 @@ type Device struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+
 // UserProfile represents user profile information
 type UserProfile struct {
 	ID          uuid.UUID       `json:"id"`
@@ -137,6 +138,7 @@ type KratosIdentityDTO struct {
 	CreatedAt           time.Time              `json:"created_at"`
 	UpdatedAt           time.Time              `json:"updated_at"`
 }
+
 
 // CreateUserRequest.ToUserProfile converts CreateUserRequest to UserProfile
 func (r *CreateUserRequest) ToUserProfile() *UserProfile {

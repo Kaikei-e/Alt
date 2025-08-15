@@ -35,6 +35,7 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	authHandler := handlers.NewAuthHandler(config.AuthUsecase, config.Logger)
 	userHandler := handlers.NewUserHandler(config.UserUsecase, config.Logger)
 	healthHandler := handlers.NewHealthHandler(config.Logger)
+	debugHandler := handlers.NewDebugHandler(config.AuthUsecase, config.Logger)
 
 	// Create middleware
 	authMiddleware := custommw.NewAuthMiddleware(config.AuthUsecase, config.Logger)
@@ -153,6 +154,15 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	if config.EnableMetrics {
 		// TODO: Add Prometheus metrics endpoint
 		// e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
+	}
+
+	// 🔍 Debug endpoints (only in debug mode)
+	if config.EnableDebug {
+		debug := v1.Group("/debug")
+		debug.GET("/registration-flow", debugHandler.DiagnoseRegistrationFlow)
+		
+		config.Logger.Info("🔧 Debug endpoints enabled", 
+			"endpoints", []string{"/v1/debug/registration-flow"})
 	}
 
 	return e
