@@ -53,20 +53,20 @@ export default defineConfig({
 
   // WebServerの設定
   webServer: [
-    {
-      command: "node tests/mock-auth-service.cjs",
-      port: 4545,
-      reuseExistingServer: !isCI,
-    },
-    {
-      // 本番ビルドは行わず、常に開発サーバーで実行して挙動差異を防ぐ
-      command: "pnpm exec next dev --port 3010",
-      url: "http://localhost:3010",
-      reuseExistingServer: !isCI,
-      timeout: 1200 * 1000, // 20分のWebServerタイムアウト
-      env: {
-        AUTH_SERVICE_URL: "http://localhost:4545",
+      {
+        command: "node tests/mock-auth-service.cjs",
+        port: 4545,
+        reuseExistingServer: true,
       },
-    },
+      {
+        // 本番ビルドは行わず、常に開発サーバーで実行して挙動差異を防ぐ
+        command: "pnpm exec next dev --port 3010",
+        url: "http://localhost:3010",
+        reuseExistingServer: true,
+        timeout: 1200 * 1000, // 20分のWebServerタイムアウト
+        env: {
+          AUTH_SERVICE_URL: "http://localhost:4545",
+        },
+      },
   ],
 });
