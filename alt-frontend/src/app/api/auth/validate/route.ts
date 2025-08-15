@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
+let loggedAuthServiceError = false;
 
 /**
  * Validate current user session
@@ -56,12 +57,13 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[USER-VALIDATION] User validation error:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      timestamp: new Date().toISOString(),
-      authServiceUrl: AUTH_SERVICE_URL
-    });
+    if (!loggedAuthServiceError) {
+      console.warn(
+        '[USER-VALIDATION] auth-service fetch failed:',
+        error instanceof Error ? error.message : error
+      );
+      loggedAuthServiceError = true;
+    }
 
     // タイムアウトエラー処理
     if (error instanceof Error && error.name === 'AbortError') {
