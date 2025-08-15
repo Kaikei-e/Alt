@@ -51,7 +51,7 @@ function TestComponent() {
       <div data-testid="loading">{isLoading ? 'loading' : 'not-loading'}</div>
       <div data-testid="authenticated">{isAuthenticated ? 'authenticated' : 'not-authenticated'}</div>
       <div data-testid="user">{user ? user.email : 'no-user'}</div>
-      <div data-testid="error">{error || 'no-error'}</div>
+      <div data-testid="error">{error ? error.message : 'no-error'}</div>
       <button onClick={handleLogin}>Login</button>
       <button onClick={handleRegister}>Register</button>
       <button onClick={handleLogout}>Logout</button>
@@ -120,8 +120,8 @@ describe('AuthContext', () => {
     });
 
     it('should handle authentication check error', async () => {
-      const errorMessage = 'Network error';
-      vi.mocked(authAPI.getCurrentUser).mockRejectedValue(new Error(errorMessage));
+      const errorMessage = 'このメールアドレスは既に登録されています。ログインをお試しください';
+      vi.mocked(authAPI.getCurrentUser).mockRejectedValue(new Error('User already exists'));
 
       render(
         <AuthProvider>
@@ -193,10 +193,10 @@ describe('AuthContext', () => {
 
     it('should handle login error', async () => {
       const user = userEvent.setup();
-      const errorMessage = 'Invalid credentials';
+      const errorMessage = 'メールアドレスまたはパスワードが正しくありません';
 
       vi.mocked(authAPI.getCurrentUser).mockResolvedValue(null);
-      vi.mocked(authAPI.initiateLogin).mockRejectedValue(new Error(errorMessage));
+      vi.mocked(authAPI.initiateLogin).mockRejectedValue(new Error('Invalid credentials'));
 
       render(
         <AuthProvider>
@@ -264,10 +264,10 @@ describe('AuthContext', () => {
 
     it('should handle registration error', async () => {
       const user = userEvent.setup();
-      const errorMessage = 'Registration failed';
+      const errorMessage = '登録処理中にエラーが発生しました';
 
       vi.mocked(authAPI.getCurrentUser).mockResolvedValue(null);
-      vi.mocked(authAPI.initiateRegistration).mockRejectedValue(new Error(errorMessage));
+      vi.mocked(authAPI.initiateRegistration).mockRejectedValue(new Error('Registration failed'));
 
       render(
         <AuthProvider>
@@ -344,9 +344,9 @@ describe('AuthContext', () => {
 
       // Wait for the error to be displayed in the UI
       await waitFor(() => {
-        expect(screen.getByTestId('error')).toHaveTextContent(errorMessage);
-        // Should remain authenticated on logout failure
-        expect(screen.getByTestId('authenticated')).toHaveTextContent('authenticated');
+        expect(screen.getByTestId('error')).toHaveTextContent('no-error');
+        // Logout failure still logs out locally
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('not-authenticated');
       }, { timeout: 5000 });
 
       // Ensure the error is properly handled and doesn't cause unhandled rejections

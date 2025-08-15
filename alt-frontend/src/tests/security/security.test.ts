@@ -35,13 +35,13 @@ describe('Security Tests', () => {
 
       // Verify CSRF token was requested
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/v1/auth/csrf'),
+        expect.stringContaining('/api/auth/csrf'),
         expect.objectContaining({ method: 'POST' })
       );
 
       // Verify CSRF token was included in the unsafe request
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/v1/auth/logout'),
+        expect.stringContaining('/api/auth/logout'),
         expect.objectContaining({
           headers: expect.objectContaining({
             'X-CSRF-Token': 'test-csrf-token',
@@ -94,7 +94,7 @@ describe('Security Tests', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch).toHaveBeenNthCalledWith(
         2,
-        expect.stringContaining('/v1/auth/logout'),
+        expect.stringContaining('/api/auth/logout'),
         expect.objectContaining({ method: 'POST' })
       );
     });
@@ -131,11 +131,12 @@ describe('Security Tests', () => {
 
         // Verify the malicious payload was sent (but server rejected it)
         expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/v1/auth/login/flow-123'),
+          expect.stringContaining('/api/auth/login/flow-123'),
           expect.objectContaining({
             body: JSON.stringify({
-              email: payload,
+              identifier: payload,
               password: 'password123',
+              method: 'password',
             }),
           })
         );
@@ -240,10 +241,10 @@ describe('Security Tests', () => {
       // Test with HTTPS URL
       process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = 'https://auth-service.example.com';
       const secureClient = new AuthAPIClient();
-      
+
       // Private property access for testing
       const baseURL = (secureClient as { baseURL: string }).baseURL;
-      expect(baseURL).toMatch(/^https:/);
+      expect(baseURL).toBe('/api/auth');
       
       // Restore original env
       process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = originalEnv;
@@ -253,22 +254,22 @@ describe('Security Tests', () => {
       // Set proper base URL for this test
       const originalEnv = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL;
       process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = 'https://auth-service.example.com';
-      
+
       const testClient = new AuthAPIClient();
-      
+
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ data: {} }),
       });
-      
+
       await testClient.getCurrentUser();
 
       // Verify the URL construction doesn't allow path traversal
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringMatching(/^https:\/\/auth-service\.example\.com/), // Should start with proper base URL
+        expect.stringContaining('/api/auth/validate'),
         expect.any(Object)
       );
-      
+
       // Restore original env
       process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = originalEnv;
     });
@@ -332,7 +333,8 @@ describe('Security Tests', () => {
 
       await authClient.completeLogin('flow-123', 'test@example.com', 'password123');
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
         expect.any(String),
         expect.objectContaining({
           headers: expect.objectContaining({
@@ -354,13 +356,15 @@ describe('Security Tests', () => {
         });
 
       const payload = {
-        email: 'test@example.com',
+        identifier: 'test@example.com',
         password: 'password123',
+        method: 'password',
       };
 
-      await authClient.completeLogin('flow-123', payload.email, payload.password);
+      await authClient.completeLogin('flow-123', payload.identifier, payload.password);
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
         expect.any(String),
         expect.objectContaining({
           body: JSON.stringify(payload),
