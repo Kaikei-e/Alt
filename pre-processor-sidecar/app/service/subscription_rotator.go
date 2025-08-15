@@ -24,6 +24,8 @@ type SubscriptionRotator struct {
 	mu               sync.RWMutex
 	logger           *slog.Logger
 	lastResetDate    time.Time
+	randomStartEnabled bool  // Enable random starting position
+	startingIndex     int    // Random starting index for rotation
 }
 
 // RotationStats provides statistics about rotation processing
@@ -44,13 +46,15 @@ func NewSubscriptionRotator(logger *slog.Logger) *SubscriptionRotator {
 	}
 
 	return &SubscriptionRotator{
-		subscriptions:   make([]uuid.UUID, 0),
-		lastProcessed:   make(map[uuid.UUID]time.Time),
-		intervalMinutes: 18,   // 18分間隔 (46 subscriptions × 18min = 13.8 hours, API optimized)
-		maxDaily:        46,   // 1日46個処理（全サブスクリプション）
-		currentIndex:    0,
-		logger:         logger,
-		lastResetDate:  time.Now().Truncate(24 * time.Hour),
+		subscriptions:      make([]uuid.UUID, 0),
+		lastProcessed:      make(map[uuid.UUID]time.Time),
+		intervalMinutes:    18,   // 18分間隔 (46 subscriptions × 18min = 13.8 hours, API optimized)
+		maxDaily:           46,   // 1日46個処理（全サブスクリプション）
+		currentIndex:       0,
+		logger:            logger,
+		lastResetDate:     time.Now().Truncate(24 * time.Hour),
+		randomStartEnabled: false, // Default: maintain existing behavior
+		startingIndex:      0,
 	}
 }
 
@@ -69,10 +73,18 @@ func (sr *SubscriptionRotator) LoadSubscriptions(ctx context.Context, subscripti
 	// Shuffle subscriptions for fair distribution
 	sr.shuffleSubscriptions()
 
+	// Set random starting index if enabled
+	if sr.randomStartEnabled {
+		sr.generateRandomStartingIndex()
+		sr.currentIndex = sr.startingIndex
+	}
+
 	sr.logger.Info("Loaded subscriptions into rotator",
 		"total_subscriptions", len(sr.subscriptions),
 		"interval_minutes", sr.intervalMinutes,
-		"estimated_completion_hours", float64(len(sr.subscriptions)*sr.intervalMinutes)/60.0)
+		"estimated_completion_hours", float64(len(sr.subscriptions)*sr.intervalMinutes)/60.0,
+		"random_start_enabled", sr.randomStartEnabled,
+		"starting_index", sr.currentIndex)
 
 	return nil
 }
@@ -94,15 +106,16 @@ func (sr *SubscriptionRotator) GetNextSubscription() (uuid.UUID, bool) {
 	}
 
 	// Check if all subscriptions have been processed today
-	if sr.currentIndex >= len(sr.subscriptions) {
+	if sr.hasCompletedDailyRotation() {
 		sr.logger.Info("All subscriptions processed for today",
 			"processed_count", len(sr.subscriptions),
 			"next_reset", sr.getNextResetTime())
 		return uuid.Nil, false
 	}
 
-	// Get next subscription in rotation
-	targetSub := sr.subscriptions[sr.currentIndex]
+	// Get next subscription in rotation (with circular support)
+	actualIndex := sr.currentIndex % len(sr.subscriptions)
+	targetSub := sr.subscriptions[actualIndex]
 	sr.lastProcessed[targetSub] = now
 	sr.currentIndex++
 
@@ -128,12 +141,19 @@ func (sr *SubscriptionRotator) resetDailyRotation(now time.Time) {
 		"new_date", now.Format("2006-01-02"),
 		"processed_yesterday", sr.currentIndex)
 
-	sr.currentIndex = 0
 	sr.lastProcessed = make(map[uuid.UUID]time.Time)
 	sr.lastResetDate = now.Truncate(24 * time.Hour)
 
 	// Shuffle subscriptions for better distribution
 	sr.shuffleSubscriptions()
+
+	// Reset to starting position (random or 0)
+	if sr.randomStartEnabled {
+		sr.generateRandomStartingIndex()
+		sr.currentIndex = sr.startingIndex
+	} else {
+		sr.currentIndex = 0
+	}
 
 	sr.logger.Info("Daily rotation reset completed",
 		"total_subscriptions", len(sr.subscriptions),
@@ -268,4 +288,65 @@ func (sr *SubscriptionRotator) GetProcessingStatus() string {
 	return fmt.Sprintf("Processing %d/%d subscriptions. Estimated completion: %s",
 		stats.ProcessedToday, stats.TotalSubscriptions,
 		stats.EstimatedCompletionTime.Format("15:04"))
+}
+
+// generateRandomStartingIndex generates a random starting index for rotation
+func (sr *SubscriptionRotator) generateRandomStartingIndex() {
+	if len(sr.subscriptions) == 0 {
+		sr.startingIndex = 0
+		return
+	}
+	
+	sr.startingIndex = rand.Intn(len(sr.subscriptions))
+	sr.logger.Info("Generated random starting index",
+		"starting_index", sr.startingIndex,
+		"total_subscriptions", len(sr.subscriptions))
+}
+
+// hasCompletedDailyRotation checks if all subscriptions have been processed for today
+func (sr *SubscriptionRotator) hasCompletedDailyRotation() bool {
+	if len(sr.subscriptions) == 0 {
+		return true
+	}
+
+	// If random start is enabled, check if we've processed all subscriptions
+	if sr.randomStartEnabled {
+		return len(sr.lastProcessed) >= len(sr.subscriptions)
+	}
+
+	// Traditional index-based check
+	return sr.currentIndex >= len(sr.subscriptions)
+}
+
+// EnableRandomStart enables random starting position for rotation
+func (sr *SubscriptionRotator) EnableRandomStart() {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
+	
+	sr.randomStartEnabled = true
+	sr.logger.Info("Random start enabled",
+		"current_subscriptions", len(sr.subscriptions))
+}
+
+// DisableRandomStart disables random starting position (default behavior)
+func (sr *SubscriptionRotator) DisableRandomStart() {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
+	
+	sr.randomStartEnabled = false
+	sr.logger.Info("Random start disabled - using sequential rotation")
+}
+
+// IsRandomStartEnabled returns current random start status
+func (sr *SubscriptionRotator) IsRandomStartEnabled() bool {
+	sr.mu.RLock()
+	defer sr.mu.RUnlock()
+	return sr.randomStartEnabled
+}
+
+// GetStartingIndex returns the current starting index
+func (sr *SubscriptionRotator) GetStartingIndex() int {
+	sr.mu.RLock()
+	defer sr.mu.RUnlock()
+	return sr.startingIndex
 }

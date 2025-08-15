@@ -341,8 +341,27 @@ func (s *ArticleFetchService) DeleteOldArticles(ctx context.Context, olderThan t
 
 // Phase 3: Rotation Processing Methods
 
-// EnableRotationMode enables subscription rotation processing
+// RotationOptions configures rotation behavior
+type RotationOptions struct {
+	EnableRandomStart bool `json:"enable_random_start"`
+}
+
+// EnableRotationMode enables subscription rotation processing with default options
 func (s *ArticleFetchService) EnableRotationMode(ctx context.Context) error {
+	return s.EnableRotationModeWithOptions(ctx, RotationOptions{
+		EnableRandomStart: false, // Default: maintain existing behavior
+	})
+}
+
+// EnableRotationModeWithRandomStart enables subscription rotation with random starting position
+func (s *ArticleFetchService) EnableRotationModeWithRandomStart(ctx context.Context) error {
+	return s.EnableRotationModeWithOptions(ctx, RotationOptions{
+		EnableRandomStart: true,
+	})
+}
+
+// EnableRotationModeWithOptions enables subscription rotation processing with custom options
+func (s *ArticleFetchService) EnableRotationModeWithOptions(ctx context.Context, options RotationOptions) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -362,6 +381,14 @@ func (s *ArticleFetchService) EnableRotationMode(ctx context.Context) error {
 	subscriptionIDs := make([]uuid.UUID, len(subscriptions))
 	for i, sub := range subscriptions {
 		subscriptionIDs[i] = sub.DatabaseID
+	}
+
+	// Configure random start if requested
+	if options.EnableRandomStart {
+		s.subscriptionRotator.EnableRandomStart()
+		s.logger.Info("Random start enabled for subscription rotation")
+	} else {
+		s.subscriptionRotator.DisableRandomStart()
 	}
 
 	// Load subscriptions into rotator

@@ -21,6 +21,7 @@ type ScheduleConfig struct {
 	EnableSubscriptionSync   bool          `json:"enable_subscription_sync"`
 	EnableArticleFetch       bool          `json:"enable_article_fetch"`
 	MaxConcurrentJobs        int           `json:"max_concurrent_jobs"`
+	EnableRandomStart        bool          `json:"enable_random_start"`        // Enable random starting position for rotation
 }
 
 // RateLimitAwareScheduler implements intelligent scheduling with exponential backoff
@@ -157,6 +158,7 @@ func NewScheduleHandler(
 		EnableSubscriptionSync:   true,
 		EnableArticleFetch:       true,
 		MaxConcurrentJobs:        2, // Allow subscription sync and article fetch to run concurrently
+		EnableRandomStart:        true, // Enable random starting position for fair load distribution
 	}
 
 	status := &ScheduleStatus{
@@ -205,12 +207,20 @@ func (h *ScheduleHandler) Start(ctx context.Context) error {
 
 	// Start article fetch scheduler with rotation processing
 	if h.config.EnableArticleFetch {
-		// Enable rotation mode on ArticleFetchService
-		if err := h.articleFetchService.EnableRotationMode(ctx); err != nil {
+		// Enable rotation mode on ArticleFetchService with random start if configured
+		var err error
+		if h.config.EnableRandomStart {
+			err = h.articleFetchService.EnableRotationModeWithRandomStart(ctx)
+			h.logger.Info("Article fetch rotation mode enabled with random start")
+		} else {
+			err = h.articleFetchService.EnableRotationMode(ctx)
+			h.logger.Info("Article fetch rotation mode enabled")
+		}
+		
+		if err != nil {
 			h.logger.Error("Failed to enable rotation mode", "error", err)
 			return fmt.Errorf("failed to enable rotation mode: %w", err)
 		}
-		h.logger.Info("Article fetch rotation mode enabled")
 
 		h.articleFetchTicker = time.NewTicker(h.config.ArticleFetchInterval)
 		go h.runArticleFetchScheduler()
@@ -447,7 +457,16 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 	// Check if rotation processing is ready
 	if !h.articleFetchService.IsRotationEnabled() {
 		h.logger.Warn("Rotation mode not enabled, attempting to enable")
-		if err := h.articleFetchService.EnableRotationMode(ctx); err != nil {
+		
+		var err error
+		if h.config.EnableRandomStart {
+			err = h.articleFetchService.EnableRotationModeWithRandomStart(ctx)
+			h.logger.Info("Rotation mode enabled with random start for subscription processing")
+		} else {
+			err = h.articleFetchService.EnableRotationMode(ctx)
+		}
+		
+		if err != nil {
 			return fmt.Errorf("failed to enable rotation mode: %w", err)
 		}
 	}
