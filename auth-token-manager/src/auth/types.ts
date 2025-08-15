@@ -11,29 +11,12 @@ export interface TokenResponse {
 }
 
 export interface InoreaderCredentials {
-  username: string;
-  password: string;
   client_id: string;
   client_secret: string;
-  redirect_uri: string;
+  redirect_uri: string; // For documentation purposes - not used in refresh-token-only mode
 }
 
-export interface BrowserConfig {
-  headless: boolean;
-  width: number;
-  height: number;
-  args: string[];
-  viewport: { width: number; height: number };
-  user_agent?: string;
-  locale?: string;
-  timezone?: string;
-  timeouts: {
-    navigation: number;
-    element_wait: number;
-    authorization_code: number;
-    consent_form: number;
-  };
-}
+// BrowserConfig removed - browser automation disabled
 
 export interface AuthenticationResult {
   success: boolean;
@@ -41,7 +24,7 @@ export interface AuthenticationResult {
   error?: string;
   metadata?: {
     duration: number;
-    user_agent: string;
+    method: string; // refresh_token
     session_id: string;
   };
 }
@@ -77,15 +60,7 @@ export class AuthError extends Error {
   }
 }
 
-export class BrowserError extends Error {
-  constructor(
-    message: string,
-    public readonly context?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'BrowserError';
-  }
-}
+// BrowserError removed - browser automation disabled
 
 export class K8sError extends Error {
   constructor(

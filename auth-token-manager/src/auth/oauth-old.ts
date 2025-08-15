@@ -14,6 +14,7 @@ import type {
 import { logger } from "../utils/logger.ts";
 
 export class InoreaderTokenManager {
+
   constructor(
     private credentials: InoreaderCredentials,
     private networkConfig: NetworkConfig = {
@@ -27,8 +28,6 @@ export class InoreaderTokenManager {
       max_delay: 30000,
       backoff_factor: 2,
     },
-    private kubernetesNamespace: string = "alt-processing",
-    private secretName: string = "inoreader-tokens",
   ) {}
 
   /**
@@ -112,8 +111,8 @@ export class InoreaderTokenManager {
       "../k8s/secret-manager-simple.ts"
     );
     const secretManager = new K8sSecretManager(
-      this.kubernetesNamespace,
-      this.secretName,
+      "alt-processing",
+      "pre-processor-sidecar-oauth2-token",
     );
 
     // Get existing token data
@@ -122,36 +121,7 @@ export class InoreaderTokenManager {
       throw new Error("No existing refresh token found. Manual OAuth setup required.");
     }
 
-    // Validate refresh token before attempting refresh
-    if (existingTokenData.refresh_token.length < 10) {
-      throw new Error("Invalid refresh token format. Manual OAuth setup required.");
-    }
-
-    // Check if current access token is still valid (within 5 minutes of expiry)
-    if (existingTokenData.expires_at) {
-      const expiresAt = new Date(existingTokenData.expires_at);
-      const now = new Date();
-      const timeUntilExpiry = expiresAt.getTime() - now.getTime();
-      const fiveMinutes = 5 * 60 * 1000;
-      
-      if (timeUntilExpiry > fiveMinutes) {
-        logger.info("Current access token is still valid", {
-          expires_at: expiresAt.toISOString(),
-          time_until_expiry_minutes: Math.round(timeUntilExpiry / 1000 / 60),
-        });
-        return {
-          access_token: existingTokenData.access_token,
-          refresh_token: existingTokenData.refresh_token,
-          expires_at: expiresAt,
-          token_type: "Bearer",
-          scope: "read write",
-        };
-      }
-    }
-
-    logger.info("Found existing refresh token, attempting refresh", {
-      refresh_token_length: existingTokenData.refresh_token.length,
-    });
+    logger.info("Found existing refresh token, attempting refresh");
 
     // Use refresh token to get new access token
     const response = await this.fetchWithTimeout(
@@ -173,62 +143,15 @@ export class InoreaderTokenManager {
 
     if (!response.ok) {
       const errorText = await response.text();
-      let errorData: any = {};
-      
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        // Keep errorText if not valid JSON
-      }
-      
-      const errorCode = errorData.error || 'unknown_error';
-      const errorDescription = errorData.error_description || errorText;
-      
       logger.error("Refresh token API call failed", {
         status: response.status,
-        error_code: errorCode,
-        error_description: errorDescription,
-        response_headers: Object.fromEntries(response.headers.entries()),
+        error: errorText,
       });
-
-      // Categorize errors for better handling
-      switch (errorCode) {
-        case 'invalid_grant':
-          throw new Error(`Invalid or expired refresh token. Manual OAuth setup required. Details: ${errorDescription}`);
-        case 'invalid_client':
-          throw new Error(`Invalid client credentials. Check CLIENT_ID and CLIENT_SECRET. Details: ${errorDescription}`);
-        case 'unsupported_grant_type':
-          throw new Error(`Unsupported grant type. OAuth configuration error. Details: ${errorDescription}`);
-        case 'invalid_request':
-          throw new Error(`Invalid OAuth request format. Details: ${errorDescription}`);
-        default:
-          throw new Error(`OAuth refresh failed [${errorCode}]: ${errorDescription} (Status: ${response.status})`);
-      }
+      throw new Error(`Refresh token failed: ${response.status} ${errorText}`);
     }
 
     const data = await response.json();
-    
-    // Validate response data
-    if (!data.access_token) {
-      throw new Error("OAuth response missing access_token");
-    }
-    if (!data.refresh_token) {
-      throw new Error("OAuth response missing refresh_token");
-    }
-    if (!data.expires_in || isNaN(Number(data.expires_in))) {
-      throw new Error("OAuth response missing or invalid expires_in value");
-    }
-
-    const expiresIn = Number(data.expires_in);
-    const expiresAt = new Date(Date.now() + expiresIn * 1000);
-
-    // Validate token formats
-    if (data.access_token.length < 10) {
-      throw new Error("Received invalid access_token format");
-    }
-    if (data.refresh_token.length < 10) {
-      throw new Error("Received invalid refresh_token format");
-    }
+    const expiresAt = new Date(Date.now() + data.expires_in * 1000);
 
     const tokens: TokenResponse = {
       access_token: data.access_token,
@@ -240,20 +163,256 @@ export class InoreaderTokenManager {
 
     logger.info("Refresh token flow successful", {
       expires_at: expiresAt.toISOString(),
-      expires_in_seconds: expiresIn,
-      expires_in_hours: Math.round(expiresIn / 3600 * 10) / 10,
       scope: tokens.scope,
-      token_type: tokens.token_type,
-      access_token_length: data.access_token.length,
-      refresh_token_length: data.refresh_token.length,
     });
 
     return tokens;
   }
 
-  /**
-   * Network request with timeout and proxy support
-   */
+  private async handleLoginForm(): Promise<void> {
+    if (!this.page) throw new Error("Page not initialized");
+
+    // Wait for login form with multiple selector fallbacks
+    await this.page.waitForSelector("#username, #email, input[name='username'], input[name='email']", {
+      timeout: this.browserConfig.timeouts.element_wait,
+    });
+
+    // Fill credentials with robust selectors
+    await this.page.fill("#username, #email, input[name='username'], input[name='email']", this.credentials.username);
+    await this.page.fill("#passwd, #password, input[name='password'], input[type='password']", this.credentials.password);
+
+    // Submit form
+    await this.page.click('input[type="submit"]');
+
+    // Wait for navigation
+    await this.page.waitForNavigation({
+      waitUntil: "networkidle",
+      timeout: this.browserConfig.timeouts.navigation,
+    });
+  }
+
+  private async handleAuthorizationConsent(): Promise<void> {
+    if (!this.page) throw new Error("Page not initialized");
+
+    try {
+      // Look for authorization consent button
+      const consentButton = await this.page.waitForSelector(
+        'input[value="Allow"], button:has-text("Allow"), input[value="Authorize"], button:has-text("Authorize")',
+        { timeout: this.browserConfig.timeouts.consent_form },
+      );
+
+      if (consentButton) {
+          logger.info("Found consent button, clicking");
+        await consentButton.click();
+        await this.page.waitForNavigation({
+          waitUntil: "networkidle",
+          timeout: this.browserConfig.timeouts.navigation,
+        });
+      }
+    } catch (error) {
+        logger.info("No consent page found, proceeding");
+    }
+  }
+
+  private async captureAuthorizationCode(): Promise<string> {
+    if (!this.page) throw new Error("Page not initialized");
+
+    // Check if using OOB (out-of-band) flow
+    if (this.credentials.redirect_uri === "urn:ietf:wg:oauth:2.0:oob") {
+      // For OOB flow, look for the authorization code in the page content
+      try {
+        // Wait for the authorization code to appear on the page
+        await this.page.waitForSelector("input[readonly], code, .code", {
+          timeout: this.browserConfig.timeouts.authorization_code,
+        });
+
+        // Try different selectors to find the authorization code
+        const codeElement =
+          (await this.page.$("input[readonly]")) ||
+          (await this.page.$("code")) ||
+          (await this.page.$(".code")) ||
+          (await this.page.$("[data-code]"));
+
+        if (codeElement) {
+          const code =
+            (await codeElement.textContent()) ||
+            (await codeElement.getAttribute("value"));
+          if (code && code.trim()) {
+              logger.info("Found authorization code via OOB flow");
+            return code.trim();
+          }
+        }
+
+        // Fallback: look for code in page text
+        const pageContent = (await this.page.textContent("body")) || "";
+        const codeMatch = pageContent.match(/\b[A-Za-z0-9]{20,}\b/);
+        if (codeMatch) {
+            logger.info("Found authorization code in page content");
+          return codeMatch[0];
+        }
+
+        throw new Error("Authorization code not found in OOB response");
+      } catch (error) {
+          logger.error("OOB code capture failed, trying URL-based capture");
+        // Fallback to URL-based capture
+      }
+    }
+
+    // Standard callback URL flow
+    await this.page.waitForURL(/callback|code=/, {
+      timeout: this.browserConfig.timeouts.authorization_code,
+    });
+
+    const url = this.page.url();
+    const urlObj = new URL(url);
+    const code = urlObj.searchParams.get("code");
+
+    if (!code) {
+      throw new Error("Authorization code not found in callback URL");
+    }
+
+    return code;
+  }
+
+  private async exchangeCodeForTokens(code: string): Promise<TokenResponse> {
+    const tokenUrl = "https://www.inoreader.com/oauth2/token";
+
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: this.credentials.client_id,
+      client_secret: this.credentials.client_secret,
+      code: code,
+      redirect_uri: this.credentials.redirect_uri,
+    });
+
+    const response = await this.fetchWithTimeout(tokenUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent":
+          this.browserConfig.user_agent || "Auth-Token-Manager/2.0.0",
+      },
+      body: body.toString(),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Token exchange failed: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    const expiresAt = new Date(Date.now() + data.expires_in * 1000);
+
+    return {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: expiresAt,
+      token_type: data.token_type,
+      scope: data.scope,
+    };
+  }
+
+  private async tryRefreshTokenFlow(): Promise<AuthenticationResult> {
+    try {
+      // Import K8s secret manager to get existing refresh token
+      const { K8sSecretManager } = await import(
+        "../k8s/secret-manager-simple.ts"
+      );
+      const secretManager = new K8sSecretManager(
+        "alt-processing",
+        "pre-processor-sidecar-oauth2-token",
+      );
+
+      // Try to get existing token data
+      const existingTokenData = await secretManager.getTokenSecret();
+      if (!existingTokenData || !existingTokenData.refresh_token) {
+        throw new Error("No existing refresh token found");
+      }
+
+        logger.info("Found existing refresh token, attempting refresh");
+
+      // Use refresh token to get new access token
+      const response = await this.fetchWithTimeout(
+        "https://www.inoreader.com/oauth2/token",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent":
+              this.browserConfig.user_agent || "Auth-Token-Manager/2.0.0",
+          },
+          body: new URLSearchParams({
+            grant_type: "refresh_token",
+            client_id: this.credentials.client_id,
+            client_secret: this.credentials.client_secret,
+            refresh_token: existingTokenData.refresh_token,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Refresh token failed: ${response.status} ${errorText}`,
+        );
+      }
+
+      const data = await response.json();
+      const expiresAt = new Date(Date.now() + data.expires_in * 1000);
+
+      const tokens: TokenResponse = {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        expires_at: expiresAt,
+        token_type: data.token_type || "Bearer",
+        scope: data.scope || "read write",
+      };
+
+        logger.info("Refresh token flow successful");
+
+      return {
+        success: true,
+        tokens,
+        metadata: {
+          duration: 0,
+          user_agent: this.browserConfig.user_agent || "unknown",
+          session_id: crypto.randomUUID(),
+          method: "refresh_token",
+        },
+      };
+    } catch (error) {
+      // Do not expose detailed error information in logs
+        logger.error("Refresh token flow failed");
+      throw error;
+    }
+  }
+
+  async cleanup(): Promise<void> {
+    try {
+      if (this.page) {
+        await this.page.close();
+        this.page = null;
+      }
+
+      if (this.context) {
+        await this.context.close();
+        this.context = null;
+      }
+
+      if (this.browser) {
+        await this.browser.close();
+        this.browser = null;
+      }
+
+        logger.info("Browser cleanup completed");
+      } catch {
+        logger.warn("Error during browser cleanup");
+      }
+  }
+
+  // Utility methods for network operations and retry logic
+
   private async fetchWithTimeout(
     url: string,
     options: RequestInit = {},
@@ -265,6 +424,7 @@ export class InoreaderTokenManager {
     );
 
     try {
+      // 恒久対応: プロキシ接続とフォールバック戦略
       const proxyUrl = Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
       const fallbackToDirect = Deno.env.get("NETWORK_FALLBACK_TO_DIRECT") === "true";
       
@@ -382,16 +542,15 @@ export class InoreaderTokenManager {
     }
   }
 
-  /**
-   * Check network connectivity to Inoreader
-   */
   private async checkNetworkConnectivity(): Promise<void> {
     try {
-      const proxyUrl = Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
-      if (proxyUrl) {
-        const proxyHost = new URL(proxyUrl).host;
-        logger.info("Connectivity check via proxy", { proxy_host: proxyHost });
-      }
+      // Check if we're using a proxy
+        const proxyUrl =
+          Deno.env.get("HTTPS_PROXY") || Deno.env.get("HTTP_PROXY");
+        if (proxyUrl) {
+          const proxyHost = new URL(proxyUrl).host;
+          logger.info("Connectivity check via proxy", { proxy_host: proxyHost });
+        }
 
       const response = await this.fetchWithTimeout(
         "https://www.inoreader.com",
@@ -404,18 +563,16 @@ export class InoreaderTokenManager {
         throw new Error(`Inoreader server error: ${response.status}`);
       }
 
-      logger.info("Network connectivity verified", {
-        status: response.status,
-      });
+        logger.info("Network connectivity verified", {
+          status: response.status,
+        });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       throw new Error(`Network connectivity check failed: ${errorMessage}`);
     }
   }
 
-  /**
-   * Retry operation with exponential backoff
-   */
   private async retryOperation<T>(
     operation: () => Promise<T>,
     operationName: string,
@@ -450,15 +607,35 @@ export class InoreaderTokenManager {
           next_delay_ms: delay,
         });
         await this.sleep(delay);
+
+        // Reset browser state for next attempt if it's a browser operation
+        if (
+          operationName.includes("browser") ||
+          operationName.includes("OAuth")
+        ) {
+          try {
+            await this.resetBrowserState();
+          } catch {
+            logger.warn("Browser state reset failed", { operation: operationName });
+          }
+        }
       }
     }
 
     throw lastError!;
   }
 
-  /**
-   * Sleep for specified milliseconds
-   */
+  private async resetBrowserState(): Promise<void> {
+    if (this.page && !this.page.isClosed()) {
+      try {
+        // Navigate to blank page to reset state
+        await this.page.goto("about:blank", { timeout: 10000 });
+        } catch {
+          logger.warn("Failed to reset page state", { operation: "resetBrowserState" });
+        }
+      }
+    }
+
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
