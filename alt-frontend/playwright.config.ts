@@ -52,11 +52,21 @@ export default defineConfig({
   ],
 
   // WebServerの設定
-  webServer: {
-    // CI ではビルド→本番起動、ローカルでは next dev
-    command: "next dev --port 3010",
-    url: "http://localhost:3010",
-    reuseExistingServer: true,
-    timeout: 1200 * 1000, // 20分のWebServerタイムアウト
-  },
+  webServer: [
+    {
+      command: "node tests/mock-auth-service.cjs",
+      port: 4545,
+      reuseExistingServer: true,
+    },
+    {
+      // CI ではビルド→本番起動、ローカルでは next dev
+      command: "next dev --port 3010",
+      url: "http://localhost:3010",
+      reuseExistingServer: true,
+      timeout: 1200 * 1000, // 20分のWebServerタイムアウト
+      env: {
+        AUTH_SERVICE_URL: "http://localhost:4545",
+      },
+    },
+  ],
 });
