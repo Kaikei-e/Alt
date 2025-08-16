@@ -19,6 +19,9 @@ COPY . .
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o auth-service ./app/cmd/server
 
+# Build the migration tool
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o migrate ./app/cmd/migrate
+
 # Final stage
 FROM alpine:latest
 
@@ -28,8 +31,9 @@ RUN apk --no-cache add ca-certificates tzdata curl
 # Create app directory
 WORKDIR /app
 
-# Copy binary from builder stage
+# Copy binaries from builder stage
 COPY --from=builder /app/auth-service .
+COPY --from=builder /app/migrate .
 
 # Copy configuration files if needed
 COPY --from=builder /app/app/config ./config
