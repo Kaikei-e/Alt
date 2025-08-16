@@ -1,27 +1,11 @@
 {
   "version": "5",
   "specifiers": {
-    "npm:playwright@latest": "1.54.2"
+    "jsr:@std/datetime@~0.225.5": "0.225.5"
   },
-  "npm": {
-    "fsevents@2.3.2": {
-      "integrity": "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==",
-      "os": ["darwin"],
-      "scripts": true
-    },
-    "playwright-core@1.54.2": {
-      "integrity": "sha512-n5r4HFbMmWsB4twG7tJLDN9gmBUeSPcsBZiWSE4DnYz9mJMAFqr2ID7+eGC9kpEnxExJ1epttwR59LEWCk8mtA==",
-      "bin": true
-    },
-    "playwright@1.54.2": {
-      "integrity": "sha512-Hu/BMoA1NAdRUuulyvQC0pEqZ4vQbGfn8f7wPXcnqQmM+zct9UliKxsIkLNmz/ku7LElUNqmaiv1TG/aL5ACsw==",
-      "dependencies": [
-        "playwright-core"
-      ],
-      "optionalDependencies": [
-        "fsevents"
-      ],
-      "bin": true
+  "jsr": {
+    "@std/datetime@0.225.5": {
+      "integrity": "9f650f6caec546b80172e95a4edb8478d5fe060c4c937f7ede242ffceab6efc9"
     }
   },
   "remote": {
@@ -220,7 +204,7 @@
   },
   "workspace": {
     "dependencies": [
-      "npm:playwright@latest"
+      "jsr:@std/datetime@~0.225.5"
     ]
   }
 }

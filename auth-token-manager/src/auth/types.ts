@@ -13,7 +13,7 @@ export interface TokenResponse {
 export interface InoreaderCredentials {
   client_id: string;
   client_secret: string;
-  redirect_uri: string; // For documentation purposes - not used in refresh-token-only mode
+  redirect_uri: string; // Callback URI for initial OAuth2 authorization flow
 }
 
 // BrowserConfig removed - browser automation disabled

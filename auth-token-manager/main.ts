@@ -32,6 +32,9 @@ async function main() {
     const command = Deno.args[0] || "health";
 
     switch (command) {
+      case "authorize":
+        await runAuthorization();
+        break;
       case "refresh":
         await runTokenRefresh();
         break;
@@ -202,6 +205,100 @@ async function runValidation() {
   }
 }
 
+/**
+ * Perform initial OAuth2 authorization flow to obtain tokens.
+ * Starts a local HTTP server to receive the authorization code,
+ * exchanges it for tokens, and updates the Kubernetes secret.
+ */
+async function runAuthorization() {
+  console.log("🔐 Starting initial OAuth2 authorization flow");
+  // Load configuration and credentials
+  await config.loadConfig();
+  if (!config.validateConfig()) {
+    console.error("Configuration validation failed");
+    Deno.exit(1);
+  }
+  const credentials = config.getInoreaderCredentials();
+  if (!Deno.env.get("INOREADER_REDIRECT_URI")) {
+    console.error("Missing required environment variable: INOREADER_REDIRECT_URI");
+    Deno.exit(1);
+  }
+  const redirectUrl = new URL(credentials.redirect_uri);
+  // Construct authorization URL
+  const authUrl = new URL("https://www.inoreader.com/oauth2/auth");
+  authUrl.searchParams.set("client_id", credentials.client_id);
+  authUrl.searchParams.set("redirect_uri", credentials.redirect_uri);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("scope", "read write");
+  console.log(`🔗 Open the following URL in your browser:
+  ${authUrl.toString()}`);
+
+  // Start HTTP server to capture the callback
+  const listener = Deno.listen({
+    hostname: redirectUrl.hostname,
+    port: Number(redirectUrl.port || 80),
+  });
+  console.log(`🛡️  Listening for OAuth callback at ${credentials.redirect_uri}`);
+
+  for await (const conn of listener) {
+    const httpConn = Deno.serveHttp(conn);
+    for await (const event of httpConn) {
+      const reqUrl = new URL(event.request.url);
+      if (reqUrl.pathname === redirectUrl.pathname && reqUrl.searchParams.has("code")) {
+        const code = reqUrl.searchParams.get("code")!;
+        event.respondWith(
+          new Response("Authorization successful! You may close this tab.", {
+            status: 200,
+            headers: { "Content-Type": "text/plain" },
+          }),
+        );
+        listener.close();
+        // Exchange authorization code for tokens
+        const tokenResp = await fetch("https://www.inoreader.com/oauth2/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "authorization_code",
+            client_id: credentials.client_id,
+            client_secret: credentials.client_secret,
+            redirect_uri: credentials.redirect_uri,
+            code,
+          }),
+        });
+        if (!tokenResp.ok) {
+          const errText = await tokenResp.text();
+          console.error("Token exchange failed:", errText);
+          Deno.exit(1);
+        }
+        const data = await tokenResp.json();
+        if (!data.access_token || !data.refresh_token || !data.expires_in) {
+          console.error("Invalid token response:", data);
+          Deno.exit(1);
+        }
+        const expiresAt = new Date(Date.now() + Number(data.expires_in) * 1000);
+        const tokens = {
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+          expires_at: expiresAt,
+          token_type: data.token_type || "Bearer",
+          scope: data.scope || "read write",
+        };
+        // Store tokens in Kubernetes secret
+        const configOptions = await config.loadConfig();
+        const secretManager = new K8sSecretManager(
+          configOptions.kubernetes_namespace,
+          configOptions.secret_name,
+        );
+        await secretManager.updateTokenSecret(tokens);
+        console.log("✅ Initial OAuth2 flow completed and secret updated");
+        Deno.exit(0);
+      } else {
+        event.respondWith(new Response("Invalid OAuth callback request", { status: 400 }));
+      }
+    }
+  }
+}
+
 async function runTokenMonitoring() {
   logger.info("Running token monitoring and alerting check");
 
@@ -335,7 +432,8 @@ Automated OAuth token refresh system using refresh tokens only - Deno 2.0
 USAGE:
   deno run --allow-all main.ts [COMMAND]
 
-COMMANDS:
+  COMMANDS:
+  authorize  Perform initial OAuth2 authorization flow
   refresh    Refresh OAuth tokens
   health     Run health check (default)
   validate   Validate configuration
@@ -374,4 +472,3 @@ setupSignalHandlers();
 if (import.meta.main) {
   await main();
 }
-
