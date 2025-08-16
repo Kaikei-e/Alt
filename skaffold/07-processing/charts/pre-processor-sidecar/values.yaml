@@ -43,6 +43,9 @@ env:
   OAUTH2_TOKEN_SECRET_NAME: "pre-processor-sidecar-oauth2-token"
   OAUTH2_TOKEN_REFRESH_BUFFER: "300"  # 5 minutes in seconds
   
+  # 恒久対応: 自律的Secret再読み込み機能
+  ENABLE_SECRET_WATCH: "true" # Enable automatic secret watching and reload
+  
   # Inoreader API configuration
   INOREADER_BASE_URL: "https://www.inoreader.com/reader/api/0"
   SYNC_INTERVAL: "30m"

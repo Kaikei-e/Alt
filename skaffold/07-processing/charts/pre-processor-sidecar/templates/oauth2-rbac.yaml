@@ -20,11 +20,15 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   resourceNames: ["{{ .Values.env.OAUTH2_TOKEN_SECRET_NAME | default "pre-processor-sidecar-oauth2-token" }}"]
-  verbs: ["get", "update", "patch"]
+  verbs: ["get", "update", "patch", "watch"]  # 恒久対応: watch権限追加
 # Allow creation of the OAuth2 secret if it doesn't exist
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["create"]
+# Allow listing secrets for watch functionality (恒久対応: 自律的Secret再読み込み)
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
