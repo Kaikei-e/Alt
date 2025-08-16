@@ -32,16 +32,30 @@ func NewClient(cfg *config.Config, logger *slog.Logger) (*Client, error) {
 		return nil, fmt.Errorf("invalid Kratos admin URL: %s", cfg.KratosAdminURL)
 	}
 
-	// Create public API client
+	// Create public API client with enhanced CSRF support
 	publicConfig := kratosclient.NewConfiguration()
 	publicConfig.Servers = []kratosclient.ServerConfiguration{
 		{
 			URL: cfg.KratosPublicURL,
 		},
 	}
+	
+	// 🚨 CRITICAL: Enhanced HTTP client for CSRF compatibility
 	publicConfig.HTTPClient = &http.Client{
 		Timeout: 30 * time.Second,
+		// 🎯 CRITICAL: Custom transport for cookie handling
+		Transport: &http.Transport{
+			DisableKeepAlives: false, // Enable keep-alives for session continuity
+		},
 	}
+	
+	// 🎯 CRITICAL: Default headers for CSRF compatibility
+	if publicConfig.DefaultHeader == nil {
+		publicConfig.DefaultHeader = make(map[string]string)
+	}
+	publicConfig.DefaultHeader["Accept"] = "application/json"
+	publicConfig.DefaultHeader["Content-Type"] = "application/json"
+	
 	publicAPI := kratosclient.NewAPIClient(publicConfig)
 
 	// Create admin API client

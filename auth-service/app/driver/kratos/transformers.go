@@ -64,10 +64,21 @@ func (a *KratosClientAdapter) transformToKratosLoginBody(body map[string]interfa
 		method = m
 	}
 
-	// Extract CSRF token
+	// Extract CSRF token with enhanced debugging
 	csrfToken, err := a.extractCSRFToken(body)
 	if err != nil {
+		a.logger.Error("CSRF token extraction failed",
+			"error", err,
+			"body_keys", getBodyKeys(body),
+			"body_preview", truncateMap(body, 5))
 		return nil, fmt.Errorf("failed to extract CSRF token: %w", err)
+	}
+
+	// 🚨 CRITICAL: Enhanced CSRF token validation and logging
+	if csrfToken == "" {
+		a.logger.Error("CSRF token is empty after extraction",
+			"body_csrf_fields", getCSRFRelatedFields(body))
+		return nil, fmt.Errorf("CSRF token is empty")
 	}
 
 	// Create Kratos login body
@@ -78,10 +89,16 @@ func (a *KratosClientAdapter) transformToKratosLoginBody(body map[string]interfa
 		CsrfToken:  &csrfToken,
 	}
 
-	a.logger.Debug("transformed login body",
+	// 🎯 CRITICAL: Detailed CSRF token logging for debugging
+	a.logger.Info("transformed login body with CSRF details",
 		"method", method,
 		"identifier_present", identifier != "",
-		"csrf_token_present", csrfToken != "")
+		"identifier_masked", maskEmail(identifier),
+		"csrf_token_present", csrfToken != "",
+		"csrf_token_length", len(csrfToken),
+		"csrf_token_prefix", getSafePrefix(csrfToken, 8),
+		"csrf_token_suffix", getSafeSuffix(csrfToken, 8),
+		"kratosBody_csrf_ptr", kratosBody.CsrfToken != nil)
 
 	return kratosBody, nil
 }
@@ -515,6 +532,72 @@ func (a *KratosClientAdapter) convertToMap(v interface{}) map[string]interface{}
 	
 	// For other struct types, use a simplified approach
 	return result
+}
+
+// 🎯 CRITICAL: Helper functions for enhanced CSRF debugging
+func getBodyKeys(body map[string]interface{}) []string {
+	keys := make([]string, 0, len(body))
+	for k := range body {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func getCSRFRelatedFields(body map[string]interface{}) map[string]interface{} {
+	csrfFields := make(map[string]interface{})
+	for k, v := range body {
+		if strings.Contains(strings.ToLower(k), "csrf") || 
+		   strings.Contains(strings.ToLower(k), "token") {
+			csrfFields[k] = v
+		}
+	}
+	return csrfFields
+}
+
+func truncateMap(m map[string]interface{}, maxFields int) map[string]interface{} {
+	result := make(map[string]interface{})
+	count := 0
+	for k, v := range m {
+		if count >= maxFields {
+			break
+		}
+		// Safely truncate string values
+		if str, ok := v.(string); ok && len(str) > 50 {
+			result[k] = str[:50] + "..."
+		} else {
+			result[k] = v
+		}
+		count++
+	}
+	return result
+}
+
+func maskEmail(email string) string {
+	if email == "" {
+		return ""
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return "***"
+	}
+	if len(parts[0]) <= 2 {
+		return "*@" + parts[1]
+	}
+	return string(parts[0][0]) + "***@" + parts[1]
+}
+
+func getSafePrefix(token string, length int) string {
+	if len(token) <= length {
+		return "***"
+	}
+	return token[:length]
+}
+
+func getSafeSuffix(token string, length int) string {
+	if len(token) <= length {
+		return "***"
+	}
+	return token[len(token)-length:]
 }
 
 // extractCSRFToken extracts CSRF token from request body

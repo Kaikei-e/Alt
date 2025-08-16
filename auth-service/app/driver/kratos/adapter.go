@@ -89,6 +89,20 @@ func (a *KratosClientAdapter) SubmitLoginFlow(ctx context.Context, flowID string
 		return nil, fmt.Errorf("invalid login body type: %T", kratosBody)
 	}
 
+	// 🚨 CRITICAL: Pre-submission CSRF validation and logging
+	a.logger.Info("preparing Kratos login submission",
+		"flow_id", flowID,
+		"method", passwordMethod.Method,
+		"identifier_present", passwordMethod.Identifier != "",
+		"password_present", passwordMethod.Password != "",
+		"csrf_token_ptr_nil", passwordMethod.CsrfToken == nil,
+		"csrf_token_value", func() string {
+			if passwordMethod.CsrfToken != nil {
+				return getSafePrefix(*passwordMethod.CsrfToken, 8) + "..." + getSafeSuffix(*passwordMethod.CsrfToken, 8)
+			}
+			return "nil"
+		}())
+
 	// Use correct Kratos client pattern with AsUpdateLoginFlowBody conversion
 	resp, httpResp, err := a.client.PublicAPI().FrontendAPI.
 		UpdateLoginFlow(ctx).
@@ -164,10 +178,16 @@ func (a *KratosClientAdapter) SubmitRegistrationFlow(ctx context.Context, flowID
 	}
 
 	// Submit registration flow to Kratos
+	// Fix: Use correct Kratos client pattern with AsUpdateRegistrationFlowBody conversion
+	passwordMethod, ok := kratosBody.(kratosclient.UpdateRegistrationFlowWithPasswordMethod)
+	if !ok {
+		return nil, fmt.Errorf("invalid registration body type: %T", kratosBody)
+	}
+
 	resp, httpResp, err := a.client.PublicAPI().FrontendAPI.
 		UpdateRegistrationFlow(ctx).
 		Flow(flowID).
-		UpdateRegistrationFlowBody(kratosBody.(kratosclient.UpdateRegistrationFlowBody)).
+		UpdateRegistrationFlowBody(kratosclient.UpdateRegistrationFlowWithPasswordMethodAsUpdateRegistrationFlowBody(&passwordMethod)).
 		Execute()
 
 	if err != nil {
