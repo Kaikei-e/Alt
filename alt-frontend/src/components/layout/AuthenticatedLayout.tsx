@@ -15,13 +15,13 @@ import {
   Separator,
   useDisclosure,
 } from '@chakra-ui/react';
-import { 
-  Menu, 
-  Home, 
-  BookOpen, 
-  Search, 
-  Settings, 
-  LogOut, 
+import {
+  Menu,
+  Home,
+  BookOpen,
+  Search,
+  Settings,
+  LogOut,
   User,
   Bell,
   Activity,
@@ -108,12 +108,12 @@ export function AuthenticatedLayout({
       // Redirect to login or show login modal
       return;
     }
-    
+
     if (item.requiredRole && user?.role !== item.requiredRole) {
       // Show insufficient permissions message
       return;
     }
-    
+
     setActiveNavItem(item.id);
     onClose(); // Close mobile drawer
     // Navigate to href (implement navigation logic)
@@ -185,17 +185,17 @@ export function AuthenticatedLayout({
 
   const SessionIndicator = () => {
     if (!isAuthenticated || !lastActivity || !sessionTimeout) return null;
-    
+
     const now = new Date();
     const minutesSinceLastActivity = Math.floor((now.getTime() - lastActivity.getTime()) / (1000 * 60));
     const timeRemaining = sessionTimeout - minutesSinceLastActivity;
     const showWarning = timeRemaining <= 5 && timeRemaining > 0;
-    
+
     return (
       <Flex align="center" gap={2}>
         <Clock size={12} />
-        <Text 
-          fontSize="xs" 
+        <Text
+          fontSize="xs"
           color={showWarning ? "semantic.warning" : "var(--text-muted)"}
           fontFamily="body"
         >
@@ -238,7 +238,7 @@ export function AuthenticatedLayout({
                   fontFamily="heading"
                   color="var(--alt-primary)"
                 >
-                  Alt Reader
+                  Alt
                 </Text>
               </Flex>
 
@@ -250,7 +250,7 @@ export function AuthenticatedLayout({
               {/* User Menu */}
               <Flex align="center" gap={3}>
                 <SessionIndicator />
-                
+
                 {isAuthenticated ? (
                   <HStack gap={2}>
                     <Box
@@ -268,7 +268,7 @@ export function AuthenticatedLayout({
                     >
                       {user?.name ? user.name[0].toUpperCase() : user?.email?.[0].toUpperCase() || 'U'}
                     </Box>
-                    
+
                     <IconButton
                       aria-label="ログアウト"
                       variant="ghost"
@@ -325,7 +325,7 @@ export function AuthenticatedLayout({
                   fontFamily="heading"
                   color="var(--alt-primary)"
                 >
-                  Alt Reader
+                  Alt
                 </Text>
               </Drawer.Header>
 
@@ -401,9 +401,9 @@ export function AuthenticatedLayout({
                 fontFamily="heading"
                 color="var(--alt-primary)"
               >
-                Alt Reader
+                Alt
               </Text>
-              
+
               <Text
                 fontSize="sm"
                 color="var(--text-muted)"
@@ -411,7 +411,7 @@ export function AuthenticatedLayout({
               >
                 モバイルファーストRSSリーダー
               </Text>
-              
+
               <HStack gap={6} wrap="wrap" justify="center">
                 <Button variant="ghost" size="sm" color="var(--text-muted)">
                   利用規約
@@ -423,13 +423,13 @@ export function AuthenticatedLayout({
                   お問い合わせ
                 </Button>
               </HStack>
-              
+
               <Text
                 fontSize="xs"
                 color="var(--text-muted)"
                 fontFamily="body"
               >
-                © 2025 Alt Reader. All rights reserved.
+                © 2025 Alt. All rights reserved.
               </Text>
             </VStack>
           </Box>

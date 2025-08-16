@@ -128,7 +128,7 @@ export default function LoginPage() {
               fontFamily="body"
               opacity={0.8}
             >
-              © 2025 Alt Reader. All rights reserved.
+              © 2025 Alt. All rights reserved.
             </Text>
           </Box>
         </VStack>

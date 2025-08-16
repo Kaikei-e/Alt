@@ -8,39 +8,12 @@ const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.al
  */
 export async function POST(request: NextRequest) {
   try {
-    // 🎯 CRITICAL FIX: Check if user has valid session first
     const cookies = request.headers.get('cookie') || '';
     
-    console.log(`🔐 [CSRF] Checking session before requesting CSRF token`);
+    console.log(`🔐 [CSRF] Requesting CSRF token from auth-service`);
     
-    // First, validate if user has an active session
-    const sessionCheckResponse = await fetch(`${AUTH_SERVICE_URL}/v1/auth/validate`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Cookie': cookies,
-      },
-      credentials: 'include',
-      signal: AbortSignal.timeout(5000),
-    });
-    
-    if (!sessionCheckResponse.ok) {
-      console.log(`🔐 [CSRF] No valid session found (${sessionCheckResponse.status}). CSRF token not needed for public actions.`);
-      
-      // Return a "no session" response - this is normal for unauthenticated users
-      return NextResponse.json(
-        { 
-          error: 'No active session - CSRF token not required for public actions', 
-          code: 'SESSION_NOT_FOUND',
-          details: 'Login or register first to get CSRF token for authenticated actions'
-        },
-        { status: 401 }
-      );
-    }
-    
-    console.log(`✅ [CSRF] Valid session found, requesting CSRF token from auth-service`);
-    
-    // User has valid session, now get CSRF token
+    // Simplified: directly request CSRF token from auth-service
+    // CSRF tokens should be available for unauthenticated flows (login/register)
     const response = await fetch(`${AUTH_SERVICE_URL}/v1/auth/csrf`, {
       method: 'POST',
       headers: {
@@ -79,15 +52,6 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json();
 
-    // Validate auth-service CSRF response
-    if (!data || !data.data) {
-      console.error('Invalid auth-service CSRF response:', data);
-      return NextResponse.json(
-        { error: 'Invalid CSRF response format', code: 'INVALID_CSRF_RESPONSE' },
-        { status: 502 }
-      );
-    }
-
     // Forward cookies from auth-service
     const headers = new Headers();
     const setCookie = response.headers.get('set-cookie');
@@ -95,6 +59,8 @@ export async function POST(request: NextRequest) {
       headers.set('Set-Cookie', setCookie);
     }
     headers.set('Content-Type', 'application/json');
+
+    console.log(`✅ [CSRF] CSRF token generated successfully`);
 
     // Return auth-service CSRF response directly
     return NextResponse.json(data, {

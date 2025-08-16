@@ -4,8 +4,6 @@ export class AuthAPIClient {
   private baseURL: string;
   private debugMode: boolean;
   private requestId: number;
-  private contentTypeCache: Map<string, string>;
-  private cacheExpiry: Map<string, number>;
 
   constructor() {
     // Use relative API proxy endpoints for secure HTTPS communication
@@ -13,8 +11,6 @@ export class AuthAPIClient {
     this.baseURL = '/api/auth';
     this.debugMode = process.env.NODE_ENV === 'development';
     this.requestId = 0;
-    this.contentTypeCache = new Map();
-    this.cacheExpiry = new Map();
   }
 
   // 接続テスト機能追加 (X1.md 1.3.2 実装)
@@ -81,72 +77,23 @@ export class AuthAPIClient {
   }
 
   async completeRegistration(flowId: string, email: string, password: string, name?: string): Promise<User> {
-    const currentRequestId = ++this.requestId;
-    const startTime = performance.now();
-    
-    // 🔍 ULTRA-DIAGNOSTIC: 完全なリクエスト情報をキャプチャ
-    const diagnosticInfo = {
-      requestId: `REG-${currentRequestId}`,
-      timestamp: new Date().toISOString(),
-      userAgent: navigator.userAgent,
-      sessionStorage: typeof window !== 'undefined' ? Object.keys(sessionStorage).length : 0,
-      localStorage: typeof window !== 'undefined' ? Object.keys(localStorage).length : 0,
-      cookieCount: typeof document !== 'undefined' ? document.cookie.split(';').length : 0,
-      url: typeof window !== 'undefined' ? window.location.href : 'unknown',
-      flowId: {
-        provided: !!flowId,
-        length: flowId?.length || 0,
-        format: flowId ? (flowId.startsWith('flow') ? 'kratos-format' : 'unknown-format') : 'missing'
-      },
-      email: {
-        provided: !!email,
-        length: email?.length || 0,
-        hasAtSymbol: email?.includes('@') || false,
-        domain: email?.split('@')[1] || null
-      },
-      password: {
-        provided: !!password,
-        length: password?.length || 0,
-        meetsCriteria: password ? password.length >= 8 : false
-      },
-      name: {
-        provided: !!name,
-        length: name?.length || 0
-      }
-    };
-    
-    console.groupCollapsed(`🔍 [AUTH-CLIENT-DIAGNOSTIC] Registration Request ${diagnosticInfo.requestId}`);
-    console.log('📋 Request Diagnostic Info:', diagnosticInfo);
-    console.log('🕐 Start Time:', new Date(diagnosticInfo.timestamp).toLocaleTimeString());
-    
-    // 送信前の詳細検証とログ出力
-    console.log('[AUTH-CLIENT] Registration data validation:', {
-      flowId: flowId ? 'present' : 'missing',
-      email: email ? 'present' : 'missing',
-      password: password ? 'present' : 'missing',
-      name: name || 'not provided',
-      timestamp: diagnosticInfo.timestamp,
-      requestId: diagnosticInfo.requestId
-    });
+    console.log('🚀 Starting registration completion...', { flowId });
 
-    // 基本バリデーション
-    if (!flowId || flowId.trim() === '') {
-      throw new Error('VALIDATION_FAILED: Flow ID is required');
+    // Basic validation
+    if (!flowId) {
+      throw new Error('Flow ID is required');
     }
-
-    if (!email || email.trim() === '' || !email.includes('@')) {
-      throw new Error('VALIDATION_FAILED: Valid email address is required');
+    if (!email || !email.includes('@')) {
+      throw new Error('Valid email address is required');
     }
-
     if (!password || password.length < 8) {
-      throw new Error('VALIDATION_FAILED: Password must be at least 8 characters');
+      throw new Error('Password must be at least 8 characters');
     }
 
-    // 🎯 Kratosスキーマ完全準拠ペイロード生成
+    // Create registration payload
     const payload = this.createKratosCompliantRegistrationPayload(email, password, name);
 
-    // 送信前の最終検証ログ
-    console.log('[AUTH-CLIENT] Sending Kratos-compliant registration payload:', {
+    console.log('[AUTH-CLIENT] Sending registration payload:', {
       flowId: flowId,
       payloadStructure: {
         hasTraits: !!payload.traits,
@@ -288,256 +235,54 @@ export class AuthAPIClient {
     await this.makeRequest('PUT', '/settings', settings);
   }
 
-  // 🔍 ULTRA-DIAGNOSTIC: 緊急診断エンドポイント
-  async diagnoseRegistrationFlow(): Promise<any> {
-    try {
-      console.log('🔍 [AUTH-CLIENT] Starting registration flow diagnosis...');
-      const response = await this.makeRequest('GET', '/debug/registration-flow');
-      console.log('✅ [AUTH-CLIENT] Registration flow diagnosis completed:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('❌ [AUTH-CLIENT] Registration flow diagnosis failed:', error);
-      throw error;
-    }
-  }
-
-  // 🔧 Content-Type自動判定システム
-  private async determineOptimalContentType(endpoint: string): Promise<string> {
-    const cacheKey = `content-type-${endpoint}`;
-    const now = Date.now();
-    
-    // キャッシュチェック（5分間有効）
-    if (this.contentTypeCache.has(cacheKey)) {
-      const expiry = this.cacheExpiry.get(cacheKey) || 0;
-      if (now < expiry) {
-        const cachedType = this.contentTypeCache.get(cacheKey)!;
-        console.log(`📋 Using cached content-type for ${endpoint}: ${cachedType}`);
-        return cachedType;
-      }
-    }
-
-    // X17.md Phase 17.3: HAR分析により判明 - この修正は不要だった
-    // Content-Type判定ロジックを元の適切な実装に戻す
-    let optimalContentType: string;
-    
-    // Kratosエンドポイントの判定 - 実際は適切に動作していた
-    if (endpoint.includes('/register/') || endpoint.includes('/login/')) {
-      // Kratosフロー完了エンドポイント → JSON形式が適切
-      optimalContentType = 'application/json';
-    } else {
-      // 通常のAPIエンドポイント → JSON使用  
-      optimalContentType = 'application/json';
-    }
-    
-    console.log(`📋 Content-Type determined: ${endpoint} → ${optimalContentType}`);
-
-    // キャッシュに保存（5分間）
-    this.contentTypeCache.set(cacheKey, optimalContentType);
-    this.cacheExpiry.set(cacheKey, now + 5 * 60 * 1000);
-
-    return optimalContentType;
-  }
-
-  // X17.md Phase 17.3: 元の適切な実装に戻す - HAR分析で問題なしと判明
-  private formatPayloadByContentType(data: any, contentType: string): string | FormData {
-    if (contentType === 'application/x-www-form-urlencoded') {
-      return this.toURLEncodedString(data);
-    } else {
-      return JSON.stringify(data);
-    }
-  }
-
-  // X17.md Phase 17.3: 削除されたtoURLEncodedStringメソッドを復元
-  private toURLEncodedString(data: any): string {
-    const params = new URLSearchParams();
-    
-    const flattenObject = (obj: any, prefix = '') => {
-      for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
-          const value = obj[key];
-          const newKey = prefix ? `${prefix}.${key}` : key;
-          
-          if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-            flattenObject(value, newKey);
-          } else if (Array.isArray(value)) {
-            value.forEach((item, index) => {
-              if (item !== null && typeof item === 'object') {
-                flattenObject(item, `${newKey}[${index}]`);
-              } else {
-                params.append(`${newKey}[${index}]`, String(item));
-              }
-            });
-          } else {
-            params.append(newKey, String(value));
-          }
-        }
-      }
-    };
-    
-    flattenObject(data);
-    return params.toString();
-  }
 
 
-  // 🎯 Kratosスキーマ完全準拠ペイロード生成システム
+
   private createKratosCompliantRegistrationPayload(email: string, password: string, name?: string): any {
-    console.log('🔧 Creating Kratos-compliant registration payload...');
-    
-    // Kratosスキーマに完全準拠したペイロード構造
     const payload: any = {
-      method: "password",  // Kratosで正確に認識されるmethod
+      method: "password",
       password: password.trim(),
       traits: {
-        email: email.trim().toLowerCase()  // 正規化
+        email: email.trim().toLowerCase()
       }
     };
 
-    // name処理の改善 - Kratosスキーマに合わせた正確な構造
+    // Add name if provided
     if (name && name.trim()) {
-      const normalizedName = name.trim();
-      const nameParts = normalizedName.split(/\s+/); // 複数の空白を処理
+      const nameParts = name.trim().split(/\s+/);
+      payload.traits.name = {
+        first: nameParts[0] || "",
+        last: nameParts.slice(1).join(" ") || ""
+      };
       
-      if (nameParts.length >= 1) {
-        // Kratosが期待するname構造
-        payload.traits.name = {
-          first: nameParts[0] || "",
-          last: nameParts.slice(1).join(" ") || ""
-        };
-        
-        console.log('🏷️ Name structure created:', {
-          original: normalizedName,
-          first: payload.traits.name.first,
-          last: payload.traits.name.last
-        });
+      // Remove empty last name
+      if (!payload.traits.name.last) {
+        delete payload.traits.name.last;
       }
     }
-
-    // 空のlastは削除（Kratosで問題を起こす可能性）
-    if (payload.traits.name && payload.traits.name.last === "") {
-      delete payload.traits.name.last;
-    }
-
-    console.log('✅ Kratos-compliant payload created:', {
-      hasMethod: !!payload.method,
-      hasPassword: !!payload.password,
-      hasTraits: !!payload.traits,
-      hasEmail: !!payload.traits?.email,
-      hasName: !!payload.traits?.name,
-      nameStructure: payload.traits?.name || 'none'
-    });
 
     return payload;
   }
 
-  // 🎯 Kratosスキーマ完全準拠ペイロード生成（ログイン用）
   private createKratosCompliantLoginPayload(email: string, password: string): any {
-    console.log('🔧 Creating Kratos-compliant login payload...');
-    
-    // Kratosログイン用スキーマに完全準拠
-    const payload = {
+    return {
       method: "password",
-      identifier: email.trim().toLowerCase(),  // Kratosは "identifier" を期待
+      identifier: email.trim().toLowerCase(),
       password: password.trim()
     };
-
-    console.log('✅ Kratos-compliant login payload created:', {
-      hasMethod: !!payload.method,
-      hasIdentifier: !!payload.identifier,
-      hasPassword: !!payload.password
-    });
-
-    return payload;
   }
 
-  // 🔍 ULTRA-DIAGNOSTIC: Kratosレスポンス完全キャプチャ
-  async captureKratosResponse(endpoint: string, method: string, payload?: any): Promise<any> {
-    const captureId = `CAPTURE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    console.groupCollapsed(`🎥 [AUTH-CLIENT-CAPTURE] Kratos Response Capture ${captureId}`);
-    
-    const captureInfo = {
-      captureId,
-      timestamp: new Date().toISOString(),
-      endpoint,
-      method,
-      payloadProvided: !!payload,
-      payloadSize: payload ? JSON.stringify(payload).length : 0,
-      userAgent: navigator.userAgent,
-      url: window.location.href
-    };
-    
-    console.log('📋 Capture Info:', captureInfo);
-    
-    if (payload && this.debugMode) {
-      console.log('📦 Payload (DEBUG):', JSON.stringify(payload, null, 2));
-    }
-    
-    try {
-      const startTime = performance.now();
-      const response = await this.makeRequest(method as any, endpoint, payload);
-      const endTime = performance.now();
-      const duration = endTime - startTime;
-      
-      const responseAnalysis = {
-        captureId,
-        status: 'SUCCESS',
-        duration: `${duration.toFixed(2)}ms`,
-        responseSize: JSON.stringify(response).length,
-        hasData: !!response.data,
-        responseType: typeof response.data,
-        responseKeys: response.data && typeof response.data === 'object' 
-          ? Object.keys(response.data) 
-          : null,
-        timestamp: new Date().toISOString()
-      };
-      
-      console.log('✅ Response Analysis:', responseAnalysis);
-      
-      if (this.debugMode) {
-        console.log('📄 Full Response (DEBUG):', JSON.stringify(response, null, 2));
-      }
-      
-      console.groupEnd();
-      return response;
-      
-    } catch (error) {
-      const endTime = performance.now();
-      const duration = endTime - performance.now();
-      
-      const errorAnalysis = {
-        captureId,
-        status: 'ERROR',
-        duration: `${duration.toFixed(2)}ms`,
-        errorType: typeof error,
-        errorName: error instanceof Error ? error.name : 'Unknown',
-        errorMessage: error instanceof Error ? error.message : String(error),
-        timestamp: new Date().toISOString()
-      };
-      
-      console.error('❌ Error Analysis:', errorAnalysis);
-      
-      if (this.debugMode) {
-        console.error('🚨 Full Error Details (DEBUG):', error);
-      }
-      
-      console.groupEnd();
-      throw error;
-    }
-  }
 
   private async makeRequest(method: string, endpoint: string, body?: unknown): Promise<{ data: unknown }> {
-    const requestId = `REQ-${++this.requestId}`;
-    const startTime = performance.now();
-    
-    console.log(`🚀 [${requestId}] Starting request: ${method} ${endpoint}`);
-    
     const url = `${this.baseURL}${endpoint}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Add CSRF token for unsafe methods (except CSRF endpoint to avoid circular dependency)
     const isUnsafeMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
     const isCsrfEndpoint = endpoint.includes('/csrf');
-
-    const headers: Record<string, string> = {};
-
-    // Add CSRF token for unsafe methods (but not for CSRF endpoint itself to avoid circular dependency)
+    
     if (isUnsafeMethod && !isCsrfEndpoint) {
       const csrfToken = await this.getCSRFTokenInternal();
       if (csrfToken) {
@@ -545,54 +290,27 @@ export class AuthAPIClient {
       }
     }
 
-    // 🔧 Content-Type選択とペイロード変換 - JSON固定
-    let formattedBody: string | FormData | undefined;
-    if (body) {
-      const optimalContentType = await this.determineOptimalContentType(endpoint);
-      headers['Content-Type'] = optimalContentType;
-      formattedBody = this.formatPayloadByContentType(body, optimalContentType);
-      
-      console.log(`📋 [${requestId}] Content-Type: ${optimalContentType}`);
-      if (this.debugMode) {
-        console.log(`📦 [${requestId}] Formatted body:`, 
-          optimalContentType === 'application/json' 
-            ? JSON.parse(formattedBody as string)
-            : formattedBody
-        );
-      }
-    }
-
     const config: RequestInit = {
       method,
-      credentials: 'include', // Include cookies
+      credentials: 'include',
       headers,
     };
 
-    if (formattedBody) {
-      config.body = formattedBody;
+    if (body) {
+      config.body = JSON.stringify(body);
     }
 
     try {
       const response = await fetch(url, config);
-      const duration = performance.now() - startTime;
-
-      console.log(`🏁 [${requestId}] Request completed: ${response.status} in ${duration.toFixed(2)}ms`);
 
       if (!response.ok) {
-        const errorContext = this.getMethodDescription(method, endpoint);
-        const error = new Error(`HTTP ${response.status}: ${errorContext}`);
-        console.error(`❌ [${requestId}] Request failed:`, error);
-        throw this.handleError(error, errorContext);
+        const error = new Error(`HTTP ${response.status}: ${method} ${endpoint}`);
+        throw this.handleError(error, `${method} ${endpoint}`);
       }
 
-      const result = await response.json();
-      console.log(`✅ [${requestId}] Request successful`);
-      return result;
+      return await response.json();
     } catch (error) {
-      const duration = performance.now() - startTime;
-      const errorContext = this.getMethodDescription(method, endpoint);
-      console.error(`💥 [${requestId}] Request error after ${duration.toFixed(2)}ms:`, error);
-      throw this.handleError(error, errorContext);
+      throw this.handleError(error, `${method} ${endpoint}`);
     }
   }
 
