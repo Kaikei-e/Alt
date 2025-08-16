@@ -68,11 +68,13 @@ Create the name of the service account to use
 Create environment variables from secrets
 */}}
 {{- define "auth-service.envFromSecret" -}}
+{{- if and .Values.envFromSecret .Values.envFromSecret.name .Values.envFromSecret.keys }}
 {{- range .Values.envFromSecret.keys }}
 - name: {{ . }}
   valueFrom:
     secretKeyRef:
       name: {{ $.Values.envFromSecret.name }}
       key: {{ . }}
+{{- end }}
 {{- end }}
 {{- end }}
