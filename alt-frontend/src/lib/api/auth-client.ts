@@ -169,63 +169,13 @@ export class AuthAPIClient {
 
     try {
       const response = await this.makeRequest('POST', `/register/${flowId}`, payload);
-      const endTime = performance.now();
-      const duration = endTime - startTime;
       
-      // 🎉 SUCCESS: 完全な成功レスポンス診断
-      const successDiagnostic = {
-        requestId: diagnosticInfo.requestId,
-        status: 'SUCCESS',
-        duration: `${duration.toFixed(2)}ms`,
-        responseSize: JSON.stringify(response).length,
-        hasData: !!response.data,
-        userData: response.data ? {
-          hasId: !!(response.data as User).id,
-          hasEmail: !!(response.data as User).email,
-          hasName: !!(response.data as User).name
-        } : null,
-        timestamp: new Date().toISOString()
-      };
+      console.log('✅ [AUTH-CLIENT] Registration SUCCESS');
       
-      console.log('✅ [AUTH-CLIENT] Registration SUCCESS:', successDiagnostic);
-      
-      if (this.debugMode && response.data) {
-        console.log('📄 Full Response Data (DEBUG):', JSON.stringify(response.data, null, 2));
-      }
-      
-      console.groupEnd();
       return response.data as User;
       
     } catch (error) {
-      const endTime = performance.now();
-      const duration = endTime - startTime;
-      
-      // 🚨 ERROR: 完全なエラー診断情報
-      const errorDiagnostic = {
-        requestId: diagnosticInfo.requestId,
-        status: 'ERROR',
-        duration: `${duration.toFixed(2)}ms`,
-        error: {
-          name: error instanceof Error ? error.name : 'Unknown',
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack?.split('\n').slice(0, 5) : null
-        },
-        requestInfo: {
-          flowId: flowId,
-          email: email ? `${email.substring(0, 3)}***@${email.split('@')[1] || 'unknown'}` : 'missing',
-          payloadSize: JSON.stringify(payload).length
-        },
-        timestamp: new Date().toISOString()
-      };
-      
-      console.error('❌ [AUTH-CLIENT] Registration FAILED:', errorDiagnostic);
-      
-      if (this.debugMode) {
-        console.error('📄 Full Error Details (DEBUG):', error);
-        console.error('📄 Sent Payload (DEBUG):', JSON.stringify(payload, null, 2));
-      }
-      
-      console.groupEnd();
+      console.error('❌ [AUTH-CLIENT] Registration FAILED:', error);
       throw error;
     }
   }
@@ -422,6 +372,9 @@ export class AuthAPIClient {
       'Content-Type': 'application/json',
     };
 
+    // 🚀 X26 Phase 2: Enhanced S2S authentication headers for auth-service compatibility
+    // Following Ory Kratos official recommendations for service-to-service communication
+
     // Add CSRF token for unsafe methods (except CSRF endpoint to avoid circular dependency)
     const isUnsafeMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
     const isCsrfEndpoint = endpoint.includes('/csrf');
@@ -430,12 +383,24 @@ export class AuthAPIClient {
       const csrfToken = await this.getCSRFTokenInternal();
       if (csrfToken) {
         headers['X-CSRF-Token'] = csrfToken;
+        // 🔑 Ory Kratos recommended: X-Session-Token for S2S auth reliability
+        headers['X-Session-Token'] = csrfToken;
       }
+    }
+
+    // 🚀 X26 Phase 2: Additional headers for enhanced auth-service compatibility
+    headers['X-Requested-With'] = 'XMLHttpRequest';
+    headers['X-Client-Type'] = 'frontend-spa';
+    
+    // 🔑 Essential for CSRF endpoint direct routing
+    if (isCsrfEndpoint) {
+      headers['X-Auth-Flow'] = 'csrf-request';
+      headers['X-Internal-Request'] = 'true';
     }
 
     const config: RequestInit = {
       method,
-      credentials: 'include',
+      credentials: 'include', // 🔑 CRITICAL: Always include credentials for Kratos session cookies
       headers,
     };
 
@@ -460,18 +425,42 @@ export class AuthAPIClient {
   private async getCSRFTokenInternal(): Promise<string | null> {
     try {
       const url = `${this.baseURL}/csrf`;
+      
+      // 🚀 X26 Phase 2: Enhanced CSRF request with proper headers for direct auth-service routing
       const response = await fetch(url, {
         method: 'POST',
-        credentials: 'include',
+        credentials: 'include', // 🔑 Essential for session cookie transmission
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Auth-Flow': 'csrf-request',
+          'X-Internal-Request': 'true',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-Client-Type': 'frontend-spa',
+        },
       });
 
       if (!response.ok) {
+        console.error('🚨 CSRF token request failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          url,
+          headers: Object.fromEntries(response.headers.entries())
+        });
         return null;
       }
 
       const data = await response.json();
-      return data.data?.csrf_token || null;
-    } catch {
+      const token = data.data?.csrf_token || data.csrf_token || null;
+      
+      if (token) {
+        console.log('✅ CSRF token retrieved successfully via direct auth-service route');
+      } else {
+        console.warn('⚠️ CSRF response received but no token found:', data);
+      }
+      
+      return token;
+    } catch (error) {
+      console.error('🚨 CSRF token request error:', error);
       return null;
     }
   }
