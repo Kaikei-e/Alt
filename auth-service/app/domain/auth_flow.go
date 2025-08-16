@@ -82,6 +82,7 @@ type LoginFlow struct {
 	ReturnTo         string                 `json:"return_to,omitempty"`
 	Active           string                 `json:"active,omitempty"`
 	UI               *AuthFlowUI            `json:"ui"`
+	CSRFToken        string                 `json:"csrf_token,omitempty"`
 	CreatedBy        string                 `json:"created_by,omitempty"`
 	Forced           bool                   `json:"forced,omitempty"`
 	Refresh          bool                   `json:"refresh,omitempty"`

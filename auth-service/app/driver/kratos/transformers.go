@@ -64,16 +64,24 @@ func (a *KratosClientAdapter) transformToKratosLoginBody(body map[string]interfa
 		method = m
 	}
 
+	// Extract CSRF token
+	csrfToken, err := a.extractCSRFToken(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract CSRF token: %w", err)
+	}
+
 	// Create Kratos login body
 	kratosBody := kratosclient.UpdateLoginFlowWithPasswordMethod{
 		Identifier: identifier,
 		Password:   password,
 		Method:     method,
+		CsrfToken:  &csrfToken,
 	}
 
 	a.logger.Debug("transformed login body",
 		"method", method,
-		"identifier_present", identifier != "")
+		"identifier_present", identifier != "",
+		"csrf_token_present", csrfToken != "")
 
 	return kratosBody, nil
 }
@@ -318,6 +326,18 @@ func (a *KratosClientAdapter) transformKratosLoginFlowResponse(kratosFlow *krato
 	ui := kratosFlow.GetUi()
 	flow.UI = a.transformUIToDomain(&ui)
 
+	// Extract CSRF token from UI nodes
+	csrfToken := a.extractCSRFTokenFromUI(&ui)
+	if csrfToken != "" {
+		flow.CSRFToken = csrfToken
+		a.logger.Debug("extracted CSRF token from login flow",
+			"flow_id", flow.ID,
+			"csrf_token_present", true)
+	} else {
+		a.logger.Warn("no CSRF token found in login flow UI",
+			"flow_id", flow.ID)
+	}
+
 	return flow, nil
 }
 
@@ -443,7 +463,125 @@ func (a *KratosClientAdapter) convertToMap(v interface{}) map[string]interface{}
 		return m
 	}
 	
-	// For struct types, we'll create a basic conversion
-	// This is a simplified approach - in production you might want to use reflection
+	// Handle Kratos UiNodeAttributes specifically
+	switch attr := v.(type) {
+	case kratosclient.UiNodeAttributes:
+		// Check if it has UiNodeInputAttributes
+		if inputAttrs := attr.UiNodeInputAttributes; inputAttrs != nil {
+			result["name"] = inputAttrs.GetName()
+			result["type"] = inputAttrs.GetType()
+			result["value"] = inputAttrs.GetValue()
+			result["required"] = inputAttrs.GetRequired()
+			result["disabled"] = inputAttrs.GetDisabled()
+			result["node_type"] = inputAttrs.GetNodeType()
+			
+			// Add autocomplete if present
+			if autocomplete := inputAttrs.GetAutocomplete(); autocomplete != "" {
+				result["autocomplete"] = autocomplete
+			}
+		}
+		
+		// Check other attribute types as needed
+		if textAttrs := attr.UiNodeTextAttributes; textAttrs != nil {
+			result["id"] = textAttrs.GetId()
+			result["text"] = textAttrs.GetText()
+			result["node_type"] = textAttrs.GetNodeType()
+		}
+		
+		if anchorAttrs := attr.UiNodeAnchorAttributes; anchorAttrs != nil {
+			result["href"] = anchorAttrs.GetHref()
+			result["title"] = anchorAttrs.GetTitle()
+			result["node_type"] = anchorAttrs.GetNodeType()
+		}
+		
+		if imageAttrs := attr.UiNodeImageAttributes; imageAttrs != nil {
+			result["src"] = imageAttrs.GetSrc()
+			result["id"] = imageAttrs.GetId()
+			result["width"] = imageAttrs.GetWidth()
+			result["height"] = imageAttrs.GetHeight()
+			result["node_type"] = imageAttrs.GetNodeType()
+		}
+		
+		if scriptAttrs := attr.UiNodeScriptAttributes; scriptAttrs != nil {
+			result["src"] = scriptAttrs.GetSrc()
+			result["async"] = scriptAttrs.GetAsync()
+			result["referrerpolicy"] = scriptAttrs.GetReferrerpolicy()
+			result["type"] = scriptAttrs.GetType()
+			result["node_type"] = scriptAttrs.GetNodeType()
+		}
+		
+		return result
+	}
+	
+	// For other struct types, use a simplified approach
 	return result
+}
+
+// extractCSRFToken extracts CSRF token from request body
+func (a *KratosClientAdapter) extractCSRFToken(body map[string]interface{}) (string, error) {
+	// First, try to get csrf_token directly
+	if csrfToken, ok := body["csrf_token"].(string); ok && csrfToken != "" {
+		a.logger.Debug("extracted CSRF token from request body",
+			"token_length", len(csrfToken))
+		return csrfToken, nil
+	}
+
+	// Alternative field names that might be used
+	alternativeFields := []string{"csrfToken", "csrf", "_csrf", "anti_csrf_token"}
+	for _, field := range alternativeFields {
+		if csrfToken, ok := body[field].(string); ok && csrfToken != "" {
+			a.logger.Debug("extracted CSRF token from alternative field",
+				"field", field,
+				"token_length", len(csrfToken))
+			return csrfToken, nil
+		}
+	}
+
+	return "", fmt.Errorf("CSRF token is required but not found in request body")
+}
+
+// extractCSRFTokenFromUI extracts CSRF token from Kratos UI nodes
+func (a *KratosClientAdapter) extractCSRFTokenFromUI(ui *kratosclient.UiContainer) string {
+	nodes := ui.GetNodes()
+	for _, node := range nodes {
+		// Skip non-input nodes
+		if node.GetType() != "input" {
+			continue
+		}
+		
+		attributes := node.GetAttributes()
+		
+		// Check if this is an input node with csrf_token name
+		if attributes.UiNodeInputAttributes != nil {
+			inputAttrs := attributes.UiNodeInputAttributes
+			if inputAttrs.GetName() == "csrf_token" {
+				// Extract the value
+				if value := inputAttrs.GetValue(); value != nil {
+					if tokenValue, ok := value.(string); ok && tokenValue != "" {
+						a.logger.Debug("found CSRF token in UI node via UiNodeInputAttributes",
+							"node_type", node.GetType(),
+							"node_group", node.GetGroup(),
+							"token_length", len(tokenValue))
+						return tokenValue
+					}
+				}
+			}
+		}
+		
+		// Alternative approach: use convertToMap to get structured attributes
+		attrMap := a.convertToMap(attributes)
+		if name, nameOk := attrMap["name"].(string); nameOk && name == "csrf_token" {
+			if value, valueOk := attrMap["value"].(string); valueOk && value != "" {
+				a.logger.Debug("found CSRF token in UI node via convertToMap",
+					"node_type", node.GetType(),
+					"node_group", node.GetGroup(),
+					"token_length", len(value))
+				return value
+			}
+		}
+	}
+	
+	a.logger.Warn("no CSRF token found in UI nodes",
+		"total_nodes", len(nodes))
+	return ""
 }
