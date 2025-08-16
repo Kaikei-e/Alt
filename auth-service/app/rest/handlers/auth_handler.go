@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -91,7 +92,9 @@ func (h *AuthHandler) CompleteLogin(c echo.Context) error {
 		})
 	}
 
-	sessionCtx, err := h.authUsecase.CompleteLogin(ctx, flowID, &loginReq)
+	// X18.md HAR Analysis Fix: Convert LoginRequest struct to map for Kratos compatibility
+	loginMap := h.convertLoginRequestToMap(&loginReq)
+	sessionCtx, err := h.authUsecase.CompleteLogin(ctx, flowID, loginMap)
 	if err != nil {
 		h.logger.Error("failed to complete login", 
 			"flowId", flowID, 
@@ -181,7 +184,9 @@ func (h *AuthHandler) CompleteRegistration(c echo.Context) error {
 		})
 	}
 
-	sessionCtx, err := h.authUsecase.CompleteRegistration(ctx, flowID, &regReq)
+	// X18.md HAR Analysis Fix: Convert RegistrationRequest struct to map for Kratos compatibility
+	regMap := h.convertRegistrationRequestToMap(&regReq)
+	sessionCtx, err := h.authUsecase.CompleteRegistration(ctx, flowID, regMap)
 	if err != nil {
 		h.logger.Error("failed to complete registration",
 			"flowId", flowID,
@@ -511,6 +516,7 @@ type RegistrationRequest struct {
 	Email     string `json:"email" validate:"required,email"`
 	Password  string `json:"password" validate:"required,min=8"`
 	Name      string `json:"name,omitempty"`
+	Method    string `json:"method,omitempty"`           // Kratosプロトコル用
 	CSRFToken string `json:"csrf_token,omitempty"`
 }
 
@@ -672,4 +678,92 @@ func countChar(s string, c byte) int {
 		}
 	}
 	return count
+}
+
+// convertLoginRequestToMap converts LoginRequest struct to map[string]interface{}
+// X18.md HAR Analysis Fix: Required for Kratos client compatibility
+func (h *AuthHandler) convertLoginRequestToMap(req *LoginRequest) map[string]interface{} {
+	result := make(map[string]interface{})
+	
+	// Extract email from either identifier or email field (X17.md compatibility)
+	email := h.extractEmailFromLoginRequest(req)
+	if email != "" {
+		result["identifier"] = email  // Kratos expects 'identifier' field
+	}
+	
+	// Password is required
+	if req.Password != "" {
+		result["password"] = req.Password
+	}
+	
+	// Method for Kratos protocol
+	if req.Method != "" {
+		result["method"] = req.Method
+	} else {
+		result["method"] = "password"  // Default to password method
+	}
+	
+	// CSRF token if provided
+	if req.CSRFToken != "" {
+		result["csrf_token"] = req.CSRFToken
+	}
+	
+	h.logger.Debug("converted LoginRequest to map",
+		"has_identifier", result["identifier"] != nil,
+		"has_password", result["password"] != nil, 
+		"method", result["method"])
+	
+	return result
+}
+
+// convertRegistrationRequestToMap converts RegistrationRequest struct to map[string]interface{}
+// X18.md HAR Analysis Fix: Required for Kratos client compatibility
+func (h *AuthHandler) convertRegistrationRequestToMap(req *RegistrationRequest) map[string]interface{} {
+	result := make(map[string]interface{})
+	
+	// Password is required
+	if req.Password != "" {
+		result["password"] = req.Password
+	}
+	
+	// Method for Kratos protocol
+	if req.Method != "" {
+		result["method"] = req.Method
+	} else {
+		result["method"] = "password"  // Default to password method
+	}
+	
+	// Traits for user data
+	traits := make(map[string]interface{})
+	if req.Email != "" {
+		traits["email"] = req.Email
+	}
+	
+	// Handle name structure
+	if req.Name != "" {
+		// Split name into first and last parts
+		nameParts := strings.Fields(req.Name)
+		nameMap := make(map[string]interface{})
+		if len(nameParts) > 0 {
+			nameMap["first"] = nameParts[0]
+			if len(nameParts) > 1 {
+				nameMap["last"] = strings.Join(nameParts[1:], " ")
+			}
+		}
+		traits["name"] = nameMap
+	}
+	
+	result["traits"] = traits
+	
+	// CSRF token if provided
+	if req.CSRFToken != "" {
+		result["csrf_token"] = req.CSRFToken
+	}
+	
+	h.logger.Debug("converted RegistrationRequest to map",
+		"has_traits", result["traits"] != nil,
+		"has_password", result["password"] != nil,
+		"method", result["method"])
+	
+	return result
 }

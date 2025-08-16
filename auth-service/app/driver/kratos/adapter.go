@@ -83,10 +83,17 @@ func (a *KratosClientAdapter) SubmitLoginFlow(ctx context.Context, flowID string
 	}
 
 	// Submit login flow to Kratos
+	// X18.md HAR Analysis Fix: Use correct Kratos client pattern
+	passwordMethod, ok := kratosBody.(kratosclient.UpdateLoginFlowWithPasswordMethod)
+	if !ok {
+		return nil, fmt.Errorf("invalid login body type: %T", kratosBody)
+	}
+
+	// Use correct Kratos client pattern with AsUpdateLoginFlowBody conversion
 	resp, httpResp, err := a.client.PublicAPI().FrontendAPI.
 		UpdateLoginFlow(ctx).
 		Flow(flowID).
-		UpdateLoginFlowBody(kratosBody.(kratosclient.UpdateLoginFlowBody)).
+		UpdateLoginFlowBody(kratosclient.UpdateLoginFlowWithPasswordMethodAsUpdateLoginFlowBody(&passwordMethod)).
 		Execute()
 
 	if err != nil {
