@@ -43,21 +43,83 @@ export class AuthAPIClient {
   }
 
   async completeLogin(flowId: string, email: string, password: string): Promise<User> {
-    console.log('🚀 Starting Kratos-compliant login process...');
+    return this.loginWithRetry(flowId, email, password);
+  }
+
+  // 🚨 CRITICAL: X22 Phase 1 - Auto-retry login with CSRF error recovery
+  private async loginWithRetry(flowId: string, email: string, password: string, maxRetries: number = 2): Promise<User> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🚀 Starting login attempt ${attempt + 1}/${maxRetries + 1}`, { flowId });
+        
+        // 🚨 CRITICAL: X22 Phase 1 - CSRF token extraction from login flow
+        const csrfToken = await this.extractCSRFTokenFromFlow(flowId);
+        if (!csrfToken) {
+          throw new Error('CSRF token extraction failed - cannot proceed with login');
+        }
+        
+        // 🎯 Kratosスキーマ完全準拠ログインペイロード生成（CSRFトークン含有）
+        const payload = this.createKratosCompliantLoginPayload(email, password, csrfToken);
+
+        console.log('[AUTH-CLIENT] Sending Kratos-compliant login payload:', {
+          flowId: flowId,
+          attempt: attempt + 1,
+          hasIdentifier: !!payload.identifier,
+          hasPassword: !!payload.password,
+          method: payload.method,
+          hasCSRFToken: !!payload.csrf_token,
+          csrfTokenLength: payload.csrf_token?.length || 0
+        });
+
+        const response = await this.makeRequest('POST', `/login/${flowId}`, payload);
+        console.log('✅ Login request completed successfully');
+        return response.data as User;
+
+      } catch (error) {
+        const isCSRFError = this.isCSRFError(error);
+        const shouldRetry = isCSRFError && attempt < maxRetries;
+
+        console.error(`❌ Login attempt ${attempt + 1} failed:`, {
+          flowId,
+          error: error instanceof Error ? error.message : String(error),
+          isCSRFError,
+          shouldRetry,
+          attemptsRemaining: maxRetries - attempt
+        });
+
+        if (shouldRetry) {
+          console.warn(`🔄 CSRF error detected, creating new flow for retry (attempt ${attempt + 2})`);
+          
+          // Create new flow for retry
+          try {
+            const newFlow = await this.initiateLogin();
+            flowId = newFlow.id;
+            console.log(`✅ New flow created for retry: ${flowId}`);
+            continue;
+          } catch (newFlowError) {
+            console.error('❌ Failed to create new flow for retry:', newFlowError);
+            throw error; // Throw original error if can't create new flow
+          }
+        }
+
+        // If not retrying or max retries reached, throw the error
+        throw error;
+      }
+    }
+
+    throw new Error(`Login failed after ${maxRetries + 1} attempts`);
+  }
+
+  // 🚨 CRITICAL: X22 Phase 1 - CSRF error detection
+  private isCSRFError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
     
-    // 🎯 Kratosスキーマ完全準拠ログインペイロード生成
-    const payload = this.createKratosCompliantLoginPayload(email, password);
-
-    console.log('[AUTH-CLIENT] Sending Kratos-compliant login payload:', {
-      flowId: flowId,
-      hasIdentifier: !!payload.identifier,
-      hasPassword: !!payload.password,
-      method: payload.method
-    });
-
-    const response = await this.makeRequest('POST', `/login/${flowId}`, payload);
-    console.log('✅ Login request completed successfully');
-    return response.data as User;
+    const message = error.message.toLowerCase();
+    return message.includes('csrf') || 
+           message.includes('token') ||
+           message.includes('400') ||
+           message.includes('500') ||
+           message.includes('forbidden');
   }
 
   async initiateRegistration(): Promise<RegistrationFlow> {
@@ -221,6 +283,86 @@ export class AuthAPIClient {
     }
   }
 
+  // 🚨 CRITICAL: X22 Phase 1 - CSRF token extraction from login flow
+  private async extractCSRFTokenFromFlow(flowId: string): Promise<string | null> {
+    try {
+      // Get current flow to extract CSRF token
+      const flowResponse = await fetch(`${this.baseURL}/login/${flowId}`, {
+        method: 'GET',
+        credentials: 'include', // 🔑 Essential for cookie transmission
+      });
+
+      if (!flowResponse.ok) {
+        console.error('🚨 Failed to fetch login flow for CSRF extraction:', {
+          status: flowResponse.status,
+          statusText: flowResponse.statusText,
+          flowId
+        });
+        return null;
+      }
+
+      const flow = await flowResponse.json();
+      
+      // Extract CSRF token from UI nodes
+      const csrfToken = this.extractCSRFTokenFromUINodes(flow);
+      
+      if (!csrfToken) {
+        console.error('🚨 CSRF token not found in login flow', {
+          flowId,
+          available_nodes: flow.ui?.nodes?.map((n: any) => n.attributes?.name) || [],
+          flow_preview: {
+            id: flow.id,
+            type: flow.type,
+            state: flow.state,
+            nodes_count: flow.ui?.nodes?.length || 0
+          }
+        });
+        return null;
+      }
+
+      console.log('✅ CSRF token extracted successfully from flow', {
+        flowId,
+        token_length: csrfToken.length,
+        token_preview: `${csrfToken.substring(0, 8)}...${csrfToken.substring(csrfToken.length - 8)}`
+      });
+
+      return csrfToken;
+    } catch (error) {
+      console.error('🚨 Error extracting CSRF token from flow:', {
+        flowId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  // 🚨 CRITICAL: X22 Phase 1 - CSRF token extraction from UI nodes
+  private extractCSRFTokenFromUINodes(flow: any): string | null {
+    if (!flow?.ui?.nodes || !Array.isArray(flow.ui.nodes)) {
+      console.warn('Invalid flow structure - missing ui.nodes');
+      return null;
+    }
+
+    // Find CSRF token node
+    const csrfNode = flow.ui.nodes.find((node: any) => 
+      node?.attributes?.name === 'csrf_token' && 
+      node?.attributes?.type === 'hidden'
+    );
+
+    if (!csrfNode?.attributes?.value) {
+      console.warn('CSRF token node not found or missing value', {
+        available_nodes: flow.ui.nodes.map((n: any) => ({
+          name: n?.attributes?.name,
+          type: n?.attributes?.type,
+          group: n?.group
+        }))
+      });
+      return null;
+    }
+
+    return csrfNode.attributes.value;
+  }
+
   async updateProfile(profile: Partial<User>): Promise<User> {
     const response = await this.makeRequest('PUT', '/profile', profile);
     return response.data as User;
@@ -264,11 +406,12 @@ export class AuthAPIClient {
     return payload;
   }
 
-  private createKratosCompliantLoginPayload(email: string, password: string): any {
+  private createKratosCompliantLoginPayload(email: string, password: string, csrfToken: string): any {
     return {
       method: "password",
       identifier: email.trim().toLowerCase(),
-      password: password.trim()
+      password: password.trim(),
+      csrf_token: csrfToken  // 🔑 CRITICAL: CSRF token inclusion
     };
   }
 
