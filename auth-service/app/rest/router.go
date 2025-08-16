@@ -18,6 +18,7 @@ type RouterConfig struct {
 	AuthUsecase     port.AuthUsecase
 	UserUsecase     port.UserUsecase
 	SessionUsecase  port.SessionUsecase
+	KratosClient    port.KratosClient
 	EnableDebug     bool
 	EnableMetrics   bool
 }
@@ -35,7 +36,7 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	authHandler := handlers.NewAuthHandler(config.AuthUsecase, config.Logger)
 	userHandler := handlers.NewUserHandler(config.UserUsecase, config.Logger)
 	healthHandler := handlers.NewHealthHandler(config.Logger)
-	debugHandler := handlers.NewDebugHandler(config.AuthUsecase, config.Logger)
+	debugHandler := handlers.NewDebugHandler(config.KratosClient)
 
 	// Create middleware
 	authMiddleware := custommw.NewAuthMiddleware(config.AuthUsecase, config.Logger)
@@ -159,10 +160,20 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	// 🔍 Debug endpoints (only in debug mode)
 	if config.EnableDebug {
 		debug := v1.Group("/debug")
+		
+		// CSRF diagnostic endpoints
+		debug.GET("/csrf/:flowId", debugHandler.GetCSRFDiagnostic)
+		debug.GET("/csrf/health", debugHandler.GetCSRFHealth)
+		
+		// Legacy debug endpoints
 		debug.GET("/registration-flow", debugHandler.DiagnoseRegistrationFlow)
 		
 		config.Logger.Info("🔧 Debug endpoints enabled", 
-			"endpoints", []string{"/v1/debug/registration-flow"})
+			"endpoints", []string{
+				"/v1/debug/csrf/:flowId", 
+				"/v1/debug/csrf/health",
+				"/v1/debug/registration-flow",
+			})
 	}
 
 	return e

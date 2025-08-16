@@ -25,6 +25,7 @@ type Container struct {
 	// Drivers
 	DB          *postgres.DB
 	KratosClient *kratos.Client
+	KratosClientAdapter port.KratosClient
 	
 	// Gateways
 	AuthGateway    port.AuthGateway
@@ -63,8 +64,8 @@ func NewContainer(cfg *config.Config, logger *slog.Logger) (*Container, error) {
 	authRepository := postgres.NewAuthRepository(container.DB.Pool(), logger)
 	
 	// Initialize gateways
-	kratosClientAdapter := kratos.NewKratosClientAdapter(container.KratosClient, logger)
-	container.AuthGateway = gateway.NewAuthGateway(kratosClientAdapter, logger)
+	container.KratosClientAdapter = kratos.NewKratosClientAdapter(container.KratosClient, logger)
+	container.AuthGateway = gateway.NewAuthGateway(container.KratosClientAdapter, logger)
 	
 	// Initialize usecases
 	container.AuthUsecase = usecase.NewAuthUseCase(authRepository, container.AuthGateway)
@@ -86,6 +87,7 @@ func (c *Container) CreateRouter() *echo.Echo {
 		AuthUsecase:     c.AuthUsecase,
 		UserUsecase:     nil, // TODO: Add when implementation is complete
 		SessionUsecase:  nil, // TODO: Add when implementation is complete
+		KratosClient:    c.KratosClientAdapter,
 		EnableDebug:     c.Config.LogLevel == "debug",
 		EnableMetrics:   c.Config.EnableMetrics,
 	}
