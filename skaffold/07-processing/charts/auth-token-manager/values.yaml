@@ -19,6 +19,24 @@ kubernetes:
   namespace: alt-processing
   secretName: pre-processor-sidecar-oauth2-token
 
+# Secret Management Configuration (恒久対応)
+secretManagement:
+  # OAuth credentials secret (for client_id, client_secret)
+  credentialsSecretName: auth-token-manager-secrets
+  # Token storage secret (for access_token, refresh_token)
+  tokenSecretName: pre-processor-sidecar-oauth2-token
+  # Create missing secrets if they don't exist
+  createSecrets: true
+
+# Development Secret Configuration (恒久対応)
+secret:
+  create: true
+  name: auth-token-manager-secrets
+  data:
+    # Development/test credentials - override in production
+    INOREADER_CLIENT_ID: ""
+    INOREADER_CLIENT_SECRET: ""
+
 # Browser Configuration
 browser:
   headless: true
@@ -57,14 +75,14 @@ network:
 
 # CronJob Configuration
 cronjob:
-  schedule: "0 0,6,12,18 * * *"  # 4 times daily at 00:00, 06:00, 12:00, 18:00 - 恒久対応: プリエンプティブ更新
+  schedule: "0 */2 * * *"  # Every 2 hours in dev - 恒久対応: 開発環境では頻繁にテスト
   timeZone: "UTC"
   concurrencyPolicy: Forbid
   failedJobsHistoryLimit: 3
-  successfulJobsHistoryLimit: 1
+  successfulJobsHistoryLimit: 2
   suspend: false
-  backoffLimit: 5  # Increased from 2 to 5 for better retry
-  activeDeadlineSeconds: 3600  # 60 minutes timeout - 恒久対応: プロキシ経由のため時間延長
+  backoffLimit: 3  # 適度なリトライ回数
+  activeDeadlineSeconds: 1800  # 30 minutes timeout - 恒久対応: 早期検出とデバッグ
 
 # Resource Configuration
 resources:
