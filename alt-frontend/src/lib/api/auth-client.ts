@@ -72,10 +72,11 @@ export class AuthAPIClient {
     console.log('🚀 Starting Browser Flow login...', { flowId });
 
     try {
-      // Get login flow to extract ui.action
-      const loginFlow = await this.getLoginFlow(flowId);
+      // Get login flow initialization data directly (no additional GET needed)
+      const initResponse = await this.makeRequest('POST', '/login');
+      const loginFlow = initResponse.data as LoginFlow;
       
-      if (!loginFlow.ui.action) {
+      if (!loginFlow.ui || !loginFlow.ui.action) {
         throw new Error('Login flow missing ui.action URL');
       }
 
@@ -83,7 +84,7 @@ export class AuthAPIClient {
       const formData = this.createLoginFormData(email, password, loginFlow);
 
       console.log('[AUTH-CLIENT] Sending Browser Flow login:', {
-        flowId: flowId,
+        flowId: loginFlow.id,
         actionUrl: loginFlow.ui.action,
         method: loginFlow.ui.method,
         formFields: Array.from(formData.keys())
@@ -102,21 +103,6 @@ export class AuthAPIClient {
     }
   }
 
-  // Get login flow by ID to extract ui.action
-  private async getLoginFlow(flowId: string): Promise<LoginFlow> {
-    const response = await this.makeRequest('GET', `/login/${flowId}`);
-    
-    if (!response || !response.data || typeof response.data !== 'object') {
-      throw new Error('Invalid login flow response format');
-    }
-
-    const loginFlow = response.data as LoginFlow;
-    if (!loginFlow.ui || !loginFlow.ui.action) {
-      throw new Error('Login flow missing ui.action field');
-    }
-
-    return loginFlow;
-  }
 
   // Create form data for login (Browser Flow)
   private createLoginFormData(email: string, password: string, flow: LoginFlow): FormData {
@@ -139,21 +125,6 @@ export class AuthAPIClient {
     return formData;
   }
 
-  // Get registration flow by ID to extract ui.action
-  private async getRegistrationFlow(flowId: string): Promise<RegistrationFlow> {
-    const response = await this.makeRequest('GET', `/register/${flowId}`);
-    
-    if (!response || !response.data || typeof response.data !== 'object') {
-      throw new Error('Invalid registration flow response format');
-    }
-
-    const registrationFlow = response.data as RegistrationFlow;
-    if (!registrationFlow.ui || !registrationFlow.ui.action) {
-      throw new Error('Registration flow missing ui.action field');
-    }
-
-    return registrationFlow;
-  }
 
   // Create form data for Browser Flow (not JSON)
   private createBrowserFlowFormData(email: string, password: string, name: string | undefined, flow: RegistrationFlow): FormData {
@@ -238,10 +209,11 @@ export class AuthAPIClient {
     }
 
     try {
-      // 🚀 CRITICAL: X27 Browser Flow Compliance - Get registration flow to extract ui.action
-      const registrationFlow = await this.getRegistrationFlow(flowId);
+      // 🚀 CRITICAL: X32 Browser Flow Fix - Use initialization data directly (no GET needed)
+      const initResponse = await this.makeRequest('POST', '/register');
+      const registrationFlow = initResponse.data as RegistrationFlow;
       
-      if (!registrationFlow.ui.action) {
+      if (!registrationFlow.ui || !registrationFlow.ui.action) {
         throw new Error('Registration flow missing ui.action URL');
       }
 
@@ -249,7 +221,7 @@ export class AuthAPIClient {
       const formData = this.createBrowserFlowFormData(email, password, name, registrationFlow);
 
       console.log('[AUTH-CLIENT] Sending Browser Flow registration:', {
-        flowId: flowId,
+        flowId: registrationFlow.id,
         actionUrl: registrationFlow.ui.action,
         method: registrationFlow.ui.method,
         formFields: Array.from(formData.keys())
