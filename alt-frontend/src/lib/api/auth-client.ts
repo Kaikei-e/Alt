@@ -43,71 +43,14 @@ export class AuthAPIClient {
   }
 
   async completeLogin(flowId: string, email: string, password: string): Promise<User> {
-    return this.loginWithRetry(flowId, email, password);
+    return this.loginWithBrowserFlow(flowId, email, password);
   }
 
-  // 🚨 CRITICAL: X22 Phase 1 - Auto-retry login with CSRF error recovery
+  // 🚨 LEGACY: X22 Auto-retry login (replaced by X27 Browser Flow)
+  // Kept for backward compatibility - will be removed in future versions
   private async loginWithRetry(flowId: string, email: string, password: string, maxRetries: number = 2): Promise<User> {
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`🚀 Starting login attempt ${attempt + 1}/${maxRetries + 1}`, { flowId });
-        
-        // 🚨 CRITICAL: X22 Phase 1 - CSRF token extraction from login flow
-        const csrfToken = await this.extractCSRFTokenFromFlow(flowId);
-        if (!csrfToken) {
-          throw new Error('CSRF token extraction failed - cannot proceed with login');
-        }
-        
-        // 🎯 Kratosスキーマ完全準拠ログインペイロード生成（CSRFトークン含有）
-        const payload = this.createKratosCompliantLoginPayload(email, password, csrfToken);
-
-        console.log('[AUTH-CLIENT] Sending Kratos-compliant login payload:', {
-          flowId: flowId,
-          attempt: attempt + 1,
-          hasIdentifier: !!payload.identifier,
-          hasPassword: !!payload.password,
-          method: payload.method,
-          hasCSRFToken: !!payload.csrf_token,
-          csrfTokenLength: payload.csrf_token?.length || 0
-        });
-
-        const response = await this.makeRequest('POST', `/login/${flowId}`, payload);
-        console.log('✅ Login request completed successfully');
-        return response.data as User;
-
-      } catch (error) {
-        const isCSRFError = this.isCSRFError(error);
-        const shouldRetry = isCSRFError && attempt < maxRetries;
-
-        console.error(`❌ Login attempt ${attempt + 1} failed:`, {
-          flowId,
-          error: error instanceof Error ? error.message : String(error),
-          isCSRFError,
-          shouldRetry,
-          attemptsRemaining: maxRetries - attempt
-        });
-
-        if (shouldRetry) {
-          console.warn(`🔄 CSRF error detected, creating new flow for retry (attempt ${attempt + 2})`);
-          
-          // Create new flow for retry
-          try {
-            const newFlow = await this.initiateLogin();
-            flowId = newFlow.id;
-            console.log(`✅ New flow created for retry: ${flowId}`);
-            continue;
-          } catch (newFlowError) {
-            console.error('❌ Failed to create new flow for retry:', newFlowError);
-            throw error; // Throw original error if can't create new flow
-          }
-        }
-
-        // If not retrying or max retries reached, throw the error
-        throw error;
-      }
-    }
-
-    throw new Error(`Login failed after ${maxRetries + 1} attempts`);
+    console.warn('⚠️ DEPRECATED: loginWithRetry is deprecated, using Browser Flow instead');
+    return this.loginWithBrowserFlow(flowId, email, password);
   }
 
   // 🚨 CRITICAL: X22 Phase 1 - CSRF error detection
@@ -120,6 +63,148 @@ export class AuthAPIClient {
            message.includes('400') ||
            message.includes('500') ||
            message.includes('forbidden');
+  }
+
+  // 🚀 X27 Browser Flow Methods - Ory Kratos Compliance
+
+  // Browser Flow compliant login method
+  private async loginWithBrowserFlow(flowId: string, email: string, password: string): Promise<User> {
+    console.log('🚀 Starting Browser Flow login...', { flowId });
+
+    try {
+      // Get login flow to extract ui.action
+      const loginFlow = await this.getLoginFlow(flowId);
+      
+      if (!loginFlow.ui.action) {
+        throw new Error('Login flow missing ui.action URL');
+      }
+
+      // Create form data for Browser Flow
+      const formData = this.createLoginFormData(email, password, loginFlow);
+
+      console.log('[AUTH-CLIENT] Sending Browser Flow login:', {
+        flowId: flowId,
+        actionUrl: loginFlow.ui.action,
+        method: loginFlow.ui.method,
+        formFields: Array.from(formData.keys())
+      });
+
+      // Submit to ui.action URL using form data
+      const response = await this.submitBrowserFlowForm(loginFlow.ui.action, formData);
+      
+      console.log('✅ [AUTH-CLIENT] Browser Flow Login SUCCESS');
+      
+      return response.data as User;
+      
+    } catch (error) {
+      console.error('❌ [AUTH-CLIENT] Browser Flow Login FAILED:', error);
+      throw error;
+    }
+  }
+
+  // Get login flow by ID to extract ui.action
+  private async getLoginFlow(flowId: string): Promise<LoginFlow> {
+    const response = await this.makeRequest('GET', `/login/${flowId}`);
+    
+    if (!response || !response.data || typeof response.data !== 'object') {
+      throw new Error('Invalid login flow response format');
+    }
+
+    const loginFlow = response.data as LoginFlow;
+    if (!loginFlow.ui || !loginFlow.ui.action) {
+      throw new Error('Login flow missing ui.action field');
+    }
+
+    return loginFlow;
+  }
+
+  // Create form data for login (Browser Flow)
+  private createLoginFormData(email: string, password: string, flow: LoginFlow): FormData {
+    const formData = new FormData();
+    
+    // Required fields for Kratos login
+    formData.append('method', 'password');
+    formData.append('identifier', email.trim().toLowerCase());
+    formData.append('password', password.trim());
+
+    // Extract and add CSRF token from flow UI nodes
+    const csrfNode = flow.ui.nodes.find(node => 
+      node.attributes?.name === 'csrf_token' && node.attributes?.value
+    );
+    
+    if (csrfNode?.attributes?.value) {
+      formData.append('csrf_token', csrfNode.attributes.value);
+    }
+
+    return formData;
+  }
+
+  // Get registration flow by ID to extract ui.action
+  private async getRegistrationFlow(flowId: string): Promise<RegistrationFlow> {
+    const response = await this.makeRequest('GET', `/register/${flowId}`);
+    
+    if (!response || !response.data || typeof response.data !== 'object') {
+      throw new Error('Invalid registration flow response format');
+    }
+
+    const registrationFlow = response.data as RegistrationFlow;
+    if (!registrationFlow.ui || !registrationFlow.ui.action) {
+      throw new Error('Registration flow missing ui.action field');
+    }
+
+    return registrationFlow;
+  }
+
+  // Create form data for Browser Flow (not JSON)
+  private createBrowserFlowFormData(email: string, password: string, name: string | undefined, flow: RegistrationFlow): FormData {
+    const formData = new FormData();
+    
+    // Required fields for Kratos registration
+    formData.append('method', 'password');
+    formData.append('password', password.trim());
+    formData.append('traits.email', email.trim().toLowerCase());
+    
+    // Add name if provided
+    if (name && name.trim()) {
+      const nameParts = name.trim().split(/\s+/);
+      formData.append('traits.name.first', nameParts[0] || '');
+      if (nameParts.length > 1) {
+        formData.append('traits.name.last', nameParts.slice(1).join(' '));
+      }
+    }
+
+    // Extract and add CSRF token from flow UI nodes
+    const csrfNode = flow.ui.nodes.find(node => 
+      node.attributes?.name === 'csrf_token' && node.attributes?.value
+    );
+    
+    if (csrfNode?.attributes?.value) {
+      formData.append('csrf_token', csrfNode.attributes.value);
+    }
+
+    return formData;
+  }
+
+  // Submit form data to ui.action URL (Browser Flow compliance)
+  private async submitBrowserFlowForm(actionUrl: string, formData: FormData): Promise<{ data: unknown }> {
+    const response = await fetch(actionUrl, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include', // Critical for cookie-based sessions
+      headers: {
+        // Do NOT set Content-Type - let browser set it for FormData
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Browser Flow submission failed: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return { data };
   }
 
   async initiateRegistration(): Promise<RegistrationFlow> {
@@ -139,7 +224,7 @@ export class AuthAPIClient {
   }
 
   async completeRegistration(flowId: string, email: string, password: string, name?: string): Promise<User> {
-    console.log('🚀 Starting registration completion...', { flowId });
+    console.log('🚀 Starting Browser Flow registration completion...', { flowId });
 
     // Basic validation
     if (!flowId) {
@@ -152,30 +237,33 @@ export class AuthAPIClient {
       throw new Error('Password must be at least 8 characters');
     }
 
-    // Create registration payload
-    const payload = this.createKratosCompliantRegistrationPayload(email, password, name);
-
-    console.log('[AUTH-CLIENT] Sending registration payload:', {
-      flowId: flowId,
-      payloadStructure: {
-        hasTraits: !!payload.traits,
-        hasEmail: !!(payload.traits as any)?.email,
-        hasName: !!(payload.traits as any)?.name,
-        hasPassword: !!payload.password,
-        method: payload.method
-      },
-      payloadSize: JSON.stringify(payload).length
-    });
-
     try {
-      const response = await this.makeRequest('POST', `/register/${flowId}`, payload);
+      // 🚀 CRITICAL: X27 Browser Flow Compliance - Get registration flow to extract ui.action
+      const registrationFlow = await this.getRegistrationFlow(flowId);
       
-      console.log('✅ [AUTH-CLIENT] Registration SUCCESS');
+      if (!registrationFlow.ui.action) {
+        throw new Error('Registration flow missing ui.action URL');
+      }
+
+      // 🎯 Browser Flow Compliance: Create form data payload instead of JSON
+      const formData = this.createBrowserFlowFormData(email, password, name, registrationFlow);
+
+      console.log('[AUTH-CLIENT] Sending Browser Flow registration:', {
+        flowId: flowId,
+        actionUrl: registrationFlow.ui.action,
+        method: registrationFlow.ui.method,
+        formFields: Array.from(formData.keys())
+      });
+
+      // 🚀 CRITICAL: Submit to ui.action URL using form data (not JSON)
+      const response = await this.submitBrowserFlowForm(registrationFlow.ui.action, formData);
+      
+      console.log('✅ [AUTH-CLIENT] Browser Flow Registration SUCCESS');
       
       return response.data as User;
       
     } catch (error) {
-      console.error('❌ [AUTH-CLIENT] Registration FAILED:', error);
+      console.error('❌ [AUTH-CLIENT] Browser Flow Registration FAILED:', error);
       throw error;
     }
   }
