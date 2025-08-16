@@ -51,7 +51,8 @@ env:
   
   # Proxy configuration (CRITICAL: Envoy egress only)  
   HTTPS_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
-  NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local,*.alt-processing.svc.cluster.local,*.alt-apps.svc.cluster.local,*.alt-database.svc.cluster.local,www.inoreader.com"
+  # Remove external Inoreader from NO_PROXY so that all Inoreader API calls go through Envoy
+  NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local,*.alt-processing.svc.cluster.local,*.alt-apps.svc.cluster.local,*.alt-database.svc.cluster.local"
 
 # Secret configuration (OAuth2 credentials)
 secret:
