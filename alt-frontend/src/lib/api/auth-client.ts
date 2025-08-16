@@ -300,21 +300,8 @@ export class AuthAPIClient {
 
   async getCSRFToken(): Promise<string | null> {
     try {
-      const response = await this.makeRequest('POST', '/csrf');
-
-      // 防御的プログラミング: CSRF レスポンスの検証強化
-      if (!response || !response.data || typeof response.data !== 'object') {
-        console.warn('CSRF response invalid format:', response);
-        return null;
-      }
-
-      const csrfData = response.data as { csrf_token?: string };
-      if (!csrfData.csrf_token || typeof csrfData.csrf_token !== 'string') {
-        console.warn('CSRF response missing token:', csrfData);
-        return null;
-      }
-
-      return csrfData.csrf_token;
+      // 🚀 X29 FIX: Use direct nginx route for CSRF token instead of frontend proxy
+      return await this.getCSRFTokenInternal();
     } catch (error: unknown) {
       console.warn('Failed to get CSRF token:', error);
       return null;
@@ -480,8 +467,9 @@ export class AuthAPIClient {
     headers['X-Requested-With'] = 'XMLHttpRequest';
     headers['X-Client-Type'] = 'frontend-spa';
     
-    // 🔑 Essential for CSRF endpoint direct routing
+    // 🚀 X29 FIX: CSRF requests should use nginx direct route, not frontend proxy
     if (isCsrfEndpoint) {
+      console.warn('⚠️ DEPRECATED: makeRequest() called for CSRF endpoint. Use getCSRFTokenInternal() instead for nginx direct route.');
       headers['X-Auth-Flow'] = 'csrf-request';
       headers['X-Internal-Request'] = 'true';
     }
@@ -512,7 +500,9 @@ export class AuthAPIClient {
 
   private async getCSRFTokenInternal(): Promise<string | null> {
     try {
-      const url = `${this.baseURL}/csrf`;
+      // 🚀 X29 FIX: Use nginx direct route for CSRF token requests
+      // This bypasses the frontend proxy and goes directly through nginx to auth-service
+      const url = '/api/auth/csrf';
       
       // 🚀 X26 Phase 2: Enhanced CSRF request with proper headers for direct auth-service routing
       const response = await fetch(url, {
@@ -524,6 +514,8 @@ export class AuthAPIClient {
           'X-Internal-Request': 'true',
           'X-Requested-With': 'XMLHttpRequest',
           'X-Client-Type': 'frontend-spa',
+          // 🚀 X29 FIX: Add header to ensure nginx direct route usage
+          'X-Route-Type': 'nginx-direct',
         },
       });
 

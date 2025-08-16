@@ -96,5 +96,24 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return proxyToAuthService(request, '/v1/auth/csrf');
+  // 🚨 X29 FIX: CSRF requests should now use nginx direct route (/api/auth/csrf)
+  // This frontend proxy endpoint is deprecated for CSRF operations
+  console.warn('⚠️ DEPRECATED: Frontend auth proxy used for CSRF. This should now use nginx direct route.');
+  
+  // Return a deprecation notice to help identify any remaining calls
+  return NextResponse.json(
+    { 
+      error: 'DEPRECATED_ENDPOINT',
+      message: 'CSRF requests should use nginx direct route /api/auth/csrf',
+      recommendation: 'Update frontend code to use direct nginx routing'
+    },
+    { 
+      status: 410, // Gone - indicates this endpoint is deprecated
+      headers: {
+        'X-Deprecated': 'true',
+        'X-Replacement': '/api/auth/csrf (nginx direct route)',
+        'X-Migration': 'X29-frontend-auth-unification'
+      }
+    }
+  );
 }
