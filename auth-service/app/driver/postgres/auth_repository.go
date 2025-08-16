@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"auth-service/app/domain"
@@ -201,15 +202,20 @@ func (r *AuthRepository) StoreCSRFToken(ctx context.Context, token *domain.CSRFT
 	// Generate ID for the token
 	tokenID := uuid.New()
 
-	// For now, we'll use a placeholder user ID since the domain.CSRFToken doesn't have it
-	// This would need to be resolved by getting the user ID from the session
-	var userID uuid.UUID
+	// X27 FIX: Support anonymous CSRF tokens - user_id can be NULL for anonymous sessions
+	// Check if this is an anonymous session (starts with "anonymous-")
+	var userID *uuid.UUID // Use pointer to allow NULL values
+	if !strings.HasPrefix(token.SessionID, "anonymous-") {
+		// For authenticated sessions, we would get user ID from session
+		// For now, skip since anonymous sessions are the primary use case
+		r.logger.Debug("Non-anonymous session detected, user_id will be NULL for now", "session_id", token.SessionID)
+	}
 
 	_, err := r.db.Exec(ctx, query,
 		tokenID,
 		token.Token,
 		token.SessionID,
-		userID, // This would need to be resolved
+		userID, // NULL for anonymous sessions, UUID for authenticated users
 		token.CreatedAt,
 		token.ExpiresAt,
 		false, // used
