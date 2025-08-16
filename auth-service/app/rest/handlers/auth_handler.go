@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -378,11 +380,14 @@ func (h *AuthHandler) RefreshSession(c echo.Context) error {
 func (h *AuthHandler) GenerateCSRFToken(c echo.Context) error {
 	ctx := c.Request().Context()
 
+	// 🚀 X26 PERMANENT FIX: CSRF tokens must be generated WITHOUT session requirement
+	// CSRF tokens are needed BEFORE session establishment, so we use anonymous session ID
+	
 	sessionID := h.extractSessionID(c)
 	if sessionID == "" {
-		return c.JSON(http.StatusUnauthorized, ErrorResponse{
-			Error: "session required",
-		})
+		// Use anonymous session for CSRF token generation before authentication
+		sessionID = "anonymous-" + generateRandomID()
+		h.logger.Debug("generating CSRF token for anonymous session", "anonymousSessionId", sessionID)
 	}
 
 	csrfToken, err := h.authUsecase.GenerateCSRFToken(ctx, sessionID)
@@ -393,7 +398,15 @@ func (h *AuthHandler) GenerateCSRFToken(c echo.Context) error {
 		})
 	}
 
-	return c.JSON(http.StatusOK, csrfToken)
+	h.logger.Debug("CSRF token generated successfully", 
+		"sessionId", sessionID, 
+		"tokenLength", len(csrfToken.Token),
+		"clientIP", c.RealIP())
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"csrf_token": csrfToken.Token,
+		"expires_at": csrfToken.ExpiresAt,
+	})
 }
 
 // ValidateCSRFToken validates CSRF token
@@ -499,6 +512,16 @@ func (h *AuthHandler) extractSessionToken(c echo.Context) string {
 
 func (h *AuthHandler) extractSessionID(c echo.Context) string {
 	return h.extractSessionToken(c)
+}
+
+// generateRandomID generates a random ID for anonymous sessions
+func generateRandomID() string {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to simpler method if crypto/rand fails
+		return fmt.Sprintf("%d", len(bytes)*1000000)
+	}
+	return hex.EncodeToString(bytes)
 }
 
 // Request/Response types

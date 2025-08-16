@@ -123,13 +123,16 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	auth.POST("/login/:flowId", authHandler.CompleteLogin)
 	auth.POST("/register", authHandler.InitiateRegistration)
 	auth.POST("/register/:flowId", authHandler.CompleteRegistration)
+	
+	// 🚀 X26 PERMANENT FIX: CSRF endpoint must be public for session initialization
+	// CSRF tokens are required BEFORE authentication, so they cannot require auth
+	auth.POST("/csrf", authHandler.GenerateCSRFToken)
 
 	// Protected auth endpoints (require authentication)
 	authProtected := auth.Group("")
 	authProtected.Use(authMiddleware.RequireAuth())
 	authProtected.POST("/logout", authHandler.Logout, csrfMiddleware.RequireCSRF())
 	authProtected.POST("/refresh", authHandler.RefreshSession, csrfMiddleware.RequireCSRF())
-	authProtected.POST("/csrf", authHandler.GenerateCSRFToken)
 	authProtected.POST("/csrf/validate", authHandler.ValidateCSRFToken)
 
 	// Session validation endpoint (for other services)
