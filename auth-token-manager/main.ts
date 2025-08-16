@@ -339,20 +339,30 @@ async function runTokenMonitoring() {
     const alerts = [];
     let alertLevel: "info" | "warning" | "critical" = "info";
 
-    // Check token expiry
+    // Check token expiry - Enhanced thresholds for proactive management
     const oneHour = 60 * 60 * 1000;
     const thirtyMinutes = 30 * 60 * 1000;
     const fiveMinutes = 5 * 60 * 1000;
+    const twoHours = 2 * 60 * 60 * 1000;  // 恒久対応: 2時間前の早期警告
+    const sixHours = 6 * 60 * 60 * 1000;  // 恒久対応: 6時間前の事前通知
 
-    if (timeUntilExpiry < fiveMinutes) {
+    if (timeUntilExpiry <= 0) {
+      alerts.push("Token has already expired - immediate refresh required");
+      alertLevel = "critical";
+    } else if (timeUntilExpiry < fiveMinutes) {
       alerts.push("Token expires in less than 5 minutes - immediate refresh required");
       alertLevel = "critical";
     } else if (timeUntilExpiry < thirtyMinutes) {
-      alerts.push("Token expires in less than 30 minutes - refresh recommended");
-      alertLevel = "warning";
+      alerts.push("Token expires in less than 30 minutes - urgent refresh recommended");
+      alertLevel = "critical";  // 恒久対応: 30分以内は critical に変更
     } else if (timeUntilExpiry < oneHour) {
-      alerts.push("Token expires in less than 1 hour - monitoring recommended");
+      alerts.push("Token expires in less than 1 hour - refresh recommended");
+      alertLevel = "warning";
+    } else if (timeUntilExpiry < twoHours) {
+      alerts.push("Token expires in less than 2 hours - proactive refresh recommended");
       if (alertLevel === "info") alertLevel = "warning";
+    } else if (timeUntilExpiry < sixHours) {
+      alerts.push("Token expires in less than 6 hours - preparation recommended");
     }
 
     // Check last update time

@@ -65,13 +65,33 @@ class ConfigManager {
 
     // Check required environment variables
     for (const env of required) {
-      if (!Deno.env.get(env)) {
+      const value = Deno.env.get(env);
+      if (!value) {
         console.error(`Missing required environment variable: ${env}`);
+        return false;
+      }
+      
+      // Enhanced validation: Check for dummy/placeholder values
+      if (value === 'demo-client-id' || value === 'demo-client-secret' || value === 'placeholder') {
+        console.error(`Invalid placeholder value for ${env}: ${value}`);
+        return false;
+      }
+      
+      // Check minimum length for security
+      if (value.length < 5) {
+        console.error(`Invalid ${env}: too short (minimum 5 characters required)`);
         return false;
       }
     }
 
+    // Enhanced logging with configuration status
+    console.log('✅ Configuration validation successful');
     console.log('ℹ️ Using refresh token flow only (browser automation disabled)');
+    
+    // Log configuration summary (without sensitive data)
+    const clientId = Deno.env.get('INOREADER_CLIENT_ID');
+    console.log(`ℹ️ Client ID configured: ${clientId?.substring(0, 4)}...${clientId?.substring(-4)}`);
+    
     return true;
   }
 
