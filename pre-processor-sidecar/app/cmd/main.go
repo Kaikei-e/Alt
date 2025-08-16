@@ -110,6 +110,9 @@ func main() {
 		// OAuth2 Secret設定 - auth-token-manager連携
 		OAuth2SecretName:    cfg.OAuth2SecretName,
 		KubernetesNamespace: os.Getenv("KUBERNETES_NAMESPACE"),
+		
+		// 恒久対応: 自律的Secret再読み込み機能
+		EnableSecretWatch:   os.Getenv("ENABLE_SECRET_WATCH") == "true",
 	}
 
 	simpleTokenService, err := service.NewSimpleTokenService(simpleTokenConfig, logger)

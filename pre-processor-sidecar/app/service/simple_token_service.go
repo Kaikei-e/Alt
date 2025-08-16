@@ -23,6 +23,9 @@ type SimpleTokenService struct {
 	oauth2SecretSvc  *OAuth2SecretService
 	logger           *slog.Logger
 	isStarted        bool
+	
+	// 自律的Secret再読み込み機能 (恒久対応)
+	secretWatchEnabled bool
 }
 
 // SimpleTokenConfig は簡易版設定
@@ -38,6 +41,9 @@ type SimpleTokenConfig struct {
 	// OAuth2 Secret設定
 	OAuth2SecretName string
 	KubernetesNamespace string
+	
+	// 自律的Secret再読み込み設定 (恒久対応)
+	EnableSecretWatch bool
 }
 
 // NewSimpleTokenService は新しい簡易統合サービスを作成
@@ -125,16 +131,18 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 	)
 
 	service := &SimpleTokenService{
-		inMemoryManager:  inMemoryManager,
-		recoveryManager:  recoveryManager,
-		oauth2Client:     oauth2Client,
-		oauth2SecretSvc:  oauth2SecretSvc,
-		logger:           logger,
+		inMemoryManager:    inMemoryManager,
+		recoveryManager:    recoveryManager,
+		oauth2Client:       oauth2Client,
+		oauth2SecretSvc:    oauth2SecretSvc,
+		logger:             logger,
+		secretWatchEnabled: config.EnableSecretWatch && oauth2SecretSvc != nil,
 	}
 
 	logger.Info("SimpleTokenService created successfully",
 		"refresh_buffer_minutes", config.RefreshBuffer.Minutes(),
-		"check_interval_minutes", config.CheckInterval.Minutes())
+		"check_interval_minutes", config.CheckInterval.Minutes(),
+		"secret_watch_enabled", service.secretWatchEnabled)
 
 	return service, nil
 }
@@ -151,8 +159,18 @@ func (sts *SimpleTokenService) Start() error {
 	// RecoveryManagerの開始
 	sts.recoveryManager.Start()
 
+	// Secret監視の開始 (恒久対応: 自律的Secret再読み込み)
+	if sts.secretWatchEnabled {
+		if err := sts.oauth2SecretSvc.StartWatching(sts.onSecretUpdate); err != nil {
+			sts.logger.Warn("Failed to start secret watching", "error", err)
+		} else {
+			sts.logger.Info("Secret watching started successfully")
+		}
+	}
+
 	sts.isStarted = true
-	sts.logger.Info("SimpleTokenService started successfully")
+	sts.logger.Info("SimpleTokenService started successfully",
+		"secret_watch_enabled", sts.secretWatchEnabled)
 	return nil
 }
 
@@ -163,6 +181,11 @@ func (sts *SimpleTokenService) Stop() error {
 	}
 
 	sts.logger.Info("Stopping SimpleTokenService...")
+
+	// Secret監視の停止 (恒久対応: 自律的Secret再読み込み)
+	if sts.secretWatchEnabled && sts.oauth2SecretSvc != nil {
+		sts.oauth2SecretSvc.StopWatching()
+	}
 
 	// RecoveryManagerの停止
 	sts.recoveryManager.Stop()
@@ -179,17 +202,34 @@ func (sts *SimpleTokenService) Stop() error {
 func (sts *SimpleTokenService) GetValidToken(ctx context.Context) (*models.OAuth2Token, error) {
 	token, err := sts.inMemoryManager.GetValidToken(ctx)
 	if err != nil {
-		// 認証エラーの場合、回復を試行
+		// 認証エラーの場合、段階的回復を試行 (恒久対応: 自律的Secret再読み込み)
 		if isSimpleAuthenticationError(err) {
-			sts.logger.Warn("Authentication error detected, requesting recovery", "error", err)
+			sts.logger.Warn("Authentication error detected, starting recovery process", "error", err)
 			
+			// 段階1: 既存のRecoveryManagerで内部リフレッシュを試行
 			if recoveryErr := sts.recoveryManager.RequestRecovery(
 				"authentication_failed",
 				"token_invalid",
 				err,
 			); recoveryErr != nil {
-				sts.logger.Error("Recovery failed", "original_error", err, "recovery_error", recoveryErr)
-				return nil, fmt.Errorf("token retrieval failed and recovery failed: %v (recovery: %v)", err, recoveryErr)
+				sts.logger.Warn("Internal recovery failed, trying secret reload", 
+					"original_error", err, "recovery_error", recoveryErr)
+				
+				// 段階2: Secret再読み込みを試行 (恒久対応)
+				if sts.oauth2SecretSvc != nil {
+					if reloadErr := sts.ReloadFromSecret(ctx); reloadErr != nil {
+						sts.logger.Error("Secret reload also failed", 
+							"original_error", err, 
+							"recovery_error", recoveryErr,
+							"reload_error", reloadErr)
+						return nil, fmt.Errorf("all recovery attempts failed: original=%v, recovery=%v, reload=%v", 
+							err, recoveryErr, reloadErr)
+					}
+					sts.logger.Info("Secret reload successful, retrying token retrieval")
+				} else {
+					sts.logger.Error("No secret service available for reload")
+					return nil, fmt.Errorf("token retrieval failed and recovery failed: %v (recovery: %v)", err, recoveryErr)
+				}
 			}
 
 			// 回復後に再試行
@@ -325,4 +365,46 @@ func containsSimpleAny(s string, keywords []string) bool {
 		}
 	}
 	return false
+}
+
+// onSecretUpdate はSecret更新時のコールバック関数 (恒久対応: 自律的Secret再読み込み)
+func (sts *SimpleTokenService) onSecretUpdate(newToken *models.OAuth2Token) error {
+	sts.logger.Info("Secret update detected, reloading tokens",
+		"new_expires_at", newToken.ExpiresAt,
+		"new_scope", newToken.Scope)
+
+	// InMemoryTokenManagerに新しいトークンを設定
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// 新しいトークンでInMemoryTokenManagerを更新
+	err := sts.inMemoryManager.UpdateRefreshToken(ctx, newToken.RefreshToken, "", "")
+	if err != nil {
+		sts.logger.Error("Failed to update refresh token from secret", "error", err)
+		return err
+	}
+
+	sts.logger.Info("Tokens updated successfully from secret",
+		"expires_at", newToken.ExpiresAt,
+		"time_until_expiry_hours", time.Until(newToken.ExpiresAt).Hours())
+
+	return nil
+}
+
+// ReloadFromSecret は手動でSecretから再読み込み (恒久対応: 403エラー時の回復)
+func (sts *SimpleTokenService) ReloadFromSecret(ctx context.Context) error {
+	if sts.oauth2SecretSvc == nil {
+		return fmt.Errorf("OAuth2SecretService not available")
+	}
+
+	sts.logger.Info("Manual secret reload requested")
+
+	// Secretから最新のトークンを読み込み
+	token, err := sts.oauth2SecretSvc.LoadOAuth2Token(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to reload OAuth2 token from secret: %w", err)
+	}
+
+	// Secret更新コールバックを呼び出し
+	return sts.onSecretUpdate(token)
 }
