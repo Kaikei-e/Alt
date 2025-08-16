@@ -158,6 +158,13 @@ export class AuthAPIClient {
 
   // Submit form data to ui.action URL (Browser Flow compliance)
   private async submitBrowserFlowForm(actionUrl: string, formData: FormData): Promise<{ data: unknown }> {
+    console.log('[AUTH-CLIENT] Submitting Browser Flow form to:', actionUrl);
+    
+    // TODO.md要件: ui.actionが外部FQDN (https://id.curionoah.com) であることを検証
+    if (actionUrl.includes('.svc.cluster.local')) {
+      throw new Error(`ui.action contains internal cluster URL: ${actionUrl}. Kratos serve.public.base_url must be set to external FQDN.`);
+    }
+    
     const response = await fetch(actionUrl, {
       method: 'POST',
       body: formData,
@@ -169,8 +176,20 @@ export class AuthAPIClient {
       }
     });
 
+    console.log('[AUTH-CLIENT] Browser Flow response:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('[AUTH-CLIENT] Browser Flow submission failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText,
+        actionUrl
+      });
       throw new Error(`Browser Flow submission failed: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
