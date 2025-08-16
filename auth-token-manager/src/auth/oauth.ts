@@ -154,6 +154,7 @@ export class InoreaderTokenManager {
     });
 
     // Use refresh token to get new access token
+    // Refresh access token (include empty scope per Inoreader OAuth2 spec)
     const response = await this.fetchWithTimeout(
       "https://www.inoreader.com/oauth2/token",
       {
@@ -167,6 +168,7 @@ export class InoreaderTokenManager {
           client_id: this.credentials.client_id,
           client_secret: this.credentials.client_secret,
           refresh_token: existingTokenData.refresh_token,
+          scope: "",
         }),
       },
     );
