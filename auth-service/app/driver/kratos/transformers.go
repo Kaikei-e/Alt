@@ -600,12 +600,26 @@ func getSafeSuffix(token string, length int) string {
 	return token[len(token)-length:]
 }
 
+// 🚨 CRITICAL: X22 Phase 2 - Safe token preview for logging
+func getSafeTokenPreview(token string) string {
+	if len(token) == 0 {
+		return "EMPTY"
+	}
+	if len(token) < 16 {
+		return "TOO_SHORT"
+	}
+	return fmt.Sprintf("%s...%s", token[:8], token[len(token)-8:])
+}
+
 // extractCSRFToken extracts CSRF token from request body
 func (a *KratosClientAdapter) extractCSRFToken(body map[string]interface{}) (string, error) {
+	// 🚨 CRITICAL: X22 Phase 2 - Enhanced CSRF token extraction with detailed diagnostics
+	
 	// First, try to get csrf_token directly
 	if csrfToken, ok := body["csrf_token"].(string); ok && csrfToken != "" {
 		a.logger.Debug("extracted CSRF token from request body",
-			"token_length", len(csrfToken))
+			"token_length", len(csrfToken),
+			"token_preview", getSafeTokenPreview(csrfToken))
 		return csrfToken, nil
 	}
 
@@ -615,12 +629,30 @@ func (a *KratosClientAdapter) extractCSRFToken(body map[string]interface{}) (str
 		if csrfToken, ok := body[field].(string); ok && csrfToken != "" {
 			a.logger.Debug("extracted CSRF token from alternative field",
 				"field", field,
-				"token_length", len(csrfToken))
+				"token_length", len(csrfToken),
+				"token_preview", getSafeTokenPreview(csrfToken))
 			return csrfToken, nil
 		}
 	}
 
-	return "", fmt.Errorf("CSRF token is required but not found in request body")
+	// 🚨 CRITICAL: X22 Phase 2 - Comprehensive CSRF error diagnostics
+	a.logger.Error("CSRF token extraction failed - comprehensive diagnostics",
+		"available_fields", getBodyKeys(body),
+		"csrf_related_fields", getCSRFRelatedFields(body),
+		"body_size", len(body),
+		"expected_fields", []string{"csrf_token", "csrfToken", "csrf", "_csrf"},
+		"frontend_guidance", map[string]interface{}{
+			"step1": "Ensure login flow is fetched first with credentials: 'include'",
+			"step2": "Extract CSRF token from UI nodes with name='csrf_token'",
+			"step3": "Include csrf_token field in POST body",
+			"step4": "Verify Content-Type: application/json header",
+		})
+
+	return "", fmt.Errorf("CSRF token extraction failed: CSRF token is required but not found in request body. "+
+		"Please ensure csrf_token is included in the request body. "+
+		"Available fields: %v. "+
+		"For frontend developers: Extract CSRF token from login flow UI nodes before submission", 
+		getBodyKeys(body))
 }
 
 // extractCSRFTokenFromUI extracts CSRF token from Kratos UI nodes
