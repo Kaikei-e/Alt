@@ -32,6 +32,8 @@ autoscaling:
 env:
   NEXT_PUBLIC_API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
   # NEXT_PUBLIC_AUTH_URL removed: Mixed Content回避のためAPIプロキシ経由
+  # TODO.md要件: Kratos公開URL直接アクセス用
+  NEXT_PUBLIC_IDP_ORIGIN: "https://id.curionoah.com"
   NODE_ENV: "production"
   API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
   AUTH_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"

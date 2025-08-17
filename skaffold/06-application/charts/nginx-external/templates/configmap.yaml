@@ -28,55 +28,35 @@ data:
     }
 
     http {
-      # --- DNS (変数付き proxy_pass 用) ---
-      # NOTE: .Values.dns.coredsIP は意図的に踏襲（値が入っている前提）
+      # DNS for variable-based proxy_pass
       resolver {{ .Values.dns.coredsIP | default "10.96.0.10" }} valid=5s ipv6=off;
       resolver_timeout 3s;
 
-      # --- Upgrade/WS と HTTPS 透過ヘッダ（CF対応） ---
       map $http_upgrade $connection_upgrade { default upgrade; '' close; }
       map $http_x_forwarded_proto $xfp { default $http_x_forwarded_proto; '' https; }
 
       include /etc/nginx/mime.types;
       default_type application/octet-stream;
-      sendfile on;
-      tcp_nopush on;
-      tcp_nodelay on;
+      sendfile on; tcp_nopush on; tcp_nodelay on;
       keepalive_timeout 65;
       types_hash_max_size 2048;
       client_max_body_size 20m;
       server_tokens off;
 
-      # --- Real IP (Cloudflare) ---
-      # CF-Connecting-IP を信頼
-      real_ip_header CF-Connecting-IP;
-      real_ip_recursive on;
-      # Cloudflare公開レンジ（抜粋）
-      set_real_ip_from 103.21.244.0/22;
-      set_real_ip_from 103.22.200.0/22;
-      set_real_ip_from 104.16.0.0/13;
-      set_real_ip_from 104.24.0.0/14;
-      set_real_ip_from 108.162.192.0/18;
-      set_real_ip_from 172.64.0.0/13;
-      set_real_ip_from 173.245.48.0/20;
 
-      # --- アクセスログ（詳細） ---
       log_format external_main '$remote_addr - $remote_user "[$time_local]" "$request" '
                                '$status $body_bytes_sent "$http_referer" '
                                '"$http_user_agent" "$http_x_forwarded_for" '
                                'rt=$request_time upstream="$upstream_addr" '
                                'upstream_status="$upstream_status" '
-                               'uct="$upstream_connect_time" '
-                               'urt="$upstream_response_time"';
+                               'uct="$upstream_connect_time" urt="$upstream_response_time"';
       access_log /var/log/nginx/access.log external_main;
 
-      # --- レート制限（据え置き） ---
       limit_req_zone $binary_remote_addr zone=api_limit:10m rate=1200r/m;
       limit_req_zone $binary_remote_addr zone=general_limit:10m rate=40r/s;
       limit_req_zone $binary_remote_addr zone=feed_register:10m rate=60r/m;
       limit_conn_zone $binary_remote_addr zone=addr:10m;
 
-      # --- Gzip ---
       gzip on; gzip_vary on; gzip_min_length 1024; gzip_proxied any; gzip_comp_level 6;
       gzip_types text/plain text/css text/xml text/javascript application/json application/javascript application/xml+rss application/atom+xml image/svg+xml;
 
@@ -88,8 +68,7 @@ data:
         listen [::]:80;
         server_name id.curionoah.com;
 
-        # HSTS は HTTPS 応答でのみ有効。ここ(HTTP)では付与しない（CF 側で付与推奨）。
-
+        # (HSTS は CF 側で付与推奨)
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
@@ -107,7 +86,6 @@ data:
           set $kratos_upstream "kratos-public.alt-auth.svc.cluster.local:4433";
           proxy_pass http://$kratos_upstream;
 
-          # 重要: CF→Origin のプロトコルを正しく伝える
           proxy_set_header Host              $host;
           proxy_set_header X-Real-IP         $remote_addr;
           proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -116,8 +94,8 @@ data:
           proxy_set_header X-Request-ID      $request_id;
 
           proxy_http_version 1.1;
-          proxy_set_header Upgrade           $http_upgrade;
-          proxy_set_header Connection        $connection_upgrade;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection $connection_upgrade;
 
           proxy_connect_timeout 10s;
           proxy_send_timeout 30s;
@@ -139,7 +117,11 @@ data:
         listen [::]:80;
         server_name curionoah.com;
 
-        # HSTS は HTTPS 応答でのみ有効（CF 側で付与推奨）
+        # 上流の CSP を全経路で抑止（混在防止）
+        proxy_hide_header Content-Security-Policy;
+        proxy_hide_header Content-Security-Policy-Report-Only;
+
+        # server階層のセキュリティ系ヘッダ（※locationでadd_headerを書くと継承されない点に注意）
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
@@ -151,54 +133,20 @@ data:
         add_header X-Upstream-Addr   $upstream_addr   always;
         add_header X-Upstream-Status $upstream_status always;
 
-        # ===== Next static (JS/MJS) =====
-        location ~ ^/_next/static/.*\.(js|mjs)$ {
-          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
-          proxy_hide_header Content-Type;
-          add_header Content-Type "application/javascript; charset=utf-8" always;
-          add_header Cache-Control "public, max-age=31536000, immutable" always;
-
-          proxy_set_header Host              $host;
-          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $xfp;
-          proxy_http_version 1.1;
-          proxy_set_header Upgrade           $http_upgrade;
-          proxy_set_header Connection        $connection_upgrade;
-
-          proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
-          proxy_send_timeout    {{ .Values.nginx.timeouts.proxySend }};
-          proxy_read_timeout    {{ .Values.nginx.timeouts.proxyRead }};
-        }
-
-        # ===== Next static (CSS) =====
-        location ~ ^/_next/static/.*\.css$ {
-          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
-          proxy_hide_header Content-Type;
-          add_header Content-Type "text/css; charset=utf-8" always;
-          add_header Cache-Control "public, max-age=31536000, immutable" always;
-
-          proxy_set_header Host              $host;
-          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $xfp;
-          proxy_http_version 1.1;
-          proxy_set_header Upgrade           $http_upgrade;
-          proxy_set_header Connection        $connection_upgrade;
-
-          proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
-          proxy_send_timeout    {{ .Values.nginx.timeouts.proxySend }};
-          proxy_read_timeout    {{ .Values.nginx.timeouts.proxyRead }};
-        }
-
-        # ===== その他の /_next/static/ =====
+        # ===== Next static files (unified location) =====
         location ^~ /_next/static/ {
-          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
+          # （ここで add_header を使うと上位ヘッダは継承されないため、必要なものを明示）
+          add_header Cache-Control "public, max-age=31536000, immutable" always;
+          add_header X-Upstream-Addr   $upstream_addr   always;
+          add_header X-Upstream-Status $upstream_status always;
 
+          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
           proxy_set_header Host              $host;
           proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $xfp;
           proxy_http_version 1.1;
-          proxy_set_header Upgrade           $http_upgrade;
-          proxy_set_header Connection        $connection_upgrade;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection $connection_upgrade;
 
           proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
           proxy_send_timeout    {{ .Values.nginx.timeouts.proxySend }};
@@ -210,22 +158,27 @@ data:
           set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
           proxy_pass http://$frontend_upstream;
 
+          add_header X-Health-Source "alt-frontend" always;
+          add_header X-Upstream-Addr   $upstream_addr   always;
+          add_header X-Upstream-Status $upstream_status always;
+
           proxy_set_header Host              $host;
           proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $xfp;
           proxy_http_version 1.1;
-          proxy_set_header Upgrade           $http_upgrade;
-          proxy_set_header Connection        $connection_upgrade;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection $connection_upgrade;
 
           proxy_connect_timeout 5s;
           proxy_send_timeout 10s;
           proxy_read_timeout 10s;
-
-          add_header X-Health-Source "alt-frontend" always;
         }
 
         # ===== CSRF 直通 =====
         location = /api/auth/csrf {
+          proxy_hide_header Content-Security-Policy;
+          proxy_hide_header Content-Security-Policy-Report-Only;
+
           set $auth_upstream "auth-service.alt-auth.svc.cluster.local:8080";
           proxy_pass http://$auth_upstream/v1/auth/csrf;
 
@@ -242,7 +195,7 @@ data:
           proxy_pass_header Set-Cookie;
 
           proxy_http_version 1.1;
-          proxy_set_header Upgrade    $http_upgrade;
+          proxy_set_header Upgrade $http_upgrade;
           proxy_set_header Connection $connection_upgrade;
 
           proxy_connect_timeout 10s;
@@ -259,12 +212,18 @@ data:
 
           add_header X-Auth-Source "auth-service-direct" always;
           add_header X-CSRF-Fix    "X26-Phase1-Direct-Route" always;
+          add_header X-Upstream-Addr   $upstream_addr   always;
+          add_header X-Upstream-Status $upstream_status always;
         }
 
-        # ===== 認証系 それ以外（Next へ） =====
+        # ===== Auth proxy (その他) =====
         location /api/auth/ {
           set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
           proxy_pass http://$frontend_upstream;
+
+          add_header X-Auth-Source "alt-frontend-proxy" always;
+          add_header X-Upstream-Addr   $upstream_addr   always;
+          add_header X-Upstream-Status $upstream_status always;
 
           proxy_set_header Host              $host;
           proxy_set_header X-Real-IP         $remote_addr;
@@ -276,7 +235,7 @@ data:
           proxy_pass_header Set-Cookie;
 
           proxy_http_version 1.1;
-          proxy_set_header Upgrade    $http_upgrade;
+          proxy_set_header Upgrade $http_upgrade;
           proxy_set_header Connection $connection_upgrade;
 
           proxy_connect_timeout 10s;
@@ -290,19 +249,24 @@ data:
           proxy_next_upstream error timeout http_502 http_503 http_504;
           proxy_next_upstream_tries 2;
           proxy_next_upstream_timeout 20s;
-
-          add_header X-Auth-Source "alt-frontend-proxy" always;
         }
 
         # ===== Backend API (/api → / に正規化) =====
         location /api/ {
+          proxy_hide_header Content-Security-Policy;
+          proxy_hide_header Content-Security-Policy-Report-Only;
+
           set $backend_upstream "alt-backend.alt-apps.svc.cluster.local:9000";
           set $original_uri $uri;
-          rewrite ^/api(.*)$ $1 break;
-          proxy_pass http://$backend_upstream;
 
-          proxy_set_header X-Original-URI    $original_uri;
+          rewrite ^/api/?(.*)$ /$1 break;
+          proxy_pass http://$backend_upstream$is_args$args;
+
+          proxy_set_header X-Original-URI     $original_uri;
           proxy_set_header X-Forwarded-Prefix "/api";
+
+          add_header X-Upstream-Addr   $upstream_addr   always;
+          add_header X-Upstream-Status $upstream_status always;
 
           proxy_set_header Host              $host;
           proxy_set_header X-Real-IP         $remote_addr;
@@ -311,7 +275,7 @@ data:
           proxy_set_header X-Request-ID      $request_id;
 
           proxy_http_version 1.1;
-          proxy_set_header Upgrade    $http_upgrade;
+          proxy_set_header Upgrade $http_upgrade;
           proxy_set_header Connection $connection_upgrade;
 
           limit_req zone=api_limit burst=300 nodelay;
@@ -331,13 +295,28 @@ data:
           proxy_next_upstream_timeout 45s;
         }
 
-        # ===== ルート（Next） =====
+        # ===== ドキュメント（HTML）配信：CSPはここで“1本だけ”付与 =====
         location / {
-          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
+          # ⚠ add_header を使うので、server階層のヘッダは継承されない。
+          # そのため、この場所で必要なヘッダを再宣言する。
+          add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self' data:; connect-src 'self' https://id.curionoah.com https://curionoah.com https: wss:; form-action 'self' https://id.curionoah.com; frame-ancestors 'self'; report-to csp-endpoint; report-uri /security/csp-report" always;
+          add_header Reporting-Endpoints 'csp-endpoint="https://curionoah.com/security/csp-report"' always;
 
+          # 再宣言（継承されないため）
+          add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+          add_header X-Content-Type-Options "nosniff" always;
+          add_header X-Frame-Options "SAMEORIGIN" always;
+          add_header X-XSS-Protection "1; mode=block" always;
+          add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+
+          # デバッグ
+          add_header X-Upstream-Addr   $upstream_addr   always;
+          add_header X-Upstream-Status $upstream_status always;
           add_header X-Req-Host $host always;
           add_header X-Srv-Name $server_name always;
           add_header X-Alt-Pod  $hostname always;
+
+          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
 
           proxy_set_header Host              $host;
           proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -347,7 +326,7 @@ data:
           proxy_pass_header ETag;
 
           proxy_http_version 1.1;
-          proxy_set_header Upgrade    $http_upgrade;
+          proxy_set_header Upgrade $http_upgrade;
           proxy_set_header Connection $connection_upgrade;
 
           proxy_connect_timeout 5s;
@@ -359,6 +338,12 @@ data:
           proxy_next_upstream_timeout 60s;
 
           proxy_buffering off;
+        }
+
+        # ===== CSP Report Endpoint =====
+        location = /security/csp-report {
+          if ($request_method = POST) { access_log off; return 204; }
+          return 405;
         }
 
         # ===== Health =====
@@ -389,8 +374,5 @@ data:
 
         location / { add_header Content-Type "text/plain; charset=utf-8"; return 404 "Not Found\n"; }
       }
-
-      # ---- 8888/8889 (egress/proxy) は省略: 本番は閉域推奨 ----
     }
-
 {{- end }}
