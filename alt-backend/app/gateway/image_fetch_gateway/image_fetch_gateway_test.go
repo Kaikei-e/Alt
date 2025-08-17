@@ -30,7 +30,7 @@ func TestImageFetchGateway_FetchImage_SSRF_PrivateNetworks(t *testing.T) {
 		{
 			name:        "localhost hostname",
 			imageURL:    "https://localhost:8080/image.jpg",
-			expectedErr: "access to localhost not allowed",
+			expectedErr: "access to private networks not allowed",
 		},
 		{
 			name:        "private network 10.x.x.x",
@@ -78,13 +78,9 @@ func TestImageFetchGateway_FetchImage_SSRF_PrivateNetworks(t *testing.T) {
 
 			assert.Error(t, err)
 			assert.Nil(t, got)
-			// The implementation checks domain whitelist first, so all errors will be "domain not in whitelist"
-			// except for the non-whitelisted domain case which specifically tests this
-			if tt.name == "non-whitelisted domain" {
-				assert.Contains(t, err.Error(), tt.expectedErr)
-			} else {
-				assert.Contains(t, err.Error(), "domain not in whitelist")
-			}
+			// The implementation now prioritizes security checks over domain allowlist
+			// This is a significant security improvement
+			assert.Contains(t, err.Error(), tt.expectedErr)
 			if appErr, ok := err.(*errors.AppContextError); ok {
 				assert.Equal(t, "VALIDATION_ERROR", appErr.Code)
 			}
@@ -108,7 +104,7 @@ func TestImageFetchGateway_FetchImage_SSRF_Advanced(t *testing.T) {
 		{
 			name:        "URL with tricky characters in domain",
 			imageURL:    "https://127.0.0.1.nip.io/image.jpg", // nip.io resolves to the IP
-			expectedErr: "domain not in whitelist",
+			expectedErr: "access to private networks not allowed",
 		},
 	}
 
@@ -188,6 +184,230 @@ func TestImageFetchGateway_FetchImage_IntegerOverflow(t *testing.T) {
 				assert.Nil(t, got)
 			}
 			// The key assertion is that we didn't panic during execution
+		})
+	}
+}
+
+// TestValidateImageURLWithTestOverride_SecurityEnhancements tests new security features
+func TestValidateImageURLWithTestOverride_SecurityEnhancements(t *testing.T) {
+	tests := []struct {
+		name                 string
+		inputURL             string
+		allowTestingLocalhost bool
+		wantErr              bool
+		expectedErrMessage   string
+	}{
+		// Test URL encoding attack prevention
+		{
+			name:               "URL encoding path traversal attack",
+			inputURL:           "https://example.com/%2e%2e/admin",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "path traversal patterns not allowed",
+		},
+		{
+			name:               "URL encoding forward slash attack",
+			inputURL:           "https://example.com/test%2fmalicious",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "URL encoding attacks not allowed",
+		},
+		{
+			name:               "empty host validation",
+			inputURL:           "https:///path",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "empty host not allowed",
+		},
+		// Test enhanced metadata endpoint blocking
+		{
+			name:               "AWS metadata with port",
+			inputURL:           "http://169.254.169.254:80/latest/meta-data/",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "access to metadata endpoint not allowed",
+		},
+		{
+			name:               "Alibaba Cloud metadata",
+			inputURL:           "http://100.100.100.200/latest/meta-data/",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "access to metadata endpoint not allowed",
+		},
+		// Test enhanced internal domain blocking
+		{
+			name:               "intranet domain",
+			inputURL:           "https://service.intranet/image.jpg",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "access to internal domains not allowed",
+		},
+		{
+			name:               "test domain",
+			inputURL:           "https://service.test/image.jpg",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "access to internal domains not allowed",
+		},
+		{
+			name:               "localhost domain",
+			inputURL:           "https://service.localhost/image.jpg",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "access to internal domains not allowed",
+		},
+		// Test non-standard port blocking
+		{
+			name:               "non-standard port 3000",
+			inputURL:           "https://example.com:3000/image.jpg",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "non-standard port not allowed: 3000",
+		},
+		{
+			name:               "non-standard port 9000",
+			inputURL:           "https://example.com:9000/image.jpg",
+			allowTestingLocalhost: false,
+			wantErr:            true,
+			expectedErrMessage: "non-standard port not allowed: 9000",
+		},
+		// Test allowed ports
+		{
+			name:               "allowed port 443",
+			inputURL:           "https://example.com:443/image.jpg",
+			allowTestingLocalhost: false,
+			wantErr:            false,
+		},
+		{
+			name:               "allowed port 80",
+			inputURL:           "http://example.com:80/image.jpg",
+			allowTestingLocalhost: false,
+			wantErr:            false,
+		},
+		{
+			name:               "allowed port 8080",
+			inputURL:           "https://example.com:8080/image.jpg",
+			allowTestingLocalhost: false,
+			wantErr:            false,
+		},
+		{
+			name:               "allowed port 8443",
+			inputURL:           "https://example.com:8443/image.jpg",
+			allowTestingLocalhost: false,
+			wantErr:            false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u, err := url.Parse(tt.inputURL)
+			require.NoError(t, err, "Failed to parse test URL")
+
+			err = validateImageURLWithTestOverride(u, tt.allowTestingLocalhost)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.expectedErrMessage != "" && err != nil {
+					assert.Contains(t, err.Error(), tt.expectedErrMessage)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+
+// TestNewImageFetchGateway_RedirectDisabled tests that redirects are disabled
+func TestNewImageFetchGateway_RedirectDisabled(t *testing.T) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	gateway := NewImageFetchGateway(client)
+
+	// Create a test request to verify redirect behavior
+	req, err := http.NewRequest("GET", "https://example.com/redirect", nil)
+	require.NoError(t, err)
+
+	// Test that CheckRedirect function is set and returns an error
+	if client.CheckRedirect != nil {
+		err = client.CheckRedirect(req, []*http.Request{})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "redirects not allowed for security reasons")
+	} else {
+		t.Error("CheckRedirect should be set to prevent redirects")
+	}
+
+	// Verify the gateway was created correctly
+	assert.NotNil(t, gateway)
+	assert.NotNil(t, gateway.httpClient)
+}
+
+// TestIsPrivateIP_EnhancedValidation tests enhanced private IP detection
+func TestIsPrivateIP_EnhancedValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostname string
+		expected bool
+	}{
+		// IPv4 private ranges
+		{
+			name:     "10.0.0.1 private",
+			hostname: "10.0.0.1",
+			expected: true,
+		},
+		{
+			name:     "172.16.0.1 private",
+			hostname: "172.16.0.1",
+			expected: true,
+		},
+		{
+			name:     "192.168.1.1 private",
+			hostname: "192.168.1.1",
+			expected: true,
+		},
+		{
+			name:     "127.0.0.1 loopback",
+			hostname: "127.0.0.1",
+			expected: true,
+		},
+		// Public IPv4 addresses
+		{
+			name:     "8.8.8.8 public",
+			hostname: "8.8.8.8",
+			expected: false,
+		},
+		{
+			name:     "1.1.1.1 public",
+			hostname: "1.1.1.1",
+			expected: false,
+		},
+		// IPv6 addresses
+		{
+			name:     "::1 loopback",
+			hostname: "::1",
+			expected: true,
+		},
+		{
+			name:     "fc00:: unique local",
+			hostname: "fc00::1",
+			expected: true,
+		},
+		{
+			name:     "2001:db8:: public",
+			hostname: "2001:db8::1",
+			expected: false,
+		},
+		// Edge cases
+		{
+			name:     "invalid hostname",
+			hostname: "invalid-hostname-that-wont-resolve",
+			expected: true, // Should return true on resolution failure
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isPrivateIP(tt.hostname)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

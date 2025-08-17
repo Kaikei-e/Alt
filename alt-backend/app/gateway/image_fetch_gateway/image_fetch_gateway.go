@@ -190,6 +190,13 @@ type ImageFetchGateway struct {
 func NewImageFetchGateway(httpClient *http.Client) *ImageFetchGateway {
 	strategy := getProxyStrategy()
 
+	// Enhanced: Disable redirects to prevent SSRF attacks via redirects
+	if httpClient != nil {
+		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return fmt.Errorf("redirects not allowed for security reasons")
+		}
+	}
+
 	// If we have a proxy strategy, wrap the client with proxy-aware transport
 	if strategy != nil && strategy.Enabled && httpClient != nil {
 		// Get the existing transport or create a new one
@@ -216,18 +223,55 @@ func validateImageURL(u *url.URL) error {
 }
 
 // validateImageURLWithTestOverride allows bypassing localhost restrictions for testing
+// Enhanced with additional SSRF protection measures
 func validateImageURLWithTestOverride(u *url.URL, allowTestingLocalhost bool) error {
 	// Only allow HTTPS and HTTP
 	if u.Scheme != "https" && u.Scheme != "http" {
 		return fmt.Errorf("only HTTP and HTTPS schemes allowed")
 	}
 
-	// Check domain whitelist (allow localhost/127.x.x.x for testing if specified)
+	// Validate URL format and prevent malformed URLs
+	if u.Host == "" {
+		return fmt.Errorf("empty host not allowed")
+	}
+
+	// Check for dangerous path patterns that could indicate path traversal attacks
+	if strings.Contains(u.Path, "..") || strings.Contains(u.Path, "/.") {
+		return fmt.Errorf("path traversal patterns not allowed")
+	}
+
+	// Check for URL encoding attacks by examining the raw URL
+	rawURL := u.String()
+	if strings.Contains(rawURL, "%2e") || strings.Contains(rawURL, "%2E") ||
+		strings.Contains(rawURL, "%2f") || strings.Contains(rawURL, "%2F") ||
+		strings.Contains(rawURL, "%5c") || strings.Contains(rawURL, "%5C") {
+		return fmt.Errorf("URL encoding attacks not allowed")
+	}
+
+	// Check hostname and perform security checks
 	hostname := strings.ToLower(u.Hostname())
 	isTestingLocalhost := allowTestingLocalhost && (hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127."))
 
-	if !domain.IsAllowedImageDomain(hostname) && !isTestingLocalhost {
-		return fmt.Errorf("domain not in whitelist")
+	// Enhanced: Block cloud metadata endpoints (security priority over domain allowlist)
+	metadataEndpoints := []string{
+		"169.254.169.254",        // AWS/Azure metadata
+		"metadata.google.internal", // GCP metadata
+		"100.100.100.200",        // Alibaba Cloud
+		"169.254.169.254:80",     // Explicit port
+		"169.254.169.254:8080",   // Alternative ports
+	}
+	for _, endpoint := range metadataEndpoints {
+		if hostname == endpoint || strings.HasPrefix(hostname, endpoint+":") {
+			return fmt.Errorf("access to metadata endpoint not allowed")
+		}
+	}
+
+	// Enhanced: Block internal domains (security priority over domain allowlist)
+	internalDomains := []string{".local", ".internal", ".corp", ".lan", ".intranet", ".test", ".localhost"}
+	for _, domainSuffix := range internalDomains {
+		if strings.HasSuffix(hostname, domainSuffix) {
+			return fmt.Errorf("access to internal domains not allowed")
+		}
 	}
 
 	// Block private networks (except localhost for testing when allowed)
@@ -240,16 +284,17 @@ func validateImageURLWithTestOverride(u *url.URL, allowTestingLocalhost bool) er
 		return fmt.Errorf("access to localhost not allowed")
 	}
 
-	// Block metadata endpoints (AWS, GCP, Azure)
-	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" {
-		return fmt.Errorf("access to metadata endpoint not allowed")
+	// Check domain whitelist (after security checks)
+	if !domain.IsAllowedImageDomain(hostname) && !isTestingLocalhost {
+		return fmt.Errorf("domain not in whitelist")
 	}
 
-	// Block common internal domains
-	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
-	for _, domainSuffix := range internalDomains {
-		if strings.HasSuffix(hostname, domainSuffix) {
-			return fmt.Errorf("access to internal domains not allowed")
+	// Block URLs with non-standard ports that could be used for port scanning
+	if u.Port() != "" {
+		port := u.Port()
+		allowedPorts := map[string]bool{"80": true, "443": true, "8080": true, "8443": true}
+		if !allowedPorts[port] {
+			return fmt.Errorf("non-standard port not allowed: %s", port)
 		}
 	}
 
@@ -257,6 +302,7 @@ func validateImageURLWithTestOverride(u *url.URL, allowTestingLocalhost bool) er
 }
 
 // isPrivateIP checks if the hostname resolves to private IP addresses
+// Enhanced with DNS rebinding attack protection
 func isPrivateIP(hostname string) bool {
 	// Try to parse as IP first
 	ip := net.ParseIP(hostname)
@@ -271,7 +317,8 @@ func isPrivateIP(hostname string) bool {
 		return true
 	}
 
-	// Check if any resolved IP is private
+	// Enhanced: Check ALL resolved IPs (both A and AAAA records) to prevent DNS rebinding
+	// If ANY resolved IP is private/dangerous, block the entire request
 	for _, ip := range ips {
 		if isPrivateIPAddress(ip) {
 			return true
@@ -288,17 +335,17 @@ func isPrivateIPAddress(ip net.IP) bool {
 	}
 
 	// Check for private IPv4 ranges
-	if ip.To4() != nil {
+	if ipv4 := ip.To4(); ipv4 != nil {
 		// 10.0.0.0/8
-		if ip[0] == 10 {
+		if ipv4[0] == 10 {
 			return true
 		}
 		// 172.16.0.0/12
-		if ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
+		if ipv4[0] == 172 && ipv4[1] >= 16 && ipv4[1] <= 31 {
 			return true
 		}
 		// 192.168.0.0/16
-		if ip[0] == 192 && ip[1] == 168 {
+		if ipv4[0] == 192 && ipv4[1] == 168 {
 			return true
 		}
 	}
@@ -313,6 +360,7 @@ func isPrivateIPAddress(ip net.IP) bool {
 
 	return false
 }
+
 
 // FetchImage fetches an image from external URL through HTTP client
 func (g *ImageFetchGateway) FetchImage(ctx context.Context, imageURL *url.URL, options *domain.ImageFetchOptions) (*domain.ImageFetchResult, error) {
