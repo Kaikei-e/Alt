@@ -48,6 +48,7 @@ env:
   
   # Inoreader API configuration
   INOREADER_BASE_URL: "https://www.inoreader.com/reader/api/0"
+  INOREADER_OAUTH2_BASE_URL: "https://www.inoreader.com"  # OAuth2 specific base URL
   SYNC_INTERVAL: "30m"
   MAX_ARTICLES_PER_REQUEST: "100"
   API_DAILY_LIMIT: "100"  # Zone 1 limit
