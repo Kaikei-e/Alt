@@ -415,8 +415,10 @@ func (m *InMemoryTokenManager) performInitialTokenRefresh() error {
 }
 
 // UpdateRefreshToken は新しいリフレッシュトークンを設定（Admin API用）
+// NOTE: Secret更新の場合はUpdateTokenDirectly()を使用してOAuth2 API競合を回避
 func (m *InMemoryTokenManager) UpdateRefreshToken(ctx context.Context, refreshToken string, clientID, clientSecret string) error {
-	m.logger.Info("Updating refresh token via admin API")
+	m.logger.Info("Updating refresh token via admin API (triggers OAuth2 API call)",
+		"warning", "Use UpdateTokenDirectly() for Secret updates to avoid token conflicts")
 
 	// 認証情報が提供されていれば更新
 	if clientID != "" && clientSecret != "" {
@@ -438,6 +440,51 @@ func (m *InMemoryTokenManager) UpdateRefreshToken(ctx context.Context, refreshTo
 
 	m.logger.Info("Refresh token updated and access token refreshed successfully",
 		"new_expires_at", m.expiresAt)
+
+	return nil
+}
+
+// UpdateTokenDirectly は外部から取得したトークンを直接更新（API呼び出しなし）
+// auth-token-managerからのSecret更新で使用、OAuth2 API競合を回避
+func (m *InMemoryTokenManager) UpdateTokenDirectly(ctx context.Context, token *models.OAuth2Token) error {
+	m.logger.Info("Updating token directly from external source (no API call)",
+		"expires_at", token.ExpiresAt,
+		"scope", token.Scope,
+		"expires_in_hours", time.Until(token.ExpiresAt).Hours())
+
+	// バリデーション: 必須フィールドチェック
+	if token.AccessToken == "" {
+		return fmt.Errorf("access token cannot be empty")
+	}
+	if token.RefreshToken == "" {
+		return fmt.Errorf("refresh token cannot be empty")
+	}
+
+	// アクセストークンを暗号化
+	encryptedAccess, err := m.encrypt(token.AccessToken)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt access token: %w", err)
+	}
+
+	// リフレッシュトークンを暗号化
+	if err := m.setEncryptedRefreshToken(token.RefreshToken); err != nil {
+		return fmt.Errorf("failed to set refresh token: %w", err)
+	}
+
+	// 内部状態を更新
+	m.mutex.Lock()
+	m.encryptedAccessToken = encryptedAccess
+	m.expiresAt = token.ExpiresAt
+	m.tokenType = token.TokenType
+	if m.tokenType == "" {
+		m.tokenType = "Bearer"
+	}
+	m.mutex.Unlock()
+
+	m.logger.Info("Token updated directly without API call",
+		"new_expires_at", m.expiresAt,
+		"expires_in_seconds", int64(time.Until(m.expiresAt).Seconds()),
+		"token_type", m.tokenType)
 
 	return nil
 }

@@ -369,22 +369,28 @@ func containsSimpleAny(s string, keywords []string) bool {
 
 // onSecretUpdate はSecret更新時のコールバック関数 (恒久対応: 自律的Secret再読み込み)
 func (sts *SimpleTokenService) onSecretUpdate(newToken *models.OAuth2Token) error {
-	sts.logger.Info("Secret update detected, reloading tokens",
+	sts.logger.Info("Secret update detected, updating tokens directly (no API call)",
 		"new_expires_at", newToken.ExpiresAt,
 		"new_scope", newToken.Scope)
 
-	// InMemoryTokenManagerに新しいトークンを設定
+	// InMemoryTokenManagerに新しいトークンを設定（API呼び出しなし）
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// 新しいトークンでInMemoryTokenManagerを更新
-	err := sts.inMemoryManager.UpdateRefreshToken(ctx, newToken.RefreshToken, "", "")
+	// OAuth2 API競合を回避: 直接トークン更新（refreshなし）
+	err := sts.inMemoryManager.UpdateTokenDirectly(ctx, newToken)
 	if err != nil {
-		sts.logger.Error("Failed to update refresh token from secret", "error", err)
+		sts.logger.Error("Failed to update token directly from secret", "error", err)
 		return err
 	}
 
-	sts.logger.Info("Tokens updated successfully from secret",
+	// 競合回避メトリクス: auth-token-managerとの協調動作をログ記録
+	sts.logger.Info("OAuth2 conflict avoided - token updated from Secret without API call",
+		"source", "auth-token-manager",
+		"method", "direct_update",
+		"previous_scope_conflict_fixed", true)
+
+	sts.logger.Info("Tokens updated successfully from secret without API call",
 		"expires_at", newToken.ExpiresAt,
 		"time_until_expiry_hours", time.Until(newToken.ExpiresAt).Hours())
 
