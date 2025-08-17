@@ -131,41 +131,41 @@ func NewArticleFetcherServiceWithFactoryAndDLQ(cfg *config.Config, logger *slog.
 func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string) (*models.Article, error) {
 	// Article fetching temporarily disabled for ethical compliance
 	s.logger.Info("Article fetching temporarily disabled for ethical compliance", "url", urlStr)
-	
+
 	// Return nil to indicate skipped article (maintains interface compatibility)
 	return nil, nil
 
 	/*
-	start := time.Now()
-	s.logger.Info("Fetching article", "url", urlStr)
+		start := time.Now()
+		s.logger.Info("Fetching article", "url", urlStr)
 
-	// Validate URL first
-	if err := s.ValidateURL(urlStr); err != nil {
-		s.logger.Error("Failed to validate URL", "url", urlStr, "error", err)
-		return nil, err
-	}
+		// Validate URL first
+		if err := s.ValidateURL(urlStr); err != nil {
+			s.logger.Error("Failed to validate URL", "url", urlStr, "error", err)
+			return nil, err
+		}
 
-	// Parse URL
-	parsedURL, err := url.Parse(urlStr)
-	if err != nil {
-		s.logger.Error("Failed to parse URL", "url", urlStr, "error", err)
-		return nil, err
-	}
+		// Parse URL
+		parsedURL, err := url.Parse(urlStr)
+		if err != nil {
+			s.logger.Error("Failed to parse URL", "url", urlStr, "error", err)
+			return nil, err
+		}
 
-	// Use retry mechanism if available
-	if s.retrier != nil && s.dlqPublisher != nil {
-		return s.fetchWithRetryAndDLQ(ctx, *parsedURL, start)
-	}
+		// Use retry mechanism if available
+		if s.retrier != nil && s.dlqPublisher != nil {
+			return s.fetchWithRetryAndDLQ(ctx, *parsedURL, start)
+		}
 
-	// Fallback to original implementation
-	article, err := s.fetchArticleFromURL(*parsedURL)
-	if err != nil {
-		s.logger.Error("Failed to fetch article", "url", urlStr, "error", err)
-		return nil, err
-	}
+		// Fallback to original implementation
+		article, err := s.fetchArticleFromURL(*parsedURL)
+		if err != nil {
+			s.logger.Error("Failed to fetch article", "url", urlStr, "error", err)
+			return nil, err
+		}
 
-	s.logger.Info("Article fetched successfully", "url", urlStr)
-	return article, nil
+		s.logger.Info("Article fetched successfully", "url", urlStr)
+		return article, nil
 	*/
 }
 
@@ -381,7 +381,7 @@ func (s *articleFetcherService) fetchArticleFromURL(url url.URL) (*models.Articl
 		clientManager := utils.NewHTTPClientManager()
 		client = &HTTPClientWrapper{
 			Client:    clientManager.GetFeedClient(),
-			UserAgent: "", // Use config default
+			UserAgent: "",  // Use config default
 			Config:    nil, // No advanced config for legacy clients
 		}
 	}
@@ -522,10 +522,10 @@ func (w *HTTPClientWrapper) Get(url string) (*http.Response, error) {
 		} else {
 			errorType = ProxyErrorConnection // Default to connection error
 		}
-		
+
 		// Record domain-specific metrics for legacy HTTP client wrapper
 		metrics.RecordDomainRequest(url, duration, false, errorType)
-		
+
 		return nil, err
 	}
 
@@ -537,7 +537,7 @@ func (w *HTTPClientWrapper) Get(url string) (*http.Response, error) {
 			errorType = ProxyErrorConnection // Bot detection typically shows as connection issues
 		}
 		metrics.RecordDomainRequest(url, duration, false, errorType)
-		
+
 		// Close response body to prevent resource leak
 		resp.Body.Close()
 
@@ -584,7 +584,7 @@ func (s *articleFetcherService) createSecureHTTPClient() HTTPClient {
 			Transport: transport,
 			Timeout:   30 * time.Second,
 		},
-		UserAgent: "", // Use config default
+		UserAgent: "",  // Use config default
 		Config:    nil, // No advanced config for secure client
 	}
 }

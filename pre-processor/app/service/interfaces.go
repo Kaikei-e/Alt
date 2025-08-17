@@ -76,3 +76,27 @@ type ProcessingStats struct {
 	ProcessedFeeds int
 	RemainingFeeds int
 }
+
+// UserSyncService handles user subscription synchronization business logic.
+type UserSyncService interface {
+	SyncUserSubscriptions(ctx context.Context) error
+	GetUserSubscriptions(ctx context.Context) ([]Subscription, error)
+}
+
+// InoreaderClient handles external Inoreader API communication.
+type InoreaderClient interface {
+	GetUserSubscriptions(ctx context.Context, userID string) ([]Subscription, error)
+}
+
+// UserSubscriptionRepository handles user subscription data persistence.
+type UserSubscriptionRepository interface {
+	SaveUserSubscriptions(ctx context.Context, tenantID, userID string, subscriptions []Subscription) error
+}
+
+// Subscription represents a user's RSS feed subscription.
+type Subscription struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	Description string `json:"description"`
+}

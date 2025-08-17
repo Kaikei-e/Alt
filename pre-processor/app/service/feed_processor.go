@@ -62,7 +62,7 @@ func NewFeedProcessorService(
 func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) (*ProcessingResult, error) {
 	// Feed processing temporarily disabled for ethical compliance
 	s.logger.Info("Feed processing temporarily disabled for ethical compliance")
-	
+
 	// Return empty result to maintain interface compatibility
 	return &ProcessingResult{
 		ProcessedCount: 0,
@@ -73,128 +73,128 @@ func (s *feedProcessorService) ProcessFeeds(ctx context.Context, batchSize int) 
 	}, nil
 
 	/*
-	// Add operation context and start timing
-	ctx = utilsLogger.WithOperation(ctx, "process_batch")
-	timer := s.performanceLogger.StartTimer(ctx, "process_batch")
-	defer timer.End()
+		// Add operation context and start timing
+		ctx = utilsLogger.WithOperation(ctx, "process_batch")
+		timer := s.performanceLogger.StartTimer(ctx, "process_batch")
+		defer timer.End()
 
-	log := s.contextLogger.WithContext(ctx)
-	log.Info("starting batch processing", "batch_size", batchSize)
+		log := s.contextLogger.WithContext(ctx)
+		log.Info("starting batch processing", "batch_size", batchSize)
 
-	// Legacy logger for backward compatibility
-	s.logger.Info("Starting feed processing", "batch_size", batchSize)
+		// Legacy logger for backward compatibility
+		s.logger.Info("Starting feed processing", "batch_size", batchSize)
 
-	// Get unprocessed feeds
-	urls, cursor, err := s.feedRepo.GetUnprocessedFeeds(ctx, s.cursor, batchSize)
-	if err != nil {
-		s.logger.Error("Failed to get unprocessed feeds", "error", err)
-		return nil, fmt.Errorf("failed to get unprocessed feeds: %w", err)
-	}
-
-	if len(urls) == 0 {
-		s.logger.Info("No unprocessed feeds found")
-
-		return &ProcessingResult{
-			ProcessedCount: 0,
-			SuccessCount:   0,
-			ErrorCount:     0,
-			Errors:         []error{},
-			HasMore:        false,
-		}, nil
-	}
-
-	// Update cursor for next batch
-	s.cursor = cursor
-
-	// Convert URLs to strings for existence check
-	urlStrings := make([]string, len(urls))
-	for i, url := range urls {
-		urlStrings[i] = url.String()
-	}
-
-	// Check if articles already exist
-	exists, err := s.articleRepo.CheckExists(ctx, urlStrings)
-	if err != nil {
-		s.logger.Error("Failed to check article existence", "error", err)
-		return nil, fmt.Errorf("failed to check article existence: %w", err)
-	}
-
-	if exists {
-		s.logger.Info("Articles already exist for this batch")
-
-		return &ProcessingResult{
-			ProcessedCount: 0,
-			SuccessCount:   0,
-			ErrorCount:     0,
-			Errors:         []error{},
-			HasMore:        false,
-		}, nil
-	}
-
-	// Process URLs in parallel using worker pool
-	jobs := make([]utils.FeedJob, len(urls))
-	for i, url := range urls {
-		jobs[i] = utils.FeedJob{URL: url.String()}
-	}
-
-	s.logger.Info("Starting parallel feed processing",
-		"feed_count", len(jobs),
-		"worker_count", s.workerPool.Workers())
-
-	results := s.workerPool.ProcessFeeds(ctx, jobs, s.fetcher)
-
-	// Process results and save articles
-	var successCount, errorCount int
-	var errors []error
-
-	for _, result := range results {
-		if result.Error != nil {
-			s.logger.Error("Failed to fetch article", "url", result.Job.URL, "error", result.Error)
-			errorCount++
-			errors = append(errors, result.Error)
-			continue
+		// Get unprocessed feeds
+		urls, cursor, err := s.feedRepo.GetUnprocessedFeeds(ctx, s.cursor, batchSize)
+		if err != nil {
+			s.logger.Error("Failed to get unprocessed feeds", "error", err)
+			return nil, fmt.Errorf("failed to get unprocessed feeds: %w", err)
 		}
 
-		if result.Article == nil {
-			s.logger.Info("Article was skipped", "url", result.Job.URL)
-			continue
+		if len(urls) == 0 {
+			s.logger.Info("No unprocessed feeds found")
+
+			return &ProcessingResult{
+				ProcessedCount: 0,
+				SuccessCount:   0,
+				ErrorCount:     0,
+				Errors:         []error{},
+				HasMore:        false,
+			}, nil
 		}
 
-		// Save article
-		if err := s.articleRepo.Create(ctx, result.Article); err != nil {
-			s.logger.Error("Failed to save article", "url", result.Job.URL, "error", err)
-			errorCount++
-			errors = append(errors, err)
-			continue
+		// Update cursor for next batch
+		s.cursor = cursor
+
+		// Convert URLs to strings for existence check
+		urlStrings := make([]string, len(urls))
+		for i, url := range urls {
+			urlStrings[i] = url.String()
 		}
 
-		successCount++
-		s.logger.Info("Successfully processed article", "url", result.Job.URL)
-	}
+		// Check if articles already exist
+		exists, err := s.articleRepo.CheckExists(ctx, urlStrings)
+		if err != nil {
+			s.logger.Error("Failed to check article existence", "error", err)
+			return nil, fmt.Errorf("failed to check article existence: %w", err)
+		}
 
-	result := &ProcessingResult{
-		ProcessedCount: len(urls),
-		SuccessCount:   successCount,
-		ErrorCount:     errorCount,
-		Errors:         errors,
-		HasMore:        len(urls) == batchSize, // Has more if we got a full batch
-	}
+		if exists {
+			s.logger.Info("Articles already exist for this batch")
 
-	// Enhanced structured logging
-	log.Info("batch processing completed",
-		"processed", result.ProcessedCount,
-		"success", result.SuccessCount,
-		"errors", result.ErrorCount,
-		"has_more", result.HasMore)
+			return &ProcessingResult{
+				ProcessedCount: 0,
+				SuccessCount:   0,
+				ErrorCount:     0,
+				Errors:         []error{},
+				HasMore:        false,
+			}, nil
+		}
 
-	// Legacy logger for backward compatibility
-	s.logger.Info("Feed processing completed",
-		"processed", result.ProcessedCount,
-		"success", result.SuccessCount,
-		"errors", result.ErrorCount,
-		"has_more", result.HasMore)
+		// Process URLs in parallel using worker pool
+		jobs := make([]utils.FeedJob, len(urls))
+		for i, url := range urls {
+			jobs[i] = utils.FeedJob{URL: url.String()}
+		}
 
-	return result, nil
+		s.logger.Info("Starting parallel feed processing",
+			"feed_count", len(jobs),
+			"worker_count", s.workerPool.Workers())
+
+		results := s.workerPool.ProcessFeeds(ctx, jobs, s.fetcher)
+
+		// Process results and save articles
+		var successCount, errorCount int
+		var errors []error
+
+		for _, result := range results {
+			if result.Error != nil {
+				s.logger.Error("Failed to fetch article", "url", result.Job.URL, "error", result.Error)
+				errorCount++
+				errors = append(errors, result.Error)
+				continue
+			}
+
+			if result.Article == nil {
+				s.logger.Info("Article was skipped", "url", result.Job.URL)
+				continue
+			}
+
+			// Save article
+			if err := s.articleRepo.Create(ctx, result.Article); err != nil {
+				s.logger.Error("Failed to save article", "url", result.Job.URL, "error", err)
+				errorCount++
+				errors = append(errors, err)
+				continue
+			}
+
+			successCount++
+			s.logger.Info("Successfully processed article", "url", result.Job.URL)
+		}
+
+		result := &ProcessingResult{
+			ProcessedCount: len(urls),
+			SuccessCount:   successCount,
+			ErrorCount:     errorCount,
+			Errors:         errors,
+			HasMore:        len(urls) == batchSize, // Has more if we got a full batch
+		}
+
+		// Enhanced structured logging
+		log.Info("batch processing completed",
+			"processed", result.ProcessedCount,
+			"success", result.SuccessCount,
+			"errors", result.ErrorCount,
+			"has_more", result.HasMore)
+
+		// Legacy logger for backward compatibility
+		s.logger.Info("Feed processing completed",
+			"processed", result.ProcessedCount,
+			"success", result.SuccessCount,
+			"errors", result.ErrorCount,
+			"has_more", result.HasMore)
+
+		return result, nil
 	*/
 }
 

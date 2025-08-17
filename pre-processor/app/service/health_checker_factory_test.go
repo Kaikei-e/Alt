@@ -19,19 +19,19 @@ import (
 // TestNewHealthCheckerServiceWithFactory tests factory-based constructor
 func TestNewHealthCheckerServiceWithFactory(t *testing.T) {
 	tests := map[string]struct {
-		config          *config.Config
-		newsCreatorURL  string
-		expectEnvoy     bool
-		description     string
+		config         *config.Config
+		newsCreatorURL string
+		expectEnvoy    bool
+		description    string
 	}{
 		"factory_envoy_health_check": {
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyURL:   "http://test-envoy:8080",
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    30 * time.Second,
-					UserAgent:       "test-health-checker-envoy",
+					UseEnvoyProxy:  true,
+					EnvoyProxyURL:  "http://test-envoy:8080",
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   30 * time.Second,
+					UserAgent:      "test-health-checker-envoy",
 				},
 			},
 			newsCreatorURL: "http://news-creator:11434",
@@ -79,7 +79,7 @@ func TestNewHealthCheckerServiceWithFactory(t *testing.T) {
 
 			// Verify news creator URL is set
 			if healthService.newsCreatorURL != tc.newsCreatorURL {
-				t.Errorf("%s: expected newsCreatorURL=%s but got %s", 
+				t.Errorf("%s: expected newsCreatorURL=%s but got %s",
 					tc.description, tc.newsCreatorURL, healthService.newsCreatorURL)
 			}
 
@@ -118,11 +118,11 @@ func TestHealthCheckerFactory_Integration(t *testing.T) {
 	defer mockNewsCreator.Close()
 
 	tests := map[string]struct {
-		config          *config.Config
-		newsCreatorURL  string
-		expectHealthy   bool
-		expectError     bool
-		description     string
+		config         *config.Config
+		newsCreatorURL string
+		expectHealthy  bool
+		expectError    bool
+		description    string
 	}{
 		"direct_http_healthy": {
 			config: &config.Config{

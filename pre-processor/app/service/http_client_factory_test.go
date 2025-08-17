@@ -25,11 +25,11 @@ func TestHTTPClientFactory_CreateClient(t *testing.T) {
 		"envoy_enabled": {
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyURL:   "http://envoy-proxy:8080",
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    30 * time.Second,
-					UserAgent:       "test-agent",
+					UseEnvoyProxy:  true,
+					EnvoyProxyURL:  "http://envoy-proxy:8080",
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   30 * time.Second,
+					UserAgent:      "test-agent",
 				},
 			},
 			expectedType:     "*service.EnvoyHTTPClient",
@@ -65,24 +65,24 @@ func TestHTTPClientFactory_CreateClient(t *testing.T) {
 			// Check client type using type assertion
 			clientType := getClientTypeName(client)
 			if !strings.Contains(clientType, strings.TrimPrefix(tc.expectedType, "*service.")) {
-				t.Errorf("%s: expected client type %s, got %s", 
+				t.Errorf("%s: expected client type %s, got %s",
 					tc.description, tc.expectedType, clientType)
 			}
 
 			// Check stats
 			stats := factory.GetClientStats()
 			if stats.EnvoyEnabled != tc.expectEnvoyStats {
-				t.Errorf("%s: expected EnvoyEnabled=%v, got %v", 
+				t.Errorf("%s: expected EnvoyEnabled=%v, got %v",
 					tc.description, tc.expectEnvoyStats, stats.EnvoyEnabled)
 			}
 
 			if tc.expectEnvoyStats && stats.ClientType != "envoy_proxy" {
-				t.Errorf("%s: expected client type 'envoy_proxy', got '%s'", 
+				t.Errorf("%s: expected client type 'envoy_proxy', got '%s'",
 					tc.description, stats.ClientType)
 			}
 
 			if !tc.expectEnvoyStats && stats.ClientType != "direct_http" {
-				t.Errorf("%s: expected client type 'direct_http', got '%s'", 
+				t.Errorf("%s: expected client type 'direct_http', got '%s'",
 					tc.description, stats.ClientType)
 			}
 		})
@@ -98,11 +98,11 @@ func TestHTTPClientFactory_CreateArticleFetcherClient(t *testing.T) {
 		"envoy_article_fetcher": {
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyURL:   "http://envoy-proxy:8080",
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    30 * time.Second,
-					UserAgent:       "article-fetcher",
+					UseEnvoyProxy:  true,
+					EnvoyProxyURL:  "http://envoy-proxy:8080",
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   30 * time.Second,
+					UserAgent:      "article-fetcher",
 				},
 			},
 			description: "Article fetcher should use Envoy with extended timeout",
@@ -151,11 +151,11 @@ func TestHTTPClientFactory_CreateHealthCheckClient(t *testing.T) {
 		"envoy_health_check": {
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyURL:   "http://envoy-proxy:8080",
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    60 * time.Second, // Should be overridden to 30s
-					UserAgent:       "health-checker",
+					UseEnvoyProxy:  true,
+					EnvoyProxyURL:  "http://envoy-proxy:8080",
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   60 * time.Second, // Should be overridden to 30s
+					UserAgent:      "health-checker",
 				},
 			},
 			description: "Health checker should use Envoy with optimized timeout",
@@ -202,9 +202,9 @@ func TestHTTPClientFactory_GetClientStats(t *testing.T) {
 		"envoy_stats": {
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyURL:   "http://test-envoy:8080",
-					EnvoyTimeout:    45 * time.Second,
+					UseEnvoyProxy: true,
+					EnvoyProxyURL: "http://test-envoy:8080",
+					EnvoyTimeout:  45 * time.Second,
 				},
 			},
 			expectedEnvoy:    true,
@@ -238,22 +238,22 @@ func TestHTTPClientFactory_GetClientStats(t *testing.T) {
 			}
 
 			if stats.EnvoyEnabled != tc.expectedEnvoy {
-				t.Errorf("%s: expected EnvoyEnabled=%v, got %v", 
+				t.Errorf("%s: expected EnvoyEnabled=%v, got %v",
 					tc.description, tc.expectedEnvoy, stats.EnvoyEnabled)
 			}
 
 			if stats.ClientType != tc.expectedType {
-				t.Errorf("%s: expected ClientType=%s, got %s", 
+				t.Errorf("%s: expected ClientType=%s, got %s",
 					tc.description, tc.expectedType, stats.ClientType)
 			}
 
 			if tc.expectedProxyURL != "" && stats.EnvoyProxyURL != tc.expectedProxyURL {
-				t.Errorf("%s: expected EnvoyProxyURL=%s, got %s", 
+				t.Errorf("%s: expected EnvoyProxyURL=%s, got %s",
 					tc.description, tc.expectedProxyURL, stats.EnvoyProxyURL)
 			}
 
 			if stats.TotalClients != 1 {
-				t.Errorf("%s: expected TotalClients=1, got %d", 
+				t.Errorf("%s: expected TotalClients=1, got %d",
 					tc.description, stats.TotalClients)
 			}
 		})
@@ -297,7 +297,7 @@ func TestHTTPClientFactory_ConfigValidation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Create factory - this should not panic even with invalid config
 			factory := NewHTTPClientFactory(tc.config, logger)
-			
+
 			if factory == nil {
 				t.Errorf("%s: expected factory but got nil", tc.description)
 				return
@@ -305,7 +305,7 @@ func TestHTTPClientFactory_ConfigValidation(t *testing.T) {
 
 			// Try to create client
 			client := factory.CreateClient()
-			
+
 			if client == nil {
 				t.Errorf("%s: expected client but got nil", tc.description)
 				return
@@ -314,11 +314,11 @@ func TestHTTPClientFactory_ConfigValidation(t *testing.T) {
 			// Test if client works by attempting a request to invalid URL
 			// This is just to verify the client interface works
 			_, err := client.Get("invalid-url")
-			
+
 			if tc.expectError && err == nil {
 				t.Errorf("%s: expected error but got none", tc.description)
 			}
-			
+
 			// Note: We don't test !tc.expectError case because invalid URLs
 			// should always return errors regardless of client type
 		})

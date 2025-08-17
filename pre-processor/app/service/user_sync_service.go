@@ -11,40 +11,25 @@ import (
 	"alt/shared/auth-lib-go/pkg/auth"
 )
 
-type UserSyncService struct {
+type userSyncService struct {
 	inoreaderClient InoreaderClient
-	dbRepository    Repository
+	dbRepository    UserSubscriptionRepository
 	logger          *slog.Logger
-}
-
-type InoreaderClient interface {
-	GetUserSubscriptions(ctx context.Context, userID string) ([]Subscription, error)
-}
-
-type Repository interface {
-	SaveUserSubscriptions(ctx context.Context, tenantID, userID string, subscriptions []Subscription) error
-}
-
-type Subscription struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	Description string `json:"description"`
 }
 
 func NewUserSyncService(
 	inoreaderClient InoreaderClient,
-	dbRepository Repository,
+	dbRepository UserSubscriptionRepository,
 	logger *slog.Logger,
-) *UserSyncService {
-	return &UserSyncService{
+) UserSyncService {
+	return &userSyncService{
 		inoreaderClient: inoreaderClient,
 		dbRepository:    dbRepository,
 		logger:          logger,
 	}
 }
 
-func (s *UserSyncService) SyncUserSubscriptions(ctx context.Context) error {
+func (s *userSyncService) SyncUserSubscriptions(ctx context.Context) error {
 	// コンテキストからユーザー情報を取得
 	user, ok := ctx.Value("user").(*auth.UserContext)
 	if !ok || user == nil {
@@ -93,7 +78,7 @@ func (s *UserSyncService) SyncUserSubscriptions(ctx context.Context) error {
 	return nil
 }
 
-func (s *UserSyncService) GetUserSubscriptions(ctx context.Context) ([]Subscription, error) {
+func (s *userSyncService) GetUserSubscriptions(ctx context.Context) ([]Subscription, error) {
 	// コンテキストからユーザー情報を取得
 	user, ok := ctx.Value("user").(*auth.UserContext)
 	if !ok || user == nil {

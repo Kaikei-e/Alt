@@ -27,11 +27,11 @@ func TestNewArticleFetcherServiceWithFactory(t *testing.T) {
 		"factory_envoy_enabled": {
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyURL:   "http://test-envoy:8080",
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    30 * time.Second,
-					UserAgent:       "test-factory-envoy",
+					UseEnvoyProxy:  true,
+					EnvoyProxyURL:  "http://test-envoy:8080",
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   30 * time.Second,
+					UserAgent:      "test-factory-envoy",
 				},
 			},
 			expectEnvoy: true,
@@ -101,11 +101,11 @@ func TestNewArticleFetcherServiceWithFactoryAndDLQ(t *testing.T) {
 		"factory_dlq_envoy": {
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyURL:   "http://test-envoy:8080",
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    60 * time.Second,
-					UserAgent:       "test-factory-dlq-envoy",
+					UseEnvoyProxy:  true,
+					EnvoyProxyURL:  "http://test-envoy:8080",
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   60 * time.Second,
+					UserAgent:      "test-factory-dlq-envoy",
 				},
 			},
 			retrier:     nil, // Will create default
@@ -174,7 +174,7 @@ func TestNewArticleFetcherServiceWithFactoryAndDLQ(t *testing.T) {
 				t.Errorf("%s: expected EnvoyHTTPClient but got %s", tc.description, clientType)
 			}
 
-			t.Logf("%s: created fetcher with client type: %s, DLQ: %v, Retrier: %v", 
+			t.Logf("%s: created fetcher with client type: %s, DLQ: %v, Retrier: %v",
 				tc.description, clientType, fetcherService.dlqPublisher != nil, fetcherService.retrier != nil)
 		})
 	}
@@ -286,7 +286,7 @@ func TestArticleFetcherFactory_Integration(t *testing.T) {
 				t.Errorf("%s: expected article content but got empty string", tc.description)
 			}
 
-			t.Logf("%s: successfully fetched article: title='%s', content_length=%d", 
+			t.Logf("%s: successfully fetched article: title='%s', content_length=%d",
 				tc.description, article.Title, len(article.Content))
 		})
 	}

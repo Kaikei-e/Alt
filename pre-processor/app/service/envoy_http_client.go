@@ -19,9 +19,9 @@ import (
 
 // EnvoyHTTPClient implements HTTPClient interface for Envoy proxy routing
 type EnvoyHTTPClient struct {
-	config        *config.HTTPConfig
-	logger        *slog.Logger
-	httpClient    *http.Client
+	config           *config.HTTPConfig
+	logger           *slog.Logger
+	httpClient       *http.Client
 	userAgentRotator *config.UserAgentRotator
 }
 
@@ -79,7 +79,7 @@ func NewEnvoyHTTPClient(cfg *config.HTTPConfig, logger *slog.Logger) HTTPClient 
 func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 	start := time.Now()
 
-	c.logger.Info("EnvoyHTTPClient: starting request", 
+	c.logger.Info("EnvoyHTTPClient: starting request",
 		"target_url", targetURL,
 		"proxy_url", c.config.EnvoyProxyURL)
 
@@ -90,8 +90,8 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 	parsedURL, err := url.Parse(targetURL)
 	if err != nil {
 		metrics.RecordError(ProxyErrorConfig)
-		c.logger.Error("EnvoyHTTPClient: invalid target URL", 
-			"target_url", targetURL, 
+		c.logger.Error("EnvoyHTTPClient: invalid target URL",
+			"target_url", targetURL,
 			"error", err)
 		metrics.RecordEnvoyRequest(time.Since(start), false, 0)
 		return nil, fmt.Errorf("invalid target URL: %w", err)
@@ -100,7 +100,7 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 	// Only support HTTPS for RSS feeds
 	if parsedURL.Scheme != "https" {
 		metrics.RecordError(ProxyErrorConfig)
-		c.logger.Error("EnvoyHTTPClient: only HTTPS URLs supported", 
+		c.logger.Error("EnvoyHTTPClient: only HTTPS URLs supported",
 			"target_url", targetURL,
 			"scheme", parsedURL.Scheme)
 		metrics.RecordEnvoyRequest(time.Since(start), false, 0)
@@ -111,11 +111,11 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 	dnsStart := time.Now()
 	resolvedIP, err := c.ResolveDomain(parsedURL.Hostname())
 	dnsResolutionTime := time.Since(dnsStart)
-	
+
 	if err != nil {
 		metrics.RecordError(ProxyErrorDNS)
-		c.logger.Error("EnvoyHTTPClient: DNS resolution failed", 
-			"hostname", parsedURL.Hostname(), 
+		c.logger.Error("EnvoyHTTPClient: DNS resolution failed",
+			"hostname", parsedURL.Hostname(),
 			"error", err,
 			"dns_duration_ms", dnsResolutionTime.Milliseconds())
 		metrics.RecordEnvoyRequest(time.Since(start), false, dnsResolutionTime)
@@ -132,8 +132,8 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 	proxyURL, err := url.Parse(c.config.EnvoyProxyURL)
 	if err != nil {
 		metrics.RecordError(ProxyErrorConfig)
-		c.logger.Error("EnvoyHTTPClient: invalid proxy URL", 
-			"proxy_url", c.config.EnvoyProxyURL, 
+		c.logger.Error("EnvoyHTTPClient: invalid proxy URL",
+			"proxy_url", c.config.EnvoyProxyURL,
 			"error", err)
 		metrics.RecordEnvoyRequest(time.Since(start), false, dnsResolutionTime)
 		return nil, fmt.Errorf("invalid proxy URL: %w", err)
@@ -145,8 +145,8 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", proxyURL.String(), nil)
 	if err != nil {
 		metrics.RecordError(ProxyErrorConfig)
-		c.logger.Error("EnvoyHTTPClient: failed to create request", 
-			"proxy_url", proxyURL.String(), 
+		c.logger.Error("EnvoyHTTPClient: failed to create request",
+			"proxy_url", proxyURL.String(),
 			"error", err)
 		metrics.RecordEnvoyRequest(time.Since(start), false, dnsResolutionTime)
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -154,20 +154,20 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 
 	// Get User-Agent (rotated or configured)
 	userAgent := c.userAgentRotator.GetUserAgent()
-	
+
 	// Get browser headers based on configuration
 	headers := c.config.GetBrowserHeaders(userAgent)
-	
+
 	// Set all browser headers
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
-	
+
 	// Set required Envoy proxy headers
 	req.Header.Set("X-Target-Domain", parsedURL.Hostname())
 	req.Header.Set("X-Resolved-IP", resolvedIP)
 
-	c.logger.Debug("EnvoyHTTPClient: sending request", 
+	c.logger.Debug("EnvoyHTTPClient: sending request",
 		"proxy_url", proxyURL.String(),
 		"target_domain", parsedURL.Hostname(),
 		"resolved_ip", resolvedIP,
@@ -192,44 +192,44 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 			errorType = ProxyErrorConnection // Default to connection error
 			metrics.RecordError(ProxyErrorConnection)
 		}
-		
-		c.logger.Error("EnvoyHTTPClient: request failed", 
+
+		c.logger.Error("EnvoyHTTPClient: request failed",
 			"target_url", targetURL,
 			"proxy_url", proxyURL.String(),
 			"duration_ms", duration.Milliseconds(),
 			"dns_duration_ms", dnsResolutionTime.Milliseconds(),
 			"error", err)
-		
+
 		// Record both general and domain-specific metrics
 		metrics.RecordEnvoyRequest(duration, false, dnsResolutionTime)
 		metrics.RecordDomainRequest(targetURL, duration, false, errorType)
-		
+
 		return nil, fmt.Errorf("Envoy proxy request failed: %w", err)
 	}
 
 	// Check for HTTP errors if skip error responses is enabled
 	if c.config.SkipErrorResponses && resp.StatusCode >= 400 {
-		c.logger.Error("EnvoyHTTPClient: HTTP error response detected", 
+		c.logger.Error("EnvoyHTTPClient: HTTP error response detected",
 			"target_url", targetURL,
 			"proxy_url", proxyURL.String(),
 			"status_code", resp.StatusCode,
 			"duration_ms", duration.Milliseconds(),
 			"dns_duration_ms", dnsResolutionTime.Milliseconds(),
 			"content_length", resp.ContentLength)
-		
+
 		// Record as failed request (both general and domain-specific)
 		metrics.RecordEnvoyRequest(duration, false, dnsResolutionTime)
-		
+
 		// Record domain-specific metrics with bot detection logic
 		errorType := ProxyErrorConnection // Default to connection error for HTTP errors
 		if resp.StatusCode == 403 || resp.StatusCode == 429 {
 			errorType = ProxyErrorConnection // Bot detection typically shows as connection issues
 		}
 		metrics.RecordDomainRequest(targetURL, duration, false, errorType)
-		
+
 		// Close response body to prevent resource leak
 		resp.Body.Close()
-		
+
 		// Return error instead of the response to prevent saving error content
 		return nil, fmt.Errorf("HTTP error response: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
@@ -237,12 +237,12 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 	// Record successful request (both general and domain-specific)
 	success := resp.StatusCode >= 200 && resp.StatusCode < 400
 	metrics.RecordEnvoyRequest(duration, success, dnsResolutionTime)
-	
+
 	if success {
 		metrics.RecordDomainRequest(targetURL, duration, true, ProxyErrorConfig) // No error type for success
 	}
 
-	c.logger.Info("EnvoyHTTPClient: request completed", 
+	c.logger.Info("EnvoyHTTPClient: request completed",
 		"target_url", targetURL,
 		"proxy_url", proxyURL.String(),
 		"status_code", resp.StatusCode,
@@ -261,8 +261,8 @@ func (c *EnvoyHTTPClient) ResolveDomain(hostname string) (string, error) {
 	// Use Go's default DNS resolver
 	ips, err := net.LookupIP(hostname)
 	if err != nil {
-		c.logger.Error("EnvoyHTTPClient: DNS lookup failed", 
-			"hostname", hostname, 
+		c.logger.Error("EnvoyHTTPClient: DNS lookup failed",
+			"hostname", hostname,
 			"error", err)
 		return "", fmt.Errorf("DNS lookup failed: %w", err)
 	}
@@ -276,8 +276,8 @@ func (c *EnvoyHTTPClient) ResolveDomain(hostname string) (string, error) {
 	for _, ip := range ips {
 		if ip.To4() != nil {
 			resolvedIP := ip.String()
-			c.logger.Debug("EnvoyHTTPClient: domain resolved", 
-				"hostname", hostname, 
+			c.logger.Debug("EnvoyHTTPClient: domain resolved",
+				"hostname", hostname,
 				"resolved_ip", resolvedIP)
 			return resolvedIP, nil
 		}
@@ -285,8 +285,8 @@ func (c *EnvoyHTTPClient) ResolveDomain(hostname string) (string, error) {
 
 	// Fallback to first IP (might be IPv6)
 	resolvedIP := ips[0].String()
-	c.logger.Debug("EnvoyHTTPClient: domain resolved (IPv6)", 
-		"hostname", hostname, 
+	c.logger.Debug("EnvoyHTTPClient: domain resolved (IPv6)",
+		"hostname", hostname,
 		"resolved_ip", resolvedIP)
 	return resolvedIP, nil
 }

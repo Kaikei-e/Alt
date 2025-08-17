@@ -17,13 +17,13 @@ type ProxyMetrics struct {
 	logger *slog.Logger
 
 	// Request counters
-	totalRequests      uint64
-	envoyRequests      uint64
-	directRequests     uint64
-	envoySuccessful    uint64
-	directSuccessful   uint64
-	envoyFailures      uint64
-	directFailures     uint64
+	totalRequests    uint64
+	envoyRequests    uint64
+	directRequests   uint64
+	envoySuccessful  uint64
+	directSuccessful uint64
+	envoyFailures    uint64
+	directFailures   uint64
 
 	// Latency tracking
 	envoyLatencySum    uint64 // in milliseconds
@@ -32,10 +32,10 @@ type ProxyMetrics struct {
 	dnsResolutionCount uint64
 
 	// Error tracking
-	configErrors      uint64
-	timeoutErrors     uint64
-	connectionErrors  uint64
-	dnsErrors         uint64
+	configErrors     uint64
+	timeoutErrors    uint64
+	connectionErrors uint64
+	dnsErrors        uint64
 
 	// Configuration switches
 	configSwitchCount uint64
@@ -48,8 +48,8 @@ type ProxyMetrics struct {
 	windowSize        int
 
 	// Domain-specific error tracking (Phase 5)
-	domainErrors      map[string]*DomainMetrics
-	domainMutex       sync.RWMutex
+	domainErrors map[string]*DomainMetrics
+	domainMutex  sync.RWMutex
 
 	// Start time for metrics collection
 	startTime time.Time
@@ -170,13 +170,13 @@ func (m *ProxyMetrics) GetMetricsSummary() ProxyMetricsSummary {
 	totalRequests := atomic.LoadUint64(&m.totalRequests)
 	envoyRequests := atomic.LoadUint64(&m.envoyRequests)
 	directRequests := atomic.LoadUint64(&m.directRequests)
-	
+
 	var envoyAvgLatency, directAvgLatency, dnsAvgLatency float64
-	
+
 	if envoyRequests > 0 {
 		envoyAvgLatency = float64(atomic.LoadUint64(&m.envoyLatencySum)) / float64(envoyRequests)
 	}
-	
+
 	if directRequests > 0 {
 		directAvgLatency = float64(atomic.LoadUint64(&m.directLatencySum)) / float64(directRequests)
 	}
@@ -230,7 +230,7 @@ func (m *ProxyMetrics) GetMetricsSummary() ProxyMetricsSummary {
 		ConfigErrors:        atomic.LoadUint64(&m.configErrors),
 		TimeoutErrors:       atomic.LoadUint64(&m.timeoutErrors),
 		ConnectionErrors:    atomic.LoadUint64(&m.connectionErrors),
-		DNSErrors:          atomic.LoadUint64(&m.dnsErrors),
+		DNSErrors:           atomic.LoadUint64(&m.dnsErrors),
 		ConfigSwitchCount:   atomic.LoadUint64(&m.configSwitchCount),
 		UptimeSeconds:       time.Since(m.startTime).Seconds(),
 		CollectionStartTime: m.startTime,
@@ -240,7 +240,7 @@ func (m *ProxyMetrics) GetMetricsSummary() ProxyMetricsSummary {
 // logPerformanceMetrics logs comprehensive performance metrics
 func (m *ProxyMetrics) logPerformanceMetrics() {
 	summary := m.GetMetricsSummary()
-	
+
 	m.logger.Info("proxy performance metrics",
 		"total_requests", summary.TotalRequests,
 		"envoy_requests", summary.EnvoyRequests,
@@ -294,30 +294,30 @@ type ProxyErrorType string
 
 const (
 	ProxyErrorConfig     ProxyErrorType = "config_error"
-	ProxyErrorTimeout    ProxyErrorType = "timeout_error"  
+	ProxyErrorTimeout    ProxyErrorType = "timeout_error"
 	ProxyErrorConnection ProxyErrorType = "connection_error"
 	ProxyErrorDNS        ProxyErrorType = "dns_error"
 )
 
 // DomainMetrics tracks metrics for a specific domain
 type DomainMetrics struct {
-	Domain            string  `json:"domain"`
-	TotalRequests     uint64  `json:"total_requests"`
-	SuccessfulRequests uint64  `json:"successful_requests"`
-	FailedRequests    uint64  `json:"failed_requests"`
-	BotDetectionErrors uint64  `json:"bot_detection_errors"` // 403/blocked responses
-	TimeoutErrors     uint64  `json:"timeout_errors"`
-	ConnectionErrors  uint64  `json:"connection_errors"`
-	DNSErrors         uint64  `json:"dns_errors"`
-	ConfigErrors      uint64  `json:"config_errors"`
-	LatencySum        uint64  `json:"latency_sum_ms"`
-	LastRequestTime   int64   `json:"last_request_time"` // Unix timestamp
-	FirstErrorTime    int64   `json:"first_error_time"`  // Unix timestamp
-	ConsecutiveErrors uint64  `json:"consecutive_errors"`
-	
+	Domain             string `json:"domain"`
+	TotalRequests      uint64 `json:"total_requests"`
+	SuccessfulRequests uint64 `json:"successful_requests"`
+	FailedRequests     uint64 `json:"failed_requests"`
+	BotDetectionErrors uint64 `json:"bot_detection_errors"` // 403/blocked responses
+	TimeoutErrors      uint64 `json:"timeout_errors"`
+	ConnectionErrors   uint64 `json:"connection_errors"`
+	DNSErrors          uint64 `json:"dns_errors"`
+	ConfigErrors       uint64 `json:"config_errors"`
+	LatencySum         uint64 `json:"latency_sum_ms"`
+	LastRequestTime    int64  `json:"last_request_time"` // Unix timestamp
+	FirstErrorTime     int64  `json:"first_error_time"`  // Unix timestamp
+	ConsecutiveErrors  uint64 `json:"consecutive_errors"`
+
 	// Success rate calculation
-	SuccessRate       float64 `json:"success_rate_percent"`
-	AvgLatencyMs      float64 `json:"avg_latency_ms"`
+	SuccessRate  float64 `json:"success_rate_percent"`
+	AvgLatencyMs float64 `json:"avg_latency_ms"`
 }
 
 // GetHealthScore calculates health score for this domain
@@ -325,30 +325,30 @@ func (dm *DomainMetrics) GetHealthScore() float64 {
 	if dm.TotalRequests == 0 {
 		return 100.0
 	}
-	
+
 	score := 100.0
-	
+
 	// Penalize low success rates
 	if dm.SuccessRate < 95 {
 		score -= (95 - dm.SuccessRate) * 2
 	}
-	
+
 	// Penalize high bot detection rate
 	if dm.TotalRequests > 0 {
 		botDetectionRate := float64(dm.BotDetectionErrors) / float64(dm.TotalRequests) * 100
 		score -= botDetectionRate * 3 // Bot detection is critical
 	}
-	
+
 	// Penalize consecutive errors
 	if dm.ConsecutiveErrors > 5 {
 		score -= float64(dm.ConsecutiveErrors-5) * 2
 	}
-	
+
 	// Penalize high latency (> 10 seconds average)
 	if dm.AvgLatencyMs > 10000 {
 		score -= (dm.AvgLatencyMs - 10000) / 200
 	}
-	
+
 	if score < 0 {
 		score = 0
 	}
@@ -360,30 +360,30 @@ func (dm *DomainMetrics) IsBotDetectionSuspected() bool {
 	if dm.TotalRequests < 5 {
 		return false // Too few requests to determine
 	}
-	
+
 	// High bot detection error rate
 	botDetectionRate := float64(dm.BotDetectionErrors) / float64(dm.TotalRequests)
 	if botDetectionRate > 0.5 { // More than 50% bot detection errors
 		return true
 	}
-	
+
 	// Many consecutive errors
 	if dm.ConsecutiveErrors >= 10 {
 		return true
 	}
-	
+
 	return false
 }
 
 // DomainMetricsSummary provides aggregated domain statistics
 type DomainMetricsSummary struct {
-	TotalDomains           int                        `json:"total_domains"`
-	HealthyDomains         int                        `json:"healthy_domains"`
-	ProblematicDomains     int                        `json:"problematic_domains"`
-	BotDetectionDomains    int                        `json:"bot_detection_domains"`
-	TopErrorDomains        []*DomainMetrics           `json:"top_error_domains"`
-	DomainBreakdown        map[string]*DomainMetrics  `json:"domain_breakdown"`
-	OverallDomainHealthScore float64                  `json:"overall_domain_health_score"`
+	TotalDomains             int                       `json:"total_domains"`
+	HealthyDomains           int                       `json:"healthy_domains"`
+	ProblematicDomains       int                       `json:"problematic_domains"`
+	BotDetectionDomains      int                       `json:"bot_detection_domains"`
+	TopErrorDomains          []*DomainMetrics          `json:"top_error_domains"`
+	DomainBreakdown          map[string]*DomainMetrics `json:"domain_breakdown"`
+	OverallDomainHealthScore float64                   `json:"overall_domain_health_score"`
 }
 
 // ProxyMetricsSummary contains a snapshot of proxy metrics
@@ -405,7 +405,7 @@ type ProxyMetricsSummary struct {
 	ConfigErrors        uint64    `json:"config_errors"`
 	TimeoutErrors       uint64    `json:"timeout_errors"`
 	ConnectionErrors    uint64    `json:"connection_errors"`
-	DNSErrors          uint64    `json:"dns_errors"`
+	DNSErrors           uint64    `json:"dns_errors"`
 	ConfigSwitchCount   uint64    `json:"config_switch_count"`
 	UptimeSeconds       float64   `json:"uptime_seconds"`
 	CollectionStartTime time.Time `json:"collection_start_time"`
@@ -578,8 +578,8 @@ func (m *ProxyMetrics) GetDomainMetricsSummary() *DomainMetricsSummary {
 	defer m.domainMutex.RUnlock()
 
 	summary := &DomainMetricsSummary{
-		DomainBreakdown:      make(map[string]*DomainMetrics),
-		TopErrorDomains:      make([]*DomainMetrics, 0),
+		DomainBreakdown: make(map[string]*DomainMetrics),
+		TopErrorDomains: make([]*DomainMetrics, 0),
 	}
 
 	var totalHealthScore float64
@@ -590,7 +590,7 @@ func (m *ProxyMetrics) GetDomainMetricsSummary() *DomainMetricsSummary {
 		// Create a copy of metrics with updated calculated fields
 		domainCopy := *metrics
 		m.updateDomainCalculatedMetrics(&domainCopy)
-		
+
 		summary.DomainBreakdown[domain] = &domainCopy
 		summary.TotalDomains++
 

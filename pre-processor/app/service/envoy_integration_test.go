@@ -28,9 +28,9 @@ func TestEnvoyIntegration_EndToEnd(t *testing.T) {
 		// Verify Envoy-specific headers are present
 		targetDomain := r.Header.Get("X-Target-Domain")
 		resolvedIP := r.Header.Get("X-Resolved-IP")
-		
+
 		if targetDomain == "" || resolvedIP == "" {
-			t.Logf("Missing Envoy headers: X-Target-Domain=%s, X-Resolved-IP=%s", 
+			t.Logf("Missing Envoy headers: X-Target-Domain=%s, X-Resolved-IP=%s",
 				targetDomain, resolvedIP)
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -62,20 +62,20 @@ func TestEnvoyIntegration_EndToEnd(t *testing.T) {
 	defer envoyMock.Close()
 
 	tests := map[string]struct {
-		config         *config.Config
-		targetURL      string
-		expectSuccess  bool
-		expectEnvoy    bool
-		description    string
+		config        *config.Config
+		targetURL     string
+		expectSuccess bool
+		expectEnvoy   bool
+		description   string
 	}{
 		"envoy_proxy_article_fetch": {
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyURL:   envoyMock.URL,
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    30 * time.Second,
-					UserAgent:       "integration-test-envoy",
+					UseEnvoyProxy:  true,
+					EnvoyProxyURL:  envoyMock.URL,
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   30 * time.Second,
+					UserAgent:      "integration-test-envoy",
 				},
 			},
 			targetURL:     "https://example.com/article",
@@ -141,7 +141,7 @@ func TestEnvoyIntegration_EndToEnd(t *testing.T) {
 					t.Errorf("%s: expected some article title but got empty string", tc.description)
 				}
 
-				t.Logf("%s: successfully fetched article via %s", tc.description, 
+				t.Logf("%s: successfully fetched article via %s", tc.description,
 					map[bool]string{true: "Envoy", false: "Direct"}[tc.expectEnvoy])
 			} else {
 				if err == nil {
@@ -187,11 +187,11 @@ func TestEnvoyIntegration_HealthCheck(t *testing.T) {
 		"envoy_health_check_success": {
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyURL:   envoyMock.URL,
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    30 * time.Second,
-					UserAgent:       "integration-test-health-envoy",
+					UseEnvoyProxy:  true,
+					EnvoyProxyURL:  envoyMock.URL,
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   30 * time.Second,
+					UserAgent:      "integration-test-health-envoy",
 				},
 			},
 			serviceURL:    "https://httpbin.org/json", // Use resolvable test service
@@ -262,7 +262,7 @@ func TestEnvoyIntegration_ConfigurationSwitching(t *testing.T) {
 		}
 
 		directService := NewArticleFetcherServiceWithFactory(directConfig, logger)
-		
+
 		// Verify direct client type
 		fetcherService, ok := directService.(*articleFetcherService)
 		if !ok {
@@ -283,16 +283,16 @@ func TestEnvoyIntegration_ConfigurationSwitching(t *testing.T) {
 
 		envoyConfig := &config.Config{
 			HTTP: config.HTTPConfig{
-				UseEnvoyProxy:   true,
-				EnvoyProxyURL:   envoyMock.URL,
-				EnvoyProxyPath:  "/proxy/https://",
-				EnvoyTimeout:    30 * time.Second,
-				UserAgent:       "integration-test-switch",
+				UseEnvoyProxy:  true,
+				EnvoyProxyURL:  envoyMock.URL,
+				EnvoyProxyPath: "/proxy/https://",
+				EnvoyTimeout:   30 * time.Second,
+				UserAgent:      "integration-test-switch",
 			},
 		}
 
 		envoyService := NewArticleFetcherServiceWithFactory(envoyConfig, logger)
-		
+
 		// Verify Envoy client type
 		envoyFetcherService, ok := envoyService.(*articleFetcherService)
 		if !ok {
@@ -319,11 +319,11 @@ func TestEnvoyIntegration_DNSResolution(t *testing.T) {
 	requestCount := 0
 	envoyMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
-		
+
 		targetDomain := r.Header.Get("X-Target-Domain")
 		resolvedIP := r.Header.Get("X-Resolved-IP")
 
-		t.Logf("Request %d: X-Target-Domain=%s, X-Resolved-IP=%s", 
+		t.Logf("Request %d: X-Target-Domain=%s, X-Resolved-IP=%s",
 			requestCount, targetDomain, resolvedIP)
 
 		// Verify headers are present
@@ -346,11 +346,11 @@ func TestEnvoyIntegration_DNSResolution(t *testing.T) {
 
 	config := &config.Config{
 		HTTP: config.HTTPConfig{
-			UseEnvoyProxy:   true,
-			EnvoyProxyURL:   envoyMock.URL,
-			EnvoyProxyPath:  "/proxy/https://",
-			EnvoyTimeout:    30 * time.Second,
-			UserAgent:       "integration-test-dns",
+			UseEnvoyProxy:  true,
+			EnvoyProxyURL:  envoyMock.URL,
+			EnvoyProxyPath: "/proxy/https://",
+			EnvoyTimeout:   30 * time.Second,
+			UserAgent:      "integration-test-dns",
 		},
 	}
 
@@ -377,7 +377,7 @@ func isValidIP(ip string) bool {
 	if len(parts) != 4 {
 		return false
 	}
-	
+
 	for _, part := range parts {
 		if len(part) == 0 || len(part) > 3 {
 			return false
@@ -415,10 +415,10 @@ func TestEnvoyIntegration_ErrorScenarios(t *testing.T) {
 			},
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    5 * time.Second,
-					UserAgent:       "integration-test-error",
+					UseEnvoyProxy:  true,
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   5 * time.Second,
+					UserAgent:      "integration-test-error",
 				},
 			},
 			targetURL:   "https://example.com",
@@ -435,10 +435,10 @@ func TestEnvoyIntegration_ErrorScenarios(t *testing.T) {
 			},
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    1 * time.Second, // Short timeout
-					UserAgent:       "integration-test-timeout",
+					UseEnvoyProxy:  true,
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   1 * time.Second, // Short timeout
+					UserAgent:      "integration-test-timeout",
 				},
 			},
 			targetURL:   "https://example.com",
@@ -454,10 +454,10 @@ func TestEnvoyIntegration_ErrorScenarios(t *testing.T) {
 			},
 			config: &config.Config{
 				HTTP: config.HTTPConfig{
-					UseEnvoyProxy:   true,
-					EnvoyProxyPath:  "/proxy/https://",
-					EnvoyTimeout:    30 * time.Second,
-					UserAgent:       "integration-test-error-response",
+					UseEnvoyProxy:  true,
+					EnvoyProxyPath: "/proxy/https://",
+					EnvoyTimeout:   30 * time.Second,
+					UserAgent:      "integration-test-error-response",
 				},
 			},
 			targetURL:   "https://example.com",

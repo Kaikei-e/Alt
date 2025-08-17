@@ -65,7 +65,7 @@ func TestProxyMetrics_RecordEnvoyRequest(t *testing.T) {
 				t.Errorf("%s: expected DNS latency to be recorded", tc.description)
 			}
 
-			t.Logf("%s: recorded - Duration: %v, Success: %v, DNS: %v", 
+			t.Logf("%s: recorded - Duration: %v, Success: %v, DNS: %v",
 				tc.description, tc.duration, tc.success, tc.dnsResolutionTime)
 		})
 	}
@@ -118,7 +118,7 @@ func TestProxyMetrics_RecordDirectRequest(t *testing.T) {
 				t.Errorf("%s: expected failed request to be recorded", tc.description)
 			}
 
-			t.Logf("%s: recorded - Duration: %v, Success: %v", 
+			t.Logf("%s: recorded - Duration: %v, Success: %v",
 				tc.description, tc.duration, tc.success)
 		})
 	}
@@ -199,7 +199,7 @@ func TestProxyMetrics_ConfigSwitch(t *testing.T) {
 	summary := metrics.GetMetricsSummary()
 
 	if summary.ConfigSwitchCount != initialSwitchCount+1 {
-		t.Errorf("Expected config switch count to increase by 1, got %d -> %d", 
+		t.Errorf("Expected config switch count to increase by 1, got %d -> %d",
 			initialSwitchCount, summary.ConfigSwitchCount)
 	}
 
@@ -209,7 +209,7 @@ func TestProxyMetrics_ConfigSwitch(t *testing.T) {
 	summary = metrics.GetMetricsSummary()
 
 	if summary.ConfigSwitchCount != initialSwitchCount+2 {
-		t.Errorf("Expected config switch count to increase by 2, got %d -> %d", 
+		t.Errorf("Expected config switch count to increase by 2, got %d -> %d",
 			initialSwitchCount, summary.ConfigSwitchCount)
 	}
 
@@ -265,11 +265,11 @@ func TestProxyMetrics_PerformanceComparison(t *testing.T) {
 
 	// In this test, Envoy should be slower
 	if summary.EnvoyAvgLatencyMs <= summary.DirectAvgLatencyMs {
-		t.Logf("Note: Envoy was actually faster than direct (%.2f ms vs %.2f ms)", 
+		t.Logf("Note: Envoy was actually faster than direct (%.2f ms vs %.2f ms)",
 			summary.EnvoyAvgLatencyMs, summary.DirectAvgLatencyMs)
 	}
 
-	t.Logf("Performance comparison - Envoy: %.2f ms avg, Direct: %.2f ms avg", 
+	t.Logf("Performance comparison - Envoy: %.2f ms avg, Direct: %.2f ms avg",
 		summary.EnvoyAvgLatencyMs, summary.DirectAvgLatencyMs)
 }
 
@@ -296,7 +296,7 @@ func TestProxyMetrics_HealthScore(t *testing.T) {
 					ConfigErrors:       0,
 					TimeoutErrors:      0,
 					ConnectionErrors:   0,
-					DNSErrors:         0,
+					DNSErrors:          0,
 				}
 			},
 			expectedMin: 95.0,
@@ -318,7 +318,7 @@ func TestProxyMetrics_HealthScore(t *testing.T) {
 					ConfigErrors:       0,
 					TimeoutErrors:      0,
 					ConnectionErrors:   0,
-					DNSErrors:         0,
+					DNSErrors:          0,
 				}
 			},
 			expectedMin: 60.0,
@@ -340,7 +340,7 @@ func TestProxyMetrics_HealthScore(t *testing.T) {
 					ConfigErrors:       0,
 					TimeoutErrors:      0,
 					ConnectionErrors:   0,
-					DNSErrors:         0,
+					DNSErrors:          0,
 				}
 			},
 			expectedMin: 40.0,
@@ -362,7 +362,7 @@ func TestProxyMetrics_HealthScore(t *testing.T) {
 					ConfigErrors:       10,
 					TimeoutErrors:      5,
 					ConnectionErrors:   3,
-					DNSErrors:         2,
+					DNSErrors:          2,
 				}
 			},
 			expectedMin: 20.0,
@@ -387,11 +387,11 @@ func TestProxyMetrics_HealthScore(t *testing.T) {
 			score := summary.GetHealthScore()
 
 			if score < tc.expectedMin || score > tc.expectedMax {
-				t.Errorf("%s: expected health score between %.1f and %.1f, got %.1f", 
+				t.Errorf("%s: expected health score between %.1f and %.1f, got %.1f",
 					tc.description, tc.expectedMin, tc.expectedMax, score)
 			}
 
-			t.Logf("%s: health score = %.1f (expected: %.1f - %.1f)", 
+			t.Logf("%s: health score = %.1f (expected: %.1f - %.1f)",
 				tc.description, score, tc.expectedMin, tc.expectedMax)
 		})
 	}
@@ -437,16 +437,16 @@ func TestProxyMetrics_MovingAverages(t *testing.T) {
 	tolerance := 50.0
 
 	if abs(summary.EnvoyMovingAvgMs-expectedAvg) > tolerance {
-		t.Errorf("Envoy moving average %.2f ms not within tolerance of %.2f ms", 
+		t.Errorf("Envoy moving average %.2f ms not within tolerance of %.2f ms",
 			summary.EnvoyMovingAvgMs, expectedAvg)
 	}
 
 	if abs(summary.DirectMovingAvgMs-expectedAvg) > tolerance {
-		t.Errorf("Direct moving average %.2f ms not within tolerance of %.2f ms", 
+		t.Errorf("Direct moving average %.2f ms not within tolerance of %.2f ms",
 			summary.DirectMovingAvgMs, expectedAvg)
 	}
 
-	t.Logf("Moving averages - Envoy: %.2f ms, Direct: %.2f ms", 
+	t.Logf("Moving averages - Envoy: %.2f ms, Direct: %.2f ms",
 		summary.EnvoyMovingAvgMs, summary.DirectMovingAvgMs)
 }
 

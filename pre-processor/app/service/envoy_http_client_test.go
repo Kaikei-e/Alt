@@ -20,19 +20,19 @@ import (
 // TestEnvoyHTTPClient_Get tests HTTP GET through Envoy proxy
 func TestEnvoyHTTPClient_Get(t *testing.T) {
 	tests := map[string]struct {
-		targetURL      string
-		envoyConfig    *config.HTTPConfig
-		expectError    bool
-		expectHeaders  map[string]string
-		description    string
+		targetURL     string
+		envoyConfig   *config.HTTPConfig
+		expectError   bool
+		expectHeaders map[string]string
+		description   string
 	}{
 		"valid_rss_url": {
 			targetURL: "https://feeds.bbci.co.uk/news/rss.xml",
 			envoyConfig: &config.HTTPConfig{
-				UseEnvoyProxy:   true,
-				EnvoyProxyURL:   "http://test-envoy:8080",
-				EnvoyProxyPath:  "/proxy/https://",
-				EnvoyTimeout:    30 * time.Second,
+				UseEnvoyProxy:  true,
+				EnvoyProxyURL:  "http://test-envoy:8080",
+				EnvoyProxyPath: "/proxy/https://",
+				EnvoyTimeout:   30 * time.Second,
 			},
 			expectError: false,
 			expectHeaders: map[string]string{
@@ -52,8 +52,8 @@ func TestEnvoyHTTPClient_Get(t *testing.T) {
 		"empty_proxy_url": {
 			targetURL: "https://example.com",
 			envoyConfig: &config.HTTPConfig{
-				UseEnvoyProxy:  true,
-				EnvoyProxyURL:  "",
+				UseEnvoyProxy: true,
+				EnvoyProxyURL: "",
 			},
 			expectError: true,
 			description: "Empty proxy URL should return error",
@@ -61,10 +61,10 @@ func TestEnvoyHTTPClient_Get(t *testing.T) {
 		"valid_qiita_url": {
 			targetURL: "https://qiita.com/tags/golang/feed",
 			envoyConfig: &config.HTTPConfig{
-				UseEnvoyProxy:   true,
-				EnvoyProxyURL:   "http://test-envoy:8080",
-				EnvoyProxyPath:  "/proxy/https://",
-				EnvoyTimeout:    30 * time.Second,
+				UseEnvoyProxy:  true,
+				EnvoyProxyURL:  "http://test-envoy:8080",
+				EnvoyProxyPath: "/proxy/https://",
+				EnvoyTimeout:   30 * time.Second,
 			},
 			expectError: false,
 			expectHeaders: map[string]string{
@@ -193,7 +193,7 @@ func TestEnvoyHTTPClient_DNSResolution(t *testing.T) {
 
 	logger := slog.Default()
 	client := NewEnvoyHTTPClient(config, logger)
-	
+
 	// Type assert to access ResolveDomain method
 	envoyClient, ok := client.(*EnvoyHTTPClient)
 	if !ok {
@@ -338,7 +338,7 @@ func TestEnvoyHTTPClient_ErrorHandling(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			client := NewEnvoyHTTPClient(tc.config, logger)
-			
+
 			resp, err := client.Get(tc.targetURL)
 
 			if tc.expectError {

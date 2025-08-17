@@ -15,11 +15,11 @@ func TestProxyMetrics_RecordDomainRequest(t *testing.T) {
 	metrics := NewProxyMetrics(logger)
 
 	tests := []struct {
-		name        string
-		requestURL  string
-		duration    time.Duration
-		success     bool
-		errorType   ProxyErrorType
+		name         string
+		requestURL   string
+		duration     time.Duration
+		success      bool
+		errorType    ProxyErrorType
 		expectDomain string
 	}{
 		{
@@ -86,7 +86,7 @@ func TestProxyMetrics_RecordDomainRequest(t *testing.T) {
 			// Verify average latency
 			expectedLatencyMs := float64(tt.duration.Milliseconds())
 			if domainMetrics.AvgLatencyMs != expectedLatencyMs {
-				t.Errorf("Expected avg latency %.2f ms, got %.2f ms", 
+				t.Errorf("Expected avg latency %.2f ms, got %.2f ms",
 					expectedLatencyMs, domainMetrics.AvgLatencyMs)
 			}
 		})
@@ -134,18 +134,18 @@ func TestDomainMetricsSummary_HealthClassification(t *testing.T) {
 
 	// Healthy domain
 	for i := 0; i < 10; i++ {
-		metrics.RecordDomainRequest("https://healthy-domain.com/article", 
+		metrics.RecordDomainRequest("https://healthy-domain.com/article",
 			100*time.Millisecond, true, ProxyErrorConfig)
 	}
 
-	// Problematic domain  
+	// Problematic domain
 	for i := 0; i < 10; i++ {
 		success := i < 3 // Only 30% success rate
 		errorType := ProxyErrorConfig
 		if !success {
 			errorType = ProxyErrorConnection
 		}
-		metrics.RecordDomainRequest("https://problematic-domain.com/article", 
+		metrics.RecordDomainRequest("https://problematic-domain.com/article",
 			2*time.Second, success, errorType)
 	}
 
@@ -166,7 +166,7 @@ func TestDomainMetricsSummary_HealthClassification(t *testing.T) {
 
 	// Verify overall health score
 	if summary.OverallDomainHealthScore < 30 || summary.OverallDomainHealthScore > 70 {
-		t.Errorf("Expected moderate overall health score, got %.2f", 
+		t.Errorf("Expected moderate overall health score, got %.2f",
 			summary.OverallDomainHealthScore)
 	}
 }
@@ -176,33 +176,33 @@ func TestProxyMetrics_ExtractDomain(t *testing.T) {
 	metrics := NewProxyMetrics(logger)
 
 	tests := []struct {
-		name        string
-		requestURL  string
+		name           string
+		requestURL     string
 		expectedDomain string
 	}{
 		{
-			name:        "basic HTTPS URL",
-			requestURL:  "https://www.example.com/path",
+			name:           "basic HTTPS URL",
+			requestURL:     "https://www.example.com/path",
 			expectedDomain: "www.example.com",
 		},
 		{
-			name:        "HTTP URL",
-			requestURL:  "http://example.com",
+			name:           "HTTP URL",
+			requestURL:     "http://example.com",
 			expectedDomain: "example.com",
 		},
 		{
-			name:        "URL with port",
-			requestURL:  "https://localhost:8080/api",
+			name:           "URL with port",
+			requestURL:     "https://localhost:8080/api",
 			expectedDomain: "localhost",
 		},
 		{
-			name:        "invalid URL",
-			requestURL:  "not-a-url",
+			name:           "invalid URL",
+			requestURL:     "not-a-url",
 			expectedDomain: "",
 		},
 		{
-			name:        "empty URL",
-			requestURL:  "",
+			name:           "empty URL",
+			requestURL:     "",
 			expectedDomain: "",
 		},
 	}
