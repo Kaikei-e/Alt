@@ -12,669 +12,385 @@ metadata:
   {{- end }}
 data:
   nginx.conf: |
-    # nginx-external main configuration
-    # 教育的設計: 明確性と保守性を重視した構造
+    # =========================
+    # nginx-external (FULL FIX)
+    # =========================
 
-    # ワーカープロセス設定: 外部トラフィック処理最適化
     worker_processes auto;
     worker_rlimit_nofile 65535;
-
-    # ログ設定: 問題診断のための詳細ログ
     error_log /var/log/nginx/error.log warn;
     pid /tmp/nginx.pid;
 
-    # イベント処理設定: 高負荷外部トラフィック対応
     events {
-        worker_connections 2048;
-        use epoll;
-        multi_accept on;
+      worker_connections 2048;
+      use epoll;
+      multi_accept on;
     }
 
-    # HTTPコンテキスト: すべてのHTTP設定を統括
     http {
-        # k8s DNS resolver設定 (2025年ベストプラクティス)
-        # 標準nginx用：/etc/resolv.conf の nameserver を使用
-        # Bootstrap問題解決: CoreDNS service IPを直接指定
-        resolver {{ .Values.dns.coredsIP | default "10.96.0.10" }} valid=5s ipv6=off;
-        resolver_timeout 3s;
+      # --- DNS (変数付き proxy_pass 用) ---
+      # NOTE: .Values.dns.coredsIP は意図的に踏襲（値が入っている前提）
+      resolver {{ .Values.dns.coredsIP | default "10.96.0.10" }} valid=5s ipv6=off;
+      resolver_timeout 3s;
 
-        # WebSocket upgrade mapping: 2025年ベストプラクティス
-        map $http_upgrade $connection_upgrade {
-            default upgrade;
-            '' close;
+      # --- Upgrade/WS と HTTPS 透過ヘッダ（CF対応） ---
+      map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+      map $http_x_forwarded_proto $xfp { default $http_x_forwarded_proto; '' https; }
+
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+      sendfile on;
+      tcp_nopush on;
+      tcp_nodelay on;
+      keepalive_timeout 65;
+      types_hash_max_size 2048;
+      client_max_body_size 20m;
+      server_tokens off;
+
+      # --- Real IP (Cloudflare) ---
+      # CF-Connecting-IP を信頼
+      real_ip_header CF-Connecting-IP;
+      real_ip_recursive on;
+      # Cloudflare公開レンジ（抜粋）
+      set_real_ip_from 103.21.244.0/22;
+      set_real_ip_from 103.22.200.0/22;
+      set_real_ip_from 104.16.0.0/13;
+      set_real_ip_from 104.24.0.0/14;
+      set_real_ip_from 108.162.192.0/18;
+      set_real_ip_from 172.64.0.0/13;
+      set_real_ip_from 173.245.48.0/20;
+
+      # --- アクセスログ（詳細） ---
+      log_format external_main '$remote_addr - $remote_user "[$time_local]" "$request" '
+                               '$status $body_bytes_sent "$http_referer" '
+                               '"$http_user_agent" "$http_x_forwarded_for" '
+                               'rt=$request_time upstream="$upstream_addr" '
+                               'upstream_status="$upstream_status" '
+                               'uct="$upstream_connect_time" '
+                               'urt="$upstream_response_time"';
+      access_log /var/log/nginx/access.log external_main;
+
+      # --- レート制限（据え置き） ---
+      limit_req_zone $binary_remote_addr zone=api_limit:10m rate=1200r/m;
+      limit_req_zone $binary_remote_addr zone=general_limit:10m rate=40r/s;
+      limit_req_zone $binary_remote_addr zone=feed_register:10m rate=60r/m;
+      limit_conn_zone $binary_remote_addr zone=addr:10m;
+
+      # --- Gzip ---
+      gzip on; gzip_vary on; gzip_min_length 1024; gzip_proxied any; gzip_comp_level 6;
+      gzip_types text/plain text/css text/xml text/javascript application/json application/javascript application/xml+rss application/atom+xml image/svg+xml;
+
+      # ----------------------------------------------------------------
+      # id.curionoah.com → Kratos Public（透過プロキシ）
+      # ----------------------------------------------------------------
+      server {
+        listen 80;
+        listen [::]:80;
+        server_name id.curionoah.com;
+
+        # HSTS は HTTPS 応答でのみ有効。ここ(HTTP)では付与しない（CF 側で付与推奨）。
+
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+
+        location /external-health {
+          access_log off;
+          add_header Content-Type "text/plain; charset=utf-8";
+          add_header X-Health-Check "kratos-proxy-transparent" always;
+          return 200 "Kratos Proxy Health OK\nUpstream: kratos-public.alt-auth.svc.cluster.local:4433\n";
         }
 
-        # 基本MIME設定: ファイルタイプ認識のための基盤
-        include /etc/nginx/mime.types;
-        default_type application/octet-stream;
-
-        # パフォーマンス最適化設定
-        sendfile on;
-        tcp_nopush on;
-        tcp_nodelay on;
-        keepalive_timeout 65;
-        types_hash_max_size 2048;
-        client_max_body_size 20m;
-        server_tokens off;
-
-        # Real IP設定: ロードバランサー背後での正確なクライアントIP取得
-        real_ip_header X-Forwarded-For;
-        real_ip_recursive on;
-        set_real_ip_from 10.0.0.0/8;
-        set_real_ip_from 172.16.0.0/12;
-        set_real_ip_from 192.168.0.0/16;
-        set_real_ip_from 169.254.0.0/16; # AWS metadata service
-
-        # ログフォーマット: トラブルシューティング用詳細ログ
-        log_format external_main '$remote_addr - $remote_user "{{`[$time_local]`}}" "$request" '
-                                '$status $body_bytes_sent "$http_referer" '
-                                '"$http_user_agent" "$http_x_forwarded_for" '
-                                'rt=$request_time upstream="$upstream_addr" '
-                                'upstream_status="$upstream_status" '
-                                'upstream_connect_time="$upstream_connect_time" '
-                                'upstream_response_time="$upstream_response_time"';
-
-        access_log /var/log/nginx/access.log external_main;
-
-        # レート制限設定: RSS feed registration optimized
-        limit_req_zone $binary_remote_addr zone=api_limit:10m rate=1200r/m;
-        limit_req_zone $binary_remote_addr zone=general_limit:10m rate=40r/s;
-        limit_req_zone $binary_remote_addr zone=feed_register:10m rate=60r/m;  # Special zone for feed registration
-        # DEPRECATED: proxy_requests zone removed - image proxy now handled by alt-backend
-        limit_conn_zone $binary_remote_addr zone=addr:10m;
-
-        # Gzip圧縮: 帯域幅効率化
-        gzip on;
-        gzip_vary on;
-        gzip_min_length 1024;
-        gzip_proxied any;
-        gzip_comp_level 6;
-        gzip_types
-            text/plain
-            text/css
-            text/xml
-            text/javascript
-            application/json
-            application/javascript
-            application/xml+rss
-            application/atom+xml
-            image/svg+xml;
-
-        # 🚀 2025年ベストプラクティス: 変数ベースproxy_pass (DNS Bootstrap問題解決)
-        # upstream blocks削除 - 動的DNS解決で高可用性確保
-
-        # メインHTTPサーバー: linkerd mTLS使用、外部SSL無効化
-        server {
-            # HTTP接続設定: linkerd透明暗号化使用
-            listen 80;
-            listen "{{`[::]:80`}}";
-            server_name "curionoah.com";
-
-            # セキュリティヘッダー: 包括的Web保護
-            add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-            add_header X-Frame-Options "SAMEORIGIN" always;
-            add_header X-Content-Type-Options "nosniff" always;
-            add_header X-XSS-Protection "1; mode=block" always;
-            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-            add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
-
-            # CSP設定: XSS攻撃防止（Next.jsアプリケーション対応）
-            add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self' data:; connect-src 'self' https:; manifest-src 'self'; frame-ancestors 'self';" always;
-
-            # リクエストID: 分散トレーシング対応
-            add_header X-Request-ID $request_id always;
-
-            # REPORT.md対応: Pod特定用ヘッダ追加
-            add_header X-Alt-Pod $hostname always;
-            add_header X-Alt-Build $upstream_http_x_next_build_id always;
-            # REPORT.md最新版: 詳細デバッグヘッダ追加
-            add_header X-Upstream-Addr $upstream_addr always;
-            add_header X-Upstream-Status $upstream_status always;
-
-
-            # REPORT.md新版対応: nginx locationをフラット化（ネスト構造を排除）
-            # 静的チャンク（JS/MJS）
-            location ~ ^/_next/static/.*\.(js|mjs)$ {
-                proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
-                proxy_hide_header Content-Type;
-                add_header Content-Type "application/javascript; charset=utf-8" always;
-                add_header Cache-Control "public, max-age=31536000, immutable" always;
-
-                # 基本プロキシヘッダ
-                proxy_set_header Host $host;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                # タイムアウト
-                proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
-                proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
-                proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
-            }
-
-            # 静的チャンク（CSS）
-            location ~ ^/_next/static/.*\.css$ {
-                proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
-                proxy_hide_header Content-Type;
-                add_header Content-Type "text/css; charset=utf-8" always;
-                add_header Cache-Control "public, max-age=31536000, immutable" always;
-
-                # 基本プロキシヘッダ
-                proxy_set_header Host $host;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                # タイムアウト
-                proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
-                proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
-                proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
-            }
-
-            # 上記以外の /_next/static/（画像など）
-            location ^~ /_next/static/ {
-                proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
-
-                # 基本プロキシヘッダ
-                proxy_set_header Host $host;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                # タイムアウト
-                proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
-                proxy_send_timeout {{ .Values.nginx.timeouts.proxySend }};
-                proxy_read_timeout {{ .Values.nginx.timeouts.proxyRead }};
-            }
-
-            # DEPRECATED: /api/image-proxy removed - now using POST /v1/images/fetch endpoint
-            # The new implementation uses alt-backend with Envoy proxy integration for better COEP bypass
-
-            # Frontend API Routes (Next.js health check)
-            location /api/health {
-                # Route to alt-frontend for health checks
-                set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
-                proxy_pass http://$frontend_upstream;
-
-                proxy_set_header Host $host;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                proxy_connect_timeout 5s;
-                proxy_send_timeout 10s;
-                proxy_read_timeout 10s;
-
-                add_header X-Health-Source "alt-frontend" always;
-            }
-
-            # 🚀 X26 Phase 1: Direct CSRF endpoint routing to auth-service (S2S auth fix)
-            location = /api/auth/csrf {
-                # Route CSRF requests directly to auth-service to bypass S2S auth issues
-                set $auth_upstream "auth-service.alt-auth.svc.cluster.local:8080";
-                proxy_pass http://$auth_upstream/v1/auth/csrf;
-
-                # Essential headers for auth-service communication
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_set_header X-Request-ID $request_id;
-                
-                # 🔑 S2S authentication headers for internal service communication
-                proxy_set_header X-Internal-Service "nginx-external";
-                proxy_set_header X-Service-Route "csrf-direct";
-                
-                # ✅ Cookie transfer for CSRF/session management
-                proxy_set_header Cookie $http_cookie;
-                proxy_pass_header Set-Cookie;
-
-                # HTTP communication settings
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                # Auth service timeout settings
-                proxy_connect_timeout 10s;
-                proxy_send_timeout 30s;
-                proxy_read_timeout 30s;
-
-                # Buffering settings for auth responses
-                proxy_buffering on;
-                proxy_buffer_size 4k;
-                proxy_buffers 8 4k;
-
-                # Error handling for auth service
-                proxy_next_upstream error timeout http_502 http_503 http_504;
-                proxy_next_upstream_tries 2;
-                proxy_next_upstream_timeout 20s;
-
-                add_header X-Auth-Source "auth-service-direct" always;
-                add_header X-CSRF-Fix "X26-Phase1-Direct-Route" always;
-            }
-
-            # 🔧 Frontend Auth API Routes (認証プロキシ) - Other auth endpoints  
-            location /api/auth/ {
-                # Route to alt-frontend for authentication proxy
-                set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
-                proxy_pass http://$frontend_upstream;
-
-                # 認証API用ヘッダー設定
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_set_header X-Request-ID $request_id;
-                
-                # ✅ Phase 2D: Cookie転送強化 (Kratos認証用)
-                proxy_set_header Cookie $http_cookie;
-                proxy_pass_header Set-Cookie;
-
-                # HTTP通信設定
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                # 認証API用タイムアウト設定
-                proxy_connect_timeout 10s;
-                proxy_send_timeout 30s;
-                proxy_read_timeout 30s;
-
-                # 認証用バッファリング設定
-                proxy_buffering on;
-                proxy_buffer_size 4k;
-                proxy_buffers 8 4k;
-
-                # エラーハンドリング
-                proxy_next_upstream error timeout http_502 http_503 http_504;
-                proxy_next_upstream_tries 2;
-                proxy_next_upstream_timeout 20s;
-
-                add_header X-Auth-Source "alt-frontend-proxy" always;
-            }
-
-            # Backend API Routes (Go Echo backend) - all other /api/* paths
-            location /api/ {
-                # 🚀 2025年ベストプラクティス: 変数ベースproxy_pass (動的DNS解決)
-                set $backend_upstream "alt-backend.alt-apps.svc.cluster.local:9000";
-                # 🚨 CRITICAL FIX: Path rewriting - remove /api prefix for Go Echo backend
-                # /api/v1/feeds → /v1/feeds (URI正規化問題対応)
-                set $original_uri $uri;
-                rewrite ^/api(.*)$ $1 break;
-                proxy_pass http://$backend_upstream;
-
-                # 2025年Echo framework連携用ヘッダー
-                proxy_set_header X-Original-URI $original_uri;
-                proxy_set_header X-Forwarded-Prefix "/api";
-
-                # API用ヘッダー設定
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_set_header X-Request-ID $request_id;
-
-                # SSL通信設定
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                # API用レート制限: 緩和された制御
-                limit_req zone=api_limit burst=300 nodelay;
-                limit_conn addr 20;  # Increased from 10
-
-                # API用バッファリング設定
-                proxy_buffering on;
-                proxy_buffer_size 8k;
-                proxy_buffers 16 8k;
-                proxy_busy_buffers_size 16k;
-
-                # API用タイムアウト: RSS feed validation対応 (バランス調整)
-                proxy_connect_timeout 15s;
-                proxy_send_timeout 60s;
-                proxy_read_timeout 60s;
-
-                # エラーハンドリング: 高可用性確保
-                proxy_next_upstream error timeout http_502 http_503 http_504;
-                proxy_next_upstream_tries 3;
-                proxy_next_upstream_timeout 45s;
-            }
-
-            # CSP report endpoint専用ハンドリング（Next.js 15 CSP対応）
-            location = /security/csp-report {
-                # 🚀 2025年ベストプラクティス: 変数ベースproxy_pass (動的DNS解決)
-                set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
-                proxy_pass http://$frontend_upstream;
-
-                # CSP report専用ヘッダー設定
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_set_header X-Request-ID $request_id;
-                proxy_set_header Content-Type "application/csp-report";
-
-                # HTTP通信設定
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                # CSP report用設定 - リダイレクト回避
-                proxy_buffering off;
-                proxy_redirect off;
-                proxy_connect_timeout 5s;
-                proxy_send_timeout 15s;
-                proxy_read_timeout 15s;
-
-                add_header X-CSP-Report-Handler "nginx-external-2025" always;
-            }
-
-
-            location / {
-                # 簡素化proxy_pass（変数なし）
-                proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
-
-                # REPORT.md対応: 404診断ヘッダ追加
-                add_header X-Req-Host        $host           always;
-                add_header X-Srv-Name        $server_name    always;
-                add_header X-Alt-Pod         $hostname       always;
-
-                # 最小限必須ヘッダーのみ
-                proxy_set_header Host $host;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-
-                # Next.jsのキャッシュヘッダーを通す
-                proxy_pass_header Cache-Control;
-                proxy_pass_header ETag;
-
-                # REPORT.md C: HTTP/1.1設定
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                # REPORT.md C: 504対策タイムアウト延長
-                proxy_connect_timeout 5s;
-                proxy_read_timeout 75s;
-                proxy_send_timeout 75s;
-
-                # REPORT.md C: GETのみ上流エラーを別Podへ即リトライ
-                proxy_next_upstream error timeout http_502 http_503 http_504;
-                proxy_next_upstream_tries 3;
-                proxy_next_upstream_timeout 60s;
-
-                # バッファリング無効（シンプル化）
-                proxy_buffering off;
-            }
-
-            # ヘルスチェックエンドポイント
-            location /external-health {
-                access_log off;
-                return 200 "ULTRATHINK FIX PERMANENT - 404 & MIME Issues Resolved\nTimestamp: $time_iso8601\nUpstream: alt-frontend:3000 + alt-backend:9000\nタイムアウト: {{ .Values.nginx.timeouts.proxyConnect }}/{{ .Values.nginx.timeouts.proxySend }}/{{ .Values.nginx.timeouts.proxyRead }}\nStatus: Location Block Conflicts Fixed (PERMANENT)\nJS MIME: application/javascript (enforced)\nCSS MIME: text/css (enforced)\n";
-                add_header Content-Type "text/plain; charset=utf-8";
-                add_header X-Health-Check "external-ultrathink-permanent-fix" always;
-            }
-
-            # セキュリティ: 悪意あるパスのブロック
-            location ~ /\. {
-                deny all;
-                access_log off;
-                log_not_found off;
-            }
-
-            location ~ /(wp-admin|wp-login|admin|phpmyadmin) {
-                deny all;
-                access_log off;
-                log_not_found off;
-            }
+        location / {
+          set $kratos_upstream "kratos-public.alt-auth.svc.cluster.local:4433";
+          proxy_pass http://$kratos_upstream;
+
+          # 重要: CF→Origin のプロトコルを正しく伝える
+          proxy_set_header Host              $host;
+          proxy_set_header X-Real-IP         $remote_addr;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $xfp;
+          proxy_set_header X-Forwarded-Host  $host;
+          proxy_set_header X-Request-ID      $request_id;
+
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade           $http_upgrade;
+          proxy_set_header Connection        $connection_upgrade;
+
+          proxy_connect_timeout 10s;
+          proxy_send_timeout 30s;
+          proxy_read_timeout 30s;
+
+          proxy_buffering on;
+          proxy_buffer_size 4k;
+          proxy_buffers 8 4k;
+
+          add_header X-Kratos-Proxy "nginx-external-transparent" always;
+        }
+      }
+
+      # ----------------------------------------------------------------
+      # curionoah.com（メイン）
+      # ----------------------------------------------------------------
+      server {
+        listen 80;
+        listen [::]:80;
+        server_name curionoah.com;
+
+        # HSTS は HTTPS 応答でのみ有効（CF 側で付与推奨）
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+
+        add_header X-Request-ID $request_id always;
+        add_header X-Alt-Pod    $hostname   always;
+        add_header X-Upstream-Addr   $upstream_addr   always;
+        add_header X-Upstream-Status $upstream_status always;
+
+        # ===== Next static (JS/MJS) =====
+        location ~ ^/_next/static/.*\.(js|mjs)$ {
+          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
+          proxy_hide_header Content-Type;
+          add_header Content-Type "application/javascript; charset=utf-8" always;
+          add_header Cache-Control "public, max-age=31536000, immutable" always;
+
+          proxy_set_header Host              $host;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $xfp;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade           $http_upgrade;
+          proxy_set_header Connection        $connection_upgrade;
+
+          proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
+          proxy_send_timeout    {{ .Values.nginx.timeouts.proxySend }};
+          proxy_read_timeout    {{ .Values.nginx.timeouts.proxyRead }};
         }
 
+        # ===== Next static (CSS) =====
+        location ~ ^/_next/static/.*\.css$ {
+          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
+          proxy_hide_header Content-Type;
+          add_header Content-Type "text/css; charset=utf-8" always;
+          add_header Cache-Control "public, max-age=31536000, immutable" always;
 
-        # ヘルスチェック専用サーバー（ポート8080）
-        server {
-            listen 8080 default_server;
-            listen "{{`[::]:8080`}}" default_server;
-            server_name _;
+          proxy_set_header Host              $host;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $xfp;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade           $http_upgrade;
+          proxy_set_header Connection        $connection_upgrade;
 
-            access_log off;
-
-            # Kubernetesプローブ用エンドポイント
-            location /nginx-health {
-                return 200 "nginx-external ULTRATHINK FIX PERMANENT ACTIVE\nTimestamp: $time_iso8601\nUpstream Status: Optimized routing to alt-frontend:3000 + alt-backend:9000\nFixes Applied: Location block conflicts resolved, MIME types enforced (PERMANENT)\n";
-                add_header Content-Type "text/plain; charset=utf-8";
-                add_header X-Health-Check "nginx-external-ultrathink-permanent-fix" always;
-                add_header X-Pod-Name "$hostname" always;
-            }
-
-            # Prometheus monitoring disabled for stability
-
-            # デフォルトレスポンス
-            location / {
-                return 404 "Not Found\nThis is nginx-external health check port (ULTRATHINK FIX PERMANENT MODE)\nUse HTTP on port 80 for application access\n";
-                add_header Content-Type "text/plain; charset=utf-8";
-            }
+          proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
+          proxy_send_timeout    {{ .Values.nginx.timeouts.proxySend }};
+          proxy_read_timeout    {{ .Values.nginx.timeouts.proxyRead }};
         }
 
-        # Forward Proxy Server (Internal Services Only)
-        server {
-            listen 8888;
-            server_name proxy.nginx-external.internal;
+        # ===== その他の /_next/static/ =====
+        location ^~ /_next/static/ {
+          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
 
-            # Access control - temporarily allow all for debugging
-            # allow 127.0.0.0/8;       # Localhost for testing
-            # allow 10.0.0.0/8;        # Pod CIDR
-            # allow 172.16.0.0/12;     # Service CIDR
-            # allow 192.168.0.0/16;    # Additional internal networks
-            # deny all;
+          proxy_set_header Host              $host;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $xfp;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade           $http_upgrade;
+          proxy_set_header Connection        $connection_upgrade;
 
-            # Rate limiting for proxy requests - using general_limit instead of deprecated proxy_requests zone
-            limit_req zone=general_limit burst=50 nodelay;
-            limit_conn addr 10;
-
-            # Health check for proxy functionality (must come before catch-all)
-            location /proxy-health {
-                access_log off;
-                return 200 "Forward Proxy OK - Ready to proxy external requests\nTimestamp: $time_iso8601\nAllowed Networks: Internal Pod/Service Networks Only\n";
-                add_header Content-Type "text/plain; charset=utf-8";
-                add_header X-Health-Check "forward-proxy" always;
-                add_header X-Proxy-Server "nginx-external" always;
-            }
-
-            # Forward Proxy configuration for external HTTPS access
-            location / {
-                # DNS resolver for external requests
-                resolver 8.8.8.8 8.8.4.4 valid=300s;
-                resolver_timeout 30s;
-
-                # Critical: Set correct proxy_pass for forward proxy
-                proxy_pass $scheme://$http_host$request_uri;
-
-                # Essential headers for forward proxy
-                proxy_set_header Host $http_host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_set_header X-Request-ID $request_id;
-
-                # Extended timeouts for RSS feed fetching
-                proxy_connect_timeout 60s;
-                proxy_send_timeout 300s;
-                proxy_read_timeout 300s;
-                send_timeout 300s;
-
-                # HTTP/1.1 with connection reuse
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-
-                # SSL/TLS settings for forward proxy
-                proxy_ssl_verify off;
-                proxy_ssl_server_name on;
-                proxy_ssl_name $http_host;
-
-                # Forward proxy specific settings
-                proxy_intercept_errors off;
-                proxy_pass_request_headers on;
-                proxy_pass_request_body on;
-
-                # Security: Hide server information
-                proxy_hide_header X-Powered-By;
-                proxy_hide_header Server;
-
-                # Optimized buffering for forward proxy
-                proxy_buffering on;
-                proxy_buffer_size 16k;
-                proxy_buffers 32 16k;
-                proxy_busy_buffers_size 64k;
-                proxy_temp_file_write_size 64k;
-
-                # Connection handling for different protocols
-                proxy_next_upstream error timeout http_502 http_503 http_504;
-                proxy_next_upstream_tries 3;
-                proxy_next_upstream_timeout 60s;
-
-                # Add proxy identification header
-                add_header X-Proxy-Server "nginx-external-forward-proxy" always;
-
-                # Enhanced logging for monitoring
-                access_log /var/log/nginx/proxy_access.log external_main;
-                error_log /var/log/nginx/proxy_error.log warn;
-            }
-
-            # Block internal service access via proxy
-            location ~ ^/(api|admin|internal|kubernetes)/ {
-                deny all;
-                return 403 "Forbidden - Internal paths not allowed via proxy";
-                add_header Content-Type "text/plain; charset=utf-8";
-            }
-
-            # Error pages for proxy
-            error_page 502 503 504 /proxy_error.html;
-            location = /proxy_error.html {
-                internal;
-                return 502 "Proxy Error - Unable to reach external destination\nCheck your proxy configuration and network connectivity.\n";
-                add_header Content-Type "text/plain; charset=utf-8";
-            }
+          proxy_connect_timeout {{ .Values.nginx.timeouts.proxyConnect }};
+          proxy_send_timeout    {{ .Values.nginx.timeouts.proxySend }};
+          proxy_read_timeout    {{ .Values.nginx.timeouts.proxyRead }};
         }
 
-        server {
-            listen 8889;
-            server_name egress.nginx-external.internal;
+        # ===== Frontend health =====
+        location /api/health {
+          set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
+          proxy_pass http://$frontend_upstream;
 
-            # Access control: Internal services only
-            allow 10.0.0.0/8;        # Pod CIDR
-            allow 172.16.0.0/12;     # Service CIDR
-            allow 192.168.0.0/16;    # Additional internal networks
-            deny all;
+          proxy_set_header Host              $host;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $xfp;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade           $http_upgrade;
+          proxy_set_header Connection        $connection_upgrade;
 
-            # Security headers for egress gateway
-            add_header X-Frame-Options "DENY" always;
-            add_header X-Content-Type-Options "nosniff" always;
-            add_header X-XSS-Protection "1; mode=block" always;
-            add_header Referrer-Policy "no-referrer" always;
+          proxy_connect_timeout 5s;
+          proxy_send_timeout 10s;
+          proxy_read_timeout 10s;
 
-            # Health check for egress gateway
-            location /egress-health {
-                access_log off;
-                return 200 "RSS Egress Gateway OK - Ready for external RSS feeds\nTimestamp: $time_iso8601\nAllowed Domains: feeds.bbci.co.uk, zenn.dev, github.com\n";
-                add_header Content-Type "text/plain; charset=utf-8";
-                add_header X-Health-Check "rss-egress-gateway" always;
-                add_header X-Proxy-Server "nginx-external-egress" always;
-            }
-
-            # Debug location for testing domain extraction
-            location ~ ^/rss-proxy-debug/(?<target_scheme>https?)://(?<target_host>[^/]+)(?<target_path>/.*)?$ {
-                return 200 "Debug Info:\nTarget Scheme: $target_scheme\nTarget Host: $target_host\nTarget Path: $target_path\nURI: $uri\nArgs: $args\n";
-                add_header Content-Type "text/plain; charset=utf-8";
-            }
-
-            # RSS Feed Egress Proxy with Domain Whitelist (Zero Trust) - HTTP/HTTPS both supported
-            location ~ ^/rss-proxy/(https?)://([^/]+)(/.*)?$ {
-                # Direct capture without named groups - most reliable approach
-                set $target_scheme $1;
-                set $target_host $2;
-                set $target_path $3;
-
-                # Handle empty path
-                if ($target_path = "") {
-                    set $target_path "/";
-                }
-
-                # SECURITY: Domain whitelist for RSS feeds only
-                set $allowed 0;
-                if ($target_host ~ "^feeds\.bbci\.co\.uk$") { set $allowed 1; }
-                if ($target_host ~ "^zenn\.dev$") { set $allowed 1; }
-                if ($target_host ~ "^github\.com$") { set $allowed 1; }
-                if ($target_host ~ "^feeds\.feedburner\.com$") { set $allowed 1; }
-                if ($target_host ~ "^rss\.cnn\.com$") { set $allowed 1; }
-
-                if ($allowed = 0) {
-                    return 403 "Domain not allowed in RSS whitelist: $target_host";
-                }
-
-                # DNS resolver for external requests
-                resolver 8.8.8.8 8.8.4.4 valid=300s;
-                resolver_timeout 30s;
-
-                # External RSS feed proxy
-                proxy_pass $target_scheme://$target_host$target_path;
-
-                # Essential headers for RSS fetching
-                proxy_set_header Host $target_host;
-                proxy_set_header User-Agent "ALT-RSS-Reader/1.0 (+https://curionoah.com)";
-                proxy_set_header Accept "application/rss+xml, application/xml, text/xml, */*";
-                proxy_set_header Accept-Encoding "gzip, deflate";
-                proxy_set_header Connection "close";
-
-                # Extended timeouts for RSS feed fetching
-                proxy_connect_timeout 60s;
-                proxy_send_timeout 300s;
-                proxy_read_timeout 300s;
-                send_timeout 300s;
-
-                # HTTP/1.1 settings
-                proxy_http_version 1.1;
-
-                # SSL/TLS settings for external HTTPS
-                proxy_ssl_verify off;
-                proxy_ssl_server_name on;
-                proxy_ssl_name $target_host;
-
-                # Response handling
-                proxy_redirect off;
-                proxy_intercept_errors off;
-
-                # Optimized buffering for RSS content
-                proxy_buffering on;
-                proxy_buffer_size 32k;
-                proxy_buffers 64 32k;
-                proxy_busy_buffers_size 128k;
-                proxy_temp_file_write_size 128k;
-
-                # Connection handling
-                proxy_next_upstream error timeout http_502 http_503 http_504;
-                proxy_next_upstream_tries 3;
-                proxy_next_upstream_timeout 90s;
-
-                # Add egress identification header
-                add_header X-Egress-Gateway "nginx-external-rss-egress" always;
-                add_header X-Allowed-Domain "$target_host" always;
-
-                # Enhanced logging for audit
-                access_log /var/log/nginx/egress_access.log external_main;
-                error_log /var/log/nginx/egress_error.log warn;
-            }
-
-            # Block non-RSS proxy attempts
-            location / {
-                return 403 "RSS Egress Gateway - Only /rss-proxy/ paths allowed\nUsage: /rss-proxy/https://feeds.bbci.co.uk/news/rss.xml\n";
-                add_header Content-Type "text/plain; charset=utf-8";
-            }
+          add_header X-Health-Source "alt-frontend" always;
         }
+
+        # ===== CSRF 直通 =====
+        location = /api/auth/csrf {
+          set $auth_upstream "auth-service.alt-auth.svc.cluster.local:8080";
+          proxy_pass http://$auth_upstream/v1/auth/csrf;
+
+          proxy_set_header Host              $host;
+          proxy_set_header X-Real-IP         $remote_addr;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $xfp;
+          proxy_set_header X-Request-ID      $request_id;
+
+          proxy_set_header X-Internal-Service "nginx-external";
+          proxy_set_header X-Service-Route    "csrf-direct";
+
+          proxy_set_header Cookie $http_cookie;
+          proxy_pass_header Set-Cookie;
+
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade    $http_upgrade;
+          proxy_set_header Connection $connection_upgrade;
+
+          proxy_connect_timeout 10s;
+          proxy_send_timeout 30s;
+          proxy_read_timeout 30s;
+
+          proxy_buffering on;
+          proxy_buffer_size 4k;
+          proxy_buffers 8 4k;
+
+          proxy_next_upstream error timeout http_502 http_503 http_504;
+          proxy_next_upstream_tries 2;
+          proxy_next_upstream_timeout 20s;
+
+          add_header X-Auth-Source "auth-service-direct" always;
+          add_header X-CSRF-Fix    "X26-Phase1-Direct-Route" always;
+        }
+
+        # ===== 認証系 それ以外（Next へ） =====
+        location /api/auth/ {
+          set $frontend_upstream "alt-frontend.alt-apps.svc.cluster.local:3000";
+          proxy_pass http://$frontend_upstream;
+
+          proxy_set_header Host              $host;
+          proxy_set_header X-Real-IP         $remote_addr;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $xfp;
+          proxy_set_header X-Request-ID      $request_id;
+
+          proxy_set_header Cookie $http_cookie;
+          proxy_pass_header Set-Cookie;
+
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade    $http_upgrade;
+          proxy_set_header Connection $connection_upgrade;
+
+          proxy_connect_timeout 10s;
+          proxy_send_timeout 30s;
+          proxy_read_timeout 30s;
+
+          proxy_buffering on;
+          proxy_buffer_size 4k;
+          proxy_buffers 8 4k;
+
+          proxy_next_upstream error timeout http_502 http_503 http_504;
+          proxy_next_upstream_tries 2;
+          proxy_next_upstream_timeout 20s;
+
+          add_header X-Auth-Source "alt-frontend-proxy" always;
+        }
+
+        # ===== Backend API (/api → / に正規化) =====
+        location /api/ {
+          set $backend_upstream "alt-backend.alt-apps.svc.cluster.local:9000";
+          set $original_uri $uri;
+          rewrite ^/api(.*)$ $1 break;
+          proxy_pass http://$backend_upstream;
+
+          proxy_set_header X-Original-URI    $original_uri;
+          proxy_set_header X-Forwarded-Prefix "/api";
+
+          proxy_set_header Host              $host;
+          proxy_set_header X-Real-IP         $remote_addr;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $xfp;
+          proxy_set_header X-Request-ID      $request_id;
+
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade    $http_upgrade;
+          proxy_set_header Connection $connection_upgrade;
+
+          limit_req zone=api_limit burst=300 nodelay;
+          limit_conn addr 20;
+
+          proxy_buffering on;
+          proxy_buffer_size 8k;
+          proxy_buffers 16 8k;
+          proxy_busy_buffers_size 16k;
+
+          proxy_connect_timeout 15s;
+          proxy_send_timeout 60s;
+          proxy_read_timeout 60s;
+
+          proxy_next_upstream error timeout http_502 http_503 http_504;
+          proxy_next_upstream_tries 3;
+          proxy_next_upstream_timeout 45s;
+        }
+
+        # ===== ルート（Next） =====
+        location / {
+          proxy_pass http://alt-frontend.alt-apps.svc.cluster.local:3000;
+
+          add_header X-Req-Host $host always;
+          add_header X-Srv-Name $server_name always;
+          add_header X-Alt-Pod  $hostname always;
+
+          proxy_set_header Host              $host;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $xfp;
+
+          proxy_pass_header Cache-Control;
+          proxy_pass_header ETag;
+
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade    $http_upgrade;
+          proxy_set_header Connection $connection_upgrade;
+
+          proxy_connect_timeout 5s;
+          proxy_read_timeout 75s;
+          proxy_send_timeout 75s;
+
+          proxy_next_upstream error timeout http_502 http_503 http_504;
+          proxy_next_upstream_tries 3;
+          proxy_next_upstream_timeout 60s;
+
+          proxy_buffering off;
+        }
+
+        # ===== Health =====
+        location /external-health {
+          access_log off;
+          add_header Content-Type "text/plain; charset=utf-8";
+          add_header X-Health-Check "external-ultrathink-permanent-fix" always;
+          return 200 "OK\n";
+        }
+
+        # ===== Block =====
+        location ~ /\. { deny all; access_log off; log_not_found off; }
+        location ~ /(wp-admin|wp-login|admin|phpmyadmin) { deny all; access_log off; log_not_found off; }
+      }
+
+      # ---- 8080 (probe) ----
+      server {
+        listen 8080 default_server;
+        listen [::]:8080 default_server;
+        server_name _;
+        access_log off;
+
+        location /nginx-health {
+          add_header X-Health-Check "nginx-external" always;
+          add_header X-Pod-Name "$hostname" always;
+          return 200 "nginx-external alive\n";
+        }
+
+        location / { add_header Content-Type "text/plain; charset=utf-8"; return 404 "Not Found\n"; }
+      }
+
+      # ---- 8888/8889 (egress/proxy) は省略: 本番は閉域推奨 ----
     }
-{{- end }}
 
-  {{- with .Values.configMap.extraFiles }}
-  {{- range $name, $content := . }}
-  {{ $name }}: |
-    {{- $content | nindent 4 }}
-  {{- end }}
-  {{- end }}
+{{- end }}
