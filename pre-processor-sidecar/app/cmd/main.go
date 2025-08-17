@@ -103,7 +103,7 @@ func main() {
 		ClientSecret:        os.Getenv("INOREADER_CLIENT_SECRET"),
 		InitialAccessToken:  os.Getenv("INOREADER_ACCESS_TOKEN"),
 		InitialRefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"),
-		BaseURL:             cfg.Inoreader.BaseURL,
+		BaseURL:             cfg.OAuth2.BaseURL, // Use OAuth2-specific base URL
 		RefreshBuffer:       5 * time.Minute,
 		CheckInterval:       1 * time.Minute,
 		

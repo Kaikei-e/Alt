@@ -106,6 +106,7 @@ type OAuth2Config struct {
 	ClientSecret  string
 	RefreshToken  string
 	RefreshBuffer time.Duration
+	BaseURL       string // OAuth2 specific base URL
 }
 
 // TDD Phase 3 - REFACTOR: Enhanced Configuration Structures
@@ -204,6 +205,7 @@ func LoadConfig() (*Config, error) {
 			ClientID:     os.Getenv("INOREADER_CLIENT_ID"),     // Required from secret
 			ClientSecret: os.Getenv("INOREADER_CLIENT_SECRET"), // Required from secret
 			RefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"), // Optional - managed by auth-token-manager
+			BaseURL:      getEnvOrDefault("INOREADER_OAUTH2_BASE_URL", "https://www.inoreader.com"), // OAuth2 specific base URL
 		},
 
 		OAuth2SecretName: getEnvOrDefault("OAUTH2_TOKEN_SECRET_NAME", "pre-processor-sidecar-oauth2-token"),
