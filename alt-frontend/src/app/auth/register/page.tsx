@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Box, VStack, Text, Flex, Input, Button, Alert, Spinner } from '@chakra-ui/react'
+import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
 
 interface RegistrationFlowNode {
   type: string
@@ -312,22 +312,27 @@ export default function RegisterPage() {
             backdropFilter="blur(12px)"
           >
             {error && (
-              <Alert status="error" mb={4} borderRadius="md">
-                <Text fontSize="sm">{error}</Text>
-              </Alert>
+              <Box p={3} bg="red.100" borderRadius="md" border="1px solid" borderColor="red.300" mb={4}>
+                <Text fontSize="sm" color="red.700">{error}</Text>
+              </Box>
             )}
 
             {flow && (
               <form onSubmit={handleSubmit}>
                 <VStack gap={4}>
                   {flow.ui.messages?.map((message, idx) => (
-                    <Alert
+                    <Box
                       key={idx}
-                      status={message.type === 'error' ? 'error' : 'info'}
+                      p={3}
+                      bg={message.type === 'error' ? 'red.100' : 'blue.100'}
                       borderRadius="md"
+                      border="1px solid"
+                      borderColor={message.type === 'error' ? 'red.300' : 'blue.300'}
                     >
-                      <Text fontSize="sm">{message.text}</Text>
-                    </Alert>
+                      <Text fontSize="sm" color={message.type === 'error' ? 'red.700' : 'blue.700'}>
+                        {message.text}
+                      </Text>
+                    </Box>
                   ))}
 
                   {flow.ui.nodes.map(renderFormField)}
@@ -338,12 +343,11 @@ export default function RegisterPage() {
                     bg="var(--alt-primary)"
                     color="white"
                     size="lg"
-                    isLoading={isLoading}
-                    loadingText="登録中..."
+                    disabled={isLoading}
                     _hover={{ bg: 'var(--alt-primary-hover)' }}
                     _active={{ bg: 'var(--alt-primary-active)' }}
                   >
-                    新規登録
+                    {isLoading ? '登録中...' : '新規登録'}
                   </Button>
                 </VStack>
               </form>

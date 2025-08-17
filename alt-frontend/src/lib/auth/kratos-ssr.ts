@@ -71,7 +71,7 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
       return {
         props: {
           user: session.identity,
-        } as P,
+        } as unknown as P,
       }
 
     } catch (error) {

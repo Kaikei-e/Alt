@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Box, VStack, Text, Flex, Input, Button, Alert, Spinner } from '@chakra-ui/react'
+import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
 
 interface LoginFlowNode {
   type: string
@@ -57,34 +57,10 @@ export default function LoginPage() {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch('/self-service/login/browser', {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-        },
-      })
-
-      if (response.status === 303) {
-        // Handle redirect to Kratos flow
-        const location = response.headers.get('Location')
-        if (location) {
-          window.location.href = location
-          return
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(`Failed to initiate login flow: ${response.status}`)
-      }
-
-      const flowData = await response.json()
-      setFlow(flowData)
-      
-      // Update URL with flow ID without page reload
-      const newUrl = new URL(window.location.href)
-      newUrl.searchParams.set('flow', flowData.id)
-      window.history.replaceState({}, '', newUrl.toString())
+      // TODO.md A案（推奨）: 直接リダイレクト方式
+      // window.location.href で直接 Kratos に飛ばし、HTMLフローの303を踏む
+      window.location.href = "https://id.curionoah.com/self-service/login/browser"
+      return
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to initiate login')
@@ -307,22 +283,27 @@ export default function LoginPage() {
             backdropFilter="blur(12px)"
           >
             {error && (
-              <Alert status="error" mb={4} borderRadius="md">
-                <Text fontSize="sm">{error}</Text>
-              </Alert>
+              <Box p={3} bg="red.100" borderRadius="md" border="1px solid" borderColor="red.300" mb={4}>
+                <Text fontSize="sm" color="red.700">{error}</Text>
+              </Box>
             )}
 
             {flow && (
               <form onSubmit={handleSubmit}>
                 <VStack gap={4}>
                   {flow.ui.messages?.map((message, idx) => (
-                    <Alert
+                    <Box
                       key={idx}
-                      status={message.type === 'error' ? 'error' : 'info'}
+                      p={3}
+                      bg={message.type === 'error' ? 'red.100' : 'blue.100'}
                       borderRadius="md"
+                      border="1px solid"
+                      borderColor={message.type === 'error' ? 'red.300' : 'blue.300'}
                     >
-                      <Text fontSize="sm">{message.text}</Text>
-                    </Alert>
+                      <Text fontSize="sm" color={message.type === 'error' ? 'red.700' : 'blue.700'}>
+                        {message.text}
+                      </Text>
+                    </Box>
                   ))}
 
                   {flow.ui.nodes.map(renderFormField)}
@@ -333,12 +314,11 @@ export default function LoginPage() {
                     bg="var(--alt-primary)"
                     color="white"
                     size="lg"
-                    isLoading={isLoading}
-                    loadingText="ログイン中..."
+                    disabled={isLoading}
                     _hover={{ bg: 'var(--alt-primary-hover)' }}
                     _active={{ bg: 'var(--alt-primary-active)' }}
                   >
-                    ログイン
+                    {isLoading ? 'ログイン中...' : 'ログイン'}
                   </Button>
                 </VStack>
               </form>
