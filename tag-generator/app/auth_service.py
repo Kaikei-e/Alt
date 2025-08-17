@@ -38,7 +38,7 @@ class AuthenticatedTagGeneratorService:
     
     def __init__(self):
         self.auth_config = AuthConfig(
-            auth_service_url=os.getenv("AUTH_SERVICE_URL", "http://auth-service:8080"),
+            auth_service_url=os.getenv("AUTH_SERVICE_URL", "http://auth-service.alt-auth.svc.cluster.local:8080"),
             service_name="tag-generator",
             service_secret=os.getenv("SERVICE_SECRET", ""),
             token_ttl=3600
