@@ -4,6 +4,7 @@ export class AuthAPIClient {
   private baseURL: string;
   private debugMode: boolean;
   private requestId: number;
+  private idpOrigin: string;
 
   constructor() {
     // Use relative API proxy endpoints for secure HTTPS communication
@@ -11,6 +12,12 @@ export class AuthAPIClient {
     this.baseURL = '/api/auth';
     this.debugMode = process.env.NODE_ENV === 'development';
     this.requestId = 0;
+    // TODO.md要件: Kratos 公開URL直接アクセス用
+    this.idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN ?? 'https://id.curionoah.com';
+    
+    // TODO.md 手順0: 配信中のバンドルの値を確認
+    console.log('[AUTH-CLIENT] IDP_ORIGIN =', this.idpOrigin);
+    console.log('[AUTH-CLIENT] NEXT_PUBLIC_IDP_ORIGIN =', process.env.NEXT_PUBLIC_IDP_ORIGIN);
   }
 
   // 接続テスト機能追加 (X1.md 1.3.2 実装)
@@ -27,19 +34,14 @@ export class AuthAPIClient {
   }
 
   async initiateLogin(): Promise<LoginFlow> {
-    const response = await this.makeRequest('POST', '/login');
-
-    // 防御的プログラミング: レスポンスデータの検証
-    if (!response || !response.data || typeof response.data !== 'object') {
-      throw new Error('Invalid login flow response format');
-    }
-
-    const loginFlow = response.data as LoginFlow;
-    if (!loginFlow.id) {
-      throw new Error('Login flow response missing required ID');
-    }
-
-    return loginFlow;
+    // TODO.md要件: 初期化はKratos直接アクセス (CSRFクッキー受け取り用)
+    const res = await fetch(`${this.idpOrigin}/self-service/login/browser`, {
+      method: 'GET',                      // ブラウザフロー初期化は GET
+      credentials: 'include',             // ← CSRF Cookie を受け取る
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`Failed to init login: ${res.status}`);
+    return await res.json() as LoginFlow; // ui.action / ui.nodes を含む
   }
 
   async completeLogin(flowId: string, email: string, password: string): Promise<User> {
@@ -56,9 +58,9 @@ export class AuthAPIClient {
   // 🚨 CRITICAL: X22 Phase 1 - CSRF error detection
   private isCSRFError(error: unknown): boolean {
     if (!(error instanceof Error)) return false;
-    
+
     const message = error.message.toLowerCase();
-    return message.includes('csrf') || 
+    return message.includes('csrf') ||
            message.includes('token') ||
            message.includes('400') ||
            message.includes('500') ||
@@ -67,159 +69,62 @@ export class AuthAPIClient {
 
   // 🚀 X27 Browser Flow Methods - Ory Kratos Compliance
 
-  // Browser Flow compliant login method
-  private async loginWithBrowserFlow(flowId: string, email: string, password: string): Promise<User> {
-    console.log('🚀 Starting Browser Flow login...', { flowId });
+  // TODO.md compliant Browser Flow login method
+  private async loginWithBrowserFlow(_: string, email: string, password: string): Promise<User> {
+    console.log('🚀 Starting TODO.md compliant Browser Flow login...');
 
     try {
-      // Get login flow initialization data directly (no additional GET needed)
-      const initResponse = await this.makeRequest('POST', '/login');
-      const loginFlow = initResponse.data as LoginFlow;
-      
-      if (!loginFlow.ui || !loginFlow.ui.action) {
-        throw new Error('Login flow missing ui.action URL');
-      }
+      // 1) 初期化（直）- TODO.md要件: /api経由の初期化をやめる
+      const flow = await this.initiateLogin();
+      const action = flow.ui?.action;
+      if (!action) throw new Error('Login flow missing ui.action');
 
-      // Create form data for Browser Flow
-      const formData = this.createLoginFormData(email, password, loginFlow);
+      const csrf = flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value;
+      if (!csrf) throw new Error('CSRF token not found in flow');
 
-      console.log('[AUTH-CLIENT] Sending Browser Flow login:', {
-        flowId: loginFlow.id,
-        actionUrl: loginFlow.ui.action,
-        method: loginFlow.ui.method,
-        formFields: Array.from(formData.keys())
+      // 2) 完了（ui.action へフォームPOST）
+      const form = new URLSearchParams();
+      form.set('method', 'password');
+      form.set('identifier', email.trim().toLowerCase());
+      form.set('password', password.trim());
+      form.set('csrf_token', csrf);
+
+      // TODO.md 手順0: POSTが本当に走っているかを可視化
+      console.log('[AUTH-CLIENT] POST to action:', action, { origin: new URL(action).origin });
+      const resp = await fetch(action, {
+        method: 'POST',
+        credentials: 'include',             // ← Cookie 同送
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded' // プリフライト不要のまま
+        },
+        body: form,                         // ← JSON禁止（公式推奨）
       });
+      console.log('[AUTH-CLIENT] action POST status =', resp.status);
+      if (!resp.ok) throw new Error(`Login failed: ${resp.status} ${await resp.text()}`);
+      return await resp.json() as User;
 
-      // Submit to ui.action URL using form data
-      const response = await this.submitBrowserFlowForm(loginFlow.ui.action, formData);
-      
-      console.log('✅ [AUTH-CLIENT] Browser Flow Login SUCCESS');
-      
-      return response.data as User;
-      
     } catch (error) {
-      console.error('❌ [AUTH-CLIENT] Browser Flow Login FAILED:', error);
+      console.error('❌ [AUTH-CLIENT] TODO.md compliant Login FAILED:', error);
       throw error;
     }
   }
 
 
-  // Create form data for login (Browser Flow)
-  private createLoginFormData(email: string, password: string, flow: LoginFlow): FormData {
-    const formData = new FormData();
-    
-    // Required fields for Kratos login
-    formData.append('method', 'password');
-    formData.append('identifier', email.trim().toLowerCase());
-    formData.append('password', password.trim());
-
-    // Extract and add CSRF token from flow UI nodes
-    const csrfNode = flow.ui.nodes.find(node => 
-      node.attributes?.name === 'csrf_token' && node.attributes?.value
-    );
-    
-    if (csrfNode?.attributes?.value) {
-      formData.append('csrf_token', csrfNode.attributes.value);
-    }
-
-    return formData;
-  }
-
-
-  // Create form data for Browser Flow (not JSON)
-  private createBrowserFlowFormData(email: string, password: string, name: string | undefined, flow: RegistrationFlow): FormData {
-    const formData = new FormData();
-    
-    // Required fields for Kratos registration
-    formData.append('method', 'password');
-    formData.append('password', password.trim());
-    formData.append('traits.email', email.trim().toLowerCase());
-    
-    // Add name if provided
-    if (name && name.trim()) {
-      const nameParts = name.trim().split(/\s+/);
-      formData.append('traits.name.first', nameParts[0] || '');
-      if (nameParts.length > 1) {
-        formData.append('traits.name.last', nameParts.slice(1).join(' '));
-      }
-    }
-
-    // Extract and add CSRF token from flow UI nodes
-    const csrfNode = flow.ui.nodes.find(node => 
-      node.attributes?.name === 'csrf_token' && node.attributes?.value
-    );
-    
-    if (csrfNode?.attributes?.value) {
-      formData.append('csrf_token', csrfNode.attributes.value);
-    }
-
-    return formData;
-  }
-
-  // Submit form data to ui.action URL (Browser Flow compliance)
-  private async submitBrowserFlowForm(actionUrl: string, formData: FormData): Promise<{ data: unknown }> {
-    console.log('[AUTH-CLIENT] Submitting Browser Flow form to:', actionUrl);
-    
-    // TODO.md要件: ui.actionが外部FQDN (https://id.curionoah.com) であることを検証
-    if (actionUrl.includes('.svc.cluster.local')) {
-      throw new Error(`ui.action contains internal cluster URL: ${actionUrl}. Kratos serve.public.base_url must be set to external FQDN.`);
-    }
-    
-    const response = await fetch(actionUrl, {
-      method: 'POST',
-      body: formData,
-      credentials: 'include', // Critical for cookie-based sessions
-      headers: {
-        // Do NOT set Content-Type - let browser set it for FormData
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-      }
-    });
-
-    console.log('[AUTH-CLIENT] Browser Flow response:', {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries())
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[AUTH-CLIENT] Browser Flow submission failed:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorText,
-        actionUrl
-      });
-      throw new Error(`Browser Flow submission failed: ${response.status} ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return { data };
-  }
 
   async initiateRegistration(): Promise<RegistrationFlow> {
-    const response = await this.makeRequest('POST', '/register');
-
-    // 防御的プログラミング: レスポンスデータの検証
-    if (!response || !response.data || typeof response.data !== 'object') {
-      throw new Error('Invalid registration flow response format');
-    }
-
-    const registrationFlow = response.data as RegistrationFlow;
-    if (!registrationFlow.id) {
-      throw new Error('Registration flow response missing required ID');
-    }
-
-    return registrationFlow;
+    // TODO.md要件: 初期化はKratos直接アクセス
+    const res = await fetch(`${this.idpOrigin}/self-service/registration/browser`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`Failed to init registration: ${res.status}`);
+    return await res.json() as RegistrationFlow;
   }
 
   async completeRegistration(flowId: string, email: string, password: string, name?: string): Promise<User> {
-    console.log('🚀 Starting Browser Flow registration completion...', { flowId });
-
     // Basic validation
-    if (!flowId) {
-      throw new Error('Flow ID is required');
-    }
     if (!email || !email.includes('@')) {
       throw new Error('Valid email address is required');
     }
@@ -228,33 +133,41 @@ export class AuthAPIClient {
     }
 
     try {
-      // 🚀 CRITICAL: X32 Browser Flow Fix - Use initialization data directly (no GET needed)
-      const initResponse = await this.makeRequest('POST', '/register');
-      const registrationFlow = initResponse.data as RegistrationFlow;
-      
-      if (!registrationFlow.ui || !registrationFlow.ui.action) {
-        throw new Error('Registration flow missing ui.action URL');
+      const flow = await this.initiateRegistration();
+      const action = flow.ui?.action;
+      if (!action) throw new Error('Registration flow missing ui.action');
+
+      const csrf = flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value;
+      if (!csrf) throw new Error('CSRF token not found in flow');
+
+      const form = new URLSearchParams();
+      form.set('method', 'password');
+      form.set('traits.email', email.trim().toLowerCase());
+      form.set('password', password.trim());
+      form.set('csrf_token', csrf);
+      if (name?.trim()) {
+        const [first, ...rest] = name.trim().split(/\s+/);
+        form.set('traits.name.first', first ?? '');
+        if (rest.length) form.set('traits.name.last', rest.join(' '));
       }
 
-      // 🎯 Browser Flow Compliance: Create form data payload instead of JSON
-      const formData = this.createBrowserFlowFormData(email, password, name, registrationFlow);
-
-      console.log('[AUTH-CLIENT] Sending Browser Flow registration:', {
-        flowId: registrationFlow.id,
-        actionUrl: registrationFlow.ui.action,
-        method: registrationFlow.ui.method,
-        formFields: Array.from(formData.keys())
+      // TODO.md 手順0: POSTが本当に走っているかを可視化
+      console.log('[AUTH-CLIENT] POST to action:', action, { origin: new URL(action).origin });
+      const resp = await fetch(action, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: form,
       });
+      console.log('[AUTH-CLIENT] action POST status =', resp.status);
+      if (!resp.ok) throw new Error(`Registration failed: ${resp.status} ${await resp.text()}`);
+      return await resp.json() as User;
 
-      // 🚀 CRITICAL: Submit to ui.action URL using form data (not JSON)
-      const response = await this.submitBrowserFlowForm(registrationFlow.ui.action, formData);
-      
-      console.log('✅ [AUTH-CLIENT] Browser Flow Registration SUCCESS');
-      
-      return response.data as User;
-      
     } catch (error) {
-      console.error('❌ [AUTH-CLIENT] Browser Flow Registration FAILED:', error);
+      console.error('❌ [AUTH-CLIENT] Registration FAILED:', error);
       throw error;
     }
   }
@@ -299,85 +212,6 @@ export class AuthAPIClient {
     }
   }
 
-  // 🚨 CRITICAL: X22 Phase 1 - CSRF token extraction from login flow
-  private async extractCSRFTokenFromFlow(flowId: string): Promise<string | null> {
-    try {
-      // Get current flow to extract CSRF token
-      const flowResponse = await fetch(`${this.baseURL}/login/${flowId}`, {
-        method: 'GET',
-        credentials: 'include', // 🔑 Essential for cookie transmission
-      });
-
-      if (!flowResponse.ok) {
-        console.error('🚨 Failed to fetch login flow for CSRF extraction:', {
-          status: flowResponse.status,
-          statusText: flowResponse.statusText,
-          flowId
-        });
-        return null;
-      }
-
-      const flow = await flowResponse.json();
-      
-      // Extract CSRF token from UI nodes
-      const csrfToken = this.extractCSRFTokenFromUINodes(flow);
-      
-      if (!csrfToken) {
-        console.error('🚨 CSRF token not found in login flow', {
-          flowId,
-          available_nodes: flow.ui?.nodes?.map((n: any) => n.attributes?.name) || [],
-          flow_preview: {
-            id: flow.id,
-            type: flow.type,
-            state: flow.state,
-            nodes_count: flow.ui?.nodes?.length || 0
-          }
-        });
-        return null;
-      }
-
-      console.log('✅ CSRF token extracted successfully from flow', {
-        flowId,
-        token_length: csrfToken.length,
-        token_preview: `${csrfToken.substring(0, 8)}...${csrfToken.substring(csrfToken.length - 8)}`
-      });
-
-      return csrfToken;
-    } catch (error) {
-      console.error('🚨 Error extracting CSRF token from flow:', {
-        flowId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return null;
-    }
-  }
-
-  // 🚨 CRITICAL: X22 Phase 1 - CSRF token extraction from UI nodes
-  private extractCSRFTokenFromUINodes(flow: any): string | null {
-    if (!flow?.ui?.nodes || !Array.isArray(flow.ui.nodes)) {
-      console.warn('Invalid flow structure - missing ui.nodes');
-      return null;
-    }
-
-    // Find CSRF token node
-    const csrfNode = flow.ui.nodes.find((node: any) => 
-      node?.attributes?.name === 'csrf_token' && 
-      node?.attributes?.type === 'hidden'
-    );
-
-    if (!csrfNode?.attributes?.value) {
-      console.warn('CSRF token node not found or missing value', {
-        available_nodes: flow.ui.nodes.map((n: any) => ({
-          name: n?.attributes?.name,
-          type: n?.attributes?.type,
-          group: n?.group
-        }))
-      });
-      return null;
-    }
-
-    return csrfNode.attributes.value;
-  }
 
   async updateProfile(profile: Partial<User>): Promise<User> {
     const response = await this.makeRequest('PUT', '/profile', profile);
@@ -396,40 +230,6 @@ export class AuthAPIClient {
 
 
 
-  private createKratosCompliantRegistrationPayload(email: string, password: string, name?: string): any {
-    const payload: any = {
-      method: "password",
-      password: password.trim(),
-      traits: {
-        email: email.trim().toLowerCase()
-      }
-    };
-
-    // Add name if provided
-    if (name && name.trim()) {
-      const nameParts = name.trim().split(/\s+/);
-      payload.traits.name = {
-        first: nameParts[0] || "",
-        last: nameParts.slice(1).join(" ") || ""
-      };
-      
-      // Remove empty last name
-      if (!payload.traits.name.last) {
-        delete payload.traits.name.last;
-      }
-    }
-
-    return payload;
-  }
-
-  private createKratosCompliantLoginPayload(email: string, password: string, csrfToken: string): any {
-    return {
-      method: "password",
-      identifier: email.trim().toLowerCase(),
-      password: password.trim(),
-      csrf_token: csrfToken  // 🔑 CRITICAL: CSRF token inclusion
-    };
-  }
 
 
   private async makeRequest(method: string, endpoint: string, body?: unknown): Promise<{ data: unknown }> {
@@ -444,7 +244,7 @@ export class AuthAPIClient {
     // Add CSRF token for unsafe methods (except CSRF endpoint to avoid circular dependency)
     const isUnsafeMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
     const isCsrfEndpoint = endpoint.includes('/csrf');
-    
+
     if (isUnsafeMethod && !isCsrfEndpoint) {
       const csrfToken = await this.getCSRFTokenInternal();
       if (csrfToken) {
@@ -457,7 +257,7 @@ export class AuthAPIClient {
     // 🚀 X26 Phase 2: Additional headers for enhanced auth-service compatibility
     headers['X-Requested-With'] = 'XMLHttpRequest';
     headers['X-Client-Type'] = 'frontend-spa';
-    
+
     // 🚀 X29 FIX: CSRF requests should use nginx direct route, not frontend proxy
     if (isCsrfEndpoint) {
       console.warn('⚠️ DEPRECATED: makeRequest() called for CSRF endpoint. Use getCSRFTokenInternal() instead for nginx direct route.');
@@ -494,7 +294,7 @@ export class AuthAPIClient {
       // 🚀 X29 FIX: Use nginx direct route for CSRF token requests
       // This bypasses the frontend proxy and goes directly through nginx to auth-service
       const url = '/api/auth/csrf';
-      
+
       // 🚀 X26 Phase 2: Enhanced CSRF request with proper headers for direct auth-service routing
       const response = await fetch(url, {
         method: 'POST',
@@ -522,13 +322,13 @@ export class AuthAPIClient {
 
       const data = await response.json();
       const token = data.data?.csrf_token || data.csrf_token || null;
-      
+
       if (token) {
         console.log('✅ CSRF token retrieved successfully via direct auth-service route');
       } else {
         console.warn('⚠️ CSRF response received but no token found:', data);
       }
-      
+
       return token;
     } catch (error) {
       console.error('🚨 CSRF token request error:', error);
