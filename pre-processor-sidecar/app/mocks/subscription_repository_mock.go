@@ -14,6 +14,7 @@ import (
 	models "pre-processor-sidecar/models"
 	reflect "reflect"
 
+	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -67,6 +68,21 @@ func (m *MockSubscriptionRepository) DeleteSubscription(ctx context.Context, ino
 func (mr *MockSubscriptionRepositoryMockRecorder) DeleteSubscription(ctx, inoreaderID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSubscription", reflect.TypeOf((*MockSubscriptionRepository)(nil).DeleteSubscription), ctx, inoreaderID)
+}
+
+// FindByID mocks base method.
+func (m *MockSubscriptionRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.InoreaderSubscription, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindByID", ctx, id)
+	ret0, _ := ret[0].(*models.InoreaderSubscription)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindByID indicates an expected call of FindByID.
+func (mr *MockSubscriptionRepositoryMockRecorder) FindByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockSubscriptionRepository)(nil).FindByID), ctx, id)
 }
 
 // GetAll mocks base method.

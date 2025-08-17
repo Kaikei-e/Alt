@@ -46,6 +46,11 @@ func (m *MockSubscriptionRepository) DeleteSubscription(ctx context.Context, ino
 	return args.Error(0)
 }
 
+func (m *MockSubscriptionRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.InoreaderSubscription, error) {
+	args := m.Called(ctx, id)
+	return args.Get(0).(*models.InoreaderSubscription), args.Error(1)
+}
+
 func (m *MockSubscriptionRepository) CreateSubscription(ctx context.Context, subscription *models.Subscription) error {
 	args := m.Called(ctx, subscription)
 	return args.Error(0)
