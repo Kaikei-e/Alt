@@ -401,7 +401,7 @@ data:
           set $backend_upstream "alt-backend.alt-apps.svc.cluster.local:9000";
           set $original_uri $uri;
 
-          rewrite ^/?(.*)$ /$1 break;
+          rewrite ^/api/(.*)$ /$1 break;
           proxy_pass http://$backend_upstream$is_args$args;
 
           proxy_set_header X-Original-URI     $original_uri;

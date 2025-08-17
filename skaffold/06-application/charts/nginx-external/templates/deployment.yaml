@@ -18,7 +18,7 @@ spec:
         # Linkerd configuration - only mark forward proxy port as opaque
         # Health port 8080 should be handled by Linkerd for proper HTTP routing
         config.linkerd.io/opaque-ports: "8888,8889"
-        config.linkerd.io/skip-inbound-ports: "8889"
+        config.linkerd.io/skip-inbound-ports: "80,8889"
         # HPA修正: Linkerd proxy resources for HPA CPU metrics (恒久対応)
         config.linkerd.io/proxy-cpu-request: "10m"
         config.linkerd.io/proxy-memory-request: "20Mi"
