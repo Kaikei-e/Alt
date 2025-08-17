@@ -217,11 +217,6 @@ func NewImageFetchGateway(httpClient *http.Client) *ImageFetchGateway {
 	}
 }
 
-// validateImageURL performs SSRF protection by validating the URL against security policies
-func validateImageURL(u *url.URL) error {
-	return validateImageURLWithTestOverride(u, false)
-}
-
 // validateImageURLWithTestOverride allows bypassing localhost restrictions for testing
 // Enhanced with additional SSRF protection measures
 func validateImageURLWithTestOverride(u *url.URL, allowTestingLocalhost bool) error {
@@ -254,11 +249,11 @@ func validateImageURLWithTestOverride(u *url.URL, allowTestingLocalhost bool) er
 
 	// Enhanced: Block cloud metadata endpoints (security priority over domain allowlist)
 	metadataEndpoints := []string{
-		"169.254.169.254",        // AWS/Azure metadata
+		"169.254.169.254",          // AWS/Azure metadata
 		"metadata.google.internal", // GCP metadata
-		"100.100.100.200",        // Alibaba Cloud
-		"169.254.169.254:80",     // Explicit port
-		"169.254.169.254:8080",   // Alternative ports
+		"100.100.100.200",          // Alibaba Cloud
+		"169.254.169.254:80",       // Explicit port
+		"169.254.169.254:8080",     // Alternative ports
 	}
 	for _, endpoint := range metadataEndpoints {
 		if hostname == endpoint || strings.HasPrefix(hostname, endpoint+":") {
@@ -360,7 +355,6 @@ func isPrivateIPAddress(ip net.IP) bool {
 
 	return false
 }
-
 
 // FetchImage fetches an image from external URL through HTTP client
 func (g *ImageFetchGateway) FetchImage(ctx context.Context, imageURL *url.URL, options *domain.ImageFetchOptions) (*domain.ImageFetchResult, error) {

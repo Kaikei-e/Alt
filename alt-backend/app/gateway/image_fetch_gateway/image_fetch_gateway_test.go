@@ -160,7 +160,7 @@ func TestImageFetchGateway_FetchImage_IntegerOverflow(t *testing.T) {
 				w.Header().Set("Content-Type", "image/jpeg")
 				w.Header().Set("Content-Length", tt.contentLength)
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("fake-image-data"))
+				_, _ = w.Write([]byte("fake-image-data"))
 			}))
 			defer server.Close()
 
@@ -191,110 +191,110 @@ func TestImageFetchGateway_FetchImage_IntegerOverflow(t *testing.T) {
 // TestValidateImageURLWithTestOverride_SecurityEnhancements tests new security features
 func TestValidateImageURLWithTestOverride_SecurityEnhancements(t *testing.T) {
 	tests := []struct {
-		name                 string
-		inputURL             string
+		name                  string
+		inputURL              string
 		allowTestingLocalhost bool
-		wantErr              bool
-		expectedErrMessage   string
+		wantErr               bool
+		expectedErrMessage    string
 	}{
 		// Test URL encoding attack prevention
 		{
-			name:               "URL encoding path traversal attack",
-			inputURL:           "https://example.com/%2e%2e/admin",
+			name:                  "URL encoding path traversal attack",
+			inputURL:              "https://example.com/%2e%2e/admin",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "path traversal patterns not allowed",
+			wantErr:               true,
+			expectedErrMessage:    "path traversal patterns not allowed",
 		},
 		{
-			name:               "URL encoding forward slash attack",
-			inputURL:           "https://example.com/test%2fmalicious",
+			name:                  "URL encoding forward slash attack",
+			inputURL:              "https://example.com/test%2fmalicious",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "URL encoding attacks not allowed",
+			wantErr:               true,
+			expectedErrMessage:    "URL encoding attacks not allowed",
 		},
 		{
-			name:               "empty host validation",
-			inputURL:           "https:///path",
+			name:                  "empty host validation",
+			inputURL:              "https:///path",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "empty host not allowed",
+			wantErr:               true,
+			expectedErrMessage:    "empty host not allowed",
 		},
 		// Test enhanced metadata endpoint blocking
 		{
-			name:               "AWS metadata with port",
-			inputURL:           "http://169.254.169.254:80/latest/meta-data/",
+			name:                  "AWS metadata with port",
+			inputURL:              "http://169.254.169.254:80/latest/meta-data/",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "access to metadata endpoint not allowed",
+			wantErr:               true,
+			expectedErrMessage:    "access to metadata endpoint not allowed",
 		},
 		{
-			name:               "Alibaba Cloud metadata",
-			inputURL:           "http://100.100.100.200/latest/meta-data/",
+			name:                  "Alibaba Cloud metadata",
+			inputURL:              "http://100.100.100.200/latest/meta-data/",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "access to metadata endpoint not allowed",
+			wantErr:               true,
+			expectedErrMessage:    "access to metadata endpoint not allowed",
 		},
 		// Test enhanced internal domain blocking
 		{
-			name:               "intranet domain",
-			inputURL:           "https://service.intranet/image.jpg",
+			name:                  "intranet domain",
+			inputURL:              "https://service.intranet/image.jpg",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "access to internal domains not allowed",
+			wantErr:               true,
+			expectedErrMessage:    "access to internal domains not allowed",
 		},
 		{
-			name:               "test domain",
-			inputURL:           "https://service.test/image.jpg",
+			name:                  "test domain",
+			inputURL:              "https://service.test/image.jpg",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "access to internal domains not allowed",
+			wantErr:               true,
+			expectedErrMessage:    "access to internal domains not allowed",
 		},
 		{
-			name:               "localhost domain",
-			inputURL:           "https://service.localhost/image.jpg",
+			name:                  "localhost domain",
+			inputURL:              "https://service.localhost/image.jpg",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "access to internal domains not allowed",
+			wantErr:               true,
+			expectedErrMessage:    "access to internal domains not allowed",
 		},
 		// Test non-standard port blocking
 		{
-			name:               "non-standard port 3000",
-			inputURL:           "https://example.com:3000/image.jpg",
+			name:                  "non-standard port 3000",
+			inputURL:              "https://example.com:3000/image.jpg",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "non-standard port not allowed: 3000",
+			wantErr:               true,
+			expectedErrMessage:    "non-standard port not allowed: 3000",
 		},
 		{
-			name:               "non-standard port 9000",
-			inputURL:           "https://example.com:9000/image.jpg",
+			name:                  "non-standard port 9000",
+			inputURL:              "https://example.com:9000/image.jpg",
 			allowTestingLocalhost: false,
-			wantErr:            true,
-			expectedErrMessage: "non-standard port not allowed: 9000",
+			wantErr:               true,
+			expectedErrMessage:    "non-standard port not allowed: 9000",
 		},
 		// Test allowed ports
 		{
-			name:               "allowed port 443",
-			inputURL:           "https://example.com:443/image.jpg",
+			name:                  "allowed port 443",
+			inputURL:              "https://example.com:443/image.jpg",
 			allowTestingLocalhost: false,
-			wantErr:            false,
+			wantErr:               false,
 		},
 		{
-			name:               "allowed port 80",
-			inputURL:           "http://example.com:80/image.jpg",
+			name:                  "allowed port 80",
+			inputURL:              "http://example.com:80/image.jpg",
 			allowTestingLocalhost: false,
-			wantErr:            false,
+			wantErr:               false,
 		},
 		{
-			name:               "allowed port 8080",
-			inputURL:           "https://example.com:8080/image.jpg",
+			name:                  "allowed port 8080",
+			inputURL:              "https://example.com:8080/image.jpg",
 			allowTestingLocalhost: false,
-			wantErr:            false,
+			wantErr:               false,
 		},
 		{
-			name:               "allowed port 8443",
-			inputURL:           "https://example.com:8443/image.jpg",
+			name:                  "allowed port 8443",
+			inputURL:              "https://example.com:8443/image.jpg",
 			allowTestingLocalhost: false,
-			wantErr:            false,
+			wantErr:               false,
 		},
 	}
 
@@ -316,7 +316,6 @@ func TestValidateImageURLWithTestOverride_SecurityEnhancements(t *testing.T) {
 		})
 	}
 }
-
 
 // TestNewImageFetchGateway_RedirectDisabled tests that redirects are disabled
 func TestNewImageFetchGateway_RedirectDisabled(t *testing.T) {
