@@ -336,7 +336,7 @@ export default function LoginPage() {
                 as="button"
                 color="var(--alt-primary)"
                 textDecoration="underline"
-                onClick={() => router.push('/auth/register')}
+                onClick={() => window.location.href = "https://id.curionoah.com/self-service/registration/browser"}
               >
                 新規登録
               </Box>

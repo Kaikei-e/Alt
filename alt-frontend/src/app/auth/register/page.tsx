@@ -57,34 +57,10 @@ export default function RegisterPage() {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch('/self-service/registration/browser', {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-        },
-      })
-
-      if (response.status === 303) {
-        // Handle redirect to Kratos flow
-        const location = response.headers.get('Location')
-        if (location) {
-          window.location.href = location
-          return
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(`Failed to initiate registration flow: ${response.status}`)
-      }
-
-      const flowData = await response.json()
-      setFlow(flowData)
-      
-      // Update URL with flow ID without page reload
-      const newUrl = new URL(window.location.href)
-      newUrl.searchParams.set('flow', flowData.id)
-      window.history.replaceState({}, '', newUrl.toString())
+      // TODO.md ブラウザ方式（推奨）: 直接リダイレクト方式
+      // window.location.href で直接 Kratos に飛ばし、HTMLフローの303を踏む
+      window.location.href = "https://id.curionoah.com/self-service/registration/browser"
+      return
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to initiate registration')
@@ -365,7 +341,7 @@ export default function RegisterPage() {
                 as="button"
                 color="var(--alt-primary)"
                 textDecoration="underline"
-                onClick={() => router.push('/auth/login')}
+                onClick={() => window.location.href = "https://id.curionoah.com/self-service/login/browser"}
               >
                 ログイン
               </Box>
