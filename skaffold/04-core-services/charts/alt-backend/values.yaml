@@ -175,6 +175,9 @@ env:
   LOG_LEVEL: "info"
   PORT: "9000"
 
+  # Auth service configuration - DNS fix for cross-namespace communication
+  AUTH_SERVICE_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
+
   # mTLS完全移行: PostgreSQL SSL無効化（開発環境基本設定）
   DB_SSL_MODE: "disable"
   DB_SSLMODE: "disable"

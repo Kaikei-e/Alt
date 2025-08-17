@@ -18,6 +18,9 @@ env:
   DB_HOST: "db.alt-staging.svc.cluster.local"
   LOG_LEVEL: "info"
 
+  # Auth service configuration - DNS fix for cross-namespace communication
+  AUTH_SERVICE_URL: "http://auth-service.alt-staging.svc.cluster.local:8080"
+
 # Enable SSL for staging
 ssl:
   enabled: true
