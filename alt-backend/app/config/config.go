@@ -20,7 +20,7 @@ type Config struct {
 	MeilisearchURL     string        `json:"meilisearch_url"`
 	RateLimitInterval  time.Duration `json:"rate_limit_interval"`
 	MaxPaginationLimit int           `json:"max_pagination_limit"`
-	AuthServiceURL     string        `json:"auth_service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service:9500"`
+	AuthServiceURL     string        `json:"auth_service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service.alt-auth.svc.cluster.local:8080"`
 }
 
 type ServerConfig struct {
@@ -79,7 +79,7 @@ type HTTPConfig struct {
 }
 
 type AuthConfig struct {
-	ServiceURL        string        `json:"service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service:9500"`
+	ServiceURL        string        `json:"service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service.alt-auth.svc.cluster.local:8080"`
 	Timeout           time.Duration `json:"timeout" env:"AUTH_TIMEOUT" default:"30s"`
 	EnableCSRF        bool          `json:"enable_csrf" env:"AUTH_ENABLE_CSRF" default:"true"`
 	RequireAuth       bool          `json:"require_auth" env:"AUTH_REQUIRE_AUTH" default:"true"`
