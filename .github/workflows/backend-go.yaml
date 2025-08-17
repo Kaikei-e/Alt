@@ -23,5 +23,5 @@ jobs:
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: 'alt-backend/app'
-      go-version: '1.24'
+      go-version: '1.24.3'
       coverage-flags: 'alt-backend'
