@@ -205,7 +205,7 @@ export class BrowserManager {
    */
   private initializeSession(): void {
     this.session = {
-      session_id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      session_id: `session_${Date.now()}_${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`,
       current_url: 'about:blank',
       is_active: true,
       started_at: Date.now(),

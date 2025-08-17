@@ -90,7 +90,7 @@ class ConfigManager {
     
     // Log configuration summary (without sensitive data)
     const clientId = Deno.env.get('INOREADER_CLIENT_ID');
-    console.log(`ℹ️ Client ID configured: ${clientId?.substring(0, 4)}...${clientId?.substring(-4)}`);
+    console.log(`ℹ️ Client ID configured: ${clientId ? '[CONFIGURED]' : '[NOT_SET]'}`);
     
     return true;
   }
