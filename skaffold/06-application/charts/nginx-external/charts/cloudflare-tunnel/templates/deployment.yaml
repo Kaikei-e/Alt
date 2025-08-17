@@ -53,7 +53,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.cloudflare.secretName | default (include "cloudflare-tunnel.fullname" .) }}
-                  key: tunnel-token
+                  key: tunnel_token
 {{- end }}
           livenessProbe:
             httpGet:
