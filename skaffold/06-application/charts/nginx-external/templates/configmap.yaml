@@ -398,14 +398,11 @@ data:
           proxy_hide_header Content-Security-Policy;
           proxy_hide_header Content-Security-Policy-Report-Only;
 
-          set $backend_upstream "alt-backend.alt-apps.svc.cluster.local:9000";
-          set $original_uri $uri;
-
-          rewrite ^/api/(.*)$ /$1 break;
-          proxy_pass http://$backend_upstream$is_args$args;
-
-          proxy_set_header X-Original-URI     $original_uri;
-          proxy_set_header X-Forwarded-Prefix "/api";
+          # Use standard proxy_pass with trailing slash for clean URL rewriting
+          proxy_pass http://alt-backend.alt-apps.svc.cluster.local:9000/;
+          
+          # Ensure authentication status codes are passed through (don't intercept 401/403)
+          proxy_intercept_errors off;
 
           add_header X-Upstream-Addr   $upstream_addr   always;
           add_header X-Upstream-Status $upstream_status always;
