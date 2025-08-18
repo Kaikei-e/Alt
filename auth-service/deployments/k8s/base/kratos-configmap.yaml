@@ -16,17 +16,9 @@ data:
           enabled: true
           allowed_origins:
             - https://curionoah.com
-            - https://www.curionoah.com    # 使っていれば
-          allowed_methods:
-            - GET
-            - POST
-            - OPTIONS
-          allowed_headers:
-            - Accept
-            - Content-Type
-            - Origin
-          allow_credentials: true
-          max_age: 3600
+          allowed_methods: [GET, POST, PUT, PATCH, DELETE]
+          allowed_headers: [Authorization, Cookie, Content-Type, X-CSRF-Token]
+          exposed_headers: [Content-Type, Set-Cookie]
 
       admin:
         base_url: https://kratos-admin.alt-auth.svc.cluster.local:4434/
@@ -94,12 +86,12 @@ data:
           ui_url: https://curionoah.com/login
           lifespan: 10m
           after:
-            default_browser_return_url: https://curionoah.com/
+            default_browser_return_url: https://curionoah.com/dashboard
 
         registration:
           enabled: true
           lifespan: 10m
-          ui_url: https://curionoah.com/auth/register
+          ui_url: https://curionoah.com/register
           after:
             default_browser_return_url: https://curionoah.com/
             password:
