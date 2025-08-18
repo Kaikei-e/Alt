@@ -33,143 +33,29 @@ export class AuthAPIClient {
     }
   }
 
+  // TODO.md B案: 単純遷移方式に統一 - すべてブラウザ遷移で統一
   async initiateLogin(): Promise<LoginFlow> {
-    // TODO.md要件: 初期化はKratos直接アクセス (CSRFクッキー受け取り用)
-    const res = await fetch(`${this.idpOrigin}/self-service/login/browser`, {
-      method: 'GET',                      // ブラウザフロー初期化は GET
-      credentials: 'include',             // ← CSRF Cookie を受け取る
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`Failed to init login: ${res.status}`);
-    return await res.json() as LoginFlow; // ui.action / ui.nodes を含む
+    window.location.href = `${this.idpOrigin}/self-service/login/browser`;
+    throw new Error('Login flow initiated via redirect');
   }
 
-  async completeLogin(flowId: string, email: string, password: string): Promise<User> {
-    return this.loginWithBrowserFlow(flowId, email, password);
+  async completeLogin(_: string, __: string, ___: string): Promise<User> {
+    window.location.href = `${this.idpOrigin}/self-service/login/browser`;
+    throw new Error('Login redirected to Kratos');
   }
 
-  // 🚨 LEGACY: X22 Auto-retry login (replaced by X27 Browser Flow)
-  // Kept for backward compatibility - will be removed in future versions
-  private async loginWithRetry(flowId: string, email: string, password: string, maxRetries: number = 2): Promise<User> {
-    console.warn('⚠️ DEPRECATED: loginWithRetry is deprecated, using Browser Flow instead');
-    return this.loginWithBrowserFlow(flowId, email, password);
-  }
 
-  // 🚨 CRITICAL: X22 Phase 1 - CSRF error detection
-  private isCSRFError(error: unknown): boolean {
-    if (!(error instanceof Error)) return false;
-
-    const message = error.message.toLowerCase();
-    return message.includes('csrf') ||
-           message.includes('token') ||
-           message.includes('400') ||
-           message.includes('500') ||
-           message.includes('forbidden');
-  }
-
-  // 🚀 X27 Browser Flow Methods - Ory Kratos Compliance
-
-  // TODO.md compliant Browser Flow login method
-  private async loginWithBrowserFlow(_: string, email: string, password: string): Promise<User> {
-    console.log('🚀 Starting TODO.md compliant Browser Flow login...');
-
-    try {
-      // 1) 初期化（直）- TODO.md要件: /api経由の初期化をやめる
-      const flow = await this.initiateLogin();
-      const action = flow.ui?.action;
-      if (!action) throw new Error('Login flow missing ui.action');
-
-      const csrf = flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value;
-      if (!csrf) throw new Error('CSRF token not found in flow');
-
-      // 2) 完了（ui.action へフォームPOST）
-      const form = new URLSearchParams();
-      form.set('method', 'password');
-      form.set('identifier', email.trim().toLowerCase());
-      form.set('password', password.trim());
-      form.set('csrf_token', csrf);
-
-      // TODO.md 手順0: POSTが本当に走っているかを可視化
-      console.log('[AUTH-CLIENT] POST to action:', action, { origin: new URL(action).origin });
-      const resp = await fetch(action, {
-        method: 'POST',
-        credentials: 'include',             // ← Cookie 同送
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/x-www-form-urlencoded' // プリフライト不要のまま
-        },
-        body: form,                         // ← JSON禁止（公式推奨）
-      });
-      console.log('[AUTH-CLIENT] action POST status =', resp.status);
-      if (!resp.ok) throw new Error(`Login failed: ${resp.status} ${await resp.text()}`);
-      return await resp.json() as User;
-
-    } catch (error) {
-      console.error('❌ [AUTH-CLIENT] TODO.md compliant Login FAILED:', error);
-      throw error;
-    }
-  }
 
 
 
   async initiateRegistration(): Promise<RegistrationFlow> {
-    // TODO.md要件: 初期化はKratos直接アクセス
-    const res = await fetch(`${this.idpOrigin}/self-service/registration/browser`, {
-      method: 'GET',
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`Failed to init registration: ${res.status}`);
-    return await res.json() as RegistrationFlow;
+    window.location.href = `${this.idpOrigin}/self-service/registration/browser`;
+    throw new Error('Registration flow initiated via redirect');
   }
 
-  async completeRegistration(flowId: string, email: string, password: string, name?: string): Promise<User> {
-    // Basic validation
-    if (!email || !email.includes('@')) {
-      throw new Error('Valid email address is required');
-    }
-    if (!password || password.length < 8) {
-      throw new Error('Password must be at least 8 characters');
-    }
-
-    try {
-      const flow = await this.initiateRegistration();
-      const action = flow.ui?.action;
-      if (!action) throw new Error('Registration flow missing ui.action');
-
-      const csrf = flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value;
-      if (!csrf) throw new Error('CSRF token not found in flow');
-
-      const form = new URLSearchParams();
-      form.set('method', 'password');
-      form.set('traits.email', email.trim().toLowerCase());
-      form.set('password', password.trim());
-      form.set('csrf_token', csrf);
-      if (name?.trim()) {
-        const [first, ...rest] = name.trim().split(/\s+/);
-        form.set('traits.name.first', first ?? '');
-        if (rest.length) form.set('traits.name.last', rest.join(' '));
-      }
-
-      // TODO.md 手順0: POSTが本当に走っているかを可視化
-      console.log('[AUTH-CLIENT] POST to action:', action, { origin: new URL(action).origin });
-      const resp = await fetch(action, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: form,
-      });
-      console.log('[AUTH-CLIENT] action POST status =', resp.status);
-      if (!resp.ok) throw new Error(`Registration failed: ${resp.status} ${await resp.text()}`);
-      return await resp.json() as User;
-
-    } catch (error) {
-      console.error('❌ [AUTH-CLIENT] Registration FAILED:', error);
-      throw error;
-    }
+  async completeRegistration(_: string, __: string, ___: string, ____?: string): Promise<User> {
+    window.location.href = `${this.idpOrigin}/self-service/registration/browser`;
+    throw new Error('Registration redirected to Kratos');
   }
 
   async logout(): Promise<void> {
