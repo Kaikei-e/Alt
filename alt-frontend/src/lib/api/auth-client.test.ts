@@ -8,6 +8,7 @@ global.fetch = mockFetch;
 
 // Mock console methods to avoid noise in tests
 const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
 describe('AuthAPIClient', () => {
   let client: AuthAPIClient;
@@ -16,6 +17,7 @@ describe('AuthAPIClient', () => {
     client = new AuthAPIClient();
     mockFetch.mockClear();
     consoleSpy.mockClear();
+    consoleErrorSpy.mockClear();
   });
 
   afterEach(() => {
@@ -181,19 +183,24 @@ describe('AuthAPIClient', () => {
       expect(result).toBe(mockCSRFToken);
     });
 
-    it('should return null and log warning on error', async () => {
+    it('should return null and log error on server failure', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
         statusText: 'Internal Server Error',
+        headers: { entries: () => [] },
       });
 
       const result = await client.getCSRFToken();
 
       expect(result).toBeNull();
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to get CSRF token:',
-        expect.any(Error)
+      // Check for console.error since the actual implementation uses console.error for server failures
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '🚨 CSRF token request failed:',
+        expect.objectContaining({
+          status: 500,
+          statusText: 'Internal Server Error'
+        })
       );
     });
   });
