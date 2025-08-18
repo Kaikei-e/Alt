@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
+    // TODO.md要件: サーバが受信したCookieの有無をデバッグ用に可視化
+    const cookieStore = cookies()
+    const hasKratosSession = cookieStore.has('ory_kratos_session') || cookieStore.has('__Host-ory_kratos_session')
+    
     // Basic application health checks
     const healthCheck = {
       status: 'OK',
@@ -17,6 +22,14 @@ export async function GET(request: NextRequest) {
         },
         server: {
           status: 'OK'
+        },
+        // TODO.md要件: Cookie受信状況をレスポンスに含める
+        authentication: {
+          hasSession: hasKratosSession,
+          cookies: {
+            ory_kratos_session: cookieStore.has('ory_kratos_session'),
+            host_ory_kratos_session: cookieStore.has('__Host-ory_kratos_session')
+          }
         }
       }
     }
@@ -26,7 +39,9 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'X-Health-Check': 'alt-frontend-2025'
+        'X-Health-Check': 'alt-frontend-2025',
+        // TODO.md要件: X-Has-Session ヘッダで即座に可視化
+        'X-Has-Session': hasKratosSession ? 'yes' : 'no'
       }
     })
   } catch (error) {
