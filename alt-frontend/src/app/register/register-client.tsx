@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
 
-interface LoginFlowNode {
+interface RegistrationFlowNode {
   type: string
   group: string
   attributes: {
@@ -19,10 +19,10 @@ interface LoginFlowNode {
   }>
 }
 
-interface LoginFlow {
+interface RegistrationFlow {
   id: string
   ui: {
-    nodes: LoginFlowNode[]
+    nodes: RegistrationFlowNode[]
     messages?: Array<{
       text: string
       type: string
@@ -30,14 +30,14 @@ interface LoginFlow {
   }
 }
 
-interface LoginClientProps {
+interface RegisterClientProps {
   flowId: string
   returnUrl: string
 }
 
-export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
+export default function RegisterClient({ flowId, returnUrl }: RegisterClientProps) {
   const router = useRouter()
-  const [flow, setFlow] = useState<LoginFlow | null>(null)
+  const [flow, setFlow] = useState<RegistrationFlow | null>(null)
   const [formData, setFormData] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,7 +54,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch(`${KRATOS_PUBLIC}/self-service/login/flows?id=${id}`, {
+      const response = await fetch(`${KRATOS_PUBLIC}/self-service/registration/flows?id=${id}`, {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -64,11 +64,11 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
 
       if (!response.ok) {
         if (response.status === 410) {        // ← 期限切れだけ"新規フロー"
-          window.location.href = '/login'
+          window.location.href = '/register'
           return
         }
         // 404・403・429 等はここで可視化（無限再初期化しない）
-        const msg = `Failed to fetch login flow: ${response.status}`
+        const msg = `Failed to fetch registration flow: ${response.status}`
         setError(msg); setIsLoading(false); return
       }
 
@@ -76,7 +76,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
       setFlow(flowData)
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch login flow')
+      setError(err instanceof Error ? err.message : 'Failed to fetch registration flow')
     } finally {
       setIsLoading(false)
     }
@@ -91,9 +91,9 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
+    
     if (!flow) {
-      setError('No active login flow')
+      setError('No active registration flow')
       return
     }
 
@@ -103,7 +103,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
 
       const csrf = flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value
 
-      const response = await fetch(`${KRATOS_PUBLIC}/self-service/login?flow=${flow.id}`, {
+      const response = await fetch(`${KRATOS_PUBLIC}/self-service/registration?flow=${flow.id}`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -125,25 +125,32 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
       }
 
       if (!response.ok) {
-        throw new Error(`Login failed: ${response.status}`)
+        throw new Error(`Registration failed: ${response.status}`)
       }
 
       router.push(returnUrl)
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
+      setError(err instanceof Error ? err.message : 'Registration failed')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const renderFormField = (node: LoginFlowNode) => {
+  const renderFormField = (node: RegistrationFlowNode) => {
     if (node.type !== 'input') return null
-    if (!['password', 'default'].includes(node.group)) return null
+    if (!['password','default'].includes(node.group)) {
+      return null
+    }
 
     const { name, type, required } = node.attributes
     const value = formData[name] || node.attributes.value || ''
     const messages = node.messages || []
+
+    let placeholder = name
+    if (name === 'traits.email') placeholder = 'Email'
+    else if (name === 'password') placeholder = 'Password'
+    else if (name === 'traits.name') placeholder = 'Name'
 
     return (
       <Box key={name} w="full">
@@ -153,7 +160,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
           value={value}
           onChange={(e) => handleInputChange(name, e.target.value)}
           required={required}
-          placeholder={name === 'identifier' ? 'Email' : 'Password'}
+          placeholder={placeholder}
           bg="var(--alt-glass)"
           border="1px solid"
           borderColor="var(--alt-glass-border)"
@@ -189,7 +196,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
         <VStack gap={4}>
           <Spinner size="lg" color="var(--alt-primary)" />
           <Text color="var(--text-primary)" fontFamily="body">
-            ログインフローを準備中...
+            登録フローを準備中...
           </Text>
         </VStack>
       </Flex>
@@ -239,7 +246,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
               fontFamily="heading"
               color="var(--text-primary)"
             >
-              ログイン
+              新規登録
             </Text>
           </VStack>
 
@@ -288,7 +295,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
                     _hover={{ bg: 'var(--alt-primary-hover)' }}
                     _active={{ bg: 'var(--alt-primary-active)' }}
                   >
-                    {isLoading ? 'ログイン中...' : 'ログイン'}
+                    {isLoading ? '登録中...' : '新規登録'}
                   </Button>
                 </VStack>
               </form>
@@ -301,14 +308,14 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
               color="var(--text-muted)"
               fontFamily="body"
             >
-              アカウントをお持ちでない方は{' '}
+              既にアカウントをお持ちの方は{' '}
               <Box
                 as="button"
                 color="var(--alt-primary)"
                 textDecoration="underline"
-                onClick={() => window.location.href = "https://id.curionoah.com/self-service/registration/browser"}
+                onClick={() => window.location.href = "https://id.curionoah.com/self-service/login/browser"}
               >
-                新規登録
+                ログイン
               </Box>
             </Text>
           </Box>
