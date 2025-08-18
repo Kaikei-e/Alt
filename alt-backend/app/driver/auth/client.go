@@ -73,7 +73,7 @@ type CSRFValidationResponse struct {
 func NewClient(config *config.Config, logger *slog.Logger) *Client {
 	timeout := config.Auth.Timeout
 	if timeout == 0 {
-		timeout = 30 * time.Second
+		timeout = 5 * time.Second // TODO.md修正: 30秒→5秒（UI体験とデバッグ性向上）
 	}
 
 	serviceURL := config.Auth.ServiceURL
