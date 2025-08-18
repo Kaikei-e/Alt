@@ -97,12 +97,8 @@ func (c *Client) ValidateSession(ctx context.Context, sessionToken string, tenan
 		return c.createInvalidSessionResponse(), nil // Return invalid session for empty token
 	}
 
-	req := SessionValidationRequest{
-		SessionToken: sessionToken,
-		TenantID:     tenantID,
-	}
-
-	response, err := c.makeRequest(ctx, "POST", "/api/v1/session/validate", req)
+	// auth-serviceのValidateSessionはGETメソッドで、X-Session-Tokenヘッダーでトークンを送信
+	response, err := c.makeRequestWithToken(ctx, "GET", "/v1/auth/validate", sessionToken, nil)
 	if err != nil {
 		c.logger.Warn("auth service unavailable, returning invalid session for OptionalAuth compatibility",
 			"error", err,
@@ -218,6 +214,54 @@ func (c *Client) makeRequest(ctx context.Context, method, endpoint string, paylo
 	c.logger.Debug("making auth service request",
 		"method", method,
 		"url", url)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("auth service error: status=%d, body=%s", resp.StatusCode, string(responseBody))
+	}
+
+	return responseBody, nil
+}
+
+// makeRequestWithToken is a helper method to make HTTP requests with session token in header
+func (c *Client) makeRequestWithToken(ctx context.Context, method, endpoint, sessionToken string, payload interface{}) ([]byte, error) {
+	var body io.Reader
+
+	if payload != nil {
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request payload: %w", err)
+		}
+		body = bytes.NewBuffer(jsonData)
+	}
+
+	url := c.baseURL + endpoint
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	
+	// Set session token in X-Session-Token header
+	req.Header.Set("X-Session-Token", sessionToken)
+
+	c.logger.Debug("making auth service request with token",
+		"method", method,
+		"url", url,
+		"token_prefix", sessionToken[:min(len(sessionToken), 8)])
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
