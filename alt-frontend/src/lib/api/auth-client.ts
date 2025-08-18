@@ -23,7 +23,8 @@ export class AuthAPIClient {
   // 接続テスト機能追加 (X1.md 1.3.2 実装)
   async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseURL}`, {
+      const url = new URL(this.baseURL, window.location?.origin || 'http://localhost:3000').toString();
+      const response = await fetch(url, {
         method: 'GET',
         signal: AbortSignal.timeout(5000)
       });
@@ -64,7 +65,7 @@ export class AuthAPIClient {
 
   async getCurrentUser(): Promise<User | null> {
     try {
-      const url = `${this.baseURL}/validate`;
+      const url = new URL(`${this.baseURL}/validate`, window.location?.origin || 'http://localhost:3000').toString();
       const response = await fetch(url, {
         method: 'GET',
         credentials: 'include',
@@ -119,7 +120,7 @@ export class AuthAPIClient {
 
 
   private async makeRequest(method: string, endpoint: string, body?: unknown): Promise<{ data: unknown }> {
-    const url = `${this.baseURL}${endpoint}`;
+    const url = new URL(`${this.baseURL}${endpoint}`, window.location?.origin || 'http://localhost:3000').toString();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -179,7 +180,7 @@ export class AuthAPIClient {
     try {
       // 🚀 X29 FIX: Use nginx direct route for CSRF token requests
       // This bypasses the frontend proxy and goes directly through nginx to auth-service
-      const url = '/api/auth/csrf';
+      const url = new URL('/api/auth/csrf', window.location?.origin || 'http://localhost:3000').toString();
 
       // 🚀 X26 Phase 2: Enhanced CSRF request with proper headers for direct auth-service routing
       const response = await fetch(url, {
@@ -201,7 +202,7 @@ export class AuthAPIClient {
           status: response.status,
           statusText: response.statusText,
           url,
-          headers: Object.fromEntries(response.headers.entries())
+          headers: response.headers?.entries ? Object.fromEntries(response.headers.entries()) : 'headers not available'
         });
         return null;
       }

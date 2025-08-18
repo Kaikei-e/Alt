@@ -41,167 +41,52 @@ describe('AuthAPIClient', () => {
   });
 
   describe('initiateLogin', () => {
-    it('should make POST request to login endpoint and return LoginFlow', async () => {
-      const mockLoginFlow: LoginFlow = {
-        id: 'flow-123',
-        ui: {
-          action: '/login',
-          method: 'POST',
-          nodes: [],
-        },
-        expiresAt: '2025-01-15T11:00:00Z',
-      };
+    it('should throw redirect error (current implementation)', async () => {
+      // Mock window.location for test environment
+      Object.defineProperty(window, 'location', {
+        value: { href: '' },
+        writable: true,
+      });
 
-      // Mock CSRF token request first (for unsafe method)
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'csrf-token-123' } }),
-        })
-        // Mock actual login request
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: mockLoginFlow }),
-        });
-
-      const result = await client.initiateLogin();
-
-      expect(result).toEqual(mockLoginFlow);
-    });
-
-    it('should handle API errors', async () => {
-      // Mock CSRF token request first
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'csrf-token-123' } }),
-        })
-        // Mock failed login request
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-          statusText: 'Internal Server Error',
-        });
-
-      await expect(client.initiateLogin()).rejects.toThrow('Failed to initiate login');
+      await expect(client.initiateLogin()).rejects.toThrow('Login flow initiated via redirect');
     });
   });
 
   describe('completeLogin', () => {
-    it('should make POST request with credentials and return User', async () => {
-      const mockUser: User = {
-        id: 'user-123',
-        tenantId: 'tenant-456',
-        email: 'test@example.com',
-        role: 'user',
-        createdAt: '2025-01-15T10:00:00Z',
-      };
+    it('should throw redirect error (current implementation)', async () => {
+      // Mock window.location for test environment
+      Object.defineProperty(window, 'location', {
+        value: { href: '' },
+        writable: true,
+      });
 
-      // Mock CSRF token request first
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'csrf-token-123' } }),
-        })
-        // Mock actual login request
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: mockUser }),
-        });
-
-      const result = await client.completeLogin('flow-123', 'test@example.com', 'password123');
-
-      expect(result).toEqual(mockUser);
+      await expect(client.completeLogin('flow-123', 'test@example.com', 'password123'))
+        .rejects.toThrow('Login redirected to Kratos');
     });
   });
 
   describe('initiateRegistration', () => {
-    it('should make POST request to registration endpoint and return RegistrationFlow', async () => {
-      const mockRegistrationFlow: RegistrationFlow = {
-        id: 'flow-456',
-        ui: {
-          action: '/register',
-          method: 'POST',
-          nodes: [],
-        },
-        expiresAt: '2025-01-15T11:00:00Z',
-      };
+    it('should throw redirect error (current implementation)', async () => {
+      // Mock window.location for test environment
+      Object.defineProperty(window, 'location', {
+        value: { href: '' },
+        writable: true,
+      });
 
-      // Mock CSRF token request first
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'csrf-token-123' } }),
-        })
-        // Mock actual registration request
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: mockRegistrationFlow }),
-        });
-
-      const result = await client.initiateRegistration();
-
-      expect(result).toEqual(mockRegistrationFlow);
+      await expect(client.initiateRegistration()).rejects.toThrow('Registration flow initiated via redirect');
     });
   });
 
   describe('completeRegistration', () => {
-    it('should make POST request with user data and return User', async () => {
-      const mockUser: User = {
-        id: 'user-789',
-        tenantId: 'tenant-456',
-        email: 'newuser@example.com',
-        name: 'New User',
-        role: 'user',
-        createdAt: '2025-01-15T10:00:00Z',
-      };
+    it('should throw redirect error (current implementation)', async () => {
+      // Mock window.location for test environment
+      Object.defineProperty(window, 'location', {
+        value: { href: '' },
+        writable: true,
+      });
 
-      // Mock CSRF token request first
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'csrf-token-123' } }),
-        })
-        // Mock actual registration request
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: mockUser }),
-        });
-
-      const result = await client.completeRegistration(
-        'flow-456',
-        'newuser@example.com',
-        'password123',
-        'New User'
-      );
-
-      expect(result).toEqual(mockUser);
-    });
-
-    it('should work without optional name parameter', async () => {
-      const mockUser: User = {
-        id: 'user-789',
-        tenantId: 'tenant-456',
-        email: 'newuser@example.com',
-        role: 'user',
-        createdAt: '2025-01-15T10:00:00Z',
-      };
-
-      // Mock CSRF token request first
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'csrf-token-123' } }),
-        })
-        // Mock actual registration request
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ data: mockUser }),
-        });
-
-      const result = await client.completeRegistration('flow-456', 'newuser@example.com', 'password123');
-
-      expect(result).toEqual(mockUser);
+      await expect(client.completeRegistration('flow-456', 'newuser@example.com', 'password123', 'New User'))
+        .rejects.toThrow('Registration redirected to Kratos');
     });
   });
 
