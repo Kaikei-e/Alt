@@ -1,0 +1,15 @@
+apiVersion: policy.linkerd.io/v1beta1
+kind: ServerAuthorization
+metadata:
+  name: {{ include "auth-service.fullname" . }}-allow-alt-apps
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "auth-service.labels" . | nindent 4 }}
+    linkerd.policy/component: server-authorization
+spec:
+  server:
+    name: {{ include "auth-service.fullname" . }}-http
+  client:
+    meshTLS:
+      identities:
+        - "*.alt-apps.serviceaccount.identity.linkerd.cluster.local"
