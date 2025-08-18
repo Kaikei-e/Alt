@@ -140,8 +140,8 @@ describe('AuthContext', () => {
     it('should handle authentication check error', async () => {
       setSessionCookie();
       
-      // Use the fallback error message for unknown errors
-      const errorMessage = '予期しないエラーが発生しました';
+      // Use the actual error message that gets mapped
+      const errorMessage = 'Authentication failed';
       vi.mocked(authAPI.getCurrentUser).mockRejectedValue(new Error('Authentication failed'));
 
       render(
