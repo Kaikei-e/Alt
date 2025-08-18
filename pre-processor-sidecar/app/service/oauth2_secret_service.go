@@ -21,8 +21,6 @@ import (
 	"pre-processor-sidecar/models"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 // OAuth2SecretService はOAuth2 Secretを管理するサービス
@@ -36,8 +34,7 @@ type OAuth2SecretService struct {
 	apiEndpoint string
 	httpClient  *http.Client
 	
-	// Watch機能追加 (恒久対応: 自律的Secret再読み込み)
-	clientset      kubernetes.Interface
+	// Watch機能追加 (恒久対応: 自律的Secret再読み込み) - HTTP API版
 	watcherMutex   sync.RWMutex
 	isWatching     bool
 	stopWatchCh    chan struct{}
@@ -117,24 +114,15 @@ func NewOAuth2SecretService(config OAuth2SecretConfig) (*OAuth2SecretService, er
 		},
 	}
 
-	// Kubernetes clientset初期化 (恒久対応: Secret Watch機能)
-	if kubeConfig, err := rest.InClusterConfig(); err == nil {
-		if clientset, err := kubernetes.NewForConfig(kubeConfig); err == nil {
-			service.clientset = clientset
-			service.stopWatchCh = make(chan struct{})
-			service.secretUpdateCh = make(chan *models.OAuth2Token, 1)
-			config.Logger.Info("Kubernetes clientset initialized for Secret watching")
-		} else {
-			config.Logger.Warn("Failed to create Kubernetes clientset, watch functionality disabled", "error", err)
-		}
-	} else {
-		config.Logger.Warn("Not running in cluster, watch functionality disabled", "error", err)
-	}
+	// Watch機能初期化 (HTTP API版に簡素化)
+	service.stopWatchCh = make(chan struct{})
+	service.secretUpdateCh = make(chan *models.OAuth2Token, 1)
+	config.Logger.Info("OAuth2SecretService watch functionality initialized (HTTP API mode)")
 
 	config.Logger.Info("OAuth2SecretService initialized",
 		"namespace", config.Namespace,
 		"secret_name", config.SecretName,
-		"watch_enabled", service.clientset != nil)
+		"watch_enabled", true)
 
 	return service, nil
 }
@@ -309,17 +297,13 @@ func (s *OAuth2SecretService) GetSecretInfo() map[string]interface{} {
 		"secret_name":   s.secretName,
 		"api_endpoint":  s.apiEndpoint,
 		"token_path":    s.tokenPath,
-		"watch_enabled": s.clientset != nil,
+		"watch_enabled": true,
 		"is_watching":   s.isWatching,
 	}
 }
 
-// StartWatching はSecret監視を開始 (恒久対応: 自律的Secret再読み込み)
+// StartWatching はSecret監視を開始 (HTTP API ポーリング版)
 func (s *OAuth2SecretService) StartWatching(onUpdate func(*models.OAuth2Token) error) error {
-	if s.clientset == nil {
-		return fmt.Errorf("kubernetes clientset not available")
-	}
-
 	s.watcherMutex.Lock()
 	if s.isWatching {
 		s.watcherMutex.Unlock()
@@ -328,8 +312,8 @@ func (s *OAuth2SecretService) StartWatching(onUpdate func(*models.OAuth2Token) e
 	s.isWatching = true
 	s.watcherMutex.Unlock()
 
-	go s.watchSecretChanges(onUpdate)
-	s.logger.Info("Started watching Secret changes",
+	go s.pollSecretChanges(onUpdate)
+	s.logger.Info("Started polling Secret changes (HTTP API mode)",
 		"namespace", s.namespace,
 		"secret_name", s.secretName)
 
@@ -350,44 +334,44 @@ func (s *OAuth2SecretService) StopWatching() {
 	s.logger.Info("Stopped watching Secret changes")
 }
 
-// watchSecretChanges はSecret変更を監視する内部関数
-func (s *OAuth2SecretService) watchSecretChanges(onUpdate func(*models.OAuth2Token) error) {
+// pollSecretChanges はSecret変更をポーリングで監視する内部関数 (HTTP API版)
+func (s *OAuth2SecretService) pollSecretChanges(onUpdate func(*models.OAuth2Token) error) {
+	pollInterval := 60 * time.Second // 1分間隔でポーリング
+	var lastModifiedTime string
+
 	for {
 		select {
 		case <-s.stopWatchCh:
-			s.logger.Info("Secret watcher stopped")
+			s.logger.Info("Secret polling stopped")
 			return
-		default:
-		}
+		case <-time.After(pollInterval):
+			// Secret情報を取得してmodificationTimeを確認
+			currentModifiedTime, err := s.getSecretModificationTime(context.Background())
+			if err != nil {
+				s.logger.Error("Failed to get secret modification time", "error", err)
+				continue
+			}
 
-		// Secret変更監視開始
-		watcher, err := s.clientset.CoreV1().Secrets(s.namespace).Watch(context.Background(), metav1.ListOptions{
-			FieldSelector: fmt.Sprintf("metadata.name=%s", s.secretName),
-		})
-		if err != nil {
-			s.logger.Error("Failed to start secret watcher", "error", err)
-			time.Sleep(30 * time.Second) // 30秒後にリトライ
-			continue
-		}
+			// 初回実行時は現在時刻を記録
+			if lastModifiedTime == "" {
+				lastModifiedTime = currentModifiedTime
+				s.logger.Info("Initial secret modification time recorded", "time", lastModifiedTime)
+				continue
+			}
 
-		s.logger.Info("Secret watcher started successfully")
-
-		// イベント処理ループ
-		for event := range watcher.ResultChan() {
-			switch event.Type {
-			case watch.Modified:
-				s.logger.Info("Secret modification detected", "event_type", event.Type)
+			// 変更検出
+			if currentModifiedTime != lastModifiedTime {
+				s.logger.Info("Secret modification detected", 
+					"previous_time", lastModifiedTime,
+					"current_time", currentModifiedTime)
+				
 				if err := s.handleSecretUpdate(onUpdate); err != nil {
 					s.logger.Error("Failed to handle secret update", "error", err)
+				} else {
+					lastModifiedTime = currentModifiedTime
 				}
-			case watch.Error:
-				s.logger.Error("Secret watch error", "event", event.Object)
 			}
 		}
-
-		watcher.Stop()
-		s.logger.Warn("Secret watcher connection lost, reconnecting in 10 seconds")
-		time.Sleep(10 * time.Second)
 	}
 }
 
@@ -415,6 +399,62 @@ func (s *OAuth2SecretService) handleSecretUpdate(onUpdate func(*models.OAuth2Tok
 		"scope", token.Scope)
 
 	return nil
+}
+
+// getSecretModificationTime はSecretの最終更新時刻を取得 (HTTP API版)
+func (s *OAuth2SecretService) getSecretModificationTime(ctx context.Context) (string, error) {
+	// Kubernetes ServiceAccount tokenを読み込み
+	tokenBytes, err := ioutil.ReadFile(s.tokenPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read service account token: %w", err)
+	}
+	
+	serviceAccountToken := strings.TrimSpace(string(tokenBytes))
+	
+	// Kubernetes API endpoint URL構築
+	url := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/%s", 
+		s.apiEndpoint, s.namespace, s.secretName)
+	
+	// HTTPリクエスト作成
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	
+	// ServiceAccount tokenを認証ヘッダーに設定
+	req.Header.Set("Authorization", "Bearer "+serviceAccountToken)
+	req.Header.Set("Accept", "application/json")
+	
+	// HTTPリクエスト実行
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to make HTTP request to Kubernetes API: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// レスポンス確認
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Kubernetes API request failed with status %d", resp.StatusCode)
+	}
+	
+	// レスポンスボディ読み込み
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	
+	// metadata.resourceVersionを取得 (Secretの更新を検出するため)
+	var secretResponse struct {
+		Metadata struct {
+			ResourceVersion string `json:"resourceVersion"`
+		} `json:"metadata"`
+	}
+	
+	if err := json.Unmarshal(bodyBytes, &secretResponse); err != nil {
+		return "", fmt.Errorf("failed to parse Kubernetes Secret metadata: %w", err)
+	}
+	
+	return secretResponse.Metadata.ResourceVersion, nil
 }
 
 // GetSecretUpdateChannel はSecret更新チャンネルを取得
