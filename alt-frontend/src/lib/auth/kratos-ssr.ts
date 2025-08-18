@@ -32,13 +32,13 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
           cookie: req.headers.cookie ?? '', // 必ずCookieを前方転送
           'Accept': 'application/json'
         },
-        redirect: 'manual', // 手動でリダイレクトを処理
+        cache: 'no-store', // TODO.md修正: サーバ側fetch個別キャッシュ防止
       })
 
       // TODO.mdの要求：未ログインならリダイレクト
       if (response.status !== 200) {
         const currentPath = context.resolvedUrl || context.req.url || '/'
-        const loginUrl = `/auth/login?returnUrl=${encodeURIComponent(currentPath)}`
+        const loginUrl = `/login?returnUrl=${encodeURIComponent(currentPath)}`
         
         return {
           redirect: {
@@ -52,7 +52,7 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
       
       if (!session.identity) {
         const currentPath = context.resolvedUrl || context.req.url || '/'
-        const loginUrl = `/auth/login?returnUrl=${encodeURIComponent(currentPath)}`
+        const loginUrl = `/login?returnUrl=${encodeURIComponent(currentPath)}`
         
         return {
           redirect: {
@@ -79,7 +79,7 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
       
       // エラーの場合もログインページにリダイレクト
       const currentPath = context.resolvedUrl || context.req.url || '/'
-      const loginUrl = `/auth/login?returnUrl=${encodeURIComponent(currentPath)}`
+      const loginUrl = `/login?returnUrl=${encodeURIComponent(currentPath)}`
       
       return {
         redirect: {
@@ -96,7 +96,7 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
  */
 export async function checkAuthStatus(): Promise<AuthUser | null> {
   try {
-    const response = await fetch('/sessions/whoami', {
+    const response = await fetch('https://id.curionoah.com/sessions/whoami', {
       credentials: 'include',
       headers: {
         'Accept': 'application/json',
@@ -121,9 +121,10 @@ export async function checkAuthStatus(): Promise<AuthUser | null> {
  */
 export async function logout(): Promise<void> {
   try {
-    const response = await fetch('/self-service/logout/browser', {
+    const response = await fetch('https://id.curionoah.com/self-service/logout/browser', {
       method: 'GET',
       credentials: 'include',
+      cache: 'no-store', // TODO.md修正: サーバ側fetch個別キャッシュ防止
     })
 
     if (response.status === 303) {
@@ -136,11 +137,11 @@ export async function logout(): Promise<void> {
     }
 
     // Fallback: redirect to login page
-    window.location.href = '/auth/login'
+    window.location.href = '/login'
 
   } catch (error) {
     console.error('Logout failed:', error)
     // Force redirect to login even on error
-    window.location.href = '/auth/login'
+    window.location.href = '/login'
   }
 }
