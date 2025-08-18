@@ -244,6 +244,18 @@ spec:
     - protocol: TCP
       port: 4143
   
+  # alt-backend → auth-service (認証検証用 - TODO.md恒久対応)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-auth
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: auth-service
+    ports:
+    - protocol: TCP
+      port: 8080
+  
   # ROOT FIX: External HTTPS access for RSS feeds (ULTRATHINK解決)
   - to: []
     ports:

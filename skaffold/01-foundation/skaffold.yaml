@@ -12,11 +12,7 @@ build:
     tryImportMissing: true
   tagPolicy:
     gitCommit: {}
-  artifacts:
-    - image: migrate
-      context: ../../migrate
-      docker:
-        dockerfile: Dockerfile.migrate
+  artifacts: []
 deploy:
   statusCheckDeadlineSeconds: 600
   helm:
@@ -75,11 +71,7 @@ profiles:
         concurrency: 1  # Local build安定性向上
       tagPolicy:
         gitCommit: {}
-      artifacts:
-        - image: migrate
-          context: ../../migrate
-          docker:
-            dockerfile: Dockerfile.migrate
+      artifacts: []
     deploy:
       statusCheckDeadlineSeconds: 600
       helm:

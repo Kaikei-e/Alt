@@ -1,0 +1,65 @@
+{{- if .Values.enableMicrosegmentation }}
+# Allow alt-backend to communicate with auth-service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-auth-service
+  namespace: alt-apps
+  labels:
+    app.kubernetes.io/component: security
+    app.kubernetes.io/name: auth-backend-policy
+    app.kubernetes.io/part-of: defense-in-depth
+    app.kubernetes.io/version: "3.0"
+    security.policy/layer: microsegmentation
+    security.policy/zone: backend-auth
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alt-backend
+  policyTypes:
+  - Egress
+  egress:
+  # Allow communication to auth-service in alt-auth namespace
+  - ports:
+    - port: 8080
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-auth
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: auth-service
+---
+# Allow auth-service to receive traffic from alt-apps
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alt-apps-to-auth-service
+  namespace: alt-auth
+  labels:
+    app.kubernetes.io/component: security
+    app.kubernetes.io/name: auth-ingress-policy
+    app.kubernetes.io/part-of: defense-in-depth
+    app.kubernetes.io/version: "3.0"
+    security.policy/layer: microsegmentation
+    security.policy/zone: auth
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: auth-service
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow traffic from alt-apps namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: alt-apps
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: alt-backend
+    ports:
+    - port: 8080
+      protocol: TCP
+{{- end }}
