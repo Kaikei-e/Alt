@@ -37,12 +37,62 @@ export default function LoginPage() {
   const [formData, setFormData] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sessionChecked, setSessionChecked] = useState(false)
+
+  const KRATOS_PUBLIC = "https://id.curionoah.com";
 
   // Get flow ID from query parameter or return URL
   const flowId = searchParams.get('flow')
   const returnUrl = searchParams.get('return_to') || '/'
+  const refresh = searchParams.get('refresh') === 'true'
+
+  // A. まずセッション確認によるスキップチェック
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      try {
+        setIsLoading(true)
+
+        // 再認証要求（refresh=true）の場合はセッションチェックをスキップ
+        if (refresh) {
+          setSessionChecked(true)
+          setIsLoading(false)
+          return
+        }
+
+        // whoami エンドポイントでセッション確認
+        const response = await fetch("https://id.curionoah.com/sessions/whoami", {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+          },
+        })
+
+        if (response.ok) {
+          // 既にログイン済み - ホームへリダイレクト
+          router.push(returnUrl)
+          return
+        }
+
+        // セッションなし - ログインフロー続行
+        setSessionChecked(true)
+
+      } catch (err) {
+        // エラーでもログインフローを続行
+        console.warn('Session check failed, continuing with login flow:', err)
+        setSessionChecked(true)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    checkExistingSession()
+  }, [router, returnUrl, refresh])
 
   useEffect(() => {
+    // セッションチェック完了後にログインフローを開始
+    if (!sessionChecked) return
+
     if (flowId) {
       // If we have a flow ID, fetch the flow data
       fetchFlow(flowId)
@@ -50,16 +100,21 @@ export default function LoginPage() {
       // If no flow ID, initiate a new login flow
       initiateLoginFlow()
     }
-  }, [flowId])
+  }, [flowId, sessionChecked])
 
   const initiateLoginFlow = async () => {
     try {
       setIsLoading(true)
       setError(null)
 
+      // B. 再認証時は ?refresh=true を付加
+      const loginUrl = refresh
+        ? "https://id.curionoah.com/self-service/login/browser?refresh=true"
+        : "https://id.curionoah.com/self-service/login/browser"
+
       // TODO.md A案（推奨）: 直接リダイレクト方式
       // window.location.href で直接 Kratos に飛ばし、HTMLフローの303を踏む
-      window.location.href = "https://id.curionoah.com/self-service/login/browser"
+      window.location.href = loginUrl
       return
 
     } catch (err) {
@@ -74,7 +129,7 @@ export default function LoginPage() {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch(`/self-service/login/flows?id=${id}`, {
+      const response = await fetch(`${KRATOS_PUBLIC}/self-service/login/flows?id=${id}`, {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -110,7 +165,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!flow) {
       setError('No active login flow')
       return
@@ -120,7 +175,7 @@ export default function LoginPage() {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch(`/self-service/login?flow=${flow.id}`, {
+      const response = await fetch(`${KRATOS_PUBLIC}/self-service/login?flow=${flow.id}`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -129,7 +184,9 @@ export default function LoginPage() {
         },
         body: JSON.stringify({
           method: 'password',
-          ...formData
+          ...formData,
+          // 追加：CSRF
+          csrf_token: flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value
         })
       })
 
@@ -167,9 +224,8 @@ export default function LoginPage() {
   }
 
   const renderFormField = (node: LoginFlowNode) => {
-    if (node.type !== 'input' || node.group !== 'password') {
-      return null
-    }
+    if (node.type !== 'input') return null;        // hidden も通す
+    if (!['password', 'default'].includes(node.group)) return null; // csrf は default グループ
 
     const { name, type, required } = node.attributes
     const value = formData[name] || node.attributes.value || ''
@@ -208,7 +264,7 @@ export default function LoginPage() {
     )
   }
 
-  if (isLoading && !flow) {
+  if (isLoading && (!flow || !sessionChecked)) {
     return (
       <Flex
         minH="100vh"
@@ -219,7 +275,7 @@ export default function LoginPage() {
         <VStack gap={4}>
           <Spinner size="lg" color="var(--alt-primary)" />
           <Text color="var(--text-primary)" fontFamily="body">
-            ログインフローを準備中...
+            {!sessionChecked ? 'セッション確認中...' : 'ログインフローを準備中...'}
           </Text>
         </VStack>
       </Flex>
