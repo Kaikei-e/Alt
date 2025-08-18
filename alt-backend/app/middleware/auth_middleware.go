@@ -28,25 +28,43 @@ func NewAuthMiddleware(authService auth_port.AuthPort, logger *slog.Logger) *Aut
 func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// セッションからユーザー情報を取得
+			m.logger.Info("AUTH MIDDLEWARE: RequireAuth called", "path", c.Request().URL.Path, "method", c.Request().Method)
+			
+			// 1) __Host- 前置の互換（将来の設定変更に備え二段取り）
 			sessionCookie, err := c.Cookie("ory_kratos_session")
 			if err != nil {
-				m.logger.Warn("session cookie not found", "error", err)
-				return echo.NewHTTPError(http.StatusUnauthorized, "Authentication required")
+				if altCookie, err2 := c.Cookie("__Host-ory_kratos_session"); err2 == nil {
+					sessionCookie = altCookie
+					m.logger.Info("AUTH MIDDLEWARE: Using __Host- prefixed cookie")
+				} else {
+					m.logger.Warn("AUTH MIDDLEWARE: No session cookie found", "error", err, "alt_error", err2)
+					return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
+						"error":   "authentication_required",
+						"message": "Authentication is required",
+					})
+				}
+			} else {
+				m.logger.Info("AUTH MIDDLEWARE: Found ory_kratos_session cookie")
 			}
+
+			m.logger.Info("AUTH MIDDLEWARE: Calling auth service for validation", "token_length", len(sessionCookie.Value))
 
 			// auth-serviceでセッション検証
 			userContext, err := m.authService.ValidateSession(c.Request().Context(), sessionCookie.Value)
 			if err != nil {
-				m.logger.Warn("session validation failed", "error", err)
-				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid session")
+				m.logger.Warn("AUTH MIDDLEWARE: Session validation failed", "error", err)
+				// 2) 401のJSONを明示（中央ハンドラでもOK。二重化は避けてどちらかに統一）
+				return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
+					"error":   "invalid_session",
+					"message": "Session validation failed",
+				})
 			}
 
 			// コンテキストにユーザー情報を設定
 			ctx := domain.SetUserContext(c.Request().Context(), userContext)
 			c.SetRequest(c.Request().WithContext(ctx))
 
-			m.logger.Info("user authenticated",
+			m.logger.Info("AUTH MIDDLEWARE: User authenticated successfully",
 				"user_id", userContext.UserID,
 				"email", userContext.Email,
 				"path", c.Request().URL.Path)

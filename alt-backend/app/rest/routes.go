@@ -68,8 +68,8 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 		},
 	}))
 
-	// Create route groups
-	v1 := e.Group("/v1")
+	// Create route groups with path probe middleware for debugging
+	v1 := e.Group("/v1", middleware_custom.PathProbe)
 
 	// Register handlers by category
 	registerSecurityRoutes(e, container)

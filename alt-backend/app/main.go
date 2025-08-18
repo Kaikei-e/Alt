@@ -48,6 +48,19 @@ func main() {
 	e.HideBanner = true
 	e.HidePort = false
 
+	// Custom HTTPErrorHandler to ensure 401 is always returned as 401 (not 404)
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		if he, ok := err.(*echo.HTTPError); ok {
+			// Keep the original status code (don't modify 401 to 404)
+			_ = c.JSON(he.Code, map[string]interface{}{
+				"error":  http.StatusText(he.Code),
+				"detail": he.Message,
+			})
+			return
+		}
+		_ = c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "internal_error"})
+	}
+
 	// Use configuration for server settings
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
