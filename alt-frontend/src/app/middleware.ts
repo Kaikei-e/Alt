@@ -1,28 +1,32 @@
-// app/middleware.ts
+// app/middleware.ts - ネットワーク無しゲート
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export const config = {
-  // ← ここで Kratos/静的系を物理的に除外
-  matcher: ['/((?!login|register|self-service|sessions|_next|api|favicon.ico).*)'],
+  // 認証系・自己参照・静的は完全除外
+  matcher: ['/((?!login|register|self-service|sessions|_next|api|favicon.ico|icon.svg).*)'],
 }
 
-export async function middleware(req: NextRequest) {
-  // ここから先は「保護したいアプリ本体のみに発火」
-  // 例：whoamiが200なら通す、401なら /login へ、など簡潔に
-  const KRATOS = 'https://id.curionoah.com'
-  const who = await fetch(`${KRATOS}/sessions/whoami`, {
-    headers: { cookie: req.headers.get('cookie') ?? '' },
-    // サーバfetchの個別キャッシュを完全無効化（重要）
-    cache: 'no-store',
-  })
-  if (who.ok) {
-    const res = NextResponse.next()
-    res.headers.set('Cache-Control', 'private, no-store, max-age=0')
-    return res
+export default function middleware(req: NextRequest) {
+  const { pathname, search } = req.nextUrl
+  
+  // ここでネットワーク呼び出しは絶対にしない
+  const hasKratos = !!req.cookies.get('ory_kratos_session')?.value
+
+  // ログインページからの往復を防ぐ：ログイン中は素通し
+  if (pathname.startsWith('/login') || pathname.startsWith('/register')) {
+    return NextResponse.next()
   }
 
-  const url = new URL('/login', req.url)
-  url.searchParams.set('return_to', req.nextUrl.pathname)
-  return NextResponse.redirect(url)
+  if (!hasKratos) {
+    const url = new URL('/login', req.url)
+    // 元の行き先を保持（固定 /dashboard をやめる）
+    url.searchParams.set('return_to', pathname + (search || ''))
+    return NextResponse.redirect(url)
+  }
+
+  // Cookieがあるときは通す。真正性検証は各ページ（SSR）で内部 whoami。
+  const res = NextResponse.next()
+  res.headers.set('Cache-Control', 'private, no-store, max-age=0')
+  return res
 }
