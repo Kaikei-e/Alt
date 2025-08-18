@@ -7,41 +7,36 @@ data:
   kratos.yml: |
     version: v1.3.1
 
-    dsn: postgres://kratos_db_user:kratos_prod_password_32_char_long@kratos-postgres.alt-auth.svc.cluster.local:5432/kratos_db?sslmode=disable&max_conns=20&max_idle_conns=4
+    dsn: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@kratos-postgres.alt-auth.svc.cluster.local:5432/kratos_db?sslmode=require&max_conns=20&max_idle_conns=4
 
     serve:
       public:
-        base_url: https://kratos-public.alt-auth.svc.cluster.local:4433/
+        base_url: https://id.curionoah.com/
         cors:
           enabled: true
           allowed_origins:
-            - https://alt.example.com
-            - https://app.alt.example.com
-            - https://alt-frontend.alt-apps.svc.cluster.local
+            - https://curionoah.com
+            - https://www.curionoah.com    # 使っていれば
           allowed_methods:
-            - POST
             - GET
-            - PUT
-            - PATCH
-            - DELETE
+            - POST
+            - OPTIONS
           allowed_headers:
-            - Authorization
+            - Accept
             - Content-Type
-            - Cookie
-          exposed_headers:
-            - Content-Type
-            - Set-Cookie
+            - Origin
           allow_credentials: true
-          debug: false
+          max_age: 3600
 
       admin:
         base_url: https://kratos-admin.alt-auth.svc.cluster.local:4434/
 
     selfservice:
-      default_browser_return_url: https://alt.example.com/
+      default_browser_return_url: https://curionoah.com/
       allowed_return_urls:
-        - https://alt.example.com
-        - https://app.alt.example.com
+        - https://curionoah.com
+        - https://id.curionoah.com
+        - https://app.curionoah.com
         - https://alt-frontend.alt-apps.svc.cluster.local
 
       methods:
@@ -72,45 +67,43 @@ data:
 
       flows:
         error:
-          ui_url: https://alt.example.com/error
+          ui_url: https://curionoah.com/auth/error
 
         settings:
-          ui_url: https://alt.example.com/settings
+          ui_url: https://curionoah.com/auth/settings
           privileged_session_max_age: 10m
           required_aal: highest_available
 
         recovery:
           enabled: true
-          ui_url: https://alt.example.com/recovery
+          ui_url: https://curionoah.com/auth/recovery
           use: code
 
         verification:
           enabled: true
-          ui_url: https://alt.example.com/verification
+          ui_url: https://curionoah.com/auth/verification
           use: code
           after:
-            default_browser_return_url: https://alt.example.com/
+            default_browser_return_url: https://curionoah.com/
 
         logout:
           after:
-            default_browser_return_url: https://alt.example.com/
+            default_browser_return_url: https://curionoah.com/
 
         login:
-          ui_url: https://alt.example.com/login
-          lifespan: 5m
+          ui_url: https://curionoah.com/login
+          lifespan: 10m
           after:
-            default_browser_return_url: https://alt.example.com/
-            password:
-              default_browser_return_url: https://alt.example.com/
+            default_browser_return_url: https://curionoah.com/
 
         registration:
+          enabled: true
           lifespan: 10m
-          ui_url: https://alt.example.com/registration
+          ui_url: https://curionoah.com/auth/register
           after:
-            default_browser_return_url: https://alt.example.com/
+            default_browser_return_url: https://curionoah.com/
             password:
               hooks:
-                - hook: session
                 - hook: show_verification_ui
 
     log:
@@ -148,5 +141,6 @@ data:
       lifespan: 12h
       cookie:
         persistent: true
-        same_site: Strict
-        domain: .alt.example.com
+        same_site: Lax
+        domain: curionoah.com  # TODO.md修正: 同一トップレベルドメイン要件を満たす
+        path: /
