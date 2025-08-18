@@ -4,8 +4,10 @@ import { cookies } from 'next/headers'
 export async function GET(request: NextRequest) {
   try {
     // TODO.md要件: サーバが受信したCookieの有無をデバッグ用に可視化
-    const cookieStore = cookies()
-    const hasKratosSession = cookieStore.has('ory_kratos_session') || cookieStore.has('__Host-ory_kratos_session')
+    const cookieStore = await cookies()
+    const hasOryKratosSession = cookieStore.has('ory_kratos_session')
+    const hasHostOryKratosSession = cookieStore.has('__Host-ory_kratos_session')
+    const hasKratosSession = hasOryKratosSession || hasHostOryKratosSession
     
     // Basic application health checks
     const healthCheck = {
@@ -27,8 +29,8 @@ export async function GET(request: NextRequest) {
         authentication: {
           hasSession: hasKratosSession,
           cookies: {
-            ory_kratos_session: cookieStore.has('ory_kratos_session'),
-            host_ory_kratos_session: cookieStore.has('__Host-ory_kratos_session')
+            ory_kratos_session: hasOryKratosSession,
+            host_ory_kratos_session: hasHostOryKratosSession
           }
         }
       }

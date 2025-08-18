@@ -8,7 +8,7 @@ export const revalidate = 0
 export async function GET(request: NextRequest) {
   try {
     // TODO.md要件: サーバが受信したCookieの詳細をデバッグ用に可視化
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     
     const sessionCookies = {
       ory_kratos_session: cookieStore.has('ory_kratos_session'),
