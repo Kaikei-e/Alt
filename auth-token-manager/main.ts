@@ -7,12 +7,10 @@ import { config } from "./src/utils/config.ts";
 import { InoreaderTokenManager } from "./src/auth/oauth.ts";
 import { K8sSecretManager } from "./src/k8s/secret-manager-simple.ts";
 import {
-  initializeLogging,
   StructuredLogger,
 } from "./src/utils/logger.ts";
 
 // Initialize structured logging with sanitization
-await initializeLogging();
 const logger = new StructuredLogger("auth-token-manager");
 logger.info("Starting auth-token-manager v2.0.0 (refresh-token-only mode)");
 

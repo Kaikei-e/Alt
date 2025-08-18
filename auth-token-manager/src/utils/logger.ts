@@ -172,9 +172,9 @@ export class StructuredLogger {
       }
     }
     
-    // Setup logger configuration
+    // Setup logger configuration - Use only console handler in Kubernetes
     const config: LoggerConfig = {
-      handlers: ["console", "file"],
+      handlers: ["console"],
       level: (Deno.env.get("LOG_LEVEL") as LevelName) || "INFO",
     };
 
@@ -182,14 +182,6 @@ export class StructuredLogger {
     setupLogger({
       handlers: {
         console: new ConsoleHandler("DEBUG", {
-          formatter: (logRecord) => {
-            const enhanced = logRecord as EnhancedLogRecord;
-            enhanced.component = this.component;
-            return new JsonFormatter().format(enhanced);
-          },
-        }),
-        file: new JsonFileHandler("DEBUG", {
-          filename: "./logs/app.log",
           formatter: (logRecord) => {
             const enhanced = logRecord as EnhancedLogRecord;
             enhanced.component = this.component;

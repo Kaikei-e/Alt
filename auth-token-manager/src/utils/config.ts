@@ -36,7 +36,7 @@ class ConfigManager {
   async loadConfig(): Promise<ConfigOptions> {
     return {
       kubernetes_namespace: Deno.env.get('KUBERNETES_NAMESPACE') || 'alt-processing',
-      secret_name: Deno.env.get('SECRET_NAME') || 'inoreader-tokens',
+      secret_name: Deno.env.get('SECRET_NAME') || 'pre-processor-sidecar-oauth2-token',
       retry: {
         max_attempts: parseInt(Deno.env.get('RETRY_MAX_ATTEMPTS') || '3'),
         base_delay: parseInt(Deno.env.get('RETRY_BASE_DELAY') || '1000'),
@@ -90,7 +90,7 @@ class ConfigManager {
     
     // Log configuration summary (without sensitive data)
     const clientId = Deno.env.get('INOREADER_CLIENT_ID');
-    console.log(`ℹ️ Client ID configured: ${clientId ? '[CONFIGURED]' : '[NOT_SET]'}`);
+    console.log(`ℹ️ Client ID configured: ${clientId ? clientId.substring(0, 4) + '...' + clientId.substring(clientId.length - 10) : '[NOT_SET]'}`);
     
     return true;
   }
@@ -106,7 +106,7 @@ class ConfigManager {
   getKubernetesConfig(): KubernetesConfig {
     return {
       namespace: Deno.env.get('KUBERNETES_NAMESPACE') || 'alt-processing',
-      secretName: Deno.env.get('SECRET_NAME') || 'inoreader-tokens',
+      secretName: Deno.env.get('SECRET_NAME') || 'pre-processor-sidecar-oauth2-token',
     };
   }
 
