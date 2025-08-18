@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export const config = {
-  matcher: ['/((?!login|register|_next|api|favicon.ico).*)'],
+  matcher: ['/((?!login|register|self-service|sessions|_next|api|favicon.ico).*)'],
 }
 
 export function middleware(req: NextRequest) {
