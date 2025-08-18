@@ -45,11 +45,14 @@ export class K8sSecretManager {
         scope: tokens.scope || "read write"
       };
 
-      console.log(`📋 Token data prepared:`, {
-        expires_in: tokenData.expires_in,
-        expires_at: tokenData.expires_at,
-        scope: tokenData.scope
-      });
+      // SECURITY: Remove token details from production logs
+      if (Deno.env.get('NODE_ENV') === 'development') {
+        console.log(`📋 Token data prepared:`, {
+          expires_in: tokenData.expires_in,
+          expires_at: tokenData.expires_at,
+          scope: tokenData.scope
+        });
+      }
 
       // Encode token data as JSON for pre-processor-sidecar compatibility
       const tokenDataJson = JSON.stringify(tokenData);
@@ -122,11 +125,14 @@ data:
       
       const tokenData = JSON.parse(tokenDataDecoded);
       
-      console.log('📋 Found token data:', {
-        expires_at: tokenData.expires_at,
-        token_type: tokenData.token_type,
-        scope: tokenData.scope
-      });
+      // SECURITY: Remove token details from production logs
+      if (Deno.env.get('NODE_ENV') === 'development') {
+        console.log('📋 Found token data:', {
+          expires_at: tokenData.expires_at,
+          token_type: tokenData.token_type,
+          scope: tokenData.scope
+        });
+      }
       
       // Convert to our expected format
       const result: K8sSecretData = {

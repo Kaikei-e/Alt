@@ -374,8 +374,13 @@ Deno.test("Security - Boundary Testing", () => {
   for (const testCase of boundaryTestCases) {
     try {
       const sanitized = DataSanitizer.sanitize(testCase);
-      // Should not throw and should return something
-      assert(sanitized !== undefined);
+      // Should not throw and should return a value (even if undefined)
+      // For undefined input, undefined output is acceptable
+      if (testCase === undefined) {
+        assert(sanitized === undefined);
+      } else {
+        assert(sanitized !== undefined);
+      }
     } catch (error) {
       console.error(`Boundary test failed for:`, testCase, error);
       throw error;

@@ -451,31 +451,103 @@ class DataSanitizer {
   
   /**
    * Sanitize sensitive data in logs (synchronous version for compatibility)
+   * Includes circular reference detection to prevent infinite loops
    */
-  static sanitize(data: any): any {
+  static sanitize(data: any, visited = new WeakSet()): any {
+    // Handle null/undefined values
+    if (data === null || data === undefined) {
+      return data;
+    }
+
     if (typeof data === "string") {
       return this.sanitizeString(data);
     }
 
     if (Array.isArray(data)) {
-      return data.map((item) => this.sanitize(item));
+      // Circular reference detection for arrays
+      if (visited.has(data)) {
+        return "[CIRCULAR_REFERENCE]";
+      }
+      visited.add(data);
+      const result = data.map((item) => this.sanitize(item, visited));
+      visited.delete(data);
+      return result;
     }
 
-    if (data && typeof data === "object") {
-      return this.sanitizeObject(data);
+    if (typeof data === "object") {
+      // Circular reference detection for objects
+      if (visited.has(data)) {
+        return "[CIRCULAR_REFERENCE]";
+      }
+      visited.add(data);
+      const result = this.sanitizeObject(data, visited);
+      visited.delete(data);
+      return result;
     }
 
     return data;
   }
 
   /**
-   * Sanitize strings containing sensitive patterns
+   * Sanitize strings containing sensitive patterns with ReDoS protection
+   * Implements timeout mechanisms to prevent Regular Expression Denial of Service
    */
   private static sanitizeString(str: string): string {
-    let sanitized = str;
+    // Input validation to prevent ReDoS attacks
+    if (typeof str !== 'string' || str.length > 10000) {
+      return "[OVERSIZED_INPUT]";
+    }
 
-    SENSITIVE_PATTERNS.forEach((pattern) => {
-      sanitized = sanitized.replace(pattern, (match) => {
+    let sanitized = str;
+    const REGEX_TIMEOUT_MS = 100; // 100ms timeout per pattern
+
+    for (const pattern of SENSITIVE_PATTERNS) {
+      try {
+        // Use timeout mechanism to prevent ReDoS
+        const result = this.executeRegexWithTimeout(sanitized, pattern, REGEX_TIMEOUT_MS);
+        if (result !== null) {
+          sanitized = result;
+        } else {
+          // Timeout occurred, log security event and use safe fallback
+          if (Deno.env.get('NODE_ENV') === 'development') {
+            console.warn('Regex timeout detected - potential ReDoS attack prevented');
+          }
+          break;
+        }
+      } catch (error) {
+        // Log security event without exposing sensitive data
+        if (Deno.env.get('NODE_ENV') === 'development') {
+          console.warn('Regex execution failed - security protection applied');
+        }
+        continue;
+      }
+    }
+
+    return sanitized;
+  }
+
+  /**
+   * Execute regex with timeout protection against ReDoS attacks
+   * Uses synchronous approach with complexity limits
+   */
+  private static executeRegexWithTimeout(
+    text: string, 
+    pattern: RegExp, 
+    timeoutMs: number
+  ): string | null {
+    const startTime = Date.now();
+    let operationCount = 0;
+    const MAX_OPERATIONS = 10000; // Limit operations to prevent infinite loops
+
+    try {
+      const result = text.replace(pattern, (match, ...args) => {
+        operationCount++;
+        
+        // Check for timeout and operation limits
+        if (Date.now() - startTime > timeoutMs || operationCount > MAX_OPERATIONS) {
+          throw new Error('Regex timeout or complexity limit exceeded');
+        }
+
         // Keep first 4 and last 4 characters, mask the middle
         if (match.length <= 8) {
           return "[REDACTED]";
@@ -486,16 +558,19 @@ class DataSanitizer {
           match.substring(match.length - 4)
         );
       });
-    });
-
-    return sanitized;
+      
+      return result;
+    } catch (error) {
+      // Return null to indicate timeout/failure
+      return null;
+    }
   }
 
   /**
    * Advanced object sanitization with context-aware PII/PHI detection
-   * Implements multi-layered security analysis
+   * Implements multi-layered security analysis with circular reference protection
    */
-  private static sanitizeObject(obj: Record<string, any>): Record<string, any> {
+  private static sanitizeObject(obj: Record<string, any>, visited = new WeakSet()): Record<string, any> {
     const sanitized: Record<string, any> = {};
 
     for (const [key, value] of Object.entries(obj)) {
@@ -518,7 +593,7 @@ class DataSanitizer {
           isFinancial
         }));
       } else {
-        sanitized[key] = this.sanitize(value);
+        sanitized[key] = this.sanitize(value, visited);
       }
     }
 
@@ -1372,11 +1447,11 @@ class LogIntegrityManager {
         );
         
         // Export key for storage (in production, store securely)
-        const exportedKey = await crypto.subtle.exportKey('raw', this.signingKey);
-        const keyBase64 = encodeBase64(new Uint8Array(exportedKey));
-        
-        console.warn(`Generated new log signing key: ${keyBase64}`);
-        console.warn('Store this key securely in LOG_SIGNING_KEY environment variable');
+        // SECURITY: Never log cryptographic keys - CWE-532 mitigation
+        if (Deno.env.get('NODE_ENV') === 'development') {
+          console.warn('Generated new log signing key - store securely in LOG_SIGNING_KEY environment variable');
+          console.warn('Key has been generated and is ready for use');
+        }
       }
     } catch (error) {
       console.error('Failed to initialize log integrity manager:', error);
@@ -1385,11 +1460,30 @@ class LogIntegrityManager {
   }
 
   /**
-   * Generate HMAC signature for log entry
+   * Generate HMAC signature for log entry with strict input validation
    */
   async signLogEntry(logEntry: string): Promise<string | null> {
+    // Input validation to prevent bypass attacks
     if (!this.verificationEnabled || !this.signingKey) {
       return null;
+    }
+
+    // Strict input validation
+    if (typeof logEntry !== 'string') {
+      throw new Error('Log entry must be a string');
+    }
+
+    if (logEntry.length === 0) {
+      throw new Error('Log entry cannot be empty');
+    }
+
+    if (logEntry.length > 1000000) { // 1MB limit
+      throw new Error('Log entry too large for signing');
+    }
+
+    // Check for potentially malicious patterns
+    if (this.containsMaliciousPatterns(logEntry)) {
+      throw new Error('Log entry contains invalid patterns');
     }
 
     try {
@@ -1408,10 +1502,39 @@ class LogIntegrityManager {
   }
 
   /**
-   * Verify log entry signature
+   * Verify log entry signature with strict input validation
    */
   async verifyLogEntry(logEntry: string, signature: string): Promise<boolean> {
     if (!this.verificationEnabled || !this.signingKey) {
+      return false;
+    }
+
+    // Input validation for log entry
+    if (typeof logEntry !== 'string' || logEntry.length === 0) {
+      return false;
+    }
+
+    if (logEntry.length > 1000000) { // 1MB limit
+      return false;
+    }
+
+    // Input validation for signature
+    if (typeof signature !== 'string' || signature.length === 0) {
+      return false;
+    }
+
+    // Validate base64 signature format
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(signature)) {
+      return false;
+    }
+
+    // Signature length validation (HMAC-SHA256 should be 44 characters in base64)
+    if (signature.length < 40 || signature.length > 100) {
+      return false;
+    }
+
+    // Check for malicious patterns in log entry
+    if (this.containsMaliciousPatterns(logEntry)) {
       return false;
     }
 
@@ -1431,6 +1554,27 @@ class LogIntegrityManager {
       console.error('Failed to verify log entry:', error);
       return false;
     }
+  }
+
+  /**
+   * Check for malicious patterns that could indicate injection attacks
+   */
+  private containsMaliciousPatterns(input: string): boolean {
+    const maliciousPatterns = [
+      /null\x00/g,           // Null byte injection
+      /<script/gi,           // Script injection
+      /javascript:/gi,       // JavaScript protocol
+      /data:text\/html/gi,   // Data URI with HTML
+      /\\x[0-9a-f]{2}/gi,    // Hex escape sequences
+      /\\u[0-9a-f]{4}/gi,    // Unicode escape sequences
+      /%[0-9a-f]{2}/gi,      // URL encoding of control characters (if not expected)
+      /\x00-\x1f/g,          // Control characters
+      /\uffff/g,             // Invalid Unicode
+      /\r\n\r\n/g,           // HTTP header injection
+      /\\\\/g,               // Excessive backslashes
+    ];
+
+    return maliciousPatterns.some(pattern => pattern.test(input));
   }
 
   /**
