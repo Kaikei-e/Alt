@@ -332,17 +332,29 @@ func (a *KratosClientAdapter) GetSession(ctx context.Context, sessionToken strin
 }
 
 func (a *KratosClientAdapter) WhoAmI(ctx context.Context, sessionToken string) (*domain.KratosSession, error) {
-	// TODO: Implement actual Kratos integration
-	return &domain.KratosSession{
-		ID: uuid.New().String(),
-		Identity: &domain.KratosIdentity{
-			ID: uuid.New().String(),
-			Traits: map[string]interface{}{
-				"email": "test@example.com",
-			},
-		},
-		// Add other required fields...
-	}, nil
+	a.logger.Info("performing whoami check with Kratos",
+		"session_token_present", sessionToken != "")
+
+	// Use the ToSession endpoint with Cookie header (recommended approach)
+	// Per TODO.md: whoamiはCookieで検証（Authorization: Bearerは401になる）
+	resp, httpResp, err := a.client.PublicAPI().FrontendAPI.
+		ToSession(ctx).
+		Cookie("ory_kratos_session="+sessionToken).
+		Execute()
+
+	if err != nil {
+		a.logger.Error("kratos whoami check failed",
+			"error", err,
+			"http_status", getHTTPStatus(httpResp))
+		return nil, a.transformKratosError(err, httpResp, "whoami")
+	}
+
+	a.logger.Info("whoami check successful",
+		"session_id", resp.Id,
+		"identity_id", getIdentityID(resp.Identity))
+
+	// Transform response to domain session
+	return a.transformSessionToDomain(resp)
 }
 
 func (a *KratosClientAdapter) RevokeSession(ctx context.Context, sessionID string) error {
