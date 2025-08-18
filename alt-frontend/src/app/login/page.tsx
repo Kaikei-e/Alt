@@ -4,7 +4,7 @@ export const revalidate = 0
 import { redirect } from 'next/navigation'
 import LoginClient from './login-client'
 
-export default async function LoginPageServer({
+export default async function Page({
   searchParams,
 }: { searchParams: Promise<{ flow?: string; refresh?: string; return_to?: string }> }) {
   const params = await searchParams

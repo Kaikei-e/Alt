@@ -313,7 +313,7 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
                 as="button"
                 color="var(--alt-primary)"
                 textDecoration="underline"
-                onClick={() => window.location.href = "https://id.curionoah.com/self-service/login/browser"}
+                onClick={() => window.location.href = "/login"}
               >
                 ログイン
               </Box>
