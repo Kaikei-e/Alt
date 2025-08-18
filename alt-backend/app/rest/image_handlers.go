@@ -3,6 +3,8 @@ package rest
 import (
 	"alt/di"
 	"alt/domain"
+	middleware_custom "alt/middleware"
+	"alt/utils/logger"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,7 +14,12 @@ import (
 )
 
 func registerImageRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
-	v1.POST("/images/fetch", handleImageFetch(container))
+	// 認証ミドルウェアの初期化
+	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger)
+	
+	// 画像取得も認証必須
+	images := v1.Group("/images", authMiddleware.RequireAuth())
+	images.POST("/fetch", handleImageFetch(container))
 }
 
 func handleImageFetch(container *di.ApplicationComponents) echo.HandlerFunc {

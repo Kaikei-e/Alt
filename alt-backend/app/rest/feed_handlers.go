@@ -20,34 +20,34 @@ func registerFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	// 認証ミドルウェアの初期化
 	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger)
 
-	// Public endpoints (no authentication required)
-	public := v1.Group("")
-	public.GET("/feeds/fetch/single", handleFetchSingleFeed(container, cfg))
-	public.GET("/feeds/fetch/list", handleFetchFeedsList(container, cfg))
-	public.GET("/feeds/fetch/limit/:limit", handleFetchFeedsLimit(container, cfg))
-	public.GET("/feeds/fetch/page/:page", handleFetchFeedsPage(container))
+	// TODO.md案A: privateグループ化で認証を適用
+	// v1にまとめて適用する代わりに、feedsグループに認証ミドルウェアを適用
+	feeds := v1.Group("/feeds", authMiddleware.RequireAuth())
 
-	// User-specific endpoints (authentication required)
-	private := v1.Group("")
-	private.Use(authMiddleware.RequireAuth())
+	// Private endpoints (authentication required)
+	feeds.GET("/fetch/single", handleFetchSingleFeed(container, cfg))
+	feeds.GET("/fetch/list", handleFetchFeedsList(container, cfg))
+	feeds.GET("/fetch/limit/:limit", handleFetchFeedsLimit(container, cfg))
+	feeds.GET("/fetch/page/:page", handleFetchFeedsPage(container))
 
-	private.GET("/feeds/fetch/cursor", handleFetchUnreadFeedsCursor(container))
-	private.GET("/feeds/fetch/viewed/cursor", handleFetchReadFeedsCursor(container))
-	private.GET("/feeds/fetch/favorites/cursor", handleFetchFavoriteFeedsCursor(container))
-	private.POST("/feeds/read", handleMarkFeedAsRead(container))
-	private.GET("/feeds/count/unreads", handleUnreadCount(container))
-	private.POST("/feeds/register/favorite", handleRegisterFavoriteFeed(container))
+	// User-specific endpoints (authentication required) - 認証必須パス
+	feeds.GET("/count/unreads", handleUnreadCount(container))
+	feeds.GET("/fetch/cursor", handleFetchUnreadFeedsCursor(container))
+	feeds.GET("/fetch/viewed/cursor", handleFetchReadFeedsCursor(container))
+	feeds.GET("/fetch/favorites/cursor", handleFetchFavoriteFeedsCursor(container))
+	feeds.POST("/read", handleMarkFeedAsRead(container))
+	feeds.POST("/register/favorite", handleRegisterFavoriteFeed(container))
 
-	// Optional authentication endpoints (for personalized results)
-	optional := v1.Group("")
-	optional.Use(authMiddleware.OptionalAuth())
+	// Authentication needed endpoints (for personalized results)
+	feeds.POST("/search", handleSearchFeeds(container))
+	feeds.POST("/fetch/details", handleFetchFeedDetails(container))
+	feeds.GET("/stats", handleFeedStats(container, cfg))
+	feeds.POST("/tags", handleFetchFeedTags(container))
+	feeds.POST("/fetch/summary/provided", handleFetchInoreaderSummary(container))
 
-	optional.POST("/feeds/search", handleSearchFeeds(container))
-	optional.POST("/feeds/fetch/details", handleFetchFeedDetails(container))
-	optional.GET("/feeds/stats", handleFeedStats(container, cfg))
-	optional.POST("/feeds/tags", handleFetchFeedTags(container))
-	optional.POST("/rss-feed-link/register", handleRegisterRSSFeed(container))
-	optional.POST("/feeds/fetch/summary/provided", handleFetchInoreaderSummary(container))
+	// RSS feed registration (require auth) - 認証ミドルウェア付きでグループ作成
+	rss := v1.Group("/rss-feed-link", authMiddleware.RequireAuth())
+	rss.POST("/register", handleRegisterRSSFeed(container))
 }
 
 func handleFetchSingleFeed(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
@@ -730,4 +730,3 @@ func handleFetchInoreaderSummary(container *di.ApplicationComponents) echo.Handl
 		return c.JSON(http.StatusOK, finalResponse)
 	}
 }
-

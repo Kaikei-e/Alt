@@ -3,6 +3,7 @@ package rest
 import (
 	"alt/di"
 	"alt/driver/search_indexer"
+	middleware_custom "alt/middleware"
 	"alt/utils/logger"
 	"net/http"
 
@@ -10,7 +11,12 @@ import (
 )
 
 func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
-	v1.GET("/articles/search", handleSearchArticles(container))
+	// 認証ミドルウェアの初期化
+	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger)
+	
+	// 記事検索も認証必須
+	articles := v1.Group("/articles", authMiddleware.RequireAuth())
+	articles.GET("/search", handleSearchArticles(container))
 }
 
 func handleSearchArticles(container *di.ApplicationComponents) echo.HandlerFunc {
