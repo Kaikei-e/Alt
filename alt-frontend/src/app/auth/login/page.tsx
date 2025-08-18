@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
 
@@ -30,7 +30,7 @@ interface LoginFlow {
   }
 }
 
-export default function LoginPage() {
+function LoginPageComponent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [flow, setFlow] = useState<LoginFlow | null>(null)
@@ -38,6 +38,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sessionChecked, setSessionChecked] = useState(false)
+  const initiatedRef = useRef(false)
 
   const KRATOS_PUBLIC = "https://id.curionoah.com";
 
@@ -90,17 +91,26 @@ export default function LoginPage() {
   }, [router, returnUrl, refresh])
 
   useEffect(() => {
-    // セッションチェック完了後にログインフローを開始
     if (!sessionChecked) return
-
-    if (flowId) {
-      // If we have a flow ID, fetch the flow data
-      fetchFlow(flowId)
-    } else {
-      // If no flow ID, initiate a new login flow
+    
+    // Hydration前に空になるのを避ける: 直接location.searchを見る
+    const hasFlow = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('flow')
+    
+    if (flowId || hasFlow) {
+      // flowIdがあるか、直接URLにflowパラメータがある場合
+      const actualFlowId = flowId || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('flow') : null)
+      if (actualFlowId) {
+        fetchFlow(actualFlowId)
+      }
+      return
+    }
+    
+    // 一度だけ飛ばす（再レンダーでも再実行しない）
+    if (!initiatedRef.current) {
+      initiatedRef.current = true
       initiateLoginFlow()
     }
-  }, [flowId, sessionChecked])
+  }, [flowId, sessionChecked, refresh])
 
   const initiateLoginFlow = async () => {
     try {
@@ -112,8 +122,8 @@ export default function LoginPage() {
         ? "https://id.curionoah.com/self-service/login/browser?refresh=true"
         : "https://id.curionoah.com/self-service/login/browser"
 
-      // TODO.md A案（推奨）: 直接リダイレクト方式
-      // window.location.href で直接 Kratos に飛ばし、HTMLフローの303を踏む
+      // 恒久対応: Kratos認証フロー初期化
+      // ブラウザ方式でKratosに直接リダイレクトし、HTMLフローを開始
       window.location.href = loginUrl
       return
 
@@ -401,5 +411,27 @@ export default function LoginPage() {
         </VStack>
       </Flex>
     </Box>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <Flex
+        minH="100vh"
+        align="center"
+        justify="center"
+        bg="var(--alt-glass-bg)"
+      >
+        <VStack gap={4}>
+          <Spinner size="lg" color="var(--alt-primary)" />
+          <Text color="var(--text-primary)" fontFamily="body">
+            ログインページを準備中...
+          </Text>
+        </VStack>
+      </Flex>
+    }>
+      <LoginPageComponent />
+    </Suspense>
   )
 }

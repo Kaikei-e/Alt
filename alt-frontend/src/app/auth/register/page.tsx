@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
 
@@ -30,9 +30,11 @@ interface RegistrationFlow {
   }
 }
 
-export default function RegisterPage() {
+function RegisterPageComponent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const initiatedRef = useRef(false)
+  const KRATOS_PUBLIC = "https://id.curionoah.com"
   const [flow, setFlow] = useState<RegistrationFlow | null>(null)
   const [formData, setFormData] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
@@ -43,11 +45,13 @@ export default function RegisterPage() {
   const returnUrl = searchParams.get('return_to') || '/'
 
   useEffect(() => {
-    if (flowId) {
-      // If we have a flow ID, fetch the flow data
-      fetchFlow(flowId)
-    } else {
-      // If no flow ID, initiate a new registration flow
+    // SSR/水和のズレで flow が一瞬空になるのを回避
+    const urlFlow = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('flow') : null
+    const id = flowId || urlFlow
+    if (id) { fetchFlow(id); return }
+    // 一度だけ初期化（再レンダーでも走らせない）
+    if (!initiatedRef.current) {
+      initiatedRef.current = true
       initiateRegistrationFlow()
     }
   }, [flowId])
@@ -57,9 +61,9 @@ export default function RegisterPage() {
       setIsLoading(true)
       setError(null)
 
-      // TODO.md ブラウザ方式（推奨）: 直接リダイレクト方式
-      // window.location.href で直接 Kratos に飛ばし、HTMLフローの303を踏む
-      window.location.href = "https://id.curionoah.com/self-service/registration/browser"
+      // 恒久対応: Kratos登録フロー初期化
+      // ブラウザ方式でKratosに直接リダイレクトし、HTMLフローを開始
+      window.location.href = `${KRATOS_PUBLIC}/self-service/registration/browser`
       return
 
     } catch (err) {
@@ -74,7 +78,7 @@ export default function RegisterPage() {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch(`/self-service/registration/flows?id=${id}`, {
+      const response = await fetch(`${KRATOS_PUBLIC}/self-service/registration/flows?id=${id}`, {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -120,7 +124,8 @@ export default function RegisterPage() {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch(`/self-service/registration?flow=${flow.id}`, {
+      const csrf = flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value
+      const response = await fetch(`${KRATOS_PUBLIC}/self-service/registration?flow=${flow.id}`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -129,7 +134,8 @@ export default function RegisterPage() {
         },
         body: JSON.stringify({
           method: 'password',
-          ...formData
+          ...formData,
+          csrf_token: csrf
         })
       })
 
@@ -167,7 +173,9 @@ export default function RegisterPage() {
   }
 
   const renderFormField = (node: RegistrationFlowNode) => {
-    if (node.type !== 'input' || node.group !== 'password') {
+    if (node.type !== 'input') return null
+    // csrf は default グループに出る。hidden はそのまま置いてOK（POSTも本文で送る）
+    if (!['password','default'].includes(node.group)) {
       return null
     }
 
@@ -350,5 +358,27 @@ export default function RegisterPage() {
         </VStack>
       </Flex>
     </Box>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <Flex
+        minH="100vh"
+        align="center"
+        justify="center"
+        bg="var(--alt-glass-bg)"
+      >
+        <VStack gap={4}>
+          <Spinner size="lg" color="var(--alt-primary)" />
+          <Text color="var(--text-primary)" fontFamily="body">
+            登録ページを準備中...
+          </Text>
+        </VStack>
+      </Flex>
+    }>
+      <RegisterPageComponent />
+    </Suspense>
   )
 }
