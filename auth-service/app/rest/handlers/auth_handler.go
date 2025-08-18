@@ -259,24 +259,43 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 func (h *AuthHandler) ValidateSession(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	// Extract session token from cookie or header
+	// TODO.md修正: Cookie優先でKratos呼び出し
+	// ブラウザからのCookieヘッダー全体を取得
+	cookieHeader := c.Request().Header.Get("Cookie")
 	sessionToken := h.extractSessionToken(c)
-	if sessionToken == "" {
-		h.logger.Warn("session validation failed: no session token",
+	
+	// Cookie優先、トークンはフォールバック
+	var sessionCtx *domain.SessionContext
+	var err error
+	
+	if cookieHeader != "" {
+		// ブラウザの場合はCookie方式でKratos呼び出し
+		h.logger.Debug("validating session with cookie", 
+			"cookie_length", len(cookieHeader),
+			"ip", c.RealIP())
+		sessionCtx, err = h.authUsecase.ValidateSessionWithCookie(ctx, cookieHeader)
+	} else if sessionToken != "" {
+		// APIクライアントの場合はToken方式でKratos呼び出し
+		h.logger.Debug("validating session with token", 
+			"token_present", true,
+			"ip", c.RealIP())
+		sessionCtx, err = h.authUsecase.ValidateSession(ctx, sessionToken)
+	} else {
+		h.logger.Warn("session validation failed: no cookie or session token",
 			"ip", c.RealIP(),
 			"user_agent", c.Request().Header.Get("User-Agent"),
 			"path", c.Request().URL.Path)
 		return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
 			Error:   "No session found",
 			Code:    "SESSION_NOT_FOUND",
-			Details: "Session token is required for authentication",
+			Details: "Session cookie or token is required for authentication",
 		})
 	}
 
-	sessionCtx, err := h.authUsecase.ValidateSession(ctx, sessionToken)
 	if err != nil {
 		h.logger.Error("session validation failed",
 			"error", err,
+			"cookie_present", cookieHeader != "",
 			"session_token_present", sessionToken != "",
 			"ip", c.RealIP(),
 			"user_agent", c.Request().Header.Get("User-Agent"))
@@ -310,6 +329,12 @@ func (h *AuthHandler) ValidateSession(c echo.Context) error {
 	h.logger.Info("session validation successful",
 		"user_id", sessionCtx.UserID,
 		"session_id", sessionCtx.SessionID,
+		"method", func() string {
+			if cookieHeader != "" {
+				return "cookie"
+			}
+			return "token"
+		}(),
 		"ip", c.RealIP())
 
 	// Set headers for downstream services
@@ -319,6 +344,10 @@ func (h *AuthHandler) ValidateSession(c echo.Context) error {
 	c.Response().Header().Set("X-Session-ID", sessionCtx.SessionID)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
+		"valid":   true,
+		"user_id": sessionCtx.UserID.String(),
+		"email":   sessionCtx.Email,
+		"role":    string(sessionCtx.Role),
 		"authenticated": true,
 		"user": map[string]interface{}{
 			"id":       sessionCtx.UserID,

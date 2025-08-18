@@ -19,6 +19,7 @@ type AuthUsecase interface {
 
 	// Session management
 	ValidateSession(ctx context.Context, sessionToken string) (*domain.SessionContext, error)
+	ValidateSessionWithCookie(ctx context.Context, cookieHeader string) (*domain.SessionContext, error)
 	RefreshSession(ctx context.Context, sessionID string) (*domain.SessionContext, error)
 
 	// CSRF protection
@@ -34,6 +35,7 @@ type AuthGateway interface {
 	SubmitLoginFlow(ctx context.Context, flowID string, body interface{}) (*domain.KratosSession, error)
 	SubmitRegistrationFlow(ctx context.Context, flowID string, body interface{}) (*domain.KratosSession, error)
 	GetSession(ctx context.Context, sessionToken string) (*domain.KratosSession, error)
+	WhoAmI(ctx context.Context, cookieHeader string) (*domain.KratosSession, error)
 	RevokeSession(ctx context.Context, sessionID string) error
 }
 

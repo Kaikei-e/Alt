@@ -39,7 +39,7 @@ type KratosClient interface {
 	// Session management
 	CreateSession(ctx context.Context, identityID string, sessionToken string) (*domain.KratosSession, error)
 	GetSession(ctx context.Context, sessionToken string) (*domain.KratosSession, error)
-	WhoAmI(ctx context.Context, sessionToken string) (*domain.KratosSession, error)
+	WhoAmI(ctx context.Context, cookieHeader string) (*domain.KratosSession, error)
 	RevokeSession(ctx context.Context, sessionID string) error
 	ListSessions(ctx context.Context, identityID string) ([]*domain.KratosSession, error)
 
@@ -120,7 +120,7 @@ type KratosPublicClient interface {
 	SubmitSettingsFlow(ctx context.Context, flowID string, sessionToken string, body map[string]interface{}) (*domain.SettingsFlow, error)
 
 	// Session management
-	WhoAmI(ctx context.Context, sessionToken string) (*domain.KratosSession, error)
+	WhoAmI(ctx context.Context, cookieHeader string) (*domain.KratosSession, error)
 
 	// Health and status
 	Health(ctx context.Context) error

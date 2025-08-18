@@ -50,6 +50,22 @@ func (uc *AuthUseCase) ValidateSession(ctx context.Context, sessionToken string)
 		return nil, err
 	}
 
+	return uc.buildSessionContext(ctx, kratosSession)
+}
+
+// ValidateSessionWithCookie validates a session using Cookie header (TODO.md修正)
+func (uc *AuthUseCase) ValidateSessionWithCookie(ctx context.Context, cookieHeader string) (*domain.SessionContext, error) {
+	// whoami call with Cookie (per TODO.md instructions)
+	kratosSession, err := uc.authGateway.WhoAmI(ctx, cookieHeader)
+	if err != nil {
+		return nil, err
+	}
+
+	return uc.buildSessionContext(ctx, kratosSession)
+}
+
+// buildSessionContext builds session context from Kratos session (共通ロジック)
+func (uc *AuthUseCase) buildSessionContext(ctx context.Context, kratosSession *domain.KratosSession) (*domain.SessionContext, error) {
 	// Get our session
 	session, err := uc.authRepo.GetSessionByKratosID(ctx, kratosSession.ID)
 	if err != nil {

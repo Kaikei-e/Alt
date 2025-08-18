@@ -114,13 +114,15 @@ func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 }
 
 // extractSessionToken extracts session token from request
+// For browser requests, returns entire Cookie header
+// For API requests, returns token from Authorization or X-Session-Token header
 func (m *AuthMiddleware) extractSessionToken(c echo.Context) string {
-	// Try cookie first
-	if cookie, err := c.Cookie("ory_kratos_session"); err == nil && cookie.Value != "" {
-		return cookie.Value
+	// Check if request has browser cookies (indicating browser session)
+	if cookieHeader := c.Request().Header.Get("Cookie"); cookieHeader != "" && strings.Contains(cookieHeader, "ory_kratos_session") {
+		return cookieHeader // Return entire cookie header for browser sessions
 	}
 
-	// Try Authorization header
+	// Try Authorization header (for API clients)
 	auth := c.Request().Header.Get("Authorization")
 	if auth != "" {
 		// Support both "Bearer token" and raw token formats
@@ -130,6 +132,6 @@ func (m *AuthMiddleware) extractSessionToken(c echo.Context) string {
 		return auth
 	}
 
-	// Try X-Session-Token header
+	// Try X-Session-Token header (for API clients)
 	return c.Request().Header.Get("X-Session-Token")
 }

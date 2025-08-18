@@ -331,15 +331,16 @@ func (a *KratosClientAdapter) GetSession(ctx context.Context, sessionToken strin
 	return a.transformSessionToDomain(resp)
 }
 
-func (a *KratosClientAdapter) WhoAmI(ctx context.Context, sessionToken string) (*domain.KratosSession, error) {
+func (a *KratosClientAdapter) WhoAmI(ctx context.Context, cookieHeader string) (*domain.KratosSession, error) {
 	a.logger.Info("performing whoami check with Kratos",
-		"session_token_present", sessionToken != "")
+		"cookie_header_present", cookieHeader != "")
 
 	// Use the ToSession endpoint with Cookie header (recommended approach)
 	// Per TODO.md: whoamiはCookieで検証（Authorization: Bearerは401になる）
+	// cookieHeader should be the entire Cookie header value from browser request
 	resp, httpResp, err := a.client.PublicAPI().FrontendAPI.
 		ToSession(ctx).
-		Cookie("ory_kratos_session="+sessionToken).
+		Cookie(cookieHeader).
 		Execute()
 
 	if err != nil {

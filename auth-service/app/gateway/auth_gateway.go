@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"auth-service/app/domain"
 	"auth-service/app/port"
@@ -189,21 +190,37 @@ func (g *AuthGateway) SubmitRegistrationFlow(ctx context.Context, flowID string,
 }
 
 // GetSession retrieves a session from Kratos (X2.md Phase 2.3.1 強化)
-func (g *AuthGateway) GetSession(ctx context.Context, sessionToken string) (*domain.KratosSession, error) {
+// Now properly handles both browser (Cookie) and API (token) authentication
+func (g *AuthGateway) GetSession(ctx context.Context, sessionData string) (*domain.KratosSession, error) {
 	g.logger.Info("retrieving session",
-		"session_token_present", sessionToken != "")
+		"session_data_present", sessionData != "")
 
-	// セッショントークン検証
-	if err := g.validateSessionToken(sessionToken); err != nil {
-		g.logger.Error("invalid session token", "error", err)
-		return nil, fmt.Errorf("invalid session token: %w", err)
+	// Determine if this is a browser session (Cookie header) or API token
+	var kratosSession *domain.KratosSession
+	var err error
+
+	if strings.Contains(sessionData, "ory_kratos_session") {
+		// This is a Cookie header from browser - use WhoAmI
+		g.logger.Debug("using WhoAmI for browser session authentication")
+		kratosSession, err = g.kratosClient.WhoAmI(ctx, sessionData)
+	} else {
+		// This is a session token from API client - use GetSession
+		g.logger.Debug("using GetSession for API token authentication")
+		
+		// セッショントークン検証
+		if err := g.validateSessionToken(sessionData); err != nil {
+			g.logger.Error("invalid session token", "error", err)
+			return nil, fmt.Errorf("invalid session token: %w", err)
+		}
+		
+		kratosSession, err = g.kratosClient.GetSession(ctx, sessionData)
 	}
 
-	kratosSession, err := g.kratosClient.GetSession(ctx, sessionToken)
 	if err != nil {
 		g.logger.Error("failed to retrieve session", 
 			"error", err,
-			"error_type", fmt.Sprintf("%T", err))
+			"error_type", fmt.Sprintf("%T", err),
+			"is_cookie_auth", strings.Contains(sessionData, "ory_kratos_session"))
 			
 		// ドメインエラーに変換
 		if domainErr, ok := err.(*domain.AuthError); ok {
@@ -222,6 +239,47 @@ func (g *AuthGateway) GetSession(ctx context.Context, sessionToken string) (*dom
 	}
 
 	g.logger.Info("session retrieved successfully",
+		"session_id", kratosSession.ID,
+		"user_id", kratosSession.Identity.ID,
+		"identity_state", kratosSession.Identity.State,
+		"session_active", kratosSession.Active,
+		"auth_method", func() string {
+			if strings.Contains(sessionData, "ory_kratos_session") {
+				return "cookie"
+			}
+			return "token"
+		}())
+
+	return kratosSession, nil
+}
+
+// WhoAmI validates a session using Cookie header (TODO.md修正)
+func (g *AuthGateway) WhoAmI(ctx context.Context, cookieHeader string) (*domain.KratosSession, error) {
+	g.logger.Info("whoami call with cookie header", "cookie_length", len(cookieHeader))
+
+	kratosSession, err := g.kratosClient.WhoAmI(ctx, cookieHeader)
+	if err != nil {
+		g.logger.Error("whoami call failed", 
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err))
+			
+		// ドメインエラーに変換
+		if domainErr, ok := err.(*domain.AuthError); ok {
+			return nil, domainErr
+		}
+		
+		return nil, fmt.Errorf("whoami call failed: %w", err)
+	}
+
+	// セッション検証
+	if err := g.validateSessionIntegrity(kratosSession); err != nil {
+		g.logger.Error("whoami session integrity validation failed", 
+			"session_id", kratosSession.ID,
+			"error", err)
+		return nil, fmt.Errorf("session validation failed: %w", err)
+	}
+
+	g.logger.Info("whoami call successful",
 		"session_id", kratosSession.ID,
 		"user_id", kratosSession.Identity.ID,
 		"identity_state", kratosSession.Identity.State,
