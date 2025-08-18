@@ -100,6 +100,7 @@ export async function checkAuthStatus(): Promise<AuthUser | null> {
     // クライアント側は公開URLを使用（ブラウザからのアクセス）
     const response = await fetch('https://id.curionoah.com/sessions/whoami', {
       credentials: 'include',
+      cache: 'no-store', // TODO.md要件: 常時no-store
       headers: {
         'Accept': 'application/json',
       },

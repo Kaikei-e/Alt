@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// TODO.md要件: 常時動的レンダリング・キャッシュ無効化
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service.alt-auth.svc.cluster.local:8080';
 let loggedAuthServiceError = false;
 
@@ -16,6 +20,7 @@ export async function GET(request: NextRequest) {
         'Cookie': request.headers.get('cookie') || '',
       },
       credentials: 'include', // SPA用Cookie送信確実化
+      cache: 'no-store', // TODO.md要件: 常時no-store
       signal: AbortSignal.timeout(8000), // 8秒タイムアウト
     });
 

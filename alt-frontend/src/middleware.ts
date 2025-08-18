@@ -1,23 +1,23 @@
-// middleware.ts - ネットワーク無しゲート
+// middleware.ts - TODO.md準拠のAllowlist方式ゲート
 import { NextRequest, NextResponse } from 'next/server'
 import { securityHeaders } from './config/security'
 
-export const config = {
-  // 認証系・自己参照・静的は完全除外
-  matcher: ['/((?!login|register|self-service|sessions|_next|api|favicon.ico|icon.svg).*)'],
-}
+// TODO.md要件: 保護対象のみを列挙（Allowlist方式）
+const PROTECTED_PATHS = [
+  /^\/dashboard/,
+  /^\/app/,
+  /^\/settings/,
+  /^\/mobile/,
+  /^\/profile/,
+  /^\/feeds/,
+]
 
 export default function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl
   
-  // ここでネットワーク呼び出しは絶対にしない
-  // TODO.md要件: 堅牢化（通常名 + ホスト名付きクッキーのフォールバック）
-  const s1 = req.cookies.get('ory_kratos_session')?.value
-  const s2 = req.cookies.get('__Host-ory_kratos_session')?.value
-  const hasKratos = !!(s1 ?? s2)
-
-  // ログインページからの往復を防ぐ：ログイン中は素通し
-  if (pathname.startsWith('/login') || pathname.startsWith('/register')) {
+  // TODO.md要件: 非対象は素通し（/login, /auth, /_next, /self-service などは除外）
+  const isProtected = PROTECTED_PATHS.some((regex) => regex.test(pathname))
+  if (!isProtected) {
     const nonce = crypto.randomUUID()
     const res = NextResponse.next()
     const headers = securityHeaders(nonce)
@@ -26,18 +26,21 @@ export default function middleware(req: NextRequest) {
     return res
   }
 
-  if (!hasKratos) {
-    const url = new URL('/login', req.url)
-    // 元の行き先を保持（固定 /dashboard をやめる）
-    url.searchParams.set('return_to', pathname + (search || ''))
-    return NextResponse.redirect(url)
+  // TODO.md要件: Cookieの有無で分岐（ネットワーク呼び出しはしない）
+  const hasKratosSession = req.cookies.has('ory_kratos_session') || req.cookies.has('__Host-ory_kratos_session')
+  
+  if (hasKratosSession) {
+    // Cookieがあるときは通す。真正性検証は各ページ（SSR）で内部 whoami。
+    const nonce = crypto.randomUUID()
+    const res = NextResponse.next()
+    const headers = securityHeaders(nonce)
+    for (const [k, v] of Object.entries(headers)) res.headers.set(k, v)
+    res.headers.set('x-nonce', nonce)
+    return res
   }
 
-  // Cookieがあるときは通す。真正性検証は各ページ（SSR）で内部 whoami。
-  const nonce = crypto.randomUUID()
-  const res = NextResponse.next()
-  const headers = securityHeaders(nonce)
-  for (const [k, v] of Object.entries(headers)) res.headers.set(k, v)
-  res.headers.set('x-nonce', nonce)
-  return res
+  // 未認証時はログインページにリダイレクト
+  const url = new URL('/login', req.url)
+  url.searchParams.set('return_to', pathname + (search || ''))
+  return NextResponse.redirect(url)
 }
