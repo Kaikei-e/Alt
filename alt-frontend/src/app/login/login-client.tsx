@@ -55,21 +55,15 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
       setError(null)
 
       const response = await fetch(`${KRATOS_PUBLIC}/self-service/login/flows?id=${id}`, {
-        method: 'GET',
         credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-        },
+        headers: { Accept: 'application/json' },
       })
 
       if (!response.ok) {
-        if (response.status === 410) {        // ← 期限切れだけ"新規フロー"
-          window.location.href = '/login'
-          return
+        if (response.status === 410) { 
+          window.location.href = '/login'; return // 期限切れのみ新規化
         }
-        // 404・403・429 等はここで可視化（無限再初期化しない）
-        const msg = `Failed to fetch login flow: ${response.status}`
-        setError(msg); setIsLoading(false); return
+        setError(`fetch flow failed: ${response.status}`); return
       }
 
       const flowData = await response.json()
@@ -92,42 +86,26 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!flow) {
-      setError('No active login flow')
-      return
-    }
-
+    if (!flow) await fetchFlow(flowId)
+    const csrf = flow?.ui?.nodes?.find((n: any) => n.attributes?.name === 'csrf_token')?.attributes?.value
+    
     try {
       setIsLoading(true)
       setError(null)
 
-      const csrf = flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value
-
-      const response = await fetch(`${KRATOS_PUBLIC}/self-service/login?flow=${flow.id}`, {
+      const resp = await fetch(`${KRATOS_PUBLIC}/self-service/login?flow=${flowId}`, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          method: 'password',
-          ...formData,
-          csrf_token: csrf
-        })
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ method: 'password', csrf_token: csrf, ...formData }),
       })
-
-      // JSONモード：200(OK)/422(検証エラー) を扱う
-      if (response.status === 422) {
-        const updatedFlow = await response.json()
-        setFlow(updatedFlow)
-        return
+      
+      if (resp.status === 422) { 
+        setFlow(await resp.json()); return // バリデーションエラー
       }
-
-      if (!response.ok) {
-        throw new Error(`Login failed: ${response.status}`)
+      if (!resp.ok) { 
+        setError(`login failed: ${resp.status}`); return 
       }
-
       router.push(returnUrl)
 
     } catch (err) {

@@ -25,9 +25,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/',               // ルート（リダイレクトはしない）
-    '/desktop/:path*', // HTML系ヘッダー付与
-    '/mobile/:path*',  // HTML系ヘッダー付与
-  ],
+  matcher: ['/((?!login|register|self-service|sessions|_next|api|favicon.ico).*)'],
 }
