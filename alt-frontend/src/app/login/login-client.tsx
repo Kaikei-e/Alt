@@ -54,10 +54,14 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch(`${KRATOS_PUBLIC}/self-service/login/flows?id=${id}`, {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      })
+      const response = await fetch(
+        `${KRATOS_PUBLIC}/self-service/login/flows?id=${id}`,
+        {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store', // ← キャッシュ回避
+        }
+      )
 
       if (!response.ok) {
         if (response.status === 410) { 
@@ -68,6 +72,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
 
       const flowData = await response.json()
       setFlow(flowData)
+      return flowData
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch login flow')
@@ -86,8 +91,19 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!flow) await fetchFlow(flowId)
-    const csrf = flow?.ui?.nodes?.find((n: any) => n.attributes?.name === 'csrf_token')?.attributes?.value
+    // フローが未ロードならここで取得し、ローカル変数 f を使う
+    let f = flow
+    if (!f) {
+      f = await fetchFlow(flowId)
+    }
+    const csrf = f?.ui?.nodes?.find(
+      (n: any) => n.attributes?.name === 'csrf_token'
+    )?.attributes?.value
+    if (!csrf) {
+      // CSRFが取れない＝期限切れorキャッシュ汚染。安全に再初期化
+      window.location.href = '/login'
+      return
+    }
     
     try {
       setIsLoading(true)
@@ -97,7 +113,11 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ method: 'password', csrf_token: csrf, ...formData }),
+        body: JSON.stringify({
+          method: 'password',
+          csrf_token: csrf,
+          ...formData
+        }),
       })
       
       if (resp.status === 422) { 
