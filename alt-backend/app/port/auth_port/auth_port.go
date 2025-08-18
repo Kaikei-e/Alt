@@ -11,6 +11,7 @@ import (
 // AuthPort defines the interface for authentication operations
 type AuthPort interface {
 	ValidateSession(ctx context.Context, sessionToken string) (*domain.UserContext, error)
+	ValidateSessionWithCookie(ctx context.Context, cookieHeader string) (*domain.UserContext, error)
 	RefreshSession(ctx context.Context, sessionToken string) (*domain.UserContext, error)
 	GetUserByID(ctx context.Context, userID string) (*domain.UserContext, error)
 }

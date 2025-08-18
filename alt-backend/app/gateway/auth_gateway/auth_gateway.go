@@ -62,6 +62,36 @@ func (g *AuthGateway) ValidateSession(ctx context.Context, sessionToken string) 
 	return userContext, nil
 }
 
+func (g *AuthGateway) ValidateSessionWithCookie(ctx context.Context, cookieHeader string) (*domain.UserContext, error) {
+	g.logger.Debug("validating session with cookie", "cookie_length", len(cookieHeader))
+	
+	response, err := g.authClient.ValidateSessionWithCookie(ctx, cookieHeader)
+	if err != nil {
+		return nil, fmt.Errorf("session validation failed: %w", err)
+	}
+
+	if !response.Valid {
+		return nil, fmt.Errorf("session is invalid")
+	}
+
+	// auth-serviceのユーザー情報をdomain.UserContextに変換
+	userID, err := uuid.Parse(response.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID format: %w", err)
+	}
+
+	userContext := &domain.UserContext{
+		UserID:    userID,
+		Email:     response.Email,
+		Role:      domain.UserRole(response.Role),
+		SessionID: cookieHeader, // For cookie auth, store the cookie header
+		LoginAt:   time.Now(),
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+
+	return userContext, nil
+}
+
 func (g *AuthGateway) RefreshSession(ctx context.Context, sessionToken string) (*domain.UserContext, error) {
 	// セッション更新ロジック
 	return g.ValidateSession(ctx, sessionToken)

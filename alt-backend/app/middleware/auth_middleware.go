@@ -30,30 +30,22 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			m.logger.Info("AUTH MIDDLEWARE: RequireAuth called", "path", c.Request().URL.Path, "method", c.Request().Method)
 			
-			// 1) __Host- 前置の互換（将来の設定変更に備え二段取り）
-			sessionCookie, err := c.Cookie("ory_kratos_session")
-			if err != nil {
-				if altCookie, err2 := c.Cookie("__Host-ory_kratos_session"); err2 == nil {
-					sessionCookie = altCookie
-					m.logger.Info("AUTH MIDDLEWARE: Using __Host- prefixed cookie")
-				} else {
-					m.logger.Warn("AUTH MIDDLEWARE: No session cookie found", "error", err, "alt_error", err2)
-					return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
-						"error":   "authentication_required",
-						"message": "Authentication is required",
-					})
-				}
-			} else {
-				m.logger.Info("AUTH MIDDLEWARE: Found ory_kratos_session cookie")
+			// Cookieヘッダ全体を取得（TODO.md修正: Cookie素通しに変更）
+			cookieHeader := c.Request().Header.Get("Cookie")
+			if cookieHeader == "" {
+				m.logger.Warn("AUTH MIDDLEWARE: No cookie header found")
+				return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
+					"error":   "authentication_required",
+					"message": "Authentication is required",
+				})
 			}
 
-			m.logger.Info("AUTH MIDDLEWARE: Calling auth service for validation", "token_length", len(sessionCookie.Value))
+			m.logger.Info("AUTH MIDDLEWARE: Found cookie header", "cookie_length", len(cookieHeader))
 
-			// auth-serviceでセッション検証
-			userContext, err := m.authService.ValidateSession(c.Request().Context(), sessionCookie.Value)
+			// auth-serviceでセッション検証（Cookieヘッダ全体を渡す）
+			userContext, err := m.authService.ValidateSessionWithCookie(c.Request().Context(), cookieHeader)
 			if err != nil {
 				m.logger.Warn("AUTH MIDDLEWARE: Session validation failed", "error", err)
-				// 2) 401のJSONを明示（中央ハンドラでもOK。二重化は避けてどちらかに統一）
 				return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
 					"error":   "invalid_session",
 					"message": "Session validation failed",
@@ -77,16 +69,18 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			sessionCookie, err := c.Cookie("ory_kratos_session")
-			if err != nil {
+			cookieHeader := c.Request().Header.Get("Cookie")
+			if cookieHeader == "" {
 				// セッションがない場合は続行（匿名ユーザー）
 				return next(c)
 			}
 
-			userContext, err := m.authService.ValidateSession(c.Request().Context(), sessionCookie.Value)
+			// TODO.md修正: OptionalAuthでも認証失敗は401を返すべき場合がある
+			// しかし、OptionalAuthでは認証失敗時も続行するため、エラーログのみ
+			userContext, err := m.authService.ValidateSessionWithCookie(c.Request().Context(), cookieHeader)
 			if err != nil {
-				m.logger.Debug("optional auth failed", "error", err)
-				// 認証失敗でも続行
+				m.logger.Debug("optional auth failed, continuing without authentication", "error", err)
+				// TODO.md修正: auth-serviceエラーでも続行（匿名ユーザーとして処理）
 				return next(c)
 			}
 

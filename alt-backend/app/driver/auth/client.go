@@ -17,6 +17,7 @@ import (
 // AuthClient defines the interface for Auth Service operations
 type AuthClient interface {
 	ValidateSession(ctx context.Context, sessionToken string, tenantID string) (*SessionValidationResponse, error)
+	ValidateSessionWithCookie(ctx context.Context, cookieHeader string) (*SessionValidationResponse, error)
 	GenerateCSRFToken(ctx context.Context, sessionToken string) (*CSRFTokenResponse, error)
 	ValidateCSRFToken(ctx context.Context, token, sessionToken string) (*CSRFValidationResponse, error)
 	HealthCheck(ctx context.Context) error
@@ -100,11 +101,33 @@ func (c *Client) ValidateSession(ctx context.Context, sessionToken string, tenan
 	// auth-serviceのValidateSessionはGETメソッドで、X-Session-Tokenヘッダーでトークンを送信
 	response, err := c.makeRequestWithToken(ctx, "GET", "/v1/auth/validate", sessionToken, nil)
 	if err != nil {
-		c.logger.Warn("auth service unavailable, returning invalid session for OptionalAuth compatibility",
-			"error", err,
-			"session_token_prefix", sessionToken[:min(len(sessionToken), 8)])
-		// Return invalid session instead of error for OptionalAuth middleware compatibility
+		c.logger.Error("auth service request failed", "error", err, "session_token_prefix", sessionToken[:min(len(sessionToken), 8)])
+		// TODO.md修正: 常に401を返すように修正（OptionalAuthはgatewayレベルで処理）
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
+
+	var result SessionValidationResponse
+	if err := json.Unmarshal(response, &result); err != nil {
+		c.logger.Error("failed to unmarshal session validation response", "error", err)
 		return c.createInvalidSessionResponse(), nil
+	}
+
+	return &result, nil
+}
+
+// ValidateSessionWithCookie validates a session using the Cookie header
+func (c *Client) ValidateSessionWithCookie(ctx context.Context, cookieHeader string) (*SessionValidationResponse, error) {
+	// Input validation
+	if cookieHeader == "" {
+		return c.createInvalidSessionResponse(), nil // Return invalid session for empty cookie
+	}
+
+	// auth-serviceのValidateSessionはCookieヘッダーを使用する新しいエンドポイント
+	response, err := c.makeRequestWithCookie(ctx, "GET", "/v1/auth/validate", cookieHeader, nil)
+	if err != nil {
+		c.logger.Error("auth service request failed for cookie validation", "error", err, "cookie_length", len(cookieHeader))
+		// TODO.md修正: 常に401を返すように修正（OptionalAuthはgatewayレベルで処理）
+		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
 	var result SessionValidationResponse
@@ -226,7 +249,11 @@ func (c *Client) makeRequest(ctx context.Context, method, endpoint string, paylo
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	// TODO.md修正: 401以外のエラーも適切に処理し、503を401に統一しない
 	if resp.StatusCode >= 400 {
+		c.logger.Warn("auth service error response", 
+			"status_code", resp.StatusCode,
+			"response_body", string(responseBody))
 		return nil, fmt.Errorf("auth service error: status=%d, body=%s", resp.StatusCode, string(responseBody))
 	}
 
@@ -274,7 +301,63 @@ func (c *Client) makeRequestWithToken(ctx context.Context, method, endpoint, ses
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	// TODO.md修正: 401以外のエラーも適切に処理し、503を401に統一しない
 	if resp.StatusCode >= 400 {
+		c.logger.Warn("auth service error response", 
+			"status_code", resp.StatusCode,
+			"response_body", string(responseBody))
+		return nil, fmt.Errorf("auth service error: status=%d, body=%s", resp.StatusCode, string(responseBody))
+	}
+
+	return responseBody, nil
+}
+
+// makeRequestWithCookie is a helper method to make HTTP requests with Cookie header
+func (c *Client) makeRequestWithCookie(ctx context.Context, method, endpoint, cookieHeader string, payload interface{}) ([]byte, error) {
+	var body io.Reader
+
+	if payload != nil {
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request payload: %w", err)
+		}
+		body = bytes.NewBuffer(jsonData)
+	}
+
+	url := c.baseURL + endpoint
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	
+	// Set Cookie header (TODO.md修正: Cookie素通し)
+	req.Header.Set("Cookie", cookieHeader)
+
+	c.logger.Debug("making auth service request with cookie",
+		"method", method,
+		"url", url,
+		"cookie_length", len(cookieHeader))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// TODO.md修正: 401以外のエラーも適切に処理し、503を401に統一しない
+	if resp.StatusCode >= 400 {
+		c.logger.Warn("auth service error response", 
+			"status_code", resp.StatusCode,
+			"response_body", string(responseBody))
 		return nil, fmt.Errorf("auth service error: status=%d, body=%s", resp.StatusCode, string(responseBody))
 	}
 
