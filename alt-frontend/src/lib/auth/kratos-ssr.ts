@@ -27,7 +27,8 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
     
     try {
       // TODO.mdの要求：サーバサイドでwhoamiを呼び出し、必ずCookieを前方転送
-      const response = await fetch('https://id.curionoah.com/sessions/whoami', {
+      const KRATOS_INTERNAL = process.env.KRATOS_INTERNAL_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433'
+      const response = await fetch(`${KRATOS_INTERNAL}/sessions/whoami`, {
         headers: { 
           cookie: req.headers.cookie ?? '', // 必ずCookieを前方転送
           'Accept': 'application/json'
@@ -96,6 +97,7 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
  */
 export async function checkAuthStatus(): Promise<AuthUser | null> {
   try {
+    // クライアント側は公開URLを使用（ブラウザからのアクセス）
     const response = await fetch('https://id.curionoah.com/sessions/whoami', {
       credentials: 'include',
       headers: {
