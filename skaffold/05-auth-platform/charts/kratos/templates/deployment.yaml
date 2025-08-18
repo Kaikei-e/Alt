@@ -36,7 +36,7 @@ spec:
         - name: DSN
           valueFrom:
             secretKeyRef:
-              name: kratos-postgres-credentials
+              name: {{ .Values.postgresql.credentialsSecretName | default "kratos-postgres-credentials" }}
               key: dsn
         volumeMounts:
         - name: kratos-config
@@ -71,7 +71,7 @@ spec:
         - name: DSN
           valueFrom:
             secretKeyRef:
-              name: kratos-postgres-credentials
+              name: {{ .Values.postgresql.credentialsSecretName | default "kratos-postgres-credentials" }}
               key: dsn
         - name: SECRETS_COOKIE
           value: {{ .Values.secrets.cookieSecret | quote }}

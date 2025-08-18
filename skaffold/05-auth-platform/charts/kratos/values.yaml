@@ -278,6 +278,8 @@ postgresql:
     name: "kratos-postgres.alt-auth.svc.cluster.local"
     port: 5432
   sslmode: "require"
+  # 恒久対応: 実際に存在するシークレット名を指定
+  credentialsSecretName: "kratos-postgres-secrets"
 
 # Secrets configuration
 secrets:
@@ -309,3 +311,7 @@ networkPolicy:
   enabled: false
   ingress: []
   egress: []
+
+# Istio configuration
+istio:
+  enabled: false

@@ -53,7 +53,7 @@ spec:
         - name: DSN
           valueFrom:
             secretKeyRef:
-              name: kratos-postgres-credentials
+              name: {{ .Values.postgresql.credentialsSecretName | default "kratos-postgres-credentials" }}
               key: dsn
         {{- with .Values.automigration.env }}
         {{- toYaml . | nindent 8 }}

@@ -55,7 +55,7 @@ spec:
         - name: DSN
           valueFrom:
             secretKeyRef:
-              name: kratos-postgres-credentials
+              name: {{ .Values.postgresql.credentialsSecretName | default "kratos-postgres-credentials" }}
               key: dsn
         - name: KRATOS_LOG_LEVEL
           value: "debug"  # 詳細ログでトラブルシューティング
