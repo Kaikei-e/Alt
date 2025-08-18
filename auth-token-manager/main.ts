@@ -219,10 +219,6 @@ async function runAuthorization() {
     Deno.exit(1);
   }
   const credentials = config.getInoreaderCredentials();
-  if (!Deno.env.get("INOREADER_REDIRECT_URI")) {
-    console.error("Missing required environment variable: INOREADER_REDIRECT_URI");
-    Deno.exit(1);
-  }
   const redirectUrl = new URL(credentials.redirect_uri);
   // Construct authorization URL
   const authUrl = new URL("https://www.inoreader.com/oauth2/auth");

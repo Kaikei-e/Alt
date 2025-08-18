@@ -99,7 +99,7 @@ class ConfigManager {
     return {
       client_id: Deno.env.get('INOREADER_CLIENT_ID')!,
       client_secret: Deno.env.get('INOREADER_CLIENT_SECRET')!,
-      redirect_uri: Deno.env.get('INOREADER_REDIRECT_URI') || 'http://localhost', // Not used in refresh-token-only mode
+      redirect_uri: Deno.env.get('INOREADER_REDIRECT_URI') || 'http://localhost:8080/callback',
     };
   }
 
