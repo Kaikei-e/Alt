@@ -11,7 +11,10 @@ export default function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl
   
   // ここでネットワーク呼び出しは絶対にしない
-  const hasKratos = !!req.cookies.get('ory_kratos_session')?.value
+  // TODO.md要件: 堅牢化（通常名 + ホスト名付きクッキーのフォールバック）
+  const s1 = req.cookies.get('ory_kratos_session')?.value
+  const s2 = req.cookies.get('__Host-ory_kratos_session')?.value
+  const hasKratos = !!(s1 ?? s2)
 
   // ログインページからの往復を防ぐ：ログイン中は素通し
   if (pathname.startsWith('/login') || pathname.startsWith('/register')) {
