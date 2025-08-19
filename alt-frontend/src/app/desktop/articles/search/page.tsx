@@ -1,9 +1,11 @@
 // REPORT.md恒久対応: /desktop/articles/search ルート実装  
 // React #418エラー解決のため、RSCルートを追加
 
-import { Box, Heading, Text } from '@chakra-ui/react'
+export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+export const revalidate = 0
 
-// グローバル設定により動的レンダリングは layout.tsx で自動適用
+import { Box, Heading, Text } from '@chakra-ui/react'
 
 export default function DesktopArticlesSearchPage() {
   return (

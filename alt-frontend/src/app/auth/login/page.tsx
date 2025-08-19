@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 export default async function LoginPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const params = await searchParams
   const flow = params.flow
-  const ret  = params.return_to ?? '/' // 既定はトップ
+  const ret  = params.return_to ?? '/' // 既定はルートディレクトリ
 
   if (!flow) {
     const u = new URL(process.env.KRATOS_PUBLIC_URL + '/self-service/login/browser')

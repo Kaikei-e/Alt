@@ -1,4 +1,7 @@
-"use client";
+// app/desktop/feeds/page.tsx
+export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'  // 念のため
+export const revalidate = 0
 
 import React, { Suspense } from "react";
 import { Box, Text } from "@chakra-ui/react";
@@ -6,6 +9,7 @@ import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeline";
 import LazyRightPanel from "@/components/desktop/analytics/LazyRightPanel";
 import { Home, Rss, FileText, Search, Settings } from "lucide-react";
+import { cookies } from 'next/headers';
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -40,7 +44,7 @@ const LoadingFallback = () => (
   </Box>
 );
 
-function DesktopFeedsContent() {
+function DesktopFeedsContent({ data }: { data: any }) {
   const sidebarNavItems = [
     {
       id: 1,
@@ -70,10 +74,18 @@ function DesktopFeedsContent() {
   );
 }
 
-export default function DesktopFeedsPage() {
+export default async function Page() {
+  // TODO.md要件: Cookie明示転送でサーバfetch実行
+  const cookie = (await cookies()).toString()
+  const res = await fetch(process.env.API_URL + '/api/v1/feeds/stats', { 
+    headers: { cookie }, 
+    cache: 'no-store' 
+  })
+  if (!res.ok) throw new Error('Failed to load feed stats')
+  const data = await res.json()
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <DesktopFeedsContent />
+      <DesktopFeedsContent data={data} />
     </Suspense>
   );
 }

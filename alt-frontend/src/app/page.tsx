@@ -1,7 +1,8 @@
-"use client";
+export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+export const revalidate = 0
 
-import { useEffect, useState } from "react";
-import NextLink from "next/link.js";
+import NextLink from "next/link";
 import {
   Box,
   Flex,
@@ -9,440 +10,295 @@ import {
   VStack,
   HStack,
   Link as ChakraLink,
+  Button,
 } from "@chakra-ui/react";
-import { Rss, FileText, ArrowRight } from "lucide-react";
-import { feedsApi } from "@/lib/api";
-import { FeedStatsSummary } from "@/schema/feedStats";
+import { Rss, FileText, ArrowRight, LogIn, UserPlus } from "lucide-react";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
-import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { AuthGuard } from "@/components/auth";
-import { useAuth } from "@/contexts/auth-context";
-import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 
-export default function Home() {
-  const { isAuthenticated, user } = useAuth();
-  const [stats, setStats] = useState<FeedStatsSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+// Fetch public platform stats from alt-backend
+async function getPlatformStats() {
+  try {
+    // Use relative URL for same-origin fetch (as per memo.md unified rules)
+    const res = await fetch('/api/v1/platform/stats', {
+      cache: 'no-store'
+    });
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setIsLoading(true);
-        const data = await feedsApi.getFeedStats();
-        setStats(data);
-      } catch (err) {
-        setError("Unable to load statistics");
-        console.error("Error fetching stats:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    if (!res.ok) {
+      console.error('Failed to fetch platform stats:', res.status);
+      return { feed_amount: { amount: 0 }, summarized_feed: { amount: 0 } };
+    }
 
-    fetchStats();
-  }, []);
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching platform stats:', err);
+    return { feed_amount: { amount: 0 }, summarized_feed: { amount: 0 } };
+  }
+}
+
+export default async function Home() {
+  const stats = await getPlatformStats();
 
   return (
-    <AuthenticatedLayout>
+    <Box
+      minH="100vh"
+      p={4}
+      bg="var(--app-bg)"
+      position="relative"
+      role="main"
+      aria-label="Alt RSS Reader Public Landing Page"
+    >
+      {/* Theme Toggle Button */}
       <Box
-        minH="60vh"
-        position="relative"
-        role="main"
-        aria-label="Alt RSS Reader Home Page"
+        position="absolute"
+        top="16px"
+        right="16px"
+        zIndex={100}
       >
-        <Box
-          as="a"
-          position="absolute"
-          top="-40px"
-          left="6px"
-          bg="var(--gradient-bg)"
-          color="var(--text-primary)"
-          p={2}
-          borderRadius="xs"
-          zIndex={1000}
-          textDecoration="none"
-          transition="top 0.2s ease"
-          _focus={{
-            top: "6px",
-            outline: "2px solid",
-            outlineColor: "accent.default",
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            const mainContent = document.getElementById("main-content");
-            if (mainContent) {
-              mainContent.setAttribute("tabindex", "-1");
-              mainContent.focus();
-            }
-          }}
+        <ThemeToggle size="md" />
+      </Box>
+
+      {/* Hero Section */}
+      <VStack as="section" gap={4} mb={8} textAlign="center" pt={16}>
+        <Text
+          as="h1"
+          fontSize="4xl"
+          fontFamily="heading"
+          lineHeight="1.2"
+          fontWeight="bold"
+          bgClip="text"
+          color="var(--alt-primary)"
+          mb={2}
         >
-          Skip to main content
-        </Box>
-
-        {/* Theme Toggle Button */}
-        <Box
-          position="absolute"
-          top="16px"
-          right="16px"
-          zIndex={100}
+          Alt
+        </Text>
+        <Text
+          color="var(--alt-text-muted)"
+          fontSize="lg"
+          fontFamily="body"
+          maxW="500px"
+          lineHeight="1.6"
+          mb={4}
         >
-          <ThemeToggle size="md" />
-        </Box>
-        {/* Hero Section - Refined & Elegant */}
-        <VStack as="section" gap={2} mb={6} textAlign="center">
-          <Text
-            as="h1"
-            fontSize="3xl"
-            fontFamily="heading"
-            lineHeight="1.2"
-            fontWeight="bold"
-            bgClip="text"
-            color="var(--alt-primary)"
-            mb={1}
-          >
-            Alt
-          </Text>
-          <Text
-            color="var(--alt-text-muted)"
-            fontSize="md"
-            fontFamily="body"
-            maxW="300px"
-            lineHeight="1.5"
-          >
-            {isAuthenticated && user
-              ? `おかえりなさい、${user.name || 'ユーザー'}さん`
-              : 'AI-powered RSS reader with modern aesthetics'
-            }
-          </Text>
-        </VStack>
+          AI-powered RSS reader with modern aesthetics.
+          Join thousands of users managing their RSS feeds intelligently.
+        </Text>
 
-        {/* Authentication Section */}
-        <Box as="section" mb={6} aria-label="Authentication">
-          <AuthGuard />
-        </Box>
-
-        {/* Navigation Section - Refined Glass Card */}
-        {isAuthenticated && (
-          <Box as="nav" aria-label="Main navigation" mb={6}>
-            <ChakraLink
-              as={NextLink}
-              href="/mobile/feeds"
-              data-testid="nav-card"
-              bg="var(--alt-glass)"
-              border="1px solid"
-              borderColor="var(--alt-glass-border)"
-              backdropFilter="blur(12px) saturate(1.2)"
-              p={4}
-              borderRadius="lg"
-              color="fg.default"
-              cursor="pointer"
-              transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-              minH="44px"
-              w="full"
-              textAlign="left"
-              textDecoration="none"
-              display="block"
-              position="relative"
-              overflow="hidden"
+        {/* Authentication Buttons */}
+        <HStack gap={4} flexWrap="wrap" justifyContent="center">
+          <NextLink href="/auth/login">
+            <Button
+              bg="var(--alt-primary)"
+              color="white"
+              size="lg"
+              px={8}
+              py={6}
+              borderRadius="full"
+              fontWeight="semibold"
               _hover={{
-                transform: "translateY(-1px)",
-                bg: "var(--alt-glass)",
-                borderColor: "var(--alt-glass-border)",
-                boxShadow: "0 4px 20px var(--alt-glass-shadow)",
-                textDecoration: "none",
-              }}
-              _focus={{
-                outline: "2px solid",
-                outlineColor: "var(--alt-primary)",
-                outlineOffset: "2px",
+                bg: "var(--alt-primary)",
+                transform: "translateY(-2px)",
+                boxShadow: "0 8px 25px var(--alt-glass-shadow)",
               }}
               _active={{
                 transform: "translateY(0)",
               }}
+              transition="all 0.2s ease"
             >
-              {/* Subtle gradient overlay */}
-              <Box
-                position="absolute"
-                top={0}
-                left={0}
-                right={0}
-                bottom={0}
-                bgGradient="linear(45deg, transparent 0%, var(--alt-glass) 50%, transparent 100%)"
-                opacity={0}
-                transition="opacity 0.2s ease"
-                _hover={{ opacity: 1 }}
-              />
+              <HStack gap={2}>
+                <LogIn size={18} />
+                ログイン
+              </HStack>
+            </Button>
+          </NextLink>
+          <NextLink href="/auth/register">
+            <Button
+              variant="outline"
+              borderColor="var(--alt-primary)"
+              color="var(--alt-primary)"
+              size="lg"
+              px={8}
+              py={6}
+              borderRadius="full"
+              fontWeight="semibold"
+              _hover={{
+                bg: "var(--alt-glass)",
+                transform: "translateY(-2px)",
+                boxShadow: "0 8px 25px var(--alt-glass-shadow)",
+              }}
+              _active={{
+                transform: "translateY(0)",
+              }}
+              transition="all 0.2s ease"
+            >
+              <HStack gap={2}>
+                <UserPlus size={18} />
+                新規登録
+              </HStack>
+            </Button>
+          </NextLink>
+        </HStack>
+      </VStack>
 
-              <Flex
-                align="center"
-                justify="space-between"
-                position="relative"
-                zIndex={1}
-              >
-                <HStack gap={3}>
-                  <Box
-                    color="var(--alt-primary)"
-                    p={2}
-                    borderRadius="sm"
-                    bg="var(--alt-glass)"
-                  >
-                    <Rss size={18} />
-                  </Box>
-                  <VStack align="start" gap={0}>
-                    <Text
-                      fontSize="lg"
-                      fontWeight="semibold"
-                      fontFamily="heading"
-                      color="var(--text-primary)"
-                    >
-                      あなたのフィード
-                    </Text>
-                    <Text
-                      fontSize="xs"
-                      color="var(--text-primary)"
-                      fontFamily="body"
-                    >
-                      パーソナライズされたRSSフィード
-                    </Text>
-                  </VStack>
-                </HStack>
+      {/* Platform Statistics Section */}
+      <VStack as="section" gap={6} mb={8} maxW="800px" mx="auto">
+        <Text
+          as="h2"
+          fontSize="2xl"
+          fontWeight="semibold"
+          color="var(--text-primary)"
+          fontFamily="heading"
+          textAlign="center"
+          mb={4}
+        >
+          プラットフォーム統計
+        </Text>
 
-                <Box color="var(--alt-primary)" opacity={0.6}>
-                  <ArrowRight size={16} />
-                </Box>
-              </Flex>
-            </ChakraLink>
-          </Box>
-        )}
-
-        {/* Dashboard Section - Refined Stats Grid */}
-        <VStack as="section" gap={3} mb={6} aria-labelledby="dashboard-heading">
-          <Text
-            id="dashboard-heading"
-            as="h2"
-            fontSize="lg"
-            fontWeight="semibold"
-            color="var(--text-primary)"
-            fontFamily="heading"
-            alignSelf="flex-start"
-            mb={1}
+        <HStack gap={6} flexWrap="wrap" justifyContent="center" w="full">
+          {/* Total Feeds Card */}
+          <Box
+            data-testid="stat-card"
+            bg="var(--alt-glass)"
+            border="1px solid"
+            borderColor="var(--alt-secondary)"
+            backdropFilter="blur(10px) saturate(1.1)"
+            minW="250px"
+            p={6}
+            borderRadius="lg"
+            transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+            position="relative"
+            overflow="hidden"
+            textAlign="center"
+            _hover={{
+              transform: "translateY(-2px)",
+              boxShadow: "0 8px 25px var(--alt-glass-shadow)",
+            }}
           >
-            {isAuthenticated ? "あなたのダッシュボード" : "プラットフォーム統計"}
-          </Text>
-
-          {isLoading ? (
-            <VStack
-              gap={3}
-              w="full"
-              aria-live="polite"
-              aria-label="Loading statistics"
-            >
-              {[1, 2].map((i) => (
-                <Box
-                  key={i}
-                  data-testid="stats-loading"
-                  bg="var(--alt-glass)"
-                  border="1px solid"
-                  borderColor="var(--alt-glass-border)"
-                  backdropFilter="blur(8px)"
-                  p={4}
-                  borderRadius="md"
-                  w="full"
-                  opacity="0.7"
-                  aria-label={`Loading statistic ${i}`}
+            <VStack gap={3}>
+              <Box
+                color="var(--alt-primary)"
+                p={3}
+                borderRadius="full"
+                bg="var(--alt-glass)"
+              >
+                <Rss size={24} />
+              </Box>
+              <VStack gap={1}>
+                <Text
+                  fontSize="sm"
+                  textTransform="uppercase"
+                  color="var(--text-primary)"
+                  letterSpacing="wide"
+                  fontFamily="body"
+                  fontWeight="medium"
+                  opacity={0.8}
                 >
-                  <Flex direction="column" gap={2}>
-                    <Box h="12px" bg="var(--alt-glass)" borderRadius="xs" />
-                    <Box h="24px" bg="var(--alt-glass)" borderRadius="sm" />
-                    <Box h="10px" bg="var(--alt-glass)" borderRadius="xs" />
-                  </Flex>
-                </Box>
-              ))}
-            </VStack>
-          ) : error ? (
-            <Box
-              bg="var(--alt-glass)"
-              border="1px solid"
-              borderColor="var(--alt-error)"
-              backdropFilter="blur(8px)"
-              p={4}
-              borderRadius="md"
-              w="full"
-              textAlign="center"
-              role="alert"
-              aria-live="assertive"
-            >
-              <Text color="semantic.error" fontFamily="body" fontSize="sm">
-                {error}
-              </Text>
-            </Box>
-          ) : (
-            <VStack gap={3} w="full" aria-live="polite">
-              {/* Total Feeds Card */}
-              <Box
-                data-testid="stat-card"
-                bg="var(--alt-glass)"
-                border="1px solid"
-                borderColor="var(--alt-secondary)"
-                backdropFilter="blur(10px) saturate(1.1)"
-                w="full"
-                p={4}
-                borderRadius="md"
-                transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                position="relative"
-                overflow="hidden"
-                role="region"
-                aria-labelledby="total-feeds-label"
-                _hover={{
-                  transform: "translateY(-1px)",
-                  bg: "var(--alt-glass)",
-                  borderColor: "var(--alt-tertiary)",
-                  boxShadow: "0 8px 25px var(--alt-glass-shadow)",
-                }}
-              >
-                {/* Subtle accent border */}
-                <Box
-                  position="absolute"
-                  top={0}
-                  left={0}
-                  right={0}
-                  h="1px"
-                  bgGradient="linear(to-r, transparent, var(--alt-glass), transparent)"
+                  Total RSS Feeds
+                </Text>
+                <AnimatedNumber
+                  value={stats?.feed_amount?.amount || 0}
+                  duration={1200}
+                  textProps={{
+                    fontSize: "3xl",
+                    fontWeight: "bold",
+                    color: "var(--text-primary)",
+                    fontFamily: "heading",
+                  }}
                 />
-
-                <Flex direction="column" gap={2}>
-                  <Flex align="center" gap={2}>
-                    <Box
-                      color="var(--alt-primary)"
-                      p={1}
-                      borderRadius="xs"
-                      bg="var(--alt-glass)"
-                    >
-                      <Rss size={14} />
-                    </Box>
-                    <Text
-                      id="total-feeds-label"
-                      fontSize="xs"
-                      textTransform="uppercase"
-                      color="var(--text-primary)"
-                      letterSpacing="wide"
-                      fontFamily="body"
-                      fontWeight="medium"
-                    >
-                      Total Feeds
-                    </Text>
-                  </Flex>
-
-                  <Box data-testid="animated-number">
-                    <AnimatedNumber
-                      value={stats?.feed_amount?.amount || 0}
-                      duration={800}
-                      textProps={{
-                        fontSize: "2xl",
-                        fontWeight: "bold",
-                        color: "var(--text-primary)",
-                        fontFamily: "heading",
-                      }}
-                    />
-                  </Box>
-
-                  <Text
-                    fontSize="xs"
-                    color="var(--text-primary)"
-                    lineHeight="1.4"
-                    fontFamily="body"
-                  >
-                    RSS feeds monitored
-                  </Text>
-                </Flex>
-              </Box>
-
-              {/* AI Summarized Feeds Card */}
-              <Box
-                data-testid="stat-card"
-                bg="var(--alt-glass)"
-                border="1px solid"
-                borderColor="var(--alt-secondary)"
-                backdropFilter="blur(10px) saturate(1.1)"
-                w="full"
-                p={4}
-                borderRadius="md"
-                transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                position="relative"
-                overflow="hidden"
-                role="region"
-                aria-labelledby="ai-feeds-label"
-                _hover={{
-                  transform: "translateY(-1px)",
-                  bg: "var(--alt-glass)",
-                  borderColor: "var(--alt-tertiary)",
-                  boxShadow: "0 8px 25px var(--alt-glass-shadow)",
-                }}
-              >
-                {/* Subtle accent border */}
-                <Box
-                  position="absolute"
-                  top={0}
-                  left={0}
-                  right={0}
-                  h="1px"
-                  bgGradient="linear(to-r, transparent, var(--accent-primary), transparent)"
-                />
-
-                <Flex direction="column" gap={2}>
-                  <Flex align="center" gap={2}>
-                    <Box
-                      color="var(--alt-primary)"
-                      p={1}
-                      borderRadius="xs"
-                      bg="var(--alt-glass)"
-                    >
-                      <FileText size={14} />
-                    </Box>
-                    <Text
-                      id="ai-feeds-label"
-                      fontSize="xs"
-                      textTransform="uppercase"
-                      color="var(--text-primary)"
-                      letterSpacing="wide"
-                      fontFamily="body"
-                      fontWeight="medium"
-                    >
-                      AI Summarized
-                    </Text>
-                  </Flex>
-
-                  <Box data-testid="animated-number">
-                    <AnimatedNumber
-                      value={stats?.summarized_feed?.amount || 0}
-                      duration={800}
-                      textProps={{
-                        fontSize: "2xl",
-                        fontWeight: "bold",
-                        color: "var(--text-primary)",
-                        fontFamily: "heading",
-                      }}
-                    />
-                  </Box>
-
-                  <Text
-                    fontSize="xs"
-                    color="var(--text-primary)"
-                    lineHeight="1.4"
-                    fontFamily="body"
-                  >
-                    Feeds processed by AI
-                  </Text>
-                </Flex>
-              </Box>
+                <Text
+                  fontSize="sm"
+                  color="var(--text-primary)"
+                  opacity={0.7}
+                  fontFamily="body"
+                >
+                  現在監視中のフィード数
+                </Text>
+              </VStack>
             </VStack>
-          )}
-        </VStack>
-        
-        {/* Floating Menu */}
-        <FloatingMenu />
+          </Box>
+
+          {/* AI Summarized Feeds Card */}
+          <Box
+            data-testid="stat-card"
+            bg="var(--alt-glass)"
+            border="1px solid"
+            borderColor="var(--alt-secondary)"
+            backdropFilter="blur(10px) saturate(1.1)"
+            minW="250px"
+            p={6}
+            borderRadius="lg"
+            transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+            position="relative"
+            overflow="hidden"
+            textAlign="center"
+            _hover={{
+              transform: "translateY(-2px)",
+              boxShadow: "0 8px 25px var(--alt-glass-shadow)",
+            }}
+          >
+            <VStack gap={3}>
+              <Box
+                color="var(--alt-primary)"
+                p={3}
+                borderRadius="full"
+                bg="var(--alt-glass)"
+              >
+                <FileText size={24} />
+              </Box>
+              <VStack gap={1}>
+                <Text
+                  fontSize="sm"
+                  textTransform="uppercase"
+                  color="var(--text-primary)"
+                  letterSpacing="wide"
+                  fontFamily="body"
+                  fontWeight="medium"
+                  opacity={0.8}
+                >
+                  AI Processed
+                </Text>
+                <AnimatedNumber
+                  value={stats?.summarized_feed?.amount || 0}
+                  duration={1200}
+                  textProps={{
+                    fontSize: "3xl",
+                    fontWeight: "bold",
+                    color: "var(--text-primary)",
+                    fontFamily: "heading",
+                  }}
+                />
+                <Text
+                  fontSize="sm"
+                  color="var(--text-primary)"
+                  opacity={0.7}
+                  fontFamily="body"
+                >
+                  AI要約済みフィード数
+                </Text>
+              </VStack>
+            </VStack>
+          </Box>
+        </HStack>
+      </VStack>
+
+      {/* Footer */}
+      <Box
+        as="footer"
+        textAlign="center"
+        py={8}
+        borderTop="1px solid"
+        borderColor="var(--alt-glass-border)"
+        mt={16}
+      >
+        <Text
+          fontSize="sm"
+          color="var(--text-primary)"
+          opacity={0.6}
+          fontFamily="body"
+        >
+          © 2025 Alt RSS Reader. Built with modern web technologies.
+        </Text>
       </Box>
-    </AuthenticatedLayout>
+    </Box>
   );
 }
