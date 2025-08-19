@@ -203,7 +203,7 @@ export class StructuredLogger {
   }
 
   warn(message: string, ...args: any[]) {
-    this.logger.warning(message, ...args);
+    this.logger.warn(message, ...args);
   }
 
   error(message: string, ...args: any[]) {

@@ -168,7 +168,6 @@ export class InoreaderTokenManager {
           client_id: this.credentials.client_id,
           client_secret: this.credentials.client_secret,
           refresh_token: existingTokenData.refresh_token,
-          scope: "read write",
         }),
       },
     );
