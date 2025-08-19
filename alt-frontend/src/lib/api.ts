@@ -188,9 +188,23 @@ class ApiClient {
       this.config.requestTimeout,
     );
 
+    // TODO.md修正: SSRでCookieを明示的に転送
+    let enhancedOptions = { ...options };
+    if (typeof window === 'undefined') {
+      // サーバサイドでCookieを転送
+      const { cookies } = await import('next/headers');
+      const cookieStore = await cookies();
+      const cookieHeader = cookieStore.toString();
+      
+      enhancedOptions.headers = {
+        ...enhancedOptions.headers,
+        cookie: cookieHeader,
+      };
+    }
+
     try {
       const response = await fetch(url, {
-        ...options,
+        ...enhancedOptions,
         signal: controller.signal,
       });
 

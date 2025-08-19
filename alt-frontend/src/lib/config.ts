@@ -6,7 +6,10 @@ export interface ApiConfig {
 }
 
 export const defaultApiConfig: ApiConfig = {
-  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9000",
+  // TODO.md修正: サーバ側ではnginx経由、クライアント側では同一オリジン
+  baseUrl: typeof window === 'undefined' 
+    ? "http://nginx-external.alt-ingress.svc.cluster.local:8080/api" // SSR
+    : "/api", // Client-side - 相対URLでCookie自動転送
   defaultCacheTtl: 5, // minutes
   requestTimeout: 30000, // 30 seconds
   maxRetries: 3,

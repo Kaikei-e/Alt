@@ -1,23 +1,28 @@
-// src/middleware.ts
-import { NextResponse, NextRequest } from 'next/server'
+// middleware.ts - TODO.md準拠のルート保護実装
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-// ミドルウェア本体：Cookieが無ければ /auth/login?return_to=<元URL> へ
-export function middleware(req: NextRequest) {
-  const has =
-    req.cookies.has('ory_kratos_session') ||
-    req.cookies.has('__Host-ory_kratos_session')
+const PROTECTED = [/^\/desktop(\/|$)/, /^\/mobile(\/|$)/]
+const IGNORE = [/^\/_next\//, /^\/favicon\.ico$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/api\/auth\/validate$/, /^\/auth\//]
 
-  if (has) return NextResponse.next()
+export async function middleware(req: NextRequest) {
+  const { pathname, origin } = req.nextUrl
+  
+  // ログ相関ID生成
+  const requestId = req.headers.get('x-request-id') || crypto.randomUUID().replace(/-/g, '')
+  
+  if (IGNORE.some(r => r.test(pathname))) return NextResponse.next()
+  if (!PROTECTED.some(r => r.test(pathname))) return NextResponse.next()
 
-  const url = req.nextUrl.clone()
-  const back = url.pathname + (url.search || '')
-  url.pathname = '/auth/login'
-  url.search = '' // ここから付け直す
-  url.searchParams.set('return_to', back)
+  const r = await fetch(new URL('/api/auth/validate', origin), {
+    headers: { cookie: req.headers.get('cookie') ?? '' },
+    cache: 'no-store',
+  })
+  if (r.ok) return NextResponse.next()
+
+  const url = new URL('/auth/login', origin)
+  url.searchParams.set('return_to', pathname) // Oryの正式名
   return NextResponse.redirect(url)
 }
 
-// ここが超重要：/mobile/* と /desktop/* のみで実行
-export const config = {
-  matcher: ['/mobile/:path*', '/desktop/:path*'],
-}
+export const config = { matcher: ['/desktop/:path*', '/mobile/:path*'] }
