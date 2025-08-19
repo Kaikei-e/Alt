@@ -6,6 +6,8 @@
 
 ## About this Project
 
+***READ Alt/Alt-Technical-Report.md***
+
 This project is a mobile-first RSS reader built with a microservice architecture stack. The codebase follows a five-layer variant of Clean Architecture for the main application.
 
 **Architecture Layers:**
@@ -216,7 +218,7 @@ cd skaffold/02-infrastructure && skaffold run -p prod
    -- Migration: Add new feature table
    -- Created: 2025-08-12 00:01:00
    -- Atlas Version: v0.35
-   
+
    CREATE TABLE new_feature (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
        name TEXT NOT NULL,
