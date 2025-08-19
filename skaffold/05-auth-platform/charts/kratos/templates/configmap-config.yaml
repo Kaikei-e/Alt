@@ -77,21 +77,21 @@ data:
 
       flows:
         error:
-          ui_url: {{ .Values.kratos.frontendUrl }}/error
+          ui_url: {{ .Values.kratos.frontendUrl }}/auth/error
 
         settings:
-          ui_url: {{ .Values.kratos.frontendUrl }}/settings
+          ui_url: {{ .Values.kratos.frontendUrl }}/auth/settings
           privileged_session_max_age: {{ .Values.kratos.selfservice.flows.settings.privileged_session_max_age }}
           required_aal: {{ .Values.kratos.selfservice.flows.settings.required_aal }}
 
         recovery:
           enabled: {{ .Values.kratos.selfservice.flows.recovery.enabled }}
-          ui_url: {{ .Values.kratos.frontendUrl }}/recovery
+          ui_url: {{ .Values.kratos.frontendUrl }}/auth/recovery
           use: {{ .Values.kratos.selfservice.flows.recovery.use }}
 
         verification:
           enabled: {{ .Values.kratos.selfservice.flows.verification.enabled }}
-          ui_url: {{ .Values.kratos.frontendUrl }}/verification
+          ui_url: {{ .Values.kratos.frontendUrl }}/auth/verification
           use: {{ .Values.kratos.selfservice.flows.verification.use }}
           after:
             default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
@@ -101,18 +101,18 @@ data:
             default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
 
         login:
-          ui_url: {{ .Values.kratos.frontendUrl }}/login
+          ui_url: {{ .Values.kratos.frontendUrl }}/auth/login
           lifespan: {{ .Values.kratos.selfservice.flows.login.lifespan }}
           after:
-            default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+            default_browser_return_url: {{ .Values.kratos.frontendUrl }}/desktop/home
             password:
-              default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+              default_browser_return_url: {{ .Values.kratos.frontendUrl }}/desktop/home
 
         registration:
           lifespan: {{ .Values.kratos.selfservice.flows.registration.lifespan }}
-          ui_url: {{ .Values.kratos.frontendUrl }}/registration
+          ui_url: {{ .Values.kratos.frontendUrl }}/auth/register
           after:
-            default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+            default_browser_return_url: {{ .Values.kratos.frontendUrl }}/desktop/home
             password:
               hooks:
                 - hook: session

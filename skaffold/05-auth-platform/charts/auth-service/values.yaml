@@ -21,8 +21,9 @@ serviceAccount:
   annotations: {}
   name: ""
 
-# Pod annotations and labels
-podAnnotations: {}
+# Pod annotations and labels - memo.md Phase 4: Linkerd opaque-ports
+podAnnotations:
+  config.linkerd.io/opaque-ports: "8080"  # memo.md Phase 4: TCP direct for auth-service
 
 # Pod labels - avoid duplicating labels already in _helpers.tpl
 podLabels: {}

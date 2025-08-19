@@ -26,6 +26,7 @@ podAnnotations:
   config.linkerd.io/proxy-outbound-connect-timeout: 30000ms
   config.linkerd.io/proxy-protocol-detection-timeout: 0s
   config.linkerd.io/skip-outbound-ports: "5432"  # Skip postgres port
+  config.linkerd.io/opaque-ports: "4433,4434"  # memo.md Phase 4: TCP direct for Kratos
 
 # Resource configuration
 resources:
