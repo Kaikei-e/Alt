@@ -78,7 +78,7 @@ data:
       access_log /var/log/nginx/access.log external_main;
 
       # Enhanced rate limiting for authentication endpoints
-      limit_req_zone $binary_remote_addr zone=auth_login:10m rate=30r/m;
+      limit_req_zone $binary_remote_addr zone=auth_login:10m rate=180r/m;
       limit_req_zone $binary_remote_addr zone=auth_register:10m rate=30r/m;
       limit_req_zone $binary_remote_addr zone=auth_password_reset:10m rate=10r/m;
       limit_req_zone $binary_remote_addr zone=sessions_whoami:10m rate=120r/m;
@@ -114,7 +114,8 @@ data:
 
         # Rate-limited authentication endpoints - login
         location ~ ^/self-service/login/ {
-          limit_req zone=auth_login burst=5 nodelay;
+          limit_req zone=auth_login burst=10 nodelay;
+          limit_req_status 429;
 
           set $kratos_upstream "kratos-public.alt-auth.svc.cluster.local:4433";
           proxy_pass http://$kratos_upstream;

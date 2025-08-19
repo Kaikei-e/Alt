@@ -100,11 +100,11 @@ kratos:
   dev: true
   
   # Base URLs (will be templated for different environments)
-  publicUrl: "http://kratos-public.{{ .Values.namespace }}.svc.cluster.local:4433/"
+  publicUrl: "https://id.curionoah.com"
   adminUrl: "http://kratos-admin.{{ .Values.namespace }}.svc.cluster.local:4434/"
   
   # Frontend URLs
-  frontendUrl: "http://localhost:3000"
+  frontendUrl: "https://curionoah.com"
   
   # Self-service configuration
   selfservice:
@@ -141,22 +141,22 @@ kratos:
         privileged_session_max_age: "15m"
         required_aal: "highest_available"
   
-  # Session configuration - Development/default values
+  # Session configuration - Production ready values
   session:
     lifespan: "24h"
     cookie:
       persistent: true
       same_site: "Lax"
-      domain: ".alt.local"  # Development domain
-      # secure/http_only: Override in values-production.yaml
+      domain: ".curionoah.com"  # Subdomain sharing for id.curionoah.com ↔ curionoah.com
+      secure: true               # HTTPS required for production
+      http_only: true           # Security best practice
   
   # CORS configuration
   cors:
     enabled: true
     allowed_origins:
-      - "http://localhost:3000"
-      - "http://alt-frontend.alt-apps-dev.svc.cluster.local"
-      - "http://nginx-external.alt-ingress-dev.svc.cluster.local"
+      - "https://curionoah.com"
+      - "https://id.curionoah.com"
     allowed_methods:
       - "POST"
       - "GET"
