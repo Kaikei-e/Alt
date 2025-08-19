@@ -64,31 +64,51 @@ func (uc *AuthUseCase) ValidateSessionWithCookie(ctx context.Context, cookieHead
 	return uc.buildSessionContext(ctx, kratosSession)
 }
 
-// buildSessionContext builds session context from Kratos session (共通ロジック)
+// buildSessionContext builds session context from Kratos session (TODO.md修正)
 func (uc *AuthUseCase) buildSessionContext(ctx context.Context, kratosSession *domain.KratosSession) (*domain.SessionContext, error) {
-	// Get our session
-	session, err := uc.authRepo.GetSessionByKratosID(ctx, kratosSession.ID)
+	// TODO.md修正: Kratosセッションが有効なら、DB操作失敗でも200を返す（best-effort）
+	userID, err := uuid.Parse(kratosSession.Identity.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid user ID in Kratos session: %w", err)
 	}
 
-	// Check if session is valid
-	if !session.IsValid() {
-		return nil, fmt.Errorf("session is not valid")
-	}
-
-	// Create session context
+	// Create base session context from Kratos data (guaranteed to work)
 	sessionContext := &domain.SessionContext{
-		UserID:          session.UserID,
+		UserID:          userID,
 		TenantID:        uuid.Nil, // TODO: Get from user profile
 		Email:           kratosSession.Identity.GetEmail(),
 		Name:            kratosSession.Identity.GetName(),
 		Role:            domain.UserRoleUser, // TODO: Get from user profile
-		SessionID:       session.ID.String(),
-		KratosSessionID: session.KratosSessionID,
-		IsActive:        session.Active,
-		ExpiresAt:       session.ExpiresAt,
-		LastActivityAt:  session.LastActivityAt,
+		SessionID:       kratosSession.ID,    // Use Kratos session ID as fallback
+		KratosSessionID: kratosSession.ID,
+		IsActive:        true,                           // Kratos session is active
+		ExpiresAt:       time.Now().Add(24 * time.Hour), // Default expiration
+		LastActivityAt:  time.Now(),                     // Current time
+	}
+
+	// Best-effort: Try to get local session data, but don't fail if DB is unavailable
+	session, err := uc.authRepo.GetSessionByKratosID(ctx, kratosSession.ID)
+	if err != nil {
+		// Log the DB error but continue with Kratos data
+		// TODO: Add proper logging here
+		// ログ: "user_sessions table access failed, using Kratos session data"
+		
+		// Async attempt to upsert session data (TODO.md suggestion)
+		go func() {
+			// Try to create/update session in background
+			// This is best-effort and failures are acceptable
+			_ = uc.upsertSessionAsync(context.Background(), userID, kratosSession.ID)
+		}()
+		
+		return sessionContext, nil // Return success with Kratos data
+	}
+
+	// If we have local session data, validate and use it
+	if session != nil && session.IsValid() {
+		sessionContext.SessionID = session.ID.String()
+		sessionContext.IsActive = session.Active
+		sessionContext.ExpiresAt = session.ExpiresAt
+		sessionContext.LastActivityAt = session.LastActivityAt
 	}
 
 	return sessionContext, nil
@@ -276,4 +296,16 @@ func (uc *AuthUseCase) ValidateCSRFToken(ctx context.Context, token, sessionID s
 
 	// Delete token after validation (one-time use)
 	return uc.authRepo.DeleteCSRFToken(ctx, token)
+}
+
+// upsertSessionAsync attempts to create or update session in background (best-effort)
+func (uc *AuthUseCase) upsertSessionAsync(ctx context.Context, userID uuid.UUID, kratosSessionID string) error {
+	// Try to create session if it doesn't exist
+	session, err := domain.NewSession(userID, kratosSessionID, 24*time.Hour)
+	if err != nil {
+		return err
+	}
+
+	// Try to store - if it fails, that's okay
+	return uc.authRepo.CreateSession(ctx, session)
 }
