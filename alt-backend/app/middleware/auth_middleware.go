@@ -24,7 +24,7 @@ func NewAuthMiddleware(authService auth_port.AuthPort, logger *slog.Logger) *Aut
 	}
 }
 
-// RequireAuth returns authentication middleware that requires valid session
+// RequireAuth returns authentication middleware that requires valid session (TODO.md修正: 401固定返却)
 func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -34,7 +34,8 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 			cookieHeader := c.Request().Header.Get("Cookie")
 			if cookieHeader == "" {
 				m.logger.Warn("AUTH MIDDLEWARE: No cookie header found")
-				return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
+				// TODO.md修正: 必ず401で返す（503にしない）
+				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
 					"error":   "authentication_required",
 					"message": "Authentication is required",
 				})
@@ -46,7 +47,8 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 			userContext, err := m.authService.ValidateSessionWithCookie(c.Request().Context(), cookieHeader)
 			if err != nil {
 				m.logger.Warn("AUTH MIDDLEWARE: Session validation failed", "error", err)
-				return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{
+				// TODO.md修正: ここで必ず401でreturn（503に化けさせない、二度書き禁止）
+				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
 					"error":   "invalid_session",
 					"message": "Session validation failed",
 				})
