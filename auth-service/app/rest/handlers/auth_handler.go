@@ -1,14 +1,17 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	ory "github.com/ory/client-go"
 
 	"auth-service/app/domain"
 	"auth-service/app/port"
@@ -17,13 +20,20 @@ import (
 // AuthHandler handles authentication HTTP requests
 type AuthHandler struct {
 	authUsecase port.AuthUsecase
+	oryCli      *ory.APIClient
 	logger      *slog.Logger
 }
 
 // NewAuthHandler creates a new auth handler
 func NewAuthHandler(authUsecase port.AuthUsecase, logger *slog.Logger) *AuthHandler {
+	// Initialize Ory client as per memo.md Phase 2.1
+	cfg := ory.NewConfiguration()
+	cfg.Servers = ory.ServerConfigurations{{URL: os.Getenv("KRATOS_PUBLIC_URL")}} // http://kratos-public:4433
+	oryCli := ory.NewAPIClient(cfg)
+
 	return &AuthHandler{
 		authUsecase: authUsecase,
+		oryCli:      oryCli,
 		logger:      logger,
 	}
 }
@@ -245,122 +255,35 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 	})
 }
 
-// ValidateSession validates session token for other services (Phase 6.1.1 Enhanced)
+// Validate validates session for internal services (memo.md Phase 2.1)
 // @Summary Validate session
-// @Description Validate session token for internal service authentication
+// @Description Validate session via FrontendAPI.ToSession() using cookies or tokens
 // @Tags authentication
 // @Accept json
 // @Produce json
-// @Header 200 {string} X-User-ID "User ID"
-// @Header 200 {string} X-Tenant-ID "Tenant ID"
-// @Success 200 {object} domain.SessionContext
-// @Failure 401 {object} DetailedErrorResponse
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {string} string "unauthorized"
 // @Router /v1/auth/validate [get]
-func (h *AuthHandler) ValidateSession(c echo.Context) error {
-	ctx := c.Request().Context()
+func (h *AuthHandler) Validate(c echo.Context) error {
+	cookie := c.Request().Header.Get("Cookie")
+	bearer := h.extractBearer(c.Request().Header.Get("Authorization")) // ネイティブ用（任意）
 
-	// TODO.md修正: Cookie優先でKratos呼び出し
-	// ブラウザからのCookieヘッダー全体を取得
-	cookieHeader := c.Request().Header.Get("Cookie")
-	sessionToken := h.extractSessionToken(c)
-	
-	// Cookie優先、トークンはフォールバック
-	var sessionCtx *domain.SessionContext
-	var err error
-	
-	if cookieHeader != "" {
-		// ブラウザの場合はCookie方式でKratos呼び出し
-		h.logger.Debug("validating session with cookie", 
-			"cookie_length", len(cookieHeader),
-			"ip", c.RealIP())
-		sessionCtx, err = h.authUsecase.ValidateSessionWithCookie(ctx, cookieHeader)
-	} else if sessionToken != "" {
-		// APIクライアントの場合はToken方式でKratos呼び出し
-		h.logger.Debug("validating session with token", 
-			"token_present", true,
-			"ip", c.RealIP())
-		sessionCtx, err = h.authUsecase.ValidateSession(ctx, sessionToken)
-	} else {
-		h.logger.Warn("session validation failed: no cookie or session token",
-			"ip", c.RealIP(),
-			"user_agent", c.Request().Header.Get("User-Agent"),
-			"path", c.Request().URL.Path)
-		return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
-			Error:   "No session found",
-			Code:    "SESSION_NOT_FOUND",
-			Details: "Session cookie or token is required for authentication",
-		})
+	sess, resp, err := h.oryCli.FrontendAPI.
+		ToSession(c.Request().Context()).
+		Cookie(cookie).        // ブラウザ
+		XSessionToken(bearer). // ネイティブ
+		Execute()
+
+	if err != nil || (resp != nil && (resp.StatusCode == 401 || resp.StatusCode == 403)) {
+		http.Error(c.Response().Writer, "unauthorized", http.StatusUnauthorized) // ← 常に401
+		return nil
 	}
 
-	if err != nil {
-		h.logger.Error("session validation failed",
-			"error", err,
-			"cookie_present", cookieHeader != "",
-			"session_token_present", sessionToken != "",
-			"ip", c.RealIP(),
-			"user_agent", c.Request().Header.Get("User-Agent"))
-			
-		// Handle specific domain errors
-		if authErr, ok := err.(*domain.AuthError); ok {
-			switch authErr.Code {
-			case domain.ErrCodeSessionExpired:
-				return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
-					Error:   "Session expired",
-					Code:    "SESSION_EXPIRED",
-					Details: "Your session has expired. Please log in again.",
-				})
-			case domain.ErrCodeSessionInvalid:
-				return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
-					Error:   "Invalid session",
-					Code:    "SESSION_INVALID",
-					Details: "The session token is invalid or malformed.",
-				})
-			}
-		}
-		
-		return c.JSON(http.StatusUnauthorized, DetailedErrorResponse{
-			Error:   "Authentication failed",
-			Code:    "AUTH_FAILED",
-			Details: "Unable to validate session. Please log in again.",
-		})
-	}
-
-	// Success logging
-	h.logger.Info("session validation successful",
-		"user_id", sessionCtx.UserID,
-		"session_id", sessionCtx.SessionID,
-		"method", func() string {
-			if cookieHeader != "" {
-				return "cookie"
-			}
-			return "token"
-		}(),
-		"ip", c.RealIP())
-
-	// Set headers for downstream services
-	c.Response().Header().Set("X-User-ID", sessionCtx.UserID.String())
-	c.Response().Header().Set("X-Tenant-ID", sessionCtx.TenantID.String())
-	c.Response().Header().Set("X-User-Email", sessionCtx.Email)
-	c.Response().Header().Set("X-Session-ID", sessionCtx.SessionID)
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"valid":   true,
-		"user_id": sessionCtx.UserID.String(),
-		"email":   sessionCtx.Email,
-		"role":    string(sessionCtx.Role),
-		"authenticated": true,
-		"user": map[string]interface{}{
-			"id":       sessionCtx.UserID,
-			"email":    sessionCtx.Email,
-			"name":     sessionCtx.Name,
-			"tenant_id": sessionCtx.TenantID,
-		},
-		"session": map[string]interface{}{
-			"id":         sessionCtx.SessionID,
-			"expires_at": sessionCtx.ExpiresAt.Unix(),
-			"active":     sessionCtx.IsActive,
-		},
-	})
+	// 監査系は best-effort（失敗で 200 を崩さない）
+	go h.upsertSessionAsync(c.Request().Context(), sess)
+	c.Response().Header().Set("Cache-Control", "no-store")
+	c.Response().WriteHeader(http.StatusOK)
+	return nil
 }
 
 // RefreshSession refreshes the current session
@@ -541,6 +464,26 @@ func (h *AuthHandler) extractSessionToken(c echo.Context) string {
 
 func (h *AuthHandler) extractSessionID(c echo.Context) string {
 	return h.extractSessionToken(c)
+}
+
+// extractBearer extracts bearer token from Authorization header
+func (h *AuthHandler) extractBearer(authHeader string) string {
+	if authHeader == "" {
+		return ""
+	}
+	// Remove "Bearer " prefix if present
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		return authHeader[7:]
+	}
+	return authHeader
+}
+
+// upsertSessionAsync performs session audit in background (best-effort)
+func (h *AuthHandler) upsertSessionAsync(ctx context.Context, sess *ory.Session) {
+	// This is a placeholder for session audit logic
+	// In actual implementation, this would store session info to database
+	// for audit/analytics purposes, but failure here should not affect auth validation
+	h.logger.Debug("session audit logged", "session_id", sess.Id)
 }
 
 // generateRandomID generates a random ID for anonymous sessions

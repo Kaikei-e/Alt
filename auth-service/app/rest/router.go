@@ -135,8 +135,8 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	authProtected.POST("/refresh", authHandler.RefreshSession, csrfMiddleware.RequireCSRF())
 	authProtected.POST("/csrf/validate", authHandler.ValidateCSRFToken)
 
-	// Session validation endpoint (for other services)
-	auth.GET("/validate", authHandler.ValidateSession)
+	// Session validation endpoint (for other services) - memo.md Phase 2.1
+	auth.GET("/validate", authHandler.Validate)
 
 	// User endpoints
 	user := v1.Group("/user")

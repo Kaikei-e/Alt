@@ -25,21 +25,11 @@ func NewAuthUseCase(authRepo port.AuthRepository, authGateway port.AuthGateway) 
 	}
 }
 
-// CreateSession creates a new session for a user
+// CreateSession - DEPRECATED: Use Kratos sessions directly
+// This method is disabled to follow Ory Kratos best practices
 func (uc *AuthUseCase) CreateSession(ctx context.Context, userID uuid.UUID, kratosSessionID string, duration time.Duration) (*domain.Session, error) {
-	// Create session using domain logic
-	session, err := domain.NewSession(userID, kratosSessionID, duration)
-	if err != nil {
-		return nil, err
-	}
-
-	// Store session in repository
-	err = uc.authRepo.CreateSession(ctx, session)
-	if err != nil {
-		return nil, err
-	}
-
-	return session, nil
+	// No-op: Kratos handles session creation
+	return nil, fmt.Errorf("method disabled - use Kratos sessions instead")
 }
 
 // ValidateSession validates a session and returns session context
@@ -86,48 +76,14 @@ func (uc *AuthUseCase) buildSessionContext(ctx context.Context, kratosSession *d
 		LastActivityAt:  time.Now(),                     // Current time
 	}
 
-	// Best-effort: Try to get local session data, but don't fail if DB is unavailable
-	session, err := uc.authRepo.GetSessionByKratosID(ctx, kratosSession.ID)
-	if err != nil {
-		// Log the DB error but continue with Kratos data
-		// TODO: Add proper logging here
-		// ログ: "user_sessions table access failed, using Kratos session data"
-		
-		// Async attempt to upsert session data (TODO.md suggestion)
-		go func() {
-			// Try to create/update session in background
-			// This is best-effort and failures are acceptable
-			_ = uc.upsertSessionAsync(context.Background(), userID, kratosSession.ID)
-		}()
-		
-		return sessionContext, nil // Return success with Kratos data
-	}
-
-	// If we have local session data, validate and use it
-	if session != nil && session.IsValid() {
-		sessionContext.SessionID = session.ID.String()
-		sessionContext.IsActive = session.Active
-		sessionContext.ExpiresAt = session.ExpiresAt
-		sessionContext.LastActivityAt = session.LastActivityAt
-	}
+	// Using Kratos session data only - no local session table needed
 
 	return sessionContext, nil
 }
 
-// DeactivateSession deactivates a session
+// DeactivateSession - DEPRECATED: Use Kratos session revocation instead
 func (uc *AuthUseCase) DeactivateSession(ctx context.Context, kratosSessionID string) error {
-	// Get session from repository
-	session, err := uc.authRepo.GetSessionByKratosID(ctx, kratosSessionID)
-	if err != nil {
-		return err
-	}
-
-	// Update session status to inactive
-	err = uc.authRepo.UpdateSessionStatus(ctx, session.ID.String(), false)
-	if err != nil {
-		return err
-	}
-
+	// No-op: Use Kratos RevokeSession instead
 	return nil
 }
 
@@ -149,32 +105,8 @@ func (uc *AuthUseCase) CompleteLogin(ctx context.Context, flowID string, body in
 		return nil, err
 	}
 
-	// Create session in our database
-	userID, err := uuid.Parse(kratosSession.Identity.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	session, err := uc.CreateSession(ctx, userID, kratosSession.ID, 24*time.Hour)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create session context
-	sessionContext := &domain.SessionContext{
-		UserID:          userID,
-		TenantID:        uuid.Nil, // TODO: Get from user profile
-		Email:           kratosSession.Identity.GetEmail(),
-		Name:            kratosSession.Identity.GetName(),
-		Role:            domain.UserRoleUser, // TODO: Get from user profile
-		SessionID:       session.ID.String(),
-		KratosSessionID: session.KratosSessionID,
-		IsActive:        session.Active,
-		ExpiresAt:       session.ExpiresAt,
-		LastActivityAt:  session.LastActivityAt,
-	}
-
-	return sessionContext, nil
+	// Build session context from Kratos session only
+	return uc.buildSessionContext(ctx, kratosSession)
 }
 
 // CompleteRegistration completes a registration flow
@@ -185,44 +117,14 @@ func (uc *AuthUseCase) CompleteRegistration(ctx context.Context, flowID string, 
 		return nil, err
 	}
 
-	// Create session in our database
-	userID, err := uuid.Parse(kratosSession.Identity.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	session, err := uc.CreateSession(ctx, userID, kratosSession.ID, 24*time.Hour)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create session context
-	sessionContext := &domain.SessionContext{
-		UserID:          userID,
-		TenantID:        uuid.Nil, // TODO: Get from user profile
-		Email:           kratosSession.Identity.GetEmail(),
-		Name:            kratosSession.Identity.GetName(),
-		Role:            domain.UserRoleUser, // TODO: Get from user profile
-		SessionID:       session.ID.String(),
-		KratosSessionID: session.KratosSessionID,
-		IsActive:        session.Active,
-		ExpiresAt:       session.ExpiresAt,
-		LastActivityAt:  session.LastActivityAt,
-	}
-
-	return sessionContext, nil
+	// Build session context from Kratos session only
+	return uc.buildSessionContext(ctx, kratosSession)
 }
 
 // Logout logs out a user by deactivating their session
 func (uc *AuthUseCase) Logout(ctx context.Context, sessionID string) error {
-	// Revoke session in Kratos
-	err := uc.authGateway.RevokeSession(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-
-	// Deactivate session in our database
-	return uc.DeactivateSession(ctx, sessionID)
+	// Revoke session in Kratos only
+	return uc.authGateway.RevokeSession(ctx, sessionID)
 }
 
 // RefreshSession refreshes a session
@@ -233,34 +135,8 @@ func (uc *AuthUseCase) RefreshSession(ctx context.Context, sessionID string) (*d
 		return nil, err
 	}
 
-	// Get our session
-	session, err := uc.authRepo.GetSessionByKratosID(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Update session activity
-	session.UpdateActivity()
-	err = uc.authRepo.UpdateSessionStatus(ctx, session.ID.String(), true)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create session context
-	sessionContext := &domain.SessionContext{
-		UserID:          session.UserID,
-		TenantID:        uuid.Nil, // TODO: Get from user profile
-		Email:           kratosSession.Identity.GetEmail(),
-		Name:            kratosSession.Identity.GetName(),
-		Role:            domain.UserRoleUser, // TODO: Get from user profile
-		SessionID:       session.ID.String(),
-		KratosSessionID: session.KratosSessionID,
-		IsActive:        session.Active,
-		ExpiresAt:       session.ExpiresAt,
-		LastActivityAt:  session.LastActivityAt,
-	}
-
-	return sessionContext, nil
+	// Build session context from Kratos session only
+	return uc.buildSessionContext(ctx, kratosSession)
 }
 
 // GenerateCSRFToken generates a new CSRF token for a session
@@ -298,14 +174,8 @@ func (uc *AuthUseCase) ValidateCSRFToken(ctx context.Context, token, sessionID s
 	return uc.authRepo.DeleteCSRFToken(ctx, token)
 }
 
-// upsertSessionAsync attempts to create or update session in background (best-effort)
+// upsertSessionAsync - DEPRECATED: No longer needed with Kratos-only sessions
 func (uc *AuthUseCase) upsertSessionAsync(ctx context.Context, userID uuid.UUID, kratosSessionID string) error {
-	// Try to create session if it doesn't exist
-	session, err := domain.NewSession(userID, kratosSessionID, 24*time.Hour)
-	if err != nil {
-		return err
-	}
-
-	// Try to store - if it fails, that's okay
-	return uc.authRepo.CreateSession(ctx, session)
+	// No-op: Kratos handles all session management
+	return nil
 }

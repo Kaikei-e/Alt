@@ -83,15 +83,15 @@ data:
             default_browser_return_url: https://curionoah.com/
 
         login:
-          ui_url: https://curionoah.com/login
+          ui_url: https://curionoah.com/auth/login
           lifespan: 10m
           after:
-            default_browser_return_url: https://curionoah.com/dashboard
+            default_browser_return_url: https://curionoah.com/
 
         registration:
           enabled: true
           lifespan: 10m
-          ui_url: https://curionoah.com/register
+          ui_url: https://curionoah.com/auth/register
           after:
             default_browser_return_url: https://curionoah.com/
             password:
@@ -134,6 +134,7 @@ data:
       cookie:
         persistent: true
         same_site: Lax
-        domain: .curionoah.com  # TODO.md修正: サブドメイン横断でセッション共有
+        domain: .curionoah.com  # ★TODOの指示通り: 最上位ドメインに設定（先頭ドット）
         path: /
         name: ory_kratos_session
+        # Note: secure flag is automatically set when using HTTPS in production

@@ -27,164 +27,35 @@ func NewAuthRepository(db DatabaseIface, logger *slog.Logger) port.AuthRepositor
 	}
 }
 
-// CreateSession creates a new session in the database
+// CreateSession - DEPRECATED: Use Kratos sessions instead
+// This method is disabled to follow Ory Kratos best practices
 func (r *AuthRepository) CreateSession(ctx context.Context, session *domain.Session) error {
-	query := `
-		INSERT INTO user_sessions (
-			id, user_id, kratos_session_id, active, created_at,
-			expires_at, updated_at, last_activity_at, ip_address,
-			user_agent, device_info, session_metadata
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-		)`
-
-	r.logger.Info("Creating session", "session_id", session.ID, "user_id", session.UserID)
-
-	_, err := r.db.Exec(ctx, query,
-		session.ID,
-		session.UserID,
-		session.KratosSessionID,
-		session.Active,
-		session.CreatedAt,
-		session.ExpiresAt,
-		session.UpdatedAt,
-		session.LastActivityAt,
-		nil, // ip_address - would be populated from request context
-		nil, // user_agent - would be populated from request context
-		nil, // device_info - would be populated from request context
-		nil, // session_metadata - would be populated from request context
-	)
-
-	if err != nil {
-		r.logger.Error("Failed to create session", "session_id", session.ID, "error", err)
-		return fmt.Errorf("failed to create session: %w", err)
-	}
-
-	r.logger.Info("Session created successfully", "session_id", session.ID)
-	return nil
+	r.logger.Info("CreateSession called but disabled - using Kratos sessions", "session_id", session.ID, "user_id", session.UserID)
+	return nil // No-op: Kratos handles session management
 }
 
-// GetSessionByKratosID retrieves a session by Kratos session ID
+// GetSessionByKratosID - DEPRECATED: Use Kratos sessions directly
 func (r *AuthRepository) GetSessionByKratosID(ctx context.Context, kratosSessionID string) (*domain.Session, error) {
-	query := `
-		SELECT
-			id, user_id, kratos_session_id, active, created_at,
-			expires_at, updated_at, last_activity_at
-		FROM user_sessions
-		WHERE kratos_session_id = $1`
-
-	r.logger.Info("Getting session by Kratos ID", "kratos_session_id", kratosSessionID)
-
-	session := &domain.Session{}
-	err := r.db.QueryRow(ctx, query, kratosSessionID).Scan(
-		&session.ID,
-		&session.UserID,
-		&session.KratosSessionID,
-		&session.Active,
-		&session.CreatedAt,
-		&session.ExpiresAt,
-		&session.UpdatedAt,
-		&session.LastActivityAt,
-	)
-
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			r.logger.Warn("Session not found", "kratos_session_id", kratosSessionID)
-			return nil, fmt.Errorf("session not found")
-		}
-		r.logger.Error("Failed to get session by Kratos ID", "kratos_session_id", kratosSessionID, "error", err)
-		return nil, fmt.Errorf("failed to get session: %w", err)
-	}
-
-	r.logger.Info("Session retrieved successfully", "kratos_session_id", kratosSessionID)
-	return session, nil
+	r.logger.Info("GetSessionByKratosID called but disabled - using Kratos sessions", "kratos_session_id", kratosSessionID)
+	return nil, fmt.Errorf("method disabled - use Kratos ToSession() instead")
 }
 
-// GetActiveSessionByUserID retrieves the active session for a user
+// GetActiveSessionByUserID - DEPRECATED: Use Kratos sessions directly
 func (r *AuthRepository) GetActiveSessionByUserID(ctx context.Context, userID string) (*domain.Session, error) {
-	query := `
-		SELECT
-			id, user_id, kratos_session_id, active, created_at,
-			expires_at, updated_at, last_activity_at
-		FROM user_sessions
-		WHERE user_id = $1 AND active = true AND expires_at > CURRENT_TIMESTAMP
-		ORDER BY created_at DESC
-		LIMIT 1`
-
-	r.logger.Info("Getting active session by user ID", "user_id", userID)
-
-	session := &domain.Session{}
-	err := r.db.QueryRow(ctx, query, userID).Scan(
-		&session.ID,
-		&session.UserID,
-		&session.KratosSessionID,
-		&session.Active,
-		&session.CreatedAt,
-		&session.ExpiresAt,
-		&session.UpdatedAt,
-		&session.LastActivityAt,
-	)
-
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			r.logger.Warn("Active session not found", "user_id", userID)
-			return nil, fmt.Errorf("active session not found")
-		}
-		r.logger.Error("Failed to get active session by user ID", "user_id", userID, "error", err)
-		return nil, fmt.Errorf("failed to get active session: %w", err)
-	}
-
-	r.logger.Info("Active session retrieved successfully", "user_id", userID)
-	return session, nil
+	r.logger.Info("GetActiveSessionByUserID called but disabled - using Kratos sessions", "user_id", userID)
+	return nil, fmt.Errorf("method disabled - use Kratos ToSession() instead")
 }
 
-// UpdateSessionStatus updates the session status
+// UpdateSessionStatus - DEPRECATED: Use Kratos sessions directly
 func (r *AuthRepository) UpdateSessionStatus(ctx context.Context, sessionID string, active bool) error {
-	query := `
-		UPDATE user_sessions
-		SET active = $2, updated_at = CURRENT_TIMESTAMP, last_activity_at = CURRENT_TIMESTAMP
-		WHERE id = $1`
-
-	r.logger.Info("Updating session status", "session_id", sessionID, "active", active)
-
-	result, err := r.db.Exec(ctx, query, sessionID, active)
-	if err != nil {
-		r.logger.Error("Failed to update session status", "session_id", sessionID, "error", err)
-		return fmt.Errorf("failed to update session status: %w", err)
-	}
-
-	rowsAffected := result.RowsAffected()
-
-	if rowsAffected == 0 {
-		r.logger.Warn("Session not found for update", "session_id", sessionID)
-		return fmt.Errorf("session not found")
-	}
-
-	r.logger.Info("Session status updated successfully", "session_id", sessionID)
-	return nil
+	r.logger.Info("UpdateSessionStatus called but disabled - using Kratos sessions", "session_id", sessionID, "active", active)
+	return nil // No-op: Kratos handles session management
 }
 
-// DeleteSession deletes a session from the database
+// DeleteSession - DEPRECATED: Use Kratos sessions directly
 func (r *AuthRepository) DeleteSession(ctx context.Context, sessionID string) error {
-	query := `DELETE FROM user_sessions WHERE id = $1`
-
-	r.logger.Info("Deleting session", "session_id", sessionID)
-
-	result, err := r.db.Exec(ctx, query, sessionID)
-	if err != nil {
-		r.logger.Error("Failed to delete session", "session_id", sessionID, "error", err)
-		return fmt.Errorf("failed to delete session: %w", err)
-	}
-
-	rowsAffected := result.RowsAffected()
-
-	if rowsAffected == 0 {
-		r.logger.Warn("Session not found for deletion", "session_id", sessionID)
-		return fmt.Errorf("session not found")
-	}
-
-	r.logger.Info("Session deleted successfully", "session_id", sessionID)
-	return nil
+	r.logger.Info("DeleteSession called but disabled - using Kratos sessions", "session_id", sessionID)
+	return nil // No-op: Kratos handles session management
 }
 
 // StoreCSRFToken stores a CSRF token in the database
@@ -298,22 +169,10 @@ func (r *AuthRepository) DeleteCSRFToken(ctx context.Context, token string) erro
 	return nil
 }
 
-// CleanupExpiredSessions removes expired sessions from the database
+// CleanupExpiredSessions - DEPRECATED: Use Kratos session cleanup instead
 func (r *AuthRepository) CleanupExpiredSessions(ctx context.Context) (int64, error) {
-	query := `DELETE FROM user_sessions WHERE expires_at < CURRENT_TIMESTAMP - INTERVAL '7 days'`
-
-	r.logger.Info("Cleaning up expired sessions")
-
-	result, err := r.db.Exec(ctx, query)
-	if err != nil {
-		r.logger.Error("Failed to cleanup expired sessions", "error", err)
-		return 0, fmt.Errorf("failed to cleanup expired sessions: %w", err)
-	}
-
-	rowsAffected := result.RowsAffected()
-
-	r.logger.Info("Expired sessions cleaned up successfully", "rows_affected", rowsAffected)
-	return rowsAffected, nil
+	r.logger.Info("CleanupExpiredSessions called but disabled - Kratos handles session cleanup")
+	return 0, nil // No-op: Kratos handles session cleanup automatically
 }
 
 // CleanupExpiredCSRFTokens removes expired CSRF tokens from the database
@@ -334,45 +193,16 @@ func (r *AuthRepository) CleanupExpiredCSRFTokens(ctx context.Context) (int64, e
 	return rowsAffected, nil
 }
 
-// GetSessionStats returns session statistics
+// GetSessionStats - DEPRECATED: Use Kratos session stats instead
 func (r *AuthRepository) GetSessionStats(ctx context.Context, userID uuid.UUID) (map[string]interface{}, error) {
-	query := `
-		SELECT
-			COUNT(*) as total_sessions,
-			COUNT(CASE WHEN active = true THEN 1 END) as active_sessions,
-			COUNT(CASE WHEN expires_at > CURRENT_TIMESTAMP THEN 1 END) as valid_sessions,
-			MAX(last_activity_at) as last_activity
-		FROM user_sessions
-		WHERE user_id = $1`
-
-	r.logger.Info("Getting session stats", "user_id", userID)
-
-	var stats map[string]interface{}
-	var totalSessions, activeSessions, validSessions int
-	var lastActivity *time.Time
-
-	err := r.db.QueryRow(ctx, query, userID).Scan(
-		&totalSessions,
-		&activeSessions,
-		&validSessions,
-		&lastActivity,
-	)
-
-	if err != nil {
-		r.logger.Error("Failed to get session stats", "user_id", userID, "error", err)
-		return nil, fmt.Errorf("failed to get session stats: %w", err)
+	r.logger.Info("GetSessionStats called but disabled - use Kratos session stats", "user_id", userID)
+	
+	// Return empty stats - use Kratos session management instead
+	stats := map[string]interface{}{
+		"total_sessions":  0,
+		"active_sessions": 0,
+		"valid_sessions":  0,
 	}
-
-	stats = map[string]interface{}{
-		"total_sessions":  totalSessions,
-		"active_sessions": activeSessions,
-		"valid_sessions":  validSessions,
-	}
-
-	if lastActivity != nil {
-		stats["last_activity"] = *lastActivity
-	}
-
-	r.logger.Info("Session stats retrieved successfully", "user_id", userID)
+	
 	return stats, nil
 }
