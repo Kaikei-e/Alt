@@ -174,39 +174,41 @@ Derived from NetworkPolicies and namespaces across Layers 01, 05, 06, and 07.
 ```mermaid
 flowchart LR
   %% Namespaces as subgraphs
-  subgraph N1[alt-apps]
-    AF[alt-frontend:9000/https via ingress]
-    AB[alt-backend:9000]
-    EP[envoy-proxy:8080,8081,8082,8085,9901]
+  subgraph N1["alt-apps"]
+    AF["alt-frontend<br/>:9000/https"]
+    AB["alt-backend<br/>:9000"]
+    EP["envoy-proxy<br/>:8080,8081,8082<br/>8085,9901"]
   end
 
-  subgraph N2[alt-auth]
-    KR[kratos:4433]
-    AS[auth-service:8080]
-    APG[auth-postgres:5432]
+  subgraph N2["alt-auth"]
+    KR["kratos<br/>:4433"]
+    AS["auth-service<br/>:8080"]
+    APG["auth-postgres<br/>:5432"]
   end
 
-  subgraph N3[alt-database]
-    PG[postgres:5432]
+  subgraph N3["alt-database"]
+    PG["postgres<br/>:5432"]
   end
 
-  subgraph N4[alt-search]
-    MS[meilisearch:7700]
+  subgraph N4["alt-search"]
+    MS["meilisearch<br/>:7700"]
   end
 
-  subgraph N5[alt-processing]
-    PP[pre-processor:9200]
-    PPS[pre-processor-sidecar (CronJob)]
-    SI[search-indexer:9300]
-    TG[tag-generator:9400]
-    NC[news-creator:11434]
-    ATM[auth-token-manager]
+  subgraph N5["alt-processing"]
+    PP["pre-processor<br/>:9200"]
+    PPS["pre-processor-sidecar<br/>(CronJob)"]
+    SI["search-indexer<br/>:9300"]
+    TG["tag-generator<br/>:9400"]
+    NC["news-creator<br/>:11434"]
+    ATM["auth-token-manager"]
   end
 
   %% Primary allowed flows per NetworkPolicy
   AF -->|4433| KR
   AB -->|4433| KR
   AB -->|8080| AS
+
+  AS -->|5432| APG
 
   PP -->|5432| PG
   PP -->|11434| NC
@@ -220,15 +222,33 @@ flowchart LR
   NC -->|8080| AS
   NC -->|8080| AB
   NC -->|5432| PG
-  NC -->|HTTPS via 8082| EP
+  NC -->|8082 HTTPS| EP
 
   PPS -->|8081| EP
   ATM -->|8081| EP
 
-  %% Cross-namespace allowances
-  N5 -.ingress from alt-apps .-> PP
-  N5 -.ingress from alt-apps/ingress .-> SI
-  N5 -.ingress from alt-apps/processing .-> NC
+  %% Cross-namespace allowances (dotted lines)
+  AB -.->|ingress| PP
+  AF -.->|ingress| SI
+  PP -.->|ingress| NC
+
+  %% External Internet access
+  EP -.->|External<br/>Internet| EXT[Internet]
+
+  %% Styling
+  classDef appNamespace fill:#e1f5fe
+  classDef authNamespace fill:#f3e5f5
+  classDef dataNamespace fill:#e8f5e8
+  classDef searchNamespace fill:#fff3e0
+  classDef processingNamespace fill:#fce4ec
+  classDef external fill:#ffebee
+
+  class N1 appNamespace
+  class N2 authNamespace
+  class N3 dataNamespace
+  class N4 searchNamespace
+  class N5 processingNamespace
+  class EXT external
 ```
 
 Notes:
