@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import NextLink from "next/link.js";
+import NextLink from "next/link";
 import {
   Box,
   Flex,
@@ -54,6 +54,8 @@ export default function DesktopHome() {
     const fetchStats = async () => {
       try {
         setIsLoading(true);
+        // TODO.md: 依存データ fetch も cache: 'no-store' に（特に認証に依存するもの）
+        feedsApi.clearCache(); // キャッシュクリアで no-store 効果を確保
         const data = await feedsApi.getFeedStats();
         setFeedStats(data);
       } catch (err) {

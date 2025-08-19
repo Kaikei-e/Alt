@@ -1,5 +1,5 @@
 import { Box, VStack, Text, HStack, Heading, Spinner } from "@chakra-ui/react";
-import Link from "next/link.js";
+import Link from "next/link";
 import { BackendFeedItem } from "@/schema/feed";
 
 interface SearchResultsProps {

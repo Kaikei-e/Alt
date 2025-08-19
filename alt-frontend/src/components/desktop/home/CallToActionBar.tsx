@@ -1,5 +1,5 @@
 import React from "react";
-import Link from "next/link.js";
+import Link from "next/link";
 
 interface CallToActionBarProps {
   title: string;

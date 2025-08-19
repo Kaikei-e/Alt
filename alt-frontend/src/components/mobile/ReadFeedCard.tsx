@@ -1,6 +1,6 @@
 import { Flex, Text, Box } from "@chakra-ui/react";
 import { Feed } from "@/schema/feed";
-import Link from "next/link.js";
+import Link from "next/link";
 import { memo } from "react";
 import { FeedDetails } from "./FeedDetails";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";

@@ -13,7 +13,7 @@ import {
   Spinner,
 } from "@chakra-ui/react";
 import { Heart, Bookmark, Clock, ExternalLink } from "lucide-react";
-import Link from "next/link.js";
+import Link from "next/link";
 import { DesktopFeedCardProps } from "@/types/desktop-feed";
 
 const formatTimeAgo = (dateString: string) => {

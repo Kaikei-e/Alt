@@ -1,6 +1,6 @@
 import { Button, Flex, Spinner, Text, Box } from "@chakra-ui/react";
 import { SanitizedFeed } from "@/schema/feed";
-import Link from "next/link.js";
+import Link from "next/link";
 import { feedsApi } from "@/lib/api";
 import { useState, useCallback, useMemo, KeyboardEvent } from "react";
 import { FeedDetails } from "./FeedDetails";
