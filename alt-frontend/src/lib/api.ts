@@ -205,6 +205,7 @@ class ApiClient {
     try {
       const response = await fetch(url, {
         ...enhancedOptions,
+        credentials: 'include', // TODO.md修正: 必ず認証つきに
         signal: controller.signal,
       });
 

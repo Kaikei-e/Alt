@@ -56,8 +56,15 @@ export default function DesktopHome() {
         setIsLoading(true);
         // TODO.md: 依存データ fetch も cache: 'no-store' に（特に認証に依存するもの）
         feedsApi.clearCache(); // キャッシュクリアで no-store 効果を確保
-        const data = await feedsApi.getFeedStats();
-        setFeedStats(data);
+        // TODO.md: 一時的にコメントアウトして500問題を特定
+        // const data = await feedsApi.getFeedStats();
+        // setFeedStats(data);
+        
+        // Mock data for testing
+        setFeedStats({
+          feed_amount: { amount: 0 },
+          summarized_feed: { amount: 0 }
+        });
       } catch (err) {
         setError("Unable to load statistics");
         console.error("Error fetching stats:", err);

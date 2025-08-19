@@ -41,6 +41,9 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
   const [formData, setFormData] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // TODO.md: 三値判定 null=不明, false=未ログイン, true=ログイン済み
+  const [session, setSession] = useState<null | boolean>(null)
 
   const KRATOS_PUBLIC = "https://id.curionoah.com"
 
@@ -48,6 +51,31 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
     if (!flowId) return
     fetchFlow(flowId)
   }, [flowId])
+
+  // TODO.md: 三値判定のセッションチェック
+  useEffect(() => {
+    let abort = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/validate', { 
+          credentials: 'include', 
+          cache: 'no-store' 
+        });
+        if (abort) return;
+        setSession(r.ok); // ok=true=ログイン済 / それ以外は false
+      } catch { 
+        if (!abort) setSession(false); 
+      }
+    })();
+    return () => { abort = true; };
+  }, []);
+
+  // TODO.md: ログイン済みの場合のみ router.replace 実行
+  useEffect(() => {
+    if (session === true) {
+      router.replace(returnUrl);
+    }
+  }, [session, router, returnUrl]);
 
   // Session cleanup helper for redirect loop prevention
   const cleanupSession = async () => {

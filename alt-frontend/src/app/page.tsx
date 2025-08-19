@@ -86,7 +86,7 @@ export default async function Home() {
 
         {/* Authentication Buttons */}
         <HStack gap={4} flexWrap="wrap" justifyContent="center">
-          <NextLink href="/auth/login" prefetch={false}>
+          <NextLink href="/auth/login?return_to=/" prefetch={false}>
             <Button
               bg="var(--alt-primary)"
               color="white"
