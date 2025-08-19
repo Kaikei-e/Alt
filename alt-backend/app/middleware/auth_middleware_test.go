@@ -32,7 +32,7 @@ func TestAuthMiddleware_Middleware(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 	mockAuth.EXPECT().
-		ValidateSession(gomock.Any(), "valid").
+		ValidateSessionWithCookie(gomock.Any(), "ory_kratos_session=valid").
 		Return(userCtx, nil)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -59,7 +59,7 @@ func TestAuthMiddleware_Middleware_Invalid(t *testing.T) {
 
 	mockAuth := mocks.NewMockAuthPort(ctrl)
 	mockAuth.EXPECT().
-		ValidateSession(gomock.Any(), "invalid").
+		ValidateSessionWithCookie(gomock.Any(), "ory_kratos_session=invalid").
 		Return(nil, errors.New("invalid"))
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -95,7 +95,7 @@ func TestAuthMiddleware_OptionalAuth(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 	mockAuth.EXPECT().
-		ValidateSession(gomock.Any(), "valid").
+		ValidateSessionWithCookie(gomock.Any(), "ory_kratos_session=valid").
 		Return(userCtx, nil)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
