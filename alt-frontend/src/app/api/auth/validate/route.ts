@@ -5,8 +5,9 @@ export const fetchCache = 'force-no-store'
 
 export async function GET() {
   const cookie = (await headers()).get('cookie') ?? ''
-  const r = await fetch(process.env.AUTH_SVC_URL + '/v1/auth/validate', {
-    headers: { cookie }, cache: 'no-store'
+  const r = await fetch(process.env.AUTH_URL + '/v1/auth/validate', {
+    headers: { cookie },
+    cache: 'no-store',
   })
   return new Response(null, { status: r.status })
 }

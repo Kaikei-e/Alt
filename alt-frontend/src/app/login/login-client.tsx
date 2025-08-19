@@ -49,6 +49,19 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
     fetchFlow(flowId)
   }, [flowId])
 
+  // Session cleanup helper for redirect loop prevention
+  const cleanupSession = async () => {
+    try {
+      await fetch('/api/auth/cleanup', {
+        method: 'POST',
+        credentials: 'include',
+      })
+      console.log('Session cleanup completed')
+    } catch (error) {
+      console.warn('Session cleanup failed:', error)
+    }
+  }
+
   const fetchFlow = async (id: string) => {
     try {
       setIsLoading(true)
@@ -65,7 +78,14 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
 
       if (!response.ok) {
         if (response.status === 410) { 
-          window.location.href = '/login'; return // 期限切れのみ新規化
+          // Flow expired - clean up stale sessions before redirect
+          await cleanupSession()
+          window.location.href = '/auth/login'; return
+        }
+        if (response.status === 404) {
+          // Flow not found - could indicate session issues
+          await cleanupSession()
+          window.location.href = '/auth/login'; return
         }
         setError(`fetch flow failed: ${response.status}`); return
       }
@@ -100,8 +120,9 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
       (n: any) => n.attributes?.name === 'csrf_token'
     )?.attributes?.value
     if (!csrf) {
-      // CSRFが取れない＝期限切れorキャッシュ汚染。安全に再初期化
-      window.location.href = '/login'
+      // CSRFが取れない＝期限切れorキャッシュ汚染。セッション清理して再初期化
+      await cleanupSession()
+      window.location.href = '/auth/login'
       return
     }
     

@@ -9,22 +9,15 @@ export default function GlobalError({
   reset: () => void 
 }) {
   useEffect(() => {
-    // Log detailed error information for debugging
-    console.error('[GlobalError]', {
-      message: error.message,
-      stack: error.stack,
-      digest: error.digest,
-      name: error.name,
-      timestamp: new Date().toISOString()
-    })
+    console.error(error) // k8s ログにフルスタック
   }, [error])
 
   return (
     <html>
       <body>
         <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>
-          <h1>アプリケーションエラーが発生しました</h1>
-          <p>問題が発生しました。ページをリロードしてお試しください。</p>
+          <h1>エラーが発生しました。</h1>
+          <p>再試行してください。</p>
           <button onClick={reset} style={{ padding: '0.5rem 1rem', margin: '1rem 0' }}>
             再試行
           </button>
