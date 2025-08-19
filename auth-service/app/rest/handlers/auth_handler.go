@@ -265,25 +265,88 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 // @Failure 401 {string} string "unauthorized"
 // @Router /v1/auth/validate [get]
 func (h *AuthHandler) Validate(c echo.Context) error {
+	ctx := c.Request().Context()
 	cookie := c.Request().Header.Get("Cookie")
 	bearer := h.extractBearer(c.Request().Header.Get("Authorization")) // ネイティブ用（任意）
+	
+	// Enhanced logging for debugging redirect loops
+	clientIP := c.RealIP()
+	userAgent := c.Request().Header.Get("User-Agent")
+	
+	h.logger.Info("session validation request",
+		"client_ip", clientIP,
+		"user_agent", userAgent,
+		"has_cookie", cookie != "",
+		"has_bearer", bearer != "",
+		"cookie_preview", truncateCookie(cookie, 50))
 
 	sess, resp, err := h.oryCli.FrontendAPI.
-		ToSession(c.Request().Context()).
+		ToSession(ctx).
 		Cookie(cookie).        // ブラウザ
 		XSessionToken(bearer). // ネイティブ
 		Execute()
 
-	if err != nil || (resp != nil && (resp.StatusCode == 401 || resp.StatusCode == 403)) {
-		http.Error(c.Response().Writer, "unauthorized", http.StatusUnauthorized) // ← 常に401
-		return nil
+	// Enhanced error handling and logging
+	if err != nil {
+		h.logger.Warn("kratos session validation error",
+			"error", err.Error(),
+			"client_ip", clientIP)
+		return echo.NewHTTPError(http.StatusUnauthorized, "session validation failed")
 	}
 
+	if resp == nil {
+		h.logger.Warn("kratos returned nil response",
+			"client_ip", clientIP)
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session response")
+	}
+
+	// Check HTTP status code from Kratos
+	if resp.StatusCode != 200 {
+		h.logger.Info("kratos session validation rejected",
+			"status_code", resp.StatusCode,
+			"client_ip", clientIP)
+		return echo.NewHTTPError(http.StatusUnauthorized, "session not authenticated")
+	}
+
+	// Validate session object
+	if sess == nil {
+		h.logger.Warn("kratos returned nil session despite 200 status",
+			"client_ip", clientIP)
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session object")
+	}
+
+	if sess.Id == "" {
+		h.logger.Warn("kratos session missing ID",
+			"client_ip", clientIP)
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session ID")
+	}
+
+	// Check if session is actually active
+	if sess.Active != nil && !*sess.Active {
+		h.logger.Info("kratos session is inactive",
+			"session_id", sess.Id,
+			"client_ip", clientIP)
+		return echo.NewHTTPError(http.StatusUnauthorized, "session inactive")
+	}
+
+	// Validate identity exists
+	if sess.Identity == nil || sess.Identity.Id == "" {
+		h.logger.Warn("kratos session missing identity",
+			"session_id", sess.Id,
+			"client_ip", clientIP)
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session identity")
+	}
+
+	h.logger.Info("session validation successful",
+		"session_id", sess.Id,
+		"identity_id", sess.Identity.Id,
+		"client_ip", clientIP)
+
 	// 監査系は best-effort（失敗で 200 を崩さない）
-	go h.upsertSessionAsync(c.Request().Context(), sess)
+	go h.upsertSessionAsync(ctx, sess)
+	
 	c.Response().Header().Set("Cache-Control", "no-store")
-	c.Response().WriteHeader(http.StatusOK)
-	return nil
+	return c.NoContent(http.StatusOK)
 }
 
 // RefreshSession refreshes the current session
@@ -476,6 +539,17 @@ func (h *AuthHandler) extractBearer(authHeader string) string {
 		return authHeader[7:]
 	}
 	return authHeader
+}
+
+// truncateCookie truncates cookie string for safe logging
+func truncateCookie(cookie string, maxLen int) string {
+	if cookie == "" {
+		return "(empty)"
+	}
+	if len(cookie) <= maxLen {
+		return cookie
+	}
+	return cookie[:maxLen] + "..."
 }
 
 // upsertSessionAsync performs session audit in background (best-effort)
