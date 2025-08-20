@@ -10,7 +10,7 @@ export default async function DesktopLayout({
   const cookie = h.get('cookie') ?? '';
   
   try {
-    const res = await fetch(`/auth/v1/auth/validate`, {
+    const res = await fetch(`/api/auth/v1/auth/validate`, {
       headers: { cookie },
       cache: 'no-store',
     });

@@ -20,7 +20,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 async function getPlatformStats() {
   try {
     // Use relative URL for same-origin fetch (as per memo.md unified rules)
-    const res = await fetch('/api/v1/platform/stats', {
+    const res = await fetch('/api/backend/v1/platform/stats', {
       cache: 'no-store'
     });
 
@@ -86,7 +86,7 @@ export default async function Home() {
 
         {/* Authentication Buttons */}
         <HStack gap={4} flexWrap="wrap" justifyContent="center">
-          <NextLink href="/auth/login?return_to=/" prefetch={false}>
+          <NextLink href="/api/auth/login?return_to=/" prefetch={false}>
             <Button
               bg="var(--alt-primary)"
               color="white"
@@ -111,7 +111,7 @@ export default async function Home() {
               </HStack>
             </Button>
           </NextLink>
-          <NextLink href="/auth/register" prefetch={false}>
+          <NextLink href="/api/auth/register" prefetch={false}>
             <Button
               variant="outline"
               borderColor="var(--alt-primary)"

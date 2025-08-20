@@ -77,7 +77,7 @@ function DesktopFeedsContent({ data }: { data: any }) {
 export default async function Page() {
   // TODO.md要件: Cookie明示転送でサーバfetch実行
   const cookie = (await cookies()).toString()
-  const res = await fetch(process.env.API_URL + '/api/v1/feeds/stats', { 
+  const res = await fetch(process.env.API_URL + '/api/backend/v1/feeds/stats', { 
     headers: { cookie }, 
     cache: 'no-store' 
   })

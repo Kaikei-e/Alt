@@ -4,7 +4,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Desktop Feeds Page - PROTECTED", () => {
   test.beforeEach(async ({ page }) => {
     // Mock all required API endpoints for Desktop Feeds Page
-    await page.route("**/api/v1/feeds/fetch/cursor**", async (route) => {
+    await page.route("**/api/backend/v1/feeds/fetch/cursor**", async (route) => {
       const feeds = Array.from({ length: 10 }, (_, i) => ({
         id: `feed-${i}`,
         title: `Test Feed ${i}`,
@@ -24,7 +24,7 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     });
 
     // Mock feed stats endpoint
-    await page.route("**/api/v1/feeds/stats", async (route) => {
+    await page.route("**/api/backend/v1/feeds/stats", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -36,7 +36,7 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     });
 
     // Mock unread count endpoint
-    await page.route("**/api/v1/feeds/count/unreads**", async (route) => {
+    await page.route("**/api/backend/v1/feeds/count/unreads**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -45,7 +45,7 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     });
 
     // Mock feed tags endpoint
-    await page.route("**/api/v1/feeds/tags**", async (route) => {
+    await page.route("**/api/backend/v1/feeds/tags**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -54,7 +54,7 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     });
 
     // Mock feed read status endpoint
-    await page.route("**/api/v1/feeds/read", async (route) => {
+    await page.route("**/api/backend/v1/feeds/read", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -63,7 +63,7 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     });
 
     // Mock feed details endpoint
-    await page.route("**/api/v1/feeds/fetch/details", async (route) => {
+    await page.route("**/api/backend/v1/feeds/fetch/details", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -75,7 +75,7 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     });
 
     // Mock favorite feeds endpoint
-    await page.route("**/api/v1/feeds/favorite**", async (route) => {
+    await page.route("**/api/backend/v1/feeds/favorite**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -84,7 +84,7 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     });
 
     // Mock health check endpoint
-    await page.route("**/api/v1/health", async (route) => {
+    await page.route("**/api/backend/v1/health", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -93,7 +93,7 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     });
 
     // Mock SSE endpoints that may be causing networkidle issues
-    await page.route("**/api/v1/sse/**", async (route) => {
+    await page.route("**/api/backend/v1/sse/**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
