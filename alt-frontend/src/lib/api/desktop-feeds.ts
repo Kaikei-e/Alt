@@ -30,7 +30,7 @@ export class DesktopFeedsApi {
     if (cursor) params.append("cursor", cursor);
 
     const response = await fetch(
-      `${this.baseUrl}/api/feeds/desktop?${params}`,
+      `${this.baseUrl}/api/backend/feeds/desktop?${params}`,
       {
         headers: {
           Accept: "application/json",
@@ -187,7 +187,7 @@ export class DesktopFeedsApi {
 
   async toggleFavorite(feedId: string, isFavorited: boolean): Promise<void> {
     const response = await fetch(
-      `${this.baseUrl}/api/feeds/${feedId}/favorite`,
+      `${this.baseUrl}/api/backend/feeds/${feedId}/favorite`,
       {
         method: "POST",
         headers: {
@@ -204,7 +204,7 @@ export class DesktopFeedsApi {
 
   async toggleBookmark(feedId: string, isBookmarked: boolean): Promise<void> {
     const response = await fetch(
-      `${this.baseUrl}/api/feeds/${feedId}/bookmark`,
+      `${this.baseUrl}/api/backend/feeds/${feedId}/bookmark`,
       {
         method: "POST",
         headers: {

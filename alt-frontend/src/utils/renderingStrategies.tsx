@@ -558,7 +558,7 @@ async function loadProxyImage(img: HTMLImageElement, originalUrl: string): Promi
     img.style.opacity = '0.5';
 
     // Make POST request to our image proxy endpoint via /api prefix
-    const response = await fetch('/api/v1/images/fetch', {
+    const response = await fetch('/api/backend/v1/images/fetch', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
