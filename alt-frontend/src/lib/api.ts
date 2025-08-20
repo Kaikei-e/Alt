@@ -212,25 +212,45 @@ class ApiClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        // Enhanced Global 401 interceptor - redirect to login with return URL (2025 best practice)
+        // Enhanced Global 401 interceptor with anti-infinite-loop protection
         if (response.status === 401) {
-          console.warn('[AUTH] 401 Unauthorized detected, initiating login redirect');
+          console.warn('[AUTH] 401 Unauthorized detected');
           
           // Server-side execution check (critical for Next.js App Directory compatibility)
           if (typeof window !== 'undefined') {
-            const currentUrl = window.location.href;
-            const loginUrl = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`;
+            // セッション確認を一回だけ（SSRは既にやっているが、ネットワーク一過性対策）
+            const recheckKey = 'alt:recheck-whoami';
+            if (!sessionStorage.getItem(recheckKey)) {
+              sessionStorage.setItem(recheckKey, '1');
+              
+              try {
+                const recheckResponse = await fetch('/api/auth/recheck', { 
+                  credentials: 'include',
+                  signal: AbortSignal.timeout(3000)
+                });
+                
+                if (recheckResponse.ok) {
+                  console.log('[AUTH] Recheck succeeded, retrying original request');
+                  // ノイズ401ならリトライ - retry the original request
+                  return fetch(url, {
+                    ...enhancedOptions,
+                    credentials: 'include',
+                    signal: controller.signal,
+                  });
+                }
+              } catch (recheckError) {
+                console.warn('[AUTH] Recheck failed:', recheckError);
+              }
+            }
             
-            console.log('[AUTH] Redirecting to login:', loginUrl);
+            // ここで即遷移しない。ページ上部に「再ログインしてね」バナーを出すだけ。
+            console.log('[AUTH] Showing login banner instead of redirecting');
+            this.showLoginBanner();
             
-            // Use window.location.replace for cleaner navigation history
-            window.location.replace(loginUrl);
-            
-            // Return a special response to indicate redirect is happening
+            // Return a special response to indicate authentication issue without redirect
             return new Response(JSON.stringify({ 
-              redirected: true, 
-              loginUrl,
-              message: 'Redirecting to login page due to authentication required' 
+              authRequired: true,
+              message: 'Authentication required - login banner shown' 
             }), {
               status: 401,
               headers: { 'Content-Type': 'application/json' }
@@ -261,6 +281,62 @@ class ApiClient {
     if (oldestKey) {
       this.cache.delete(oldestKey);
     }
+  }
+
+  private showLoginBanner(): void {
+    // Create and show a non-intrusive login banner instead of redirecting
+    const existingBanner = document.querySelector('#auth-required-banner');
+    if (existingBanner) {
+      return; // Banner already shown
+    }
+
+    const banner = document.createElement('div');
+    banner.id = 'auth-required-banner';
+    banner.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+      color: white;
+      padding: 12px 16px;
+      text-align: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      z-index: 10000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      transform: translateY(-100%);
+      transition: transform 0.3s ease-out;
+    `;
+
+    banner.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
+        <span>🔒 セッションが切れています</span>
+        <button onclick="window.location.href='/auth/login?return_to=' + encodeURIComponent(window.location.href)" 
+                style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+          再ログイン
+        </button>
+        <button onclick="this.parentElement.parentElement.remove()" 
+                style="background: transparent; border: none; color: white; cursor: pointer; font-size: 16px; padding: 0 4px;">
+          ×
+        </button>
+      </div>
+    `;
+
+    document.body.prepend(banner);
+    
+    // Animate in
+    requestAnimationFrame(() => {
+      banner.style.transform = 'translateY(0)';
+    });
+
+    // Auto-remove after 30 seconds
+    setTimeout(() => {
+      if (banner.parentNode) {
+        banner.style.transform = 'translateY(-100%)';
+        setTimeout(() => banner.remove(), 300);
+      }
+    }, 30000);
   }
 
   private startCacheCleanup(): void {

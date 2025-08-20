@@ -12,7 +12,19 @@ export default async function LoginPage({
 }: { searchParams: Promise<{ flow?: string; return_to?: string }> }) {
   const params = await searchParams
   const flow = params.flow
-  const returnTo = params.return_to ?? '/'        // 既定はルート（要件通り）
+  
+  // return_to の厳格化：保護ページの絶対URLを設定
+  let returnTo = params.return_to ?? `${APP}/desktop/home`
+  
+  // return_to が /auth/login を指している場合はデフォルトに変更（ループ防止）
+  if (returnTo.includes('/auth/login')) {
+    returnTo = `${APP}/desktop/home`
+  }
+  
+  // 相対URLの場合は絶対URLに変換
+  if (!returnTo.startsWith('http')) {
+    returnTo = new URL(returnTo, APP).toString()
+  }
 
   // flow が無ければブラウザフロー開始
   if (!flow) {
@@ -37,8 +49,8 @@ export default async function LoginPage({
     }
 
     const u = new URL('/self-service/login/browser', KRATOS)
-    // ここで return_to を必ず付ける（既ログインなら即 / に戻る）
-    u.searchParams.set('return_to', new URL(returnTo, APP).toString())
+    // ここで return_to を必ず付ける（既ログインなら即保護ページに戻る）
+    u.searchParams.set('return_to', returnTo)
     redirect(u.toString()) // try/catchで包まない（redirect は throw）
   }
 

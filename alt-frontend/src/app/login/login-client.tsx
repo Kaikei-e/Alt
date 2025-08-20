@@ -23,6 +23,7 @@ interface LoginFlowNode {
 interface LoginFlow {
   id: string
   ui: {
+    action: string
     nodes: LoginFlowNode[]
     messages?: Array<{
       text: string
@@ -137,53 +138,6 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
     }))
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    // フローが未ロードならここで取得し、ローカル変数 f を使う
-    let f = flow
-    if (!f) {
-      f = await fetchFlow(flowId)
-    }
-    const csrf = f?.ui?.nodes?.find(
-      (n: any) => n.attributes?.name === 'csrf_token'
-    )?.attributes?.value
-    if (!csrf) {
-      // CSRFが取れない＝期限切れorキャッシュ汚染。セッション清理して再初期化
-      await cleanupSession()
-      window.location.href = '/auth/login'
-      return
-    }
-    
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      const resp = await fetch(`${KRATOS_PUBLIC}/self-service/login?flow=${flowId}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          method: 'password',
-          csrf_token: csrf,
-          ...formData
-        }),
-      })
-      
-      if (resp.status === 422) { 
-        setFlow(await resp.json()); return // バリデーションエラー
-      }
-      if (!resp.ok) { 
-        setError(`login failed: ${resp.status}`); return 
-      }
-      router.push(returnUrl)
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const renderFormField = (node: LoginFlowNode) => {
     if (node.type !== 'input') return null
@@ -307,7 +261,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
             )}
 
             {flow && (
-              <form onSubmit={handleSubmit}>
+              <form action={flow.ui.action} method="POST">
                 <VStack gap={4}>
                   {flow.ui.messages?.map((message, idx) => (
                     <Box
@@ -323,6 +277,16 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
                       </Text>
                     </Box>
                   ))}
+
+                  {/* CSRF token hidden field */}
+                  <input
+                    type="hidden"
+                    name="csrf_token"
+                    value={flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value || ''}
+                  />
+                  
+                  {/* Method field for Kratos */}
+                  <input type="hidden" name="method" value="password" />
 
                   {flow.ui.nodes.map(renderFormField)}
 

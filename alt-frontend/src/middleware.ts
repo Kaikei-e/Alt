@@ -4,13 +4,14 @@ import type { NextRequest } from 'next/server';
 
 export function middleware(req: NextRequest) {
   const p = req.nextUrl.pathname;
-  const protectedPath = p.startsWith('/desktop') || p.startsWith('/mobile');
-  const hasSession = req.cookies.has('ory_kratos_session'); // 後でwhoamiに置換可
+  const protectedPath = p.startsWith('/desktop/') || p.startsWith('/mobile/');
+  if (!protectedPath) return NextResponse.next();
 
-  if (protectedPath && !hasSession) {
+  const hasSession = req.cookies.has('ory_kratos_session');
+  if (!hasSession) {
     const login = new URL('/auth/login', req.nextUrl);
     login.searchParams.set('return_to', req.nextUrl.href);
-    return NextResponse.redirect(login);
+    return NextResponse.redirect(login, 307);
   }
   return NextResponse.next();
 }
