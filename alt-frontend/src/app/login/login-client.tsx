@@ -59,7 +59,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
     let abort = false;
     (async () => {
       try {
-        const r = await fetch('/api/auth/validate', { 
+        const r = await fetch('/auth/v1/auth/validate', { 
           credentials: 'include', 
           cache: 'no-store' 
         });

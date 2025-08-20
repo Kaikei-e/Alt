@@ -10,12 +10,21 @@ export default async function DesktopLayout({
   const cookie = h.get('cookie') ?? '';
   
   try {
-    const res = await fetch(`${process.env.KRATOS_INTERNAL_URL}/sessions/whoami`, {
+    const res = await fetch(`/auth/v1/auth/validate`, {
       headers: { cookie },
       cache: 'no-store',
     });
     
-    if (res.status === 401) {
+    if (res.status === 200) {
+      const data = await res.json();
+      if (!data.valid) {
+        const protocol = h.get('x-forwarded-proto') || 'https';
+        const host = h.get('host') || 'curionoah.com';
+        const path = h.get('x-invoke-path') || '/desktop/home';
+        const returnTo = `${protocol}://${host}${path}`;
+        redirect(`/auth/login?return_to=${encodeURIComponent(returnTo)}`);
+      }
+    } else if (res.status === 401) {
       const protocol = h.get('x-forwarded-proto') || 'https';
       const host = h.get('host') || 'curionoah.com';
       const path = h.get('x-invoke-path') || '/desktop/home';

@@ -5,7 +5,7 @@ export interface AuthValidateResponse {
 }
 
 export async function fetchAuth(): Promise<AuthValidateResponse> {
-  const res = await fetch('/api/auth/validate', { 
+  const res = await fetch('/auth/v1/auth/validate', { 
     credentials: 'include',
     headers: {
       'Cache-Control': 'no-cache',
