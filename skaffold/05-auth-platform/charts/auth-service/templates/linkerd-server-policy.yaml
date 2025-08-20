@@ -11,4 +11,4 @@ spec:
     matchLabels:
       {{- include "auth-service.selectorLabels" . | nindent 6 }}
   port: 8080
-  proxyProtocol: "HTTP/1"
+  proxyProtocol: "opaque"

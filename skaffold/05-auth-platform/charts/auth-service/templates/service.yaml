@@ -5,8 +5,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "auth-service.labels" . | nindent 4 }}
-  {{- with .Values.commonAnnotations }}
   annotations:
+    config.linkerd.io/opaque-ports: "8080"
+  {{- with .Values.commonAnnotations }}
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:

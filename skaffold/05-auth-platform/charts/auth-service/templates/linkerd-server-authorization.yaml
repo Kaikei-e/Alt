@@ -18,3 +18,5 @@ spec:
           namespace: alt-apps
         - name: nginx-external     # ingress経由のアクセス
           namespace: alt-ingress
+        - name: default            # nginx-external実際のSA
+          namespace: alt-ingress
