@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { feedsApi } from "@/lib/api";
 import { ActivityData } from "@/types/desktop";
 import { getRelativeTime } from "@/lib/utils/time";
+import { useAuth } from "@/contexts/auth-context";
 
 export interface UseRecentActivityReturn {
   activities: ActivityData[];
@@ -17,12 +18,20 @@ export const useRecentActivity = (
   const [activities, setActivities] = useState<ActivityData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     const fetchActivities = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        
+        // Only fetch if authenticated to prevent 401 retry loops
+        if (!isAuthenticated) {
+          setActivities([]);
+          return;
+        }
+        
         const activityData = await feedsApi.getRecentActivity(limit);
 
         // Transform the API response to the expected format
@@ -45,7 +54,7 @@ export const useRecentActivity = (
     };
 
     fetchActivities();
-  }, [limit]);
+  }, [limit, isAuthenticated]);
 
   return {
     activities,

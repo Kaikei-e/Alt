@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Feed } from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 
 export interface UseReadFeedsResult {
   feeds: Feed[];
@@ -15,6 +16,7 @@ export interface UseReadFeedsResult {
 
 export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
   const enablePrefetch = true;
+  const { isAuthenticated } = useAuth();
 
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -151,6 +153,13 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         setIsLoading(true);
         setError(null);
 
+        // Only fetch if authenticated to prevent 401 retry loops
+        if (!isAuthenticated) {
+          setFeeds([]);
+          setHasMore(false);
+          return;
+        }
+
         const response = await feedsApi.getReadFeedsWithCursor(
           undefined,
           initialLimit,
@@ -175,7 +184,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
     };
 
     initialLoad();
-  }, [initialLimit, prefetchNextPage, enablePrefetch]);
+  }, [initialLimit, prefetchNextPage, enablePrefetch, isAuthenticated]);
 
   // Cleanup on unmount
   useEffect(() => {

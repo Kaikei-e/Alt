@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { feedsApi } from "@/lib/api";
 import { useTodayUnreadCount } from "./useTodayUnreadCount";
 import { FeedStatsSummary } from "@/schema/feedStats";
+import { useAuth } from "@/contexts/auth-context";
 
 export interface UseHomeStatsReturn {
   // 基本統計
@@ -29,6 +30,7 @@ export const useHomeStats = (): UseHomeStatsReturn => {
   const [feedStats, setFeedStats] = useState<FeedStatsSummary | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [statsError, setStatsError] = useState<string | null>(null);
+  const { isAuthenticated } = useAuth();
 
   const { count: unreadCount } = useTodayUnreadCount();
 
@@ -36,6 +38,13 @@ export const useHomeStats = (): UseHomeStatsReturn => {
     try {
       setIsLoadingStats(true);
       setStatsError(null);
+      
+      // Only fetch if authenticated to prevent 401 retry loops
+      if (!isAuthenticated) {
+        setFeedStats(null);
+        return;
+      }
+      
       const stats = await feedsApi.getFeedStats();
       setFeedStats(stats);
     } catch {
@@ -44,7 +53,7 @@ export const useHomeStats = (): UseHomeStatsReturn => {
     } finally {
       setIsLoadingStats(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     fetchStats();
