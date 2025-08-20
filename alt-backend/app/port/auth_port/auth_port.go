@@ -21,6 +21,9 @@ type AuthClient interface {
 	// ValidateSession validates a session token and returns user context
 	ValidateSession(ctx context.Context, sessionToken string, tenantID string) (*SessionValidationResponse, error)
 
+	// ValidateSessionWithCookie validates a session using cookie header
+	ValidateSessionWithCookie(ctx context.Context, cookieHeader string) (*SessionValidationResponse, error)
+
 	// GenerateCSRFToken generates a CSRF token for the given session
 	GenerateCSRFToken(ctx context.Context, sessionToken string) (*CSRFTokenResponse, error)
 

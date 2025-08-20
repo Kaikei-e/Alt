@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"alt/config"
 	"alt/di"
 	"alt/driver/search_indexer"
 	middleware_custom "alt/middleware"
@@ -10,9 +11,9 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
+func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	// 認証ミドルウェアの初期化
-	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger)
+	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger, cfg.Auth.KratosInternalURL)
 	
 	// 記事検索も認証必須
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())

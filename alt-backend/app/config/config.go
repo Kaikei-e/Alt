@@ -80,6 +80,7 @@ type HTTPConfig struct {
 
 type AuthConfig struct {
 	ServiceURL        string        `json:"service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service.alt-auth.svc.cluster.local:8080"`
+	KratosInternalURL string        `json:"kratos_internal_url" env:"KRATOS_INTERNAL_URL" default:"http://kratos.alt-auth.svc.cluster.local:4433"`
 	Timeout           time.Duration `json:"timeout" env:"AUTH_TIMEOUT" default:"30s"`
 	EnableCSRF        bool          `json:"enable_csrf" env:"AUTH_ENABLE_CSRF" default:"true"`
 	RequireAuth       bool          `json:"require_auth" env:"AUTH_REQUIRE_AUTH" default:"true"`

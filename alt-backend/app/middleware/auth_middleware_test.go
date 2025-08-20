@@ -36,7 +36,7 @@ func TestAuthMiddleware_Middleware(t *testing.T) {
 		Return(userCtx, nil)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	m := NewAuthMiddleware(mockAuth, logger)
+	m := NewAuthMiddleware(mockAuth, logger, "http://kratos.test:4433")
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -63,7 +63,7 @@ func TestAuthMiddleware_Middleware_Invalid(t *testing.T) {
 		Return(nil, errors.New("invalid"))
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	m := NewAuthMiddleware(mockAuth, logger)
+	m := NewAuthMiddleware(mockAuth, logger, "http://kratos.test:4433")
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -99,7 +99,7 @@ func TestAuthMiddleware_OptionalAuth(t *testing.T) {
 		Return(userCtx, nil)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	m := NewAuthMiddleware(mockAuth, logger)
+	m := NewAuthMiddleware(mockAuth, logger, "http://kratos.test:4433")
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
