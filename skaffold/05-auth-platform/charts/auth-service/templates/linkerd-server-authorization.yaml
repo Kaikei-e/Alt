@@ -14,3 +14,7 @@ spec:
       serviceAccounts:
         - name: alt-frontend       # SA 名（ログのIDと一致）
           namespace: alt-apps
+        - name: alt-backend        # alt-backend経由のアクセス
+          namespace: alt-apps
+        - name: nginx-external     # ingress経由のアクセス
+          namespace: alt-ingress
