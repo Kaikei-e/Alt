@@ -45,7 +45,8 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
   // TODO.md: 三値判定 null=不明, false=未ログイン, true=ログイン済み
   const [session, setSession] = useState<null | boolean>(null)
 
-  const KRATOS_PUBLIC = "https://id.curionoah.com"
+  const KRATOS_PUBLIC = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
+  if (!KRATOS_PUBLIC) throw new Error('NEXT_PUBLIC_KRATOS_PUBLIC_URL missing')
 
   useEffect(() => {
     if (!flowId) return
@@ -349,14 +350,15 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
               fontFamily="body"
             >
               アカウントをお持ちでない方は{' '}
-              <Box
-                as="button"
-                color="var(--alt-primary)"
-                textDecoration="underline"
-                onClick={() => window.location.href = "/register"}
+              <a
+                href={`${KRATOS_PUBLIC}/self-service/registration/browser?return_to=${encodeURIComponent(returnUrl)}`}
+                style={{
+                  color: 'var(--alt-primary)',
+                  textDecoration: 'underline'
+                }}
               >
                 新規登録
-              </Box>
+              </a>
             </Text>
           </Box>
         </VStack>

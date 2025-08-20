@@ -12,12 +12,14 @@ export class AuthAPIClient {
     this.baseURL = '/api/auth';
     this.debugMode = process.env.NODE_ENV === 'development';
     this.requestId = 0;
-    // TODO.md要件: Kratos 公開URL直接アクセス用
-    this.idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN ?? 'https://id.curionoah.com';
+    // TODO.md要件: Kratos 公開URL直接アクセス用（必須・ハードコード禁止）
+    this.idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN as string;
+    if (!this.idpOrigin || /\.cluster\.local(\b|:|\/)/i.test(this.idpOrigin) || !/^https:\/\//i.test(this.idpOrigin)) {
+      throw new Error(`NEXT_PUBLIC_IDP_ORIGIN must be a PUBLIC HTTPS FQDN (got: ${this.idpOrigin})`);
+    }
     
     // TODO.md 手順0: 配信中のバンドルの値を確認
-    console.log('[AUTH-CLIENT] IDP_ORIGIN =', this.idpOrigin);
-    console.log('[AUTH-CLIENT] NEXT_PUBLIC_IDP_ORIGIN =', process.env.NEXT_PUBLIC_IDP_ORIGIN);
+    console.log('[AUTH-CLIENT] NEXT_PUBLIC_IDP_ORIGIN =', this.idpOrigin);
   }
 
   // 接続テスト機能追加 (X1.md 1.3.2 実装)

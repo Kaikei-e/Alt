@@ -62,11 +62,26 @@ const nextConfig = {
                    `production-${Date.now().toString(36)}`
     return [
       {
-        source: "/(.*)",
+        // HTML pages: no-store for cache consistency
+        source: "/((?!_next/static|favicon.ico|robots.txt).*)",
         headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate",
+          },
           {
             key: "X-Next-Build-Id",
             value: buildId,
+          },
+        ],
+      },
+      {
+        // Static assets: immutable cache
+        source: "/_next/static/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
           },
         ],
       },

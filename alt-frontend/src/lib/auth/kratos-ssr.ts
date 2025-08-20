@@ -27,7 +27,7 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
     
     try {
       // TODO.mdの要求：サーバサイドでwhoamiを呼び出し、必ずCookieを前方転送
-      const KRATOS_INTERNAL = process.env.KRATOS_INTERNAL_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433'
+      const KRATOS_INTERNAL = process.env.KRATOS_INTERNAL_URL || 'http://localhost:4433'
       const response = await fetch(`${KRATOS_INTERNAL}/sessions/whoami`, {
         headers: { 
           cookie: req.headers.cookie ?? '', // 必ずCookieを前方転送
@@ -98,7 +98,9 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
 export async function checkAuthStatus(): Promise<AuthUser | null> {
   try {
     // クライアント側は公開URLを使用（ブラウザからのアクセス）
-    const response = await fetch('https://id.curionoah.com/sessions/whoami', {
+    const KRATOS_PUBLIC = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
+    if (!KRATOS_PUBLIC) throw new Error('NEXT_PUBLIC_KRATOS_PUBLIC_URL missing')
+    const response = await fetch(`${KRATOS_PUBLIC}/sessions/whoami`, {
       credentials: 'include',
       cache: 'no-store', // TODO.md要件: 常時no-store
       headers: {
@@ -124,7 +126,9 @@ export async function checkAuthStatus(): Promise<AuthUser | null> {
  */
 export async function logout(): Promise<void> {
   try {
-    const response = await fetch('https://id.curionoah.com/self-service/logout/browser', {
+    const KRATOS_PUBLIC = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
+    if (!KRATOS_PUBLIC) throw new Error('NEXT_PUBLIC_KRATOS_PUBLIC_URL missing')
+    const response = await fetch(`${KRATOS_PUBLIC}/self-service/logout/browser`, {
       method: 'GET',
       credentials: 'include',
       cache: 'no-store', // TODO.md修正: サーバ側fetch個別キャッシュ防止

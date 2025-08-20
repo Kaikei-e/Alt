@@ -4,7 +4,9 @@ export const dynamic = 'force-dynamic'
 
 export async function whoami() {
   const c = await cookies()
-  return fetch(process.env.KRATOS_PUBLIC_URL + '/sessions/whoami', {
+  const KRATOS_INTERNAL = process.env.KRATOS_INTERNAL_URL
+  if (!KRATOS_INTERNAL) throw new Error('KRATOS_INTERNAL_URL missing')
+  return fetch(KRATOS_INTERNAL + '/sessions/whoami', {
     headers: { cookie: c.toString(), accept: 'application/json' },
     cache: 'no-store',
   })

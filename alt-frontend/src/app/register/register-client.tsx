@@ -42,7 +42,8 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const KRATOS_PUBLIC = "https://id.curionoah.com"
+  const KRATOS_PUBLIC = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
+  if (!KRATOS_PUBLIC) throw new Error('NEXT_PUBLIC_KRATOS_PUBLIC_URL missing')
 
   useEffect(() => {
     if (!flowId) return
