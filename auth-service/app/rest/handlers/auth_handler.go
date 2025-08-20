@@ -38,15 +38,161 @@ func NewAuthHandler(authUsecase port.AuthUsecase, logger *slog.Logger) *AuthHand
 	}
 }
 
-// InitiateLogin starts the login flow
-// @Summary Initiate login flow
-// @Description Start Kratos login flow for user authentication
+// InitiateLoginFlow handles GET request to initiate Kratos browser login flow
+// @Summary Initiate login flow (Browser GET)
+// @Description Start Kratos browser login flow following Ory specifications
+// @Tags authentication
+// @Accept json
+// @Produce json
+// @Param return_to query string false "Return URL after login"
+// @Success 200 {object} domain.LoginFlow
+// @Success 303 "Redirect to login UI" 
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /v1/auth/login/initiate [get]
+func (h *AuthHandler) InitiateLoginFlow(c echo.Context) error {
+	ctx := c.Request().Context()
+	returnTo := c.QueryParam("return_to")
+	if returnTo == "" {
+		returnTo = "/"
+	}
+
+	h.logger.Info("initiating browser login flow",
+		"return_to", returnTo,
+		"user_agent", c.Request().Header.Get("User-Agent"),
+		"ip", c.RealIP())
+
+	// Ory公式サンプルパターンに従ったKratosクライアント使用
+	kratosFlow, kratosResp, err := h.oryCli.FrontendAPI.CreateBrowserLoginFlow(ctx).
+		ReturnTo(returnTo).
+		Execute()
+
+	if err != nil {
+		h.logger.Error("failed to create Kratos browser login flow",
+			"error", err,
+			"return_to", returnTo,
+			"response", kratosResp)
+		
+		return c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error: "failed to initiate login flow",
+		})
+	}
+
+	h.logger.Info("Kratos browser login flow created successfully",
+		"flow_id", kratosFlow.Id,
+		"return_to", returnTo,
+		"expires_at", kratosFlow.ExpiresAt)
+
+	// Ory公式サンプルと同じ構造でレスポンス返却
+	return c.JSON(http.StatusOK, kratosFlow)
+}
+
+// GetLoginFlow retrieves login flow details by ID
+// @Summary Get login flow by ID
+// @Description Retrieve details of an existing login flow by its ID
+// @Tags authentication
+// @Accept json
+// @Produce json
+// @Param flowId path string true "Flow ID"
+// @Success 200 {object} domain.LoginFlow
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 410 {object} ErrorResponse "Flow expired"
+// @Failure 500 {object} ErrorResponse
+// @Router /v1/auth/login/{flowId} [get]
+func (h *AuthHandler) GetLoginFlow(c echo.Context) error {
+	ctx := c.Request().Context()
+	flowID := c.Param("flowId")
+	
+	if flowID == "" {
+		h.logger.Error("flow ID is required")
+		return c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: "Flow ID is required",
+		})
+	}
+
+	h.logger.Info("retrieving login flow details",
+		"flow_id", flowID,
+		"user_agent", c.Request().Header.Get("User-Agent"),
+		"ip", c.RealIP())
+
+	// Ory公式サンプルに従ったKratosフロー取得
+	kratosFlow, kratosResp, err := h.oryCli.FrontendAPI.GetLoginFlow(ctx).
+		Id(flowID).
+		Execute()
+
+	if err != nil {
+		h.logger.Error("failed to get Kratos login flow",
+			"flow_id", flowID,
+			"error", err,
+			"response", kratosResp)
+		
+		// Kratosエラーコードに応じた適切なレスポンス
+		if kratosResp != nil {
+			switch kratosResp.StatusCode {
+			case 400:
+				return c.JSON(http.StatusBadRequest, ErrorResponse{
+					Error: "Invalid flow ID",
+				})
+			case 404:
+				return c.JSON(http.StatusNotFound, ErrorResponse{
+					Error: "Flow not found",
+				})
+			case 410:
+				return c.JSON(http.StatusGone, ErrorResponse{
+					Error: "Flow expired",
+				})
+			}
+		}
+		
+		return c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error: "failed to retrieve login flow",
+		})
+	}
+
+	h.logger.Info("Kratos login flow retrieved successfully",
+		"flow_id", flowID,
+		"expires_at", kratosFlow.ExpiresAt)
+
+	return c.JSON(http.StatusOK, kratosFlow)
+}
+
+// generateTempCSRFToken generates a temporary CSRF token for development
+// TODO: Replace with proper Kratos CSRF token integration
+func (h *AuthHandler) generateTempCSRFToken() string {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		h.logger.Error("failed to generate CSRF token", "error", err)
+		return "temp-csrf-token"
+	}
+	return hex.EncodeToString(bytes)
+}
+
+// getStatusCode safely extracts status code from HTTP response
+func getStatusCode(resp interface{}) int {
+	if resp == nil {
+		return 0
+	}
+	if r, ok := resp.(*http.Response); ok {
+		return r.StatusCode
+	}
+	// For Ory client response type
+	if r, ok := resp.(interface{ GetStatusCode() int }); ok {
+		return r.GetStatusCode()
+	}
+	return 0
+}
+
+// InitiateLogin starts the login flow (Legacy POST endpoint)
+// @Summary Initiate login flow (Legacy POST)
+// @Description Start Kratos login flow for user authentication (legacy endpoint)
 // @Tags authentication
 // @Accept json
 // @Produce json
 // @Success 200 {object} domain.LoginFlow
 // @Failure 500 {object} ErrorResponse
 // @Router /v1/auth/login [post]
+// @Deprecated Use GET /v1/auth/login/initiate instead
 func (h *AuthHandler) InitiateLogin(c echo.Context) error {
 	ctx := c.Request().Context()
 

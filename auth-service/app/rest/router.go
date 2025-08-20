@@ -119,6 +119,11 @@ func NewRouter(config RouterConfig) *echo.Echo {
 	auth := v1.Group("/auth")
 
 	// Public auth endpoints (no auth required)
+	// Browser-compatible GET endpoints (following Ory Kratos specification)
+	auth.GET("/login/initiate", authHandler.InitiateLoginFlow)
+	auth.GET("/login/:flowId", authHandler.GetLoginFlow) // TODO: Implement GetLoginFlow handler
+	
+	// Legacy POST endpoints (maintained for backward compatibility)
 	auth.POST("/login", authHandler.InitiateLogin)
 	auth.POST("/login/:flowId", authHandler.CompleteLogin)
 	auth.POST("/register", authHandler.InitiateRegistration)
