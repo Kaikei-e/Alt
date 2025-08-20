@@ -38,7 +38,8 @@ env:
   NODE_ENV: "production"
   API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
   AUTH_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
-  KRATOS_PUBLIC_URL: "http://kratos-public.alt-auth.svc.cluster.local:4433"
+  KRATOS_INTERNAL_URL: "http://kratos-public.alt-auth.svc.cluster.local:4433"
+  NEXT_PUBLIC_KRATOS_PUBLIC_URL: "https://id.curionoah.com"
   # REPORT.md恒久対応: HTMLキャッシュ整合性のため動的レンダリング強制
   NEXT_DYNAMIC_RENDERING: "force-dynamic"
   # TODO.md要件: Nodeの詳細ログ出力でDigestスタック回収

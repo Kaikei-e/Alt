@@ -145,6 +145,7 @@ data:
         # Rate-limited authentication endpoints - registration
         location ~ ^/self-service/registration/ {
           limit_req zone=auth_register burst=3 nodelay;
+          limit_req_status 429;
 
           set $kratos_upstream "kratos-public.alt-auth.svc.cluster.local:4433";
           proxy_pass http://$kratos_upstream;
@@ -174,6 +175,7 @@ data:
         # Rate-limited authentication endpoints - recovery  
         location ~ ^/self-service/recovery/ {
           limit_req zone=auth_password_reset burst=2 nodelay;
+          limit_req_status 429;
 
           set $kratos_upstream "kratos-public.alt-auth.svc.cluster.local:4433";
           proxy_pass http://$kratos_upstream;
@@ -202,6 +204,7 @@ data:
 
         location /sessions/whoami {
           limit_req zone=sessions_whoami burst=10 nodelay;
+          limit_req_status 429;
 
           set $kratos_upstream "kratos-public.alt-auth.svc.cluster.local:4433";
           proxy_pass http://$kratos_upstream;
@@ -419,6 +422,7 @@ data:
           proxy_set_header Connection $connection_upgrade;
 
           limit_req zone=api_limit burst=300 nodelay;
+          limit_req_status 429;
           limit_conn addr 20;
 
           proxy_buffering on;

@@ -147,7 +147,7 @@ kratos:
     cookie:
       persistent: true
       same_site: "Lax"
-      domain: ".curionoah.com"  # Subdomain sharing for id.curionoah.com ↔ curionoah.com
+      domain: "curionoah.com"   # ルートに付与（= 全サブドメインで有効）
       secure: true               # HTTPS required for production
       http_only: true           # Security best practice
   
