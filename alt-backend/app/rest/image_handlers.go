@@ -16,7 +16,7 @@ import (
 
 func registerImageRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	// 認証ミドルウェアの初期化
-	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger, cfg.Auth.KratosInternalURL)
+	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger, cfg)
 	
 	// 画像取得も認証必須
 	images := v1.Group("/images", authMiddleware.RequireAuth())

@@ -2,16 +2,26 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"alt/config"
 	"alt/domain"
 	"alt/port/auth_port"
 )
+
+type ValidateOKResponse struct {
+	Valid      bool   `json:"valid"`
+	SessionID  string `json:"session_id,omitempty"`
+	IdentityID string `json:"identity_id,omitempty"`
+}
 
 // AuthMiddleware provides authentication middleware functionality
 type AuthMiddleware struct {
@@ -19,67 +29,119 @@ type AuthMiddleware struct {
 	logger           *slog.Logger
 	kratosInternalURL string
 	httpClient       *http.Client
+	config           *config.Config
 }
 
 // NewAuthMiddleware creates a new authentication middleware
-func NewAuthMiddleware(authGateway auth_port.AuthPort, logger *slog.Logger, kratosInternalURL string) *AuthMiddleware {
+func NewAuthMiddleware(authGateway auth_port.AuthPort, logger *slog.Logger, cfg *config.Config) *AuthMiddleware {
 	return &AuthMiddleware{
 		authGateway:       authGateway,
 		logger:            logger,
-		kratosInternalURL: kratosInternalURL,
+		kratosInternalURL: cfg.Auth.KratosInternalURL,
+		config:            cfg,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: 2 * time.Second,
 		},
 	}
 }
 
-// RequireAuth returns authentication middleware per memo.md Phase 2.2
+// RequireAuth returns authentication middleware with direct HTTP validation
 func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			cookie := c.Request().Header.Get("Cookie")
-			if cookie == "" {
-				return c.NoContent(http.StatusUnauthorized)
+			// Generate or extract X-Request-Id for tracing
+			requestID := c.Request().Header.Get("X-Request-Id")
+			if requestID == "" {
+				requestID = uuid.NewString()
+				c.Request().Header.Set("X-Request-Id", requestID)
 			}
 
-			// Use AuthGateway to validate session
-			userContext, err := m.authGateway.ValidateSessionWithCookie(c.Request().Context(), cookie)
+			// Direct HTTP validation with auth-service
+			valid, err := m.validateSessionDirect(c.Request().Context(), c.Request())
 			if err != nil {
-				// Check if this is a network/infrastructure error
-				if m.isNetworkError(err) {
-					m.logger.Warn("auth service network error, trying kratos fallback", "error", err)
-					
-					// Try Kratos direct fallback
-					if m.validateWithKratosDirect(c.Request().Context(), cookie) {
-						m.logger.Info("kratos direct validation succeeded, allowing request")
-						// Continue with degraded auth context (we know session is valid but don't have full user details)
-						c.Set("auth_degraded", true)
-						return next(c)
-					}
-					
-					// Network error and kratos also failed - return 503 with retry
-					m.logger.Error("both auth-service and kratos failed", "error", err)
-					return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
-						"message": "auth-indeterminate", 
-						"retry_after": 2,
-					})
-				}
-				
-				// This is a genuine authentication error (401)
-				m.logger.Debug("session validation failed", "error", err)
-				return c.NoContent(http.StatusUnauthorized)
+				m.logger.Warn("auth validate transport error", 
+					"error", err,
+					"x_request_id", requestID)
+				return echo.NewHTTPError(http.StatusBadGateway, "auth unavailable")
 			}
 
-			// Set user context in Echo context for downstream handlers
-			c.Set("user", userContext)
-			c.Set("user_id", userContext.UserID.String())
-			c.Set("user_email", userContext.Email)
-			c.Set("user_role", string(userContext.Role))
-			c.Set("session_id", userContext.SessionID)
+			if !valid {
+				return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
+			}
 
+			// Set minimal auth context for valid sessions
+			c.Set("auth.valid", true)
+			c.Set("x_request_id", requestID)
 			return next(c)
 		}
 	}
+}
+
+// validateSessionDirect performs direct HTTP validation with auth-service
+func (m *AuthMiddleware) validateSessionDirect(ctx context.Context, req *http.Request) (bool, error) {
+	validateURL := m.config.Auth.ServiceURL + "/v1/auth/validate"
+	
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", validateURL, nil)
+	if err != nil {
+		return false, err
+	}
+
+	// Copy headers from original request
+	httpReq.Header = req.Header.Clone()
+	
+	// Ensure X-Request-Id is propagated
+	if httpReq.Header.Get("X-Request-Id") == "" {
+		httpReq.Header.Set("X-Request-Id", uuid.NewString())
+	}
+
+	resp, err := m.httpClient.Do(httpReq)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return false, err
+		}
+
+		// Check for empty body (the problem we're fixing)
+		if len(body) == 0 {
+			// Feature flag fallback for empty 200 responses
+			if m.config.Auth.ValidateEmpty200OK {
+				m.logger.Warn("auth validate returned 200 with empty body, but feature flag allows fallback",
+					"x_request_id", httpReq.Header.Get("X-Request-Id"))
+				return true, nil
+			}
+			m.logger.Warn("auth validate returned 200 with empty body",
+				"x_request_id", httpReq.Header.Get("X-Request-Id"))
+			return false, nil
+		}
+
+		// Parse JSON response to validate contract
+		var validateResp ValidateOKResponse
+		if err := json.Unmarshal(body, &validateResp); err != nil {
+			m.logger.Warn("auth validate returned invalid JSON",
+				"error", err,
+				"body_length", len(body),
+				"x_request_id", httpReq.Header.Get("X-Request-Id"))
+			return false, nil
+		}
+
+		if !validateResp.Valid {
+			return false, nil
+		}
+
+		return true, nil
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return false, nil
+	}
+
+	// Other status codes are treated as service errors
+	return false, echo.NewHTTPError(resp.StatusCode, "auth unexpected status")
 }
 
 func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
@@ -87,35 +149,30 @@ func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			cookie := c.Request().Header.Get("Cookie")
 			if cookie == "" {
-				// セッションがない場合は続行（匿名ユーザー）
 				return next(c)
 			}
 
-			// Try to validate session using AuthGateway
-			userContext, err := m.authGateway.ValidateSessionWithCookie(c.Request().Context(), cookie)
+			// Generate or extract X-Request-Id for tracing
+			requestID := c.Request().Header.Get("X-Request-Id")
+			if requestID == "" {
+				requestID = uuid.NewString()
+				c.Request().Header.Set("X-Request-Id", requestID)
+			}
+
+			// Try direct HTTP validation
+			valid, err := m.validateSessionDirect(c.Request().Context(), c.Request())
 			if err != nil {
-				// Check if this is a network error - try Kratos fallback for optional auth too
-				if m.isNetworkError(err) {
-					m.logger.Debug("auth service network error in optional auth, trying kratos fallback", "error", err)
-					if m.validateWithKratosDirect(c.Request().Context(), cookie) {
-						m.logger.Debug("kratos direct validation succeeded in optional auth")
-						// Continue as authenticated but without full context (graceful degradation)
-						c.Set("auth_degraded", true)
-						return next(c)
-					}
-				}
-				
-				// 認証失敗時も続行（匿名ユーザーとして処理）
-				m.logger.Debug("optional auth failed", "error", err)
+				m.logger.Debug("optional auth validation transport error",
+					"error", err,
+					"x_request_id", requestID)
+				// Continue as anonymous user on transport errors
 				return next(c)
 			}
 
-			// Set user context if valid
-			c.Set("user", userContext)
-			c.Set("user_id", userContext.UserID.String())
-			c.Set("user_email", userContext.Email)
-			c.Set("user_role", string(userContext.Role))
-			c.Set("session_id", userContext.SessionID)
+			if valid {
+				c.Set("auth.valid", true)
+				c.Set("x_request_id", requestID)
+			}
 
 			return next(c)
 		}

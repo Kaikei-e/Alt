@@ -13,7 +13,7 @@ import (
 
 func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	// 認証ミドルウェアの初期化
-	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger, cfg.Auth.KratosInternalURL)
+	authMiddleware := middleware_custom.NewAuthMiddleware(container.AuthGateway, logger.Logger, cfg)
 	
 	// 記事検索も認証必須
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())
