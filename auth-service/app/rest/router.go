@@ -120,6 +120,7 @@ func NewRouter(config RouterConfig) *echo.Echo {
 
 	// Public auth endpoints (no auth required)
 	// Browser-compatible GET endpoints (following Ory Kratos specification)
+	auth.GET("/login", authHandler.RedirectToLogin)       // Browser navigation support
 	auth.GET("/login/initiate", authHandler.InitiateLoginFlow)
 	auth.GET("/login/:flowId", authHandler.GetLoginFlow) // TODO: Implement GetLoginFlow handler
 	

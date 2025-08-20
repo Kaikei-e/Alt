@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -155,6 +156,29 @@ func (h *AuthHandler) GetLoginFlow(c echo.Context) error {
 		"expires_at", kratosFlow.ExpiresAt)
 
 	return c.JSON(http.StatusOK, kratosFlow)
+}
+
+// RedirectToLogin handles browser-compatible login redirect
+// @Summary Redirect to login page (Browser GET)
+// @Description Redirects browser requests to the frontend login page with return_to parameter
+// @Tags authentication
+// @Param return_to query string false "Return URL after login"
+// @Success 307 "Redirect to login page"
+// @Router /v1/auth/login [get]
+func (h *AuthHandler) RedirectToLogin(c echo.Context) error {
+	returnTo := c.QueryParam("return_to")
+	if returnTo == "" {
+		returnTo = "/"
+	}
+
+	h.logger.Info("redirecting to login page",
+		"return_to", returnTo,
+		"user_agent", c.Request().Header.Get("User-Agent"),
+		"ip", c.RealIP())
+
+	// Redirect to frontend login page with return_to parameter
+	redirectURL := fmt.Sprintf("https://curionoah.com/auth/login?return_to=%s", url.QueryEscape(returnTo))
+	return c.Redirect(http.StatusTemporaryRedirect, redirectURL)
 }
 
 // generateTempCSRFToken generates a temporary CSRF token for development
