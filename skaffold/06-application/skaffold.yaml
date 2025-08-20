@@ -60,6 +60,9 @@ profiles:
           context: ../../alt-frontend
           docker:
             dockerfile: Dockerfile.frontend
+            buildArgs:
+              NEXT_PUBLIC_IDP_ORIGIN: https://id.curionoah.com
+              NEXT_PUBLIC_KRATOS_PUBLIC_URL: https://id.curionoah.com
     deploy:
       statusCheckDeadlineSeconds: 900
       helm:
