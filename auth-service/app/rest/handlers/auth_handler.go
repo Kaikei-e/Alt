@@ -267,7 +267,6 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 func (h *AuthHandler) Validate(c echo.Context) error {
 	ctx := c.Request().Context()
 	cookie := c.Request().Header.Get("Cookie")
-	bearer := h.extractBearer(c.Request().Header.Get("Authorization")) // ネイティブ用（任意）
 	
 	// Enhanced logging for debugging redirect loops
 	clientIP := c.RealIP()
@@ -277,76 +276,45 @@ func (h *AuthHandler) Validate(c echo.Context) error {
 		"client_ip", clientIP,
 		"user_agent", userAgent,
 		"has_cookie", cookie != "",
-		"has_bearer", bearer != "",
 		"cookie_preview", truncateCookie(cookie, 50))
 
-	sess, resp, err := h.oryCli.FrontendAPI.
-		ToSession(ctx).
-		Cookie(cookie).        // ブラウザ
-		XSessionToken(bearer). // ネイティブ
-		Execute()
-
-	// Enhanced error handling and logging
+	// Use the usecase layer instead of direct Ory client access (Clean Architecture)
+	sessionCtx, err := h.authUsecase.ValidateSessionWithCookie(ctx, cookie)
 	if err != nil {
-		h.logger.Warn("kratos session validation error",
+		h.logger.Warn("session validation failed",
 			"error", err.Error(),
 			"client_ip", clientIP)
-		return echo.NewHTTPError(http.StatusUnauthorized, "session validation failed")
+		return c.JSON(http.StatusUnauthorized, ErrorPayload{Message: "session validation failed"})
 	}
 
-	if resp == nil {
-		h.logger.Warn("kratos returned nil response",
+	if sessionCtx == nil {
+		h.logger.Warn("session validation returned nil context",
 			"client_ip", clientIP)
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session response")
+		return c.JSON(http.StatusUnauthorized, ErrorPayload{Message: "invalid session context"})
 	}
 
-	// Check HTTP status code from Kratos
-	if resp.StatusCode != 200 {
-		h.logger.Info("kratos session validation rejected",
-			"status_code", resp.StatusCode,
+	if !sessionCtx.IsActive {
+		h.logger.Info("session is inactive",
+			"session_id", sessionCtx.SessionID,
 			"client_ip", clientIP)
-		return echo.NewHTTPError(http.StatusUnauthorized, "session not authenticated")
-	}
-
-	// Validate session object
-	if sess == nil {
-		h.logger.Warn("kratos returned nil session despite 200 status",
-			"client_ip", clientIP)
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session object")
-	}
-
-	if sess.Id == "" {
-		h.logger.Warn("kratos session missing ID",
-			"client_ip", clientIP)
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session ID")
-	}
-
-	// Check if session is actually active
-	if sess.Active != nil && !*sess.Active {
-		h.logger.Info("kratos session is inactive",
-			"session_id", sess.Id,
-			"client_ip", clientIP)
-		return echo.NewHTTPError(http.StatusUnauthorized, "session inactive")
-	}
-
-	// Validate identity exists
-	if sess.Identity == nil || sess.Identity.Id == "" {
-		h.logger.Warn("kratos session missing identity",
-			"session_id", sess.Id,
-			"client_ip", clientIP)
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session identity")
+		return c.JSON(http.StatusUnauthorized, ErrorPayload{Message: "session inactive"})
 	}
 
 	h.logger.Info("session validation successful",
-		"session_id", sess.Id,
-		"identity_id", sess.Identity.Id,
+		"session_id", sessionCtx.SessionID,
+		"identity_id", sessionCtx.UserID,
 		"client_ip", clientIP)
 
-	// 監査系は best-effort（失敗で 200 を崩さない）
-	go h.upsertSessionAsync(ctx, sess)
-	
+	// Set headers BEFORE creating response to prevent Echo content-length issues
 	c.Response().Header().Set("Cache-Control", "no-store")
-	return c.NoContent(http.StatusOK)
+	c.Response().Header().Set("Content-Type", "application/json")
+	
+	// Single return with JSON - no other response writes
+	return c.JSON(http.StatusOK, ValidateOK{
+		Valid:      true,
+		SessionID:  sessionCtx.SessionID,
+		IdentityID: sessionCtx.UserID.String(),
+	})
 }
 
 // RefreshSession refreshes the current session
@@ -605,6 +573,16 @@ type DetailedErrorResponse struct {
 	Details string      `json:"details"`
 	Field   string      `json:"field,omitempty"`
 	Data    interface{} `json:"data,omitempty"`
+}
+
+type ValidateOK struct {
+	Valid      bool   `json:"valid"`
+	SessionID  string `json:"session_id,omitempty"`
+	IdentityID string `json:"identity_id,omitempty"`
+}
+
+type ErrorPayload struct {
+	Message string `json:"message"`
 }
 
 type SuccessResponse struct {

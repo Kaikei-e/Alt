@@ -174,6 +174,21 @@ func (mr *MockAuthUsecaseMockRecorder) ValidateSession(ctx, sessionToken any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateSession", reflect.TypeOf((*MockAuthUsecase)(nil).ValidateSession), ctx, sessionToken)
 }
 
+// ValidateSessionWithCookie mocks base method.
+func (m *MockAuthUsecase) ValidateSessionWithCookie(ctx context.Context, cookieHeader string) (*domain.SessionContext, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateSessionWithCookie", ctx, cookieHeader)
+	ret0, _ := ret[0].(*domain.SessionContext)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ValidateSessionWithCookie indicates an expected call of ValidateSessionWithCookie.
+func (mr *MockAuthUsecaseMockRecorder) ValidateSessionWithCookie(ctx, cookieHeader any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateSessionWithCookie", reflect.TypeOf((*MockAuthUsecase)(nil).ValidateSessionWithCookie), ctx, cookieHeader)
+}
+
 // MockAuthGateway is a mock of AuthGateway interface.
 type MockAuthGateway struct {
 	ctrl     *gomock.Controller
@@ -285,6 +300,21 @@ func (m *MockAuthGateway) SubmitRegistrationFlow(ctx context.Context, flowID str
 func (mr *MockAuthGatewayMockRecorder) SubmitRegistrationFlow(ctx, flowID, body any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitRegistrationFlow", reflect.TypeOf((*MockAuthGateway)(nil).SubmitRegistrationFlow), ctx, flowID, body)
+}
+
+// WhoAmI mocks base method.
+func (m *MockAuthGateway) WhoAmI(ctx context.Context, cookieHeader string) (*domain.KratosSession, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WhoAmI", ctx, cookieHeader)
+	ret0, _ := ret[0].(*domain.KratosSession)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// WhoAmI indicates an expected call of WhoAmI.
+func (mr *MockAuthGatewayMockRecorder) WhoAmI(ctx, cookieHeader any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WhoAmI", reflect.TypeOf((*MockAuthGateway)(nil).WhoAmI), ctx, cookieHeader)
 }
 
 // MockAuthRepository is a mock of AuthRepository interface.

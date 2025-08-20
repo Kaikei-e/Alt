@@ -548,18 +548,18 @@ func (mr *MockKratosClientMockRecorder) Version(ctx any) *gomock.Call {
 }
 
 // WhoAmI mocks base method.
-func (m *MockKratosClient) WhoAmI(ctx context.Context, sessionToken string) (*domain.KratosSession, error) {
+func (m *MockKratosClient) WhoAmI(ctx context.Context, cookieHeader string) (*domain.KratosSession, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WhoAmI", ctx, sessionToken)
+	ret := m.ctrl.Call(m, "WhoAmI", ctx, cookieHeader)
 	ret0, _ := ret[0].(*domain.KratosSession)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // WhoAmI indicates an expected call of WhoAmI.
-func (mr *MockKratosClientMockRecorder) WhoAmI(ctx, sessionToken any) *gomock.Call {
+func (mr *MockKratosClientMockRecorder) WhoAmI(ctx, cookieHeader any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WhoAmI", reflect.TypeOf((*MockKratosClient)(nil).WhoAmI), ctx, sessionToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WhoAmI", reflect.TypeOf((*MockKratosClient)(nil).WhoAmI), ctx, cookieHeader)
 }
 
 // MockKratosAdminClient is a mock of KratosAdminClient interface.
@@ -1159,16 +1159,16 @@ func (mr *MockKratosPublicClientMockRecorder) Version(ctx any) *gomock.Call {
 }
 
 // WhoAmI mocks base method.
-func (m *MockKratosPublicClient) WhoAmI(ctx context.Context, sessionToken string) (*domain.KratosSession, error) {
+func (m *MockKratosPublicClient) WhoAmI(ctx context.Context, cookieHeader string) (*domain.KratosSession, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WhoAmI", ctx, sessionToken)
+	ret := m.ctrl.Call(m, "WhoAmI", ctx, cookieHeader)
 	ret0, _ := ret[0].(*domain.KratosSession)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // WhoAmI indicates an expected call of WhoAmI.
-func (mr *MockKratosPublicClientMockRecorder) WhoAmI(ctx, sessionToken any) *gomock.Call {
+func (mr *MockKratosPublicClientMockRecorder) WhoAmI(ctx, cookieHeader any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WhoAmI", reflect.TypeOf((*MockKratosPublicClient)(nil).WhoAmI), ctx, sessionToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WhoAmI", reflect.TypeOf((*MockKratosPublicClient)(nil).WhoAmI), ctx, cookieHeader)
 }

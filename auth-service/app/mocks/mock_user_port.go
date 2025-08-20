@@ -184,6 +184,35 @@ func (m *MockUserGateway) EXPECT() *MockUserGatewayMockRecorder {
 	return m.recorder
 }
 
+// CountUsersByTenant mocks base method.
+func (m *MockUserGateway) CountUsersByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountUsersByTenant", ctx, tenantID)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountUsersByTenant indicates an expected call of CountUsersByTenant.
+func (mr *MockUserGatewayMockRecorder) CountUsersByTenant(ctx, tenantID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountUsersByTenant", reflect.TypeOf((*MockUserGateway)(nil).CountUsersByTenant), ctx, tenantID)
+}
+
+// Create mocks base method.
+func (m *MockUserGateway) Create(ctx context.Context, user *domain.User) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Create", ctx, user)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Create indicates an expected call of Create.
+func (mr *MockUserGatewayMockRecorder) Create(ctx, user any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockUserGateway)(nil).Create), ctx, user)
+}
+
 // CreateUser mocks base method.
 func (m *MockUserGateway) CreateUser(ctx context.Context, user *domain.User) error {
 	m.ctrl.T.Helper()
@@ -196,6 +225,20 @@ func (m *MockUserGateway) CreateUser(ctx context.Context, user *domain.User) err
 func (mr *MockUserGatewayMockRecorder) CreateUser(ctx, user any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateUser", reflect.TypeOf((*MockUserGateway)(nil).CreateUser), ctx, user)
+}
+
+// CreateUserInvitation mocks base method.
+func (m *MockUserGateway) CreateUserInvitation(ctx context.Context, tenantID uuid.UUID, req any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateUserInvitation", ctx, tenantID, req)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateUserInvitation indicates an expected call of CreateUserInvitation.
+func (mr *MockUserGatewayMockRecorder) CreateUserInvitation(ctx, tenantID, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateUserInvitation", reflect.TypeOf((*MockUserGateway)(nil).CreateUserInvitation), ctx, tenantID, req)
 }
 
 // DeleteUser mocks base method.
@@ -255,6 +298,21 @@ func (m *MockUserGateway) GetUserByKratosID(ctx context.Context, kratosID uuid.U
 func (mr *MockUserGatewayMockRecorder) GetUserByKratosID(ctx, kratosID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserByKratosID", reflect.TypeOf((*MockUserGateway)(nil).GetUserByKratosID), ctx, kratosID)
+}
+
+// HashPassword mocks base method.
+func (m *MockUserGateway) HashPassword(password string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HashPassword", password)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HashPassword indicates an expected call of HashPassword.
+func (mr *MockUserGatewayMockRecorder) HashPassword(password any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HashPassword", reflect.TypeOf((*MockUserGateway)(nil).HashPassword), password)
 }
 
 // ListUsersByTenant mocks base method.
