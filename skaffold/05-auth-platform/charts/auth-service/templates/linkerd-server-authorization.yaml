@@ -11,10 +11,6 @@ spec:
     name: {{ include "auth-service.fullname" . }}-http
   client:
     meshTLS:
-      identities:
-        # TODO.mdで確認された実際のクライアントID（具体的指定）
-        - "alt-frontend.alt-apps.serviceaccount.identity.linkerd.cluster.local"
-        # 他のalt-appsサービスからのアクセスも許可（必要に応じて）
-        - "*.alt-apps.serviceaccount.identity.linkerd.cluster.local"
-        # ヘルスチェック用（Kubernetes probe）
-        - "default.default.serviceaccount.identity.linkerd.cluster.local"
+      serviceAccounts:
+        - name: alt-frontend       # SA 名（ログのIDと一致）
+          namespace: alt-apps
