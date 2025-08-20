@@ -11,6 +11,27 @@ let withBundleAnalyzer: (
   config: Record<string, unknown>,
 ) => Record<string, unknown> = (c) => c;
 
+// Build-time env validation (fail fast if missing/malformed)
+const mustPublicHttpsOrigin = (k: string) => {
+  const v = process.env[k];
+  if (!v) throw new Error(`[ENV] ${k} is required at build time`);
+  let origin: string;
+  try {
+    origin = new URL(v).origin;
+  } catch {
+    throw new Error(`[ENV] ${k} must be a valid URL (got: ${v})`);
+  }
+  if (!origin.startsWith('https://')) {
+    throw new Error(`[ENV] ${k} must be HTTPS origin (got: ${origin})`);
+  }
+  if (/\.cluster\.local(\b|:|\/)/i.test(origin)) {
+    throw new Error(`[ENV] ${k} must be PUBLIC FQDN (got: ${origin})`);
+  }
+};
+
+mustPublicHttpsOrigin('NEXT_PUBLIC_IDP_ORIGIN');
+mustPublicHttpsOrigin('NEXT_PUBLIC_KRATOS_PUBLIC_URL');
+
 if (process.env.ANALYZE === "true") {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, import/no-extraneous-dependencies
