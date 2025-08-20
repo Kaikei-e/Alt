@@ -51,6 +51,7 @@ func TestEnvoyTimeout_LongRunningRequest(t *testing.T) {
 				"test_client_id",
 				"test_client_secret", 
 				"https://www.inoreader.com/reader/api/0",
+				nil,
 			)
 
 			// Set request timeout to match test scenario

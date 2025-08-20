@@ -17,7 +17,7 @@ func TestUpdateTokenDirectly(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	// Create OAuth2 client for testing
-	oauth2Client := driver.NewOAuth2Client("test-client-id", "test-client-secret", "https://test.example.com")
+	oauth2Client := driver.NewOAuth2Client("test-client-id", "test-client-secret", "https://test.example.com", logger)
 
 	// Create test token manager
 	config := InMemoryTokenManagerConfig{
@@ -176,7 +176,7 @@ func TestUpdateTokenDirectly(t *testing.T) {
 // TestUpdateTokenDirectly_ConflictAvoidance tests the core conflict avoidance functionality
 func TestUpdateTokenDirectly_ConflictAvoidance(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	oauth2Client := driver.NewOAuth2Client("test-client", "test-secret", "https://test.example.com")
+	oauth2Client := driver.NewOAuth2Client("test-client", "test-secret", "https://test.example.com", slog.Default())
 
 	config := InMemoryTokenManagerConfig{
 		ClientID:         "test-client",
@@ -252,7 +252,7 @@ func TestUpdateTokenDirectly_ConflictAvoidance(t *testing.T) {
 // TestUpdateTokenDirectly_ThreadSafety tests concurrent access safety
 func TestUpdateTokenDirectly_ThreadSafety(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})) // Reduce log noise
-	oauth2Client := driver.NewOAuth2Client("test-client", "test-secret", "https://test.example.com")
+	oauth2Client := driver.NewOAuth2Client("test-client", "test-secret", "https://test.example.com", slog.Default())
 
 	config := InMemoryTokenManagerConfig{
 		ClientID:         "test-client",

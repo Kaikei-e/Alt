@@ -290,8 +290,7 @@ func TestConfig_Validate(t *testing.T) {
 				cfg.Inoreader.RefreshToken = ""
 				return cfg
 			}(),
-			expectError: true,
-			errorMsg:    "INOREADER_REFRESH_TOKEN is required",
+			expectError: false, // RefreshToken now optional - managed by auth-token-manager
 		},
 		"missing_https_proxy": {
 			config: func() *Config {

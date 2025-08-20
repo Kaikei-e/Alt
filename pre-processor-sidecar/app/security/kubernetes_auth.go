@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"pre-processor-sidecar/handler"
 )
 
 // KubernetesAuthenticator はKubernetes認証機能を提供
@@ -137,8 +136,17 @@ func (ka *KubernetesAuthenticator) extractPublicKey(caBytes []byte) error {
 	return nil
 }
 
+// ServiceAccountInfo represents service account information
+type ServiceAccountInfo struct {
+	Subject   string   `json:"subject"`
+	Namespace string   `json:"namespace"`
+	Name      string   `json:"name"`
+	UID       string   `json:"uid"`
+	Groups    []string `json:"groups,omitempty"`
+}
+
 // ValidateKubernetesServiceAccountToken はServiceAccountトークンを検証
-func (ka *KubernetesAuthenticator) ValidateKubernetesServiceAccountToken(tokenString string) (*handler.ServiceAccountInfo, error) {
+func (ka *KubernetesAuthenticator) ValidateKubernetesServiceAccountToken(tokenString string) (*ServiceAccountInfo, error) {
 	if tokenString == "" {
 		return nil, fmt.Errorf("empty token")
 	}
@@ -185,7 +193,7 @@ func (ka *KubernetesAuthenticator) ValidateKubernetesServiceAccountToken(tokenSt
 	}
 
 	// ServiceAccount情報の構築
-	info := &handler.ServiceAccountInfo{
+	info := &ServiceAccountInfo{
 		Subject:   claims.Subject,
 		Namespace: claims.Kubernetes.Namespace,
 		Name:      claims.Kubernetes.ServiceAccount.Name,
@@ -207,7 +215,7 @@ func (ka *KubernetesAuthenticator) ValidateKubernetesServiceAccountToken(tokenSt
 }
 
 // validateTokenBasic は基本的なトークン検証（公開鍵なし）
-func (ka *KubernetesAuthenticator) validateTokenBasic(tokenString string) (*handler.ServiceAccountInfo, error) {
+func (ka *KubernetesAuthenticator) validateTokenBasic(tokenString string) (*ServiceAccountInfo, error) {
 	// JWT構造の基本確認
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
@@ -243,7 +251,7 @@ func (ka *KubernetesAuthenticator) validateTokenBasic(tokenString string) (*hand
 		return nil, fmt.Errorf("token has expired")
 	}
 
-	info := &handler.ServiceAccountInfo{
+	info := &ServiceAccountInfo{
 		Subject:   claims.Subject,
 		Namespace: claims.Kubernetes.Namespace,
 		Name:      claims.Kubernetes.ServiceAccount.Name,
@@ -263,7 +271,7 @@ func (ka *KubernetesAuthenticator) validateTokenBasic(tokenString string) (*hand
 }
 
 // HasAdminPermissions は管理者権限を確認
-func (ka *KubernetesAuthenticator) HasAdminPermissions(info *handler.ServiceAccountInfo) bool {
+func (ka *KubernetesAuthenticator) HasAdminPermissions(info *ServiceAccountInfo) bool {
 	if info == nil {
 		return false
 	}
@@ -343,7 +351,7 @@ func (ka *KubernetesAuthenticator) isDevelopmentEnvironment() bool {
 }
 
 // GetCurrentServiceAccount は現在のServiceAccount情報を取得
-func (ka *KubernetesAuthenticator) GetCurrentServiceAccount() (*handler.ServiceAccountInfo, error) {
+func (ka *KubernetesAuthenticator) GetCurrentServiceAccount() (*ServiceAccountInfo, error) {
 	tokenBytes, err := ioutil.ReadFile(ka.tokenPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read service account token: %w", err)
@@ -374,3 +382,4 @@ type AuthenticationInfo struct {
 	CAPath        string `json:"ca_path"`
 	IsDevelopment bool   `json:"is_development"`
 }
+

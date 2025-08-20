@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"pre-processor-sidecar/handler"
+	"pre-processor-sidecar/models"
 )
 
 // OWASPInputValidator はOWASP準拠の入力検証器
@@ -91,7 +91,7 @@ func NewOWASPInputValidator() *OWASPInputValidator {
 }
 
 // ValidateTokenUpdateRequest はトークン更新リクエストを検証
-func (v *OWASPInputValidator) ValidateTokenUpdateRequest(req *handler.TokenUpdateRequest) error {
+func (v *OWASPInputValidator) ValidateTokenUpdateRequest(req *models.TokenUpdateRequest) error {
 	// リフレッシュトークンは必須
 	if req.RefreshToken == "" {
 		return &ValidationError{
@@ -213,7 +213,7 @@ func (v *OWASPInputValidator) validateClientSecret(secret string) error {
 }
 
 // validateSecurityThreats はセキュリティ脅威を検証
-func (v *OWASPInputValidator) validateSecurityThreats(req *handler.TokenUpdateRequest) error {
+func (v *OWASPInputValidator) validateSecurityThreats(req *models.TokenUpdateRequest) error {
 	// 全フィールドをチェック
 	fields := map[string]string{
 		"refresh_token":  req.RefreshToken,
@@ -376,7 +376,7 @@ func (v *OWASPInputValidator) ValidateAndSanitizeInput(input string, fieldName s
 	}
 
 	// セキュリティ脅威チェック
-	tempReq := &handler.TokenUpdateRequest{}
+	tempReq := &models.TokenUpdateRequest{}
 	switch fieldName {
 	case "refresh_token":
 		tempReq.RefreshToken = sanitized

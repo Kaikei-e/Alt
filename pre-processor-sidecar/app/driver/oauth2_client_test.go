@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +16,7 @@ import (
 )
 
 func TestNewOAuth2Client(t *testing.T) {
-	client := NewOAuth2Client("test_client_id", "test_client_secret", "https://test.example.com")
+	client := NewOAuth2Client("test_client_id", "test_client_secret", "https://test.example.com", slog.Default())
 
 	assert.Equal(t, "test_client_id", client.clientID)
 	assert.Equal(t, "test_client_secret", client.clientSecret)
@@ -112,7 +113,7 @@ func TestOAuth2Client_RefreshToken(t *testing.T) {
 			}
 
 			// Create OAuth2 client with mock server URL
-			client := NewOAuth2Client("test_client_id", "test_client_secret", server.URL)
+			client := NewOAuth2Client("test_client_id", "test_client_secret", server.URL, slog.Default())
 			client.httpClient.Timeout = 1 * time.Second // Short timeout for tests
 
 			// Execute RefreshToken
@@ -219,7 +220,7 @@ func TestOAuth2Client_ValidateToken(t *testing.T) {
 			}
 
 			// Create OAuth2 client with mock server URL
-			client := NewOAuth2Client("test_client_id", "test_client_secret", server.URL)
+			client := NewOAuth2Client("test_client_id", "test_client_secret", server.URL, slog.Default())
 			client.httpClient.Timeout = 1 * time.Second
 
 			// Execute ValidateToken
@@ -329,7 +330,7 @@ func TestOAuth2Client_MakeAuthenticatedRequest(t *testing.T) {
 			defer server.Close()
 
 			// Create OAuth2 client with mock server URL
-			client := NewOAuth2Client("test_client_id", "test_client_secret", server.URL)
+			client := NewOAuth2Client("test_client_id", "test_client_secret", server.URL, slog.Default())
 
 			// Execute MakeAuthenticatedRequest
 			ctx := context.Background()
@@ -382,7 +383,7 @@ func TestOAuth2Client_HandleRateLimitHeaders(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			client := NewOAuth2Client("test_id", "test_secret", "https://test.example.com")
+			client := NewOAuth2Client("test_id", "test_secret", "https://test.example.com", slog.Default())
 
 			usage, limit, remaining := client.handleRateLimitHeaders(tc.headers)
 
@@ -425,7 +426,7 @@ func TestOAuth2Client_TimeoutHandling(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewOAuth2Client("test", "test", server.URL)
+			client := NewOAuth2Client("test", "test", server.URL, slog.Default())
 			client.SetTimeout(tt.clientTimeout) // 未実装メソッド - このテストは失敗する予定
 
 			ctx, cancel := context.WithTimeout(context.Background(), tt.clientTimeout+5*time.Second)
@@ -456,7 +457,7 @@ func BenchmarkOAuth2Client_RefreshToken(b *testing.B) {
 	}))
 	defer server.Close()
 
-	client := NewOAuth2Client("test_client_id", "test_client_secret", server.URL)
+	client := NewOAuth2Client("test_client_id", "test_client_secret", server.URL, slog.Default())
 	ctx := context.Background()
 
 	b.ResetTimer()

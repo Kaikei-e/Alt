@@ -42,6 +42,7 @@ type Config struct {
 
 	// Token storage configuration
 	TokenStoragePath string
+	TokenStorageType string // "kubernetes_secret", "env_var", "file"
 
 	// TDD Phase 3 - REFACTOR: Enhanced Configuration Management
 	// HTTP Client configuration
@@ -210,6 +211,7 @@ func LoadConfig() (*Config, error) {
 
 		OAuth2SecretName: getEnvOrDefault("OAUTH2_TOKEN_SECRET_NAME", "pre-processor-sidecar-oauth2-token"),
 		TokenStoragePath: getEnvOrDefault("TOKEN_STORAGE_PATH", "/tmp/oauth2_token.env"),
+		TokenStorageType: getEnvOrDefault("TOKEN_STORAGE_TYPE", "kubernetes_secret"), // Default to Kubernetes Secret
 
 		// TDD Phase 3 - REFACTOR: Enhanced Configuration Management
 		HTTPClient: HTTPClientConfig{

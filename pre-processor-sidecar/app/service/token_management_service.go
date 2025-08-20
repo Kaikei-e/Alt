@@ -196,28 +196,82 @@ func (s *TokenManagementService) refreshTokenWithRetry(ctx context.Context, toke
 	return nil, fmt.Errorf("token refresh failed after %d attempts: %w", s.maxRetryAttempts, lastErr)
 }
 
-// performTokenRefresh performs the actual token refresh operation
+// performTokenRefresh performs the actual token refresh operation with rotation support
 func (s *TokenManagementService) performTokenRefresh(ctx context.Context, token *models.OAuth2Token) (*models.OAuth2Token, error) {
+	oldRefreshToken := token.RefreshToken
+	
+	s.logger.Info("Performing token refresh",
+		"old_refresh_token_prefix", oldRefreshToken[:min(8, len(oldRefreshToken))],
+		"expires_at", token.ExpiresAt)
+
 	// Call OAuth2 client to refresh token
 	refreshResponse, err := s.oauth2Client.RefreshToken(ctx, token.RefreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("OAuth2 refresh API call failed: %w", err)
 	}
 
-	// Create new token from response
+	// Create new token from response, preserving existing refresh token as fallback
 	refreshedToken := models.NewOAuth2Token(*refreshResponse, token.RefreshToken)
 
-	// Update token in storage
-	err = s.tokenRepo.UpdateToken(ctx, refreshedToken)
+	// Check if refresh token was rotated (new refresh token provided in response)
+	refreshTokenRotated := false
+	if refreshResponse.RefreshToken != "" && refreshResponse.RefreshToken != token.RefreshToken {
+		refreshTokenRotated = true
+		refreshedToken.RefreshToken = refreshResponse.RefreshToken
+		
+		s.logger.Warn("Refresh token rotation detected",
+			"old_refresh_token_prefix", oldRefreshToken[:min(8, len(oldRefreshToken))],
+			"new_refresh_token_prefix", refreshResponse.RefreshToken[:min(8, len(refreshResponse.RefreshToken))],
+			"rotation_required", true)
+	}
+
+	// Update token in storage with enhanced error handling for rotation
+	err = s.updateTokenWithRotation(ctx, refreshedToken, oldRefreshToken, refreshTokenRotated)
 	if err != nil {
-		s.logger.Error("Failed to save refreshed token to storage", "error", err)
-		// Token refresh succeeded but storage failed - log but continue
-		// The refreshed token is still valid for this execution
+		s.logger.Error("Failed to save refreshed token to storage", 
+			"error", err,
+			"refresh_token_rotated", refreshTokenRotated)
+		
+		// For token rotation, storage failure is critical
+		if refreshTokenRotated {
+			return nil, fmt.Errorf("critical: refresh token rotated but storage failed: %w", err)
+		}
+		
+		// For normal refresh, warn but continue with in-memory token
+		s.logger.Warn("Token refresh succeeded but storage failed - using in-memory token", "error", err)
 	} else {
-		s.logger.Info("Refreshed token saved to storage successfully")
+		s.logger.Info("Refreshed token saved to storage successfully",
+			"refresh_token_rotated", refreshTokenRotated)
 	}
 
 	return refreshedToken, nil
+}
+
+// updateTokenWithRotation updates token with rotation awareness
+func (s *TokenManagementService) updateTokenWithRotation(
+	ctx context.Context, 
+	token *models.OAuth2Token, 
+	oldRefreshToken string, 
+	rotated bool,
+) error {
+	// Check if repository supports rotation-aware updates
+	if rotationRepo, ok := s.tokenRepo.(interface {
+		UpdateWithRefreshRotation(ctx context.Context, token *models.OAuth2Token, oldRefreshToken string) error
+	}); ok {
+		// Use rotation-aware update if available
+		return rotationRepo.UpdateWithRefreshRotation(ctx, token, oldRefreshToken)
+	}
+	
+	// Fallback to standard update
+	return s.tokenRepo.UpdateToken(ctx, token)
+}
+
+// Helper function for min
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // GetTokenStatus returns current token status for monitoring

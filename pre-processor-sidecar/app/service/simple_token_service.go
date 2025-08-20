@@ -61,7 +61,7 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 	}
 
 	// OAuth2クライアントの作成
-	oauth2Client := driver.NewOAuth2Client(config.ClientID, config.ClientSecret, config.BaseURL)
+	oauth2Client := driver.NewOAuth2Client(config.ClientID, config.ClientSecret, config.BaseURL, logger)
 	
 	// HTTPクライアントの設定（プロキシ対応）
 	if httpsProxy := os.Getenv("HTTPS_PROXY"); httpsProxy != "" {

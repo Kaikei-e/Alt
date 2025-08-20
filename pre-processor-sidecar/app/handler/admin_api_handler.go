@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"pre-processor-sidecar/models"
+	"pre-processor-sidecar/security"
 	"pre-processor-sidecar/service"
 )
 
@@ -34,8 +36,8 @@ type TokenManager interface {
 
 // AdminAuthenticator は管理者認証インターフェース
 type AdminAuthenticator interface {
-	ValidateKubernetesServiceAccountToken(token string) (*ServiceAccountInfo, error)
-	HasAdminPermissions(info *ServiceAccountInfo) bool
+	ValidateKubernetesServiceAccountToken(token string) (*security.ServiceAccountInfo, error)
+	HasAdminPermissions(info *security.ServiceAccountInfo) bool
 }
 
 // RateLimiter はレート制限インターフェース
@@ -46,7 +48,7 @@ type RateLimiter interface {
 
 // InputValidator は入力検証インターフェース
 type InputValidator interface {
-	ValidateTokenUpdateRequest(req *TokenUpdateRequest) error
+	ValidateTokenUpdateRequest(req *models.TokenUpdateRequest) error
 	SanitizeString(input string) string
 }
 
@@ -58,21 +60,7 @@ type AdminAPIMetricsCollector interface {
 	IncrementAdminAPIAuthenticationError(errorType string)
 }
 
-// ServiceAccountInfo はサービスアカウント情報
-type ServiceAccountInfo struct {
-	Subject   string
-	Namespace string
-	Name      string
-	UID       string
-	Groups    []string
-}
 
-// TokenUpdateRequest はトークン更新リクエスト
-type TokenUpdateRequest struct {
-	RefreshToken  string `json:"refresh_token"`
-	ClientID      string `json:"client_id,omitempty"`
-	ClientSecret  string `json:"client_secret,omitempty"`
-}
 
 // TokenUpdateResponse はトークン更新レスポンス
 type TokenUpdateResponse struct {
@@ -197,7 +185,7 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 	}
 
 	// リクエストボディの読み取りと検証
-	var req TokenUpdateRequest
+	var req models.TokenUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.respondWithError(w, "INVALID_JSON", "Invalid JSON in request body", http.StatusBadRequest)
 		h.metricsCollector.IncrementAdminAPIRequest("POST", "/admin/oauth2/refresh-token", "invalid_json")

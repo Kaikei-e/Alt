@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,22 @@ import (
 
 	_ "github.com/lib/pq"
 )
+
+// getNamespace gets the current Kubernetes namespace
+func getNamespace() string {
+	// Try to read from mounted service account token
+	if data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	
+	// Fallback to environment variable
+	if ns := os.Getenv("KUBERNETES_NAMESPACE"); ns != "" {
+		return strings.TrimSpace(ns)
+	}
+	
+	// Default namespace
+	return "alt-processing"
+}
 
 // SimpleAdminAPIMetricsCollector はシンプルなメトリクス収集実装
 type SimpleAdminAPIMetricsCollector struct {
@@ -261,8 +278,47 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	// OAuth2クライアントの作成（Enhanced Token Serviceと同じ設定）
 	clientID := os.Getenv("INOREADER_CLIENT_ID")
 	clientSecret := os.Getenv("INOREADER_CLIENT_SECRET")
-	oauth2Client := driver.NewOAuth2Client(clientID, clientSecret, cfg.Inoreader.BaseURL)
+	oauth2Client := driver.NewOAuth2Client(clientID, clientSecret, cfg.Inoreader.BaseURL, logger)
 	oauth2Client.SetHTTPClient(httpClient)
+
+	// Initialize token repository based on configuration
+	var tokenRepo repository.OAuth2TokenRepository
+	switch cfg.TokenStorageType {
+	case "kubernetes_secret":
+		k8sRepo, err := repository.NewKubernetesSecretRepository(
+			getNamespace(), 
+			cfg.OAuth2SecretName, 
+			logger,
+		)
+		if err != nil {
+			logger.Warn("Failed to initialize Kubernetes Secret repository, falling back to environment variables", "error", err)
+			tokenRepo = repository.NewEnvVarTokenRepository(logger)
+		} else {
+			logger.Info("Using Kubernetes Secret token repository")
+			tokenRepo = k8sRepo
+		}
+	case "env_var":
+		logger.Info("Using environment variable token repository")
+		tokenRepo = repository.NewEnvVarTokenRepository(logger)
+	default:
+		logger.Warn("Unknown token storage type, defaulting to environment variables", "type", cfg.TokenStorageType)
+		tokenRepo = repository.NewEnvVarTokenRepository(logger)
+	}
+
+	// Initialize enhanced token management service
+	tokenManagementService := service.NewTokenManagementService(tokenRepo, oauth2Client, logger)
+
+	// Initialize token rotation manager
+	tokenRotationManager := service.NewTokenRotationManager(tokenRepo, tokenManagementService, logger)
+	
+	// Start token rotation monitoring
+	if err := tokenRotationManager.StartMonitoring(ctx); err != nil {
+		logger.Error("Failed to start token rotation monitoring", "error", err)
+	} else {
+		logger.Info("Token rotation monitoring started")
+	}
+
+	defer tokenRotationManager.StopMonitoring()
 
 	// Enhanced Token Serviceを使用したInoreaderサービス
 	inoreaderClient := service.NewInoreaderClient(oauth2Client, logger)

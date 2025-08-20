@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -29,14 +30,20 @@ type OAuth2Client struct {
 	clientSecret string
 	baseURL      string
 	httpClient   *http.Client
+	logger       *slog.Logger
 }
 
 // NewOAuth2Client creates a new OAuth2 client for Inoreader API
-func NewOAuth2Client(clientID, clientSecret, baseURL string) *OAuth2Client {
+func NewOAuth2Client(clientID, clientSecret, baseURL string, logger *slog.Logger) *OAuth2Client {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &OAuth2Client{
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		baseURL:      baseURL,
+		logger:       logger,
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second, // 30秒から60秒に増加
 			Transport: &http.Transport{
@@ -89,14 +96,29 @@ func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*
 		return nil, fmt.Errorf("failed to decode token response: %w", err)
 	}
 
+	// Log refresh token information for debugging rotation
+	hasNewRefreshToken := tokenResponse.RefreshToken != ""
+	
 	// Convert to models.InoreaderTokenResponse
 	inoreaderResponse := &models.InoreaderTokenResponse{
 		AccessToken:  tokenResponse.AccessToken,
 		TokenType:    tokenResponse.TokenType,
 		ExpiresIn:    tokenResponse.ExpiresIn,
-		RefreshToken: tokenResponse.RefreshToken,
+		RefreshToken: tokenResponse.RefreshToken, // May be empty if not rotated
 		Scope:        "", // Will be populated if available in response
 	}
+
+	// Log the refresh response details for debugging
+	c.logger.Info("OAuth2 refresh successful",
+		"access_token_length", len(tokenResponse.AccessToken),
+		"expires_in_seconds", tokenResponse.ExpiresIn,
+		"has_new_refresh_token", hasNewRefreshToken,
+		"new_refresh_token_prefix", func() string {
+			if hasNewRefreshToken {
+				return tokenResponse.RefreshToken[:min(8, len(tokenResponse.RefreshToken))]
+			}
+			return "none"
+		}())
 
 	return inoreaderResponse, nil
 }
@@ -287,6 +309,14 @@ func (c *OAuth2Client) GetRateLimitInfo() map[string]interface{} {
 		"zone1_limit":   100,
 		"zone1_remaining": 100,
 	}
+}
+
+// Helper function for min
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // DebugDirectRequest makes a direct API call without proxy for debugging
