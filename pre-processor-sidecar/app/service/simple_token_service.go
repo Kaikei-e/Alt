@@ -89,6 +89,7 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 	// トークンの読み込み - OAuth2 Secretを優先
 	initialAccessToken := config.InitialAccessToken
 	initialRefreshToken := config.InitialRefreshToken
+	var initialExpiresAt time.Time
 	
 	// OAuth2 Secretからトークンを読み込み（利用可能であれば）
 	if oauth2SecretSvc != nil {
@@ -100,6 +101,8 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 			logger.Info("Successfully loaded tokens from OAuth2 Secret - auth-token-manager integration active")
 			initialAccessToken = secretToken.AccessToken
 			initialRefreshToken = secretToken.RefreshToken
+			initialExpiresAt = secretToken.ExpiresAt // 重要: 実際の有効期限を取得
+			logger.Info("Using actual token expiry from Secret", "expires_at", initialExpiresAt, "expires_in_hours", time.Until(initialExpiresAt).Hours())
 		}
 	}
 
@@ -109,6 +112,7 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 		ClientSecret:     config.ClientSecret,
 		AccessToken:      initialAccessToken,
 		RefreshToken:     initialRefreshToken,
+		ExpiresAt:        initialExpiresAt, // 実際の有効期限を渡す
 		RefreshBuffer:    config.RefreshBuffer,
 		CheckInterval:    config.CheckInterval,
 		OAuth2Client:     oauth2Client,

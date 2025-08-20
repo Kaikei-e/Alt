@@ -19,8 +19,6 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
 )
 
 // OAuth2SecretService はOAuth2 Secretを管理するサービス

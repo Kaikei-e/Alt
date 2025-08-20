@@ -85,6 +85,7 @@ type InMemoryTokenManagerConfig struct {
 	ClientSecret     string
 	AccessToken      string
 	RefreshToken     string
+	ExpiresAt        time.Time     // 実際のトークン有効期限
 	RefreshBuffer    time.Duration
 	CheckInterval    time.Duration
 	OAuth2Client     *driver.OAuth2Client
@@ -148,13 +149,18 @@ func NewInMemoryTokenManager(config InMemoryTokenManagerConfig) (*InMemoryTokenM
 		return nil, fmt.Errorf("failed to encrypt credentials: %w", err)
 	}
 
-	// 初期アクセストークンがあれば設定（24時間の有効期限）
+	// 初期アクセストークンがあれば設定（実際の有効期限を使用）
 	if config.AccessToken != "" {
-		expiresAt := time.Now().Add(24 * time.Hour) // Inoreaderのアクセストークンは24時間有効
+		// 実際のexpires_atを使用、設定されていない場合のみ24時間デフォルト
+		expiresAt := config.ExpiresAt
+		if expiresAt.IsZero() {
+			expiresAt = time.Now().Add(24 * time.Hour) // フォールバック: 24時間
+			logger.Warn("No ExpiresAt provided, using 24-hour default", "expires_at", expiresAt)
+		}
 		if err := manager.setInitialAccessToken(config.AccessToken, expiresAt); err != nil {
 			return nil, fmt.Errorf("failed to set initial access token: %w", err)
 		}
-		logger.Info("Initial access token set with 24-hour expiry", "expires_at", expiresAt)
+		logger.Info("Initial access token set with actual expiry", "expires_at", expiresAt, "expires_in_hours", time.Until(expiresAt).Hours())
 	}
 
 	// 初期リフレッシュトークンがあれば設定
