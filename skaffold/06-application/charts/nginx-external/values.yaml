@@ -119,6 +119,12 @@ ingress:
   hosts: []
   tls: []
 
+# Auth service settings
+authService:
+  # Base path used when clients call unversioned /api/auth/... endpoints.
+  # Example: "/v1/auth" makes /api/auth/csrf -> /v1/auth/csrf upstream
+  basePath: "/v1/auth"
+
 # Resources configuration
 resources:
   limits:

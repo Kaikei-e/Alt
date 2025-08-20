@@ -1,69 +1,50 @@
-# Altプロジェクト Skaffold オーケストレーションガイド
+# Skaffold Orchestration Guide for the Alt Project
 
-## 1. はじめに
+## 1. Overview
 
-このドキュメントは、Altプロジェクトにおける`skaffold`ディレクトリの構成と、Skaffoldを利用したビルド・デプロイ戦略の全体像を解説するものです。プロジェクトは複数のレイヤーに分割されており、Skaffoldがそれらを統合的に管理することで、複雑なマイクロサービスアーキテクチャの効率的な運用を実現しています。
+This document provides a comprehensive guide to the Skaffold orchestration strategy for the Alt project. The project leverages Skaffold's powerful features to manage a complex microservices architecture in a structured, repeatable, and efficient manner. The configuration is defined in the `skaffold` directory and is organized into a series of interdependent layers.
 
-## 2. オーケストレーション戦略
+## 2. Core Principles
 
-Altプロジェクトのオーケストレーションは、以下の2つの主要な戦略に基づいています。
+The entire Skaffold setup is built on four core principles:
 
-### 2.1. レイヤー化アーキテクチャ
+1.  **Layered Dependencies**: The system is broken down into distinct layers, each with a specific responsibility. These layers are deployed in a strict order defined in the root `skaffold.yaml`, ensuring that foundational services are running before the components that depend on them.
+2.  **Environment-Specific Configurations**: Skaffold `profiles` (`dev`, `staging`, `prod`) are used extensively to manage environment-specific settings. This allows for a single codebase while accommodating different configurations for resources, image tags, and Helm values.
+3.  **Declarative Deployments**: All applications and infrastructure components are managed as Helm charts. Skaffold provides a declarative overlay to manage the deployment of these charts, injecting build-time information like image tags dynamically.
+4.  **Configuration as Code**: The entire build, test, and deploy process is defined as code within the `skaffold` directory, enabling version control, peer review, and automated execution.
 
-Skaffoldの構成は、依存関係と関心事に基づいて複数のレイヤーに分割されています。デプロイは基本的に番号の若いレイヤーから順に行われます。
+## 3. Layered Architecture
 
-- **`01-foundation`**: プロジェクト全体の基盤。証明書管理(`cert-manager`)、ネットワークポリシー、共通設定などを提供します。
-- **`02-infrastructure`**: 永続化層。PostgreSQL, ClickHouse, MeiliSearchといったステートフルなデータストアを管理します。
-- **`04-core-services`**: 中核となるバックエンドAPI(`alt-backend`)と、関連するプロキシ(`envoy-proxy`)を管理します。
-- **`05-auth-platform`**: 認証・認可基盤。Ory Kratosとカスタム認証サービス(`auth-service`)で構成されます。
-- **`06-application`**: ユーザーが直接触れるUI(`alt-frontend`)と、外部からのリクエストを受け付けるIngress(`nginx-external`)を管理します。
-- **`07-processing`**: 非同期のデータ処理パイプライン。RSSの取得、解析、タグ付け、コンテンツ生成などを行うマイクロサービス群で構成されます。
-- **`08-operations`**: 運用タスク。データベースのバックアップやモニタリング関連のコンポーネントを管理します。(このドキュメントの自動生成対象外)
+The root `skaffold.yaml` uses a `requires` block to define the deployment order. Each layer is a self-contained Skaffold project with its own `skaffold.yaml`.
 
-このレイヤー化により、各コンポーネントの依存関係が明確になり、レイヤー単位での独立した開発とデプロイが可能になっています。
+- **`01-foundation`**: Deploys cross-cutting concerns like `cert-manager` for TLS, network policies for security, and shared configurations and secrets.
+- **`02-infrastructure`**: Manages the stateful backbone of the project, including PostgreSQL databases (`postgres`, `kratos-postgres`, `auth-postgres`), ClickHouse, and MeiliSearch.
+- **`04-core-services`**: Deploys the primary business logic, including the `alt-backend` (Go API) and its supporting `envoy-proxy` for controlled egress traffic.
+- **`05-auth-platform`**: Manages the authentication and authorization services, consisting of Ory Kratos for identity management and a custom `auth-service`.
+- **`06-application`**: Deploys the user-facing components: the `alt-frontend` (Next.js/React) and the `nginx-external` reverse proxy that acts as the system's main entry point.
+- **`07-processing`**: Manages the asynchronous data processing pipeline, a collection of microservices for feed ingestion, content transformation, AI/ML tagging, and search indexing.
+- **`08-operations`**: Handles operational tasks such as monitoring and database backups. *(Note: This layer's documentation is not managed by this process).*
 
-### 2.2. プロファイルによる環境分離
+## 4. Build Strategy
 
-Skaffoldの`profiles`機能を利用して、`dev`, `staging`, `prod`といった環境ごとの構成を管理しています。
+- **Artifact Definition**: Each layer's `skaffold.yaml` defines the container images to be built in its `build.artifacts` section.
+- **Local Development Optimization**: `dev` profiles are configured with `push: false` and `useBuildkit: true` to enable fast, efficient local development cycles using a local Kubernetes cluster like `kind`.
+- **Dynamic Tagging**: Skaffold tags images based on a defined policy (e.g., `gitCommit`) and makes these tags available for use in the deployment phase.
 
-```yaml
-profiles:
-  - name: prod
-    deploy:
-      helm:
-        releases:
-          - name: alt-frontend
-            # ...
-            valuesFiles: # ← プロファイルに応じて適用する設定ファイルを切り替え
-              - charts/alt-frontend/values.yaml
-              - charts/alt-frontend/values-production.yaml 
-```
+## 5. Deployment Strategy
 
-これにより、コードベースは単一のまま、適用する`values.yaml`やイメージリポジトリ、リソース要求などを環境ごとに柔軟に変更できます。
+- **Helm as the Engine**: Helm is the exclusive deployment tool. Skaffold orchestrates the execution of `helm install` or `helm upgrade` for each release defined in the layer-specific `skaffold.yaml` files.
+- **Dynamic Value Injection**: The `setValueTemplates` feature is used to dynamically inject the correct image repository and tag into each Helm release at deploy time. This is the critical link between the build and deploy stages.
 
-## 3. ビルド戦略
+  ```yaml
+  # Example from 06-application/skaffold.yaml
+  deploy:
+    helm:
+      releases:
+        - name: alt-frontend
+          setValueTemplates:
+            image.repository: "{{.IMAGE_REPO_kaikei_alt_frontend}}"
+            image.tag: "{{.IMAGE_TAG_kaikei_alt_frontend}}" # Skaffold injects the build tag here
+  ```
 
-- **コンテナイメージの定義**: 各レイヤーの`skaffold.yaml`内の`build.artifacts`セクションで、ビルド対象のコンテナイメージとそのコンテキスト（Dockerfileの場所など）が定義されています。
-- **ローカル開発の最適化**: `dev`プロファイルでは`push: false`や`image.pullPolicy: "Never"`が設定されており、ビルドしたイメージをコンテナリポジトリにプッシュすることなく、ローカルのDockerデーモンから直接Kubernetesクラスタ（kindなど）にロードすることで、開発サイクルを高速化しています。
-
-## 4. デプロイ戦略
-
-- **Helmによる宣言的デプロイ**: プロジェクトのすべてのコンポーネントはHelmチャートとして管理されています。Skaffoldは`deploy.helm.releases`セクションを通じて、これらのチャートを適切な順番と設定でクラスタにリリースします。
-- **動的なイメージタグの注入**: Skaffoldはビルド時に生成したコンテナイメージのタグ（Gitコミットハッシュなど）を、`setValueTemplates`機能を使ってHelmの`values`に動的に注入します。これにより、常に正しいバージョンのイメージがデプロイされることが保証されます。
-
-```yaml
-# 例: 07-processing/skaffold.yaml
-deploy:
-  helm:
-    releases:
-      - name: pre-processor
-        setValueTemplates:
-          image.repository: "{{.IMAGE_REPO_kaikei_pre_processor}}"
-          image.tag: "{{.IMAGE_TAG_kaikei_pre_processor}}" # ← ビルドしたイメージのタグがここに設定される
-```
-
-- **デプロイフックによる自動検証**: 多くのレイヤーで、デプロイの前後に`hooks`を利用して`kubectl`や`helm`コマンドが実行されます。これにより、デプロイ状況の確認や、デプロイ後のPodの起動検証が自動化され、デプロイプロセスの信頼性を高めています。
-
-## 5. まとめ
-
-Altプロジェクトでは、Skaffoldをオーケストレーションの中核に据え、**レイヤー化**、**プロファイル管理**、**Helmによる宣言的デプロイ**といった戦略を組み合わせることで、複雑なマイクロサービスアプリケーションのビルドとデプロイを体系的、効率的、かつ信頼性高く管理しています。
+- **Automated Verification with Hooks**: Many layers use `before` and `after` deployment hooks to run `kubectl` and `helm` commands. These hooks perform automated checks, such as verifying that Pods are running correctly, which significantly increases deployment reliability.

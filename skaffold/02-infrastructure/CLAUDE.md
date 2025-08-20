@@ -1,35 +1,54 @@
-# レイヤー02: Infrastructure 概要
+# Layer 02: Infrastructure
 
-## 1. 責務
+## 1. Responsibilities
 
-この`02-infrastructure`レイヤーは、Altプロジェクトのステートフルなバックボーンを形成する、永続化層のコンポーネントを管理・デプロイする責務を負います。アプリケーションのコアデータ、ユーザー情報、ログ、検索インデックスなどを格納・管理するデータベースや検索エンジンが対象です。
+The `02-infrastructure` layer is responsible for deploying the stateful, persistent backbone of the Alt project. It manages the databases and search engines that store and serve core application data, user information, logs, and search indexes.
 
-## 2. 管理コンポーネント
+This layer provides the foundational data storage services upon which all other application services depend.
 
-`skaffold.yaml`で定義されている主要なHelmリリースは以下の通りです。これらはすべてステートフルなサービスであり、データの永続性が重要となります。
+## 2. Directory Structure
 
-| Helmリリース名 | Chartパス | Namespace | 説明 |
-| :--- | :--- | :--- | :--- |
-| `postgres` | `charts/postgres` | `alt-database` | アプリケーションの主要なデータを格納するPostgreSQLデータベース。Atlasによるマイグレーションジョブも含まれます。 |
-| `kratos-postgres` | `charts/kratos-postgres` | `alt-auth` | Ory Kratosが使用するID、セッション情報などを格納する専用のPostgreSQLデータベース。 |
-| `auth-postgres` | `charts/auth-postgres` | `alt-auth` | カスタム認証サービスが利用するデータを格納するためのPostgreSQLデータベース。 |
-| `clickhouse` | `charts/clickhouse` | `alt-analytics` | ログや分析データなど、大量の時系列データを扱うためのカラムナ指向データベース。 |
-| `meilisearch` | `charts/meilisearch` | `alt-search` | 高速かつ高度な全文検索機能を提供するための検索エンジン。 |
+```
+/02-infrastructure/
+├── charts/              # Helm charts for stateful services
+│   ├── postgres/        # Main application PostgreSQL database
+│   ├── kratos-postgres/ # Dedicated PostgreSQL for Ory Kratos
+│   ├── auth-postgres/   # Dedicated PostgreSQL for the custom auth service
+│   ├── clickhouse/      # ClickHouse for analytics and logging
+│   └── meilisearch/     # Meilisearch for full-text search capabilities
+└── skaffold.yaml        # Skaffold configuration for this layer
+```
 
-## 3. プロファイル
+## 3. Build Artifacts
 
-- **`dev`**: ローカル開発環境向け。
-- **`staging`**: ステージング環境向け。
-- **`prod`**: 本番環境向け。
+This layer builds a single container image:
 
-各プロファイルは、主に適用する`values.yaml`を切り替えることで、リソース割り当てやレプリカ数、セキュリティ設定などを各環境に最適化しています。
+- **`alt-atlas-migrations`**: A container image built from the `migrations-atlas` directory. It uses Atlas to apply database schema migrations and is executed as a Helm hook within the `postgres` chart deployment.
 
-## 4. ビルドアーティファクト
+## 4. Deployed Components
 
-- **`alt-atlas-migrations`イメージ**: Atlasを利用してデータベーススキーマのマイグレーションを行うためのコンテナイメージをビルドします。このイメージは`postgres`のHelmリリースからJobとして実行されます。
+This layer deploys the following stateful services via Helm:
 
-## 5. デプロイ戦略
+| Helm Release      | Chart Path                | Description                                                                                                                                 |
+| :---------------- | :------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| `postgres`        | `charts/postgres`         | Deploys the main PostgreSQL database in the `alt-database` namespace. It includes a Helm hook to run the `alt-atlas-migrations` job.         |
+| `kratos-postgres` | `charts/kratos-postgres`  | Deploys a dedicated PostgreSQL database in the `alt-auth` namespace for use by the Ory Kratos identity management service.                  |
+| `auth-postgres`   | `charts/auth-postgres`    | Deploys a dedicated PostgreSQL database in the `alt-auth` namespace for the custom authentication service.                                  |
+| `clickhouse`      | `charts/clickhouse`       | Deploys a ClickHouse columnar database in the `alt-analytics` namespace for storing and querying large volumes of log and analytics data.     |
+| `meilisearch`     | `charts/meilisearch`      | Deploys a Meilisearch instance in the `alt-search` namespace to provide high-performance, full-text search capabilities.                   |
 
-- **長時間タイムアウト**: ステートフルなサービスの起動やデータ移行には時間がかかる可能性があるため、デプロイのタイムアウトは`9600`秒（160分）と非常に長く設定されています。
-- **安全なデプロイフラグ**: `--atomic`, `--wait`, `--wait-for-jobs`, `--cleanup-on-fail`といったHelmのフラグを駆使し、デプロイが失敗した際に中途半端な状態になることを防ぎ、安全で信頼性の高いデプロイを実現します。
-- **デプロイフック**: デプロイの前後で`kubectl`コマンドによる診断・検証フックを実行し、StatefulSetやPodの状態を自動的に確認することで、デプロイプロセスの信頼性を高めています。
+## 5. Deployment Strategy
+
+Deploying stateful services requires a robust and cautious approach. This layer's `skaffold.yaml` is configured for high reliability:
+
+- **Extended Timeout**: The `statusCheckDeadlineSeconds` is set to `9600` seconds (160 minutes) to accommodate potentially long-running tasks like data migrations and stateful service initialization.
+- **Safe Helm Flags**: Uses `--atomic`, `--wait`, `--wait-for-jobs`, and `--cleanup-on-fail` flags to ensure that deployments are transactional. If a deployment fails, Helm attempts to roll back to the last successful release, preventing the cluster from being left in a broken, intermediate state.
+- **Diagnostic Hooks**: Executes `kubectl` commands in `before` and `after` deployment hooks to provide real-time diagnostics. These hooks check the status of StatefulSets and Pods before and after the deployment, increasing the reliability and visibility of the process.
+
+## 6. Profiles
+
+- **`dev` (Default)**: For local development.
+- **`staging`**: For the staging environment.
+- **`prod`**: For the production environment.
+
+Each profile primarily switches the `values.yaml` files to apply environment-specific configurations for resource allocation, replica counts, and security settings.

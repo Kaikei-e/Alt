@@ -1,28 +1,44 @@
-# レイヤー06: Application 概要
+# Layer 06: Application
 
-## 1. 責務
+## 1. Responsibilities
 
-この`06-application`レイヤーは、ユーザーが直接対話するインターフェース（UI）と、システムへの外部からのエントリーポイントとなるコンポーネントを管理・デプロイする責務を負います。ユーザー体験の最前線であり、外部からのリクエストを内部サービスへ振り分ける玄関口としての役割も担います。
+The `06-application` layer is responsible for deploying the user-facing components of the Alt project. This includes the frontend user interface and the external entry point that routes incoming traffic to the appropriate internal services.
 
-## 2. 管理コンポーネント
+## 2. Directory Structure
 
-`skaffold.yaml`で定義されている主要なHelmリリースは以下の通りです。
+```
+/06-application/
+├── charts/              # Helm charts for application components
+│   ├── alt-frontend/    # The Next.js/React frontend application
+│   └── nginx-external/  # NGINX reverse proxy for external traffic
+└── skaffold.yaml        # Skaffold configuration for this layer
+```
 
-| Helmリリース名 | Chartパス | Namespace | 説明 |
-| :--- | :--- | :--- | :--- |
-| `alt-frontend` | `charts/alt-frontend` | `alt-apps` | Next.js/Reactで構築されたフロントエンドアプリケーション。ユーザーがブラウザを通じて直接操作するUIを提供します。 |
-| `nginx-external` | `charts/nginx-external` | `alt-ingress` | 外部からのHTTP/Sリクエストを受け付けるNginxリバースプロキシ。Cloudflare Tunnelのようなサービスと連携し、外部トラフィックを安全に受け取り、`alt-frontend`などの適切な内部サービスにルーティングします。 |
+## 3. Build Artifacts
 
-## 3. プロファイル
+This layer builds the frontend application container image. The image name varies by profile:
 
-- **`dev` (デフォルト)**: ローカル開発環境向け。ローカルでビルドしたイメージを使用することを想定し、`image.pullPolicy`が`Never`に設定されています。
-- **`prod`**: 本番環境向け。本番用のコンテナイメージリポジトリ(`kaikei/alt-frontend`)と設定値(`values-production.yaml`)を使用します。
+- **`dev` profile**: `alt-frontend`
+- **`prod` profile**: `kaikei/alt-frontend`
 
-## 4. ビルドアーティファクト
+The image is built from `../../alt-frontend/Dockerfile.frontend`.
 
-- **`alt-frontend`**: フロントエンドアプリケーションのコンテナイメージをビルドします。`prod`プロファイルでは`kaikei/alt-frontend`という名前でタグ付けされます。
+## 4. Deployed Components
 
-## 5. デプロイ戦略
+This layer deploys the user interface and the primary ingress point, separating them by namespace to maintain a clean architecture.
 
-- **関心事の分離**: ユーザー向けUI(`alt-frontend`)は`alt-apps`ネームスペースに、外部トラフィックの受け口(`nginx-external`)は`alt-ingress`ネームスペースに分離してデプロイされます。これにより、アプリケーションロジックとネットワークの入り口の役割が明確に分離され、セキュリティと管理性が向上します。
-- **アトミックなデプロイ**: Helmの`--atomic`フラグと`--wait`フラグが使用されており、デプロイが失敗した場合には中途半端な状態でリリースが残ることを防ぎ、デプロイが完了するまで待機する、信頼性の高いデプロイプロセスが採用されています。
+| Helm Release     | Chart Path                | Namespace     | Description                                                                                                                                                                 |
+| :--------------- | :------------------------ | :------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alt-frontend`   | `charts/alt-frontend`     | `alt-apps`    | Deploys the Next.js/React single-page application (SPA). This is the primary interface that users interact with in their browsers.                                                |
+| `nginx-external` | `charts/nginx-external`   | `alt-ingress` | Deploys an NGINX reverse proxy that serves as the external entry point for all HTTP/S traffic. It routes requests to the correct internal services, starting with `alt-frontend`. |
+
+## 5. Deployment Strategy
+
+- **Separation of Concerns**: The deployment strategy clearly separates the user-facing application from the ingress infrastructure. The `alt-frontend` lives with other applications in `alt-apps`, while the `nginx-external` proxy resides in the dedicated `alt-ingress` namespace. This isolates network entry points from application logic, improving security and maintainability.
+- **Profile-Specific Builds**: The `skaffold.yaml` uses different image names and build arguments for `dev` and `prod` profiles, allowing for environment-specific configurations (e.g., pointing to different backend URLs) to be baked into the frontend image at build time.
+- **Atomic Deployments**: The use of `--atomic` and `--wait` flags for Helm ensures that deployments are transactional. A failed deployment will be rolled back, preventing the application from being left in a broken state.
+
+## 6. Profiles
+
+- **`dev` (Default)**: Optimized for local development. It uses a local image name (`alt-frontend`) and sets `image.pullPolicy: "Never"` to ensure the locally built image is used.
+- **`prod`**: Configured for production. It uses the production image name (`kaikei/alt-frontend`) and applies production-specific values.

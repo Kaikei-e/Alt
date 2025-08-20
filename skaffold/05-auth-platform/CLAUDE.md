@@ -1,28 +1,39 @@
-# レイヤー05: Auth Platform 概要
+# Layer 05: Auth Platform
 
-## 1. 責務
+## 1. Responsibilities
 
-この`05-auth-platform`レイヤーは、Altプロジェクトにおけるユーザー認証（Authentication）と認可（Authorization）の機能を提供するプラットフォーム全体を管理・デプロイする責務を負います。ユーザーのサインアップ、サインイン、セッション管理、アクセス制御といった、セキュリティ上極めて重要な機能を提供します。
+The `05-auth-platform` layer is responsible for deploying the complete authentication and authorization platform for the Alt project. It manages the core components that handle user identity, sign-up/sign-in flows, session management, and access control.
 
-## 2. 管理コンポーネント
+## 2. Directory Structure
 
-`skaffold.yaml`で定義されている主要なHelmリリースは以下の通りです。これらはすべて`alt-auth`ネームスペースに集約され、認証基盤としての一体性を保っています。
+```
+/05-auth-platform/
+├── charts/              # Helm charts for authentication services
+│   ├── kratos/          # Ory Kratos for identity and user management
+│   └── auth-service/    # Custom Go authentication service
+└── skaffold.yaml        # Skaffold configuration for this layer
+```
 
-| Helmリリース名 | Chartパス | 説明 |
-| :--- | :--- | :--- |
-| `kratos` | `charts/kratos` | オープンソースのID・ユーザー管理システム **Ory Kratos**。ユーザーアカウント情報の管理、ログイン・登録・パスワードリセットなどの認証フロー、セッション管理の核となるコンポーネントです。 |
-| `auth-service` | `charts/auth-service` | Kratosと連携して動作するGo製のカスタム認証サービス。JWTトークンの発行や、プロジェクト固有の認可ロジック（例：特定のリソースへのアクセス権限チェック）などを担当します。 |
+## 3. Build Artifacts
 
-## 3. プロファイル
+This layer builds one container image:
 
-- **`prod`**: このレイヤーでは`prod`プロファイルのみが定義されています。認証プラットフォームはシステムの根幹であり、常に本番環境と同等の安定性・セキュリティが求められるため、`prod`構成に特化しています。
+- **`kaikei/alt-authservice`**: The container image for the custom `auth-service`, built from `../../auth-service/Dockerfile`.
 
-## 4. ビルドアーティファクト
+## 4. Deployed Components
 
-- **`kaikei/alt-authservice`**: `auth-service`のコンテナイメージをビルドします。
+All components in this layer are deployed into the dedicated `alt-auth` namespace to isolate these critical security services.
 
-## 5. デプロイ戦略
+| Helm Release   | Chart Path            | Description                                                                                                                                                               |
+| :------------- | :-------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kratos`       | `charts/kratos`       | Deploys **Ory Kratos**, an open-source identity and user management system. It handles the core authentication flows like user registration, login, and password recovery. |
+| `auth-service` | `charts/auth-service` | Deploys a custom Go service that works alongside Kratos. It is responsible for project-specific authorization logic, such as issuing JWTs and validating access permissions. |
 
-- **コンポーネントの集約**: 認証に関連する`kratos`と`auth-service`を`alt-auth`という専用のネームスペースにデプロイすることで、関心事の分離と管理の容易性を実現しています。
-- **確実な状態更新**: Helmのアップグレード時に`--force`や`--reset-values`といったフラグが使用されています。これは、設定変更を確実かつ強制的に適用し、認証基盤の状態を常に意図通りに保つための強力な戦略です。
-- **デプロイ前後検証**: デプロイ前には`helm list`で現在のリリース状態を確認し、デプロイ後には`kubectl get pods`で認証プラットフォームを構成するPod群が正常に起動しているかを検証するフックが設定されており、デプロイプロセスの信頼性を高めています。
+## 5. Deployment Strategy
+
+The deployment of this critical security layer is configured to be robust and deterministic.
+
+- **Prod-Only Profile**: Only a `prod` profile is defined, reflecting the need for a stable, consistent, and secure configuration for the authentication platform at all times.
+- **Authoritative Helm Releases**: The Helm upgrade command includes the `--force` and `--reset-values` flags. This enforces a strategy where the Helm chart and its values are the absolute source of truth. Any manual configuration drift in the live cluster is forcefully overwritten during a deployment, ensuring the platform's state always matches the definition in Git.
+- **Pre- and Post-Deployment Verification**: The configuration uses `before` and `after` hooks to run `helm list` and `kubectl get pods`, respectively. This provides a clear audit trail and immediate verification that the authentication components are deployed and running correctly.
+- **Isolated Namespace**: All auth-related components are deployed into the `alt-auth` namespace, separating them from other application services and enforcing a clear security boundary.

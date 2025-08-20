@@ -1,28 +1,37 @@
-# レイヤー01: Foundation 概要
+# Layer 01: Foundation
 
-## 1. 責務
+## 1. Responsibilities
 
-この`01-foundation`レイヤーは、Altプロジェクト全体の基盤(Foundation)となる、横断的な関心事を管理・デプロイする責務を負います。具体的には、セキュリティ、設定、ネットワーク、証明書管理など、アプリケーションが稼働するための前提条件を整備します。
+The `01-foundation` layer is responsible for deploying the foundational, cross-cutting concerns for the entire Alt project. It establishes the necessary prerequisites for all other layers, including security, configuration, networking, and certificate management.
 
-## 2. 管理コンポーネント
+This layer ensures that a stable and secure base is in place before any application-specific services are deployed.
 
-`skaffold.yaml`で定義されている主要なHelmリリースは以下の通りです。
+## 2. Directory Structure
 
-| Helmリリース名 | Chartパス | Namespace | 説明 |
-| :--- | :--- | :--- | :--- |
-| `cert-manager` | `charts/cert-manager` | `cert-manager` | クラスタ内のTLS証明書のライフサイクルを自動管理します。開発環境(`dev`プロファイル)ではCRDのインストールも行います。 |
-| `common-config` | `charts/common-config` | `alt-config` | 複数のサービスで共有されるConfigMap、Namespace、リソースクォータなどを一元的に定義・管理します。 |
-| `common-secrets-apps` | `charts/common-secrets-apps` | `alt-apps` | `alt-apps`ネームスペースに属するアプリケーション群が使用するデータベース接続情報やAPIキーなどの機密情報を管理します。 |
-| `ca-issuer` | `charts/ca-issuer` | `cert-manager` | `cert-manager`が内部サービス間のmTLS通信などで使用する証明書を発行するための認証局(CA)を定義します。 |
-| `network-policies` | `charts/network-policies` | `default` | プロジェクト全体のネットワークセキュリティの根幹をなすポリシー群を適用します。`default-deny`（デフォルトで全通信を拒否）を基本とし、必要なサービス間通信のみを明示的に許可するゼロトラストネットワークを構築します。 |
+```
+/01-foundation/
+├── charts/              # Helm charts for foundational components
+│   ├── cert-manager/    # Manages TLS certificates via cert-manager
+│   ├── common-config/   # Shared ConfigMaps and other resources
+│   ├── common-secrets-apps/ # Base secrets for the 'alt-apps' namespace
+│   ├── ca-issuer/       # Defines the self-signed CA for internal mTLS
+│   └── network-policies/ # Defines baseline network security policies
+└── skaffold.yaml        # Skaffold configuration for this layer
+```
 
-## 3. プロファイル
+## 3. Deployed Components
 
-- **`dev` (デフォルト)**: ローカル開発環境(kindなど)向け。`cert-manager`のCRDをインストールし、開発用の`values.yaml`を適用します。
-- **`prod`**: 本番環境向け。本番用の`values.yaml`を適用し、よりセキュアで安定した構成をデプロイします。
+The `skaffold.yaml` in this layer deploys the following core components via Helm:
 
-## 4. ビルドアーティファクト
+| Helm Release          | Chart Path                  | Description                                                                                                                                                           |
+| :-------------------- | :-------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cert-manager`        | `charts/cert-manager`       | Deploys `cert-manager` in the `cert-manager` namespace to automate the lifecycle of TLS certificates. Includes CRDs and necessary controllers.                           |
+| `common-config`       | `charts/common-config`      | Manages shared `ConfigMap` resources, namespaces, and resource quotas within the `alt-config` namespace.                                                                |
+| `common-secrets-apps` | `charts/common-secrets-apps`| Manages baseline secrets for applications in the `alt-apps` namespace, such as placeholders for database credentials and API keys.                                      |
+| `ca-issuer`           | `charts/ca-issuer`          | Creates a self-signed Certificate Authority (CA) `ClusterIssuer` within the `cert-manager` namespace, used for issuing certificates for internal mTLS communication.      |
+| `network-policies`    | `charts/network-policies`   | Applies fundamental network security policies, establishing a "default-deny" posture to enforce a zero-trust network model across various namespaces.                 |
 
-- **`migrate`イメージ**: 他のレイヤーでも利用されるデータベースマイグレーション用のコンテナイメージをビルドします。
+## 4. Profiles
 
-このレイヤーは、上位のレイヤー(Infrastructure, Core Servicesなど)が安全かつ安定して稼働するための土台を築く、極めて重要な役割を担っています。
+- **`dev` (Default)**: Optimized for local development (e.g., kind). It installs `cert-manager` CRDs and uses development-specific values.
+- **`prod`**: Uses production-ready values for a more secure and stable configuration.
