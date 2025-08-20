@@ -33,8 +33,10 @@ export interface SseConfig {
   baseUrl: string;
 }
 
+import { PUBLIC_API_BASE_URL } from '@/lib/env.public'
+
 export const defaultSseConfig: SseConfig = {
   maxReconnectAttempts: 5,
   reconnectDelay: 2000, // 2 seconds
-  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9000",
+  baseUrl: PUBLIC_API_BASE_URL,
 };

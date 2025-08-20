@@ -1,4 +1,5 @@
 import { GetServerSidePropsContext, GetServerSidePropsResult } from 'next'
+import { KRATOS_PUBLIC_URL } from '@/lib/env.public'
 
 export interface AuthUser {
   id: string
@@ -39,7 +40,8 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
       // TODO.mdの要求：未ログインならリダイレクト
       if (response.status !== 200) {
         const currentPath = context.resolvedUrl || context.req.url || '/'
-        const loginUrl = `/login?returnUrl=${encodeURIComponent(currentPath)}`
+        const abs = new URL(currentPath, `http://${context.req.headers.host || 'localhost'}`).toString()
+        const loginUrl = `/auth/login?return_to=${encodeURIComponent(abs)}`
         
         return {
           redirect: {
@@ -53,7 +55,8 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
       
       if (!session.identity) {
         const currentPath = context.resolvedUrl || context.req.url || '/'
-        const loginUrl = `/login?returnUrl=${encodeURIComponent(currentPath)}`
+        const abs = new URL(currentPath, `http://${context.req.headers.host || 'localhost'}`).toString()
+        const loginUrl = `/auth/login?return_to=${encodeURIComponent(abs)}`
         
         return {
           redirect: {
@@ -80,7 +83,8 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
       
       // エラーの場合もログインページにリダイレクト
       const currentPath = context.resolvedUrl || context.req.url || '/'
-      const loginUrl = `/login?returnUrl=${encodeURIComponent(currentPath)}`
+      const abs = new URL(currentPath, `http://${context.req.headers.host || 'localhost'}`).toString()
+      const loginUrl = `/auth/login?return_to=${encodeURIComponent(abs)}`
       
       return {
         redirect: {
@@ -98,9 +102,7 @@ export async function withAuth<P extends Record<string, any> = Record<string, an
 export async function checkAuthStatus(): Promise<AuthUser | null> {
   try {
     // クライアント側は公開URLを使用（ブラウザからのアクセス）
-    const KRATOS_PUBLIC = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
-    if (!KRATOS_PUBLIC) throw new Error('NEXT_PUBLIC_KRATOS_PUBLIC_URL missing')
-    const response = await fetch(`${KRATOS_PUBLIC}/sessions/whoami`, {
+    const response = await fetch(`${KRATOS_PUBLIC_URL}/sessions/whoami`, {
       credentials: 'include',
       cache: 'no-store', // TODO.md要件: 常時no-store
       headers: {
@@ -126,9 +128,7 @@ export async function checkAuthStatus(): Promise<AuthUser | null> {
  */
 export async function logout(): Promise<void> {
   try {
-    const KRATOS_PUBLIC = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
-    if (!KRATOS_PUBLIC) throw new Error('NEXT_PUBLIC_KRATOS_PUBLIC_URL missing')
-    const response = await fetch(`${KRATOS_PUBLIC}/self-service/logout/browser`, {
+    const response = await fetch(`${KRATOS_PUBLIC_URL}/self-service/logout/browser`, {
       method: 'GET',
       credentials: 'include',
       cache: 'no-store', // TODO.md修正: サーバ側fetch個別キャッシュ防止
@@ -143,12 +143,14 @@ export async function logout(): Promise<void> {
       }
     }
 
-    // Fallback: redirect to login page
-    window.location.href = '/login'
+    // Fallback: redirect to app login route
+    const currentUrl = typeof window !== 'undefined' ? window.location.href : '/'
+    window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`
 
   } catch (error) {
     console.error('Logout failed:', error)
     // Force redirect to login even on error
-    window.location.href = '/login'
+    const currentUrl = typeof window !== 'undefined' ? window.location.href : '/'
+    window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`
   }
 }

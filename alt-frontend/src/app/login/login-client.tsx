@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
+import { KRATOS_PUBLIC_URL } from '@/lib/env.public'
 
 interface LoginFlowNode {
   type: string
@@ -45,8 +46,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
   // TODO.md: 三値判定 null=不明, false=未ログイン, true=ログイン済み
   const [session, setSession] = useState<null | boolean>(null)
 
-  const KRATOS_PUBLIC = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
-  if (!KRATOS_PUBLIC) throw new Error('NEXT_PUBLIC_KRATOS_PUBLIC_URL missing')
+  const KRATOS_PUBLIC = KRATOS_PUBLIC_URL
 
   useEffect(() => {
     if (!flowId) return

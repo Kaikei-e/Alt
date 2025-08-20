@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { setupSSEWithReconnect } from "@/lib/apiSse";
+import { PUBLIC_API_BASE_URL } from "@/lib/env.public";
 import { UnsummarizedFeedStatsSummary } from "@/schema/feedStats";
 
 // Type guard for validating numeric amounts
@@ -51,8 +52,7 @@ export const useSSEFeedsStats = () => {
     let isMounted = true;
 
     // SSE endpoint configuration
-    const apiBaseUrl =
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api";
+    const apiBaseUrl = PUBLIC_API_BASE_URL || "http://localhost:8080/api";
     const sseUrl = `${apiBaseUrl}/v1/sse/feeds/stats`;
 
     // Set initial disconnected state

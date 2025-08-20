@@ -125,9 +125,9 @@ export function useAuthNavigation(currentPathname?: string): NavigationState {
   ) => {
     // Check authentication requirement
     if (requireAuth && !isAuthenticated) {
-      // Redirect to login with return URL
-      const returnUrl = encodeURIComponent(href);
-      window.location.href = `/login?returnUrl=${returnUrl}`;
+      // Redirect to Kratos browser login with absolute return URL
+      const abs = typeof window !== 'undefined' ? new URL(href, window.location.origin).toString() : href;
+      window.location.href = `/auth/login?return_to=${encodeURIComponent(abs)}`;
       return;
     }
 

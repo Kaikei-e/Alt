@@ -15,4 +15,4 @@ export function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ['/desktop/:path*','/mobile/:path*','/auth/:path*'] };
+export const config = { matcher: ['/desktop/:path*','/mobile/:path*'] };

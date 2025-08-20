@@ -1,4 +1,5 @@
 import type { User, LoginFlow, RegistrationFlow, UserPreferences } from '@/types/auth';
+import { IDP_ORIGIN } from '@/lib/env.public';
 
 export class AuthAPIClient {
   private baseURL: string;
@@ -13,10 +14,7 @@ export class AuthAPIClient {
     this.debugMode = process.env.NODE_ENV === 'development';
     this.requestId = 0;
     // TODO.md要件: Kratos 公開URL直接アクセス用（必須・ハードコード禁止）
-    this.idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN as string;
-    if (!this.idpOrigin || /\.cluster\.local(\b|:|\/)/i.test(this.idpOrigin) || !/^https:\/\//i.test(this.idpOrigin)) {
-      throw new Error(`NEXT_PUBLIC_IDP_ORIGIN must be a PUBLIC HTTPS FQDN (got: ${this.idpOrigin})`);
-    }
+    this.idpOrigin = IDP_ORIGIN;
     
     // TODO.md 手順0: 配信中のバンドルの値を確認
     console.log('[AUTH-CLIENT] NEXT_PUBLIC_IDP_ORIGIN =', this.idpOrigin);

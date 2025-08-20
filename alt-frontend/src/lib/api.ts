@@ -218,9 +218,8 @@ class ApiClient {
           
           // Server-side execution check (critical for Next.js App Directory compatibility)
           if (typeof window !== 'undefined') {
-            const currentUrl = window.location.pathname + window.location.search;
-            const returnUrl = encodeURIComponent(currentUrl);
-            const loginUrl = `/login?returnUrl=${returnUrl}`;
+            const currentUrl = window.location.href;
+            const loginUrl = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`;
             
             console.log('[AUTH] Redirecting to login:', loginUrl);
             

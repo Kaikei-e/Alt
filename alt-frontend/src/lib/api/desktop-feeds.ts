@@ -228,6 +228,8 @@ export class DesktopFeedsApi {
   }
 }
 
+import { PUBLIC_API_BASE_URL } from '@/lib/env.public'
+
 export const desktopFeedsApi = new DesktopFeedsApi(
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080",
+  PUBLIC_API_BASE_URL || "http://localhost:8080",
 );

@@ -293,7 +293,10 @@ export function AuthenticatedLayout({
                       bg: "var(--alt-primary)",
                       transform: "translateY(-1px)",
                     }}
-                    onClick={() => window.location.href = '/login'}
+                    onClick={() => {
+                      const currentUrl = typeof window !== 'undefined' ? window.location.href : '/';
+                      window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`
+                    }}
                   >
                     ログイン
                   </Button>
@@ -346,7 +349,8 @@ export function AuthenticatedLayout({
                         fontFamily="body"
                         onClick={() => {
                           onClose();
-                          window.location.href = '/login';
+                          const currentUrl = typeof window !== 'undefined' ? window.location.href : '/';
+                          window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`
                         }}
                         _hover={{
                           bg: "var(--alt-primary)",

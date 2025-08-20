@@ -2,14 +2,10 @@
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import LoginClient from '@/app/login/login-client'
+import { KRATOS_PUBLIC_URL } from '@/lib/env.public'
 
-const KRATOS = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!  // e.g. https://id.curionoah.com
+const KRATOS = KRATOS_PUBLIC_URL  // e.g. https://id.curionoah.com
 const APP = process.env.NEXT_PUBLIC_APP_ORIGIN!       // e.g. https://curionoah.com
-
-// TODO.md ガード: 誤設定（internal/cluster.local）を即時検知
-if (!KRATOS || /\.cluster\.local(\b|:|\/)/i.test(KRATOS) || !/^https:\/\//i.test(KRATOS)) {
-  throw new Error(`NEXT_PUBLIC_KRATOS_PUBLIC_URL must be a PUBLIC HTTPS FQDN (got: ${KRATOS})`)
-}
 
 export default async function LoginPage({
   searchParams,

@@ -744,10 +744,9 @@ type LastActionType = LoginAction | RegisterAction | RefreshAction;
       if (is401Error && typeof window !== 'undefined') {
         console.warn('[AUTH-CONTEXT] 401/Unauthorized detected in checkAuthStatus, redirecting to login');
 
-        // Session expired or invalid, redirect to login with current URL
-        const currentUrl = window.location.pathname + window.location.search;
-        const returnUrl = encodeURIComponent(currentUrl);
-        const loginUrl = `/login?returnUrl=${returnUrl}`;
+        // Session expired or invalid, redirect to browser login flow with absolute return URL
+        const currentUrl = window.location.href;
+        const loginUrl = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`;
 
         console.log('[AUTH-CONTEXT] Redirecting to login:', loginUrl);
 

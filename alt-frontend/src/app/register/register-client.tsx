@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
+import { KRATOS_PUBLIC_URL } from '@/lib/env.public'
 
 interface RegistrationFlowNode {
   type: string
@@ -42,8 +43,7 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const KRATOS_PUBLIC = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
-  if (!KRATOS_PUBLIC) throw new Error('NEXT_PUBLIC_KRATOS_PUBLIC_URL missing')
+  const KRATOS_PUBLIC = KRATOS_PUBLIC_URL
 
   useEffect(() => {
     if (!flowId) return
@@ -314,7 +314,10 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
                 as="button"
                 color="var(--alt-primary)"
                 textDecoration="underline"
-                onClick={() => window.location.href = "/login"}
+                onClick={() => {
+                  const currentUrl = typeof window !== 'undefined' ? window.location.href : '/'
+                  window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`
+                }}
               >
                 ログイン
               </Box>
