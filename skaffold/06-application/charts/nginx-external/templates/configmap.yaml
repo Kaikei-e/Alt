@@ -112,10 +112,17 @@ data:
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
 
         location / {
-            proxy_pass http://kratos-public.alt-auth.svc.cluster.local:4433;
-            proxy_set_header Host              $host;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_pass http://kratos-public.alt-auth.svc.cluster.local:4433/;  # ← 末尾 / を付けURI置換の挙動を明確に
+            proxy_set_header Host              $host;       # 外向き Host を維持（= id.curionoah.com）
+            proxy_set_header X-Forwarded-Proto $scheme;     # https を明示
             proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+
+            # Set-Cookie の Domain を外向きに書き換え (TODO.md A項に従う)
+            proxy_cookie_domain kratos-public.alt-auth.svc.cluster.local id.curionoah.com;
+
+            # Cookie属性の付与（NGINX 1.19.3+）
+            proxy_cookie_flags ~ secure httponly samesite=lax;
         }
 
         location /external-health {
@@ -383,6 +390,10 @@ data:
           proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $xfp;
           proxy_set_header X-Request-ID      $request_id;
+
+          # Cookie forwarding (critical for authentication)
+          proxy_set_header Cookie $http_cookie;
+          proxy_pass_header Set-Cookie;
 
           proxy_http_version 1.1;
           proxy_set_header Upgrade $http_upgrade;
