@@ -2,191 +2,121 @@
 
 ## About This Service
 
-A simple OAuth token refresh service for Inoreader API integration in the Alt RSS Reader project. This service handles OAuth token lifecycle management with basic security practices.
-
-## Technology Stack
+This is a Deno-based microservice responsible for OAuth2 token management, specifically for refreshing Inoreader API tokens. It is built with a Test-Driven Development (TDD) first approach, ensuring reliability and security.
 
 - **Runtime**: Deno 2.x with TypeScript
-- **Purpose**: Inoreader OAuth token refresh and management
-- **Architecture**: Simple microservice with basic security
+- **Core Task**: Inoreader OAuth2 token refresh and secure storage.
 
-## Key Security Requirement
+## TDD in Deno
 
-**Critical**: Never log OAuth tokens or API credentials in plain text (CWE-532 prevention).
+All development must follow the Red-Green-Refactor TDD cycle. We use Deno's built-in testing tools for this.
 
-## Development Guidelines
+### TDD Workflow: Refreshing a Token
 
-### Secure Logging Practices
+Here is a step-by-step example of how to implement the token refresh logic using TDD.
 
-```typescript
-import { logger } from './utils/logger.ts';
+**1. RED: Write a failing test.**
 
-// ✅ Good: Using sanitized logging
-logger.info('OAuth token refreshed', {
-  user_id: 'user123',
-  expires_in: 3600,
-  // access_token is automatically sanitized
-});
-
-// ❌ Bad: Direct token logging
-console.log('Token:', accessToken); // Never do this
-```
-
-### Basic Security Rules
-
-1. **No plaintext tokens**: All OAuth tokens are automatically sanitized in logs
-2. **Environment-based debugging**: Debug info only shows in development
-3. **Input validation**: Basic size and format checks for API calls
-4. **Error handling**: Don't expose internal errors to external callers
-
-### Code Structure
-
-```
-src/
-├── auth/           # OAuth flow management
-├── utils/
-│   └── logger.ts   # Sanitized logging utilities
-└── k8s/            # Kubernetes secret management
-```
-
-## Logging System
-
-### DataSanitizer
-
-Automatically removes OAuth tokens from log output:
-
-- `access_token`, `refresh_token` → `[REDACTED]`
-- Bearer tokens → First/last 4 chars + `[REDACTED]`
-- Inoreader `AppId`, `AppKey` → `[REDACTED]`
-
-### Logger Usage
+First, we test the `refreshToken` function, which doesn't exist yet. We use `stub` from `@std/testing/mock` to mock the `fetch` call, preventing real network requests.
 
 ```typescript
-import { logger } from './utils/logger.ts';
+// tests/auth/refreshToken.test.ts
+import { assertEquals, assertRejects } from "@std/testing/asserts";
+import { stub } from "@std/testing/mock";
+import { refreshToken } from "../../src/auth/refreshToken.ts";
 
-// All these will be automatically sanitized
-logger.info('Processing request', {
-  access_token: token,    // → [REDACTED]
-  user_id: userId,        // → preserved
-  status: 'success'       // → preserved
-});
-```
-
-## Testing
-
-Run security tests to verify token sanitization:
-
-```bash
-deno test --allow-all tests/security/
-```
-
-## Configuration
-
-Set environment variables:
-
-```bash
-# Required
-INOREADER_CLIENT_ID=your_client_id
-INOREADER_CLIENT_SECRET=your_client_secret
-
-# Optional
-LOG_LEVEL=INFO              # DEBUG, INFO, WARN, ERROR
-NODE_ENV=production         # development, production
-```
-
-## Security Best Practices
-
-### Do's ✅
-- Use the structured logger for all output
-- Keep tokens in environment variables
-- Validate input sizes and formats
-- Handle errors gracefully
-
-### Don'ts ❌
-- Don't use `console.log()` for tokens
-- Don't hardcode credentials
-- Don't expose internal error details
-- Don't log full request/response bodies without sanitization
-
-## Common Patterns
-
-### OAuth Token Refresh
-
-```typescript
-async function refreshToken(refreshToken: string) {
-  logger.info('Starting token refresh');
-  
-  try {
-    const response = await fetch(INOREADER_TOKEN_URL, {
-      method: 'POST',
-      body: new URLSearchParams({
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token'
+Deno.test("refreshToken should return new tokens on success", async () => {
+  // Mock a successful fetch response
+  const fetchStub = stub(globalThis, "fetch", () =>
+    Promise.resolve(
+      new Response(JSON.stringify({ access_token: "new_token" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
       })
-    });
-    
-    const tokens = await response.json();
-    
-    // This will be sanitized in logs
-    logger.info('Token refresh successful', {
-      access_token: tokens.access_token,
-      expires_in: tokens.expires_in
-    });
-    
-    return tokens;
-  } catch (error) {
-    logger.error('Token refresh failed', { error: error.message });
-    throw new Error('Token refresh failed');
+    )
+  );
+
+  try {
+    const tokens = await refreshToken("old_refresh_token");
+    assertEquals(tokens.access_token, "new_token");
+  } finally {
+    fetchStub.restore(); // Always restore the original function
   }
+});
+```
+
+Running `deno test` will fail because `refreshToken` is not implemented.
+
+**2. GREEN: Write the minimal code to pass.**
+
+Now, we implement the function with the simplest logic to make the test pass.
+
+```typescript
+// src/auth/refreshToken.ts
+export async function refreshToken(token: string): Promise<any> {
+    const response = await fetch("https://www.inoreader.com/oauth2/token", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+            client_id: Deno.env.get("INOREADER_CLIENT_ID")!,
+            client_secret: Deno.env.get("INOREADER_CLIENT_SECRET")!,
+            grant_type: "refresh_token",
+            refresh_token: token,
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error("Failed to refresh token");
+    }
+
+    return await response.json();
 }
 ```
 
-### Error Handling
+**3. REFACTOR: Improve the implementation.**
+
+Refactor the code for clarity and robustness. The tests should still pass.
+
+### BDD-Style Testing
+
+For better organization, use `describe` and `it` from `@std/testing/bdd`.
 
 ```typescript
-// Good: Safe error logging
-logger.error('OAuth request failed', {
-  error: 'invalid_grant',
-  status_code: 400
+import { describe, it, afterEach } from "@std/testing/bdd";
+
+describe("refreshToken()", () => {
+    afterEach(() => {
+        // Clean up mocks here
+    });
+
+    it("should return new tokens on success", async () => {
+        // ... test logic
+    });
+
+    it("should throw an error on failure", async () => {
+        // ... test logic for failure case
+    });
 });
-
-// Bad: Exposing sensitive data
-logger.error('OAuth failed', { response: fullResponse });
 ```
 
-## Deployment
+## Secure Logging
 
-This service runs in Kubernetes and updates secrets automatically:
+**Critical**: Never log OAuth tokens or other credentials. Use a sanitized logger that redacts sensitive fields.
 
-```bash
-# Deploy to development
-kubectl apply -f k8s/
+```typescript
+import { logger } from "./utils/logger.ts";
 
-# Check logs (tokens will be sanitized)
-kubectl logs -f deployment/auth-token-manager
+// This will be automatically sanitized in the logs.
+logger.info("Token refresh successful", {
+  access_token: tokens.access_token, 
+  refresh_token: tokens.refresh_token,
+});
 ```
 
-## Troubleshooting
+## References
 
-### Common Issues
-
-1. **Tokens in logs**: Check that you're using `logger` instead of `console.log`
-2. **Config missing**: Verify environment variables are set
-3. **Network errors**: Check Inoreader API connectivity
-
-### Debug Mode
-
-```bash
-# Enable debug logging (development only)
-NODE_ENV=development LOG_LEVEL=DEBUG deno run main.ts
-```
-
-## Maintenance
-
-- Review logs monthly for any sanitization gaps
-- Update token patterns if new API formats are introduced
-- Keep dependencies updated for security patches
-
----
-
-**Remember**: This is a simple OAuth service. Keep it simple, secure, and focused on its core purpose.
+-   [Deno Manual: Testing](https://deno.com/manual@v1.40/testing)
+-   [Deno Standard Library: Mocking](https://deno.land/std@0.224.0/testing/mock.ts)
+-   [Deno Standard Library: BDD](https://deno.land/std@0.224.0/testing/bdd.ts)
