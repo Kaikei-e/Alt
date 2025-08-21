@@ -1,4 +1,5 @@
 name: Backend Go Tests
+
 on:
   push:
     branches: [ main, master ]
@@ -16,12 +17,14 @@ concurrency:
 
 permissions:
   contents: read
-  actions: read
+  id-token: write   # CodecovのOIDC利用に必要（tokenレス運用する場合）
 
 jobs:
   test:
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: 'alt-backend/app'
-      go-version: '1.24.3'
+      # 固定したいなら明示。go.modに従うなら空でOK
       coverage-flags: 'alt-backend'
+      # self-hostedでローカル永続キャッシュを使うなら true
+      use-local-persistent-cache: true

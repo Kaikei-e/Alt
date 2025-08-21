@@ -1,8 +1,5 @@
 name: Reusable Go Test Workflow
 
-permissions:
-  contents: read
-
 on:
   workflow_call:
     inputs:
@@ -12,135 +9,93 @@ on:
       go-version:
         required: false
         type: string
-        default: "1.24.3"
-      upload-coverage:
-        required: false
-        type: boolean
-        default: true
+        default: ""
       coverage-flags:
         required: false
         type: string
+        default: ""
+      use-local-persistent-cache:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
-  test:
-    runs-on: [self-hosted, linux, X64]
-    timeout-minutes: 30
+  test-go:
+    # self-hosted ランナー想定
+    runs-on: self-hosted
 
     steps:
-      - name: Configure logging
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::group::Masking Configuration"
-
-          # Mask HOME directory parts
-          PARTS=($(echo $HOME | tr '/' ' '))
-          for part in "${PARTS[@]}"; do
-            [ ! -z "$part" ] && echo "::add-mask::$part"
-          done
-
-          # Mask machine name and user info
-          echo "::add-mask::$(whoami)"
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(hostname -s)"
-          echo "::add-mask::$(scutil --get ComputerName 2>/dev/null || echo '')"
-          echo "::add-mask::$(scutil --get LocalHostName 2>/dev/null || echo '')"
-
-          # Mask runner workspace paths
-          echo "::add-mask::${{ runner.temp }}"
-          echo "::add-mask::${{ github.workspace }}"
-
-          echo "::endgroup::"
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Configure Go
-        uses: actions/setup-go@v4
+      - name: Checkout (sparse)
+        uses: actions/checkout@v5
         with:
+          # alt-backend だけをチェックアウトして無駄を削減
+          sparse-checkout: |
+            alt-backend
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1
+      # ^ v5はNode 24ランタイムで、Runner v2.327.1+ が必須。後述の注記を確認。
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # go-version を指定しない場合、go-version-file を見る
           go-version: ${{ inputs.go-version }}
-          cache: false  # 手動キャッシュ管理
+          go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
+          check-latest: true
 
-      - name: Configure GOCACHE
-        run: echo "GOCACHE=$RUNNER_TEMP/go-cache" >> $GITHUB_ENV
-
-      - name: Restore Go module cache
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/go/pkg/mod
-          key: go-mod-${{ runner.os }}-${{ hashFiles('go.sum') }}
-
-      - name: Restore Go build cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.GOCACHE }}
-          key: go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}
-
-      - name: Mask home path in logs
-        if: runner.environment == 'self-hosted'
+      # ===== キャッシュ戦略 =====
+      # 1) ローカル永続キャッシュ（最速、ネット往復ゼロ）
+      - name: Configure local persistent caches
+        if: ${{ inputs.use-local-persistent-cache }}
         run: |
-          echo "::group::Masking HOME"
-          MASKED="${HOME//'/'/'\/'}"
-          echo "::add-mask::$MASKED"
-          echo "::endgroup::"
+          mkdir -p /var/cache/gha/go-build /var/cache/gha/go-mod
+          echo "GOCACHE=/var/cache/gha/go-build" >> $GITHUB_ENV
+          echo "GOMODCACHE=/var/cache/gha/go-mod" >> $GITHUB_ENV
 
-      - name: Restore Go module cache
-        uses: actions/cache@v3
-        id: cache-mod
+      # 2) GitHub Cache（ランナーがエフェメラルな場合）
+      - name: Restore Go module cache (GitHub Cache)
+        if: ${{ !inputs.use-local-persistent-cache }}
+        uses: actions/cache@v4
         with:
-          path: ~/.cache/go/pkg/mod
-          key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}
           restore-keys: |
-            go-mod-${{ runner.os }}-
-        continue-on-error: true
+            go-${{ runner.os }}-
 
-      - name: Restore Go build cache
-        uses: actions/cache@v3
-        id: cache-build
-        with:
-          path: ${{ env.GOCACHE }}
-          key: go-build-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}
-          restore-keys: |
-            go-build-${{ runner.os }}-
-        continue-on-error: true
-
-      - name: Clean workspace (self-hosted)
-        if: runner.environment == 'self-hosted'
+      - name: Go env (diagnostics)
         run: |
-          sudo chown -R $(whoami):$(whoami) ~/go ~/.cache/go-build || true
-          find ~/.cache/go-build -type f -mtime +7 -delete || true
+          go env
+          echo "GOCACHE=${GOCACHE:-$(go env GOCACHE)}"
+          echo "GOMODCACHE=${GOMODCACHE:-$(go env GOMODCACHE)}"
 
-      - name: Install dependencies
+      - name: Test
         working-directory: ${{ inputs.working-directory }}
+        env:
+          # GOCACHE/GOMODCACHEは上記いずれかが設定
+          CGO_ENABLED: "1"
         run: |
-          go mod download
-          go mod tidy
+          go test ./... -count=1 -race -covermode=atomic -coverprofile=coverage.out
 
-      - name: Run go vet
-        working-directory: ${{ inputs.working-directory }}
-        run: go vet ./...
-        # vetエラーは必須修正なので停止
-
-      - name: Run tests with coverage
-        working-directory: ${{ inputs.working-directory }}
-        run: go test -v -coverprofile=coverage.out ./...
-        # -v オプションで詳細ログを出力
-
-      - name: Save updated Go caches
-        if: steps.cache-mod.outputs.cache-hit != 'true'
-        uses: actions/cache@v3
+      - name: Upload coverage to Codecov (v5)
+        if: always()
+        uses: codecov/codecov-action@v5
         with:
-          path: ~/.cache/go/pkg/mod
-          key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}
+          # v5は files（複数可）
+          files: ${{ inputs.working-directory }}/coverage.out
+          flags: ${{ inputs.coverage-flags }}
+          name: ${{ inputs.coverage-flags }}-coverage
+          verbose: false
+          # public repo + OIDC なら token不要。private なら下行を有効化:
+          # token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Save updated build cache
-        if: steps.cache-build.outputs.cache-hit != 'true'
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.GOCACHE }}
-          key: go-build-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}
-
-      - name: Post-job cleanup
+      - name: Cleanup (self-hosted)
         if: always() && runner.environment == 'self-hosted'
         run: |
-          go clean -cache
-          go clean -modcache
+          # ローカル永続キャッシュは残す。ビルドアーチファクトだけ掃除
+          go clean -testcache
