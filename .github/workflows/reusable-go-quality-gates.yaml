@@ -1,217 +1,114 @@
-name: Reusable Go Quality Gates Workflow
-permissions:
-  contents: read
+name: Reusable Go Quality Gates
+
 on:
   workflow_call:
     inputs:
       working-directory:
+        description: "Target Go module directory (monorepo friendly)"
         required: true
         type: string
       go-version:
+        description: "Go version (empty = derive from go.mod)"
         required: false
         type: string
-        default: "1.24"
-      coverage-flags:
-        required: false
-        type: string
-      run-security-audit:
+        default: ""
+      lint-only-new:
+        description: "Show only new lint issues on PRs"
         required: false
         type: boolean
         default: true
-      build-artifact-name:
-        required: false
-        type: string
-      build-artifact-path:
-        required: false
-        type: string
+
+# 最小権限 + SARIF アップロード用の権限
+permissions:
+  contents: read                         # checkout 用
+  security-events: write                 # SARIF を Code Scanning にアップロードするのに必須
+  id-token: write                        # OIDC を使うツールがある場合に備えて（将来拡張）
 
 jobs:
-  quality-check:
-    name: Quality Gates
-    runs-on: [self-hosted, linux, X64]
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - name: Configure logging
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::group::Masking Configuration"
-          PARTS=($(echo $HOME | tr '/' ' '))
-          for part in "${PARTS[@]}"; do
-            [ ! -z "$part" ] && echo "::add-mask::$part"
-          done
-          echo "::endgroup::"
-
-      - name: Clean and setup Go environment
-        if: runner.environment == 'self-hosted'
-        run: |
-          # Go キャッシュをクリーンアップ
-          echo "Cleaning Go caches..."
-          go clean -cache || true
-          go clean -modcache || true
-
-          # 新しいキャッシュディレクトリを設定
-          export GOCACHE="${{ runner.temp }}/go-cache"
-          export GOMODCACHE="${{ runner.temp }}/go-mod"
-          mkdir -p "$GOCACHE" "$GOMODCACHE"
-
-          # 環境変数を設定
-          echo "GOCACHE=$GOCACHE" >> $GITHUB_ENV
-          echo "GOMODCACHE=$GOMODCACHE" >> $GITHUB_ENV
-
-          # 権限を修正（書き込み可能に）
-          chmod -R 755 "$GOCACHE" "$GOMODCACHE" || true
-
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ inputs.go-version }}
-          cache: false  # カスタムキャッシュを使用
-
-      - name: Manual Go cache handling
-        uses: actions/cache@v3
-        with:
-          path: |
-            ${{ runner.temp }}/go-cache
-            ${{ runner.temp }}/go-mod
-          key: ${{ runner.os }}-go-quality-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-go-quality-
-        env:
-          ACTIONS_STEP_DEBUG: false
-        continue-on-error: true
-
-      - name: Install development tools
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          # golangci-lint をデフォルトの $GOPATH/bin へインストール
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
-          # 他のツールも同様にインストール
-          go install github.com/golang/mock/mockgen@v1.6.0
-          go install golang.org/x/tools/cmd/goimports@latest
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.5
-
-      - name: Add Go tools to PATH
-        run: |
-          # 次ステップ以降で $HOME/go/bin が PATH に含まれるよう追記
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-
-      - name: Verify tool paths
-        run: |
-          which golangci-lint   # -> $HOME/go/bin/golangci-lint
-          which mockgen          # -> $HOME/go/bin/mockgen
-          which goimports        # -> $HOME/go/bin/goimports
-          which gosec            # -> $HOME/go/bin/gosec
-
-      - name: Lint code
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          # これで make lint (Makefile 参照) と golangci-lint run --timeout=5m 両方通ります
-          make lint || golangci-lint run --timeout=5m
-
-      - name: Security scan
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          make security || gosec -fmt sarif -out gosec-results.sarif ./...
-
-      - name: Run tests with race detection
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          make test-race || go test -race ./...
-
-      - name: Generate coverage report
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          make coverage || go test -coverprofile=coverage.out ./...
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          file: ${{ inputs.working-directory }}/coverage.out
-          flags: ${{ inputs.coverage-flags }}
-          name: ${{ inputs.coverage-flags }}-coverage
-          verbose: false
-
-      - name: Build application
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          make build || go build -v ./...
-
-      - name: Upload build artifacts
-        if: inputs.build-artifact-name != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.build-artifact-name }}
-          path: ${{ inputs.build-artifact-path }}
-          retention-days: 7
-
-      - name: Cleanup
-        if: always()
-        continue-on-error: true  # エラーでも続行
-        run: |
-          echo "Cleaning up temporary files..."
-
-          # Goのクリーンコマンドを使用（より安全）
-          go clean -cache || true
-          go clean -modcache || true
-
-          # 権限を修正してから削除を試みる
-          if [ -d "${{ runner.temp }}/go-mod" ]; then
-            chmod -R u+w "${{ runner.temp }}/go-mod" 2>/dev/null || true
-            rm -rf "${{ runner.temp }}/go-mod" || echo "Failed to remove go-mod"
-          fi
-
-          if [ -d "${{ runner.temp }}/go-cache" ]; then
-            chmod -R u+w "${{ runner.temp }}/go-cache" 2>/dev/null || true
-            rm -rf "${{ runner.temp }}/go-cache" || echo "Failed to remove go-cache"
-          fi
-
-          if [ -d "${{ runner.temp }}/go-tools" ]; then
-            chmod -R u+w "${{ runner.temp }}/go-tools" 2>/dev/null || true
-            rm -rf "${{ runner.temp }}/go-tools" || echo "Failed to remove go-tools"
-          fi
-
-          echo "Cleanup completed (with possible errors ignored)"
-
-  security-audit:
-    name: Security Audit
-    if: inputs.run-security-audit
+  quality:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
+
+    defaults:
+      run:
+        shell: bash
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # --- Checkout & Go setup ---
+      - name: Checkout (sparse)
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            ${{ inputs.working-directory }}
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1  # 変更差分だけで十分
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ inputs.go-version }}
-          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+          go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
+          check-latest: true
 
-      - name: Download dependencies
+      - name: Go env (diag)
+        run: |
+          go env
+          echo "pwd=$(pwd)"
+          echo "module dir=${{ inputs.working-directory }}"
+
+      # --- Baseline quality gates (速い順に) ---
+      - name: fmt check
         working-directory: ${{ inputs.working-directory }}
-        run: go mod download
+        run: |
+          files=$(gofmt -l . | grep -v '^$' || true)
+          if [ -n "$files" ]; then
+            echo "::error title=gofmt::Run 'gofmt -w' on these files:\n$files"
+            exit 1
+          fi
 
-      - name: Install Gosec Security Scanner
+      - name: go vet
+        working-directory: ${{ inputs.working-directory }}
+        run: go vet ./...
+
+      # --- Lint (golangci-lint v2系 / アクション v8) ---
+      # v8 の公式アクション推奨。v2 では out-format が変わったため、注釈はProblem Matcherに任せる。
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.1
+          working-directory: ${{ inputs.working-directory }}
+          only-new-issues: ${{ inputs.lint-only-new }}
+          # 追加で引数を渡す場合（例：--timeout=5m）
+          # args: --timeout=5m
+
+      # --- Security: gosec → SARIF で Code Scanning に載せる ---
+      - name: Install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
-      - name: Run Gosec Security Scanner
-        working-directory: ${{ inputs.working-directory }}
-        run: gosec -fmt sarif -out gosec-results.sarif ./...
-
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ${{ inputs.working-directory }}/gosec-results.sarif
-
-      - name: Run vulnerability check
+      - name: Run gosec (SARIF)
         working-directory: ${{ inputs.working-directory }}
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          mkdir -p ./_reports
+          gosec -fmt sarif -out ./_reports/gosec.sarif ./...
+
+      - name: Upload SARIF (gosec)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ inputs.working-directory }}/_reports/gosec.sarif
+          category: gosec
+
+      # --- Security: govulncheck → SARIF（Code Scanning 連携） ---
+      - name: Govulncheck (SARIF)
+        uses: golang/govulncheck-action@v1
+        with:
+          # go-version / caching は setup-go に追従
+          working-directory: ${{ inputs.working-directory }}
+          format: sarif
+          output-file: _reports/govulncheck.sarif
+          # exit-code は format=sarif の場合でも脆弱性検知で fail させたいなら下記を有効化
+          # fail-on-vuln: true
+
+      - name: Upload SARIF (govulncheck)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ inputs.working-directory }}/_reports/govulncheck.sarif
+          category: govulncheck
