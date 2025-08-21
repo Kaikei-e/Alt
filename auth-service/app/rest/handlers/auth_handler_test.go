@@ -20,6 +20,100 @@ import (
 	"auth-service/app/domain"
 )
 
+// TDD: RED - Test for enhanced validate response with user details (this should fail initially)
+func TestValidate_ReturnsEnhancedUserDetails(t *testing.T) {
+	tests := []struct {
+		name           string
+		mockSetup      func(*mock_port.MockAuthUsecase)
+		expectedStatus int
+		expectedBody   func(*testing.T, []byte)
+	}{
+		{
+			name: "valid session returns enhanced user details",
+			mockSetup: func(mockUsecase *mock_port.MockAuthUsecase) {
+				sessionCtx := &domain.SessionContext{
+					SessionID: "sess-123",
+					UserID:    uuid.MustParse("01234567-89ab-cdef-0123-456789abcdef"),
+					Email:     "test@example.com",
+					TenantID:  uuid.MustParse("87654321-fedc-ba98-7654-321098765432"),
+					Role:      "user",
+					IsActive:  true,
+				}
+				mockUsecase.EXPECT().
+					ValidateSessionWithCookie(gomock.Any(), gomock.Any()).
+					Return(sessionCtx, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody: func(t *testing.T, body []byte) {
+				var validateResp ValidateOK
+				require.NoError(t, json.Unmarshal(body, &validateResp))
+				
+				// TDD: This is what we want to achieve - enhanced response
+				assert.True(t, validateResp.Valid)
+				assert.Equal(t, "sess-123", validateResp.SessionID)
+				assert.Equal(t, "01234567-89ab-cdef-0123-456789abcdef", validateResp.IdentityID)
+				assert.Equal(t, "test@example.com", validateResp.Email)
+				assert.Equal(t, "87654321-fedc-ba98-7654-321098765432", validateResp.TenantID)
+				assert.Equal(t, "user", validateResp.Role)
+			},
+		},
+		{
+			name: "admin session returns admin role",
+			mockSetup: func(mockUsecase *mock_port.MockAuthUsecase) {
+				sessionCtx := &domain.SessionContext{
+					SessionID: "sess-admin-456",
+					UserID:    uuid.MustParse("12345678-9abc-def0-1234-56789abcdef0"),
+					Email:     "admin@example.com",
+					TenantID:  uuid.MustParse("87654321-fedc-ba98-7654-321098765432"),
+					Role:      "admin",
+					IsActive:  true,
+				}
+				mockUsecase.EXPECT().
+					ValidateSessionWithCookie(gomock.Any(), gomock.Any()).
+					Return(sessionCtx, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody: func(t *testing.T, body []byte) {
+				var validateResp ValidateOK
+				require.NoError(t, json.Unmarshal(body, &validateResp))
+				
+				assert.True(t, validateResp.Valid)
+				assert.Equal(t, "admin", validateResp.Role)
+				assert.Equal(t, "admin@example.com", validateResp.Email)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockAuthUsecase := mock_port.NewMockAuthUsecase(ctrl)
+			tt.mockSetup(mockAuthUsecase)
+
+			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+			handler := NewAuthHandler(mockAuthUsecase, logger)
+
+			// Create request
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodGet, "/v1/auth/validate", nil)
+			req.Header.Set("Cookie", "ory_kratos_session=test-session")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			// Execute
+			err := handler.Validate(c)
+
+			// Verify
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectedStatus, rec.Code)
+			tt.expectedBody(t, rec.Body.Bytes())
+		})
+	}
+}
+
 func TestValidate_OK_ReturnsJSON(t *testing.T) {
 	tests := []struct {
 		name           string

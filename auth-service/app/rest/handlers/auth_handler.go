@@ -484,6 +484,9 @@ func (h *AuthHandler) Validate(c echo.Context) error {
 		Valid:      true,
 		SessionID:  sessionCtx.SessionID,
 		IdentityID: sessionCtx.UserID.String(),
+		Email:      sessionCtx.Email,
+		TenantID:   sessionCtx.TenantID.String(),
+		Role:       string(sessionCtx.Role),
 	})
 }
 
@@ -749,6 +752,9 @@ type ValidateOK struct {
 	Valid      bool   `json:"valid"`
 	SessionID  string `json:"session_id,omitempty"`
 	IdentityID string `json:"identity_id,omitempty"`
+	Email      string `json:"email,omitempty"`
+	TenantID   string `json:"tenant_id,omitempty"`
+	Role       string `json:"role,omitempty"`
 }
 
 type ErrorPayload struct {
