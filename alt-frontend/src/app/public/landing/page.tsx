@@ -15,21 +15,12 @@ import {
 import { Rss, FileText, ArrowRight, LogIn, UserPlus } from "lucide-react";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { serverFetch } from '@/lib/server-fetch';
 
 // Fetch public platform stats from alt-backend
 async function getPlatformStats() {
   try {
-    // Use relative URL for same-origin fetch (as per memo.md unified rules)
-    const res = await fetch('/api/backend/v1/platform/stats', {
-      cache: 'no-store'
-    });
-
-    if (!res.ok) {
-      console.error('Failed to fetch platform stats:', res.status);
-      return { feed_amount: { amount: 0 }, summarized_feed: { amount: 0 } };
-    }
-
-    return await res.json();
+    return await serverFetch<{feed_amount: {amount: number}, summarized_feed: {amount: number}}>('/v1/platform/stats');
   } catch (err) {
     console.error('Error fetching platform stats:', err);
     return { feed_amount: { amount: 0 }, summarized_feed: { amount: 0 } };

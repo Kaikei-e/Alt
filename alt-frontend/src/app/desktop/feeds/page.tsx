@@ -9,7 +9,7 @@ import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeline";
 import LazyRightPanel from "@/components/desktop/analytics/LazyRightPanel";
 import { Home, Rss, FileText, Search, Settings } from "lucide-react";
-import { serverFetch } from '@/lib/api';
+import { serverFetch } from '@/lib/server-fetch';
 import { FeedStatsSummary } from '@/schema/feedStats';
 
 // Loading fallback
@@ -45,7 +45,7 @@ const LoadingFallback = () => (
   </Box>
 );
 
-function DesktopFeedsContent({ data }: { data: any }) {
+function DesktopFeedsContent({ data }: { data: FeedStatsSummary | null }) {
   const sidebarNavItems = [
     {
       id: 1,
@@ -76,10 +76,15 @@ function DesktopFeedsContent({ data }: { data: any }) {
 }
 
 export default async function Page() {
-  const data = await serverFetch<FeedStatsSummary>('/v1/feeds/stats') // ← 内向きは /v1/** 固定
+  let data = null
+  try {
+    data = await serverFetch<FeedStatsSummary>('/v1/feeds/stats')
+  } catch (e) {
+    console.error('feed stats SSR failed:', e)
+  }
   return (
     <Suspense fallback={<LoadingFallback />}>
       <DesktopFeedsContent data={data} />
     </Suspense>
-  );
+  )
 }

@@ -4,14 +4,17 @@ export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
 export async function GET() {
-  const headerStore = await headers()
-  const cookie = headerStore.get('cookie') ?? ''
+  const headerStore = headers()
+  const cookie = (await headerStore).get('cookie') ?? ''
   
+  const url = `${process.env.AUTH_SERVICE_URL ?? 'http://auth-service.alt-auth.svc.cluster.local:8080'}/v1/auth/validate`
+
   try {
-    const r = await fetch(process.env.AUTH_URL + '/v1/auth/validate', {
+    const r = await fetch(url, {
       headers: { 
-        cookie,
-        'X-Request-Id': headerStore.get('X-Request-Id') || `frontend-${Date.now()}`,
+        'Cookie': cookie,
+        'X-Request-Source': 'frontend-ssr',
+        'X-Request-Id': (await headerStore).get('X-Request-Id') || `frontend-${Date.now()}`,
       },
       cache: 'no-store',
     })
