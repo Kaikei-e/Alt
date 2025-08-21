@@ -5,7 +5,7 @@ import LoginClient from '@/app/login/login-client'
 import { KRATOS_PUBLIC_URL } from '@/lib/env.public'
 
 const KRATOS = KRATOS_PUBLIC_URL  // e.g. https://id.curionoah.com
-const APP = process.env.NEXT_PUBLIC_APP_ORIGIN!       // e.g. https://curionoah.com
+const APP = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_APP_ORIGIN ?? 'https://curionoah.com'
 
 export default async function LoginPage({
   searchParams,
@@ -14,11 +14,11 @@ export default async function LoginPage({
   const flow = params.flow
   
   // return_to の厳格化：保護ページの絶対URLを設定
-  let returnTo = params.return_to ?? `${APP}/desktop/home`
+  let returnTo = params.return_to ?? `${APP}/home`
   
-  // return_to が /auth/login を指している場合はデフォルトに変更（ループ防止）
-  if (returnTo.includes('/auth/login')) {
-    returnTo = `${APP}/desktop/home`
+  // 🔧 修正: 無限ループを防ぐためのより厳密なチェック
+  if (returnTo.includes('/auth/login') || returnTo.includes('/auth/')) {
+    returnTo = `${APP}/home`
   }
   
   // 相対URLの場合は絶対URLに変換
@@ -28,13 +28,16 @@ export default async function LoginPage({
 
   // flow が無ければブラウザフロー開始
   if (!flow) {
+    // TODO.md: Kratos whoami直接使用（auth-service経由ではなく）
     // Before redirecting to Kratos, check if already authenticated
     // This prevents redirect loops when user has valid session
     try {
       const headersList = await headers()
       const cookie = headersList.get('cookie') ?? ''
 
-      const validateRes = await fetch(`${process.env.AUTH_URL}/v1/auth/validate`, {
+      // TODO.md: Kratosの/sessions/whoamiを直接呼び出し（Option A: Kratosのみ）
+      const kratosInternalUrl = process.env.KRATOS_INTERNAL_URL ?? `${KRATOS}`
+      const validateRes = await fetch(`${kratosInternalUrl}/sessions/whoami`, {
         headers: { cookie },
         cache: 'no-store',
       })

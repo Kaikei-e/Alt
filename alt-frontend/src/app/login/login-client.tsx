@@ -59,7 +59,8 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
     let abort = false;
     (async () => {
       try {
-        const r = await fetch('/api/auth/v1/auth/validate', { 
+        // 🔧 修正: 正しいAPIパスに変更（v1/authを削除）
+        const r = await fetch('/api/auth/validate', { 
           credentials: 'include', 
           cache: 'no-store' 
         });

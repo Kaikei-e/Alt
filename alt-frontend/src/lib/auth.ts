@@ -5,7 +5,8 @@ export interface AuthValidateResponse {
 }
 
 export async function fetchAuth(): Promise<AuthValidateResponse> {
-  const res = await fetch('/api/auth/v1/auth/validate', { 
+  // 🔧 修正: 正しいAPIパスに変更（v1/authを削除）
+  const res = await fetch('/api/auth/validate', { 
     credentials: 'include',
     headers: {
       'Cache-Control': 'no-cache',

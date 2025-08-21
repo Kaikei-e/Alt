@@ -9,7 +9,8 @@ import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeline";
 import LazyRightPanel from "@/components/desktop/analytics/LazyRightPanel";
 import { Home, Rss, FileText, Search, Settings } from "lucide-react";
-import { cookies } from 'next/headers';
+import { serverFetch } from '@/lib/api';
+import { FeedStatsSummary } from '@/schema/feedStats';
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -75,14 +76,7 @@ function DesktopFeedsContent({ data }: { data: any }) {
 }
 
 export default async function Page() {
-  // TODO.md要件: Cookie明示転送でサーバfetch実行
-  const cookie = (await cookies()).toString()
-  const res = await fetch(process.env.API_URL + '/api/backend/v1/feeds/stats', { 
-    headers: { cookie }, 
-    cache: 'no-store' 
-  })
-  if (!res.ok) throw new Error('Failed to load feed stats')
-  const data = await res.json()
+  const data = await serverFetch<FeedStatsSummary>('/v1/feeds/stats') // ← 内向きは /v1/** 固定
   return (
     <Suspense fallback={<LoadingFallback />}>
       <DesktopFeedsContent data={data} />

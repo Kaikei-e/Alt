@@ -6,10 +6,10 @@ export interface ApiConfig {
 }
 
 export const defaultApiConfig: ApiConfig = {
-  // TODO.md修正: サーバ側ではnginx経由、クライアント側では同一オリジン
-  baseUrl: typeof window === 'undefined' 
-    ? process.env.API_URL || "http://localhost:9000" // SSR - use API_URL env var
-    : "/api", // Client-side - 相対URLでCookie自動転送
+  // TODO.md修正: SSR内向き vs Client外向き分離
+  baseUrl: typeof window === 'undefined'
+    ? process.env.API_URL || "http://localhost:9000"               // SSR: 内向き
+    : '/api/backend',                   // Client: 外向き（Nginx書き換え）
   defaultCacheTtl: 5, // minutes
   requestTimeout: 30000, // 30 seconds
   maxRetries: 3,
