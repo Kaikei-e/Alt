@@ -1,43 +1,43 @@
-// middleware.ts
 import { NextResponse, type NextRequest } from 'next/server'
 
-const KRATOS_PUBLIC = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL || 'https://id.curionoah.com'
-
-// 公開パスは完全除外（ここに /auth/ と /api/ を含める）
+const KRATOS = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL || 'https://id.curionoah.com'
 const PUBLIC = [
   /^\/auth\//, /^\/api\//, /^\/_next\//, /^\/public\//,
-  /^\/favicon\.ico$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/manifest\.webmanifest$/
+  /^\/favicon\.ico$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/manifest\.webmanifest$/,
 ]
 
-export async function middleware(req: NextRequest) {
-  const { pathname, search } = req.nextUrl
+// 緊急バイパス用（止血スイッチ）
+const MW_BYPASS = process.env.AUTH_MW_DISABLED === '1'
 
+export async function middleware(req: NextRequest) {
+  if (MW_BYPASS) return NextResponse.next()
+
+  const { pathname, search } = req.nextUrl
   if (PUBLIC.some(r => r.test(pathname))) return NextResponse.next()
 
-  // ループガード：直前が /auth/login なら素通し
+  // ループガード：/auth/login から直帰は素通し
   const referer = req.headers.get('referer') || ''
   if (pathname.startsWith('/auth/login') || referer.includes('/auth/login')) {
     return NextResponse.next()
   }
 
-  // whoami で認証確定（Cookieはそのまま転送）
-  const cookieHeader = req.headers.get('cookie') || ''
-  const ok = await fetch(`${KRATOS_PUBLIC}/sessions/whoami`, {
-    headers: { cookie: cookieHeader },
+  // whoami で"確定判定" (Cookie そのまま中継)
+  const cookie = req.headers.get('cookie') || ''
+  const ok = await fetch(`${KRATOS}/sessions/whoami`, {
+    headers: { cookie },
     cache: 'no-store',
     signal: AbortSignal.timeout(3500),
   }).then(r => r.ok).catch(() => false)
 
   if (ok) return NextResponse.next()
 
-  // 未認証 → /auth/login?return_to=ABSOLUTE
+  // 未認証 → 絶対URL return_to で login へ
   const proto = req.headers.get('x-forwarded-proto') || 'https'
-  const host  = req.headers.get('x-forwarded-host') || req.nextUrl.host
+  const host  = req.headers.get('x-forwarded-host')  || req.nextUrl.host
   const origin = `${proto}://${host}`
-  const returnTo = new URL(pathname + search, origin).toString()
 
   const login = new URL('/auth/login', origin)
-  login.searchParams.set('return_to', returnTo)
+  login.searchParams.set('return_to', new URL(pathname + search, origin).toString())
 
   return NextResponse.redirect(login, { headers: { 'Cache-Control': 'no-store' } })
 }
