@@ -70,71 +70,91 @@ This is the authentication and authorization microservice for the Alt RSS reader
 ### Test-Driven Development (TDD)
 
 **CRITICAL: Follow the Red-Green-Refactor cycle:**
-1. **Red:** Write a failing test first
-2. **Green:** Write minimal code to pass the test
-3. **Refactor:** Improve code quality while keeping tests green
+1.  **Red**: Write a failing test that defines the new behavior.
+2.  **Green**: Write the minimal code required to make the test pass.
+3.  **Refactor**: Improve the code while keeping all tests green.
 
 **Testing Strategy:**
-- Test usecase and gateway layers primarily
-- Mock external dependencies using gomock
-- Use table-driven tests for comprehensive coverage
-- Aim for >80% code coverage in tested layers
+- **Usecase & Gateway Layers**: These are the primary targets for unit tests. Mock all external dependencies using `gomock`.
+- **Middleware Layer**: Test middleware logic in isolation using mocks and also with integration tests against a real Kratos instance.
+- **Coverage**: Aim for >80% code coverage in tested layers.
 
-### Go 1.24+ Features to Use
-- Enhanced type inference
-- Range over integers
-- Improved generics support
-- Better error handling patterns
+### Testing Echo Middleware with Ory Kratos
 
-### Coding Standards
+Testing authentication middleware is critical. Here’s how to approach it.
 
-- Use `log/slog` for structured logging
-- Follow Go idioms and effective Go patterns
-- Use `gomock` for mocking
-- Apply `gofmt` and `goimports` on every file change
-- Use meaningful variable names
-- Implement proper error wrapping with context
+#### 1. Unit Testing Middleware (with Mocks)
 
-### Auth Service Specific Patterns
+Unit tests should validate the middleware's logic without any network calls. We use `testify/mock` to create a mock of the Kratos client.
 
-#### Domain Entity Example
+**Example Mock and Test:**
 ```go
-type User struct {
-    ID              uuid.UUID
-    KratosID        uuid.UUID
-    TenantID        uuid.UUID
-    Email           string
-    Name            string
-    Role            UserRole
-    Status          UserStatus
-    Preferences     UserPreferences
-    CreatedAt       time.Time
-    UpdatedAt       time.Time
-    LastLoginAt     *time.Time
+// 1. Create a mock Kratos client
+type MockKratosClient struct {
+    mock.Mock
+}
+
+func (m *MockKratosClient) ToSession(cookie string, options ...kratos.FrontendApiToSessionOption) (*kratos.Session, *http.Response, error) {
+    args := m.Called(cookie)
+    // ... return mock session or error
+}
+
+// 2. Write a table-driven test for the middleware
+func TestAuthMiddleware(t *testing.T) {
+    // ... setup echo context ...
+
+    mockKratos := new(MockKratosClient)
+    middleware := AuthWithClient(mockKratos) // Your middleware constructor
+
+    // Test Case: Valid Session
+    mockKratos.On("ToSession", "valid_cookie").Return(&kratos.Session{}, &http.Response{StatusCode: http.StatusOK}, nil).Once()
+    req.Header.Set("Cookie", "ory_kratos_session=valid_cookie")
+
+    err := middleware(func(c echo.Context) error {
+        return c.String(http.StatusOK, "test")
+    })(c)
+
+    assert.NoError(t, err)
+    mockKratos.AssertExpectations(t)
+    
+    // ... add more test cases for invalid session, Kratos down, etc.
 }
 ```
 
-#### Usecase Pattern
-```go
-type AuthUsecase struct {
-    authGateway  port.AuthGateway
-    userGateway  port.UserGateway
-    logger       *slog.Logger
-}
+#### 2. Integration Testing Middleware
 
-func (u *AuthUsecase) InitiateLogin(ctx context.Context, req domain.LoginRequest) (*domain.LoginFlow, error) {
-    // Business logic implementation
-}
-```
+Integration tests verify that the middleware works with a real (but containerized) Ory Kratos instance.
 
-#### Error Handling Pattern
+**Strategy:**
+- Use Docker Compose to run Ory Kratos and its database in your CI environment.
+- Use the Kratos Go SDK to programmatically create test users and sessions before running tests.
+- Use `httptest.Server` to run your Echo application and send real HTTP requests to it.
+
+**Example Integration Test:**
 ```go
-if err != nil {
-    u.logger.Error("login initiation failed",
-        "error", err,
-        "user_email", req.Email,
-        "tenant_id", req.TenantID)
-    return nil, fmt.Errorf("failed to initiate login: %w", err)
+func TestAuthMiddleware_Integration(t *testing.T) {
+    // Assumes Kratos is running at this address
+    kratosURL := "http://127.0.0.1:4433"
+
+    // 1. Setup: Create a test user and session in Kratos
+    validSessionCookie := createTestSession(t, kratosURL)
+
+    // 2. Setup Echo with the real middleware
+    e := echo.New()
+    kratosClient := newKratosClient(kratosURL) // Real Kratos client
+    e.Use(AuthWithClient(kratosClient))
+    e.GET("/protected", func(c echo.Context) error {
+        return c.String(http.StatusOK, "welcome")
+    })
+
+    // 3. Execute request with valid cookie
+    req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+    rec := httptest.NewRecorder()
+    req.Header.Set("Cookie", "ory_kratos_session=" + validSessionCookie)
+    e.ServeHTTP(rec, req)
+
+    // 4. Assert
+    assert.Equal(t, http.StatusOK, rec.Code)
 }
 ```
 
