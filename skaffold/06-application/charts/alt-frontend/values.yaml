@@ -30,14 +30,14 @@ autoscaling:
   targetMemoryUtilizationPercentage: 70
 
 env:
-  NEXT_PUBLIC_API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
-  # NEXT_PUBLIC_AUTH_URL removed: Mixed Content回避のためAPIプロキシ経由
-  # TODO.md要件: Kratos公開URL直接アクセス用
-  NEXT_PUBLIC_IDP_ORIGIN: "https://id.curionoah.com"
-  NEXT_PUBLIC_APP_ORIGIN: "https://curionoah.com"
-  NODE_ENV: "production"
   API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
-  AUTH_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
+  AUTH_SERVICE_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
+
+  NEXT_PUBLIC_APP_URL: "https://curionoah.com"
+  NEXT_PUBLIC_IDP_ORIGIN: "https://id.curionoah.com"
+  NEXT_PUBLIC_FEATURE_COOKIE_MIGRATE: "1"   # リリース初期のみ（後で0/削除）
+  
+  NODE_ENV: "production"
   KRATOS_INTERNAL_URL: "http://kratos-public.alt-auth.svc.cluster.local:4433"
   NEXT_PUBLIC_KRATOS_PUBLIC_URL: "https://id.curionoah.com"
   # REPORT.md恒久対応: HTMLキャッシュ整合性のため動的レンダリング強制

@@ -118,10 +118,10 @@ data:
             proxy_set_header X-Real-IP         $remote_addr;
             proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
 
-            # Set-Cookie の Domain を外向きに書き換え (TODO.md A項に従う)
-            proxy_cookie_domain kratos-public.alt-auth.svc.cluster.local id.curionoah.com;
+            # 上流が domain=curionoah.com を出すので本来不要だが、保険で許可
+            proxy_cookie_domain kratos-public.alt-auth.svc.cluster.local curionoah.com;
 
-            # Cookie属性の付与（NGINX 1.19.3+）
+            # Cookie属性は flags で付与（path で付けない）
             proxy_cookie_flags ~ secure httponly samesite=lax;
         }
 
