@@ -147,9 +147,10 @@ kratos:
     cookie:
       persistent: true
       same_site: "Lax"
-      domain: ".curionoah.com"  # サブドメイン間でクッキー共有（leading dotで全サブドメインで有効）
-      secure: true               # HTTPS required for production
-      http_only: true           # Security best practice
+      domain: "curionoah.com"   # 親ドメイン（先頭ドット不要）
+      path: "/"
+      secure: true              # HTTPS required for production
+      http_only: true          # Security best practice
   
   # CORS configuration
   cors:

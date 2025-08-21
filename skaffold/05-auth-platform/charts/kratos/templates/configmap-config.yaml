@@ -42,7 +42,8 @@ data:
     selfservice:
       default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
       allowed_return_urls:
-        - {{ .Values.kratos.frontendUrl }}
+        - {{ .Values.kratos.frontendUrl }}/
+        - {{ .Values.kratos.frontendUrl }}/*
         {{- range .Values.kratos.cors.allowed_origins }}
         - {{ tpl . $ }}
         {{- end }}
