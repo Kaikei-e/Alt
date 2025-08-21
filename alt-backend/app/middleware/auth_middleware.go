@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,6 +22,9 @@ type ValidateOKResponse struct {
 	Valid      bool   `json:"valid"`
 	SessionID  string `json:"session_id,omitempty"`
 	IdentityID string `json:"identity_id,omitempty"`
+	Email      string `json:"email,omitempty"`
+	TenantID   string `json:"tenant_id,omitempty"`
+	Role       string `json:"role,omitempty"`
 }
 
 // AuthMiddleware provides authentication middleware functionality
@@ -57,7 +61,7 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 			}
 
 			// Direct HTTP validation with auth-service
-			valid, err := m.validateSessionDirect(c.Request().Context(), c.Request())
+			valid, err := m.validateSessionDirect(c.Request().Context(), c.Request(), c)
 			if err != nil {
 				m.logger.Warn("auth validate transport error", 
 					"error", err,
@@ -78,7 +82,7 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 }
 
 // validateSessionDirect performs direct HTTP validation with auth-service
-func (m *AuthMiddleware) validateSessionDirect(ctx context.Context, req *http.Request) (bool, error) {
+func (m *AuthMiddleware) validateSessionDirect(ctx context.Context, req *http.Request, c echo.Context) (bool, error) {
 	validateURL := m.config.Auth.ServiceURL + "/v1/auth/validate"
 	
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", validateURL, nil)
@@ -133,6 +137,15 @@ func (m *AuthMiddleware) validateSessionDirect(ctx context.Context, req *http.Re
 			return false, nil
 		}
 
+		// TDD GREEN: Create and set UserContext from auth-service response
+		if err := m.createAndSetUserContext(c, validateResp); err != nil {
+			m.logger.Warn("failed to create user context from auth response",
+				"error", err,
+				"session_id", validateResp.SessionID,
+				"x_request_id", httpReq.Header.Get("X-Request-Id"))
+			// Continue with authentication success but without user context
+		}
+
 		return true, nil
 	}
 
@@ -160,7 +173,7 @@ func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 			}
 
 			// Try direct HTTP validation
-			valid, err := m.validateSessionDirect(c.Request().Context(), c.Request())
+			valid, err := m.validateSessionDirect(c.Request().Context(), c.Request(), c)
 			if err != nil {
 				m.logger.Debug("optional auth validation transport error",
 					"error", err,
@@ -251,4 +264,45 @@ func (m *AuthMiddleware) validateWithKratosDirect(ctx context.Context, cookieHea
 	
 	m.logger.Debug("kratos direct validation failed", "status", resp.StatusCode)
 	return false
+}
+
+// createAndSetUserContext creates UserContext from auth-service response and sets it in request context
+func (m *AuthMiddleware) createAndSetUserContext(c echo.Context, validateResp ValidateOKResponse) error {
+	// Parse UUIDs from auth-service response
+	userID, err := uuid.Parse(validateResp.IdentityID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID format: %w", err)
+	}
+
+	tenantID, err := uuid.Parse(validateResp.TenantID)
+	if err != nil {
+		return fmt.Errorf("invalid tenant ID format: %w", err)
+	}
+
+	// Create UserContext
+	userContext := &domain.UserContext{
+		UserID:      userID,
+		Email:       validateResp.Email,
+		Role:        domain.UserRole(validateResp.Role),
+		TenantID:    tenantID,
+		SessionID:   validateResp.SessionID,
+		LoginAt:     time.Now(), // Best approximation since auth-service doesn't provide it
+		ExpiresAt:   time.Now().Add(24 * time.Hour), // Default expiration, could be configurable
+		Permissions: []string{}, // Could be expanded in future
+	}
+
+	// Set UserContext in request context for TenantMiddleware and other handlers
+	ctx := domain.SetUserContext(c.Request().Context(), userContext)
+	c.SetRequest(c.Request().WithContext(ctx))
+
+	// Also set in Echo context for legacy compatibility
+	c.Set("user", userContext)
+
+	m.logger.Debug("user context created and set",
+		"user_id", userContext.UserID,
+		"tenant_id", userContext.TenantID,
+		"email", userContext.Email,
+		"role", userContext.Role)
+
+	return nil
 }

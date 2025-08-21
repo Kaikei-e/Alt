@@ -65,14 +65,17 @@ REST Handler → Usecase → Port → Gateway (ACL) → Driver
 └─ CLAUDE.md      # This file
 ```
 
-## Go 1.23+ Best Practices
+## Go 1.24+ Best Practices
 
 ### Core Standards
-- **Structured Logging:** Always use `log/slog` with context
-- **Error Handling:** Wrap errors with `fmt.Errorf("operation failed: %w", err)`
-- **Iterators:** Use `iter.Seq` and `iter.Seq2` for custom iterations (Go 1.23+)
-- **Memory Management:** Leverage improved timer GC and stack optimizations
-- **Dependency Injection:** Constructor pattern with explicit dependencies
+- **Structured Logging:** Always use `log/slog` with context for machine-readable logs.
+- **Error Handling:** Wrap errors with `fmt.Errorf("operation failed: %w", err)` to preserve context.
+- **Dependency Injection:** Use the constructor pattern for explicit dependency injection.
+
+### Go 1.24+ Testing Enhancements
+- **`testing/synctest`**: Use this experimental package to test concurrent code with a fake clock, making tests more deterministic.
+- **`t.Chdir()`**: Use this function to change the working directory for the duration of a test, useful for file-based operations.
+- **`testing.B.Loop`**: A faster way to write benchmarks.
 
 ### Code Quality
 ```go
@@ -99,60 +102,64 @@ time.Sleep(5 * time.Second) // Minimum interval between API calls
 
 ## Test-Driven Development (TDD)
 
-### Critical TDD Rules
-1. **Red-Green-Refactor Cycle:** Always write failing test first. If you are not sure about the test, use `think` or `ultrathink` to think about the test. Test must fail with assert.Error(t, err) or assert.Equal(t, expected, actual)
-2. **Test Only:** Usecase and Gateway layers (Driver tests optional)
-3. **Mock Dependencies:** Use `gomock` by Uber for external dependencies and use Makefile with make generate-mocks to generate mocks
-4. **Coverage Goal:** >80% for tested layers(Usecase and Gateway layers)
+### The TDD Cycle: Red-Green-Refactor
+1.  **Red**: Write a failing test that clearly defines the desired functionality. The test must fail for the expected reason.
+2.  **Green**: Write the **absolute minimum** amount of code required to make the test pass. Elegance is not the goal here; correctness is.
+3.  **Refactor**: Improve the code's design, readability, and performance without changing its external behavior. All tests must remain green.
 
-### TDD Workflow
-```go
-// 1. RED: Write failing test
-func TestCreateFeed_Success(t *testing.T) {
-    // Setup test data and mocks
-    // Call method that doesn't exist yet
-    // Assert expected behavior
-    // Always fail with assert.Error(t, err) or assert.Equal(t, expected, actual)
-}
+### TDD in Clean Architecture
+- **Usecase Layer**: This is the primary target for TDD. Mock repository and gateway interfaces to test business logic in complete isolation.
+- **Gateway Layer**: Test the gateway's ability to correctly interact with external services by mocking the driver (e.g., a database client or an HTTP client).
+- **Handler Layer**: Use `net/http/httptest` to test Echo handlers. Mock the usecase layer to verify that the handler correctly parses requests, calls the usecase, and formats responses.
 
-// 2. GREEN: Minimal implementation to pass
-func (u *FeedUsecase) CreateFeed(ctx context.Context, req CreateFeedRequest) error {
-    return nil // Minimal implementation
-}
+### Advanced TDD: Echo Handler Workflow
+Here is a more detailed workflow for testing an Echo handler:
 
-// 3. REFACTOR: Improve while keeping tests green
-```
+1.  **RED: Write the failing test.**
+    ```go
+    func TestCreateUser_Handler(t *testing.T) {
+        // 1. Setup: Create a mock usecase
+        mockUsecase := new(mocks.UserUsecase)
+        // Define expected input and what the mock should return
+        userInput := &dto.CreateUserInput{Name: "test"}
+        mockUsecase.On("CreateUser", mock.Anything, userInput).Return(nil)
 
-### Testing Pattern
-```go
-func TestXxx(t *testing.T) {
-    tests := []struct {
-        name    string
-        input   InputType
-        want    OutputType
-        wantErr bool
-    }{
-        {
-            name: "successful case",
-            input: InputType{/* valid data */},
-            want: OutputType{/* expected result */},
-            wantErr: false,
-        },
-        {
-            name: "validation error",
-            input: InputType{/* invalid data */},
-            want: OutputType{},
-            wantErr: true,
-        },
+        // 2. Request: Create a new HTTP request with a JSON body
+        e := echo.New()
+        jsonBody := `{"name":"test"}`
+        req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(jsonBody))
+        req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+        rec := httptest.NewRecorder()
+        c := e.NewContext(req, rec)
+
+        // 3. Execution: Create handler and call it
+        h := handler.NewUserHandler(mockUsecase)
+        
+        // This will fail because the handler doesn't exist yet
+        err := h.CreateUser(c)
+
+        // 4. Assertions
+        assert.NoError(t, err)
+        assert.Equal(t, http.StatusCreated, rec.Code)
+        mockUsecase.AssertExpectations(t)
     }
+    ```
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            // Test implementation
-        })
-    }
-}
-```
+2.  **GREEN: Write minimal code to pass.**
+    - Create the `UserHandler` and the `CreateUser` method.
+    - Bind the request body to a DTO.
+    - Call the usecase method.
+    - Return the appropriate HTTP status.
+
+3.  **REFACTOR: Improve the implementation.**
+    - Add validation for the request body.
+    - Enhance error handling and logging.
+    - Ensure the code is clean and readable.
+
+### Testing Patterns
+- **Table-Driven Tests**: Use this idiomatic Go pattern to test multiple scenarios with different inputs and expected outputs.
+- **`stretchr/testify`**: Use the `assert` and `require` packages for expressive and readable assertions.
+- **`gomock`**: Use `gomock` to generate mocks from interfaces for reliable dependency isolation.
 
 ## Rate Limiting & Web Development
 
