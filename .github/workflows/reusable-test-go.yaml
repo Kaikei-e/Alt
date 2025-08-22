@@ -14,10 +14,13 @@ on:
         required: false
         type: string
         default: ""
-      use-local-persistent-cache:
+      use-oidc:
         required: false
         type: boolean
         default: false
+
+permissions:
+  contents: read
 
 jobs:
   test-go:

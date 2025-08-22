@@ -1,26 +1,21 @@
 name: Search Indexer Tests
+
 on:
   push:
-    branches: [ main, master ]
-    paths:
-      - 'search-indexer/**'
+    branches: [ main ]
+    paths: [ 'search-indexer/**' ]
   pull_request:
-    branches: [ main, master ]
-    paths:
-      - 'search-indexer/**'
-  workflow_dispatch:
+    branches: [ main ]
+    paths: [ 'search-indexer/**' ]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   test:
-    permissions:
-      contents: read
-      id-token: write
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: 'search-indexer/app'
-      go-version: '1.24'
       coverage-flags: 'search-indexer'
+      use-oidc: false
+    secrets: inherit
