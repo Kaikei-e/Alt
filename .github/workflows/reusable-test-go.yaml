@@ -19,15 +19,42 @@ on:
         type: boolean
         default: false
 
+  workflow_dispatch:
+
 permissions:
   contents: read
 
 jobs:
   test-go:
-    # self-hosted ランナー想定
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, X64]
+    timeout-minutes: 30
 
     steps:
+      - name: Configure logging
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::group::Masking Configuration"
+
+          # Mask HOME directory parts
+          PARTS=($(echo $HOME | tr '/' ' '))
+          for part in "${PARTS[@]}"; do
+            [ ! -z "$part" ] && echo "::add-mask::$part"
+          done
+
+          # Mask machine name and user info
+          echo "::add-mask::$(whoami)"
+          echo "::add-mask::$(hostname)"
+          echo "::add-mask::$(hostname -s)"
+          echo "::add-mask::$(scutil --get ComputerName 2>/dev/null || echo '')"
+          echo "::add-mask::$(scutil --get LocalHostName 2>/dev/null || echo '')"
+
+          # Mask runner workspace paths
+          echo "::add-mask::${{ runner.temp }}"
+          echo "::add-mask::${{ github.workspace }}"
+
+          echo "::endgroup::"
+
+
       - name: Checkout (sparse)
         uses: actions/checkout@v5
         with:
