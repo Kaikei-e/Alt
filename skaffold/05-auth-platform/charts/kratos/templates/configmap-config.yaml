@@ -40,12 +40,17 @@ data:
         base_url: {{ tpl .Values.kratos.adminUrl . }}
 
     selfservice:
-      default_browser_return_url: {{ .Values.kratos.frontendUrl }}/
+      default_browser_return_url: {{ .Values.kratos.selfservice.default_browser_return_url | default (printf "%s/" .Values.kratos.frontendUrl) }}
       allowed_return_urls:
+        {{- range .Values.kratos.selfservice.allowed_return_urls }}
+        - {{ tpl . $ }}
+        {{- end }}
+        {{- if not .Values.kratos.selfservice.allowed_return_urls }}
         - {{ .Values.kratos.frontendUrl }}/
         - {{ .Values.kratos.frontendUrl }}/*
         {{- range .Values.kratos.cors.allowed_origins }}
         - {{ tpl . $ }}
+        {{- end }}
         {{- end }}
 
       methods:

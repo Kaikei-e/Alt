@@ -99,15 +99,20 @@ kratos:
   # Development configuration
   dev: true
   
-  # Base URLs (will be templated for different environments)
+  # Base URLs (will be templated for different environments) - TODO.md要件: 末尾スラッシュ無し
   publicUrl: "https://id.curionoah.com"
-  adminUrl: "http://kratos-admin.{{ .Values.namespace }}.svc.cluster.local:4434/"
+  adminUrl: "http://kratos-admin.{{ .Values.namespace }}.svc.cluster.local:4434"
   
   # Frontend URLs
   frontendUrl: "https://curionoah.com"
   
-  # Self-service configuration
+  # Self-service configuration - TODO.md要件準拠
   selfservice:
+    default_browser_return_url: "https://curionoah.com/"
+    allowed_return_urls:
+      - "https://curionoah.com/"
+      - "https://curionoah.com/*"
+    
     methods:
       password:
         enabled: true
@@ -128,9 +133,13 @@ kratos:
     
     flows:
       login:
-        lifespan: "10m"
+        ui_url: "https://curionoah.com/auth/login"
+        lifespan: "30m"
+        after:
+          default_browser_return_url: "https://curionoah.com/desktop/home"
       registration:
-        lifespan: "10m"
+        ui_url: "https://curionoah.com/auth/register"
+        lifespan: "30m"
       recovery:
         enabled: true
         use: "code"
@@ -141,7 +150,7 @@ kratos:
         privileged_session_max_age: "15m"
         required_aal: "highest_available"
   
-  # Session configuration - Production ready values
+  # Session configuration - TODO.md要件準拠
   session:
     lifespan: "24h"
     cookie:
@@ -152,22 +161,22 @@ kratos:
       secure: true              # HTTPS required for production
       http_only: true          # Security best practice
   
-  # CORS configuration
+  # CORS configuration - TODO.md要件: serve.public.cors構造準拠
   cors:
     enabled: true
     allowed_origins:
       - "https://curionoah.com"
-      - "https://id.curionoah.com"
+      - "https://*.curionoah.com"
     allowed_methods:
-      - "POST"
       - "GET"
+      - "POST"
       - "PUT"
       - "PATCH"
       - "DELETE"
     allowed_headers:
       - "Authorization"
-      - "Content-Type"
       - "Cookie"
+      - "Content-Type"
     exposed_headers:
       - "Content-Type"
       - "Set-Cookie"
@@ -207,7 +216,7 @@ identitySchema:
 healthCheck:
   startupProbe:
     httpGet:
-      path: /health/alive
+      path: /admin/health/alive
       port: 4434
     initialDelaySeconds: 30
     periodSeconds: 10
@@ -215,7 +224,7 @@ healthCheck:
     failureThreshold: 30  # Allow 5 minutes for startup
   livenessProbe:
     httpGet:
-      path: /health/alive
+      path: /admin/health/alive
       port: 4434
     initialDelaySeconds: 120  # Wait for startup to complete
     periodSeconds: 30
@@ -223,7 +232,7 @@ healthCheck:
     failureThreshold: 3
   readinessProbe:
     httpGet:
-      path: /health/ready
+      path: /admin/health/ready
       port: 4434
     initialDelaySeconds: 60
     periodSeconds: 10
@@ -288,7 +297,7 @@ secrets:
   enabled: true
   # For development - will be overridden in production values-production.yaml
   cookieSecret: "youReallyNeedToChangeThis-DEV-ONLY"
-  cipherSecret: "32-LONG-SECRET-NOT-SECURE-AT-ALL-DEV"
+  cipherSecret: "32-LONG-SECRET-NOT-SECURE-DEV123"
 
 # SSL configuration
 ssl:

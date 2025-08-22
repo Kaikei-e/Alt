@@ -121,8 +121,11 @@ data:
             # Set-Cookie は通常透過。保険で明示してもOK
             proxy_pass_header Set-Cookie;
 
-            # 属性付与が必要なら専用ディレクティブで（OS版 nginx 1.19.3+）
-            proxy_cookie_flags ~ HttpOnly secure samesite=lax;
+            # Cookie の Domain を"親"へ書き換え（id.ではなく curionoah.com）
+            proxy_cookie_domain kratos-public.alt-auth.svc.cluster.local curionoah.com;
+
+            # セキュリティ属性の明示（Nginx 1.19.3+）
+            proxy_cookie_flags ~ secure httponly samesite=lax;
         }
 
         location /external-health {

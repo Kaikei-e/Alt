@@ -33,13 +33,15 @@ env:
   API_URL: "http://alt-backend.alt-apps.svc.cluster.local:9000"
   AUTH_SERVICE_URL: "http://auth-service.alt-auth.svc.cluster.local:8080"
 
+  # TODO.md要件準拠の環境変数設定
+  KRATOS_PUBLIC_URL: "https://id.curionoah.com"
+  KRATOS_INTERNAL_URL: "http://kratos-public.alt-auth.svc.cluster.local:4433"
+  NEXT_PUBLIC_APP_ORIGIN: "https://curionoah.com"
+  NEXT_PUBLIC_KRATOS_URL: "https://id.curionoah.com"  
   NEXT_PUBLIC_APP_URL: "https://curionoah.com"
-  NEXT_PUBLIC_IDP_ORIGIN: "https://id.curionoah.com"
-  NEXT_PUBLIC_FEATURE_COOKIE_MIGRATE: "1"   # リリース初期のみ（後で0/削除）
+  NEXT_PUBLIC_RETURN_TO_DEFAULT: "https://curionoah.com/desktop/home"
   
   NODE_ENV: "production"
-  KRATOS_INTERNAL_URL: "http://kratos-public.alt-auth.svc.cluster.local:4433"
-  NEXT_PUBLIC_KRATOS_PUBLIC_URL: "https://id.curionoah.com"
   # REPORT.md恒久対応: HTMLキャッシュ整合性のため動的レンダリング強制
   NEXT_DYNAMIC_RENDERING: "force-dynamic"
   # TODO.md要件: Nodeの詳細ログ出力でDigestスタック回収
