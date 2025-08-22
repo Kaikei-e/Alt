@@ -30,6 +30,7 @@
     "@chakra-ui/transition": "^2.1.0",
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
+    "@ory/client": "^1.21.5",
     "@tanstack/react-virtual": "^3.13.12",
     "dotenv": "^16.6.0",
     "html-react-parser": "^5.2.6",

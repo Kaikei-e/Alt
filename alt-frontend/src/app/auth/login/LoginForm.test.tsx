@@ -1,0 +1,236 @@
+/**
+ * @vitest-environment jsdom
+ */
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { LoginForm } from './LoginForm';
+
+// Kratosクライアントのモック
+vi.mock('@/lib/kratos', () => ({
+  kratos: {
+    getLoginFlow: vi.fn(),
+    updateLoginFlow: vi.fn(),
+  }
+}));
+
+const { kratos } = await import('@/lib/kratos');
+
+describe('LoginForm', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('初期状態', () => {
+    it('ローディング状態が表示される', () => {
+      render(<LoginForm flowId="test-flow-id" />);
+      expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    });
+
+    it('フローIDが最終的に表示される', async () => {
+      const mockFlow = {
+        id: 'test-flow-id',
+        ui: {
+          nodes: [
+            {
+              type: 'input',
+              attributes: {
+                name: 'identifier',
+                type: 'email',
+                required: true,
+              },
+              messages: [],
+            }
+          ]
+        }
+      };
+
+      vi.mocked(kratos.getLoginFlow).mockResolvedValue({ data: mockFlow });
+      
+      render(<LoginForm flowId="test-flow-id" />);
+      
+      await waitFor(() => {
+        expect(screen.getByText(/test-flow-id/)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('フロー取得', () => {
+    it('正常なフローデータを取得して表示する', async () => {
+      const mockFlow = {
+        id: 'test-flow-id',
+        ui: {
+          nodes: [
+            {
+              type: 'input',
+              attributes: {
+                name: 'identifier',
+                type: 'email',
+                required: true,
+              },
+              messages: [],
+            },
+            {
+              type: 'input',
+              attributes: {
+                name: 'password',
+                type: 'password',
+                required: true,
+              },
+              messages: [],
+            }
+          ]
+        }
+      };
+
+      vi.mocked(kratos.getLoginFlow).mockResolvedValue({ data: mockFlow });
+
+      render(<LoginForm flowId="test-flow-id" />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+      });
+    });
+
+    it('フロー取得失敗時にエラーを表示する', async () => {
+      vi.mocked(kratos.getLoginFlow).mockRejectedValue(new Error('Network error'));
+
+      render(<LoginForm flowId="test-flow-id" />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/error loading login form/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('フォーム送信', () => {
+    it('正常な送信処理を行う', async () => {
+      const user = userEvent.setup();
+      const mockFlow = {
+        id: 'test-flow-id',
+        ui: {
+          action: '/self-service/login',
+          method: 'POST',
+          nodes: [
+            {
+              type: 'input',
+              attributes: {
+                name: 'identifier',
+                type: 'email',
+                required: true,
+              },
+              messages: [],
+            },
+            {
+              type: 'input',
+              attributes: {
+                name: 'password',
+                type: 'password',
+                required: true,
+              },
+              messages: [],
+            }
+          ]
+        }
+      };
+
+      const mockResponse = {
+        data: {
+          session: { id: 'session-id' },
+          return_to: 'https://curionoah.com/'
+        }
+      };
+
+      vi.mocked(kratos.getLoginFlow).mockResolvedValue({ data: mockFlow });
+      vi.mocked(kratos.updateLoginFlow).mockResolvedValue(mockResponse);
+
+      // window.location.href のモック
+      const mockLocation = { href: '' };
+      Object.defineProperty(window, 'location', {
+        value: mockLocation,
+        writable: true,
+      });
+
+      render(<LoginForm flowId="test-flow-id" />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+      });
+
+      await user.type(screen.getByLabelText(/email/i), 'test@example.com');
+      await user.type(screen.getByLabelText(/password/i), 'password123');
+      await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await waitFor(() => {
+        expect(window.location.href).toBe('https://curionoah.com/');
+      });
+    });
+
+    it('ログイン失敗時にエラーメッセージを表示する', async () => {
+      const user = userEvent.setup();
+      const mockFlow = {
+        id: 'test-flow-id',
+        ui: {
+          action: '/self-service/login',
+          method: 'POST',
+          nodes: [
+            {
+              type: 'input',
+              attributes: {
+                name: 'identifier',
+                type: 'email',
+                required: true,
+              },
+              messages: [],
+            },
+            {
+              type: 'input',
+              attributes: {
+                name: 'password',
+                type: 'password',
+                required: true,
+              },
+              messages: [],
+            }
+          ]
+        }
+      };
+
+      const errorResponse = {
+        response: {
+          status: 400,
+          data: {
+            ui: {
+              messages: [
+                {
+                  id: 4000006,
+                  text: 'The provided credentials are invalid.',
+                  type: 'error'
+                }
+              ]
+            }
+          }
+        }
+      };
+
+      vi.mocked(kratos.getLoginFlow).mockResolvedValue({ data: mockFlow });
+      vi.mocked(kratos.updateLoginFlow).mockRejectedValue(errorResponse);
+
+      render(<LoginForm flowId="test-flow-id" />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+      });
+
+      await user.type(screen.getByLabelText(/email/i), 'wrong@example.com');
+      await user.type(screen.getByLabelText(/password/i), 'wrongpassword');
+      await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/the provided credentials are invalid/i)).toBeInTheDocument();
+      });
+    });
+  });
+});

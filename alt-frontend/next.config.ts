@@ -58,6 +58,12 @@ const nextConfig = {
     return buildId;
   },
   
+  // 環境変数の明示的な設定（ミドルウェアで確実にアクセスできるよう保証）
+  env: {
+    KRATOS_INTERNAL_URL: process.env.KRATOS_INTERNAL_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433',
+    KRATOS_PUBLIC_URL: process.env.KRATOS_PUBLIC_URL || 'https://id.curionoah.com',
+  },
+  
   // Enable standalone output for containerized deployment
   output: "standalone",
   
