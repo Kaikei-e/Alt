@@ -1,69 +1,44 @@
 'use client';
-import React from 'react';
-import { UiNode } from '@ory/client';
-import { useKratosFlow } from '@/hooks/useKratosFlow';
-import { useLoginSubmit } from '@/hooks/useLoginSubmit';
-import { isFlowExpiredError } from '@/lib/kratos-errors';
+import React, { useState } from 'react';
+import { UiNode, Configuration, FrontendApi, UpdateLoginFlowBody } from '@ory/client';
 
 interface LoginFormProps {
-  flowId: string;
+  flow: any;
 }
 
-export function LoginForm({ flowId }: LoginFormProps) {
-  const { flow, loading, error: flowError } = useKratosFlow(flowId);
-  const { submit, submitting, error: submitError } = useLoginSubmit(flowId);
+const frontend = new FrontendApi(
+  new Configuration({ basePath: process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL })
+)
+
+export default function LoginForm({ flow }: LoginFormProps) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    
-    if (!flow) return;
+    setSubmitting(true);
+    setError(null);
 
     const formData = new FormData(event.currentTarget);
-    const values: Record<string, string> = {};
-    
-    formData.forEach((value, key) => {
-      if (typeof value === 'string') {
-        values[key] = value;
-      }
-    });
+    const body: UpdateLoginFlowBody = {
+      method: 'password',
+      identifier: String(formData.get('identifier') || ''),
+      password: String(formData.get('password') || ''),
+      csrf_token: String(formData.get('csrf_token') || ''),
+    };
 
-    await submit(values);
+    try {
+      await frontend.updateLoginFlow({ flow: flow.id, updateLoginFlowBody: body });
+      // 成功時は Kratos が Set-Cookie + リダイレクト/JSONを返す
+      // ブラウザは `return_to` へ遷移
+      window.location.replace(process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT || 'https://curionoah.com/desktop/home');
+    } catch (e: any) {
+      console.error('updateLoginFlow failed', e);
+      setError('Login failed. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
-
-  const error = flowError || submitError;
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-64">
-        <div className="text-lg">Loading login form...</div>
-      </div>
-    );
-  }
-
-  if (error && !flow) {
-    const isExpired = error.includes('セッションが期限切れです');
-    
-    return (
-      <div className={`border rounded-md p-4 ${isExpired ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'}`}>
-        <div className={isExpired ? 'text-yellow-800' : 'text-red-800'}>{error}</div>
-        {isExpired && (
-          <div className="mt-3">
-            <button
-              onClick={() => {
-                const currentUrl = window.location.href;
-                const returnTo = encodeURIComponent(currentUrl.split('?')[0]);
-                const idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN || 'https://id.curionoah.com';
-                window.location.replace(`${idpOrigin}/self-service/login/browser?return_to=${returnTo}`);
-              }}
-              className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-              新しいログインフローを開始
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   if (!flow) {
     return (
@@ -158,7 +133,6 @@ export function LoginForm({ flowId }: LoginFormProps) {
           {submitting ? 'Signing In...' : 'Sign In'}
         </button>
       </form>
-
     </div>
   );
 }

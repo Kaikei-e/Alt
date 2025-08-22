@@ -1,81 +1,76 @@
-// src/middleware.ts
-import { NextResponse, NextRequest } from 'next/server';
+// alt-frontend/src/middleware.ts
+import { NextRequest, NextResponse } from 'next/server'
 
-const PASS = [
-  /^\/auth(\/|$)/, /^\/api(\/|$)/,
-  /^\/_next\//, /^\/favicon\.ico$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/
-];
-
-export default async function middleware(req: NextRequest) {
-  const { pathname, search } = req.nextUrl;
-  const resHeaders = new Headers();
-
-  if (PASS.some(r => r.test(pathname))) return NextResponse.next();
-
-  // ループガード：短命クッキー方式（次リクエストにも残る）
-  const loop = req.cookies.get('__authredir');
-  if (loop?.value === '1') {
-    const res = NextResponse.next();
-    res.cookies.delete('__authredir');
-    return res;
-  }
-
-  // デバッグ: 環境変数の実際の値を確認
-  const whoamiBase = process.env.KRATOS_INTERNAL_URL ?? '(unset)';
-  const whoamiURL = `${whoamiBase}/sessions/whoami`;
-  
-  // デバッグヘッダーを設定
-  resHeaders.set('x-auth-debug-whoami', whoamiURL);
-  resHeaders.set('x-auth-debug-kratos-internal', whoamiBase);
-  resHeaders.set('x-auth-debug-timestamp', new Date().toISOString());
-
-  // デバッグ: コンソールログ出力
-  console.log(`[Middleware] Path: ${pathname}, Attempting whoami: ${whoamiURL}`);
-
-  // whoami はクラスタ内の Kratos Public Service へ
-  const res = await fetch(whoamiURL, {
-    headers: { cookie: req.headers.get('cookie') ?? '' },
-    credentials: 'include',
-  }).catch(e => {
-    console.error(`[Middleware] whoami failed:`, e);
-    return { ok: false, status: 599 };
-  });
-
-  // デバッグ: whoami レスポンス状態を記録
-  console.log(`[Middleware] whoami response status: ${res.status}`);
-  resHeaders.set('x-auth-debug-whoami-status', String(res.status));
-
-  if (res.ok) return NextResponse.next({ headers: resHeaders });
-
-  // 未ログイン → 外部の login/browser へ絶対URLで
-  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-  const host  = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
-  const returnTo = `${proto}://${host}${pathname}${search}`;
-
-  const loginBase = process.env.KRATOS_PUBLIC_URL ?? '(unset)';
-  const login = new URL('/self-service/login/browser', loginBase);
-  login.searchParams.set('return_to', returnTo);
-
-  // デバッグ: リダイレクト情報をログ出力
-  console.log(`[Middleware] Redirecting to login: ${login.toString()}`);
-  console.log(`[Middleware] Return to: ${returnTo}`);
-
-  // デバッグヘッダーを追加
-  resHeaders.set('x-auth-debug-login', login.toString());
-  resHeaders.set('x-auth-debug-return-to', returnTo);
-  resHeaders.set('x-auth-debug-kratos-public', loginBase);
-
-  const redirect = NextResponse.redirect(login.toString(), 302);
-  redirect.cookies.set('__authredir', '1', { maxAge: 3, path: '/' }); // 3秒だけ有効
-  
-  // デバッグヘッダーをリダイレクトレスポンスに適用
-  for (const [key, value] of resHeaders.entries()) {
-    redirect.headers.set(key, value);
-  }
-  
-  return redirect;
-}
+const AUTH_GUARD_COOKIE = 'alt_auth_redirect_guard'
+const GUARD_TTL = 10 // sec
 
 export const config = {
-  matcher: ['/((?!_next|.*\\.(?:png|jpg|jpeg|svg|gif|ico|webp|css|js|map)).*)']
-};
+  matcher: [
+    // すべて見るが、除外は中で明示
+    '/:path*',
+  ],
+}
+
+function isBypassPath(url: URL): boolean {
+  const p = url.pathname
+  return (
+    p.startsWith('/auth/') ||
+    p.startsWith('/api/') ||
+    p.startsWith('/_next/') ||
+    p.startsWith('/static/') ||
+    p === '/favicon.ico' ||
+    p === '/robots.txt'
+  )
+}
+
+export default async function middleware(req: NextRequest) {
+  const url = req.nextUrl
+  if (isBypassPath(url)) return NextResponse.next()
+
+  // すでにループガードがある場合は素通し
+  if (req.cookies.get(AUTH_GUARD_COOKIE)) {
+    return NextResponse.next()
+  }
+
+  // whoami で認証状態を確認（TODO.md Step C準拠）
+  const proto = req.headers.get('x-forwarded-proto') ?? url.protocol.replace(':','')
+  let host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? url.host
+  
+  // 0.0.0.0や127.0.0.1などの内部アドレスを適切なホスト名に変換
+  if (host.startsWith('0.0.0.0:') || host.startsWith('127.0.0.1:') || host.startsWith('localhost:')) {
+    host = 'curionoah.com'
+  }
+  
+  const origin = `${proto}://${host}`
+
+  // whoami で認証状態チェック
+  try {
+    const who = await fetch('https://id.curionoah.com/sessions/whoami', {
+      headers: { cookie: req.headers.get('cookie') ?? '' },
+      credentials: 'include',
+    })
+    if (who.ok) return NextResponse.next()
+  } catch (error) {
+    // ネットワークエラー等はログインに誘導
+  }
+
+  // 未認証の場合、ログイン後に戻るURL（現リクエストの絶対URL）
+  const returnTo = encodeURIComponent(`${origin}${url.pathname}${url.search}`)
+  const loginInit = `https://id.curionoah.com/self-service/login/browser?return_to=${returnTo}`
+
+  const res = NextResponse.redirect(loginInit, { status: 303 }) // 303 See Other
+
+  // 10秒のループガード Cookie をセット（ドメインは親に）
+  res.cookies.set({
+    name: AUTH_GUARD_COOKIE,
+    value: '1',
+    maxAge: GUARD_TTL,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    path: '/',
+    domain: 'curionoah.com',
+  })
+
+  return res
+}

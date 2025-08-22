@@ -1,22 +1,22 @@
-// src/lib/server-fetch.ts
-export async function serverFetch<T>(endpoint: string): Promise<T> {
-  const { cookies, headers } = await import('next/headers');
-  const cookieHeader =
-    (await cookies()).getAll().map(c => `${c.name}=${c.value}`).join('; ');
+// alt-frontend/src/lib/server-fetch.ts
+import { headers } from 'next/headers'
 
-  const url = `${process.env.API_URL}${endpoint}`; // 例: http://alt-backend:9000
+export async function serverFetch<T>(endpoint: string, init: RequestInit = {}): Promise<T> {
+  const h = await headers()
+  const cookie = h.get('cookie') ?? ''
 
-  const r = await fetch(url, {
+  const url = `${process.env.API_URL}${endpoint}` // 例: http://alt-backend:9000
+  const res = await fetch(url, {
+    ...init,
     headers: {
+      ...(init.headers || {}),
       'Content-Type': 'application/json',
-      'Cookie': cookieHeader,
-      'X-Request-Source': 'SSR',
-      'X-Forwarded-For': (await headers()).get('x-forwarded-for') ?? '',
+      'Cookie': cookie, // 重要：SSR受信Cookieをそのまま転送
     },
     cache: 'no-store',
-    credentials: 'include',
-  });
-
-  if (!r.ok) throw new Error(`API ${r.status} for ${endpoint}`);
-  return r.json() as Promise<T>;
+  })
+  if (!res.ok) {
+    throw new Error(`API ${res.status} for ${endpoint}`)
+  }
+  return res.json() as Promise<T>
 }
