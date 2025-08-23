@@ -19,4 +19,5 @@ jobs:
       working-directory: 'search-indexer/app'
       coverage-flags: 'search-indexer'
       use-oidc: false
+      sparse-checkout: 'search-indexer'
     secrets: inherit
