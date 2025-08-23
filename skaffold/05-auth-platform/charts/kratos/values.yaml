@@ -98,21 +98,24 @@ services:
 kratos:
   # Development configuration
   dev: true
-  
+
   # Base URLs (will be templated for different environments) - TODO.md要件: 末尾スラッシュ無し
-  publicUrl: "https://id.curionoah.com"
+  publicUrl: "https://curionoah.com/ory"
   adminUrl: "http://kratos-admin.{{ .Values.namespace }}.svc.cluster.local:4434"
-  
+
   # Frontend URLs
   frontendUrl: "https://curionoah.com"
-  
+
   # Self-service configuration - TODO.md要件準拠
   selfservice:
     default_browser_return_url: "https://curionoah.com/"
     allowed_return_urls:
       - "https://curionoah.com/"
-      - "https://curionoah.com/*"
-    
+      - "https://curionoah.com/desktop/*"
+      - "https://curionoah.com/mobile/*"
+      - "https://curionoah.com/home"
+      - "https://curionoah.com/auth/login"
+
     methods:
       password:
         enabled: true
@@ -130,7 +133,7 @@ kratos:
       code:
         enabled: true
         lifespan: "15m"
-    
+
     flows:
       login:
         ui_url: "https://curionoah.com/auth/login"
@@ -149,24 +152,20 @@ kratos:
       settings:
         privileged_session_max_age: "15m"
         required_aal: "highest_available"
-  
+
   # Session configuration - TODO.md要件準拠
   session:
     lifespan: "24h"
     cookie:
-      persistent: true
+      persistent: false
       same_site: "Lax"
-      domain: "curionoah.com"   # 親ドメイン（先頭ドット不要）
       path: "/"
-      secure: true              # HTTPS required for production
-      http_only: true          # Security best practice
-  
+
   # CORS configuration - TODO.md要件: serve.public.cors構造準拠
   cors:
     enabled: true
     allowed_origins:
       - "https://curionoah.com"
-      - "https://*.curionoah.com"
     allowed_methods:
       - "GET"
       - "POST"
@@ -182,24 +181,24 @@ kratos:
       - "Set-Cookie"
     allow_credentials: true
     debug: false
-  
+
   # Courier configuration (email)
   courier:
     smtp:
       connection_uri: "smtps://test:test@mailslurper:1025/?skip_ssl_verify=true"
       from_address: "noreply@alt.local"
       from_name: "Alt RSS Reader"
-  
+
   # Hash configuration
   hashers:
     algorithm: "bcrypt"
     bcrypt:
       cost: 12
-  
+
   # Cipher configuration
   ciphers:
     algorithm: "xchacha20-poly1305"
-  
+
   # Log configuration
   log:
     level: "info"
@@ -257,7 +256,7 @@ automigration:
       value: "60s"
     - name: KRATOS_DATABASE_MAX_OPEN_CONNS
       value: "1"
-        
+
 # Legacy migration configuration (deprecated)
 migration:
   enabled: false  # 公式パターンに移行: 手動Job無効化

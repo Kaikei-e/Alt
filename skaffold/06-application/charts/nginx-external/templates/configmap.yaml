@@ -121,11 +121,11 @@ data:
             # Set-Cookie は通常透過。保険で明示してもOK
             proxy_pass_header Set-Cookie;
 
-            # Cookie の Domain を"親"へ書き換え（id.ではなく curionoah.com）
-            proxy_cookie_domain kratos-public.alt-auth.svc.cluster.local curionoah.com;
+            # Kratos が Domain を正しく出す前提 → domain 置換は不要
+            proxy_cookie_domain off;
 
-            # セキュリティ属性の明示（Nginx 1.19.3+）
-            proxy_cookie_flags ~ secure httponly samesite=lax;
+            # 必要な属性のみ補強（Nginx 1.19.3+）
+            proxy_cookie_flags ory_kratos_session httponly secure samesite=lax;
         }
 
         location /external-health {
@@ -149,6 +149,11 @@ data:
           proxy_set_header X-Forwarded-Proto $xfp;
           proxy_set_header X-Forwarded-Host  $host;
           proxy_set_header X-Request-ID      $request_id;
+
+          # Set-Cookie透過・属性付与
+          proxy_pass_header Set-Cookie;
+          proxy_cookie_domain off;
+          proxy_cookie_flags ory_kratos_session httponly secure samesite=lax;
 
           proxy_http_version 1.1;
           proxy_set_header Upgrade $http_upgrade;
@@ -180,6 +185,11 @@ data:
           proxy_set_header X-Forwarded-Host  $host;
           proxy_set_header X-Request-ID      $request_id;
 
+          # Set-Cookie透過・属性付与
+          proxy_pass_header Set-Cookie;
+          proxy_cookie_domain off;
+          proxy_cookie_flags ory_kratos_session httponly secure samesite=lax;
+
           proxy_http_version 1.1;
           proxy_set_header Upgrade $http_upgrade;
           proxy_set_header Connection $connection_upgrade;
@@ -210,6 +220,11 @@ data:
           proxy_set_header X-Forwarded-Host  $host;
           proxy_set_header X-Request-ID      $request_id;
 
+          # Set-Cookie透過・属性付与
+          proxy_pass_header Set-Cookie;
+          proxy_cookie_domain off;
+          proxy_cookie_flags ory_kratos_session httponly secure samesite=lax;
+
           proxy_http_version 1.1;
           proxy_set_header Upgrade $http_upgrade;
           proxy_set_header Connection $connection_upgrade;
@@ -225,7 +240,8 @@ data:
           add_header X-Kratos-Proxy "nginx-external-transparent" always;
         }
 
-        location /sessions/whoami {
+        # All sessions endpoints
+        location /sessions/ {
           limit_req zone=sessions_whoami burst=10 nodelay;
           limit_req_status 429;
 
@@ -238,6 +254,11 @@ data:
           proxy_set_header X-Forwarded-Proto $xfp;
           proxy_set_header X-Forwarded-Host  $host;
           proxy_set_header X-Request-ID      $request_id;
+
+          # Set-Cookie透過・属性付与
+          proxy_pass_header Set-Cookie;
+          proxy_cookie_domain off;
+          proxy_cookie_flags ory_kratos_session httponly secure samesite=lax;
 
           proxy_http_version 1.1;
           proxy_set_header Upgrade $http_upgrade;
@@ -272,12 +293,36 @@ data:
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-XSS-Protection "1; mode=block" always;
         add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), usb=(), bluetooth=()" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://id.curionoah.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'" always;
 
         add_header X-Request-ID $request_id always;
         add_header X-Alt-Pod    $hostname   always;
         add_header X-Upstream-Addr   $upstream_addr   always;
         add_header X-Upstream-Status $upstream_status always;
+
+        # ===== /ory/* → Kratos Public =====
+        location /ory/ {
+            proxy_pass http://kratos-public.alt-auth.svc.cluster.local:4433/;
+            #        ↑ trailing slash 重要: /ory/ を upstream の / に差し替える
+            #        （/ory/self-service/... → /self-service/... にマップ）
+            # nginx 標準のパス付 proxy_pass 仕様に従う
+
+            proxy_set_header Host              $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            
+            proxy_http_version 1.1;
+
+            # 1) Set-Cookie を素通し
+            proxy_pass_header Set-Cookie;
+
+            # 2) Domain 書換はしない（Kratos/同一ドメインなので不要）
+            proxy_cookie_domain off;
+
+            # 3) 必要なら属性だけ補強（nginx 1.19+）
+            proxy_cookie_flags ory_kratos_session httponly secure samesite=lax;
+        }
 
         # ===== Next static files (unified location) =====
         location ^~ /_next/static/ {
@@ -425,7 +470,7 @@ data:
         location / {
           # ⚠ add_header を使うので、server階層のヘッダは継承されない。
           # そのため、この場所で必要なヘッダを再宣言する。
-          add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self' data:; connect-src 'self' https://id.curionoah.com https://curionoah.com https: wss:; form-action 'self' https://id.curionoah.com; frame-ancestors 'self'; report-to csp-endpoint; report-uri /security/csp-report" always;
+          add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self' data:; connect-src 'self' https://curionoah.com https: wss:; form-action 'self'; frame-ancestors 'self'; report-to csp-endpoint; report-uri /security/csp-report" always;
           add_header Reporting-Endpoints 'csp-endpoint="https://curionoah.com/security/csp-report"' always;
 
           # 再宣言（継承されないため）

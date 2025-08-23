@@ -157,7 +157,9 @@ data:
       cookie:
         persistent: {{ .Values.kratos.session.cookie.persistent }}
         same_site: {{ .Values.kratos.session.cookie.same_site }}
+        {{- if .Values.kratos.session.cookie.domain }}
         domain: {{ .Values.kratos.session.cookie.domain }}
+        {{- end }}
         {{- if .Values.kratos.session.cookie.path }}
         path: {{ .Values.kratos.session.cookie.path }}
         {{- end }}
