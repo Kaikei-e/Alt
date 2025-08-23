@@ -22,9 +22,18 @@ import { FeedTag } from "@/types/feed-tags";
 const PAGE_SIZE = 20;
 
 // Transform Feed to DesktopFeed
+const safeStr = (v: unknown) => (typeof v === "string" ? v : "");
+const safeDate = (v: unknown) => {
+  const d = typeof v === "string" ? new Date(v) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toISOString() : null;
+};
+
 const transformFeedToDesktopFeed = (feed: Feed): DesktopFeed => {
+  const desc = safeStr(feed.description);
+  const publishedIso = safeDate(feed.published) ?? new Date().toISOString();
   return {
     ...feed,
+    description: desc,
     metadata: {
       source: {
         id: "rss",
@@ -35,14 +44,14 @@ const transformFeedToDesktopFeed = (feed: Feed): DesktopFeed => {
         unreadCount: 0,
         avgReadingTime: 5,
       },
-      readingTime: Math.max(1, Math.ceil(feed.description.length / 200)),
+      readingTime: Math.max(1, Math.ceil(desc.length / 200)),
       engagement: {
         likes: Math.floor(Math.random() * 50),
         bookmarks: Math.floor(Math.random() * 20),
       },
       tags: [],
       relatedCount: 0,
-      publishedAt: feed.published,
+      publishedAt: publishedIso,
       priority: "medium" as const,
       category: "general",
       difficulty: "intermediate" as const,
@@ -321,7 +330,10 @@ const DesktopStyledFeedCard = ({
         <HStack justify="space-between" align="center" pt={2}>
           <HStack gap={2}>
             <Text fontSize="xs" color="var(--text-muted)">
-              {new Date(feed.published).toLocaleDateString()}
+              {(() => {
+                const d = new Date(feed.published || feed.metadata?.publishedAt || "");
+                return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
+              })()}
             </Text>
             <Text fontSize="xs" color="var(--text-muted)">
               •
