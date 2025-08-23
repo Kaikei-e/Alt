@@ -5,7 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { LoginForm } from './LoginForm';
+import LoginForm from './LoginForm';
 
 // Kratosクライアントのモック
 vi.mock('@/lib/kratos', () => ({
@@ -230,6 +230,143 @@ describe('LoginForm', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/the provided credentials are invalid/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('410 Error Handling (Flow Expiration)', () => {
+    it('should redirect to new flow when getLoginFlow returns 410', async () => {
+      const error410 = {
+        response: {
+          status: 410,
+          data: {
+            error: {
+              id: 'self_service_flow_expired',
+              code: 410,
+              status: 'Gone',
+              message: 'Flow expired'
+            }
+          }
+        }
+      };
+
+      vi.mocked(kratos.getLoginFlow).mockRejectedValue(error410);
+
+      // Mock window.location.href
+      const mockLocation = { href: '' };
+      Object.defineProperty(window, 'location', {
+        value: mockLocation,
+        writable: true,
+      });
+
+      // Mock current URL with return_to parameter
+      Object.defineProperty(window, 'location', {
+        value: {
+          ...mockLocation,
+          href: 'https://curionoah.com/auth/login?flow=expired-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome'
+        },
+        writable: true,
+      });
+
+      render(<LoginForm flowId="expired-flow-id" />);
+
+      await waitFor(() => {
+        expect(window.location.href).toBe('https://id.curionoah.com/self-service/login/browser?return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome');
+      });
+    });
+
+    it('should redirect to new flow when updateLoginFlow returns 410', async () => {
+      const user = userEvent.setup();
+      const mockFlow = {
+        id: 'test-flow-id',
+        ui: {
+          action: '/self-service/login',
+          method: 'POST',
+          nodes: [
+            {
+              type: 'input',
+              attributes: {
+                name: 'identifier',
+                type: 'email',
+                required: true,
+              },
+              messages: [],
+            },
+            {
+              type: 'input',
+              attributes: {
+                name: 'password',
+                type: 'password',
+                required: true,
+              },
+              messages: [],
+            }
+          ]
+        }
+      };
+
+      const error410 = {
+        response: {
+          status: 410,
+          data: {
+            error: {
+              id: 'self_service_flow_expired'
+            }
+          }
+        }
+      };
+
+      vi.mocked(kratos.getLoginFlow).mockResolvedValue({ data: mockFlow });
+      vi.mocked(kratos.updateLoginFlow).mockRejectedValue(error410);
+
+      // Mock window.location.href
+      const mockLocation = { href: '' };
+      Object.defineProperty(window, 'location', {
+        value: {
+          ...mockLocation,
+          href: 'https://curionoah.com/auth/login?flow=test-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings'
+        },
+        writable: true,
+      });
+
+      render(<LoginForm flowId="test-flow-id" />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+      });
+
+      await user.type(screen.getByLabelText(/email/i), 'test@example.com');
+      await user.type(screen.getByLabelText(/password/i), 'password123');
+      await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await waitFor(() => {
+        expect(window.location.href).toBe('https://id.curionoah.com/self-service/login/browser?return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings');
+      });
+    });
+
+    it('should redirect to default return_to when no return_to in URL', async () => {
+      const error410 = {
+        response: {
+          status: 410
+        }
+      };
+
+      vi.mocked(kratos.getLoginFlow).mockRejectedValue(error410);
+
+      // Mock window.location.href without return_to
+      const mockLocation = { href: '' };
+      Object.defineProperty(window, 'location', {
+        value: {
+          ...mockLocation,
+          href: 'https://curionoah.com/auth/login?flow=expired-flow'
+        },
+        writable: true,
+      });
+
+      render(<LoginForm flowId="expired-flow-id" />);
+
+      await waitFor(() => {
+        expect(window.location.href).toBe('https://id.curionoah.com/self-service/login/browser?return_to=https%3A%2F%2Fcurionoah.com%2F');
       });
     });
   });

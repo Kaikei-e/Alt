@@ -2,7 +2,7 @@ import { headers } from 'next/headers'
 
 export async function GET() {
   const cookie = (await headers()).get('cookie') ?? ''
-  const KRATOS = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL || 'https://id.curionoah.com'
+  const KRATOS = process.env.KRATOS_INTERNAL_URL || process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL || 'https://id.curionoah.com'
 
   try {
     const r = await fetch(`${KRATOS}/sessions/whoami`, {
