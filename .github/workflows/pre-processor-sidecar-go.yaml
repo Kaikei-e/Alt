@@ -25,3 +25,4 @@ jobs:
       working-directory: 'pre-processor-sidecar/app'
       go-version: '1.24'
       coverage-flags: 'pre-processor-sidecar'
+      sparse-checkout: 'pre-processor-sidecar'

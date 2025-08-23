@@ -18,6 +18,18 @@ on:
         required: false
         type: boolean
         default: false
+      use-local-persistent-cache:
+        required: false
+        type: boolean
+        default: false
+      upload-coverage:
+        required: false
+        type: boolean
+        default: true
+      sparse-checkout:
+        required: false
+        type: string
+        default: 'alt-backend'
 
   workflow_dispatch:
 
@@ -58,9 +70,9 @@ jobs:
       - name: Checkout (sparse)
         uses: actions/checkout@v5
         with:
-          # alt-backend だけをチェックアウトして無駄を削減
+          # sparse checkout paths to reduce unnecessary files
           sparse-checkout: |
-            alt-backend
+            ${{ inputs.sparse-checkout }}
           sparse-checkout-cone-mode: true
           fetch-depth: 1
       # ^ v5はNode 24ランタイムで、Runner v2.327.1+ が必須。後述の注記を確認。
@@ -109,7 +121,7 @@ jobs:
           go test ./... -count=1 -race -covermode=atomic -coverprofile=coverage.out
 
       - name: Upload coverage to Codecov (v5)
-        if: always()
+        if: always() && inputs.upload-coverage
         uses: codecov/codecov-action@v5
         with:
           # v5は files（複数可）
