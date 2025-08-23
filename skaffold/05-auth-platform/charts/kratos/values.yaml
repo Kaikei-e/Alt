@@ -4,7 +4,7 @@
 # Image configuration - 公式パターン準拠: バージョン統一
 image:
   repository: oryd/kratos
-  tag: "v1.3.1"  # Migration imageと統一
+  tag: "v1.3.1" # Migration imageと統一
   pullPolicy: IfNotPresent
 
 # Service account configuration
@@ -25,8 +25,8 @@ podAnnotations:
   config.linkerd.io/proxy-inbound-connect-timeout: 30000ms
   config.linkerd.io/proxy-outbound-connect-timeout: 30000ms
   config.linkerd.io/proxy-protocol-detection-timeout: 0s
-  config.linkerd.io/skip-outbound-ports: "5432"  # Skip postgres port
-  config.linkerd.io/opaque-ports: "4433,4434"  # memo.md Phase 4: TCP direct for Kratos
+  config.linkerd.io/skip-outbound-ports: "5432" # Skip postgres port
+  config.linkerd.io/opaque-ports: "4433,4434" # memo.md Phase 4: TCP direct for Kratos
 
 # Resource configuration
 resources:
@@ -99,7 +99,7 @@ kratos:
   # Development configuration
   dev: true
 
-  # Base URLs (will be templated for different environments) - TODO.md要件: 末尾スラッシュ無し
+  # Base URLs (will be templated for different environments)
   publicUrl: "https://curionoah.com/ory"
   adminUrl: "http://kratos-admin.{{ .Values.namespace }}.svc.cluster.local:4434"
 
@@ -110,11 +110,7 @@ kratos:
   selfservice:
     default_browser_return_url: "https://curionoah.com/"
     allowed_return_urls:
-      - "https://curionoah.com/"
-      - "https://curionoah.com/desktop/*"
-      - "https://curionoah.com/mobile/*"
-      - "https://curionoah.com/home"
-      - "https://curionoah.com/auth/login"
+      - "https://curionoah.com/*"
 
     methods:
       password:
@@ -220,12 +216,12 @@ healthCheck:
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
-    failureThreshold: 30  # Allow 5 minutes for startup
+    failureThreshold: 30 # Allow 5 minutes for startup
   livenessProbe:
     httpGet:
       path: /admin/health/alive
       port: 4434
-    initialDelaySeconds: 120  # Wait for startup to complete
+    initialDelaySeconds: 120 # Wait for startup to complete
     periodSeconds: 30
     timeoutSeconds: 10
     failureThreshold: 3
@@ -240,8 +236,8 @@ healthCheck:
 
 # Migration configuration - 公式パターン実装: Official Ory automigration
 automigration:
-  enabled: true  # 公式推奨: 自動マイグレーション有効化
-  type: job      # 公式推奨: Kubernetes Job形式で実行
+  enabled: true # 公式推奨: 自動マイグレーション有効化
+  type: job # 公式推奨: Kubernetes Job形式で実行
   resources:
     requests:
       cpu: 100m
@@ -259,11 +255,11 @@ automigration:
 
 # Legacy migration configuration (deprecated)
 migration:
-  enabled: false  # 公式パターンに移行: 手動Job無効化
-  manualJob: false  # 公式automigrationに移行
+  enabled: false # 公式パターンに移行: 手動Job無効化
+  manualJob: false # 公式automigrationに移行
   image:
     repository: oryd/kratos
-    tag: "v1.3.1"  # ✅ メインイメージと統一
+    tag: "v1.3.1" # ✅ メインイメージと統一
 
 # Database configuration (connects to kratos-postgres chart)
 database:
@@ -281,8 +277,8 @@ database:
 postgresql:
   enabled: true
   auth:
-    username: ""  # Set in values-production.yaml
-    password: ""  # Set in values-production.yaml
+    username: "" # Set in values-production.yaml
+    password: "" # Set in values-production.yaml
     database: "kratos_db"
   service:
     name: "kratos-postgres.alt-auth.svc.cluster.local"
