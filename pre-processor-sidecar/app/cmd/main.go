@@ -110,7 +110,7 @@ func main() {
 
 	logger.Info("Pre-processor-sidecar Scheduler starting with Simple Token System",
 		"service", cfg.ServiceName,
-		"subscription_sync_interval", "4h",
+		"subscription_sync_interval", "12h",
 		"article_fetch_interval", "18m",
 		"api_daily_limit", cfg.RateLimit.DailyLimit)
 
@@ -462,7 +462,7 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 
 	// Start the dual schedule processing
 	logger.Info("Starting dual schedule processing",
-		"subscription_sync_interval", "4h",
+		"subscription_sync_interval", "12h",
 		"article_fetch_interval", "18m",
 		"admin_api_address", ":8080")
 
