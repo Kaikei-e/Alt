@@ -50,23 +50,23 @@ if (process.env.ANALYZE === "true") {
 const nextConfig = {
   // X17.md Phase 17.2: HAR実証済み - local-devを回避する本番ビルドID生成
   generateBuildId: async () => {
-    const buildId = process.env.GIT_SHA || 
-                   process.env.VERCEL_GIT_COMMIT_SHA || 
-                   process.env.BUILD_ID || 
+    const buildId = process.env.GIT_SHA ||
+                   process.env.VERCEL_GIT_COMMIT_SHA ||
+                   process.env.BUILD_ID ||
                    `production-${Date.now().toString(36)}`;
     console.log(`🏗️ Generated Build ID: ${buildId}`);
     return buildId;
   },
-  
+
   // 環境変数の明示的な設定（ミドルウェアで確実にアクセスできるよう保証）
   env: {
     KRATOS_INTERNAL_URL: process.env.KRATOS_INTERNAL_URL || 'http://kratos-public.alt-auth.svc.cluster.local:4433',
     KRATOS_PUBLIC_URL: process.env.KRATOS_PUBLIC_URL || 'https://id.curionoah.com',
   },
-  
+
   // Enable standalone output for containerized deployment
   output: "standalone",
-  
+
   // Essential optimizations
   compress: true,
   poweredByHeader: false,
@@ -81,11 +81,10 @@ const nextConfig = {
     ];
   },
 
-  // X17.md Phase 17.2: HAR実証済み - local-devを回避するヘッダ設定  
   async headers() {
-    const buildId = process.env.GIT_SHA || 
-                   process.env.VERCEL_GIT_COMMIT_SHA || 
-                   process.env.BUILD_ID || 
+    const buildId = process.env.GIT_SHA ||
+                   process.env.VERCEL_GIT_COMMIT_SHA ||
+                   process.env.BUILD_ID ||
                    `production-${Date.now().toString(36)}`
     return [
       {
