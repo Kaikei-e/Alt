@@ -152,6 +152,7 @@ data:
               - name: envoy.filters.http.dynamic_forward_proxy
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
+                  allow_dynamic_host_from_filter_state: true
                   dns_cache_config:
                     name: dynamic_forward_proxy_cache_config
                     dns_lookup_family: V4_ONLY
@@ -222,12 +223,12 @@ data:
               host_ttl: 3600s
               max_hosts: 1024
 
-      # REPORT.md恒久対応: CONNECT専用生TCPクラスター（二重TLS回避）
+      # REPORT.md恒久対応: CONNECT専用生TCPクラスター（OAuth2対応）
       - name: connect_tcp_cluster
         connect_timeout: {{ .Values.envoy.timeout.connect }}
         lb_policy: CLUSTER_PROVIDED
         # ★ 重要：transport_socket (TLS) を付けない = 平文TCP
-        # ★ typed_extension_protocol_options も不要（CONNECT終端時はTCP connection pool使用）
+        # ★ CONNECTトンネルは生TCPで転送、クライアント側でTLS処理
         
         cluster_type:
           name: envoy.clusters.dynamic_forward_proxy
