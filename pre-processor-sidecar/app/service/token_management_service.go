@@ -5,12 +5,16 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"pre-processor-sidecar/models"
 	"pre-processor-sidecar/repository"
+	"pre-processor-sidecar/driver"
+	
+	"golang.org/x/sync/singleflight"
 )
 
 // TokenManagementService handles complete OAuth2 token lifecycle management
@@ -20,6 +24,26 @@ type TokenManagementService struct {
 	logger           *slog.Logger
 	refreshBuffer    time.Duration
 	maxRetryAttempts int
+	
+	// Single-flight group prevents concurrent refresh operations
+	refreshGroup     *singleflight.Group
+	
+	// Monitoring and metrics
+	metrics          *TokenManagementMetrics
+}
+
+// TokenManagementMetrics tracks token management operations
+type TokenManagementMetrics struct {
+	TotalRefreshAttempts    int64     `json:"total_refresh_attempts"`
+	SuccessfulRefreshes     int64     `json:"successful_refreshes"`
+	FailedRefreshes         int64     `json:"failed_refresh_count"`
+	NonRetryableFailures    int64     `json:"non_retryable_failures"`
+	RateLimitFailures       int64     `json:"rate_limit_failures"`
+	LastRefreshTime         time.Time `json:"last_refresh_time"`
+	LastRefreshDuration     time.Duration `json:"last_refresh_duration"`
+	AverageRefreshDuration  time.Duration `json:"average_refresh_duration"`
+	SingleFlightHits        int64     `json:"singleflight_hits"`
+	ConcurrentRefreshBlocked int64    `json:"concurrent_refresh_blocked"`
 }
 
 // NewTokenManagementService creates a new token management service
@@ -36,8 +60,32 @@ func NewTokenManagementService(
 		tokenRepo:        tokenRepo,
 		oauth2Client:     oauth2Client,
 		logger:           logger,
-		refreshBuffer:    5 * time.Minute, // 5-minute buffer before expiry
+		refreshBuffer:    10 * time.Minute, // Increased to 10-minute buffer before expiry
 		maxRetryAttempts: 3,
+		refreshGroup:     &singleflight.Group{}, // Initialize single-flight group
+		metrics:          &TokenManagementMetrics{},
+	}
+}
+
+// NewTokenManagementServiceWithBuffer creates a token management service with custom refresh buffer
+func NewTokenManagementServiceWithBuffer(
+	tokenRepo repository.OAuth2TokenRepository,
+	oauth2Client OAuth2Driver,
+	logger *slog.Logger,
+	refreshBuffer time.Duration,
+) *TokenManagementService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	return &TokenManagementService{
+		tokenRepo:        tokenRepo,
+		oauth2Client:     oauth2Client,
+		logger:           logger,
+		refreshBuffer:    refreshBuffer,
+		maxRetryAttempts: 3,
+		refreshGroup:     &singleflight.Group{}, // Initialize single-flight group
+		metrics:          &TokenManagementMetrics{},
 	}
 }
 
@@ -165,35 +213,116 @@ func (s *TokenManagementService) tokenNeedsRefresh(token *models.OAuth2Token) bo
 	return token.NeedsRefresh(s.refreshBuffer)
 }
 
-// refreshTokenWithRetry attempts token refresh with retry logic
+// refreshTokenWithRetry attempts token refresh with retry logic using single-flight pattern
 func (s *TokenManagementService) refreshTokenWithRetry(ctx context.Context, token *models.OAuth2Token) (*models.OAuth2Token, error) {
-	var lastErr error
-
-	for attempt := 1; attempt <= s.maxRetryAttempts; attempt++ {
-		s.logger.Info("Attempting token refresh",
-			"attempt", attempt,
-			"max_attempts", s.maxRetryAttempts)
-
-		refreshedToken, err := s.performTokenRefresh(ctx, token)
-		if err != nil {
-			lastErr = err
-			s.logger.Warn("Token refresh attempt failed",
-				"attempt", attempt,
-				"error", err)
-
-			if attempt < s.maxRetryAttempts {
-				backoffDuration := time.Duration(attempt) * 2 * time.Second
-				s.logger.Info("Retrying token refresh after backoff", "backoff", backoffDuration)
-				time.Sleep(backoffDuration)
-				continue
-			}
-		} else {
-			s.logger.Info("Token refresh successful", "attempt", attempt)
-			return refreshedToken, nil
+	// Use single-flight pattern to prevent concurrent refresh operations
+	refreshKey := "token_refresh"
+	
+	startTime := time.Now()
+	s.metrics.TotalRefreshAttempts++
+	
+	result, err, shared := s.refreshGroup.Do(refreshKey, func() (interface{}, error) {
+		s.logger.Info("Executing token refresh (single-flight protected)")
+		
+		// Re-check token validity in case another goroutine already refreshed it
+		currentToken, err := s.loadTokenFromStorage(ctx)
+		if err == nil && !s.tokenNeedsRefresh(currentToken) {
+			s.logger.Info("Token was already refreshed by another operation")
+			return currentToken, nil
 		}
-	}
+		
+		// Perform actual refresh with retry logic
+		var lastErr error
+		for attempt := 1; attempt <= s.maxRetryAttempts; attempt++ {
+			s.logger.Info("Attempting token refresh",
+				"attempt", attempt,
+				"max_attempts", s.maxRetryAttempts)
 
-	return nil, fmt.Errorf("token refresh failed after %d attempts: %w", s.maxRetryAttempts, lastErr)
+			refreshedToken, err := s.performTokenRefresh(ctx, token)
+			if err != nil {
+				lastErr = err
+				s.logger.Warn("Token refresh attempt failed",
+					"attempt", attempt,
+					"error", err)
+
+				// Check if this is a non-retryable error
+				if errors.Is(err, driver.ErrInvalidRefreshToken) || 
+				   errors.Is(err, driver.ErrTokenRevoked) ||
+				   errors.Is(err, driver.ErrInvalidGrant) {
+					s.logger.Error("Token refresh failed with non-retryable error", "error", err)
+					s.metrics.NonRetryableFailures++
+					s.metrics.FailedRefreshes++
+					return nil, fmt.Errorf("non-retryable token refresh error: %w", err)
+				}
+				
+				// For rate limiting, wait longer
+				if errors.Is(err, driver.ErrRateLimited) {
+					s.metrics.RateLimitFailures++
+					if attempt < s.maxRetryAttempts {
+						backoffDuration := time.Duration(attempt) * 30 * time.Second // Longer backoff for rate limiting
+						s.logger.Warn("Rate limited, waiting longer before retry", "backoff", backoffDuration)
+						time.Sleep(backoffDuration)
+						continue
+					}
+				}
+
+				if attempt < s.maxRetryAttempts {
+					// Exponential backoff for temporary failures
+					backoffDuration := time.Duration(attempt) * 2 * time.Second
+					if errors.Is(err, driver.ErrTemporaryFailure) {
+						backoffDuration = time.Duration(attempt) * 10 * time.Second // Longer backoff for server failures
+					}
+					s.logger.Info("Retrying token refresh after backoff", "backoff", backoffDuration)
+					time.Sleep(backoffDuration)
+					continue
+				}
+			} else {
+				s.logger.Info("Token refresh successful", "attempt", attempt)
+				s.metrics.SuccessfulRefreshes++
+				return refreshedToken, nil
+			}
+		}
+
+		s.metrics.FailedRefreshes++
+		return nil, fmt.Errorf("token refresh failed after %d attempts: %w", s.maxRetryAttempts, lastErr)
+	})
+	
+	// Update metrics
+	duration := time.Since(startTime)
+	s.metrics.LastRefreshTime = startTime
+	s.metrics.LastRefreshDuration = duration
+	
+	// Update average duration
+	if s.metrics.AverageRefreshDuration == 0 {
+		s.metrics.AverageRefreshDuration = duration
+	} else {
+		s.metrics.AverageRefreshDuration = (s.metrics.AverageRefreshDuration + duration) / 2
+	}
+	
+	if err != nil {
+		s.logger.Error("Token refresh failed", 
+			"error", err,
+			"duration", duration,
+			"total_attempts", s.metrics.TotalRefreshAttempts,
+			"success_rate", float64(s.metrics.SuccessfulRefreshes)/float64(s.metrics.TotalRefreshAttempts))
+		return nil, err
+	}
+	
+	if shared {
+		s.metrics.SingleFlightHits++
+		s.metrics.ConcurrentRefreshBlocked++
+		s.logger.Info("Token refresh result shared from concurrent operation",
+			"duration", duration,
+			"singleflight_hits", s.metrics.SingleFlightHits)
+	}
+	
+	s.logger.Info("Token refresh completed successfully",
+		"duration", duration,
+		"shared_result", shared,
+		"total_refreshes", s.metrics.SuccessfulRefreshes,
+		"success_rate", float64(s.metrics.SuccessfulRefreshes)/float64(s.metrics.TotalRefreshAttempts))
+	
+	return result.(*models.OAuth2Token), nil
 }
 
 // performTokenRefresh performs the actual token refresh operation with rotation support
@@ -310,4 +439,39 @@ type OldTokenStatus struct {
 	TokenType     string        `json:"token_type,omitempty"`
 	Scope         string        `json:"scope,omitempty"`
 	ErrorMessage  string        `json:"error_message,omitempty"`
+}
+
+// GetMetrics returns the current metrics for token management operations
+func (s *TokenManagementService) GetMetrics() *TokenManagementMetrics {
+	return s.metrics
+}
+
+// ResetMetrics resets all metrics counters (useful for testing)
+func (s *TokenManagementService) ResetMetrics() {
+	s.metrics = &TokenManagementMetrics{}
+}
+
+// GetHealthMetrics returns a comprehensive health report including metrics
+func (s *TokenManagementService) GetHealthMetrics(ctx context.Context) map[string]interface{} {
+	// Get current token status
+	tokenStatus, _ := s.GetTokenStatus(ctx)
+	
+	// Calculate success rate
+	var successRate float64
+	if s.metrics.TotalRefreshAttempts > 0 {
+		successRate = float64(s.metrics.SuccessfulRefreshes) / float64(s.metrics.TotalRefreshAttempts)
+	}
+	
+	return map[string]interface{}{
+		"token_status": tokenStatus,
+		"metrics": s.metrics,
+		"calculated_metrics": map[string]interface{}{
+			"success_rate_percentage": successRate * 100,
+			"failure_rate_percentage": (1 - successRate) * 100,
+			"single_flight_efficiency": float64(s.metrics.ConcurrentRefreshBlocked) / float64(s.metrics.TotalRefreshAttempts+s.metrics.ConcurrentRefreshBlocked) * 100,
+			"average_refresh_time_ms": s.metrics.AverageRefreshDuration.Milliseconds(),
+			"last_refresh_time_ms": s.metrics.LastRefreshDuration.Milliseconds(),
+		},
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
 }

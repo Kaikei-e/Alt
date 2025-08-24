@@ -4,6 +4,8 @@
 package models
 
 import (
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -16,6 +18,17 @@ type OAuth2Token struct {
 	ExpiresAt    time.Time `json:"expires_at"`    // Calculated expiration time
 	Scope        string    `json:"scope"`
 	IssuedAt     time.Time `json:"issued_at"`     // When token was issued
+}
+
+// getClockSkewTolerance returns the clock skew tolerance from environment variable or default
+func getClockSkewTolerance() time.Duration {
+	if skewStr := os.Getenv("OAUTH2_CLOCK_SKEW_SECONDS"); skewStr != "" {
+		if skewSeconds, err := strconv.Atoi(skewStr); err == nil {
+			return time.Duration(skewSeconds) * time.Second
+		}
+	}
+	// Default to 60 seconds clock skew tolerance
+	return 60 * time.Second
 }
 
 // InoreaderTokenResponse represents the OAuth2 token response from Inoreader API
@@ -49,14 +62,19 @@ func NewOAuth2Token(response InoreaderTokenResponse, existingRefreshToken string
 	}
 }
 
-// IsExpired checks if the token is expired
+// IsExpired checks if the token is expired with clock skew tolerance
 func (t *OAuth2Token) IsExpired() bool {
-	return time.Now().After(t.ExpiresAt)
+	// Add clock skew tolerance to account for time differences between servers
+	clockSkew := getClockSkewTolerance()
+	return time.Now().Add(clockSkew).After(t.ExpiresAt)
 }
 
-// NeedsRefresh checks if the token needs to be refreshed based on buffer time
+// NeedsRefresh checks if the token needs to be refreshed based on buffer time with clock skew tolerance
 func (t *OAuth2Token) NeedsRefresh(buffer time.Duration) bool {
-	return time.Now().Add(buffer).After(t.ExpiresAt)
+	// Add both buffer time and clock skew tolerance
+	clockSkew := getClockSkewTolerance()
+	totalBuffer := buffer + clockSkew
+	return time.Now().Add(totalBuffer).After(t.ExpiresAt)
 }
 
 // TimeUntilExpiry returns the duration until token expiry

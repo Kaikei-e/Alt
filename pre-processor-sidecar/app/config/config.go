@@ -273,19 +273,19 @@ func LoadConfig() (*Config, error) {
 		cfg.RateLimit.SyncInterval = 30 * time.Minute
 	}
 
-	// Parse token refresh buffer for both Inoreader and OAuth2
+	// Parse token refresh buffer for both Inoreader and OAuth2 (increased default from 5 to 10 minutes)
 	if buffer := os.Getenv("OAUTH2_TOKEN_REFRESH_BUFFER"); buffer != "" {
 		if bufferSeconds, err := strconv.Atoi(buffer); err == nil {
 			bufferDuration := time.Duration(bufferSeconds) * time.Second
 			cfg.Inoreader.TokenRefreshBuffer = bufferDuration
 			cfg.OAuth2.RefreshBuffer = bufferDuration
 		} else {
-			cfg.Inoreader.TokenRefreshBuffer = 5 * time.Minute // Default
-			cfg.OAuth2.RefreshBuffer = 5 * time.Minute         // Default
+			cfg.Inoreader.TokenRefreshBuffer = 10 * time.Minute // Increased default
+			cfg.OAuth2.RefreshBuffer = 10 * time.Minute         // Increased default
 		}
 	} else {
-		cfg.Inoreader.TokenRefreshBuffer = 5 * time.Minute
-		cfg.OAuth2.RefreshBuffer = 5 * time.Minute
+		cfg.Inoreader.TokenRefreshBuffer = 10 * time.Minute // Increased default
+		cfg.OAuth2.RefreshBuffer = 10 * time.Minute         // Increased default
 	}
 
 	// Phase 5: Load rotation processing configuration

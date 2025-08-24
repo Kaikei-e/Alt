@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -24,11 +25,28 @@ type OAuth2TokenResponse struct {
 	ExpiresAt    time.Time `json:"-"` // Calculated field
 }
 
+// OAuth2 specific error types for better error handling
+var (
+	ErrInvalidRefreshToken = errors.New("refresh token is invalid or expired")
+	ErrRateLimited         = errors.New("OAuth2 API rate limit exceeded")
+	ErrTokenRevoked        = errors.New("refresh token has been revoked")
+	ErrInvalidGrant        = errors.New("invalid grant type or parameters")
+	ErrTemporaryFailure    = errors.New("temporary OAuth2 service failure")
+)
+
+// OAuth2ErrorResponse represents an error response from the OAuth2 API
+type OAuth2ErrorResponse struct {
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description,omitempty"`
+	ErrorURI         string `json:"error_uri,omitempty"`
+}
+
 // OAuth2Client handles OAuth2 authentication with Inoreader API
 type OAuth2Client struct {
 	clientID     string
 	clientSecret string
-	baseURL      string
+	baseURL      string      // OAuth2 base URL
+	apiBaseURL   string      // API base URL
 	httpClient   *http.Client
 	logger       *slog.Logger
 }
@@ -39,10 +57,14 @@ func NewOAuth2Client(clientID, clientSecret, baseURL string, logger *slog.Logger
 		logger = slog.Default()
 	}
 
+	// API base URL is always the full API endpoint
+	apiBaseURL := "https://www.inoreader.com/reader/api/0"
+
 	return &OAuth2Client{
 		clientID:     clientID,
 		clientSecret: clientSecret,
-		baseURL:      baseURL,
+		baseURL:      baseURL,      // OAuth2 base URL
+		apiBaseURL:   apiBaseURL,   // API base URL
 		logger:       logger,
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second, // 30秒から60秒に増加
@@ -85,9 +107,58 @@ func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*
 
 	// Check for HTTP errors FIRST before parsing JSON
 	if resp.StatusCode != http.StatusOK {
-		// Read error response for debugging
+		// Read error response for debugging and specific error handling
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("OAuth2 refresh token failed with status %d: %s", resp.StatusCode, string(body))
+		bodyStr := string(body)
+		
+		// Log detailed error information
+		c.logger.Error("OAuth2 refresh token failed", 
+			"status_code", resp.StatusCode,
+			"response_body", bodyStr,
+			"content_type", resp.Header.Get("Content-Type"))
+		
+		// Handle specific error cases
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			// 401 - Invalid refresh token or client credentials
+			var oauthErr OAuth2ErrorResponse
+			if err := json.Unmarshal(body, &oauthErr); err == nil {
+				if oauthErr.Error == "invalid_grant" {
+					c.logger.Error("Refresh token is invalid or expired", "oauth2_error", oauthErr.Error, "description", oauthErr.ErrorDescription)
+					return nil, ErrInvalidRefreshToken
+				}
+			}
+			return nil, fmt.Errorf("%w: %s", ErrInvalidRefreshToken, bodyStr)
+			
+		case http.StatusForbidden:
+			// 403 - Token may have been revoked
+			c.logger.Error("Refresh token may have been revoked")
+			return nil, fmt.Errorf("%w: %s", ErrTokenRevoked, bodyStr)
+			
+		case http.StatusTooManyRequests:
+			// 429 - Rate limited
+			retryAfter := resp.Header.Get("Retry-After")
+			c.logger.Warn("OAuth2 API rate limited", "retry_after", retryAfter)
+			return nil, fmt.Errorf("%w: retry after %s", ErrRateLimited, retryAfter)
+			
+		case http.StatusBadRequest:
+			// 400 - Invalid request parameters
+			var oauthErr OAuth2ErrorResponse
+			if err := json.Unmarshal(body, &oauthErr); err == nil {
+				c.logger.Error("Invalid OAuth2 request", "oauth2_error", oauthErr.Error, "description", oauthErr.ErrorDescription)
+				return nil, fmt.Errorf("%w: %s", ErrInvalidGrant, oauthErr.ErrorDescription)
+			}
+			return nil, fmt.Errorf("%w: %s", ErrInvalidGrant, bodyStr)
+			
+		case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			// 5xx - Temporary server failures
+			c.logger.Warn("OAuth2 server temporary failure", "status_code", resp.StatusCode)
+			return nil, fmt.Errorf("%w: HTTP %d", ErrTemporaryFailure, resp.StatusCode)
+			
+		default:
+			// Other errors
+			return nil, fmt.Errorf("OAuth2 refresh token failed with status %d: %s", resp.StatusCode, bodyStr)
+		}
 	}
 
 	// Parse JSON response only after confirming success
@@ -126,7 +197,7 @@ func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*
 // ValidateToken checks if an access token is valid by making a test API call
 func (c *OAuth2Client) ValidateToken(ctx context.Context, accessToken string) (bool, error) {
 	// Make a lightweight API call to verify token validity
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/user-info", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiBaseURL+"/user-info", nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create token validation request: %w", err)
 	}
@@ -155,7 +226,7 @@ func (c *OAuth2Client) ValidateToken(ctx context.Context, accessToken string) (b
 // MakeAuthenticatedRequest makes an authenticated API request to Inoreader
 func (c *OAuth2Client) MakeAuthenticatedRequest(ctx context.Context, accessToken, endpoint string, params map[string]string) (map[string]interface{}, error) {
 	// Build request URL with parameters
-	reqURL := c.baseURL + endpoint
+	reqURL := c.apiBaseURL + endpoint
 	if len(params) > 0 {
 		values := url.Values{}
 		for key, value := range params {
@@ -244,7 +315,7 @@ func (c *OAuth2Client) SetTimeout(timeout time.Duration) {
 // MakeAuthenticatedRequestWithHeaders makes an authenticated API request and returns response with headers
 func (c *OAuth2Client) MakeAuthenticatedRequestWithHeaders(ctx context.Context, accessToken, endpoint string, params map[string]string) (map[string]interface{}, map[string]string, error) {
 	// Build request URL with parameters
-	reqURL := c.baseURL + endpoint
+	reqURL := c.apiBaseURL + endpoint
 	if len(params) > 0 {
 		values := url.Values{}
 		for key, value := range params {
@@ -332,7 +403,7 @@ func (c *OAuth2Client) DebugDirectRequest(ctx context.Context, accessToken, endp
 		},
 	}
 
-	reqURL := c.baseURL + endpoint
+	reqURL := c.apiBaseURL + endpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create direct debug request: %w", err)

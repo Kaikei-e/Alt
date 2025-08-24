@@ -10,6 +10,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/mock v0.5.2
+	golang.org/x/sync v0.16.0
 	k8s.io/api v0.33.4
 	k8s.io/apimachinery v0.33.4
 	k8s.io/client-go v0.33.4

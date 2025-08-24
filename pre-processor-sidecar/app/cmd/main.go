@@ -111,7 +111,7 @@ func main() {
 	logger.Info("Pre-processor-sidecar Scheduler starting with Simple Token System",
 		"service", cfg.ServiceName,
 		"subscription_sync_interval", "4h",
-		"article_fetch_interval", "30m",
+		"article_fetch_interval", "18m",
 		"api_daily_limit", cfg.RateLimit.DailyLimit)
 
 	// Simple Token System初期化
@@ -278,7 +278,7 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	// OAuth2クライアントの作成（Enhanced Token Serviceと同じ設定）
 	clientID := os.Getenv("INOREADER_CLIENT_ID")
 	clientSecret := os.Getenv("INOREADER_CLIENT_SECRET")
-	oauth2Client := driver.NewOAuth2Client(clientID, clientSecret, cfg.Inoreader.BaseURL, logger)
+	oauth2Client := driver.NewOAuth2Client(clientID, clientSecret, cfg.OAuth2.BaseURL, logger)
 	oauth2Client.SetHTTPClient(httpClient)
 
 	// Initialize token repository based on configuration
@@ -463,7 +463,7 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	// Start the dual schedule processing
 	logger.Info("Starting dual schedule processing",
 		"subscription_sync_interval", "4h",
-		"article_fetch_interval", "30m",
+		"article_fetch_interval", "18m",
 		"admin_api_address", ":8080")
 
 	if err := scheduleHandler.Start(ctx); err != nil {
