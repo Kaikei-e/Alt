@@ -2,18 +2,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useHomeStats } from "./useHomeStats";
 import { feedsApi } from "@/lib/api";
-import { AuthProvider } from "@/contexts/auth-context";
-import { ReactNode } from "react";
 
-// Mock auth context to simulate authenticated user in tests
-vi.mock("@/contexts/auth-context", async () => {
-  const mod = await vi.importActual<typeof import("@/contexts/auth-context")>("@/contexts/auth-context");
-  return {
-    ...mod,
-    useAuth: vi.fn(() => ({ isAuthenticated: true })),
-    AuthProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-  };
-});
+// Mock the auth context directly with a simple authenticated user
+vi.mock("@/contexts/auth-context", () => ({
+  useAuth: vi.fn(() => ({
+    isAuthenticated: true,
+    user: { id: "test-user", email: "test@example.com" },
+    loading: false,
+    error: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+    checkSession: vi.fn(),
+  })),
+}));
 
 // Mock the API
 vi.mock("@/lib/api", () => ({
@@ -31,20 +32,13 @@ vi.mock("./useTodayUnreadCount", () => ({
   })),
 }));
 
-// Mock AuthProvider wrapper
-const AuthProviderWrapper = ({ children }: { children: ReactNode }) => {
-  return <AuthProvider>{children}</AuthProvider>;
-};
-
 describe("useHomeStats", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("should return initial loading state", () => {
-    const { result } = renderHook(() => useHomeStats(), {
-      wrapper: AuthProviderWrapper,
-    });
+    const { result } = renderHook(() => useHomeStats());
 
     expect(result.current.feedStats).toBeNull();
     expect(result.current.isLoadingStats).toBe(true);
@@ -66,9 +60,7 @@ describe("useHomeStats", () => {
 
     vi.mocked(feedsApi.getFeedStats).mockResolvedValue(mockFeedStats);
 
-    const { result } = renderHook(() => useHomeStats(), {
-      wrapper: AuthProviderWrapper,
-    });
+    const { result } = renderHook(() => useHomeStats());
 
     await waitFor(() => {
       expect(result.current.isLoadingStats).toBe(false);
@@ -88,9 +80,7 @@ describe("useHomeStats", () => {
 
     vi.mocked(feedsApi.getFeedStats).mockRejectedValue(new Error("API Error"));
 
-    const { result } = renderHook(() => useHomeStats(), {
-      wrapper: AuthProviderWrapper,
-    });
+    const { result } = renderHook(() => useHomeStats());
 
     await waitFor(() => {
       expect(result.current.isLoadingStats).toBe(false);
@@ -114,9 +104,7 @@ describe("useHomeStats", () => {
 
     vi.mocked(feedsApi.getFeedStats).mockResolvedValue(mockFeedStats);
 
-    const { result } = renderHook(() => useHomeStats(), {
-      wrapper: AuthProviderWrapper,
-    });
+    const { result } = renderHook(() => useHomeStats());
 
     await waitFor(() => {
       expect(result.current.isLoadingStats).toBe(false);
@@ -143,9 +131,7 @@ describe("useHomeStats", () => {
 
     vi.mocked(feedsApi.getFeedStats).mockResolvedValue(mockFeedStats);
 
-    const { result } = renderHook(() => useHomeStats(), {
-      wrapper: AuthProviderWrapper,
-    });
+    const { result } = renderHook(() => useHomeStats());
 
     await waitFor(() => {
       expect(result.current.isLoadingStats).toBe(false);

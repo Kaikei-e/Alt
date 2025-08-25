@@ -79,16 +79,15 @@ describe('middleware', () => {
       
       const response = middleware(request)
       
-      expect(response.status).toBe(307) // Next.js redirect status
+      expect(response.status).toBe(303) // Kratos redirect status
       
       const location = response.headers.get('location')
-      expect(location).toContain('https://id.curionoah.com/self-service/login/browser')
+      expect(location).toContain('/ory/self-service/login/browser')
       expect(location).toContain('return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome%3Ftest%3D123')
       
       // Check that guard cookie is set
       const setCookieHeader = response.headers.get('set-cookie')
       expect(setCookieHeader).toContain('alt_auth_redirect_guard=1')
-      expect(setCookieHeader).toContain('Domain=curionoah.com')
       expect(setCookieHeader).toContain('HttpOnly')
       expect(setCookieHeader).toContain('Secure')
       expect(setCookieHeader).toContain('SameSite=lax')
@@ -101,6 +100,7 @@ describe('middleware', () => {
       const response = middleware(request)
       
       const location = response.headers.get('location')
+      expect(location).toContain('/ory/self-service/login/browser')
       expect(location).toContain('return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Ffeeds%3Fcategory%3Dtech%26page%3D2')
     })
   })
@@ -112,6 +112,7 @@ describe('middleware', () => {
       const response = middleware(request)
       
       const location = response.headers.get('location')
+      expect(location).toContain('/ory/self-service/login/browser')
       expect(location).toContain('return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome')
     })
 
@@ -121,6 +122,7 @@ describe('middleware', () => {
       const response = middleware(request)
       
       const location = response.headers.get('location')
+      expect(location).toContain('/ory/self-service/login/browser')
       expect(location).toContain('return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings')
     })
   })

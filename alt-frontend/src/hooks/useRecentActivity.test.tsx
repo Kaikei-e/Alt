@@ -2,8 +2,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useRecentActivity } from "./useRecentActivity";
 import { feedsApi } from "@/lib/api";
-import { AuthProvider } from "@/contexts/auth-context";
-import { ReactNode } from "react";
+
+// Mock the auth context directly with a simple authenticated user
+vi.mock("@/contexts/auth-context", () => ({
+  useAuth: vi.fn(() => ({
+    isAuthenticated: true,
+    user: { id: "test-user", email: "test@example.com" },
+    loading: false,
+    error: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+    checkSession: vi.fn(),
+  })),
+}));
 
 // Mock the API
 vi.mock("@/lib/api", () => ({
@@ -12,20 +23,13 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
-// Mock AuthProvider wrapper
-const AuthProviderWrapper = ({ children }: { children: ReactNode }) => {
-  return <AuthProvider>{children}</AuthProvider>;
-};
-
 describe("useRecentActivity", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("should return initial loading state", () => {
-    const { result } = renderHook(() => useRecentActivity(), {
-      wrapper: AuthProviderWrapper,
-    });
+    const { result } = renderHook(() => useRecentActivity());
 
     expect(result.current.activities).toEqual([]);
     expect(result.current.isLoading).toBe(true);
@@ -50,9 +54,7 @@ describe("useRecentActivity", () => {
 
     vi.mocked(feedsApi.getRecentActivity).mockResolvedValue(mockActivities);
 
-    const { result } = renderHook(() => useRecentActivity(), {
-      wrapper: AuthProviderWrapper,
-    });
+    const { result } = renderHook(() => useRecentActivity());
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -73,9 +75,7 @@ describe("useRecentActivity", () => {
       new Error("API Error"),
     );
 
-    const { result } = renderHook(() => useRecentActivity(), {
-      wrapper: AuthProviderWrapper,
-    });
+    const { result } = renderHook(() => useRecentActivity());
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -97,9 +97,7 @@ describe("useRecentActivity", () => {
 
     vi.mocked(feedsApi.getRecentActivity).mockResolvedValue(mockActivities);
 
-    const { result } = renderHook(() => useRecentActivity(), {
-      wrapper: AuthProviderWrapper,
-    });
+    const { result } = renderHook(() => useRecentActivity());
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -120,9 +118,7 @@ describe("useRecentActivity", () => {
 
     vi.mocked(feedsApi.getRecentActivity).mockResolvedValue(mockActivities);
 
-    renderHook(() => useRecentActivity(5), {
-      wrapper: AuthProviderWrapper,
-    });
+    renderHook(() => useRecentActivity(5));
 
     await waitFor(() => {
       expect(feedsApi.getRecentActivity).toHaveBeenCalledWith(5);
