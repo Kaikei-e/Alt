@@ -1,8 +1,7 @@
-import { Button, Flex, Spinner, Text, Box } from "@chakra-ui/react";
+import { Button, Flex, Text, Box } from "@chakra-ui/react";
 import { SanitizedFeed } from "@/schema/feed";
 import Link from "next/link";
-import { feedsApi } from "@/lib/api";
-import { useState, useCallback, useMemo, KeyboardEvent } from "react";
+import { useCallback, useMemo, KeyboardEvent } from "react";
 import { FeedDetails } from "./FeedDetails";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";
 import { SquareArrowOutUpRight } from "lucide-react";
@@ -10,7 +9,7 @@ import { SquareArrowOutUpRight } from "lucide-react";
 type FeedCardProps = {
   feed: SanitizedFeed;
   isReadStatus: boolean;
-  setIsReadStatus: (isReadStatus: boolean) => void;
+  setIsReadStatus: (feedLink: string) => void; // 親のonMarkAsReadを呼び出すため、feedLinkを渡す
 };
 
 const FeedCard = function FeedCard({
@@ -18,7 +17,6 @@ const FeedCard = function FeedCard({
   isReadStatus,
   setIsReadStatus,
 }: FeedCardProps) {
-  const [isLoading, setIsLoading] = useState(false);
 
   // Memoize expensive description truncation calculation
   const truncatedDescription = useMemo(
@@ -27,16 +25,10 @@ const FeedCard = function FeedCard({
   );
 
   const handleReadStatus = useCallback(
-    async (url: string) => {
-      try {
-        setIsLoading(true);
-        await feedsApi.updateFeedReadStatus(url);
-        setIsReadStatus(true);
-      } catch (error) {
-        console.error("Failed to mark feed as read:", error);
-      } finally {
-        setIsLoading(false);
-      }
+    (url: string) => {
+      // API呼び出しは親コンポーネントで行うため、コールバックのみ実行
+      setIsReadStatus(url);
+      // setIsReadStatusは親のonMarkAsReadを呼び出す
     },
     [setIsReadStatus],
   );
@@ -146,7 +138,6 @@ const FeedCard = function FeedCard({
               minHeight="44px"
               fontSize="sm"
               border="1px solid rgba(255, 255, 255, 0.2)"
-              disabled={isLoading}
               onClick={() => handleReadStatus(feed.link)}
               _hover={{
                 bg: "var(--accent-gradient)",
@@ -156,14 +147,10 @@ const FeedCard = function FeedCard({
               _active={{
                 transform: "scale(0.98)",
               }}
-              _disabled={{
-                opacity: 0.6,
-                cursor: "not-allowed",
-              }}
               transition="all 0.2s ease"
               aria-label={`Mark ${feed.title} as read`}
             >
-              {isLoading ? <Spinner size="sm" /> : "Mark as read"}
+              Mark as read
             </Button>
 
             <FeedDetails feedURL={feed.link} />

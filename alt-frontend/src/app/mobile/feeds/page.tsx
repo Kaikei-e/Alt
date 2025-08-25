@@ -13,6 +13,17 @@ import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
 const PAGE_SIZE = 20;
 
+// URL正規化関数（TODO.mdの指示に基づく）
+const canonicalize = (url: string) => {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    ["utm_source","utm_medium","utm_campaign","utm_term","utm_content"].forEach(k => u.searchParams.delete(k));
+    if (u.pathname !== "/" && u.pathname.endsWith("/")) u.pathname = u.pathname.slice(0, -1);
+    return u.toString();
+  } catch { return url }
+};
+
 export default function FeedsPage() {
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [liveRegionMessage, setLiveRegionMessage] = useState<string>("");
@@ -50,20 +61,31 @@ export default function FeedsPage() {
     [feeds, readFeeds],
   );
 
-  // Handle marking feed as read with optimized state updates
-  const handleMarkAsRead = useCallback((feedLink: string) => {
-    // Use startTransition for non-urgent state updates to keep UI responsive
-    startTransition(() => {
-      setReadFeeds((prev) => {
-        const newSet = new Set(prev);
-        newSet.add(feedLink);
-        return newSet;
-      });
-    });
+  // Handle marking feed as read with optimistic update + API call (TODO.mdの指示に基づく)
+  const handleMarkAsRead = useCallback(async (rawLink: string) => {
+    const link = canonicalize(rawLink);
 
-    // Update live region for screen readers (immediate)
-    setLiveRegionMessage(`Feed marked as read`);
+    // 楽観更新（即時にUIから消す）
+    startTransition(() => {
+      setReadFeeds(prev => new Set(prev).add(link));
+    });
+    setLiveRegionMessage("Feed marked as read");
     setTimeout(() => setLiveRegionMessage(""), 1000);
+
+    // サーバ更新（失敗時はロールバック）
+    try {
+      await feedsApi.updateFeedReadStatus(link);
+    } catch (e) {
+      startTransition(() => {
+        setReadFeeds(prev => {
+          const next = new Set(prev);
+          next.delete(link);
+          return next;
+        });
+      });
+      // エラートーストの表示（TODO: 必要に応じてトースト表示を追加）
+      console.error("Failed to mark feed as read:", e);
+    }
   }, []);
 
   // Retry functionality with exponential backoff
