@@ -309,12 +309,8 @@ func (sr *SubscriptionRotator) hasCompletedDailyRotation() bool {
 		return true
 	}
 
-	// If random start is enabled, check if we've processed all subscriptions
-	if sr.randomStartEnabled {
-		return len(sr.lastProcessed) >= len(sr.subscriptions)
-	}
-
-	// Traditional index-based check
+	// For both random start and traditional mode, use index-based check
+	// The index represents actual processing progress
 	return sr.currentIndex >= len(sr.subscriptions)
 }
 
