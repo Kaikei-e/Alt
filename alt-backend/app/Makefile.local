@@ -1,0 +1,67 @@
+# Makefile.local for alt-backend/app
+# Test-Driven Development focused commands
+
+.PHONY: generate test coverage clean lint fmt build help
+
+# Default target
+all: fmt lint test
+
+# Generate mocks using go:generate directives
+generate:
+	@echo "Generating mocks..."
+	@go generate ./...
+	@echo "✅ Mock generation completed"
+
+# Run all tests
+test:
+	@echo "Running tests..."
+	@go test ./... -v
+	@echo "✅ All tests completed"
+
+# Run tests with coverage
+coverage:
+	@echo "Running tests with coverage..."
+	@go test ./... -coverprofile=coverage.out
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "✅ Coverage report generated: coverage.html"
+
+# Clean generated files
+clean:
+	@echo "Cleaning generated files..."
+	@find . -name "*.out" -delete
+	@find . -name "coverage.html" -delete
+	@find . -name "*_test.go" -path "*/mocks/*" -delete
+	@echo "✅ Clean completed"
+
+# Lint code
+lint:
+	@echo "Running linter..."
+	@gofmt -l . | grep -v vendor | tee /tmp/fmt-check || echo "✅ Code formatting OK"
+	@if [ -s /tmp/fmt-check ]; then echo "❌ Code formatting issues found"; exit 1; fi
+	@go vet ./...
+	@echo "✅ Linting completed"
+
+# Format code
+fmt:
+	@echo "Formatting code..."
+	@gofmt -w .
+	@goimports -w . 2>/dev/null || echo "goimports not installed, run: go install golang.org/x/tools/cmd/goimports@latest"
+	@echo "✅ Code formatting completed"
+
+# Build the application
+build:
+	@echo "Building application..."
+	@go build -o bin/alt-backend ./main.go
+	@echo "✅ Build completed: bin/alt-backend"
+
+# Show help
+help:
+	@echo "Available commands:"
+	@echo "  make generate  - Generate mocks using go:generate"
+	@echo "  make test      - Run all tests"
+	@echo "  make coverage  - Run tests with coverage report"
+	@echo "  make lint      - Run code linting"
+	@echo "  make fmt       - Format code"
+	@echo "  make build     - Build the application"
+	@echo "  make clean     - Clean generated files"
+	@echo "  make all       - Run fmt, lint, and test"
