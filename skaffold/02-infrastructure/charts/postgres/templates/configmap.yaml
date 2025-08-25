@@ -64,6 +64,9 @@ data:
 
     # Password encryption setting for SCRAM-SHA-256
     password_encryption = 'scram-sha-256'
+    
+    # Use mounted pg_hba.conf from ConfigMap
+    hba_file = '/etc/postgresql/pg_hba.conf'
 
     # Custom settings
     {{- with .Values.postgres.customConfig }}
