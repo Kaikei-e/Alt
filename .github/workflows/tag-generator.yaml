@@ -1,4 +1,4 @@
-name: Tag Generator Tests
+name: Tag Generator CI
 on:
   push:
     branches: [ main, master ]
@@ -14,13 +14,56 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# OIDC権限（Codecov用）
 permissions:
   contents: read
   actions: read
+  id-token: write  # OIDC用
 
 jobs:
   test:
+    name: Tests
     uses: ./.github/workflows/reusable-test-python.yaml
     with:
       working-directory: 'tag-generator/app'
       python-version: '3.13'
+      test-command: 'pytest test_unit.py tests/ -v --cov=. --cov-report=xml --junit-xml=tests/results.xml'
+      job-type: 'test'
+      sparse-checkout: 'tag-generator'
+      coverage-flags: 'tag-generator'
+      upload-coverage: true
+      use-oidc: true
+      use-local-persistent-cache: true
+
+  lint:
+    name: Linting & Formatting
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: 'tag-generator/app'
+      python-version: '3.13'
+      job-type: 'lint'
+      sparse-checkout: 'tag-generator'
+      upload-coverage: false
+      use-local-persistent-cache: true
+
+  security:
+    name: Security Scan
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: 'tag-generator/app'
+      python-version: '3.13'
+      job-type: 'security'
+      sparse-checkout: 'tag-generator'
+      upload-coverage: false
+      use-local-persistent-cache: true
+
+  typecheck:
+    name: Type Checking
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: 'tag-generator/app'
+      python-version: '3.13'
+      job-type: 'typecheck'
+      sparse-checkout: 'tag-generator'
+      upload-coverage: false
+      use-local-persistent-cache: true

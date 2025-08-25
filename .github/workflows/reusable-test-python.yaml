@@ -17,53 +17,175 @@ on:
         required: false
         type: string
         default: "pytest test_unit.py -v --junit-xml=tests/results.xml"
+      use-oidc:
+        required: false
+        type: boolean
+        default: false
+      use-local-persistent-cache:
+        required: false
+        type: boolean
+        default: false
+      upload-coverage:
+        required: false
+        type: boolean
+        default: true
+      coverage-flags:
+        required: false
+        type: string
+        default: ""
+      sparse-checkout:
+        required: false
+        type: string
+        default: "tag-generator"
+      job-type:
+        required: false
+        type: string
+        default: "test"
+        description: "Job type: test, lint, security, typecheck"
 
 jobs:
-  test:
+  python-job:
     runs-on: [self-hosted, linux, X64]
     timeout-minutes: 30
 
-    steps:
-      - name: Security setup
-        run: |
-          echo "::add-mask::$HOME"
-          echo "::add-mask::$USER"
-          echo "::add-mask::/home"
-          echo "::add-mask::/opt"
+    defaults:
+      run:
+        shell: bash
 
-      - uses: actions/checkout@v4
+    steps:
+      - name: Configure logging (mask)
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::group::Masking Configuration"
+          # Mask HOME parts
+          for part in $(echo "$HOME" | tr '/' ' '); do
+            [ -n "$part" ] && echo "::add-mask::$part"
+          done
+          # Mask user/host (Linux用。macOSコマンドは一応エラー無視)
+          echo "::add-mask::$(whoami)"
+          echo "::add-mask::$(hostname)"
+          echo "::add-mask::$(hostname -s || true)"
+          (scutil --get ComputerName || true)    | xargs -I{} echo "::add-mask::{}"
+          (scutil --get LocalHostName || true)   | xargs -I{} echo "::add-mask::{}"
+          echo "::add-mask::${{ runner.temp }}"
+          echo "::add-mask::${{ github.workspace }}"
+          echo "::endgroup::"
+
+      - name: Checkout (sparse)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            ${{ inputs.sparse-checkout }}
+          sparse-checkout-cone-mode: true
 
       - name: Install uv (Rust-based tool)
         uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "${{ inputs.working-directory }}/uv.lock"
 
       - name: Set up Python with uv
         run: uv python install ${{ inputs.python-version }}
 
+      # ===== キャッシュ戦略 =====
+      # 1) ローカル永続キャッシュ（sudo不要でHOME配下に固定）
+      - name: Configure local persistent caches (HOME)
+        if: ${{ inputs.use-local-persistent-cache }}
+        run: |
+          mkdir -p "$HOME/.cache/uv" "$HOME/.local/share/uv"
+          echo "UV_CACHE_DIR=$HOME/.cache/uv" >> "$GITHUB_ENV"
+          echo "UV_TOOL_DIR=$HOME/.local/share/uv" >> "$GITHUB_ENV"
+
+      # 2) ランナーがエフェメラル等でHOME永続化できない場合は、GitHub Cacheを併用
+      - name: Restore uv cache (GitHub Cache)
+        if: ${{ !inputs.use-local-persistent-cache }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            ~/.local/share/uv
+          key: uv-${{ runner.os }}-${{ hashFiles(format('{0}/uv.lock', inputs.working-directory)) }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
       - name: Sync project dependencies
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: |
-          uv sync --lockfile || uv lock
-          uv sync
+          uv sync --all-extras --dev
 
-      - name: Install test dependencies
-        working-directory: ${{ inputs.working-directory }}
+      - name: Python env (diagnostics)
+        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: |
-          uv pip install pytest pytest-cov psycopg2-binary langdetect
+          uv python list
+          echo "github.workspace=${{ github.workspace }}"
+          ls -la "${{ github.workspace }}/${{ inputs.working-directory }}" || true
 
-      - name: Run tests via uv
-        working-directory: ${{ inputs.working-directory }}
+      # Job-specific actions based on job type
+      - name: Run tests
+        if: ${{ inputs.job-type == 'test' }}
+        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: uv run ${{ inputs.test-command }}
 
-      - name: Cleanup uv environment
-        if: ${{ always() }}
-        working-directory: ${{ inputs.working-directory }}
-        run: rm -rf .venv uv.lock
+      - name: Run linting (ruff check)
+        if: ${{ inputs.job-type == 'lint' }}
+        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run security scan (bandit)
+        if: ${{ inputs.job-type == 'security' }}
+        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
+        run: uv run bandit -r . -f json -o bandit-report.json || true
+
+      - name: Run type checking
+        if: ${{ inputs.job-type == 'typecheck' }}
+        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
+        run: uv run pyright .
+
+      # Coverage upload (for test jobs)
+      - name: Upload coverage to Codecov (OIDC)
+        if: ${{ always() && inputs.upload-coverage && inputs.use-oidc && inputs.job-type == 'test' }}
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.xml
+          flags: ${{ inputs.coverage-flags }}
+          name: ${{ inputs.coverage-flags }}-coverage
+          verbose: false
+
+      - name: Upload coverage to Codecov (token)
+        if: ${{ always() && inputs.upload-coverage && !inputs.use-oidc && inputs.job-type == 'test' }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.xml
+          flags: ${{ inputs.coverage-flags }}
+          name: ${{ inputs.coverage-flags }}-coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: false
 
       - name: Upload test results
-        if: ${{ always() }}
+        if: ${{ always() && inputs.job-type == 'test' }}
         uses: actions/upload-artifact@v4
         with:
           name: python-test-results-${{ github.run_id }}
-          path: ${{ inputs.working-directory }}/tests/
+          path: ${{ github.workspace }}/${{ inputs.working-directory }}/tests/
           retention-days: 5
           if-no-files-found: warn
+
+      - name: Upload security scan results
+        if: ${{ always() && inputs.job-type == 'security' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report-${{ github.run_id }}
+          path: ${{ github.workspace }}/${{ inputs.working-directory }}/bandit-report.json
+          retention-days: 5
+          if-no-files-found: warn
+
+      - name: Cleanup (self-hosted)
+        if: always() && runner.environment == 'self-hosted'
+        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
+        run: |
+          rm -rf .venv .pytest_cache .coverage coverage.xml bandit-report.json
+          uv cache clean
