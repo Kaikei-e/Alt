@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"alt/shared/auth-lib-go/pkg/auth"
+	"pre-processor/internal/auth"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -11,8 +11,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"log/slog"
 
-	"alt/shared/auth-lib-go/pkg/auth"
-	"alt/shared/auth-lib-go/pkg/middleware"
+	"pre-processor/internal/auth"
+	"pre-processor/internal/auth/middleware"
 )
 
 func SetupAuth(e *echo.Echo, logger *slog.Logger) error {

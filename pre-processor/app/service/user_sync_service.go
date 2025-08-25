@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"alt/shared/auth-lib-go/pkg/auth"
+	"pre-processor/internal/auth"
 )
 
 type userSyncService struct {

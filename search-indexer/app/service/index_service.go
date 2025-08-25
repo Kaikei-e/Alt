@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"alt/shared/auth-lib-go/pkg/auth"
+	"search-indexer/internal/auth"
 )
 
 type IndexService struct {
