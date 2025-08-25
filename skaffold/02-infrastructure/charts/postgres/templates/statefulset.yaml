@@ -173,26 +173,41 @@ spec:
               value: /var/lib/postgresql/data/pgdata
             # SCRAM-SHA-256統一: PostgreSQL initialization arguments
             - name: POSTGRES_INITDB_ARGS
-              value: "--auth-host=scram-sha-256 --auth-local=trust"
+              value: {{ .Values.env.POSTGRES_INITDB_ARGS | quote }}
+            - name: POSTGRES_HOST_AUTH_METHOD
+              value: {{ .Values.env.POSTGRES_HOST_AUTH_METHOD | default "scram-sha-256" | quote }}
             {{- if .Values.initScripts.enabled }}
-            - name: DB_TAG_GENERATOR_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
-                  key: tag-generator-password
-                  optional: true
-            - name: PRE_PROCESSOR_DB_PASSWORD
+            # Secure password environment variables for PostgreSQL user creation
+            - name: PRE_PROCESSOR_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
                   key: pre-processor-password
-                  optional: true
-            - name: SEARCH_INDEXER_DB_PASSWORD
+                  optional: false
+            - name: SEARCH_INDEXER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
                   key: search-indexer-password
-                  optional: true
+                  optional: false
+            - name: TAG_GENERATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
+                  key: tag-generator-password
+                  optional: false
+            - name: NEWS_CREATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
+                  key: news-creator-password
+                  optional: false
+            - name: AUTH_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-secret" (include "postgres.fullname" .)) }}
+                  key: auth-db-password
+                  optional: false
             {{- end }}
             {{- if .Values.ssl.enabled }}
             - name: POSTGRES_SSL_CERT_FILE

@@ -20,7 +20,12 @@ data:
     DO $$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'pre_processor_user') THEN
-            CREATE USER pre_processor_user WITH ENCRYPTED PASSWORD 'CJr6caDyoiiYFydPKG03EhuZgECQMU';
+            EXECUTE 'CREATE USER pre_processor_user';
+        END IF;
+        -- Always update password to ensure SCRAM-SHA-256 encoding
+        IF current_setting('server_version_num')::integer >= 140000 THEN
+            EXECUTE 'ALTER USER pre_processor_user PASSWORD ''' || replace(current_setting('PRE_PROCESSOR_PASSWORD', true), '''', '''''') || '''';
+        END IF;
             GRANT CONNECT ON DATABASE alt TO pre_processor_user;
             GRANT USAGE ON SCHEMA public TO pre_processor_user;
             GRANT CREATE ON SCHEMA public TO pre_processor_user;
@@ -37,7 +42,12 @@ data:
     DO $$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'search_indexer_user') THEN
-            CREATE USER search_indexer_user WITH ENCRYPTED PASSWORD 'nD2McFTQNy4dmoUPtUA0AnvHhf93aQ';
+            EXECUTE 'CREATE USER search_indexer_user';
+        END IF;
+        -- Always update password to ensure SCRAM-SHA-256 encoding
+        IF current_setting('server_version_num')::integer >= 140000 THEN
+            EXECUTE 'ALTER USER search_indexer_user PASSWORD ''' || replace(current_setting('SEARCH_INDEXER_PASSWORD', true), '''', '''''') || '''';
+        END IF;
             GRANT CONNECT ON DATABASE alt TO search_indexer_user;
             GRANT USAGE ON SCHEMA public TO search_indexer_user;
             GRANT CREATE ON SCHEMA public TO search_indexer_user;
@@ -54,7 +64,12 @@ data:
     DO $$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'tag_generator_user') THEN
-            CREATE USER tag_generator_user WITH ENCRYPTED PASSWORD '1yx7kp5TCxPkxct2PmYPss1P5CgcCA';
+            EXECUTE 'CREATE USER tag_generator_user';
+        END IF;
+        -- Always update password to ensure SCRAM-SHA-256 encoding
+        IF current_setting('server_version_num')::integer >= 140000 THEN
+            EXECUTE 'ALTER USER tag_generator_user PASSWORD ''' || replace(current_setting('TAG_GENERATOR_PASSWORD', true), '''', '''''') || '''';
+        END IF;
             GRANT CONNECT ON DATABASE alt TO tag_generator_user;
             GRANT USAGE ON SCHEMA public TO tag_generator_user;
             GRANT CREATE ON SCHEMA public TO tag_generator_user;
@@ -71,7 +86,12 @@ data:
     DO $$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'news_creator_user') THEN
-            CREATE USER news_creator_user WITH ENCRYPTED PASSWORD 'NewsCreator2024SecurePwd';
+            EXECUTE 'CREATE USER news_creator_user';
+        END IF;
+        -- Always update password to ensure SCRAM-SHA-256 encoding
+        IF current_setting('server_version_num')::integer >= 140000 THEN
+            EXECUTE 'ALTER USER news_creator_user PASSWORD ''' || replace(current_setting('NEWS_CREATOR_PASSWORD', true), '''', '''''') || '''';
+        END IF;
             GRANT CONNECT ON DATABASE alt TO news_creator_user;
             GRANT USAGE ON SCHEMA public TO news_creator_user;
             GRANT CREATE ON SCHEMA public TO news_creator_user;
@@ -88,7 +108,12 @@ data:
     DO $$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'auth_db_user') THEN
-            CREATE USER auth_db_user WITH ENCRYPTED PASSWORD 'AuthService2024SecurePwd';
+            EXECUTE 'CREATE USER auth_db_user';
+        END IF;
+        -- Always update password to ensure SCRAM-SHA-256 encoding
+        IF current_setting('server_version_num')::integer >= 140000 THEN
+            EXECUTE 'ALTER USER auth_db_user PASSWORD ''' || replace(current_setting('AUTH_DB_PASSWORD', true), '''', '''''') || '''';
+        END IF;
             GRANT CONNECT ON DATABASE alt TO auth_db_user;
             GRANT USAGE ON SCHEMA public TO auth_db_user;
             GRANT CREATE ON SCHEMA public TO auth_db_user;

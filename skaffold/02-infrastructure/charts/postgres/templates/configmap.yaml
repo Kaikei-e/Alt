@@ -62,6 +62,9 @@ data:
     autovacuum_max_workers = {{ .Values.postgres.autovacuum.maxWorkers }}
     autovacuum_naptime = {{ .Values.postgres.autovacuum.naptime }}
 
+    # Password encryption setting for SCRAM-SHA-256
+    password_encryption = 'scram-sha-256'
+
     # Custom settings
     {{- with .Values.postgres.customConfig }}
     {{- . | nindent 4 }}
