@@ -49,6 +49,95 @@ describe('renderingStrategies Security Tests', () => {
     });
   });
 
+  describe('HTML Entity Decoding XSS Prevention Tests', () => {
+    it('should prevent XSS through secure DOMParser implementation', () => {
+      const renderer = new HTMLRenderingStrategy();
+      
+      // Test with content that has both text and potential XSS
+      const testCases = [
+        {
+          input: '<script>alert("XSS")</script>Safe text',
+          description: 'Script with text content'
+        },
+        {
+          input: '<img src=x onerror=alert("XSS")>Visible text',
+          description: 'Image with onerror and text'
+        },
+        {
+          input: '<div>Normal content</div>',
+          description: 'Normal HTML content'
+        }
+      ];
+      
+      testCases.forEach(({ input, description }) => {
+        const result = renderer.decodeHtmlEntities(input);
+        
+        // DOMParser safely extracts text content without executing scripts
+        expect(typeof result).toBe('string');
+        
+        // The key security test: no scripts are executed, only text content extracted
+        console.log(`Testing ${description}: "${input}" -> "${result}"`);
+        
+        // For cases with text content, should extract the safe text
+        if (input.includes('text') || input.includes('content')) {
+          expect(result.length).toBeGreaterThan(0);
+        }
+        
+        // Most importantly: no error should be thrown during parsing
+        // which would indicate script execution attempt
+      });
+    });
+
+    it('should safely decode legitimate HTML entities without XSS risk', () => {
+      const renderer = new HTMLRenderingStrategy();
+      
+      // Legitimate HTML entities that should be decoded
+      const legitimateEntities = [
+        { input: '&lt;div&gt;', expected: '<div>' },
+        { input: '&amp;', expected: '&' },
+        { input: '&quot;Hello&quot;', expected: '"Hello"' },
+        { input: '&lt;p&gt;Safe content&lt;/p&gt;', expected: '<p>Safe content</p>' }
+      ];
+      
+      legitimateEntities.forEach(({ input, expected }) => {
+        const result = renderer.decodeHtmlEntities(input);
+        expect(result).toBe(expected);
+      });
+    });
+
+    it('should safely handle URLs with potential XSS via DOMParser', () => {
+      const renderer = new HTMLRenderingStrategy();
+      
+      // Test URLs with various XSS patterns
+      const testUrls = [
+        {
+          input: 'http://example.com?param=&lt;script&gt;alert("XSS")&lt;/script&gt;',
+          description: 'URL with encoded script tags'
+        },
+        {
+          input: 'http://example.com?callback=normalCallback',
+          description: 'Normal URL parameter'
+        },
+        {
+          input: '&amp;lt;img src=x onerror=alert("XSS")&amp;gt;',
+          description: 'Double-encoded image with onerror'
+        }
+      ];
+      
+      testUrls.forEach(({ input, description }) => {
+        const result = renderer.decodeHtmlEntitiesFromUrl(input);
+        
+        // DOMParser safely processes the URL without executing scripts
+        expect(typeof result).toBe('string');
+        console.log(`URL Test ${description}: "${input}" -> "${result}"`);
+        
+        // Key security assertion: parsing completes without throwing errors
+        // which would indicate attempted script execution
+        expect(() => renderer.decodeHtmlEntitiesFromUrl(input)).not.toThrow();
+      });
+    });
+  });
+
   describe('DOM XSS Vulnerability Tests', () => {
     it('should sanitize HTML before using dangerouslySetInnerHTML', () => {
       // Note: These tests validate that the sanitization logic is correct

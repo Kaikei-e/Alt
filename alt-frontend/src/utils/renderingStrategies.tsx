@@ -72,12 +72,25 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 
   /**
    * Decode HTML entities (XPLAN11: Pre-sanitization step)
+   * SECURITY FIX: Using textContent instead of innerHTML to prevent XSS
    */
   public decodeHtmlEntities(str: string): string {
+    // Input validation for security
+    if (!str || typeof str !== 'string') {
+      return '';
+    }
+
     if (typeof window !== 'undefined') {
-      const textarea = document.createElement('textarea');
-      textarea.innerHTML = str;
-      return textarea.value;
+      // SECURITY FIX: Create a safe decoding method that doesn't execute scripts
+      // Use DOMParser to safely parse and decode HTML entities without script execution risk
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<!doctype html><body>${str}`, 'text/html');
+        return doc.body.textContent || '';
+      } catch (e) {
+        // Fallback to manual decoding if DOMParser fails
+        // This is safer than textarea.innerHTML approach
+      }
     }
     // SECURITY FIX: Safe fallback with correct decoding order (decode &amp; last)
     return str
@@ -279,15 +292,26 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   /**
    * Decode HTML entities specifically for URLs (separate from general content decoding)
    * Prevents double encoding issues with &amp; -> %26amp%3B
+   * SECURITY FIX: Using textContent instead of innerHTML to prevent XSS
    * @param url - URL with potential HTML entities
    * @returns Decoded URL
    */
   public decodeHtmlEntitiesFromUrl(url: string): string {
+    // Input validation for security
+    if (!url || typeof url !== 'string') {
+      return '';
+    }
+
     if (typeof window !== 'undefined') {
-      // Browser environment: use textarea method
-      const textarea = document.createElement('textarea');
-      textarea.innerHTML = url;
-      return textarea.value;
+      // SECURITY FIX: Use DOMParser to safely decode HTML entities without script execution risk
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<!doctype html><body>${url}`, 'text/html');
+        return doc.body.textContent || '';
+      } catch (e) {
+        // Fallback to manual decoding if DOMParser fails
+        // This is safer than textarea.innerHTML approach
+      }
     }
     
     // SECURITY FIX: Safe URL decoding with correct order (decode ampersands last)
