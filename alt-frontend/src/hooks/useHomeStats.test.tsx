@@ -5,6 +5,16 @@ import { feedsApi } from "@/lib/api";
 import { AuthProvider } from "@/contexts/auth-context";
 import { ReactNode } from "react";
 
+// Mock auth context to simulate authenticated user in tests
+vi.mock("@/contexts/auth-context", async () => {
+  const mod = await vi.importActual<typeof import("@/contexts/auth-context")>("@/contexts/auth-context");
+  return {
+    ...mod,
+    useAuth: vi.fn(() => ({ isAuthenticated: true })),
+    AuthProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  };
+});
+
 // Mock the API
 vi.mock("@/lib/api", () => ({
   feedsApi: {

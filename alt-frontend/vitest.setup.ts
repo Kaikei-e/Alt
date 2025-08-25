@@ -63,3 +63,34 @@ console.warn = (...args) => {
   
   originalWarn.call(console, ...args);
 };
+
+// Stub navigation to avoid jsdom "navigation not implemented" errors in unit tests
+try {
+  const originalLocation = window.location;
+  let hrefValue = originalLocation?.href || 'http://localhost/';
+
+  const mockLocation: Partial<Location> & { href: string } = {
+    ...originalLocation,
+    assign: vi.fn((url: string | URL) => {
+      hrefValue = String(url);
+    }),
+    replace: vi.fn((url: string | URL) => {
+      hrefValue = String(url);
+    }),
+    reload: vi.fn(),
+    get href() {
+      return hrefValue;
+    },
+    set href(val: string) {
+      hrefValue = String(val);
+    },
+  } as any;
+
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: mockLocation,
+  });
+} catch {
+  // ignore if window/location is not available
+}

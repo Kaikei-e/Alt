@@ -2,7 +2,7 @@
 // End-to-end testing for CSRF token implementation and auto-recovery
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { authAPI } from '@/lib/api/auth-client';
+import { authAPI, AuthAPIClient, setAuthAPI } from '@/lib/api/auth-client';
 import { csrfAutoRecovery, withAutoRecovery } from '@/lib/auth/csrf-auto-recovery';
 
 // Test configuration
@@ -75,6 +75,10 @@ describe('CSRF Token Integration Tests', () => {
   let testFlowId: string;
 
   beforeEach(async () => {
+    // Inject test-scoped auth client with no-op redirect
+    const testClient = new AuthAPIClient({ redirect: vi.fn() });
+    setAuthAPI(testClient);
+
     // Clear any existing auth state
     csrfAutoRecovery.clearActiveRecoveries();
 
@@ -125,6 +129,9 @@ describe('CSRF Token Integration Tests', () => {
     
     // Restore fetch
     vi.restoreAllMocks();
+
+    // Reset injected auth client
+    setAuthAPI(null);
   });
 
   describe('Phase 1: Basic CSRF Token Flow', () => {

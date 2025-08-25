@@ -1,13 +1,24 @@
 import type { User, LoginFlow, RegistrationFlow, UserPreferences } from '@/types/auth';
 import { IDP_ORIGIN } from '@/lib/env.public';
 
+// Redirect function interface for dependency injection
+type RedirectFn = (url: string) => void;
+
+function defaultRedirect(url: string) {
+  if (typeof window !== 'undefined' && window.location) {
+    // Use direct href assignment (works with our vitest.setup stub in tests)
+    window.location.href = url;
+  }
+}
+
 export class AuthAPIClient {
   private baseURL: string;
   private debugMode: boolean;
   private requestId: number;
   private idpOrigin: string;
+  private redirect: RedirectFn;
 
-  constructor() {
+  constructor(options?: { redirect?: RedirectFn }) {
     // Use relative API proxy endpoints for secure HTTPS communication
     // This avoids mixed content issues and keeps internal URLs secure
     this.baseURL = '/api/auth';
@@ -15,6 +26,7 @@ export class AuthAPIClient {
     this.requestId = 0;
     // TODO.md要件: Kratos 公開URL直接アクセス用（必須・ハードコード禁止）
     this.idpOrigin = IDP_ORIGIN;
+    this.redirect = options?.redirect ?? defaultRedirect;
     
     // TODO.md 手順0: 配信中のバンドルの値を確認
     console.log('[AUTH-CLIENT] NEXT_PUBLIC_IDP_ORIGIN =', this.idpOrigin);
@@ -36,12 +48,12 @@ export class AuthAPIClient {
 
   // TODO.md B案: 単純遷移方式に統一 - すべてブラウザ遷移で統一
   async initiateLogin(): Promise<LoginFlow> {
-    window.location.href = `${this.idpOrigin}/self-service/login/browser`;
+    this.redirect(`${this.idpOrigin}/self-service/login/browser`);
     throw new Error('Login flow initiated via redirect');
   }
 
   async completeLogin(_: string, __: string, ___: string): Promise<User> {
-    window.location.href = `${this.idpOrigin}/self-service/login/browser`;
+    this.redirect(`${this.idpOrigin}/self-service/login/browser`);
     throw new Error('Login redirected to Kratos');
   }
 
@@ -50,12 +62,12 @@ export class AuthAPIClient {
 
 
   async initiateRegistration(): Promise<RegistrationFlow> {
-    window.location.href = `${this.idpOrigin}/self-service/registration/browser`;
+    this.redirect(`${this.idpOrigin}/self-service/registration/browser`);
     throw new Error('Registration flow initiated via redirect');
   }
 
   async completeRegistration(_: string, __: string, ___: string, ____?: string): Promise<User> {
-    window.location.href = `${this.idpOrigin}/self-service/registration/browser`;
+    this.redirect(`${this.idpOrigin}/self-service/registration/browser`);
     throw new Error('Registration redirected to Kratos');
   }
 
@@ -311,5 +323,23 @@ export class AuthAPIClient {
   }
 }
 
-// Export singleton instance
-export const authAPI = new AuthAPIClient();
+// Lightweight factory + override to enable clean test injection
+let _authAPISingleton: AuthAPIClient | null = null;
+
+export function getAuthAPI(options?: { redirect?: RedirectFn }): AuthAPIClient {
+  if (!_authAPISingleton) {
+    _authAPISingleton = new AuthAPIClient(options);
+  }
+  return _authAPISingleton;
+}
+
+// Allow tests or special contexts to replace/reset the singleton
+export function setAuthAPI(instance: AuthAPIClient | null) {
+  _authAPISingleton = instance;
+  // update exported binding so existing imports see the new instance
+  // if null, recreate a fresh default instance lazily on next access
+  authAPI = instance ?? getAuthAPI();
+}
+
+// Backward-compatible default export for existing imports
+export let authAPI = getAuthAPI();
