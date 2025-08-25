@@ -29,10 +29,11 @@ on:
       sparse-checkout:
         required: false
         type: string
-        default: 'alt-backend'
+        default: 'alt-backend'  # 呼び出し側で 'search-indexer' 等に上書き推奨
 
   workflow_dispatch:
 
+# 最小権限（OIDCを使うかは呼び出し側で決める。使うときは親ジョブで id-token: write を付与）
 permissions:
   contents: read
 
@@ -41,60 +42,56 @@ jobs:
     runs-on: [self-hosted, linux, X64]
     timeout-minutes: 30
 
+    defaults:
+      run:
+        shell: bash
+
     steps:
-      - name: Configure logging
+      - name: Configure logging (mask)
         if: runner.environment == 'self-hosted'
         run: |
           echo "::group::Masking Configuration"
-
-          # Mask HOME directory parts
-          PARTS=($(echo $HOME | tr '/' ' '))
-          for part in "${PARTS[@]}"; do
-            [ ! -z "$part" ] && echo "::add-mask::$part"
+          # Mask HOME parts
+          for part in $(echo "$HOME" | tr '/' ' '); do
+            [ -n "$part" ] && echo "::add-mask::$part"
           done
-
-          # Mask machine name and user info
+          # Mask user/host (Linux用。macOSコマンドは一応エラー無視)
           echo "::add-mask::$(whoami)"
           echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(hostname -s)"
-          echo "::add-mask::$(scutil --get ComputerName 2>/dev/null || echo '')"
-          echo "::add-mask::$(scutil --get LocalHostName 2>/dev/null || echo '')"
-
-          # Mask runner workspace paths
+          echo "::add-mask::$(hostname -s || true)"
+          (scutil --get ComputerName || true)    | xargs -I{} echo "::add-mask::{}"
+          (scutil --get LocalHostName || true)   | xargs -I{} echo "::add-mask::{}"
           echo "::add-mask::${{ runner.temp }}"
           echo "::add-mask::${{ github.workspace }}"
-
           echo "::endgroup::"
-
 
       - name: Checkout (sparse)
         uses: actions/checkout@v5
         with:
-          # sparse checkout paths to reduce unnecessary files
+          fetch-depth: 1
           sparse-checkout: |
             ${{ inputs.sparse-checkout }}
           sparse-checkout-cone-mode: true
-          fetch-depth: 1
-      # ^ v5はNode 24ランタイムで、Runner v2.327.1+ が必須。後述の注記を確認。
+        # このアクションは $GITHUB_WORKSPACE (= ${{ github.workspace }}) 配下にチェックアウトする
 
-      - name: Set up Go
+      - name: Set up Go (with built-in cache)
         uses: actions/setup-go@v5
         with:
-          # go-version を指定しない場合、go-version-file を見る
           go-version: ${{ inputs.go-version }}
           go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
           check-latest: true
+          cache: true   # go modules とビルド出力を標準機能でキャッシュ
 
       # ===== キャッシュ戦略 =====
-      # 1) ローカル永続キャッシュ（最速、ネット往復ゼロ）
-      - name: Configure local persistent caches
+      # 1) ローカル永続キャッシュ（sudo不要でHOME配下に固定）
+      - name: Configure local persistent caches (HOME)
         if: ${{ inputs.use-local-persistent-cache }}
         run: |
-          mkdir -p /var/cache/gha/go-build /var/cache/gha/go-mod
-          echo "GOCACHE=/var/cache/gha/go-build" >> $GITHUB_ENV
-          echo "GOMODCACHE=/var/cache/gha/go-mod" >> $GITHUB_ENV
+          mkdir -p "$HOME/.cache/go-build" "$HOME/go/pkg/mod"
+          echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$HOME/go/pkg/mod"   >> "$GITHUB_ENV"
 
-      # 2) GitHub Cache（ランナーがエフェメラルな場合）
+      # 2) ランナーがエフェメラル等でHOME永続化できない場合は、GitHub Cacheを併用
       - name: Restore Go module cache (GitHub Cache)
         if: ${{ !inputs.use-local-persistent-cache }}
         uses: actions/cache@v4
@@ -111,29 +108,38 @@ jobs:
           go env
           echo "GOCACHE=${GOCACHE:-$(go env GOCACHE)}"
           echo "GOMODCACHE=${GOMODCACHE:-$(go env GOMODCACHE)}"
+          echo "github.workspace=${{ github.workspace }}"
+          ls -la "${{ github.workspace }}/${{ inputs.working-directory }}" || true
 
       - name: Test
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         env:
-          # GOCACHE/GOMODCACHEは上記いずれかが設定
           CGO_ENABLED: "1"
         run: |
           go test ./... -count=1 -race -covermode=atomic -coverprofile=coverage.out
 
-      - name: Upload coverage to Codecov (v5)
-        if: always() && inputs.upload-coverage
+      # === Codecov: OIDC か token を選択 ===
+      - name: Upload coverage to Codecov (OIDC)
+        if: ${{ always() && inputs.upload-coverage && inputs.use-oidc }}
         uses: codecov/codecov-action@v5
         with:
-          # v5は files（複数可）
-          files: ${{ inputs.working-directory }}/coverage.out
+          use_oidc: true
+          files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.out
           flags: ${{ inputs.coverage-flags }}
           name: ${{ inputs.coverage-flags }}-coverage
           verbose: false
-          # public repo + OIDC なら token不要。private なら下行を有効化:
-          # token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage to Codecov (token)
+        if: ${{ always() && inputs.upload-coverage && !inputs.use-oidc }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.out
+          flags: ${{ inputs.coverage-flags }}
+          name: ${{ inputs.coverage-flags }}-coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: false
 
       - name: Cleanup (self-hosted)
         if: always() && runner.environment == 'self-hosted'
         run: |
-          # ローカル永続キャッシュは残す。ビルドアーチファクトだけ掃除
           go clean -testcache
