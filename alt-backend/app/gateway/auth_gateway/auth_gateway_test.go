@@ -14,20 +14,19 @@ import (
 
 	"alt/domain"
 	"alt/driver/auth"
-	"alt/mocks"
 )
 
 func TestAuthGateway_ValidateSession(t *testing.T) {
 	tests := []struct {
 		name         string
 		sessionToken string
-		setupMock    func(*mocks.MockAuthClient, uuid.UUID)
+		setupMock    func(*auth.MockAuthClient, uuid.UUID)
 		wantErr      bool
 	}{
 		{
 			name:         "valid session",
 			sessionToken: "valid-session-token",
-			setupMock: func(m *mocks.MockAuthClient, userID uuid.UUID) {
+			setupMock: func(m *auth.MockAuthClient, userID uuid.UUID) {
 				m.EXPECT().
 					ValidateSession(gomock.Any(), "valid-session-token", gomock.Any()).
 					Return(&auth.SessionValidationResponse{
@@ -42,7 +41,7 @@ func TestAuthGateway_ValidateSession(t *testing.T) {
 		{
 			name:         "invalid session",
 			sessionToken: "invalid-session-token",
-			setupMock: func(m *mocks.MockAuthClient, _ uuid.UUID) {
+			setupMock: func(m *auth.MockAuthClient, _ uuid.UUID) {
 				m.EXPECT().
 					ValidateSession(gomock.Any(), "invalid-session-token", gomock.Any()).
 					Return(&auth.SessionValidationResponse{Valid: false}, nil)
@@ -52,7 +51,7 @@ func TestAuthGateway_ValidateSession(t *testing.T) {
 		{
 			name:         "auth client error",
 			sessionToken: "error-token",
-			setupMock: func(m *mocks.MockAuthClient, _ uuid.UUID) {
+			setupMock: func(m *auth.MockAuthClient, _ uuid.UUID) {
 				m.EXPECT().
 					ValidateSession(gomock.Any(), "error-token", gomock.Any()).
 					Return(nil, errors.New("client error"))
@@ -66,7 +65,7 @@ func TestAuthGateway_ValidateSession(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockClient := mocks.NewMockAuthClient(ctrl)
+			mockClient := auth.NewMockAuthClient(ctrl)
 			userID := uuid.New()
 			tt.setupMock(mockClient, userID)
 

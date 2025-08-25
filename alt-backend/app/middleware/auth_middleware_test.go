@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,8 +26,8 @@ func TestAuthMiddleware_Middleware(t *testing.T) {
 		w.WriteHeader(200)
 		response := ValidateOKResponse{
 			Valid:      true,
-			SessionID:  "sess-123",
-			IdentityID: "id-456",
+			SessionID:  "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+			IdentityID: "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
 		}
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -112,27 +111,40 @@ func TestAuthMiddleware_OptionalAuth(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockAuth := mocks.NewMockAuthPort(ctrl)
-	userCtx := &domain.UserContext{
-		UserID:    uuid.New(),
-		Email:     "test@example.com",
-		Role:      domain.UserRoleUser,
-		SessionID: "valid",
-		ExpiresAt: time.Now().Add(time.Hour),
-	}
-	mockAuth.EXPECT().
-		ValidateSessionWithCookie(gomock.Any(), "ory_kratos_session=valid").
-		Return(userCtx, nil)
+	// Setup mock HTTP server for direct validation
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		response := ValidateOKResponse{
+			Valid:      true,
+			SessionID:  "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+			IdentityID: "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+			Email:      "test@example.com",
+			TenantID:   "c1eebc99-9c0b-4ef8-bb6d-6bb9bd380a13",
+			Role:       "user",
+		}
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer mockServer.Close()
 
+	mockAuth := mocks.NewMockAuthPort(ctrl)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := &config.Config{
 		Auth: config.AuthConfig{
-			ServiceURL: "http://auth-service.test:8080",
+			ServiceURL: mockServer.URL,
 			ValidateEmpty200OK: false,
-			KratosInternalURL: "http://kratos.test:4433",
+			KratosInternalURL: mockServer.URL,
 		},
 	}
-	m := NewAuthMiddleware(mockAuth, logger, cfg)
+
+	// Create middleware with mock HTTP client
+	m := &AuthMiddleware{
+		authGateway:       mockAuth,
+		logger:            logger,
+		config:            cfg,
+		httpClient:        &http.Client{Timeout: 5 * time.Second},
+		kratosInternalURL: mockServer.URL,
+	}
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -163,7 +175,7 @@ func TestAuthMiddleware_SetsUserContextFromValidation(t *testing.T) {
 			name: "creates UserContext from auth-service response with full user details",
 			mockAuthResponse: ValidateOKResponse{
 				Valid:      true,
-				SessionID:  "sess-123",
+				SessionID:  "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
 				IdentityID: "01234567-89ab-cdef-0123-456789abcdef",
 				Email:      "test@example.com",
 				TenantID:   "87654321-fedc-ba98-7654-321098765432",
@@ -178,15 +190,15 @@ func TestAuthMiddleware_SetsUserContextFromValidation(t *testing.T) {
 			name: "creates UserContext for admin user",
 			mockAuthResponse: ValidateOKResponse{
 				Valid:      true,
-				SessionID:  "sess-admin-456",
-				IdentityID: "admin-1234-5678-9abc-def123456789",
+				SessionID:  "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13",
+				IdentityID: "d1eebc99-9c0b-4ef8-bb6d-6bb9bd380a14",
 				Email:      "admin@example.com",
-				TenantID:   "tenant-admin-8765-4321-dcba-987654321098",
+				TenantID:   "e2eebc99-9c0b-4ef8-bb6d-6bb9bd380a15",
 				Role:       "admin",
 			},
-			expectedUserID:   "admin-1234-5678-9abc-def123456789",
+			expectedUserID:   "d1eebc99-9c0b-4ef8-bb6d-6bb9bd380a14",
 			expectedEmail:    "admin@example.com",
-			expectedTenantID: "tenant-admin-8765-4321-dcba-987654321098", 
+			expectedTenantID: "e2eebc99-9c0b-4ef8-bb6d-6bb9bd380a15", 
 			expectedRole:     domain.UserRoleAdmin,
 		},
 	}
@@ -258,7 +270,7 @@ func TestAuthMiddleware_DirectValidation(t *testing.T) {
 	}{
 		{
 			name:           "200 with valid JSON",
-			mockAuthResponse: `{"valid": true, "session_id": "sess-123", "identity_id": "id-456"}`,
+			mockAuthResponse: `{"valid": true, "session_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", "identity_id": "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a12"}`,
 			mockStatusCode:   200,
 			featureFlag:      false,
 			expectedValid:    true,

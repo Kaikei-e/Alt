@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,15 @@ import (
 	"alt/config"
 	"alt/domain"
 )
+
+// mockRoundTripper implements http.RoundTripper for testing
+type mockRoundTripper struct {
+	roundTripFunc func(req *http.Request) (*http.Response, error)
+}
+
+func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return m.roundTripFunc(req)
+}
 
 func TestNewClient(t *testing.T) {
 	tests := []struct {
@@ -45,7 +55,7 @@ func TestNewClient(t *testing.T) {
 				},
 			},
 			wantURL:     "http://legacy-auth:8080",
-			wantTimeout: 30 * time.Second,
+			wantTimeout: 5 * time.Second,
 		},
 		{
 			name: "with default timeout",
@@ -56,7 +66,7 @@ func TestNewClient(t *testing.T) {
 				},
 			},
 			wantURL:     "http://auth:9500",
-			wantTimeout: 30 * time.Second,
+			wantTimeout: 5 * time.Second,
 		},
 	}
 
@@ -66,6 +76,7 @@ func TestNewClient(t *testing.T) {
 			client := NewClient(tt.config, logger)
 
 			assert.Equal(t, tt.wantURL, client.baseURL)
+			// Check the httpClient timeout directly 
 			assert.Equal(t, tt.wantTimeout, client.httpClient.Timeout)
 			assert.NotNil(t, client.logger)
 		})
@@ -125,20 +136,27 @@ func TestClient_ValidateSession(t *testing.T) {
 			wantError:          false, // Should handle gracefully, not error
 		},
 		{
-			name:               "auth service error - graceful fallback",
-			sessionToken:       "test-token",
+			name:               "auth service error - should return error",
+			sessionToken:       "test-token", 
 			tenantID:           "tenant-123",
 			mockResponseStatus: http.StatusInternalServerError,
 			mockResponse:       map[string]string{"error": "internal server error"},
 			wantValid:          false,
 			wantUserID:         "",
-			wantError:          false, // Changed: should handle gracefully for OptionalAuth compatibility
+			wantError:          true, // Auth service errors should be propagated
 		},
 	}
 
-	// Test service unavailable scenario separately
+	// Test service unavailable scenario with RoundTripper mock
 	t.Run("auth service unavailable", func(t *testing.T) {
-		// Create client with non-existent server URL
+		// Create mock RoundTripper that simulates network error
+		mockTransport := &mockRoundTripper{
+			roundTripFunc: func(req *http.Request) (*http.Response, error) {
+				return nil, fmt.Errorf("dial tcp: address 99999: invalid port")
+			},
+		}
+
+		// Create client with mock transport
 		config := &config.Config{
 			Auth: config.AuthConfig{
 				ServiceURL: "http://non-existent-server:99999",
@@ -147,27 +165,27 @@ func TestClient_ValidateSession(t *testing.T) {
 		}
 		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 		client := NewClient(config, logger)
+		
+		// Replace transport with mock
+		client.httpClient.Transport = mockTransport
 
 		// Call ValidateSession
 		ctx := context.Background()
 		result, err := client.ValidateSession(ctx, "test-token", "")
 
-		// Should handle gracefully for OptionalAuth compatibility
-		assert.NoError(t, err, "ValidateSession should handle service unavailable gracefully")
-		require.NotNil(t, result)
-		assert.False(t, result.Valid, "Should return invalid session when service unavailable")
-		assert.Empty(t, result.UserID)
-		assert.Empty(t, result.Email)
-		assert.Empty(t, result.Role)
+		// Should return error for network failures
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "authentication failed")
 	})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create mock server
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "POST", r.Method)
-				assert.Equal(t, "/api/v1/session/validate", r.URL.Path)
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, "GET", r.Method)
+				assert.Equal(t, "/v1/auth/validate", r.URL.Path)
+				assert.Equal(t, tt.sessionToken, r.Header.Get("X-Session-Token"))
 
 				w.WriteHeader(tt.mockResponseStatus)
 				json.NewEncoder(w).Encode(tt.mockResponse)

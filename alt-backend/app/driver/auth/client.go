@@ -14,6 +14,8 @@ import (
 	"alt/domain"
 )
 
+//go:generate mockgen -source=client.go -destination=../../mocks/mock_auth_driver.go -package=mocks
+
 // AuthClient defines the interface for Auth Service operations
 type AuthClient interface {
 	ValidateSession(ctx context.Context, sessionToken string, tenantID string) (*SessionValidationResponse, error)
@@ -196,7 +198,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 		return nil // Graceful handling - service unavailability is not a fatal error for the application
 	}
 
-	var healthResponse map[string]interface{}
+	var healthResponse map[string]any
 	if err := json.Unmarshal(response, &healthResponse); err != nil {
 		c.logger.Debug("failed to parse auth service health response", "error", err)
 		return nil // Graceful handling
@@ -213,7 +215,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 }
 
 // makeRequest is a helper method to make HTTP requests to the Auth Service
-func (c *Client) makeRequest(ctx context.Context, method, endpoint string, payload interface{}) ([]byte, error) {
+func (c *Client) makeRequest(ctx context.Context, method, endpoint string, payload any) ([]byte, error) {
 	var body io.Reader
 
 	if payload != nil {
@@ -261,7 +263,7 @@ func (c *Client) makeRequest(ctx context.Context, method, endpoint string, paylo
 }
 
 // makeRequestWithToken is a helper method to make HTTP requests with session token in header
-func (c *Client) makeRequestWithToken(ctx context.Context, method, endpoint, sessionToken string, payload interface{}) ([]byte, error) {
+func (c *Client) makeRequestWithToken(ctx context.Context, method, endpoint, sessionToken string, payload any) ([]byte, error) {
 	var body io.Reader
 
 	if payload != nil {
@@ -313,7 +315,7 @@ func (c *Client) makeRequestWithToken(ctx context.Context, method, endpoint, ses
 }
 
 // makeRequestWithCookie is a helper method to make HTTP requests with Cookie header
-func (c *Client) makeRequestWithCookie(ctx context.Context, method, endpoint, cookieHeader string, payload interface{}) ([]byte, error) {
+func (c *Client) makeRequestWithCookie(ctx context.Context, method, endpoint, cookieHeader string, payload any) ([]byte, error) {
 	var body io.Reader
 
 	if payload != nil {

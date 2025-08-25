@@ -1,5 +1,7 @@
 package fetch_feed_port
 
+//go:generate mockgen -source=fetch_port.go -destination=../../mocks/mock_fetch_feed_port.go -package=mocks
+
 import (
 	"alt/domain"
 	"context"

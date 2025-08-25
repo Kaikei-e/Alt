@@ -6,7 +6,7 @@ import (
 	"alt/domain"
 )
 
-//go:generate mockgen -source=auth_port.go -destination=../../mocks/mock_auth_client.go -package=mocks
+//go:generate mockgen -source=auth_port.go -destination=../../mocks/mock_auth_port_interfaces.go -package=mocks
 
 // AuthPort defines the interface for authentication operations
 type AuthPort interface {
@@ -16,8 +16,9 @@ type AuthPort interface {
 	GetUserByID(ctx context.Context, userID string) (*domain.UserContext, error)
 }
 
-// AuthClient defines the interface for authentication operations
-type AuthClient interface {
+// AuthClientPort defines the port interface for authentication client operations
+// This is separate from the driver implementation to maintain clean architecture
+type AuthClientPort interface {
 	// ValidateSession validates a session token and returns user context
 	ValidateSession(ctx context.Context, sessionToken string, tenantID string) (*SessionValidationResponse, error)
 
