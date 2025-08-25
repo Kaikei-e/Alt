@@ -65,6 +65,7 @@ func (c *DOSProtectionConfig) Validate() error {
 type rateLimiter struct {
 	limiter   *rate.Limiter
 	blockedAt time.Time
+	mu        sync.Mutex // Protects blockedAt field
 }
 
 // circuitBreaker implements circuit breaker pattern
@@ -209,19 +210,24 @@ func checkRateLimit(clientIP string, config DOSProtectionConfig, limiters map[st
 		mu.Unlock()
 	}
 
-	// Check if IP is currently blocked
+	// Check if IP is currently blocked (with proper synchronization)
+	limiter.mu.Lock()
 	if !limiter.blockedAt.IsZero() {
 		if time.Since(limiter.blockedAt) < config.BlockDuration {
+			limiter.mu.Unlock()
 			return false
 		}
 		// Unblock the IP
 		limiter.blockedAt = time.Time{}
 	}
+	limiter.mu.Unlock()
 
 	// Check rate limit
 	if !limiter.limiter.Allow() {
-		// Block the IP
+		// Block the IP (with proper synchronization)
+		limiter.mu.Lock()
 		limiter.blockedAt = time.Now()
+		limiter.mu.Unlock()
 		return false
 	}
 
@@ -304,7 +310,11 @@ func CleanupExpiredLimiters(limiters map[string]*rateLimiter, mu *sync.RWMutex, 
 
 	cutoff := time.Now().Add(-maxAge)
 	for ip, limiter := range limiters {
-		if !limiter.blockedAt.IsZero() && limiter.blockedAt.Before(cutoff) {
+		limiter.mu.Lock()
+		shouldDelete := !limiter.blockedAt.IsZero() && limiter.blockedAt.Before(cutoff)
+		limiter.mu.Unlock()
+		
+		if shouldDelete {
 			delete(limiters, ip)
 		}
 	}
