@@ -27,7 +27,7 @@ jobs:
     with:
       working-directory: 'tag-generator/app'
       python-version: '3.13'
-      test-command: 'pytest test_unit.py tests/ -v --cov=. --cov-report=xml --junit-xml=tests/results.xml'
+      test-command: 'pytest -v --cov=. --cov-report=xml --junit-xml=tests/results.xml'
       job-type: 'test'
       sparse-checkout: 'tag-generator'
       coverage-flags: 'tag-generator'

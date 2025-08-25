@@ -232,10 +232,15 @@ class InputSanitizer:
 
     def _sanitize_text(self, text: str) -> str:
         """Sanitize text content."""
+        # First, completely remove dangerous script/style content (not just tags)
+        # This removes both tags and their content
+        text = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>', '', text, flags=re.IGNORECASE | re.DOTALL)
+        
         # Remove excessive whitespace
         text = re.sub(r'\s+', ' ', text).strip()
 
-        # Remove or clean HTML based on config
+        # Remove or clean remaining HTML based on config
         if self.config.allow_html:
             text = bleach.clean(
                 text,

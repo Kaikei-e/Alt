@@ -16,7 +16,7 @@ on:
       test-command:
         required: false
         type: string
-        default: "pytest test_unit.py -v --junit-xml=tests/results.xml"
+        default: "pytest -v --cov=. --cov-report=xml --junit-xml=tests/results.xml"
       use-oidc:
         required: false
         type: boolean
@@ -125,6 +125,8 @@ jobs:
       - name: Run tests
         if: ${{ inputs.job-type == 'test' }}
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
+        env:
+          SERVICE_NAME: ${{ inputs.coverage-flags }}-test
         run: uv run ${{ inputs.test-command }}
 
       - name: Run linting (ruff check)

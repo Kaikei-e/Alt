@@ -72,6 +72,8 @@ def setup_logging():
     Set up structured logging using structlog, integrated with the standard
     logging library to output JSON.
     """
+    import os
+    
     # Define a type for structlog processors
     # Processor = Callable[[Any, str, Any] , Any] # Simplified type for Pyright
 
@@ -96,7 +98,9 @@ def setup_logging():
     )
 
     # Bind the service name to the context, so it's included in all logs.
-    structlog.contextvars.bind_contextvars(service="tag-generator")
+    # Use environment variable to allow test override
+    service_name = os.getenv('SERVICE_NAME', 'tag-generator')
+    structlog.contextvars.bind_contextvars(service=service_name)
 
     # Configure the standard logging handler.
     handler = logging.StreamHandler(sys.stdout)

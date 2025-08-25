@@ -6,7 +6,10 @@ from tag_generator.logging_config import setup_logging
 from main import TagGeneratorService, TagGeneratorConfig
 
 @pytest.fixture(autouse=True)
-def setup_test_logging():
+def setup_test_logging(monkeypatch):
+    # Set service name for tests via environment variable
+    monkeypatch.setenv('SERVICE_NAME', 'tag-generator-test')
+    
     # Ensure logging is set up for tests
     setup_logging()
     # Reset structlog processors for testing
@@ -25,7 +28,7 @@ def setup_test_logging():
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
-    # Bind service name for consistency
+    # Bind service name for consistency - this should now match what setup_logging() set
     structlog.contextvars.bind_contextvars(service="tag-generator-test")
 
 @pytest.fixture

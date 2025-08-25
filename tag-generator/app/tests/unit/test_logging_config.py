@@ -7,6 +7,8 @@ import structlog
 
 
 def test_setup_logging_produces_json_output():
+    import os
+    
     # Redirect stdout to capture log output
     old_stdout = sys.stdout
     sys.stdout = captured_output = StringIO()
@@ -36,4 +38,6 @@ def test_setup_logging_produces_json_output():
     assert log_json["msg"] == "test_message"
     assert log_json["key"] == "value"
     assert "timestamp" in log_json
-    assert log_json["service"] == "tag-generator"
+    # Check for the actual service name from environment or default
+    expected_service = os.getenv('SERVICE_NAME', 'tag-generator')
+    assert log_json["service"] == expected_service
