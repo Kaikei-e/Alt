@@ -27,3 +27,28 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
   unobserve: vi.fn(),
   disconnect: vi.fn(),
 }));
+
+// Suppress styled-jsx and other test-specific warnings
+const originalError = console.error;
+const originalWarn = console.warn;
+
+console.error = (...args) => {
+  if (
+    typeof args[0] === 'string' &&
+    (args[0].includes('Received `true` for a non-boolean attribute `jsx`') ||
+     args[0].includes('jsx="true"'))
+  ) {
+    return;
+  }
+  originalError.call(console, ...args);
+};
+
+console.warn = (...args) => {
+  if (
+    typeof args[0] === 'string' &&
+    args[0].includes('jsx')
+  ) {
+    return;
+  }
+  originalWarn.call(console, ...args);
+};

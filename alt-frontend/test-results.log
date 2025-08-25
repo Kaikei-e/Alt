@@ -1,0 +1,603 @@
+
+> alt@0.1.0 test:logic /home/koko/Documents/dev/Alt/alt-frontend
+> vitest
+
+
+ RUN  v3.2.4 /home/koko/Documents/dev/Alt/alt-frontend
+
+stderr | src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > Component Security Scan - PROTECTED > should detect potential XSS vulnerabilities in components - PROTECTED
+Security vulnerabilities found: [
+  [32m'/src/components/auth/UserProfile.tsx: setInterval with string detected'[39m,
+  [32m'/src/components/desktop/timeline/DesktopTimeline.tsx: setTimeout with string detected'[39m,
+  [32m'/src/components/mobile/utils/FloatingMenu.tsx: setTimeout with string detected'[39m
+]
+Review these issues and fix them if necessary
+
+stderr | src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > Component Security Scan - PROTECTED > should detect unsafe URL handling - PROTECTED
+Potential hardcoded secrets found: [
+  [32m'/src/app/auth/login/LoginClient.tsx: unsafe location.replace detected'[39m,
+  [32m'/src/app/auth/login/LoginForm.tsx: unsafe URL assignment detected'[39m,
+  [32m'/src/app/login/login-client.tsx: unsafe URL assignment detected'[39m,
+  [32m'/src/app/register/register-client.tsx: unsafe URL assignment detected'[39m,
+  [32m'/src/app/register/register-client.tsx: potential unsafe router.push with template literal'[39m
+]
+
+stderr | src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > API Security Scan - PROTECTED > should verify CSP compliance in all pages - PROTECTED
+CSP compliance issues found: [
+  [32m'/src/app/auth/error/page.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/auth/login/LoginForm.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/auth/login/LoginForm.tsx: inline event handler detected'[39m,
+  [32m'/src/app/desktop/articles/page.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/desktop/error.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/desktop/error.tsx: inline event handler detected'[39m,
+  [32m'/src/app/desktop/feeds/page.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/desktop/loading.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/error.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/error.tsx: inline event handler detected'[39m,
+  [32m'/src/app/global-error.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/global-error.tsx: inline event handler detected'[39m,
+  [32m'/src/app/login/login-client.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/mobile/error.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/mobile/error.tsx: inline event handler detected'[39m,
+  [32m'/src/app/mobile/feeds/_components/ErrorState.tsx: inline event handler detected'[39m,
+  [32m'/src/app/mobile/feeds/favorites/page.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/mobile/feeds/page.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/mobile/feeds/viewed/page.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/mobile/loading.tsx: inline style detected - may violate CSP'[39m,
+  [32m'/src/app/register/register-client.tsx: inline event handler detected'[39m,
+  [32m'/src/app/test/desktop-sidebar/page.tsx: inline event handler detected'[39m
+]
+
+stderr | src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > Configuration Security Scan - PROTECTED > should detect hardcoded secrets - PROTECTED
+Potential hardcoded secrets found: [
+  [32m'/src/__tests__/components/desktop/analytics/ReadingAnalytics.test.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/__tests__/components/desktop/analytics/RightPanel.test.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/__tests__/components/desktop/analytics/TrendingTopics.test.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/app/api/image-proxy/route.ts: potential hardcoded secret detected'[39m,
+  [32m'/src/app/desktop/articles/page.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/app/desktop/feeds/page.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/app/mobile/articles/search/page.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/app/test/call-to-action-bar/page.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/app/test/desktop-layout/page.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/app/test/desktop-sidebar/page.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/app/test/quick-actions-panel/page.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/components/desktop/accessibility/AccessibleDesktopFeedCard.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/components/desktop/layout/DesktopFeedsLayout.tsx: potential hardcoded secret detected'[39m,
+  [32m'/src/components/desktop/optimized/OptimizedDesktopFeeds.tsx: potential hardcoded secret detected'[39m
+]
+
+stderr | src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > Dependency Security Scan - PROTECTED > should verify no known vulnerable packages - PROTECTED
+Potential hardcoded secrets found: [
+  [32m'next@15.3.3: known vulnerable package detected'[39m,
+  [32m'react@^19.1.1: known vulnerable package detected'[39m
+]
+
+ ✓ src/hooks/useWindowSize.test.ts (5 tests) 27ms
+ ✓ src/utils/__tests__/renderingStrategies.test.tsx (8 tests) 40ms
+stderr | src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > Code Quality Security Scan - PROTECTED > should verify proper error handling - PROTECTED
+Potential hardcoded secrets found: [
+  [32m'/src/app/api/image-proxy/route.ts: potential information disclosure in error logging'[39m,
+  [32m'/src/app/auth/login/LoginForm.tsx: potential information disclosure in Promise error handling'[39m,
+  [32m'/src/contexts/auth-context.tsx: potential information disclosure in error logging'[39m,
+  [32m'/src/lib/api.ts: potential information disclosure in Promise error handling'[39m,
+  [32m'/src/tests/security/automated-scan.test.ts: potential information disclosure in Promise error handling'[39m,
+  [32m'/src/utils/renderingStrategies.tsx: potential information disclosure in error logging'[39m
+]
+
+stdout | src/__tests__/theme-integration.test.tsx > Theme Integration > デフォルトでalt-paperテーマが適用される
+ThemeToggle mounted, currentTheme: alt-paper
+
+ ✓ src/__tests__/theme-integration.test.tsx (1 test) 28ms
+stderr | src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > Code Quality Security Scan - PROTECTED > should verify proper type safety - PROTECTED
+Potential hardcoded secrets found: [
+  [32m"/src/__tests__/e2e/csrf-integration.test.ts: unsafe 'any' type usage detected"[39m,
+  [32m"/src/__tests__/theme-integration.test.tsx: unsafe 'any' type usage detected"[39m,
+  [32m"/src/app/api/fe-auth/validate/route.ts: unsafe 'any' type usage detected"[39m,
+  [32m"/src/app/auth/login/LoginClient.tsx: unsafe 'any' type usage detected"[39m,
+  [32m"/src/app/auth/login/LoginForm.tsx: unsafe 'any' type usage detected"[39m,
+  [32m'/src/app/auth/login/LoginForm.tsx: unsafe type assertion detected'[39m,
+  [32m'/src/hooks/useFavoriteFeeds.ts: non-null assertion operator usage detected'[39m,
+  [32m'/src/hooks/usePerformanceMonitor.ts: unsafe type assertion detected'[39m,
+  [32m'/src/hooks/useVirtualizationMetrics.ts: unsafe type assertion detected'[39m,
+  [32m"/src/lib/auth/csrf-auto-recovery.ts: unsafe 'any' type usage detected"[39m,
+  [32m'/src/lib/auth/kratos-ssr.ts: unsafe type assertion detected'[39m,
+  [32m'/src/tests/security/regression.test.ts: unsafe type assertion detected'[39m,
+  [32m'/src/utils/dataTransformers.test.ts: unsafe type assertion detected'[39m
+]
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > AuthProvider > should initialize with loading state and check authentication on mount
+[AUTH-CONTEXT] Session indicators found, checking auth status
+[AUTH-CONTEXT] Fetching fresh session data
+[AUTH-CONTEXT] Security check completed { sessionIntegrity: [33mfalse[39m, timestamp: [32m'2025-08-25T12:03:17.880Z'[39m }
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > AuthProvider > should initialize with loading state and check authentication on mount
+[AUTH-CONTEXT] Session indicators found, checking auth status
+[AUTH-CONTEXT] Fetching fresh session data
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > AuthProvider > should handle unauthenticated state
+[AUTH-CONTEXT] No session indicators found, setting unauthenticated state
+[AUTH-CONTEXT] Security check completed { sessionIntegrity: [33mtrue[39m, timestamp: [32m'2025-08-25T12:03:17.910Z'[39m }
+
+ ✓ src/utils/__tests__/contentTypeDetector.security.test.ts (10 tests) 115ms
+stderr | src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > Runtime Security Scan - PROTECTED > should verify no global variable pollution - PROTECTED
+Potential hardcoded secrets found: [
+  [32m'/src/__tests__/e2e/csrf-integration.test.ts: global object modification detected'[39m,
+  [32m'/src/__tests__/theme-integration.test.tsx: global window object modification detected'[39m,
+  [32m'/src/components/ThemeToggle.tsx: global object modification detected'[39m,
+  [32m'/src/lib/api/auth-client.test.ts: global object modification detected'[39m,
+  [32m'/src/lib/server-fetch.test.ts: global object modification detected'[39m,
+  [32m'/src/tests/performance/security-impact.test.ts: global object modification detected'[39m,
+  [32m'/src/tests/security/automated-scan.test.ts: global object modification detected'[39m,
+  [32m'/src/tests/security/automated-scan.test.ts: prototype pollution detected'[39m,
+  [32m'/src/tests/security/security.test.ts: global object modification detected'[39m
+]
+
+ ❯ src/app/auth/login/LoginForm.test.tsx (9 tests | 9 failed) 43ms
+   × LoginForm > 初期状態 > ローディング状態が表示される 19ms
+     → React is not defined
+   × LoginForm > 初期状態 > フローIDが最終的に表示される 9ms
+     → React is not defined
+   × LoginForm > フロー取得 > 正常なフローデータを取得して表示する 3ms
+     → React is not defined
+   × LoginForm > フロー取得 > フロー取得失敗時にエラーを表示する 2ms
+     → React is not defined
+   × LoginForm > フォーム送信 > 正常な送信処理を行う 3ms
+     → React is not defined
+   × LoginForm > フォーム送信 > ログイン失敗時にエラーメッセージを表示する 2ms
+     → React is not defined
+   × LoginForm > 410 Error Handling (Flow Expiration) > should redirect to new flow when getLoginFlow returns 410 1ms
+     → React is not defined
+   × LoginForm > 410 Error Handling (Flow Expiration) > should redirect to new flow when updateLoginFlow returns 410 1ms
+     → React is not defined
+   × LoginForm > 410 Error Handling (Flow Expiration) > should redirect to default return_to when no return_to in URL 2ms
+     → React is not defined
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login redirect (current implementation)
+[AUTH-CONTEXT] No session indicators found, setting unauthenticated state
+[AUTH-CONTEXT] Security check completed { sessionIntegrity: [33mtrue[39m, timestamp: [32m'2025-08-25T12:03:17.930Z'[39m }
+
+ ✓ src/providers/ThemeProvider.test.tsx (6 tests) 88ms
+stderr | src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > Runtime Security Scan - PROTECTED > should verify proper environment variable usage - PROTECTED
+Potential hardcoded secrets found: [
+  [32m'/src/app/_server/whoami.ts: potential server-side environment variable exposure: process.env.KRATOS_INTERNAL_URL'[39m,
+  [32m'/src/app/api/health/route.ts: potential server-side environment variable exposure: process.env.npm_package_version'[39m,
+  [32m'/src/lib/api.ts: potential server-side environment variable exposure: process.env.API_URL'[39m,
+  [32m'/src/lib/auth/kratos-ssr.ts: potential server-side environment variable exposure: process.env.KRATOS_INTERNAL_URL'[39m,
+  [32m'/src/lib/config.ts: potential server-side environment variable exposure: process.env.API_URL'[39m,
+  [32m'/src/lib/server-fetch.test.ts: potential server-side environment variable exposure: process.env.API_URL'[39m,
+  [32m'/src/lib/server-fetch.ts: potential server-side environment variable exposure: process.env.API_URL'[39m
+]
+
+ ❯ src/tests/security/automated-scan.test.ts (12 tests | 1 failed) 245ms
+   ✓ Automated Security Scan - PROTECTED > Component Security Scan - PROTECTED > should detect potential XSS vulnerabilities in components - PROTECTED 18ms
+   ✓ Automated Security Scan - PROTECTED > Component Security Scan - PROTECTED > should detect unsafe URL handling - PROTECTED 5ms
+   ✓ Automated Security Scan - PROTECTED > API Security Scan - PROTECTED > should verify proper input validation in API routes - PROTECTED 1ms
+   × Automated Security Scan - PROTECTED > API Security Scan - PROTECTED > should verify CSP compliance in all pages - PROTECTED 18ms
+     → expected 22 to be less than 20
+   ✓ Automated Security Scan - PROTECTED > Configuration Security Scan - PROTECTED > should verify security headers configuration - PROTECTED 1ms
+   ✓ Automated Security Scan - PROTECTED > Configuration Security Scan - PROTECTED > should detect hardcoded secrets - PROTECTED 55ms
+   ✓ Automated Security Scan - PROTECTED > Dependency Security Scan - PROTECTED > should verify no known vulnerable packages - PROTECTED 1ms
+   ✓ Automated Security Scan - PROTECTED > Dependency Security Scan - PROTECTED > should verify security-related package versions - PROTECTED 1ms
+   ✓ Automated Security Scan - PROTECTED > Code Quality Security Scan - PROTECTED > should verify proper error handling - PROTECTED 36ms
+   ✓ Automated Security Scan - PROTECTED > Code Quality Security Scan - PROTECTED > should verify proper type safety - PROTECTED 38ms
+   ✓ Automated Security Scan - PROTECTED > Runtime Security Scan - PROTECTED > should verify no global variable pollution - PROTECTED 37ms
+   ✓ Automated Security Scan - PROTECTED > Runtime Security Scan - PROTECTED > should verify proper environment variable usage - PROTECTED 30ms
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login redirect (current implementation)
+🔄 [FLOW-MANAGER] Ensuring valid login flow - LOGIN-FLOW-1756123397990
+🔄 [FLOW-MANAGER] Login flow expired or invalid, regenerating... - LOGIN-FLOW-1756123397990
+
+stderr | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login redirect (current implementation)
+❌ [FLOW-MANAGER] Failed to create login flow - LOGIN-FLOW-1756123397990 Error: Login flow initiated via redirect
+    at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:167:58
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+    at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login redirect (current implementation)
+[AUTH-CONTEXT] 🔍 Error Mapping Analysis
+  Input error: Error: Login flow initiated via redirect
+      at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:167:58
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+      at new Promise (<anonymous>)
+      at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+      at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+  Error type: object
+  Retry count: [33m0[39m
+  Error message: Login flow initiated via redirect
+  Error name: Error
+  🎯 Final Mapped Error: {
+    type: [32m'UNKNOWN_ERROR'[39m,
+    message: [32m'Login flow initiated via redirect'[39m,
+    isRetryable: [33mtrue[39m,
+    retryCount: [33m0[39m
+  }
+
+stderr | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login redirect (current implementation)
+[AUTH-CONTEXT] Login failed: Error: Login flow initiated via redirect
+    at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:167:58
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+    at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login error
+[AUTH-CONTEXT] No session indicators found, setting unauthenticated state
+[AUTH-CONTEXT] Security check completed { sessionIntegrity: [33mtrue[39m, timestamp: [32m'2025-08-25T12:03:18.011Z'[39m }
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login error
+🔄 [FLOW-MANAGER] Ensuring valid login flow - LOGIN-FLOW-1756123398032
+🔄 [FLOW-MANAGER] Login flow expired or invalid, regenerating... - LOGIN-FLOW-1756123398032
+
+stderr | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login error
+❌ [FLOW-MANAGER] Failed to create login flow - LOGIN-FLOW-1756123398032 Error: Invalid credentials
+    at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:200:58
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+    at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login error
+[AUTH-CONTEXT] 🔍 Error Mapping Analysis
+  Input error: Error: Invalid credentials
+      at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:200:58
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+      at new Promise (<anonymous>)
+      at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+      at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+  Error type: object
+  Retry count: [33m0[39m
+  Error message: Invalid credentials
+  Error name: Error
+
+stderr | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle login error
+[AUTH-CONTEXT] Login failed: Error: Invalid credentials
+    at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:200:58
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+    at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+    at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration redirect (current implementation)
+  [AUTH-CONTEXT] No session indicators found, setting unauthenticated state
+  [AUTH-CONTEXT] Security check completed { sessionIntegrity: [33mtrue[39m, timestamp: [32m'2025-08-25T12:03:18.144Z'[39m }
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration redirect (current implementation)
+  🔄 [FLOW-MANAGER] Ensuring valid registration flow - REG-FLOW-1756123398165
+  🔄 [FLOW-MANAGER] Registration flow expired or invalid, regenerating... - REG-FLOW-1756123398165
+
+stderr | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration redirect (current implementation)
+  ❌ [FLOW-MANAGER] Failed to create registration flow - REG-FLOW-1756123398165 Error: Registration flow initiated via redirect
+      at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:229:65
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+      at new Promise (<anonymous>)
+      at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+      at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration redirect (current implementation)
+  [AUTH-CONTEXT] 🔍 Error Mapping Analysis
+    Input error: Error: Registration flow initiated via redirect
+        at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:229:65
+        at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+        at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+        at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+        at new Promise (<anonymous>)
+        at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+        at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+        at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+        at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+        at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    Error type: object
+    Retry count: [33m0[39m
+    Error message: Registration flow initiated via redirect
+    Error name: Error
+    🎯 Final Mapped Error: {
+      type: [32m'UNKNOWN_ERROR'[39m,
+      message: [32m'Registration flow initiated via redirect'[39m,
+      isRetryable: [33mtrue[39m,
+      retryCount: [33m0[39m
+    }
+
+stderr | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration redirect (current implementation)
+  [AUTH-CONTEXT] Registration failed - Raw error: Error: Registration flow initiated via redirect
+      at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:229:65
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+      at new Promise (<anonymous>)
+      at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+      at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+  [AUTH-CONTEXT] Registration failed - Error type: object
+  [AUTH-CONTEXT] Registration failed - Flow ID: flow_id_not_available
+  [AUTH-CONTEXT] Registration failed - Email: provided
+  [AUTH-CONTEXT] Registration failed - Password: provided
+  [AUTH-CONTEXT] Registration failed - Name: Test User
+  [AUTH-CONTEXT] Registration failed - Error message: Registration flow initiated via redirect
+  [AUTH-CONTEXT] Registration failed - Error stack: Error: Registration flow initiated via redirect
+      at /home/koko/Documents/dev/Alt/alt-frontend/src/contexts/auth-context.test.tsx:229:65
+      at file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+      at file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+      at file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+      at new Promise (<anonymous>)
+      at runWithTimeout (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+      at runTest (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+      at runSuite (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+      at runSuite (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+      at runSuite (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+  [AUTH-CONTEXT] Registration failed - Mapped error type: UNKNOWN_ERROR
+  [AUTH-CONTEXT] Registration failed - Mapped error message: Registration flow initiated via redirect
+  [AUTH-CONTEXT] Registration failed - Is retryable: [33mtrue[39m
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration error
+  [AUTH-CONTEXT] No session indicators found, setting unauthenticated state
+  [AUTH-CONTEXT] Security check completed { sessionIntegrity: [33mtrue[39m, timestamp: [32m'2025-08-25T12:03:18.181Z'[39m }
+
+ ✓ src/tests/performance/security-impact.test.ts (14 tests) 367ms
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration error
+  🔄 [FLOW-MANAGER] Ensuring valid registration flow - REG-FLOW-1756123398201
+  🔄 [FLOW-MANAGER] Registration flow expired or invalid, regenerating... - REG-FLOW-1756123398201
+
+stderr | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration error
+  ❌ [FLOW-MANAGER] Failed to create registration flow - REG-FLOW-1756123398201 Error: Registration failed
+      at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:259:65
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+      at new Promise (<anonymous>)
+      at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+      at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+
+stdout | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration error
+  [AUTH-CONTEXT] 🔍 Error Mapping Analysis
+    Input error: Error: Registration failed
+        at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:259:65
+        at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+        at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+        at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+        at new Promise (<anonymous>)
+        at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+        at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+        at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+        at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+        at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    Error type: object
+    Retry count: [33m0[39m
+    Error message: Registration failed
+    Error name: Error
+
+stderr | src/contexts/auth-context.test.tsx > AuthContext > useAuth hook > should handle registration error
+  [AUTH-CONTEXT] Registration failed - Raw error: Error: Registration failed
+      at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/contexts/auth-context.test.tsx:259:65
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+      at [90mfile:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+      at new Promise (<anonymous>)
+      at runWithTimeout [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+      at runTest [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+      at runSuite [90m(file:///home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/@vitest+runner@3.2.4/node_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+  [AUTH-CONTEXT] Registration failed - Error type: object
+  [AUTH-CONTEXT] Registration failed - Flow ID: flow_id_not_available
+  [AUTH-CONTEXT] Registration failed - Email: provided
+  [AUTH-CONTEXT] Registration failed - Password: provided
+  [AUTH-CONTEXT] Registration failed - Name: Test User
+  [AUTH-CONTEXT] Registration failed - Error message: Registration failed
+  [AUTH-CONTEXT] Registration failed - Error stack: Error: Registration failed
+      at /home/koko/Documents/dev/Alt/alt-frontend/src/contexts/auth-context.test.tsx:259:65
+      at file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+      at file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+      at file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+      at new Promise (<anonymous>)
+      at runWithTimeout (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+      at runTest (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+      at runSuite (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+      at runSuite (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+      at runSuite (file:///home/koko/Documents/dev/Alt/alt-frontend/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    [AUTH-CONTEXT] Registration failed - Mapped error type: REGISTRATION_FAILED
+    [AUTH-CONTEXT] Registration failed - Mapped error message: 登録処理中にエラーが発生しました。入力内容を確認してもう一度お試しください
+    [AUTH-CONTEXT] Registration failed - Is retryable: [33mtrue[39m
+
+ ✓ src/contexts/auth-context.test.tsx (7 tests) 451ms
+ ✓ src/tests/security/regression.test.ts (33 tests) 20ms
+ ✓ src/hooks/useTheme.test.ts (4 tests) 16ms
+ ✓ src/schema/validation/feedUrlSchema.test.ts (6 tests) 14ms
+ ✓ src/schema/validation/urlValidation.test.ts (10 tests) 10ms
+ ✓ src/utils/__tests__/renderingStrategies.security.test.ts (7 tests) 29ms
+ ✓ src/utils/sizeMeasurement.test.ts (12 tests) 13ms
+ ✓ src/utils/contentSanitizer.test.ts (20 tests) 13ms
+ ✓ src/utils/performanceTracker.test.ts (16 tests) 9ms
+ ✓ src/utils/featureFlags.test.ts (16 tests) 8ms
+ ✓ src/utils/searchUtils.test.ts (6 tests) 7ms
+ ✓ src/utils/linkSafety.test.ts (9 tests) 15ms
+ ✓ src/utils/dataTransformers.test.ts (5 tests) 6ms
+ ✓ src/utils/errorRecovery.test.ts (17 tests) 7ms
+stderr | src/components/mobile/VirtualFeedListImpl.test.tsx > VirtualFeedListImpl > should fallback to fixed sizing when dynamic sizing encounters error
+Dynamic sizing error: Error: Test error
+    at onClick [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/components/mobile/VirtualFeedListImpl.test.tsx:27:49[90m)[39m
+    at executeDispatch [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:16368:9[90m)[39m
+    at runWithFiberInDEV [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:1522:13[90m)[39m
+    at processDispatchQueue [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:16418:19[90m)[39m
+    at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:17016:9
+    at batchedUpdates$1 [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:3262:40[90m)[39m
+    at dispatchEventForPluginEventSystem [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:16572:7[90m)[39m
+    at dispatchEvent [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:20658:11[90m)[39m
+    at dispatchDiscreteEvent [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:20626:11[90m)[39m
+    at HTMLDivElement.callTheUserObjectsOperation [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/jsdom@26.1.0/node_modules/[4mjsdom[24m/lib/jsdom/living/generated/EventListener.js:26:30[90m)[39m
+
+stderr | src/components/mobile/VirtualFeedListImpl.test.tsx > VirtualFeedListImpl > should persist error state after dynamic sizing error
+Dynamic sizing error: Error: Test error
+    at onClick [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39msrc/components/mobile/VirtualFeedListImpl.test.tsx:27:49[90m)[39m
+    at executeDispatch [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:16368:9[90m)[39m
+    at runWithFiberInDEV [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:1522:13[90m)[39m
+    at processDispatchQueue [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:16418:19[90m)[39m
+    at [90m/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:17016:9
+    at batchedUpdates$1 [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:3262:40[90m)[39m
+    at dispatchEventForPluginEventSystem [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:16572:7[90m)[39m
+    at dispatchEvent [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:20658:11[90m)[39m
+    at dispatchDiscreteEvent [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/react-dom@19.1.1_react@19.1.1/node_modules/[4mreact-dom[24m/cjs/react-dom-client.development.js:20626:11[90m)[39m
+    at HTMLDivElement.callTheUserObjectsOperation [90m(/home/koko/Documents/dev/Alt/alt-frontend/[39mnode_modules/[4m.pnpm[24m/jsdom@26.1.0/node_modules/[4mjsdom[24m/lib/jsdom/living/generated/EventListener.js:26:30[90m)[39m
+
+ ✓ src/components/mobile/VirtualFeedListImpl.test.tsx (7 tests) 177ms
+ ✓ src/components/mobile/DynamicVirtualFeedList.test.tsx (9 tests) 218ms
+ ✓ src/utils/htmlEscape.test.ts (8 tests) 5ms
+ ✓ src/components/mobile/VirtualFeedListCore.test.tsx (8 tests) 163ms
+ ✓ src/__tests__/components/desktop/analytics/TrendingTopics.test.tsx (5 tests) 214ms
+ ✓ src/types/desktop.test.ts (5 tests) 3ms
+ ✓ src/types/auth.test.ts (12 tests) 4ms
+stdout | src/__tests__/components/desktop/analytics/RightPanel.test.tsx > RightPanel > should render with glass effect
+ThemeToggle mounted, currentTheme: alt-paper
+
+ ✓ src/__tests__/components/desktop/analytics/ReadingAnalytics.test.tsx (5 tests) 197ms
+ ✓ src/tests/security.test.ts (9 tests) 4ms
+stdout | src/__tests__/components/desktop/analytics/RightPanel.test.tsx > RightPanel > should show Analytics tab as active by default
+ThemeToggle mounted, currentTheme: alt-paper
+
+ ✓ src/components/desktop/timeline/VirtualDesktopTimeline.test.tsx (13 tests) 284ms
+stdout | src/__tests__/components/desktop/analytics/RightPanel.test.tsx > RightPanel > should switch between tabs
+ThemeToggle mounted, currentTheme: alt-paper
+
+stdout | src/__tests__/components/desktop/analytics/RightPanel.test.tsx > RightPanel > should use CSS variables for styling
+ThemeToggle mounted, currentTheme: alt-paper
+
+ ✓ src/__tests__/components/desktop/analytics/RightPanel.test.tsx (4 tests) 223ms
+ ✓ src/components/desktop/layout/DesktopSidebar.test.tsx (22 tests) 509ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/middleware.test.ts [ src/middleware.test.ts ]
+ FAIL  src/lib/server-fetch.test.ts [ src/lib/server-fetch.test.ts ]
+ReferenceError: window is not defined
+ ❯ vitest.setup.ts:5:23
+      3| 
+      4| // Mock window.matchMedia globally
+      5| Object.defineProperty(window, "matchMedia", {
+       |                       ^
+      6|   writable: true,
+      7|   value: vi.fn().mockImplementation((query) => ({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/18]⎯
+
+ FAIL  src/hooks/useHomeStats.test.ts [ src/hooks/useHomeStats.test.ts ]
+ FAIL  src/hooks/useRecentActivity.test.ts [ src/hooks/useRecentActivity.test.ts ]
+ FAIL  src/__tests__/e2e/csrf-integration.test.ts [ src/__tests__/e2e/csrf-integration.test.ts ]
+ FAIL  src/lib/api/auth-client.test.ts [ src/lib/api/auth-client.test.ts ]
+ FAIL  src/tests/security/security.test.ts [ src/tests/security/security.test.ts ]
+Error: NEXT_PUBLIC_IDP_ORIGIN missing
+ ❯ assertHttpsPublicOrigin src/lib/env.public.ts:5:21
+      3| 
+      4| function assertHttpsPublicOrigin(name: string, value: string | undefin…
+      5|   if (!value) throw new Error(`${name} missing`);
+       |                     ^
+      6|   let origin: string;
+      7|   try {
+ ❯ src/lib/env.public.ts:22:27
+ ❯ src/lib/api/auth-client.ts:2:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/18]⎯
+
+ FAIL  src/components/mobile/VirtualizedFeedList.test.tsx [ src/components/mobile/VirtualizedFeedList.test.tsx ]
+Error: NEXT_PUBLIC_IDP_ORIGIN missing
+ ❯ assertHttpsPublicOrigin src/lib/env.public.ts:5:21
+      3| 
+      4| function assertHttpsPublicOrigin(name: string, value: string | undefin…
+      5|   if (!value) throw new Error(`${name} missing`);
+       |                     ^
+      6|   let origin: string;
+      7|   try {
+ ❯ src/lib/env.public.ts:22:27
+ ❯ src/lib/config.ts:36:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/18]⎯
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/security/automated-scan.test.ts > Automated Security Scan - PROTECTED > API Security Scan - PROTECTED > should verify CSP compliance in all pages - PROTECTED
+AssertionError: expected 22 to be less than 20
+ ❯ src/tests/security/automated-scan.test.ts:274:38
+    272| 
+    273|       // 実際の重大な問題がない場合はテストを通す
+    274|       expect(vulnerabilities.length).toBeLessThan(20); // 合理的な上限
+       |                                      ^
+    275|     });
+    276|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/18]⎯
+
+ FAIL  src/app/auth/login/LoginForm.test.tsx > LoginForm > 初期状態 > ローディング状態が表示される
+ FAIL  src/app/auth/login/LoginForm.test.tsx > LoginForm > 初期状態 > フローIDが最終的に表示される
+ FAIL  src/app/auth/login/LoginForm.test.tsx > LoginForm > フロー取得 > 正常なフローデータを取得して表示する
+ FAIL  src/app/auth/login/LoginForm.test.tsx > LoginForm > フロー取得 > フロー取得失敗時にエラーを表示する
+ FAIL  src/app/auth/login/LoginForm.test.tsx > LoginForm > フォーム送信 > 正常な送信処理を行う
+ FAIL  src/app/auth/login/LoginForm.test.tsx > LoginForm > フォーム送信 > ログイン失敗時にエラーメッセージを表示する
+ FAIL  src/app/auth/login/LoginForm.test.tsx > LoginForm > 410 Error Handling (Flow Expiration) > should redirect to new flow when getLoginFlow returns 410
+ FAIL  src/app/auth/login/LoginForm.test.tsx > LoginForm > 410 Error Handling (Flow Expiration) > should redirect to new flow when updateLoginFlow returns 410
+ FAIL  src/app/auth/login/LoginForm.test.tsx > LoginForm > 410 Error Handling (Flow Expiration) > should redirect to default return_to when no return_to in URL
+ReferenceError: React is not defined
+ ❯ LoginForm src/app/auth/login/LoginForm.tsx:41:5
+     39| 
+     40|   if (!flow) {
+     41|     return (
+       |     ^
+     42|       <div className="login-container">
+     43|         <div className="login-card glass">
+ ❯ Object.react_stack_bottom_frame node_modules/.pnpm/react-dom@19.1.1_react@19.1.1/node_modules/react-dom/cjs/react-dom-client.development.js:23863:20
+ ❯ renderWithHooks node_modules/.pnpm/react-dom@19.1.1_react@19.1.1/node_modules/react-dom/cjs/react-dom-client.development.js:5529:22
+ ❯ updateFunctionComponent node_modules/.pnpm/react-dom@19.1.1_react@19.1.1/node_modules/react-dom/cjs/react-dom-client.development.js:8897:19
+ ❯ beginWork node_modules/.pnpm/react-dom@19.1.1_react@19.1.1/node_modules/react-dom/cjs/react-dom-client.development.js:10522:18
+ ❯ runWithFiberInDEV node_modules/.pnpm/react-dom@19.1.1_react@19.1.1/node_modules/react-dom/cjs/react-dom-client.development.js:1522:13
+ ❯ performUnitOfWork node_modules/.pnpm/react-dom@19.1.1_react@19.1.1/node_modules/react-dom/cjs/react-dom-client.development.js:15140:22
+ ❯ workLoopSync node_modules/.pnpm/react-dom@19.1.1_react@19.1.1/node_modules/react-dom/cjs/react-dom-client.development.js:14956:41
+ ❯ renderRootSync node_modules/.pnpm/react-dom@19.1.1_react@19.1.1/node_modules/react-dom/cjs/react-dom-client.development.js:14936:11
+ ❯ performWorkOnRoot node_modules/.pnpm/react-dom@19.1.1_react@19.1.1/node_modules/react-dom/cjs/react-dom-client.development.js:14462:44
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/18]⎯
+
+
+ Test Files  10 failed | 32 passed (42)
+      Tests  10 failed | 330 passed (340)
+   Start at  21:03:16
+   Duration  2.42s (transform 1.61s, setup 2.37s, collect 12.25s, tests 3.57s, environment 15.44s, prepare 3.61s)
+
+ ELIFECYCLE  Command failed with exit code 1.
