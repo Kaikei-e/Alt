@@ -122,7 +122,7 @@ func main() {
 		InitialRefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"),
 		BaseURL:             cfg.OAuth2.BaseURL, // Use OAuth2-specific base URL
 		RefreshBuffer:       5 * time.Minute,
-		CheckInterval:       1 * time.Minute,
+		CheckInterval:       3 * time.Hour,  // 3時間間隔（8回/日、API制限対応）
 		
 		// OAuth2 Secret設定 - auth-token-manager連携
 		OAuth2SecretName:    cfg.OAuth2SecretName,

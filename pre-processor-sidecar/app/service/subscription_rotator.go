@@ -48,8 +48,8 @@ func NewSubscriptionRotator(logger *slog.Logger) *SubscriptionRotator {
 	return &SubscriptionRotator{
 		subscriptions:      make([]uuid.UUID, 0),
 		lastProcessed:      make(map[uuid.UUID]time.Time),
-		intervalMinutes:    18,   // 18分間隔 (46 subscriptions × 18min = 13.8 hours, API optimized)
-		maxDaily:           46,   // 1日46個処理（全サブスクリプション）
+		intervalMinutes:    20,   // 20分間隔（API制限対応）46 × 20min = 15.3h で1サイクル
+		maxDaily:           84,   // 1日84個処理（1.8サイクル分、API制限94/100内）
 		currentIndex:       0,
 		logger:            logger,
 		lastResetDate:     time.Now().Truncate(24 * time.Hour),
