@@ -176,7 +176,7 @@ func TestTokenManagementService_ErrorHandling_RateLimited(t *testing.T) {
 			
 			if attemptCount <= 2 {
 				// First two attempts are rate limited
-				w.Header().Set("Retry-After", "30")
+				w.Header().Set("Retry-After", "1")
 				w.WriteHeader(http.StatusTooManyRequests)
 				fmt.Fprintf(w, "Rate limit exceeded")
 				return

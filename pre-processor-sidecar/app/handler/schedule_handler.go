@@ -346,6 +346,20 @@ func (h *ScheduleHandler) executeSubscriptionSync() {
 
 	h.logger.Info("Starting scheduled subscription synchronization")
 
+	// Check if context is available
+	if h.ctx == nil {
+		h.logger.Warn("Handler context not initialized, skipping subscription sync")
+		result.Success = false
+		result.Error = "handler context not initialized"
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(startTime)
+		h.mu.Lock()
+		h.status.SubscriptionSyncRunning = false
+		h.mu.Unlock()
+		h.notifyJobResult(result)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(h.ctx, 10*time.Minute) // 10-minute timeout
 	defer cancel()
 
@@ -398,6 +412,20 @@ func (h *ScheduleHandler) executeArticleFetch() {
 	}
 
 	h.logger.Info("Starting scheduled article fetching with rotation processing")
+
+	// Check if context is available
+	if h.ctx == nil {
+		h.logger.Warn("Handler context not initialized, skipping article fetch")
+		result.Success = false
+		result.Error = "handler context not initialized"
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(startTime)
+		h.notifyJobResult(result)
+		h.mu.Lock()
+		h.status.ArticleFetchRunning = false
+		h.mu.Unlock()
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(h.ctx, 10*time.Minute) // 10-minute timeout for single subscription
 	defer cancel()

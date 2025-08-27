@@ -57,8 +57,12 @@ func NewOAuth2Client(clientID, clientSecret, baseURL string, logger *slog.Logger
 		logger = slog.Default()
 	}
 
-	// API base URL is always the full API endpoint
+	// API base URL - use baseURL for testing, otherwise use production endpoint
 	apiBaseURL := "https://www.inoreader.com/reader/api/0"
+	if baseURL != "https://www.inoreader.com" && baseURL != "" {
+		// For testing - use the mock server URL for both OAuth2 and API calls
+		apiBaseURL = baseURL
+	}
 
 	return &OAuth2Client{
 		clientID:     clientID,

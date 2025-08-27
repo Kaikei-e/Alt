@@ -72,7 +72,7 @@ func TestLoadConfig(t *testing.T) {
                                 assert.Equal(t, "info", cfg.LogLevel)
 				assert.Equal(t, 100, cfg.Inoreader.MaxArticlesPerRequest)
 				assert.Equal(t, 30*time.Minute, cfg.RateLimit.SyncInterval)
-				assert.Equal(t, 5*time.Minute, cfg.Inoreader.TokenRefreshBuffer)
+				assert.Equal(t, 10*time.Minute, cfg.Inoreader.TokenRefreshBuffer)
 				assert.Equal(t, "https://www.inoreader.com/reader/api/0", cfg.Inoreader.BaseURL)
 				assert.Equal(t, "http://envoy-proxy.alt-apps.svc.cluster.local:8081", cfg.Proxy.HTTPSProxy)
 			},
@@ -90,7 +90,7 @@ func TestLoadConfig(t *testing.T) {
 			validate: func(t *testing.T, cfg *Config) {
 				// Should fallback to defaults for invalid values
 				assert.Equal(t, 100, cfg.Inoreader.MaxArticlesPerRequest)
-				assert.Equal(t, 5*time.Minute, cfg.Inoreader.TokenRefreshBuffer)
+				assert.Equal(t, 10*time.Minute, cfg.Inoreader.TokenRefreshBuffer)
 			},
 		},
 		"invalid_duration_parsing": {

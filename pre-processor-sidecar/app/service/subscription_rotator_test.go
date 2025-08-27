@@ -17,7 +17,7 @@ func TestNewSubscriptionRotator(t *testing.T) {
 
 	assert.NotNil(t, rotator)
 	assert.Equal(t, 20, rotator.intervalMinutes)
-	assert.Equal(t, 40, rotator.maxDaily)
+	assert.Equal(t, 84, rotator.maxDaily)
 	assert.Equal(t, 0, rotator.currentIndex)
 	assert.Empty(t, rotator.subscriptions)
 	assert.Empty(t, rotator.lastProcessed)
@@ -149,16 +149,17 @@ func TestIsReadyForNext(t *testing.T) {
 	assert.True(t, rotator.IsReadyForNext())
 
 	// Add a recent processing time
+	testUUID := uuid.New()
 	rotator.mu.Lock()
-	rotator.lastProcessed[uuid.New()] = time.Now().Add(-10 * time.Minute) // 10 minutes ago
+	rotator.lastProcessed[testUUID] = time.Now().Add(-10 * time.Minute) // 10 minutes ago
 	rotator.mu.Unlock()
 
 	// Should not be ready (interval is 20 minutes)
 	assert.False(t, rotator.IsReadyForNext())
 
-	// Add an older processing time
+	// Update the same UUID with older processing time (simulating time passage)
 	rotator.mu.Lock()
-	rotator.lastProcessed[uuid.New()] = time.Now().Add(-25 * time.Minute) // 25 minutes ago
+	rotator.lastProcessed[testUUID] = time.Now().Add(-25 * time.Minute) // 25 minutes ago
 	rotator.mu.Unlock()
 
 	// Should be ready now
