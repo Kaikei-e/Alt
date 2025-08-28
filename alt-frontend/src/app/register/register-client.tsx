@@ -5,6 +5,30 @@ import { useRouter } from 'next/navigation'
 import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
 import { KRATOS_PUBLIC_URL } from '@/lib/env.public'
 
+// URL validation helper to prevent open redirects
+const isValidReturnUrl = (url: string): boolean => {
+  try {
+    const parsedUrl = new URL(url);
+    const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN;
+    const idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN;
+    
+    // Only allow same-origin or trusted IDP origin redirects
+    return parsedUrl.origin === appOrigin || parsedUrl.origin === idpOrigin;
+  } catch {
+    return false;
+  }
+}
+
+// Safe redirect helper
+const safeRedirect = (url: string) => {
+  if (isValidReturnUrl(url)) {
+    window.location.href = url;
+  } else {
+    // Fallback to default safe URL
+    window.location.href = process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT || '/';
+  }
+}
+
 interface RegistrationFlowNode {
   type: string
   group: string
@@ -65,7 +89,7 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
 
       if (!response.ok) {
         if (response.status === 410) {        // ← 期限切れだけ"新規フロー"
-          window.location.href = '/register'
+          safeRedirect('/register');
           return
         }
         // 404・403・429 等はここで可視化（無限再初期化しない）
@@ -315,8 +339,10 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
                 color="var(--alt-primary)"
                 textDecoration="underline"
                 onClick={() => {
-                  const currentUrl = typeof window !== 'undefined' ? window.location.href : '/'
-                  window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`
+                  const currentUrl = typeof window !== 'undefined' ? window.location.href : '/';
+                  const returnUrl = encodeURIComponent(currentUrl);
+                  const loginUrl = `/auth/login?return_to=${returnUrl}`;
+                  safeRedirect(loginUrl);
                 }}
               >
                 ログイン

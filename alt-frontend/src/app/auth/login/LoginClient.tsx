@@ -6,9 +6,46 @@ const frontend = new FrontendApi(
   new Configuration({ basePath: process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL })
 )
 
+// URL validation helper to prevent open redirects
+const isValidReturnUrl = (url: string): boolean => {
+  try {
+    const parsedUrl = new URL(url);
+    const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN;
+    const idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN;
+    
+    // Only allow same-origin or trusted IDP origin redirects
+    return parsedUrl.origin === appOrigin || parsedUrl.origin === idpOrigin;
+  } catch {
+    return false;
+  }
+}
+
+// Safe redirect helper
+const safeRedirect = (url: string) => {
+  if (isValidReturnUrl(url)) {
+    window.location.replace(url);
+  } else {
+    // Fallback to default safe URL
+    window.location.replace(process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT!);
+  }
+}
+
+interface LoginFlowUI {
+  nodes: Array<{
+    attributes?: {
+      name?: string;
+      value?: string;
+    };
+  }>;
+}
+
+interface LoginFlowData {
+  ui?: LoginFlowUI;
+}
+
 export default function LoginClient() {
   const [flowId, setFlowId] = useState<string | null>(null)
-  const [flow, setFlow] = useState<any>(null)
+  const [flow, setFlow] = useState<LoginFlowData | null>(null)
   const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN!
   const kratos = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
 
@@ -17,10 +54,10 @@ export default function LoginClient() {
     const url = new URL(window.location.href)
     const f = url.searchParams.get('flow')
     if (!f) {
-      const returnTo = encodeURIComponent(window.location.href)
-      window.location.replace(
-        `${kratos}/self-service/login/browser?return_to=${returnTo}`
-      )
+      const currentUrl = window.location.href;
+      const returnTo = encodeURIComponent(currentUrl);
+      const redirectUrl = `${kratos}/self-service/login/browser?return_to=${returnTo}`;
+      safeRedirect(redirectUrl);
       return
     }
     setFlowId(f)
@@ -33,21 +70,20 @@ export default function LoginClient() {
       try {
         const { data } = await frontend.getLoginFlow({ id: flowId })
         setFlow(data)
-      } catch (e: any) {
-        const status = e?.response?.status ?? e?.status
-        const errId = e?.response?.data?.error?.id
+      } catch (e: unknown) {
+        const error = e as { response?: { status?: number; data?: { error?: { id?: string } } }; status?: number };
+        const status = error?.response?.status ?? error?.status
+        const errId = error?.response?.data?.error?.id
         if (status === 410 || errId === 'self_service_flow_expired') {
-          const rt = encodeURIComponent(window.location.href.split('?')[0])
-          window.location.replace(
-            `${kratos}/self-service/login/browser?return_to=${rt}`
-          )
+          const currentUrl = window.location.href.split('?')[0];
+          const rt = encodeURIComponent(currentUrl);
+          const redirectUrl = `${kratos}/self-service/login/browser?return_to=${rt}`;
+          safeRedirect(redirectUrl);
           return
         }
         // 既にセッションあり（session_already_available）なら既定へ
         if (errId === 'session_already_available') {
-          window.location.replace(
-            process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT!
-          )
+          safeRedirect(process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT!);
           return
         }
         console.error('getLoginFlow failed', e)
@@ -70,7 +106,7 @@ export default function LoginClient() {
       // 成功時は Kratos が Set-Cookie + リダイレクト/JSONを返す
       // ブラウザは `return_to` へ遷移
       // 念のためwhoamiで確認してから移動したければここでチェックしてもよい
-      window.location.replace(process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT!)
+      safeRedirect(process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT!)
     } catch (e) {
       console.error('updateLoginFlow failed', e)
       // TODO: エラーUI
@@ -81,7 +117,7 @@ export default function LoginClient() {
 
   // 最小UI（nodesからCSRF/identifier/passwordを拾う前提の簡易例）
   const nodes = flow.ui?.nodes ?? []
-  const csrf = nodes.find((n: any) => n.attributes?.name === 'csrf_token')?.attributes?.value ?? ''
+  const csrf = nodes.find((n) => n.attributes?.name === 'csrf_token')?.attributes?.value ?? ''
 
   return (
     <form onSubmit={onSubmit}>

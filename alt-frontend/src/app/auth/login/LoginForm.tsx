@@ -8,8 +8,55 @@ const kratos = new FrontendApi(new Configuration({
   baseOptions: { credentials: 'include' } // ★必須（AJAXでCookieを送る）
 }))
 
+// URL validation helper to prevent open redirects
+const isValidReturnUrl = (url: string): boolean => {
+  try {
+    const parsedUrl = new URL(url);
+    const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN;
+    const idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN;
+    
+    // Only allow same-origin or trusted IDP origin redirects
+    return parsedUrl.origin === appOrigin || parsedUrl.origin === idpOrigin;
+  } catch {
+    return false;
+  }
+}
+
+// Safe redirect helper
+const safeRedirect = (url: string) => {
+  if (isValidReturnUrl(url)) {
+    window.location.href = url;
+  } else {
+    // Fallback to default safe URL
+    window.location.href = process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT || '/';
+  }
+}
+
+interface LoginFlowNode {
+  attributes?: {
+    name?: string;
+    value?: string;
+  };
+}
+
+interface LoginFlowUI {
+  action: string;
+  method?: string;
+  nodes: LoginFlowNode[];
+  messages?: Array<{
+    text: string;
+    type: string;
+  }>;
+}
+
+interface LoginFlowData {
+  ui?: LoginFlowUI;
+  error?: boolean;
+  message?: string;
+}
+
 export default function LoginForm({ flowId }: { flowId: string }) {
-  const [flow, setFlow] = useState<any>(null)
+  const [flow, setFlow] = useState<LoginFlowData | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [useNativeForm, setUseNativeForm] = useState(false)
 
@@ -23,12 +70,16 @@ export default function LoginForm({ flowId }: { flowId: string }) {
         const status = err.response?.status ?? err?.status
         // 410の場合は新しいフローに再リダイレクト
         if (status === 410) {
-          window.location.href = `/ory/self-service/login/browser?return_to=${encodeURIComponent(window.location.href)}`
+          const currentUrl = window.location.href;
+          const redirectUrl = `/ory/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
+          safeRedirect(redirectUrl);
         }
         // 403 CSRF エラーの場合も新しいフローに再リダイレクト
         else if (status === 403) {
           console.warn('CSRF error detected, creating new login flow')
-          window.location.href = `/ory/self-service/login/browser?return_to=${encodeURIComponent(window.location.href)}`
+          const currentUrl = window.location.href;
+          const redirectUrl = `/ory/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
+          safeRedirect(redirectUrl);
         }
         // その他のエラーの場合はエラー状態を設定
         else {
@@ -159,7 +210,7 @@ export default function LoginForm({ flowId }: { flowId: string }) {
   }
 
   const nodes = flow?.ui?.nodes ?? []
-  const csrf = nodes.find((n: any) => n.attributes?.name === 'csrf_token')?.attributes?.value ?? ''
+  const csrf = nodes.find((n) => n.attributes?.name === 'csrf_token')?.attributes?.value ?? ''
 
   // --- SDK 送信用 ---
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -175,22 +226,28 @@ export default function LoginForm({ flowId }: { flowId: string }) {
     try {
       const res = await kratos.updateLoginFlow({ flow: flowId, updateLoginFlowBody: body })
       // 成功時：303 + Set-Cookie（ブラウザが遷移 or JSON / redirect_to）
-      const redirectTo = (res.data as any).redirect_to || (res.data as any).return_to
-      window.location.href = redirectTo ?? '/'
-    } catch (err: any) {
-      const st = err?.response?.status ?? err?.status
-      const id = err?.response?.data?.error?.id
+      const responseData = res.data as { redirect_to?: string; return_to?: string };
+      const redirectTo = responseData.redirect_to || responseData.return_to
+      safeRedirect(redirectTo ?? '/')
+    } catch (err: unknown) {
+      const error = err as { response?: { status?: number; data?: { error?: { id?: string } } }; status?: number };
+      const st = error?.response?.status ?? error?.status
+      const id = error?.response?.data?.error?.id
       
       // 410なら自動復帰
       if (st === 410 || id === 'self_service_flow_expired') {
-        window.location.href = `/ory/self-service/login/browser?return_to=${encodeURIComponent(window.location.href)}`
+        const currentUrl = window.location.href;
+        const redirectUrl = `/ory/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
+        safeRedirect(redirectUrl);
         return
       }
       
       // 403 CSRF エラーも自動復帰
       if (st === 403) {
         console.warn('CSRF error during login submission, creating new flow')
-        window.location.href = `/ory/self-service/login/browser?return_to=${encodeURIComponent(window.location.href)}`
+        const currentUrl = window.location.href;
+        const redirectUrl = `/ory/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
+        safeRedirect(redirectUrl);
         return
       }
       
@@ -250,8 +307,7 @@ export default function LoginForm({ flowId }: { flowId: string }) {
           <div className="login-footer">
             <button 
               onClick={() => setUseNativeForm(false)}
-              className="recovery-link"
-              style={{ background: 'none', border: 'none' }}
+              className="recovery-link unstyled-button"
             >
               ← Use SDK Form
             </button>
@@ -361,6 +417,11 @@ export default function LoginForm({ flowId }: { flowId: string }) {
           .recovery-link:hover {
             color: var(--alt-secondary);
             text-decoration: underline;
+          }
+          
+          .unstyled-button {
+            background: none;
+            border: none;
           }
           
           @media (max-width: 480px) {

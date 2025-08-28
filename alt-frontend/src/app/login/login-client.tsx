@@ -2,8 +2,32 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
+import { Box, VStack, Text, Flex, Input, Button, Spinner, Link } from '@chakra-ui/react'
 import { KRATOS_PUBLIC_URL } from '@/lib/env.public'
+
+// URL validation helper to prevent open redirects
+const isValidReturnUrl = (url: string): boolean => {
+  try {
+    const parsedUrl = new URL(url);
+    const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN;
+    const idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN;
+    
+    // Only allow same-origin or trusted IDP origin redirects
+    return parsedUrl.origin === appOrigin || parsedUrl.origin === idpOrigin;
+  } catch {
+    return false;
+  }
+}
+
+// Safe redirect helper
+const safeRedirect = (url: string) => {
+  if (isValidReturnUrl(url)) {
+    window.location.href = url;
+  } else {
+    // Fallback to default safe URL
+    window.location.href = process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT || '/';
+  }
+}
 
 interface LoginFlowNode {
   type: string
@@ -111,12 +135,12 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
         if (response.status === 410) { 
           // Flow expired - clean up stale sessions before redirect
           await cleanupSession()
-          window.location.href = '/auth/login'; return
+          safeRedirect('/auth/login'); return
         }
         if (response.status === 404) {
           // Flow not found - could indicate session issues
           await cleanupSession()
-          window.location.href = '/auth/login'; return
+          safeRedirect('/auth/login'); return
         }
         setError(`fetch flow failed: ${response.status}`); return
       }
@@ -315,15 +339,13 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
               fontFamily="body"
             >
               アカウントをお持ちでない方は{' '}
-              <a
+              <Link
                 href={`${KRATOS_PUBLIC}/self-service/registration/browser?return_to=${encodeURIComponent(returnUrl)}`}
-                style={{
-                  color: 'var(--alt-primary)',
-                  textDecoration: 'underline'
-                }}
+                color="var(--alt-primary)"
+                textDecoration="underline"
               >
                 新規登録
-              </a>
+              </Link>
             </Text>
           </Box>
         </VStack>

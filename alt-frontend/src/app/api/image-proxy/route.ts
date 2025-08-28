@@ -141,7 +141,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Alt-RSS-Reader/1.0; +https://alt.example.com)',
+        'User-Agent': `Mozilla/5.0 (compatible; Alt-RSS-Reader/1.0; +${process.env.NEXT_PUBLIC_APP_ORIGIN || 'https://curionoah.com'})`,
         'Accept': 'image/*',
         'Accept-Encoding': 'gzip, deflate',
         'Cache-Control': 'no-cache'

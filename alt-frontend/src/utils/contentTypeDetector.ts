@@ -78,8 +78,8 @@ function hasHtmlTags(content: string): boolean {
       }
       inTag = false;
     } else if (inTag) {
-      // Count characters in tag (letters, numbers, spaces, common attributes)
-      if (/[a-zA-Z0-9\s='"/-]/.test(char)) {
+      // Count characters in tag (letters, numbers, spaces, common attributes, URLs)
+      if (/[a-zA-Z0-9\s='"\/\-&;:?.]/.test(char)) {
         tagChars++;
         // Prevent extremely long "tags" (likely not real HTML)
         if (tagChars > 100) {
