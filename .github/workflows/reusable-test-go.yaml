@@ -116,7 +116,7 @@ jobs:
         env:
           CGO_ENABLED: "1"
         run: |
-          go test ./... -count=1 -race -covermode=atomic -coverprofile=coverage.out
+          go test ./... -coverprofile=coverage.out
 
       # === Codecov: OIDC か token を選択 ===
       - name: Upload coverage to Codecov (OIDC)
