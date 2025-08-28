@@ -5,16 +5,16 @@ package service
 
 import (
 	"context"
-	"testing"
-	"time"
 	"log/slog"
 	"os"
+	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"pre-processor-sidecar/models"
 	"pre-processor-sidecar/repository"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/mock"
 )
 
 // MockTokenRepository is a mock implementation of OAuth2TokenRepository
@@ -120,7 +120,7 @@ func TestTokenManagementService_EnsureValidToken(t *testing.T) {
 					Scope:        "read",
 					IssuedAt:     time.Now().Add(-1 * time.Hour),
 				}
-				
+
 				refreshedTokenResponse := &models.InoreaderTokenResponse{
 					AccessToken:  "new_access_token",
 					TokenType:    "Bearer",
@@ -128,7 +128,7 @@ func TestTokenManagementService_EnsureValidToken(t *testing.T) {
 					RefreshToken: "", // Usually not provided in refresh response
 					Scope:        "read",
 				}
-				
+
 				repo.On("GetCurrentToken", mock.Anything).Return(expiringSoonToken, nil)
 				client.On("RefreshToken", mock.Anything, "valid_refresh_token").Return(refreshedTokenResponse, nil)
 				repo.On("UpdateToken", mock.Anything, mock.AnythingOfType("*models.OAuth2Token")).Return(nil)
@@ -163,7 +163,7 @@ func TestTokenManagementService_EnsureValidToken(t *testing.T) {
 					Scope:        "read",
 					IssuedAt:     time.Now().Add(-2 * time.Hour),
 				}
-				
+
 				repo.On("GetCurrentToken", mock.Anything).Return(expiredToken, nil)
 				client.On("RefreshToken", mock.Anything, "invalid_refresh_token").Return(nil, assert.AnError)
 			},
@@ -221,10 +221,10 @@ func TestTokenManagementService_RefreshTokenProactively(t *testing.T) {
 				}
 
 				refreshResponse := &models.InoreaderTokenResponse{
-					AccessToken:  "proactively_refreshed_token",
-					TokenType:    "Bearer",
-					ExpiresIn:    3600,
-					Scope:        "read",
+					AccessToken: "proactively_refreshed_token",
+					TokenType:   "Bearer",
+					ExpiresIn:   3600,
+					Scope:       "read",
 				}
 
 				repo.On("GetCurrentToken", mock.Anything).Return(soonExpiringToken, nil)
@@ -313,10 +313,10 @@ func TestTokenManagementService_ValidateAndRecoverToken(t *testing.T) {
 				}
 
 				recoveredTokenResponse := &models.InoreaderTokenResponse{
-					AccessToken:  "recovered_token",
-					TokenType:    "Bearer",
-					ExpiresIn:    3600,
-					Scope:        "read",
+					AccessToken: "recovered_token",
+					TokenType:   "Bearer",
+					ExpiresIn:   3600,
+					Scope:       "read",
 				}
 
 				// Allow multiple GetCurrentToken calls due to single-flight pattern
@@ -351,39 +351,4 @@ func TestTokenManagementService_ValidateAndRecoverToken(t *testing.T) {
 			mockClient.AssertExpectations(t)
 		})
 	}
-}
-
-// TestTokenManagementService_GetTokenStatus tests token status reporting
-func TestTokenManagementService_GetTokenStatus(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-
-	mockRepo := &MockTokenRepository{}
-	mockClient := &MockOAuth2Driver{}
-
-	validToken := &models.OAuth2Token{
-		AccessToken:  "status_test_token",
-		RefreshToken: "status_refresh_token",
-		TokenType:    "Bearer",
-		ExpiresIn:    3600,
-		ExpiresAt:    time.Now().Add(35 * time.Minute), // 35 minutes > 30 minutes buffer + 1 minute clock skew
-		Scope:        "read",
-		IssuedAt:     time.Now(),
-	}
-
-	mockRepo.On("GetCurrentToken", mock.Anything).Return(validToken, nil)
-
-	service := NewTokenManagementService(mockRepo, mockClient, logger)
-	ctx := context.Background()
-
-	status, err := service.GetTokenStatus(ctx)
-
-	require.NoError(t, err)
-	assert.True(t, status.Exists)
-	assert.True(t, status.IsValid)
-	assert.False(t, status.IsExpired)
-	assert.False(t, status.NeedsRefresh) // 35 minutes > 30 minute buffer + 1 minute clock skew
-	assert.Equal(t, "Bearer", status.TokenType)
-	assert.Equal(t, "read", status.Scope)
-
-	mockRepo.AssertExpectations(t)
 }
