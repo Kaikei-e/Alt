@@ -1,18 +1,18 @@
 // Main API entry point - provides backward compatibility with original api.ts
-import { ApiClient, defaultApiConfig } from "./api/core/ApiClient";
-import { CacheManager, defaultCacheConfig } from "./api/cache/CacheManager";
-import { AuthInterceptor, LoginBanner } from "./api/auth";
-import { FeedsApi } from "./api/feeds/FeedsApi";
-import { DesktopApi } from "./api/desktop/DesktopApi";
+import { ApiClient, defaultApiConfig } from "./core/ApiClient";
+import { CacheManager, defaultCacheConfig } from "./cache/CacheManager";
+import { AuthInterceptor, LoginBanner } from "./auth";
+import { FeedsApi } from "./feeds/FeedsApi";
+import { DesktopApi } from "./desktop/DesktopApi";
 
 // Re-export types for external use
 export type { CursorResponse } from "@/schema/common";
 
 // Re-export errors for backward compatibility
-export { ApiError as ApiClientError } from "./api/core/ApiError";
+export { ApiError as ApiClientError } from "./core/ApiError";
 
 // Re-export server fetch utility
-export { serverFetch } from "./api/utils/serverFetch";
+export { serverFetch } from "./utils/serverFetch";
 
 // Create singleton instances for backward compatibility
 const cacheManager = new CacheManager(defaultCacheConfig);
