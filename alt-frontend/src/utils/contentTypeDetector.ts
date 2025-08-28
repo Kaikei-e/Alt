@@ -27,9 +27,8 @@ export const detectContentType = (content: string, declaredType?: string): Conte
     }
   }
 
-  // 2. Check for HTML tags presence
-  const htmlTagRegex = /<[^>]+>/g;
-  if (htmlTagRegex.test(content)) {
+  // 2. Check for HTML tags presence (ReDoS-safe version)
+  if (hasHtmlTags(content)) {
     return ContentType.HTML;
   }
 
@@ -51,6 +50,52 @@ export const detectContentType = (content: string, declaredType?: string): Conte
   // 4. Default to plain text
   return ContentType.TEXT;
 };
+
+/**
+ * ReDoS-safe HTML tag detection using character scanning instead of regex
+ * @param content - Content to check for HTML tags
+ * @returns True if HTML tags are found
+ */
+function hasHtmlTags(content: string): boolean {
+  if (!content || typeof content !== 'string') {
+    return false;
+  }
+
+  let inTag = false;
+  let tagChars = 0;
+  const maxScanLength = Math.min(content.length, 10000); // Limit scan to prevent performance issues
+
+  for (let i = 0; i < maxScanLength; i++) {
+    const char = content[i];
+    
+    if (char === '<') {
+      inTag = true;
+      tagChars = 0;
+    } else if (char === '>' && inTag) {
+      // Found complete tag - check if it looks like a valid HTML tag
+      if (tagChars > 0) {
+        return true;
+      }
+      inTag = false;
+    } else if (inTag) {
+      // Count characters in tag (letters, numbers, spaces, common attributes)
+      if (/[a-zA-Z0-9\s='"/-]/.test(char)) {
+        tagChars++;
+        // Prevent extremely long "tags" (likely not real HTML)
+        if (tagChars > 100) {
+          inTag = false;
+          tagChars = 0;
+        }
+      } else {
+        // Invalid character in tag, not HTML
+        inTag = false;
+        tagChars = 0;
+      }
+    }
+  }
+
+  return false;
+}
 
 /**
  * Safely tests regex patterns with timeout protection against ReDoS
