@@ -151,10 +151,10 @@ func NewScheduleHandler(
 		logger = slog.Default()
 	}
 
-	// Default configuration - API optimized with 18-minute rotation intervals
+	// Default configuration - API optimized with 30-minute intervals
 	config := &ScheduleConfig{
 		SubscriptionSyncInterval: 12 * time.Hour,   // 12 hours for subscription sync (API optimized)
-		ArticleFetchInterval:     18 * time.Minute, // 18-minute rotation intervals (API optimized)
+		ArticleFetchInterval:     30 * time.Minute, // 30-minute intervals for article fetch
 		EnableSubscriptionSync:   true,
 		EnableArticleFetch:       true,
 		MaxConcurrentJobs:        2, // Allow subscription sync and article fetch to run concurrently

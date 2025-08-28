@@ -289,8 +289,8 @@ func TestTokenManagementService_ValidateAndRecoverToken(t *testing.T) {
 					AccessToken:  "valid_token",
 					RefreshToken: "valid_refresh_token",
 					TokenType:    "Bearer",
-					ExpiresIn:    3600,
-					ExpiresAt:    time.Now().Add(1 * time.Hour),
+					ExpiresIn:    600,
+					ExpiresAt:    time.Now().Add(10 * time.Minute), // Close to expiry to trigger API validation
 					Scope:        "read",
 					IssuedAt:     time.Now(),
 				}
@@ -306,8 +306,8 @@ func TestTokenManagementService_ValidateAndRecoverToken(t *testing.T) {
 					AccessToken:  "invalid_token",
 					RefreshToken: "valid_refresh_token",
 					TokenType:    "Bearer",
-					ExpiresIn:    3600,
-					ExpiresAt:    time.Now().Add(1 * time.Hour), // Not expired but invalid
+					ExpiresIn:    600,
+					ExpiresAt:    time.Now().Add(10 * time.Minute), // Close to expiry to trigger API validation
 					Scope:        "read",
 					IssuedAt:     time.Now(),
 				}

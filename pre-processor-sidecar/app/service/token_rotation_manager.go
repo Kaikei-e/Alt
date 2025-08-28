@@ -62,7 +62,7 @@ func NewTokenRotationManager(
 		tokenService:      tokenService,
 		logger:            logger,
 		monitorInterval:   10 * time.Minute,  // Check every 10 minutes
-		healthCheckPeriod: 5 * time.Minute,   // Health check every 5 minutes
+		healthCheckPeriod: 30 * time.Minute,  // Health check every 30 minutes (reduced from 5 min)
 		alertThreshold:    30 * time.Minute,  // Alert if expires within 30 minutes
 		stopCh:            make(chan struct{}),
 		healthStatus: RotationHealthStatus{

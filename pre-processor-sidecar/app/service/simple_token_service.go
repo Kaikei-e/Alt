@@ -52,12 +52,12 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 		logger = slog.Default()
 	}
 
-	// デフォルト値設定
+	// デフォルト値設定（API使用量削減のため頻度を下げる）
 	if config.RefreshBuffer == 0 {
-		config.RefreshBuffer = 5 * time.Minute
+		config.RefreshBuffer = 30 * time.Minute  // API optimized buffer
 	}
 	if config.CheckInterval == 0 {
-		config.CheckInterval = 1 * time.Minute
+		config.CheckInterval = 30 * time.Minute  // API optimized check interval
 	}
 
 	// OAuth2クライアントの作成

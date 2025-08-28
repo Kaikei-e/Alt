@@ -25,6 +25,9 @@ type TokenManagementService struct {
 	refreshBuffer    time.Duration
 	maxRetryAttempts int
 	
+	// API call optimization
+	validationThreshold time.Duration // Only validate via API when token expires within this time
+	
 	// Single-flight group prevents concurrent refresh operations
 	refreshGroup     *singleflight.Group
 	
@@ -60,7 +63,8 @@ func NewTokenManagementService(
 		tokenRepo:        tokenRepo,
 		oauth2Client:     oauth2Client,
 		logger:           logger,
-		refreshBuffer:    10 * time.Minute, // Increased to 10-minute buffer before expiry
+		refreshBuffer:    30 * time.Minute, // Increased to 30-minute buffer for API optimization
+		validationThreshold: 2 * time.Hour, // Only validate via API when < 2 hours to expiry (API optimized)
 		maxRetryAttempts: 3,
 		refreshGroup:     &singleflight.Group{}, // Initialize single-flight group
 		metrics:          &TokenManagementMetrics{},
@@ -83,9 +87,33 @@ func NewTokenManagementServiceWithBuffer(
 		oauth2Client:     oauth2Client,
 		logger:           logger,
 		refreshBuffer:    refreshBuffer,
+		validationThreshold: 2 * time.Hour, // Only validate via API when < 2 hours to expiry (API optimized)
 		maxRetryAttempts: 3,
 		refreshGroup:     &singleflight.Group{}, // Initialize single-flight group
 		metrics:          &TokenManagementMetrics{},
+	}
+}
+
+// NewTokenManagementServiceWithValidationThreshold creates a token management service with custom validation threshold
+func NewTokenManagementServiceWithValidationThreshold(
+	tokenRepo repository.OAuth2TokenRepository,
+	oauth2Client OAuth2Driver,
+	logger *slog.Logger,
+	validationThreshold time.Duration,
+) *TokenManagementService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	return &TokenManagementService{
+		tokenRepo:           tokenRepo,
+		oauth2Client:        oauth2Client,
+		logger:              logger,
+		refreshBuffer:       30 * time.Minute, // Consistent 30-minute buffer
+		validationThreshold: validationThreshold,
+		maxRetryAttempts:    3,
+		refreshGroup:        &singleflight.Group{},
+		metrics:             &TokenManagementMetrics{},
 	}
 }
 
@@ -169,16 +197,45 @@ func (s *TokenManagementService) ValidateAndRecoverToken(ctx context.Context) er
 		return fmt.Errorf("token validation failed - storage access error: %w", err)
 	}
 
-	// Check if token is valid by making a test API call
+	// Optimization: Check local expiry first to avoid unnecessary API calls
+	timeUntilExpiry := token.TimeUntilExpiry()
+	
+	// If token is expired, refresh immediately without API validation
+	if token.IsExpired() {
+		s.logger.Warn("Token is expired, attempting recovery",
+			"expires_at", token.ExpiresAt,
+			"expired_since", -timeUntilExpiry)
+
+		_, err := s.refreshTokenWithRetry(ctx, token)
+		if err != nil {
+			return fmt.Errorf("token recovery failed: %w", err)
+		}
+
+		s.logger.Info("Token recovery completed successfully")
+		return nil
+	}
+
+	// If token has plenty of time left, skip API validation to save API calls
+	if timeUntilExpiry > s.validationThreshold {
+		s.logger.Debug("Token has sufficient time remaining, skipping API validation",
+			"time_until_expiry", timeUntilExpiry,
+			"validation_threshold", s.validationThreshold)
+		return nil
+	}
+
+	// Only validate via API when close to expiry
+	s.logger.Info("Token close to expiry, performing API validation",
+		"time_until_expiry", timeUntilExpiry,
+		"validation_threshold", s.validationThreshold)
+
 	isValid, err := s.oauth2Client.ValidateToken(ctx, token.AccessToken)
 	if err != nil {
 		s.logger.Warn("Token validation API call failed", "error", err)
 	}
 
-	if !isValid || token.IsExpired() {
+	if !isValid {
 		s.logger.Warn("Token is invalid, attempting recovery",
 			"api_valid", isValid,
-			"is_expired", token.IsExpired(),
 			"expires_at", token.ExpiresAt)
 
 		// Attempt token refresh for recovery

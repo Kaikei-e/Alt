@@ -121,8 +121,8 @@ func main() {
 		InitialAccessToken:  os.Getenv("INOREADER_ACCESS_TOKEN"),
 		InitialRefreshToken: os.Getenv("INOREADER_REFRESH_TOKEN"),
 		BaseURL:             cfg.OAuth2.BaseURL, // Use OAuth2-specific base URL
-		RefreshBuffer:       5 * time.Minute,
-		CheckInterval:       3 * time.Hour,  // 3時間間隔（8回/日、API制限対応）
+		RefreshBuffer:       30 * time.Minute, // API optimized buffer
+		CheckInterval:       3 * time.Hour,   // 3時間間隔（8回/日、API制限対応）
 		
 		// OAuth2 Secret設定 - auth-token-manager連携
 		OAuth2SecretName:    cfg.OAuth2SecretName,
@@ -463,15 +463,15 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	// Start the dual schedule processing
 	logger.Info("Starting dual schedule processing",
 		"subscription_sync_interval", "12h",
-		"article_fetch_interval", "18m",
+		"article_fetch_interval", "30m",
 		"admin_api_address", ":8080")
 
 	if err := scheduleHandler.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start schedule handler: %w", err)
 	}
 
-	// サービス状態の定期ログ
-	statusTicker := time.NewTicker(10 * time.Minute)
+	// サービス状態の定期ログ（頻度を30分に削減してAPI呼び出しを減らす）
+	statusTicker := time.NewTicker(30 * time.Minute)
 	defer statusTicker.Stop()
 	go func() {
 		for {
