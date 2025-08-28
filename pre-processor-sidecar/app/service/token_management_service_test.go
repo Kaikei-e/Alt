@@ -365,7 +365,7 @@ func TestTokenManagementService_GetTokenStatus(t *testing.T) {
 		RefreshToken: "status_refresh_token",
 		TokenType:    "Bearer",
 		ExpiresIn:    3600,
-		ExpiresAt:    time.Now().Add(30 * time.Minute),
+		ExpiresAt:    time.Now().Add(35 * time.Minute), // 35 minutes > 30 minutes buffer + 1 minute clock skew
 		Scope:        "read",
 		IssuedAt:     time.Now(),
 	}
@@ -381,7 +381,7 @@ func TestTokenManagementService_GetTokenStatus(t *testing.T) {
 	assert.True(t, status.Exists)
 	assert.True(t, status.IsValid)
 	assert.False(t, status.IsExpired)
-	assert.False(t, status.NeedsRefresh) // 30 minutes > 5 minute buffer
+	assert.False(t, status.NeedsRefresh) // 35 minutes > 30 minute buffer + 1 minute clock skew
 	assert.Equal(t, "Bearer", status.TokenType)
 	assert.Equal(t, "read", status.Scope)
 

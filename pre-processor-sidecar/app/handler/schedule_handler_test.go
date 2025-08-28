@@ -5,6 +5,7 @@ package handler
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -121,7 +122,7 @@ func TestNewScheduleHandler(t *testing.T) {
 	// Check default configuration
 	config := handler.GetConfig()
 	assert.Equal(t, 12*time.Hour, config.SubscriptionSyncInterval)
-	assert.Equal(t, 18*time.Minute, config.ArticleFetchInterval)
+	assert.Equal(t, 30*time.Minute, config.ArticleFetchInterval)
 	assert.True(t, config.EnableSubscriptionSync)
 	assert.True(t, config.EnableArticleFetch)
 	assert.Equal(t, 2, config.MaxConcurrentJobs)
@@ -236,12 +237,17 @@ func TestScheduleHandler_TriggerArticleFetch_NotRunning(t *testing.T) {
 func TestScheduleHandler_AddJobResultCallback(t *testing.T) {
 	handler := NewScheduleHandler(nil, nil, nil)
 
-	callbackCalled := false
+	var callbackCalled bool
 	var receivedResult *JobResult
+	var mu sync.Mutex
+	done := make(chan struct{})
 
 	handler.AddJobResultCallback(func(result *JobResult) {
+		mu.Lock()
 		callbackCalled = true
 		receivedResult = result
+		mu.Unlock()
+		close(done)
 	})
 
 	// Create a mock job result and notify (directly without triggering actual operations)
@@ -257,10 +263,17 @@ func TestScheduleHandler_AddJobResultCallback(t *testing.T) {
 	handler.notifyJobResult(result)
 
 	// Wait for callback to execute
-	time.Sleep(10 * time.Millisecond)
+	select {
+	case <-done:
+		// Callback completed
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("callback did not complete within timeout")
+	}
 
+	mu.Lock()
 	assert.True(t, callbackCalled)
 	assert.Equal(t, result, receivedResult)
+	mu.Unlock()
 }
 
 func TestScheduleConfig_Validation(t *testing.T) {
