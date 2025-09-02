@@ -171,7 +171,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           echo "::group::Installing dependencies"
-          pnpm install --frozen-lockfile
+          NODE_OPTIONS="--max-old-space-size=4096" pnpm install --frozen-lockfile
           echo "::endgroup::"
 
       - name: Install Playwright browsers
@@ -179,7 +179,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           echo "::group::Installing Playwright browsers"
-          pnpm exec playwright install --with-deps
+          NODE_OPTIONS="--max-old-space-size=4096" pnpm exec playwright install --with-deps
           echo "::endgroup::"
 
       - name: Pre-test port check
