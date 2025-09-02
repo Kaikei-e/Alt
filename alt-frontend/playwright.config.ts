@@ -1,4 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
+import * as dotenv from "dotenv";
+
+// Load test environment variables
+dotenv.config({ path: ".env.test" });
 
 const isCI = !!process.env.CI;
 
@@ -65,7 +69,9 @@ export default defineConfig({
         reuseExistingServer: true,
         timeout: 1200 * 1000, // 20分のWebServerタイムアウト
         env: {
+          ...process.env, // Include all env vars from .env.test
           AUTH_SERVICE_URL: "http://localhost:4545",
+          NODE_ENV: "test",
         },
       },
   ],

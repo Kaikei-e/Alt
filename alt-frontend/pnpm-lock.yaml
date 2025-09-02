@@ -32,9 +32,6 @@ importers:
       '@tanstack/react-virtual':
         specifier: ^3.13.12
         version: 3.13.12(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
-      dotenv:
-        specifier: ^16.6.0
-        version: 16.6.1
       html-react-parser:
         specifier: ^5.2.6
         version: 5.2.6(@types/react@19.1.12)(react@19.1.1)
@@ -114,6 +111,9 @@ importers:
       '@vitest/browser':
         specifier: ^3.2.3
         version: 3.2.4(playwright@1.55.0)(vite@7.1.4(@types/node@20.19.1))(vitest@3.2.4)
+      dotenv:
+        specifier: ^16.6.0
+        version: 16.6.1
       eslint:
         specifier: ^9.34.0
         version: 9.34.0

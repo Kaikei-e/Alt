@@ -12,7 +12,7 @@ let withBundleAnalyzer: (
 ) => Record<string, unknown> = (c) => c;
 
 // Build-time env validation (fail fast if missing/malformed)
-const mustPublicHttpsOrigin = (k: string) => {
+const mustPublicOrigin = (k: string) => {
   const v = process.env[k];
   if (!v) throw new Error(`[ENV] ${k} is required at build time`);
   let origin: string;
@@ -21,16 +21,32 @@ const mustPublicHttpsOrigin = (k: string) => {
   } catch {
     throw new Error(`[ENV] ${k} must be a valid URL (got: ${v})`);
   }
-  if (!origin.startsWith('https://')) {
-    throw new Error(`[ENV] ${k} must be HTTPS origin (got: ${origin})`);
+  
+  // Allow HTTP in test/development environments
+  const isTestOrDev = process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
+  const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+  
+  if (!isTestOrDev && !origin.startsWith('https://')) {
+    throw new Error(`[ENV] ${k} must be HTTPS origin in production (got: ${origin})`);
   }
+  
+  // In test/dev, allow localhost HTTP origins
+  if ((isTestOrDev && isLocalhost) || origin.startsWith('https://')) {
+    // Valid
+  } else if (!origin.startsWith('https://') && !origin.startsWith('http://')) {
+    throw new Error(`[ENV] ${k} must be a valid HTTP/HTTPS origin (got: ${origin})`);
+  }
+  
   if (/\.cluster\.local(\b|:|\/)/i.test(origin)) {
     throw new Error(`[ENV] ${k} must be PUBLIC FQDN (got: ${origin})`);
   }
 };
 
-mustPublicHttpsOrigin('NEXT_PUBLIC_IDP_ORIGIN');
-mustPublicHttpsOrigin('NEXT_PUBLIC_KRATOS_PUBLIC_URL');
+// Only validate in non-test environments to allow test flexibility
+if (process.env.NODE_ENV !== 'test') {
+  mustPublicOrigin('NEXT_PUBLIC_IDP_ORIGIN');
+  mustPublicOrigin('NEXT_PUBLIC_KRATOS_PUBLIC_URL');
+}
 
 if (process.env.ANALYZE === "true") {
   try {
@@ -71,12 +87,17 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
 
-  // CSP violations reporting endpoint
+  // CSP violations reporting endpoint and /ory proxy for Kratos
   async rewrites() {
     return [
       {
         source: "/api/csp-report",
         destination: "/api/security/csp-report",
+      },
+      // Proxy /ory requests to Kratos service
+      {
+        source: "/ory/:path*",
+        destination: `${process.env.KRATOS_PUBLIC_URL || 'https://id.curionoah.com'}/:path*`,
       },
     ];
   },

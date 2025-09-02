@@ -1,7 +1,7 @@
 // Centralized public env constants for client/runtime usage
 // Use only static property access so Next can inline at build time.
 
-function assertHttpsPublicOrigin(name: string, value: string | undefined): string {
+function assertPublicOrigin(name: string, value: string | undefined): string {
   if (!value) throw new Error(`${name} missing`);
   let origin: string;
   try {
@@ -9,9 +9,22 @@ function assertHttpsPublicOrigin(name: string, value: string | undefined): strin
   } catch {
     throw new Error(`${name} must be a valid URL (got: ${value})`);
   }
-  if (!origin.startsWith('https://')) {
-    throw new Error(`${name} must be HTTPS origin (got: ${origin})`);
+  
+  // Allow HTTP in test/development environments
+  const isTestOrDev = process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
+  const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+  
+  if (!isTestOrDev && !origin.startsWith('https://')) {
+    throw new Error(`${name} must be HTTPS origin in production (got: ${origin})`);
   }
+  
+  // In test/dev, allow localhost HTTP origins
+  if ((isTestOrDev && isLocalhost) || origin.startsWith('https://')) {
+    // Valid
+  } else if (!origin.startsWith('https://') && !origin.startsWith('http://')) {
+    throw new Error(`${name} must be a valid HTTP/HTTPS origin (got: ${origin})`);
+  }
+  
   const clusterLocalPattern = new RegExp('\\.' + 'cluster' + '\\.' + 'local' + '(\\b|:|\/)', 'i');
   if (clusterLocalPattern.test(origin)) {
     throw new Error(`${name} must be PUBLIC FQDN (got: ${origin})`);
@@ -19,12 +32,12 @@ function assertHttpsPublicOrigin(name: string, value: string | undefined): strin
   return origin;
 }
 
-export const IDP_ORIGIN = assertHttpsPublicOrigin(
+export const IDP_ORIGIN = assertPublicOrigin(
   'NEXT_PUBLIC_IDP_ORIGIN',
   process.env.NEXT_PUBLIC_IDP_ORIGIN,
 );
 
-export const KRATOS_PUBLIC_URL = assertHttpsPublicOrigin(
+export const KRATOS_PUBLIC_URL = assertPublicOrigin(
   'NEXT_PUBLIC_KRATOS_PUBLIC_URL',
   process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL,
 );
