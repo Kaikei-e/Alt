@@ -209,16 +209,20 @@ jobs:
           echo "Final port assigned: $final_port"
           echo "::endgroup::"
 
-      - name: Run Vitest tests
+      - name: Run Vitest tests (low-mem, leak-hunting)
         if: inputs.test-type == 'vitest'
         working-directory: ${{ inputs.working-directory }}
         run: |
-          echo "::group::Running Vitest tests"
-          NODE_OPTIONS="--max-old-space-size=4096" pnpm exec vitest run \
-              --pool=forks \
-              --maxWorkers=2 \
-              --no-file-parallelism
+          echo "::group::Running Vitest tests (single worker, no file parallel, no in-file concurrency)"
+          NODE_OPTIONS="--max-old-space-size=4096 --heapsnapshot-near-heap-limit=3" \
+          pnpm exec vitest run \
+            --pool=forks \
+            --maxWorkers=1 --minWorkers=1 \
+            --no-file-parallelism \
+            --maxConcurrency=1 \
+            --logHeapUsage
           echo "::endgroup::"
+
 
       - name: Run Playwright tests
         if: inputs.test-type == 'playwright'
