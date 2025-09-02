@@ -209,7 +209,7 @@ jobs:
           echo "Final port assigned: $final_port"
           echo "::endgroup::"
 
-      - name: Run Vitest tests (low-mem, leak-hunting)
+      - name: Run Vitest tests
         if: inputs.test-type == 'vitest'
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -219,8 +219,6 @@ jobs:
             --pool=forks \
             --maxWorkers=1 --minWorkers=1 \
             --no-file-parallelism \
-            --maxConcurrency=1 \
-            --logHeapUsage
           echo "::endgroup::"
 
 
