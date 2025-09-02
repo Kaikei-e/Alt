@@ -2,6 +2,7 @@
 
 import { Flex, Text, Box } from "@chakra-ui/react";
 import { feedsApi } from "@/lib/api";
+import { Feed } from "@/schema/feed";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import VirtualFeedList from "@/components/mobile/VirtualFeedList";
 import { useRef, useState, useCallback, useMemo, startTransition } from "react";
@@ -50,7 +51,7 @@ export default function FeedsPage() {
     isInitialLoading,
     loadMore,
     refresh,
-  } = useCursorPagination(feedsApi.getFeedsWithCursor, {
+  } = useCursorPagination<Feed>(feedsApi.getFeedsWithCursor, {
     limit: PAGE_SIZE,
     autoLoad: true,
   });

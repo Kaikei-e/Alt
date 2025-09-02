@@ -27,6 +27,8 @@ describe("Feature Flags", () => {
       const flags: FeatureFlags = {
         enableVirtualization: false,
         forceVirtualization: false,
+        enableDynamicSizing: false,
+        enableDesktopVirtualization: false,
         debugMode: false,
       };
 
@@ -37,6 +39,8 @@ describe("Feature Flags", () => {
       const flags: FeatureFlags = {
         enableVirtualization: "auto",
         forceVirtualization: false,
+        enableDynamicSizing: "auto",
+        enableDesktopVirtualization: "auto",
         debugMode: false,
         virtualizationThreshold: 200,
       };
@@ -54,6 +58,8 @@ describe("Feature Flags", () => {
       const flags: FeatureFlags = {
         enableVirtualization: false,
         forceVirtualization: true,
+        enableDynamicSizing: false,
+        enableDesktopVirtualization: false,
         debugMode: false,
       };
 
@@ -65,6 +71,8 @@ describe("Feature Flags", () => {
       const flags: FeatureFlags = {
         enableVirtualization: true,
         forceVirtualization: false,
+        enableDynamicSizing: true,
+        enableDesktopVirtualization: true,
         debugMode: false,
       };
 
@@ -76,6 +84,8 @@ describe("Feature Flags", () => {
       const flags: FeatureFlags = {
         enableVirtualization: "auto",
         forceVirtualization: false,
+        enableDynamicSizing: "auto",
+        enableDesktopVirtualization: "auto",
         debugMode: false,
         virtualizationThreshold: 100,
       };
@@ -89,7 +99,7 @@ describe("Feature Flags", () => {
   describe("FeatureFlagManager", () => {
     beforeEach(() => {
       // Reset singleton instance
-      (FeatureFlagManager as Record<string, unknown>).instance = undefined;
+      (FeatureFlagManager as unknown as Record<string, unknown>).instance = undefined;
     });
 
     it("should create singleton instance", () => {
@@ -149,7 +159,7 @@ describe("Feature Flags", () => {
 
   describe("Integration with shouldUseVirtualization", () => {
     beforeEach(() => {
-      (FeatureFlagManager as Record<string, unknown>).instance = undefined;
+      (FeatureFlagManager as unknown as Record<string, unknown>).instance = undefined;
     });
 
     it("should use FeatureFlagManager when no flags provided", () => {
@@ -168,6 +178,8 @@ describe("Feature Flags", () => {
       const customFlags: FeatureFlags = {
         enableVirtualization: false,
         forceVirtualization: false,
+        enableDynamicSizing: false,
+        enableDesktopVirtualization: false,
         debugMode: false,
       };
 
@@ -178,7 +190,7 @@ describe("Feature Flags", () => {
 
   describe("Error Recovery Integration", () => {
     beforeEach(() => {
-      (FeatureFlagManager as Record<string, unknown>).instance = undefined;
+      (FeatureFlagManager as unknown as Record<string, unknown>).instance = undefined;
     });
 
     it("should disable virtualization after consecutive errors", () => {

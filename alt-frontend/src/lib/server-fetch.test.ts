@@ -14,6 +14,21 @@ vi.mock('next/headers', () => ({
 const mockFetch = vi.fn()
 global.fetch = mockFetch
 
+// Helper to create mock headers that satisfy Headers interface
+const createMockHeaders = (cookieValue?: string | null) => ({
+  get: vi.fn().mockReturnValue(cookieValue),
+  append: vi.fn(),
+  delete: vi.fn(),
+  set: vi.fn(),
+  has: vi.fn(),
+  forEach: vi.fn(),
+  entries: vi.fn(),
+  keys: vi.fn(),
+  values: vi.fn(),
+  getSetCookie: vi.fn().mockReturnValue([]),
+  [Symbol.iterator]: vi.fn()
+})
+
 // Mock environment variable
 process.env.API_URL = 'http://alt-backend:9000'
 
@@ -28,9 +43,7 @@ describe('serverFetch', () => {
 
   describe('successful requests', () => {
     it('should make request with cookie from headers', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue('ory_kratos_session=session-value; other_cookie=other-value')
-      }
+      const mockHeaders = createMockHeaders('ory_kratos_session=session-value; other_cookie=other-value')
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       const mockResponse = {
@@ -55,9 +68,7 @@ describe('serverFetch', () => {
     })
 
     it('should handle empty cookie header', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue(null)
-      }
+      const mockHeaders = createMockHeaders(null)
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       const mockResponse = {
@@ -82,9 +93,7 @@ describe('serverFetch', () => {
     })
 
     it('should merge additional headers correctly', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue('test_cookie=test_value')
-      }
+      const mockHeaders = createMockHeaders('test_cookie=test_value')
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       const mockResponse = {
@@ -121,9 +130,7 @@ describe('serverFetch', () => {
 
   describe('error handling', () => {
     it('should throw error when response is not ok (404)', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue('session_cookie=value')
-      }
+      const mockHeaders = createMockHeaders('session_cookie=value')
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       const mockResponse = {
@@ -136,9 +143,7 @@ describe('serverFetch', () => {
     })
 
     it('should throw error when response is not ok (500)', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue('session_cookie=value')
-      }
+      const mockHeaders = createMockHeaders('session_cookie=value')
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       const mockResponse = {
@@ -151,9 +156,7 @@ describe('serverFetch', () => {
     })
 
     it('should throw error when response is not ok (401 Unauthorized)', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue('')
-      }
+      const mockHeaders = createMockHeaders('')
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       const mockResponse = {
@@ -166,9 +169,7 @@ describe('serverFetch', () => {
     })
 
     it('should handle network errors', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue('test_cookie=value')
-      }
+      const mockHeaders = createMockHeaders('test_cookie=value')
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       mockFetch.mockRejectedValue(new Error('Network error'))
@@ -179,9 +180,7 @@ describe('serverFetch', () => {
 
   describe('endpoint handling', () => {
     it('should handle endpoints starting with slash', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue('cookie=value')
-      }
+      const mockHeaders = createMockHeaders('cookie=value')
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       const mockResponse = {
@@ -199,9 +198,7 @@ describe('serverFetch', () => {
     })
 
     it('should handle endpoints without leading slash', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue('cookie=value')
-      }
+      const mockHeaders = createMockHeaders('cookie=value')
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       const mockResponse = {
@@ -220,9 +217,7 @@ describe('serverFetch', () => {
     })
 
     it('should handle complex endpoints with query parameters', async () => {
-      const mockHeaders = {
-        get: vi.fn().mockReturnValue('session=abc123')
-      }
+      const mockHeaders = createMockHeaders('session=abc123')
       vi.mocked(headers).mockResolvedValue(mockHeaders)
 
       const mockResponse = {

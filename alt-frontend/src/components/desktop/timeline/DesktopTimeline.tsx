@@ -733,7 +733,7 @@ export default function DesktopTimeline() {
     isInitialLoading,
     loadMore,
     refresh,
-  } = useCursorPagination(feedsApi.getFeedsWithCursor, {
+  } = useCursorPagination<Feed>(feedsApi.getFeedsWithCursor, {
     limit: PAGE_SIZE,
     autoLoad: true,
   });

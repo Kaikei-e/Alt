@@ -66,8 +66,9 @@ export const useFavoriteFeeds = (
         setError(null);
 
         const currentCursor = resetData ? undefined : cursor;
-        let response: { data: Feed[]; next_cursor: string | null } | undefined;
+        let response: { data: Feed[]; next_cursor: string | null };
 
+        // Try to get from prefetch cache first
         if (
           enablePrefetch &&
           currentCursor &&
@@ -80,10 +81,15 @@ export const useFavoriteFeeds = (
               next_cursor: string | null;
             };
             prefetchCacheRef.current.delete(currentCursor);
+          } else {
+            // If cache is loading, fetch normally
+            response = await feedsApi.getFavoriteFeedsWithCursor(
+              currentCursor,
+              initialLimit,
+            );
           }
-        }
-
-        if (!response) {
+        } else {
+          // No cache, fetch normally
           response = await feedsApi.getFavoriteFeedsWithCursor(
             currentCursor,
             initialLimit,
@@ -104,7 +110,7 @@ export const useFavoriteFeeds = (
             clearTimeout(prefetchTimeoutRef.current);
           }
           prefetchTimeoutRef.current = setTimeout(() => {
-            prefetchNextPage(response!.next_cursor!);
+            prefetchNextPage(response.next_cursor!);
           }, 500);
         }
       } catch (err) {

@@ -70,7 +70,7 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         setError(null);
 
         const currentCursor = resetData ? undefined : cursor;
-        let response: { data: Feed[]; next_cursor: string | null } | undefined;
+        let response: { data: Feed[]; next_cursor: string | null };
 
         // Check if we have prefetched data (only if prefetch is enabled)
         if (
@@ -85,11 +85,15 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
               next_cursor: string | null;
             };
             prefetchCacheRef.current.delete(currentCursor); // Use and remove from cache
+          } else {
+            // If cache is loading, fetch normally
+            response = await feedsApi.getReadFeedsWithCursor(
+              currentCursor,
+              initialLimit,
+            );
           }
-        }
-
-        // If no cached data, fetch normally
-        if (!response) {
+        } else {
+          // No cache, fetch normally
           response = await feedsApi.getReadFeedsWithCursor(
             currentCursor,
             initialLimit,

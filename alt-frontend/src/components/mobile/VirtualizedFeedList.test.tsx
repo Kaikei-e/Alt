@@ -32,8 +32,8 @@ vi.mock("react-error-boundary", () => ({
     try {
       return children;
     } catch (error) {
-      if (onError) onError(error);
-      return FallbackComponent({ error, resetErrorBoundary: vi.fn() });
+      if (onError) onError(error as Error);
+      return <FallbackComponent error={error as Error} resetErrorBoundary={vi.fn()} />;
     }
   },
 }));

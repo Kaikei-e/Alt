@@ -210,7 +210,7 @@ describe('Security Tests', () => {
       const secureClient = new AuthAPIClient();
 
       // Private property access for testing
-      const baseURL = (secureClient as { baseURL: string }).baseURL;
+      const baseURL = (secureClient as unknown as { baseURL: string }).baseURL;
       expect(baseURL).toBe('/api/auth');
       
       // Restore original env
@@ -257,7 +257,7 @@ describe('Security Tests', () => {
 
         try {
           await authClient.getCurrentUser();
-          fail('Should have thrown an error');
+          expect.fail('Should have thrown an error');
         } catch (error: unknown) {
           // Our auth client should not pass through the original sensitive error
           // The actual implementation should sanitize these errors

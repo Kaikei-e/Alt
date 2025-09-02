@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AuthAPIClient } from './auth-client';
 import type { User, LoginFlow, RegistrationFlow } from '@/types/auth';
 
+interface UserPreferences {
+  theme?: "light" | "dark" | "system";
+  language?: string;
+  [key: string]: any;
+}
+
 // Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -271,7 +277,7 @@ describe('AuthAPIClient', () => {
           json: () => Promise.resolve({}),
         });
 
-      const settings = { theme: 'light', language: 'ja' };
+      const settings: UserPreferences = { theme: 'light', language: 'ja' };
       await client.updateUserSettings(settings);
 
       expect(mockFetch).toHaveBeenCalledTimes(2);

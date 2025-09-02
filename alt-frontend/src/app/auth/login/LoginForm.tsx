@@ -1,7 +1,7 @@
 // app/auth/login/LoginForm.tsx（Client Componentの一例）
 'use client'
 import { useState, useEffect } from 'react'
-import { Configuration, FrontendApi, UpdateLoginFlowBody } from '@ory/client'
+import { Configuration, FrontendApi, UpdateLoginFlowBody, LoginFlow } from '@ory/client'
 
 const kratos = new FrontendApi(new Configuration({
   basePath: '/ory',
@@ -32,31 +32,19 @@ const safeRedirect = (url: string) => {
   }
 }
 
-interface LoginFlowNode {
-  attributes?: {
-    name?: string;
-    value?: string;
-  };
+// Custom interface for error states not covered by Ory types
+interface LoginFlowError {
+  error: boolean;
+  message: string;
 }
 
-interface LoginFlowUI {
-  action: string;
-  method?: string;
-  nodes: LoginFlowNode[];
-  messages?: Array<{
-    text: string;
-    type: string;
-  }>;
-}
-
-interface LoginFlowData {
-  ui?: LoginFlowUI;
-  error?: boolean;
-  message?: string;
+// Type guard to check if flow is a valid LoginFlow
+const isLoginFlow = (flow: LoginFlow | LoginFlowError | null): flow is LoginFlow => {
+  return flow !== null && 'ui' in flow && !('error' in flow);
 }
 
 export default function LoginForm({ flowId }: { flowId: string }) {
-  const [flow, setFlow] = useState<LoginFlowData | null>(null)
+  const [flow, setFlow] = useState<LoginFlow | LoginFlowError | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [useNativeForm, setUseNativeForm] = useState(false)
 
@@ -137,7 +125,7 @@ export default function LoginForm({ flowId }: { flowId: string }) {
     )
   }
 
-  if (flow.error) {
+  if ('error' in flow && flow.error) {
     return (
       <div className="login-container">
         <div className="login-card glass">
@@ -209,8 +197,21 @@ export default function LoginForm({ flowId }: { flowId: string }) {
     )
   }
 
-  const nodes = flow?.ui?.nodes ?? []
-  const csrf = nodes.find((n) => n.attributes?.name === 'csrf_token')?.attributes?.value ?? ''
+  // Ensure flow has ui property before accessing nodes
+  if (!isLoginFlow(flow)) {
+    return <div>Loading...</div>;
+  }
+
+  // Helper to safely get node attribute values
+  const getNodeValue = (nodes: any[], name: string): string => {
+    const node = nodes.find((n) => 
+      n.attributes && 'name' in n.attributes && n.attributes.name === name
+    );
+    return (node?.attributes && 'value' in node.attributes) ? node.attributes.value : '';
+  };
+
+  const nodes = flow.ui?.nodes ?? []
+  const csrf = getNodeValue(nodes, 'csrf_token')
 
   // --- SDK 送信用 ---
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -258,7 +259,7 @@ export default function LoginForm({ flowId }: { flowId: string }) {
 
   // --- ネイティブフォーム（最小経路・検証用） ---
   // flow.ui.action / flow.ui.nodes を使ってそのまま form を出す実装を残す
-  if (useNativeForm) {
+  if (useNativeForm && isLoginFlow(flow)) {
     return (
       <div className="login-container">
         <div className="login-card glass">

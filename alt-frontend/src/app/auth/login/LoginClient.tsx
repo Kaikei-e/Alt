@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { Configuration, FrontendApi, UpdateLoginFlowBody } from '@ory/client'
+import { Configuration, FrontendApi, UpdateLoginFlowBody, LoginFlow } from '@ory/client'
 
 const frontend = new FrontendApi(
   new Configuration({ basePath: process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL })
@@ -30,22 +30,9 @@ const safeRedirect = (url: string) => {
   }
 }
 
-interface LoginFlowUI {
-  nodes: Array<{
-    attributes?: {
-      name?: string;
-      value?: string;
-    };
-  }>;
-}
-
-interface LoginFlowData {
-  ui?: LoginFlowUI;
-}
-
 export default function LoginClient() {
   const [flowId, setFlowId] = useState<string | null>(null)
-  const [flow, setFlow] = useState<LoginFlowData | null>(null)
+  const [flow, setFlow] = useState<LoginFlow | null>(null)
   const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN!
   const kratos = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL!
 
@@ -115,9 +102,17 @@ export default function LoginClient() {
 
   if (!flow) return <div>Loading…</div>
 
+  // Helper to safely get node attribute values
+  const getNodeValue = (nodes: any[], name: string): string => {
+    const node = nodes.find((n) => 
+      n.attributes && 'name' in n.attributes && n.attributes.name === name
+    );
+    return (node?.attributes && 'value' in node.attributes) ? node.attributes.value : '';
+  };
+
   // 最小UI（nodesからCSRF/identifier/passwordを拾う前提の簡易例）
   const nodes = flow.ui?.nodes ?? []
-  const csrf = nodes.find((n) => n.attributes?.name === 'csrf_token')?.attributes?.value ?? ''
+  const csrf = getNodeValue(nodes, 'csrf_token')
 
   return (
     <form onSubmit={onSubmit}>

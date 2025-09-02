@@ -28,7 +28,7 @@ export default function FavoriteFeedsPage() {
     isInitialLoading,
     loadMore,
     refresh,
-  } = useCursorPagination(feedsApi.getFavoriteFeedsWithCursor, {
+  } = useCursorPagination<Feed>(feedsApi.getFavoriteFeedsWithCursor, {
     limit: PAGE_SIZE,
     autoLoad: true,
   });
