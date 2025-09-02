@@ -1,6 +1,7 @@
 const http = require("http");
 const url = require("url");
 const querystring = require("querystring");
+const crypto = require("crypto");
 
 const port = process.env.MOCK_AUTH_PORT || 4545;
 
@@ -8,9 +9,10 @@ const port = process.env.MOCK_AUTH_PORT || 4545;
 const flows = new Map();
 const sessions = new Map();
 
-// Generate mock IDs
+// Generate mock IDs using cryptographically secure randomness
 function generateId() {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  // Generate 16 random bytes and convert to hex string (32 characters)
+  return crypto.randomBytes(16).toString('hex');
 }
 
 // Generate CSRF token
