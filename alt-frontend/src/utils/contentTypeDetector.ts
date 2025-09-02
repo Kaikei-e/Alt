@@ -4,6 +4,7 @@
  */
 
 import { sanitizeContent } from './contentSanitizer';
+import DOMPurify from 'isomorphic-dompurify';
 
 export enum ContentType {
   HTML = 'html',
@@ -162,7 +163,8 @@ function safeStripHtml(content: string): string {
 }
 
 /**
- * Checks if content contains potentially unsafe HTML
+ * Checks if content contains potentially unsafe HTML using DOMPurify
+ * SECURITY FIX: Replace regex-based detection with battle-tested DOMPurify
  * @param content - Content to check
  * @returns True if content needs sanitization
  */
@@ -171,54 +173,22 @@ export const needsSanitization = (content: string): boolean => {
     return false;
   }
 
-  // Enhanced dangerous patterns with better coverage
-  const dangerousPatterns = [
-    // Script tags with various syntax variations
-    /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
-    /<script[\s\S]*?>/gi, // Unclosed script tags
-    /<\/script\b[^>]*>/gi, // Malformed script end tags
-    /javascript:/gi,
-    /vbscript:/gi,
-    /data:text\/html/gi,
+  try {
+    // Use DOMPurify to sanitize content and compare with original
+    // If they differ, the content contained dangerous elements
+    const sanitized = DOMPurify.sanitize(content, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'i', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+      ALLOWED_ATTR: ['href', 'title'],
+      KEEP_CONTENT: true,
+    });
     
-    // Event handlers (comprehensive list)
-    /on\w+\s*=/gi,
-    /onclick\s*=/gi,
-    /onload\s*=/gi,
-    /onerror\s*=/gi,
-    /onmouseover\s*=/gi,
-    
-    // Dangerous tags
-    /<iframe[\s\S]*?(?:<\/iframe>|>)/gi,
-    /<object[\s\S]*?(?:<\/object>|>)/gi,
-    /<embed[\s\S]*?(?:<\/embed>|>)/gi,
-    /<form[\s\S]*?(?:<\/form>|>)/gi,
-    /<meta[\s\S]*?>/gi,
-    /<link[\s\S]*?>/gi,
-    /<style[\s\S]*?(?:<\/style>|>)/gi,
-    
-    // HTML comments that might contain scripts
-    /<!--[\s\S]*?--!?>/gi,
-    
-    // CSS expression attacks
-    /expression\s*\(/gi,
-    
-    // Data URLs that might contain scripts
-    /data:.*base64/gi,
-    
-    // Nested tag bypass attempts (from TODO.md examples)
-    /<scrip<script>/gi,
-    /<\/scrip.*t>/gi,
-  ];
-
-  return dangerousPatterns.some(pattern => {
-    try {
-      return pattern.test(content);
-    } catch (error) {
-      // If regex fails (potential ReDoS), assume dangerous
-      return true;
-    }
-  });
+    // Content needs sanitization if DOMPurify modified it
+    return content !== sanitized;
+  } catch (error) {
+    // If DOMPurify fails, assume content needs sanitization for safety
+    console.warn('DOMPurify sanitization failed:', error);
+    return true;
+  }
 };
 
 /**

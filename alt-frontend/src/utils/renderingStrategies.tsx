@@ -71,8 +71,8 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   }
 
   /**
-   * Decode HTML entities (XPLAN11: Pre-sanitization step)
-   * SECURITY FIX: Using textContent instead of innerHTML to prevent XSS
+   * Decode HTML entities with DOMPurify sanitization
+   * SECURITY FIX: Use DOMPurify to remove dangerous content first, then decode entities safely
    */
   public decodeHtmlEntities(str: string): string {
     // Input validation for security
@@ -80,29 +80,39 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       return '';
     }
 
-    if (typeof window !== 'undefined') {
-      // SECURITY FIX: Create a safe decoding method that doesn't execute scripts
-      // Use DOMParser to safely parse and decode HTML entities without script execution risk
-      try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(`<!doctype html><body>${str}`, 'text/html');
-        return doc.body.textContent || '';
-      } catch (e) {
-        // Fallback to manual decoding if DOMParser fails
-        // This is safer than textarea.innerHTML approach
-      }
+    try {
+      // SECURITY FIX: Use DOMPurify to sanitize and remove dangerous HTML elements
+      const sanitized = DOMPurify.sanitize(str, {
+        ALLOWED_TAGS: [], // Remove all HTML tags
+        KEEP_CONTENT: true, // Keep text content of removed tags
+      });
+      
+      // Now safely decode HTML entities with correct order (ampersand last)
+      return sanitized
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&copy;/g, '©')
+        .replace(/&reg;/g, '®')
+        .replace(/&trade;/g, '™')
+        .replace(/&amp;/g, '&'); // CRITICAL: Decode &amp; LAST to prevent double-decoding
+        
+    } catch (error) {
+      // Fallback: If DOMPurify fails, use safe manual decoding with correct order
+      console.warn('DOMPurify decoding failed:', error);
+      return str
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&copy;/g, '©')
+        .replace(/&reg;/g, '®')
+        .replace(/&trade;/g, '™')
+        .replace(/&amp;/g, '&'); // CRITICAL: Decode &amp; LAST to prevent double-decoding
     }
-    // SECURITY FIX: Safe fallback with correct decoding order (decode &amp; last)
-    return str
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&copy;/g, '©')
-      .replace(/&reg;/g, '®')
-      .replace(/&trade;/g, '™')
-      .replace(/&amp;/g, '&'); // CRITICAL: Decode &amp; LAST to prevent double-decoding
   }
 
   /**
@@ -290,11 +300,10 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   }
 
   /**
-   * Decode HTML entities specifically for URLs (separate from general content decoding)
-   * Prevents double encoding issues with &amp; -> %26amp%3B
-   * SECURITY FIX: Using textContent instead of innerHTML to prevent XSS
+   * Decode HTML entities specifically for URLs with proper double-decoding prevention
+   * SECURITY FIX: Prevent double-decoding by handling &amp; correctly
    * @param url - URL with potential HTML entities
-   * @returns Decoded URL
+   * @returns Safely decoded URL without double-decoding
    */
   public decodeHtmlEntitiesFromUrl(url: string): string {
     // Input validation for security
@@ -302,22 +311,12 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       return '';
     }
 
-    if (typeof window !== 'undefined') {
-      // SECURITY FIX: Use DOMParser to safely decode HTML entities without script execution risk
-      try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(`<!doctype html><body>${url}`, 'text/html');
-        return doc.body.textContent || '';
-      } catch (e) {
-        // Fallback to manual decoding if DOMParser fails
-        // This is safer than textarea.innerHTML approach
-      }
-    }
-    
-    // SECURITY FIX: Safe URL decoding with correct order (decode ampersands last)
+    // SECURITY FIX: Proper order to prevent double-decoding
+    // The key insight: decode specific entities first, then &amp; LAST
+    // This prevents &amp;quot; from becoming &quot; then " (double-decode)
     return url
       .replace(/&lt;/g, '<')       // Less common but possible
-      .replace(/&gt;/g, '>')       // Less common but possible
+      .replace(/&gt;/g, '>')       // Less common but possible  
       .replace(/&quot;/g, '"')     // Can appear in URL parameters
       .replace(/&#39;/g, "'")      // Can appear in URL parameters
       .replace(/&nbsp;/g, ' ')     // Space encoding
