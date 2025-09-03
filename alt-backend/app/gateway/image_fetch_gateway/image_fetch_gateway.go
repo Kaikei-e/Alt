@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/utils/errors"
 	"alt/utils/logger"
+	"alt/utils/security"
 	"context"
 	"fmt"
 	"io"
@@ -115,6 +116,7 @@ func (ert *EnvoyProxyRoundTripper) RoundTrip(req *http.Request) (*http.Response,
 	return ert.transport.RoundTrip(req)
 }
 
+
 // convertToProxyURL converts external image URLs to appropriate proxy routes based on strategy
 func convertToProxyURL(originalURL string, strategy *ProxyStrategy) string {
 	if strategy == nil || !strategy.Enabled {
@@ -184,37 +186,48 @@ func convertToProxyURL(originalURL string, strategy *ProxyStrategy) string {
 type ImageFetchGateway struct {
 	httpClient    *http.Client
 	proxyStrategy *ProxyStrategy
+	ssrfValidator *security.SSRFValidator
 }
 
 // NewImageFetchGateway creates a new ImageFetchGateway
 func NewImageFetchGateway(httpClient *http.Client) *ImageFetchGateway {
 	strategy := getProxyStrategy()
 
-	// Enhanced: Disable redirects to prevent SSRF attacks via redirects
+	// Create SSRF validator with comprehensive protection
+	ssrfValidator := security.NewSSRFValidator()
+
+	// Use secure HTTP client from validator instead of modifying existing client
+	// This follows the Safeurl approach with connection-time validation
+	var secureClient *http.Client
 	if httpClient != nil {
-		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			return fmt.Errorf("redirects not allowed for security reasons")
+		timeout := httpClient.Timeout
+		if timeout == 0 {
+			timeout = 30 * time.Second
 		}
+		secureClient = ssrfValidator.CreateSecureHTTPClient(timeout)
+	} else {
+		secureClient = ssrfValidator.CreateSecureHTTPClient(30 * time.Second)
 	}
 
-	// If we have a proxy strategy, wrap the client with proxy-aware transport
-	if strategy != nil && strategy.Enabled && httpClient != nil {
-		// Get the existing transport or create a new one
-		transport := httpClient.Transport
-		if transport == nil {
-			transport = http.DefaultTransport
-		}
-
-		// Wrap with Envoy proxy round tripper for Host header fixing
-		httpClient.Transport = &EnvoyProxyRoundTripper{
-			transport: transport,
-		}
-	}
-
-	return &ImageFetchGateway{
-		httpClient:    httpClient,
+	// Create the gateway instance
+	gateway := &ImageFetchGateway{
+		httpClient:    secureClient,
 		proxyStrategy: strategy,
+		ssrfValidator: ssrfValidator,
 	}
+
+	// If we have a proxy strategy, we need to modify the transport to include proxy support
+	if strategy != nil && strategy.Enabled {
+		// Get the current secure transport
+		secureTransport := secureClient.Transport
+
+		// Wrap with Envoy proxy round tripper
+		secureClient.Transport = &EnvoyProxyRoundTripper{
+			transport: secureTransport,
+		}
+	}
+
+	return gateway
 }
 
 // validateImageURLWithTestOverride allows bypassing localhost restrictions for testing
@@ -363,6 +376,10 @@ func (g *ImageFetchGateway) FetchImage(ctx context.Context, imageURL *url.URL, o
 
 // fetchImageForTesting allows bypassing localhost restrictions for unit testing
 func (g *ImageFetchGateway) fetchImageForTesting(ctx context.Context, imageURL *url.URL, options *domain.ImageFetchOptions) (*domain.ImageFetchResult, error) {
+	// Enable testing mode in the SSRF validator
+	g.ssrfValidator.SetTestingMode(true)
+	defer g.ssrfValidator.SetTestingMode(false)
+	
 	return g.fetchImageWithTestingOverride(ctx, imageURL, options, true)
 }
 
@@ -373,8 +390,8 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 		return nil, ctx.Err()
 	}
 
-	// Validate URL to prevent SSRF attacks
-	if err := validateImageURLWithTestOverride(imageURL, allowTestingLocalhost); err != nil {
+	// Perform basic URL validation (detailed validation happens at connection time)
+	if err := g.ssrfValidator.ValidateURL(ctx, imageURL); err != nil {
 		return nil, errors.NewValidationContextError(
 			fmt.Sprintf("URL validation failed: %v", err),
 			"gateway",
@@ -412,6 +429,7 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 			},
 		)
 	}
+	// Validate proxy configuration if using proxy
 	if g.proxyStrategy != nil && g.proxyStrategy.Enabled {
 		proxyBase, err := url.Parse(g.proxyStrategy.BaseURL)
 		if err != nil {
@@ -437,19 +455,8 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 				},
 			)
 		}
-	} else {
-		if err := validateImageURLWithTestOverride(parsedReqURL, allowTestingLocalhost); err != nil {
-			return nil, errors.NewValidationContextError(
-				fmt.Sprintf("URL validation failed: %v", err),
-				"gateway",
-				"ImageFetchGateway",
-				"validate_request_url",
-				map[string]interface{}{
-					"url": parsedReqURL.String(),
-				},
-			)
-		}
 	}
+	// Note: Additional URL validation happens at connection time via the secure HTTP client
 
 	// Create HTTP request with proper headers
 	req, err := http.NewRequestWithContext(ctx, "GET", parsedReqURL.String(), nil)
