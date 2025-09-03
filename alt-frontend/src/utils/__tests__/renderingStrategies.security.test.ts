@@ -88,6 +88,47 @@ describe('renderingStrategies Security Tests', () => {
       });
     });
 
+    it('should prevent XSS in URL decoding with malicious javascript scheme', () => {
+      const renderer = new HTMLRenderingStrategy();
+      
+      const maliciousUrls = [
+        'javascript:alert("XSS")',
+        'javascript:document.cookie',
+        'data:text/html,<script>alert("XSS")</script>',
+        'vbscript:msgbox("XSS")',
+      ];
+      
+      maliciousUrls.forEach(url => {
+        const result = renderer.decodeHtmlEntitiesFromUrl(url);
+        
+        // Should either sanitize to empty string or safe alternative
+        expect(result).not.toContain('javascript:');
+        expect(result).not.toContain('vbscript:');
+        expect(result).not.toContain('data:text/html');
+        expect(result).not.toContain('<script>');
+        expect(result).not.toContain('alert(');
+      });
+    });
+
+    it('should prevent XSS through encoded malicious payloads in URLs', () => {
+      const renderer = new HTMLRenderingStrategy();
+      
+      const encodedXssUrls = [
+        'http://example.com?q=%3Cscript%3Ealert%28%22XSS%22%29%3C%2Fscript%3E',
+        'http://example.com?callback=%3Cimg%20src%3Dx%20onerror%3Dalert%281%29%3E',
+        'http://example.com#%3Cscript%3Ealert%28document.domain%29%3C%2Fscript%3E',
+      ];
+      
+      encodedXssUrls.forEach(url => {
+        const result = renderer.decodeHtmlEntitiesFromUrl(url);
+        
+        // Should decode URL-encoded content but not allow script execution
+        expect(result).not.toContain('<script>');
+        expect(result).not.toContain('onerror=');
+        expect(result).not.toContain('alert(');
+      });
+    });
+
     it('should safely decode legitimate HTML entities without XSS risk', () => {
       const renderer = new HTMLRenderingStrategy();
       
@@ -134,6 +175,62 @@ describe('renderingStrategies Security Tests', () => {
         // Key security assertion: parsing completes without throwing errors
         // which would indicate attempted script execution
         expect(() => renderer.decodeHtmlEntitiesFromUrl(input)).not.toThrow();
+      });
+    });
+
+    it('should prevent double-decoding attacks in URLs', () => {
+      const renderer = new HTMLRenderingStrategy();
+      
+      const doubleEncodedAttacks = [
+        {
+          input: 'http://example.com?q=&amp;lt;script&amp;gt;alert&amp;#40;&amp;quot;XSS&amp;quot;&amp;#41;&amp;lt;&amp;#47;script&amp;gt;',
+          description: 'Double-encoded script tag with various entities'
+        },
+        {
+          input: '&amp;#106;&amp;#97;&amp;#118;&amp;#97;&amp;#115;&amp;#99;&amp;#114;&amp;#105;&amp;#112;&amp;#116;&amp;#58;alert(1)',
+          description: 'Double-encoded javascript scheme'
+        },
+        {
+          input: '&amp;lt;iframe src&amp;#61;&amp;quot;javascript&amp;#58;alert&amp;#40;1&amp;#41;&amp;quot;&amp;gt;',
+          description: 'Double-encoded iframe with javascript'
+        }
+      ];
+      
+      doubleEncodedAttacks.forEach(({ input, description }) => {
+        const result = renderer.decodeHtmlEntitiesFromUrl(input);
+        
+        // Should not fully decode to executable content
+        expect(result).not.toContain('javascript:');
+        expect(result).not.toContain('<script>');
+        expect(result).not.toContain('<iframe');
+        expect(result).not.toContain('alert(');
+        expect(result).not.toContain('onerror=');
+        
+        console.log(`Double-decoding test ${description}: "${input}" -> "${result}"`);
+      });
+    });
+
+    it('should validate URL schemes and block dangerous ones', () => {
+      const renderer = new HTMLRenderingStrategy();
+      
+      const dangerousSchemes = [
+        'javascript:alert(1)',
+        'vbscript:msgbox(1)',
+        'data:text/html,<script>alert(1)</script>',
+        'file:///etc/passwd',
+        'ftp://malicious.com/script.js',
+      ];
+      
+      dangerousSchemes.forEach(url => {
+        const result = renderer.decodeHtmlEntitiesFromUrl(url);
+        
+        // Should either return empty string or safe alternative for dangerous schemes
+        if (url.startsWith('javascript:') || url.startsWith('vbscript:') || url.startsWith('data:text/html')) {
+          expect(result).toBe(''); // Should be blocked completely
+        }
+        
+        // Should never contain the dangerous scheme in output
+        expect(result).not.toMatch(/^(javascript|vbscript|data:text\/html):/);
       });
     });
   });

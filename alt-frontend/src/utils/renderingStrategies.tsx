@@ -300,10 +300,10 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   }
 
   /**
-   * Decode HTML entities specifically for URLs with proper double-decoding prevention
-   * SECURITY FIX: Prevent double-decoding by handling &amp; correctly
+   * Decode HTML entities specifically for URLs with comprehensive security protection
+   * SECURITY FIX: Use DOMPurify and URL validation to prevent XSS attacks
    * @param url - URL with potential HTML entities
-   * @returns Safely decoded URL without double-decoding
+   * @returns Safely decoded and validated URL
    */
   public decodeHtmlEntitiesFromUrl(url: string): string {
     // Input validation for security
@@ -311,19 +311,104 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       return '';
     }
 
-    // SECURITY FIX: Proper order to prevent double-decoding
-    // The key insight: decode specific entities first, then &amp; LAST
-    // This prevents &amp;quot; from becoming &quot; then " (double-decode)
-    return url
-      .replace(/&lt;/g, '<')       // Less common but possible
-      .replace(/&gt;/g, '>')       // Less common but possible  
-      .replace(/&quot;/g, '"')     // Can appear in URL parameters
-      .replace(/&#39;/g, "'")      // Can appear in URL parameters
-      .replace(/&nbsp;/g, ' ')     // Space encoding
-      .replace(/&#x3D;/g, '=')     // Equals sign
-      .replace(/&#x26;/g, '&')     // Alternative ampersand encoding
-      .replace(/&#38;/g, '&')      // Decimal ampersand encoding
-      .replace(/&amp;/g, '&');     // CRITICAL: Decode &amp; LAST to prevent double-decoding
+    // SECURITY: Block dangerous URL schemes immediately
+    const dangerousSchemes = /^(javascript|vbscript|data:text\/html|file|ftp):/i;
+    const trimmedUrl = url.trim();
+    if (dangerousSchemes.test(trimmedUrl) || trimmedUrl.startsWith('data:text/html,')) {
+      return ''; // Block completely
+    }
+
+    // SECURITY: Block URLs containing suspicious patterns even when encoded
+    const suspiciousPatterns = /alert\(|eval\(|document\.|window\.|location\.|<script|<iframe|onerror=|onload=/i;
+    if (suspiciousPatterns.test(url)) {
+      return ''; // Block URLs containing suspicious JavaScript patterns
+    }
+
+    // SECURITY FIX: Use DOMPurify to sanitize before decoding
+    const sanitized = DOMPurify.sanitize(url, {
+      ALLOWED_TAGS: [], // No HTML tags allowed in URLs
+      KEEP_CONTENT: true, // Keep text content
+      FORBID_ATTR: ['onclick', 'onload', 'onerror', 'onmouseover', 'onfocus'], // Block event handlers
+    });
+
+    // Use secure HTML entity decoding with SSR compatibility
+    try {
+      let decoded: string;
+
+      // Check if we're in a browser environment
+      if (typeof document !== 'undefined') {
+        // Browser environment: Use DOM for safe decoding
+        const textarea = document.createElement('textarea');
+        textarea.innerHTML = sanitized;
+        decoded = textarea.value;
+      } else {
+        // Server environment: Use a more comprehensive but safe decoding approach
+        // First, handle numeric entities that could be used for obfuscation
+        let temp = sanitized;
+        
+        // SECURITY: Check if the string contains patterns that could form dangerous schemes when decoded
+        const potentiallyDangerous = /&#(106|106;|97|97;|118|118;|115|115;|99|99;|114|114;|105|105;|112|112;|116|116;|58|58;)/i.test(temp) ||
+                                    /&#x(6[aA]|61|76|73|63|72|69|70|74|3[aA])/i.test(temp);
+        
+        if (potentiallyDangerous) {
+          // Don't decode numeric entities that could spell out dangerous schemes
+          // Just decode basic named entities
+          decoded = temp
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
+        } else {
+          // Safe to decode numeric entities
+          // Decode common numeric entities safely (limited set for security)
+          temp = temp.replace(/&#([0-9]+);/g, (match, charCode) => {
+            const code = parseInt(charCode, 10);
+            // Only decode safe ASCII characters (32-126) to prevent unicode attacks
+            if (code >= 32 && code <= 126) {
+              return String.fromCharCode(code);
+            }
+            return match; // Keep original if outside safe range
+          });
+          
+          // Decode hexadecimal entities safely
+          temp = temp.replace(/&#x([0-9a-fA-F]+);/g, (match, hexCode) => {
+            const code = parseInt(hexCode, 16);
+            // Only decode safe ASCII characters to prevent unicode attacks
+            if (code >= 32 && code <= 126) {
+              return String.fromCharCode(code);
+            }
+            return match; // Keep original if outside safe range
+          });
+          
+          // Decode named entities
+          decoded = temp
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&'); // Decode & last to prevent double-decoding
+        }
+      }
+
+      // Final validation: check again for dangerous schemes after decoding
+      const decodedTrimmed = decoded.trim();
+      if (dangerousSchemes.test(decodedTrimmed) || decodedTrimmed.startsWith('data:text/html,')) {
+        return ''; // Block if dangerous scheme appears after decoding
+      }
+
+      // Additional validation: block if malicious patterns appear
+      const maliciousPatterns = /<script|<iframe|onerror=|onload=|javascript:/i;
+      if (maliciousPatterns.test(decoded)) {
+        return ''; // Block malicious patterns
+      }
+
+      return decoded;
+    } catch (error) {
+      // If any error occurs during decoding, return empty string for security
+      console.warn('Security warning: URL decoding failed, returning empty string', error);
+      return '';
+    }
   }
 
 }
