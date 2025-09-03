@@ -1,27 +1,56 @@
-name: Unit and Component Tests
+# .github/workflows/vitest.yaml
+name: Unit Tests for Alt Frontend
+
 on:
   push:
-    branches: [ main, master ]
-    paths:
-      - 'alt-frontend/**'
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main, master ]
-    paths:
-      - 'alt-frontend/**'
-  workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-  actions: read
+    branches: [ main, develop ]
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test-frontend.yaml
-    with:
-      working-directory: 'alt-frontend/src'
-      test-type: 'vitest'
-      node-version: '20'
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 18
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run middleware tests
+      run: npm run test:middleware
+      env:
+        NODE_OPTIONS: '--max-old-space-size=2048'
+
+    - name: Run component tests
+      run: npm run test:ci
+      env:
+        NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'
+        CI: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 18
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run security tests
+      run: npm run test:run -- src/tests/security/
+      env:
+        NODE_OPTIONS: '--max-old-space-size=2048'

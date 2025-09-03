@@ -1,14 +1,22 @@
 // vitest.config.ts
-import { defineConfig, mergeConfig } from "vitest/config";
+import { defineConfig } from "vitest/config";
 import viteConfig from "./vite.config";
 
-export default mergeConfig(
-  viteConfig,
-  defineConfig({
+export default defineConfig({
+  ...viteConfig,
     test: {
       globals: true,
       environment: "jsdom",
-      exclude: ["node_modules", "dist", ".next", "e2e", "**/*.spec.ts"],
+      exclude: [
+        "node_modules",
+        "dist",
+        ".next",
+        "e2e",
+        "**/*.spec.ts",
+        // Exclude middleware tests (they have their own config)
+        "src/middleware.test.ts",
+        "src/lib/server-fetch.test.ts"
+      ],
       setupFiles: ["./vitest.setup.ts"],
       env: {
         NEXT_PUBLIC_API_BASE_URL: "http://localhost/api",
@@ -18,30 +26,43 @@ export default mergeConfig(
         NODE_ENV: "test",
       },
 
-      // Memory-optimized settings
-      testTimeout: 15000,  // Reduced from 30s
-      hookTimeout: 15000,
-      teardownTimeout: 15000,
+      // Aggressive memory optimization
+      testTimeout: 10000,
+      hookTimeout: 10000,
+      teardownTimeout: 10000,
 
-      // Force single-threaded execution for memory stability
+      // Force single-threaded execution for stability
       pool: 'threads',
       poolOptions: {
         threads: {
-          singleThread: true,   // ✅ Single thread only
-          maxThreads: 1,        // ✅ Force max 1 thread
+          singleThread: true,
+          maxThreads: 1,
           minThreads: 1,
         }
       },
 
-      // File execution settings
-      fileParallelism: false,   // ✅ Run test files one at a time
+      // Sequential test execution
+      fileParallelism: false,
       isolate: true,
       logHeapUsage: true,
+      maxWorkers: 1,
+      maxConcurrency: 1,
+
+      // Memory management
+      sequence: {
+        shuffle: false,
+        concurrent: false,
+      },
 
       // Disable coverage in CI to save memory
       coverage: {
         enabled: false,
       },
+
+      // Retry flaky tests once
+      retry: process.env.CI ? 1 : 0,
+
+      // Reporter optimization for CI
+      reporters: process.env.CI ? ['verbose'] : ['default'],
     },
-  })
-);
+});

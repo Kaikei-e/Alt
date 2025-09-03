@@ -15,13 +15,16 @@
     "typecheck": "tsc --noEmit",
     "analyze": "ANALYZE=true next build",
     "test:e2e": "npx playwright test",
-    "test:logic": "vitest",
     "test:all": "npx playwright test && vitest",
-    "test:security": "vitest src/tests/security/",
-    "test:performance:security": "vitest src/tests/performance/security-impact.test.ts",
-    "test:security:scan": "vitest src/tests/security/automated-scan.test.ts",
-    "test:security:e2e": "npx playwright test e2e/security/",
-    "security:report": "node scripts/generate-security-report.js"
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:ci": "NODE_OPTIONS='--max-old-space-size=4096 --expose-gc' vitest run --reporter=verbose --no-coverage",
+    "test:middleware": "NODE_OPTIONS='--max-old-space-size=2048' vitest run --config vitest.config.middleware.ts",
+    "test:components": "NODE_OPTIONS='--max-old-space-size=4096 --expose-gc' vitest run --reporter=verbose --no-coverage",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "test:memory": "NODE_OPTIONS='--max-old-space-size=6144 --expose-gc' vitest run --reporter=verbose",
+    "test:debug": "NODE_OPTIONS='--max-old-space-size=4096 --inspect' vitest run"
   },
   "dependencies": {
     "@chakra-ui/accordion": "^2.3.1",
