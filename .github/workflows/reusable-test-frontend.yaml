@@ -73,7 +73,7 @@ jobs:
       - name: Run Vitest tests
         if: inputs.test-type == 'vitest'
         working-directory: ${{ inputs.working-directory }}
-        run: NODE_OPTIONS="--max-old-space-size=12288" pnpm exec vitest run --no-file-parallelism --pool=threads --poolOptions.threads.singleThread=true
+        run: NODE_OPTIONS="--max-old-space-size=12288" pnpm exec vitest run --pool=threads
 
       - name: Run Playwright tests
         if: inputs.test-type == 'playwright'
