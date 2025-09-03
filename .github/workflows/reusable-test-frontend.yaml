@@ -214,10 +214,8 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           echo "::group::Running Vitest tests (single worker, no file parallel, no in-file concurrency)"
-          NODE_OPTIONS="--max-old-space-size=4096 --heapsnapshot-near-heap-limit=3" \
-          pnpm exec vitest run \
-            --pool=forks \
-            --maxWorkers=10 --minWorkers=1
+          NODE_OPTIONS="--max-old-space-size=4096" \
+          pnpm exec vitest run
           echo "::endgroup::"
 
 
