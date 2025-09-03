@@ -1,4 +1,4 @@
-name: Reusable Frontend Test Workflow
+name: Simple Frontend Test Workflow
 
 permissions:
   contents: read
@@ -21,318 +21,73 @@ on:
         required: false
         type: string
         default: "10"
-      workflow-name:
-        required: false
-        type: string
-        default: "Playwright Tests"
 
 jobs:
   test:
-    runs-on: [self-hosted, linux, X64]
-    timeout-minutes: 60
-
-    env:
-      isCI: true
-      # ランダムポートを使用してポート競合を回避
-      PORT: ${{ github.run_id }}
-      FORCE_COLOR: 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Configure logging
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::group::Masking Configuration"
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-          # Mask HOME directory parts
-          PARTS=($(echo $HOME | tr '/' ' '))
-          for part in "${PARTS[@]}"; do
-            [ ! -z "$part" ] && echo "::add-mask::$part"
-          done
-
-          # Mask machine name and user info
-          echo "::add-mask::$(whoami)"
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(hostname -s)"
-          echo "::add-mask::$(scutil --get ComputerName 2>/dev/null || echo '')"
-          echo "::add-mask::$(scutil --get LocalHostName 2>/dev/null || echo '')"
-
-          # Mask runner workspace paths
-          echo "::add-mask::${{ runner.temp }}"
-          echo "::add-mask::${{ github.workspace }}"
-
-          echo "::endgroup::"
-
-      - name: Pre-cleanup processes and ports
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::group::Pre-cleanup processes and ports"
-
-          # Kill existing Node.js processes (silently)
-          echo "Cleaning existing Node.js processes..."
-          pkill -9 node >/dev/null 2>&1 || true
-          pkill -9 npm >/dev/null 2>&1 || true
-          pkill -9 pnpm >/dev/null 2>&1 || true
-
-          # Kill processes using common test ports (silently)
-          echo "Cleaning processes on common test ports..."
-          for port in 3000 3001 3010 4173 5173 8080; do
-            pid=$(lsof -ti:$port 2>/dev/null || true)
-            if [ ! -z "$pid" ]; then
-              echo "Cleaning process on port $port"
-              kill -9 $pid >/dev/null 2>&1 || true
-            fi
-          done
-
-          # Wait for processes to terminate
-          sleep 2
-
-          # Verify ports are free (count only)
-          port_count=$(netstat -an 2>/dev/null | grep LISTEN | grep -E ':(3000|3001|3010|4173|5173|8080) ' | wc -l || echo "0")
-          echo "Active test ports: $port_count"
-
-          echo "::endgroup::"
-
-      - name: Deep clean workspace
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::group::Deep cleaning workspace"
-
-          # Clean pnpm directories
-          echo "Deep cleaning pnpm directories..."
-          find "${{ runner.temp }}" -maxdepth 2 -name "setup-pnpm*" -type d -exec rm -rf {} + 2>/dev/null || true
-          if [ -d "${{ runner.temp }}/setup-pnpm" ]; then
-            chmod -R 777 "${{ runner.temp }}/setup-pnpm" 2>/dev/null || true
-            rm -rf "${{ runner.temp }}/setup-pnpm" || sudo rm -rf "${{ runner.temp }}/setup-pnpm" || true
-          fi
-
-          # Clean all pnpm and node related caches
-          rm -rf "$HOME/.pnpm-store" || true
-          rm -rf "$HOME/.cache/pnpm" || true
-          rm -rf "$HOME/Library/pnpm" || true
-          rm -rf "$HOME/.npm" || true
-          rm -rf "$HOME/.cache/ms-playwright" || true
-
-          # Clean workspace
-          rm -rf "${{ github.workspace }}/node_modules" || true
-          rm -rf "${{ github.workspace }}/.pnpm-store" || true
-          rm -rf "${{ github.workspace }}/dist" || true
-          rm -rf "${{ github.workspace }}/build" || true
-
-          # Create fresh directories
-          mkdir -p "${{ runner.temp }}/pnpm-home"
-          mkdir -p "${{ runner.temp }}/pnpm-store"
-
-          echo "::endgroup::"
-
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js first
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ''
+          cache: 'npm'
 
-      - name: Install pnpm manually
-        run: |
-          echo "::group::Installing pnpm ${{ inputs.pnpm-version }}"
-          corepack enable
-          corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
-          pnpm --version
-          pnpm config set store-dir "${{ runner.temp }}/pnpm-store"
-          echo "::endgroup::"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ inputs.pnpm-version }}
 
       - name: Get pnpm store directory
-        id: pnpm-store
-        run: echo "dir=$(pnpm store path)" >> $GITHUB_OUTPUT
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Cache pnpm store
         uses: actions/cache@v3
         with:
-          path: ${{ steps.pnpm-store.outputs.dir }}
-          key: pnpm-${{ runner.os }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            pnpm-${{ runner.os }}-
+            ${{ runner.os }}-pnpm-store-
 
-      - name: Set Playwright browsers path
-        if: inputs.test-type == 'playwright'
-        run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/playwright-browsers" >> $GITHUB_ENV
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm install --frozen-lockfile
 
       - name: Cache Playwright browsers
         if: inputs.test-type == 'playwright'
         uses: actions/cache@v3
-        id: playwright-cache
         with:
-          path: ${{ runner.temp }}/playwright-browsers
-          key: ${{ runner.os }}-playwright-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install dependencies
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          echo "::group::Installing dependencies"
-          NODE_OPTIONS="--max-old-space-size=4096" pnpm install --frozen-lockfile
-          echo "::endgroup::"
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
 
       - name: Install Playwright browsers
-        if: inputs.test-type == 'playwright' && steps.playwright-cache.outputs.cache-hit != 'true'
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          echo "::group::Installing Playwright browsers"
-          NODE_OPTIONS="--max-old-space-size=4096" pnpm exec playwright install --with-deps
-          echo "::endgroup::"
-
-      - name: Pre-test port check
         if: inputs.test-type == 'playwright'
-        run: |
-          echo "::group::Pre-test port availability check"
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm exec playwright install --with-deps
 
-          # Generate dynamic port based on run ID
-          DYNAMIC_PORT=$((3000 + (${{ github.run_id }} % 1000)))
-          echo "Using dynamic port: $DYNAMIC_PORT"
-          echo "PLAYWRIGHT_TEST_PORT=$DYNAMIC_PORT" >> $GITHUB_ENV
-
-          # Verify port is available (silently)
-          if lsof -i:$DYNAMIC_PORT >/dev/null 2>&1; then
-            echo "Port $DYNAMIC_PORT is in use, finding alternative..."
-            for i in {1..10}; do
-              ALT_PORT=$((DYNAMIC_PORT + i))
-              if ! lsof -i:$ALT_PORT >/dev/null 2>&1; then
-                echo "Using alternative port: $ALT_PORT"
-                echo "PLAYWRIGHT_TEST_PORT=$ALT_PORT" >> $GITHUB_ENV
-                break
-              fi
-            done
-          fi
-
-          final_port="${PLAYWRIGHT_TEST_PORT:-$DYNAMIC_PORT}"
-          echo "Final port assigned: $final_port"
-          echo "::endgroup::"
-
-      - name: Run Vitest tests with memory monitoring
+      - name: Run Vitest tests
         if: inputs.test-type == 'vitest'
         working-directory: ${{ inputs.working-directory }}
-        run: |
-          echo "::group::Running Vitest tests with memory monitoring"
-
-          # Start memory monitoring in background
-          (while true; do
-            echo "Memory usage at $(date):"
-            ps aux --sort=-%mem | head -10
-            sleep 30
-          done) &
-          MONITOR_PID=$!
-
-          # Run tests
-          set +e
-          NODE_OPTIONS="--max-old-space-size=8192 --expose-gc" \
-          pnpm exec vitest run --pool=forks --poolOptions.forks.singleFork=true --reporter=verbose
-          TEST_EXIT_CODE=$?
-
-          # Stop monitoring
-          kill $MONITOR_PID 2>/dev/null || true
-
-          echo "Final memory state:"
-          free -h || echo "free command not available"
-
-          exit $TEST_EXIT_CODE
-          echo "::endgroup::"
-
+        run: pnpm exec vitest run
 
       - name: Run Playwright tests
         if: inputs.test-type == 'playwright'
         working-directory: ${{ inputs.working-directory }}
-        run: |
-          echo "::group::Running Playwright tests"
-
-          # Set timeout and other environment variables
-          export PLAYWRIGHT_TIMEOUT=30000
-          export PLAYWRIGHT_RETRIES=2
-
-          # Run tests with retry mechanism
-          set +e  # Don't exit on first failure
-
-          for attempt in 1 2 3; do
-            echo "Attempt $attempt/3..."
-
-            # Kill any stray processes before attempt (silently)
-            pkill -f "vite.*preview" >/dev/null 2>&1 || true
-            pkill -f "vite.*dev" >/dev/null 2>&1 || true
-            sleep 2
-
-            NODE_OPTIONS="--max-old-space-size=8192" pnpm exec playwright test
-            exit_code=$?
-
-            if [ $exit_code -eq 0 ]; then
-              echo "Tests passed on attempt $attempt"
-              break
-            else
-              echo "Tests failed on attempt $attempt (exit code: $exit_code)"
-              if [ $attempt -lt 3 ]; then
-                echo "Waiting before retry..."
-                sleep 5
-
-                # Clean up any remaining processes (silently)
-                pkill -f "node.*vite" >/dev/null 2>&1 || true
-                pkill -f "playwright" >/dev/null 2>&1 || true
-                sleep 2
-              fi
-            fi
-          done
-
-          set -e  # Re-enable exit on error
-          exit $exit_code
-          echo "::endgroup::"
+        run: pnpm exec playwright test
 
       - name: Upload test results
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.test-type }}-report-${{ github.run_id }}-${{ github.run_attempt }}
+          name: test-results-${{ inputs.test-type }}-${{ github.run_id }}
           path: |
-            ${{ inputs.working-directory }}/coverage
-            ${{ inputs.working-directory }}/playwright-report/
             ${{ inputs.working-directory }}/test-results/
-          retention-days: 30
-          if-no-files-found: warn
-
-      - name: Post cleanup
-        if: always()
-        run: |
-          echo "::group::Post cleanup"
-
-          echo ">>> Cleaning all Node.js related processes"
-          pkill -9 node >/dev/null 2>&1 || true
-          pkill -9 npm >/dev/null 2>&1 || true
-          pkill -9 pnpm >/dev/null 2>&1 || true
-          pkill -f "vite" >/dev/null 2>&1 || true
-          pkill -f "playwright" >/dev/null 2>&1 || true
-
-          # Force kill processes on test ports (silently)
-          echo ">>> Cleaning processes on test ports"
-          for port in 3000 3001 3010 4173 5173 8080; do
-            pid=$(lsof -ti:$port 2>/dev/null || true)
-            if [ ! -z "$pid" ]; then
-              echo "Cleaning process on port $port"
-              kill -9 $pid >/dev/null 2>&1 || true
-            fi
-          done
-
-          # Clean up temporary directories
-          echo ">>> Cleaning temporary directories"
-          rm -rf "${{ runner.temp }}/pnpm-store"       || true
-          rm -rf "${{ runner.temp }}/pnpm-home"        || true
-          rm -rf "${{ runner.temp }}/playwright-browsers" || true
-
-          # Wait for cleanup to complete
-          sleep 2
-
-          echo ">>> Final port check"
-          port_count=$(netstat -an 2>/dev/null | grep LISTEN | grep -E ':(3000|3001|3010|4173|5173|8080) ' | wc -l || echo "0")
-          if [ "$port_count" -eq 0 ]; then
-            echo "All test ports are now free"
-          else
-            echo "Some test ports may still be in use ($port_count)"
-          fi
-
-          echo "::endgroup::"
+            ${{ inputs.working-directory }}/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
