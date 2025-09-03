@@ -1,0 +1,28 @@
+name: Alt Frontend E2E Test
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      working-directory:
+        description: 'Working directory for the test'
+        required: true
+        type: string
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: "24"
+      pnpm-version:
+        description: 'pnpm version to use'
+        required: false
+        type: string
+        default: "10"
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test-frontend.yaml
+    with:
+      working-directory: 'alt-frontend'
