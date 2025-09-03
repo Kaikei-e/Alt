@@ -23,7 +23,7 @@ export default defineConfig({
   globalTimeout: 900 * 1000, // 15分
 
   // レポーター
-  reporter: "html",
+  reporter: process.env.CI ? 'blob' : 'html',
 
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3010",
