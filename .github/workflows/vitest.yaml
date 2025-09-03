@@ -1,24 +1,35 @@
-name: Reusable Vitest Workflow
+name: Alt Frontend Vitest Workflow
 
 on:
-  workflow_call:
+  push:
+    branches: [ main ]
+    paths:
+      - 'alt-frontend/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'alt-frontend/**'
+  workflow_dispatch:
     inputs:
       working-directory:
+        description: 'Working directory for the test'
         required: true
         type: string
       node-version:
+        description: 'Node.js version to use'
         required: false
         type: string
-        default: "20"
+        default: "24"
       pnpm-version:
+        description: 'pnpm version to use'
         required: false
         type: string
         default: "10"
       shards:
+        description: 'Number of shards to run'
         required: false
         type: string
         default: "3" # マトリクスは下で [1,2,3] に固定。必要ならこの値と合わせて調整。
-  workflow_dispatch:
 
 permissions:
   contents: read
