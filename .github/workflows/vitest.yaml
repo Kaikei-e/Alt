@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
 
+env:
+  working-directory: './alt-frontend'
+
 jobs:
   unit-tests:
     name: Unit Tests
@@ -32,14 +35,17 @@ jobs:
         cache: 'pnpm'
 
     - name: Install dependencies
+      working-directory: ${{ env.working-directory }}
       run: pnpm ci
 
     - name: Run middleware tests
+      working-directory: ${{ env.working-directory }}
       run: pnpm run test:middleware
       env:
         NODE_OPTIONS: '--max-old-space-size=2048'
 
     - name: Run component tests
+      working-directory: ${{ env.working-directory }}
       run: pnpm run test:ci
       env:
         NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'
@@ -61,6 +67,7 @@ jobs:
       run: pnpm ci
 
     - name: Run security tests
+      working-directory: ${{ env.working-directory }}
       run: pnpm run test:run -- src/tests/security/
       env:
         NODE_OPTIONS: '--max-old-space-size=2048'

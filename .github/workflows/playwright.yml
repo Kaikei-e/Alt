@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
 
+env:
+  working-directory: './alt-frontend'
+
 jobs:
   playwright:
     name: Playwright Tests
@@ -30,14 +33,18 @@ jobs:
       with:
         node-version: 24
         cache: 'pnpm'
+        cache-dependency-path: './alt-frontend/pnpm-lock.yaml'
 
     - name: Install dependencies
+      working-directory: ${{ env.working-directory }}
       run: pnpm ci
 
     - name: Install Playwright Browsers
+      working-directory: ${{ env.working-directory }}
       run: pnpm playwright install --with-deps chromium
 
     - name: Run Playwright tests
+      working-directory: ${{ env.working-directory }}
       run: pnpm playwright test
       env:
         CI: true
@@ -46,5 +53,5 @@ jobs:
       if: failure()
       with:
         name: playwright-report
-        path: playwright-report/
+        path: ${{ env.working-directory }}/playwright-report/
         retention-days: 7
