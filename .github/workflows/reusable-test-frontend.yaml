@@ -218,7 +218,7 @@ jobs:
           pnpm exec vitest run \
             --pool=forks \
             --maxWorkers=1 --minWorkers=1 \
-            --no-file-parallelism \
+            --no-file-parallelism
           echo "::endgroup::"
 
 
