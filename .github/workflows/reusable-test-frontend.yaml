@@ -1,4 +1,4 @@
-name: Frontend Test Workflow
+name: Simple Frontend Test Workflow
 
 permissions:
   contents: read
@@ -73,7 +73,7 @@ jobs:
       - name: Run Vitest tests
         if: inputs.test-type == 'vitest'
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm exec vitest run
+        run: NODE_OPTIONS="--max-old-space-size=12288" pnpm exec vitest run --no-file-parallelism --pool=threads --poolOptions.threads.singleThread=true
 
       - name: Run Playwright tests
         if: inputs.test-type == 'playwright'
