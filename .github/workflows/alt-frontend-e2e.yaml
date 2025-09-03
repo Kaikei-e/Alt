@@ -4,25 +4,31 @@ permissions:
   contents: read
 
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'alt-frontend/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'alt-frontend/**'
+
   workflow_dispatch:
     inputs:
       working-directory:
         description: 'Working directory for the test'
         required: true
         type: string
-      node-version:
-        description: 'Node.js version to use'
+        default: "alt-frontend"
+      shards:
+        description: 'Number of shards to run'
         required: false
         type: string
-        default: "24"
-      pnpm-version:
-        description: 'pnpm version to use'
-        required: false
-        type: string
-        default: "10"
+        default: "3"
 
 jobs:
   test:
     uses: ./.github/workflows/reusable-test-frontend.yaml
     with:
-      working-directory: 'alt-frontend'
+      working-directory: ${{ inputs.working-directory }}
+      shards: ${{ inputs.shards }}
