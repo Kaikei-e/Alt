@@ -209,13 +209,33 @@ jobs:
           echo "Final port assigned: $final_port"
           echo "::endgroup::"
 
-      - name: Run Vitest tests
+      - name: Run Vitest tests with memory monitoring
         if: inputs.test-type == 'vitest'
         working-directory: ${{ inputs.working-directory }}
         run: |
-          echo "::group::Running Vitest tests (single worker, no file parallel, no in-file concurrency)"
-          NODE_OPTIONS="--max-old-space-size=4096" \
-          pnpm exec vitest run
+          echo "::group::Running Vitest tests with memory monitoring"
+
+          # Start memory monitoring in background
+          (while true; do
+            echo "Memory usage at $(date):"
+            ps aux --sort=-%mem | head -10
+            sleep 30
+          done) &
+          MONITOR_PID=$!
+
+          # Run tests
+          set +e
+          NODE_OPTIONS="--max-old-space-size=8192 --expose-gc" \
+          pnpm exec vitest run --pool=forks --poolOptions.forks.singleFork=true --reporter=verbose
+          TEST_EXIT_CODE=$?
+
+          # Stop monitoring
+          kill $MONITOR_PID 2>/dev/null || true
+
+          echo "Final memory state:"
+          free -h || echo "free command not available"
+
+          exit $TEST_EXIT_CODE
           echo "::endgroup::"
 
 
