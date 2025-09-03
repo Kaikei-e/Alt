@@ -217,8 +217,7 @@ jobs:
           NODE_OPTIONS="--max-old-space-size=4096 --heapsnapshot-near-heap-limit=3" \
           pnpm exec vitest run \
             --pool=forks \
-            --maxWorkers=1 --minWorkers=1 \
-            --no-file-parallelism
+            --maxWorkers=10 --minWorkers=1
           echo "::endgroup::"
 
 
