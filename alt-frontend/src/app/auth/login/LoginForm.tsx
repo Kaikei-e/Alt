@@ -1,6 +1,6 @@
 // app/auth/login/LoginForm.tsx（Client Componentの一例）
 'use client'
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Configuration, FrontendApi, UpdateLoginFlowBody, LoginFlow } from '@ory/client'
 
 const kratos = new FrontendApi(new Configuration({

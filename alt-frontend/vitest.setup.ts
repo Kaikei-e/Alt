@@ -31,6 +31,12 @@ if (typeof window !== 'undefined') {
     disconnect: vi.fn(),
   }));
 
+  // Mock window.scrollTo for jsdom compatibility
+  Object.defineProperty(window, "scrollTo", {
+    writable: true,
+    value: vi.fn(),
+  });
+
   // Stub navigation to avoid jsdom "navigation not implemented" errors in unit tests
   try {
     const originalLocation = window.location;
