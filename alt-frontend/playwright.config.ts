@@ -5,6 +5,9 @@ import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.test" });
 
 const isCI = !!process.env.CI;
+const shardIndex = Number(process.env.PW_SHARD_INDEX || '1');
+const mockPort = Number(process.env.PW_MOCK_PORT || '4545');
+const appPort = Number(process.env.PW_APP_PORT || '3010');
 
 export default defineConfig({
   testMatch: /.*\.spec\.ts/,
@@ -12,8 +15,6 @@ export default defineConfig({
 
   // Increase timeout for auth-heavy tests
   timeout: 60 * 1000,
-  actionTimeout: 30 * 1000,
-  navigationTimeout: 30 * 1000,
   expect: {
     timeout: 15 * 1000,
   },
@@ -22,13 +23,13 @@ export default defineConfig({
   // Better retry strategy for flaky auth tests
   retries: process.env.CI ? 2 : 1,
   forbidOnly: isCI,
-  
+
   // Enable parallel execution for better performance
   fullyParallel: !process.env.CI, // Full parallel locally only
   workers: process.env.CI ? 2 : 20, // Use 20 workers locally
 
   // Enhanced reporting configuration
-  reporter: process.env.CI 
+  reporter: process.env.CI
     ? [
         ['blob'],
         ['./tests/reporters/custom-reporter.ts'],
@@ -40,12 +41,14 @@ export default defineConfig({
       ],
 
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3010",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${appPort}`,
     headless: true,
+    actionTimeout: 30 * 1000,
+    navigationTimeout: 30 * 1000,
 
     // Enhanced debugging for test failures
     trace: "retain-on-failure",
-    video: "retain-on-failure", 
+    video: "retain-on-failure",
     screenshot: "only-on-failure",
 
     // パフォーマンス改善のためのデフォルト設定
@@ -65,57 +68,57 @@ export default defineConfig({
   projects: [
     // Setup project for authentication
     { name: 'setup', testMatch: /.*\.setup\.ts/ },
-    
+
     // Authenticated tests - Chrome
     {
       name: 'authenticated-chrome',
-      use: { 
+      use: {
         ...devices['Desktop Chrome'],
         storageState: 'playwright/.auth/user.json'
       },
       dependencies: ['setup'],
       testMatch: /e2e\/authenticated\/.*\.spec\.ts/
     },
-    
+
     // Authenticated tests - Firefox
     {
       name: 'authenticated-firefox',
-      use: { 
+      use: {
         ...devices['Desktop Firefox'],
         storageState: 'playwright/.auth/user.json'
       },
       dependencies: ['setup'],
       testMatch: /e2e\/authenticated\/.*\.spec\.ts/
     },
-    
+
     // Non-authenticated tests (auth flow tests) - Chrome
     {
       name: 'auth-flow-chrome',
       use: { ...devices['Desktop Chrome'] },
       testMatch: /e2e\/auth\/.*\.spec\.ts/
     },
-    
+
     // Non-authenticated tests (auth flow tests) - Firefox
     {
       name: 'auth-flow-firefox',
       use: { ...devices['Desktop Firefox'] },
       testMatch: /e2e\/auth\/.*\.spec\.ts/
     },
-    
+
     // Error scenarios tests
     {
       name: 'error-scenarios',
       use: { ...devices['Desktop Chrome'] },
       testMatch: /e2e\/errors\/.*\.spec\.ts/
     },
-    
+
     // Component tests
     {
-      name: 'components', 
+      name: 'components',
       use: { ...devices['Desktop Chrome'] },
       testMatch: /src\/.*\.spec\.ts/
     },
-    
+
     // Mobile tests (optional - can be enabled when needed)
     // {
     //   name: 'mobile-chrome',
@@ -128,14 +131,14 @@ export default defineConfig({
   webServer: [
     {
       command: "node tests/mock-auth-service.cjs",
-      port: 4545,
-      reuseExistingServer: !isCI,
+      port: mockPort,
+      reuseExistingServer: false,
     },
     {
       // Use actual Next.js dev server instead of test-server.cjs
-      command: "NEXT_PUBLIC_IDP_ORIGIN=http://localhost:4545 NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:4545 NODE_ENV=test pnpm dev --port 3010",
-      url: "http://localhost:3010",
-      reuseExistingServer: !isCI,
+      command: `NEXT_PUBLIC_IDP_ORIGIN=http://localhost:${mockPort} NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:${mockPort} NODE_ENV=test pnpm dev --port ${appPort}`,
+      url: `http://localhost:${appPort}`,
+      reuseExistingServer: false,
       timeout: 180 * 1000, // 3 minutes for CI environments
       env: {
         NODE_ENV: "test"
