@@ -1,14 +1,6 @@
 name: Alt Frontend Playwright Workflow
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'alt-frontend/**'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'alt-frontend/**'
   workflow_dispatch:
     inputs:
       working-directory:

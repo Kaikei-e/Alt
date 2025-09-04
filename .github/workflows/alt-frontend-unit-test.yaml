@@ -18,6 +18,7 @@ on:
         description: 'Working directory for the test'
         required: true
         type: string
+        default: "alt-frontend"
       node-version:
         description: 'Node.js version to use'
         required: false
@@ -31,9 +32,9 @@ on:
 
 jobs:
   test:
-    uses: ./.github/workflows/reusable-test-frontend.yaml
+    uses: ./.github/workflows/vitest.yaml
     with:
-      working-directory: ${{ inputs.working-directory }}
-      node-version: ${{ inputs.node-version }}
-      pnpm-version: ${{ inputs.pnpm-version }}
+      working-directory: ${{ inputs.working-directory || 'alt-frontend' }}
+      node-version: ${{ inputs.node-version || '24' }}
+      pnpm-version: ${{ inputs.pnpm-version || '10' }}
       test-type: 'vitest'
