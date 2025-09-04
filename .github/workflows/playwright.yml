@@ -60,11 +60,19 @@ jobs:
     env:
       CI: true
       FORCE_COLOR: "1"
+      # Mask sensitive paths in logs
+      RUNNER_WORKSPACE: "***"
+      GITHUB_WORKSPACE: "***"
       # ブラウザをキャッシュ可能な場所へ（Linux: ~/.cache/ms-playwright でもOK）
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/playwright-browsers
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Mask sensitive paths
+        run: |
+          echo "::add-mask::$(dirname $(pwd))"
+          echo "::add-mask::$(pwd | cut -d'/' -f1-4)"
 
       - name: Verify working directory
         run: |

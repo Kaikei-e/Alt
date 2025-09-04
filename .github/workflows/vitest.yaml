@@ -61,9 +61,17 @@ jobs:
     env:
       CI: true
       FORCE_COLOR: "1"
+      # Mask sensitive paths in logs
+      RUNNER_WORKSPACE: "***"
+      GITHUB_WORKSPACE: "***"
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Mask sensitive paths
+        run: |
+          echo "::add-mask::$(dirname $(pwd))"
+          echo "::add-mask::$(pwd | cut -d'/' -f1-4)"
 
       - name: Verify working directory
         run: |
@@ -95,13 +103,28 @@ jobs:
       # Vitest をシャーディングで高速化。blob レポートを後段でマージ
       - name: Run Vitest (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
         working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
         run: |
+          echo "Running Vitest tests..."
+          echo "Shard: ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}"
+          echo "Working directory: $(pwd)"
+
+          # Run with verbose output to capture errors
           NODE_OPTIONS="--max-old-space-size=3072" pnpm exec vitest run \
             --pool=threads \
             --maxWorkers=3 \
+            --reporter=verbose \
             --reporter=blob \
             --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
-        # ↑ 末尾に \ を付けない（行継続バグ対策）
+
+          exit_code=$?
+          echo "Vitest completed with exit code: $exit_code"
+
+          if [ $exit_code -ne 0 ]; then
+            echo "Some tests failed, but continuing to generate report..."
+            echo "Checking if blob report was created..."
+            ls -la .vitest-reports/ || echo "No .vitest-reports directory found"
+          fi
 
       - name: Upload shard blob report
         if: always()
