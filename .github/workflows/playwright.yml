@@ -145,6 +145,10 @@ jobs:
       - name: Run Playwright (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
         working-directory: ${{ inputs.working-directory }}
         run: |
+          export PW_SHARD_INDEX=${{ matrix.shardIndex }}
+          export PW_MOCK_PORT=$((4544 + ${{ matrix.shardIndex }}))
+          export PW_APP_PORT=$((3009 + ${{ matrix.shardIndex }}))
+          echo "Using mock port: $PW_MOCK_PORT, app port: $PW_APP_PORT"
           pnpm exec playwright test \
             --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
