@@ -9,6 +9,16 @@ const port = process.env.MOCK_AUTH_PORT || 4545;
 const flows = new Map();
 const sessions = new Map();
 
+// Configuration
+const config = {
+  // Reduce response delay for faster tests
+  responseDelay: process.env.NODE_ENV === 'test' ? 10 : 0, // 10ms delay in tests
+  // Enable detailed logging
+  verbose: process.env.DEBUG_MOCK_AUTH === 'true',
+  // Flow expiration time (longer for stability)
+  flowExpiration: 15 * 60 * 1000, // 15 minutes
+};
+
 // Generate mock IDs using cryptographically secure randomness
 function generateId() {
   // Generate 16 random bytes and convert to hex string (32 characters)
@@ -20,13 +30,61 @@ function generateCSRF() {
   return 'csrf-' + generateId();
 }
 
+// Enhanced logging function
+function log(message, data = null) {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] Mock Kratos: ${message}`);
+  if (config.verbose && data) {
+    console.log('  Data:', JSON.stringify(data, null, 2));
+  }
+}
+
+// Response helper with delay
+async function sendResponse(res, statusCode, data, contentType = 'application/json') {
+  if (config.responseDelay > 0) {
+    await new Promise(resolve => setTimeout(resolve, config.responseDelay));
+  }
+  
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', contentType);
+  res.end(typeof data === 'string' ? data : JSON.stringify(data));
+}
+
+// Error response helper
+async function sendError(res, statusCode, message, errorId = null) {
+  const error = {
+    error: {
+      message,
+      ...(errorId && { id: errorId }),
+      code: statusCode,
+      status: getStatusText(statusCode)
+    }
+  };
+  
+  log(`Error ${statusCode}: ${message}`, error);
+  await sendResponse(res, statusCode, error);
+}
+
+// Get HTTP status text
+function getStatusText(code) {
+  const statusTexts = {
+    400: 'Bad Request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not Found',
+    410: 'Gone',
+    500: 'Internal Server Error'
+  };
+  return statusTexts[code] || 'Unknown';
+}
+
 // Create a mock login flow
 function createLoginFlow(returnTo = 'http://localhost:3010/') {
   const flowId = generateId();
   const csrf = generateCSRF();
   const flow = {
     id: flowId,
-    expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minutes from now
+    expires_at: new Date(Date.now() + config.flowExpiration).toISOString(), // Configurable expiration
     issued_at: new Date().toISOString(),
     request_url: `http://localhost:4545/self-service/login/browser?return_to=${encodeURIComponent(returnTo)}`,
     return_to: returnTo,
@@ -115,24 +173,33 @@ function parsePostData(req, callback) {
   });
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
   const path = parsedUrl.pathname;
   const query = parsedUrl.query;
   
-  console.log(`Mock Kratos: ${req.method} ${req.url}`);
+  log(`${req.method} ${req.url}`);
   
-  // CORS headers
+  // Enhanced CORS headers
   res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3010');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Requested-With');
   
+  // Enhanced logging for debugging
+  const cookies = req.headers.cookie || '';
+  if (config.verbose) {
+    log('Request headers:', req.headers);
+    log('Request cookies:', cookies);
+  }
+  
+  // Add preflight handling
   if (req.method === 'OPTIONS') {
-    res.statusCode = 200;
-    res.end();
+    await sendResponse(res, 200, '');
     return;
   }
+
+  try {
 
   // Handle login browser flow creation
   if (req.method === 'GET' && path === '/self-service/login/browser') {
@@ -150,38 +217,27 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && path === '/self-service/login/flows') {
     const flowId = query.id;
     if (!flowId) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: { message: 'Flow ID is required' } }));
+      await sendError(res, 400, 'Flow ID is required');
       return;
     }
 
     const flowData = flows.get(flowId);
     if (!flowData) {
-      res.statusCode = 404;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: { message: 'Flow not found' } }));
+      await sendError(res, 404, 'Flow not found');
       return;
     }
 
     // Check if flow is expired (for testing expired flow scenarios)
-    if (flowId === 'expired-flow-id' || flowData.expired) {
-      res.statusCode = 410;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({
-        error: {
-          id: 'self_service_flow_expired',
-          code: 410,
-          status: 'Gone',
-          message: 'The login flow expired 1.234 minutes ago. Please try again.'
-        }
-      }));
+    if (flowId === 'expired-flow-id' || flowData.expired || 
+        (flowData.flow && new Date(flowData.flow.expires_at) < new Date())) {
+      // Remove expired flow
+      flows.delete(flowId);
+      await sendError(res, 410, 'The login flow expired 1.234 minutes ago. Please try again.', 'self_service_flow_expired');
       return;
     }
 
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify(flowData.flow));
+    log(`Retrieved flow: ${flowId}`, flowData.flow);
+    await sendResponse(res, 200, flowData.flow);
     return;
   }
 
@@ -206,14 +262,15 @@ const server = http.createServer((req, res) => {
     }
 
     // Check for expired flow during submission
-    if (flowId === 'valid-flow-id' || flowData.expired) {
+    if (flowId === 'expired-flow-submission-id' || flowData.expired) {
       res.statusCode = 410;
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({
         error: {
           id: 'self_service_flow_expired',
           code: 410,
-          status: 'Gone'
+          status: 'Gone',
+          message: 'The login flow expired during submission. Please try again.'
         }
       }));
       return;
@@ -318,6 +375,30 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Mock backend API endpoints for feed stats
+  if (req.method === "GET" && path === "/v1/feeds/stats") {
+    const mockStats = {
+      totalFeeds: 42,
+      totalArticles: 1337,
+      unreadCount: 15,
+      dailyReadCount: 23
+    };
+    log(`Mock API: Returning feed stats`, mockStats);
+    await sendResponse(res, 200, mockStats);
+    return;
+  }
+
+  // Mock backend API endpoint for feeds list  
+  if (req.method === "GET" && path === "/v1/feeds") {
+    const mockFeeds = [
+      { id: 1, title: "Mock Feed 1", url: "https://example1.com/feed", unreadCount: 5 },
+      { id: 2, title: "Mock Feed 2", url: "https://example2.com/feed", unreadCount: 10 }
+    ];
+    log(`Mock API: Returning feeds list`, mockFeeds);
+    await sendResponse(res, 200, { feeds: mockFeeds });
+    return;
+  }
+
   // Legacy auth validation endpoint
   if (req.method === "GET" && req.url === "/v1/auth/validate") {
     res.statusCode = 200;
@@ -329,18 +410,61 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 404 for unhandled routes
-  res.statusCode = 404;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ error: { message: 'Not found' } }));
+    // 404 for unhandled routes
+    await sendError(res, 404, 'Not found');
+  } catch (error) {
+    log('Unexpected error:', error);
+    try {
+      await sendError(res, 500, 'Internal server error');
+    } catch (sendError) {
+      log('Failed to send error response:', sendError);
+      res.statusCode = 500;
+      res.end('Internal Server Error');
+    }
+  }
 });
 
 server.listen(port, () => {
-  console.log(`Mock auth service running on port ${port}`);
+  log(`Mock auth service running on port ${port}`);
+  log(`Configuration:`, config);
 });
 
+// Session cleanup every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  let cleanedSessions = 0;
+  let cleanedFlows = 0;
+  
+  // Clean up expired sessions (older than 1 hour)
+  for (const [sessionId, session] of sessions.entries()) {
+    if (now - session.createdAt > 60 * 60 * 1000) {
+      sessions.delete(sessionId);
+      cleanedSessions++;
+    }
+  }
+  
+  // Clean up expired flows (older than 10 minutes)
+  for (const [flowId, flowData] of flows.entries()) {
+    const flowTime = new Date(flowData.flow.issued_at).getTime();
+    if (now - flowTime > 10 * 60 * 1000) {
+      flows.delete(flowId);
+      cleanedFlows++;
+    }
+  }
+  
+  if (cleanedSessions > 0 || cleanedFlows > 0) {
+    log(`Cleanup: Removed ${cleanedSessions} expired sessions and ${cleanedFlows} expired flows`);
+  }
+}, 5 * 60 * 1000);
+
 // Gracefully shut down on termination signals
-const close = () => server.close(() => process.exit(0));
+const close = () => {
+  log('Shutting down mock auth service...');
+  server.close(() => {
+    log('Mock auth service stopped');
+    process.exit(0);
+  });
+};
 process.on("SIGINT", close);
 process.on("SIGTERM", close);
 

@@ -1,3 +1,4 @@
+"use client";
 import React from "react";
 import {
   ChevronLeft,
@@ -21,10 +22,31 @@ import {
 } from "@chakra-ui/react";
 import NextLink from "next/link";
 
+// Icon resolver function to avoid Server/Client boundary issues
+const getIconComponent = (iconName?: string, defaultIcon?: React.ComponentType<{ size?: number }>) => {
+  if (defaultIcon) return defaultIcon;
+  
+  switch (iconName) {
+    case "Home":
+      return Home;
+    case "Rss":
+      return Rss;
+    case "FileText":
+      return FileText;
+    case "Search":
+      return Search;
+    case "Settings":
+      return Settings;
+    default:
+      return Home; // fallback
+  }
+};
+
 interface NavItem {
   id: number;
   label: string;
-  icon: React.ComponentType<{ size?: number }>;
+  icon?: React.ComponentType<{ size?: number }>;
+  iconName?: string; // Support icon names for Server/Client boundary
   href: string;
   active?: boolean;
 }
@@ -464,7 +486,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 borderColor: "var(--alt-primary)",
               }}
             >
-              <Icon as={item.icon} boxSize={5} />
+              <Icon as={getIconComponent(item.iconName, item.icon)} boxSize={5} />
               <Text fontSize="sm" fontWeight="medium">
                 {item.label}
               </Text>

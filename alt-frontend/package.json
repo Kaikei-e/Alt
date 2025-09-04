@@ -14,8 +14,15 @@
     "fmt": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "analyze": "ANALYZE=true next build",
-    "test:e2e": "npx playwright test",
-    "test:all": "npx playwright test && vitest",
+    "test:e2e": "node tests/pre-test-setup.cjs && npx playwright test",
+    "test:e2e:setup": "node tests/pre-test-setup.cjs",
+    "test:e2e:health": "node tests/health-check.cjs",
+    "test:e2e:debug": "npx playwright test --debug",
+    "test:e2e:headed": "npx playwright test --headed",
+    "test:e2e:chrome": "npx playwright test --project=auth-flow-chrome --project=authenticated-chrome",
+    "test:e2e:firefox": "npx playwright test --project=auth-flow-firefox --project=authenticated-firefox",
+    "test:e2e:errors": "npx playwright test --project=error-scenarios",
+    "test:all": "npm run test:e2e && vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:ci": "NODE_OPTIONS='--max-old-space-size=4096 --expose-gc' vitest run --reporter=verbose --no-coverage",
@@ -75,6 +82,6 @@
     "vitest": "^3.2.4"
   },
   "engines": {
-    "node": ">=18.18 <23"
+    "node": "24"
   }
 }

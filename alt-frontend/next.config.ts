@@ -21,22 +21,22 @@ const mustPublicOrigin = (k: string) => {
   } catch {
     throw new Error(`[ENV] ${k} must be a valid URL (got: ${v})`);
   }
-  
+
   // Allow HTTP in test/development environments
   const isTestOrDev = process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
   const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
-  
+
   if (!isTestOrDev && !origin.startsWith('https://')) {
     throw new Error(`[ENV] ${k} must be HTTPS origin in production (got: ${origin})`);
   }
-  
+
   // In test/dev, allow localhost HTTP origins
   if ((isTestOrDev && isLocalhost) || origin.startsWith('https://')) {
     // Valid
   } else if (!origin.startsWith('https://') && !origin.startsWith('http://')) {
     throw new Error(`[ENV] ${k} must be a valid HTTP/HTTPS origin (got: ${origin})`);
   }
-  
+
   if (/\.cluster\.local(\b|:|\/)/i.test(origin)) {
     throw new Error(`[ENV] ${k} must be PUBLIC FQDN (got: ${origin})`);
   }
@@ -87,17 +87,19 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
 
-  // CSP violations reporting endpoint and /ory proxy for Kratos
+    // CSP violations reporting endpoint and /ory proxy for Kratos
   async rewrites() {
     return [
       {
         source: "/api/csp-report",
         destination: "/api/security/csp-report",
       },
-      // Proxy /ory requests to Kratos service
+      // Proxy /ory requests to Kratos service (use mock server in test environment)
       {
         source: "/ory/:path*",
-        destination: `${process.env.KRATOS_PUBLIC_URL || 'https://id.curionoah.com'}/:path*`,
+        destination: process.env.NODE_ENV === 'test' 
+          ? `http://localhost:4545/:path*`
+          : `${process.env.KRATOS_PUBLIC_URL || 'https://id.curionoah.com'}/:path*`,
       },
     ];
   },

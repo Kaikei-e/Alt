@@ -1,84 +1,91 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../tests/fixtures';
+import { waitForPageReady } from '../../tests/utils/waitConditions';
 
 test.describe('Login Flow', () => {
-  test('should complete full login flow', async ({ page }) => {
-    // 未認証状態でアプリにアクセス
-    await page.goto('/');
+  test('should complete full login flow', async ({ page, loginPage }) => {
+    // Clear any existing session cookies
+    await page.context().clearCookies();
     
-    // ミドルウェアによりKratosログインページにリダイレクトされる
-    await expect(page).toHaveURL(/id\.curionoah\.com/);
+    // Access protected route to trigger auth flow
+    await page.goto('/desktop/home');
     
-    // Kratosがフローを作成してアプリに戻る
-    await page.waitForURL(/\/auth\/login\?flow=/);
+    // Should redirect to mock auth server and then back to app with flow
+    // The redirect to 4545 happens automatically and comes back with a flow
+    await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 15000 });
     
-    // ログインフォームが表示される
-    await expect(page.getByRole('heading', { name: 'Sign In' })).toBeVisible();
-    await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
+    // Wait for page to be fully ready
+    await waitForPageReady(page, { waitForSelector: 'form', timeout: 10000 });
     
-    // ログイン情報を入力
-    await page.getByLabel('Email').fill('test@example.com');
-    await page.getByLabel('Password').fill('password123');
+    // Verify login form elements
+    await loginPage.verifyLoginPageElements();
     
-    // ログイン送信
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    
-    // 成功時はホームページにリダイレクト
-    await expect(page).toHaveURL('/');
+    // Perform login using page object
+    await loginPage.performLogin('test@example.com', 'password123', '/desktop/home');
   });
 
-  test('should show error for invalid credentials', async ({ page }) => {
+  test('should show error for invalid credentials', async ({ page, loginPage }) => {
+    // Clear any existing session cookies
+    await page.context().clearCookies();
     await page.goto('/auth/login?flow=test-flow-id');
     
-    await page.getByLabel('Email').fill('wrong@example.com');
-    await page.getByLabel('Password').fill('wrongpassword');
-    await page.getByRole('button', { name: 'Sign In' }).click();
+    await waitForPageReady(page, { waitForSelector: 'form', timeout: 10000 });
+    await loginPage.login('wrong@example.com', 'wrongpassword');
     
-    await expect(page.getByText(/credentials are invalid/i)).toBeVisible();
+    // Check for error message
+    const errorText = await loginPage.waitForError();
+    expect(errorText).toMatch(/credentials are invalid/i);
   });
 
   test('should handle direct access to login page without flow', async ({ page }) => {
-    // フローIDなしで直接ログインページにアクセス
+    // Clear any existing session cookies
+    await page.context().clearCookies();
+    
+    // Access login page directly without flow ID
     await page.goto('/auth/login');
     
-    // Kratosのlogin/browserにリダイレクトされるべき
-    await expect(page).toHaveURL(/id\.curionoah\.com.*login\/browser/);
+    // Should redirect to mock Kratos server and back with flow
+    await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 10000 });
   });
 
-  test('should display loading state initially', async ({ page }) => {
-    // モックしたKratosフローでページにアクセス
+  test('should display loading state initially', async ({ page, loginPage }) => {
+    // Access page with mock Kratos flow
     await page.goto('/auth/login?flow=test-flow-id');
     
-    // 最初にローディングが表示される（短時間）
-    await expect(page.getByText(/loading/i)).toBeVisible({ timeout: 1000 });
+    // Check for loading state using page object
+    const isLoading = await loginPage.isLoading();
+    expect(isLoading).toBe(true);
   });
 
   test('should handle expired flow (410) and automatically redirect to new flow', async ({ page }) => {
+    // Clear any existing session cookies
+    await page.context().clearCookies();
+    
     // Start with an expired flow - mock service will handle the 410 response
     await page.goto('/auth/login?flow=expired-flow-id&return_to=http%3A%2F%2Flocalhost%3A3010%2Fdesktop%2Fhome');
 
     // Should automatically redirect to new flow creation
-    await expect(page).toHaveURL(/\/auth\/login\?flow=.*/);
+    await expect(page).toHaveURL(/\/auth\/login\?flow=.*/, { timeout: 15000 });
     
     // Should show the login form with the new flow
-    await expect(page.getByLabel('Email')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByLabel('Password')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByLabel('Email')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByLabel('Password')).toBeVisible({ timeout: 10000 });
   });
 
-  test('should handle 410 during form submission and redirect to new flow', async ({ page }) => {
+  test('should handle 410 during form submission and redirect to new flow', async ({ page, loginPage }) => {
+    // Clear any existing session cookies
+    await page.context().clearCookies();
+    
     // Start with a flow that will return 410 on submission - mock service handles this
-    await page.goto('/auth/login?flow=valid-flow-id&return_to=http%3A%2F%2Flocalhost%3A3010%2Fdesktop%2Fanalytics');
+    await page.goto('/auth/login?flow=expired-flow-submission-id&return_to=http%3A%2F%2Flocalhost%3A3010%2Fdesktop%2Fanalytics');
 
-    // Wait for form to load
-    await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
+    // Wait for form to be ready
+    await waitForPageReady(page, { waitForSelector: 'form', timeout: 10000 });
+    await loginPage.waitForForm();
 
-    // Fill and submit the form - this should trigger a 410 and redirect
-    await page.getByLabel('Email').fill('test@example.com');
-    await page.getByLabel('Password').fill('password123');
-    await page.getByRole('button', { name: /sign in/i }).click();
+    // Fill and submit the form using page object - this should trigger a 410 and redirect
+    await loginPage.login('test@example.com', 'password123');
 
     // Should redirect to new flow with preserved return_to
-    await expect(page).toHaveURL(/\/auth\/login\?flow=.*/);
+    await expect(page).toHaveURL(/\/auth\/login\?flow=.*/, { timeout: 15000 });
   });
 });

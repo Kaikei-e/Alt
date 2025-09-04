@@ -1,2 +1,16 @@
 .next
 tsconfig.tsbuildinfo
+
+# Test artifacts
+test-results/
+playwright-report/
+playwright/.auth/*.json
+
+# Node modules
+node_modules/
+
+# Environment files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

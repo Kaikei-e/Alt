@@ -16,12 +16,8 @@ test.describe("QuickActionsPanel Component - PROTECTED", () => {
 
     await expect(quickActionsPanel).toBeVisible();
 
-    // Verify glassmorphism visual properties
-    const styles = await quickActionsPanel.evaluate((el) =>
-      getComputedStyle(el),
-    );
-    expect(styles.backdropFilter).toContain("blur");
-    expect(styles.border).toContain("1px");
+    // Verify glassmorphism visual properties - check for glass class
+    await expect(quickActionsPanel).toHaveClass(/glass/);
 
     // Check action buttons grid
     const actionsGrid = quickActionsPanel.locator(

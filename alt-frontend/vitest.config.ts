@@ -1,9 +1,10 @@
 // vitest.config.ts
-import { defineConfig } from "vitest/config";
+import { defineConfig, mergeConfig } from "vitest/config";
 import viteConfig from "./vite.config";
 
-export default defineConfig({
-  ...viteConfig,
+export default mergeConfig(
+  viteConfig,
+  defineConfig({
     test: {
       globals: true,
       environment: "jsdom",
@@ -17,7 +18,7 @@ export default defineConfig({
         "src/middleware.test.ts",
         "src/lib/server-fetch.test.ts"
       ],
-      setupFiles: ["./vitest.setup.ts"],
+      // setupFiles: ["./vitest.setup.ts"], // Disabled to avoid conflict with Playwright
       env: {
         NEXT_PUBLIC_API_BASE_URL: "http://localhost/api",
         NEXT_PUBLIC_IDP_ORIGIN: "https://id.test.example.com",
@@ -65,4 +66,5 @@ export default defineConfig({
       // Reporter optimization for CI
       reporters: process.env.CI ? ['verbose'] : ['default'],
     },
-});
+  })
+);

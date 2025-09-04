@@ -45,7 +45,7 @@ export const ActionButton: React.FC<ActionButtonProps> = ({
         }}
         transition="all var(--transition-speed) ease"
       >
-        <Icon as={icon} color="var(--alt-primary)" boxSize={5} />
+        <Icon as={icon} color="var(--alt-primary)" boxSize={5} aria-hidden="true" />
         <Text
           fontSize="sm"
           fontWeight="medium"

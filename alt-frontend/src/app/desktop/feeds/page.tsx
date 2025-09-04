@@ -8,7 +8,7 @@ import { Box, Text } from "@chakra-ui/react";
 import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeline";
 import LazyRightPanel from "@/components/desktop/analytics/LazyRightPanel";
-import { Home, Rss, FileText, Search, Settings } from "lucide-react";
+// Remove Lucide imports from Server Component
 import { serverFetch } from '@/lib/server-fetch';
 import { FeedStatsSummary } from '@/schema/feedStats';
 
@@ -50,14 +50,14 @@ function DesktopFeedsContent({ data }: { data: FeedStatsSummary | null }) {
     {
       id: 1,
       label: "Dashboard",
-      icon: Home,
+      iconName: "Home",
       href: "/desktop/home",
       active: false,
     },
-    { id: 2, label: "Feeds", icon: Rss, href: "/desktop/feeds", active: true },
-    { id: 3, label: "Articles", icon: FileText, href: "/desktop/articles" },
-    { id: 4, label: "Search", icon: Search, href: "/desktop/articles/search" },
-    { id: 5, label: "Settings", icon: Settings, href: "/desktop/settings" },
+    { id: 2, label: "Feeds", iconName: "Rss", href: "/desktop/feeds", active: true },
+    { id: 3, label: "Articles", iconName: "FileText", href: "/desktop/articles" },
+    { id: 4, label: "Search", iconName: "Search", href: "/desktop/articles/search" },
+    { id: 5, label: "Settings", iconName: "Settings", href: "/desktop/settings" },
   ];
 
   return (

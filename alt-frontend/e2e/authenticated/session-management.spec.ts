@@ -1,42 +1,31 @@
 import { test, expect } from '@playwright/test';
-
-// Helper function to log in
-async function login(page: any) {
-  await page.goto('/');
-  
-  // Wait for redirect to login page
-  await page.waitForURL(/\/auth\/login\?flow=/);
-  
-  // Fill login form
-  await expect(page.getByLabel('Email')).toBeVisible();
-  await expect(page.getByLabel('Password')).toBeVisible();
-  
-  await page.getByLabel('Email').fill('test@example.com');
-  await page.getByLabel('Password').fill('password123');
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  
-  // Wait for successful login redirect
-  await page.waitForURL('/', { timeout: 10000 });
-}
+import { LoginPage, DesktopPage } from '../../tests/pages';
 
 test.describe('Session Management', () => {
+  let loginPage: LoginPage;
+  let desktopPage: DesktopPage;
+
+  test.beforeEach(async ({ page }) => {
+    loginPage = new LoginPage(page);
+    desktopPage = new DesktopPage(page);
+  });
+
   test('should maintain session after browser refresh', async ({ page }) => {
-    await login(page);
-    
-    // Navigate to a protected page
-    await page.goto('/desktop/home');
-    await expect(page).toHaveURL('/desktop/home');
+    // Navigate to a protected page (should be authenticated via setup)
+    await desktopPage.navigateToHome();
+    await desktopPage.verifyOnDesktopPage('home');
     
     // Refresh the page
     await page.reload();
     
     // Should still be on the same page, not redirected to login
-    await expect(page).toHaveURL('/desktop/home');
-    await expect(page).not.toHaveURL(/\/auth\/login/);
+    await desktopPage.verifyOnDesktopPage('home');
+    await desktopPage.waitForAuthenticated();
   });
 
   test('should handle session cookies correctly', async ({ page }) => {
-    await login(page);
+    // Navigate to authenticated page (should be authenticated via setup)
+    await desktopPage.navigateToHome();
     
     // Check that session cookie is set
     const cookies = await page.context().cookies();
@@ -58,11 +47,7 @@ test.describe('Session Management', () => {
     }]);
     
     // Try to access a protected page
-    await page.goto('/desktop/home');
-    
-    // Should redirect to login due to invalid session
-    await page.waitForURL(/\/auth\/login\?flow=/);
-    expect(page.url()).toMatch(/\/auth\/login\?flow=/);
+    await desktopPage.verifyProtectedRouteRedirect('/desktop/home');
   });
 
   test('should protect all desktop routes', async ({ page }) => {
@@ -76,11 +61,7 @@ test.describe('Session Management', () => {
     ];
     
     for (const route of protectedRoutes) {
-      await page.goto(route);
-      
-      // Should redirect to login
-      await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 5000 });
-      expect(page.url()).toMatch(/\/auth\/login\?flow=/);
+      await desktopPage.verifyProtectedRouteRedirect(route);
     }
   });
 
@@ -91,17 +72,8 @@ test.describe('Session Management', () => {
     // Should redirect to login with return_to parameter
     await page.waitForURL(/\/auth\/login\?flow=.*return_to=.*desktop%2Fsettings/);
     
-    // Now log in
-    await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
-    
-    await page.getByLabel('Email').fill('test@example.com');
-    await page.getByLabel('Password').fill('password123');
-    await page.getByRole('button', { name: 'Sign in' }).click();
-    
-    // Should redirect back to the originally requested page
-    await page.waitForURL('/desktop/settings', { timeout: 10000 });
-    await expect(page).toHaveURL('/desktop/settings');
+    // Now log in using page object
+    await loginPage.performLogin('test@example.com', 'password123', '/desktop/settings');
   });
 
   test('should handle concurrent sessions correctly', async ({ browser }) => {
@@ -113,27 +85,28 @@ test.describe('Session Management', () => {
     const page2 = await context2.newPage();
     
     try {
+      const loginPage1 = new LoginPage(page1);
+      const loginPage2 = new LoginPage(page2);
+      const desktopPage1 = new DesktopPage(page1);
+      const desktopPage2 = new DesktopPage(page2);
+
       // Log in on first page
-      await login(page1);
       await page1.goto('/desktop/home');
-      await expect(page1).toHaveURL('/desktop/home');
+      await page1.waitForURL(/\/auth\/login\?flow=/);
+      await loginPage1.performLogin('test@example.com', 'password123', '/desktop/home');
       
       // Second page should still require login
-      await page2.goto('/desktop/home');
-      await page2.waitForURL(/\/auth\/login\?flow=/);
-      expect(page2.url()).toMatch(/\/auth\/login\?flow=/);
+      await desktopPage2.verifyProtectedRouteRedirect('/desktop/home');
       
       // Log in on second page too
-      await login(page2);
-      await page2.goto('/desktop/feeds');
-      await expect(page2).toHaveURL('/desktop/feeds');
+      await loginPage2.performLogin('test@example.com', 'password123', '/desktop/feeds');
       
       // Both sessions should remain valid
       await page1.reload();
-      await expect(page1).toHaveURL('/desktop/home');
+      await desktopPage1.verifyOnDesktopPage('home');
       
       await page2.reload();
-      await expect(page2).toHaveURL('/desktop/feeds');
+      await desktopPage2.verifyOnDesktopPage('feeds');
     } finally {
       await context1.close();
       await context2.close();
