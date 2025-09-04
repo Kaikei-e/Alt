@@ -28,11 +28,6 @@ on:
         required: false
         type: string
         default: "10"
-      shards:
-        description: 'Number of shards to run'
-        required: false
-        type: string
-        default: "3"
 
 jobs:
   test:
@@ -40,6 +35,5 @@ jobs:
     with:
       working-directory: ${{ inputs.working-directory }}
       node-version: ${{ inputs.node-version }}
-      shards: ${{ inputs.shards }}
       pnpm-version: ${{ inputs.pnpm-version }}
       test-type: 'vitest'
