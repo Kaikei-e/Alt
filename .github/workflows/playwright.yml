@@ -91,16 +91,10 @@ jobs:
           echo "Contents of current directory:"
           ls -la
 
-      - name: Clean pnpm cache
+      - name: Enable pnpm via Corepack
         run: |
-          rm -rf ~/setup-pnpm || true
-          rm -rf ~/.pnpm-store || true
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: ${{ inputs.pnpm-version }}
-          run_install: false
+          corepack enable
+          corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
 
       - uses: actions/setup-node@v4
         with:
