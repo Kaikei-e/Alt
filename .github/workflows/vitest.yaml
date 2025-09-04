@@ -68,7 +68,8 @@ jobs:
       - uses: actions/checkout@v4
 
       # pnpm を導入（ここでは install 実行しない）
-      - uses: pnpm/action-setup@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
         with:
           version: ${{ inputs.pnpm-version }}
           run_install: false
@@ -80,8 +81,17 @@ jobs:
           cache: pnpm
           cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
 
+      - name: Debug working directory
+        run: |
+          echo "Current working directory: $(pwd)"
+          echo "Contents of current directory:"
+          ls -la
+          echo "Looking for package.json:"
+          find . -name "package.json" -type f
+
       - name: Install dependencies
         run: |
+          echo "Installing dependencies in: $(pwd)"
           NODE_OPTIONS="--max-old-space-size=3072" pnpm install --frozen-lockfile
 
       # Vitest をシャーディングで高速化。blob レポートを後段でマージ
