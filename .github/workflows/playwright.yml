@@ -55,9 +55,7 @@ jobs:
         shardTotal: [3]
       fail-fast: false
 
-    defaults:
-      run:
-        working-directory: ${{ inputs.working-directory }}
+    # Working directory will be set per step to avoid conflicts
 
     env:
       CI: true
@@ -71,8 +69,10 @@ jobs:
       - name: Verify working directory
         run: |
           echo "Current directory: $(pwd)"
-          echo "Directory exists: $(test -d "${{ inputs.working-directory }}" && echo "yes" || echo "no")"
-          ls -la ${{ inputs.working-directory }} || echo "Directory listing failed"
+          echo "Looking for package.json in current directory:"
+          ls -la package.json || echo "package.json not found in current directory"
+          echo "Contents of current directory:"
+          ls -la
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
@@ -87,6 +87,7 @@ jobs:
           cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
 
       - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
         run: pnpm install --frozen-lockfile
 
       # ブラウザバイナリをキャッシュ（Playwrightは“積極推奨ではない”が、自己ホスト環境なら有効なこと多い）
@@ -99,6 +100,7 @@ jobs:
             ${{ runner.os }}-pw-browsers-
 
       - name: Install Playwright browsers
+        working-directory: ${{ inputs.working-directory }}
         run: |
           # Wait for any existing package manager processes to finish
           echo "Waiting for package manager locks to be released..."
@@ -125,6 +127,7 @@ jobs:
 
       # シャーディングで高速化（要: playwright.config.ts で CI 時 reporter を 'blob' に）
       - name: Run Playwright (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+        working-directory: ${{ inputs.working-directory }}
         run: |
           pnpm exec playwright test \
             --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
