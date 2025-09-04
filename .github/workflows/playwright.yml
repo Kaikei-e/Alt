@@ -68,8 +68,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify working directory
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Directory exists: $(test -d "${{ inputs.working-directory }}" && echo "yes" || echo "no")"
+          ls -la ${{ inputs.working-directory }} || echo "Directory listing failed"
+
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v3
         with:
           version: ${{ inputs.pnpm-version }}
           run_install: false
