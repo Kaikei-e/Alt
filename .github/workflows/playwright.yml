@@ -60,9 +60,6 @@ jobs:
     env:
       CI: true
       FORCE_COLOR: "1"
-      # Mask sensitive paths in logs
-      RUNNER_WORKSPACE: "***"
-      GITHUB_WORKSPACE: "***"
       # ブラウザをキャッシュ可能な場所へ（Linux: ~/.cache/ms-playwright でもOK）
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/playwright-browsers
 
@@ -71,8 +68,20 @@ jobs:
 
       - name: Mask sensitive paths
         run: |
-          echo "::add-mask::$(dirname $(pwd))"
-          echo "::add-mask::$(pwd | cut -d'/' -f1-4)"
+          # Dynamically get and mask the home directory
+          echo "::add-mask::$HOME"
+          echo "::add-mask::$(whoami)"
+
+          # Mask runner-specific paths
+          RUNNER_BASE=$(pwd | cut -d'/' -f1-5)
+          echo "::add-mask::$RUNNER_BASE"
+
+          # Mask workspace path
+          WORKSPACE_PATH=$(pwd | sed 's|/alt-frontend||')
+          echo "::add-mask::$WORKSPACE_PATH"
+
+          # Mask common runner directory patterns
+          echo "::add-mask::$(echo $HOME | cut -d'/' -f1-3)"
 
       - name: Verify working directory
         run: |
@@ -81,6 +90,11 @@ jobs:
           ls -la package.json || echo "package.json not found in current directory"
           echo "Contents of current directory:"
           ls -la
+
+      - name: Clean pnpm cache
+        run: |
+          rm -rf ~/setup-pnpm || true
+          rm -rf ~/.pnpm-store || true
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
