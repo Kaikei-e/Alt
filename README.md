@@ -1,6 +1,5 @@
 [![Backend Go Tests](https://github.com/Kaikei-e/Alt/actions/workflows/backend-go.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/backend-go.yaml)
-[![Playwright Tests](https://github.com/Kaikei-e/Alt/actions/workflows/playwright.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/playwright.yml)
-[![Unit and Component Tests](https://github.com/Kaikei-e/Alt/actions/workflows/vitest.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/vitest.yaml)
+[![Alt Frontend E2E Test](https://github.com/Kaikei-e/Alt/actions/workflows/alt-frontend-e2e.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/alt-frontend-e2e.yaml)
 [![Pre-processor Quality Gates](https://github.com/Kaikei-e/Alt/actions/workflows/pre-processor-quality.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/pre-processor-quality.yml)
 [![Search Indexer Tests](https://github.com/Kaikei-e/Alt/actions/workflows/search-indexer.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/search-indexer.yaml)
 [![Tag Generator Tests](https://github.com/Kaikei-e/Alt/actions/workflows/tag-generator.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/tag-generator.yaml)
