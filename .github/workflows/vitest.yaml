@@ -147,6 +147,11 @@ jobs:
     runs-on: [self-hosted, linux, X64]
 
     steps:
+      - name: Mask workspace base path (above Alt)
+        run: |
+          echo "::add-mask::$(dirname \"$GITHUB_WORKSPACE\")"
+          echo "::add-mask::$GITHUB_WORKSPACE"
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
@@ -160,6 +165,11 @@ jobs:
       # blob を集約 → 通常レポータ（default）を生成
       - name: Merge blob reports
         run: |
+          mkdir -p .vitest-reports
+          if [ -z "$(ls -A .vitest-reports 2>/dev/null)" ]; then
+            echo "No vitest blob reports found. Skipping merge."
+            exit 0
+          fi
           pnpm dlx vitest --merge-reports --reporter=default
 
       - name: Upload merged report
