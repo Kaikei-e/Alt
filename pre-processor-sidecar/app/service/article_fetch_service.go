@@ -535,3 +535,17 @@ func (s *ArticleFetchService) FetchSingleSubscriptionArticles(ctx context.Contex
 	// Use existing FetchArticles method with the subscription's stream ID
 	return s.FetchArticles(ctx, subscription.InoreaderID, 100)
 }
+
+// GetRotatorTimezoneInfo returns timezone debugging information from the rotator
+func (s *ArticleFetchService) GetRotatorTimezoneInfo() map[string]interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	if s.subscriptionRotator != nil {
+		return s.subscriptionRotator.GetTimezoneInfo()
+	}
+	
+	return map[string]interface{}{
+		"error": "subscription rotator not initialized",
+	}
+}

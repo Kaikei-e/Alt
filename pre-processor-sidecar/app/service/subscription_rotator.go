@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"os"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ type SubscriptionRotator struct {
 	lastResetDate    time.Time
 	randomStartEnabled bool  // Enable random starting position
 	startingIndex     int    // Random starting index for rotation
+	timezone          *time.Location // タイムゾーン設定を追加
 }
 
 // RotationStats provides statistics about rotation processing
@@ -45,6 +47,25 @@ func NewSubscriptionRotator(logger *slog.Logger) *SubscriptionRotator {
 		logger = slog.Default()
 	}
 
+	// タイムゾーンを設定（JST優先、環境変数でオーバーライド可能）
+	timezone := time.UTC // デフォルトはUTC
+	if tz := os.Getenv("TZ"); tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			timezone = loc
+		}
+	} else {
+		// JST (Asia/Tokyo) をデフォルトに設定
+		if loc, err := time.LoadLocation("Asia/Tokyo"); err == nil {
+			timezone = loc
+		}
+	}
+
+	now := time.Now().In(timezone)
+	
+	// 正しい0時に切り捨て（year, month, dayのみを使用）
+	year, month, day := now.Date()
+	todayInTimezone := time.Date(year, month, day, 0, 0, 0, 0, timezone)
+	
 	return &SubscriptionRotator{
 		subscriptions:      make([]uuid.UUID, 0),
 		lastProcessed:      make(map[uuid.UUID]time.Time),
@@ -52,9 +73,10 @@ func NewSubscriptionRotator(logger *slog.Logger) *SubscriptionRotator {
 		maxDaily:           84,   // 1日84個処理（1.8サイクル分、API制限94/100内）
 		currentIndex:       0,
 		logger:            logger,
-		lastResetDate:     time.Now().Truncate(24 * time.Hour),
+		lastResetDate:     todayInTimezone, // タイムゾーン対応
 		randomStartEnabled: false, // Default: maintain existing behavior
 		startingIndex:      0,
+		timezone:          timezone,
 	}
 }
 
@@ -130,19 +152,41 @@ func (sr *SubscriptionRotator) GetNextSubscription() (uuid.UUID, bool) {
 
 // shouldResetDaily checks if daily rotation reset is needed
 func (sr *SubscriptionRotator) shouldResetDaily(now time.Time) bool {
-	today := now.Truncate(24 * time.Hour)
-	return !sr.lastResetDate.Equal(today)
+	// タイムゾーンを考慮した日付比較
+	nowInTimezone := now.In(sr.timezone)
+	
+	// 正しい0時に切り捨て（year, month, dayのみを使用）
+	year, month, day := nowInTimezone.Date()
+	todayInTimezone := time.Date(year, month, day, 0, 0, 0, 0, sr.timezone)
+	
+	sr.logger.Debug("Daily reset check",
+		"current_time_utc", now.Format(time.RFC3339),
+		"current_time_local", nowInTimezone.Format(time.RFC3339),
+		"today_local", todayInTimezone.Format(time.RFC3339),
+		"last_reset_date", sr.lastResetDate.Format(time.RFC3339),
+		"timezone", sr.timezone.String())
+	
+	return !sr.lastResetDate.Equal(todayInTimezone)
 }
 
 // resetDailyRotation resets the rotation for a new day
 func (sr *SubscriptionRotator) resetDailyRotation(now time.Time) {
+	// タイムゾーンを考慮した日付処理
+	nowInTimezone := now.In(sr.timezone)
+	
+	// 正しい0時に切り捨て（year, month, dayのみを使用）
+	year, month, day := nowInTimezone.Date()
+	todayInTimezone := time.Date(year, month, day, 0, 0, 0, 0, sr.timezone)
+	
 	sr.logger.Info("Resetting daily rotation",
 		"previous_date", sr.lastResetDate.Format("2006-01-02"),
-		"new_date", now.Format("2006-01-02"),
-		"processed_yesterday", sr.currentIndex)
+		"new_date_utc", now.Format("2006-01-02"),
+		"new_date_local", nowInTimezone.Format("2006-01-02"),
+		"processed_yesterday", sr.currentIndex,
+		"timezone", sr.timezone.String())
 
 	sr.lastProcessed = make(map[uuid.UUID]time.Time)
-	sr.lastResetDate = now.Truncate(24 * time.Hour)
+	sr.lastResetDate = todayInTimezone // タイムゾーン対応
 
 	// Shuffle subscriptions for better distribution
 	sr.shuffleSubscriptions()
@@ -157,7 +201,8 @@ func (sr *SubscriptionRotator) resetDailyRotation(now time.Time) {
 
 	sr.logger.Info("Daily rotation reset completed",
 		"total_subscriptions", len(sr.subscriptions),
-		"estimated_completion", sr.getEstimatedCompletionTime())
+		"reset_to_index", sr.currentIndex,
+		"estimated_completion", sr.getEstimatedCompletionTime().Format("15:04:05"))
 }
 
 // shuffleSubscriptions randomizes the order of subscriptions
@@ -218,10 +263,15 @@ func (sr *SubscriptionRotator) getEstimatedCompletionTime() time.Time {
 	return time.Now().Add(time.Duration(estimatedMinutes) * time.Minute)
 }
 
-// getNextResetTime returns the next daily reset time (midnight)
+// getNextResetTime returns the next daily reset time (midnight in local timezone)
 func (sr *SubscriptionRotator) getNextResetTime() time.Time {
-	tomorrow := time.Now().Add(24 * time.Hour)
-	return tomorrow.Truncate(24 * time.Hour)
+	nowInTimezone := time.Now().In(sr.timezone)
+	
+	// 明日の0時を正確に計算
+	year, month, day := nowInTimezone.Date()
+	tomorrow := time.Date(year, month, day+1, 0, 0, 0, 0, sr.timezone)
+	
+	return tomorrow
 }
 
 // IsReadyForNext checks if enough time has passed for next processing
@@ -345,4 +395,22 @@ func (sr *SubscriptionRotator) GetStartingIndex() int {
 	sr.mu.RLock()
 	defer sr.mu.RUnlock()
 	return sr.startingIndex
+}
+
+// GetTimezoneInfo returns current timezone information for debugging
+func (sr *SubscriptionRotator) GetTimezoneInfo() map[string]interface{} {
+	sr.mu.RLock()
+	defer sr.mu.RUnlock()
+	
+	now := time.Now()
+	nowInTimezone := now.In(sr.timezone)
+	
+	return map[string]interface{}{
+		"timezone_name":       sr.timezone.String(),
+		"current_time_utc":    now.Format(time.RFC3339),
+		"current_time_local":  nowInTimezone.Format(time.RFC3339),
+		"last_reset_date":     sr.lastResetDate.Format(time.RFC3339),
+		"next_reset_time":     sr.getNextResetTime().Format(time.RFC3339),
+		"hours_until_reset":   sr.getNextResetTime().Sub(nowInTimezone).Hours(),
+	}
 }

@@ -501,10 +501,15 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 
 	// Get rotation statistics before processing
 	statsBefore := h.articleFetchService.GetRotationStats()
-	h.logger.Debug("Rotation stats before processing",
+	
+	// デバッグ情報をログに出力
+	timezoneInfo := h.articleFetchService.GetRotatorTimezoneInfo()
+	h.logger.Info("Rotation stats before processing",
 		"processed_today", statsBefore.ProcessedToday,
 		"remaining_today", statsBefore.RemainingToday,
-		"total_subscriptions", statsBefore.TotalSubscriptions)
+		"total_subscriptions", statsBefore.TotalSubscriptions,
+		"current_time", time.Now().Format(time.RFC3339),
+		"timezone_info", timezoneInfo)
 
 	// Check if ready for next processing (20-minute interval check)
 	if statsBefore.TotalSubscriptions == 0 {
