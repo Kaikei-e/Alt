@@ -37,4 +37,3 @@ jobs:
       working-directory: ${{ inputs.working-directory || 'alt-frontend' }}
       node-version: ${{ inputs.node-version || '24' }}
       pnpm-version: ${{ inputs.pnpm-version || '10' }}
-      test-type: 'vitest'

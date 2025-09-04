@@ -28,7 +28,6 @@ on:
 
 jobs:
   test:
-    uses: ./.github/workflows/playwright.yaml
+    uses: ./.github/workflows/playwright.yml
     with:
       working-directory: ${{ inputs.working-directory || 'alt-frontend' }}
-      test-type: ${{ inputs.test-type || 'playwright' }}

@@ -1,12 +1,30 @@
 name: Alt Frontend Playwright Workflow
 
 on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      node-version:
+        required: false
+        type: string
+        default: "24"
+      pnpm-version:
+        required: false
+        type: string
+        default: "10"
+      test-type:
+        required: false
+        type: string
+        default: "playwright"
   workflow_dispatch:
     inputs:
       working-directory:
         description: 'Working directory for the test'
         required: true
         type: string
+        default: "alt-frontend"
       node-version:
         description: 'Node.js version to use'
         required: false
@@ -17,11 +35,11 @@ on:
         required: false
         type: string
         default: "10"
-      shards:
-        description: 'Number of shards to run'
+      test-type:
+        description: 'Type of test to run'
         required: false
         type: string
-        default: "3"
+        default: "playwright"
 
 permissions:
   contents: read
