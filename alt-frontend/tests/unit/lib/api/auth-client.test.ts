@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AuthAPIClient } from '../../../src/auth-client';
+import { AuthAPIClient } from '../../../../src/lib/api/auth-client';
 import type { User, LoginFlow, RegistrationFlow } from '@/types/auth';
 
 interface UserPreferences {

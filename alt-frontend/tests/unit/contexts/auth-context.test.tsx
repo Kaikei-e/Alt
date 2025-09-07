@@ -5,7 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AuthProvider, useAuth } from '../../../src/auth-context';
+import { AuthProvider, useAuth } from '../../../src/contexts/auth-context';
 import { authAPI } from '@/lib/api/auth-client';
 import type { User } from '@/types/auth';
 
