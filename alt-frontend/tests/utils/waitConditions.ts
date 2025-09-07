@@ -193,3 +193,108 @@ export async function safeFill(element: Locator, value: string, options: { timeo
   // Verify the value was set correctly
   await expect(element).toHaveValue(value, { timeout: 2000 });
 }
+
+/**
+ * Wait for authentication redirect with enhanced error handling
+ */
+export async function waitForAuthRedirect(
+  page: Page,
+  options: {
+    timeout?: number;
+    expectedFlow?: RegExp;
+    debugLogging?: boolean;
+  } = {}
+): Promise<string> {
+  const {
+    timeout = 30000,
+    expectedFlow = /\/auth\/login\?flow=/,
+    debugLogging = false
+  } = options;
+
+  const mockPort = process.env.PW_MOCK_PORT || '4545';
+  const startTime = Date.now();
+  const startUrl = page.url();
+
+  if (debugLogging) {
+    console.log(`[waitForAuthRedirect] Starting from URL: ${startUrl}`);
+    console.log(`[waitForAuthRedirect] Waiting for redirect to pattern: ${expectedFlow}`);
+    console.log(`[waitForAuthRedirect] Using mock port: ${mockPort}`);
+  }
+
+  try {
+    // First wait for potential redirect to mock auth server
+    const authServerPattern = new RegExp(`localhost:${mockPort}.*login\\/browser`);
+    
+    // Check if we need to go through the mock auth server first
+    if (!expectedFlow.test(startUrl)) {
+      try {
+        await page.waitForURL(authServerPattern, { timeout: timeout / 2 });
+        if (debugLogging) {
+          console.log(`[waitForAuthRedirect] Redirected to mock auth server: ${page.url()}`);
+        }
+      } catch (error) {
+        if (debugLogging) {
+          console.log(`[waitForAuthRedirect] No redirect to mock auth server, continuing...`);
+        }
+        // It's okay if we don't go through mock server, continue to final URL check
+      }
+    }
+
+    // Wait for final redirect to the expected flow pattern
+    await page.waitForURL(expectedFlow, { timeout: timeout / 2 });
+    
+    const finalUrl = page.url();
+    if (debugLogging) {
+      console.log(`[waitForAuthRedirect] Successfully redirected to: ${finalUrl}`);
+      console.log(`[waitForAuthRedirect] Total time: ${Date.now() - startTime}ms`);
+    }
+
+    // Verify the page loaded properly
+    await page.waitForLoadState('domcontentloaded', { timeout: 5000 });
+
+    return finalUrl;
+  } catch (error) {
+    const currentUrl = page.url();
+    const elapsedTime = Date.now() - startTime;
+    
+    console.error(`[waitForAuthRedirect] Failed after ${elapsedTime}ms`);
+    console.error(`[waitForAuthRedirect] Current URL: ${currentUrl}`);
+    console.error(`[waitForAuthRedirect] Expected pattern: ${expectedFlow}`);
+    console.error(`[waitForAuthRedirect] Original error:`, error.message);
+    
+    // Add more context to the error
+    const enhancedError = new Error(
+      `Auth redirect failed: Expected URL matching ${expectedFlow}, but got ${currentUrl} after ${elapsedTime}ms. Original: ${error.message}`
+    );
+    enhancedError.stack = error.stack;
+    throw enhancedError;
+  }
+}
+
+/**
+ * Wait for authentication flow to complete with success
+ */
+export async function waitForAuthComplete(
+  page: Page,
+  expectedDestination: string | RegExp,
+  options: {
+    timeout?: number;
+    debugLogging?: boolean;
+  } = {}
+): Promise<void> {
+  const { timeout = 20000, debugLogging = false } = options;
+  
+  if (debugLogging) {
+    console.log(`[waitForAuthComplete] Waiting for completion, destination: ${expectedDestination}`);
+  }
+
+  // Wait for redirect to destination
+  await page.waitForURL(expectedDestination, { timeout });
+  
+  // Ensure page is fully loaded
+  await waitForPageReady(page, { timeout: 10000 });
+  
+  if (debugLogging) {
+    console.log(`[waitForAuthComplete] Auth completed successfully: ${page.url()}`);
+  }
+}

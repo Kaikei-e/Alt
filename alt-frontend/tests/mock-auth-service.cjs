@@ -12,7 +12,7 @@ const sessions = new Map();
 // Configuration
 const config = {
   // Reduce response delay for faster tests
-  responseDelay: process.env.NODE_ENV === 'test' ? 10 : 0, // 10ms delay in tests
+  responseDelay: process.env.NODE_ENV === 'test' ? 5 : 0, // 5ms delay in tests (reduced from 10ms)
   // Enable detailed logging
   verbose: process.env.DEBUG_MOCK_AUTH === 'true',
   // Flow expiration time (longer for stability)
@@ -180,11 +180,13 @@ const server = http.createServer(async (req, res) => {
   
   log(`${req.method} ${req.url}`);
   
-  // Enhanced CORS headers
+  // Enhanced CORS headers with more comprehensive support
   res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3010');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Requested-With, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, Keep-Alive, X-Requested-With, If-Modified-Since');
+  res.setHeader('Access-Control-Expose-Headers', 'Set-Cookie');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
   
   // Enhanced logging for debugging
   const cookies = req.headers.cookie || '';
