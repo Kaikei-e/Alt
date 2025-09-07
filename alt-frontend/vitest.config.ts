@@ -8,6 +8,9 @@ export default mergeConfig(
     test: {
       globals: true,
       environment: "jsdom",
+      include: [
+        "tests/unit/**/*.test.{ts,tsx}"
+      ],
       exclude: [
         "node_modules",
         "dist",
@@ -15,10 +18,10 @@ export default mergeConfig(
         "e2e",
         "**/*.spec.ts",
         // Exclude middleware tests (they have their own config)
-        "src/middleware.test.ts",
-        "src/lib/server-fetch.test.ts"
+        "tests/unit/middleware.test.ts",
+        "tests/unit/lib/server-fetch.test.ts"
       ],
-      // setupFiles: ["./vitest.setup.ts"], // Disabled to avoid conflict with Playwright
+      setupFiles: ["./vitest.setup.ts"],
       env: {
         NEXT_PUBLIC_API_BASE_URL: "http://localhost/api",
         NEXT_PUBLIC_IDP_ORIGIN: "https://id.test.example.com",
