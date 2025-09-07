@@ -12,17 +12,23 @@ test.describe('Error Boundary Testing', () => {
     await page.goto('/desktop/home');
     await page.waitForLoadState('domcontentloaded');
     
-    // Inject a JavaScript error
+    // Inject a JavaScript error with proper error handling
     await page.evaluate(() => {
-      // @ts-ignore - Intentional error for testing
-      window.someUndefinedFunction();
+      try {
+        // @ts-ignore - Intentional error for testing
+        window.someUndefinedFunction();
+      } catch (error) {
+        // Re-throw to ensure the error is caught by pageerror listener
+        throw error;
+      }
     });
 
     // Wait for error boundary to potentially kick in
     await page.waitForTimeout(2000);
     
-    // Verify error was caught
+    // Verify error was caught and is in errors array
     expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0]).toContain('someUndefinedFunction');
     
     // Page should still be functional (depending on error boundary implementation)
     await expect(page).toHaveTitle(/Alt/, { timeout: 10000 });
@@ -52,10 +58,10 @@ test.describe('Error Boundary Testing', () => {
     await page.addInitScript(() => {
       // Override console.error to catch React error boundary logs
       const originalError = console.error;
-      window.componentErrors = [];
+      (window as any).componentErrors = [];
       console.error = (...args) => {
         if (args[0]?.includes?.('Error boundary')) {
-          window.componentErrors.push(args.join(' '));
+          (window as any).componentErrors.push(args.join(' '));
         }
         originalError.apply(console, args);
       };
@@ -64,7 +70,7 @@ test.describe('Error Boundary Testing', () => {
     await page.goto('/desktop/home');
     
     // Check if any error boundaries were triggered
-    const componentErrors = await page.evaluate(() => window.componentErrors || []);
+    const componentErrors = await page.evaluate(() => (window as any).componentErrors || []);
     
     if (componentErrors.length > 0) {
       console.log('Component errors detected:', componentErrors);
