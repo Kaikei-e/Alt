@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"os"
 	"time"
 
 	"pre-processor-sidecar/driver"
@@ -60,20 +58,12 @@ func NewSimpleTokenService(config SimpleTokenConfig, logger *slog.Logger) (*Simp
 		config.CheckInterval = 30 * time.Minute  // API optimized check interval
 	}
 
-	// OAuth2クライアントの作成
+	// OAuth2クライアントの作成（プロキシ無効化済み）
 	oauth2Client := driver.NewOAuth2Client(config.ClientID, config.ClientSecret, config.BaseURL, logger)
 	
-	// HTTPクライアントの設定（プロキシ対応）
-	if httpsProxy := os.Getenv("HTTPS_PROXY"); httpsProxy != "" {
-		httpClient := &http.Client{
-			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-			},
-		}
-		oauth2Client.SetHTTPClient(httpClient)
-		logger.Info("OAuth2 client configured with proxy", "proxy", httpsProxy)
-	}
+	// Note: OAuth2 token refresh uses direct connection without proxy for reliability
+	// The OAuth2Client already has proxy disabled in its HTTP transport
+	logger.Info("OAuth2 client created with proxy disabled for token refresh reliability")
 	
 	// OAuth2 Secretサービスの初期化
 	oauth2SecretSvc, err := NewOAuth2SecretService(OAuth2SecretConfig{

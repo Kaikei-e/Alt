@@ -480,8 +480,11 @@ func (h *ScheduleHandler) executeArticleFetch() {
 	h.notifyJobResult(result)
 }
 
-// processNextSubscriptionRotation processes the next subscription in the rotation queue
+// processNextSubscriptionRotation processes the next batch of subscriptions in the rotation queue
 func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, result *JobResult) error {
+	// 固定バッチサイズ: 30分ごとに2つのサブスクリプションを処理
+	const BATCH_SIZE = 2
+
 	// Check if rotation processing is ready
 	if !h.articleFetchService.IsRotationEnabled() {
 		h.logger.Warn("Rotation mode not enabled, attempting to enable")
@@ -489,7 +492,7 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 		var err error
 		if h.config.EnableRandomStart {
 			err = h.articleFetchService.EnableRotationModeWithRandomStart(ctx)
-			h.logger.Info("Rotation mode enabled with random start for subscription processing")
+			h.logger.Info("Rotation mode enabled with random start for batch processing")
 		} else {
 			err = h.articleFetchService.EnableRotationMode(ctx)
 		}
@@ -504,17 +507,18 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 	
 	// デバッグ情報をログに出力
 	timezoneInfo := h.articleFetchService.GetRotatorTimezoneInfo()
-	h.logger.Info("Rotation stats before processing",
+	h.logger.Info("Batch rotation stats before processing",
 		"processed_today", statsBefore.ProcessedToday,
 		"remaining_today", statsBefore.RemainingToday,
 		"total_subscriptions", statsBefore.TotalSubscriptions,
+		"batch_size", BATCH_SIZE,
 		"current_time", time.Now().Format(time.RFC3339),
 		"timezone_info", timezoneInfo)
 
-	// Check if ready for next processing (20-minute interval check)
+	// Check if ready for next processing
 	if statsBefore.TotalSubscriptions == 0 {
-		h.logger.Warn("No subscriptions loaded for rotation")
-		return fmt.Errorf("no subscriptions available for rotation")
+		h.logger.Warn("No subscriptions loaded for batch rotation")
+		return fmt.Errorf("no subscriptions available for batch rotation")
 	}
 
 	if statsBefore.RemainingToday == 0 {
@@ -528,37 +532,90 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 			"status":              "all_subscriptions_completed_today",
 			"processed_today":     statsBefore.ProcessedToday,
 			"total_subscriptions": statsBefore.TotalSubscriptions,
+			"batch_size":          BATCH_SIZE,
+			"processed_count":     0,
 		}
 		return nil
 	}
 
-	// *** CRITICAL FIX: Actually call the processing method ***
-	h.logger.Info("Executing next subscription rotation processing")
+	// Get next batch of subscriptions to process
+	batch := h.articleFetchService.GetNextSubscriptionBatch(BATCH_SIZE)
 	
-	// Execute the actual rotation processing
-	err := h.articleFetchService.ProcessNextSubscriptionRotation(ctx)
-	if err != nil {
-		h.logger.Error("Failed to process subscription rotation", "error", err)
-		return fmt.Errorf("rotation processing failed: %w", err)
+	if len(batch) == 0 {
+		h.logger.Warn("No subscriptions available in batch")
+		result.Details = map[string]interface{}{
+			"status":         "no_subscriptions_available",
+			"batch_size":     BATCH_SIZE,
+			"processed_count": 0,
+		}
+		return nil
 	}
 
-	// Get rotation statistics after actual processing
+	h.logger.Info("Executing batch subscription rotation processing",
+		"batch_size", len(batch),
+		"requested_batch_size", BATCH_SIZE)
+	
+	// Process each subscription in the batch
+	successCount := 0
+	var processingErrors []string
+
+	for i, subscriptionID := range batch {
+		h.logger.Debug("Processing subscription in batch",
+			"subscription_id", subscriptionID,
+			"position", i+1,
+			"batch_size", len(batch))
+
+		// Process single subscription (use existing rotation logic)
+		if err := h.articleFetchService.ProcessNextSubscriptionRotation(ctx); err != nil {
+			errorMsg := fmt.Sprintf("Failed to process subscription %s: %v", subscriptionID, err)
+			h.logger.Error("Batch subscription processing failed",
+				"subscription_id", subscriptionID,
+				"position", i+1,
+				"error", err)
+			processingErrors = append(processingErrors, errorMsg)
+		} else {
+			successCount++
+			h.logger.Debug("Successfully processed subscription in batch",
+				"subscription_id", subscriptionID,
+				"position", i+1)
+		}
+
+		// Small delay between subscriptions to be API-friendly
+		if i < len(batch)-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	// Get rotation statistics after processing
 	statsAfter := h.articleFetchService.GetRotationStats()
 
-	// Update result with processing details
+	// Update result with batch processing details
 	result.Details = map[string]interface{}{
+		"batch_size":           BATCH_SIZE,
+		"processed_count":      len(batch),
+		"successful_count":     successCount,
+		"failed_count":         len(processingErrors),
 		"processed_today":      statsAfter.ProcessedToday,
 		"remaining_today":      statsAfter.RemainingToday,
 		"total_subscriptions":  statsAfter.TotalSubscriptions,
 		"next_processing_time": statsAfter.NextProcessingTime.Format("15:04:05"),
 		"estimated_completion": statsAfter.EstimatedCompletionTime.Format("15:04:05"),
 		"current_index":        statsAfter.CurrentIndex,
+		"processing_errors":    processingErrors,
 	}
 
-	h.logger.Info("Rotation processing completed successfully",
+	h.logger.Info("Batch rotation processing completed",
+		"batch_size", len(batch),
+		"successful", successCount,
+		"failed", len(processingErrors),
 		"processed_today", statsAfter.ProcessedToday,
 		"remaining_today", statsAfter.RemainingToday,
 		"next_processing", statsAfter.NextProcessingTime.Format("15:04:05"))
+
+	// Return error only if all subscriptions in batch failed
+	if successCount == 0 && len(processingErrors) > 0 {
+		return fmt.Errorf("all subscriptions in batch failed: %v", processingErrors)
+	}
 
 	return nil
 }

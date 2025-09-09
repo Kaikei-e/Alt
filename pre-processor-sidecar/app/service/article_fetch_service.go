@@ -536,6 +536,72 @@ func (s *ArticleFetchService) FetchSingleSubscriptionArticles(ctx context.Contex
 	return s.FetchArticles(ctx, subscription.InoreaderID, 100)
 }
 
+// GetNextSubscriptionBatch returns next batch of subscriptions for processing
+func (s *ArticleFetchService) GetNextSubscriptionBatch(batchSize int) []uuid.UUID {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	if !s.rotationEnabled || s.subscriptionRotator == nil {
+		s.logger.Warn("Rotator not enabled for batch processing")
+		return []uuid.UUID{}
+	}
+
+	return s.subscriptionRotator.GetNextSubscriptionBatch(batchSize)
+}
+
+// ProcessSubscriptionBatch processes a batch of subscriptions
+func (s *ArticleFetchService) ProcessSubscriptionBatch(ctx context.Context, subscriptionIDs []uuid.UUID) error {
+	if len(subscriptionIDs) == 0 {
+		return nil
+	}
+
+	s.logger.Info("Starting batch subscription processing",
+		"batch_size", len(subscriptionIDs))
+
+	var errors []string
+	successCount := 0
+
+	for i, subscriptionID := range subscriptionIDs {
+		s.logger.Debug("Processing subscription in batch",
+			"subscription_id", subscriptionID,
+			"position", i+1,
+			"batch_size", len(subscriptionIDs))
+
+		// Use existing single subscription processing logic
+		result, err := s.FetchSingleSubscriptionArticles(ctx, subscriptionID)
+		if err != nil {
+			errorMsg := fmt.Sprintf("Failed to process subscription %s: %v", subscriptionID, err)
+			s.logger.Error("Batch processing error",
+				"subscription_id", subscriptionID,
+				"error", err)
+			errors = append(errors, errorMsg)
+		} else {
+			successCount++
+			s.logger.Debug("Successfully processed subscription in batch",
+				"subscription_id", subscriptionID,
+				"position", i+1,
+				"new_articles", result.NewArticles,
+				"total_processed", result.TotalProcessed)
+		}
+
+		// Small delay between subscriptions to be API-friendly
+		if i < len(subscriptionIDs)-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	s.logger.Info("Batch subscription processing completed",
+		"total_processed", len(subscriptionIDs),
+		"successful", successCount,
+		"failed", len(errors))
+
+	if len(errors) > 0 {
+		return fmt.Errorf("batch processing completed with errors: %v", errors)
+	}
+
+	return nil
+}
+
 // GetRotatorTimezoneInfo returns timezone debugging information from the rotator
 func (s *ArticleFetchService) GetRotatorTimezoneInfo() map[string]interface{} {
 	s.mu.RLock()

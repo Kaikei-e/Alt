@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -60,17 +61,34 @@ func NewSubscriptionRotator(logger *slog.Logger) *SubscriptionRotator {
 		}
 	}
 
+	// 最大日次処理回数を環境変数から取得（デフォルトは1回/日）
+	maxDailyRotations := 1
+	if env := os.Getenv("MAX_DAILY_ROTATIONS"); env != "" {
+		if val, err := strconv.Atoi(env); err == nil && val > 0 && val <= 1000 {
+			maxDailyRotations = val
+		} else {
+			logger.Warn("Invalid MAX_DAILY_ROTATIONS value, using default",
+				"provided", env,
+				"default", maxDailyRotations)
+		}
+	}
+
 	now := time.Now().In(timezone)
 	
 	// 正しい0時に切り捨て（year, month, dayのみを使用）
 	year, month, day := now.Date()
 	todayInTimezone := time.Date(year, month, day, 0, 0, 0, 0, timezone)
 	
+	logger.Info("Initializing SubscriptionRotator",
+		"max_daily_rotations", maxDailyRotations,
+		"interval_minutes", 20,
+		"timezone", timezone.String())
+	
 	return &SubscriptionRotator{
 		subscriptions:      make([]uuid.UUID, 0),
 		lastProcessed:      make(map[uuid.UUID]time.Time),
 		intervalMinutes:    20,   // 20分間隔（API制限対応）46 × 20min = 15.3h で1サイクル
-		maxDaily:           84,   // 1日84個処理（1.8サイクル分、API制限94/100内）
+		maxDaily:           maxDailyRotations, // 環境変数で制御可能（デフォルト1回/日）
 		currentIndex:       0,
 		logger:            logger,
 		lastResetDate:     todayInTimezone, // タイムゾーン対応
@@ -224,7 +242,8 @@ func (sr *SubscriptionRotator) GetStats() RotationStats {
 	sr.mu.RLock()
 	defer sr.mu.RUnlock()
 
-	remaining := len(sr.subscriptions) - sr.currentIndex
+	maxProcessingToday := len(sr.subscriptions) * sr.maxDaily
+	remaining := maxProcessingToday - sr.currentIndex
 	if remaining < 0 {
 		remaining = 0
 	}
@@ -252,12 +271,13 @@ func (sr *SubscriptionRotator) GetStats() RotationStats {
 
 // getEstimatedCompletionTime calculates when all subscriptions will be processed
 func (sr *SubscriptionRotator) getEstimatedCompletionTime() time.Time {
-	if sr.currentIndex >= len(sr.subscriptions) {
+	maxProcessingToday := len(sr.subscriptions) * sr.maxDaily
+	if sr.currentIndex >= maxProcessingToday {
 		// All done for today
 		return sr.getNextResetTime()
 	}
 
-	remaining := len(sr.subscriptions) - sr.currentIndex
+	remaining := maxProcessingToday - sr.currentIndex
 	estimatedMinutes := remaining * sr.intervalMinutes
 
 	return time.Now().Add(time.Duration(estimatedMinutes) * time.Minute)
@@ -328,15 +348,16 @@ func (sr *SubscriptionRotator) SetInterval(minutes int) {
 // GetProcessingStatus returns human-readable processing status
 func (sr *SubscriptionRotator) GetProcessingStatus() string {
 	stats := sr.GetStats()
+	maxProcessingToday := stats.TotalSubscriptions * sr.maxDaily
 
 	if stats.RemainingToday == 0 {
-		return fmt.Sprintf("Completed %d/%d subscriptions for today. Next reset: %s",
-			stats.ProcessedToday, stats.TotalSubscriptions,
+		return fmt.Sprintf("Completed %d/%d (max daily rotations: %d). Next reset: %s",
+			stats.ProcessedToday, maxProcessingToday, sr.maxDaily,
 			stats.EstimatedCompletionTime.Format("15:04"))
 	}
 
-	return fmt.Sprintf("Processing %d/%d subscriptions. Estimated completion: %s",
-		stats.ProcessedToday, stats.TotalSubscriptions,
+	return fmt.Sprintf("Processing %d/%d (max daily rotations: %d). Estimated completion: %s",
+		stats.ProcessedToday, maxProcessingToday, sr.maxDaily,
 		stats.EstimatedCompletionTime.Format("15:04"))
 }
 
@@ -359,9 +380,19 @@ func (sr *SubscriptionRotator) hasCompletedDailyRotation() bool {
 		return true
 	}
 
-	// For both random start and traditional mode, use index-based check
-	// The index represents actual processing progress
-	return sr.currentIndex >= len(sr.subscriptions)
+	// Check if we've completed the configured number of daily rotations
+	// maxDaily = 1: each subscription processed once per day (original behavior)
+	// maxDaily = 48: each subscription processed 48 times per day (every 30min)
+	maxProcessingToday := len(sr.subscriptions) * sr.maxDaily
+	
+	sr.logger.Debug("Daily rotation check",
+		"current_index", sr.currentIndex,
+		"subscriptions", len(sr.subscriptions), 
+		"max_daily", sr.maxDaily,
+		"max_processing_today", maxProcessingToday,
+		"completed", sr.currentIndex >= maxProcessingToday)
+	
+	return sr.currentIndex >= maxProcessingToday
 }
 
 // EnableRandomStart enables random starting position for rotation
@@ -395,6 +426,79 @@ func (sr *SubscriptionRotator) GetStartingIndex() int {
 	sr.mu.RLock()
 	defer sr.mu.RUnlock()
 	return sr.startingIndex
+}
+
+// GetNextSubscriptionBatch returns a batch of subscriptions to process
+func (sr *SubscriptionRotator) GetNextSubscriptionBatch(batchSize int) []uuid.UUID {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
+
+	if len(sr.subscriptions) == 0 {
+		sr.logger.Warn("No subscriptions available for batch processing")
+		return []uuid.UUID{}
+	}
+
+	// Check if daily reset is needed
+	now := time.Now()
+	if sr.shouldResetDaily(now) {
+		sr.resetDailyRotation(now)
+	}
+
+	// Check if all subscriptions have been processed today
+	if sr.hasCompletedDailyRotation() {
+		sr.logger.Info("All subscriptions processed for today",
+			"processed_count", len(sr.subscriptions),
+			"next_reset", sr.getNextResetTime())
+		return []uuid.UUID{}
+	}
+
+	batch := make([]uuid.UUID, 0, batchSize)
+	for i := 0; i < batchSize; i++ {
+		// Check if we have more subscriptions to process
+		if sr.currentIndex >= len(sr.subscriptions)*sr.maxDaily {
+			break
+		}
+
+		actualIndex := sr.currentIndex % len(sr.subscriptions)
+		targetSub := sr.subscriptions[actualIndex]
+		sr.lastProcessed[targetSub] = now
+		sr.currentIndex++
+
+		batch = append(batch, targetSub)
+
+		sr.logger.Debug("Added subscription to batch",
+			"subscription_id", targetSub,
+			"index", sr.currentIndex-1,
+			"batch_position", i+1)
+	}
+
+	if len(batch) > 0 {
+		sr.logger.Info("Created subscription batch",
+			"batch_size", len(batch),
+			"processed_today", sr.currentIndex,
+			"remaining_today", len(sr.subscriptions)*sr.maxDaily-sr.currentIndex)
+	}
+
+	return batch
+}
+
+// GetBatchProcessingStatus returns status for batch processing
+func (sr *SubscriptionRotator) GetBatchProcessingStatus(batchSize int) string {
+	stats := sr.GetStats()
+	maxProcessingToday := stats.TotalSubscriptions * sr.maxDaily
+
+	if stats.RemainingToday == 0 {
+		return fmt.Sprintf("Batch processing completed %d/%d (batch size: %d). Next reset: %s",
+			stats.ProcessedToday, maxProcessingToday, batchSize,
+			stats.EstimatedCompletionTime.Format("15:04"))
+	}
+
+	remainingBatches := (stats.RemainingToday + batchSize - 1) / batchSize
+	estimatedHours := float64(remainingBatches) * 0.5 // 30分間隔
+
+	return fmt.Sprintf("Batch processing %d/%d (batch size: %d). Remaining batches: %d (~%.1fh)",
+		stats.ProcessedToday, maxProcessingToday, batchSize,
+		remainingBatches, estimatedHours)
 }
 
 // GetTimezoneInfo returns current timezone information for debugging

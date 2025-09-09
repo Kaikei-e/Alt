@@ -64,6 +64,21 @@ func NewOAuth2Client(clientID, clientSecret, baseURL string, logger *slog.Logger
 		apiBaseURL = baseURL
 	}
 
+	// Create HTTP transport without proxy for OAuth2 token requests
+	transport := &http.Transport{
+		Proxy:                 nil, // Explicitly disable proxy for OAuth2 token requests
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   2,
+	}
+
+	logger.Info("OAuth2 client configured without proxy for token refresh",
+		"oauth2_base_url", baseURL,
+		"api_base_url", apiBaseURL,
+		"proxy_disabled", true)
+
 	return &OAuth2Client{
 		clientID:     clientID,
 		clientSecret: clientSecret,
@@ -71,14 +86,8 @@ func NewOAuth2Client(clientID, clientSecret, baseURL string, logger *slog.Logger
 		apiBaseURL:   apiBaseURL,   // API base URL
 		logger:       logger,
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second, // 30秒から60秒に増加
-			Transport: &http.Transport{
-				TLSHandshakeTimeout:   10 * time.Second,
-				ResponseHeaderTimeout: 30 * time.Second,
-				IdleConnTimeout:       90 * time.Second, // キー修正: 30秒から90秒に増加
-				MaxIdleConns:          10,
-				MaxIdleConnsPerHost:   2,
-			},
+			Timeout:   60 * time.Second, // 60秒タイムアウト
+			Transport: transport,
 		},
 	}
 }
@@ -94,7 +103,8 @@ func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*
 	}
 
 	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/oauth2/token", strings.NewReader(data.Encode()))
+	tokenURL := c.baseURL + "/oauth2/token"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create refresh token request: %w", err)
 	}
@@ -102,9 +112,18 @@ func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "pre-processor-sidecar/1.0")
 
+	c.logger.Debug("Executing OAuth2 token refresh",
+		"url", tokenURL,
+		"proxy_disabled", true,
+		"timeout", c.httpClient.Timeout)
+
 	// Execute request
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.logger.Error("OAuth2 token refresh request failed",
+			"url", tokenURL,
+			"error", err,
+			"proxy_disabled", true)
 		return nil, fmt.Errorf("failed to execute refresh token request: %w", err)
 	}
 	defer resp.Body.Close()

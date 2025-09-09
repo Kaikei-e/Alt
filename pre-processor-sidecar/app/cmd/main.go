@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -115,6 +114,11 @@ func main() {
 		"api_daily_limit", cfg.RateLimit.DailyLimit)
 
 	// Simple Token System初期化
+	// Debug: Log OAuth2 base URL configuration
+	logger.Info("OAuth2 configuration loaded", 
+		"oauth2_base_url", cfg.OAuth2.BaseURL,
+		"inoreader_base_url", cfg.Inoreader.BaseURL)
+
 	simpleTokenConfig := service.SimpleTokenConfig{
 		ClientID:            os.Getenv("INOREADER_CLIENT_ID"),
 		ClientSecret:        os.Getenv("INOREADER_CLIENT_SECRET"),
@@ -258,16 +262,6 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	}
 	logger.Info("Database connection established", "user", cfg.Database.User)
 
-	// Create HTTP client with proxy configuration
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(cfg.Proxy.HTTPSProxy)
-			},
-		},
-	}
-
 	logger.Info("HTTP client configured", "proxy", cfg.Proxy.HTTPSProxy)
 
 	// Initialize repositories
@@ -279,7 +273,7 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	clientID := os.Getenv("INOREADER_CLIENT_ID")
 	clientSecret := os.Getenv("INOREADER_CLIENT_SECRET")
 	oauth2Client := driver.NewOAuth2Client(clientID, clientSecret, cfg.OAuth2.BaseURL, logger)
-	oauth2Client.SetHTTPClient(httpClient)
+	// Note: Do NOT call SetHTTPClient here - OAuth2Client already has proxy disabled for token refresh
 
 	// Initialize token repository based on configuration
 	var tokenRepo repository.OAuth2TokenRepository
