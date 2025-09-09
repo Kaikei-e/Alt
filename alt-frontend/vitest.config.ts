@@ -36,18 +36,18 @@ export default mergeConfig(
       teardownTimeout: 10000,
 
       // Force single-threaded execution for stability
-      pool: 'threads',
+      pool: 'forks',
       poolOptions: {
-        threads: {
-          singleThread: true,
-          maxThreads: 1,
-          minThreads: 1,
+        forks: {
+          singleFork: true,
+          maxForks: 1,
+          minForks: 1,
         }
       },
 
       // Sequential test execution
       fileParallelism: false,
-      isolate: true,
+      isolate: false,
       logHeapUsage: true,
       maxWorkers: 1,
       maxConcurrency: 1,
