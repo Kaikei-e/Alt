@@ -23,7 +23,9 @@ The root `skaffold.yaml` uses a `requires` block to define the deployment order.
 - **`05-auth-platform`**: Manages the authentication and authorization services, consisting of Ory Kratos for identity management and a custom `auth-service`.
 - **`06-application`**: Deploys the user-facing components: the `alt-frontend` (Next.js/React) and the `nginx-external` reverse proxy that acts as the system's main entry point.
 - **`07-processing`**: Manages the asynchronous data processing pipeline, a collection of microservices for feed ingestion, content transformation, AI/ML tagging, and search indexing.
-- **`08-operations`**: Handles operational tasks such as monitoring and database backups. *(Note: This layer's documentation is not managed by this process).*
+- **`08-operations`**: Handles operational tasks such as monitoring and database backups. *(Note: This layer's documentation is not managed by this process).* 
+
+Service-level documentation is colocated with each microservice under its repository path (for example: `pre-processor/app/CLAUDE.md`, `search-indexer/app/CLAUDE.md`, `pre-processor-sidecar/app/CLAUDE.md`, `tag-generator/app/CLAUDE.md`, `news-creator/app/CLAUDE.md`, `auth-token-manager/CLAUDE.md`, `alt-backend/app/CLAUDE.md`, `alt-backend/sidecar-proxy/CLAUDE.md`, `alt-frontend/CLAUDE.md`).
 
 ## 4. Build Strategy
 
