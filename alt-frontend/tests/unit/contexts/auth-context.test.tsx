@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AuthProvider, useAuth } from '../../../src/contexts/auth-context';
 import { authAPI } from '@/lib/api/auth-client';
@@ -22,7 +22,7 @@ vi.mock('@/lib/api/auth-client', () => ({
 }));
 
 // Test component to access auth context
-function TestComponent() {
+function TestComponent({ testId = '' }: { testId?: string }) {
   const { user, isAuthenticated, isLoading, error, login, register, logout } = useAuth();
 
   const handleLogin = async () => {
@@ -50,11 +50,11 @@ function TestComponent() {
   };
 
   return (
-    <div>
-      <div data-testid="loading">{isLoading ? 'loading' : 'not-loading'}</div>
-      <div data-testid="authenticated">{isAuthenticated ? 'authenticated' : 'not-authenticated'}</div>
-      <div data-testid="user">{user ? user.email : 'no-user'}</div>
-      <div data-testid="error">{error ? error.message : 'no-error'}</div>
+    <div data-testid={`container${testId}`}>
+      <div data-testid={`loading${testId}`}>{isLoading ? 'loading' : 'not-loading'}</div>
+      <div data-testid={`authenticated${testId}`}>{isAuthenticated ? 'authenticated' : 'not-authenticated'}</div>
+      <div data-testid={`user${testId}`}>{user ? user.email : 'no-user'}</div>
+      <div data-testid={`error${testId}`}>{error ? error.message : 'no-error'}</div>
       <button onClick={handleLogin}>Login</button>
       <button onClick={handleRegister}>Register</button>
       <button onClick={handleLogout}>Logout</button>
@@ -89,6 +89,7 @@ describe('AuthContext', () => {
   });
 
   afterEach(() => {
+    cleanup(); // Clean up all rendered components
     vi.clearAllMocks();
   });
 
@@ -100,13 +101,13 @@ describe('AuthContext', () => {
 
       render(
         <AuthProvider>
-          <TestComponent />
+          <TestComponent testId="-init" />
         </AuthProvider>
       );
 
       // Should start in loading state
-      expect(screen.getByTestId('loading')).toHaveTextContent('loading');
-      expect(screen.getByTestId('authenticated')).toHaveTextContent('not-authenticated');
+      expect(screen.getByTestId('loading-init')).toHaveTextContent('loading');
+      expect(screen.getByTestId('authenticated-init')).toHaveTextContent('not-authenticated');
 
       // Should check authentication status
       await waitFor(() => {
@@ -115,9 +116,9 @@ describe('AuthContext', () => {
 
       // Should update to authenticated state
       await waitFor(() => {
-        expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
-        expect(screen.getByTestId('authenticated')).toHaveTextContent('authenticated');
-        expect(screen.getByTestId('user')).toHaveTextContent('test@example.com');
+        expect(screen.getByTestId('loading-init')).toHaveTextContent('not-loading');
+        expect(screen.getByTestId('authenticated-init')).toHaveTextContent('authenticated');
+        expect(screen.getByTestId('user-init')).toHaveTextContent('test@example.com');
       });
     });
 
@@ -126,14 +127,14 @@ describe('AuthContext', () => {
 
       render(
         <AuthProvider>
-          <TestComponent />
+          <TestComponent testId="-unauth" />
         </AuthProvider>
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
-        expect(screen.getByTestId('authenticated')).toHaveTextContent('not-authenticated');
-        expect(screen.getByTestId('user')).toHaveTextContent('no-user');
+        expect(screen.getByTestId('loading-unauth')).toHaveTextContent('not-loading');
+        expect(screen.getByTestId('authenticated-unauth')).toHaveTextContent('not-authenticated');
+        expect(screen.getByTestId('user-unauth')).toHaveTextContent('no-user');
       });
     });
 
@@ -157,24 +158,19 @@ describe('AuthContext', () => {
 
     it('should handle login redirect (current implementation)', async () => {
       const user = userEvent.setup();
-      const mockLoginFlow = {
-        id: 'flow-123',
-        ui: { action: '/login', method: 'POST', nodes: [] },
-        expiresAt: '2025-01-15T11:00:00Z',
-      };
 
       vi.mocked(authAPI.getCurrentUser).mockResolvedValue(null);
       vi.mocked(authAPI.initiateLogin).mockRejectedValue(new Error('Login flow initiated via redirect'));
 
       render(
         <AuthProvider>
-          <TestComponent />
+          <TestComponent testId="-login-redirect" />
         </AuthProvider>
       );
 
       // Wait for initial load
       await waitFor(() => {
-        expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
+        expect(screen.getByTestId('loading-login-redirect')).toHaveTextContent('not-loading');
       });
 
       // Click login button
@@ -188,7 +184,7 @@ describe('AuthContext', () => {
 
       // Since current implementation redirects, should show error
       await waitFor(() => {
-        expect(screen.getByTestId('error')).toHaveTextContent('Login flow initiated via redirect');
+        expect(screen.getByTestId('error-login-redirect')).toHaveTextContent('Login flow initiated via redirect');
       });
     });
 
@@ -201,12 +197,12 @@ describe('AuthContext', () => {
 
       render(
         <AuthProvider>
-          <TestComponent />
+          <TestComponent testId="-login-error" />
         </AuthProvider>
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
+        expect(screen.getByTestId('loading-login-error')).toHaveTextContent('not-loading');
       });
 
       const loginButton = screen.getByText('Login');
@@ -214,8 +210,8 @@ describe('AuthContext', () => {
 
       // Wait for the error to be displayed in the UI
       await waitFor(() => {
-        expect(screen.getByTestId('error')).toHaveTextContent(errorMessage);
-        expect(screen.getByTestId('authenticated')).toHaveTextContent('not-authenticated');
+        expect(screen.getByTestId('error-login-error')).toHaveTextContent(errorMessage);
+        expect(screen.getByTestId('authenticated-login-error')).toHaveTextContent('not-authenticated');
       }, { timeout: 5000 });
 
       // Ensure the error is properly handled and doesn't cause unhandled rejections
@@ -230,12 +226,12 @@ describe('AuthContext', () => {
 
       render(
         <AuthProvider>
-          <TestComponent />
+          <TestComponent testId="-reg-redirect" />
         </AuthProvider>
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
+        expect(screen.getByTestId('loading-reg-redirect')).toHaveTextContent('not-loading');
       });
 
       const registerButton = screen.getByText('Register');
@@ -247,7 +243,7 @@ describe('AuthContext', () => {
 
       // Since registration redirects, we expect the error to be handled
       await waitFor(() => {
-        expect(screen.getByTestId('error')).toHaveTextContent('Registration flow initiated via redirect');
+        expect(screen.getByTestId('error-reg-redirect')).toHaveTextContent('Registration flow initiated via redirect');
       });
     });
 
@@ -260,12 +256,12 @@ describe('AuthContext', () => {
 
       render(
         <AuthProvider>
-          <TestComponent />
+          <TestComponent testId="-reg-error" />
         </AuthProvider>
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
+        expect(screen.getByTestId('loading-reg-error')).toHaveTextContent('not-loading');
       });
 
       const registerButton = screen.getByText('Register');
@@ -273,8 +269,8 @@ describe('AuthContext', () => {
 
       // Wait for the error to be displayed in the UI
       await waitFor(() => {
-        expect(screen.getByTestId('error')).toHaveTextContent(errorMessage);
-        expect(screen.getByTestId('authenticated')).toHaveTextContent('not-authenticated');
+        expect(screen.getByTestId('error-reg-error')).toHaveTextContent(errorMessage);
+        expect(screen.getByTestId('authenticated-reg-error')).toHaveTextContent('not-authenticated');
       }, { timeout: 5000 });
 
       // Ensure the error is properly handled and doesn't cause unhandled rejections

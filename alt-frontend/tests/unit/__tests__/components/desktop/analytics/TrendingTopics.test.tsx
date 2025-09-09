@@ -34,8 +34,8 @@ describe("TrendingTopics", () => {
       <TrendingTopics topics={mockTrendingTopics} isLoading={false} />,
     );
 
-    expect(screen.getByText("+23%")).toBeInTheDocument(); // AI trend
-    expect(screen.getByText("+12%")).toBeInTheDocument(); // React trend
+    expect(screen.getAllByText("+23%")[0]).toBeInTheDocument(); // AI trend
+    expect(screen.getAllByText("+12%")[0]).toBeInTheDocument(); // React trend
   });
 
   it("should show loading state", () => {

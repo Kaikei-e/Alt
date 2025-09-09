@@ -16,6 +16,14 @@ vi.mock("@/contexts/auth-context", () => ({
   })),
 }));
 
+// Mock the useTodayUnreadCount hook
+vi.mock("../../../src/hooks/useTodayUnreadCount", () => ({
+  useTodayUnreadCount: vi.fn(() => ({
+    count: 0,
+    isLoading: false,
+  })),
+}));
+
 // Mock the API
 vi.mock("@/lib/api", () => ({
   feedsApi: {
@@ -52,8 +60,8 @@ describe("useHomeStats", () => {
       summarized_feed: { amount: 18 },
     };
 
-    const mockUseTodayUnreadCount = await import("./useTodayUnreadCount");
-    vi.mocked(mockUseTodayUnreadCount.useTodayUnreadCount).mockReturnValue({
+    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 156,
       isLoading: false,
     });
@@ -72,8 +80,8 @@ describe("useHomeStats", () => {
   });
 
   it("should handle API error gracefully", async () => {
-    const mockUseTodayUnreadCount = await import("./useTodayUnreadCount");
-    vi.mocked(mockUseTodayUnreadCount.useTodayUnreadCount).mockReturnValue({
+    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 0,
       isLoading: false,
     });
@@ -96,8 +104,8 @@ describe("useHomeStats", () => {
       summarized_feed: { amount: 18 },
     };
 
-    const mockUseTodayUnreadCount = await import("./useTodayUnreadCount");
-    vi.mocked(mockUseTodayUnreadCount.useTodayUnreadCount).mockReturnValue({
+    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 156,
       isLoading: false,
     });
@@ -123,8 +131,8 @@ describe("useHomeStats", () => {
       summarized_feed: { amount: 18 },
     };
 
-    const mockUseTodayUnreadCount = await import("./useTodayUnreadCount");
-    vi.mocked(mockUseTodayUnreadCount.useTodayUnreadCount).mockReturnValue({
+    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 156,
       isLoading: false,
     });

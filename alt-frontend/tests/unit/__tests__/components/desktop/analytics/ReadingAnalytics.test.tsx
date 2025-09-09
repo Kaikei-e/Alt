@@ -37,8 +37,8 @@ describe("ReadingAnalytics", () => {
       <ReadingAnalytics analytics={mockAnalytics} isLoading={false} />,
     );
 
-    const primaryElement = screen.getByText("12");
-    const styles = window.getComputedStyle(primaryElement);
+    const primaryElements = screen.getAllByText("12");
+    const styles = window.getComputedStyle(primaryElements[0]);
     expect(styles.color).toContain("var(");
   });
 

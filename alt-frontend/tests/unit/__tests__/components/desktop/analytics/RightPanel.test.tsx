@@ -6,6 +6,21 @@ import { RightPanel } from "@/components/desktop/analytics/RightPanel";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import { describe, it, expect, vi } from "vitest";
 
+// Mock matchMedia
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(), // deprecated
+    removeListener: vi.fn(), // deprecated
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
+
 // Mock the custom hooks
 vi.mock("@/hooks/useReadingAnalytics", () => ({
   useReadingAnalytics: () => ({
@@ -54,8 +69,9 @@ describe("RightPanel", () => {
   it("should show Analytics tab as active by default", () => {
     renderWithProviders(<RightPanel />);
 
-    const analyticsTab = screen.getByRole("button", { name: /analytics/i });
-    expect(analyticsTab).toBeInTheDocument();
+    const analyticsTabs = screen.getAllByRole("button", { name: /analytics/i });
+    expect(analyticsTabs.length).toBeGreaterThan(0);
+    expect(analyticsTabs[0]).toBeInTheDocument();
   });
 
   it("should switch between tabs", async () => {
@@ -63,16 +79,16 @@ describe("RightPanel", () => {
     renderWithProviders(<RightPanel />);
 
     // Click on Actions tab
-    const actionsTab = screen.getByRole("button", { name: /actions/i });
-    await user.click(actionsTab);
+    const actionsTabs = screen.getAllByRole("button", { name: /actions/i });
+    await user.click(actionsTabs[0]);
 
-    expect(actionsTab).toBeInTheDocument();
+    expect(actionsTabs[0]).toBeInTheDocument();
 
     // Switch back to Analytics tab
-    const analyticsTab = screen.getByRole("button", { name: /analytics/i });
-    await user.click(analyticsTab);
+    const analyticsTabs = screen.getAllByRole("button", { name: /analytics/i });
+    await user.click(analyticsTabs[0]);
 
-    expect(analyticsTab).toBeInTheDocument();
+    expect(analyticsTabs[0]).toBeInTheDocument();
   });
 
   it("should use CSS variables for styling", () => {

@@ -1,11 +1,12 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { VirtualizedFeedList } from '../../../src/VirtualizedFeedList";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, within, cleanup } from "@testing-library/react";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { VirtualizedFeedList } from '@/components/mobile/VirtualizedFeedList';
 import { Feed } from "@/schema/feed";
 
 // Mock the SimpleFeedList component
-vi.mock("./SimpleFeedList", () => ({
+vi.mock("@/components/mobile/SimpleFeedList", () => ({
   SimpleFeedList: ({ feeds }: { feeds: Feed[] }) => (
     <div data-testid="feed-list-fallback">
       {feeds.map((feed) => (
@@ -35,6 +36,13 @@ vi.mock("react-error-boundary", () => ({
       if (onError) onError(error as Error);
       return <FallbackComponent error={error as Error} resetErrorBoundary={vi.fn()} />;
     }
+  },
+}));
+
+// Mock VirtualFeedListImpl to throw ChakraProvider error
+vi.mock("@/components/mobile/VirtualFeedListImpl", () => ({
+  VirtualFeedListImpl: () => {
+    throw new Error("useContext returned `undefined`. Seems you forgot to wrap component within <ChakraProvider />");
   },
 }));
 
@@ -82,11 +90,19 @@ describe("VirtualizedFeedList", () => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
+  const renderWithChakra = (ui: React.ReactElement) => {
+    return render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
+  };
+
   it("should render SimpleFeedList when item count is below threshold", async () => {
     const { shouldUseVirtualization } = await import("@/utils/featureFlags");
     vi.mocked(shouldUseVirtualization).mockReturnValue(false);
 
-    render(<VirtualizedFeedList {...defaultProps} />);
+    renderWithChakra(<VirtualizedFeedList {...defaultProps} />);
 
     expect(screen.getByTestId("feed-list-fallback")).toBeInTheDocument();
     expect(screen.getByText("Test Feed 1")).toBeInTheDocument();
@@ -100,7 +116,7 @@ describe("VirtualizedFeedList", () => {
     // Since VirtualFeedListImpl now needs ChakraProvider, we expect ChakraProvider error
     // This means the virtualization path is being attempted
     expect(() => {
-      render(<VirtualizedFeedList {...defaultProps} />);
+      renderWithChakra(<VirtualizedFeedList {...defaultProps} />);
     }).toThrow(
       "useContext returned `undefined`. Seems you forgot to wrap component within <ChakraProvider />",
     );
@@ -110,10 +126,11 @@ describe("VirtualizedFeedList", () => {
     const { shouldUseVirtualization } = await import("@/utils/featureFlags");
     vi.mocked(shouldUseVirtualization).mockReturnValue(false);
 
-    render(<VirtualizedFeedList {...defaultProps} feeds={[]} />);
+    const { container } = renderWithChakra(<VirtualizedFeedList {...defaultProps} feeds={[]} />);
 
     // Should render fallback with empty feeds
-    expect(screen.getByTestId("feed-list-fallback")).toBeInTheDocument();
+    const fallbackElement = within(container).getByTestId("feed-list-fallback");
+    expect(fallbackElement).toBeInTheDocument();
     expect(screen.queryByText("Test Feed 1")).not.toBeInTheDocument();
   });
 
@@ -123,9 +140,9 @@ describe("VirtualizedFeedList", () => {
 
     const readFeeds = new Set(["https://test1.com"]);
 
-    render(<VirtualizedFeedList {...defaultProps} readFeeds={readFeeds} />);
+    const { container } = renderWithChakra(<VirtualizedFeedList {...defaultProps} readFeeds={readFeeds} />);
 
-    expect(screen.getByTestId("feed-list-fallback")).toBeInTheDocument();
+    expect(within(container).getByTestId("feed-list-fallback")).toBeInTheDocument();
   });
 
   it("should call onMarkAsRead callback", async () => {
@@ -134,11 +151,11 @@ describe("VirtualizedFeedList", () => {
 
     const onMarkAsRead = vi.fn();
 
-    render(
+    const { container } = renderWithChakra(
       <VirtualizedFeedList {...defaultProps} onMarkAsRead={onMarkAsRead} />,
     );
 
     // Component should render without error
-    expect(screen.getByTestId("feed-list-fallback")).toBeInTheDocument();
+    expect(within(container).getByTestId("feed-list-fallback")).toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { transformFeedStats } from '../../../src/dataTransformers";
+import { transformFeedStats } from '../../../src/utils/dataTransformers';
 import { FeedStatsSummary } from "@/schema/feedStats";
 import { Rss, Eye, Clock } from "lucide-react";
 
