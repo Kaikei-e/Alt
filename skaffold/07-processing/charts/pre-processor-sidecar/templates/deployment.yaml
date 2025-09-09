@@ -55,6 +55,12 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
             {{- include "pre-processor-sidecar.envFromSecret" . | nindent 12 }}
+            # OAuth2 token from separate secret
+            - name: INOREADER_REFRESH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pre-processor-sidecar-oauth2-token
+                  key: refresh_token
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- if .Values.configMap.create }}
