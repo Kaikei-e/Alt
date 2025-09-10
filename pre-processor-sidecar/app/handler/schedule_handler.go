@@ -1,5 +1,5 @@
 // ABOUTME: Scheduling handler for managing dual schedule processing
-// ABOUTME: Handles subscription sync (4 hours) and article fetch (30 minutes) schedules
+// ABOUTME: Handles subscription sync (12 hours) and article fetch (configurable intervals) schedules
 
 package handler
 
@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -151,15 +153,34 @@ func NewScheduleHandler(
 		logger = slog.Default()
 	}
 
-	// Default configuration - API optimized with 30-minute intervals
+	// Read rotation interval from environment variable (same as subscription rotator)
+	intervalMinutes := 30 // Default 30 minutes to match rotator
+	if env := os.Getenv("ROTATION_INTERVAL_MINUTES"); env != "" {
+		if val, err := strconv.Atoi(env); err == nil && val >= 1 && val <= 240 {
+			intervalMinutes = val
+		} else {
+			logger.Warn("Invalid ROTATION_INTERVAL_MINUTES value in schedule handler, using default",
+				"provided", env,
+				"default", intervalMinutes,
+				"valid_range", "1-240")
+		}
+	}
+
+	articleFetchInterval := time.Duration(intervalMinutes) * time.Minute
+
+	// Default configuration - API optimized with configurable intervals
 	config := &ScheduleConfig{
 		SubscriptionSyncInterval: 12 * time.Hour,   // 12 hours for subscription sync (API optimized)
-		ArticleFetchInterval:     30 * time.Minute, // 30-minute intervals for article fetch
+		ArticleFetchInterval:     articleFetchInterval, // Configurable interval for article fetch
 		EnableSubscriptionSync:   true,
 		EnableArticleFetch:       true,
 		MaxConcurrentJobs:        2, // Allow subscription sync and article fetch to run concurrently
 		EnableRandomStart:        true, // Enable random starting position for fair load distribution
 	}
+
+	logger.Info("Schedule handler configuration",
+		"article_fetch_interval_minutes", intervalMinutes,
+		"subscription_sync_interval", config.SubscriptionSyncInterval)
 
 	status := &ScheduleStatus{
 		SubscriptionSyncEnabled: config.EnableSubscriptionSync,
@@ -482,8 +503,9 @@ func (h *ScheduleHandler) executeArticleFetch() {
 
 // processNextSubscriptionRotation processes the next batch of subscriptions in the rotation queue
 func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, result *JobResult) error {
-	// 固定バッチサイズ: 30分ごとに2つのサブスクリプションを処理
-	const BATCH_SIZE = 2
+	// API制限考慮バッチサイズ: Inoreader API Zone1制限(100コール/日)を考慮
+	// 30分間隔×48回/日×3サブスクリプション=144コール/日→余裕を持って96コール/日で運用
+	const BATCH_SIZE = 3
 
 	// Check if rotation processing is ready
 	if !h.articleFetchService.IsRotationEnabled() {
@@ -507,11 +529,21 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 	
 	// デバッグ情報をログに出力
 	timezoneInfo := h.articleFetchService.GetRotatorTimezoneInfo()
+	
+	// Calculate daily capacity for monitoring (using actual configured interval)
+	intervalMinutes := int(h.config.ArticleFetchInterval.Minutes())
+	dailyIntervals := (24 * 60) / intervalMinutes
+	dailyCapacity := dailyIntervals * BATCH_SIZE
+	requiredProcessing := statsBefore.TotalSubscriptions * 2 // MAX_DAILY_ROTATIONS=2
+	
 	h.logger.Info("Batch rotation stats before processing",
 		"processed_today", statsBefore.ProcessedToday,
 		"remaining_today", statsBefore.RemainingToday,
 		"total_subscriptions", statsBefore.TotalSubscriptions,
 		"batch_size", BATCH_SIZE,
+		"required_daily_processing", requiredProcessing,
+		"daily_capacity", dailyCapacity,
+		"capacity_utilization", fmt.Sprintf("%.1f%%", float64(requiredProcessing)/float64(dailyCapacity)*100),
 		"current_time", time.Now().Format(time.RFC3339),
 		"timezone_info", timezoneInfo)
 

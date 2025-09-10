@@ -1,5 +1,5 @@
 // ABOUTME: SubscriptionRotator handles intelligent rotation of subscription processing
-// ABOUTME: Ensures all 40 subscriptions are processed once daily with 20-minute intervals
+// ABOUTME: Ensures all subscriptions are processed according to MAX_DAILY_ROTATIONS with configurable intervals
 
 package service
 
@@ -73,6 +73,19 @@ func NewSubscriptionRotator(logger *slog.Logger) *SubscriptionRotator {
 		}
 	}
 
+	// ローテーション間隔を環境変数から取得（デフォルトは30分）
+	intervalMinutes := 30 // デフォルトを20分から30分に変更
+	if env := os.Getenv("ROTATION_INTERVAL_MINUTES"); env != "" {
+		if val, err := strconv.Atoi(env); err == nil && val >= 1 && val <= 240 {
+			intervalMinutes = val
+		} else {
+			logger.Warn("Invalid ROTATION_INTERVAL_MINUTES value, using default",
+				"provided", env,
+				"default", intervalMinutes,
+				"valid_range", "1-240")
+		}
+	}
+
 	now := time.Now().In(timezone)
 	
 	// 正しい0時に切り捨て（year, month, dayのみを使用）
@@ -81,13 +94,14 @@ func NewSubscriptionRotator(logger *slog.Logger) *SubscriptionRotator {
 	
 	logger.Info("Initializing SubscriptionRotator",
 		"max_daily_rotations", maxDailyRotations,
-		"interval_minutes", 20,
-		"timezone", timezone.String())
+		"interval_minutes", intervalMinutes,
+		"timezone", timezone.String(),
+		"today_reset_date", todayInTimezone.Format(time.RFC3339))
 	
 	return &SubscriptionRotator{
 		subscriptions:      make([]uuid.UUID, 0),
 		lastProcessed:      make(map[uuid.UUID]time.Time),
-		intervalMinutes:    20,   // 20分間隔（API制限対応）46 × 20min = 15.3h で1サイクル
+		intervalMinutes:    intervalMinutes, // 環境変数で設定可能（デフォルト30分）
 		maxDaily:           maxDailyRotations, // 環境変数で制御可能（デフォルト1回/日）
 		currentIndex:       0,
 		logger:            logger,
@@ -382,17 +396,31 @@ func (sr *SubscriptionRotator) hasCompletedDailyRotation() bool {
 
 	// Check if we've completed the configured number of daily rotations
 	// maxDaily = 1: each subscription processed once per day (original behavior)
-	// maxDaily = 48: each subscription processed 48 times per day (every 30min)
+	// maxDaily = 2: each subscription processed 2 times per day (batch processing)
 	maxProcessingToday := len(sr.subscriptions) * sr.maxDaily
 	
-	sr.logger.Debug("Daily rotation check",
-		"current_index", sr.currentIndex,
-		"subscriptions", len(sr.subscriptions), 
-		"max_daily", sr.maxDaily,
-		"max_processing_today", maxProcessingToday,
-		"completed", sr.currentIndex >= maxProcessingToday)
+	completionStatus := sr.currentIndex >= maxProcessingToday
 	
-	return sr.currentIndex >= maxProcessingToday
+	// Log at INFO level when completion status changes or for debugging
+	if completionStatus {
+		sr.logger.Info("Daily rotation completion check - COMPLETED",
+			"current_index", sr.currentIndex,
+			"total_subscriptions", len(sr.subscriptions), 
+			"max_daily_rotations", sr.maxDaily,
+			"max_processing_today", maxProcessingToday,
+			"completed", completionStatus,
+			"completion_percentage", fmt.Sprintf("%.1f%%", float64(sr.currentIndex)/float64(maxProcessingToday)*100))
+	} else {
+		sr.logger.Debug("Daily rotation completion check - IN PROGRESS",
+			"current_index", sr.currentIndex,
+			"total_subscriptions", len(sr.subscriptions), 
+			"max_daily_rotations", sr.maxDaily,
+			"max_processing_today", maxProcessingToday,
+			"remaining", maxProcessingToday - sr.currentIndex,
+			"completion_percentage", fmt.Sprintf("%.1f%%", float64(sr.currentIndex)/float64(maxProcessingToday)*100))
+	}
+	
+	return completionStatus
 }
 
 // EnableRandomStart enables random starting position for rotation

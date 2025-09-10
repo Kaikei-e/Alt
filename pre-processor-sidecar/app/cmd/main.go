@@ -110,8 +110,10 @@ func main() {
 	logger.Info("Pre-processor-sidecar Scheduler starting with Simple Token System",
 		"service", cfg.ServiceName,
 		"subscription_sync_interval", "12h",
-		"article_fetch_interval", "18m",
-		"api_daily_limit", cfg.RateLimit.DailyLimit)
+		"article_fetch_interval", "30m",
+		"api_daily_limit", cfg.RateLimit.DailyLimit,
+		"max_daily_rotations", os.Getenv("MAX_DAILY_ROTATIONS"),
+		"batch_size", os.Getenv("BATCH_SIZE"))
 
 	// Simple Token System初期化
 	// Debug: Log OAuth2 base URL configuration
