@@ -35,6 +35,9 @@ env:
   # Service configuration
   LOG_LEVEL: "info"  # 本番用レベルに変更
   SERVICE_NAME: "pre-processor-sidecar-schedule"
+  
+  # API制限最適化設定 - ROTATORと統一
+  ROTATION_INTERVAL_MINUTES: "30"   # Rotatorと統一（30分間隔）
 
   # OAuth2 & Kubernetes configuration - 正しいシークレット名に設定
   KUBERNETES_IN_CLUSTER: "true"
@@ -53,21 +56,21 @@ env:
   MAX_ARTICLES_PER_REQUEST: "100"
   API_DAILY_LIMIT: "100"           # Zone 1 limit monitoring
 
-  # Rotation processing configuration - UPDATED for batch processing
+  # Rotation processing configuration - API制限最適化
   MAX_DAILY_ROTATIONS: "2"         # Process each subscription 2 times per day (batch processing)
-  BATCH_SIZE: "2"                  # Process 2 subscriptions every 30 minutes
+  BATCH_SIZE: "3"                  # Process 3 subscriptions every 30 minutes (API限界内で余裕あり)
   
   # CRITICAL: Proxy configuration - Envoy egress ONLY
   HTTPS_PROXY: "http://envoy-proxy.alt-apps.svc.cluster.local:8081"
-  NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local,*.alt-processing.svc.cluster.local,*.alt-apps.svc.cluster.local,*.alt-database.svc.cluster.local,www.inoreader.com"
+  NO_PROXY: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc.cluster.local,*.alt-processing.svc.cluster.local,*.alt-apps.svc.cluster.local,*.alt-database.svc.cluster.local"
 
 # Use existing secret configuration
 secret:
   create: false  # Use existing secret
-  name: pre-processor-sidecar-secrets  # Reference existing properly configured secret
+  name: pre-processor-secrets  # Reference existing properly configured secret
 
 envFromSecret:
-  name: pre-processor-sidecar-secrets
+  name: pre-processor-secrets
   keys:
     - INOREADER_CLIENT_ID
     - INOREADER_CLIENT_SECRET
@@ -81,10 +84,10 @@ configMap:
     SERVICE_NAME: "pre-processor-sidecar-schedule"
     SCHEDULE_MODE: "dual"
     SUBSCRIPTION_SYNC_INTERVAL: "12h"
-    ARTICLE_FETCH_INTERVAL: "30m"
-    MAX_DAILY_ROTATIONS: "2"   # 1日2回処理 (batch processing)
-    BATCH_SIZE: "2"            # 30分ごとに2つのサブスクリプションを処理
-    PROCESSING_MODE: "batch"   # Batch processing mode enabled
+    ROTATION_INTERVAL_MINUTES: "30"   # 30分間隔（Rotatorと統一）
+    MAX_DAILY_ROTATIONS: "2"          # 1日2回処理 (batch processing)
+    BATCH_SIZE: "3"                   # API制限内で余裕: 30分×48回×3=144コール/日
+    PROCESSING_MODE: "batch"          # Batch processing mode enabled
 
 # Service account with minimal permissions
 serviceAccount:
@@ -122,8 +125,9 @@ commonLabels:
   mode: dual-schedule
 
 commonAnnotations:
-  description: "Batch schedule processor - 12h subscription sync + 30m batch article fetch (2 per interval)"
+  description: "API制限最適化処理 - 12h subscription sync + 30m batch article fetch (Zone1:96コール/日、余裕あり)"
   contact: "team@alt.local"
+  api-optimization: "inoreader-zone1-limit-compliant"
 
 podLabels:
   schedule-type: dual
