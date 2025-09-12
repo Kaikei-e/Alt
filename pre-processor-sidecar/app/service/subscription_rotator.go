@@ -61,8 +61,8 @@ func NewSubscriptionRotator(logger *slog.Logger) *SubscriptionRotator {
 		}
 	}
 
-	// 最大日次処理回数を環境変数から取得（デフォルトは1回/日）
-	maxDailyRotations := 1
+	// 最大日次処理回数を環境変数から取得（デフォルトは2回/日）
+	maxDailyRotations := 2
 	if env := os.Getenv("MAX_DAILY_ROTATIONS"); env != "" {
 		if val, err := strconv.Atoi(env); err == nil && val > 0 && val <= 1000 {
 			maxDailyRotations = val

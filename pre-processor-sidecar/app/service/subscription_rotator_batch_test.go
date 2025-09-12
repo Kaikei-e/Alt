@@ -57,14 +57,21 @@ func TestSubscriptionRotator_GetNextSubscriptionBatch_EndOfRotation(t *testing.T
 	batch2 := rotator.GetNextSubscriptionBatch(2)
 	assert.Equal(t, 1, len(batch2))
 	
-	// 次のバッチ（MAX_DAILY_ROTATIONS=1なので今日の処理は完了、空のバッチ）
+	// 2回転目開始（MAX_DAILY_ROTATIONS=2なので、さらに処理可能）
 	batch3 := rotator.GetNextSubscriptionBatch(2)
-	assert.Equal(t, 0, len(batch3)) // 今日の処理は完了
+	assert.Equal(t, 2, len(batch3)) // 2回転目の最初のバッチ
+	
+	// 2回転目の最後のバッチ
+	batch4 := rotator.GetNextSubscriptionBatch(2)
+	assert.Equal(t, 1, len(batch4)) // 残り1つ
+	
+	// すべての処理完了（3 subscriptions × 2 rotations = 6回処理完了）
+	batch5 := rotator.GetNextSubscriptionBatch(2)
+	assert.Equal(t, 0, len(batch5)) // 今日の処理は完了
 }
 
 func TestSubscriptionRotator_ProcessingCycleCalculation(t *testing.T) {
-	logger := slog.Default()
-	rotator := NewSubscriptionRotator(logger)
+	rotator := NewSubscriptionRotator(slog.Default())
 	
 	subscriptions := make([]uuid.UUID, 46)
 	for i := 0; i < 46; i++ {
@@ -218,9 +225,8 @@ func TestSubscriptionRotator_DailyRotationWithBatch(t *testing.T) {
 	logger := slog.Default()
 	rotator := NewSubscriptionRotator(logger)
 	
-	// MAX_DAILY_ROTATIONS = 2 をシミュレート
-	// 環境変数は設定されていないので、デフォルトの1が使用される
-	// テスト用に内部的に調整が必要だが、今回は現在のロジックでテスト
+	// MAX_DAILY_ROTATIONS = 2 がデフォルトになったので、4つのサブスクリプションを2回処理可能
+	// 4 subscriptions × 2 rotations = 8回の処理が可能
 	
 	subscriptions := make([]uuid.UUID, 4) // 小さなセットでテスト
 	for i := 0; i < 4; i++ {
@@ -238,7 +244,14 @@ func TestSubscriptionRotator_DailyRotationWithBatch(t *testing.T) {
 	batch2 := rotator.GetNextSubscriptionBatch(2)
 	assert.Equal(t, 2, len(batch2))
 	
-	// maxDaily=1なので、ここで完了
+	// 2回転目（maxDaily=2なので、さらに4回処理可能）
 	batch3 := rotator.GetNextSubscriptionBatch(2)
-	assert.Equal(t, 0, len(batch3)) // 今日の処理完了
+	assert.Equal(t, 2, len(batch3)) // 2回転目の1回目のバッチ
+	
+	batch4 := rotator.GetNextSubscriptionBatch(2)
+	assert.Equal(t, 2, len(batch4)) // 2回転目の2回目のバッチ
+	
+	// すべての処理完了（4 subscriptions × 2 rotations = 8回処理完了）
+	batch5 := rotator.GetNextSubscriptionBatch(2)
+	assert.Equal(t, 0, len(batch5)) // 今日の処理完了
 }

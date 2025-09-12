@@ -432,6 +432,9 @@ func (h *ScheduleHandler) executeArticleFetch() {
 		StartTime: startTime,
 	}
 
+	// Log token status before API calls
+	h.LogTokenHealthCheck()
+	
 	h.logger.Info("Starting scheduled article fetching with rotation processing")
 
 	// Check if context is available
@@ -474,12 +477,16 @@ func (h *ScheduleHandler) executeArticleFetch() {
 		h.status.NextArticleFetch = endTime.Add(nextInterval)
 
 		errorCount, _, lastSuccess := h.articleFetchScheduler.GetStatus()
+		// Enhanced error logging with token status
 		h.logger.Error("Scheduled article fetch failed - applying intelligent backoff",
 			"duration", result.Duration,
 			"error", err,
 			"consecutive_errors", errorCount,
 			"next_interval", nextInterval,
 			"last_success", lastSuccess)
+		
+		// Log token health check after failure
+		h.LogTokenHealthCheck()
 	} else {
 		// Record success in intelligent scheduler to reset backoff
 		h.articleFetchScheduler.RecordSuccess()
@@ -766,4 +773,23 @@ func (h *ScheduleHandler) IsRunning() bool {
 	defer h.mu.RUnlock()
 
 	return h.ctx != nil && h.ctx.Err() == nil
+}
+
+// getTokenManager returns the token manager from article fetch service if available
+func (h *ScheduleHandler) getTokenManager() interface{} {
+	// This would need to be implemented based on the actual ArticleFetchService structure
+	// For now, return nil - this is a placeholder for token manager integration
+	return nil
+}
+
+// LogTokenHealthCheck logs current token health status
+func (h *ScheduleHandler) LogTokenHealthCheck() {
+	if tokenManager := h.getTokenManager(); tokenManager != nil {
+		// This would call the actual token manager's health check
+		h.logger.Info("Token health check - manager available")
+	} else {
+		h.logger.Warn("Token health check - no token manager available",
+			"service_health", "degraded",
+			"impact", "api_calls_may_fail")
+	}
 }

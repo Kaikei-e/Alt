@@ -267,7 +267,38 @@ func (s *TokenManagementService) loadTokenFromStorage(ctx context.Context) (*mod
 
 // tokenNeedsRefresh checks if token needs refresh using buffer time
 func (s *TokenManagementService) tokenNeedsRefresh(token *models.OAuth2Token) bool {
-	return token.NeedsRefresh(s.refreshBuffer)
+	if token == nil {
+		s.logger.Warn("Token is nil, refresh required")
+		return true
+	}
+	
+	needsRefresh := token.NeedsRefresh(s.refreshBuffer)
+	
+	// Enhanced logging based on token status
+	if token.IsExpired() {
+		s.logger.Warn("Token is already expired - CRITICAL",
+			"expired_at", token.ExpiresAt.Format(time.RFC3339),
+			"current_time", time.Now().Format(time.RFC3339),
+			"expired_for", time.Since(token.ExpiresAt).String(),
+			"impact", "api_calls_will_fail")
+	} else if needsRefresh {
+		timeUntilExpiry := token.TimeUntilExpiry()
+		s.logger.Info("Token expires within refresh buffer - proactive refresh",
+			"expires_at", token.ExpiresAt.Format(time.RFC3339),
+			"time_until_expiry", timeUntilExpiry.String(),
+			"refresh_buffer", s.refreshBuffer.String(),
+			"refresh_reason", "proactive_maintenance")
+	} else {
+		timeUntilExpiry := token.TimeUntilExpiry()
+		percentageRemaining := float64(timeUntilExpiry) / float64(s.refreshBuffer+timeUntilExpiry) * 100
+		s.logger.Debug("Token is valid and does not need refresh",
+			"expires_at", token.ExpiresAt.Format(time.RFC3339),
+			"time_until_expiry", timeUntilExpiry.String(),
+			"percentage_remaining", fmt.Sprintf("%.1f%%", percentageRemaining),
+			"status", "healthy")
+	}
+	
+	return needsRefresh
 }
 
 // refreshTokenWithRetry attempts token refresh with retry logic using single-flight pattern
