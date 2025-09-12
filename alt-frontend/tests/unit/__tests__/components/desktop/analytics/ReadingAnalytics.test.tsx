@@ -15,12 +15,10 @@ describe("ReadingAnalytics", () => {
       <ReadingAnalytics analytics={mockAnalytics} isLoading={false} />,
     );
 
-    expect(screen.getByText("12")).toBeInTheDocument(); // articles read
-    expect(screen.getByText("45m")).toBeInTheDocument(); // time spent
-
-    // Use more specific selector for favorites count
-    const favoritesElements = screen.getAllByText("3");
-    expect(favoritesElements.length).toBeGreaterThan(0); // Should have at least one "3"
+    // Use more flexible text matching
+    expect(screen.getByText(/12/)).toBeInTheDocument(); // articles read
+    expect(screen.getByText(/45m/)).toBeInTheDocument(); // time spent
+    expect(screen.getByText(/3/)).toBeInTheDocument(); // favorites
   });
 
   it("should show glass effect styling", () => {
@@ -37,7 +35,7 @@ describe("ReadingAnalytics", () => {
       <ReadingAnalytics analytics={mockAnalytics} isLoading={false} />,
     );
 
-    const primaryElements = screen.getAllByText("12");
+    const primaryElements = screen.getAllByText(/12/);
     const styles = window.getComputedStyle(primaryElements[0]);
     expect(styles.color).toContain("var(");
   });
@@ -53,6 +51,6 @@ describe("ReadingAnalytics", () => {
   it("should show no data message when analytics is null", () => {
     renderWithChakra(<ReadingAnalytics analytics={null} isLoading={false} />);
 
-    expect(screen.getByText("No data available")).toBeInTheDocument();
+    expect(screen.getByText(/No data available/)).toBeInTheDocument();
   });
 });

@@ -1,6 +1,14 @@
 "use client";
 
-import { Box, Button, Input, VStack, Text, Container, Heading } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Input,
+  VStack,
+  Text,
+  Container,
+  Heading,
+} from "@chakra-ui/react";
 import { useState } from "react";
 import { feedsApi } from "@/lib/api";
 import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
@@ -172,12 +180,7 @@ export default function DesktopRegisterFeedsPage() {
           </form>
         </Box>
 
-        <Text
-          textAlign="center"
-          color="gray.500"
-          fontSize="sm"
-          mt={6}
-        >
+        <Text textAlign="center" color="gray.500" fontSize="sm" mt={6}>
           Make sure the URL points to a valid RSS or Atom feed
         </Text>
       </VStack>

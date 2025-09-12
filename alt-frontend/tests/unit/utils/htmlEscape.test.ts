@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { escapeHtml, escapeForDisplay } from '../../../src/utils/htmlEscape';
+import { escapeHtml, escapeForDisplay } from "../../../src/utils/htmlEscape";
 
 describe("HTML Escape Utilities", () => {
   describe("escapeHtml", () => {

@@ -53,18 +53,18 @@ export const mockLoadingState = () => {
 };
 
 // Test wrapper component for providing auth context
-export const TestAuthProvider = ({ 
-  children, 
-  authenticated = true 
-}: { 
-  children: ReactNode; 
-  authenticated?: boolean; 
+export const TestAuthProvider = ({
+  children,
+  authenticated = true,
+}: {
+  children: ReactNode;
+  authenticated?: boolean;
 }) => {
   if (authenticated) {
     mockAuthenticatedState();
   } else {
     mockUnauthenticatedState();
   }
-  
+
   return <>{children}</>;
 };

@@ -9,7 +9,7 @@ import { sanitizeFeed } from "@/schema/feed";
 export class DesktopApi {
   constructor(
     private apiClient: ApiClient,
-    private feedsApi: FeedsApi
+    private feedsApi: FeedsApi,
   ) {}
 
   // Desktop Feed Methods

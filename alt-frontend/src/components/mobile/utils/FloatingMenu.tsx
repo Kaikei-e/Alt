@@ -53,7 +53,6 @@ export const FloatingMenu = () => {
     setIsOpen(false);
   }, []);
 
-
   // Handle keyboard interactions
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

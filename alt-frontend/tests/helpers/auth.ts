@@ -1,22 +1,26 @@
-import { Page, expect } from '@playwright/test';
-import { LoginPage, DesktopPage } from '../pages';
+import { Page, expect } from "@playwright/test";
+import { LoginPage, DesktopPage } from "../pages";
 
 /**
  * Login helper function that performs the complete login flow
  * @deprecated Use LoginPage.performLogin() instead
  */
-export async function loginUser(page: Page, email = 'test@example.com', password = 'password123') {
+export async function loginUser(
+  page: Page,
+  email = "test@example.com",
+  password = "password123",
+) {
   const loginPage = new LoginPage(page);
-  
+
   // Access a protected route to trigger auth flow
-  await page.goto('/desktop/home');
-  
+  await page.goto("/desktop/home");
+
   // Wait for auth redirect to mock server
   await page.waitForURL(/localhost:4545.*login\/browser/, { timeout: 10000 });
-  
+
   // Mock server should redirect back with flow
   await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 10000 });
-  
+
   // Use page object for login
   await loginPage.performLogin(email, password);
 }
@@ -24,7 +28,11 @@ export async function loginUser(page: Page, email = 'test@example.com', password
 /**
  * Quick login using Page Object Model
  */
-export async function quickLogin(page: Page, email = 'test@example.com', password = 'password123') {
+export async function quickLogin(
+  page: Page,
+  email = "test@example.com",
+  password = "password123",
+) {
   const loginPage = new LoginPage(page);
   await loginPage.performLogin(email, password);
 }
@@ -33,7 +41,7 @@ export async function quickLogin(page: Page, email = 'test@example.com', passwor
  * Wait for authentication state to be ready
  */
 export async function waitForAuthState(page: Page) {
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState("networkidle");
   // Additional wait for authentication to settle
   await page.waitForTimeout(1000);
 }
@@ -49,7 +57,10 @@ export async function verifyAuthenticated(page: Page) {
 /**
  * Test fixture for authenticated page context
  */
-export async function withAuthenticatedContext(page: Page, testFn: () => Promise<void>) {
+export async function withAuthenticatedContext(
+  page: Page,
+  testFn: () => Promise<void>,
+) {
   await verifyAuthenticated(page);
   await testFn();
 }

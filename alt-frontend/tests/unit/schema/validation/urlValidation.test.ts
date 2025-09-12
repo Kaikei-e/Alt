@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
-import { safeUrlSchema } from '../../../src/urlValidation";
+import { safeUrlSchema } from "../../../../src/schema/validation/urlValidation";
 
 describe("URL Validation", () => {
   describe("safeUrlSchema", () => {

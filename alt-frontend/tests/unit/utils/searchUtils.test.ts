@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { searchFeeds, simpleSearch } from '../../../src/searchUtils";
+import { searchFeeds, simpleSearch } from "../../../src/searchUtils";
 import { SanitizedFeed } from "@/schema/feed";
 
 describe("Search Utils", () => {

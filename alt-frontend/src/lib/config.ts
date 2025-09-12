@@ -7,9 +7,10 @@ export interface ApiConfig {
 
 export const defaultApiConfig: ApiConfig = {
   // TODO.md修正: SSR内向き vs Client外向き分離
-  baseUrl: typeof window === 'undefined'
-    ? process.env.API_URL || "http://localhost:9000"               // SSR: 内向き
-    : '/api/backend',                   // Client: 外向き（Nginx書き換え）
+  baseUrl:
+    typeof window === "undefined"
+      ? process.env.API_URL || "http://localhost:9000" // SSR: 内向き
+      : "/api/backend", // Client: 外向き（Nginx書き換え）
   defaultCacheTtl: 5, // minutes
   requestTimeout: 30000, // 30 seconds
   maxRetries: 3,
@@ -33,7 +34,7 @@ export interface SseConfig {
   baseUrl: string;
 }
 
-import { PUBLIC_API_BASE_URL } from '@/lib/env.public'
+import { PUBLIC_API_BASE_URL } from "@/lib/env.public";
 
 export const defaultSseConfig: SseConfig = {
   maxReconnectAttempts: 5,

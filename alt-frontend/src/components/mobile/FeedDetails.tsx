@@ -6,7 +6,8 @@ import { feedsApi } from "@/lib/api";
 import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
 
 export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
-  const [articleSummary, setArticleSummary] = useState<FetchArticleSummaryResponse | null>(null);
+  const [articleSummary, setArticleSummary] =
+    useState<FetchArticleSummaryResponse | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFavoriting, setIsFavoriting] = useState(false);
@@ -55,7 +56,6 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
       setIsOpen(true);
     }
   };
-
 
   // Create unique test IDs based on feedURL to avoid conflicts
   const uniqueId = feedURL ? btoa(feedURL).slice(0, 8) : "default";
@@ -218,54 +218,62 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   bottom="0"
                   zIndex="-1"
                 />
-                
+
                 {/* Article Metadata - only show if we have article data */}
-                {articleSummary?.matched_articles && articleSummary.matched_articles.length > 0 && !error && (
-                  <Box
-                    mb={4}
-                    p={3}
-                    bg="rgba(255, 255, 255, 0.05)"
-                    borderRadius="12px"
-                    border="1px solid rgba(255, 255, 255, 0.1)"
-                  >
-                    <Text
-                      fontSize="lg"
-                      fontWeight="bold"
-                      color="var(--text-primary)"
-                      mb={2}
-                      lineHeight="1.4"
+                {articleSummary?.matched_articles &&
+                  articleSummary.matched_articles.length > 0 &&
+                  !error && (
+                    <Box
+                      mb={4}
+                      p={3}
+                      bg="rgba(255, 255, 255, 0.05)"
+                      borderRadius="12px"
+                      border="1px solid rgba(255, 255, 255, 0.1)"
                     >
-                      {articleSummary.matched_articles[0].title}
-                    </Text>
-                    
-                    <HStack gap={3} fontSize="sm" color="var(--alt-text-secondary)">
-                      {articleSummary.matched_articles[0].author && (
-                        <Text>
-                          By {articleSummary.matched_articles[0].author}
-                        </Text>
-                      )}
-                      
-                      <Text>
-                        {new Date(articleSummary.matched_articles[0].published_at).toLocaleDateString('ja-JP', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </Text>
-                      
                       <Text
-                        px={2}
-                        py={1}
-                        bg="var(--accent-primary)"
-                        borderRadius="full"
-                        fontSize="xs"
-                        fontWeight="semibold"
+                        fontSize="lg"
+                        fontWeight="bold"
+                        color="var(--text-primary)"
+                        mb={2}
+                        lineHeight="1.4"
                       >
-                        {articleSummary.matched_articles[0].content_type}
+                        {articleSummary.matched_articles[0].title}
                       </Text>
-                    </HStack>
-                  </Box>
-                )}
+
+                      <HStack
+                        gap={3}
+                        fontSize="sm"
+                        color="var(--alt-text-secondary)"
+                      >
+                        {articleSummary.matched_articles[0].author && (
+                          <Text>
+                            By {articleSummary.matched_articles[0].author}
+                          </Text>
+                        )}
+
+                        <Text>
+                          {new Date(
+                            articleSummary.matched_articles[0].published_at,
+                          ).toLocaleDateString("ja-JP", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </Text>
+
+                        <Text
+                          px={2}
+                          py={1}
+                          bg="var(--accent-primary)"
+                          borderRadius="full"
+                          fontSize="xs"
+                          fontWeight="semibold"
+                        >
+                          {articleSummary.matched_articles[0].content_type}
+                        </Text>
+                      </HStack>
+                    </Box>
+                  )}
 
                 {/* Smart Content Rendering */}
                 {isLoading ? (
@@ -286,15 +294,18 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   >
                     {error}
                   </Text>
-                ) : articleSummary?.matched_articles && articleSummary.matched_articles.length > 0 ? (
+                ) : articleSummary?.matched_articles &&
+                  articleSummary.matched_articles.length > 0 ? (
                   <SmartContentRenderer
                     content={articleSummary.matched_articles[0].content}
-                    contentType={articleSummary.matched_articles[0].content_type}
+                    contentType={
+                      articleSummary.matched_articles[0].content_type
+                    }
                     className="article-content"
                     maxHeight="60vh"
                     showMetadata={true}
                     onError={(error) => {
-                      console.error('Content rendering error:', error);
+                      console.error("Content rendering error:", error);
                     }}
                   />
                 ) : (

@@ -43,10 +43,10 @@ test.describe("ActionButton Component - PROTECTED", () => {
 
     // Hover and check transform is applied
     await actionButton.hover();
-    
+
     // Wait for hover animation to apply
     await page.waitForTimeout(100);
-    
+
     // Check if hover state is maintained - verify button is still visible
     await expect(actionButton).toBeVisible();
   });

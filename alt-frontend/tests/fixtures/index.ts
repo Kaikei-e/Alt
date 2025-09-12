@@ -1,5 +1,5 @@
-import { test as base, expect } from '@playwright/test';
-import { LoginPage, DesktopPage } from '../pages';
+import { test as base, expect } from "@playwright/test";
+import { LoginPage, DesktopPage } from "../pages";
 
 /**
  * Test fixtures with page objects and enhanced test isolation
@@ -24,15 +24,15 @@ export const test = base.extend<{
 
     // Add console error tracking for debugging
     const consoleErrors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') {
+    page.on("console", (msg) => {
+      if (msg.type() === "error") {
         consoleErrors.push(msg.text());
       }
     });
 
     // Add error tracking
     const pageErrors: Error[] = [];
-    page.on('pageerror', (error) => {
+    page.on("pageerror", (error) => {
       pageErrors.push(error);
     });
 
@@ -58,7 +58,7 @@ export const test = base.extend<{
     const loginPage = new LoginPage(page);
     await use(loginPage);
   },
-  
+
   desktopPage: async ({ page }, use) => {
     const desktopPage = new DesktopPage(page);
     await use(desktopPage);
@@ -72,15 +72,17 @@ const customExpect = base.expect.extend({
   async toBeOnAuthFlow(page: any, flowPattern = /\/auth\/login\?flow=/) {
     const url = page.url();
     const pass = flowPattern.test(url);
-    
+
     if (pass) {
       return {
-        message: () => `Expected page not to be on auth flow, but was on: ${url}`,
+        message: () =>
+          `Expected page not to be on auth flow, but was on: ${url}`,
         pass: true,
       };
     } else {
       return {
-        message: () => `Expected page to be on auth flow matching ${flowPattern}, but was on: ${url}`,
+        message: () =>
+          `Expected page to be on auth flow matching ${flowPattern}, but was on: ${url}`,
         pass: false,
       };
     }
@@ -88,18 +90,21 @@ const customExpect = base.expect.extend({
 
   async toHaveCompletedAuth(page: any, expectedDestination: string | RegExp) {
     const url = page.url();
-    const pass = typeof expectedDestination === 'string' 
-      ? url === expectedDestination 
-      : expectedDestination.test(url);
-    
+    const pass =
+      typeof expectedDestination === "string"
+        ? url === expectedDestination
+        : expectedDestination.test(url);
+
     if (pass) {
       return {
-        message: () => `Expected page not to have completed auth to ${expectedDestination}, but was on: ${url}`,
+        message: () =>
+          `Expected page not to have completed auth to ${expectedDestination}, but was on: ${url}`,
         pass: true,
       };
     } else {
       return {
-        message: () => `Expected page to have completed auth to ${expectedDestination}, but was on: ${url}`,
+        message: () =>
+          `Expected page to have completed auth to ${expectedDestination}, but was on: ${url}`,
         pass: false,
       };
     }

@@ -1,6 +1,6 @@
-export const dynamic = 'force-dynamic'
-export const fetchCache = 'force-no-store'
-export const revalidate = 0
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 import {
   Box,
@@ -27,9 +27,9 @@ export default function HomePage() {
       <VStack gap={8} maxW="1200px" mx="auto">
         {/* Header */}
         <HStack w="full" justify="space-between" align="center">
-          <Heading 
-            as="h1" 
-            size="xl" 
+          <Heading
+            as="h1"
+            size="xl"
             color="var(--alt-primary)"
             fontFamily="heading"
           >
@@ -108,45 +108,45 @@ export default function HomePage() {
             }}
             transition="all 0.2s ease"
           >
-              <VStack gap={4} align="center">
-                <Box
-                  color="var(--alt-primary)"
-                  p={3}
-                  borderRadius="full"
-                  bg="var(--alt-glass)"
+            <VStack gap={4} align="center">
+              <Box
+                color="var(--alt-primary)"
+                p={3}
+                borderRadius="full"
+                bg="var(--alt-glass)"
+              >
+                <Rss size={32} />
+              </Box>
+              <VStack gap={2} textAlign="center">
+                <Text
+                  fontSize="xl"
+                  fontWeight="semibold"
+                  color="var(--text-primary)"
+                  fontFamily="heading"
                 >
-                  <Rss size={32} />
-                </Box>
-                <VStack gap={2} textAlign="center">
-                  <Text
-                    fontSize="xl"
-                    fontWeight="semibold"
-                    color="var(--text-primary)"
-                    fontFamily="heading"
-                  >
-                    フィード管理
-                  </Text>
-                  <Text
-                    fontSize="sm"
-                    color="var(--alt-text-muted)"
-                    fontFamily="body"
-                    lineHeight="1.5"
-                  >
-                    RSS フィードの追加・管理
-                  </Text>
-                </VStack>
-                <NextLink href="/desktop/feeds" passHref>
-                  <Button
-                    bg="var(--alt-primary)"
-                    color="white"
-                    size="md"
-                    w="full"
-                    _hover={{ opacity: 0.9 }}
-                  >
-                    フィード一覧
-                  </Button>
-                </NextLink>
+                  フィード管理
+                </Text>
+                <Text
+                  fontSize="sm"
+                  color="var(--alt-text-muted)"
+                  fontFamily="body"
+                  lineHeight="1.5"
+                >
+                  RSS フィードの追加・管理
+                </Text>
               </VStack>
+              <NextLink href="/desktop/feeds" passHref>
+                <Button
+                  bg="var(--alt-primary)"
+                  color="white"
+                  size="md"
+                  w="full"
+                  _hover={{ opacity: 0.9 }}
+                >
+                  フィード一覧
+                </Button>
+              </NextLink>
+            </VStack>
           </Box>
 
           {/* Article Reading */}
@@ -163,45 +163,45 @@ export default function HomePage() {
             }}
             transition="all 0.2s ease"
           >
-              <VStack gap={4} align="center">
-                <Box
-                  color="var(--alt-primary)"
-                  p={3}
-                  borderRadius="full"
-                  bg="var(--alt-glass)"
+            <VStack gap={4} align="center">
+              <Box
+                color="var(--alt-primary)"
+                p={3}
+                borderRadius="full"
+                bg="var(--alt-glass)"
+              >
+                <BarChart3 size={32} />
+              </Box>
+              <VStack gap={2} textAlign="center">
+                <Text
+                  fontSize="xl"
+                  fontWeight="semibold"
+                  color="var(--text-primary)"
+                  fontFamily="heading"
                 >
-                  <BarChart3 size={32} />
-                </Box>
-                <VStack gap={2} textAlign="center">
-                  <Text
-                    fontSize="xl"
-                    fontWeight="semibold"
-                    color="var(--text-primary)"
-                    fontFamily="heading"
-                  >
-                    記事閲覧
-                  </Text>
-                  <Text
-                    fontSize="sm"
-                    color="var(--alt-text-muted)"
-                    fontFamily="body"
-                    lineHeight="1.5"
-                  >
-                    AI 要約付き記事を読む
-                  </Text>
-                </VStack>
-                <NextLink href="/desktop/articles" passHref>
-                  <Button
-                    bg="var(--alt-primary)"
-                    color="white"
-                    size="md"
-                    w="full"
-                    _hover={{ opacity: 0.9 }}
-                  >
-                    記事一覧
-                  </Button>
-                </NextLink>
+                  記事閲覧
+                </Text>
+                <Text
+                  fontSize="sm"
+                  color="var(--alt-text-muted)"
+                  fontFamily="body"
+                  lineHeight="1.5"
+                >
+                  AI 要約付き記事を読む
+                </Text>
               </VStack>
+              <NextLink href="/desktop/articles" passHref>
+                <Button
+                  bg="var(--alt-primary)"
+                  color="white"
+                  size="md"
+                  w="full"
+                  _hover={{ opacity: 0.9 }}
+                >
+                  記事一覧
+                </Button>
+              </NextLink>
+            </VStack>
           </Box>
 
           {/* Mobile Version */}
@@ -218,45 +218,45 @@ export default function HomePage() {
             }}
             transition="all 0.2s ease"
           >
-              <VStack gap={4} align="center">
-                <Box
-                  color="var(--alt-primary)"
-                  p={3}
-                  borderRadius="full"
-                  bg="var(--alt-glass)"
+            <VStack gap={4} align="center">
+              <Box
+                color="var(--alt-primary)"
+                p={3}
+                borderRadius="full"
+                bg="var(--alt-glass)"
+              >
+                <Users size={32} />
+              </Box>
+              <VStack gap={2} textAlign="center">
+                <Text
+                  fontSize="xl"
+                  fontWeight="semibold"
+                  color="var(--text-primary)"
+                  fontFamily="heading"
                 >
-                  <Users size={32} />
-                </Box>
-                <VStack gap={2} textAlign="center">
-                  <Text
-                    fontSize="xl"
-                    fontWeight="semibold"
-                    color="var(--text-primary)"
-                    fontFamily="heading"
-                  >
-                    モバイル版
-                  </Text>
-                  <Text
-                    fontSize="sm"
-                    color="var(--alt-text-muted)"
-                    fontFamily="body"
-                    lineHeight="1.5"
-                  >
-                    モバイル最適化 UI
-                  </Text>
-                </VStack>
-                <NextLink href="/mobile/feeds" passHref>
-                  <Button
-                    bg="var(--alt-primary)"
-                    color="white"
-                    size="md"
-                    w="full"
-                    _hover={{ opacity: 0.9 }}
-                  >
-                    モバイル版
-                  </Button>
-                </NextLink>
+                  モバイル版
+                </Text>
+                <Text
+                  fontSize="sm"
+                  color="var(--alt-text-muted)"
+                  fontFamily="body"
+                  lineHeight="1.5"
+                >
+                  モバイル最適化 UI
+                </Text>
               </VStack>
+              <NextLink href="/mobile/feeds" passHref>
+                <Button
+                  bg="var(--alt-primary)"
+                  color="white"
+                  size="md"
+                  w="full"
+                  _hover={{ opacity: 0.9 }}
+                >
+                  モバイル版
+                </Button>
+              </NextLink>
+            </VStack>
           </Box>
         </Grid>
 

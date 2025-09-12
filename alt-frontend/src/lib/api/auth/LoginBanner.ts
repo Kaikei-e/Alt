@@ -5,7 +5,7 @@ export interface LoginBannerConfig {
 
 const defaultConfig: Required<LoginBannerConfig> = {
   autoRemoveDelay: 30000, // 30 seconds
-  loginUrl: "/auth/login"
+  loginUrl: "/auth/login",
 };
 
 export class LoginBanner {
@@ -17,13 +17,13 @@ export class LoginBanner {
 
   show(): void {
     // Create and show a non-intrusive login banner instead of redirecting
-    const existingBanner = document.querySelector('#auth-required-banner');
+    const existingBanner = document.querySelector("#auth-required-banner");
     if (existingBanner) {
       return; // Banner already shown
     }
 
-    const banner = document.createElement('div');
-    banner.id = 'auth-required-banner';
+    const banner = document.createElement("div");
+    banner.id = "auth-required-banner";
     banner.style.cssText = `
       position: fixed;
       top: 0;
@@ -56,25 +56,25 @@ export class LoginBanner {
     `;
 
     document.body.prepend(banner);
-    
+
     // Animate in
     requestAnimationFrame(() => {
-      banner.style.transform = 'translateY(0)';
+      banner.style.transform = "translateY(0)";
     });
 
     // Auto-remove after configured delay
     setTimeout(() => {
       if (banner.parentNode) {
-        banner.style.transform = 'translateY(-100%)';
+        banner.style.transform = "translateY(-100%)";
         setTimeout(() => banner.remove(), 300);
       }
     }, this.config.autoRemoveDelay);
   }
 
   static hide(): void {
-    const banner = document.querySelector('#auth-required-banner');
+    const banner = document.querySelector("#auth-required-banner");
     if (banner) {
-      (banner as HTMLElement).style.transform = 'translateY(-100%)';
+      (banner as HTMLElement).style.transform = "translateY(-100%)";
       setTimeout(() => banner.remove(), 300);
     }
   }

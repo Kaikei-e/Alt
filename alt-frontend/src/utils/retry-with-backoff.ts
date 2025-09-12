@@ -20,7 +20,9 @@ export class RetryWithBackoff {
 
   private default401Retry(error: unknown): boolean {
     if (error instanceof Error) {
-      return error.message.includes('401') || error.message.includes('unauthorized');
+      return (
+        error.message.includes("401") || error.message.includes("unauthorized")
+      );
     }
     return false;
   }
@@ -46,8 +48,11 @@ export class RetryWithBackoff {
         // Don't wait after the last attempt
         if (attempt < this.maxRetries) {
           const delay = this.calculateDelay(attempt);
-          console.warn(`[RETRY] Attempt ${attempt + 1} failed, retrying in ${delay}ms:`, error);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          console.warn(
+            `[RETRY] Attempt ${attempt + 1} failed, retrying in ${delay}ms:`,
+            error,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
@@ -64,8 +69,10 @@ export const auth401Retry = new RetryWithBackoff({
   maxDelay: 8000,
   shouldRetry: (error) => {
     if (error instanceof Error) {
-      return error.message.includes('401') || error.message.includes('unauthorized');
+      return (
+        error.message.includes("401") || error.message.includes("unauthorized")
+      );
     }
     return false;
-  }
+  },
 });

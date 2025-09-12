@@ -6,5 +6,5 @@ export default function Page() {
       <p>ログインに失敗しました。もう一度お試しください。</p>
       <a href="/auth/login">ログインし直す</a>
     </main>
-  )
+  );
 }

@@ -38,13 +38,13 @@ export const useHomeStats = (): UseHomeStatsReturn => {
     try {
       setIsLoadingStats(true);
       setStatsError(null);
-      
+
       // Only fetch if authenticated to prevent 401 retry loops
       if (!isAuthenticated) {
         setFeedStats(null);
         return;
       }
-      
+
       const stats = await feedsApi.getFeedStats();
       setFeedStats(stats);
     } catch {

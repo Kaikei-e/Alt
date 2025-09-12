@@ -1,7 +1,7 @@
 // 🚨 CRITICAL: X22 Phase 5 - CSRF Auto-Recovery System
 // Automatic recovery and retry mechanism for CSRF errors
 
-import { authAPI } from '@/lib/api/auth-client';
+import { authAPI } from "@/lib/api/auth-client";
 
 export interface RecoveryOptions {
   maxRetries?: number;
@@ -34,7 +34,7 @@ export class CSRFAutoRecovery {
   async executeWithRecovery<T>(
     operation: () => Promise<T>,
     context: string,
-    options?: Partial<RecoveryOptions>
+    options?: Partial<RecoveryOptions>,
   ): Promise<RecoveryResult<T>> {
     const startTime = performance.now();
     const maxRetries = options?.maxRetries ?? this.maxRetries;
@@ -52,7 +52,7 @@ export class CSRFAutoRecovery {
           data: result,
           attempts: 0,
           totalTime: performance.now() - startTime,
-          recoveryActions: ['waited_for_existing_recovery'],
+          recoveryActions: ["waited_for_existing_recovery"],
         };
       } catch (error) {
         // Continue with new recovery if existing one failed
@@ -65,7 +65,7 @@ export class CSRFAutoRecovery {
       context,
       maxRetries,
       retryDelay,
-      recoveryActions
+      recoveryActions,
     );
 
     this.activeRecoveries.set(context, recoveryPromise);
@@ -74,7 +74,9 @@ export class CSRFAutoRecovery {
       const data = await recoveryPromise;
       const totalTime = performance.now() - startTime;
 
-      this.log(`✅ Recovery successful for ${context} in ${totalTime.toFixed(2)}ms`);
+      this.log(
+        `✅ Recovery successful for ${context} in ${totalTime.toFixed(2)}ms`,
+      );
 
       return {
         success: true,
@@ -86,7 +88,10 @@ export class CSRFAutoRecovery {
     } catch (error) {
       const totalTime = performance.now() - startTime;
 
-      this.log(`❌ Recovery failed for ${context} after ${totalTime.toFixed(2)}ms:`, error);
+      this.log(
+        `❌ Recovery failed for ${context} after ${totalTime.toFixed(2)}ms:`,
+        error,
+      );
 
       return {
         success: false,
@@ -106,20 +111,19 @@ export class CSRFAutoRecovery {
     context: string,
     maxRetries: number,
     retryDelay: number,
-    recoveryActions: string[]
+    recoveryActions: string[],
   ): Promise<T> {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         this.log(`🚀 Attempt ${attempt + 1}/${maxRetries + 1} for ${context}`);
 
         const result = await operation();
-        
+
         if (attempt > 0) {
           recoveryActions.push(`successful_retry_attempt_${attempt + 1}`);
         }
 
         return result;
-
       } catch (error) {
         const isCSRFError = this.isCSRFError(error);
         const shouldRetry = isCSRFError && attempt < maxRetries;
@@ -128,13 +132,17 @@ export class CSRFAutoRecovery {
           error: error instanceof Error ? error.message : String(error),
           isCSRFError,
           shouldRetry,
-          attemptsRemaining: maxRetries - attempt
+          attemptsRemaining: maxRetries - attempt,
         });
 
         if (shouldRetry) {
           // Progressive recovery strategies
           const recoveryStrategy = this.selectRecoveryStrategy(attempt, error);
-          await this.executeRecoveryStrategy(recoveryStrategy, context, recoveryActions);
+          await this.executeRecoveryStrategy(
+            recoveryStrategy,
+            context,
+            recoveryActions,
+          );
 
           // Progressive delay (exponential backoff with jitter)
           const delay = this.calculateRetryDelay(attempt, retryDelay);
@@ -154,39 +162,43 @@ export class CSRFAutoRecovery {
   // 🚨 CRITICAL: CSRF error detection with comprehensive patterns
   private isCSRFError(error: unknown): boolean {
     if (!(error instanceof Error)) return false;
-    
+
     const message = error.message.toLowerCase();
     const csrfPatterns = [
-      'csrf',
-      'token',
-      'forbidden',
-      'unauthorized',
-      '400',
-      '401',
-      '403',
-      '500',
-      'flow expired',
-      'session',
-      'cookie'
+      "csrf",
+      "token",
+      "forbidden",
+      "unauthorized",
+      "400",
+      "401",
+      "403",
+      "500",
+      "flow expired",
+      "session",
+      "cookie",
     ];
 
-    return csrfPatterns.some(pattern => message.includes(pattern));
+    return csrfPatterns.some((pattern) => message.includes(pattern));
   }
 
   // 🚨 CRITICAL: Progressive recovery strategy selection
-  private selectRecoveryStrategy(attempt: number, error: unknown): RecoveryStrategy {
-    const errorMessage = error instanceof Error ? error.message.toLowerCase() : '';
+  private selectRecoveryStrategy(
+    attempt: number,
+    error: unknown,
+  ): RecoveryStrategy {
+    const errorMessage =
+      error instanceof Error ? error.message.toLowerCase() : "";
 
     // Strategy based on attempt number and error type
     if (attempt === 0) {
       // First retry: Simple refresh
-      return 'refresh_auth_flow';
+      return "refresh_auth_flow";
     } else if (attempt === 1) {
       // Second retry: Clear and refresh
-      return 'clear_and_refresh';
+      return "clear_and_refresh";
     } else {
       // Final retry: Full reset
-      return 'full_reset';
+      return "full_reset";
     }
   }
 
@@ -194,34 +206,33 @@ export class CSRFAutoRecovery {
   private async executeRecoveryStrategy(
     strategy: RecoveryStrategy,
     context: string,
-    recoveryActions: string[]
+    recoveryActions: string[],
   ): Promise<void> {
     this.log(`🔧 Executing recovery strategy: ${strategy} for ${context}`);
 
     try {
       switch (strategy) {
-        case 'refresh_auth_flow':
+        case "refresh_auth_flow":
           await this.refreshAuthFlow(context);
-          recoveryActions.push('refresh_auth_flow');
+          recoveryActions.push("refresh_auth_flow");
           break;
 
-        case 'clear_and_refresh':
+        case "clear_and_refresh":
           await this.clearAndRefreshAuth(context);
-          recoveryActions.push('clear_and_refresh');
+          recoveryActions.push("clear_and_refresh");
           break;
 
-        case 'full_reset':
+        case "full_reset":
           await this.fullAuthReset(context);
-          recoveryActions.push('full_reset');
+          recoveryActions.push("full_reset");
           break;
 
         default:
           this.log(`⚠️ Unknown recovery strategy: ${strategy}`);
-          recoveryActions.push('unknown_strategy');
+          recoveryActions.push("unknown_strategy");
       }
 
       this.log(`✅ Recovery strategy ${strategy} executed successfully`);
-
     } catch (strategyError) {
       this.log(`❌ Recovery strategy ${strategy} failed:`, strategyError);
       recoveryActions.push(`${strategy}_failed`);
@@ -231,10 +242,10 @@ export class CSRFAutoRecovery {
 
   // 🔧 Recovery Strategy: Refresh auth flow
   private async refreshAuthFlow(context: string): Promise<void> {
-    if (context.includes('login')) {
+    if (context.includes("login")) {
       // Create new login flow
       await authAPI.initiateLogin();
-    } else if (context.includes('register')) {
+    } else if (context.includes("register")) {
       // Create new registration flow
       await authAPI.initiateRegistration();
     }
@@ -246,7 +257,7 @@ export class CSRFAutoRecovery {
   private async clearAndRefreshAuth(context: string): Promise<void> {
     // Clear any cached tokens or flows
     this.clearAuthCache();
-    
+
     // Force new session check
     try {
       await authAPI.getCurrentUser();
@@ -262,7 +273,7 @@ export class CSRFAutoRecovery {
   private async fullAuthReset(context: string): Promise<void> {
     // Clear all auth state
     this.clearAuthCache();
-    
+
     // Force logout to clear server session
     try {
       await authAPI.logout();
@@ -280,16 +291,17 @@ export class CSRFAutoRecovery {
   // 🧹 Clear client-side auth cache
   private clearAuthCache(): void {
     // Clear any cached auth data
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       // Clear session storage
-      sessionStorage.removeItem('auth_flow_id');
-      sessionStorage.removeItem('csrf_token');
-      
+      sessionStorage.removeItem("auth_flow_id");
+      sessionStorage.removeItem("csrf_token");
+
       // Clear any auth-related localStorage
-      const authKeys = Object.keys(localStorage).filter(key => 
-        key.includes('auth') || key.includes('csrf') || key.includes('token')
+      const authKeys = Object.keys(localStorage).filter(
+        (key) =>
+          key.includes("auth") || key.includes("csrf") || key.includes("token"),
       );
-      authKeys.forEach(key => localStorage.removeItem(key));
+      authKeys.forEach((key) => localStorage.removeItem(key));
     }
   }
 
@@ -303,7 +315,7 @@ export class CSRFAutoRecovery {
 
   // ⏳ Delay utility
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // 📝 Logging utility
@@ -337,7 +349,10 @@ export class CSRFAutoRecovery {
 }
 
 // Types
-type RecoveryStrategy = 'refresh_auth_flow' | 'clear_and_refresh' | 'full_reset';
+type RecoveryStrategy =
+  | "refresh_auth_flow"
+  | "clear_and_refresh"
+  | "full_reset";
 
 interface RecoveryStats {
   activeRecoveries: number;
@@ -364,27 +379,31 @@ export const withAutoRecovery = {
         const flow = await authAPI.initiateLogin();
         return authAPI.completeLogin(flow.id, email, password);
       },
-      'login',
-      { maxRetries: 2 }
+      "login",
+      { maxRetries: 2 },
     );
   },
 
   // Auto-recovery for registration
-  async register(email: string, password: string, name?: string): Promise<RecoveryResult<any>> {
+  async register(
+    email: string,
+    password: string,
+    name?: string,
+  ): Promise<RecoveryResult<any>> {
     return csrfAutoRecovery.executeWithRecovery(
       async () => {
         const flow = await authAPI.initiateRegistration();
         return authAPI.completeRegistration(flow.id, email, password, name);
       },
-      'registration',
-      { maxRetries: 2 }
+      "registration",
+      { maxRetries: 2 },
     );
   },
 
   // Auto-recovery for any auth operation
   async execute<T>(
     operation: () => Promise<T>,
-    context: string
+    context: string,
   ): Promise<RecoveryResult<T>> {
     return csrfAutoRecovery.executeWithRecovery(operation, context);
   },

@@ -27,9 +27,7 @@ export function Providers({
         nonce={nonce}
       >
         <ThemeProvider>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
+          <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
       </NextThemesProvider>
     </ChakraProvider>

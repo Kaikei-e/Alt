@@ -97,11 +97,10 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
     return <Box w={currentStyles.button} h={currentStyles.button} />;
   }
 
-  const IconComponent = THEME_ICONS[currentTheme as keyof typeof THEME_ICONS] || Sun;
-  const nextTheme =
-    currentTheme === "alt-paper" ? "vaporwave" : "alt-paper";
-  const nextThemeLabel =
-    nextTheme === "vaporwave" ? "Vaporwave" : "Alt Paper";
+  const IconComponent =
+    THEME_ICONS[currentTheme as keyof typeof THEME_ICONS] || Sun;
+  const nextTheme = currentTheme === "alt-paper" ? "vaporwave" : "alt-paper";
+  const nextThemeLabel = nextTheme === "vaporwave" ? "Vaporwave" : "Alt Paper";
   const currentThemeLabel =
     currentTheme === "vaporwave" ? "Vaporwave" : "Alt Paper";
 

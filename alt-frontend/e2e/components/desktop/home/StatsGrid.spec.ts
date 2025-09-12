@@ -17,12 +17,12 @@ test.describe("StatsGrid Component - PROTECTED", () => {
     await expect(statsGrid).toBeVisible();
 
     // Check grid layout properties with Playwright's CSS assertion
-    await expect(statsGrid).toHaveCSS('display', 'grid');
+    await expect(statsGrid).toHaveCSS("display", "grid");
 
     // Check all stats cards are present
     const statsCards = statsGrid.locator('[data-testid="stats-card"]');
     await expect(statsCards).toHaveCount(3);
-    
+
     // Ensure all cards are visible
     for (let i = 0; i < 3; i++) {
       await expect(statsCards.nth(i)).toBeVisible();

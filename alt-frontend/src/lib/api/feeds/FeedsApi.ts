@@ -21,11 +21,17 @@ export class FeedsApi {
   private feedsCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
   private favoritesCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
   private readCursorApi: CursorApi<BackendFeedItem, SanitizedFeed>;
-  
+
   // Cursor-based API functions
   public getFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
-  public getFavoriteFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
-  public getReadFeedsWithCursor: (cursor?: string, limit?: number) => Promise<any>;
+  public getFavoriteFeedsWithCursor: (
+    cursor?: string,
+    limit?: number,
+  ) => Promise<any>;
+  public getReadFeedsWithCursor: (
+    cursor?: string,
+    limit?: number,
+  ) => Promise<any>;
 
   constructor(private apiClient: ApiClient) {
     const transformFeedItem = (item: BackendFeedItem): SanitizedFeed => {
@@ -36,21 +42,21 @@ export class FeedsApi {
       apiClient,
       "/v1/feeds/fetch/cursor",
       transformFeedItem,
-      5
+      5,
     );
 
     this.favoritesCursorApi = new CursorApi(
       apiClient,
-      "/v1/feeds/fetch/favorites/cursor", 
+      "/v1/feeds/fetch/favorites/cursor",
       transformFeedItem,
-      10
+      10,
     );
 
     this.readCursorApi = new CursorApi(
       apiClient,
       "/v1/feeds/fetch/viewed/cursor",
       transformFeedItem,
-      10
+      10,
     );
 
     // Initialize the cursor functions after the CursorApi instances are created
@@ -65,11 +71,14 @@ export class FeedsApi {
   }
 
   // Legacy pagination methods
-  async getFeeds(page: number = 1, pageSize: number = 10): Promise<SanitizedFeed[]> {
+  async getFeeds(
+    page: number = 1,
+    pageSize: number = 10,
+  ): Promise<SanitizedFeed[]> {
     const limit = page * pageSize;
     const response = await this.apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/limit/${limit}`,
-      10
+      10,
     );
 
     if (Array.isArray(response)) {
@@ -81,7 +90,7 @@ export class FeedsApi {
   async getFeedsPage(page: number = 0): Promise<SanitizedFeed[]> {
     const response = await this.apiClient.get<BackendFeedItem[]>(
       `/v1/feeds/fetch/page/${page}`,
-      10
+      10,
     );
 
     if (Array.isArray(response)) {
@@ -93,7 +102,7 @@ export class FeedsApi {
   async getAllFeeds(): Promise<SanitizedFeed[]> {
     const response = await this.apiClient.get<BackendFeedItem[]>(
       "/v1/feeds/fetch/list",
-      15
+      15,
     );
 
     if (Array.isArray(response)) {
@@ -105,7 +114,7 @@ export class FeedsApi {
   async getSingleFeed(): Promise<SanitizedFeed> {
     const response = await this.apiClient.get<BackendFeedItem>(
       "/v1/feeds/fetch/single",
-      5
+      5,
     );
     return sanitizeFeed(response);
   }
@@ -124,10 +133,15 @@ export class FeedsApi {
   }
 
   // Article summaries
-  async getArticleSummary(feedUrl: string): Promise<FetchArticleSummaryResponse> {
-    return this.apiClient.post<FetchArticleSummaryResponse>("/v1/feeds/fetch/summary/provided", {
-      feed_urls: [feedUrl]
-    });
+  async getArticleSummary(
+    feedUrl: string,
+  ): Promise<FetchArticleSummaryResponse> {
+    return this.apiClient.post<FetchArticleSummaryResponse>(
+      "/v1/feeds/fetch/summary/provided",
+      {
+        feed_urls: [feedUrl],
+      },
+    );
   }
 
   /** @deprecated Use getArticleSummary instead */
@@ -137,13 +151,13 @@ export class FeedsApi {
       if (response.matched_articles.length > 0) {
         return {
           feed_url: payload.feed_url,
-          summary: response.matched_articles[0].content
+          summary: response.matched_articles[0].content,
         };
       }
       throw new ApiError("No summary found for this article");
     } catch (error) {
       throw new ApiError(
-        error instanceof Error ? error.message : "Failed to fetch feed details"
+        error instanceof Error ? error.message : "Failed to fetch feed details",
       );
     }
   }
@@ -177,13 +191,13 @@ export class FeedsApi {
   }
 
   async getFeedStatsSSR(): Promise<FeedStatsSummary> {
-    return serverFetch<FeedStatsSummary>('/v1/feeds/stats');
+    return serverFetch<FeedStatsSummary>("/v1/feeds/stats");
   }
 
   async getTodayUnreadCount(since: string): Promise<UnreadCount> {
     return this.apiClient.get<UnreadCount>(
       `/v1/feeds/count/unreads?since=${encodeURIComponent(since)}`,
-      1
+      1,
     );
   }
 
@@ -197,21 +211,21 @@ export class FeedsApi {
   // Prefetch methods
   async prefetchFeeds(pages: number[] = [0, 1]): Promise<void> {
     const prefetchPromises = pages.map((page) =>
-      this.getFeedsPage(page).catch(() => {})
+      this.getFeedsPage(page).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   }
 
   async prefetchFavoriteFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getFavoriteFeedsWithCursor(cursor).catch(() => {})
+      this.getFavoriteFeedsWithCursor(cursor).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   }
 
   async prefetchReadFeeds(cursors: string[]): Promise<void> {
     const prefetchPromises = cursors.map((cursor) =>
-      this.getReadFeedsWithCursor(cursor).catch(() => {})
+      this.getReadFeedsWithCursor(cursor).catch(() => {}),
     );
     await Promise.all(prefetchPromises);
   }

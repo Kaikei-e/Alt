@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator, expect } from "@playwright/test";
 
 /**
  * Base page class with common functionality
@@ -11,14 +11,18 @@ export class BasePage {
    */
   async goto(url: string, options?: { timeout?: number }) {
     await this.page.goto(url, options);
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState("networkidle");
   }
 
   /**
    * Wait for element to be visible
    */
-  async waitForElement(selector: string | Locator, options?: { timeout?: number }): Promise<Locator> {
-    const element = typeof selector === 'string' ? this.page.locator(selector) : selector;
+  async waitForElement(
+    selector: string | Locator,
+    options?: { timeout?: number },
+  ): Promise<Locator> {
+    const element =
+      typeof selector === "string" ? this.page.locator(selector) : selector;
     await expect(element).toBeVisible(options);
     return element;
   }
@@ -55,14 +59,14 @@ export class BasePage {
    * Wait for network to be idle
    */
   async waitForNetwork() {
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState("networkidle");
   }
 
   /**
    * Check if element exists
    */
   async elementExists(selector: string): Promise<boolean> {
-    return await this.page.locator(selector).count() > 0;
+    return (await this.page.locator(selector).count()) > 0;
   }
 
   /**

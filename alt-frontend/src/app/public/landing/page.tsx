@@ -1,6 +1,6 @@
-export const dynamic = 'force-dynamic'
-export const fetchCache = 'force-no-store'
-export const revalidate = 0
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 import NextLink from "next/link";
 import {
@@ -15,14 +15,17 @@ import {
 import { Rss, FileText, ArrowRight, LogIn, UserPlus } from "lucide-react";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { serverFetch } from '@/lib/server-fetch';
+import { serverFetch } from "@/lib/server-fetch";
 
 // Fetch public platform stats from alt-backend
 async function getPlatformStats() {
   try {
-    return await serverFetch<{feed_amount: {amount: number}, summarized_feed: {amount: number}}>('/v1/platform/stats');
+    return await serverFetch<{
+      feed_amount: { amount: number };
+      summarized_feed: { amount: number };
+    }>("/v1/platform/stats");
   } catch (err) {
-    console.error('Error fetching platform stats:', err);
+    console.error("Error fetching platform stats:", err);
     return { feed_amount: { amount: 0 }, summarized_feed: { amount: 0 } };
   }
 }
@@ -40,12 +43,7 @@ export default async function PublicLandingPage() {
       aria-label="Alt RSS Reader Public Landing Page"
     >
       {/* Theme Toggle Button */}
-      <Box
-        position="absolute"
-        top="16px"
-        right="16px"
-        zIndex={100}
-      >
+      <Box position="absolute" top="16px" right="16px" zIndex={100}>
         <ThemeToggle size="md" />
       </Box>
 
@@ -71,8 +69,8 @@ export default async function PublicLandingPage() {
           lineHeight="1.6"
           mb={4}
         >
-          AI-powered RSS reader with modern aesthetics.
-          Join thousands of users managing their RSS feeds intelligently.
+          AI-powered RSS reader with modern aesthetics. Join thousands of users
+          managing their RSS feeds intelligently.
         </Text>
 
         {/* Authentication Buttons */}

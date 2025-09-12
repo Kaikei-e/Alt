@@ -19,10 +19,19 @@ const canonicalize = (url: string) => {
   try {
     const u = new URL(url);
     u.hash = "";
-    ["utm_source","utm_medium","utm_campaign","utm_term","utm_content"].forEach(k => u.searchParams.delete(k));
-    if (u.pathname !== "/" && u.pathname.endsWith("/")) u.pathname = u.pathname.slice(0, -1);
+    [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+    ].forEach((k) => u.searchParams.delete(k));
+    if (u.pathname !== "/" && u.pathname.endsWith("/"))
+      u.pathname = u.pathname.slice(0, -1);
     return u.toString();
-  } catch { return url }
+  } catch {
+    return url;
+  }
 };
 
 export default function FeedsPage() {
@@ -68,7 +77,7 @@ export default function FeedsPage() {
 
     // 楽観更新（即時にUIから消す）
     startTransition(() => {
-      setReadFeeds(prev => new Set(prev).add(link));
+      setReadFeeds((prev) => new Set(prev).add(link));
     });
     setLiveRegionMessage("Feed marked as read");
     setTimeout(() => setLiveRegionMessage(""), 1000);
@@ -78,7 +87,7 @@ export default function FeedsPage() {
       await feedsApi.updateFeedReadStatus(link);
     } catch (e) {
       startTransition(() => {
-        setReadFeeds(prev => {
+        setReadFeeds((prev) => {
           const next = new Set(prev);
           next.delete(link);
           return next;

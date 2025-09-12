@@ -1,4 +1,7 @@
-import { componentTest as test, expect } from "../../../tests/fixtures/apiFixture";
+import {
+  componentTest as test,
+  expect,
+} from "../../../tests/fixtures/apiFixture";
 import { setupBackendAPIMocks } from "../../../tests/helpers/apiMocks";
 
 // PROTECTED E2E TESTS - CLAUDE: DO NOT MODIFY
@@ -112,15 +115,17 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
     });
 
     // Simulate scrolling within the timeline container if it exists
-    const timelineContainer = page.locator('[data-testid="desktop-timeline-container"]');
+    const timelineContainer = page.locator(
+      '[data-testid="desktop-timeline-container"]',
+    );
     const containerExists = await timelineContainer.count();
-    
+
     if (containerExists > 0) {
       // Try to scroll within the timeline container
       await timelineContainer.hover();
       await page.mouse.wheel(0, 500);
       await page.waitForTimeout(500);
-      
+
       // Verify the container is still visible after scrolling
       await expect(timelineContainer).toBeVisible();
     }

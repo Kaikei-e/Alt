@@ -1,6 +1,6 @@
 import { renderHook, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { useWindowSize } from '../../../src/hooks/useWindowSize';
+import { useWindowSize } from "../../../src/hooks/useWindowSize";
 
 describe("useWindowSize", () => {
   let mockWindowWidth: number;

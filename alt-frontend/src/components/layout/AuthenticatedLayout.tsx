@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState } from "react";
 import {
   Box,
   Flex,
@@ -14,7 +14,7 @@ import {
   Portal,
   Separator,
   useDisclosure,
-} from '@chakra-ui/react';
+} from "@chakra-ui/react";
 import {
   Menu,
   Home,
@@ -25,10 +25,10 @@ import {
   User,
   Bell,
   Activity,
-  Clock
-} from 'lucide-react';
-import { useAuth } from '@/contexts/auth-context';
-import { UserProfile } from '@/components/auth/UserProfile';
+  Clock,
+} from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
+import { UserProfile } from "@/components/auth/UserProfile";
 
 interface AuthenticatedLayoutProps {
   children: ReactNode;
@@ -50,44 +50,44 @@ interface NavigationItem {
 
 const navigationItems: NavigationItem[] = [
   {
-    id: 'home',
-    label: 'ホーム',
+    id: "home",
+    label: "ホーム",
     icon: <Home size={20} />,
-    href: '/',
+    href: "/",
   },
   {
-    id: 'feeds',
-    label: 'フィード',
+    id: "feeds",
+    label: "フィード",
     icon: <BookOpen size={20} />,
-    href: '/feeds',
+    href: "/feeds",
     requireAuth: true,
   },
   {
-    id: 'search',
-    label: '検索',
+    id: "search",
+    label: "検索",
     icon: <Search size={20} />,
-    href: '/search',
+    href: "/search",
   },
   {
-    id: 'notifications',
-    label: '通知',
+    id: "notifications",
+    label: "通知",
     icon: <Bell size={20} />,
-    href: '/notifications',
+    href: "/notifications",
     requireAuth: true,
     badge: 3,
   },
   {
-    id: 'activity',
-    label: '活動',
+    id: "activity",
+    label: "活動",
     icon: <Activity size={20} />,
-    href: '/activity',
+    href: "/activity",
     requireAuth: true,
   },
   {
-    id: 'settings',
-    label: '設定',
+    id: "settings",
+    label: "設定",
     icon: <Settings size={20} />,
-    href: '/settings',
+    href: "/settings",
     requireAuth: true,
   },
 ];
@@ -99,9 +99,10 @@ export function AuthenticatedLayout({
   showFooter = true,
   maxWidth = "1200px",
 }: AuthenticatedLayoutProps) {
-  const { user, isAuthenticated, logout, lastActivity, sessionTimeout } = useAuth();
+  const { user, isAuthenticated, logout, lastActivity, sessionTimeout } =
+    useAuth();
   const { open, onOpen, onClose } = useDisclosure();
-  const [activeNavItem, setActiveNavItem] = useState<string>('home');
+  const [activeNavItem, setActiveNavItem] = useState<string>("home");
 
   const handleNavItemClick = (item: NavigationItem) => {
     if (item.requireAuth && !isAuthenticated) {
@@ -123,14 +124,14 @@ export function AuthenticatedLayout({
   const handleLogout = async () => {
     try {
       await logout();
-      window.location.href = '/';
+      window.location.href = "/";
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
     }
   };
 
   const getFilteredNavigationItems = () => {
-    return navigationItems.filter(item => {
+    return navigationItems.filter((item) => {
       if (item.requireAuth && !isAuthenticated) return false;
       if (item.requiredRole && user?.role !== item.requiredRole) return false;
       return true;
@@ -148,7 +149,8 @@ export function AuthenticatedLayout({
       justifyContent={isMobile ? "flex-start" : "center"}
       onClick={() => handleNavItemClick(item)}
       _hover={{
-        bg: activeNavItem === item.id ? "var(--alt-primary)" : "var(--alt-glass)",
+        bg:
+          activeNavItem === item.id ? "var(--alt-primary)" : "var(--alt-glass)",
         transform: "translateY(-1px)",
       }}
       position="relative"
@@ -187,7 +189,9 @@ export function AuthenticatedLayout({
     if (!isAuthenticated || !lastActivity || !sessionTimeout) return null;
 
     const now = new Date();
-    const minutesSinceLastActivity = Math.floor((now.getTime() - lastActivity.getTime()) / (1000 * 60));
+    const minutesSinceLastActivity = Math.floor(
+      (now.getTime() - lastActivity.getTime()) / (1000 * 60),
+    );
     const timeRemaining = sessionTimeout - minutesSinceLastActivity;
     const showWarning = timeRemaining <= 5 && timeRemaining > 0;
 
@@ -244,7 +248,9 @@ export function AuthenticatedLayout({
 
               {/* Desktop Navigation */}
               <HStack gap={2} display={{ base: "none", md: "flex" }}>
-                {getFilteredNavigationItems().map(item => renderNavigationItem(item))}
+                {getFilteredNavigationItems().map((item) =>
+                  renderNavigationItem(item),
+                )}
               </HStack>
 
               {/* User Menu */}
@@ -266,7 +272,9 @@ export function AuthenticatedLayout({
                       fontWeight="semibold"
                       fontSize="sm"
                     >
-                      {user?.name ? user.name[0].toUpperCase() : user?.email?.[0].toUpperCase() || 'U'}
+                      {user?.name
+                        ? user.name[0].toUpperCase()
+                        : user?.email?.[0].toUpperCase() || "U"}
                     </Box>
 
                     <IconButton
@@ -294,8 +302,11 @@ export function AuthenticatedLayout({
                       transform: "translateY(-1px)",
                     }}
                     onClick={() => {
-                      const currentUrl = typeof window !== 'undefined' ? window.location.href : '/';
-                      window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`
+                      const currentUrl =
+                        typeof window !== "undefined"
+                          ? window.location.href
+                          : "/";
+                      window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`;
                     }}
                   >
                     ログイン
@@ -308,7 +319,13 @@ export function AuthenticatedLayout({
       )}
 
       {/* Mobile Drawer */}
-      <Drawer.Root open={open} onOpenChange={({ open }) => { if (!open) onClose(); }} placement="start">
+      <Drawer.Root
+        open={open}
+        onOpenChange={({ open }) => {
+          if (!open) onClose();
+        }}
+        placement="start"
+      >
         <Portal>
           <Drawer.Backdrop />
           <Drawer.Positioner>
@@ -349,8 +366,11 @@ export function AuthenticatedLayout({
                         fontFamily="body"
                         onClick={() => {
                           onClose();
-                          const currentUrl = typeof window !== 'undefined' ? window.location.href : '/';
-                          window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`
+                          const currentUrl =
+                            typeof window !== "undefined"
+                              ? window.location.href
+                              : "/";
+                          window.location.href = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`;
                         }}
                         _hover={{
                           bg: "var(--alt-primary)",
@@ -365,7 +385,9 @@ export function AuthenticatedLayout({
 
                   {/* Mobile Navigation */}
                   <VStack gap={2} align="stretch">
-                    {getFilteredNavigationItems().map(item => renderNavigationItem(item, true))}
+                    {getFilteredNavigationItems().map((item) =>
+                      renderNavigationItem(item, true),
+                    )}
                   </VStack>
                 </VStack>
               </Drawer.Body>
@@ -375,15 +397,7 @@ export function AuthenticatedLayout({
       </Drawer.Root>
 
       {/* Main Content */}
-      <Box
-        as="main"
-        flex={1}
-        maxW={maxWidth}
-        mx="auto"
-        px={4}
-        py={6}
-        w="full"
-      >
+      <Box as="main" flex={1} maxW={maxWidth} mx="auto" px={4} py={6} w="full">
         {children}
       </Box>
 
@@ -408,11 +422,7 @@ export function AuthenticatedLayout({
                 Alt
               </Text>
 
-              <Text
-                fontSize="sm"
-                color="var(--text-muted)"
-                fontFamily="body"
-              >
+              <Text fontSize="sm" color="var(--text-muted)" fontFamily="body">
                 モバイルファーストRSSリーダー
               </Text>
 
@@ -428,11 +438,7 @@ export function AuthenticatedLayout({
                 </Button>
               </HStack>
 
-              <Text
-                fontSize="xs"
-                color="var(--text-muted)"
-                fontFamily="body"
-              >
+              <Text fontSize="xs" color="var(--text-muted)" fontFamily="body">
                 © 2025 Alt. All rights reserved.
               </Text>
             </VStack>

@@ -1,7 +1,7 @@
 // app/desktop/feeds/page.tsx
-export const dynamic = 'force-dynamic'
-export const fetchCache = 'force-no-store'  // 念のため
-export const revalidate = 0
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store"; // 念のため
+export const revalidate = 0;
 
 import React, { Suspense } from "react";
 import { Box, Text } from "@chakra-ui/react";
@@ -9,8 +9,8 @@ import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeline";
 import LazyRightPanel from "@/components/desktop/analytics/LazyRightPanel";
 // Remove Lucide imports from Server Component
-import { serverFetch } from '@/lib/server-fetch';
-import { FeedStatsSummary } from '@/schema/feedStats';
+import { serverFetch } from "@/lib/server-fetch";
+import { FeedStatsSummary } from "@/schema/feedStats";
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -54,10 +54,31 @@ function DesktopFeedsContent({ data }: { data: FeedStatsSummary | null }) {
       href: "/desktop/home",
       active: false,
     },
-    { id: 2, label: "Feeds", iconName: "Rss", href: "/desktop/feeds", active: true },
-    { id: 3, label: "Articles", iconName: "FileText", href: "/desktop/articles" },
-    { id: 4, label: "Search", iconName: "Search", href: "/desktop/articles/search" },
-    { id: 5, label: "Settings", iconName: "Settings", href: "/desktop/settings" },
+    {
+      id: 2,
+      label: "Feeds",
+      iconName: "Rss",
+      href: "/desktop/feeds",
+      active: true,
+    },
+    {
+      id: 3,
+      label: "Articles",
+      iconName: "FileText",
+      href: "/desktop/articles",
+    },
+    {
+      id: 4,
+      label: "Search",
+      iconName: "Search",
+      href: "/desktop/articles/search",
+    },
+    {
+      id: 5,
+      label: "Settings",
+      iconName: "Settings",
+      href: "/desktop/settings",
+    },
   ];
 
   return (
@@ -76,15 +97,15 @@ function DesktopFeedsContent({ data }: { data: FeedStatsSummary | null }) {
 }
 
 export default async function Page() {
-  let data = null
+  let data = null;
   try {
-    data = await serverFetch<FeedStatsSummary>('/v1/feeds/stats')
+    data = await serverFetch<FeedStatsSummary>("/v1/feeds/stats");
   } catch (e) {
-    console.error('feed stats SSR failed:', e)
+    console.error("feed stats SSR failed:", e);
   }
   return (
     <Suspense fallback={<LoadingFallback />}>
       <DesktopFeedsContent data={data} />
     </Suspense>
-  )
+  );
 }

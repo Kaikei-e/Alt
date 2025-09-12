@@ -228,7 +228,7 @@ export class DesktopFeedsApi {
   }
 }
 
-import { PUBLIC_API_BASE_URL } from '@/lib/env.public'
+import { PUBLIC_API_BASE_URL } from "@/lib/env.public";
 
 export const desktopFeedsApi = new DesktopFeedsApi(
   PUBLIC_API_BASE_URL || "http://localhost:8080",

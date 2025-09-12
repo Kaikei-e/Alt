@@ -1,6 +1,6 @@
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
 
 const port = 3010;
 
@@ -8,11 +8,14 @@ const server = http.createServer((req, res) => {
   console.log(`Request: ${req.method} ${req.url}`);
 
   // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS",
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     res.statusCode = 200;
     res.end();
     return;
@@ -32,7 +35,7 @@ const server = http.createServer((req, res) => {
 </html>`;
 
   res.statusCode = 200;
-  res.setHeader('Content-Type', 'text/html');
+  res.setHeader("Content-Type", "text/html");
   res.end(html);
 });
 
@@ -41,8 +44,8 @@ server.listen(port, () => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('Shutting down test server...');
+process.on("SIGINT", () => {
+  console.log("Shutting down test server...");
   server.close(() => {
     process.exit(0);
   });

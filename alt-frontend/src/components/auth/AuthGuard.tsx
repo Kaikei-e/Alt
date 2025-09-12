@@ -1,18 +1,11 @@
 "use client";
 
-import { ReactNode } from 'react';
-import {
-  Box,
-  VStack,
-  Text,
-  Spinner,
-  Button,
-  Flex,
-} from '@chakra-ui/react';
-import { RefreshCw, AlertCircle, Wifi } from 'lucide-react';
-import { useAuth } from '@/contexts/auth-context';
-import { AuthForm } from './AuthForm';
-import { UserProfile } from './UserProfile';
+import { ReactNode } from "react";
+import { Box, VStack, Text, Spinner, Button, Flex } from "@chakra-ui/react";
+import { RefreshCw, AlertCircle, Wifi } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
+import { AuthForm } from "./AuthForm";
+import { UserProfile } from "./UserProfile";
 
 interface AuthGuardProps {
   children?: ReactNode;
@@ -29,7 +22,15 @@ export function AuthGuard({
   fallback,
   requireAuth = false,
 }: AuthGuardProps) {
-  const { isAuthenticated, isLoading, error, user, refresh, retryLastAction, clearError } = useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    error,
+    user,
+    refresh,
+    retryLastAction,
+    clearError,
+  } = useAuth();
 
   // Show loading state
   if (isLoading) {
@@ -50,15 +51,8 @@ export function AuthGuard({
           w="full"
         >
           <VStack gap={3}>
-            <Spinner
-              size="lg"
-              color="var(--alt-primary)"
-            />
-            <Text
-              color="var(--text-primary)"
-              fontSize="sm"
-              fontFamily="body"
-            >
+            <Spinner size="lg" color="var(--alt-primary)" />
+            <Text color="var(--text-primary)" fontSize="sm" fontFamily="body">
               認証状態を確認中...
             </Text>
           </VStack>
@@ -71,9 +65,9 @@ export function AuthGuard({
   if (error && !isAuthenticated) {
     const getErrorIcon = () => {
       switch (error.type) {
-        case 'NETWORK_ERROR':
+        case "NETWORK_ERROR":
           return <Wifi size={20} />;
-        case 'TIMEOUT_ERROR':
+        case "TIMEOUT_ERROR":
           return <RefreshCw size={20} />;
         default:
           return <AlertCircle size={20} />;
@@ -82,11 +76,11 @@ export function AuthGuard({
 
     const getErrorColor = () => {
       switch (error.type) {
-        case 'NETWORK_ERROR':
-        case 'TIMEOUT_ERROR':
-          return 'semantic.warning';
+        case "NETWORK_ERROR":
+        case "TIMEOUT_ERROR":
+          return "semantic.warning";
         default:
-          return 'semantic.error';
+          return "semantic.error";
       }
     };
 
@@ -98,7 +92,7 @@ export function AuthGuard({
           await refresh();
         }
       } catch (err) {
-        console.error('Retry failed:', err);
+        console.error("Retry failed:", err);
       }
     };
 
@@ -114,11 +108,14 @@ export function AuthGuard({
         >
           <VStack gap={3} align="stretch">
             <Flex align="center" gap={2}>
-              <Box color={getErrorColor()}>
-                {getErrorIcon()}
-              </Box>
+              <Box color={getErrorColor()}>{getErrorIcon()}</Box>
               <VStack gap={1} align="start" flex={1}>
-                <Text color={getErrorColor()} fontSize="sm" fontWeight="semibold" fontFamily="heading">
+                <Text
+                  color={getErrorColor()}
+                  fontSize="sm"
+                  fontWeight="semibold"
+                  fontFamily="heading"
+                >
                   認証エラー
                 </Text>
                 <Text color={getErrorColor()} fontSize="xs" fontFamily="body">
@@ -126,7 +123,7 @@ export function AuthGuard({
                 </Text>
               </VStack>
             </Flex>
-            
+
             <Flex gap={2} justify="stretch">
               <Button
                 size="sm"
@@ -145,11 +142,11 @@ export function AuthGuard({
                 <Flex align="center" gap={1}>
                   <RefreshCw size={12} />
                   <Text fontSize="xs">
-                    {error.isRetryable ? '再試行' : '更新'}
+                    {error.isRetryable ? "再試行" : "更新"}
                   </Text>
                 </Flex>
               </Button>
-              
+
               <Button
                 size="sm"
                 variant="ghost"
@@ -163,15 +160,20 @@ export function AuthGuard({
                 <Text fontSize="xs">閉じる</Text>
               </Button>
             </Flex>
-            
+
             {error.retryCount !== undefined && error.retryCount > 0 && (
-              <Text fontSize="xs" color="var(--text-muted)" textAlign="center" fontFamily="body">
+              <Text
+                fontSize="xs"
+                color="var(--text-muted)"
+                textAlign="center"
+                fontFamily="body"
+              >
                 再試行回数: {error.retryCount}/3
               </Text>
             )}
           </VStack>
         </Box>
-        
+
         {/* Show auth form as fallback when there's an error */}
         {showWhenUnauthenticated || <AuthForm />}
       </Box>
@@ -202,11 +204,7 @@ export function AuthGuard({
             >
               ログインが必要です
             </Text>
-            <Text
-              fontSize="sm"
-              color="var(--text-muted)"
-              fontFamily="body"
-            >
+            <Text fontSize="sm" color="var(--text-muted)" fontFamily="body">
               このコンテンツにアクセスするにはログインしてください
             </Text>
           </VStack>

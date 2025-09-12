@@ -3,7 +3,7 @@ import {
   sanitizeUrl,
   addSecurityAttributes,
   isExternalLink,
-} from '../../../src/utils/linkSafety';
+} from "../../../src/utils/linkSafety";
 
 // Mock window.location for testing
 Object.defineProperty(window, "location", {

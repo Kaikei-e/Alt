@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AuthAPIClient } from '@/lib/api/auth-client';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { AuthAPIClient } from "@/lib/api/auth-client";
 
 // Mock fetch for security tests
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe('Security Tests', () => {
+describe("Security Tests", () => {
   let authClient: AuthAPIClient;
 
   beforeEach(() => {
@@ -17,13 +17,14 @@ describe('Security Tests', () => {
     vi.clearAllMocks();
   });
 
-  describe('CSRF Protection', () => {
-    it('should include CSRF token in unsafe HTTP methods', async () => {
+  describe("CSRF Protection", () => {
+    it("should include CSRF token in unsafe HTTP methods", async () => {
       // Mock CSRF token retrieval
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'test-csrf-token' } }),
+          json: () =>
+            Promise.resolve({ data: { csrf_token: "test-csrf-token" } }),
         })
         // Mock actual request
         .mockResolvedValueOnce({
@@ -35,22 +36,22 @@ describe('Security Tests', () => {
 
       // Verify CSRF token was requested
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/auth/csrf'),
-        expect.objectContaining({ method: 'POST' })
+        expect.stringContaining("/api/auth/csrf"),
+        expect.objectContaining({ method: "POST" }),
       );
 
       // Verify CSRF token was included in the unsafe request
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/auth/logout'),
+        expect.stringContaining("/api/auth/logout"),
         expect.objectContaining({
           headers: expect.objectContaining({
-            'X-CSRF-Token': 'test-csrf-token',
+            "X-CSRF-Token": "test-csrf-token",
           }),
-        })
+        }),
       );
     });
 
-    it('should not include CSRF token for safe HTTP methods', async () => {
+    it("should not include CSRF token for safe HTTP methods", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ data: {} }),
@@ -60,22 +61,22 @@ describe('Security Tests', () => {
 
       // Should only make one call (no CSRF token request)
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      
+
       // Get the actual call to verify no CSRF token header
       const callArgs = mockFetch.mock.calls[0];
       const requestOptions = callArgs[1];
-      
-      expect(requestOptions.method).toBe('GET');
+
+      expect(requestOptions.method).toBe("GET");
       // Verify headers don't include CSRF token
       if (requestOptions.headers) {
-        expect(requestOptions.headers).not.toHaveProperty('X-CSRF-Token');
+        expect(requestOptions.headers).not.toHaveProperty("X-CSRF-Token");
       } else {
         // Headers may be undefined for safe methods
         expect(requestOptions.headers).toBeUndefined();
       }
     });
 
-    it('should proceed without CSRF token if retrieval fails', async () => {
+    it("should proceed without CSRF token if retrieval fails", async () => {
       // Mock CSRF token failure
       mockFetch
         .mockResolvedValueOnce({
@@ -94,14 +95,14 @@ describe('Security Tests', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch).toHaveBeenNthCalledWith(
         2,
-        expect.stringContaining('/api/auth/logout'),
-        expect.objectContaining({ method: 'POST' })
+        expect.stringContaining("/api/auth/logout"),
+        expect.objectContaining({ method: "POST" }),
       );
     });
   });
 
-  describe('Input Validation', () => {
-    it('should reject requests with potential XSS payloads', async () => {
+  describe("Input Validation", () => {
+    it("should reject requests with potential XSS payloads", async () => {
       const xssPayloads = [
         '<script>alert("xss")</script>',
         'javascript:alert("xss")',
@@ -110,20 +111,20 @@ describe('Security Tests', () => {
       ];
 
       // Mock window.location for test environment
-      Object.defineProperty(window, 'location', {
-        value: { href: '' },
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
         writable: true,
       });
 
       for (const payload of xssPayloads) {
         // Test with XSS payload in email field - should throw redirect error
         await expect(
-          authClient.completeLogin('flow-123', payload, 'password123')
-        ).rejects.toThrow('Login redirected to Kratos');
+          authClient.completeLogin("flow-123", payload, "password123"),
+        ).rejects.toThrow("Login redirected to Kratos");
       }
     });
 
-    it('should reject requests with potential SQL injection payloads', async () => {
+    it("should reject requests with potential SQL injection payloads", async () => {
       const sqlPayloads = [
         "'; DROP TABLE users; --",
         "' OR '1'='1",
@@ -133,37 +134,37 @@ describe('Security Tests', () => {
       ];
 
       // Mock window.location for test environment
-      Object.defineProperty(window, 'location', {
-        value: { href: '' },
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
         writable: true,
       });
 
       for (const payload of sqlPayloads) {
         // Test with SQL injection payload in email field - should throw redirect error
         await expect(
-          authClient.completeLogin('flow-123', payload, 'password123')
-        ).rejects.toThrow('Login redirected to Kratos');
+          authClient.completeLogin("flow-123", payload, "password123"),
+        ).rejects.toThrow("Login redirected to Kratos");
       }
     });
 
-    it('should handle oversized inputs gracefully', async () => {
+    it("should handle oversized inputs gracefully", async () => {
       // Create oversized input
-      const oversizedInput = 'a'.repeat(10000);
+      const oversizedInput = "a".repeat(10000);
 
       // Mock window.location for test environment
-      Object.defineProperty(window, 'location', {
-        value: { href: '' },
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
         writable: true,
       });
 
       await expect(
-        authClient.completeLogin('flow-123', oversizedInput, 'password123')
-      ).rejects.toThrow('Login redirected to Kratos');
+        authClient.completeLogin("flow-123", oversizedInput, "password123"),
+      ).rejects.toThrow("Login redirected to Kratos");
     });
   });
 
-  describe('Session Security', () => {
-    it('should include credentials in all auth requests', async () => {
+  describe("Session Security", () => {
+    it("should include credentials in all auth requests", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ data: {} }),
@@ -174,17 +175,17 @@ describe('Security Tests', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          credentials: 'include',
-        })
+          credentials: "include",
+        }),
       );
     });
 
-    it('should handle session timeout gracefully', async () => {
+    it("should handle session timeout gracefully", async () => {
       // Mock session timeout (401 response)
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
-        statusText: 'Unauthorized',
+        statusText: "Unauthorized",
       });
 
       const result = await authClient.getCurrentUser();
@@ -193,34 +194,38 @@ describe('Security Tests', () => {
       expect(result).toBeNull();
     });
 
-    it('should handle network errors gracefully', async () => {
+    it("should handle network errors gracefully", async () => {
       // Mock network error
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
-      await expect(authClient.getCurrentUser()).rejects.toThrow('Network error');
+      await expect(authClient.getCurrentUser()).rejects.toThrow(
+        "Network error",
+      );
     });
   });
 
-  describe('URL Security', () => {
-    it('should use secure base URL in production', () => {
+  describe("URL Security", () => {
+    it("should use secure base URL in production", () => {
       const originalEnv = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL;
-      
+
       // Test with HTTPS URL
-      process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = 'https://auth-service.example.com';
+      process.env.NEXT_PUBLIC_AUTH_SERVICE_URL =
+        "https://auth-service.example.com";
       const secureClient = new AuthAPIClient();
 
       // Private property access for testing
       const baseURL = (secureClient as unknown as { baseURL: string }).baseURL;
-      expect(baseURL).toBe('/api/auth');
-      
+      expect(baseURL).toBe("/api/auth");
+
       // Restore original env
       process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = originalEnv;
     });
 
-    it('should prevent URL manipulation attempts', async () => {
+    it("should prevent URL manipulation attempts", async () => {
       // Set proper base URL for this test
       const originalEnv = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL;
-      process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = 'https://auth-service.example.com';
+      process.env.NEXT_PUBLIC_AUTH_SERVICE_URL =
+        "https://auth-service.example.com";
 
       const testClient = new AuthAPIClient();
 
@@ -233,8 +238,8 @@ describe('Security Tests', () => {
 
       // Verify the URL construction doesn't allow path traversal
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/auth/validate'),
-        expect.any(Object)
+        expect.stringContaining("/api/auth/validate"),
+        expect.any(Object),
       );
 
       // Restore original env
@@ -242,13 +247,13 @@ describe('Security Tests', () => {
     });
   });
 
-  describe('Error Information Disclosure', () => {
-    it('should not expose sensitive information in error messages', async () => {
+  describe("Error Information Disclosure", () => {
+    it("should not expose sensitive information in error messages", async () => {
       // Test that our auth client sanitizes sensitive error information
       const sensitiveErrors = [
-        'Database connection failed: password=secret123',
-        'Internal server error: /etc/passwd not found',
-        'Authentication failed: user table locked',
+        "Database connection failed: password=secret123",
+        "Internal server error: /etc/passwd not found",
+        "Authentication failed: user table locked",
       ];
 
       for (const errorMsg of sensitiveErrors) {
@@ -257,58 +262,61 @@ describe('Security Tests', () => {
 
         try {
           await authClient.getCurrentUser();
-          expect.fail('Should have thrown an error');
+          expect.fail("Should have thrown an error");
         } catch (error: unknown) {
           // Our auth client should not pass through the original sensitive error
           // The actual implementation should sanitize these errors
           // For now, we expect the original error to be thrown (which indicates we need to fix this)
-          expect(error instanceof Error ? error.message : String(error)).toBe(errorMsg); // This shows the problem exists
+          expect(error instanceof Error ? error.message : String(error)).toBe(
+            errorMsg,
+          ); // This shows the problem exists
         }
       }
-      
+
       // This test shows we need to implement error sanitization in AuthAPIClient
       expect(true).toBe(true); // Test passes to show current behavior
     });
 
-    it('should provide user-friendly error messages', async () => {
+    it("should provide user-friendly error messages", async () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'test-csrf-token' } }),
+          json: () =>
+            Promise.resolve({ data: { csrf_token: "test-csrf-token" } }),
         })
         .mockResolvedValueOnce({
           ok: false,
           status: 500,
-          statusText: 'Internal Server Error',
+          statusText: "Internal Server Error",
         });
 
-      await expect(authClient.logout()).rejects.toThrow('POST /logout');
+      await expect(authClient.logout()).rejects.toThrow("POST /logout");
     });
   });
 
-  describe('Request Integrity', () => {
-    it('should handle redirect in completeLogin (current implementation)', async () => {
+  describe("Request Integrity", () => {
+    it("should handle redirect in completeLogin (current implementation)", async () => {
       // Mock window.location for test environment
-      Object.defineProperty(window, 'location', {
-        value: { href: '' },
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
         writable: true,
       });
 
       await expect(
-        authClient.completeLogin('flow-123', 'test@example.com', 'password123')
-      ).rejects.toThrow('Login redirected to Kratos');
+        authClient.completeLogin("flow-123", "test@example.com", "password123"),
+      ).rejects.toThrow("Login redirected to Kratos");
     });
 
-    it('should properly serialize request bodies', async () => {
+    it("should properly serialize request bodies", async () => {
       // Mock window.location for test environment
-      Object.defineProperty(window, 'location', {
-        value: { href: '' },
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
         writable: true,
       });
 
       await expect(
-        authClient.completeLogin('flow-123', 'test@example.com', 'password123')
-      ).rejects.toThrow('Login redirected to Kratos');
+        authClient.completeLogin("flow-123", "test@example.com", "password123"),
+      ).rejects.toThrow("Login redirected to Kratos");
     });
   });
 });

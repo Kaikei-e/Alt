@@ -59,11 +59,11 @@ export default function DesktopHome() {
         // TODO.md: 一時的にコメントアウトして500問題を特定
         // const data = await feedsApi.getFeedStats();
         // setFeedStats(data);
-        
+
         // Mock data for testing
         setFeedStats({
           feed_amount: { amount: 0 },
-          summarized_feed: { amount: 0 }
+          summarized_feed: { amount: 0 },
         });
       } catch (err) {
         setError("Unable to load statistics");

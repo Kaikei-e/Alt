@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
 import React from "react";
-import { useTheme } from '../../../src/hooks/useTheme';
+import { useTheme } from "../../../src/hooks/useTheme";
 import type { Theme } from "../../../src/types/theme";
-import { ThemeProvider } from '../../../src/providers/ThemeProvider';
+import { ThemeProvider } from "../../../src/providers/ThemeProvider";
 
 // Mock localStorage
 const mockLocalStorage = (() => {
@@ -25,7 +25,7 @@ Object.defineProperty(window, "localStorage", {
 });
 
 // Mock the ThemeContext itself
-vi.mock('../../../src/contexts/ThemeContext', () => ({
+vi.mock("../../../src/contexts/ThemeContext", () => ({
   ThemeContext: React.createContext({
     currentTheme: "vaporwave" as Theme,
     toggleTheme: vi.fn(),
@@ -47,7 +47,7 @@ describe("useTheme", () => {
   it("should return theme context when used within provider", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(ThemeProvider, null, children);
-    
+
     const { result } = renderHook(() => useTheme(), { wrapper });
 
     expect(result.current).toBeDefined();
@@ -58,7 +58,7 @@ describe("useTheme", () => {
   it("should not throw error when used with provider", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(ThemeProvider, null, children);
-      
+
     expect(() => {
       renderHook(() => useTheme(), { wrapper });
     }).not.toThrow();
@@ -67,7 +67,7 @@ describe("useTheme", () => {
   it("should have correct theme configuration", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(ThemeProvider, null, children);
-    
+
     const { result } = renderHook(() => useTheme(), { wrapper });
 
     expect(result.current.themeConfig).toHaveProperty("name");
@@ -78,7 +78,7 @@ describe("useTheme", () => {
   it("should provide toggle and set theme functions", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(ThemeProvider, null, children);
-    
+
     const { result } = renderHook(() => useTheme(), { wrapper });
 
     expect(typeof result.current.toggleTheme).toBe("function");

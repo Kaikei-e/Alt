@@ -1,6 +1,10 @@
-import { test as base, expect } from '@playwright/test';
-import { LoginPage, DesktopPage } from '../pages';
-import { setupBackendAPIMocks, setupAPIErrorMocks, setupSlowAPIMocks } from '../helpers/apiMocks';
+import { test as base, expect } from "@playwright/test";
+import { LoginPage, DesktopPage } from "../pages";
+import {
+  setupBackendAPIMocks,
+  setupAPIErrorMocks,
+  setupSlowAPIMocks,
+} from "../helpers/apiMocks";
 
 /**
  * Extended test fixtures with automatic API mocking
@@ -10,7 +14,7 @@ export const test = base.extend<{
   // Page objects
   loginPage: LoginPage;
   desktopPage: DesktopPage;
-  
+
   // API mocking helpers
   mockAPI: boolean;
   errorAPI: boolean;
@@ -20,7 +24,7 @@ export const test = base.extend<{
     const loginPage = new LoginPage(page);
     await use(loginPage);
   },
-  
+
   desktopPage: async ({ page }, use) => {
     const desktopPage = new DesktopPage(page);
     await use(desktopPage);
@@ -28,10 +32,10 @@ export const test = base.extend<{
 
   // Auto-setup normal API mocks (default: true)
   mockAPI: [true, { option: true }],
-  
-  // Auto-setup error API mocks (default: false)  
+
+  // Auto-setup error API mocks (default: false)
   errorAPI: [false, { option: true }],
-  
+
   // Auto-setup slow API mocks (default: false)
   slowAPI: [false, { option: true }],
 
@@ -45,7 +49,7 @@ export const test = base.extend<{
     } else if (slowAPI) {
       await setupSlowAPIMocks(page);
     }
-    
+
     await use(page);
   },
 });
@@ -80,4 +84,4 @@ export const slowTest = test.extend({
   slowAPI: true,
 });
 
-export { expect } from '@playwright/test';
+export { expect } from "@playwright/test";

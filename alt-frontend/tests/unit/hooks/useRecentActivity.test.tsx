@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { useRecentActivity } from '../../../src/hooks/useRecentActivity';
+import { useRecentActivity } from "../../../src/hooks/useRecentActivity";
 import { feedsApi } from "@/lib/api";
 
 // Mock the auth context directly with a simple authenticated user

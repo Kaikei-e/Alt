@@ -18,13 +18,13 @@ export { serverFetch } from "./utils/serverFetch";
 const cacheManager = new CacheManager(defaultCacheConfig);
 const loginBanner = new LoginBanner();
 const authInterceptor = new AuthInterceptor({
-  onAuthRequired: () => loginBanner.show()
+  onAuthRequired: () => loginBanner.show(),
 });
 
 export const apiClient = new ApiClient(
   defaultApiConfig,
   cacheManager,
-  authInterceptor
+  authInterceptor,
 );
 
 const feedsApiInstance = new FeedsApi(apiClient);
@@ -48,8 +48,10 @@ export const feedsApi = {
 
   // Feed management
   registerRssFeed: feedsApiInstance.registerRssFeed.bind(feedsApiInstance),
-  registerFavoriteFeed: feedsApiInstance.registerFavoriteFeed.bind(feedsApiInstance),
-  updateFeedReadStatus: feedsApiInstance.updateFeedReadStatus.bind(feedsApiInstance),
+  registerFavoriteFeed:
+    feedsApiInstance.registerFavoriteFeed.bind(feedsApiInstance),
+  updateFeedReadStatus:
+    feedsApiInstance.updateFeedReadStatus.bind(feedsApiInstance),
 
   // Article summaries
   getArticleSummary: feedsApiInstance.getArticleSummary.bind(feedsApiInstance),
@@ -62,14 +64,16 @@ export const feedsApi = {
   // Statistics
   getFeedStats: feedsApiInstance.getFeedStats.bind(feedsApiInstance),
   getFeedStatsSSR: feedsApiInstance.getFeedStatsSSR.bind(feedsApiInstance),
-  getTodayUnreadCount: feedsApiInstance.getTodayUnreadCount.bind(feedsApiInstance),
+  getTodayUnreadCount:
+    feedsApiInstance.getTodayUnreadCount.bind(feedsApiInstance),
 
   // Tags
   fetchFeedTags: feedsApiInstance.fetchFeedTags.bind(feedsApiInstance),
 
   // Prefetch methods
   prefetchFeeds: feedsApiInstance.prefetchFeeds.bind(feedsApiInstance),
-  prefetchFavoriteFeeds: feedsApiInstance.prefetchFavoriteFeeds.bind(feedsApiInstance),
+  prefetchFavoriteFeeds:
+    feedsApiInstance.prefetchFavoriteFeeds.bind(feedsApiInstance),
   prefetchReadFeeds: feedsApiInstance.prefetchReadFeeds.bind(feedsApiInstance),
 
   // Desktop API methods
@@ -77,7 +81,8 @@ export const feedsApi = {
   getTestFeeds: desktopApiInstance.getTestFeeds.bind(desktopApiInstance),
   toggleFavorite: desktopApiInstance.toggleFavorite.bind(desktopApiInstance),
   toggleBookmark: desktopApiInstance.toggleBookmark.bind(desktopApiInstance),
-  getRecentActivity: desktopApiInstance.getRecentActivity.bind(desktopApiInstance),
+  getRecentActivity:
+    desktopApiInstance.getRecentActivity.bind(desktopApiInstance),
   getWeeklyStats: desktopApiInstance.getWeeklyStats.bind(desktopApiInstance),
 
   // Cache management

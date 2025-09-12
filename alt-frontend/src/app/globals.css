@@ -23,7 +23,7 @@
   --alt-ash: #999999;
 
   /* --- Swappable Theme Colors --- */
-  --alt-primary: #2F4F4F; /* Defaults to Liquid-Beige */
+  --alt-primary: #2f4f4f; /* Defaults to Liquid-Beige */
   --alt-secondary: #696969;
   --alt-tertiary: #808080;
 
@@ -189,9 +189,9 @@
 /* 2-C ▸ Alt-Paper Theme (Newspaper/Instapaper Style) */
 [data-style="alt-paper"] {
   /* Swappable theme colors */
-  --alt-primary: #2F4F4F;    /* ダークスレートグレー */
-  --alt-secondary: #696969;  /* ディムグレー */
-  --alt-tertiary: #808080;   /* グレー */
+  --alt-primary: #2f4f4f; /* ダークスレートグレー */
+  --alt-secondary: #696969; /* ディムグレー */
+  --alt-tertiary: #808080; /* グレー */
 
   /* Paper properties - no glass effects, solid backgrounds */
   --surface-bg: #dedede;

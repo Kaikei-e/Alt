@@ -1,6 +1,11 @@
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage } from './BasePage';
-import { waitForFormReady, safeClick, safeFill, waitForTextContent } from '../utils/waitConditions';
+import { Page, Locator, expect } from "@playwright/test";
+import { BasePage } from "./BasePage";
+import {
+  waitForFormReady,
+  safeClick,
+  safeFill,
+  waitForTextContent,
+} from "../utils/waitConditions";
 
 /**
  * Login page object model
@@ -14,10 +19,12 @@ export class LoginPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.emailInput = this.page.getByLabel('Email');
-    this.passwordInput = this.page.getByLabel('Password');
-    this.signInButton = this.page.getByRole('button', { name: /sign in/i });
-    this.errorMessage = this.page.locator('[data-testid="error-message"], .error-message');
+    this.emailInput = this.page.getByLabel("Email");
+    this.passwordInput = this.page.getByLabel("Password");
+    this.signInButton = this.page.getByRole("button", { name: /sign in/i });
+    this.errorMessage = this.page.locator(
+      '[data-testid="error-message"], .error-message',
+    );
     this.loadingIndicator = this.page.getByText(/loading/i);
   }
 
@@ -25,14 +32,14 @@ export class LoginPage extends BasePage {
    * Navigate to login page
    */
   async navigateToLogin() {
-    await this.goto('/auth/login');
+    await this.goto("/auth/login");
   }
 
   /**
    * Wait for login form to be ready
    */
   async waitForForm(timeout = 10000) {
-    await waitForFormReady(this.page, 'form', timeout);
+    await waitForFormReady(this.page, "form", timeout);
     await this.waitForElement(this.emailInput, { timeout });
     await this.waitForElement(this.passwordInput, { timeout });
     await this.waitForElement(this.signInButton, { timeout });
@@ -62,7 +69,7 @@ export class LoginPage extends BasePage {
   /**
    * Complete login flow with credentials
    */
-  async login(email = 'test@example.com', password = 'password123') {
+  async login(email = "test@example.com", password = "password123") {
     await this.waitForForm();
     await this.fillEmail(email);
     await this.fillPassword(password);
@@ -104,7 +111,11 @@ export class LoginPage extends BasePage {
   /**
    * Complete full login flow and wait for success
    */
-  async performLogin(email = 'test@example.com', password = 'password123', expectedUrl?: string | RegExp) {
+  async performLogin(
+    email = "test@example.com",
+    password = "password123",
+    expectedUrl?: string | RegExp,
+  ) {
     await this.login(email, password);
     await this.waitForLoginSuccess(expectedUrl);
   }
@@ -113,7 +124,9 @@ export class LoginPage extends BasePage {
    * Verify login page elements are present
    */
   async verifyLoginPageElements() {
-    await expect(this.page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+    await expect(
+      this.page.getByRole("heading", { name: "Welcome back" }),
+    ).toBeVisible();
     await expect(this.emailInput).toBeVisible();
     await expect(this.passwordInput).toBeVisible();
     await expect(this.signInButton).toBeVisible();

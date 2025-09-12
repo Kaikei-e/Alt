@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 import {
   Box,
   Button,
@@ -10,16 +10,17 @@ import {
   HStack,
   Spinner,
   Progress,
-} from '@chakra-ui/react';
-import { Settings, LogOut, Clock, Activity } from 'lucide-react';
-import { useAuth } from '@/contexts/auth-context';
+} from "@chakra-ui/react";
+import { Settings, LogOut, Clock, Activity } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 interface UserProfileProps {
   onLogout?: () => void;
 }
 
 export function UserProfile({ onLogout }: UserProfileProps) {
-  const { user, logout, isLoading, lastActivity, sessionTimeout, refresh } = useAuth();
+  const { user, logout, isLoading, lastActivity, sessionTimeout, refresh } =
+    useAuth();
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
 
@@ -28,16 +29,18 @@ export function UserProfile({ onLogout }: UserProfileProps) {
     if (lastActivity && sessionTimeout) {
       const updateTimeRemaining = () => {
         const now = new Date();
-        const minutesSinceLastActivity = Math.floor((now.getTime() - lastActivity.getTime()) / (1000 * 60));
+        const minutesSinceLastActivity = Math.floor(
+          (now.getTime() - lastActivity.getTime()) / (1000 * 60),
+        );
         const remaining = sessionTimeout - minutesSinceLastActivity;
-        
+
         setTimeRemaining(Math.max(0, remaining));
         setShowTimeoutWarning(remaining <= 5 && remaining > 0); // Show warning when 5 minutes or less remain
       };
 
       // Update immediately
       updateTimeRemaining();
-      
+
       // Update every minute
       const interval = setInterval(updateTimeRemaining, 60000);
       return () => clearInterval(interval);
@@ -53,7 +56,7 @@ export function UserProfile({ onLogout }: UserProfileProps) {
       await logout();
       onLogout?.();
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
     }
   };
 
@@ -61,18 +64,23 @@ export function UserProfile({ onLogout }: UserProfileProps) {
     try {
       await refresh();
     } catch (error) {
-      console.error('Session refresh error:', error);
+      console.error("Session refresh error:", error);
     }
   };
 
   const getUserInitials = (name?: string, email?: string) => {
     if (name) {
-      return name.split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2);
+      return name
+        .split(" ")
+        .map((word) => word[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
     }
     if (email) {
       return email[0].toUpperCase();
     }
-    return 'U';
+    return "U";
   };
 
   return (
@@ -126,13 +134,9 @@ export function UserProfile({ onLogout }: UserProfileProps) {
                 color="var(--text-primary)"
                 fontFamily="heading"
               >
-                {user.name || 'ユーザー'}
+                {user.name || "ユーザー"}
               </Text>
-              <Text
-                fontSize="sm"
-                color="var(--text-muted)"
-                fontFamily="body"
-              >
+              <Text fontSize="sm" color="var(--text-muted)" fontFamily="body">
                 {user.email}
               </Text>
             </VStack>
@@ -155,13 +159,19 @@ export function UserProfile({ onLogout }: UserProfileProps) {
               <Activity size={10} />
               ログイン中
             </Box>
-            
+
             {sessionTimeout && timeRemaining > 0 && (
               <Box
-                bg={showTimeoutWarning ? "semantic.warning" : "var(--alt-glass)"}
+                bg={
+                  showTimeoutWarning ? "semantic.warning" : "var(--alt-glass)"
+                }
                 color={showTimeoutWarning ? "white" : "var(--text-muted)"}
                 border="1px solid"
-                borderColor={showTimeoutWarning ? "semantic.warning" : "var(--alt-glass-border)"}
+                borderColor={
+                  showTimeoutWarning
+                    ? "semantic.warning"
+                    : "var(--alt-glass-border)"
+                }
                 fontSize="xs"
                 px={2}
                 py={1}
@@ -230,10 +240,7 @@ export function UserProfile({ onLogout }: UserProfileProps) {
               colorPalette={showTimeoutWarning ? "orange" : "blue"}
               size="sm"
             >
-              <Progress.Track
-                bg="var(--alt-glass)"
-                borderRadius="full"
-              >
+              <Progress.Track bg="var(--alt-glass)" borderRadius="full">
                 <Progress.Range />
               </Progress.Track>
             </Progress.Root>

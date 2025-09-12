@@ -3,10 +3,10 @@
  * Implements strategy pattern for HTML, text, and markdown rendering
  * XPLAN11: 2025 Best Practices - React 19 + Next.js 15 Compatible
  */
-import React from 'react';
-import { ReactNode } from 'react';
-import { ContentType, analyzeContent } from './contentTypeDetector';
-import DOMPurify from 'isomorphic-dompurify';
+import React from "react";
+import { ReactNode } from "react";
+import { ContentType, analyzeContent } from "./contentTypeDetector";
+import DOMPurify from "isomorphic-dompurify";
 
 // DOMPurify config interface for type safety
 interface DOMPurifyConfig {
@@ -37,23 +37,56 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   render(content: string): ReactNode {
     // Step 1: Decode HTML entities BEFORE sanitization (XPLAN11 solution)
     const decodedHTML = this.decodeHtmlEntities(content);
-    
+
     // Step 2: Sanitize with isomorphic-dompurify (SSR-safe)
     const sanitizedHTML = DOMPurify.sanitize(decodedHTML, {
       ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span', 'div',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li',
-        'a', 'img',
-        'blockquote', 'pre', 'code',
-        'table', 'thead', 'tbody', 'tr', 'td', 'th'
+        "p",
+        "br",
+        "strong",
+        "b",
+        "em",
+        "i",
+        "u",
+        "span",
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "ul",
+        "ol",
+        "li",
+        "a",
+        "img",
+        "blockquote",
+        "pre",
+        "code",
+        "table",
+        "thead",
+        "tbody",
+        "tr",
+        "td",
+        "th",
       ],
       ALLOWED_ATTR: [
-        'href', 'target', 'rel',
-        'src', 'alt', 'title',
-        'class', 'id', 'style',
-        'width', 'height', 'loading',
-        'data-proxy-url', 'onload', 'onerror' // Allow proxy attributes
+        "href",
+        "target",
+        "rel",
+        "src",
+        "alt",
+        "title",
+        "class",
+        "id",
+        "style",
+        "width",
+        "height",
+        "loading",
+        "data-proxy-url",
+        "onload",
+        "onerror", // Allow proxy attributes
       ],
       ALLOW_DATA_ATTR: true, // Enable data attributes for proxy functionality
       ALLOWED_URI_REGEXP: /^(https?:\/\/|data:)/i, // Allow data URLs
@@ -61,13 +94,9 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 
     // Step 3: Enhanced HTML with custom CSS for images and links
     const enhancedHTML = this.enhanceHTMLElements(sanitizedHTML);
-    
+
     // Step 4: Return using dangerouslySetInnerHTML with proxy image handler
-    return (
-      <HTMLContentRenderer 
-        html={enhancedHTML}
-      />
-    );
+    return <HTMLContentRenderer html={enhancedHTML} />;
   }
 
   /**
@@ -76,8 +105,8 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
    */
   public decodeHtmlEntities(str: string): string {
     // Input validation for security
-    if (!str || typeof str !== 'string') {
-      return '';
+    if (!str || typeof str !== "string") {
+      return "";
     }
 
     try {
@@ -86,32 +115,31 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
         ALLOWED_TAGS: [], // Remove all HTML tags
         KEEP_CONTENT: true, // Keep text content of removed tags
       });
-      
+
       // Now safely decode HTML entities with correct order (ampersand last)
       return sanitized
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&copy;/g, '©')
-        .replace(/&reg;/g, '®')
-        .replace(/&trade;/g, '™')
-        .replace(/&amp;/g, '&'); // CRITICAL: Decode &amp; LAST to prevent double-decoding
-        
+        .replace(/&nbsp;/g, " ")
+        .replace(/&copy;/g, "©")
+        .replace(/&reg;/g, "®")
+        .replace(/&trade;/g, "™")
+        .replace(/&amp;/g, "&"); // CRITICAL: Decode &amp; LAST to prevent double-decoding
     } catch (error) {
       // Fallback: If DOMPurify fails, use safe manual decoding with correct order
-      console.warn('DOMPurify decoding failed:', error);
+      console.warn("DOMPurify decoding failed:", error);
       return str
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&copy;/g, '©')
-        .replace(/&reg;/g, '®')
-        .replace(/&trade;/g, '™')
-        .replace(/&amp;/g, '&'); // CRITICAL: Decode &amp; LAST to prevent double-decoding
+        .replace(/&nbsp;/g, " ")
+        .replace(/&copy;/g, "©")
+        .replace(/&reg;/g, "®")
+        .replace(/&trade;/g, "™")
+        .replace(/&amp;/g, "&"); // CRITICAL: Decode &amp; LAST to prevent double-decoding
     }
   }
 
@@ -121,24 +149,33 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
    * Fixed: Proper URL decoding order to prevent double encoding
    */
   private enhanceHTMLElements(html: string): string {
-    return html
-      // Step 1: Convert external image URLs to proxy URLs (COEP bypass)
-      .replace(/<img([^>]*?)src="([^"]*?)"([^>]*?)>/gi, (match, before, src, after) => {
-        // Fix: Decode HTML entities BEFORE converting to proxy URL
-        const decodedSrc = this.decodeHtmlEntitiesFromUrl(src);
-        const proxiedSrc = this.convertToProxyUrl(decodedSrc);
-        
-        // If this is a proxy URL, add special attributes for lazy loading (CSP compliant - no inline handlers)
-        if (proxiedSrc.startsWith('data:image/proxy,')) {
-          const originalUrl = decodeURIComponent(proxiedSrc.replace('data:image/proxy,', ''));
-          return `<img${before}src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${originalUrl}" data-fallback-src="${this.escapeHtml(decodedSrc)}"${after} loading="lazy" style="opacity:0;transition:opacity 0.3s" class="proxy-image">`;
-        }
-        
-        return `<img${before}src="${proxiedSrc}"${after} loading="lazy">`;
-      })
-      // Step 2: Add security attributes to all links
-      .replace(/<a([^>]*?)href="([^"]*?)"([^>]*?)>/gi, 
-        '<a$1href="$2"$3 target="_blank" rel="noopener noreferrer nofollow">');
+    return (
+      html
+        // Step 1: Convert external image URLs to proxy URLs (COEP bypass)
+        .replace(
+          /<img([^>]*?)src="([^"]*?)"([^>]*?)>/gi,
+          (match, before, src, after) => {
+            // Fix: Decode HTML entities BEFORE converting to proxy URL
+            const decodedSrc = this.decodeHtmlEntitiesFromUrl(src);
+            const proxiedSrc = this.convertToProxyUrl(decodedSrc);
+
+            // If this is a proxy URL, add special attributes for lazy loading (CSP compliant - no inline handlers)
+            if (proxiedSrc.startsWith("data:image/proxy,")) {
+              const originalUrl = decodeURIComponent(
+                proxiedSrc.replace("data:image/proxy,", ""),
+              );
+              return `<img${before}src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${originalUrl}" data-fallback-src="${this.escapeHtml(decodedSrc)}"${after} loading="lazy" style="opacity:0;transition:opacity 0.3s" class="proxy-image">`;
+            }
+
+            return `<img${before}src="${proxiedSrc}"${after} loading="lazy">`;
+          },
+        )
+        // Step 2: Add security attributes to all links
+        .replace(
+          /<a([^>]*?)href="([^"]*?)"([^>]*?)>/gi,
+          '<a$1href="$2"$3 target="_blank" rel="noopener noreferrer nofollow">',
+        )
+    );
   }
 
   /**
@@ -150,39 +187,44 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   private convertToProxyUrl(imageUrl: string): string {
     try {
       // Performance: Skip obviously local or data URLs
-      if (imageUrl.startsWith('data:') || 
-          imageUrl.startsWith('/') || 
-          imageUrl.startsWith('./') || 
-          imageUrl.startsWith('../')) {
+      if (
+        imageUrl.startsWith("data:") ||
+        imageUrl.startsWith("/") ||
+        imageUrl.startsWith("./") ||
+        imageUrl.startsWith("../")
+      ) {
         return imageUrl;
       }
 
       // Parse URL
       const url = new URL(imageUrl);
-      
+
       // Performance: Skip localhost or local development URLs
-      if (url.hostname === 'localhost' || 
-          url.hostname.includes('127.0.0.1') || 
-          url.hostname.includes('192.168.') ||
-          url.hostname.includes('10.0.') ||
-          url.hostname.endsWith('.local')) {
+      if (
+        url.hostname === "localhost" ||
+        url.hostname.includes("127.0.0.1") ||
+        url.hostname.includes("192.168.") ||
+        url.hostname.includes("10.0.") ||
+        url.hostname.endsWith(".local")
+      ) {
         return imageUrl;
       }
-      
+
       // Define allowed external domains that need proxy (cached for performance)
       const externalDomains = this.getExternalDomainList();
-      
+
       // Check if this is an external domain that needs proxying
-      const needsProxy = externalDomains.some(domain => 
-        url.hostname === domain || url.hostname.endsWith('.' + domain)
+      const needsProxy = externalDomains.some(
+        (domain) =>
+          url.hostname === domain || url.hostname.endsWith("." + domain),
       );
-      
+
       // Only proxy HTTPS URLs from allowed domains
-      if (needsProxy && url.protocol === 'https:') {
+      if (needsProxy && url.protocol === "https:") {
         // Performance: Add URL validation for common image formats
         const validImagePath = this.isValidImagePath(url.pathname);
         if (!validImagePath) {
-          console.debug('Skipping proxy for non-image URL:', imageUrl);
+          console.debug("Skipping proxy for non-image URL:", imageUrl);
           return imageUrl;
         }
 
@@ -190,28 +232,31 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
         // This approach ensures we don't make the API call during HTML parsing
         // The actual fetching will happen when the image is loaded
         const proxyImageUrl = this.createProxyImageUrl(imageUrl);
-        
+
         // Debug logging in development
-        if (process.env.NODE_ENV === 'development') {
-          console.debug('Converting image URL to POST API proxy:', {
+        if (process.env.NODE_ENV === "development") {
+          console.debug("Converting image URL to POST API proxy:", {
             original: imageUrl,
             proxy: proxyImageUrl,
-            domain: url.hostname
+            domain: url.hostname,
           });
         }
-        
+
         return proxyImageUrl;
       }
-      
+
       // Return original URL for local or non-proxied images
       return imageUrl;
-      
     } catch (error) {
       // Enhanced error handling with different error types
-      if (error instanceof TypeError && error.message.includes('Invalid URL')) {
-        console.warn('Invalid URL format for proxy conversion:', imageUrl);
+      if (error instanceof TypeError && error.message.includes("Invalid URL")) {
+        console.warn("Invalid URL format for proxy conversion:", imageUrl);
       } else {
-        console.warn('Failed to parse image URL for proxy conversion:', imageUrl, error);
+        console.warn(
+          "Failed to parse image URL for proxy conversion:",
+          imageUrl,
+          error,
+        );
       }
       return imageUrl;
     }
@@ -226,7 +271,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   private createProxyImageUrl(originalUrl: string): string {
     // Encode the original URL to make it safe for use as a data attribute
     const encodedOriginalUrl = encodeURIComponent(originalUrl);
-    
+
     // Return a special URL format that our image load handler can recognize
     // Format: data:image/proxy,<encoded-original-url>
     return `data:image/proxy,${encodedOriginalUrl}`;
@@ -240,20 +285,20 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     // Static cache to avoid repeated array creation
     if (!HTMLRenderingStrategy.externalDomainsCache) {
       HTMLRenderingStrategy.externalDomainsCache = [
-        '9to5mac.com',
-        'techcrunch.com', 
-        'arstechnica.com',
-        'theverge.com',
-        'engadget.com',
-        'wired.com',
-        'cdn.mos.cms.futurecdn.net',
-        'images.unsplash.com',
-        'img.youtube.com',
+        "9to5mac.com",
+        "techcrunch.com",
+        "arstechnica.com",
+        "theverge.com",
+        "engadget.com",
+        "wired.com",
+        "cdn.mos.cms.futurecdn.net",
+        "images.unsplash.com",
+        "img.youtube.com",
         // Additional common image domains
-        'i.imgur.com',
-        'pbs.twimg.com',
-        'images.pexels.com',
-        'cdn.pixabay.com'
+        "i.imgur.com",
+        "pbs.twimg.com",
+        "images.pexels.com",
+        "cdn.pixabay.com",
       ];
     }
     return HTMLRenderingStrategy.externalDomainsCache;
@@ -267,17 +312,17 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   private isValidImagePath(pathname: string): boolean {
     const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff)(\?|$)/i;
     const imageKeywords = /(image|img|photo|picture|avatar|thumb|logo)/i;
-    
+
     // Check file extension first (most reliable)
     if (imageExtensions.test(pathname)) {
       return true;
     }
-    
+
     // Check for image-related keywords in path
     if (imageKeywords.test(pathname)) {
       return true;
     }
-    
+
     // Default to true for paths that might be dynamic image URLs
     return true;
   }
@@ -292,11 +337,11 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
    */
   private escapeHtml(str: string): string {
     return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   /**
@@ -307,28 +352,33 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
    */
   public decodeHtmlEntitiesFromUrl(url: string): string {
     // Input validation for security
-    if (!url || typeof url !== 'string') {
-      return '';
+    if (!url || typeof url !== "string") {
+      return "";
     }
 
     // SECURITY: Block dangerous URL schemes immediately
-    const dangerousSchemes = /^(javascript|vbscript|data:text\/html|file|ftp):/i;
+    const dangerousSchemes =
+      /^(javascript|vbscript|data:text\/html|file|ftp):/i;
     const trimmedUrl = url.trim();
-    if (dangerousSchemes.test(trimmedUrl) || trimmedUrl.startsWith('data:text/html,')) {
-      return ''; // Block completely
+    if (
+      dangerousSchemes.test(trimmedUrl) ||
+      trimmedUrl.startsWith("data:text/html,")
+    ) {
+      return ""; // Block completely
     }
 
     // SECURITY: Block URLs containing suspicious patterns even when encoded
-    const suspiciousPatterns = /alert\(|eval\(|document\.|window\.|location\.|<script|<iframe|onerror=|onload=/i;
+    const suspiciousPatterns =
+      /alert\(|eval\(|document\.|window\.|location\.|<script|<iframe|onerror=|onload=/i;
     if (suspiciousPatterns.test(url)) {
-      return ''; // Block URLs containing suspicious JavaScript patterns
+      return ""; // Block URLs containing suspicious JavaScript patterns
     }
 
     // SECURITY FIX: Use DOMPurify to sanitize before decoding
     const sanitized = DOMPurify.sanitize(url, {
       ALLOWED_TAGS: [], // No HTML tags allowed in URLs
       KEEP_CONTENT: true, // Keep text content
-      FORBID_ATTR: ['onclick', 'onload', 'onerror', 'onmouseover', 'onfocus'], // Block event handlers
+      FORBID_ATTR: ["onclick", "onload", "onerror", "onmouseover", "onfocus"], // Block event handlers
     });
 
     // Use secure HTML entity decoding with SSR compatibility
@@ -336,29 +386,31 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       let decoded: string;
 
       // Check if we're in a browser environment
-      if (typeof document !== 'undefined') {
+      if (typeof document !== "undefined") {
         // Browser environment: Use DOM for safe decoding
-        const textarea = document.createElement('textarea');
+        const textarea = document.createElement("textarea");
         textarea.innerHTML = sanitized;
         decoded = textarea.value;
       } else {
         // Server environment: Use a more comprehensive but safe decoding approach
         // First, handle numeric entities that could be used for obfuscation
         let temp = sanitized;
-        
+
         // SECURITY: Check if the string contains patterns that could form dangerous schemes when decoded
-        const potentiallyDangerous = /&#(106|106;|97|97;|118|118;|115|115;|99|99;|114|114;|105|105;|112|112;|116|116;|58|58;)/i.test(temp) ||
-                                    /&#x(6[aA]|61|76|73|63|72|69|70|74|3[aA])/i.test(temp);
-        
+        const potentiallyDangerous =
+          /&#(106|106;|97|97;|118|118;|115|115;|99|99;|114|114;|105|105;|112|112;|116|116;|58|58;)/i.test(
+            temp,
+          ) || /&#x(6[aA]|61|76|73|63|72|69|70|74|3[aA])/i.test(temp);
+
         if (potentiallyDangerous) {
           // Don't decode numeric entities that could spell out dangerous schemes
           // Just decode basic named entities
           decoded = temp
             .replace(/&quot;/g, '"')
             .replace(/&#39;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&');
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&amp;/g, "&");
         } else {
           // Safe to decode numeric entities
           // Decode common numeric entities safely (limited set for security)
@@ -370,7 +422,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
             }
             return match; // Keep original if outside safe range
           });
-          
+
           // Decode hexadecimal entities safely
           temp = temp.replace(/&#x([0-9a-fA-F]+);/g, (match, hexCode) => {
             const code = parseInt(hexCode, 16);
@@ -380,37 +432,42 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
             }
             return match; // Keep original if outside safe range
           });
-          
+
           // Decode named entities
           decoded = temp
             .replace(/&quot;/g, '"')
             .replace(/&#39;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&'); // Decode & last to prevent double-decoding
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&amp;/g, "&"); // Decode & last to prevent double-decoding
         }
       }
 
       // Final validation: check again for dangerous schemes after decoding
       const decodedTrimmed = decoded.trim();
-      if (dangerousSchemes.test(decodedTrimmed) || decodedTrimmed.startsWith('data:text/html,')) {
-        return ''; // Block if dangerous scheme appears after decoding
+      if (
+        dangerousSchemes.test(decodedTrimmed) ||
+        decodedTrimmed.startsWith("data:text/html,")
+      ) {
+        return ""; // Block if dangerous scheme appears after decoding
       }
 
       // Additional validation: block if malicious patterns appear
       const maliciousPatterns = /<script|<iframe|onerror=|onload=|javascript:/i;
       if (maliciousPatterns.test(decoded)) {
-        return ''; // Block malicious patterns
+        return ""; // Block malicious patterns
       }
 
       return decoded;
     } catch (error) {
       // If any error occurs during decoding, return empty string for security
-      console.warn('Security warning: URL decoding failed, returning empty string', error);
-      return '';
+      console.warn(
+        "Security warning: URL decoding failed, returning empty string",
+        error,
+      );
+      return "";
     }
   }
-
 }
 
 /**
@@ -420,24 +477,26 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 export class TextRenderingStrategy implements RenderingStrategy {
   shouldUse(content: string, declaredType?: string): boolean {
     const analysis = analyzeContent(content, declaredType);
-    return analysis.type === ContentType.TEXT || analysis.type === ContentType.PLAIN;
+    return (
+      analysis.type === ContentType.TEXT || analysis.type === ContentType.PLAIN
+    );
   }
 
   render(content: string): ReactNode {
     // Split content into paragraphs and preserve line breaks
     const paragraphs = content
       .split(/\n\s*\n/) // Split on double line breaks
-      .map(paragraph => paragraph.trim())
-      .filter(paragraph => paragraph.length > 0);
+      .map((paragraph) => paragraph.trim())
+      .filter((paragraph) => paragraph.length > 0);
 
     return (
-      <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>
+      <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.7" }}>
         {paragraphs.map((paragraph, index) => (
-          <p key={index} style={{ marginBottom: '1em' }}>
-            {paragraph.split('\n').map((line, lineIndex) => (
+          <p key={index} style={{ marginBottom: "1em" }}>
+            {paragraph.split("\n").map((line, lineIndex) => (
               <span key={lineIndex}>
                 {line}
-                {lineIndex < paragraph.split('\n').length - 1 && <br />}
+                {lineIndex < paragraph.split("\n").length - 1 && <br />}
               </span>
             ))}
           </p>
@@ -461,30 +520,33 @@ export class MarkdownRenderingStrategy implements RenderingStrategy {
     // Basic markdown-to-HTML conversion
     let html = content
       // Headers
-      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+      .replace(/^### (.*$)/gim, "<h3>$1</h3>")
+      .replace(/^## (.*$)/gim, "<h2>$1</h2>")
+      .replace(/^# (.*$)/gim, "<h1>$1</h1>")
       // Bold and italic
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.*?)\*/g, "<em>$1</em>")
       // Links
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(
+        /\[([^\]]+)\]\(([^)]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+      )
       // Line breaks
-      .replace(/\n/g, '<br />');
+      .replace(/\n/g, "<br />");
 
     // Sanitize the converted HTML with isomorphic-dompurify
     const sanitizedHTML = DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ['h1', 'h2', 'h3', 'strong', 'em', 'a', 'br', 'p'],
-      ALLOWED_ATTR: ['href', 'target', 'rel'],
+      ALLOWED_TAGS: ["h1", "h2", "h3", "strong", "em", "a", "br", "p"],
+      ALLOWED_ATTR: ["href", "target", "rel"],
     });
 
     return (
-      <div 
+      <div
         className="smart-content-markdown"
         dangerouslySetInnerHTML={{ __html: sanitizedHTML }}
         style={{
-          lineHeight: '1.7',
-          color: 'var(--text-primary)'
+          lineHeight: "1.7",
+          color: "var(--text-primary)",
         }}
       />
     );
@@ -514,7 +576,7 @@ export class RenderingStrategyRegistry {
         return strategy;
       }
     }
-    
+
     // Fallback to text strategy
     return new TextRenderingStrategy();
   }
@@ -527,7 +589,11 @@ export class RenderingStrategyRegistry {
    */
   render(content: string, declaredType?: string): ReactNode {
     if (!content || content.trim().length === 0) {
-      return <span style={{ fontStyle: 'italic', color: '#888' }}>No content available</span>;
+      return (
+        <span style={{ fontStyle: "italic", color: "#888" }}>
+          No content available
+        </span>
+      );
     }
 
     const strategy = this.selectStrategy(content, declaredType);
@@ -553,42 +619,45 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
     if (!containerRef.current) return;
 
     const container = containerRef.current;
-    const proxyImages = container.querySelectorAll('img[data-proxy-url]');
+    const proxyImages = container.querySelectorAll("img[data-proxy-url]");
 
     // Setup CSP-compliant event handlers for proxy images
     const setupImageEventHandlers = (img: HTMLImageElement) => {
-      const originalUrl = img.getAttribute('data-proxy-url');
-      const fallbackSrc = img.getAttribute('data-fallback-src');
-      
+      const originalUrl = img.getAttribute("data-proxy-url");
+      const fallbackSrc = img.getAttribute("data-fallback-src");
+
       if (!originalUrl) return;
 
       // Success handler
       const handleImageLoad = () => {
-        img.style.opacity = '1';
-        img.removeAttribute('data-proxy-url');
-        img.removeAttribute('data-fallback-src');
-        img.removeEventListener('load', handleImageLoad);
-        img.removeEventListener('error', handleImageError);
+        img.style.opacity = "1";
+        img.removeAttribute("data-proxy-url");
+        img.removeAttribute("data-fallback-src");
+        img.removeEventListener("load", handleImageLoad);
+        img.removeEventListener("error", handleImageError);
       };
 
       // Error handler with fallback
       const handleImageError = () => {
-        console.warn('Proxy image load failed, falling back to original URL:', originalUrl);
+        console.warn(
+          "Proxy image load failed, falling back to original URL:",
+          originalUrl,
+        );
         if (fallbackSrc) {
           img.src = fallbackSrc;
         }
-        img.removeAttribute('data-proxy-url');
-        img.removeAttribute('data-fallback-src');
-        img.style.opacity = '1';
-        img.style.border = '2px solid #ff6b6b';
-        img.title = 'Failed to load via proxy, showing original image';
-        img.removeEventListener('load', handleImageLoad);
-        img.removeEventListener('error', handleImageError);
+        img.removeAttribute("data-proxy-url");
+        img.removeAttribute("data-fallback-src");
+        img.style.opacity = "1";
+        img.style.border = "2px solid #ff6b6b";
+        img.title = "Failed to load via proxy, showing original image";
+        img.removeEventListener("load", handleImageLoad);
+        img.removeEventListener("error", handleImageError);
       };
 
       // Attach event handlers
-      img.addEventListener('load', handleImageLoad);
-      img.addEventListener('error', handleImageError);
+      img.addEventListener("load", handleImageLoad);
+      img.addEventListener("error", handleImageError);
     };
 
     // Setup intersection observer for lazy loading
@@ -597,8 +666,8 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             const img = entry.target as HTMLImageElement;
-            const originalUrl = img.getAttribute('data-proxy-url');
-            
+            const originalUrl = img.getAttribute("data-proxy-url");
+
             if (originalUrl) {
               imageObserver.unobserve(img);
               // Setup event handlers first
@@ -609,14 +678,14 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
           }
         }
       },
-      { 
-        rootMargin: '50px', // Start loading images 50px before they come into view
-        threshold: 0.1 
-      }
+      {
+        rootMargin: "50px", // Start loading images 50px before they come into view
+        threshold: 0.1,
+      },
     );
 
     // Observe all proxy images
-    proxyImages.forEach(img => {
+    proxyImages.forEach((img) => {
       imageObserver.observe(img);
     });
 
@@ -624,10 +693,10 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
     return () => {
       imageObserver.disconnect();
       // Clean up any remaining event listeners
-      proxyImages.forEach(img => {
+      proxyImages.forEach((img) => {
         const imgElement = img as HTMLImageElement;
-        imgElement.removeEventListener('load', () => {});
-        imgElement.removeEventListener('error', () => {});
+        imgElement.removeEventListener("load", () => {});
+        imgElement.removeEventListener("error", () => {});
       });
     };
   }, [html]);
@@ -635,22 +704,64 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
   // SECURITY FIX: Sanitize HTML before using dangerouslySetInnerHTML
   const sanitizedHtml = React.useMemo(() => {
     return DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre'],
-      ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'target', 'rel'],
-      FORBID_ATTR: ['onclick', 'onload', 'onerror', 'onmouseover', 'onmouseout', 'onfocus', 'onblur'],
-      FORBID_TAGS: ['script', 'object', 'embed', 'form', 'input', 'textarea', 'button', 'select', 'option']
+      ALLOWED_TAGS: [
+        "p",
+        "br",
+        "strong",
+        "b",
+        "em",
+        "i",
+        "u",
+        "a",
+        "img",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "ul",
+        "ol",
+        "li",
+        "blockquote",
+        "code",
+        "pre",
+      ],
+      ALLOWED_ATTR: ["href", "src", "alt", "title", "target", "rel"],
+      FORBID_ATTR: [
+        "onclick",
+        "onload",
+        "onerror",
+        "onmouseover",
+        "onmouseout",
+        "onfocus",
+        "onblur",
+      ],
+      FORBID_TAGS: [
+        "script",
+        "object",
+        "embed",
+        "form",
+        "input",
+        "textarea",
+        "button",
+        "select",
+        "option",
+      ],
     });
   }, [html]);
 
   return (
-    <div 
+    <div
       ref={containerRef}
       className="smart-content-html"
       dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-      style={{
-        lineHeight: '1.7',
-        color: 'var(--text-primary)'
-      } as React.CSSProperties}
+      style={
+        {
+          lineHeight: "1.7",
+          color: "var(--text-primary)",
+        } as React.CSSProperties
+      }
     />
   );
 };
@@ -660,49 +771,54 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
  * @param img - Image element to update
  * @param originalUrl - Original image URL to fetch
  */
-async function loadProxyImage(img: HTMLImageElement, originalUrl: string): Promise<void> {
+async function loadProxyImage(
+  img: HTMLImageElement,
+  originalUrl: string,
+): Promise<void> {
   try {
     // Show loading state
-    img.style.opacity = '0.5';
+    img.style.opacity = "0.5";
 
     // Make POST request to our image proxy endpoint via /api prefix
-    const response = await fetch('/api/backend/v1/images/fetch', {
-      method: 'POST',
+    const response = await fetch("/api/backend/v1/images/fetch", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         url: originalUrl,
         options: {
           max_size: 5 * 1024 * 1024, // 5MB max
-          timeout: 30 // 30 seconds timeout
-        }
-      })
+          timeout: 30, // 30 seconds timeout
+        },
+      }),
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Failed to fetch image: ${response.status} ${response.statusText}`,
+      );
     }
 
     // Get the binary image data
     const imageBlob = await response.blob();
-    
+
     // Validate that we actually got image data
-    if (!imageBlob.type.startsWith('image/')) {
+    if (!imageBlob.type.startsWith("image/")) {
       throw new Error(`Invalid content type: ${imageBlob.type}`);
     }
-    
+
     const imageUrl = URL.createObjectURL(imageBlob);
 
     // Update the image source - this will trigger the event handlers set up earlier
     img.src = imageUrl;
 
     // Debug logging in development
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('Successfully loaded proxy image:', {
+    if (process.env.NODE_ENV === "development") {
+      console.debug("Successfully loaded proxy image:", {
         original: originalUrl,
         size: imageBlob.size,
-        type: imageBlob.type
+        type: imageBlob.type,
       });
     }
 
@@ -710,19 +826,21 @@ async function loadProxyImage(img: HTMLImageElement, originalUrl: string): Promi
     const cleanupObjectUrl = () => {
       URL.revokeObjectURL(imageUrl);
     };
-    
-    // Use addEventListener instead of onload property (CSP compliant)
-    img.addEventListener('load', cleanupObjectUrl, { once: true });
-    img.addEventListener('error', cleanupObjectUrl, { once: true });
 
+    // Use addEventListener instead of onload property (CSP compliant)
+    img.addEventListener("load", cleanupObjectUrl, { once: true });
+    img.addEventListener("error", cleanupObjectUrl, { once: true });
   } catch (error) {
-    console.error('Failed to load proxy image:', originalUrl, error);
-    
+    console.error("Failed to load proxy image:", originalUrl, error);
+
     // Trigger error handler by setting a non-existent src
     // This will cause the error event handler to fire, which will handle fallback
-    img.src = 'data:image/gif;base64,invalid';
-    
+    img.src = "data:image/gif;base64,invalid";
+
     // Store error details for debugging
-    img.setAttribute('data-proxy-error', error instanceof Error ? error.message : 'Unknown error');
+    img.setAttribute(
+      "data-proxy-error",
+      error instanceof Error ? error.message : "Unknown error",
+    );
   }
 }

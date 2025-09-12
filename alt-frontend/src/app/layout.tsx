@@ -6,8 +6,8 @@ import { headers, cookies } from "next/headers";
 
 // REPORT.md恒久対応: App Router 動的ルーティング安定化設定
 // Next.js App Router 404バグ対策: 明示的ISR無効化でルーティング安定化
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Alt - AI-powered RSS reader",

@@ -3,14 +3,14 @@
  * Intelligently determines the format of content for optimal rendering
  */
 
-import { sanitizeContent } from './contentSanitizer';
-import DOMPurify from 'isomorphic-dompurify';
+import { sanitizeContent } from "./contentSanitizer";
+import DOMPurify from "isomorphic-dompurify";
 
 export enum ContentType {
-  HTML = 'html',
-  TEXT = 'text',
-  MARKDOWN = 'markdown',
-  PLAIN = 'plain'
+  HTML = "html",
+  TEXT = "text",
+  MARKDOWN = "markdown",
+  PLAIN = "plain",
 }
 
 /**
@@ -19,7 +19,10 @@ export enum ContentType {
  * @param declaredType - Optional declared content type from API
  * @returns The detected ContentType
  */
-export const detectContentType = (content: string, declaredType?: string): ContentType => {
+export const detectContentType = (
+  content: string,
+  declaredType?: string,
+): ContentType => {
   // 1. Use declared type if explicitly provided and valid
   if (declaredType) {
     const normalizedType = declaredType.toLowerCase();
@@ -35,15 +38,15 @@ export const detectContentType = (content: string, declaredType?: string): Conte
 
   // 3. Check for Markdown patterns
   const markdownPatterns = [
-    /^#{1,6}\s/m,           // Headers
-    /^\*\s|\*\*.*\*\*/m,    // Bold/Lists  
-    /\[.*\]\(.*\)/,         // Links
-    /^>\s/m,                // Blockquotes
-    /```[\s\S]*?```/,       // Code blocks
-    /^\d+\.\s/m,            // Ordered lists
+    /^#{1,6}\s/m, // Headers
+    /^\*\s|\*\*.*\*\*/m, // Bold/Lists
+    /\[.*\]\(.*\)/, // Links
+    /^>\s/m, // Blockquotes
+    /```[\s\S]*?```/, // Code blocks
+    /^\d+\.\s/m, // Ordered lists
   ];
 
-  const hasMarkdown = markdownPatterns.some(pattern => pattern.test(content));
+  const hasMarkdown = markdownPatterns.some((pattern) => pattern.test(content));
   if (hasMarkdown) {
     return ContentType.MARKDOWN;
   }
@@ -58,7 +61,7 @@ export const detectContentType = (content: string, declaredType?: string): Conte
  * @returns True if HTML tags are found
  */
 function hasHtmlTags(content: string): boolean {
-  if (!content || typeof content !== 'string') {
+  if (!content || typeof content !== "string") {
     return false;
   }
 
@@ -68,11 +71,11 @@ function hasHtmlTags(content: string): boolean {
 
   for (let i = 0; i < maxScanLength; i++) {
     const char = content[i];
-    
-    if (char === '<') {
+
+    if (char === "<") {
       inTag = true;
       tagChars = 0;
-    } else if (char === '>' && inTag) {
+    } else if (char === ">" && inTag) {
       // Found complete tag - check if it looks like a valid HTML tag
       if (tagChars > 0) {
         return true;
@@ -109,19 +112,19 @@ function safeRegexTest(content: string, patterns: RegExp[]): boolean {
     return false;
   }
 
-  return patterns.some(pattern => {
+  return patterns.some((pattern) => {
     try {
       // Add timeout protection for regex execution
       const startTime = performance.now();
       const result = pattern.test(content);
       const duration = performance.now() - startTime;
-      
+
       // If regex takes too long (potential ReDoS), assume no match
       if (duration > 10) {
         console.warn(`Regex took too long: ${duration}ms`);
         return false;
       }
-      
+
       return result;
     } catch (error) {
       // If regex fails, assume no match
@@ -135,8 +138,8 @@ function safeRegexTest(content: string, patterns: RegExp[]): boolean {
  * Uses existing contentSanitizer for secure processing
  */
 function safeStripHtml(content: string): string {
-  if (!content || typeof content !== 'string') {
-    return '';
+  if (!content || typeof content !== "string") {
+    return "";
   }
 
   try {
@@ -144,20 +147,20 @@ function safeStripHtml(content: string): string {
     const sanitized = sanitizeContent(content, {
       allowedTags: [], // Remove all tags
       allowedAttributes: {},
-      maxLength: content.length + 100 // Don't truncate for word counting
+      maxLength: content.length + 100, // Don't truncate for word counting
     });
 
     // Further clean any remaining HTML entities and normalize whitespace
     return sanitized
-      .replace(/&[#\w]+;/g, ' ') // Remove HTML entities
-      .replace(/\s+/g, ' ') // Normalize whitespace
+      .replace(/&[#\w]+;/g, " ") // Remove HTML entities
+      .replace(/\s+/g, " ") // Normalize whitespace
       .trim();
   } catch (error) {
     // Fallback to safe character-based cleaning if library fails
     return content
-      .replace(/[<>]/g, ' ') // Replace brackets with spaces
-      .replace(/&[#\w]+;/g, ' ') // Remove HTML entities
-      .replace(/\s+/g, ' ')
+      .replace(/[<>]/g, " ") // Replace brackets with spaces
+      .replace(/&[#\w]+;/g, " ") // Remove HTML entities
+      .replace(/\s+/g, " ")
       .trim();
   }
 }
@@ -169,7 +172,7 @@ function safeStripHtml(content: string): string {
  * @returns True if content needs sanitization
  */
 export const needsSanitization = (content: string): boolean => {
-  if (!content || typeof content !== 'string') {
+  if (!content || typeof content !== "string") {
     return false;
   }
 
@@ -177,16 +180,33 @@ export const needsSanitization = (content: string): boolean => {
     // Use DOMPurify to sanitize content and compare with original
     // If they differ, the content contained dangerous elements
     const sanitized = DOMPurify.sanitize(content, {
-      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'i', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-      ALLOWED_ATTR: ['href', 'title'],
+      ALLOWED_TAGS: [
+        "p",
+        "br",
+        "strong",
+        "em",
+        "u",
+        "i",
+        "a",
+        "ul",
+        "ol",
+        "li",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+      ],
+      ALLOWED_ATTR: ["href", "title"],
       KEEP_CONTENT: true,
     });
-    
+
     // Content needs sanitization if DOMPurify modified it
     return content !== sanitized;
   } catch (error) {
     // If DOMPurify fails, assume content needs sanitization for safety
-    console.warn('DOMPurify sanitization failed:', error);
+    console.warn("DOMPurify sanitization failed:", error);
     return true;
   }
 };
@@ -206,8 +226,11 @@ export interface ContentAnalysis {
   estimatedReadingTime: number; // in minutes
 }
 
-export const analyzeContent = (content: string, declaredType?: string): ContentAnalysis => {
-  if (!content || typeof content !== 'string') {
+export const analyzeContent = (
+  content: string,
+  declaredType?: string,
+): ContentAnalysis => {
+  if (!content || typeof content !== "string") {
     return {
       type: ContentType.TEXT,
       hasImages: false,
@@ -220,36 +243,38 @@ export const analyzeContent = (content: string, declaredType?: string): ContentA
   }
 
   const type = detectContentType(content, declaredType);
-  
+
   // SECURITY FIX: Use safer regex patterns to prevent ReDoS
   const hasImages = safeRegexTest(content, [
     /<img\b[^>]*>/gi, // Safe: matches img tag without ReDoS risk
-    /!\[.*?\]\(.*?\)/g // Safe: non-greedy match for markdown images
+    /!\[.*?\]\(.*?\)/g, // Safe: non-greedy match for markdown images
   ]);
-  
+
   const hasLinks = safeRegexTest(content, [
     /<a\b[^>]*>/gi, // Safe: matches a tag without ReDoS risk
-    /\[.*?\]\(.*?\)/g // Safe: non-greedy match for markdown links
+    /\[.*?\]\(.*?\)/g, // Safe: non-greedy match for markdown links
   ]);
-  
+
   const hasLists = safeRegexTest(content, [
     /<[uo]l\b[^>]*>/gi, // Safe: matches list tags without ReDoS risk
-    /^\s*[-*+]\s/m // Safe: matches markdown list items
+    /^\s*[-*+]\s/m, // Safe: matches markdown list items
   ]);
-  
+
   // SECURITY FIX: Use safe HTML stripping to prevent ReDoS vulnerability
   const textOnly = safeStripHtml(content);
-  
+
   // Fix empty string word count issue
-  const wordCount = textOnly ? textOnly.split(/\s+/).filter(word => word.length > 0).length : 0;
-  
+  const wordCount = textOnly
+    ? textOnly.split(/\s+/).filter((word) => word.length > 0).length
+    : 0;
+
   // Average reading speed: 200 words per minute
   const estimatedReadingTime = Math.max(1, Math.ceil(wordCount / 200));
 
   return {
     type,
     hasImages,
-    hasLinks, 
+    hasLinks,
     hasLists,
     wordCount,
     needsSanitization: needsSanitization(content),

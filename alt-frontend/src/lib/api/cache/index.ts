@@ -1,6 +1,6 @@
-export { 
-  CacheManager, 
+export {
+  CacheManager,
   defaultCacheConfig,
   type CacheConfig,
-  type CacheEntry 
+  type CacheEntry,
 } from "./CacheManager";

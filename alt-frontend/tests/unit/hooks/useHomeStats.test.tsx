@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { useHomeStats } from '../../../src/hooks/useHomeStats';
+import { useHomeStats } from "../../../src/hooks/useHomeStats";
 import { feedsApi } from "@/lib/api";
 
 // Mock the auth context directly with a simple authenticated user
@@ -60,7 +60,9 @@ describe("useHomeStats", () => {
       summarized_feed: { amount: 18 },
     };
 
-    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    const { useTodayUnreadCount } = await import(
+      "../../../src/hooks/useTodayUnreadCount"
+    );
     vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 156,
       isLoading: false,
@@ -80,7 +82,9 @@ describe("useHomeStats", () => {
   });
 
   it("should handle API error gracefully", async () => {
-    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    const { useTodayUnreadCount } = await import(
+      "../../../src/hooks/useTodayUnreadCount"
+    );
     vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 0,
       isLoading: false,
@@ -104,7 +108,9 @@ describe("useHomeStats", () => {
       summarized_feed: { amount: 18 },
     };
 
-    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    const { useTodayUnreadCount } = await import(
+      "../../../src/hooks/useTodayUnreadCount"
+    );
     vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 156,
       isLoading: false,
@@ -131,7 +137,9 @@ describe("useHomeStats", () => {
       summarized_feed: { amount: 18 },
     };
 
-    const { useTodayUnreadCount } = await import("../../../src/hooks/useTodayUnreadCount");
+    const { useTodayUnreadCount } = await import(
+      "../../../src/hooks/useTodayUnreadCount"
+    );
     vi.mocked(useTodayUnreadCount).mockReturnValue({
       count: 156,
       isLoading: false,

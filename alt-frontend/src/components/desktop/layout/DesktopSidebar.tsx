@@ -23,9 +23,12 @@ import {
 import NextLink from "next/link";
 
 // Icon resolver function to avoid Server/Client boundary issues
-const getIconComponent = (iconName?: string, defaultIcon?: React.ComponentType<{ size?: number }>) => {
+const getIconComponent = (
+  iconName?: string,
+  defaultIcon?: React.ComponentType<{ size?: number }>,
+) => {
   if (defaultIcon) return defaultIcon;
-  
+
   switch (iconName) {
     case "Home":
       return Home;
@@ -486,7 +489,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 borderColor: "var(--alt-primary)",
               }}
             >
-              <Icon as={getIconComponent(item.iconName, item.icon)} boxSize={5} />
+              <Icon
+                as={getIconComponent(item.iconName, item.icon)}
+                boxSize={5}
+              />
               <Text fontSize="sm" fontWeight="medium">
                 {item.label}
               </Text>

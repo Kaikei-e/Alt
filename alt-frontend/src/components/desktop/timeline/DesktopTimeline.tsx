@@ -331,7 +331,9 @@ const DesktopStyledFeedCard = ({
           <HStack gap={2}>
             <Text fontSize="xs" color="var(--text-muted)">
               {(() => {
-                const d = new Date(feed.published || feed.metadata?.publishedAt || "");
+                const d = new Date(
+                  feed.published || feed.metadata?.publishedAt || "",
+                );
                 return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
               })()}
             </Text>

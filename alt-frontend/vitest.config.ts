@@ -8,9 +8,7 @@ export default mergeConfig(
     test: {
       globals: true,
       environment: "jsdom",
-      include: [
-        "tests/unit/**/*.test.{ts,tsx}"
-      ],
+      include: ["tests/unit/**/*.test.{ts,tsx}"],
       exclude: [
         "node_modules",
         "dist",
@@ -19,7 +17,7 @@ export default mergeConfig(
         "**/*.spec.ts",
         // Exclude middleware tests (they have their own config)
         "tests/unit/middleware.test.ts",
-        "tests/unit/lib/server-fetch.test.ts"
+        "tests/unit/lib/server-fetch.test.ts",
       ],
       setupFiles: ["./vitest.setup.ts"],
       env: {
@@ -36,13 +34,13 @@ export default mergeConfig(
       teardownTimeout: 10000,
 
       // Force single-threaded execution for stability
-      pool: 'forks',
+      pool: "forks",
       poolOptions: {
         forks: {
           singleFork: true,
           maxForks: 1,
           minForks: 1,
-        }
+        },
       },
 
       // Sequential test execution
@@ -67,7 +65,7 @@ export default mergeConfig(
       retry: process.env.CI ? 1 : 0,
 
       // Reporter optimization for CI
-      reporters: process.env.CI ? ['verbose'] : ['default'],
+      reporters: process.env.CI ? ["verbose"] : ["default"],
     },
-  })
+  }),
 );

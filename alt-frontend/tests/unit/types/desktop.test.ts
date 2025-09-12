@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { StatsCardData, ActivityData, QuickActionData } from "../../../src/types/desktop";
+import {
+  StatsCardData,
+  ActivityData,
+  QuickActionData,
+} from "../../../src/types/desktop";
 
 describe("Desktop Types", () => {
   it("should define StatsCardData interface correctly", () => {

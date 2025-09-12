@@ -6,7 +6,9 @@ test.describe("ActivityFeed Component - PROTECTED", () => {
     // Navigate to a test page that renders the ActivityFeed component
     await page.goto("/test/activity-feed");
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForSelector('[data-testid="activity-feed"]', { timeout: 10000 });
+    await page.waitForSelector('[data-testid="activity-feed"]', {
+      timeout: 10000,
+    });
   });
 
   test("should render with glass effect and header (PROTECTED)", async ({

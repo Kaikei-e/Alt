@@ -1,17 +1,10 @@
 "use client";
 
-import { ReactNode } from 'react';
-import {
-  Box,
-  VStack,
-  Text,
-  Button,
-  Flex,
-  Spinner,
-} from '@chakra-ui/react';
-import { Lock, ArrowLeft, Home } from 'lucide-react';
-import { useAuth } from '@/contexts/auth-context';
-import { AuthForm } from './AuthForm';
+import { ReactNode } from "react";
+import { Box, VStack, Text, Button, Flex, Spinner } from "@chakra-ui/react";
+import { Lock, ArrowLeft, Home } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
+import { AuthForm } from "./AuthForm";
 
 interface PrivateRouteProps {
   children: ReactNode;
@@ -63,13 +56,10 @@ export function PrivateRoute({
             opacity={0.3}
             pointerEvents="none"
           />
-          
+
           <Box position="relative" zIndex={1}>
             <VStack gap={4}>
-              <Spinner
-                size="xl"
-                color="var(--alt-primary)"
-              />
+              <Spinner size="xl" color="var(--alt-primary)" />
               <Text
                 color="var(--text-primary)"
                 fontSize="md"
@@ -119,7 +109,7 @@ export function PrivateRoute({
               opacity={0.3}
               pointerEvents="none"
             />
-            
+
             <Box position="relative" zIndex={1}>
               <VStack gap={6} textAlign="center">
                 <Box
@@ -135,7 +125,7 @@ export function PrivateRoute({
                 >
                   <Lock size={24} />
                 </Box>
-                
+
                 <VStack gap={2}>
                   <Text
                     fontSize="xl"
@@ -154,7 +144,7 @@ export function PrivateRoute({
                     このコンテンツにアクセスするには、ログインまたはアカウント作成が必要です
                   </Text>
                 </VStack>
-                
+
                 {error && (
                   <Box
                     bg="var(--alt-glass)"
@@ -165,17 +155,22 @@ export function PrivateRoute({
                     w="full"
                     maxW="400px"
                   >
-                    <Text color="semantic.error" fontSize="sm" fontFamily="body" textAlign="center">
+                    <Text
+                      color="semantic.error"
+                      fontSize="sm"
+                      fontFamily="body"
+                      textAlign="center"
+                    >
                       {error.message}
                     </Text>
                   </Box>
                 )}
               </VStack>
-              
+
               <Box mt={6} maxW="400px" mx="auto">
                 <AuthForm onSuccess={() => window.location.reload()} />
               </Box>
-              
+
               <VStack gap={3} mt={6}>
                 <Button
                   variant="ghost"
@@ -198,7 +193,7 @@ export function PrivateRoute({
                     戻る
                   </Flex>
                 </Button>
-                
+
                 <Button
                   variant="ghost"
                   w="full"
@@ -208,7 +203,7 @@ export function PrivateRoute({
                   borderColor="var(--alt-glass-border)"
                   color="var(--text-primary)"
                   fontFamily="body"
-                  onClick={() => window.location.href = '/'}
+                  onClick={() => (window.location.href = "/")}
                   _hover={{
                     bg: "var(--alt-glass)",
                     borderColor: "var(--alt-primary)",
@@ -226,7 +221,7 @@ export function PrivateRoute({
         </Box>
       );
     }
-    
+
     return fallback || null;
   }
 
@@ -255,7 +250,7 @@ export function PrivateRoute({
             opacity={0.3}
             pointerEvents="none"
           />
-          
+
           <Box position="relative" zIndex={1}>
             <VStack gap={6} textAlign="center">
               <Box
@@ -271,7 +266,7 @@ export function PrivateRoute({
               >
                 <Lock size={24} />
               </Box>
-              
+
               <VStack gap={2}>
                 <Text
                   fontSize="xl"
@@ -287,17 +282,14 @@ export function PrivateRoute({
                   fontFamily="body"
                   maxW="400px"
                 >
-                  このコンテンツにアクセスするには「{requiredRole}」権限が必要です
+                  このコンテンツにアクセスするには「{requiredRole}
+                  」権限が必要です
                 </Text>
-                <Text
-                  fontSize="xs"
-                  color="var(--text-muted)"
-                  fontFamily="body"
-                >
-                  現在の権限: {user.role || '未設定'}
+                <Text fontSize="xs" color="var(--text-muted)" fontFamily="body">
+                  現在の権限: {user.role || "未設定"}
                 </Text>
               </VStack>
-              
+
               <VStack gap={3} w="full" maxW="400px">
                 <Button
                   variant="outline"
@@ -319,7 +311,7 @@ export function PrivateRoute({
                     戻る
                   </Flex>
                 </Button>
-                
+
                 <Button
                   variant="outline"
                   w="full"
@@ -328,7 +320,7 @@ export function PrivateRoute({
                   borderColor="var(--alt-glass-border)"
                   color="var(--text-primary)"
                   fontFamily="body"
-                  onClick={() => window.location.href = '/'}
+                  onClick={() => (window.location.href = "/")}
                   _hover={{
                     bg: "var(--alt-glass)",
                     borderColor: "var(--alt-primary)",
@@ -355,7 +347,7 @@ export function PrivateRoute({
 // Higher-order component for wrapping pages
 export function withPrivateRoute<P extends object>(
   WrappedComponent: React.ComponentType<P>,
-  options?: Omit<PrivateRouteProps, 'children'>
+  options?: Omit<PrivateRouteProps, "children">,
 ) {
   return function PrivateRouteWrapper(props: P) {
     return (
@@ -369,11 +361,10 @@ export function withPrivateRoute<P extends object>(
 // Hook for checking authentication status in components
 export function usePrivateRoute(requiredRole?: string) {
   const { user, isAuthenticated, isLoading } = useAuth();
-  
-  const hasAccess = isAuthenticated && 
-    user && 
-    (!requiredRole || user.role === requiredRole);
-  
+
+  const hasAccess =
+    isAuthenticated && user && (!requiredRole || user.role === requiredRole);
+
   return {
     hasAccess,
     isAuthenticated,
@@ -385,6 +376,6 @@ export function usePrivateRoute(requiredRole?: string) {
       if (!isAuthenticated || !user) return false;
       if (!role) return true;
       return user.role === role;
-    }
+    },
   };
 }

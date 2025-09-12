@@ -1,7 +1,11 @@
-import { useState, useEffect } from 'react';
-import { LoginFlow } from '@ory/client';
-import { kratos } from '@/lib/kratos';
-import { isFlowExpiredError, handleFlowExpiredError, getFlowErrorMessage } from '@/lib/kratos-errors';
+import { useState, useEffect } from "react";
+import { LoginFlow } from "@ory/client";
+import { kratos } from "@/lib/kratos";
+import {
+  isFlowExpiredError,
+  handleFlowExpiredError,
+  getFlowErrorMessage,
+} from "@/lib/kratos-errors";
 
 export function useKratosFlow(flowId: string) {
   const [flow, setFlow] = useState<LoginFlow | null>(null);
@@ -16,15 +20,15 @@ export function useKratosFlow(flowId: string) {
         setFlow(response.data);
         setError(null);
       } catch (err) {
-        console.error('Failed to fetch login flow:', err);
-        
+        console.error("Failed to fetch login flow:", err);
+
         if (isFlowExpiredError(err)) {
           setError(getFlowErrorMessage(err));
           // 410エラーの場合は自動的にリダイレクト
           handleFlowExpiredError(err);
           return;
         }
-        
+
         setError(getFlowErrorMessage(err));
       } finally {
         setLoading(false);

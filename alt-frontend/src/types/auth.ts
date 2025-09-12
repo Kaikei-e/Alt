@@ -1,7 +1,7 @@
 // Auth types for Ory Kratos integration
 
 export interface UserPreferences {
-  theme?: 'light' | 'dark' | 'system';
+  theme?: "light" | "dark" | "system";
   language?: string;
   notifications?: boolean;
   [key: string]: unknown;
@@ -12,7 +12,7 @@ export interface User {
   tenantId: string;
   email: string;
   name?: string;
-  role: 'admin' | 'user' | 'readonly';
+  role: "admin" | "user" | "readonly";
   preferences?: UserPreferences;
   createdAt: string;
   lastLoginAt?: string;
@@ -54,8 +54,8 @@ export interface UINodeAttributes {
 }
 
 export interface UINode {
-  type: 'input' | 'img' | 'a' | 'script' | 'text';
-  group: 'default' | 'password' | 'oidc' | 'lookup_secret';
+  type: "input" | "img" | "a" | "script" | "text";
+  group: "default" | "password" | "oidc" | "lookup_secret";
   attributes: UINodeAttributes;
   messages?: Message[];
 }
@@ -63,7 +63,7 @@ export interface UINode {
 export interface Message {
   id: number;
   text: string;
-  type: 'info' | 'error' | 'success';
+  type: "info" | "error" | "success";
 }
 
 export interface CSRFToken {

@@ -1,10 +1,10 @@
-import { Configuration, FrontendApi } from '@ory/client';
+import { Configuration, FrontendApi } from "@ory/client";
 
 const kratosConfig = new Configuration({
-  basePath: '/ory',
+  basePath: "/ory",
   baseOptions: {
-    credentials: 'include'
-  }
+    credentials: "include",
+  },
 });
 
 export const kratos = new FrontendApi(kratosConfig);

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { feedsApi, apiClient, ApiClientError, serverFetch } from '../../../src/api";
+import {
+  feedsApi,
+  apiClient,
+  ApiClientError,
+  serverFetch,
+} from "../../../src/api";
 
 describe("API Integration", () => {
   it("should export all required API components", () => {

@@ -17,7 +17,6 @@ const FeedCard = function FeedCard({
   isReadStatus,
   setIsReadStatus,
 }: FeedCardProps) {
-
   // Memoize expensive description truncation calculation
   const truncatedDescription = useMemo(
     () => truncateFeedDescription(feed.description),

@@ -22,14 +22,16 @@ export class ApiClient {
   constructor(
     config: ApiConfig = defaultApiConfig,
     cacheManager?: CacheManager,
-    authInterceptor?: AuthInterceptor
+    authInterceptor?: AuthInterceptor,
   ) {
     this.config = config;
     this.cacheManager = cacheManager || new CacheManager(defaultCacheConfig);
     this.loginBanner = new LoginBanner();
-    this.authInterceptor = authInterceptor || new AuthInterceptor({
-      onAuthRequired: () => this.loginBanner.show()
-    });
+    this.authInterceptor =
+      authInterceptor ||
+      new AuthInterceptor({
+        onAuthRequired: () => this.loginBanner.show(),
+      });
   }
 
   async get<T>(endpoint: string, cacheTtl: number = 5): Promise<T> {
@@ -60,7 +62,7 @@ export class ApiClient {
         },
       ).then(async (response) => {
         const interceptedResponse = await this.authInterceptor.intercept(
-          response, 
+          response,
           `${this.config.baseUrl}${endpoint}`,
           {
             method: "GET",
@@ -70,7 +72,7 @@ export class ApiClient {
               "Accept-Encoding": "gzip, deflate, br",
             },
             keepalive: true,
-          }
+          },
         );
         return interceptedResponse.json();
       });
@@ -118,7 +120,7 @@ export class ApiClient {
           },
           body: JSON.stringify(data),
           keepalive: true,
-        }
+        },
       );
 
       const result = await interceptedResponse.json();
@@ -153,12 +155,12 @@ export class ApiClient {
 
     // SSR Cookie handling
     let enhancedOptions = { ...options };
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       try {
-        const { cookies } = await import('next/headers');
+        const { cookies } = await import("next/headers");
         const cookieStore = await cookies();
         const cookieHeader = cookieStore.toString();
-        
+
         enhancedOptions.headers = {
           ...enhancedOptions.headers,
           cookie: cookieHeader,
@@ -171,7 +173,7 @@ export class ApiClient {
     try {
       const response = await fetch(url, {
         ...enhancedOptions,
-        credentials: 'include',
+        credentials: "include",
         signal: controller.signal,
       });
 

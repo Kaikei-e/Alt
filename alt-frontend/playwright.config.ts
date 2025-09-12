@@ -5,13 +5,13 @@ import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.test" });
 
 const isCI = !!process.env.CI;
-const shardIndex = Number(process.env.PW_SHARD_INDEX || '1');
-const mockPort = Number(process.env.PW_MOCK_PORT || '4545');
-const appPort = Number(process.env.PW_APP_PORT || '3010');
+const shardIndex = Number(process.env.PW_SHARD_INDEX || "1");
+const mockPort = Number(process.env.PW_MOCK_PORT || "4545");
+const appPort = Number(process.env.PW_APP_PORT || "3010");
 
 export default defineConfig({
   testMatch: /.*\.spec\.ts/,
-  globalSetup: './playwright.setup.ts',
+  globalSetup: "./playwright.setup.ts",
 
   // Increase timeout for auth-heavy tests
   timeout: 60 * 1000,
@@ -31,14 +31,11 @@ export default defineConfig({
   // Enhanced reporting configuration
   reporter: process.env.CI
     ? [
-        ['blob'],
-        ['./tests/reporters/custom-reporter.ts'],
-        ['github'] // For GitHub Actions annotations
+        ["blob"],
+        ["./tests/reporters/custom-reporter.ts"],
+        ["github"], // For GitHub Actions annotations
       ]
-    : [
-        ['html', { open: 'never' }],
-        ['./tests/reporters/custom-reporter.ts']
-      ],
+    : [["html", { open: "never" }], ["./tests/reporters/custom-reporter.ts"]],
 
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${appPort}`,
@@ -67,56 +64,56 @@ export default defineConfig({
 
   projects: [
     // Setup project for authentication
-    { name: 'setup', testMatch: /.*\.setup\.ts/ },
+    { name: "setup", testMatch: /.*\.setup\.ts/ },
 
     // Authenticated tests - Chrome
     {
-      name: 'authenticated-chrome',
+      name: "authenticated-chrome",
       use: {
-        ...devices['Desktop Chrome'],
-        storageState: 'playwright/.auth/user.json'
+        ...devices["Desktop Chrome"],
+        storageState: "playwright/.auth/user.json",
       },
-      dependencies: ['setup'],
-      testMatch: /e2e\/authenticated\/.*\.spec\.ts/
+      dependencies: ["setup"],
+      testMatch: /e2e\/authenticated\/.*\.spec\.ts/,
     },
 
     // Authenticated tests - Firefox
     {
-      name: 'authenticated-firefox',
+      name: "authenticated-firefox",
       use: {
-        ...devices['Desktop Firefox'],
-        storageState: 'playwright/.auth/user.json'
+        ...devices["Desktop Firefox"],
+        storageState: "playwright/.auth/user.json",
       },
-      dependencies: ['setup'],
-      testMatch: /e2e\/authenticated\/.*\.spec\.ts/
+      dependencies: ["setup"],
+      testMatch: /e2e\/authenticated\/.*\.spec\.ts/,
     },
 
     // Non-authenticated tests (auth flow tests) - Chrome
     {
-      name: 'auth-flow-chrome',
-      use: { ...devices['Desktop Chrome'] },
-      testMatch: /e2e\/auth\/.*\.spec\.ts/
+      name: "auth-flow-chrome",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: /e2e\/auth\/.*\.spec\.ts/,
     },
 
     // Non-authenticated tests (auth flow tests) - Firefox
     {
-      name: 'auth-flow-firefox',
-      use: { ...devices['Desktop Firefox'] },
-      testMatch: /e2e\/auth\/.*\.spec\.ts/
+      name: "auth-flow-firefox",
+      use: { ...devices["Desktop Firefox"] },
+      testMatch: /e2e\/auth\/.*\.spec\.ts/,
     },
 
     // Error scenarios tests
     {
-      name: 'error-scenarios',
-      use: { ...devices['Desktop Chrome'] },
-      testMatch: /e2e\/errors\/.*\.spec\.ts/
+      name: "error-scenarios",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: /e2e\/errors\/.*\.spec\.ts/,
     },
 
     // Component tests
     {
-      name: 'components',
-      use: { ...devices['Desktop Chrome'] },
-      testMatch: /src\/.*\.spec\.ts/
+      name: "components",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: /src\/.*\.spec\.ts/,
     },
 
     // Mobile tests (optional - can be enabled when needed)
@@ -141,8 +138,8 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 180 * 1000, // 3 minutes for CI environments
       env: {
-        NODE_ENV: "test"
-      }
+        NODE_ENV: "test",
+      },
     },
   ],
 });

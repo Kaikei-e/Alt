@@ -1,9 +1,18 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Box, VStack, Text, Flex, Input, Button, Spinner, Link } from '@chakra-ui/react'
-import { KRATOS_PUBLIC_URL } from '@/lib/env.public'
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Box,
+  VStack,
+  Text,
+  Flex,
+  Input,
+  Button,
+  Spinner,
+  Link,
+} from "@chakra-ui/react";
+import { KRATOS_PUBLIC_URL } from "@/lib/env.public";
 
 // URL validation helper to prevent open redirects
 const isValidReturnUrl = (url: string): boolean => {
@@ -11,13 +20,13 @@ const isValidReturnUrl = (url: string): boolean => {
     const parsedUrl = new URL(url);
     const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN;
     const idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN;
-    
+
     // Only allow same-origin or trusted IDP origin redirects
     return parsedUrl.origin === appOrigin || parsedUrl.origin === idpOrigin;
   } catch {
     return false;
   }
-}
+};
 
 // Safe redirect helper
 const safeRedirect = (url: string) => {
@@ -25,58 +34,58 @@ const safeRedirect = (url: string) => {
     window.location.href = url;
   } else {
     // Fallback to default safe URL
-    window.location.href = process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT || '/';
+    window.location.href = process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT || "/";
   }
-}
+};
 
 interface LoginFlowNode {
-  type: string
-  group: string
+  type: string;
+  group: string;
   attributes: {
-    name: string
-    type: string
-    required: boolean
-    value?: string
-  }
+    name: string;
+    type: string;
+    required: boolean;
+    value?: string;
+  };
   messages?: Array<{
-    text: string
-    type: string
-  }>
+    text: string;
+    type: string;
+  }>;
 }
 
 interface LoginFlow {
-  id: string
+  id: string;
   ui: {
-    action: string
-    nodes: LoginFlowNode[]
+    action: string;
+    nodes: LoginFlowNode[];
     messages?: Array<{
-      text: string
-      type: string
-    }>
-  }
+      text: string;
+      type: string;
+    }>;
+  };
 }
 
 interface LoginClientProps {
-  flowId: string
-  returnUrl: string
+  flowId: string;
+  returnUrl: string;
 }
 
 export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
-  const router = useRouter()
-  const [flow, setFlow] = useState<LoginFlow | null>(null)
-  const [formData, setFormData] = useState<Record<string, string>>({})
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  // TODO.md: 三値判定 null=不明, false=未ログイン, true=ログイン済み
-  const [session, setSession] = useState<null | boolean>(null)
+  const router = useRouter();
+  const [flow, setFlow] = useState<LoginFlow | null>(null);
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const KRATOS_PUBLIC = KRATOS_PUBLIC_URL
+  // TODO.md: 三値判定 null=不明, false=未ログイン, true=ログイン済み
+  const [session, setSession] = useState<null | boolean>(null);
+
+  const KRATOS_PUBLIC = KRATOS_PUBLIC_URL;
 
   useEffect(() => {
-    if (!flowId) return
-    fetchFlow(flowId)
-  }, [flowId])
+    if (!flowId) return;
+    fetchFlow(flowId);
+  }, [flowId]);
 
   // TODO.md: 三値判定のセッションチェック
   useEffect(() => {
@@ -84,17 +93,19 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
     (async () => {
       try {
         // 🔧 修正: 正しいAPIパスに変更（v1/authを削除）
-        const r = await fetch('/api/auth/validate', { 
-          credentials: 'include', 
-          cache: 'no-store' 
+        const r = await fetch("/api/auth/validate", {
+          credentials: "include",
+          cache: "no-store",
         });
         if (abort) return;
         setSession(r.ok); // ok=true=ログイン済 / それ以外は false
-      } catch { 
-        if (!abort) setSession(false); 
+      } catch {
+        if (!abort) setSession(false);
       }
     })();
-    return () => { abort = true; };
+    return () => {
+      abort = true;
+    };
   }, []);
 
   // TODO.md: ログイン済みの場合のみ router.replace 実行
@@ -107,70 +118,73 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
   // Session cleanup helper for redirect loop prevention
   const cleanupSession = async () => {
     try {
-      await fetch('/api/auth/cleanup', {
-        method: 'POST',
-        credentials: 'include',
-      })
-      console.log('Session cleanup completed')
+      await fetch("/api/auth/cleanup", {
+        method: "POST",
+        credentials: "include",
+      });
+      console.log("Session cleanup completed");
     } catch (error) {
-      console.warn('Session cleanup failed:', error)
+      console.warn("Session cleanup failed:", error);
     }
-  }
+  };
 
   const fetchFlow = async (id: string) => {
     try {
-      setIsLoading(true)
-      setError(null)
+      setIsLoading(true);
+      setError(null);
 
       const response = await fetch(
         `${KRATOS_PUBLIC}/self-service/login/flows?id=${id}`,
         {
-          credentials: 'include',
-          headers: { Accept: 'application/json' },
-          cache: 'no-store', // ← キャッシュ回避
-        }
-      )
+          credentials: "include",
+          headers: { Accept: "application/json" },
+          cache: "no-store", // ← キャッシュ回避
+        },
+      );
 
       if (!response.ok) {
-        if (response.status === 410) { 
+        if (response.status === 410) {
           // Flow expired - clean up stale sessions before redirect
-          await cleanupSession()
-          safeRedirect('/auth/login'); return
+          await cleanupSession();
+          safeRedirect("/auth/login");
+          return;
         }
         if (response.status === 404) {
           // Flow not found - could indicate session issues
-          await cleanupSession()
-          safeRedirect('/auth/login'); return
+          await cleanupSession();
+          safeRedirect("/auth/login");
+          return;
         }
-        setError(`fetch flow failed: ${response.status}`); return
+        setError(`fetch flow failed: ${response.status}`);
+        return;
       }
 
-      const flowData = await response.json()
-      setFlow(flowData)
-      return flowData
-
+      const flowData = await response.json();
+      setFlow(flowData);
+      return flowData;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch login flow')
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch login flow",
+      );
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleInputChange = (name: string, value: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
-    }))
-  }
-
+      [name]: value,
+    }));
+  };
 
   const renderFormField = (node: LoginFlowNode) => {
-    if (node.type !== 'input') return null
-    if (!['password', 'default'].includes(node.group)) return null
+    if (node.type !== "input") return null;
+    if (!["password", "default"].includes(node.group)) return null;
 
-    const { name, type, required } = node.attributes
-    const value = formData[name] || node.attributes.value || ''
-    const messages = node.messages || []
+    const { name, type, required } = node.attributes;
+    const value = formData[name] || node.attributes.value || "";
+    const messages = node.messages || [];
 
     return (
       <Box key={name} w="full">
@@ -180,30 +194,30 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
           value={value}
           onChange={(e) => handleInputChange(name, e.target.value)}
           required={required}
-          placeholder={name === 'identifier' ? 'Email' : 'Password'}
+          placeholder={name === "identifier" ? "Email" : "Password"}
           bg="var(--alt-glass)"
           border="1px solid"
           borderColor="var(--alt-glass-border)"
           color="var(--text-primary)"
-          _placeholder={{ color: 'var(--text-muted)' }}
+          _placeholder={{ color: "var(--text-muted)" }}
           _focus={{
-            borderColor: 'var(--alt-primary)',
-            boxShadow: '0 0 0 1px var(--alt-primary)',
+            borderColor: "var(--alt-primary)",
+            boxShadow: "0 0 0 1px var(--alt-primary)",
           }}
         />
         {messages.map((message, idx) => (
           <Text
             key={idx}
             fontSize="sm"
-            color={message.type === 'error' ? 'red.400' : 'var(--text-muted)'}
+            color={message.type === "error" ? "red.400" : "var(--text-muted)"}
             mt={1}
           >
             {message.text}
           </Text>
         ))}
       </Box>
-    )
-  }
+    );
+  };
 
   if (isLoading && !flow) {
     return (
@@ -220,7 +234,7 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
           </Text>
         </VStack>
       </Flex>
-    )
+    );
   }
 
   return (
@@ -280,8 +294,17 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
             backdropFilter="blur(12px)"
           >
             {error && (
-              <Box p={3} bg="red.100" borderRadius="md" border="1px solid" borderColor="red.300" mb={4}>
-                <Text fontSize="sm" color="red.700">{error}</Text>
+              <Box
+                p={3}
+                bg="red.100"
+                borderRadius="md"
+                border="1px solid"
+                borderColor="red.300"
+                mb={4}
+              >
+                <Text fontSize="sm" color="red.700">
+                  {error}
+                </Text>
               </Box>
             )}
 
@@ -292,12 +315,19 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
                     <Box
                       key={idx}
                       p={3}
-                      bg={message.type === 'error' ? 'red.100' : 'blue.100'}
+                      bg={message.type === "error" ? "red.100" : "blue.100"}
                       borderRadius="md"
                       border="1px solid"
-                      borderColor={message.type === 'error' ? 'red.300' : 'blue.300'}
+                      borderColor={
+                        message.type === "error" ? "red.300" : "blue.300"
+                      }
                     >
-                      <Text fontSize="sm" color={message.type === 'error' ? 'red.700' : 'blue.700'}>
+                      <Text
+                        fontSize="sm"
+                        color={
+                          message.type === "error" ? "red.700" : "blue.700"
+                        }
+                      >
                         {message.text}
                       </Text>
                     </Box>
@@ -307,9 +337,13 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
                   <input
                     type="hidden"
                     name="csrf_token"
-                    value={flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value || ''}
+                    value={
+                      flow.ui.nodes.find(
+                        (n) => n.attributes?.name === "csrf_token",
+                      )?.attributes?.value || ""
+                    }
                   />
-                  
+
                   {/* Method field for Kratos */}
                   <input type="hidden" name="method" value="password" />
 
@@ -322,10 +356,10 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
                     color="white"
                     size="lg"
                     disabled={isLoading}
-                    _hover={{ bg: 'var(--alt-primary-hover)' }}
-                    _active={{ bg: 'var(--alt-primary-active)' }}
+                    _hover={{ bg: "var(--alt-primary-hover)" }}
+                    _active={{ bg: "var(--alt-primary-active)" }}
                   >
-                    {isLoading ? 'ログイン中...' : 'ログイン'}
+                    {isLoading ? "ログイン中..." : "ログイン"}
                   </Button>
                 </VStack>
               </form>
@@ -333,12 +367,8 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
           </Box>
 
           <Box textAlign="center">
-            <Text
-              fontSize="sm"
-              color="var(--text-muted)"
-              fontFamily="body"
-            >
-              アカウントをお持ちでない方は{' '}
+            <Text fontSize="sm" color="var(--text-muted)" fontFamily="body">
+              アカウントをお持ちでない方は{" "}
               <Link
                 href={`${KRATOS_PUBLIC}/self-service/registration/browser?return_to=${encodeURIComponent(returnUrl)}`}
                 color="var(--alt-primary)"
@@ -351,5 +381,5 @@ export default function LoginClient({ flowId, returnUrl }: LoginClientProps) {
         </VStack>
       </Flex>
     </Box>
-  )
+  );
 }

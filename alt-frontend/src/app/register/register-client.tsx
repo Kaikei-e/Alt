@@ -1,9 +1,17 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Box, VStack, Text, Flex, Input, Button, Spinner } from '@chakra-ui/react'
-import { KRATOS_PUBLIC_URL } from '@/lib/env.public'
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Box,
+  VStack,
+  Text,
+  Flex,
+  Input,
+  Button,
+  Spinner,
+} from "@chakra-ui/react";
+import { KRATOS_PUBLIC_URL } from "@/lib/env.public";
 
 // URL validation helper to prevent open redirects
 const isValidReturnUrl = (url: string): boolean => {
@@ -11,13 +19,13 @@ const isValidReturnUrl = (url: string): boolean => {
     const parsedUrl = new URL(url);
     const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN;
     const idpOrigin = process.env.NEXT_PUBLIC_IDP_ORIGIN;
-    
+
     // Only allow same-origin or trusted IDP origin redirects
     return parsedUrl.origin === appOrigin || parsedUrl.origin === idpOrigin;
   } catch {
     return false;
   }
-}
+};
 
 // Safe redirect helper
 const safeRedirect = (url: string) => {
@@ -25,157 +33,173 @@ const safeRedirect = (url: string) => {
     window.location.href = url;
   } else {
     // Fallback to default safe URL
-    window.location.href = process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT || '/';
+    window.location.href = process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT || "/";
   }
-}
+};
 
 interface RegistrationFlowNode {
-  type: string
-  group: string
+  type: string;
+  group: string;
   attributes: {
-    name: string
-    type: string
-    required: boolean
-    value?: string
-  }
+    name: string;
+    type: string;
+    required: boolean;
+    value?: string;
+  };
   messages?: Array<{
-    text: string
-    type: string
-  }>
+    text: string;
+    type: string;
+  }>;
 }
 
 interface RegistrationFlow {
-  id: string
+  id: string;
   ui: {
-    nodes: RegistrationFlowNode[]
+    nodes: RegistrationFlowNode[];
     messages?: Array<{
-      text: string
-      type: string
-    }>
-  }
+      text: string;
+      type: string;
+    }>;
+  };
 }
 
 interface RegisterClientProps {
-  flowId: string
-  returnUrl: string
+  flowId: string;
+  returnUrl: string;
 }
 
-export default function RegisterClient({ flowId, returnUrl }: RegisterClientProps) {
-  const router = useRouter()
-  const [flow, setFlow] = useState<RegistrationFlow | null>(null)
-  const [formData, setFormData] = useState<Record<string, string>>({})
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export default function RegisterClient({
+  flowId,
+  returnUrl,
+}: RegisterClientProps) {
+  const router = useRouter();
+  const [flow, setFlow] = useState<RegistrationFlow | null>(null);
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const KRATOS_PUBLIC = KRATOS_PUBLIC_URL
+  const KRATOS_PUBLIC = KRATOS_PUBLIC_URL;
 
   useEffect(() => {
-    if (!flowId) return
-    fetchFlow(flowId)
-  }, [flowId])
+    if (!flowId) return;
+    fetchFlow(flowId);
+  }, [flowId]);
 
   const fetchFlow = async (id: string) => {
     try {
-      setIsLoading(true)
-      setError(null)
+      setIsLoading(true);
+      setError(null);
 
-      const response = await fetch(`${KRATOS_PUBLIC}/self-service/registration/flows?id=${id}`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
+      const response = await fetch(
+        `${KRATOS_PUBLIC}/self-service/registration/flows?id=${id}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            Accept: "application/json",
+          },
         },
-      })
+      );
 
       if (!response.ok) {
-        if (response.status === 410) {        // ← 期限切れだけ"新規フロー"
-          safeRedirect('/register');
-          return
+        if (response.status === 410) {
+          // ← 期限切れだけ"新規フロー"
+          safeRedirect("/register");
+          return;
         }
         // 404・403・429 等はここで可視化（無限再初期化しない）
-        const msg = `Failed to fetch registration flow: ${response.status}`
-        setError(msg); setIsLoading(false); return
+        const msg = `Failed to fetch registration flow: ${response.status}`;
+        setError(msg);
+        setIsLoading(false);
+        return;
       }
 
-      const flowData = await response.json()
-      setFlow(flowData)
-
+      const flowData = await response.json();
+      setFlow(flowData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch registration flow')
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to fetch registration flow",
+      );
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleInputChange = (name: string, value: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
-    }))
-  }
+      [name]: value,
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
+    e.preventDefault();
+
     if (!flow) {
-      setError('No active registration flow')
-      return
+      setError("No active registration flow");
+      return;
     }
 
     try {
-      setIsLoading(true)
-      setError(null)
+      setIsLoading(true);
+      setError(null);
 
-      const csrf = flow.ui.nodes.find(n => n.attributes?.name === 'csrf_token')?.attributes?.value
+      const csrf = flow.ui.nodes.find(
+        (n) => n.attributes?.name === "csrf_token",
+      )?.attributes?.value;
 
-      const response = await fetch(`${KRATOS_PUBLIC}/self-service/registration?flow=${flow.id}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
+      const response = await fetch(
+        `${KRATOS_PUBLIC}/self-service/registration?flow=${flow.id}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            method: "password",
+            ...formData,
+            csrf_token: csrf,
+          }),
         },
-        body: JSON.stringify({
-          method: 'password',
-          ...formData,
-          csrf_token: csrf
-        })
-      })
+      );
 
       // JSONモード：200(OK)/422(検証エラー) を扱う
       if (response.status === 422) {
-        const updatedFlow = await response.json()
-        setFlow(updatedFlow)
-        return
+        const updatedFlow = await response.json();
+        setFlow(updatedFlow);
+        return;
       }
 
       if (!response.ok) {
-        throw new Error(`Registration failed: ${response.status}`)
+        throw new Error(`Registration failed: ${response.status}`);
       }
 
-      router.push(returnUrl)
-
+      router.push(returnUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed')
+      setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const renderFormField = (node: RegistrationFlowNode) => {
-    if (node.type !== 'input') return null
-    if (!['password','default'].includes(node.group)) {
-      return null
+    if (node.type !== "input") return null;
+    if (!["password", "default"].includes(node.group)) {
+      return null;
     }
 
-    const { name, type, required } = node.attributes
-    const value = formData[name] || node.attributes.value || ''
-    const messages = node.messages || []
+    const { name, type, required } = node.attributes;
+    const value = formData[name] || node.attributes.value || "";
+    const messages = node.messages || [];
 
-    let placeholder = name
-    if (name === 'traits.email') placeholder = 'Email'
-    else if (name === 'password') placeholder = 'Password'
-    else if (name === 'traits.name') placeholder = 'Name'
+    let placeholder = name;
+    if (name === "traits.email") placeholder = "Email";
+    else if (name === "password") placeholder = "Password";
+    else if (name === "traits.name") placeholder = "Name";
 
     return (
       <Box key={name} w="full">
@@ -190,25 +214,25 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
           border="1px solid"
           borderColor="var(--alt-glass-border)"
           color="var(--text-primary)"
-          _placeholder={{ color: 'var(--text-muted)' }}
+          _placeholder={{ color: "var(--text-muted)" }}
           _focus={{
-            borderColor: 'var(--alt-primary)',
-            boxShadow: '0 0 0 1px var(--alt-primary)',
+            borderColor: "var(--alt-primary)",
+            boxShadow: "0 0 0 1px var(--alt-primary)",
           }}
         />
         {messages.map((message, idx) => (
           <Text
             key={idx}
             fontSize="sm"
-            color={message.type === 'error' ? 'red.400' : 'var(--text-muted)'}
+            color={message.type === "error" ? "red.400" : "var(--text-muted)"}
             mt={1}
           >
             {message.text}
           </Text>
         ))}
       </Box>
-    )
-  }
+    );
+  };
 
   if (isLoading && !flow) {
     return (
@@ -225,7 +249,7 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
           </Text>
         </VStack>
       </Flex>
-    )
+    );
   }
 
   return (
@@ -285,8 +309,17 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
             backdropFilter="blur(12px)"
           >
             {error && (
-              <Box p={3} bg="red.100" borderRadius="md" border="1px solid" borderColor="red.300" mb={4}>
-                <Text fontSize="sm" color="red.700">{error}</Text>
+              <Box
+                p={3}
+                bg="red.100"
+                borderRadius="md"
+                border="1px solid"
+                borderColor="red.300"
+                mb={4}
+              >
+                <Text fontSize="sm" color="red.700">
+                  {error}
+                </Text>
               </Box>
             )}
 
@@ -297,12 +330,19 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
                     <Box
                       key={idx}
                       p={3}
-                      bg={message.type === 'error' ? 'red.100' : 'blue.100'}
+                      bg={message.type === "error" ? "red.100" : "blue.100"}
                       borderRadius="md"
                       border="1px solid"
-                      borderColor={message.type === 'error' ? 'red.300' : 'blue.300'}
+                      borderColor={
+                        message.type === "error" ? "red.300" : "blue.300"
+                      }
                     >
-                      <Text fontSize="sm" color={message.type === 'error' ? 'red.700' : 'blue.700'}>
+                      <Text
+                        fontSize="sm"
+                        color={
+                          message.type === "error" ? "red.700" : "blue.700"
+                        }
+                      >
                         {message.text}
                       </Text>
                     </Box>
@@ -317,10 +357,10 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
                     color="white"
                     size="lg"
                     disabled={isLoading}
-                    _hover={{ bg: 'var(--alt-primary-hover)' }}
-                    _active={{ bg: 'var(--alt-primary-active)' }}
+                    _hover={{ bg: "var(--alt-primary-hover)" }}
+                    _active={{ bg: "var(--alt-primary-active)" }}
                   >
-                    {isLoading ? '登録中...' : '新規登録'}
+                    {isLoading ? "登録中..." : "新規登録"}
                   </Button>
                 </VStack>
               </form>
@@ -328,18 +368,15 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
           </Box>
 
           <Box textAlign="center">
-            <Text
-              fontSize="sm"
-              color="var(--text-muted)"
-              fontFamily="body"
-            >
-              既にアカウントをお持ちの方は{' '}
+            <Text fontSize="sm" color="var(--text-muted)" fontFamily="body">
+              既にアカウントをお持ちの方は{" "}
               <Box
                 as="button"
                 color="var(--alt-primary)"
                 textDecoration="underline"
                 onClick={() => {
-                  const currentUrl = typeof window !== 'undefined' ? window.location.href : '/';
+                  const currentUrl =
+                    typeof window !== "undefined" ? window.location.href : "/";
                   const returnUrl = encodeURIComponent(currentUrl);
                   const loginUrl = `/auth/login?return_to=${returnUrl}`;
                   safeRedirect(loginUrl);
@@ -352,5 +389,5 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
         </VStack>
       </Flex>
     </Box>
-  )
+  );
 }

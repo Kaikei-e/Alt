@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AuthAPIClient } from '../../../../src/lib/api/auth-client';
-import type { User, LoginFlow, RegistrationFlow } from '@/types/auth';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { AuthAPIClient } from "../../../../src/lib/api/auth-client";
+import type { User, LoginFlow, RegistrationFlow } from "@/types/auth";
 
 interface UserPreferences {
   theme?: "light" | "dark" | "system";
@@ -13,10 +13,10 @@ const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 // Mock console methods to avoid noise in tests
-const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-describe('AuthAPIClient', () => {
+describe("AuthAPIClient", () => {
   let client: AuthAPIClient;
 
   beforeEach(() => {
@@ -30,81 +30,93 @@ describe('AuthAPIClient', () => {
     vi.clearAllMocks();
   });
 
-  describe('constructor', () => {
-    it('should initialize with default base URL', () => {
+  describe("constructor", () => {
+    it("should initialize with default base URL", () => {
       const client = new AuthAPIClient();
       expect(client).toBeInstanceOf(AuthAPIClient);
     });
 
-    it('should use environment variable for base URL if available', () => {
+    it("should use environment variable for base URL if available", () => {
       const originalEnv = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL;
-      process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = 'http://custom-auth:8080';
-      
+      process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = "http://custom-auth:8080";
+
       const client = new AuthAPIClient();
       expect(client).toBeInstanceOf(AuthAPIClient);
-      
+
       // Restore original env
       process.env.NEXT_PUBLIC_AUTH_SERVICE_URL = originalEnv;
     });
   });
 
-  describe('initiateLogin', () => {
-    it('should throw redirect error (current implementation)', async () => {
+  describe("initiateLogin", () => {
+    it("should throw redirect error (current implementation)", async () => {
       // Mock window.location for test environment
-      Object.defineProperty(window, 'location', {
-        value: { href: '' },
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
         writable: true,
       });
 
-      await expect(client.initiateLogin()).rejects.toThrow('Login flow initiated via redirect');
+      await expect(client.initiateLogin()).rejects.toThrow(
+        "Login flow initiated via redirect",
+      );
     });
   });
 
-  describe('completeLogin', () => {
-    it('should throw redirect error (current implementation)', async () => {
+  describe("completeLogin", () => {
+    it("should throw redirect error (current implementation)", async () => {
       // Mock window.location for test environment
-      Object.defineProperty(window, 'location', {
-        value: { href: '' },
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
         writable: true,
       });
 
-      await expect(client.completeLogin('flow-123', 'test@example.com', 'password123'))
-        .rejects.toThrow('Login redirected to Kratos');
+      await expect(
+        client.completeLogin("flow-123", "test@example.com", "password123"),
+      ).rejects.toThrow("Login redirected to Kratos");
     });
   });
 
-  describe('initiateRegistration', () => {
-    it('should throw redirect error (current implementation)', async () => {
+  describe("initiateRegistration", () => {
+    it("should throw redirect error (current implementation)", async () => {
       // Mock window.location for test environment
-      Object.defineProperty(window, 'location', {
-        value: { href: '' },
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
         writable: true,
       });
 
-      await expect(client.initiateRegistration()).rejects.toThrow('Registration flow initiated via redirect');
+      await expect(client.initiateRegistration()).rejects.toThrow(
+        "Registration flow initiated via redirect",
+      );
     });
   });
 
-  describe('completeRegistration', () => {
-    it('should throw redirect error (current implementation)', async () => {
+  describe("completeRegistration", () => {
+    it("should throw redirect error (current implementation)", async () => {
       // Mock window.location for test environment
-      Object.defineProperty(window, 'location', {
-        value: { href: '' },
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
         writable: true,
       });
 
-      await expect(client.completeRegistration('flow-456', 'newuser@example.com', 'password123', 'New User'))
-        .rejects.toThrow('Registration redirected to Kratos');
+      await expect(
+        client.completeRegistration(
+          "flow-456",
+          "newuser@example.com",
+          "password123",
+          "New User",
+        ),
+      ).rejects.toThrow("Registration redirected to Kratos");
     });
   });
 
-  describe('logout', () => {
-    it('should make POST request to logout endpoint', async () => {
+  describe("logout", () => {
+    it("should make POST request to logout endpoint", async () => {
       // Mock CSRF token request first
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'csrf-token-123' } }),
+          json: () =>
+            Promise.resolve({ data: { csrf_token: "csrf-token-123" } }),
         })
         // Mock actual logout request
         .mockResolvedValueOnce({
@@ -118,14 +130,14 @@ describe('AuthAPIClient', () => {
     });
   });
 
-  describe('getCurrentUser', () => {
-    it('should make GET request and return User when authenticated', async () => {
+  describe("getCurrentUser", () => {
+    it("should make GET request and return User when authenticated", async () => {
       const mockUser: User = {
-        id: 'user-123',
-        tenantId: 'tenant-456',
-        email: 'test@example.com',
-        role: 'user',
-        createdAt: '2025-01-15T10:00:00Z',
+        id: "user-123",
+        tenantId: "tenant-456",
+        email: "test@example.com",
+        role: "user",
+        createdAt: "2025-01-15T10:00:00Z",
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -138,18 +150,18 @@ describe('AuthAPIClient', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringMatching(/\/api\/auth\/validate$/),
         expect.objectContaining({
-          method: 'GET',
-          credentials: 'include',
-        })
+          method: "GET",
+          credentials: "include",
+        }),
       );
       expect(result).toEqual(mockUser);
     });
 
-    it('should return null when unauthenticated (401)', async () => {
+    it("should return null when unauthenticated (401)", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
-        statusText: 'Unauthorized',
+        statusText: "Unauthorized",
       });
 
       const result = await client.getCurrentUser();
@@ -157,20 +169,22 @@ describe('AuthAPIClient', () => {
       expect(result).toBeNull();
     });
 
-    it('should throw error for other HTTP errors', async () => {
+    it("should throw error for other HTTP errors", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
-        statusText: 'Internal Server Error',
+        statusText: "Internal Server Error",
       });
 
-      await expect(client.getCurrentUser()).rejects.toThrow('Failed to get current user');
+      await expect(client.getCurrentUser()).rejects.toThrow(
+        "Failed to get current user",
+      );
     });
   });
 
-  describe('getCSRFToken', () => {
-    it('should make POST request and return CSRF token', async () => {
-      const mockCSRFToken = 'csrf-token-123';
+  describe("getCSRFToken", () => {
+    it("should make POST request and return CSRF token", async () => {
+      const mockCSRFToken = "csrf-token-123";
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -182,18 +196,18 @@ describe('AuthAPIClient', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringMatching(/\/api\/auth\/csrf$/),
         expect.objectContaining({
-          method: 'POST',
-          credentials: 'include',
-        })
+          method: "POST",
+          credentials: "include",
+        }),
       );
       expect(result).toBe(mockCSRFToken);
     });
 
-    it('should return null and log error on server failure', async () => {
+    it("should return null and log error on server failure", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
-        statusText: 'Internal Server Error',
+        statusText: "Internal Server Error",
         headers: { entries: () => [] },
       });
 
@@ -202,31 +216,32 @@ describe('AuthAPIClient', () => {
       expect(result).toBeNull();
       // Check for console.error since the actual implementation uses console.error for server failures
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        '🚨 CSRF token request failed:',
+        "🚨 CSRF token request failed:",
         expect.objectContaining({
           status: 500,
-          statusText: 'Internal Server Error'
-        })
+          statusText: "Internal Server Error",
+        }),
       );
     });
   });
 
-  describe('updateProfile', () => {
-    it('should make PUT request with profile data and return updated User', async () => {
+  describe("updateProfile", () => {
+    it("should make PUT request with profile data and return updated User", async () => {
       const mockUser: User = {
-        id: 'user-123',
-        tenantId: 'tenant-456',
-        email: 'test@example.com',
-        name: 'Updated Name',
-        role: 'user',
-        createdAt: '2025-01-15T10:00:00Z',
+        id: "user-123",
+        tenantId: "tenant-456",
+        email: "test@example.com",
+        name: "Updated Name",
+        role: "user",
+        createdAt: "2025-01-15T10:00:00Z",
       };
 
       // Mock CSRF token request first
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'csrf-token-123' } }),
+          json: () =>
+            Promise.resolve({ data: { csrf_token: "csrf-token-123" } }),
         })
         // Mock actual profile update request
         .mockResolvedValueOnce({
@@ -234,16 +249,16 @@ describe('AuthAPIClient', () => {
           json: () => Promise.resolve({ data: mockUser }),
         });
 
-      const profileUpdate = { name: 'Updated Name' };
+      const profileUpdate = { name: "Updated Name" };
       const result = await client.updateProfile(profileUpdate);
 
       expect(result).toEqual(mockUser);
     });
   });
 
-  describe('getUserSettings', () => {
-    it('should make GET request and return user settings', async () => {
-      const mockSettings = { theme: 'dark', language: 'en' };
+  describe("getUserSettings", () => {
+    it("should make GET request and return user settings", async () => {
+      const mockSettings = { theme: "dark", language: "en" };
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -255,21 +270,22 @@ describe('AuthAPIClient', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringMatching(/\/api\/auth\/settings$/),
         expect.objectContaining({
-          method: 'GET',
-          credentials: 'include',
-        })
+          method: "GET",
+          credentials: "include",
+        }),
       );
       expect(result).toEqual(mockSettings);
     });
   });
 
-  describe('updateUserSettings', () => {
-    it('should make PUT request with settings data', async () => {
+  describe("updateUserSettings", () => {
+    it("should make PUT request with settings data", async () => {
       // Mock CSRF token request first
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { csrf_token: 'csrf-token-123' } }),
+          json: () =>
+            Promise.resolve({ data: { csrf_token: "csrf-token-123" } }),
         })
         // Mock actual settings update request
         .mockResolvedValueOnce({
@@ -277,16 +293,16 @@ describe('AuthAPIClient', () => {
           json: () => Promise.resolve({}),
         });
 
-      const settings: UserPreferences = { theme: 'light', language: 'ja' };
+      const settings: UserPreferences = { theme: "light", language: "ja" };
       await client.updateUserSettings(settings);
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
   });
 
-  describe('CSRF token integration', () => {
-    it('should add CSRF token to unsafe HTTP methods', async () => {
-      const mockCSRFToken = 'csrf-token-123';
+  describe("CSRF token integration", () => {
+    it("should add CSRF token to unsafe HTTP methods", async () => {
+      const mockCSRFToken = "csrf-token-123";
 
       // Mock CSRF token request
       mockFetch
@@ -306,7 +322,7 @@ describe('AuthAPIClient', () => {
       expect(mockFetch).toHaveBeenNthCalledWith(
         1,
         expect.stringMatching(/\/api\/auth\/csrf$/),
-        expect.objectContaining({ method: 'POST' })
+        expect.objectContaining({ method: "POST" }),
       );
 
       // Should have made logout request with CSRF token
@@ -315,13 +331,13 @@ describe('AuthAPIClient', () => {
         expect.stringMatching(/\/api\/auth\/logout$/),
         expect.objectContaining({
           headers: expect.objectContaining({
-            'X-CSRF-Token': mockCSRFToken,
+            "X-CSRF-Token": mockCSRFToken,
           }),
-        })
+        }),
       );
     });
 
-    it('should proceed without CSRF token if retrieval fails', async () => {
+    it("should proceed without CSRF token if retrieval fails", async () => {
       // Mock CSRF token failure
       mockFetch
         .mockResolvedValueOnce({
@@ -341,8 +357,8 @@ describe('AuthAPIClient', () => {
         2,
         expect.stringMatching(/\/api\/auth\/logout$/),
         expect.objectContaining({
-          method: 'POST',
-        })
+          method: "POST",
+        }),
       );
     });
   });

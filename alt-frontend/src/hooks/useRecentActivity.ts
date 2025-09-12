@@ -25,13 +25,13 @@ export const useRecentActivity = (
       try {
         setIsLoading(true);
         setError(null);
-        
+
         // Only fetch if authenticated to prevent 401 retry loops
         if (!isAuthenticated) {
           setActivities([]);
           return;
         }
-        
+
         const activityData = await feedsApi.getRecentActivity(limit);
 
         // Transform the API response to the expected format

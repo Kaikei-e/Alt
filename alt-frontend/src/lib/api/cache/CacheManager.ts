@@ -37,7 +37,7 @@ export class CacheManager {
   set<T>(
     key: string,
     data: T,
-    ttlMinutes: number = this.config.defaultTtl / (60 * 1000)
+    ttlMinutes: number = this.config.defaultTtl / (60 * 1000),
   ): void {
     // Implement cache size limit
     if (this.cache.size >= this.config.maxSize) {

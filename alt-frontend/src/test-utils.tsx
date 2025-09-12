@@ -1,33 +1,29 @@
 // src/test-utils.tsx
-import React from 'react';
-import { render, RenderOptions, cleanup } from '@testing-library/react';
-import { ChakraProvider, createSystem, defaultConfig } from '@chakra-ui/react';
-import { vi } from 'vitest';
-import userEvent from '@testing-library/user-event';
+import React from "react";
+import { render, RenderOptions, cleanup } from "@testing-library/react";
+import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
+import { vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 // Create a minimal system for testing
 const testSystem = createSystem(defaultConfig);
 
 // Create a wrapper that ensures clean state
 const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  return (
-    <ChakraProvider value={testSystem}>
-      {children}
-    </ChakraProvider>
-  );
+  return <ChakraProvider value={testSystem}>{children}</ChakraProvider>;
 };
 
 // Enhanced render function with automatic cleanup
 const customRender = (
   ui: React.ReactElement,
-  options?: Omit<RenderOptions, 'wrapper'>
+  options?: Omit<RenderOptions, "wrapper">,
 ) => {
   // Force cleanup before rendering
   cleanup();
 
   // Clear document body to ensure clean slate
-  if (typeof document !== 'undefined') {
-    document.body.innerHTML = '';
+  if (typeof document !== "undefined") {
+    document.body.innerHTML = "";
   }
 
   const result = render(ui, { wrapper: TestWrapper, ...options });
@@ -42,13 +38,18 @@ const customRender = (
 export const renderWithProviders = customRender;
 
 // Helper to safely get unique elements
-export const getSafeElement = (getByTestId: (id: string) => HTMLElement, testId: string) => {
+export const getSafeElement = (
+  getByTestId: (id: string) => HTMLElement,
+  testId: string,
+) => {
   try {
     return getByTestId(testId);
   } catch (error) {
     const elements = document.querySelectorAll(`[data-testid="${testId}"]`);
     if (elements.length > 1) {
-      console.warn(`Found ${elements.length} elements with testId "${testId}". Using first one.`);
+      console.warn(
+        `Found ${elements.length} elements with testId "${testId}". Using first one.`,
+      );
       return elements[0] as HTMLElement;
     }
     throw error;
@@ -58,7 +59,7 @@ export const getSafeElement = (getByTestId: (id: string) => HTMLElement, testId:
 // Helper to wait for unique element
 export const waitForUniqueElement = async (
   testId: string,
-  timeout: number = 3000
+  timeout: number = 3000,
 ): Promise<HTMLElement> => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
@@ -72,7 +73,11 @@ export const waitForUniqueElement = async (
       }
 
       if (Date.now() - startTime > timeout) {
-        reject(new Error(`Timeout waiting for unique element with testId "${testId}". Found ${elements.length} elements.`));
+        reject(
+          new Error(
+            `Timeout waiting for unique element with testId "${testId}". Found ${elements.length} elements.`,
+          ),
+        );
         return;
       }
 
@@ -110,13 +115,13 @@ export const createMockHandlers = () => ({
 
 // Helper to ensure clean test environment
 export const ensureCleanEnvironment = () => {
-  if (typeof document !== 'undefined') {
+  if (typeof document !== "undefined") {
     // Remove all existing elements with test IDs
-    const testElements = document.querySelectorAll('[data-testid]');
-    testElements.forEach(el => el.remove());
+    const testElements = document.querySelectorAll("[data-testid]");
+    testElements.forEach((el) => el.remove());
 
     // Clear body
-    document.body.innerHTML = '';
+    document.body.innerHTML = "";
   }
 
   // Clear all mocks
@@ -125,5 +130,5 @@ export const ensureCleanEnvironment = () => {
 };
 
 // Export all testing library utilities
-export * from '@testing-library/react';
+export * from "@testing-library/react";
 export { customRender as render };
