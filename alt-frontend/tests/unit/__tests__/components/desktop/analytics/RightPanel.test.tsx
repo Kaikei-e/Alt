@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { RightPanel } from "@/components/desktop/analytics/RightPanel";
@@ -66,36 +66,52 @@ describe("RightPanel", () => {
     expect(glassElements.length).toBeGreaterThan(0);
   });
 
-  it("should show Analytics tab as active by default", () => {
+  it("should show Analytics tab as active by default", async () => {
     renderWithProviders(<RightPanel />);
 
-    const analyticsTabs = screen.getAllByRole("button", { name: /analytics/i });
-    expect(analyticsTabs.length).toBeGreaterThan(0);
-    expect(analyticsTabs[0]).toBeInTheDocument();
+    // Wait for component to render
+    await waitFor(() => {
+      expect(screen.getAllByText("📊 Analytics")[0]).toBeInTheDocument();
+    });
+
+    const analyticsButtons = screen.getAllByText("📊 Analytics");
+    expect(analyticsButtons[0]).toBeInTheDocument();
+    expect(analyticsButtons[0].closest("button")).toBeInTheDocument();
   });
 
   it("should switch between tabs", async () => {
     const user = userEvent.setup();
     renderWithProviders(<RightPanel />);
 
-    // Click on Actions tab
-    const actionsTabs = screen.getAllByRole("button", { name: /actions/i });
-    await user.click(actionsTabs[0]);
+    // Wait for component to render
+    await waitFor(() => {
+      expect(screen.getAllByText("⚡ Actions")[0]).toBeInTheDocument();
+      expect(screen.getAllByText("📊 Analytics")[0]).toBeInTheDocument();
+    });
 
-    expect(actionsTabs[0]).toBeInTheDocument();
+    // Click on Actions tab
+    const actionsButton = screen.getAllByText("⚡ Actions")[0];
+    await user.click(actionsButton);
+
+    expect(actionsButton).toBeInTheDocument();
 
     // Switch back to Analytics tab
-    const analyticsTabs = screen.getAllByRole("button", { name: /analytics/i });
-    await user.click(analyticsTabs[0]);
+    const analyticsButton = screen.getAllByText("📊 Analytics")[0];
+    await user.click(analyticsButton);
 
-    expect(analyticsTabs[0]).toBeInTheDocument();
+    expect(analyticsButton).toBeInTheDocument();
   });
 
-  it("should use CSS variables for styling", () => {
+  it("should use CSS variables for styling", async () => {
     renderWithProviders(<RightPanel />);
 
-    const buttons = screen.getAllByRole("button");
-    const buttonElement = buttons[0];
+    // Wait for component to render
+    await waitFor(() => {
+      expect(screen.getAllByText("📊 Analytics")[0]).toBeInTheDocument();
+    });
+
+    const analyticsButton = screen.getAllByText("📊 Analytics")[0];
+    const buttonElement = analyticsButton.closest("button");
 
     // Should use CSS variables (though actual values might be computed)
     expect(buttonElement).toBeInTheDocument();

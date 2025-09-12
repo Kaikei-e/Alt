@@ -1,6 +1,12 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, within, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  within,
+  cleanup,
+  waitFor,
+} from "@testing-library/react";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { VirtualizedFeedList } from "@/components/mobile/VirtualizedFeedList";
 import { Feed } from "@/schema/feed";
@@ -111,7 +117,11 @@ describe("VirtualizedFeedList", () => {
 
     renderWithChakra(<VirtualizedFeedList {...defaultProps} />);
 
-    expect(screen.getByTestId("feed-list-fallback")).toBeInTheDocument();
+    // Wait for component to render and check for SimpleFeedList
+    await waitFor(() => {
+      expect(screen.getByTestId("feed-list-fallback")).toBeInTheDocument();
+    });
+
     expect(screen.getByText("Test Feed 1")).toBeInTheDocument();
     expect(screen.getByText("Test Feed 2")).toBeInTheDocument();
   });
