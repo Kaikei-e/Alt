@@ -56,7 +56,7 @@ func TestScheduleHandler_BatchProcessingConfiguration(t *testing.T) {
 
 func TestScheduleHandler_DailyCycleSimulation(t *testing.T) {
 	// 1日のサイクルをシミュレーション
-	logger := slog.Default()
+	_ = slog.Default()
 	
 	// 24時間 = 48回の30分間隔
 	// 2個/回 × 48回 = 96回処理
@@ -90,7 +90,7 @@ func TestScheduleHandler_DailyCycleSimulation(t *testing.T) {
 	t.Logf("  Daily cycles: %.2f", dailyCycles)
 }
 
-func TestScheduleHandler_GetStatus(t *testing.T) {
+func TestScheduleHandler_GetStatus_Batch(t *testing.T) {
 	handler := NewScheduleHandler(nil, nil, nil)
 
 	status := handler.GetStatus()
@@ -103,14 +103,14 @@ func TestScheduleHandler_GetStatus(t *testing.T) {
 	assert.Equal(t, int64(0), status.TotalArticleFetches)
 }
 
-func TestScheduleHandler_IsRunning(t *testing.T) {
+func TestScheduleHandler_IsRunning_Batch(t *testing.T) {
 	handler := NewScheduleHandler(nil, nil, nil)
 
 	// Initially not running
 	assert.False(t, handler.IsRunning())
 }
 
-func TestScheduleHandler_UpdateConfig(t *testing.T) {
+func TestScheduleHandler_UpdateConfig_Batch(t *testing.T) {
 	handler := NewScheduleHandler(nil, nil, nil)
 
 	tests := map[string]struct {

@@ -30,7 +30,7 @@ func TestNewSubscriptionRotator(t *testing.T) {
 
 	assert.NotNil(t, rotator)
 	assert.Equal(t, 30, rotator.intervalMinutes) // Changed from 20 to 30 minutes default
-	assert.Equal(t, 1, rotator.maxDaily) // Should be 1 by default, not 84
+	assert.Equal(t, 2, rotator.maxDaily) // Should be 2 by default (changed from 1)
 	assert.Equal(t, 0, rotator.currentIndex)
 	assert.Empty(t, rotator.subscriptions)
 	assert.Empty(t, rotator.lastProcessed)
@@ -70,6 +70,17 @@ func TestLoadSubscriptions(t *testing.T) {
 }
 
 func TestGetNextSubscription(t *testing.T) {
+	// Set MAX_DAILY_ROTATIONS=1 to maintain original test behavior
+	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
+		} else {
+			os.Unsetenv("MAX_DAILY_ROTATIONS")
+		}
+	}()
+	os.Setenv("MAX_DAILY_ROTATIONS", "1")
+
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
 
@@ -131,6 +142,17 @@ func TestDailyReset(t *testing.T) {
 }
 
 func TestGetStats(t *testing.T) {
+	// Set MAX_DAILY_ROTATIONS=1 to maintain original test expectations
+	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
+		} else {
+			os.Unsetenv("MAX_DAILY_ROTATIONS")
+		}
+	}()
+	os.Setenv("MAX_DAILY_ROTATIONS", "1")
+
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
 
@@ -207,6 +229,17 @@ func TestSetInterval(t *testing.T) {
 }
 
 func TestGetProcessingStatus(t *testing.T) {
+	// Set MAX_DAILY_ROTATIONS=1 to maintain original test expectations
+	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
+		} else {
+			os.Unsetenv("MAX_DAILY_ROTATIONS")
+		}
+	}()
+	os.Setenv("MAX_DAILY_ROTATIONS", "1")
+
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
 
@@ -684,4 +717,174 @@ func validateRotationConfiguration(subscriptions, maxDaily, batchSize, intervalM
 	}
 	
 	return nil
+}
+
+// TestDailyResetCurrentIndex tests that currentIndex is properly reset during daily rotation
+// This test verifies the fix for the bug where second daily rotation cycle doesn't start
+func TestDailyResetCurrentIndex(t *testing.T) {
+	// Set MAX_DAILY_ROTATIONS=2 for this test
+	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
+		} else {
+			os.Unsetenv("MAX_DAILY_ROTATIONS")
+		}
+	}()
+	os.Setenv("MAX_DAILY_ROTATIONS", "2")
+
+	rotator := NewSubscriptionRotator(slog.Default())
+	ctx := context.Background()
+
+	// Load 3 test subscriptions
+	subs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+	err := rotator.LoadSubscriptions(ctx, subs)
+	require.NoError(t, err)
+
+	// Process all subscriptions in first cycle (3 subscriptions)
+	for i := 0; i < 3; i++ {
+		sub, hasNext := rotator.GetNextSubscription()
+		assert.NotEqual(t, uuid.Nil, sub)
+		assert.True(t, hasNext)
+	}
+	assert.Equal(t, 3, rotator.currentIndex) // After first cycle
+
+	// Continue processing second cycle (should process 3 more)
+	for i := 0; i < 3; i++ {
+		sub, hasNext := rotator.GetNextSubscription()
+		assert.NotEqual(t, uuid.Nil, sub)
+		assert.True(t, hasNext) // All should be true since we have 2 cycles (MAX_DAILY_ROTATIONS=2)
+	}
+	assert.Equal(t, 6, rotator.currentIndex) // After both cycles (3*2=6)
+	
+	// Verify no more subscriptions are available for today
+	subAfterCycles, hasNextAfterCycles := rotator.GetNextSubscription()
+	assert.Equal(t, uuid.Nil, subAfterCycles)
+	assert.False(t, hasNextAfterCycles) // Should be false since all subscriptions processed for today
+
+	// Simulate next day - this should reset currentIndex to 0
+	rotator.mu.Lock()
+	originalResetDate := rotator.lastResetDate
+	// Set lastResetDate to yesterday (in timezone)
+	yesterday := time.Now().In(rotator.timezone).Add(-24 * time.Hour)
+	year, month, day := yesterday.Date()
+	rotator.lastResetDate = time.Date(year, month, day, 0, 0, 0, 0, rotator.timezone)
+	rotator.mu.Unlock()
+
+	// Get next subscription should trigger daily reset
+	subAfterReset, hasNextAfterReset := rotator.GetNextSubscription()
+	assert.NotEqual(t, uuid.Nil, subAfterReset)
+	assert.True(t, hasNextAfterReset)
+
+	// CRITICAL TEST: currentIndex should be reset to 1 after daily reset
+	// This is the bug we're fixing - currently it stays at 6
+	rotator.mu.RLock()
+	currentIndexAfterReset := rotator.currentIndex
+	rotator.mu.RUnlock()
+
+	assert.Equal(t, 1, currentIndexAfterReset, 
+		"currentIndex should be reset to 1 after daily reset, but was %d", currentIndexAfterReset)
+
+	// Verify we can process full cycles again
+	stats := rotator.GetStats()
+	assert.Equal(t, 1, stats.ProcessedToday, "Should show 1 processed after reset")
+	assert.Equal(t, 5, stats.RemainingToday, "Should show 5 remaining (3*2-1)")
+
+	t.Logf("Original reset date: %s", originalResetDate.Format("2006-01-02 15:04:05"))
+	t.Logf("Current index after reset: %d", currentIndexAfterReset)
+	t.Logf("Stats after reset: processed=%d, remaining=%d", stats.ProcessedToday, stats.RemainingToday)
+}
+
+// TestProduction46SubscriptionsTwiceDaily simulates the production scenario with 46 subscriptions
+// This integration test verifies that all 46 subscriptions can be processed twice per day (92 total)
+func TestProduction46SubscriptionsTwiceDaily(t *testing.T) {
+	// Set MAX_DAILY_ROTATIONS=2 for production scenario
+	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
+		} else {
+			os.Unsetenv("MAX_DAILY_ROTATIONS")
+		}
+	}()
+	os.Setenv("MAX_DAILY_ROTATIONS", "2")
+
+	rotator := NewSubscriptionRotator(slog.Default())
+	ctx := context.Background()
+
+	// Create 46 subscriptions (production scenario)
+	subs := make([]uuid.UUID, 46)
+	for i := range subs {
+		subs[i] = uuid.New()
+	}
+
+	err := rotator.LoadSubscriptions(ctx, subs)
+	require.NoError(t, err)
+
+	// Initial stats check
+	initialStats := rotator.GetStats()
+	assert.Equal(t, 46, initialStats.TotalSubscriptions)
+	assert.Equal(t, 0, initialStats.ProcessedToday)
+	assert.Equal(t, 92, initialStats.RemainingToday) // 46 * 2 cycles
+
+	t.Logf("Initial stats: total=%d, remaining=%d", initialStats.TotalSubscriptions, initialStats.RemainingToday)
+
+	// Process all subscriptions in the first cycle (46 subscriptions)
+	processedCount := 0
+	for i := 0; i < 46; i++ {
+		sub, hasNext := rotator.GetNextSubscription()
+		assert.NotEqual(t, uuid.Nil, sub, "Expected subscription at position %d", i)
+		assert.True(t, hasNext, "Should have next subscription at position %d", i)
+		processedCount++
+	}
+
+	// Check stats after first cycle
+	statsAfterFirstCycle := rotator.GetStats()
+	assert.Equal(t, 46, statsAfterFirstCycle.ProcessedToday)
+	assert.Equal(t, 46, statsAfterFirstCycle.RemainingToday) // Still 46 remaining for second cycle
+	
+	t.Logf("After first cycle: processed=%d, remaining=%d", statsAfterFirstCycle.ProcessedToday, statsAfterFirstCycle.RemainingToday)
+
+	// Process all subscriptions in the second cycle (another 46 subscriptions)  
+	for i := 0; i < 46; i++ {
+		sub, hasNext := rotator.GetNextSubscription()
+		assert.NotEqual(t, uuid.Nil, sub, "Expected subscription at second cycle position %d", i)
+		// All should have hasNext=true for the processing within cycles
+		assert.True(t, hasNext, "Should have next subscription at second cycle position %d", i)
+		processedCount++
+	}
+
+	// Final stats check
+	finalStats := rotator.GetStats()
+	assert.Equal(t, 92, finalStats.ProcessedToday) // 46 * 2 cycles
+	assert.Equal(t, 0, finalStats.RemainingToday)  // No more remaining
+	assert.Equal(t, 92, processedCount)             // Total processed count
+
+	t.Logf("Final stats: processed=%d, remaining=%d, total_processed=%d", 
+		finalStats.ProcessedToday, finalStats.RemainingToday, processedCount)
+
+	// Verify no more subscriptions are available for today
+	noMoreSub, noMoreHasNext := rotator.GetNextSubscription()
+	assert.Equal(t, uuid.Nil, noMoreSub)
+	assert.False(t, noMoreHasNext)
+
+	// Test daily reset scenario
+	rotator.mu.Lock()
+	yesterday := time.Now().In(rotator.timezone).Add(-24 * time.Hour)
+	year, month, day := yesterday.Date()
+	rotator.lastResetDate = time.Date(year, month, day, 0, 0, 0, 0, rotator.timezone)
+	rotator.mu.Unlock()
+
+	// After reset, should be able to process again
+	subAfterReset, hasNextAfterReset := rotator.GetNextSubscription()
+	assert.NotEqual(t, uuid.Nil, subAfterReset)
+	assert.True(t, hasNextAfterReset)
+
+	// Stats should be reset
+	statsAfterReset := rotator.GetStats()
+	assert.Equal(t, 1, statsAfterReset.ProcessedToday)    // Just processed 1
+	assert.Equal(t, 91, statsAfterReset.RemainingToday)   // 92 - 1 = 91 remaining
+
+	t.Logf("After daily reset: processed=%d, remaining=%d", 
+		statsAfterReset.ProcessedToday, statsAfterReset.RemainingToday)
 }

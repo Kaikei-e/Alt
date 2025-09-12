@@ -198,6 +198,17 @@ func mustLoadLocation(name string) *time.Location {
 
 // TestSubscriptionCompletionLogic tests that subscriptions are properly marked as complete
 func TestSubscriptionCompletionLogic(t *testing.T) {
+	// Set MAX_DAILY_ROTATIONS=1 to maintain original test expectations
+	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
+		} else {
+			os.Unsetenv("MAX_DAILY_ROTATIONS")
+		}
+	}()
+	os.Setenv("MAX_DAILY_ROTATIONS", "1")
+
 	rotator := NewSubscriptionRotator(slog.Default())
 	
 	// Test with no subscriptions
