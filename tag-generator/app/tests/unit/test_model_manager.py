@@ -3,10 +3,12 @@ Unit tests for ModelManager class.
 Tests the singleton pattern, model loading, and error handling.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch, call
 import threading
-from tag_extractor.model_manager import ModelManager, ModelConfig, get_model_manager
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from tag_extractor.model_manager import ModelConfig, ModelManager, get_model_manager
 
 
 class TestModelManager:
@@ -50,9 +52,9 @@ class TestModelManager:
         manager = ModelManager()
         assert not manager.is_loaded()
 
-    @patch('tag_extractor.model_manager.SentenceTransformer')
-    @patch('tag_extractor.model_manager.KeyBERT')
-    @patch('tag_extractor.model_manager.Tagger')
+    @patch("tag_extractor.model_manager.SentenceTransformer")
+    @patch("tag_extractor.model_manager.KeyBERT")
+    @patch("tag_extractor.model_manager.Tagger")
     def test_get_models_loads_successfully(self, mock_tagger, mock_keybert, mock_sentence_transformer):
         """Test successful model loading."""
         # Arrange
@@ -82,10 +84,11 @@ class TestModelManager:
         config = ModelConfig()
 
         # Simulate the actual bug: ML libraries are None (not available)
-        with patch('tag_extractor.model_manager.SentenceTransformer', None), \
-             patch('tag_extractor.model_manager.KeyBERT', None), \
-             patch('tag_extractor.model_manager.Tagger', None):
-
+        with (
+            patch("tag_extractor.model_manager.SentenceTransformer", None),
+            patch("tag_extractor.model_manager.KeyBERT", None),
+            patch("tag_extractor.model_manager.Tagger", None),
+        ):
             # This should raise an exception but NOT a TypeError about NoneType being callable
             with pytest.raises(Exception) as exc_info:
                 manager.get_models(config)
@@ -93,9 +96,9 @@ class TestModelManager:
             # Should not be a TypeError about NoneType not being callable
             assert "NoneType" not in str(exc_info.value) or "not callable" not in str(exc_info.value)
 
-    @patch('tag_extractor.model_manager.SentenceTransformer')
-    @patch('tag_extractor.model_manager.KeyBERT')
-    @patch('tag_extractor.model_manager.Tagger')
+    @patch("tag_extractor.model_manager.SentenceTransformer")
+    @patch("tag_extractor.model_manager.KeyBERT")
+    @patch("tag_extractor.model_manager.Tagger")
     def test_get_models_handles_loading_failure(self, mock_tagger, mock_keybert, mock_sentence_transformer):
         """Test model loading failure handling."""
         # Arrange - make model loading fail
@@ -105,7 +108,7 @@ class TestModelManager:
         config = ModelConfig()
 
         # Act & Assert
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="Model loading failed"):
             manager.get_models(config)
 
         # Models should not be marked as loaded
@@ -113,7 +116,7 @@ class TestModelManager:
 
     def test_get_models_caches_loaded_models(self):
         """Test that models are cached and not reloaded unnecessarily."""
-        with patch.object(ModelManager, '_load_models') as mock_load:
+        with patch.object(ModelManager, "_load_models") as mock_load:
             manager = ModelManager()
             config = ModelConfig()
 
@@ -132,7 +135,7 @@ class TestModelManager:
 
     def test_get_models_reloads_on_config_change(self):
         """Test that models are reloaded when configuration changes."""
-        with patch.object(ModelManager, '_load_models') as mock_load:
+        with patch.object(ModelManager, "_load_models") as mock_load:
             manager = ModelManager()
             config1 = ModelConfig(model_name="model1")
             config2 = ModelConfig(model_name="model2")
@@ -149,12 +152,12 @@ class TestModelManager:
             # _load_models should be called due to config change
             mock_load.assert_called_once_with(config2)
 
-    @patch('builtins.open')
-    @patch('nltk.corpus.stopwords.words')
+    @patch("builtins.open")
+    @patch("nltk.corpus.stopwords.words")
     def test_get_stopwords_loads_successfully(self, mock_nltk_stopwords, mock_open):
         """Test successful stopwords loading."""
         # Arrange
-        mock_nltk_stopwords.return_value = ['the', 'a', 'an']
+        mock_nltk_stopwords.return_value = ["the", "a", "an"]
 
         manager = ModelManager()
 
@@ -166,8 +169,8 @@ class TestModelManager:
         assert isinstance(en_stopwords, set)
         assert len(en_stopwords) > 0  # Should include NLTK words
 
-    @patch('builtins.open', side_effect=FileNotFoundError())
-    @patch('nltk.corpus.stopwords.words', side_effect=Exception("NLTK not available"))
+    @patch("builtins.open", side_effect=FileNotFoundError())
+    @patch("nltk.corpus.stopwords.words", side_effect=Exception("NLTK not available"))
     def test_get_stopwords_handles_file_errors(self, mock_nltk_stopwords, mock_open):
         """Test stopwords loading with file and NLTK errors."""
         manager = ModelManager()

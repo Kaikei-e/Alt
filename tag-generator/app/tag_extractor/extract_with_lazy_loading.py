@@ -5,18 +5,18 @@ This module provides enhanced tag extraction with lazy loading for better
 memory efficiency and startup performance.
 """
 
+import asyncio
 import re
 import unicodedata
-from typing import List, Optional, Tuple, cast
-from dataclasses import dataclass
 from collections import Counter
-import asyncio
+from dataclasses import dataclass
+from typing import cast
 
-from langdetect import detect, LangDetectException
 import structlog
+from langdetect import LangDetectException, detect
 
-from .lazy_model_manager import get_model_manager, ModelType
 from .input_sanitizer import InputSanitizer, SanitizationConfig
+from .lazy_model_manager import get_model_manager
 
 logger = structlog.get_logger(__name__)
 
@@ -27,12 +27,12 @@ class TagExtractionConfig:
     device: str = "cpu"
     top_keywords: int = 10
     min_score_threshold: float = 0.15
-    keyphrase_ngram_range: Tuple[int, int] = (1, 3)
+    keyphrase_ngram_range: tuple[int, int] = (1, 3)
     use_mmr: bool = True
     diversity: float = 0.5
     min_token_length: int = 2
     min_text_length: int = 10
-    japanese_pos_tags: Tuple[str, ...] = (
+    japanese_pos_tags: tuple[str, ...] = (
         "名詞",
         "固有名詞",
         "地名",
@@ -60,13 +60,13 @@ class LazyTagExtractor:
 
     def __init__(
         self,
-        config: Optional[TagExtractionConfig] = None,
-        sanitizer_config: Optional[SanitizationConfig] = None,
+        config: TagExtractionConfig | None = None,
+        sanitizer_config: SanitizationConfig | None = None,
     ):
         self.config = config or TagExtractionConfig()
         self._model_manager = get_model_manager()
         self._input_sanitizer = InputSanitizer(sanitizer_config)
-        
+
         # Cache for loaded models
         self._sentence_transformer = None
         self._keybert = None
@@ -77,9 +77,7 @@ class LazyTagExtractor:
     async def _get_sentence_transformer(self):
         """Get SentenceTransformer with lazy loading"""
         if self._sentence_transformer is None:
-            self._sentence_transformer = await self._model_manager.get_sentence_transformer(
-                self.config.model_name
-            )
+            self._sentence_transformer = await self._model_manager.get_sentence_transformer(self.config.model_name)
         return self._sentence_transformer
 
     async def _get_keybert(self):
@@ -88,6 +86,7 @@ class LazyTagExtractor:
             sentence_transformer = await self._get_sentence_transformer()
             # Import KeyBERT when needed
             from keybert import KeyBERT
+
             self._keybert = KeyBERT(model=sentence_transformer)
         return self._keybert
 
@@ -126,7 +125,7 @@ class LazyTagExtractor:
         else:
             return text.lower()
 
-    async def _extract_compound_japanese_words(self, text: str) -> List[str]:
+    async def _extract_compound_japanese_words(self, text: str) -> list[str]:
         """Extract compound words and important phrases from Japanese text."""
         tagger = await self._get_fugashi_tagger()
         compound_words = []
@@ -174,10 +173,7 @@ class LazyTagExtractor:
                             else:
                                 break
                         elif parsed[j].surface in ["・", "＝", "－"]:
-                            if (
-                                j + 1 < len(parsed)
-                                and parsed[j + 1].feature.pos1 in self.config.japanese_pos_tags
-                            ):
+                            if j + 1 < len(parsed) and parsed[j + 1].feature.pos1 in self.config.japanese_pos_tags:
                                 compound += parsed[j].surface + parsed[j + 1].surface
                                 j += 2
                             else:
@@ -203,12 +199,12 @@ class LazyTagExtractor:
 
         return unique_compounds
 
-    async def _extract_keywords_japanese(self, text: str) -> List[str]:
+    async def _extract_keywords_japanese(self, text: str) -> list[str]:
         """Extract keywords specifically for Japanese text."""
         # Get Japanese stopwords
         stopwords = await self._get_nltk_stopwords()
-        ja_stopwords = set(stopwords.words('japanese')) if hasattr(stopwords, 'words') else set()
-        
+        ja_stopwords = set(stopwords.words("japanese")) if hasattr(stopwords, "words") else set()
+
         # Get tagger
         tagger = await self._get_fugashi_tagger()
 
@@ -246,7 +242,7 @@ class LazyTagExtractor:
 
         return top_keywords[: self.config.top_keywords]
 
-    async def _extract_keywords_english(self, text: str) -> List[str]:
+    async def _extract_keywords_english(self, text: str) -> list[str]:
         """Extract keywords specifically for English text using KeyBERT."""
         keybert = await self._get_keybert()
 
@@ -273,7 +269,7 @@ class LazyTagExtractor:
             seen_words = set()
 
             # Process phrases first
-            for phrase_tuple in cast(List[Tuple[str, float]], phrase_keywords):
+            for phrase_tuple in cast(list[tuple[str, float]], phrase_keywords):
                 phrase = phrase_tuple[0].strip().lower()
                 score = phrase_tuple[1]
                 if score >= self.config.min_score_threshold * 1.5:
@@ -284,7 +280,7 @@ class LazyTagExtractor:
                             seen_words.update(words)
 
             # Then add important single words
-            for word_tuple in cast(List[Tuple[str, float]], single_keywords):
+            for word_tuple in cast(list[tuple[str, float]], single_keywords):
                 word = word_tuple[0].strip().lower()
                 score = word_tuple[1]
                 if score >= self.config.min_score_threshold and word not in seen_words:
@@ -299,7 +295,7 @@ class LazyTagExtractor:
             result = []
             seen_final: set[str] = set()
 
-            for keyword, score in all_keywords:
+            for keyword, _score in all_keywords:
                 keyword_clean = keyword.strip()
                 keyword_lower = keyword_clean.lower()
 
@@ -323,13 +319,13 @@ class LazyTagExtractor:
             logger.error("KeyBERT extraction failed for English", error=e)
             return []
 
-    async def _tokenize_english(self, text: str) -> List[str]:
+    async def _tokenize_english(self, text: str) -> list[str]:
         """Tokenize English text using NLTK."""
         tokenizer = await self._get_nltk_tokenizer()
         stopwords = await self._get_nltk_stopwords()
-        
-        en_stopwords = set(stopwords.words('english')) if hasattr(stopwords, 'words') else set()
-        
+
+        en_stopwords = set(stopwords.words("english")) if hasattr(stopwords, "words") else set()
+
         tokens = tokenizer(text)
         result = []
 
@@ -341,7 +337,7 @@ class LazyTagExtractor:
 
         return result
 
-    async def _fallback_extraction(self, text: str, lang: str) -> List[str]:
+    async def _fallback_extraction(self, text: str, lang: str) -> list[str]:
         """Fallback extraction method when primary method fails."""
         if lang == "ja":
             return await self._extract_keywords_japanese(text)
@@ -352,7 +348,7 @@ class LazyTagExtractor:
                 return [term for term, _ in token_freq.most_common(self.config.top_keywords)]
             return []
 
-    async def extract_tags(self, title: str, content: str) -> List[str]:
+    async def extract_tags(self, title: str, content: str) -> list[str]:
         """
         Extract tags from title and content with language-specific processing.
 
@@ -365,30 +361,35 @@ class LazyTagExtractor:
         """
         # Sanitize input first
         sanitization_result = self._input_sanitizer.sanitize(title, content)
-        
+
         if not sanitization_result.is_valid:
             logger.warning("Input sanitization failed", violations=sanitization_result.violations)
             return []
-        
+
         # Use sanitized input
         sanitized_input = sanitization_result.sanitized_input
         if sanitized_input is None:
             logger.error("Sanitized input is None despite valid sanitization")
             return []
-        
+
         sanitized_title = sanitized_input.title
         sanitized_content = sanitized_input.content
         raw_text = f"{sanitized_title}\n{sanitized_content}"
 
         # Validate input length
         if len(raw_text.strip()) < self.config.min_text_length:
-            logger.info("Sanitized input too short, skipping extraction", char_count=len(raw_text))
+            logger.info(
+                "Sanitized input too short, skipping extraction",
+                char_count=len(raw_text),
+            )
             return []
 
-        logger.info("Processing sanitized text", 
-                   char_count=len(raw_text),
-                   original_length=sanitized_input.original_length,
-                   sanitized_length=sanitized_input.sanitized_length)
+        logger.info(
+            "Processing sanitized text",
+            char_count=len(raw_text),
+            original_length=sanitized_input.original_length,
+            sanitized_length=sanitized_input.sanitized_length,
+        )
 
         # Detect language
         lang = self._detect_language(raw_text)
@@ -426,12 +427,14 @@ class LazyTagExtractor:
 
     async def preload_models(self):
         """Preload models for better performance"""
-        await self._model_manager.preload_models([
-            "nltk_stopwords",
-            "nltk_tokenizer",
-            "sentence_transformer_paraphrase-multilingual-MiniLM-L12-v2",
-            "fugashi_tagger"
-        ])
+        await self._model_manager.preload_models(
+            [
+                "nltk_stopwords",
+                "nltk_tokenizer",
+                "sentence_transformer_paraphrase-multilingual-MiniLM-L12-v2",
+                "fugashi_tagger",
+            ]
+        )
 
     def get_model_stats(self):
         """Get model statistics"""
@@ -439,14 +442,14 @@ class LazyTagExtractor:
 
 
 # Async wrapper for backward compatibility
-async def extract_tags_async(title: str, content: str) -> List[str]:
+async def extract_tags_async(title: str, content: str) -> list[str]:
     """
     Async function for tag extraction with lazy loading.
-    
+
     Args:
         title: The title text
         content: The content text
-        
+
     Returns:
         List of extracted tags
     """
@@ -455,14 +458,14 @@ async def extract_tags_async(title: str, content: str) -> List[str]:
 
 
 # Synchronous wrapper for backward compatibility
-def extract_tags(title: str, content: str) -> List[str]:
+def extract_tags(title: str, content: str) -> list[str]:
     """
     Synchronous wrapper for tag extraction.
-    
+
     Args:
         title: The title text
         content: The content text
-        
+
     Returns:
         List of extracted tags
     """

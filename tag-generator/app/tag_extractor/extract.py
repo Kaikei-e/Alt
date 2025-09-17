@@ -1,12 +1,12 @@
 import re
 import unicodedata
-from typing import List, Optional, Tuple, cast
-from dataclasses import dataclass
 from collections import Counter
+from dataclasses import dataclass
+from typing import cast
 
-from langdetect import detect, LangDetectException
 import nltk
 import structlog
+from langdetect import LangDetectException, detect
 
 # Re-export heavy model classes for compatibility with unit tests that patch
 # them directly on this module path (e.g., `patch("tag_extractor.extract.SentenceTransformer")`).
@@ -15,9 +15,11 @@ import structlog
 # happens elsewhere; it only brings the symbols into the namespace.
 
 try:
-    from sentence_transformers import SentenceTransformer as _SentenceTransformer  # type: ignore
-    from keybert import KeyBERT as _KeyBERT  # type: ignore
     from fugashi import Tagger as _Tagger  # type: ignore
+    from keybert import KeyBERT as _KeyBERT  # type: ignore
+    from sentence_transformers import (
+        SentenceTransformer as _SentenceTransformer,  # type: ignore
+    )
 
     # Alias for outward exposure
     SentenceTransformer = _SentenceTransformer  # noqa: N816 (keep original casing for patching)
@@ -31,8 +33,8 @@ except ImportError:
     Tagger = None  # type: ignore
 
 # Local imports depending on re-export must come after alias definitions for consistency
-from .model_manager import get_model_manager, ModelConfig
 from .input_sanitizer import InputSanitizer, SanitizationConfig
+from .model_manager import ModelConfig, get_model_manager
 
 logger = structlog.get_logger(__name__)
 
@@ -43,12 +45,12 @@ class TagExtractionConfig:
     device: str = "cpu"
     top_keywords: int = 10
     min_score_threshold: float = 0.15  # Lower threshold for better extraction
-    keyphrase_ngram_range: Tuple[int, int] = (1, 3)
+    keyphrase_ngram_range: tuple[int, int] = (1, 3)
     use_mmr: bool = True
     diversity: float = 0.5
     min_token_length: int = 2
     min_text_length: int = 10
-    japanese_pos_tags: Tuple[str, ...] = (
+    japanese_pos_tags: tuple[str, ...] = (
         "名詞",
         "固有名詞",
         "地名",
@@ -74,7 +76,11 @@ class TagExtractionConfig:
 class TagExtractor:
     """A class for extracting tags from text using KeyBERT and language-specific processing."""
 
-    def __init__(self, config: Optional[TagExtractionConfig] = None, sanitizer_config: Optional[SanitizationConfig] = None):
+    def __init__(
+        self,
+        config: TagExtractionConfig | None = None,
+        sanitizer_config: SanitizationConfig | None = None,
+    ):
         self.config = config or TagExtractionConfig()
         self._model_manager = get_model_manager()
         self._models_loaded = False
@@ -83,12 +89,8 @@ class TagExtractor:
     def _lazy_load_models(self) -> None:
         """Lazy load models using the singleton model manager."""
         if not self._models_loaded:
-            model_config = ModelConfig(
-                model_name=self.config.model_name, device=self.config.device
-            )
-            self._embedder, self._keybert, self._ja_tagger = (
-                self._model_manager.get_models(model_config)
-            )
+            model_config = ModelConfig(model_name=self.config.model_name, device=self.config.device)
+            self._embedder, self._keybert, self._ja_tagger = self._model_manager.get_models(model_config)
             self._models_loaded = True
             logger.debug("Models loaded via ModelManager")
 
@@ -116,7 +118,7 @@ class TagExtractor:
         else:
             return text.lower()
 
-    def _extract_compound_japanese_words(self, text: str) -> List[str]:
+    def _extract_compound_japanese_words(self, text: str) -> list[str]:
         """Extract compound words and important phrases from Japanese text."""
         self._lazy_load_models()
         compound_words = []
@@ -169,11 +171,7 @@ class TagExtractor:
                                 break
                         elif parsed[j].surface in ["・", "＝", "－"]:
                             # Include connectors in proper nouns
-                            if (
-                                j + 1 < len(parsed)
-                                and parsed[j + 1].feature.pos1
-                                in self.config.japanese_pos_tags
-                            ):
+                            if j + 1 < len(parsed) and parsed[j + 1].feature.pos1 in self.config.japanese_pos_tags:
                                 compound += parsed[j].surface + parsed[j + 1].surface
                                 j += 2
                             else:
@@ -199,7 +197,7 @@ class TagExtractor:
 
         return unique_compounds
 
-    def _extract_keywords_japanese(self, text: str) -> List[str]:
+    def _extract_keywords_japanese(self, text: str) -> list[str]:
         """Extract keywords specifically for Japanese text."""
         self._lazy_load_models()
         self._load_stopwords()
@@ -235,15 +233,13 @@ class TagExtractor:
         # Get top keywords by frequency
         top_keywords = []
         for term, freq in combined_freq.most_common(self.config.top_keywords * 2):
-            if (
-                freq >= 2 or len(term) >= 4
-            ):  # Include terms that appear 2+ times or are longer
+            if freq >= 2 or len(term) >= 4:  # Include terms that appear 2+ times or are longer
                 top_keywords.append(term)
 
         # Limit to configured number
         return top_keywords[: self.config.top_keywords]
 
-    def _extract_keywords_english(self, text: str) -> List[str]:
+    def _extract_keywords_english(self, text: str) -> list[str]:
         """Extract keywords specifically for English text using KeyBERT."""
         self._lazy_load_models()
 
@@ -270,13 +266,11 @@ class TagExtractor:
             seen_words = set()
 
             # Process phrases first to identify important compound terms
-            for phrase_tuple in cast(List[Tuple[str, float]], phrase_keywords):
+            for phrase_tuple in cast(list[tuple[str, float]], phrase_keywords):
                 phrase = phrase_tuple[0].strip().lower()
                 score = phrase_tuple[1]
                 # Only keep phrases with high scores or specific patterns
-                if (
-                    score >= self.config.min_score_threshold * 1.5
-                ):  # Higher threshold for phrases
+                if score >= self.config.min_score_threshold * 1.5:  # Higher threshold for phrases
                     # Check if it's a meaningful compound (e.g., "apple intelligence", "mac mini")
                     words = phrase.split()
                     if len(words) >= 2:
@@ -287,7 +281,7 @@ class TagExtractor:
                             seen_words.update(words)
 
             # Then add important single words not already in phrases
-            for word_tuple in cast(List[Tuple[str, float]], single_keywords):
+            for word_tuple in cast(list[tuple[str, float]], single_keywords):
                 word = word_tuple[0].strip().lower()
                 score = word_tuple[1]
                 if score >= self.config.min_score_threshold and word not in seen_words:
@@ -303,7 +297,7 @@ class TagExtractor:
             result = []
             seen_final: set[str] = set()
 
-            for keyword, score in all_keywords:
+            for keyword, _score in all_keywords:
                 # Clean and check for duplicates
                 keyword_clean = keyword.strip()
                 keyword_lower = keyword_clean.lower()
@@ -331,24 +325,21 @@ class TagExtractor:
             logger.error("KeyBERT extraction failed for English", error=e)
             return []
 
-    def _tokenize_english(self, text: str) -> List[str]:
+    def _tokenize_english(self, text: str) -> list[str]:
         """Tokenize English text using NLTK."""
         self._load_stopwords()
         tokens = nltk.word_tokenize(text)
         result = []
 
         for token in tokens:
-            if (
-                re.fullmatch(r"\w+", token)
-                and len(token) > self.config.min_token_length
-            ):
+            if re.fullmatch(r"\w+", token) and len(token) > self.config.min_token_length:
                 normalized = self._normalize_text(token, "en")
                 if normalized not in self._en_stopwords:
                     result.append(normalized)
 
         return result
 
-    def _fallback_extraction(self, text: str, lang: str) -> List[str]:
+    def _fallback_extraction(self, text: str, lang: str) -> list[str]:
         """Fallback extraction method when primary method fails."""
         if lang == "ja":
             # For Japanese, use the frequency-based approach
@@ -358,12 +349,10 @@ class TagExtractor:
             tokens = self._tokenize_english(text)
             if tokens:
                 token_freq = Counter(tokens)
-                return [
-                    term for term, _ in token_freq.most_common(self.config.top_keywords)
-                ]
+                return [term for term, _ in token_freq.most_common(self.config.top_keywords)]
             return []
 
-    def extract_tags(self, title: str, content: str) -> List[str]:
+    def extract_tags(self, title: str, content: str) -> list[str]:
         """
         Extract tags from title and content with language-specific processing.
 
@@ -393,13 +382,18 @@ class TagExtractor:
 
         # Validate input length
         if len(raw_text.strip()) < self.config.min_text_length:
-            logger.info("Sanitized input too short, skipping extraction", char_count=len(raw_text))
+            logger.info(
+                "Sanitized input too short, skipping extraction",
+                char_count=len(raw_text),
+            )
             return []
 
-        logger.info("Processing sanitized text",
-                   char_count=len(raw_text),
-                   original_length=sanitized_input.original_length,
-                   sanitized_length=sanitized_input.sanitized_length)
+        logger.info(
+            "Processing sanitized text",
+            char_count=len(raw_text),
+            original_length=sanitized_input.original_length,
+            sanitized_length=sanitized_input.sanitized_length,
+        )
 
         # Detect language
         lang = self._detect_language(raw_text)
@@ -441,7 +435,7 @@ class TagExtractor:
 
 
 # Maintain backward compatibility
-def extract_tags(title: str, content: str) -> List[str]:
+def extract_tags(title: str, content: str) -> list[str]:
     """
     Legacy function for backward compatibility.
     Now includes input sanitization by default.

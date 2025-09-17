@@ -3,18 +3,14 @@ Test suite for model management optimization in TagExtractor.
 Following TDD principles to improve performance through shared model instances.
 """
 
-import pytest
+import gc
 import threading
 import time
 from unittest.mock import Mock, patch
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import psutil
-import os
-import gc
 
-from tag_extractor.extract import TagExtractor, TagExtractionConfig
-from tag_inserter.upsert_tags import TagInserter
-from main import TagGeneratorService
+import pytest
+
+from tag_extractor.extract import TagExtractionConfig, TagExtractor
 from tag_extractor.model_manager import get_model_manager
 
 
@@ -45,15 +41,9 @@ class TestModelSharingOptimization:
             extractor2._lazy_load_models()
 
             # Assert - This should fail with current implementation
-            assert extractor1._embedder is extractor2._embedder, (
-                "Embedder models should be shared"
-            )
-            assert extractor1._keybert is extractor2._keybert, (
-                "KeyBERT models should be shared"
-            )
-            assert extractor1._ja_tagger is extractor2._ja_tagger, (
-                "Japanese tagger should be shared"
-            )
+            assert extractor1._embedder is extractor2._embedder, "Embedder models should be shared"
+            assert extractor1._keybert is extractor2._keybert, "KeyBERT models should be shared"
+            assert extractor1._ja_tagger is extractor2._ja_tagger, "Japanese tagger should be shared"
 
     def test_should_support_gpu_acceleration_when_available(self):
         """Test that GPU acceleration is used when available."""
@@ -69,9 +59,7 @@ class TestModelSharingOptimization:
             extractor._lazy_load_models()
 
             # Assert
-            mock_transformer.assert_called_once_with(
-                "paraphrase-multilingual-MiniLM-L12-v2", device="cuda"
-            )
+            mock_transformer.assert_called_once_with("paraphrase-multilingual-MiniLM-L12-v2", device="cuda")
 
     def test_should_cleanup_models_on_service_shutdown(self):
         """Test that models are properly cleaned up on shutdown."""
@@ -109,9 +97,7 @@ class TestModelSharingOptimization:
 
             # Assert
             assert first_model is second_model, "Model should not be reloaded"
-            assert mock_transformer.call_count == 1, (
-                "SentenceTransformer should only be called once"
-            )
+            assert mock_transformer.call_count == 1, "SentenceTransformer should only be called once"
 
     def test_should_handle_model_loading_failure_gracefully(self):
         """Test that model loading failures are handled gracefully."""
@@ -148,9 +134,7 @@ class TestModelSharingOptimization:
             result2 = extractor2.extract_tags(title, content)
 
             # Assert
-            assert result1 == result2, (
-                "Results should be consistent across shared models"
-            )
+            assert result1 == result2, "Results should be consistent across shared models"
             assert len(result1) > 0, "Should extract tags successfully"
 
 
@@ -181,9 +165,7 @@ class TestModelMemoryOptimization:
 
             # Assert
             # Verify that intermediate results don't persist beyond the method call
-            assert not hasattr(extractor, "_temp_candidates"), (
-                "Should not store temporary candidates"
-            )
+            assert not hasattr(extractor, "_temp_candidates"), "Should not store temporary candidates"
 
     def test_should_handle_memory_pressure_gracefully(self):
         """Test that the system handles memory pressure gracefully."""
@@ -199,9 +181,7 @@ class TestModelMemoryOptimization:
 
         # Assert
         # This is a basic test - in practice, we'd need more sophisticated memory monitoring
-        assert len(gc.get_objects()) >= initial_objects, (
-            "Should manage memory objects properly"
-        )
+        assert len(gc.get_objects()) >= initial_objects, "Should manage memory objects properly"
 
 
 class TestConcurrentModelAccess:
@@ -216,9 +196,7 @@ class TestConcurrentModelAccess:
 
         def extract_worker(worker_id: int):
             try:
-                result = extractor.extract_tags(
-                    f"Title {worker_id}", f"Content {worker_id}"
-                )
+                result = extractor.extract_tags(f"Title {worker_id}", f"Content {worker_id}")
                 results.append(result)
             except Exception as e:
                 errors.append(e)
@@ -234,9 +212,7 @@ class TestConcurrentModelAccess:
             thread.join()
 
         # Assert
-        assert len(errors) == 0, (
-            f"Should not have errors during concurrent access: {errors}"
-        )
+        assert len(errors) == 0, f"Should not have errors during concurrent access: {errors}"
         assert len(results) == 5, "Should complete all concurrent extractions"
 
     def test_should_handle_worker_failures_gracefully(self):
@@ -250,9 +226,7 @@ class TestConcurrentModelAccess:
             try:
                 if worker_id == 2:  # Simulate failure in worker 2
                     raise ValueError("Simulated worker failure")
-                result = extractor.extract_tags(
-                    f"Title {worker_id}", f"Content {worker_id}"
-                )
+                result = extractor.extract_tags(f"Title {worker_id}", f"Content {worker_id}")
                 results.append(result)
             except Exception as e:
                 errors.append(e)
@@ -301,9 +275,7 @@ class TestModelPerformanceMetrics:
         after_loading_memory = len(gc.get_objects())
 
         # Assert
-        assert after_loading_memory >= initial_memory, (
-            "Memory usage should increase after model loading"
-        )
+        assert after_loading_memory >= initial_memory, "Memory usage should increase after model loading"
 
     def test_should_report_throughput_statistics(self):
         """Test that throughput statistics are reported."""

@@ -3,18 +3,19 @@ Critical performance tests that drive TDD refactoring.
 These tests will FAIL initially and drive the refactoring process.
 """
 
-import pytest
-import time
-import threading
-from unittest.mock import Mock, patch
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import psutil
-import os
 import gc
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from unittest.mock import Mock, patch
 
+import psutil
+import pytest
+
+from main import TagGeneratorService
 from tag_extractor.extract import TagExtractor
 from tag_inserter.upsert_tags import TagInserter
-from main import TagGeneratorService
 
 
 class TestCriticalPerformanceRequirements:
@@ -36,9 +37,7 @@ class TestCriticalPerformanceRequirements:
         def create_extractor_and_extract():
             try:
                 extractor = TagExtractor()
-                tags = extractor.extract_tags(
-                    "Test title", "Test content for tag extraction testing"
-                )
+                tags = extractor.extract_tags("Test title", "Test content for tag extraction testing")
                 results.append(
                     {
                         "extractor_id": id(extractor),
@@ -50,9 +49,7 @@ class TestCriticalPerformanceRequirements:
                 errors.append(e)
 
         # Track model loading at the manager level
-        with patch.object(
-            model_manager, "_load_models", wraps=model_manager._load_models
-        ) as mock_load_models:
+        with patch.object(model_manager, "_load_models", wraps=model_manager._load_models) as mock_load_models:
             # Create multiple extractors concurrently
             threads = []
             for _ in range(5):
@@ -119,9 +116,7 @@ class TestCriticalPerformanceRequirements:
         # Individual processing baseline
         start_time = time.time()
         for i in range(50):
-            inserter.upsert_tags(
-                mock_conn, f"article-{i}", [f"tag-{i}", f"tag-{i + 50}"]
-            )
+            inserter.upsert_tags(mock_conn, f"article-{i}", [f"tag-{i}", f"tag-{i + 50}"])
         individual_time = time.time() - start_time
 
         # Reset mock counters
@@ -129,10 +124,7 @@ class TestCriticalPerformanceRequirements:
         mock_cursor.reset_mock()
 
         # Batch processing
-        batch_data = [
-            {"article_id": f"article-{i}", "tags": [f"tag-{i}", f"tag-{i + 50}"]}
-            for i in range(50)
-        ]
+        batch_data = [{"article_id": f"article-{i}", "tags": [f"tag-{i}", f"tag-{i + 50}"]} for i in range(50)]
 
         start_time = time.time()
         inserter.batch_upsert_tags(mock_conn, batch_data)
@@ -156,9 +148,7 @@ class TestCriticalPerformanceRequirements:
         # Process many articles to stress test memory
         for batch in range(10):  # 10 batches
             for i in range(50):  # 50 articles per batch
-                content = (
-                    f"This is article {i} in batch {batch}. " * 100
-                )  # ~3KB per article
+                content = f"This is article {i} in batch {batch}. " * 100  # ~3KB per article
                 extractor.extract_tags(f"Title {batch}-{i}", content)
 
             # Force garbage collection after each batch
@@ -192,9 +182,7 @@ class TestCriticalPerformanceRequirements:
             results = []
             for i in range(articles_per_worker):
                 article_id = worker_id * articles_per_worker + i
-                tags = extractor.extract_tags(
-                    f"Title {article_id}", f"Content for article {article_id}"
-                )
+                tags = extractor.extract_tags(f"Title {article_id}", f"Content for article {article_id}")
                 results.append(tags)
             return results
 
@@ -212,9 +200,7 @@ class TestCriticalPerformanceRequirements:
         assert speedup >= expected_min_speedup, (
             f"Concurrent speedup {speedup:.1f}x should be ≥ {expected_min_speedup:.1f}x"
         )
-        assert len(all_results) == num_workers * articles_per_worker, (
-            "All articles should be processed"
-        )
+        assert len(all_results) == num_workers * articles_per_worker, "All articles should be processed"
 
     def test_database_transaction_efficiency(self):
         """Database operations should minimize transaction overhead - FAILING TEST."""
@@ -245,21 +231,13 @@ class TestCriticalPerformanceRequirements:
         processing_time = time.time() - start_time
 
         # CRITICAL: This may fail initially - large batch should be very fast
-        assert processing_time < 0.5, (
-            f"Large batch took {processing_time:.3f}s, should be < 0.5s"
-        )
+        assert processing_time < 0.5, f"Large batch took {processing_time:.3f}s, should be < 0.5s"
         assert result["success"] is True, "Large batch should succeed"
 
         # Should minimize database calls
         # Ideally: 1 call for tags, 1 for tag IDs, 1 for relationships, 1 commit
-        total_db_calls = (
-            mock_cursor.execute.call_count
-            + mock_cursor.fetchall.call_count
-            + mock_conn.commit.call_count
-        )
-        assert total_db_calls <= 10, (
-            f"Used {total_db_calls} DB calls, should use ≤ 10 for efficient batching"
-        )
+        total_db_calls = mock_cursor.execute.call_count + mock_cursor.fetchall.call_count + mock_conn.commit.call_count
+        assert total_db_calls <= 10, f"Used {total_db_calls} DB calls, should use ≤ 10 for efficient batching"
 
 
 class TestPerformanceRegressionPrevention:
@@ -276,9 +254,7 @@ class TestPerformanceRegressionPrevention:
         )
         processing_time = time.time() - start_time
 
-        assert processing_time < 2.0, (
-            f"Single article took {processing_time:.3f}s, should be < 2s"
-        )
+        assert processing_time < 2.0, f"Single article took {processing_time:.3f}s, should be < 2s"
         assert isinstance(tags, list), "Should return list of tags"
         assert len(tags) > 0, "Should extract some tags"
 
@@ -288,9 +264,7 @@ class TestPerformanceRegressionPrevention:
         TagGeneratorService()
         init_time = time.time() - start_time
 
-        assert init_time < 1.0, (
-            f"Service initialization took {init_time:.3f}s, should be < 1s"
-        )
+        assert init_time < 1.0, f"Service initialization took {init_time:.3f}s, should be < 1s"
 
     def test_database_connection_speed(self):
         """Database connection creation should be fast."""
@@ -304,9 +278,7 @@ class TestPerformanceRegressionPrevention:
                 conn = service._create_direct_connection()
                 connection_time = time.time() - start_time
 
-                assert connection_time < 0.5, (
-                    f"Connection took {connection_time:.3f}s, should be < 0.5s"
-                )
+                assert connection_time < 0.5, f"Connection took {connection_time:.3f}s, should be < 0.5s"
                 assert conn is not None, "Should return valid connection"
 
 

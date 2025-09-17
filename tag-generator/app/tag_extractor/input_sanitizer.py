@@ -5,12 +5,11 @@ Provides Pydantic-based input validation and sanitization to prevent prompt inje
 
 import re
 import unicodedata
-from typing import List, Optional, Union
 from urllib.parse import urlparse
 
 import bleach
 import structlog
-from pydantic import BaseModel, Field, validator, root_validator, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 logger = structlog.get_logger(__name__)
 
@@ -29,6 +28,7 @@ class SanitizationConfig(BaseModel):
 
 class SanitizationError(Exception):
     """Custom exception for sanitization errors."""
+
     pass
 
 
@@ -37,9 +37,9 @@ class ArticleInput(BaseModel):
 
     title: str = Field(..., min_length=1, max_length=1000)
     content: str = Field(..., min_length=1, max_length=50000)
-    url: Optional[str] = Field(None, max_length=2048)
+    url: str | None = Field(None, max_length=2048)
 
-    @field_validator('title', mode="before")
+    @field_validator("title", mode="before")
     def validate_title(cls, v):
         """Validate title content."""
         if not v or len(v.strip()) == 0:
@@ -47,14 +47,14 @@ class ArticleInput(BaseModel):
         if len(v) > 1000:
             raise ValueError("Title too long")
         # Check for control characters
-        if any(ord(c) < 32 and c not in '\t\n\r' for c in v):
+        if any(ord(c) < 32 and c not in "\t\n\r" for c in v):
             raise ValueError("Contains control characters")
         # Check for prompt injection patterns
         if cls._contains_prompt_injection(v):
             raise ValueError("Potential prompt injection detected")
         return v
 
-    @field_validator('content', mode="before")
+    @field_validator("content", mode="before")
     def validate_content(cls, v):
         """Validate content."""
         if not v or len(v.strip()) == 0:
@@ -62,14 +62,14 @@ class ArticleInput(BaseModel):
         if len(v) > 50000:
             raise ValueError("Content too long")
         # Check for control characters
-        if any(ord(c) < 32 and c not in '\t\n\r' for c in v):
+        if any(ord(c) < 32 and c not in "\t\n\r" for c in v):
             raise ValueError("Contains control characters")
         # Check for prompt injection patterns
         if cls._contains_prompt_injection(v):
             raise ValueError("Potential prompt injection detected")
         return v
 
-    @field_validator('url', mode="before")
+    @field_validator("url", mode="before")
     def validate_url(cls, v):
         """Validate URL format."""
         if v is None:
@@ -78,8 +78,8 @@ class ArticleInput(BaseModel):
             parsed = urlparse(v)
             if not parsed.scheme or not parsed.netloc:
                 raise ValueError("Invalid URL format")
-        except Exception:
-            raise ValueError("Invalid URL format")
+        except Exception as e:
+            raise ValueError("Invalid URL format") from e
         return v
 
     @staticmethod
@@ -104,7 +104,7 @@ class ArticleInput(BaseModel):
             "ignore all previous",
             "system prompt",
             "jailbreak",
-            "prompt injection"
+            "prompt injection",
         ]
 
         return any(pattern in text_lower for pattern in injection_patterns)
@@ -113,13 +113,16 @@ class ArticleInput(BaseModel):
     def _is_valid_url(url: str) -> bool:
         """Check if URL is valid."""
         import re
+
         url_pattern = re.compile(
-            r'^https?://'  # http:// or https://
-            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
-            r'localhost|'  # localhost...
-            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-            r'(?::\d+)?'  # optional port
-            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+            r"^https?://"  # http:// or https://
+            r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # domain...
+            r"localhost|"  # localhost...
+            r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
+            r"(?::\d+)?"  # optional port
+            r"(?:/?|[/?]\S+)$",
+            re.IGNORECASE,
+        )
         return bool(url_pattern.match(url))
 
 
@@ -128,7 +131,7 @@ class SanitizedArticleInput(BaseModel):
 
     title: str
     content: str
-    url: Optional[str] = None
+    url: str | None = None
     original_length: int
     sanitized_length: int
     normalized: bool = False
@@ -138,29 +141,55 @@ class SanitizationResult(BaseModel):
     """Result of input sanitization."""
 
     is_valid: bool
-    sanitized_input: Optional[SanitizedArticleInput]
-    violations: List[str]
-    warnings: List[str] = []
+    sanitized_input: SanitizedArticleInput | None
+    violations: list[str]
+    warnings: list[str] = []
 
 
 class InputSanitizer:
     """Main input sanitization class."""
 
-    def __init__(self, config: Optional[SanitizationConfig] = None):
+    def __init__(self, config: SanitizationConfig | None = None):
         self.config = config or SanitizationConfig()
 
         # Configure bleach for HTML sanitization
-        self.allowed_tags = [
-            'p', 'br', 'strong', 'em', 'b', 'i', 'u', 'a', 'ul', 'ol', 'li',
-            'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre'
-        ] if self.config.allow_html else []
+        self.allowed_tags = (
+            [
+                "p",
+                "br",
+                "strong",
+                "em",
+                "b",
+                "i",
+                "u",
+                "a",
+                "ul",
+                "ol",
+                "li",
+                "h1",
+                "h2",
+                "h3",
+                "h4",
+                "h5",
+                "h6",
+                "blockquote",
+                "code",
+                "pre",
+            ]
+            if self.config.allow_html
+            else []
+        )
 
-        self.allowed_attributes = {
-            'a': ['href', 'title'],
-            'img': ['src', 'alt', 'title'],
-        } if self.config.allow_html else {}
+        self.allowed_attributes = (
+            {
+                "a": ["href", "title"],
+                "img": ["src", "alt", "title"],
+            }
+            if self.config.allow_html
+            else {}
+        )
 
-    def sanitize(self, title: str, content: str, url: Optional[str] = None) -> SanitizationResult:
+    def sanitize(self, title: str, content: str, url: str | None = None) -> SanitizationResult:
         """
         Sanitize input text and return sanitization result.
 
@@ -199,11 +228,11 @@ class InputSanitizer:
                     raise ValueError("Content too long")
 
                 # Check for control characters in title
-                if any(ord(c) < 32 and c not in '\t\n\r' for c in title):
+                if any(ord(c) < 32 and c not in "\t\n\r" for c in title):
                     raise ValueError("Contains control characters")
 
                 # Check for control characters in content
-                if any(ord(c) < 32 and c not in '\t\n\r' for c in content):
+                if any(ord(c) < 32 and c not in "\t\n\r" for c in content):
                     raise ValueError("Contains control characters")
 
                 # Check for prompt injection patterns
@@ -223,7 +252,7 @@ class InputSanitizer:
                     is_valid=False,
                     sanitized_input=None,
                     violations=violations,
-                    warnings=warnings
+                    warnings=warnings,
                 )
 
             # Step 2: Sanitize content
@@ -245,7 +274,7 @@ class InputSanitizer:
                     is_valid=False,
                     sanitized_input=None,
                     violations=violations,
-                    warnings=warnings
+                    warnings=warnings,
                 )
 
             # Create sanitized result
@@ -255,14 +284,14 @@ class InputSanitizer:
                 url=url,
                 original_length=original_total_length,
                 sanitized_length=len(sanitized_title) + len(sanitized_content),
-                normalized=True
+                normalized=True,
             )
 
             return SanitizationResult(
                 is_valid=True,
                 sanitized_input=sanitized_input,
                 violations=[],
-                warnings=warnings
+                warnings=warnings,
             )
 
         except Exception as e:
@@ -272,18 +301,28 @@ class InputSanitizer:
                 is_valid=False,
                 sanitized_input=None,
                 violations=violations,
-                warnings=warnings
+                warnings=warnings,
             )
 
     def _sanitize_text(self, text: str) -> str:
         """Sanitize text content."""
         # First, completely remove dangerous script/style content (not just tags)
         # This removes both tags and their content
-        text = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>', '', text, flags=re.IGNORECASE | re.DOTALL)
-        
+        text = re.sub(
+            r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>",
+            "",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        text = re.sub(
+            r"<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>",
+            "",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
         # Remove excessive whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r"\s+", " ", text).strip()
 
         # Remove or clean remaining HTML based on config
         if self.config.allow_html:
@@ -291,22 +330,22 @@ class InputSanitizer:
                 text,
                 tags=self.allowed_tags,
                 attributes=self.allowed_attributes,
-                strip=True
+                strip=True,
             )
         else:
             text = bleach.clean(text, tags=[], attributes={}, strip=True)
 
         # Remove control characters (except common whitespace)
-        text = ''.join(char for char in text if ord(char) >= 32 or char in '\t\n\r')
+        text = "".join(char for char in text if ord(char) >= 32 or char in "\t\n\r")
 
         return text
 
     def _normalize_unicode(self, text: str) -> str:
         """Normalize Unicode text."""
         # Use NFC normalization for consistent representation
-        return unicodedata.normalize('NFC', text)
+        return unicodedata.normalize("NFC", text)
 
-    def _perform_security_checks(self, title: str, content: str) -> List[str]:
+    def _perform_security_checks(self, title: str, content: str) -> list[str]:
         """Perform additional security checks."""
         violations = []
 
@@ -328,27 +367,24 @@ class InputSanitizer:
         # More sophisticated patterns
         advanced_patterns = [
             # Role-playing attempts
-            r'you\s+are\s+now\s+a\s+',
-            r'pretend\s+to\s+be\s+',
-            r'act\s+as\s+(?:if\s+you\s+were\s+)?a\s+',
-            r'imagine\s+you\s+are\s+',
-
+            r"you\s+are\s+now\s+a\s+",
+            r"pretend\s+to\s+be\s+",
+            r"act\s+as\s+(?:if\s+you\s+were\s+)?a\s+",
+            r"imagine\s+you\s+are\s+",
             # Instruction override attempts
-            r'ignore\s+(?:all\s+)?previous\s+instructions',
-            r'disregard\s+(?:all\s+)?previous\s+',
-            r'forget\s+(?:all\s+)?previous\s+',
-            r'override\s+(?:all\s+)?previous\s+',
-
+            r"ignore\s+(?:all\s+)?previous\s+instructions",
+            r"disregard\s+(?:all\s+)?previous\s+",
+            r"forget\s+(?:all\s+)?previous\s+",
+            r"override\s+(?:all\s+)?previous\s+",
             # System prompt manipulation
-            r'system\s*:\s*',
-            r'human\s*:\s*',
-            r'assistant\s*:\s*',
-            r'ai\s*:\s*',
-
+            r"system\s*:\s*",
+            r"human\s*:\s*",
+            r"assistant\s*:\s*",
+            r"ai\s*:\s*",
             # Jailbreak attempts
-            r'jailbreak',
-            r'prompt\s+injection',
-            r'escape\s+(?:the\s+)?system',
+            r"jailbreak",
+            r"prompt\s+injection",
+            r"escape\s+(?:the\s+)?system",
         ]
 
         return any(re.search(pattern, text_lower) for pattern in advanced_patterns)

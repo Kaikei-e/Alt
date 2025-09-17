@@ -88,7 +88,7 @@ find = { include = ["tag_generator", "tag_generator.*", "article_fetcher", "arti
 
 [tool.ruff]
 target-version = "py313"
-line-length = 88
+line-length = 120
 exclude = [
     ".git",
     "__pycache__",
@@ -112,11 +112,14 @@ select = [
 ignore = [
     "S101",  # Use of assert detected (OK in tests)
     "S608",  # Possible SQL injection (handled by ORM)
+    "E501",  # Line too long (handled by formatter when possible)
+    "S110",  # try-except-pass (sometimes needed in cleanup code)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = ["S101"]
-"tests/**" = ["S101"]
+"test_*.py" = ["S101", "S603", "S110"]
+"tests/**" = ["S101", "S603", "S110"]
+"auth_service.py" = ["S104"]  # Allow binding to all interfaces for development server
 
 [tool.bandit]
 exclude_dirs = ["tests", "test_*.py"]

@@ -1,8 +1,8 @@
+import json
 import logging
 import sys
+
 import structlog
-import json
-from typing import Any, Callable, Iterable, Mapping, MutableMapping, Union
 
 
 class JsonFormatter(logging.Formatter):
@@ -73,7 +73,7 @@ def setup_logging():
     logging library to output JSON.
     """
     import os
-    
+
     # Define a type for structlog processors
     # Processor = Callable[[Any, str, Any] , Any] # Simplified type for Pyright
 
@@ -99,7 +99,7 @@ def setup_logging():
 
     # Bind the service name to the context, so it's included in all logs.
     # Use environment variable to allow test override
-    service_name = os.getenv('SERVICE_NAME', 'tag-generator')
+    service_name = os.getenv("SERVICE_NAME", "tag-generator")
     structlog.contextvars.bind_contextvars(service=service_name)
 
     # Configure the standard logging handler.
@@ -130,6 +130,15 @@ def setup_logging():
     # can use `structlog.INFO`, `structlog.ERROR`, etc. This mirrors what the
     # stdlib `logging` module provides and maintains backward-compatibility with
     # typical logging APIs.
-    for _lvl_name in ("CRITICAL", "FATAL", "ERROR", "WARN", "WARNING", "INFO", "DEBUG", "NOTSET"):
+    for _lvl_name in (
+        "CRITICAL",
+        "FATAL",
+        "ERROR",
+        "WARN",
+        "WARNING",
+        "INFO",
+        "DEBUG",
+        "NOTSET",
+    ):
         if not hasattr(structlog, _lvl_name):
             setattr(structlog, _lvl_name, getattr(logging, _lvl_name))

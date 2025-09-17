@@ -3,14 +3,15 @@ Unit tests for tag-generator following TDD principles.
 These tests define the expected behavior that must be maintained during refactoring.
 """
 
-import pytest
 from unittest.mock import Mock, patch
-import psycopg2
 
-from tag_extractor.extract import TagExtractor, TagExtractionConfig
+import psycopg2
+import pytest
+
 from article_fetcher.fetch import ArticleFetcher
-from tag_inserter.upsert_tags import TagInserter
 from main import TagGeneratorService
+from tag_extractor.extract import TagExtractionConfig, TagExtractor
+from tag_inserter.upsert_tags import TagInserter
 
 
 class TestTagExtractor:
@@ -25,9 +26,7 @@ class TestTagExtractor:
 
     def test_should_initialize_with_custom_config(self):
         """TagExtractor should accept custom configuration."""
-        config = TagExtractionConfig(
-            model_name="custom-model", top_keywords=5, min_score_threshold=0.2
-        )
+        config = TagExtractionConfig(model_name="custom-model", top_keywords=5, min_score_threshold=0.2)
         extractor = TagExtractor(config)
         assert extractor.config.model_name == "custom-model"
         assert extractor.config.top_keywords == 5
@@ -45,9 +44,7 @@ class TestTagExtractor:
 
         # Models should not be loaded on initialization
 
-        with patch.object(
-            model_manager, "get_models", return_value=(Mock(), Mock(), Mock())
-        ) as mock_get_models:
+        with patch.object(model_manager, "get_models", return_value=(Mock(), Mock(), Mock())) as mock_get_models:
             # First call should load models
             extractor._lazy_load_models()
             assert mock_get_models.call_count == 1
@@ -132,9 +129,7 @@ class TestTagExtractor:
             )
 
             assert len(result) > 0
-            assert (
-                mock_keybert.extract_keywords.call_count == 2
-            )  # Called for single words and phrases
+            assert mock_keybert.extract_keywords.call_count == 2  # Called for single words and phrases
 
     def test_should_extract_japanese_compound_words(self):
         """Should extract compound words from Japanese text."""
@@ -220,9 +215,7 @@ class TestTagExtractor:
         with patch.object(extractor, "_load_stopwords"):
             extractor._en_stopwords = {"the", "and", "a", "an", "is", "are"}
 
-            result = extractor._tokenize_english(
-                "The machine learning algorithm is advanced"
-            )
+            result = extractor._tokenize_english("The machine learning algorithm is advanced")
 
             # Should exclude stopwords and short tokens
             assert "machine" in result
@@ -236,9 +229,7 @@ class TestTagExtractor:
         """Should use fallback extraction for Japanese text."""
         extractor = TagExtractor()
 
-        with patch.object(
-            extractor, "_extract_keywords_japanese", return_value=["東京", "日本"]
-        ):
+        with patch.object(extractor, "_extract_keywords_japanese", return_value=["東京", "日本"]):
             result = extractor._fallback_extraction("東京は日本の首都です", "ja")
 
             assert result == ["東京", "日本"]
@@ -270,9 +261,7 @@ class TestTagExtractor:
             "_extract_keywords_english",
             return_value=["machine", "learning", "ai"],
         ):
-            result = extractor.extract_tags(
-                "Machine Learning", "Artificial intelligence and machine learning"
-            )
+            result = extractor.extract_tags("Machine Learning", "Artificial intelligence and machine learning")
 
             assert result == ["machine", "learning", "ai"]
 
@@ -283,9 +272,7 @@ class TestTagExtractor:
 
         extractor = TagExtractor()
 
-        with patch.object(
-            extractor, "_extract_keywords_japanese", return_value=["東京", "日本"]
-        ):
+        with patch.object(extractor, "_extract_keywords_japanese", return_value=["東京", "日本"]):
             result = extractor.extract_tags("東京について", "東京は日本の首都です")
 
             assert result == ["東京", "日本"]
@@ -301,9 +288,7 @@ class TestTagExtractor:
                 "_extract_keywords_english",
                 side_effect=Exception("KeyBERT failed"),
             ),
-            patch.object(
-                extractor, "_fallback_extraction", return_value=["fallback", "keywords"]
-            ),
+            patch.object(extractor, "_fallback_extraction", return_value=["fallback", "keywords"]),
         ):
             result = extractor.extract_tags("Test Title", "Test content for fallback")
 
@@ -342,9 +327,7 @@ class TestTagExtractor:
             result = extract_tags("Test Title", "Test Content")
 
             assert result == ["tag1", "tag2"]
-            mock_extractor.extract_tags.assert_called_once_with(
-                "Test Title", "Test Content"
-            )
+            mock_extractor.extract_tags.assert_called_once_with("Test Title", "Test Content")
 
 
 class TestArticleFetcher:
@@ -364,9 +347,7 @@ class TestArticleFetcher:
         fetcher._validate_cursor_params("2023-01-01T00:00:00Z", "uuid-string")
 
         # Invalid parameters should raise ValueError
-        with pytest.raises(
-            ValueError, match="last_created_at must be a non-empty string"
-        ):
+        with pytest.raises(ValueError, match="last_created_at must be a non-empty string"):
             fetcher._validate_cursor_params("", "uuid-string")
 
         with pytest.raises(ValueError, match="last_id must be a non-empty string"):
@@ -502,7 +483,11 @@ class TestTagInserter:
     def test_should_get_tag_ids_correctly(self):
         """Should retrieve tag IDs for given tag names."""
         mock_cursor = Mock()
-        mock_cursor.fetchall.return_value = [("uuid-1", "tag1"), ("uuid-2", "tag2"), ("uuid-3", "tag3")]
+        mock_cursor.fetchall.return_value = [
+            ("uuid-1", "tag1"),
+            ("uuid-2", "tag2"),
+            ("uuid-3", "tag3"),
+        ]
 
         inserter = TagInserter()
         result = inserter._get_tag_ids(mock_cursor, ["tag1", "tag2", "tag3"], "feed-uuid-1")
@@ -560,7 +545,7 @@ class TestTagInserter:
 
         inserter = TagInserter()
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="Database error"):
             inserter.upsert_tags(mock_conn, "uuid-1", ["tag1", "tag2"], "feed-uuid-1")
 
         # Should attempt rollback
@@ -589,7 +574,7 @@ class TestTagInserter:
         mock_cursor.fetchall.return_value = [
             ("tag-uuid-1", "tag1"),
             ("tag-uuid-2", "tag2"),
-            ("tag-uuid-3", "tag3")
+            ("tag-uuid-3", "tag3"),
         ]
 
         inserter = TagInserter()
@@ -646,9 +631,7 @@ class TestTagGeneratorService:
         service = TagGeneratorService()
 
         with patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(
-                ValueError, match="Missing required environment variables"
-            ):
+            with pytest.raises(ValueError, match="Missing required environment variables"):
                 service._get_database_dsn()
 
     @patch("main.psycopg2.connect")
@@ -697,7 +680,7 @@ class TestTagGeneratorService:
         assert last_id == "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
         # Subsequent runs should use saved position (use recent timestamp to avoid cursor poisoning)
-        from datetime import datetime, UTC, timedelta
+        from datetime import UTC, datetime, timedelta
 
         recent_timestamp = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
         service.last_processed_created_at = recent_timestamp
@@ -719,9 +702,7 @@ class TestTagGeneratorService:
         created_at, last_id = service._get_initial_cursor_position()
         # Recovery cursor should return current time and default UUID
         assert created_at is not None
-        assert (
-            created_at != "2023-01-01T00:00:00Z"
-        )  # Should not use the poisoned cursor
+        assert created_at != "2023-01-01T00:00:00Z"  # Should not use the poisoned cursor
         assert last_id == "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
     def test_should_process_single_article_successfully(self):
@@ -738,9 +719,7 @@ class TestTagGeneratorService:
 
         # Mock tag extraction and insertion
         with (
-            patch.object(
-                service.tag_extractor, "extract_tags", return_value=["tag1", "tag2"]
-            ) as mock_extract_tags,
+            patch.object(service.tag_extractor, "extract_tags", return_value=["tag1", "tag2"]) as mock_extract_tags,
             patch.object(
                 service.tag_inserter,
                 "upsert_tags",
@@ -750,12 +729,8 @@ class TestTagGeneratorService:
             result = service._process_single_article(mock_conn, article)
 
             assert result is True
-            mock_extract_tags.assert_called_once_with(
-                "Test Title", "Test content"
-            )
-            mock_upsert_tags.assert_called_once_with(
-                mock_conn, "test-uuid", ["tag1", "tag2"]
-            )
+            mock_extract_tags.assert_called_once_with("Test Title", "Test content")
+            mock_upsert_tags.assert_called_once_with(mock_conn, "test-uuid", ["tag1", "tag2"])
 
     def test_should_handle_article_processing_errors(self):
         """Should handle errors during article processing gracefully."""

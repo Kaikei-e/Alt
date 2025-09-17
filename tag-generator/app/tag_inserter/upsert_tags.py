@@ -1,11 +1,12 @@
-from typing import List, Dict, Optional, Any, TypedDict
-from dataclasses import dataclass
 from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any, TypedDict
 
 import psycopg2
 import psycopg2.extras
-from psycopg2.extensions import connection as Connection, cursor as Cursor
 import structlog
+from psycopg2.extensions import connection as Connection
+from psycopg2.extensions import cursor as Cursor
 
 logger = structlog.get_logger(__name__)
 
@@ -30,14 +31,14 @@ class BatchResult(TypedDict):
     success: bool
     processed_articles: int
     failed_articles: int
-    errors: List[str]
-    message: Optional[str]
+    errors: list[str]
+    message: str | None
 
 
 class TagInserter:
     """A class for efficiently inserting and managing tags in the database."""
 
-    def __init__(self, config: Optional[TagInserterConfig] = None):
+    def __init__(self, config: TagInserterConfig | None = None):
         self.config = config or TagInserterConfig()
 
     @contextmanager
@@ -55,7 +56,7 @@ class TagInserter:
             if cursor:
                 cursor.close()
 
-    def _validate_inputs(self, article_id: str, tags: List[str]) -> None:
+    def _validate_inputs(self, article_id: str, tags: list[str]) -> None:
         """Validate input parameters."""
         if not article_id or not isinstance(article_id, str):
             raise ValueError("article_id must be a non-empty string")
@@ -66,7 +67,7 @@ class TagInserter:
         if not all(isinstance(tag, str) and tag.strip() for tag in tags):
             raise ValueError("All tags must be non-empty strings")
 
-    def _insert_tags(self, cursor: Cursor, tags: List[str], feed_id: str) -> None:
+    def _insert_tags(self, cursor: Cursor, tags: list[str], feed_id: str) -> None:
         """
         Insert tags into the feed_tags table, ignoring duplicates.
 
@@ -96,7 +97,7 @@ class TagInserter:
             logger.error("Failed to insert tags", error=e)
             raise DatabaseError(f"Failed to insert tags: {e}") from e
 
-    def _get_tag_ids(self, cursor: Cursor, tags: List[str], feed_id: str) -> Dict[str, str]:
+    def _get_tag_ids(self, cursor: Cursor, tags: list[str], feed_id: str) -> dict[str, str]:
         """
         Retrieve tag IDs for the given tag names from feed_tags table.
 
@@ -115,7 +116,7 @@ class TagInserter:
             clean_tags = [tag.strip() for tag in tags]
             cursor.execute(
                 "SELECT id, tag_name FROM feed_tags WHERE tag_name = ANY(%s) AND feed_id = %s::uuid",
-                (clean_tags, feed_id)
+                (clean_tags, feed_id),
             )
 
             id_map = {name: str(tag_id) for tag_id, name in cursor.fetchall()}
@@ -132,9 +133,7 @@ class TagInserter:
             logger.error("Failed to retrieve tag IDs", error=e)
             raise DatabaseError(f"Failed to retrieve tag IDs: {e}") from e
 
-    def _insert_article_tags(
-        self, cursor: Cursor, article_id: str, tag_ids: Dict[str, str]
-    ) -> None:
+    def _insert_article_tags(self, cursor: Cursor, article_id: str, tag_ids: dict[str, str]) -> None:
         """
         Insert article-tag relationships into the article_tags table.
 
@@ -162,13 +161,9 @@ class TagInserter:
 
         except psycopg2.Error as e:
             logger.error("Failed to insert article-tag relationships", error=e)
-            raise DatabaseError(
-                f"Failed to insert article-tag relationships: {e}"
-            ) from e
+            raise DatabaseError(f"Failed to insert article-tag relationships: {e}") from e
 
-    def upsert_tags(
-        self, conn: Connection, article_id: str, tags: List[str], feed_id: str
-    ) -> Dict[str, Any]:
+    def upsert_tags(self, conn: Connection, article_id: str, tags: list[str], feed_id: str) -> dict[str, Any]:
         """
         Upsert tags into the feed_tags table and create article-tag relationships.
 
@@ -192,7 +187,7 @@ class TagInserter:
             raise ValueError("feed_id must be a non-empty string")
 
         # Remove duplicates and empty tags
-        unique_tags = list(set(tag.strip() for tag in tags if tag.strip()))
+        unique_tags = list({tag.strip() for tag in tags if tag.strip()})
 
         if not unique_tags:
             logger.warning("No valid tags provided after cleaning")
@@ -202,7 +197,11 @@ class TagInserter:
                 "message": "No valid tags to process",
             }
 
-        logger.info("Processing unique tags for article", count=len(unique_tags), article_id=article_id)
+        logger.info(
+            "Processing unique tags for article",
+            count=len(unique_tags),
+            article_id=article_id,
+        )
 
         try:
             with self._get_cursor(conn) as cursor:
@@ -228,7 +227,11 @@ class TagInserter:
                     "processed_tags": list(tag_id_map.keys()),
                 }
 
-                logger.info("Successfully processed tags for article", count=len(tag_id_map), article_id=article_id)
+                logger.info(
+                    "Successfully processed tags for article",
+                    count=len(tag_id_map),
+                    article_id=article_id,
+                )
                 return result
 
         except Exception as e:
@@ -241,9 +244,7 @@ class TagInserter:
 
             raise
 
-    def batch_upsert_tags(
-        self, conn: Connection, article_tags: List[Dict[str, Any]]
-    ) -> BatchResult:
+    def batch_upsert_tags(self, conn: Connection, article_tags: list[dict[str, Any]]) -> BatchResult:
         """
         Batch process multiple article-tag operations in a single transaction.
 
@@ -263,7 +264,10 @@ class TagInserter:
                 "message": "No articles to process",
             }
 
-        logger.info("Starting batch processing of articles in single transaction", count=len(article_tags))
+        logger.info(
+            "Starting batch processing of articles in single transaction",
+            count=len(article_tags),
+        )
 
         results: BatchResult = {
             "success": True,
@@ -291,23 +295,21 @@ class TagInserter:
                             continue  # Skip articles with no valid tags
 
                         # Clean and validate tags
-                        clean_tags = [
-                            tag.strip()
-                            for tag in tags
-                            if isinstance(tag, str) and tag.strip()
-                        ]
+                        clean_tags = [tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()]
                         if not clean_tags:
                             continue
 
-                        valid_article_tags.append(
-                            {"article_id": article_id, "tags": clean_tags}
-                        )
+                        valid_article_tags.append({"article_id": article_id, "tags": clean_tags})
                         all_tags.update(clean_tags)
 
                     except Exception as e:
                         results["failed_articles"] = results.get("failed_articles", 0) + 1
                         error_msg = f"Failed to validate article {item.get('article_id', 'unknown')}: {e}"
-                        logger.error("Failed to validate article", article_id=item.get('article_id', 'unknown'), error=e)
+                        logger.error(
+                            "Failed to validate article",
+                            article_id=item.get("article_id", "unknown"),
+                            error=e,
+                        )
 
                 if not valid_article_tags:
                     logger.warning("No valid article-tag combinations found")
@@ -319,7 +321,11 @@ class TagInserter:
                         "message": "No valid articles to process",
                     }
 
-                logger.info("Processing valid articles with unique tags", valid_articles=len(valid_article_tags), unique_tags=len(all_tags))
+                logger.info(
+                    "Processing valid articles with unique tags",
+                    valid_articles=len(valid_article_tags),
+                    unique_tags=len(all_tags),
+                )
 
                 # Step 1: Get feed_id for each article and group tags by feed_id
                 feed_tag_groups = {}
@@ -328,7 +334,7 @@ class TagInserter:
                     # Get feed_id for this article
                     cursor.execute(
                         "SELECT feed_id FROM articles WHERE id = %s::uuid",
-                        (article_id,)
+                        (article_id,),
                     )
                     result = cursor.fetchone()
                     if result and result[0]:
@@ -359,7 +365,7 @@ class TagInserter:
                     # Get feed_id for this article to find the correct tag_id_map
                     cursor.execute(
                         "SELECT feed_id FROM articles WHERE id = %s::uuid",
-                        (article_id,)
+                        (article_id,),
                     )
                     result = cursor.fetchone()
                     if result and result[0]:
@@ -382,13 +388,19 @@ class TagInserter:
                         all_relationships,
                         page_size=self.config.page_size,
                     )
-                    logger.info("Inserted article-tag relationships", count=len(all_relationships))
+                    logger.info(
+                        "Inserted article-tag relationships",
+                        count=len(all_relationships),
+                    )
 
                 # Commit the entire batch transaction
                 conn.commit()
 
                 results["processed_articles"] = len(valid_article_tags)
-                logger.info("Successfully batch processed articles", count=results['processed_articles'])
+                logger.info(
+                    "Successfully batch processed articles",
+                    count=results["processed_articles"],
+                )
 
         except Exception as e:
             # Rollback on any error
@@ -412,9 +424,7 @@ class TagInserter:
         )
         return results
 
-    def batch_upsert_tags_no_commit(
-        self, conn: Connection, article_tags: List[Dict[str, Any]]
-    ) -> BatchResult:
+    def batch_upsert_tags_no_commit(self, conn: Connection, article_tags: list[dict[str, Any]]) -> BatchResult:
         """
         Batch process multiple article-tag operations without auto-committing.
         Transaction management is left to the caller.
@@ -466,17 +476,11 @@ class TagInserter:
                             continue  # Skip articles with no valid tags
 
                         # Clean and validate tags
-                        clean_tags = [
-                            tag.strip()
-                            for tag in tags
-                            if isinstance(tag, str) and tag.strip()
-                        ]
+                        clean_tags = [tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()]
                         if not clean_tags:
                             continue
 
-                        valid_article_tags.append(
-                            {"article_id": article_id, "tags": clean_tags}
-                        )
+                        valid_article_tags.append({"article_id": article_id, "tags": clean_tags})
                         all_tags.update(clean_tags)
 
                     except Exception as e:
@@ -512,7 +516,7 @@ class TagInserter:
                     # Get feed_id for this article
                     cursor.execute(
                         "SELECT feed_id FROM articles WHERE id = %s::uuid",
-                        (article_id,)
+                        (article_id,),
                     )
                     result = cursor.fetchone()
                     if result and result[0]:
@@ -543,7 +547,7 @@ class TagInserter:
                     # Get feed_id for this article to find the correct tag_id_map
                     cursor.execute(
                         "SELECT feed_id FROM articles WHERE id = %s::uuid",
-                        (article_id,)
+                        (article_id,),
                     )
                     result = cursor.fetchone()
                     if result and result[0]:
@@ -600,7 +604,7 @@ class TagInserter:
 
 
 # Maintain backward compatibility - requires feed_id now
-def upsert_tags(conn: Connection, article_id: str, tags: List[str], feed_id: str) -> None:
+def upsert_tags(conn: Connection, article_id: str, tags: list[str], feed_id: str) -> None:
     """
     Legacy function for backward compatibility.
 

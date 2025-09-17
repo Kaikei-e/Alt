@@ -4,13 +4,13 @@ Implements singleton pattern for ML models to improve performance.
 """
 
 import threading
-from typing import Optional, Set
 from dataclasses import dataclass
+from typing import Optional
 
 try:
-    from sentence_transformers import SentenceTransformer
-    from keybert import KeyBERT
     from fugashi import Tagger  # pyright: ignore
+    from keybert import KeyBERT
+    from sentence_transformers import SentenceTransformer
 except ImportError:
     # Fallback for environments without ML dependencies (e.g., production builds)
     # These will be mocked in tests
@@ -52,18 +52,16 @@ class ModelManager:
     def __init__(self):
         """Initialize model manager (called only once)."""
         if not getattr(self, "_initialized", False):
-            self._embedder: Optional[SentenceTransformer] = None
-            self._keybert: Optional[KeyBERT] = None
-            self._ja_tagger: Optional[Tagger] = None
-            self._ja_stopwords: Optional[Set[str]] = None
-            self._en_stopwords: Optional[Set[str]] = None
-            self._config: Optional[ModelConfig] = None
+            self._embedder: SentenceTransformer | None = None
+            self._keybert: KeyBERT | None = None
+            self._ja_tagger: Tagger | None = None
+            self._ja_stopwords: set[str] | None = None
+            self._en_stopwords: set[str] | None = None
+            self._config: ModelConfig | None = None
             self._initialized = True
             logger.info("ModelManager singleton initialized")
 
-    def get_models(
-        self, config: ModelConfig
-    ) -> tuple[SentenceTransformer, KeyBERT, Tagger]:
+    def get_models(self, config: ModelConfig) -> tuple[SentenceTransformer, KeyBERT, Tagger]:
         """
         Get or load models with thread-safe lazy loading.
 
@@ -89,7 +87,7 @@ class ModelManager:
             assert self._ja_tagger is not None
             return self._embedder, self._keybert, self._ja_tagger
 
-    def get_stopwords(self) -> tuple[Set[str], Set[str]]:
+    def get_stopwords(self) -> tuple[set[str], set[str]]:
         """
         Get or load stopwords with thread-safe lazy loading.
 
@@ -108,9 +106,7 @@ class ModelManager:
         """Load ML models (called within lock)."""
         try:
             logger.info("Loading SentenceTransformer model", model_name=config.model_name)
-            self._embedder = SentenceTransformer(
-                config.model_name, device=config.device
-            )
+            self._embedder = SentenceTransformer(config.model_name, device=config.device)
 
             logger.info("Loading KeyBERT model")
             self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType]
@@ -130,20 +126,17 @@ class ModelManager:
     def _load_stopwords(self) -> None:
         """Load stopwords files (called within lock)."""
         import os
+
         import nltk
 
         current_dir = os.path.dirname(os.path.dirname(__file__))
-        ja_stopwords_path = os.path.join(
-            current_dir, "tag_extractor", "stopwords_ja.txt"
-        )
-        en_stopwords_path = os.path.join(
-            current_dir, "tag_extractor", "stopwords_en.txt"
-        )
+        ja_stopwords_path = os.path.join(current_dir, "tag_extractor", "stopwords_ja.txt")
+        en_stopwords_path = os.path.join(current_dir, "tag_extractor", "stopwords_en.txt")
 
         # Load Japanese stopwords
         try:
-            with open(ja_stopwords_path, "r", encoding="utf-8") as f:
-                self._ja_stopwords = set(line.strip() for line in f if line.strip())
+            with open(ja_stopwords_path, encoding="utf-8") as f:
+                self._ja_stopwords = {line.strip() for line in f if line.strip()}
             logger.info("Loaded Japanese stopwords", count=len(self._ja_stopwords))
         except FileNotFoundError:
             logger.warning("Japanese stopwords file not found", path=ja_stopwords_path)
@@ -151,10 +144,8 @@ class ModelManager:
 
         # Load English stopwords
         try:
-            with open(en_stopwords_path, "r", encoding="utf-8") as f:
-                self._en_stopwords = set(
-                    line.strip().lower() for line in f if line.strip()
-                )
+            with open(en_stopwords_path, encoding="utf-8") as f:
+                self._en_stopwords = {line.strip().lower() for line in f if line.strip()}
         except FileNotFoundError:
             logger.warning("English stopwords file not found", path=en_stopwords_path)
             self._en_stopwords = set()
@@ -171,11 +162,7 @@ class ModelManager:
     def is_loaded(self) -> bool:
         """Check if models are loaded."""
         with self._models_lock:
-            return (
-                self._embedder is not None
-                and self._keybert is not None
-                and self._ja_tagger is not None
-            )
+            return self._embedder is not None and self._keybert is not None and self._ja_tagger is not None
 
     def clear_models(self) -> None:
         """Clear loaded models (for testing)."""

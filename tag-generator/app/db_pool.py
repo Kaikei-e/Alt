@@ -3,12 +3,11 @@ Database connection pool for efficient database management.
 """
 
 import logging
+import queue
 import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Optional, List
-import queue
 
 import psycopg2
 import psycopg2.extensions
@@ -94,10 +93,7 @@ class PooledConnection:
 
             # Only set autocommit if we're not already in autocommit mode
             # and connection is in a ready state
-            if (
-                not self.connection.autocommit
-                and self.connection.status == psycopg2.extensions.STATUS_READY
-            ):
+            if not self.connection.autocommit and self.connection.status == psycopg2.extensions.STATUS_READY:
                 self.connection.autocommit = True
                 logger.debug("Enabled autocommit mode")
 
@@ -119,13 +115,11 @@ class PooledConnection:
 class ConnectionPool:
     """Thread-safe database connection pool."""
 
-    def __init__(self, dsn: str, config: Optional[PoolConfig] = None):
+    def __init__(self, dsn: str, config: PoolConfig | None = None):
         self.dsn = dsn
         self.config = config or PoolConfig()
-        self._pool: queue.Queue[PooledConnection] = queue.Queue(
-            maxsize=self.config.max_connections
-        )
-        self._all_connections: List[PooledConnection] = []
+        self._pool: queue.Queue[PooledConnection] = queue.Queue(maxsize=self.config.max_connections)
+        self._all_connections: list[PooledConnection] = []
         self._lock = threading.Lock()
         self._closed = False
 
@@ -133,9 +127,7 @@ class ConnectionPool:
         self._initialize_pool()
 
         # Start cleanup thread
-        self._cleanup_thread = threading.Thread(
-            target=self._cleanup_expired, daemon=True
-        )
+        self._cleanup_thread = threading.Thread(target=self._cleanup_expired, daemon=True)
         self._cleanup_thread.start()
 
         logger.info(
@@ -152,7 +144,7 @@ class ConnectionPool:
             except Exception as e:
                 logger.error(f"Failed to create initial connection: {e}")
 
-    def _create_new_connection(self) -> Optional[PooledConnection]:
+    def _create_new_connection(self) -> PooledConnection | None:
         """Create a new database connection."""
         for attempt in range(self.config.max_retries):
             try:
@@ -204,26 +196,20 @@ class ConnectionPool:
                     logger.debug("Connection validation passed")
 
             except queue.Empty:
-                logger.debug(
-                    "No connections available in pool (queue empty or timeout)"
-                )
+                logger.debug("No connections available in pool (queue empty or timeout)")
 
             # Create new connection if needed
             if conn is None:
                 logger.debug("Creating new connection...")
                 with self._lock:
                     current_count = len(self._all_connections)
-                    logger.debug(
-                        f"Current connection count: {current_count}/{self.config.max_connections}"
-                    )
+                    logger.debug(f"Current connection count: {current_count}/{self.config.max_connections}")
 
                     if current_count < self.config.max_connections:
                         conn = self._create_new_connection()
                         logger.debug(f"Created new connection: {conn}")
                     else:
-                        logger.warning(
-                            f"Connection pool exhausted! {current_count}/{self.config.max_connections}"
-                        )
+                        logger.warning(f"Connection pool exhausted! {current_count}/{self.config.max_connections}")
                         # Log pool statistics for debugging
                         try:
                             stats = self.get_stats()
@@ -262,9 +248,7 @@ class ConnectionPool:
                     self._remove_connection(conn)
             else:
                 # Failed to reset transaction state, remove connection
-                logger.warning(
-                    "Failed to reset connection transaction state, removing from pool"
-                )
+                logger.warning("Failed to reset connection transaction state, removing from pool")
                 self._remove_connection(conn)
         else:
             # Connection is invalid or expired
@@ -344,13 +328,11 @@ class ConnectionPool:
 
 
 # Global pool instance
-_pool_instance: Optional[ConnectionPool] = None
+_pool_instance: ConnectionPool | None = None
 _pool_lock = threading.Lock()
 
 
-def get_connection_pool(
-    dsn: str, config: Optional[PoolConfig] = None
-) -> ConnectionPool:
+def get_connection_pool(dsn: str, config: PoolConfig | None = None) -> ConnectionPool:
     """Get or create the global connection pool."""
     global _pool_instance
 

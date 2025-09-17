@@ -1,10 +1,10 @@
 import gc
 import os
 import time
-from datetime import datetime, UTC, timedelta
-from typing import Optional, Dict, Any, List, cast
-from dataclasses import dataclass
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import psycopg2
 import psycopg2.extensions
@@ -13,8 +13,8 @@ from psycopg2.extensions import connection as Connection
 
 from article_fetcher.fetch import ArticleFetcher
 from tag_extractor.extract import TagExtractor
-from tag_inserter.upsert_tags import TagInserter
 from tag_generator.logging_config import setup_logging
+from tag_inserter.upsert_tags import TagInserter
 
 # Configure logging
 setup_logging()
@@ -47,15 +47,15 @@ class DatabaseConnectionError(Exception):
 class TagGeneratorService:
     """Main service class for tag generation operations."""
 
-    def __init__(self, config: Optional[TagGeneratorConfig] = None):
+    def __init__(self, config: TagGeneratorConfig | None = None):
         self.config = config or TagGeneratorConfig()
         self.article_fetcher = ArticleFetcher()
         self.tag_extractor = TagExtractor()
         self.tag_inserter = TagInserter()
 
         # Persistent cursor position for pagination between cycles
-        self.last_processed_created_at: Optional[str] = None
-        self.last_processed_id: Optional[str] = None
+        self.last_processed_created_at: str | None = None
+        self.last_processed_id: str | None = None
 
         # Health monitoring
         self.consecutive_empty_cycles = 0
@@ -147,9 +147,7 @@ class TagGeneratorService:
                 logger.error(f"Database connection failed (attempt {attempt + 1}): {e}")
 
                 if attempt < self.config.max_connection_retries - 1:
-                    logger.info(
-                        f"Retrying in {self.config.connection_retry_delay} seconds..."
-                    )
+                    logger.info(f"Retrying in {self.config.connection_retry_delay} seconds...")
                     time.sleep(self.config.connection_retry_delay)
                 else:
                     raise DatabaseConnectionError(
@@ -162,9 +160,7 @@ class TagGeneratorService:
         if self.last_processed_created_at and self.last_processed_id:
             # Check for cursor poisoning (timestamp in the future or too old)
             try:
-                cursor_time = datetime.fromisoformat(
-                    self.last_processed_created_at.replace("Z", "+00:00")
-                )
+                cursor_time = datetime.fromisoformat(self.last_processed_created_at.replace("Z", "+00:00"))
                 current_time = datetime.now(UTC)
                 time_diff = cursor_time - current_time
 
@@ -174,14 +170,10 @@ class TagGeneratorService:
 
                 if time_diff.total_seconds() > 3600:  # More than 1 hour in future
                     cursor_is_poisoned = True
-                    reason = (
-                        f"cursor {time_diff.total_seconds() / 3600:.1f} hours in future"
-                    )
+                    reason = f"cursor {time_diff.total_seconds() / 3600:.1f} hours in future"
                 elif time_diff.total_seconds() < -86400 * 30:  # More than 30 days old
                     cursor_is_poisoned = True
-                    reason = (
-                        f"cursor {abs(time_diff.total_seconds()) / 86400:.1f} days old"
-                    )
+                    reason = f"cursor {abs(time_diff.total_seconds()) / 86400:.1f} days old"
 
                 if cursor_is_poisoned:
                     logger.warning(f"Detected cursor poisoning: {reason}")
@@ -191,15 +183,11 @@ class TagGeneratorService:
                     # Continue from where we left off
                     last_created_at = self.last_processed_created_at
                     last_id = self.last_processed_id
-                    logger.info(
-                        f"Continuing article processing from cursor: {last_created_at}, ID: {last_id}"
-                    )
+                    logger.info(f"Continuing article processing from cursor: {last_created_at}, ID: {last_id}")
                     return last_created_at, last_id
 
             except (ValueError, TypeError) as e:
-                logger.warning(
-                    f"Invalid cursor timestamp format: {self.last_processed_created_at}, error: {e}"
-                )
+                logger.warning(f"Invalid cursor timestamp format: {self.last_processed_created_at}, error: {e}")
                 logger.warning("Switching to recovery mode due to invalid format")
                 return self._get_recovery_cursor_position()
         else:
@@ -236,25 +224,17 @@ class TagGeneratorService:
                             start_time = most_recent_untagged_time.isoformat()
 
                         # Add a small buffer to ensure we catch this article
-                        start_time_dt = datetime.fromisoformat(
-                            start_time.replace("Z", "+00:00")
-                        )
+                        start_time_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
                         start_time_dt += timedelta(microseconds=1)
                         start_time = start_time_dt.isoformat()
 
-                        logger.info(
-                            f"Recovery mode: Starting from most recent untagged article at {start_time}"
-                        )
+                        logger.info(f"Recovery mode: Starting from most recent untagged article at {start_time}")
                         return start_time, "ffffffff-ffff-ffff-ffff-ffffffffffff"
                     else:
                         # No untagged articles found, start from a reasonable past date
-                        past_date = datetime.now(UTC) - timedelta(
-                            days=7
-                        )  # Look back 7 days
+                        past_date = datetime.now(UTC) - timedelta(days=7)  # Look back 7 days
                         start_time = past_date.isoformat()
-                        logger.info(
-                            f"Recovery mode: No untagged articles found, starting from {start_time}"
-                        )
+                        logger.info(f"Recovery mode: No untagged articles found, starting from {start_time}")
                         return start_time, "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
         except Exception as e:
@@ -265,9 +245,7 @@ class TagGeneratorService:
             logger.warning(f"Using fallback recovery cursor: {start_time}")
             return start_time, "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
-    def _fetch_untagged_articles_fallback(
-        self, conn: Connection
-    ) -> List[Dict[str, Any]]:
+    def _fetch_untagged_articles_fallback(self, conn: Connection) -> list[dict[str, Any]]:
         """
         Fallback method to fetch untagged articles when cursor pagination fails.
 
@@ -284,9 +262,7 @@ class TagGeneratorService:
                 conn, has_tags=False, limit=self.config.batch_limit
             )
 
-            logger.info(
-                f"Fallback method retrieved {len(untagged_articles)} untagged articles"
-            )
+            logger.info(f"Fallback method retrieved {len(untagged_articles)} untagged articles")
             return untagged_articles
 
         except Exception as e:
@@ -299,9 +275,7 @@ class TagGeneratorService:
         if self.config.enable_gc_collection:
             gc.collect()
 
-    def _process_single_article(
-        self, conn: Connection, article: Dict[str, Any]
-    ) -> bool:
+    def _process_single_article(self, conn: Connection, article: dict[str, Any]) -> bool:
         """
         Process a single article for tag extraction and insertion.
 
@@ -327,16 +301,14 @@ class TagGeneratorService:
             if result.get("success"):
                 return True
             else:
-                logger.warning(
-                    f"Tag insertion reported failure for article {article_id}"
-                )
+                logger.warning(f"Tag insertion reported failure for article {article_id}")
                 return False
 
         except Exception as e:
             logger.error(f"Error processing article {article_id}: {e}")
             return False
 
-    def _process_article_batch(self, conn: Connection) -> Dict[str, Any]:
+    def _process_article_batch(self, conn: Connection) -> dict[str, Any]:
         """
         Process a batch of articles for tag generation using true batch processing.
         Includes fallback mechanism for cursor pagination failures.
@@ -359,54 +331,37 @@ class TagGeneratorService:
         }
 
         # Collect articles for batch processing (keep autocommit for fetching)
-        articles_to_process: List[Dict[str, Any]] = []
+        articles_to_process: list[dict[str, Any]] = []
         fetch_attempts = 0
         max_empty_fetches = 3  # Allow 3 empty fetches before switching to fallback
 
         while len(articles_to_process) < int(self.config.batch_limit):
             try:
                 # Fetch articles using cursor pagination
-                articles = self.article_fetcher.fetch_articles(
-                    conn, last_created_at, last_id
-                )
+                articles = self.article_fetcher.fetch_articles(conn, last_created_at, last_id)
 
                 if not articles:
                     fetch_attempts += 1
-                    logger.info(
-                        f"No articles found with cursor pagination (attempt {fetch_attempts})"
-                    )
+                    logger.info(f"No articles found with cursor pagination (attempt {fetch_attempts})")
 
                     # If we consistently get no results, try fallback approach
-                    if (
-                        fetch_attempts >= max_empty_fetches
-                        and len(articles_to_process) == 0
-                    ):
-                        logger.warning(
-                            "Cursor pagination consistently failing, switching to untagged article fallback"
-                        )
+                    if fetch_attempts >= max_empty_fetches and len(articles_to_process) == 0:
+                        logger.warning("Cursor pagination consistently failing, switching to untagged article fallback")
                         fallback_articles = self._fetch_untagged_articles_fallback(conn)
                         if fallback_articles:
-                            articles_to_process.extend(
-                                fallback_articles[: self.config.batch_limit]
-                            )
-                            logger.info(
-                                f"Fallback method found {len(fallback_articles)} untagged articles"
-                            )
+                            articles_to_process.extend(fallback_articles[: self.config.batch_limit])
+                            logger.info(f"Fallback method found {len(fallback_articles)} untagged articles")
                             # Update cursor based on the last article processed
                             if articles_to_process:
                                 last_article = articles_to_process[-1]
                                 if isinstance(last_article["created_at"], str):
                                     last_created_at = last_article["created_at"]
                                 else:
-                                    last_created_at = last_article[
-                                        "created_at"
-                                    ].isoformat()
+                                    last_created_at = last_article["created_at"].isoformat()
                                 last_id = last_article["id"]
                             break
                         else:
-                            logger.info(
-                                "No untagged articles found via fallback method"
-                            )
+                            logger.info("No untagged articles found via fallback method")
                             break
                     else:
                         logger.info(
@@ -421,9 +376,7 @@ class TagGeneratorService:
                 assert self.config.batch_limit is not None
                 for article in articles:
                     if len(articles_to_process) >= self.config.batch_limit:
-                        logger.info(
-                            f"Reached batch limit of {self.config.batch_limit} articles"
-                        )
+                        logger.info(f"Reached batch limit of {self.config.batch_limit} articles")
                         break
 
                     articles_to_process.append(article)
@@ -447,12 +400,8 @@ class TagGeneratorService:
                     try:
                         fallback_articles = self._fetch_untagged_articles_fallback(conn)
                         if fallback_articles:
-                            articles_to_process.extend(
-                                fallback_articles[: self.config.batch_limit]
-                            )
-                            logger.info(
-                                f"Fallback method recovered {len(fallback_articles)} articles"
-                            )
+                            articles_to_process.extend(fallback_articles[: self.config.batch_limit])
+                            logger.info(f"Fallback method recovered {len(fallback_articles)} articles")
                     except Exception as fallback_error:
                         logger.error(f"Fallback method also failed: {fallback_error}")
                 break
@@ -463,9 +412,7 @@ class TagGeneratorService:
                 conn.autocommit = False
 
             if articles_to_process:
-                logger.info(
-                    f"Processing batch of {len(articles_to_process)} articles..."
-                )
+                logger.info(f"Processing batch of {len(articles_to_process)} articles...")
                 batch_stats = self._process_articles_as_batch(conn, articles_to_process)
                 # Ensure string format for batch stats
                 batch_stats["last_created_at"] = last_created_at
@@ -474,18 +421,14 @@ class TagGeneratorService:
                 # Update persistent cursor position for next cycle (ensure string format)
                 self.last_processed_created_at = last_created_at
                 self.last_processed_id = last_id
-                logger.info(
-                    f"Updated cursor position for next cycle: {self.last_processed_created_at}, ID: {last_id}"
-                )
+                logger.info(f"Updated cursor position for next cycle: {self.last_processed_created_at}, ID: {last_id}")
 
                 # Commit the transaction only if batch processing was successful
                 if cast(int, batch_stats.get("successful", 0)) > 0:
                     conn.commit()
                 else:
                     conn.rollback()
-                    logger.warning(
-                        "Transaction rolled back due to batch processing failure"
-                    )
+                    logger.warning("Transaction rolled back due to batch processing failure")
             else:
                 # No articles to process, still commit to end transaction cleanly
                 conn.commit()
@@ -507,9 +450,7 @@ class TagGeneratorService:
 
         return batch_stats
 
-    def _process_articles_as_batch(
-        self, conn: Connection, articles: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def _process_articles_as_batch(self, conn: Connection, articles: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Process multiple articles as a single batch transaction.
         Note: Transaction management is handled by the caller.
@@ -521,7 +462,11 @@ class TagGeneratorService:
         Returns:
             Dictionary with batch processing results
         """
-        batch_stats: Dict[str, int] = {"total_processed": 0, "successful": 0, "failed": 0}
+        batch_stats: dict[str, int] = {
+            "total_processed": 0,
+            "successful": 0,
+            "failed": 0,
+        }
 
         # Prepare batch data for tag insertion
         article_tags_batch = []
@@ -540,50 +485,36 @@ class TagGeneratorService:
 
                 # Log progress during tag extraction
                 if (i + 1) % self.config.progress_log_interval == 0:
-                    logger.info(
-                        f"Extracted tags for {i + 1}/{len(articles)} articles..."
-                    )
+                    logger.info(f"Extracted tags for {i + 1}/{len(articles)} articles...")
 
                 # Periodic memory cleanup during batch processing
                 if (i + 1) % self.config.memory_cleanup_interval == 0:
                     self._cleanup_memory()
 
             except Exception as e:
-                logger.error(
-                    f"Error extracting tags for article {article.get('id', 'unknown')}: {e}"
-                )
+                logger.error(f"Error extracting tags for article {article.get('id', 'unknown')}: {e}")
                 batch_stats["failed"] += 1
                 continue
 
         # Perform batch upsert of all tags in the current transaction
         if article_tags_batch:
             try:
-                logger.info(
-                    f"Upserting tags for {len(article_tags_batch)} articles in current transaction..."
-                )
+                logger.info(f"Upserting tags for {len(article_tags_batch)} articles in current transaction...")
 
                 # Use the batch upsert method (transaction managed by caller)
-                result = self.tag_inserter.batch_upsert_tags_no_commit(
-                    conn, article_tags_batch
-                )
+                result = self.tag_inserter.batch_upsert_tags_no_commit(conn, article_tags_batch)
 
                 batch_stats["successful"] = result.get("processed_articles", 0)
                 batch_stats["failed"] += result.get("failed_articles", 0)
                 batch_stats["total_processed"] = len(articles)
 
                 if result.get("success"):
-                    logger.info(
-                        f"Successfully batch processed {batch_stats['successful']} articles"
-                    )
+                    logger.info(f"Successfully batch processed {batch_stats['successful']} articles")
                 else:
-                    logger.warning(
-                        f"Batch processing completed with {batch_stats['failed']} failures"
-                    )
+                    logger.warning(f"Batch processing completed with {batch_stats['failed']} failures")
                     # If batch processing failed, raise exception to trigger rollback
                     if batch_stats["failed"] > 0:
-                        raise DatabaseConnectionError(
-                            f"Batch processing failed for {batch_stats['failed']} articles"
-                        )
+                        raise DatabaseConnectionError(f"Batch processing failed for {batch_stats['failed']} articles")
 
             except Exception as e:
                 logger.error(f"Batch upsert failed: {e}")
@@ -597,7 +528,7 @@ class TagGeneratorService:
 
         return batch_stats
 
-    def _log_batch_summary(self, stats: Dict[str, Any]) -> None:
+    def _log_batch_summary(self, stats: dict[str, Any]) -> None:
         """Log summary of batch processing results."""
         assert self.config is not None
         logger.info(
@@ -609,7 +540,7 @@ class TagGeneratorService:
             failure_rate = (stats["failed"] / stats["total_processed"]) * 100
             logger.warning(f"Failure rate: {failure_rate:.1f}%")
 
-    def run_processing_cycle(self) -> Dict[str, Any]:
+    def run_processing_cycle(self) -> dict[str, Any]:
         """
         Run a single processing cycle with explicit transaction management.
 
@@ -645,8 +576,7 @@ class TagGeneratorService:
                 # Update batch stats with processing results
                 batch_stats.update(processing_stats)
                 batch_stats["success"] = (
-                    processing_stats.get("successful", 0) > 0
-                    or processing_stats.get("total_processed", 0) == 0
+                    processing_stats.get("successful", 0) > 0 or processing_stats.get("total_processed", 0) == 0
                 )
 
                 logger.info("Article batch processing completed")
@@ -686,9 +616,7 @@ class TagGeneratorService:
                         self.total_articles_processed += articles_processed
 
                     # Perform health check periodically
-                    if (
-                        self.total_cycles - self.last_health_check_cycle
-                    ) >= self.config.health_check_interval:
+                    if (self.total_cycles - self.last_health_check_cycle) >= self.config.health_check_interval:
                         self._perform_health_check()
                         self.last_health_check_cycle = self.total_cycles
 
@@ -717,7 +645,7 @@ class TagGeneratorService:
             # Cleanup connection pool
             self._cleanup()
 
-    def _run_processing_cycle_with_monitoring(self) -> Dict[str, Any]:
+    def _run_processing_cycle_with_monitoring(self) -> dict[str, Any]:
         """Run processing cycle with enhanced monitoring."""
         return self.run_processing_cycle()
 
@@ -737,24 +665,16 @@ class TagGeneratorService:
             logger.warning(
                 f"⚠️  SERVICE HEALTH WARNING: {self.consecutive_empty_cycles} consecutive empty cycles detected!"
             )
-            logger.warning(
-                "This may indicate cursor poisoning, database issues, or no untagged articles available"
-            )
-            logger.warning(
-                "Consider investigating database state or restarting service if issues persist"
-            )
+            logger.warning("This may indicate cursor poisoning, database issues, or no untagged articles available")
+            logger.warning("Consider investigating database state or restarting service if issues persist")
 
             # Try to get untagged article count for diagnosis
             try:
                 with self._get_database_connection() as conn:
                     untagged_count = self.article_fetcher.count_untagged_articles(conn)
-                    logger.info(
-                        f"Diagnostic: {untagged_count} untagged articles found in database"
-                    )
+                    logger.info(f"Diagnostic: {untagged_count} untagged articles found in database")
             except Exception as e:
-                logger.error(
-                    f"Failed to get untagged article count for diagnostics: {e}"
-                )
+                logger.error(f"Failed to get untagged article count for diagnostics: {e}")
 
         logger.debug("Health check finished")
 

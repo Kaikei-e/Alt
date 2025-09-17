@@ -3,18 +3,19 @@ Performance test suite for tag-generator following TDD principles.
 These tests define performance requirements that the refactored code must meet.
 """
 
-import pytest
-import time
-import psutil
+import gc
 import os
 import threading
-from unittest.mock import Mock, patch
+import time
 from concurrent.futures import ThreadPoolExecutor
-import gc
+from unittest.mock import Mock, patch
 
+import psutil
+import pytest
+
+from main import TagGeneratorService
 from tag_extractor.extract import TagExtractor
 from tag_inserter.upsert_tags import TagInserter
-from main import TagGeneratorService
 
 
 class TestTagExtractorPerformance:
@@ -78,25 +79,19 @@ class TestTagExtractorPerformance:
         processing_time = end_time - start_time
 
         # Should process 10 articles in under 30 seconds
-        assert processing_time < 30.0, (
-            f"Processing took {processing_time:.2f}s, should be under 30s"
-        )
+        assert processing_time < 30.0, f"Processing took {processing_time:.2f}s, should be under 30s"
 
     def test_should_reuse_models_across_extractions(self):
         """Models should be loaded once and reused for multiple extractions."""
         extractor = TagExtractor()
 
         # First extraction should load models
-        with patch.object(
-            extractor, "_lazy_load_models", wraps=extractor._lazy_load_models
-        ) as mock_load:
+        with patch.object(extractor, "_lazy_load_models", wraps=extractor._lazy_load_models) as mock_load:
             extractor.extract_tags("First title", "First content")
             assert mock_load.call_count == 1, "Models should be loaded on first call"
 
         # Subsequent extractions should reuse models
-        with patch.object(
-            extractor, "_lazy_load_models", wraps=extractor._lazy_load_models
-        ) as mock_load:
+        with patch.object(extractor, "_lazy_load_models", wraps=extractor._lazy_load_models) as mock_load:
             extractor.extract_tags("Second title", "Second content")
             extractor.extract_tags("Third title", "Third content")
             assert mock_load.call_count == 0, "Models should not be reloaded"
@@ -145,9 +140,7 @@ class TestTagExtractorPerformance:
         # Process multiple batches
         for batch in range(5):
             for i in range(20):
-                extractor.extract_tags(
-                f"Title {i}", f"Content for article {i} in batch {batch}"
-            )
+                extractor.extract_tags(f"Title {i}", f"Content for article {i} in batch {batch}")
 
             # Force garbage collection
             gc.collect()
@@ -157,9 +150,7 @@ class TestTagExtractorPerformance:
         memory_growth = final_memory - initial_memory
 
         # Memory growth should be reasonable (less than 500MB)
-        assert memory_growth < 500, (
-            f"Memory grew by {memory_growth:.1f}MB, should be under 500MB"
-        )
+        assert memory_growth < 500, f"Memory grew by {memory_growth:.1f}MB, should be under 500MB"
 
 
 class TestBatchProcessingPerformance:
@@ -179,9 +170,7 @@ class TestBatchProcessingPerformance:
         # Test individual processing time
         start_time = time.time()
         for i in range(10):
-            inserter.upsert_tags(
-                mock_conn, f"article-{i}", [f"tag-{i}", f"tag-{i + 1}"]
-            )
+            inserter.upsert_tags(mock_conn, f"article-{i}", [f"tag-{i}", f"tag-{i + 1}"])
         individual_time = time.time() - start_time
 
         # Reset mock
@@ -189,10 +178,7 @@ class TestBatchProcessingPerformance:
         mock_cursor.reset_mock()
 
         # Test batch processing time
-        batch_data = [
-            {"article_id": f"article-{i}", "tags": [f"tag-{i}", f"tag-{i + 1}"]}
-            for i in range(10)
-        ]
+        batch_data = [{"article_id": f"article-{i}", "tags": [f"tag-{i}", f"tag-{i + 1}"]} for i in range(10)]
 
         start_time = time.time()
         inserter.batch_upsert_tags(mock_conn, batch_data)
@@ -230,9 +216,7 @@ class TestBatchProcessingPerformance:
         processing_time = time.time() - start_time
 
         # Should process 1000 articles in under 5 seconds
-        assert processing_time < 5.0, (
-            f"Large batch took {processing_time:.2f}s, should be under 5s"
-        )
+        assert processing_time < 5.0, f"Large batch took {processing_time:.2f}s, should be under 5s"
         assert result["success"] is True, "Large batch should complete successfully"
 
 
@@ -246,9 +230,7 @@ class TestServicePerformance:
         mock_connect.return_value = mock_conn
 
         # Mock successful processing
-        with patch.object(
-            TagGeneratorService, "_process_article_batch"
-        ) as mock_process:
+        with patch.object(TagGeneratorService, "_process_article_batch") as mock_process:
             mock_process.return_value = {
                 "total_processed": 5,
                 "successful": 5,
@@ -262,12 +244,8 @@ class TestServicePerformance:
                 service.run_processing_cycle()
 
             # Should create and close connections for each cycle
-            assert mock_connect.call_count == 3, (
-                "Should create connection for each cycle"
-            )
-            assert mock_conn.close.call_count == 3, (
-                "Should close connection after each cycle"
-            )
+            assert mock_connect.call_count == 3, "Should create connection for each cycle"
+            assert mock_conn.close.call_count == 3, "Should close connection after each cycle"
 
     @patch("main.psycopg2.connect")
     def test_should_handle_connection_failures_gracefully(self, mock_connect):
@@ -286,9 +264,7 @@ class TestServicePerformance:
         recovery_time = time.time() - start_time
 
         # Should recover and complete within reasonable time (under 20 seconds with retries)
-        assert recovery_time < 20.0, (
-            f"Recovery took {recovery_time:.2f}s, should be under 20s"
-        )
+        assert recovery_time < 20.0, f"Recovery took {recovery_time:.2f}s, should be under 20s"
         assert result["success"] is True, "Should succeed after retries"
 
     def test_should_process_cycles_with_consistent_performance(self):
@@ -335,9 +311,7 @@ class TestMemoryManagement:
         # Process multiple articles
         extractor = TagExtractor()
         for i in range(100):
-            extractor.extract_tags(
-                f"Title {i}", f"Content for article number {i} with some text"
-            )
+            extractor.extract_tags(f"Title {i}", f"Content for article number {i} with some text")
 
         # Force cleanup
         del extractor
@@ -359,9 +333,7 @@ class TestMemoryManagement:
         try:
             for i in range(50):  # Process 50 large articles
                 tags = extractor.extract_tags(f"Large Article {i}", large_text)
-                assert isinstance(tags, list), (
-                    "Should continue processing under memory pressure"
-                )
+                assert isinstance(tags, list), "Should continue processing under memory pressure"
 
                 # Periodic cleanup
                 if i % 10 == 0:
@@ -440,9 +412,7 @@ class TestConcurrencyPerformance:
 
         # Multi-threading should provide some benefit (at least 10% faster)
         speedup_ratio = single_thread_time / multi_thread_time
-        assert speedup_ratio > 1.1, (
-            f"Multi-threading speedup {speedup_ratio:.2f}x should be > 1.1x"
-        )
+        assert speedup_ratio > 1.1, f"Multi-threading speedup {speedup_ratio:.2f}x should be > 1.1x"
 
 
 if __name__ == "__main__":
