@@ -109,6 +109,19 @@ class ArticleInput(BaseModel):
 
         return any(pattern in text_lower for pattern in injection_patterns)
 
+    @staticmethod
+    def _is_valid_url(url: str) -> bool:
+        """Check if URL is valid."""
+        import re
+        url_pattern = re.compile(
+            r'^https?://'  # http:// or https://
+            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
+            r'localhost|'  # localhost...
+            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+            r'(?::\d+)?'  # optional port
+            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+        return bool(url_pattern.match(url))
+
 
 class SanitizedArticleInput(BaseModel):
     """Sanitized and validated article input."""
@@ -168,9 +181,41 @@ class InputSanitizer:
         original_total_length = original_title_length + original_content_length
 
         try:
-            # Step 1: Basic validation using Pydantic model
+            # Step 1: Basic validation using config limits instead of hardcoded Pydantic model
             try:
-                validated_input = ArticleInput(title=title, content=content, url=url)
+                # Manual validation using config
+                if not title or len(title.strip()) == 0:
+                    raise ValueError("Title too short")
+                if len(title) < self.config.min_title_length:
+                    raise ValueError("Title too short")
+                if len(title) > self.config.max_title_length:
+                    raise ValueError("Title too long")
+
+                if not content or len(content.strip()) == 0:
+                    raise ValueError("Content too short")
+                if len(content) < self.config.min_content_length:
+                    raise ValueError("Content too short")
+                if len(content) > self.config.max_content_length:
+                    raise ValueError("Content too long")
+
+                # Check for control characters in title
+                if any(ord(c) < 32 and c not in '\t\n\r' for c in title):
+                    raise ValueError("Contains control characters")
+
+                # Check for control characters in content
+                if any(ord(c) < 32 and c not in '\t\n\r' for c in content):
+                    raise ValueError("Contains control characters")
+
+                # Check for prompt injection patterns
+                if ArticleInput._contains_prompt_injection(title) or ArticleInput._contains_prompt_injection(content):
+                    raise ValueError("Potential prompt injection detected")
+
+                # URL validation if provided
+                if url and len(url) > 2048:
+                    raise ValueError("URL too long")
+                if url and not ArticleInput._is_valid_url(url):
+                    raise ValueError("Invalid URL format")
+
             except ValueError as e:
                 violations.append(str(e))
                 logger.warning("Input validation failed", error=str(e))
@@ -182,8 +227,8 @@ class InputSanitizer:
                 )
 
             # Step 2: Sanitize content
-            sanitized_title = self._sanitize_text(validated_input.title)
-            sanitized_content = self._sanitize_text(validated_input.content)
+            sanitized_title = self._sanitize_text(title)
+            sanitized_content = self._sanitize_text(content)
 
             # Step 3: Normalize Unicode
             sanitized_title = self._normalize_unicode(sanitized_title)

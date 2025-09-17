@@ -85,11 +85,11 @@ class TestSanitizedTagExtraction:
 
     def test_extract_tags_handles_oversized_input(self, tag_extractor):
         """Test that oversized input is rejected."""
-        title = "a" * 1000  # Exceeds max_title_length of 500
+        title = "a" * 1001  # Exceeds max_title_length of 1000
         content = "Valid content"
-        
+
         tags = tag_extractor.extract_tags(title, content)
-        
+
         # Should return empty list due to oversized title
         assert tags == []
 
@@ -117,13 +117,14 @@ class TestSanitizedTagExtraction:
         """Test that Japanese input is properly sanitized."""
         title = "機械学習の基礎"
         content = "この記事では機械学習の基本的な概念について説明します。"
-        
-        # Mock the actual extraction to focus on sanitization
-        with patch.object(tag_extractor, '_extract_keywords_japanese') as mock_extract:
+
+        # Mock language detection to return Japanese and the actual extraction
+        with patch.object(tag_extractor, '_detect_language', return_value='ja') as mock_lang, \
+             patch.object(tag_extractor, '_extract_keywords_japanese') as mock_extract:
             mock_extract.return_value = ["機械学習", "基礎"]
-            
+
             tags = tag_extractor.extract_tags(title, content)
-            
+
             # Should successfully extract tags
             assert len(tags) > 0
             mock_extract.assert_called_once()
