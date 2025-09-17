@@ -4,7 +4,7 @@ import { DesktopFeedsResponse, DesktopFeed } from "@/types/desktop-feed";
 import { ActivityResponse, WeeklyStats } from "@/types/desktop";
 import { MessageResponse } from "@/schema/common";
 import { mockDesktopFeeds } from "@/data/mockDesktopFeeds";
-import { sanitizeFeed } from "@/schema/feed";
+import { sanitizeFeed, BackendFeedItem } from "@/schema/feed";
 
 export class DesktopApi {
   constructor(
@@ -22,11 +22,11 @@ export class DesktopApi {
       }
 
       const response = await this.apiClient.get<{
-        data: any[];
+        data: unknown[];
         next_cursor: string | null;
       }>(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
 
-      const transformedFeeds = (response.data || []).map(sanitizeFeed);
+      const transformedFeeds = (response.data || []).map((item) => sanitizeFeed(item as BackendFeedItem));
 
       return {
         feeds: transformedFeeds,

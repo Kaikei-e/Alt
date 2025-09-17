@@ -5,6 +5,7 @@ import {
   FrontendApi,
   UpdateLoginFlowBody,
   LoginFlow,
+  UiNode,
 } from "@ory/client";
 
 const frontend = new FrontendApi(
@@ -114,7 +115,7 @@ export default function LoginClient() {
   if (!flow) return <div>Loading…</div>;
 
   // Helper to safely get node attribute values
-  const getNodeValue = (nodes: any[], name: string): string => {
+  const getNodeValue = (nodes: UiNode[], name: string): string => {
     const node = nodes.find(
       (n) =>
         n.attributes && "name" in n.attributes && n.attributes.name === name,

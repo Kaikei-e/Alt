@@ -15,7 +15,8 @@ export async function GET() {
     });
     if (!r.ok) return Response.json({ ok: false }, { status: 401 });
     return Response.json({ ok: true }, { status: 200 });
-  } catch (e: any) {
-    return Response.json({ ok: false, error: e?.message }, { status: 502 });
+  } catch (e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+    return Response.json({ ok: false, error: errorMessage }, { status: 502 });
   }
 }

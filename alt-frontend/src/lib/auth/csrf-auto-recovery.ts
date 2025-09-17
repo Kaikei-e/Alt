@@ -22,7 +22,7 @@ export class CSRFAutoRecovery {
   private maxRetries: number;
   private retryDelay: number;
   private enableLogging: boolean;
-  private activeRecoveries = new Map<string, Promise<any>>();
+  private activeRecoveries = new Map<string, Promise<unknown>>();
 
   constructor(options: RecoveryOptions = {}) {
     this.maxRetries = options.maxRetries ?? 3;
@@ -49,7 +49,7 @@ export class CSRFAutoRecovery {
         const result = await existingRecovery;
         return {
           success: true,
-          data: result,
+          data: result as T,
           attempts: 0,
           totalTime: performance.now() - startTime,
           recoveryActions: ["waited_for_existing_recovery"],
@@ -319,7 +319,7 @@ export class CSRFAutoRecovery {
   }
 
   // 📝 Logging utility
-  private log(message: string, data?: any): void {
+  private log(message: string, data?: unknown): void {
     if (!this.enableLogging) return;
 
     const timestamp = new Date().toISOString();

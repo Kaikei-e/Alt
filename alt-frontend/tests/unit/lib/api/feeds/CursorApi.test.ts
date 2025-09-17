@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { CursorApi } from "../../../src/CursorApi";
+import { CursorApi } from "../../../../../src/lib/api/feeds/CursorApi";
 import { ApiClient } from "../../../../../src/lib/api/core/ApiClient";
 
 // Mock ApiClient

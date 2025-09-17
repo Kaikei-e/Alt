@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
-import { feedUrlSchema } from "../../../src/feedUrlSchema";
+import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
 
 describe("Feed URL Schema", () => {
   describe("feedUrlSchema", () => {

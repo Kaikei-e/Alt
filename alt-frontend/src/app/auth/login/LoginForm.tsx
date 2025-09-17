@@ -6,6 +6,7 @@ import {
   FrontendApi,
   UpdateLoginFlowBody,
   LoginFlow,
+  UiNode,
 } from "@ory/client";
 
 const kratos = new FrontendApi(
@@ -220,7 +221,7 @@ export default function LoginForm({ flowId }: { flowId: string }) {
   }
 
   // Helper to safely get node attribute values
-  const getNodeValue = (nodes: any[], name: string): string => {
+  const getNodeValue = (nodes: UiNode[], name: string): string => {
     const node = nodes.find(
       (n) =>
         n.attributes && "name" in n.attributes && n.attributes.name === name,
