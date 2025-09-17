@@ -146,17 +146,6 @@ jobs:
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: uv run pyright .
 
-      # Coverage upload (for test jobs)
-      - name: Upload coverage to Codecov (OIDC)
-        if: ${{ always() && inputs.upload-coverage && inputs.use-oidc && inputs.job-type == 'test' }}
-        uses: codecov/codecov-action@v5
-        with:
-          use_oidc: true
-          files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.xml
-          flags: ${{ inputs.coverage-flags }}
-          name: ${{ inputs.coverage-flags }}-coverage
-          verbose: false
-
       - name: Upload coverage to Codecov (token)
         if: ${{ always() && inputs.upload-coverage && !inputs.use-oidc && inputs.job-type == 'test' }}
         uses: codecov/codecov-action@v5
