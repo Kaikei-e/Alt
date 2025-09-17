@@ -224,7 +224,7 @@ class LazyModelManager:
     def _load_sentence_transformer(self, model_name: str) -> Any:
         """Load SentenceTransformer model"""
         try:
-            from sentence_transformers import SentenceTransformer
+            from sentence_transformers import SentenceTransformer  # type: ignore
 
             # Load with CPU device for consistency
             return SentenceTransformer(model_name, device="cpu")
@@ -239,7 +239,7 @@ class LazyModelManager:
             import fugashi
 
             # Create tagger with unidic-lite
-            return fugashi.Tagger()
+            return fugashi.Tagger()  # type: ignore
 
         except ImportError:
             logger.error("fugashi not installed")

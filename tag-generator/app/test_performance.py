@@ -170,7 +170,7 @@ class TestBatchProcessingPerformance:
         # Test individual processing time
         start_time = time.time()
         for i in range(10):
-            inserter.upsert_tags(mock_conn, f"article-{i}", [f"tag-{i}", f"tag-{i + 1}"])
+            inserter.upsert_tags(mock_conn, f"article-{i}", [f"tag-{i}", f"tag-{i + 1}"], "test-feed")
         individual_time = time.time() - start_time
 
         # Reset mock
@@ -361,7 +361,7 @@ class TestConcurrencyPerformance:
 
         def concurrent_insert(conn, article_id):
             try:
-                result = inserter.upsert_tags(conn, article_id, [f"tag-{article_id}"])
+                result = inserter.upsert_tags(conn, article_id, [f"tag-{article_id}"], "test-feed")
                 results.append(result)
             except Exception as e:
                 errors.append(e)

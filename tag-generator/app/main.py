@@ -290,13 +290,14 @@ class TagGeneratorService:
         article_id = article["id"]
         title = article["title"]
         content = article["content"]
+        feed_id = article.get("feed_id", "unknown")
 
         try:
             # Extract tags
             tags = self.tag_extractor.extract_tags(title, content)
 
             # Insert tags
-            result = self.tag_inserter.upsert_tags(conn, article_id, tags)
+            result = self.tag_inserter.upsert_tags(conn, article_id, tags, feed_id)
 
             if result.get("success"):
                 return True

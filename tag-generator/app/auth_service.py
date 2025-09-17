@@ -16,7 +16,7 @@ sys.path.append("../../shared/auth-lib-python")
 
 from contextlib import asynccontextmanager
 
-from alt_auth.client import AuthClient, AuthConfig, UserContext, require_auth
+from alt_auth.client import AuthClient, AuthConfig, UserContext, require_auth  # type: ignore
 from fastapi import FastAPI, HTTPException
 
 logger = structlog.get_logger(__name__)

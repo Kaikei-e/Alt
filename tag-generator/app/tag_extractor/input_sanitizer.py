@@ -37,7 +37,7 @@ class ArticleInput(BaseModel):
 
     title: str = Field(..., min_length=1, max_length=1000)
     content: str = Field(..., min_length=1, max_length=50000)
-    url: str | None = Field(None, max_length=2048)
+    url: str | None = Field(default=None, max_length=2048)
 
     @field_validator("title", mode="before")
     def validate_title(cls, v):

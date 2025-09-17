@@ -116,7 +116,7 @@ class TestCriticalPerformanceRequirements:
         # Individual processing baseline
         start_time = time.time()
         for i in range(50):
-            inserter.upsert_tags(mock_conn, f"article-{i}", [f"tag-{i}", f"tag-{i + 50}"])
+            inserter.upsert_tags(mock_conn, f"article-{i}", [f"tag-{i}", f"tag-{i + 50}"], "test-feed")
         individual_time = time.time() - start_time
 
         # Reset mock counters

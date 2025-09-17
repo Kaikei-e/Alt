@@ -85,7 +85,7 @@ class LazyTagExtractor:
         if self._keybert is None:
             sentence_transformer = await self._get_sentence_transformer()
             # Import KeyBERT when needed
-            from keybert import KeyBERT
+            from keybert import KeyBERT  # type: ignore
 
             self._keybert = KeyBERT(model=sentence_transformer)
         return self._keybert

@@ -5,12 +5,16 @@ Implements singleton pattern for ML models to improve performance.
 
 import threading
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from keybert import KeyBERT  # type: ignore
+    from sentence_transformers import SentenceTransformer  # type: ignore
 
 try:
     from fugashi import Tagger  # pyright: ignore
-    from keybert import KeyBERT
-    from sentence_transformers import SentenceTransformer
+    from keybert import KeyBERT  # type: ignore
+    from sentence_transformers import SentenceTransformer  # type: ignore
 except ImportError:
     # Fallback for environments without ML dependencies (e.g., production builds)
     # These will be mocked in tests
@@ -52,16 +56,16 @@ class ModelManager:
     def __init__(self):
         """Initialize model manager (called only once)."""
         if not getattr(self, "_initialized", False):
-            self._embedder: SentenceTransformer | None = None
-            self._keybert: KeyBERT | None = None
-            self._ja_tagger: Tagger | None = None
+            self._embedder: Any = None
+            self._keybert: Any = None
+            self._ja_tagger: Any = None
             self._ja_stopwords: set[str] | None = None
             self._en_stopwords: set[str] | None = None
             self._config: ModelConfig | None = None
             self._initialized = True
             logger.info("ModelManager singleton initialized")
 
-    def get_models(self, config: ModelConfig) -> tuple[SentenceTransformer, KeyBERT, Tagger]:
+    def get_models(self, config: ModelConfig) -> tuple[Any, Any, Any]:
         """
         Get or load models with thread-safe lazy loading.
 
@@ -105,6 +109,13 @@ class ModelManager:
     def _load_models(self, config: ModelConfig) -> None:
         """Load ML models (called within lock)."""
         try:
+            if SentenceTransformer is None:
+                raise ImportError("SentenceTransformer not available")
+            if KeyBERT is None:
+                raise ImportError("KeyBERT not available")
+            if Tagger is None:
+                raise ImportError("Tagger not available")
+
             logger.info("Loading SentenceTransformer model", model_name=config.model_name)
             self._embedder = SentenceTransformer(config.model_name, device=config.device)
 

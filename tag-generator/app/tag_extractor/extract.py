@@ -17,8 +17,8 @@ from langdetect import LangDetectException, detect
 try:
     from fugashi import Tagger as _Tagger  # type: ignore
     from keybert import KeyBERT as _KeyBERT  # type: ignore
-    from sentence_transformers import (
-        SentenceTransformer as _SentenceTransformer,  # type: ignore
+    from sentence_transformers import (  # type: ignore
+        SentenceTransformer as _SentenceTransformer,
     )
 
     # Alias for outward exposure
