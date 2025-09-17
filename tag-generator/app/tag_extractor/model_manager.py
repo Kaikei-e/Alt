@@ -133,6 +133,8 @@ class ModelManager:
             self._embedder = None
             self._keybert = None
             self._ja_tagger = None
+            # Re-raise the original exception
+            raise
 
     def _load_stopwords(self) -> None:
         """Load stopwords files (called within lock)."""
