@@ -59,7 +59,6 @@ export interface FetchArticleSummaryResponse {
   requested_count: number;
 }
 
-/** @deprecated Use ArticleSummaryItem instead */
 export interface FeedDetails {
   feed_url: string;
   summary: string;
@@ -86,4 +85,8 @@ export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {
     published: rawFeed.published || "",
     author: sanitized.author || undefined,
   };
+}
+
+export interface FeedContentOnTheFlyResponse {
+  content: string;
 }

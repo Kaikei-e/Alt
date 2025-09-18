@@ -8,6 +8,7 @@ import {
   FeedURLPayload,
   FetchArticleSummaryResponse,
   sanitizeFeed,
+  FeedContentOnTheFlyResponse,
 } from "@/schema/feed";
 import { FeedSearchResult } from "@/schema/search";
 import { Article } from "@/schema/article";
@@ -144,7 +145,6 @@ export class FeedsApi {
     );
   }
 
-  /** @deprecated Use getArticleSummary instead */
   async getFeedDetails(payload: FeedURLPayload): Promise<FeedDetails> {
     try {
       const response = await this.getArticleSummary(payload.feed_url);
@@ -160,6 +160,15 @@ export class FeedsApi {
         error instanceof Error ? error.message : "Failed to fetch feed details",
       );
     }
+  }
+
+  async getFeedContentOnTheFly(payload: FeedURLPayload): Promise<FeedContentOnTheFlyResponse> {
+    return this.apiClient.post<FeedContentOnTheFlyResponse>(
+      "/v1/articles/fetch/content",
+      {
+        feed_url: payload.feed_url,
+      },
+    );
   }
 
   // Search

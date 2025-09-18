@@ -1,13 +1,23 @@
 import { HStack, Text, Box, Portal, Button } from "@chakra-ui/react";
 import { useState, useEffect, useCallback } from "react";
 import { X, Star } from "lucide-react";
-import { FetchArticleSummaryResponse } from "@/schema/feed";
+import { FetchArticleSummaryResponse, FeedContentOnTheFlyResponse } from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
-import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
+import RenderFeedDetails from "./RenderFeedDetails";
 
-export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
+interface FeedDetailsProps {
+  feedURL?: string;
+  initialData?: FetchArticleSummaryResponse | FeedContentOnTheFlyResponse;
+}
+
+export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
   const [articleSummary, setArticleSummary] =
-    useState<FetchArticleSummaryResponse | null>(null);
+    useState<FetchArticleSummaryResponse | null>(
+      initialData && 'matched_articles' in initialData ? initialData : null
+    );
+  const [feedDetails, setFeedDetails] = useState<FeedContentOnTheFlyResponse | null>(
+    initialData && 'content' in initialData ? initialData : null
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFavoriting, setIsFavoriting] = useState(false);
@@ -35,6 +45,12 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
   }, [isOpen, handleHideDetails]);
 
   const handleShowDetails = async () => {
+    // If we already have initial data, just open the modal
+    if (initialData) {
+      setIsOpen(true);
+      return;
+    }
+
     if (!feedURL) {
       setError("No feed URL available");
       setIsOpen(true);
@@ -46,7 +62,11 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
 
     try {
       const summary = await feedsApi.getArticleSummary(feedURL);
+      const details = await feedsApi.getFeedContentOnTheFly({
+        feed_url: feedURL,
+      });
       setArticleSummary(summary);
+      setFeedDetails(details);
     } catch (err) {
       console.error("Error fetching article summary:", err);
       setError("Summary not available for this article");
@@ -219,105 +239,12 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
                   zIndex="-1"
                 />
 
-                {/* Article Metadata - only show if we have article data */}
-                {articleSummary?.matched_articles &&
-                  articleSummary.matched_articles.length > 0 &&
-                  !error && (
-                    <Box
-                      mb={4}
-                      p={3}
-                      bg="rgba(255, 255, 255, 0.05)"
-                      borderRadius="12px"
-                      border="1px solid rgba(255, 255, 255, 0.1)"
-                    >
-                      <Text
-                        fontSize="lg"
-                        fontWeight="bold"
-                        color="var(--text-primary)"
-                        mb={2}
-                        lineHeight="1.4"
-                      >
-                        {articleSummary.matched_articles[0].title}
-                      </Text>
-
-                      <HStack
-                        gap={3}
-                        fontSize="sm"
-                        color="var(--alt-text-secondary)"
-                      >
-                        {articleSummary.matched_articles[0].author && (
-                          <Text>
-                            By {articleSummary.matched_articles[0].author}
-                          </Text>
-                        )}
-
-                        <Text>
-                          {new Date(
-                            articleSummary.matched_articles[0].published_at,
-                          ).toLocaleDateString("ja-JP", {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </Text>
-
-                        <Text
-                          px={2}
-                          py={1}
-                          bg="var(--accent-primary)"
-                          borderRadius="full"
-                          fontSize="xs"
-                          fontWeight="semibold"
-                        >
-                          {articleSummary.matched_articles[0].content_type}
-                        </Text>
-                      </HStack>
-                    </Box>
-                  )}
-
-                {/* Smart Content Rendering */}
-                {isLoading ? (
-                  <Text
-                    fontStyle="italic"
-                    color="var(--alt-text-secondary)"
-                    textAlign="center"
-                    py={8}
-                  >
-                    Loading summary...
-                  </Text>
-                ) : error ? (
-                  <Text
-                    fontStyle="italic"
-                    color="var(--alt-text-secondary)"
-                    textAlign="center"
-                    py={8}
-                  >
-                    {error}
-                  </Text>
-                ) : articleSummary?.matched_articles &&
-                  articleSummary.matched_articles.length > 0 ? (
-                  <SmartContentRenderer
-                    content={articleSummary.matched_articles[0].content}
-                    contentType={
-                      articleSummary.matched_articles[0].content_type
-                    }
-                    className="article-content"
-                    maxHeight="60vh"
-                    showMetadata={true}
-                    onError={(error) => {
-                      console.error("Content rendering error:", error);
-                    }}
-                  />
-                ) : (
-                  <Text
-                    fontStyle="italic"
-                    color="var(--alt-text-secondary)"
-                    textAlign="center"
-                    py={8}
-                  >
-                    No summary available for this article
-                  </Text>
-                )}
+                {/* Render content based on data type */}
+                <RenderFeedDetails
+                  feedDetails={articleSummary || feedDetails}
+                  isLoading={isLoading}
+                  error={error}
+                />
               </Box>
 
               {/* Modal Footer with Fave and Hide Details buttons */}
@@ -338,6 +265,7 @@ export const FeedDetails = ({ feedURL }: { feedURL: string }) => {
               >
                 <Button
                   onClick={async () => {
+                    if (!feedURL) return;
                     try {
                       setIsFavoriting(true);
                       await feedsApi.registerFavoriteFeed(feedURL);
