@@ -146,34 +146,6 @@ jobs:
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: uv run pyright .
 
-      - name: Upload coverage to Codecov (token)
-        if: ${{ always() && inputs.upload-coverage && !inputs.use-oidc && inputs.job-type == 'test' }}
-        uses: codecov/codecov-action@v5
-        with:
-          files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.xml
-          flags: ${{ inputs.coverage-flags }}
-          name: ${{ inputs.coverage-flags }}-coverage
-          token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: false
-
-      - name: Upload test results
-        if: ${{ always() && inputs.job-type == 'test' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-test-results-${{ github.run_id }}
-          path: ${{ github.workspace }}/${{ inputs.working-directory }}/tests/
-          retention-days: 5
-          if-no-files-found: warn
-
-      - name: Upload security scan results
-        if: ${{ always() && inputs.job-type == 'security' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-security-report-${{ github.run_id }}
-          path: ${{ github.workspace }}/${{ inputs.working-directory }}/bandit-report.json
-          retention-days: 5
-          if-no-files-found: warn
-
       - name: Cleanup (self-hosted)
         if: always() && runner.environment == 'self-hosted'
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
