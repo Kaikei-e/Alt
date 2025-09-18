@@ -54,23 +54,9 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
     );
   }
 
-  // FeedContentOnTheFlyResponse (has content property) - Simple summary display
-  if ('content' in feedDetails) {
-    return (
-      <Box px={6} py={5}>
-        <Text
-          color="var(--text-primary)"
-          lineHeight="1.6"
-          fontSize="md"
-        >
-          {feedDetails.content}
-        </Text>
-      </Box>
-    );
-  }
-
   // FetchArticleSummaryResponse (has matched_articles property) - Rich article display
-  if (feedDetails.matched_articles && feedDetails.matched_articles.length > 0) {
+  // Check this first to prioritize Inoreader summary when available
+  if ('matched_articles' in feedDetails && feedDetails.matched_articles && feedDetails.matched_articles.length > 0) {
     const article = feedDetails.matched_articles[0];
 
     return (
@@ -134,6 +120,22 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
             console.error("Content rendering error:", error);
           }}
         />
+      </Box>
+    );
+  }
+
+  // FeedContentOnTheFlyResponse (has content property) - Simple content display
+  // This is the fallback when Inoreader summary is not available
+  if ('content' in feedDetails) {
+    return (
+      <Box px={6} py={5}>
+        <Text
+          color="var(--text-primary)"
+          lineHeight="1.6"
+          fontSize="md"
+        >
+          {feedDetails.content}
+        </Text>
       </Box>
     );
   }

@@ -8,7 +8,10 @@ export interface ApiConfig {
 }
 
 export const defaultApiConfig: ApiConfig = {
-  baseUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080",
+  baseUrl:
+    typeof window === "undefined"
+      ? process.env.API_URL || "http://localhost:8080"  // SSR: 内向き
+      : "/api/backend",  // Client: 外向き（Nginx書き換え）
   requestTimeout: 120000, // 2 minutes
 };
 

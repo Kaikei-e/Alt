@@ -163,11 +163,10 @@ export class FeedsApi {
   }
 
   async getFeedContentOnTheFly(payload: FeedURLPayload): Promise<FeedContentOnTheFlyResponse> {
-    return this.apiClient.post<FeedContentOnTheFlyResponse>(
-      "/v1/articles/fetch/content",
-      {
-        feed_url: payload.feed_url,
-      },
+    const encodedUrl = encodeURIComponent(payload.feed_url);
+    return this.apiClient.get<FeedContentOnTheFlyResponse>(
+      `/v1/articles/fetch/content?url=${encodedUrl}`,
+      10,
     );
   }
 

@@ -1,4 +1,4 @@
-import { HStack, Text, Box, Portal, Button } from "@chakra-ui/react";
+import { HStack, Text, Box, Button } from "@chakra-ui/react";
 import { useState, useEffect, useCallback } from "react";
 import { X, Star } from "lucide-react";
 import { FetchArticleSummaryResponse, FeedContentOnTheFlyResponse } from "@/schema/feed";
@@ -60,17 +60,48 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
     setIsLoading(true);
     setError(null);
 
-    try {
-      const summary = await feedsApi.getArticleSummary(feedURL);
-      const details = await feedsApi.getFeedContentOnTheFly({
-        feed_url: feedURL,
-      });
-      setArticleSummary(summary);
-      setFeedDetails(details);
-    } catch (err) {
+    // Fetch both summary and content independently
+    const summaryPromise = feedsApi.getArticleSummary(feedURL).catch((err) => {
       console.error("Error fetching article summary:", err);
-      setError("Summary not available for this article");
-      setArticleSummary(null);
+      return null;
+    });
+
+    const detailsPromise = feedsApi.getFeedContentOnTheFly({
+      feed_url: feedURL,
+    }).catch((err) => {
+      console.error("Error fetching article content:", err);
+      return null;
+    });
+
+    try {
+      const [summary, details] = await Promise.all([summaryPromise, detailsPromise]);
+
+      console.log("Summary response:", summary);
+      console.log("Details response:", details);
+
+      // Check if summary has valid content
+      const hasValidSummary = summary && summary.matched_articles && summary.matched_articles.length > 0;
+      // Check if details has valid content
+      const hasValidDetails = details && details.content && details.content.trim() !== "";
+
+      if (hasValidSummary) {
+        setArticleSummary(summary);
+        console.log("Setting article summary:", summary);
+      }
+
+      if (hasValidDetails) {
+        setFeedDetails(details);
+        console.log("Setting feed details:", details);
+      }
+
+      // If neither API call succeeded with valid content, show error
+      if (!hasValidSummary && !hasValidDetails) {
+        setError("Unable to fetch article content");
+        console.log("No valid content from either API");
+      }
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      setError("Unexpected error occurred");
     } finally {
       setIsLoading(false);
       setIsOpen(true);
@@ -107,7 +138,7 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
       )}
 
       {isOpen && (
-        <Portal>
+        <div>
           <Box
             position="fixed"
             top="0"
@@ -312,7 +343,7 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
               </Box>
             </Box>
           </Box>
-        </Portal>
+        </div>
       )}
     </HStack>
   );
