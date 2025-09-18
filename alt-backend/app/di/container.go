@@ -14,6 +14,7 @@ import (
 	"alt/gateway/feed_stats_gateway"
 	"alt/gateway/feed_url_link_gateway"
 	"alt/gateway/feed_url_to_id_gateway"
+	"alt/gateway/fetch_article_gateway"
 	"alt/gateway/fetch_feed_detail_gateway"
 	"alt/gateway/fetch_feed_gateway"
 	"alt/gateway/fetch_feed_tags_gateway"
@@ -28,6 +29,7 @@ import (
 	"alt/port/error_handler_port"
 	"alt/port/rate_limiter_port"
 	"alt/usecase/csrf_token_usecase"
+	"alt/usecase/fetch_article_usecase"
 	"alt/usecase/fetch_feed_details_usecase"
 	"alt/usecase/fetch_feed_stats_usecase"
 	"alt/usecase/fetch_feed_tags_usecase"
@@ -38,6 +40,7 @@ import (
 	"alt/usecase/register_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
 	"alt/usecase/search_feed_usecase"
+	"alt/utils"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"net/http"
@@ -77,10 +80,12 @@ type ApplicationComponents struct {
 	FetchInoreaderSummaryUsecase        fetch_inoreader_summary_usecase.FetchInoreaderSummaryUsecase
 	ImageFetchUsecase                   image_fetch_usecase.ImageFetchUsecaseInterface
 	CSRFTokenUsecase                    *csrf_token_usecase.CSRFTokenUsecase
+	ArticleUsecase                      fetch_article_usecase.ArticleUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	altDBRepository := alt_db.NewAltDBRepository(pool)
+	httpClient := utils.NewHTTPClientFactory().CreateHTTPClient()
 
 	// Load configuration
 	cfg, err := config.NewConfig()
@@ -144,6 +149,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchFeedTagsGatewayImpl := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDBRepository)
 	fetchFeedTagsUsecase := fetch_feed_tags_usecase.NewFetchFeedTagsUsecase(feedURLToIDGatewayImpl, fetchFeedTagsGatewayImpl)
 
+	fetchArticleGatewayImpl := fetch_article_gateway.NewFetchArticleGateway(rateLimiter, httpClient)
+	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl)
+
 	// Fetch inoreader summary components
 	fetchInoreaderSummaryGatewayImpl := fetch_inoreader_summary_gateway.NewInoreaderSummaryGateway(altDBRepository)
 	fetchInoreaderSummaryUsecase := fetch_inoreader_summary_usecase.NewFetchInoreaderSummaryUsecase(fetchInoreaderSummaryGatewayImpl)
@@ -154,10 +162,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	csrfTokenUsecase := csrf_token_usecase.NewCSRFTokenUsecase(csrfTokenGateway)
 
 	// Image fetch components
-	httpClient := &http.Client{
+	imageHTTPClient := &http.Client{
 		Timeout: 30 * time.Second,
 	}
-	imageFetchGateway := image_fetch_gateway.NewImageFetchGateway(httpClient)
+	imageFetchGateway := image_fetch_gateway.NewImageFetchGateway(imageHTTPClient)
 	imageFetchUsecase := image_fetch_usecase.NewImageFetchUsecase(imageFetchGateway)
 
 	// Auth components
@@ -195,5 +203,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchInoreaderSummaryUsecase:        fetchInoreaderSummaryUsecase,
 		ImageFetchUsecase:                   imageFetchUsecase,
 		CSRFTokenUsecase:                    csrfTokenUsecase,
+		ArticleUsecase:                      fetchArticleUsecase,
 	}
 }
