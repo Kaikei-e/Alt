@@ -159,7 +159,7 @@ class CustomReporter implements Reporter {
     console.log(`${icon} ${testName} (${durationMs})`);
 
     if (result.status === "failed" && result.error) {
-      console.log(`   💥 ${result.error.message.split("\n")[0]}`);
+      console.log(`   💥 ${result.error.message?.split("\n")[0] || 'Unknown error'}`);
     }
   }
 

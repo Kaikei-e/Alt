@@ -293,13 +293,13 @@ export async function waitForAuthRedirect(
     console.error(`[waitForAuthRedirect] Failed after ${elapsedTime}ms`);
     console.error(`[waitForAuthRedirect] Current URL: ${currentUrl}`);
     console.error(`[waitForAuthRedirect] Expected pattern: ${expectedFlow}`);
-    console.error(`[waitForAuthRedirect] Original error:`, error.message);
+    console.error(`[waitForAuthRedirect] Original error:`, error instanceof Error ? error.message : String(error));
 
     // Add more context to the error
     const enhancedError = new Error(
-      `Auth redirect failed: Expected URL matching ${expectedFlow}, but got ${currentUrl} after ${elapsedTime}ms. Original: ${error.message}`,
+      `Auth redirect failed: Expected URL matching ${expectedFlow}, but got ${currentUrl} after ${elapsedTime}ms. Original: ${error instanceof Error ? error.message : String(error)}`,
     );
-    enhancedError.stack = error.stack;
+    enhancedError.stack = error instanceof Error ? error.stack : undefined;
     throw enhancedError;
   }
 }

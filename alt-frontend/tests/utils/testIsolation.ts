@@ -111,7 +111,7 @@ export async function withRetry<T>(
 
       console.log(
         `[RETRY] Attempt ${attempt} failed, retrying in ${delay}ms:`,
-        error.message,
+        error instanceof Error ? error.message : String(error),
       );
       await new Promise((resolve) => setTimeout(resolve, delay));
       delay = Math.min(delay * backoffFactor, maxDelay);

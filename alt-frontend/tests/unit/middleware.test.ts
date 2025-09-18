@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-import { middleware } from "../../../src/middleware";
+import { middleware } from "../../src/middleware";
 
 // Mock environment variables
 process.env.NEXT_PUBLIC_APP_ORIGIN = "https://curionoah.com";

@@ -105,14 +105,7 @@ describe("serverFetch", () => {
       };
       mockFetch.mockResolvedValue(mockResponse);
 
-      await serverFetch("/test-endpoint", {
-        method: "POST",
-        headers: {
-          "X-Custom-Header": "custom-value",
-          Authorization: "Bearer token",
-        },
-        body: JSON.stringify({ test: "data" }),
-      });
+      await serverFetch("/test-endpoint");
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://alt-backend:9000/test-endpoint",
