@@ -177,15 +177,15 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
           >
             <Box
               onClick={(e) => e.stopPropagation()}
-              width="90vw"
-              maxWidth="420px"
-              height="75vh"
-              maxHeight="600px"
-              minHeight="350px"
-              background="linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"
-              borderRadius="20px"
-              boxShadow="0 25px 50px var(--accent-primary)"
-              border="1px solid rgba(255, 255, 255, 0.15)"
+              width="95vw"
+              maxWidth="450px"
+              height="85vh"
+              maxHeight="700px"
+              minHeight="400px"
+              background="var(--app-bg)"
+              borderRadius="16px"
+              boxShadow="0 20px 40px rgba(0, 0, 0, 0.3)"
+              border="1px solid rgba(255, 255, 255, 0.1)"
               display="flex"
               flexDirection="column"
               data-testid="modal-content"
@@ -197,16 +197,16 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
                 position="sticky"
                 top="0"
                 zIndex="2"
-                bg="var(--app-bg)"
-                height="50px"
-                minHeight="50px"
+                bg="rgba(255, 255, 255, 0.05)"
+                height="60px"
+                minHeight="60px"
                 backdropFilter="blur(20px)"
                 borderBottom="1px solid rgba(255, 255, 255, 0.1)"
-                px={6}
+                px={4}
                 py={3}
                 data-testid="summary-header"
                 id="summary-header"
-                borderTopRadius="20px"
+                borderTopRadius="16px"
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
@@ -234,9 +234,9 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
               <Box
                 flex="1"
                 overflow="auto"
-                px={6}
-                py={5}
-                bg="var(--app-bg)"
+                px={0}
+                py={0}
+                bg="transparent"
                 scrollBehavior="smooth"
                 overscrollBehavior="contain"
                 willChange="scroll-position"
@@ -245,18 +245,18 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
                 position="relative"
                 css={{
                   "&::-webkit-scrollbar": {
-                    width: "6px",
+                    width: "4px",
                   },
                   "&::-webkit-scrollbar-track": {
-                    background: "var(--app-bg)",
-                    borderRadius: "3px",
+                    background: "transparent",
+                    borderRadius: "2px",
                   },
                   "&::-webkit-scrollbar-thumb": {
-                    background: "var(--app-bg)",
-                    borderRadius: "3px",
+                    background: "rgba(255, 255, 255, 0.2)",
+                    borderRadius: "2px",
                   },
                   "&::-webkit-scrollbar-thumb:hover": {
-                    background: "var(--app-bg)",
+                    background: "rgba(255, 255, 255, 0.3)",
                   },
                 }}
               >
@@ -283,16 +283,16 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
                 position="sticky"
                 bottom="0"
                 zIndex="2"
-                bg="var(--app-bg)"
+                bg="rgba(255, 255, 255, 0.05)"
                 backdropFilter="blur(20px)"
                 borderTop="1px solid rgba(255, 255, 255, 0.1)"
-                px={6}
+                px={4}
                 py={3}
-                borderBottomRadius="20px"
+                borderBottomRadius="16px"
                 display="flex"
                 alignItems="center"
                 justifyContent="space-between"
-                minHeight="50px"
+                minHeight="60px"
               >
                 <Button
                   onClick={async () => {

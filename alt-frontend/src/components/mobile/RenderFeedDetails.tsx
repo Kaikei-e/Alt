@@ -60,11 +60,11 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
     const article = feedDetails.matched_articles[0];
 
     return (
-      <Box px={6} py={5}>
+      <Box px={4} py={4}>
         {/* Article Metadata */}
         <Box
           mb={4}
-          p={3}
+          p={4}
           bg="rgba(255, 255, 255, 0.05)"
           borderRadius="12px"
           border="1px solid rgba(255, 255, 255, 0.1)"
@@ -110,16 +110,23 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
         </Box>
 
         {/* Smart Content Rendering */}
-        <SmartContentRenderer
-          content={article.content}
-          contentType={article.content_type}
-          className="article-content"
-          maxHeight="60vh"
-          showMetadata={true}
-          onError={(error) => {
-            console.error("Content rendering error:", error);
-          }}
-        />
+        <Box
+          bg="rgba(255, 255, 255, 0.02)"
+          borderRadius="8px"
+          p={3}
+          border="1px solid rgba(255, 255, 255, 0.05)"
+        >
+          <SmartContentRenderer
+            content={article.content}
+            contentType={article.content_type}
+            className="article-content"
+            maxHeight="50vh"
+            showMetadata={true}
+            onError={(error) => {
+              console.error("Content rendering error:", error);
+            }}
+          />
+        </Box>
       </Box>
     );
   }
@@ -128,7 +135,7 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
   // This is the fallback when Inoreader summary is not available
   if ('content' in feedDetails) {
     return (
-      <Box px={6} py={5}>
+      <Box px={4} py={4}>
         <Text
           color="var(--text-primary)"
           lineHeight="1.6"
