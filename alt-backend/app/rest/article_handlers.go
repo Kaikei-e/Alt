@@ -20,30 +20,37 @@ func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 
 func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		var payload string
-		if err := c.Bind(&payload); err != nil {
-			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
+		articleURLStr := c.QueryParam("url")
+		if articleURLStr == "" {
+			return handleValidationError(c, "Article URL is required", "url", "missing parameter")
 		}
 
-		if payload == "" {
-			return handleValidationError(c, "Article URL is required", "body", "malformed JSON")
-		}
-
-		articleURL, err := url.Parse(payload)
+		articleURL, err := url.Parse(articleURLStr)
 		if err != nil {
-			return handleValidationError(c, "Invalid article URL", "body", "malformed JSON")
+			return handleValidationError(c, "Invalid article URL", "url", "invalid format")
 		}
 
 		err = isAllowedURL(articleURL)
 		if err != nil {
-			return handleValidationError(c, "Article URL not allowed", "body", "malformed JSON")
+			return handleValidationError(c, "Article URL not allowed", "url", "not allowed")
 		}
 
-		article, err := container.ArticleUsecase.Execute(c.Request().Context(), articleURL.String())
+		content, err := container.ArticleUsecase.Execute(c.Request().Context(), articleURL.String())
 		if err != nil {
 			return handleError(c, err, "fetch_article")
 		}
-		return c.JSON(http.StatusOK, article)
+
+		// Return JSON object matching FeedContentOnTheFlyResponse interface
+		// Handle nil content to prevent panic
+		contentStr := ""
+		if content != nil {
+			contentStr = *content
+		}
+
+		response := map[string]string{
+			"content": contentStr,
+		}
+		return c.JSON(http.StatusOK, response)
 	}
 }
 
