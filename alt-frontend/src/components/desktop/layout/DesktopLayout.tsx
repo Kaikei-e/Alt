@@ -12,7 +12,8 @@ interface DesktopLayoutProps {
     navItems: Array<{
       id: number;
       label: string;
-      icon: React.ComponentType<{ size?: number }>;
+      icon?: React.ComponentType<{ size?: number }>;
+      iconName?: string; // Support icon names for Server/Client boundary
       href: string;
       active?: boolean;
     }>;

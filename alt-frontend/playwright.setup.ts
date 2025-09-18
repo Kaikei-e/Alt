@@ -6,7 +6,7 @@ async function globalSetup(config: FullConfig) {
   console.log("🎭 Playwright global setup started");
 
   // Set any global environment variables needed for Playwright
-  process.env.NODE_ENV = "test";
+  (process.env as any).NODE_ENV = "test";
   process.env.PLAYWRIGHT_BASE_URL =
     process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3010";
 
