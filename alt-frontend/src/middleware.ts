@@ -27,15 +27,12 @@ export function middleware(req: NextRequest) {
   if (req.cookies.get("alt_auth_redirect_guard")) return NextResponse.next();
 
   // Use test auth server in test mode
-  const authHost = isTest
-    ? "http://localhost:4545"
-    : `${req.nextUrl.protocol}//id.curionoah.com`;
-
-  const loginInit = new URL(`/self-service/login/browser`, authHost);
+  // 未ログイン時はアプリ内のログインUIへ
   const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN || req.nextUrl.origin;
-  loginInit.searchParams.set("return_to", `${appOrigin}${pathname}${search}`);
+  const loginPage = new URL(`/auth/login`, appOrigin);
+  loginPage.searchParams.set("return_to", `${appOrigin}${pathname}${search}`);
 
-  const res = NextResponse.redirect(loginInit, 303);
+  const res = NextResponse.redirect(loginPage, 303);
   res.cookies.set("alt_auth_redirect_guard", "1", {
     maxAge: 10,
     httpOnly: true,

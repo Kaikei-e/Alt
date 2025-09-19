@@ -2,10 +2,14 @@ import { headers } from "next/headers";
 
 export async function GET() {
   const cookie = (await headers()).get("cookie") ?? "";
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto") || "https";
+  const host = h.get("host") || "localhost:3000";
+  const origin = `${proto}://${host}`;
   const KRATOS =
     process.env.KRATOS_INTERNAL_URL ||
     process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL ||
-    "https://id.curionoah.com";
+    `${origin}/ory`;
 
   try {
     const r = await fetch(`${KRATOS}/sessions/whoami`, {

@@ -38,13 +38,11 @@ export function handleFlowExpiredError(error: unknown): void {
   if (redirectUrl) {
     window.location.replace(redirectUrl);
   } else {
-    // Fallback: redirect to login browser endpoint
+    // Fallback: redirect to same-origin /ory login browser endpoint
     const currentUrl = window.location.href;
     const returnTo = encodeURIComponent(currentUrl.split("?")[0]);
-    const idpOrigin =
-      process.env.NEXT_PUBLIC_IDP_ORIGIN || "https://id.curionoah.com";
     window.location.replace(
-      `${idpOrigin}/self-service/login/browser?return_to=${returnTo}`,
+      `/ory/self-service/login/browser?return_to=${returnTo}`,
     );
   }
 }

@@ -13,9 +13,9 @@ export default async function Page({
     params?.return_to ?? `${process.env.NEXT_PUBLIC_APP_ORIGIN}/`;
 
   if (!flow) {
-    // ★外部ドメインへ常に絶対URLで
+    // 同一オリジンの /ory に統一
     redirect(
-      `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${encodeURIComponent(returnTo)}`,
+      `/ory/self-service/login/browser?return_to=${encodeURIComponent(returnTo)}`,
     );
   }
 
