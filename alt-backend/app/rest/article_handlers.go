@@ -6,6 +6,7 @@ import (
 	"alt/driver/search_indexer"
 	middleware_custom "alt/middleware"
 	"alt/utils/logger"
+	"fmt"
 	"net/http"
 	"net/url"
 
@@ -37,7 +38,7 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 
 		content, err := container.ArticleUsecase.Execute(c.Request().Context(), articleURL.String())
 		if err != nil {
-			return handleError(c, err, "fetch_article")
+			return handleError(c, fmt.Errorf("fetch article content failed for %q: %w", articleURL.String(), err), "fetch_article")
 		}
 
 		// Return JSON object matching FeedContentOnTheFlyResponse interface
@@ -46,6 +47,10 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 		if content != nil {
 			contentStr = *content
 		}
+
+		// Ensure UTF-8 JSON and disallow MIME sniffing
+		c.Response().Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSONCharsetUTF8)
+		c.Response().Header().Set("X-Content-Type-Options", "nosniff")
 
 		response := map[string]string{
 			"content": contentStr,

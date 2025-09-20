@@ -3,11 +3,16 @@ package fetch_article_gateway
 import (
 	"alt/utils/rate_limiter"
 	"alt/utils/security"
+	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"time"
+
+	"golang.org/x/net/html/charset"
+	"golang.org/x/text/transform"
 )
 
 type FetchArticleGateway struct {
@@ -58,40 +63,55 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 	// Rate limit per host
 	if g.rateLimiter != nil {
 		if err := g.rateLimiter.WaitForHost(ctx, articleURL); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("rate limit wait failed for %q: %w", articleURL, err)
 		}
 	}
 
 	// Parse and validate URL to guard against SSRF
 	parsedURL, err := url.Parse(articleURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse url failed for %q: %w", articleURL, err)
 	}
 	if err := g.ssrfValidator.ValidateURL(ctx, parsedURL); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ssrf validation failed for %q: %w", parsedURL.String(), err)
 	}
 
 	// Build request with context and safe client
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request failed for %q: %w", parsedURL.String(), err)
 	}
 	req.Header.Set("User-Agent", "Alt-Article-Fetcher/1.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	// Do NOT set Accept-Encoding manually to allow Go transport to auto-decompress
 
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("http request failed for %q: %w", parsedURL.String(), err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Validate HTTP status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("unexpected status code %d for %q", resp.StatusCode, parsedURL.String())
+	}
+
+	// Decode body to UTF-8 to prevent mojibake
+	reader := bufio.NewReader(resp.Body)
+	peek, err := reader.Peek(1024)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("peek response body failed for %q: %w", parsedURL.String(), err)
+	}
+	enc, _, errEncode := charset.DetermineEncoding(peek, resp.Header.Get("Content-Type"))
+	if errEncode != false || enc == nil {
+		return nil, fmt.Errorf("determine encoding failed for %q: %v", parsedURL.String(), errEncode)
+	}
+	utf8Reader := transform.NewReader(reader, enc.NewDecoder())
+
+	body, err := io.ReadAll(utf8Reader)
+	if err != nil {
+		return nil, fmt.Errorf("read response body failed for %q: %w", parsedURL.String(), err)
 	}
 	content := string(body)
-	contentWrapped := "\"" + content + "\""
-
-	return &contentWrapped, nil
+	return &content, nil
 }
