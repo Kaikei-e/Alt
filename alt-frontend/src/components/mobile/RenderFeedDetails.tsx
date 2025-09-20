@@ -1,6 +1,46 @@
-import { HStack, Text, Box } from "@chakra-ui/react";
+import { HStack, Text, Box, Flex } from "@chakra-ui/react";
 import type { FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
 import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
+import DOMPurify from "isomorphic-dompurify";
+
+// Harden DOMPurify: enforce safe link/img handling and URL schemes
+// Guard to avoid duplicate hook registration on HMR/SSR
+if (!(globalThis as any).__ALT_DOMPURIFY_HOOKS__) {
+  DOMPurify.addHook("afterSanitizeAttributes", (node: Element) => {
+    const nodeName = node.nodeName ? node.nodeName.toLowerCase() : "";
+
+    if (nodeName === "a") {
+      const href = node.getAttribute("href") || "";
+      const isAllowedHref = /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i.test(href);
+      if (!isAllowedHref) {
+        node.removeAttribute("href");
+      }
+      // Force safe target and rel on external links
+      const target = node.getAttribute("target");
+      if (target && target.toLowerCase() === "_blank") {
+        node.setAttribute("target", "_blank");
+      } else {
+        node.removeAttribute("target");
+      }
+      node.setAttribute("rel", "noopener noreferrer nofollow ugc");
+    }
+
+    if (nodeName === "img") {
+      const src = node.getAttribute("src") || "";
+      // Allow only http(s), relative, or specific data:image formats (exclude SVG for safety)
+      const isAllowedImgSrc = /^(?:(?:https?):|\/(?!\/)|data:image\/(?:png|jpeg|jpg|gif|webp);base64,)/i.test(src);
+      if (!isAllowedImgSrc) {
+        node.removeAttribute("src");
+      }
+      // Extra hardening even though not allowed in config
+      node.removeAttribute("srcset");
+      node.removeAttribute("onerror");
+      node.removeAttribute("onload");
+    }
+  });
+
+  (globalThis as any).__ALT_DOMPURIFY_HOOKS__ = true;
+}
 
 // Union type for feedDetails
 type RenderFeedDetailsProps = FeedContentOnTheFlyResponse | FetchArticleSummaryResponse;
@@ -141,7 +181,20 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
           lineHeight="1.6"
           fontSize="md"
         >
-          {feedDetails.content}
+          <Flex>
+            {/* content wrapped in quotes to transform it into a html string by secure DOMPurify*/}
+            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(feedDetails.content, {
+              ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code", "table", "thead", "tbody", "tr", "td", "th"],
+              ALLOWED_ATTR: ["href", "src", "alt", "title", "target", "rel"],
+              FORBID_ATTR: ["onclick", "onload", "onerror", "onmouseover", "onmouseout", "onfocus", "onblur", "style"],
+              FORBID_TAGS: ["script", "object", "embed", "form", "input", "textarea", "button", "select", "option", "iframe", "svg", "math"],
+              // Disallow dangerous URL schemes; allow https, http, relative, mailto, tel, anchors
+              ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i,
+              KEEP_CONTENT: false,
+              SAFE_FOR_TEMPLATES: true,
+              RETURN_TRUSTED_TYPE: false,
+            }) }} />
+          </Flex>
         </Text>
       </Box>
     );
