@@ -184,13 +184,20 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
           <Flex>
             {/* content wrapped in quotes to transform it into a html string by secure DOMPurify*/}
             <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(feedDetails.content, {
-              ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code", "table", "thead", "tbody", "tr", "td", "th"],
+              ALLOWED_TAGS: [
+                "p", "br", "strong", "b", "em", "i", "u", "a", "img",
+                "h1", "h2", "h3", "h4", "h5", "h6",
+                "ul", "ol", "li",
+                "blockquote", "pre", "code",
+                "table", "thead", "tbody", "tr", "td", "th",
+                "div", "span"
+              ],
               ALLOWED_ATTR: ["href", "src", "alt", "title", "target", "rel"],
               FORBID_ATTR: ["onclick", "onload", "onerror", "onmouseover", "onmouseout", "onfocus", "onblur", "style"],
               FORBID_TAGS: ["script", "object", "embed", "form", "input", "textarea", "button", "select", "option", "iframe", "svg", "math"],
               // Disallow dangerous URL schemes; allow https, http, relative, mailto, tel, anchors
               ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i,
-              KEEP_CONTENT: false,
+              KEEP_CONTENT: true,
               SAFE_FOR_TEMPLATES: true,
               RETURN_TRUSTED_TYPE: false,
             }) }} />
