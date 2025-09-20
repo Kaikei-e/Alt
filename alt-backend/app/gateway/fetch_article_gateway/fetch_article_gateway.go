@@ -98,14 +98,14 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 
 	// Decode body to UTF-8 to prevent mojibake
 	reader := bufio.NewReader(resp.Body)
+	// Try to peek up to 1024 bytes; EOF can be acceptable when the body is shorter
 	peek, err := reader.Peek(1024)
-	if err != nil {
+	if err != nil && err != io.EOF && err != bufio.ErrBufferFull {
 		return nil, fmt.Errorf("peek response body failed for %q: %w", parsedURL.String(), err)
 	}
-	enc, _, errEncode := charset.DetermineEncoding(peek, resp.Header.Get("Content-Type"))
-	if errEncode != false || enc == nil {
-		return nil, fmt.Errorf("determine encoding failed for %q: %v", parsedURL.String(), errEncode)
-	}
+	// DetermineEncoding never returns an error; second return is 'certain bool'
+	// If we couldn't peek any bytes, pass empty slice which falls back to UTF-8
+	enc, _, _ := charset.DetermineEncoding(peek, resp.Header.Get("Content-Type"))
 	utf8Reader := transform.NewReader(reader, enc.NewDecoder())
 
 	body, err := io.ReadAll(utf8Reader)
