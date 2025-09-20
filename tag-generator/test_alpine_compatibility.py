@@ -55,7 +55,7 @@ class AlpineCompatibilityTester:
             # Core Python packages
             'structlog',
             'pydantic',
-            'bleach',
+            'nh3',
             'langdetect',
             'psutil',
             

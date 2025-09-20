@@ -31,7 +31,7 @@ dependencies = [
     "pydantic>=2.10.0",
 
     # Security
-    "bleach>=6.1.0",
+    "nh3>=0.2.18",
 
     # Authentication and API
     "fastapi>=0.100.0",

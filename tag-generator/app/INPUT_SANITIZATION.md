@@ -58,7 +58,7 @@ Detects 15+ common prompt injection patterns:
 
 ### 3. HTML Sanitization
 
-Uses the battle-tested `bleach` library:
+Uses the battle-tested `nh3` library:
 - Removes dangerous HTML tags by default
 - Configurable to allow safe HTML tags
 - Strips all attributes except whitelisted ones
@@ -211,7 +211,7 @@ python demo_sanitization.py
 ## Performance Considerations
 
 1. **Minimal Overhead**: Sanitization adds ~1-2ms per request
-2. **Efficient Libraries**: Uses optimized libraries (Pydantic, bleach)
+2. **Efficient Libraries**: Uses optimized libraries (Pydantic, nh3)
 3. **Early Rejection**: Rejects malicious input before expensive ML processing
 4. **Configurable**: Can adjust limits based on requirements
 
@@ -221,7 +221,7 @@ python demo_sanitization.py
 # Added to pyproject.toml
 "pydantic>=2.10.0",      # Input validation
 "email-validator>=2.2.0", # URL validation
-"bleach>=6.1.0",         # HTML sanitization
+"nh3>=0.2.18",          # HTML sanitization
 ```
 
 ## Logging

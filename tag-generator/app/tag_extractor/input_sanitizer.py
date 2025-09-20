@@ -1,22 +1,16 @@
-"""
-Input sanitization module for tag extraction.
-Provides Pydantic-based input validation and sanitization to prevent prompt injection attacks.
-"""
+"""Input sanitization utilities for tag extraction."""
 
-import html
 import re
 import unicodedata
-from html.parser import HTMLParser
 from urllib.parse import urlparse
 
-import bleach
+import nh3
 import structlog
 from pydantic import BaseModel, Field, field_validator
 
-SCRIPT_LIKE_ELEMENTS = frozenset({"script", "style", "iframe", "object", "embed"})
 WHITESPACE_PATTERN = re.compile(r"\s+")
 DANGEROUS_ELEMENT_PATTERN = re.compile(
-    r"<(script|style|iframe|object|embed)\b[^>]*>.*?</\1\s*>",
+    r"<(script|style|iframe|object|embed)\b[^>]*>.*?(?:</\1\s*>|$)",
     re.IGNORECASE | re.DOTALL,
 )
 URL_PATTERN = re.compile(
@@ -49,110 +43,6 @@ _ADVANCED_PROMPT_INJECTION_PATTERNS = tuple(
         r"escape\s+(?:the\s+)?system",
     )
 )
-
-
-class _DangerousElementStripper(HTMLParser):
-    """HTML parser that removes dangerous elements and their contents."""
-
-    def __init__(self, blocked_tags: frozenset[str]):
-        super().__init__(convert_charrefs=False)
-        self._blocked_tags = {tag.lower() for tag in blocked_tags}
-        self._skip_stack: list[str] = []
-        self._parts: list[str] = []
-        self.dropped_tags: set[str] = set()
-        self.had_unclosed_dangerous_tag = False
-
-    def handle_starttag(self, tag: str, attrs):  # type: ignore[override]
-        tag_lower = tag.lower()
-        if tag_lower in self._blocked_tags:
-            if not self._skip_stack:
-                self._parts.append(" ")
-            self._skip_stack.append(tag_lower)
-            self.dropped_tags.add(tag_lower)
-            return
-
-        if self._skip_stack:
-            return
-
-        self._parts.append(self._serialize_tag(tag, attrs, self_closing=False))
-
-    def handle_startendtag(self, tag: str, attrs):  # type: ignore[override]
-        tag_lower = tag.lower()
-        if tag_lower in self._blocked_tags:
-            if not self._skip_stack:
-                self._parts.append(" ")
-            self.dropped_tags.add(tag_lower)
-            return
-
-        if self._skip_stack:
-            return
-
-        self._parts.append(self._serialize_tag(tag, attrs, self_closing=True))
-
-    def handle_endtag(self, tag: str):  # type: ignore[override]
-        tag_lower = tag.lower()
-        if tag_lower in self._blocked_tags:
-            if self._skip_stack:
-                for index in range(len(self._skip_stack) - 1, -1, -1):
-                    if self._skip_stack[index] == tag_lower:
-                        del self._skip_stack[index:]
-                        break
-            return
-
-        if self._skip_stack:
-            return
-
-        self._parts.append(f"</{tag}>")
-
-    def handle_data(self, data: str):  # type: ignore[override]
-        if not self._skip_stack:
-            self._parts.append(data)
-
-    def handle_entityref(self, name: str):  # type: ignore[override]
-        if not self._skip_stack:
-            self._parts.append(f"&{name};")
-
-    def handle_charref(self, name: str):  # type: ignore[override]
-        if not self._skip_stack:
-            self._parts.append(f"&#{name};")
-
-    def handle_comment(self, data: str):  # type: ignore[override]
-        if not self._skip_stack:
-            self._parts.append(f"<!--{data}-->")
-
-    def handle_decl(self, decl: str):  # type: ignore[override]
-        if not self._skip_stack:
-            self._parts.append(f"<!{decl}>")
-
-    def handle_pi(self, data: str):  # type: ignore[override]
-        if not self._skip_stack:
-            self._parts.append(f"<?{data}>")
-
-    def close(self) -> None:  # type: ignore[override]
-        super().close()
-        if self._skip_stack:
-            self.had_unclosed_dangerous_tag = True
-            self._skip_stack.clear()
-
-    def get_html(self) -> str:
-        return "".join(self._parts)
-
-    @staticmethod
-    def _serialize_tag(tag: str, attrs, self_closing: bool) -> str:
-        attr_fragments = []
-        for name, value in attrs:
-            if value is None:
-                attr_fragments.append(name)
-            else:
-                attr_fragments.append(f'{name}="{html.escape(value, quote=True)}"')
-
-        attr_segment = ""
-        if attr_fragments:
-            attr_segment = " " + " ".join(attr_fragments)
-
-        if self_closing:
-            return f"<{tag}{attr_segment} />"
-        return f"<{tag}{attr_segment}>"
 
 
 logger = structlog.get_logger(__name__)
@@ -284,56 +174,46 @@ class InputSanitizer:
 
     def __init__(self, config: SanitizationConfig | None = None):
         self.config = config or SanitizationConfig()
-        self._dangerous_element_tags = SCRIPT_LIKE_ELEMENTS
 
-        # Configure bleach for HTML sanitization
-        self.allowed_tags = (
-            [
-                "p",
-                "br",
-                "strong",
-                "em",
-                "b",
-                "i",
-                "u",
+        self.allowed_tags: tuple[str, ...] = (
+            (
                 "a",
-                "ul",
-                "ol",
-                "li",
+                "blockquote",
+                "br",
+                "code",
+                "em",
                 "h1",
                 "h2",
                 "h3",
                 "h4",
                 "h5",
                 "h6",
-                "blockquote",
-                "code",
+                "i",
+                "li",
+                "ol",
+                "p",
                 "pre",
-            ]
+                "strong",
+                "u",
+                "ul",
+            )
             if self.config.allow_html
-            else []
+            else ()
         )
 
-        self.allowed_attributes = (
-            {
-                "a": ["href", "title"],
-                "img": ["src", "alt", "title"],
-            }
-            if self.config.allow_html
-            else {}
+        self.allowed_attributes: dict[str, tuple[str, ...]] = {"a": ("href", "title")} if self.config.allow_html else {}
+
+        allowed_protocols: tuple[str, ...] = (
+            ("http", "https", "mailto") if self.config.allow_html else ("http", "https")
         )
 
-        # Initialize a single Cleaner instance to avoid re-parsing rules per call
-        # - Disallow "javascript:" and other non-http(s) protocols explicitly
-        # - Strip comments to remove potential payloads hidden in comments
-        allowed_protocols = ["http", "https", "mailto"] if self.config.allow_html else ["http", "https"]
-        self._cleaner = bleach.Cleaner(
-            tags=self.allowed_tags,
-            attributes=self.allowed_attributes,
-            strip=True,
-            strip_comments=True,
-            protocols=allowed_protocols,
-        )
+        # Pre-compute immutable sanitizer configuration so each call can reuse it with
+        # ``nh3.clean`` without repeatedly constructing sanitizer objects.
+        self._nh3_tags: set[str] = set(self.allowed_tags)
+        self._nh3_attributes: dict[str, set[str]] = {tag: set(attrs) for tag, attrs in self.allowed_attributes.items()}
+        self._nh3_url_schemes: set[str] = set(allowed_protocols)
+        # We do not preserve the inner text of stripped scripting and embedding tags.
+        self._nh3_clean_content_tags: set[str] = set()
 
     def sanitize(self, title: str, content: str, url: str | None = None) -> SanitizationResult:
         """
@@ -452,16 +332,21 @@ class InputSanitizer:
 
     def _sanitize_text(self, text: str) -> str:
         """Sanitize text content."""
-        # Remove high-risk elements entirely before running the standard cleaner.
-        # Bleach strips the tag wrappers, but the embedded payload (e.g. the body of
-        # a <script> tag) is kept as plain text.  Since our service forwards the
-        # sanitized text to downstream models, we defensively drop the content of
-        # scripting and embedded elements altogether.
-        text = self._strip_dangerous_elements(text)
+        if not text:
+            return ""
 
-        # Clean HTML using Bleach's HTML5 parser and allowlist configuration
-        # This avoids brittle regex-based HTML parsing and follows CodeQL guidance
-        text = self._cleaner.clean(text)
+        # Drop high-risk embedded content before invoking ``nh3`` so payloads from
+        # script-like tags never reach downstream consumers as plain text.
+        text = DANGEROUS_ELEMENT_PATTERN.sub(" ", text)
+
+        text = nh3.clean(
+            text,
+            tags=self._nh3_tags,
+            attributes=self._nh3_attributes or None,
+            url_schemes=self._nh3_url_schemes or None,
+            clean_content_tags=self._nh3_clean_content_tags,
+            strip_comments=True,
+        )
 
         # Normalize excessive whitespace post-cleaning
         text = WHITESPACE_PATTERN.sub(" ", text).strip()
@@ -470,35 +355,6 @@ class InputSanitizer:
         text = "".join(char for char in text if ord(char) >= 32 or char in "\t\n\r")
 
         return text
-
-    def _strip_dangerous_elements(self, text: str) -> str:
-        """Remove the contents of script-like elements entirely."""
-
-        if not text:
-            return text
-
-        stripper = _DangerousElementStripper(self._dangerous_element_tags)
-
-        try:
-            stripper.feed(text)
-            stripper.close()
-        except Exception as exc:  # pragma: no cover - defensive safeguard
-            logger.warning(
-                "Failed to strip dangerous elements via HTML parser; falling back to regex removal",
-                error=str(exc),
-            )
-            return WHITESPACE_PATTERN.sub(" ", DANGEROUS_ELEMENT_PATTERN.sub(" ", text))
-
-        if stripper.dropped_tags:
-            logger.debug(
-                "Removed dangerous HTML elements before bleach cleaning",
-                tags=sorted(stripper.dropped_tags),
-            )
-
-        if stripper.had_unclosed_dangerous_tag:
-            logger.warning("Unterminated dangerous element detected; truncated trailing content")
-
-        return stripper.get_html()
 
     def _normalize_unicode(self, text: str) -> str:
         """Normalize Unicode text."""

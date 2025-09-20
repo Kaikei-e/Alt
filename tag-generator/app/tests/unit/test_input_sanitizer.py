@@ -161,7 +161,7 @@ class TestInputSanitizer:
         assert "alert('xss')" not in result.sanitized_input.title
 
     def test_sanitize_removes_dangerous_element_payloads(self, sanitizer):
-        """Ensure dangerous element bodies are stripped before bleaching."""
+        """Ensure dangerous element bodies are stripped during sanitization."""
         malicious_content = (
             "<p>Safe start</p>"
             "<ScRiPt type='text/javascript'>\nalert('boom');\n</ScRiPt>"

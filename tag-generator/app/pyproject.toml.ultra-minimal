@@ -23,7 +23,7 @@ dependencies = [
     "pydantic>=2.10.0",
     
     # Security
-    "bleach>=6.1.0",
+    "nh3>=0.2.18",
     
     # NOTE: Heavy ML packages removed for ultra-minimal build
     # keybert, sentence-transformers, transformers must be installed in external models
