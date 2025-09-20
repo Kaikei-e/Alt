@@ -1,7 +1,6 @@
 package fetch_article_gateway
 
 import (
-	"alt/utils/html_parser"
 	"alt/utils/rate_limiter"
 	"alt/utils/security"
 	"context"
@@ -92,7 +91,7 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 		return nil, err
 	}
 	content := string(body)
-	content = html_parser.StripTags(content)
+	contentWrapped := "\"" + content + "\""
 
-	return &content, nil
+	return &contentWrapped, nil
 }
