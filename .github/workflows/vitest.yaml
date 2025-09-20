@@ -133,6 +133,9 @@ jobs:
             ls -la .vitest-reports/ || echo "No .vitest-reports directory found"
           fi
 
+          mkdir -p .vitest-reports
+          echo "$exit_code" > .vitest-reports/exit-code.txt
+
       - name: Upload shard blob report
         if: always()
         uses: actions/upload-artifact@v4
@@ -142,9 +145,19 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+      - name: Fail shard if Vitest failed
+        if: always()
+        run: |
+          code=$(cat .vitest-reports/exit-code.txt 2>/dev/null || echo 0)
+          if [ "$code" -ne 0 ]; then
+            echo "Vitest failed with exit code $code"
+            exit "$code"
+          fi
+
   merge-vitest-reports:
     needs: vitest
     runs-on: [self-hosted, linux, X64]
+    if: always()
 
     steps:
       - name: Mask workspace base path (above Alt)
