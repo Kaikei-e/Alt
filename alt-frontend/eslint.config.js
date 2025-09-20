@@ -1,7 +1,6 @@
 // ESLint v9 Flat Config for Next.js 15 + TypeScript
-// Avoid eslint-config-next (which pulls @rushstack/eslint-patch) to prevent patch errors on ESLint v9
-// Use @next/eslint-plugin-next directly in flat config.
-import nextPlugin from "@next/eslint-plugin-next";
+// Next.js 公式設定（eslint-config-next）を利用して TypeScript を正しく解析
+import next from "eslint-config-next";
 
 export default [
   // Ignore build artifacts and external dirs
@@ -16,19 +15,8 @@ export default [
       "**/test-results/**",
     ],
   },
-  {
-    files: ["**/*.{js,jsx,ts,tsx}"],
-    plugins: {
-      "@next/next": nextPlugin,
-    },
-    rules: {
-      // Bring in Next.js recommended + Core Web Vitals rules
-      ...(nextPlugin.configs?.recommended?.rules ?? {}),
-      ...(nextPlugin.configs?.["core-web-vitals"]?.rules ?? {}),
-      // Project-specific overrides
-      // "react/no-danger": "warn",
-    },
-  },
+  // Next.js recommended + Core Web Vitals（TypeScript対応込み）
+  ...next("core-web-vitals"),
 ];
 
 
