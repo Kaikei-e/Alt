@@ -189,6 +189,18 @@ class InputSanitizer:
             else {}
         )
 
+        # Initialize a single Cleaner instance to avoid re-parsing rules per call
+        # - Disallow "javascript:" and other non-http(s) protocols explicitly
+        # - Strip comments to remove potential payloads hidden in comments
+        allowed_protocols = ["http", "https", "mailto"] if self.config.allow_html else ["http", "https"]
+        self._cleaner = bleach.Cleaner(
+            tags=self.allowed_tags,
+            attributes=self.allowed_attributes,
+            strip=True,
+            strip_comments=True,
+            protocols=allowed_protocols,
+        )
+
     def sanitize(self, title: str, content: str, url: str | None = None) -> SanitizationResult:
         """
         Sanitize input text and return sanitization result.
@@ -306,34 +318,12 @@ class InputSanitizer:
 
     def _sanitize_text(self, text: str) -> str:
         """Sanitize text content."""
-        # First, completely remove dangerous script/style content (not just tags)
-        # This removes both tags and their content
-        text = re.sub(
-            r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>",
-            "",
-            text,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        text = re.sub(
-            r"<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>",
-            "",
-            text,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
+        # Clean HTML using Bleach's HTML5 parser and allowlist configuration
+        # This avoids brittle regex-based HTML parsing and follows CodeQL guidance
+        text = self._cleaner.clean(text)
 
-        # Remove excessive whitespace
+        # Normalize excessive whitespace post-cleaning
         text = re.sub(r"\s+", " ", text).strip()
-
-        # Remove or clean remaining HTML based on config
-        if self.config.allow_html:
-            text = bleach.clean(
-                text,
-                tags=self.allowed_tags,
-                attributes=self.allowed_attributes,
-                strip=True,
-            )
-        else:
-            text = bleach.clean(text, tags=[], attributes={}, strip=True)
 
         # Remove control characters (except common whitespace)
         text = "".join(char for char in text if ord(char) >= 32 or char in "\t\n\r")
