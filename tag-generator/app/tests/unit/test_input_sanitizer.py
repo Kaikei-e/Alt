@@ -160,6 +160,25 @@ class TestInputSanitizer:
         assert "<p>" not in result.sanitized_input.content
         assert "alert('xss')" not in result.sanitized_input.title
 
+    def test_sanitize_removes_dangerous_element_payloads(self, sanitizer):
+        """Ensure dangerous element bodies are stripped during sanitization."""
+        malicious_content = (
+            "<p>Safe start</p>"
+            "<ScRiPt type='text/javascript'>\nalert('boom');\n</ScRiPt>"
+            '<iframe src="http://evil.example"></iframe>'
+            "<p>Safe end</p>"
+        )
+
+        result = sanitizer.sanitize(title="Legit", content=malicious_content)
+
+        assert result.is_valid is True
+        assert result.sanitized_input is not None
+        sanitized_body = result.sanitized_input.content
+        assert "alert('boom')" not in sanitized_body
+        assert "http://evil.example" not in sanitized_body
+        assert "Safe start" in sanitized_body
+        assert "Safe end" in sanitized_body
+
     def test_sanitize_allows_html_when_configured(self, custom_sanitizer):
         """Test sanitization allows HTML when configured."""
         result = custom_sanitizer.sanitize(

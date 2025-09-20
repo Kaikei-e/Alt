@@ -1,15 +1,49 @@
-"""
-Input sanitization module for tag extraction.
-Provides Pydantic-based input validation and sanitization to prevent prompt injection attacks.
-"""
+"""Input sanitization utilities for tag extraction."""
 
 import re
 import unicodedata
 from urllib.parse import urlparse
 
-import bleach
+import nh3
 import structlog
 from pydantic import BaseModel, Field, field_validator
+
+WHITESPACE_PATTERN = re.compile(r"\s+")
+DANGEROUS_ELEMENT_PATTERN = re.compile(
+    r"<(script|style|iframe|object|embed)\b[^>]*>.*?(?:</\1\s*>|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+URL_PATTERN = re.compile(
+    r"^https?://"
+    r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"
+    r"localhost|"
+    r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+    r"(?::\d+)?"
+    r"(?:/?|[/?]\S+)$",
+    re.IGNORECASE,
+)
+
+_ADVANCED_PROMPT_INJECTION_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"you\s+are\s+now\s+a\s+",
+        r"pretend\s+to\s+be\s+",
+        r"act\s+as\s+(?:if\s+you\s+were\s+)?a\s+",
+        r"imagine\s+you\s+are\s+",
+        r"ignore\s+(?:all\s+)?previous\s+instructions",
+        r"disregard\s+(?:all\s+)?previous\s+",
+        r"forget\s+(?:all\s+)?previous\s+",
+        r"override\s+(?:all\s+)?previous\s+",
+        r"system\s*:\s*",
+        r"human\s*:\s*",
+        r"assistant\s*:\s*",
+        r"ai\s*:\s*",
+        r"jailbreak",
+        r"prompt\s+injection",
+        r"escape\s+(?:the\s+)?system",
+    )
+)
+
 
 logger = structlog.get_logger(__name__)
 
@@ -112,18 +146,7 @@ class ArticleInput(BaseModel):
     @staticmethod
     def _is_valid_url(url: str) -> bool:
         """Check if URL is valid."""
-        import re
-
-        url_pattern = re.compile(
-            r"^https?://"  # http:// or https://
-            r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # domain...
-            r"localhost|"  # localhost...
-            r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
-            r"(?::\d+)?"  # optional port
-            r"(?:/?|[/?]\S+)$",
-            re.IGNORECASE,
-        )
-        return bool(url_pattern.match(url))
+        return bool(URL_PATTERN.fullmatch(url))
 
 
 class SanitizedArticleInput(BaseModel):
@@ -152,54 +175,45 @@ class InputSanitizer:
     def __init__(self, config: SanitizationConfig | None = None):
         self.config = config or SanitizationConfig()
 
-        # Configure bleach for HTML sanitization
-        self.allowed_tags = (
-            [
-                "p",
-                "br",
-                "strong",
-                "em",
-                "b",
-                "i",
-                "u",
+        self.allowed_tags: tuple[str, ...] = (
+            (
                 "a",
-                "ul",
-                "ol",
-                "li",
+                "blockquote",
+                "br",
+                "code",
+                "em",
                 "h1",
                 "h2",
                 "h3",
                 "h4",
                 "h5",
                 "h6",
-                "blockquote",
-                "code",
+                "i",
+                "li",
+                "ol",
+                "p",
                 "pre",
-            ]
+                "strong",
+                "u",
+                "ul",
+            )
             if self.config.allow_html
-            else []
+            else ()
         )
 
-        self.allowed_attributes = (
-            {
-                "a": ["href", "title"],
-                "img": ["src", "alt", "title"],
-            }
-            if self.config.allow_html
-            else {}
+        self.allowed_attributes: dict[str, tuple[str, ...]] = {"a": ("href", "title")} if self.config.allow_html else {}
+
+        allowed_protocols: tuple[str, ...] = (
+            ("http", "https", "mailto") if self.config.allow_html else ("http", "https")
         )
 
-        # Initialize a single Cleaner instance to avoid re-parsing rules per call
-        # - Disallow "javascript:" and other non-http(s) protocols explicitly
-        # - Strip comments to remove potential payloads hidden in comments
-        allowed_protocols = ["http", "https", "mailto"] if self.config.allow_html else ["http", "https"]
-        self._cleaner = bleach.Cleaner(
-            tags=self.allowed_tags,
-            attributes=self.allowed_attributes,
-            strip=True,
-            strip_comments=True,
-            protocols=allowed_protocols,
-        )
+        # Pre-compute immutable sanitizer configuration so each call can reuse it with
+        # ``nh3.clean`` without repeatedly constructing sanitizer objects.
+        self._nh3_tags: set[str] = set(self.allowed_tags)
+        self._nh3_attributes: dict[str, set[str]] = {tag: set(attrs) for tag, attrs in self.allowed_attributes.items()}
+        self._nh3_url_schemes: set[str] = set(allowed_protocols)
+        # We do not preserve the inner text of stripped scripting and embedding tags.
+        self._nh3_clean_content_tags: set[str] = set()
 
     def sanitize(self, title: str, content: str, url: str | None = None) -> SanitizationResult:
         """
@@ -318,12 +332,24 @@ class InputSanitizer:
 
     def _sanitize_text(self, text: str) -> str:
         """Sanitize text content."""
-        # Clean HTML using Bleach's HTML5 parser and allowlist configuration
-        # This avoids brittle regex-based HTML parsing and follows CodeQL guidance
-        text = self._cleaner.clean(text)
+        if not text:
+            return ""
+
+        # Drop high-risk embedded content before invoking ``nh3`` so payloads from
+        # script-like tags never reach downstream consumers as plain text.
+        text = DANGEROUS_ELEMENT_PATTERN.sub(" ", text)
+
+        text = nh3.clean(
+            text,
+            tags=self._nh3_tags,
+            attributes=self._nh3_attributes or None,
+            url_schemes=self._nh3_url_schemes or None,
+            clean_content_tags=self._nh3_clean_content_tags,
+            strip_comments=True,
+        )
 
         # Normalize excessive whitespace post-cleaning
-        text = re.sub(r"\s+", " ", text).strip()
+        text = WHITESPACE_PATTERN.sub(" ", text).strip()
 
         # Remove control characters (except common whitespace)
         text = "".join(char for char in text if ord(char) >= 32 or char in "\t\n\r")
@@ -352,32 +378,7 @@ class InputSanitizer:
 
     def _advanced_prompt_injection_check(self, text: str) -> bool:
         """Advanced prompt injection detection."""
-        text_lower = text.lower()
-
-        # More sophisticated patterns
-        advanced_patterns = [
-            # Role-playing attempts
-            r"you\s+are\s+now\s+a\s+",
-            r"pretend\s+to\s+be\s+",
-            r"act\s+as\s+(?:if\s+you\s+were\s+)?a\s+",
-            r"imagine\s+you\s+are\s+",
-            # Instruction override attempts
-            r"ignore\s+(?:all\s+)?previous\s+instructions",
-            r"disregard\s+(?:all\s+)?previous\s+",
-            r"forget\s+(?:all\s+)?previous\s+",
-            r"override\s+(?:all\s+)?previous\s+",
-            # System prompt manipulation
-            r"system\s*:\s*",
-            r"human\s*:\s*",
-            r"assistant\s*:\s*",
-            r"ai\s*:\s*",
-            # Jailbreak attempts
-            r"jailbreak",
-            r"prompt\s+injection",
-            r"escape\s+(?:the\s+)?system",
-        ]
-
-        return any(re.search(pattern, text_lower) for pattern in advanced_patterns)
+        return any(pattern.search(text) for pattern in _ADVANCED_PROMPT_INJECTION_PATTERNS)
 
     def _contains_suspicious_patterns(self, text: str) -> bool:
         """Check for other suspicious patterns."""
