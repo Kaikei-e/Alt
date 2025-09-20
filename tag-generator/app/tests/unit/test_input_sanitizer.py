@@ -165,7 +165,7 @@ class TestInputSanitizer:
         malicious_content = (
             "<p>Safe start</p>"
             "<ScRiPt type='text/javascript'>\nalert('boom');\n</ScRiPt>"
-            "<iframe src=\"http://evil.example\"></iframe>"
+            '<iframe src="http://evil.example"></iframe>'
             "<p>Safe end</p>"
         )
 

@@ -154,6 +154,7 @@ class _DangerousElementStripper(HTMLParser):
             return f"<{tag}{attr_segment} />"
         return f"<{tag}{attr_segment}>"
 
+
 logger = structlog.get_logger(__name__)
 
 
