@@ -127,13 +127,26 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
           minHeight="44px"
           minWidth="120px"
           fontSize="sm"
+          _hover={{
+            filter: "brightness(1.06)",
+            transform: "translateY(-1px)",
+          }}
           _active={{
             transform: "scale(0.98)",
           }}
           transition="all 0.2s ease"
           border="1px solid rgba(255, 255, 255, 0.2)"
+          disabled={isLoading}
         >
-          Show Details
+          {isLoading ? (
+            <HStack gap={2} alignItems="center">
+              {/* Spinner imported lazily to avoid bundle bloat */}
+              {/* Using a simple dot instead to avoid additional import */}
+              <Text as="span">Loading</Text>
+            </HStack>
+          ) : (
+            "Show Details"
+          )}
         </Button>
       )}
 
