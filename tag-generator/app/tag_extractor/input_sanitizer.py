@@ -3,13 +3,156 @@ Input sanitization module for tag extraction.
 Provides Pydantic-based input validation and sanitization to prevent prompt injection attacks.
 """
 
+import html
 import re
 import unicodedata
+from html.parser import HTMLParser
 from urllib.parse import urlparse
 
 import bleach
 import structlog
 from pydantic import BaseModel, Field, field_validator
+
+SCRIPT_LIKE_ELEMENTS = frozenset({"script", "style", "iframe", "object", "embed"})
+WHITESPACE_PATTERN = re.compile(r"\s+")
+DANGEROUS_ELEMENT_PATTERN = re.compile(
+    r"<(script|style|iframe|object|embed)\b[^>]*>.*?</\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+URL_PATTERN = re.compile(
+    r"^https?://"
+    r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"
+    r"localhost|"
+    r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+    r"(?::\d+)?"
+    r"(?:/?|[/?]\S+)$",
+    re.IGNORECASE,
+)
+
+_ADVANCED_PROMPT_INJECTION_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"you\s+are\s+now\s+a\s+",
+        r"pretend\s+to\s+be\s+",
+        r"act\s+as\s+(?:if\s+you\s+were\s+)?a\s+",
+        r"imagine\s+you\s+are\s+",
+        r"ignore\s+(?:all\s+)?previous\s+instructions",
+        r"disregard\s+(?:all\s+)?previous\s+",
+        r"forget\s+(?:all\s+)?previous\s+",
+        r"override\s+(?:all\s+)?previous\s+",
+        r"system\s*:\s*",
+        r"human\s*:\s*",
+        r"assistant\s*:\s*",
+        r"ai\s*:\s*",
+        r"jailbreak",
+        r"prompt\s+injection",
+        r"escape\s+(?:the\s+)?system",
+    )
+)
+
+
+class _DangerousElementStripper(HTMLParser):
+    """HTML parser that removes dangerous elements and their contents."""
+
+    def __init__(self, blocked_tags: frozenset[str]):
+        super().__init__(convert_charrefs=False)
+        self._blocked_tags = {tag.lower() for tag in blocked_tags}
+        self._skip_stack: list[str] = []
+        self._parts: list[str] = []
+        self.dropped_tags: set[str] = set()
+        self.had_unclosed_dangerous_tag = False
+
+    def handle_starttag(self, tag: str, attrs):  # type: ignore[override]
+        tag_lower = tag.lower()
+        if tag_lower in self._blocked_tags:
+            if not self._skip_stack:
+                self._parts.append(" ")
+            self._skip_stack.append(tag_lower)
+            self.dropped_tags.add(tag_lower)
+            return
+
+        if self._skip_stack:
+            return
+
+        self._parts.append(self._serialize_tag(tag, attrs, self_closing=False))
+
+    def handle_startendtag(self, tag: str, attrs):  # type: ignore[override]
+        tag_lower = tag.lower()
+        if tag_lower in self._blocked_tags:
+            if not self._skip_stack:
+                self._parts.append(" ")
+            self.dropped_tags.add(tag_lower)
+            return
+
+        if self._skip_stack:
+            return
+
+        self._parts.append(self._serialize_tag(tag, attrs, self_closing=True))
+
+    def handle_endtag(self, tag: str):  # type: ignore[override]
+        tag_lower = tag.lower()
+        if tag_lower in self._blocked_tags:
+            if self._skip_stack:
+                for index in range(len(self._skip_stack) - 1, -1, -1):
+                    if self._skip_stack[index] == tag_lower:
+                        del self._skip_stack[index:]
+                        break
+            return
+
+        if self._skip_stack:
+            return
+
+        self._parts.append(f"</{tag}>")
+
+    def handle_data(self, data: str):  # type: ignore[override]
+        if not self._skip_stack:
+            self._parts.append(data)
+
+    def handle_entityref(self, name: str):  # type: ignore[override]
+        if not self._skip_stack:
+            self._parts.append(f"&{name};")
+
+    def handle_charref(self, name: str):  # type: ignore[override]
+        if not self._skip_stack:
+            self._parts.append(f"&#{name};")
+
+    def handle_comment(self, data: str):  # type: ignore[override]
+        if not self._skip_stack:
+            self._parts.append(f"<!--{data}-->")
+
+    def handle_decl(self, decl: str):  # type: ignore[override]
+        if not self._skip_stack:
+            self._parts.append(f"<!{decl}>")
+
+    def handle_pi(self, data: str):  # type: ignore[override]
+        if not self._skip_stack:
+            self._parts.append(f"<?{data}>")
+
+    def close(self) -> None:  # type: ignore[override]
+        super().close()
+        if self._skip_stack:
+            self.had_unclosed_dangerous_tag = True
+            self._skip_stack.clear()
+
+    def get_html(self) -> str:
+        return "".join(self._parts)
+
+    @staticmethod
+    def _serialize_tag(tag: str, attrs, self_closing: bool) -> str:
+        attr_fragments = []
+        for name, value in attrs:
+            if value is None:
+                attr_fragments.append(name)
+            else:
+                attr_fragments.append(f'{name}="{html.escape(value, quote=True)}"')
+
+        attr_segment = ""
+        if attr_fragments:
+            attr_segment = " " + " ".join(attr_fragments)
+
+        if self_closing:
+            return f"<{tag}{attr_segment} />"
+        return f"<{tag}{attr_segment}>"
 
 logger = structlog.get_logger(__name__)
 
@@ -112,18 +255,7 @@ class ArticleInput(BaseModel):
     @staticmethod
     def _is_valid_url(url: str) -> bool:
         """Check if URL is valid."""
-        import re
-
-        url_pattern = re.compile(
-            r"^https?://"  # http:// or https://
-            r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # domain...
-            r"localhost|"  # localhost...
-            r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
-            r"(?::\d+)?"  # optional port
-            r"(?:/?|[/?]\S+)$",
-            re.IGNORECASE,
-        )
-        return bool(url_pattern.match(url))
+        return bool(URL_PATTERN.fullmatch(url))
 
 
 class SanitizedArticleInput(BaseModel):
@@ -151,6 +283,7 @@ class InputSanitizer:
 
     def __init__(self, config: SanitizationConfig | None = None):
         self.config = config or SanitizationConfig()
+        self._dangerous_element_tags = SCRIPT_LIKE_ELEMENTS
 
         # Configure bleach for HTML sanitization
         self.allowed_tags = (
@@ -318,17 +451,53 @@ class InputSanitizer:
 
     def _sanitize_text(self, text: str) -> str:
         """Sanitize text content."""
+        # Remove high-risk elements entirely before running the standard cleaner.
+        # Bleach strips the tag wrappers, but the embedded payload (e.g. the body of
+        # a <script> tag) is kept as plain text.  Since our service forwards the
+        # sanitized text to downstream models, we defensively drop the content of
+        # scripting and embedded elements altogether.
+        text = self._strip_dangerous_elements(text)
+
         # Clean HTML using Bleach's HTML5 parser and allowlist configuration
         # This avoids brittle regex-based HTML parsing and follows CodeQL guidance
         text = self._cleaner.clean(text)
 
         # Normalize excessive whitespace post-cleaning
-        text = re.sub(r"\s+", " ", text).strip()
+        text = WHITESPACE_PATTERN.sub(" ", text).strip()
 
         # Remove control characters (except common whitespace)
         text = "".join(char for char in text if ord(char) >= 32 or char in "\t\n\r")
 
         return text
+
+    def _strip_dangerous_elements(self, text: str) -> str:
+        """Remove the contents of script-like elements entirely."""
+
+        if not text:
+            return text
+
+        stripper = _DangerousElementStripper(self._dangerous_element_tags)
+
+        try:
+            stripper.feed(text)
+            stripper.close()
+        except Exception as exc:  # pragma: no cover - defensive safeguard
+            logger.warning(
+                "Failed to strip dangerous elements via HTML parser; falling back to regex removal",
+                error=str(exc),
+            )
+            return WHITESPACE_PATTERN.sub(" ", DANGEROUS_ELEMENT_PATTERN.sub(" ", text))
+
+        if stripper.dropped_tags:
+            logger.debug(
+                "Removed dangerous HTML elements before bleach cleaning",
+                tags=sorted(stripper.dropped_tags),
+            )
+
+        if stripper.had_unclosed_dangerous_tag:
+            logger.warning("Unterminated dangerous element detected; truncated trailing content")
+
+        return stripper.get_html()
 
     def _normalize_unicode(self, text: str) -> str:
         """Normalize Unicode text."""
@@ -352,32 +521,7 @@ class InputSanitizer:
 
     def _advanced_prompt_injection_check(self, text: str) -> bool:
         """Advanced prompt injection detection."""
-        text_lower = text.lower()
-
-        # More sophisticated patterns
-        advanced_patterns = [
-            # Role-playing attempts
-            r"you\s+are\s+now\s+a\s+",
-            r"pretend\s+to\s+be\s+",
-            r"act\s+as\s+(?:if\s+you\s+were\s+)?a\s+",
-            r"imagine\s+you\s+are\s+",
-            # Instruction override attempts
-            r"ignore\s+(?:all\s+)?previous\s+instructions",
-            r"disregard\s+(?:all\s+)?previous\s+",
-            r"forget\s+(?:all\s+)?previous\s+",
-            r"override\s+(?:all\s+)?previous\s+",
-            # System prompt manipulation
-            r"system\s*:\s*",
-            r"human\s*:\s*",
-            r"assistant\s*:\s*",
-            r"ai\s*:\s*",
-            # Jailbreak attempts
-            r"jailbreak",
-            r"prompt\s+injection",
-            r"escape\s+(?:the\s+)?system",
-        ]
-
-        return any(re.search(pattern, text_lower) for pattern in advanced_patterns)
+        return any(pattern.search(text) for pattern in _ADVANCED_PROMPT_INJECTION_PATTERNS)
 
     def _contains_suspicious_patterns(self, text: str) -> bool:
         """Check for other suspicious patterns."""
