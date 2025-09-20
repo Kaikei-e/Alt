@@ -1,0 +1,55 @@
+name: Frontend Unit Tests
+
+on:
+  pull_request:
+    paths:
+      - 'alt-frontend/**'
+      - '.github/workflows/frontend-tests.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'alt-frontend/**'
+      - '.github/workflows/frontend-tests.yml'
+
+jobs:
+  test:
+    name: Run Vitest (alt-frontend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        working-directory: alt-frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        working-directory: alt-frontend
+        env:
+          NEXT_PUBLIC_IDP_ORIGIN: https://example.com
+          NEXT_PUBLIC_KRATOS_PUBLIC_URL: https://idp.example.com
+          NODE_OPTIONS: --max-old-space-size=4096 --expose-gc
+        run: pnpm run test:ci
+
+      - name: Upload Vitest report (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-output
+          path: |
+            alt-frontend/test-results.log
+            alt-frontend/.vitest/**
+          if-no-files-found: ignore
