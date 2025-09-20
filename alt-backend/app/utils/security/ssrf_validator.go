@@ -10,18 +10,19 @@ import (
 	"syscall"
 	"time"
 	"unicode"
-	"golang.org/x/text/unicode/norm"
+
 	"golang.org/x/net/idna"
+	"golang.org/x/text/unicode/norm"
 )
 
 // SSRFValidator provides comprehensive SSRF protection with DNS rebinding prevention
 type SSRFValidator struct {
-	allowedDomains     []string
-	metadataEndpoints  []string
-	internalDomains    []string
-	allowedPorts       map[string]bool
-	dnsCache          map[string][]net.IP
-	cacheTTL          time.Duration
+	allowedDomains        []string
+	metadataEndpoints     []string
+	internalDomains       []string
+	allowedPorts          map[string]bool
+	dnsCache              map[string][]net.IP
+	cacheTTL              time.Duration
 	allowTestingLocalhost bool
 }
 
@@ -52,14 +53,14 @@ func NewSSRFValidator() *SSRFValidator {
 			"169.254.169.254:8080",
 		},
 		internalDomains: []string{
-			".local", ".internal", ".corp", ".lan", ".intranet", 
+			".local", ".internal", ".corp", ".lan", ".intranet",
 			".test", ".localhost", ".cluster.local",
 		},
 		allowedPorts: map[string]bool{
 			"80": true, "443": true, "8080": true, "8443": true,
 		},
-		dnsCache:             make(map[string][]net.IP),
-		cacheTTL:            5 * time.Minute,
+		dnsCache:              make(map[string][]net.IP),
+		cacheTTL:              5 * time.Minute,
 		allowTestingLocalhost: false,
 	}
 }
@@ -135,7 +136,7 @@ func (v *SSRFValidator) validateScheme(u *url.URL) error {
 // validateHost performs hostname validation including metadata and internal domain checks
 func (v *SSRFValidator) validateHost(u *url.URL) error {
 	hostname := strings.ToLower(u.Hostname())
-	
+
 	// Check metadata endpoints first (highest priority)
 	for _, endpoint := range v.metadataEndpoints {
 		if hostname == endpoint || strings.HasPrefix(hostname, endpoint+":") {
@@ -220,11 +221,11 @@ func (v *SSRFValidator) validatePorts(u *url.URL) error {
 // validateUnicodeAndPunycode checks for Unicode/Punycode bypass attempts
 func (v *SSRFValidator) validateUnicodeAndPunycode(u *url.URL) error {
 	hostname := u.Hostname()
-	
+
 	// Skip punycode validation for localhost when in testing mode
-	isTestingLocalhost := v.allowTestingLocalhost && 
+	isTestingLocalhost := v.allowTestingLocalhost &&
 		(hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127."))
-	
+
 	if isTestingLocalhost {
 		// Still check for mixed scripts and confusables, but skip punycode bypass detection
 		if v.hasMixedScripts(hostname) {
@@ -246,10 +247,10 @@ func (v *SSRFValidator) validateUnicodeAndPunycode(u *url.URL) error {
 				},
 			}
 		}
-		
+
 		return nil // Skip punycode bypass check for testing localhost
 	}
-	
+
 	// Convert to ASCII using IDNA (Internationalized Domain Names)
 	asciiHostname, err := idna.ToASCII(hostname)
 	if err != nil {
@@ -263,11 +264,11 @@ func (v *SSRFValidator) validateUnicodeAndPunycode(u *url.URL) error {
 	// Don't flag plain IP addresses as punycode attacks
 	if hostname != asciiHostname {
 		// Check if the ASCII version reveals suspicious patterns that were hidden by punycode
-		if strings.Contains(asciiHostname, "localhost") || 
-		   strings.Contains(asciiHostname, "127.") ||
-		   strings.Contains(asciiHostname, "10.") ||
-		   strings.Contains(asciiHostname, "192.168.") ||
-		   strings.Contains(asciiHostname, "172.") {
+		if strings.Contains(asciiHostname, "localhost") ||
+			strings.Contains(asciiHostname, "127.") ||
+			strings.Contains(asciiHostname, "10.") ||
+			strings.Contains(asciiHostname, "192.168.") ||
+			strings.Contains(asciiHostname, "172.") {
 			return &ValidationError{
 				Message: "punycode bypass detected",
 				Type:    "PUNYCODE_BYPASS_BLOCKED",
@@ -307,7 +308,7 @@ func (v *SSRFValidator) validateUnicodeAndPunycode(u *url.URL) error {
 // hasMixedScripts detects mixed script attacks
 func (v *SSRFValidator) hasMixedScripts(hostname string) bool {
 	var latinCount, cyrillicCount, otherCount int
-	
+
 	for _, r := range hostname {
 		if unicode.Is(unicode.Latin, r) {
 			latinCount++
@@ -317,13 +318,19 @@ func (v *SSRFValidator) hasMixedScripts(hostname string) bool {
 			otherCount++
 		}
 	}
-	
+
 	// Mixed scripts detected if more than one script type present
 	scriptsFound := 0
-	if latinCount > 0 { scriptsFound++ }
-	if cyrillicCount > 0 { scriptsFound++ }
-	if otherCount > 0 { scriptsFound++ }
-	
+	if latinCount > 0 {
+		scriptsFound++
+	}
+	if cyrillicCount > 0 {
+		scriptsFound++
+	}
+	if otherCount > 0 {
+		scriptsFound++
+	}
+
 	return scriptsFound > 1
 }
 
@@ -331,7 +338,7 @@ func (v *SSRFValidator) hasMixedScripts(hostname string) bool {
 func (v *SSRFValidator) hasConfusableChars(hostname string) bool {
 	// Normalize and check for suspicious patterns
 	normalized := norm.NFKC.String(hostname)
-	
+
 	// Check for common confusables
 	confusables := map[rune]rune{
 		'а': 'a', // Cyrillic 'а' vs Latin 'a'
@@ -341,26 +348,26 @@ func (v *SSRFValidator) hasConfusableChars(hostname string) bool {
 		'с': 'c', // Cyrillic 'с' vs Latin 'c'
 		'х': 'x', // Cyrillic 'х' vs Latin 'x'
 	}
-	
+
 	for cyrillic := range confusables {
 		if strings.ContainsRune(normalized, cyrillic) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
 // validateDNSRebinding performs DNS rebinding attack prevention
 func (v *SSRFValidator) validateDNSRebinding(ctx context.Context, u *url.URL) error {
 	hostname := u.Hostname()
-	
+
 	// Resolve hostname to IP addresses
 	ips, err := v.resolveWithTimeout(ctx, hostname, 5*time.Second)
 	if err != nil {
 		return &ValidationError{
 			Message: "DNS resolution failed",
-			Type:    "DNS_RESOLUTION_ERROR", 
+			Type:    "DNS_RESOLUTION_ERROR",
 			Details: map[string]interface{}{
 				"hostname": hostname,
 				"error":    err.Error(),
@@ -385,7 +392,7 @@ func (v *SSRFValidator) validateDNSRebinding(ctx context.Context, u *url.URL) er
 					Message: "TOCTOU attack detected",
 					Type:    "TOCTOU_ATTACK_BLOCKED",
 					Details: map[string]interface{}{
-						"hostname":   hostname,
+						"hostname":    hostname,
 						"initial_ips": ips,
 						"second_ips":  ips2,
 					},
@@ -428,7 +435,7 @@ func (v *SSRFValidator) resolveWithTimeout(ctx context.Context, hostname string,
 
 // validateResolvedIP validates that resolved IP is not in private ranges
 func (v *SSRFValidator) validateResolvedIP(ip net.IP, hostname string) error {
-	isTestingLocalhost := v.allowTestingLocalhost && 
+	isTestingLocalhost := v.allowTestingLocalhost &&
 		(hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127."))
 
 	if !isTestingLocalhost && v.isPrivateOrDangerous(ip) {
@@ -496,33 +503,33 @@ func (v *SSRFValidator) compareIPLists(ips1, ips2 []net.IP) bool {
 // isSuspiciousDomain determines if a domain should undergo enhanced TOCTOU checking
 func (v *SSRFValidator) isSuspiciousDomain(hostname string) bool {
 	hostname = strings.ToLower(hostname)
-	
+
 	// Check for suspicious patterns
 	suspiciousPatterns := []string{
 		"toctou", "rebind", "attack", "malicious", "evil",
 		"127.", "10.", "192.168.", "172.16.", "172.17.",
 		"localhost", "internal", "private", "test",
 	}
-	
+
 	for _, pattern := range suspiciousPatterns {
 		if strings.Contains(hostname, pattern) {
 			return true
 		}
 	}
-	
+
 	// Check for newly registered or temporary domains
 	suspiciousTLDs := []string{
 		".tk", ".ml", ".ga", ".cf", // Free TLDs often used maliciously
 		".temp", ".tmp", ".test",
 		".nip.io", // DNS rebinding service
 	}
-	
+
 	for _, tld := range suspiciousTLDs {
 		if strings.HasSuffix(hostname, tld) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -549,7 +556,7 @@ func (v *SSRFValidator) CreateSecureHTTPClient(timeout time.Duration) *http.Clie
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		// Disable HTTP/2 for better security control
-		ForceAttemptHTTP2:     false,
+		ForceAttemptHTTP2: false,
 	}
 
 	return &http.Client{
@@ -602,7 +609,7 @@ func (v *SSRFValidator) validateConnectionAddress(network, address string) error
 // validateConnectionIP performs IP-level validation at connection time
 func (v *SSRFValidator) validateConnectionIP(ip net.IP, host, port string) error {
 	// Skip testing localhost if in testing mode
-	isTestingLocalhost := v.allowTestingLocalhost && 
+	isTestingLocalhost := v.allowTestingLocalhost &&
 		(host == "127.0.0.1" || host == "::1" || strings.HasPrefix(host, "127."))
 
 	if isTestingLocalhost {
