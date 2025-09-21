@@ -86,8 +86,9 @@ export class AuthAPIClient {
 
   async getCurrentUser(): Promise<User | null> {
     try {
+      // Use FE route handler to validate with Kratos whoami via same-origin cookie
       const url = new URL(
-        `${this.baseURL}/validate`,
+        `/api/fe-auth/validate`,
         window.location?.origin || "http://localhost:3000",
       ).toString();
       const response = await fetch(url, {

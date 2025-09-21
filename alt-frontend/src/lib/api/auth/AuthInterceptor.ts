@@ -7,7 +7,9 @@ export interface AuthInterceptorConfig {
 
 const defaultConfig: Required<AuthInterceptorConfig> = {
   onAuthRequired: () => {},
-  recheckEndpoint: "/api/auth/recheck",
+  // Important: use Next.js local route handler to avoid reverse proxy capture of /api/auth/*
+  // Nginx external proxies /api/auth/* to auth-service. Our FE recheck must hit Next directly.
+  recheckEndpoint: "/api/fe-auth/validate",
   recheckTimeout: 3000,
   recheckStorageKey: "alt:recheck-whoami",
 };
@@ -16,7 +18,17 @@ export class AuthInterceptor {
   private config: Required<AuthInterceptorConfig>;
 
   constructor(config: AuthInterceptorConfig = {}) {
-    this.config = { ...defaultConfig, ...config };
+    // Allow override via env (client-side safe NEXT_PUBLIC_*) if provided
+    const envOverride =
+      typeof window !== "undefined"
+        ? (process.env.NEXT_PUBLIC_AUTH_RECHECK_ENDPOINT as string | undefined)
+        : undefined;
+
+    this.config = {
+      ...defaultConfig,
+      ...config,
+      ...(envOverride ? { recheckEndpoint: envOverride } : {}),
+    };
   }
 
   async intercept(

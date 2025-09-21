@@ -49,7 +49,7 @@ export default function HomePage() {
                 </HStack>
               </Button>
             </NextLink>
-            <NextLink href="/api/auth/logout" passHref>
+            <a href="/api/auth/logout" style={{ textDecoration: "none" }}>
               <Button
                 variant="outline"
                 size="md"
@@ -62,7 +62,7 @@ export default function HomePage() {
                   ログアウト
                 </HStack>
               </Button>
-            </NextLink>
+            </a>
           </HStack>
         </HStack>
 
