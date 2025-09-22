@@ -15,7 +15,6 @@ RUN apt-get update \
 # Use a high UID to avoid conflicts
 RUN groupadd -f -g 2000 ollama-user \
     && useradd -u 2000 -g 2000 -m -s /bin/bash ollama-user || true
-USER ollama-user
 
 WORKDIR /home/ollama-user
 
@@ -40,4 +39,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD curl -f http://localhost:11434/api/tags || exit 1
 
 EXPOSE 11434
+
+# ---- Runtime user --------------------------------------------------------
+USER ollama-user
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

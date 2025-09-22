@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# If we start as root (first invocation), fix permissions then re-exec as ollama-user
+if [ "$(id -u)" -eq 0 ] && [ "${OLLAMA_ENTRYPOINT_RERUN:-0}" != "1" ]; then
+  TARGET_USER="ollama-user"
+  USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+  export HOME="$USER_HOME"
+  export OLLAMA_HOME="${OLLAMA_HOME:-${USER_HOME}/.ollama}"
+  mkdir -p "$OLLAMA_HOME"
+  chown -R "$TARGET_USER":"$TARGET_USER" "$OLLAMA_HOME"
+
+  export OLLAMA_ENTRYPOINT_RERUN=1
+  exec su -p "$TARGET_USER" -c "/usr/local/bin/entrypoint.sh"
+fi
+
 # Ollama environment configuration
 export OLLAMA_HOST=0.0.0.0:11434
 export OLLAMA_ORIGINS="*"
