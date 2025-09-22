@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 
 ##### 1) deps stage ─ npm/pnpm DL をキャッシュ #####
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # pnpm を corepack で有効化（公式推奨）
@@ -12,7 +12,7 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 ##### 2) build stage ─ アプリをビルド #####
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 # pnpm を corepack で有効化（build stage でも必要）
@@ -38,7 +38,7 @@ ENV API_URL=$API_URL \
 RUN pnpm run build
 
 ##### 3) runtime stage ─ 最小実行環境 #####
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
   PORT=3000 \
