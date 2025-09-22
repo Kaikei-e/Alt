@@ -69,16 +69,69 @@ test_connection() {
     fi
 }
 
+# Detect an already populated schema and register a baseline revision.
+baseline_existing_schema() {
+    local baseline_version="${MIGRATE_BASELINE_VERSION:-}"
+
+    if [ -z "$baseline_version" ]; then
+        log_error "Existing database schema detected but MIGRATE_BASELINE_VERSION is not set"
+        log_error "See https://atlasgo.io/docs/reference/cli/migrate/baseline for guidance"
+        exit 1
+    fi
+
+    log_warn "Existing schema detected; applying Atlas baseline to version $baseline_version"
+
+    atlas migrate set "$baseline_version" \
+        --url "$DATABASE_URL" \
+        --dir "file://$MIGRATION_DIR" || {
+            log_error "Atlas baseline failed"
+            exit 1
+        }
+
+    log_success "Atlas baseline applied at version $baseline_version"
+}
+
+# Ensure atlas.sum exists before running commands that require it.
+ensure_hash_file() {
+    if [ ! -f "$MIGRATION_DIR/atlas.sum" ]; then
+        log_info "Generating migration checksum file (atlas.sum)..."
+        atlas migrate hash \
+            --dir "file://$MIGRATION_DIR" || {
+                log_error "Failed to generate atlas.sum"
+                exit 1
+            }
+    fi
+}
+
 # Migration status
 migration_status() {
     log_info "Checking migration status..."
 
-    atlas migrate status \
+    ensure_hash_file
+
+    if ! status_output=$(atlas migrate status \
         --url "$DATABASE_URL" \
-        --dir "file://$MIGRATION_DIR" || {
-            log_warn "Migration status check failed, attempting to initialize..."
-            return 1
-        }
+        --dir "file://$MIGRATION_DIR" 2>&1); then
+        echo "$status_output"
+
+        if echo "$status_output" | grep -qi "connected database is not clean"; then
+            baseline_existing_schema
+            log_info "Re-running migration status after baseline..."
+
+            atlas migrate status \
+                --url "$DATABASE_URL" \
+                --dir "file://$MIGRATION_DIR" || {
+                    log_error "Migration status still failing after baseline"
+                    exit 1
+                }
+            return 0
+        fi
+
+        log_warn "Migration status check failed, attempting to initialize..."
+        return 1
+    fi
+
+    echo "$status_output"
 }
 
 # Initialize migration tracking
