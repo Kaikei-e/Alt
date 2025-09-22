@@ -90,6 +90,8 @@ services:
       args:
         - NEXT_PUBLIC_API_BASE_URL=/api
         - API_URL=http://alt-backend:9000
+        - NEXT_PUBLIC_IDP_ORIGIN=${NEXT_PUBLIC_IDP_ORIGIN}
+        - NEXT_PUBLIC_KRATOS_PUBLIC_URL=${NEXT_PUBLIC_KRATOS_PUBLIC_URL}
     environment:
       - NEXT_PUBLIC_API_BASE_URL=/api
       - API_URL=http://alt-backend:9000
@@ -108,7 +110,7 @@ services:
         reservations:
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q '\"status\":\"ok\"' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -187,6 +189,9 @@ services:
       - "11434:11434"
     networks:
       - alt-network
+    depends_on:
+      news-creator-volume-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 30s
@@ -200,6 +205,23 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  news-creator-volume-init:
+    profiles:
+      - ollama
+    build:
+      context: ./news-creator
+      dockerfile: Dockerfile.creator
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["chown -R 2000:2000 /home/ollama-user/.ollama"]
+    user: "0:0"
+    volumes:
+      - news_creator_models:/home/ollama-user/.ollama
+    networks:
+      - alt-network
+    restart: "no"
+    labels:
+      - rask.group=news-creator-init
 
   pre-processor:
     profiles:
@@ -426,14 +448,14 @@ services:
   migrate:
     <<: *shared-env-file
     build:
-      context: ./migrate
+      context: ./db
       dockerfile: Dockerfile.migrate
     container_name: db_migrator
     volumes:
-      - ./db/migrations:/migrations
+      - ./db/scripts/migrations:/migrations
       - ./db/postgresql.conf:/etc/postgresql/postgresql.conf
     environment:
-      DB_URL: "postgres://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=disable&search_path=public"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=disable&search_path=public"
       MIGRATE_MAX_RETRIES: "12"
       MIGRATE_RETRY_INTERVAL: "5"
     depends_on:
