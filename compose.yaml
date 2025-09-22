@@ -39,6 +39,10 @@ x-rask-forwarder-env: &rask-forwarder-env
     FLUSH_INTERVAL_MS: "500"
     BUFFER_CAPACITY: "100000"
 
+x-shared-env-file: &shared-env-file
+  env_file:
+    - .env
+
 services:
   nginx:
     image: nginx:latest
@@ -77,6 +81,7 @@ services:
         max-file: "3"
 
   alt-frontend:
+    <<: *shared-env-file
     build:
       context: ./alt-frontend
       dockerfile: Dockerfile.frontend
@@ -111,6 +116,7 @@ services:
     tty: true
 
   alt-backend:
+    <<: *shared-env-file
     build:
       context: ./alt-backend
       dockerfile: Dockerfile.backend
@@ -163,6 +169,9 @@ services:
         max-file: "3"
 
   news-creator:
+    profiles:
+      - ollama
+    <<: *shared-env-file
     build:
       context: ./news-creator
       dockerfile: Dockerfile.creator
@@ -193,6 +202,9 @@ services:
         max-file: "3"
 
   pre-processor:
+    profiles:
+      - ollama
+    <<: *shared-env-file
     # Updated to use multi-stage build with pre-compiled Go binary
     build:
       context: ./pre-processor
@@ -225,6 +237,7 @@ services:
         max-size: "10m"
         max-file: "3"
   search-indexer:
+    <<: *shared-env-file
     build:
       context: ./search-indexer
       dockerfile: Dockerfile.search-indexer
@@ -255,6 +268,7 @@ services:
         max-size: "10m"
         max-file: "3"
   tag-generator:
+    <<: *shared-env-file
     build:
       context: ./tag-generator
       dockerfile: Dockerfile.tag-generator
@@ -410,6 +424,7 @@ services:
         max-size: "10m"
         max-file: "3"
   migrate:
+    <<: *shared-env-file
     build:
       context: ./migrate
       dockerfile: Dockerfile.migrate
@@ -418,7 +433,7 @@ services:
       - ./db/migrations:/migrations
       - ./db/postgresql.conf:/etc/postgresql/postgresql.conf
     environment:
-      DB_URL: "pgx5://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=prefer&search_path=public"
+      DB_URL: "postgres://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=disable&search_path=public"
       MIGRATE_MAX_RETRIES: "12"
       MIGRATE_RETRY_INTERVAL: "5"
     depends_on:
@@ -559,4 +574,3 @@ services:
     restart: unless-stopped
     profiles:
       - logging
-
