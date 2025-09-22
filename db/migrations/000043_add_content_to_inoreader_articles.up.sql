@@ -12,16 +12,16 @@ COMMENT ON COLUMN inoreader_articles.content_length IS 'Length of content in cha
 COMMENT ON COLUMN inoreader_articles.content_type IS 'Content type (html, html_rtl, text)';
 
 -- Create index for content-based queries (partial index for performance)
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_inoreader_articles_has_content
+CREATE INDEX IF NOT EXISTS idx_inoreader_articles_has_content
 ON inoreader_articles(content_length) 
 WHERE content_length > 0;
 
 -- Create composite index for processed status and content availability
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_inoreader_articles_processed_content
+CREATE INDEX IF NOT EXISTS idx_inoreader_articles_processed_content
 ON inoreader_articles(processed, content_length) 
 WHERE content_length > 0;
 
 -- Create index for content type filtering
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_inoreader_articles_content_type
+CREATE INDEX IF NOT EXISTS idx_inoreader_articles_content_type
 ON inoreader_articles(content_type)
 WHERE content_type IS NOT NULL AND content_type != 'html';

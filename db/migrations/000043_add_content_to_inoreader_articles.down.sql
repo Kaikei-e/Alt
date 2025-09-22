@@ -2,9 +2,9 @@
 -- Phase 1: Database Schema Extension Rollback
 
 -- Drop indexes first
-DROP INDEX CONCURRENTLY IF EXISTS idx_inoreader_articles_content_type;
-DROP INDEX CONCURRENTLY IF EXISTS idx_inoreader_articles_processed_content;
-DROP INDEX CONCURRENTLY IF EXISTS idx_inoreader_articles_has_content;
+DROP INDEX IF EXISTS idx_inoreader_articles_content_type;
+DROP INDEX IF EXISTS idx_inoreader_articles_processed_content;
+DROP INDEX IF EXISTS idx_inoreader_articles_has_content;
 
 -- Drop content columns
 ALTER TABLE inoreader_articles DROP COLUMN IF EXISTS content_type;
