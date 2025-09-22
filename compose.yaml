@@ -46,7 +46,7 @@ x-shared-env-file: &shared-env-file
 services:
   nginx:
     image: nginx:latest
-    restart: unless-stopped
+    restart: always
     ports:
       - "80:80"
     volumes:
@@ -56,6 +56,8 @@ services:
       alt-frontend:
         condition: service_healthy
       alt-backend:
+        condition: service_healthy
+      kratos:
         condition: service_healthy
     networks:
       - alt-network
@@ -107,7 +109,7 @@ services:
       - PORT=3000
     ports:
       - "3000:3000"
-    restart: unless-stopped
+    restart: always
     networks:
       - alt-network
     # Resource limits
@@ -130,7 +132,7 @@ services:
     build:
       context: ./alt-backend
       dockerfile: Dockerfile.backend
-    restart: unless-stopped
+    restart: always
     ports:
       - "9000:9000"
     networks:
@@ -619,6 +621,8 @@ services:
     depends_on:
       - db
     restart: "no"
+    networks:
+      - alt-network
 
   kratos:
     image: oryd/kratos:v1.2.0
@@ -655,12 +659,14 @@ services:
       - db
       - kratos-migrate
     healthcheck:
-      test: ["CMD", "kratos", "health", "ready", "--config", "/etc/config/kratos/kratos.yml"]
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:4434/admin/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    networks:
+      - alt-network
 
   kratos-admin:
     image: oryd/kratos:v1.2.0
@@ -683,3 +689,5 @@ services:
       - db
       - kratos-migrate
     restart: unless-stopped
+    networks:
+      - alt-network
