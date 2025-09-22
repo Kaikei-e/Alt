@@ -5,40 +5,21 @@ export async function GET(request: NextRequest) {
   try {
     // TODO.md要件: サーバが受信したCookieの有無をデバッグ用に可視化
     const cookieStore = await cookies();
-    const hasOryKratosSession = cookieStore.has("ory_kratos_session");
-    const hasHostOryKratosSession = cookieStore.has(
+    const hasOryKratosSession = await cookieStore.has("ory_kratos_session");
+    const hasHostOryKratosSession = await cookieStore.has(
       "__Host-ory_kratos_session",
     );
     const hasKratosSession = hasOryKratosSession || hasHostOryKratosSession;
 
     // Basic application health checks
-    const healthCheck = {
-      status: "OK",
+    // Dockerfile の HEALTHCHECK で "\"status\":\"ok\"" を grep しているため、
+    // 必ず status は "ok" を返す
+    return NextResponse.json({
+      status: "ok",
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
       environment: process.env.NODE_ENV || "unknown",
-      version: process.env.npm_package_version || "1.0.0",
-      checks: {
-        memory: {
-          used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-          total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
-          status: "OK",
-        },
-        server: {
-          status: "OK",
-        },
-        // TODO.md要件: Cookie受信状況をレスポンスに含める
-        authentication: {
-          hasSession: hasKratosSession,
-          cookies: {
-            ory_kratos_session: hasOryKratosSession,
-            host_ory_kratos_session: hasHostOryKratosSession,
-          },
-        },
-      },
-    };
-
-    return NextResponse.json(healthCheck, {
+      hasSession: hasKratosSession,
+    }, {
       status: 200,
       headers: {
         "Content-Type": "application/json",
