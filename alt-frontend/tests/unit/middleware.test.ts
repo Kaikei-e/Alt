@@ -7,7 +7,7 @@ import { middleware } from "../../src/middleware";
 
 // Mock environment variables
 process.env.NEXT_PUBLIC_APP_ORIGIN = "https://curionoah.com";
-process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL = "https://id.curionoah.com";
+process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL = "https://curionoah.com";
 
 describe("middleware", () => {
   beforeEach(() => {

@@ -32,7 +32,7 @@ Object.defineProperty(window, "location", {
 
 // Environment variables mock
 process.env.NEXT_PUBLIC_APP_ORIGIN = "https://curionoah.com";
-process.env.NEXT_PUBLIC_IDP_ORIGIN = "https://id.curionoah.com";
+process.env.NEXT_PUBLIC_IDP_ORIGIN = "https://curionoah.com";
 process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT = "https://curionoah.com/";
 
 // モックへのアクセス用ヘルパー
@@ -307,7 +307,7 @@ describe("LoginForm", () => {
       Object.defineProperty(window, "location", {
         value: {
           ...mockLocation,
-          href: "https://id.curionoah.com/auth/login?flow=expired-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome",
+          href: "https://curionoah.com/auth/login?flow=expired-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome",
         },
         writable: true,
       });
@@ -316,7 +316,7 @@ describe("LoginForm", () => {
 
       await waitFor(() => {
         // With safeRedirect, it should redirect to trusted IDP origin
-        expect(window.location.href).toContain("id.curionoah.com");
+        expect(window.location.href).toContain("curionoah.com");
       });
     });
 
@@ -370,7 +370,7 @@ describe("LoginForm", () => {
       Object.defineProperty(window, "location", {
         value: {
           ...mockLocation,
-          href: "https://id.curionoah.com/auth/login?flow=test-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings",
+          href: "https://curionoah.com/auth/login?flow=test-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings",
         },
         writable: true,
       });
@@ -407,7 +407,7 @@ describe("LoginForm", () => {
       Object.defineProperty(window, "location", {
         value: {
           ...mockLocation,
-          href: "https://id.curionoah.com/auth/login?flow=expired-flow",
+          href: "https://curionoah.com/auth/login?flow=expired-flow",
         },
         writable: true,
       });
@@ -415,7 +415,7 @@ describe("LoginForm", () => {
       render(<LoginForm flowId="expired-flow-id" />);
 
       await waitFor(() => {
-        expect(window.location.href).toContain("id.curionoah.com");
+        expect(window.location.href).toContain("curionoah.com");
       });
     });
   });

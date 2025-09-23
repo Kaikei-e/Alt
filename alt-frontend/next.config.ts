@@ -87,11 +87,8 @@ const nextConfig = {
       process.env.KRATOS_INTERNAL_URL ||
       "http://kratos-public.alt-auth.svc.cluster.local:4433",
     KRATOS_PUBLIC_URL:
-      process.env.KRATOS_PUBLIC_URL || "https://id.curionoah.com",
+      process.env.KRATOS_PUBLIC_URL || "https://curionoah.com",
   },
-
-  // Enable standalone output for containerized deployment
-  output: "standalone",
 
   // Essential optimizations
   compress: true,
@@ -110,7 +107,7 @@ const nextConfig = {
         destination:
           process.env.NODE_ENV === "test"
             ? `http://localhost:4545/:path*`
-            : `${process.env.KRATOS_PUBLIC_URL || "https://id.curionoah.com"}/:path*`,
+            : `${process.env.KRATOS_PUBLIC_URL || "https://curionoah.com"}/:path*`,
       },
     ];
   },

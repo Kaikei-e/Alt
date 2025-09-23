@@ -24,12 +24,12 @@ COPY . .
 # ビルド引数・環境変数（必要なら --build-arg で上書き）
 ARG API_URL=http://alt-backend:9000
 ARG NEXT_PUBLIC_API_BASE_URL=/api
-ARG NEXT_PUBLIC_IDP_ORIGIN
-ARG NEXT_PUBLIC_KRATOS_PUBLIC_URL
-ARG NEXT_PUBLIC_APP_ORIGIN
-ARG NEXT_PUBLIC_RETURN_TO_DEFAULT
-ARG KRATOS_INTERNAL_URL
-ARG KRATOS_PUBLIC_URL
+ARG NEXT_PUBLIC_IDP_ORIGIN=https://curionoah.com
+ARG NEXT_PUBLIC_KRATOS_PUBLIC_URL=https://curionoah.com
+ARG NEXT_PUBLIC_APP_ORIGIN=https://curionoah.com
+ARG NEXT_PUBLIC_RETURN_TO_DEFAULT=https://curionoah.com/
+ARG KRATOS_INTERNAL_URL=http://kratos-public.alt-auth.svc.cluster.local:4433
+ARG KRATOS_PUBLIC_URL=https://curionoah.com
 ARG GIT_SHA
 ARG BUILD_ID
 ENV API_URL=$API_URL \
@@ -45,7 +45,22 @@ ENV API_URL=$API_URL \
 
 RUN pnpm run build
 
-##### 3) runtime stage ─ 最小実行環境 #####
+# Ensure the jsdom default stylesheet exists for runtime jsdom usage. Next 15
+# reads /.next/browser/default-stylesheet.css and the standalone output mirrors
+# it under /.next/standalone/.next/. The helper script writes both locations.
+RUN node scripts/ensure-default-stylesheet.mjs
+
+##### 3) runtime deps stage ─ 本番依存のみ抽出 #####
+FROM node:24-alpine AS runner-deps
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate \
+  && apk add --no-cache libc6-compat
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --prod --frozen-lockfile
+
+##### 4) runtime stage ─ 最小実行環境 #####
 FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
@@ -53,10 +68,14 @@ ENV NODE_ENV=production \
   HOSTNAME=0.0.0.0 \
   NEXT_TELEMETRY_DISABLED=1
 
-# 必要最小ファイルをコピー（standalone 方式）
-COPY --from=build --chown=1001:1001 /app/.next/standalone ./
-COPY --from=build --chown=1001:1001 /app/.next/static ./.next/static
+RUN apk add --no-cache libc6-compat
+
+# ビルド成果物をコピー（next start 運用）
+COPY --from=runner-deps --chown=1001:1001 /app/node_modules ./node_modules
+COPY --from=build --chown=1001:1001 /app/.next ./.next
 COPY --from=build --chown=1001:1001 /app/public ./public
+COPY --from=build --chown=1001:1001 /app/package.json ./package.json
+COPY --from=build --chown=1001:1001 /app/pnpm-lock.yaml ./pnpm-lock.yaml
 
 # 非-root ユーザ
 RUN addgroup -g 1001 -S nextjs \
@@ -70,5 +89,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD wget -qO- http://localhost:${PORT}/api/health \
   | grep -q '"status":"ok"' || exit 1
 
-# Next.js standalone エントリ
-CMD ["node", "server.js"]
+# Next.js 本番サーバ
+CMD ["node", "node_modules/next/dist/bin/next", "start"]
