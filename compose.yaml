@@ -611,7 +611,7 @@ services:
     command: ["migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
     environment:
       - KRATOS_DB_USER=${KRATOS_DB_USER:-alt_db_user}
-      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD:-nQbZfvNrxsp7FsakT25wGfzGxoNjA6}
+      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD:-REPLACE_ME_HOGE_HOGE}
       - KRATOS_DB_HOST=${KRATOS_DB_HOST:-db}
       - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
       - KRATOS_DB_NAME=${KRATOS_DB_NAME:-alt}
