@@ -11,14 +11,14 @@ data:
 
     serve:
       public:
-        base_url: https://id.curionoah.com/
+        base_url: https://curionoah.com/ory
         cors:
           enabled: true
           allowed_origins:
             - https://curionoah.com
           allowed_methods: [GET, POST, PUT, PATCH, DELETE]
-          allowed_headers: [Authorization, Cookie, Content-Type, X-CSRF-Token]
-          exposed_headers: [Content-Type, Set-Cookie]
+          allowed_headers: [Authorization, Content-Type, Accept]
+          allow_credentials: true
 
       admin:
         base_url: https://kratos-admin.alt-auth.svc.cluster.local:4434/
@@ -27,9 +27,8 @@ data:
       default_browser_return_url: https://curionoah.com/
       allowed_return_urls:
         - https://curionoah.com/
-        - https://id.curionoah.com
-        - https://app.curionoah.com
-        - https://alt-frontend.alt-apps.svc.cluster.local
+        - https://curionoah.com/desktop/home
+        - https://curionoah.com/auth/login
 
       methods:
         password:
@@ -84,13 +83,13 @@ data:
 
         login:
           ui_url: https://curionoah.com/auth/login
-          lifespan: 10m
+          lifespan: 30m
           after:
             default_browser_return_url: https://curionoah.com/
 
         registration:
           enabled: true
-          lifespan: 10m
+          lifespan: 30m
           ui_url: https://curionoah.com/auth/register
           after:
             default_browser_return_url: https://curionoah.com/
@@ -130,11 +129,8 @@ data:
         from_name: Alt RSS Reader
 
     session:
-      lifespan: 12h
+      lifespan: 24h
       cookie:
-        persistent: true
+        persistent: false
         same_site: Lax
-        domain: .curionoah.com  # ★TODOの指示通り: 最上位ドメインに設定（先頭ドット）
         path: /
-        name: ory_kratos_session
-        # Note: secure flag is automatically set when using HTTPS in production
