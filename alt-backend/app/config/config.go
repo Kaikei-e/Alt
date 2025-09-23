@@ -11,7 +11,6 @@ type Config struct {
 	Cache        CacheConfig        `json:"cache"`
 	Logging      LoggingConfig      `json:"logging"`
 	HTTP         HTTPConfig         `json:"http"`
-	Auth         AuthConfig         `json:"auth"`
 	PreProcessor PreProcessorConfig `json:"pre_processor"`
 
 	// Legacy fields for backward compatibility
@@ -21,7 +20,6 @@ type Config struct {
 	MeilisearchURL     string        `json:"meilisearch_url"`
 	RateLimitInterval  time.Duration `json:"rate_limit_interval"`
 	MaxPaginationLimit int           `json:"max_pagination_limit"`
-	AuthServiceURL     string        `json:"auth_service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service.alt-auth.svc.cluster.local:8080"`
 }
 
 type PreProcessorConfig struct {
@@ -81,16 +79,6 @@ type HTTPConfig struct {
 	DialTimeout         time.Duration `json:"dial_timeout" env:"HTTP_DIAL_TIMEOUT" default:"10s"`
 	TLSHandshakeTimeout time.Duration `json:"tls_handshake_timeout" env:"HTTP_TLS_HANDSHAKE_TIMEOUT" default:"10s"`
 	IdleConnTimeout     time.Duration `json:"idle_conn_timeout" env:"HTTP_IDLE_CONN_TIMEOUT" default:"90s"`
-}
-
-type AuthConfig struct {
-	ServiceURL         string        `json:"service_url" env:"AUTH_SERVICE_URL" default:"http://auth-service.alt-auth.svc.cluster.local:8080"`
-	KratosInternalURL  string        `json:"kratos_internal_url" env:"KRATOS_INTERNAL_URL" default:"http://kratos.alt-auth.svc.cluster.local:4433"`
-	Timeout            time.Duration `json:"timeout" env:"AUTH_TIMEOUT" default:"30s"`
-	EnableCSRF         bool          `json:"enable_csrf" env:"AUTH_ENABLE_CSRF" default:"true"`
-	RequireAuth        bool          `json:"require_auth" env:"AUTH_REQUIRE_AUTH" default:"true"`
-	SessionCookieName  string        `json:"session_cookie_name" env:"AUTH_SESSION_COOKIE_NAME" default:"ory_kratos_session"`
-	ValidateEmpty200OK bool          `json:"validate_empty_200_ok" env:"AUTH_VALIDATE_EMPTY200_OK" default:"false"`
 }
 
 // NewConfig creates a new configuration by loading from environment variables

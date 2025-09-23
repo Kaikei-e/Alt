@@ -3,10 +3,8 @@ package di
 import (
 	"alt/config"
 	"alt/driver/alt_db"
-	"alt/driver/auth"
 	"alt/driver/csrf_token_driver"
 	"alt/driver/search_indexer"
-	"alt/gateway/auth_gateway"
 	"alt/gateway/config_gateway"
 	"alt/gateway/csrf_token_gateway"
 	"alt/gateway/error_handler_gateway"
@@ -24,7 +22,6 @@ import (
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
-	"alt/port/auth_port"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/rate_limiter_port"
@@ -41,7 +38,6 @@ import (
 	"alt/usecase/register_feed_usecase"
 	"alt/usecase/search_feed_usecase"
 	"alt/utils"
-	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"net/http"
 	"time"
@@ -54,7 +50,6 @@ type ApplicationComponents struct {
 	ConfigPort       config_port.ConfigPort
 	RateLimiterPort  rate_limiter_port.RateLimiterPort
 	ErrorHandlerPort error_handler_port.ErrorHandlerPort
-	AuthGateway      auth_port.AuthPort
 
 	// Repository
 	AltDBRepository *alt_db.AltDBRepository
@@ -168,16 +163,11 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	imageFetchGateway := image_fetch_gateway.NewImageFetchGateway(imageHTTPClient)
 	imageFetchUsecase := image_fetch_usecase.NewImageFetchUsecase(imageFetchGateway)
 
-	// Auth components
-	authClient := auth.NewClient(cfg, logger.Logger)
-	authGateway := auth_gateway.NewAuthGateway(authClient, logger.Logger)
-
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
 		RateLimiterPort:  rateLimiterPort,
 		ErrorHandlerPort: errorHandlerPort,
-		AuthGateway:      authGateway,
 
 		// Repository
 		AltDBRepository: altDBRepository,
