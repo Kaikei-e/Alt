@@ -280,7 +280,7 @@ export default function LoginForm({ flowId }: { flowId: string }) {
       // 410なら自動復帰
       if (st === 410 || id === "self_service_flow_expired") {
         const currentUrl = window.location.href;
-        const redirectUrl = `/ory/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
+        const redirectUrl = `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
         safeRedirect(redirectUrl);
         return;
       }
@@ -289,7 +289,7 @@ export default function LoginForm({ flowId }: { flowId: string }) {
       if (st === 403) {
         console.warn("CSRF error during login submission, creating new flow");
         const currentUrl = window.location.href;
-        const redirectUrl = `/ory/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
+        const redirectUrl = `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
         safeRedirect(redirectUrl);
         return;
       }
