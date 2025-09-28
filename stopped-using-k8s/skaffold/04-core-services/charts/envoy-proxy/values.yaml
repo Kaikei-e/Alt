@@ -136,8 +136,8 @@ envoy:
     
   # タイムアウト設定
   timeout:
-    connect: 30s
-    request: 60s
+    connect: 180s  # Extended for Inoreader API reliability
+    request: 180s  # Extended to match application timeout
     response: 300s
     
   # ログレベル

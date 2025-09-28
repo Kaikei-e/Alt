@@ -151,9 +151,9 @@ kratos:
 
   # Session configuration - TODO.md要件準拠
   session:
-    lifespan: "24h"
+    lifespan: "336h" # 14d: 2週間のセッション有効期限
     cookie:
-      persistent: false
+      persistent: true
       same_site: "Lax"
       path: "/"
 
