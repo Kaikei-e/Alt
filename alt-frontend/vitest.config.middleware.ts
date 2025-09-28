@@ -14,7 +14,7 @@ export default defineConfig({
     // No setupFiles for middleware tests to avoid jsdom-specific setup
     env: {
       NEXT_PUBLIC_APP_ORIGIN: "https://curionoah.com",
-      NEXT_PUBLIC_KRATOS_PUBLIC_URL: "https://curionoah.com",
+      NEXT_PUBLIC_KRATOS_PUBLIC_URL: "https://curionoah.com/ory",
     },
   },
   resolve: {

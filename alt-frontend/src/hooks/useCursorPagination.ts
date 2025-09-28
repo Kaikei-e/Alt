@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { UsePaginationResult } from "@/schema/common";
+import { ApiError } from "@/lib/api/core/ApiError";
 
 export interface UseCursorPaginationOptions {
   limit?: number;
@@ -89,11 +90,20 @@ export function useCursorPagination<T>(
         }, prefetchDelay);
       }
     } catch (err) {
-      const error =
-        err instanceof Error ? err : new Error("Failed to load data");
-      setError(error);
-      setData([]);
-      setHasMore(false);
+      if (err instanceof ApiError && err.status === 404) {
+        // Treat 404 as an empty dataset rather than a hard error so the UI can
+        // render the empty state (important when users have no feeds yet).
+        setData([]);
+        setCursor(null);
+        setHasMore(false);
+        setError(null);
+      } else {
+        const error =
+          err instanceof Error ? err : new Error("Failed to load data");
+        setError(error);
+        setData([]);
+        setHasMore(false);
+      }
     } finally {
       setIsLoading(false);
       setIsInitialLoading(false);
@@ -142,9 +152,17 @@ export function useCursorPagination<T>(
         }, prefetchDelay);
       }
     } catch (err) {
-      const error =
-        err instanceof Error ? err : new Error("Failed to load more data");
-      setError(error);
+      if (err instanceof ApiError && err.status === 404) {
+        // No further pages available – clear pagination state but avoid showing
+        // an error banner.
+        setHasMore(false);
+        setCursor(null);
+        setError(null);
+      } else {
+        const error =
+          err instanceof Error ? err : new Error("Failed to load more data");
+        setError(error);
+      }
     } finally {
       setIsLoading(false);
     }

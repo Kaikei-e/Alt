@@ -11,7 +11,14 @@ import {
   Button,
   Spinner,
 } from "@chakra-ui/react";
-import { KRATOS_PUBLIC_URL } from "@/lib/env.public";
+import {
+  Configuration,
+  FrontendApi,
+  RegistrationFlow,
+  UiNode,
+  UiNodeInputAttributes,
+  UpdateRegistrationFlowBody,
+} from "@ory/client";
 
 // URL validation helper to prevent open redirects
 const isValidReturnUrl = (url: string): boolean => {
@@ -37,31 +44,9 @@ const safeRedirect = (url: string) => {
   }
 };
 
-interface RegistrationFlowNode {
-  type: string;
-  group: string;
-  attributes: {
-    name: string;
-    type: string;
-    required: boolean;
-    value?: string;
-  };
-  messages?: Array<{
-    text: string;
-    type: string;
-  }>;
-}
-
-interface RegistrationFlow {
-  id: string;
-  ui: {
-    nodes: RegistrationFlowNode[];
-    messages?: Array<{
-      text: string;
-      type: string;
-    }>;
-  };
-}
+const frontend = new FrontendApi(
+  new Configuration({ basePath: "/ory", baseOptions: { credentials: "include" } }),
+);
 
 interface RegisterClientProps {
   flowId: string;
@@ -78,8 +63,6 @@ export default function RegisterClient({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const KRATOS_PUBLIC = KRATOS_PUBLIC_URL;
-
   useEffect(() => {
     if (!flowId) return;
     fetchFlow(flowId);
@@ -90,33 +73,28 @@ export default function RegisterClient({
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(
-        `${KRATOS_PUBLIC}/self-service/registration/flows?id=${id}`,
-        {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            Accept: "application/json",
-          },
-        },
-      );
-
-      if (!response.ok) {
-        if (response.status === 410) {
-          // ← 期限切れだけ"新規フロー"
-          safeRedirect("/register");
-          return;
+      const { data } = await frontend.getRegistrationFlow({ id });
+      setFlow(data);
+      const initialValues: Record<string, string> = {};
+      data.ui?.nodes?.forEach((node) => {
+        if (node.type !== "input" || !node.attributes) return;
+        const attrs = node.attributes as UiNodeInputAttributes;
+        if (!attrs?.name) return;
+        if (typeof attrs.value === "string") {
+          initialValues[attrs.name] = attrs.value;
         }
-        // 404・403・429 等はここで可視化（無限再初期化しない）
-        const msg = `Failed to fetch registration flow: ${response.status}`;
-        setError(msg);
-        setIsLoading(false);
+      });
+      setFormData(initialValues);
+    } catch (err) {
+      const error = err as {
+        response?: { status?: number };
+        status?: number;
+      };
+      const status = error.response?.status ?? error.status;
+      if (status === 410 || status === 403) {
+        safeRedirect("/register");
         return;
       }
-
-      const flowData = await response.json();
-      setFlow(flowData);
-    } catch (err) {
       setError(
         err instanceof Error
           ? err.message
@@ -134,7 +112,12 @@ export default function RegisterClient({
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const isRegistrationFlow = (value: unknown): value is RegistrationFlow => {
+    if (!value || typeof value !== "object") return false;
+    return "id" in value && "ui" in value;
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!flow) {
@@ -146,54 +129,85 @@ export default function RegisterClient({
       setIsLoading(true);
       setError(null);
 
-      const csrf = flow.ui.nodes.find(
-        (n) => n.attributes?.name === "csrf_token",
-      )?.attributes?.value;
+      const formEntries = Object.fromEntries(
+        new FormData(e.currentTarget).entries(),
+      ) as Record<string, string>;
 
-      const response = await fetch(
-        `${KRATOS_PUBLIC}/self-service/registration?flow=${flow.id}`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            method: "password",
-            ...formData,
-            csrf_token: csrf,
-          }),
-        },
-      );
+      const methodValue =
+        (formEntries.method as UpdateRegistrationFlowBody["method"]) ||
+        (getNodeValue(flow.ui.nodes, "method") as UpdateRegistrationFlowBody["method"]) ||
+        "password";
 
-      // JSONモード：200(OK)/422(検証エラー) を扱う
-      if (response.status === 422) {
-        const updatedFlow = await response.json();
-        setFlow(updatedFlow);
-        return;
-      }
+      const payload = {
+        ...formEntries,
+        method: methodValue,
+      } as UpdateRegistrationFlowBody;
 
-      if (!response.ok) {
-        throw new Error(`Registration failed: ${response.status}`);
+      const { data } = await frontend.updateRegistrationFlow({
+        flow: flow.id,
+        updateRegistrationFlowBody: payload,
+      });
+
+      if (isRegistrationFlow(data)) {
+        if (data.ui?.messages?.length) {
+          setFlow(data);
+          return;
+        }
       }
 
       router.push(returnUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      const error = err as {
+        response?: { status?: number; data?: RegistrationFlow };
+        status?: number;
+        message?: string;
+      };
+      const status = error.response?.status ?? error.status;
+      if (status === 403) {
+        safeRedirect("/register");
+        return;
+      }
+      if (status === 422 && error.response?.data) {
+        setFlow(error.response.data as RegistrationFlow);
+        return;
+      }
+      setError(error?.message ?? "Registration failed");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const renderFormField = (node: RegistrationFlowNode) => {
+  const getNodeValue = (nodes: UiNode[], name: string): string => {
+    const node = nodes.find((n) => {
+      if (!("attributes" in n) || !n.attributes) return false;
+      const attrs = n.attributes as UiNodeInputAttributes;
+      return attrs.name === name;
+    });
+    if (!node || !node.attributes) return "";
+    const attrs = node.attributes as UiNodeInputAttributes;
+    if (typeof attrs.value === "string") return attrs.value;
+    if (typeof attrs.value === "number") return String(attrs.value);
+    return "";
+  };
+
+  const renderFormField = (node: UiNode) => {
     if (node.type !== "input") return null;
     if (!["password", "default"].includes(node.group)) {
       return null;
     }
 
-    const { name, type, required } = node.attributes;
-    const value = formData[name] || node.attributes.value || "";
+    const attrs = node.attributes as UiNodeInputAttributes;
+    if (!attrs?.name || !attrs.type) {
+      return null;
+    }
+
+    const { name, required } = attrs;
+    const inputType =
+      name === "password" && attrs.type !== "password"
+        ? "password"
+        : attrs.type;
+    const defaultValue = typeof attrs.value === "string" ? attrs.value : "";
+    const value = formData[name] ?? defaultValue;
     const messages = node.messages || [];
 
     let placeholder = name;
@@ -205,7 +219,7 @@ export default function RegisterClient({
       <Box key={name} w="full">
         <Input
           name={name}
-          type={type}
+          type={inputType}
           value={value}
           onChange={(e) => handleInputChange(name, e.target.value)}
           required={required}
@@ -347,6 +361,17 @@ export default function RegisterClient({
                       </Text>
                     </Box>
                   ))}
+
+                  <input
+                    type="hidden"
+                    name="method"
+                    value={getNodeValue(flow.ui.nodes, "method") || "password"}
+                  />
+                  <input
+                    type="hidden"
+                    name="csrf_token"
+                    value={getNodeValue(flow.ui.nodes, "csrf_token")}
+                  />
 
                   {flow.ui.nodes.map(renderFormField)}
 

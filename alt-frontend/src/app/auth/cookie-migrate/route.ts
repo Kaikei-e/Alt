@@ -1,19 +1,39 @@
 import { NextResponse } from "next/server";
 
-export async function GET() {
-  const headers = new Headers();
+export async function GET(request: Request) {
+  const responseHeaders = new Headers();
 
-  // 古い狭域Cookieの完全削除（存在してもしてなくてもOK）
-  headers.append(
-    "Set-Cookie",
-    "ory_kratos_session=; Max-Age=0; Path=/; Domain=curionoah.com; HttpOnly; Secure; SameSite=Lax",
-  );
-  // 念のため apex 側も一度消しておく
-  headers.append(
-    "Set-Cookie",
-    "ory_kratos_session=; Max-Age=0; Path=/; Domain=.curionoah.com; HttpOnly; Secure; SameSite=Lax",
-  );
+  const fallbackOrigin =
+    process.env.NEXT_PUBLIC_APP_ORIGIN || "https://curionoah.com";
 
-  // 204で返す（UIには何も出さない）
-  return new NextResponse(null, { status: 204, headers });
+  let protocol = "https";
+  try {
+    protocol =
+      request.headers.get("x-forwarded-proto") || new URL(request.url).protocol.replace(":", "");
+  } catch {
+    protocol = "https";
+  }
+  const isSecure = protocol === "https";
+
+  let hostname: string;
+  try {
+    const originUrl = new URL(request.url);
+    hostname = originUrl.hostname;
+  } catch {
+    hostname = new URL(fallbackOrigin).hostname;
+  }
+
+  const apexDomain =
+    hostname === "localhost" || hostname === "127.0.0.1"
+      ? hostname
+      : `.${hostname}`;
+  const secureFlag = isSecure ? "; Secure" : "";
+
+  const buildCookie = (domain: string) =>
+    `ory_kratos_session=; Max-Age=0; Path=/; Domain=${domain}; HttpOnly; SameSite=Lax${secureFlag}`;
+
+  responseHeaders.append("Set-Cookie", buildCookie(hostname));
+  responseHeaders.append("Set-Cookie", buildCookie(apexDomain));
+
+  return new NextResponse(null, { status: 204, headers: responseHeaders });
 }

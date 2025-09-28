@@ -6,6 +6,7 @@ const PUBLIC = [
   /^\/auth(\/|$)/,
   /^\/api(\/|$)/,
   /^\/_next(\/|$)/,
+  /^\/ory(\/|$)/,
   /^\/static(\/|$)/,
   /^\/favicon\.ico$/,
 ];

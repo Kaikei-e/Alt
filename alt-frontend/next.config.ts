@@ -28,14 +28,24 @@ const mustPublicOrigin = (k: string) => {
   const isLocalhost =
     origin.includes("localhost") || origin.includes("127.0.0.1");
 
-  if (!isTestOrDev && !origin.startsWith("https://")) {
+  const url = new URL(v);
+  const hostIsLocal =
+    url.hostname === "localhost" ||
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "0.0.0.0";
+
+  if (!isTestOrDev && !origin.startsWith("https://") && !hostIsLocal) {
     throw new Error(
       `[ENV] ${k} must be HTTPS origin in production (got: ${origin})`,
     );
   }
 
   // In test/dev, allow localhost HTTP origins
-  if ((isTestOrDev && isLocalhost) || origin.startsWith("https://")) {
+  if (
+    (isTestOrDev && isLocalhost) ||
+    origin.startsWith("https://") ||
+    hostIsLocal
+  ) {
     // Valid
   } else if (!origin.startsWith("https://") && !origin.startsWith("http://")) {
     throw new Error(
@@ -45,6 +55,26 @@ const mustPublicOrigin = (k: string) => {
 
   if (/\.cluster\.local(\b|:|\/)/i.test(origin)) {
     throw new Error(`[ENV] ${k} must be PUBLIC FQDN (got: ${origin})`);
+  }
+};
+
+const resolveKratosProxyDestination = () => {
+  const fallback = "https://curionoah.com/ory/:path*";
+  const raw =
+    process.env.KRATOS_PUBLIC_URL ||
+    process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL ||
+    "https://curionoah.com/ory";
+
+  try {
+    const url = new URL(raw);
+    const sanitizedPath = url.pathname.replace(/\/+$/, "");
+    const base = sanitizedPath === "/" ? "" : sanitizedPath;
+    return `${url.origin}${base}/:path*`;
+  } catch {
+    console.warn(
+      "[next.config] Falling back to default Kratos proxy destination due to invalid URL",
+    );
+    return fallback;
   }
 };
 
@@ -96,6 +126,10 @@ const nextConfig = {
 
   // CSP violations reporting endpoint and /ory proxy for Kratos
   async rewrites() {
+    const kratosProxyDestination =
+      process.env.NODE_ENV === "test"
+        ? "http://localhost:4545/:path*"
+        : resolveKratosProxyDestination();
     return [
       {
         source: "/api/csp-report",
@@ -104,10 +138,7 @@ const nextConfig = {
       // Proxy /ory requests to Kratos service (use mock server in test environment)
       {
         source: "/ory/:path*",
-        destination:
-          process.env.NODE_ENV === "test"
-            ? `http://localhost:4545/:path*`
-            : `${process.env.KRATOS_PUBLIC_URL || "https://curionoah.com"}/:path*`,
+        destination: kratosProxyDestination,
       },
     ];
   },

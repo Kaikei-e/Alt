@@ -1,33 +1,52 @@
 // Centralized public env constants for client/runtime usage
 // Use only static property access so Next can inline at build time.
 
-function assertPublicOrigin(name: string, value: string | undefined): string {
+type UrlValidationOptions = {
+  allowPath?: boolean;
+};
+
+function assertPublicUrl(
+  name: string,
+  value: string | undefined,
+  { allowPath = false }: UrlValidationOptions = {},
+): string {
   if (!value) throw new Error(`${name} missing`);
-  let origin: string;
+
+  let parsed: URL;
   try {
-    origin = new URL(value).origin;
+    parsed = new URL(value);
   } catch {
     throw new Error(`${name} must be a valid URL (got: ${value})`);
   }
 
-  // Allow HTTP in test/development environments
+  if (parsed.search || parsed.hash) {
+    throw new Error(`${name} must not include query or hash fragments`);
+  }
+
+  // Allow HTTP in test/development environments or for localhost even in
+  // production (local docker-compose).
   const isTestOrDev =
     process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development";
-  const isLocalhost =
-    origin.includes("localhost") || origin.includes("127.0.0.1");
+  const hostIsLocal =
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "0.0.0.0";
 
-  if (!isTestOrDev && !origin.startsWith("https://")) {
+  if (!isTestOrDev && parsed.protocol !== "https:" && !hostIsLocal) {
     throw new Error(
-      `${name} must be HTTPS origin in production (got: ${origin})`,
+      `${name} must be HTTPS origin in production (got: ${parsed.protocol}//${parsed.host})`,
     );
   }
 
-  // In test/dev, allow localhost HTTP origins
-  if ((isTestOrDev && isLocalhost) || origin.startsWith("https://")) {
+  if (
+    (isTestOrDev && hostIsLocal) ||
+    parsed.protocol === "https:" ||
+    hostIsLocal
+  ) {
     // Valid
-  } else if (!origin.startsWith("https://") && !origin.startsWith("http://")) {
+  } else if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error(
-      `${name} must be a valid HTTP/HTTPS origin (got: ${origin})`,
+      `${name} must be a valid HTTP/HTTPS URL (got: ${parsed.protocol}//${parsed.host})`,
     );
   }
 
@@ -35,20 +54,30 @@ function assertPublicOrigin(name: string, value: string | undefined): string {
     "\\." + "cluster" + "\\." + "local" + "(\\b|:|\/)",
     "i",
   );
-  if (clusterLocalPattern.test(origin)) {
-    throw new Error(`${name} must be PUBLIC FQDN (got: ${origin})`);
+  if (!hostIsLocal && clusterLocalPattern.test(parsed.host)) {
+    throw new Error(`${name} must be PUBLIC FQDN (got: ${parsed.host})`);
   }
-  return origin;
+
+  if (!allowPath && parsed.pathname !== "/") {
+    throw new Error(`${name} must not include a path component (got: ${value})`);
+  }
+
+  const sanitizedPath = allowPath
+    ? parsed.pathname.replace(/\/+$/, "").replace(/^$/, "")
+    : "";
+
+  return `${parsed.origin}${sanitizedPath}`;
 }
 
-export const IDP_ORIGIN = assertPublicOrigin(
+export const IDP_ORIGIN = assertPublicUrl(
   "NEXT_PUBLIC_IDP_ORIGIN",
   process.env.NEXT_PUBLIC_IDP_ORIGIN,
 );
 
-export const KRATOS_PUBLIC_URL = assertPublicOrigin(
+export const KRATOS_PUBLIC_URL = assertPublicUrl(
   "NEXT_PUBLIC_KRATOS_PUBLIC_URL",
   process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL,
+  { allowPath: true },
 );
 
 // Optional public endpoints for CSP/connect-src etc.

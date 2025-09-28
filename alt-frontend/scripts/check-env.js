@@ -7,15 +7,21 @@ for (const k of required) {
     throw new Error(`[ENV] ${k} is required at build time`);
   }
   try {
-    const origin = new URL(v).origin;
-    if (!origin.startsWith("https://")) {
+    const parsed = new URL(v);
+    const origin = parsed.origin;
+    const hostIsLocal =
+      parsed.hostname === "localhost" ||
+      parsed.hostname === "127.0.0.1" ||
+      parsed.hostname === "0.0.0.0";
+
+    if (!origin.startsWith("https://") && !hostIsLocal) {
       throw new Error(`[ENV] ${k} must be HTTPS origin (got: ${origin})`);
     }
     const pattern = new RegExp(
       "\\." + "cluster" + "\\." + "local" + "(\\b|:|\/)",
       "i",
     );
-    if (pattern.test(origin)) {
+    if (!hostIsLocal && pattern.test(origin)) {
       throw new Error(`[ENV] ${k} must be PUBLIC FQDN (got: ${origin})`);
     }
   } catch {

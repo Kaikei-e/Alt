@@ -8,6 +8,7 @@ import {
   LoginFlow,
   UiNode,
 } from "@ory/client";
+import { KRATOS_PUBLIC_URL } from "@/lib/env.public";
 
 const kratos = new FrontendApi(
   new Configuration({
@@ -57,6 +58,14 @@ export default function LoginForm({ flowId }: { flowId: string }) {
   const [flow, setFlow] = useState<LoginFlow | LoginFlowError | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [useNativeForm, setUseNativeForm] = useState(false);
+  const defaultReturnTo =
+    process.env.NEXT_PUBLIC_RETURN_TO_DEFAULT || "https://curionoah.com/";
+  const recoveryUrl = `${KRATOS_PUBLIC_URL}/self-service/recovery/browser?return_to=${encodeURIComponent(
+    defaultReturnTo,
+  )}`;
+  const registrationUrl = `${KRATOS_PUBLIC_URL}/self-service/registration/browser?return_to=${encodeURIComponent(
+    defaultReturnTo,
+  )}`;
 
   // 1) SDK で flow を取得して nodes を描画
   // 2) 送信は SDK or ネイティブ <form> のどちらでも切替可（検証しやすくする）
@@ -522,9 +531,15 @@ export default function LoginForm({ flowId }: { flowId: string }) {
         </form>
 
         <div className="login-footer">
-          <a href="/auth/recovery" className="recovery-link">
-            Forgot your password?
-          </a>
+          <div className="footer-links">
+            <a href={recoveryUrl} className="footer-link">
+              Forgot your password?
+            </a>
+            <span className="divider">•</span>
+            <a href={registrationUrl} className="footer-link">
+              Create a new account
+            </a>
+          </div>
         </div>
 
         {/* Debug toggle (only show in development) */}
@@ -631,15 +646,27 @@ export default function LoginForm({ flowId }: { flowId: string }) {
           border-top: 1px solid var(--surface-border);
         }
 
-        .recovery-link {
-          color: var(--alt-primary);
+        .footer-links {
+          display: flex;
+          gap: var(--space-2);
+          justify-content: center;
+          flex-wrap: wrap;
           font-size: var(--text-sm);
+          color: var(--text-muted);
+        }
+
+        .footer-link {
+          color: var(--alt-primary);
           text-decoration: none;
         }
 
-        .recovery-link:hover {
+        .footer-link:hover {
           color: var(--alt-secondary);
           text-decoration: underline;
+        }
+
+        .divider {
+          color: var(--text-muted);
         }
 
         .debug-toggle {

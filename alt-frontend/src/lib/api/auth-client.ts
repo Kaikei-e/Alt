@@ -30,7 +30,30 @@ export class AuthAPIClient {
     this.debugMode = process.env.NODE_ENV === "development";
     this.requestId = 0;
     // TODO.md要件: Kratos 公開URL直接アクセス用（必須・ハードコード禁止）
-    this.idpOrigin = IDP_ORIGIN;
+    const envIdpOrigin = IDP_ORIGIN;
+    const runtimeOrigin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_APP_ORIGIN || envIdpOrigin;
+
+    const isLocal = (value: string) => {
+      try {
+        const hostname = new URL(value).hostname;
+        return (
+          hostname === "localhost" ||
+          hostname === "127.0.0.1" ||
+          hostname === "0.0.0.0"
+        );
+      } catch {
+        return false;
+      }
+    };
+
+    if (envIdpOrigin && isLocal(envIdpOrigin) && runtimeOrigin) {
+      this.idpOrigin = runtimeOrigin;
+    } else {
+      this.idpOrigin = envIdpOrigin;
+    }
     this.redirect = options?.redirect ?? defaultRedirect;
 
     // TODO.md 手順0: 配信中のバンドルの値を確認
