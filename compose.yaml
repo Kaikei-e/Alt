@@ -16,6 +16,7 @@ networks:
 volumes:
   # Persistent storage volumes for data persistence
   db_data:                    # PostgreSQL database data
+  kratos_db_data:             # Kratos PostgreSQL database data
   meili_data:                 # MeiliSearch index data
   rask_log_aggregator_data:   # Rask log aggregator data
   clickhouse_data:            # ClickHouse database data
@@ -455,6 +456,42 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  kratos-db:
+    image: postgres:16-alpine
+    restart: always
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    environment:
+      POSTGRES_DB: ${KRATOS_DB_NAME:-kratos}
+      POSTGRES_USER: ${KRATOS_DB_USER:-kratos_user}
+      POSTGRES_PASSWORD: ${KRATOS_DB_PASSWORD:-kratos_password}
+    volumes:
+      - kratos_db_data:/var/lib/postgresql/data
+      - ./kratos-db/init:/docker-entrypoint-initdb.d:rw
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KRATOS_DB_USER:-kratos_user} -d ${KRATOS_DB_NAME:-kratos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    tty: true
+    labels:
+      - rask.group=kratos-db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   migrate:
     <<: *shared-env-file
     build:
@@ -462,11 +499,12 @@ services:
       dockerfile: docker/Dockerfile
     container_name: db_migrator
     environment:
-      DATABASE_URL: "postgres://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-devdb}?sslmode=disable&search_path=public"
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable&search_path=public"
       MIGRATE_MAX_RETRIES: "12"
       MIGRATE_RETRY_INTERVAL: "5"
       MIGRATE_BASELINE_VERSION: ${MIGRATE_BASELINE_VERSION:-}
       ATLAS_ENV: ${ATLAS_ENV:-kubernetes}
+      ATLAS_REVISIONS_SCHEMA: "public"
     depends_on:
       db:
         condition: service_healthy
@@ -610,16 +648,18 @@ services:
     image: oryd/kratos:v1.2.0
     command: ["migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
     environment:
-      - KRATOS_DB_USER=${KRATOS_DB_USER:-alt_db_user}
-      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD:-REPLACE_ME_HOGE_HOGE}
-      - KRATOS_DB_HOST=${KRATOS_DB_HOST:-db}
+      - DSN=postgres://${KRATOS_DB_USER:-kratos_user}:${KRATOS_DB_PASSWORD:-kratos_password}@${KRATOS_DB_HOST:-kratos-db}:${KRATOS_DB_PORT:-5432}/${KRATOS_DB_NAME:-kratos}?sslmode=${KRATOS_DB_SSLMODE:-disable}
+      - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
+      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD:-kratos_password}
+      - KRATOS_DB_HOST=${KRATOS_DB_HOST:-kratos-db}
       - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
-      - KRATOS_DB_NAME=${KRATOS_DB_NAME:-alt}
+      - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
     volumes:
       - ./kratos:/etc/config/kratos:ro
     depends_on:
-      - db
+      kratos-db:
+        condition: service_healthy
     restart: "no"
     networks:
       - alt-network
@@ -631,11 +671,12 @@ services:
       - "4433:4433"  # public
       - "4434:4434"  # admin
     environment:
-      - KRATOS_DB_USER=${KRATOS_DB_USER:-alt_db_user}
-      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD:-nQbZfvNrxsp7FsakT25wGfzGxoNjA6}
-      - KRATOS_DB_HOST=${KRATOS_DB_HOST:-db}
+      - DSN=postgres://${KRATOS_DB_USER:-kratos_user}:${KRATOS_DB_PASSWORD:-kratos_password}@${KRATOS_DB_HOST:-kratos-db}:${KRATOS_DB_PORT:-5432}/${KRATOS_DB_NAME:-kratos}?sslmode=${KRATOS_DB_SSLMODE:-disable}
+      - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
+      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD:-kratos_password}
+      - KRATOS_DB_HOST=${KRATOS_DB_HOST:-kratos-db}
       - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
-      - KRATOS_DB_NAME=${KRATOS_DB_NAME:-alt}
+      - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
       - KRATOS_ADMIN_URL=${KRATOS_ADMIN_URL:-http://kratos-admin:4434/}
@@ -656,8 +697,10 @@ services:
     volumes:
       - ./kratos:/etc/config/kratos:ro
     depends_on:
-      - db
-      - kratos-migrate
+      kratos-db:
+        condition: service_healthy
+      kratos-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:4434/admin/health/ready"]
       interval: 10s
