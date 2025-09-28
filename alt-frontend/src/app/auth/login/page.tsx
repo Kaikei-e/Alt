@@ -15,7 +15,7 @@ export default async function Page({
   if (!flow) {
     // 同一オリジンの /ory に統一
     redirect(
-      `/ory/self-service/login/browser?return_to=${encodeURIComponent(returnTo)}`,
+      `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${encodeURIComponent(returnTo)}`,
     );
   }
 

@@ -42,7 +42,7 @@ export function handleFlowExpiredError(error: unknown): void {
     const currentUrl = window.location.href;
     const returnTo = encodeURIComponent(currentUrl.split("?")[0]);
     window.location.replace(
-      `/ory/self-service/login/browser?return_to=${returnTo}`,
+      `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${returnTo}`,
     );
   }
 }

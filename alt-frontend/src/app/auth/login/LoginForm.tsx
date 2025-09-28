@@ -12,7 +12,7 @@ import { KRATOS_PUBLIC_URL } from "@/lib/env.public";
 
 const kratos = new FrontendApi(
   new Configuration({
-    basePath: "/ory",
+    basePath: process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL,
     baseOptions: { credentials: "include" }, // ★必須（AJAXでCookieを送る）
   }),
 );
@@ -79,14 +79,14 @@ export default function LoginForm({ flowId }: { flowId: string }) {
         // 410の場合は新しいフローに再リダイレクト
         if (status === 410) {
           const currentUrl = window.location.href;
-          const redirectUrl = `/ory/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
+          const redirectUrl = `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
           safeRedirect(redirectUrl);
         }
         // 403 CSRF エラーの場合も新しいフローに再リダイレクト
         else if (status === 403) {
           console.warn("CSRF error detected, creating new login flow");
           const currentUrl = window.location.href;
-          const redirectUrl = `/ory/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
+          const redirectUrl = `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`;
           safeRedirect(redirectUrl);
         }
         // その他のエラーの場合はエラー状態を設定

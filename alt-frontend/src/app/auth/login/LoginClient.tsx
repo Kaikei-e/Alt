@@ -9,7 +9,7 @@ import {
 } from "@ory/client";
 
 const frontend = new FrontendApi(
-  new Configuration({ basePath: "/ory", baseOptions: { credentials: "include" } }),
+  new Configuration({ basePath: process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL, baseOptions: { credentials: "include" } }),
 );
 
 // URL validation helper to prevent open redirects

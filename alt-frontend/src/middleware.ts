@@ -42,12 +42,13 @@ export async function middleware(req: NextRequest) {
     // ignore and fall through
   }
 
-  // 未ログイン時はアプリ内のログインUIへ
+  // 未ログイン時は直接Kratosのログインフローへ（リダイレクトチェーンを短縮）
   const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN || req.nextUrl.origin;
-  const loginPage = new URL(`/auth/login`, appOrigin);
-  loginPage.searchParams.set("return_to", `${appOrigin}${pathname}${search}`);
+  const kratosUrl = process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL || `${appOrigin}/ory`;
+  const returnTo = `${appOrigin}${pathname}${search}`;
+  const loginFlowUrl = `${kratosUrl}/self-service/login/browser?return_to=${encodeURIComponent(returnTo)}`;
 
-  return NextResponse.redirect(loginPage, 303);
+  return NextResponse.redirect(loginFlowUrl, 303);
 }
 
 export const config = {
