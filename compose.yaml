@@ -668,26 +668,3 @@ services:
     networks:
       - alt-network
 
-  kratos-admin:
-    image: oryd/kratos:v1.2.0
-    command: ["serve", "admin", "--config", "/etc/config/kratos/kratos.yml"]
-    ports:
-      - "4435:4434"  # admin interface
-    environment:
-      - KRATOS_DB_USER=${KRATOS_DB_USER:-alt_db_user}
-      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD:-nQbZfvNrxsp7FsakT25wGfzGxoNjA6}
-      - KRATOS_DB_HOST=${KRATOS_DB_HOST:-db}
-      - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
-      - KRATOS_DB_NAME=${KRATOS_DB_NAME:-alt}
-      - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
-      - KRATOS_ADMIN_URL=${KRATOS_ADMIN_URL:-http://kratos-admin:4434/}
-      - KRATOS_COOKIE_SECRET=${KRATOS_COOKIE_SECRET:-kratos_cookie_secret_32_chars_xx}
-      - KRATOS_CIPHER_SECRET=${KRATOS_CIPHER_SECRET:-kratos_cipher_secret_32_chars}
-    volumes:
-      - ./kratos:/etc/config/kratos:ro
-    depends_on:
-      - db
-      - kratos-migrate
-    restart: unless-stopped
-    networks:
-      - alt-network
