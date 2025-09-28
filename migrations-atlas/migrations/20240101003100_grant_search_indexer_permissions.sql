@@ -8,8 +8,8 @@
 -- Articles table access (for reading articles)
 GRANT SELECT ON articles TO search_indexer_user;
 
--- Tags table access (for reading tag information)
-GRANT SELECT ON tags TO search_indexer_user;
+-- Feed_tags table access (for reading tag information)
+GRANT SELECT ON feed_tags TO search_indexer_user;
 
 -- Article_tags table access (for reading article-tag relationships)
 GRANT SELECT ON article_tags TO search_indexer_user;

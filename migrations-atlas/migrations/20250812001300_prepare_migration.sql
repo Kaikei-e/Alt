@@ -55,6 +55,7 @@ INSERT INTO identity_credential_identifiers (
     id,
     identifier,
     identity_credential_id,
+    identity_credential_type_id,
     created_at,
     updated_at,
     nid
@@ -62,6 +63,7 @@ INSERT INTO identity_credential_identifiers (
     gen_random_uuid(),
     'legacy@alt-reader.local',
     (SELECT id FROM identity_credentials WHERE identity_id = '00000000-0000-0000-0000-000000000001' LIMIT 1),
+    (SELECT id FROM identity_credential_types WHERE name = 'password' LIMIT 1),
     NOW(),
     NOW(),
     (SELECT id FROM networks LIMIT 1)

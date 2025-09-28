@@ -14,5 +14,5 @@ GRANT USAGE ON SCHEMA public TO tag_generator;
 
 -- Table-level privileges
 GRANT SELECT ON articles TO tag_generator;
-GRANT SELECT, INSERT ON tags TO tag_generator;
+GRANT SELECT, INSERT ON feed_tags TO tag_generator;
 GRANT SELECT, INSERT ON article_tags TO tag_generator;
