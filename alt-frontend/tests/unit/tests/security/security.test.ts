@@ -238,7 +238,7 @@ describe("Security Tests", () => {
 
       // Verify the URL construction doesn't allow path traversal
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/auth/validate"),
+        expect.stringContaining("/api/fe-auth/validate"),
         expect.any(Object),
       );
 

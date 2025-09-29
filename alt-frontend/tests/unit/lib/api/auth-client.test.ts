@@ -142,16 +142,17 @@ describe("AuthAPIClient", () => {
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: mockUser }),
+        json: () => Promise.resolve({ ok: true, user: mockUser }),
       });
 
       const result = await client.getCurrentUser();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringMatching(/\/api\/auth\/validate$/),
+        expect.stringMatching(/\/api\/fe-auth\/validate$/),
         expect.objectContaining({
           method: "GET",
           credentials: "include",
+          cache: "no-store",
         }),
       );
       expect(result).toEqual(mockUser);

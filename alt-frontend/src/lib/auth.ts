@@ -6,7 +6,7 @@ export interface AuthValidateResponse {
 
 export async function fetchAuth(): Promise<AuthValidateResponse> {
   // 🔧 修正: 正しいAPIパスに変更（v1/authを削除）
-  const res = await fetch("/api/auth/validate", {
+  const res = await fetch("/api/fe-auth/validate", {
     credentials: "include",
     headers: {
       "Cache-Control": "no-cache",
@@ -15,7 +15,13 @@ export async function fetchAuth(): Promise<AuthValidateResponse> {
 
   if (res.status === 200) {
     const data = await res.json();
-    return data;
+    const session = data?.session;
+    const identity = session?.identity;
+    return {
+      valid: Boolean(data?.ok),
+      session_id: session?.id,
+      identity_id: identity?.id,
+    };
   }
 
   if (res.status === 401) {

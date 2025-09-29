@@ -117,6 +117,7 @@ export class AuthAPIClient {
       const response = await fetch(url, {
         method: "GET",
         credentials: "include",
+        cache: "no-store",
       });
 
       if (response.status === 401) {
@@ -127,8 +128,25 @@ export class AuthAPIClient {
         throw new Error(this.getMethodDescription("GET", "/validate"));
       }
 
-      const data = await response.json();
-      return data.data as User;
+      const data = (await response.json()) as {
+        ok?: boolean;
+        user?: User;
+        data?: unknown;
+      };
+
+      if (!data?.ok) {
+        return null;
+      }
+
+      if (data.user) {
+        return data.user;
+      }
+
+      if (data.data && typeof data.data === "object") {
+        return data.data as User;
+      }
+
+      return null;
     } catch (error: unknown) {
       if (
         error instanceof Error &&
