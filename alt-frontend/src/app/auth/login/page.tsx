@@ -22,5 +22,5 @@ export default async function Page({
 
   // ここでは SSR で flow を取りにいかない（CORS/Cookie分離の罠を避ける）
   // UI はクライアントで取得（下の LoginForm.tsx）
-  return <LoginForm flowId={flow} />;
+  return <LoginForm flowId={flow} returnTo={returnTo} />;
 }
