@@ -5,6 +5,10 @@ import type {
   UserPreferences,
 } from "@/types/auth";
 import { IDP_ORIGIN } from "@/lib/env.public";
+import {
+  buildBackendIdentityHeaders,
+  type BackendIdentityHeaders,
+} from "@/lib/auth/backend-headers";
 
 // Redirect function interface for dependency injection
 type RedirectFn = (url: string) => void;
@@ -22,6 +26,10 @@ export class AuthAPIClient {
   private requestId: number;
   private idpOrigin: string;
   private redirect: RedirectFn;
+  private currentUser: User | null;
+  private currentSessionId: string | null;
+  private sessionHeaders: BackendIdentityHeaders | null;
+  private inflightSessionPromise: Promise<User | null> | null;
 
   constructor(options?: { redirect?: RedirectFn }) {
     // Use relative API proxy endpoints for secure HTTPS communication
@@ -55,6 +63,10 @@ export class AuthAPIClient {
       this.idpOrigin = envIdpOrigin;
     }
     this.redirect = options?.redirect ?? defaultRedirect;
+    this.currentUser = null;
+    this.currentSessionId = null;
+    this.sessionHeaders = null;
+    this.inflightSessionPromise = null;
 
     // TODO.md 手順0: 配信中のバンドルの値を確認
     console.log("[AUTH-CLIENT] NEXT_PUBLIC_IDP_ORIGIN =", this.idpOrigin);
@@ -105,15 +117,17 @@ export class AuthAPIClient {
 
   async logout(): Promise<void> {
     await this.makeRequest("POST", "/logout");
+    this.clearSessionState();
   }
 
   async getCurrentUser(): Promise<User | null> {
     try {
       // Use FE route handler to validate with Kratos whoami via same-origin cookie
-      const url = new URL(
-        `/api/fe-auth/validate`,
-        window.location?.origin || "http://localhost:3000",
-      ).toString();
+      const origin =
+        typeof window !== "undefined"
+          ? window.location?.origin
+          : process.env.NEXT_PUBLIC_APP_ORIGIN || "http://localhost:3000";
+      const url = new URL(`/api/fe-auth/validate`, origin).toString();
       const response = await fetch(url, {
         method: "GET",
         credentials: "include",
@@ -121,10 +135,12 @@ export class AuthAPIClient {
       });
 
       if (response.status === 401) {
+        this.clearSessionState();
         return null; // Not authenticated
       }
 
       if (!response.ok) {
+        this.clearSessionState();
         throw new Error(this.getMethodDescription("GET", "/validate"));
       }
 
@@ -132,21 +148,27 @@ export class AuthAPIClient {
         ok?: boolean;
         user?: User;
         data?: unknown;
+        session?: { id?: string | null } | null;
       };
 
       if (!data?.ok) {
+        this.clearSessionState();
         return null;
       }
 
-      if (data.user) {
-        return data.user;
+      const user = (data.user || data.data) as User | undefined;
+
+      if (!user) {
+        this.clearSessionState();
+        return null;
       }
 
-      if (data.data && typeof data.data === "object") {
-        return data.data as User;
-      }
+      this.currentUser = user;
+      this.currentSessionId = data.session?.id ?? null;
+      this.sessionHeaders =
+        buildBackendIdentityHeaders(user, this.currentSessionId) ?? null;
 
-      return null;
+      return user;
     } catch (error: unknown) {
       if (
         error instanceof Error &&
@@ -154,10 +176,37 @@ export class AuthAPIClient {
         (error.message.includes("401") ||
           error.message.includes("Unauthorized"))
       ) {
+        this.clearSessionState();
         return null; // Not authenticated
       }
+      this.clearSessionState();
       throw error;
     }
+  }
+
+  async getSessionHeaders(
+    refresh = false,
+  ): Promise<BackendIdentityHeaders | null> {
+    if (refresh) {
+      this.clearSessionState();
+    }
+
+    if (!refresh && this.sessionHeaders) {
+      return this.sessionHeaders;
+    }
+
+    if (this.inflightSessionPromise) {
+      await this.inflightSessionPromise;
+      return this.sessionHeaders;
+    }
+
+    const loader = this.getCurrentUser().finally(() => {
+      this.inflightSessionPromise = null;
+    });
+
+    this.inflightSessionPromise = loader;
+    await loader;
+    return this.sessionHeaders;
   }
 
   async getCSRFToken(): Promise<string | null> {
@@ -384,6 +433,13 @@ export class AuthAPIClient {
     }
 
     return new Error(`${context}: Unknown error occurred`);
+  }
+
+  private clearSessionState() {
+    this.currentUser = null;
+    this.currentSessionId = null;
+    this.sessionHeaders = null;
+    this.inflightSessionPromise = null;
   }
 
   private getMethodDescription(method: string, endpoint: string): string {

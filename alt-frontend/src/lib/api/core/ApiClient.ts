@@ -1,6 +1,7 @@
 import { ApiError } from "./ApiError";
 import { CacheManager, defaultCacheConfig } from "../cache/CacheManager";
 import { AuthInterceptor, LoginBanner } from "../auth";
+import { authAPI } from "../auth-client";
 
 export interface ApiConfig {
   baseUrl: string;
@@ -21,7 +22,6 @@ export class ApiClient {
   private authInterceptor: AuthInterceptor;
   private pendingRequests = new Map<string, Promise<any>>();
   private loginBanner: LoginBanner;
-
   constructor(
     config: ApiConfig = defaultApiConfig,
     cacheManager?: CacheManager,
@@ -174,6 +174,33 @@ export class ApiClient {
     }
 
     try {
+      const identityHeaders = await this.resolveIdentityHeaders();
+      if (Object.keys(identityHeaders).length > 0) {
+        const mergedHeaders: Record<string, string> = {};
+        const existing = enhancedOptions.headers;
+
+        if (existing instanceof Headers) {
+          existing.forEach((value, key) => {
+            mergedHeaders[key] = value;
+          });
+        } else if (Array.isArray(existing)) {
+          for (const [key, value] of existing) {
+            mergedHeaders[key] = value as string;
+          }
+        } else if (existing && typeof existing === "object") {
+          Object.assign(mergedHeaders, existing as Record<string, string>);
+        }
+
+        enhancedOptions.headers = {
+          ...mergedHeaders,
+          ...identityHeaders,
+        };
+      }
+    } catch {
+      // Ignore header enrichment errors to avoid blocking the request outright.
+    }
+
+    try {
       const response = await fetch(url, {
         ...enhancedOptions,
         credentials: "include",
@@ -208,5 +235,22 @@ export class ApiClient {
   destroy(): void {
     this.cacheManager.destroy();
     this.clearCache();
+  }
+
+  private async resolveIdentityHeaders(): Promise<Record<string, string>> {
+    try {
+      if (typeof window !== "undefined") {
+        return (await authAPI.getSessionHeaders()) ?? {};
+      }
+
+      const { getServerSessionHeaders } = await import("../../auth/server-headers");
+      return (await getServerSessionHeaders()) ?? {};
+    } catch (error) {
+      // 本番環境ではログを出力しない（セキュリティ上の理由）
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[ApiClient] Failed to resolve identity headers", error);
+      }
+      return {};
+    }
   }
 }

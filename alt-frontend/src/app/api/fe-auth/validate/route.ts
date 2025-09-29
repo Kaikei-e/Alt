@@ -3,13 +3,29 @@ import { NextResponse } from "next/server";
 import type { Session } from "@ory/client";
 import type { User } from "@/types/auth";
 
+import { isUuid } from "@/lib/auth/backend-headers";
+
 const CACHE_CONTROL_NO_STORE = "no-store";
 
 const asUserRole = (value: unknown): User["role"] => {
-  if (value === "admin" || value === "readonly" || value === "user") {
-    return value;
+  if (typeof value !== "string") {
+    return "user";
   }
-  return "user";
+
+  const normalized = value.toLowerCase();
+
+  switch (normalized) {
+    case "admin":
+      return "admin";
+    case "readonly":
+      return "readonly";
+    case "tenant_admin":
+    case "tenant-admin":
+    case "tenantadmin":
+      return "tenant_admin";
+    default:
+      return "user";
+  }
 };
 
 const pickString = (
@@ -23,6 +39,71 @@ const pickString = (
     }
   }
   return undefined;
+};
+
+const extractNestedString = (
+  source: Record<string, unknown>,
+  keys: string[],
+): string | undefined => {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (value && typeof value === "object") {
+      const nested = value as Record<string, unknown>;
+      const nestedCandidate = extractNestedString(nested, ["id", "uuid", "value"]);
+      if (nestedCandidate) {
+        return nestedCandidate;
+      }
+    }
+  }
+
+  return undefined;
+};
+
+const resolveTenantId = (
+  identity: Session["identity"],
+  merged: Record<string, unknown>,
+): string => {
+  const candidates = [
+    extractNestedString(merged, ["tenant_id", "tenantId", "tenantID", "tenant"]),
+    extractNestedString(merged, ["organization_id", "organizationId", "org_id", "org"]),
+    extractNestedString(merged, ["workspace_id", "workspaceId"]),
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    if (isUuid(candidate)) {
+      return candidate;
+    }
+  }
+
+  if (identity?.metadata_public && typeof identity.metadata_public === "object") {
+    const nestedCandidate = extractNestedString(identity.metadata_public as Record<string, unknown>, ["tenant_id", "tenant", "id"]);
+    if (nestedCandidate && isUuid(nestedCandidate)) {
+      return nestedCandidate;
+    }
+  }
+
+  if (identity?.traits && typeof identity.traits === "object") {
+    const nestedCandidate = extractNestedString(identity.traits as Record<string, unknown>, ["tenant_id", "tenant", "id"]);
+    if (nestedCandidate && isUuid(nestedCandidate)) {
+      return nestedCandidate;
+    }
+  }
+
+  // Fallback: use the identity ID as tenant when no explicit mapping exists.
+  if (identity?.id && isUuid(identity.id)) {
+    return identity.id;
+  }
+
+  const fallbackTenant = (process.env.DEFAULT_TENANT_ID ?? "").trim();
+  if (isUuid(fallbackTenant)) {
+    return fallbackTenant;
+  }
+
+  throw new Error("Tenant identifier missing from Kratos identity metadata");
 };
 
 const sessionToUser = (session: Session): User => {
@@ -40,9 +121,8 @@ const sessionToUser = (session: Session): User => {
     identity.verifiable_addresses?.[0]?.value ||
     "";
   const name = pickString(merged, "name", "full_name", "display_name");
-  const role = asUserRole(pickString(merged, "role", "user_role"));
-  const tenantId =
-    pickString(merged, "tenantId", "tenant_id", "org_id") || "default";
+  const role = asUserRole(pickString(merged, "role", "user_role", "role_id"));
+  const tenantId = resolveTenantId(identity, merged);
 
   const createdAt = identity.created_at ?? session.issued_at ?? new Date().toISOString();
   const lastLoginAt = session.authenticated_at ?? session.issued_at ?? undefined;
@@ -82,7 +162,7 @@ const resolveKratosBaseUrl = (origin: string): string => {
 };
 
 export async function GET() {
-  const headerStore = headers();
+  const headerStore = await headers();
   const cookieHeader = headerStore.get("cookie");
 
   if (!cookieHeader || !cookieHeader.trim()) {

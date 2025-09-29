@@ -12,7 +12,7 @@ export interface User {
   tenantId: string;
   email: string;
   name?: string;
-  role: "admin" | "user" | "readonly";
+  role: "admin" | "user" | "readonly" | "tenant_admin";
   preferences?: UserPreferences;
   createdAt: string;
   lastLoginAt?: string;

@@ -123,9 +123,8 @@ const nextConfig = {
   // Essential optimizations
   compress: true,
   poweredByHeader: false,
-  
+
   // Performance optimizations
-  swcMinify: true,
   reactStrictMode: true,
 
   // CSP violations reporting endpoint and /ory proxy for Kratos
