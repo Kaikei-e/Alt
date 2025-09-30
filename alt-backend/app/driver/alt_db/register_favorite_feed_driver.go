@@ -1,6 +1,7 @@
 package alt_db
 
 import (
+	"alt/domain"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -10,6 +11,13 @@ import (
 )
 
 func (r *AltDBRepository) RegisterFavoriteFeed(ctx context.Context, url string) (err error) {
+	// Get user from context for multi-tenant support
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		logger.SafeError("user context not found", "error", err)
+		return errors.New("authentication required")
+	}
+
 	cleanURL := strings.TrimSpace(url)
 	if cleanURL == "" {
 		logger.SafeError("cannot register empty favorite feed url")
@@ -36,9 +44,13 @@ func (r *AltDBRepository) RegisterFavoriteFeed(ctx context.Context, url string) 
 		return pgx.ErrNoRows
 	}
 
-	_, err = tx.Exec(ctx, "INSERT INTO favorite_feeds (feed_id) VALUES ($1) ON CONFLICT DO NOTHING", feedID)
+	// Insert with user_id for multi-tenant support
+	// ON CONFLICT now uses composite primary key (user_id, feed_id)
+	_, err = tx.Exec(ctx,
+		"INSERT INTO favorite_feeds (user_id, feed_id) VALUES ($1, $2) ON CONFLICT (user_id, feed_id) DO NOTHING",
+		user.UserID, feedID)
 	if err != nil {
-		logger.SafeError("Error inserting favorite feed", "error", err)
+		logger.SafeError("Error inserting favorite feed", "error", err, "user_id", user.UserID)
 		return err
 	}
 
