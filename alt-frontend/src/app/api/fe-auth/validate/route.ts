@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import type { Session } from "@ory/client";
+import { Configuration, FrontendApi, type Session } from "@ory/client";
 import type { User } from "@/types/auth";
 
 import { isUuid } from "@/lib/auth/backend-headers";
@@ -153,12 +153,32 @@ const sessionToUser = (session: Session): User => {
   return user;
 };
 
-const resolveKratosBaseUrl = (origin: string): string => {
-  const configured =
-    process.env.KRATOS_INTERNAL_URL ||
-    process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL;
-  const base = configured || `${origin.replace(/\/$/, "")}/ory`;
-  return base.replace(/\/$/, "");
+// Simplified: Use single Kratos internal URL (Ory best practice)
+const getKratosUrl = (): string => {
+  const kratosUrl = process.env.KRATOS_INTERNAL_URL;
+  if (!kratosUrl) {
+    throw new Error("KRATOS_INTERNAL_URL environment variable is not set");
+  }
+  return kratosUrl.replace(/\/$/, "");
+};
+
+// Single cached client instance
+let oryClient: FrontendApi | null = null;
+
+const getOryClient = (): FrontendApi => {
+  if (!oryClient) {
+    const baseUrl = getKratosUrl();
+    oryClient = new FrontendApi(
+      new Configuration({
+        basePath: baseUrl,
+        baseOptions: {
+          withCredentials: true,
+          timeout: 5000,
+        },
+      }),
+    );
+  }
+  return oryClient;
 };
 
 export async function GET() {
@@ -174,50 +194,17 @@ export async function GET() {
     return res;
   }
 
-  const proto = headerStore.get("x-forwarded-proto") || "https";
-  const host = headerStore.get("host") || "localhost:3000";
-  const origin = `${proto}://${host}`;
-  const kratosBaseUrl = resolveKratosBaseUrl(origin);
-
   try {
-    const response = await fetch(`${kratosBaseUrl}/sessions/whoami`, {
-      headers: { cookie: cookieHeader },
-      cache: "no-store",
-      credentials: "include",
-      signal: AbortSignal.timeout(3000),
+    const client = getOryClient();
+    // Call Kratos toSession endpoint with cookies
+    // Note: withCredentials is not needed as we're explicitly passing cookies in headers
+    const { data: session } = await client.toSession(undefined, {
+      headers: {
+        cookie: cookieHeader,
+        // Ensure we request JSON response
+        "Accept": "application/json",
+      },
     });
-
-    if (response.status === 401) {
-      const res = NextResponse.json({ ok: false, error: "unauthorized" }, {
-        status: 401,
-      });
-      res.headers.set("cache-control", CACHE_CONTROL_NO_STORE);
-      return res;
-    }
-
-    if (!response.ok) {
-      const errorPayload = await response.text().catch(() => "");
-      const res = NextResponse.json(
-        {
-          ok: false,
-          error: "kratos_whoami_failed",
-          details: errorPayload,
-        },
-        { status: 502 },
-      );
-      res.headers.set("cache-control", CACHE_CONTROL_NO_STORE);
-      return res;
-    }
-
-    const session = (await response.json()) as Session;
-    if (!session || typeof session !== "object") {
-      const res = NextResponse.json(
-        { ok: false, error: "invalid_session_response" },
-        { status: 502 },
-      );
-      res.headers.set("cache-control", CACHE_CONTROL_NO_STORE);
-      return res;
-    }
 
     const user = sessionToUser(session);
     const res = NextResponse.json(
@@ -227,9 +214,26 @@ export async function GET() {
     res.headers.set("cache-control", CACHE_CONTROL_NO_STORE);
     return res;
   } catch (error: unknown) {
+    const status =
+      (error as { response?: { status?: number } }).response?.status ??
+      (error as { status?: number }).status ??
+      null;
+
+    // Unauthorized or forbidden - session invalid or expired
+    if (status === 401 || status === 403) {
+      const res = NextResponse.json(
+        { ok: false, error: "unauthorized", detail: "Session invalid or expired" },
+        { status: 401 },
+      );
+      res.headers.set("cache-control", CACHE_CONTROL_NO_STORE);
+      return res;
+    }
+
+    // Other errors (network, Kratos unavailable, etc.)
     const message = error instanceof Error ? error.message : "unknown_error";
+    console.error("Kratos session validation error:", { error, status, message });
     const res = NextResponse.json(
-      { ok: false, error: "kratos_whoami_error", message },
+      { ok: false, error: "kratos_whoami_error", message, status },
       { status: 502 },
     );
     res.headers.set("cache-control", CACHE_CONTROL_NO_STORE);

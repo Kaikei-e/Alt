@@ -82,7 +82,8 @@ export const useOryFlow = (options: UseOryFlowOptions): UseOryFlowResult => {
     if (returnTo) {
       url.searchParams.set("return_to", returnTo);
     }
-    window.location.href = url.toString();
+    // Use replace instead of href to avoid adding to history stack
+    window.location.replace(url.toString());
   }, [type, returnTo]);
 
   const loadFlow = useCallback(async () => {
@@ -106,12 +107,20 @@ export const useOryFlow = (options: UseOryFlowOptions): UseOryFlowResult => {
         (err as { response?: { status?: number }; status?: number }).response?.status ??
         (err as { status?: number }).status;
 
+      // Handle flow expired, not found, or gone errors
       if (status === 403 || status === 404 || status === 410) {
         redirectToBegin();
         return;
       }
 
-      setError((err as Error).message ?? "Flowを取得できませんでした");
+      // Handle CORS or network errors
+      const errorMessage = (err as Error).message ?? "Flowを取得できませんでした";
+      if (errorMessage.includes("CORS") || errorMessage.includes("Network")) {
+        console.error("CORS or network error fetching flow:", err);
+        setError("ネットワークエラーが発生しました。ページを再読み込みしてください。");
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -179,36 +188,55 @@ export const useOryFlow = (options: UseOryFlowOptions): UseOryFlowResult => {
           result = data as RegistrationFlow | SuccessfulNativeRegistration;
         }
 
+        // If result is a flow (validation errors, etc.), update UI with new flow
         if (isFlow(result)) {
           setFlow(result);
           return;
         }
 
+        // Successful authentication/registration
         onSuccess?.(result as SuccessResult);
 
+        // Follow Ory's redirect instructions
         const explicitRedirect = extractRedirect(result as SuccessResult);
         if (explicitRedirect) {
-          window.location.href = explicitRedirect;
+          // Use replace to avoid adding to history stack
+          window.location.replace(explicitRedirect);
           return;
         }
 
+        // Fallback redirect
         const fallback = returnTo ?? flow.return_to ?? "/";
-        window.location.href = fallback;
+        window.location.replace(fallback);
       } catch (err) {
         const response = (err as { response?: { status?: number; data?: unknown } }).response;
         const status = response?.status ?? (err as { status?: number }).status;
 
+        // Handle validation errors (400/422) - update flow with error messages
         if ((status === 400 || status === 422) && response?.data && isFlow(response.data)) {
           setFlow(response.data as AnyFlow);
           return;
         }
 
+        // Handle expired or invalid flows (403/404/410) - restart flow
         if (status === 403 || status === 404 || status === 410) {
           redirectToBegin();
           return;
         }
 
-        setError((err as Error).message ?? "送信に失敗しました");
+        // Handle CSRF token errors - restart flow
+        // Ory Kratos automatically handles CSRF tokens, but in case of mismatch
+        if (status === 400) {
+          const errorMessage = (err as Error).message?.toLowerCase() || "";
+          if (errorMessage.includes("csrf") || errorMessage.includes("token")) {
+            redirectToBegin();
+            return;
+          }
+        }
+
+        // Generic error handling
+        const errorMessage = (err as Error).message ?? "送信に失敗しました";
+        setError(errorMessage);
       } finally {
         setIsSubmitting(false);
       }

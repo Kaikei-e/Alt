@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 import ErrorState from "./_components/ErrorState";
+import EmptyFeedState from "@/components/mobile/EmptyFeedState";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
 const PAGE_SIZE = 20;
@@ -204,12 +205,8 @@ export default function FeedsPage() {
             )}
           </>
         ) : (
-          /* Empty state */
-          <Flex justify="center" align="center" py={20}>
-            <Text color="var(--alt-text-secondary)" fontSize="lg">
-              No feeds available
-            </Text>
-          </Flex>
+          /* Empty state - Use dedicated component for better UX */
+          <EmptyFeedState />
         )}
 
         {/* Infinite scroll sentinel - always rendered when feeds are present and there's more to load */}

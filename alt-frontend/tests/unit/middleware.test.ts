@@ -73,21 +73,20 @@ describe("middleware", () => {
     });
   });
 
-  describe("unauthenticated access with guard cookie", () => {
-    it("should still require login even with redirect guard cookie", async () => {
+  describe("unauthenticated access", () => {
+    it("should redirect to Kratos when no session cookie exists", async () => {
       const request = new NextRequest("https://curionoah.com/desktop/home");
-      request.cookies.set("alt_auth_redirect_guard", "1");
 
       const response = await middleware(request);
 
       expect(response.status).toBe(303);
       const location = response.headers.get("location");
-      expect(location).toContain("/auth/login");
+      expect(location).toContain("/ory/self-service/login/browser");
     });
   });
 
   describe("unauthenticated access without guard cookie", () => {
-    it("should redirect to app login with return_to parameter", async () => {
+    it("should redirect to Kratos login flow with return_to parameter", async () => {
       const request = new NextRequest("https://curionoah.com/desktop/home?test=123");
 
       const response = await middleware(request);
@@ -95,7 +94,7 @@ describe("middleware", () => {
       expect(response.status).toBe(303);
 
       const location = response.headers.get("location");
-      expect(location).toContain("/auth/login");
+      expect(location).toContain("/ory/self-service/login/browser");
       expect(location).toContain(
         "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome%3Ftest%3D123",
       );
@@ -109,10 +108,31 @@ describe("middleware", () => {
       const response = await middleware(request);
 
       const location = response.headers.get("location");
-      expect(location).toContain("/auth/login");
+      expect(location).toContain("/ory/self-service/login/browser");
       expect(location).toContain(
         "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Ffeeds%3Fcategory%3Dtech%26page%3D2",
       );
+    });
+
+    it("should not redirect when coming from login flow (prevent redirect loop)", async () => {
+      const request = new NextRequest("https://curionoah.com/home");
+      request.headers.set("referer", "https://curionoah.com/auth/login?flow=abc123");
+
+      const response = await middleware(request);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should not redirect when coming from Kratos (prevent redirect loop)", async () => {
+      const request = new NextRequest("https://curionoah.com/home");
+      request.headers.set(
+        "referer",
+        "https://curionoah.com/ory/self-service/login/browser",
+      );
+
+      const response = await middleware(request);
+
+      expect(response.status).toBe(200);
     });
   });
 
@@ -123,7 +143,7 @@ describe("middleware", () => {
       const response = await middleware(request);
 
       const location = response.headers.get("location");
-      expect(location).toContain("/auth/login");
+      expect(location).toContain("/ory/self-service/login/browser");
       expect(location).toContain(
         "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome",
       );
@@ -135,7 +155,7 @@ describe("middleware", () => {
       const response = await middleware(request);
 
       const location = response.headers.get("location");
-      expect(location).toContain("/auth/login");
+      expect(location).toContain("/ory/self-service/login/browser");
       expect(location).toContain(
         "return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings",
       );
