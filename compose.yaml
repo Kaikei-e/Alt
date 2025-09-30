@@ -498,6 +498,7 @@ services:
       context: ./migrations-atlas
       dockerfile: docker/Dockerfile
     container_name: db_migrator
+    command: ["apply"]
     environment:
       DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable&search_path=public"
       MIGRATE_MAX_RETRIES: "12"
@@ -505,6 +506,8 @@ services:
       MIGRATE_BASELINE_VERSION: ${MIGRATE_BASELINE_VERSION:-}
       ATLAS_ENV: ${ATLAS_ENV:-kubernetes}
       ATLAS_REVISIONS_SCHEMA: "public"
+    volumes:
+      - ./migrations-atlas/migrations:/migrations:ro
     depends_on:
       db:
         condition: service_healthy
