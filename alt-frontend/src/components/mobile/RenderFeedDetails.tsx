@@ -1,4 +1,5 @@
-import { HStack, Text, Box, Flex } from "@chakra-ui/react";
+import { HStack, Text, Box } from "@chakra-ui/react";
+import type { CSSObject } from "@emotion/react";
 import type {
   FeedContentOnTheFlyResponse,
   FetchArticleSummaryResponse,
@@ -49,6 +50,31 @@ if (!(globalThis as any).__ALT_DOMPURIFY_HOOKS__) {
 
   (globalThis as any).__ALT_DOMPURIFY_HOOKS__ = true;
 }
+
+const fallbackContentStyles: CSSObject = {
+  "& img": {
+    maxWidth: "100%",
+    height: "auto",
+    borderRadius: "8px",
+  },
+  "& table": {
+    width: "100%",
+    borderCollapse: "collapse",
+  },
+  "& pre": {
+    whiteSpace: "pre-wrap",
+    overflowX: "auto",
+  },
+  "& code": {
+    whiteSpace: "pre-wrap",
+  },
+  "& blockquote": {
+    borderLeft: "3px solid rgba(255, 255, 255, 0.2)",
+    paddingLeft: "12px",
+    marginLeft: 0,
+    color: "var(--alt-text-secondary)",
+  },
+};
 
 // Union type for feedDetails
 type RenderFeedDetailsProps =
@@ -188,85 +214,96 @@ const RenderFeedDetails = ({
   if ("content" in feedDetails) {
     return (
       <Box px={4} py={4}>
-        <Text color="var(--text-primary)" lineHeight="1.6" fontSize="md">
-          <Flex>
-            {/* content wrapped in quotes to transform it into a html string by secure DOMPurify*/}
-            <div
-              dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(feedDetails.content, {
-                  ALLOWED_TAGS: [
-                    "p",
-                    "br",
-                    "strong",
-                    "b",
-                    "em",
-                    "i",
-                    "u",
-                    "a",
-                    "img",
-                    "h1",
-                    "h2",
-                    "h3",
-                    "h4",
-                    "h5",
-                    "h6",
-                    "ul",
-                    "ol",
-                    "li",
-                    "blockquote",
-                    "pre",
-                    "code",
-                    "table",
-                    "thead",
-                    "tbody",
-                    "tr",
-                    "td",
-                    "th",
-                    "div",
-                    "span",
-                  ],
-                  ALLOWED_ATTR: [
-                    "href",
-                    "src",
-                    "alt",
-                    "title",
-                    "target",
-                    "rel",
-                  ],
-                  FORBID_ATTR: [
-                    "onclick",
-                    "onload",
-                    "onerror",
-                    "onmouseover",
-                    "onmouseout",
-                    "onfocus",
-                    "onblur",
-                    "style",
-                  ],
-                  FORBID_TAGS: [
-                    "script",
-                    "object",
-                    "embed",
-                    "form",
-                    "input",
-                    "textarea",
-                    "button",
-                    "select",
-                    "option",
-                    "iframe",
-                    "svg",
-                    "math",
-                  ],
-                  // Disallow dangerous URL schemes; allow https, http, relative, mailto, tel, anchors
-                  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i,
-                  KEEP_CONTENT: true,
-                  SAFE_FOR_TEMPLATES: true,
-                  RETURN_TRUSTED_TYPE: false,
-                }),
-              }}
-            />
-          </Flex>
-        </Text>
+        <Box
+          color="var(--text-primary)"
+          lineHeight="1.6"
+          fontSize="md"
+          maxW="100%"
+          overflowWrap="anywhere"
+          wordBreak="break-word"
+          css={fallbackContentStyles}
+        >
+          {/* content wrapped in quotes to transform it into a html string by secure DOMPurify*/}
+          <Box
+            as="div"
+            display="block"
+            width="100%"
+            wordBreak="break-word"
+            overflowWrap="anywhere"
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(feedDetails.content, {
+                ALLOWED_TAGS: [
+                  "p",
+                  "br",
+                  "strong",
+                  "b",
+                  "em",
+                  "i",
+                  "u",
+                  "a",
+                  "img",
+                  "h1",
+                  "h2",
+                  "h3",
+                  "h4",
+                  "h5",
+                  "h6",
+                  "ul",
+                  "ol",
+                  "li",
+                  "blockquote",
+                  "pre",
+                  "code",
+                  "table",
+                  "thead",
+                  "tbody",
+                  "tr",
+                  "td",
+                  "th",
+                  "div",
+                  "span",
+                ],
+                ALLOWED_ATTR: [
+                  "href",
+                  "src",
+                  "alt",
+                  "title",
+                  "target",
+                  "rel",
+                ],
+                FORBID_ATTR: [
+                  "onclick",
+                  "onload",
+                  "onerror",
+                  "onmouseover",
+                  "onmouseout",
+                  "onfocus",
+                  "onblur",
+                  "style",
+                ],
+                FORBID_TAGS: [
+                  "script",
+                  "object",
+                  "embed",
+                  "form",
+                  "input",
+                  "textarea",
+                  "button",
+                  "select",
+                  "option",
+                  "iframe",
+                  "svg",
+                  "math",
+                ],
+                // Disallow dangerous URL schemes; allow https, http, relative, mailto, tel, anchors
+                ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i,
+                KEEP_CONTENT: true,
+                SAFE_FOR_TEMPLATES: true,
+                RETURN_TRUSTED_TYPE: false,
+              }),
+            }}
+          />
+        </Box>
       </Box>
     );
   }

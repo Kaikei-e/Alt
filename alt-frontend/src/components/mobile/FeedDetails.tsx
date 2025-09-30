@@ -1,4 +1,5 @@
 import { HStack, Text, Box, Button } from "@chakra-ui/react";
+import type { CSSObject } from "@emotion/react";
 import { useState, useEffect, useCallback } from "react";
 import { X, Star, Archive } from "lucide-react";
 import {
@@ -7,6 +8,23 @@ import {
 } from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
 import RenderFeedDetails from "./RenderFeedDetails";
+
+const scrollAreaStyles: CSSObject = {
+  "&::-webkit-scrollbar": {
+    width: "4px",
+  },
+  "&::-webkit-scrollbar-track": {
+    background: "transparent",
+    borderRadius: "2px",
+  },
+  "&::-webkit-scrollbar-thumb": {
+    background: "rgba(255, 255, 255, 0.2)",
+    borderRadius: "2px",
+  },
+  "&::-webkit-scrollbar-thumb:hover": {
+    background: "rgba(255, 255, 255, 0.3)",
+  },
+};
 
 interface FeedDetailsProps {
   feedURL?: string;
@@ -37,6 +55,7 @@ export const FeedDetails = ({
 
   const handleHideDetails = useCallback(() => {
     setIsOpen(false);
+    setIsArchived(false);
   }, []);
 
   // Handle escape key to close modal
@@ -57,6 +76,8 @@ export const FeedDetails = ({
   }, [isOpen, handleHideDetails]);
 
   const handleShowDetails = async () => {
+    setIsArchived(false);
+
     // If we already have initial data, just open the modal
     if (initialData) {
       setIsOpen(true);
@@ -87,19 +108,11 @@ export const FeedDetails = ({
         return null;
       });
 
-    const archivePromise = feedsApi
-      .archiveContent(feedURL, feedTitle)
-      .catch((err) => {
-        console.error("Error archiving feed:", err);
-        return null;
-      });
-
     try {
       const [summary, details] = await Promise.all([
         summaryPromise,
         detailsPromise,
       ]);
-      const archiveResult = await archivePromise;
 
       console.log("Summary response:", summary);
       console.log("Details response:", details);
@@ -129,9 +142,6 @@ export const FeedDetails = ({
         console.log("No valid content from either API");
       }
 
-      if (archiveResult) {
-        setIsArchived(true);
-      }
     } catch (err) {
       console.error("Unexpected error:", err);
       setError("Unexpected error occurred");
@@ -289,22 +299,7 @@ export const FeedDetails = ({
                 data-testid="scrollable-content"
                 id="summary-content"
                 position="relative"
-                css={{
-                  "&::-webkit-scrollbar": {
-                    width: "4px",
-                  },
-                  "&::-webkit-scrollbar-track": {
-                    background: "transparent",
-                    borderRadius: "2px",
-                  },
-                  "&::-webkit-scrollbar-thumb": {
-                    background: "rgba(255, 255, 255, 0.2)",
-                    borderRadius: "2px",
-                  },
-                  "&::-webkit-scrollbar-thumb:hover": {
-                    background: "rgba(255, 255, 255, 0.3)",
-                  },
-                }}
+                css={scrollAreaStyles}
               >
                 <Box
                   data-testid="content-area"
@@ -368,16 +363,16 @@ export const FeedDetails = ({
                   <Star size={16} style={{ marginRight: 4 }} />
                   {isFavoriting ? "Saving" : "Fave"}
                 </Button>
-                <Button
-                  onClick={async () => {
-                    if (!feedURL) return;
-                    try {
-                      setIsArchiving(true);
-                      await feedsApi.archiveContent(feedURL, feedTitle);
-                      setIsArchived(true);
-                    } catch (e) {
-                      console.error("Error archiving feed:", e);
-                    } finally {
+              <Button
+                onClick={async () => {
+                  if (!feedURL) return;
+                  try {
+                    setIsArchiving(true);
+                    await feedsApi.archiveContent(feedURL, feedTitle);
+                    setIsArchived(true);
+                  } catch (e) {
+                    console.error("Error archiving feed:", e);
+                  } finally {
                       setIsArchiving(false);
                     }
                   }}
