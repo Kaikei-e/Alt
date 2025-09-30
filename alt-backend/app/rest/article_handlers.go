@@ -4,10 +4,12 @@ import (
 	"alt/di"
 	"alt/driver/search_indexer"
 	middleware_custom "alt/middleware"
+	"alt/usecase/archive_article_usecase"
 	"alt/utils/logger"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 )
@@ -16,6 +18,41 @@ func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
 	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger)
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())
 	articles.GET("/fetch/content", handleFetchArticle(container))
+	articles.POST("/archive", handleArchiveArticle(container))
+}
+
+func handleArchiveArticle(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		var payload ArchiveArticleRequest
+		if err := c.Bind(&payload); err != nil {
+			return handleValidationError(c, "Invalid request format", "body", "malformed JSON")
+		}
+
+		if strings.TrimSpace(payload.FeedURL) == "" {
+			return handleValidationError(c, "Article URL is required", "feed_url", payload.FeedURL)
+		}
+
+		articleURL, err := url.Parse(payload.FeedURL)
+		if err != nil {
+			return handleValidationError(c, "Invalid article URL", "feed_url", payload.FeedURL)
+		}
+
+		if err := isAllowedURL(articleURL); err != nil {
+			return handleValidationError(c, "Article URL not allowed", "feed_url", payload.FeedURL)
+		}
+
+		input := archive_article_usecase.ArchiveArticleInput{
+			URL:   articleURL.String(),
+			Title: payload.Title,
+		}
+
+		if err := container.ArchiveArticleUsecase.Execute(c.Request().Context(), input); err != nil {
+			return handleError(c, fmt.Errorf("archive article failed for %q: %w", articleURL.String(), err), "archive_article")
+		}
+
+		c.Response().Header().Set("Cache-Control", "no-cache")
+		return c.JSON(http.StatusOK, map[string]string{"message": "article archived"})
+	}
 }
 
 func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {

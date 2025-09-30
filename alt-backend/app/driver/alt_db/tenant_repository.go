@@ -1,14 +1,18 @@
 package alt_db
 
 import (
+	"alt/domain"
 	"context"
 	"fmt"
-	"alt/domain"
-	
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type contextKey string
+
+const tenantTxKey contextKey = "tenant_tx"
 
 type TenantAwareRepository struct {
 	pool *pgxpool.Pool
@@ -36,7 +40,7 @@ func (r *TenantAwareRepository) withTenantContext(ctx context.Context, tenantID 
 	}
 
 	// トランザクションをコンテキストに保存
-	return context.WithValue(ctx, "tenant_tx", tx), tx, nil
+	return context.WithValue(ctx, tenantTxKey, tx), tx, nil
 }
 
 // GetUserFeeds はユーザーのフィード一覧を取得（テナント分離）
@@ -121,7 +125,7 @@ func (r *TenantAwareRepository) GetUserArticles(ctx context.Context, userID uuid
 	for rows.Next() {
 		var article domain.Article
 		var isRead bool
-		if err := rows.Scan(&article.ID, &article.Title, &article.URL, &article.Content, 
+		if err := rows.Scan(&article.ID, &article.Title, &article.URL, &article.Content,
 			&article.PublishedAt, &article.CreatedAt, &article.UpdatedAt, &article.TenantID, &isRead); err != nil {
 			return nil, fmt.Errorf("failed to scan article: %w", err)
 		}
@@ -163,7 +167,7 @@ func (r *TenantAwareRepository) CreateFeed(ctx context.Context, feed *domain.Fee
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 
-	_, err = tx.Exec(tenantCtx, query, feed.ID, feed.Title, feed.URL, feed.Description, 
+	_, err = tx.Exec(tenantCtx, query, feed.ID, feed.Title, feed.URL, feed.Description,
 		feed.TenantID, feed.CreatedAt, feed.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to insert feed: %w", err)

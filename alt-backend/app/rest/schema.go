@@ -12,6 +12,11 @@ type FeedUrlPayload struct {
 	FeedURL string `json:"feed_url" validate:"required,url"`
 }
 
+type ArchiveArticleRequest struct {
+	FeedURL string `json:"feed_url" validate:"required,url"`
+	Title   string `json:"title,omitempty"`
+}
+
 type FeedStatsSummary struct {
 	FeedAmount           feedAmount           `json:"feed_amount"`
 	SummarizedFeedAmount summarizedFeedAmount `json:"summarized_feed"`
@@ -71,14 +76,14 @@ type FeedSummaryRequest struct {
 }
 
 type InoreaderSummaryResponse struct {
-	ArticleURL     string `json:"article_url"`
-	Title          string `json:"title"`
-	Author         string `json:"author,omitempty"`
-	Content        string `json:"content"`
-	ContentType    string `json:"content_type"`
-	PublishedAt    string `json:"published_at"`
-	FetchedAt      string `json:"fetched_at"`
-	InoreaderID    string `json:"inoreader_id"`
+	ArticleURL  string `json:"article_url"`
+	Title       string `json:"title"`
+	Author      string `json:"author,omitempty"`
+	Content     string `json:"content"`
+	ContentType string `json:"content_type"`
+	PublishedAt string `json:"published_at"`
+	FetchedAt   string `json:"fetched_at"`
+	InoreaderID string `json:"inoreader_id"`
 }
 
 type FeedSummaryProvidedResponse struct {
@@ -89,8 +94,8 @@ type FeedSummaryProvidedResponse struct {
 
 // ImageFetchRequest represents the request payload for image fetching endpoint
 type ImageFetchRequest struct {
-	URL     string              `json:"url" validate:"required,url"`
-	Options *ImageFetchOptions  `json:"options,omitempty"`
+	URL     string             `json:"url" validate:"required,url"`
+	Options *ImageFetchOptions `json:"options,omitempty"`
 }
 
 // ImageFetchOptions represents optional parameters for image fetching

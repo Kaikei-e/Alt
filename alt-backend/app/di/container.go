@@ -5,6 +5,7 @@ import (
 	"alt/driver/alt_db"
 	"alt/driver/csrf_token_driver"
 	"alt/driver/search_indexer"
+	"alt/gateway/archive_article_gateway"
 	"alt/gateway/config_gateway"
 	"alt/gateway/csrf_token_gateway"
 	"alt/gateway/error_handler_gateway"
@@ -25,6 +26,7 @@ import (
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/rate_limiter_port"
+	"alt/usecase/archive_article_usecase"
 	"alt/usecase/csrf_token_usecase"
 	"alt/usecase/fetch_article_usecase"
 	"alt/usecase/fetch_feed_details_usecase"
@@ -76,6 +78,7 @@ type ApplicationComponents struct {
 	ImageFetchUsecase                   image_fetch_usecase.ImageFetchUsecaseInterface
 	CSRFTokenUsecase                    *csrf_token_usecase.CSRFTokenUsecase
 	ArticleUsecase                      fetch_article_usecase.ArticleUsecase
+	ArchiveArticleUsecase               *archive_article_usecase.ArchiveArticleUsecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -146,6 +149,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	fetchArticleGatewayImpl := fetch_article_gateway.NewFetchArticleGateway(rateLimiter, httpClient)
 	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl)
+	archiveArticleGatewayImpl := archive_article_gateway.NewArchiveArticleGateway(altDBRepository)
+	archiveArticleUsecase := archive_article_usecase.NewArchiveArticleUsecase(fetchArticleGatewayImpl, archiveArticleGatewayImpl)
 
 	// Fetch inoreader summary components
 	fetchInoreaderSummaryGatewayImpl := fetch_inoreader_summary_gateway.NewInoreaderSummaryGateway(altDBRepository)
@@ -194,5 +199,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ImageFetchUsecase:                   imageFetchUsecase,
 		CSRFTokenUsecase:                    csrfTokenUsecase,
 		ArticleUsecase:                      fetchArticleUsecase,
+		ArchiveArticleUsecase:               archiveArticleUsecase,
 	}
 }
