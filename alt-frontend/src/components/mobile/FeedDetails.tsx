@@ -381,6 +381,16 @@ export const FeedDetails = ({
                       setIsArchiving(false);
                     }
                   }}
+                  size="sm"
+                  borderRadius="full"
+                  bg="var(--alt-primary)"
+                  color="var(--text-primary)"
+                  fontWeight="bold"
+                  px={4}
+                  minHeight="36px"
+                  minWidth="80px"
+                  fontSize="sm"
+                  border="1px solid rgba(255, 255, 255, 0.2)"
                   disabled={isArchiving || isArchived}
                 >
                   <Archive size={16} style={{ marginRight: 4 }} />
