@@ -10,7 +10,7 @@
     "postbuild": "node scripts/ensure-default-stylesheet.mjs",
     "start": "next start",
     "start:next": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "fmt": "prettier --write .",
     "typecheck": "tsc --noEmit",
