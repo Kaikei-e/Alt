@@ -99,14 +99,26 @@ export class ApiClient {
 
   async post<T>(endpoint: string, data: Record<string, unknown>): Promise<T> {
     try {
+      // Get CSRF token for state-changing operations
+      const csrfToken = await authAPI.getCSRFToken();
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Accept-Encoding": "gzip, deflate, br",
+      };
+
+      // Add CSRF token if available
+      if (csrfToken) {
+        headers["X-CSRF-Token"] = csrfToken;
+      } else if (process.env.NODE_ENV === "development") {
+        console.warn("[ApiClient] CSRF token not available for POST request to", endpoint);
+      }
+
       const response = await this.makeRequest(
         `${this.config.baseUrl}${endpoint}`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept-Encoding": "gzip, deflate, br",
-          },
+          headers,
           body: JSON.stringify(data),
           keepalive: true,
         },
