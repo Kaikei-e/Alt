@@ -18,7 +18,7 @@ for (const k of required) {
       throw new Error(`[ENV] ${k} must be HTTPS origin (got: ${origin})`);
     }
     const pattern = new RegExp(
-      "\\." + "cluster" + "\\." + "local" + "(\\b|:|\/)",
+      "\\." + "cluster" + "\\." + "local" + "(\\b|:|/)",
       "i",
     );
     if (!hostIsLocal && pattern.test(origin)) {

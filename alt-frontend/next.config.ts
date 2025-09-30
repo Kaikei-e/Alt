@@ -1,10 +1,8 @@
 import { createRequire } from "module";
-import { securityHeaders } from "./src/config/security";
 
-// Node ESM files (package.json has "type":"module") don’t have the CommonJS
+// Node ESM files (package.json has "type":"module") don't have the CommonJS
 // `require` function.  We recreate it via `createRequire` so the conditional
 // require below still works when the file is treated as an ES module.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const require = createRequire(import.meta.url);
 
 let withBundleAnalyzer: (
@@ -86,12 +84,10 @@ if (process.env.NODE_ENV !== "test") {
 
 if (process.env.ANALYZE === "true") {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires, import/no-extraneous-dependencies
     const nextBundleAnalyzer = require("@next/bundle-analyzer");
     withBundleAnalyzer = nextBundleAnalyzer({ enabled: true });
-  } catch (err) {
+  } catch {
     // Module might not be installed in production; log once and continue.
-    // eslint-disable-next-line no-console
     console.warn(
       "[@next/bundle-analyzer] not installed; skipping bundle analysis.",
     );

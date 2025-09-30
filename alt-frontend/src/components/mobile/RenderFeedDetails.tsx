@@ -7,7 +7,7 @@ import type {
 import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
 import DOMPurify from "isomorphic-dompurify";
 
-// Harden DOMPurify: enforce safe link/img handling and URL schemes
+// Harden DOMPurify: enforce safe link handling and URL schemes
 // Guard to avoid duplicate hook registration on HMR/SSR
 if (!(globalThis as any).__ALT_DOMPURIFY_HOOKS__) {
   DOMPurify.addHook("afterSanitizeAttributes", (node: Element) => {
@@ -31,20 +31,9 @@ if (!(globalThis as any).__ALT_DOMPURIFY_HOOKS__) {
       node.setAttribute("rel", "noopener noreferrer nofollow ugc");
     }
 
+    // Images are now forbidden - remove any that slip through
     if (nodeName === "img") {
-      const src = node.getAttribute("src") || "";
-      // Allow only http(s), relative, or specific data:image formats (exclude SVG for safety)
-      const isAllowedImgSrc =
-        /^(?:(?:https?):|\/(?!\/)|data:image\/(?:png|jpeg|jpg|gif|webp);base64,)/i.test(
-          src,
-        );
-      if (!isAllowedImgSrc) {
-        node.removeAttribute("src");
-      }
-      // Extra hardening even though not allowed in config
-      node.removeAttribute("srcset");
-      node.removeAttribute("onerror");
-      node.removeAttribute("onload");
+      node.remove();
     }
   });
 
@@ -52,11 +41,6 @@ if (!(globalThis as any).__ALT_DOMPURIFY_HOOKS__) {
 }
 
 const fallbackContentStyles: CSSObject = {
-  "& img": {
-    maxWidth: "100%",
-    height: "auto",
-    borderRadius: "8px",
-  },
   "& table": {
     width: "100%",
     borderCollapse: "collapse",
@@ -241,7 +225,6 @@ const RenderFeedDetails = ({
                   "i",
                   "u",
                   "a",
-                  "img",
                   "h1",
                   "h2",
                   "h3",
@@ -265,8 +248,6 @@ const RenderFeedDetails = ({
                 ],
                 ALLOWED_ATTR: [
                   "href",
-                  "src",
-                  "alt",
                   "title",
                   "target",
                   "rel",
@@ -280,6 +261,8 @@ const RenderFeedDetails = ({
                   "onfocus",
                   "onblur",
                   "style",
+                  "src",
+                  "alt",
                 ],
                 FORBID_TAGS: [
                   "script",
@@ -294,6 +277,7 @@ const RenderFeedDetails = ({
                   "iframe",
                   "svg",
                   "math",
+                  "img",
                 ],
                 // Disallow dangerous URL schemes; allow https, http, relative, mailto, tel, anchors
                 ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i,
