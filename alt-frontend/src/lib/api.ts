@@ -56,9 +56,11 @@ export const feedsApi = {
   // Article summaries
   getArticleSummary: feedsApiInstance.getArticleSummary.bind(feedsApiInstance),
   getFeedDetails: feedsApiInstance.getFeedDetails.bind(feedsApiInstance),
+  archiveContent: feedsApiInstance.archiveContent.bind(feedsApiInstance),
 
   // Feed content on the fly
-  getFeedContentOnTheFly: feedsApiInstance.getFeedContentOnTheFly.bind(feedsApiInstance),
+  getFeedContentOnTheFly:
+    feedsApiInstance.getFeedContentOnTheFly.bind(feedsApiInstance),
 
   // Search
   searchArticles: feedsApiInstance.searchArticles.bind(feedsApiInstance),

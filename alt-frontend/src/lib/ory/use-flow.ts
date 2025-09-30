@@ -46,13 +46,16 @@ const isFlow = (value: unknown): value is AnyFlow => {
   return !!value && typeof value === "object" && "id" in value && "ui" in value;
 };
 
-const extractRedirect = (result: SuccessResult | null | undefined): string | null => {
+const extractRedirect = (
+  result: SuccessResult | null | undefined,
+): string | null => {
   if (!result) return null;
   const entries: ContinueWith[] | undefined = result.continue_with;
   if (!entries) return null;
   for (const entry of entries) {
     if (entry && typeof entry === "object" && "redirect_browser_to" in entry) {
-      const target = (entry as { redirect_browser_to?: string }).redirect_browser_to;
+      const target = (entry as { redirect_browser_to?: string })
+        .redirect_browser_to;
       if (target) {
         return target;
       }
@@ -104,8 +107,8 @@ export const useOryFlow = (options: UseOryFlowOptions): UseOryFlowResult => {
       setFlow(data as AnyFlow);
     } catch (err) {
       const status =
-        (err as { response?: { status?: number }; status?: number }).response?.status ??
-        (err as { status?: number }).status;
+        (err as { response?: { status?: number }; status?: number }).response
+          ?.status ?? (err as { status?: number }).status;
 
       // Handle flow expired, not found, or gone errors
       if (status === 403 || status === 404 || status === 410) {
@@ -114,10 +117,13 @@ export const useOryFlow = (options: UseOryFlowOptions): UseOryFlowResult => {
       }
 
       // Handle CORS or network errors
-      const errorMessage = (err as Error).message ?? "Flowを取得できませんでした";
+      const errorMessage =
+        (err as Error).message ?? "Flowを取得できませんでした";
       if (errorMessage.includes("CORS") || errorMessage.includes("Network")) {
         console.error("CORS or network error fetching flow:", err);
-        setError("ネットワークエラーが発生しました。ページを再読み込みしてください。");
+        setError(
+          "ネットワークエラーが発生しました。ページを再読み込みしてください。",
+        );
       } else {
         setError(errorMessage);
       }
@@ -172,7 +178,11 @@ export const useOryFlow = (options: UseOryFlowOptions): UseOryFlowResult => {
           submission.method = normalizeMethod(submission.method);
         }
 
-        let result: LoginFlow | RegistrationFlow | SuccessfulNativeLogin | SuccessfulNativeRegistration;
+        let result:
+          | LoginFlow
+          | RegistrationFlow
+          | SuccessfulNativeLogin
+          | SuccessfulNativeRegistration;
 
         if (type === "login") {
           const { data } = await oryClient.updateLoginFlow({
@@ -183,7 +193,8 @@ export const useOryFlow = (options: UseOryFlowOptions): UseOryFlowResult => {
         } else {
           const { data } = await oryClient.updateRegistrationFlow({
             flow: flow.id,
-            updateRegistrationFlowBody: submission as unknown as UpdateRegistrationFlowBody,
+            updateRegistrationFlowBody:
+              submission as unknown as UpdateRegistrationFlowBody,
           });
           result = data as RegistrationFlow | SuccessfulNativeRegistration;
         }
@@ -209,11 +220,17 @@ export const useOryFlow = (options: UseOryFlowOptions): UseOryFlowResult => {
         const fallback = returnTo ?? flow.return_to ?? "/";
         window.location.replace(fallback);
       } catch (err) {
-        const response = (err as { response?: { status?: number; data?: unknown } }).response;
+        const response = (
+          err as { response?: { status?: number; data?: unknown } }
+        ).response;
         const status = response?.status ?? (err as { status?: number }).status;
 
         // Handle validation errors (400/422) - update flow with error messages
-        if ((status === 400 || status === 422) && response?.data && isFlow(response.data)) {
+        if (
+          (status === 400 || status === 422) &&
+          response?.data &&
+          isFlow(response.data)
+        ) {
           setFlow(response.data as AnyFlow);
           return;
         }

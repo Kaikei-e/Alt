@@ -14,21 +14,24 @@ export async function GET(request: NextRequest) {
     // Basic application health checks
     // Dockerfile の HEALTHCHECK で "\"status\":\"ok\"" を grep しているため、
     // 必ず status は "ok" を返す
-    return NextResponse.json({
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || "unknown",
-      hasSession: hasKratosSession,
-    }, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "X-Health-Check": "alt-frontend-2025",
-        // TODO.md要件: X-Has-Session ヘッダで即座に可視化
-        "X-Has-Session": hasKratosSession ? "yes" : "no",
+    return NextResponse.json(
+      {
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || "unknown",
+        hasSession: hasKratosSession,
       },
-    });
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "X-Health-Check": "alt-frontend-2025",
+          // TODO.md要件: X-Has-Session ヘッダで即座に可視化
+          "X-Has-Session": hasKratosSession ? "yes" : "no",
+        },
+      },
+    );
   } catch (error) {
     return NextResponse.json(
       {

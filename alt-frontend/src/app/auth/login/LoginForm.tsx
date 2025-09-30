@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Box,
-  Flex,
-  Spinner,
-  Stack,
-  Text,
-} from "@chakra-ui/react";
+import { Box, Flex, Spinner, Stack, Text } from "@chakra-ui/react";
 import { useOryFlow } from "@/lib/ory/use-flow";
 import { OryFlowForm } from "@/components/ory/OryFlowForm";
 
@@ -56,7 +50,11 @@ export default function LoginForm({ flowId, returnTo }: LoginFormProps) {
             >
               Alt
             </Text>
-            <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">
+            <Text
+              fontSize="lg"
+              fontWeight="semibold"
+              color="var(--text-primary)"
+            >
               ログイン
             </Text>
           </Stack>
@@ -79,7 +77,9 @@ export default function LoginForm({ flowId, returnTo }: LoginFormProps) {
               emptyState={
                 <Flex direction="column" align="center" gap={3}>
                   <Spinner size="lg" color="var(--alt-primary)" />
-                  <Text color="var(--text-muted)">ログインフォームを準備しています…</Text>
+                  <Text color="var(--text-muted)">
+                    ログインフォームを準備しています…
+                  </Text>
                 </Flex>
               }
             />

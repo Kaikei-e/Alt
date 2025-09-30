@@ -8,7 +8,7 @@ const configuration = new Configuration({
     // Cookies are automatically included for same-origin requests
     timeout: 10000, // 10 second timeout
     headers: {
-      "Accept": "application/json",
+      Accept: "application/json",
     },
   },
 });

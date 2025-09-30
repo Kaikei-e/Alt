@@ -293,7 +293,10 @@ export async function waitForAuthRedirect(
     console.error(`[waitForAuthRedirect] Failed after ${elapsedTime}ms`);
     console.error(`[waitForAuthRedirect] Current URL: ${currentUrl}`);
     console.error(`[waitForAuthRedirect] Expected pattern: ${expectedFlow}`);
-    console.error(`[waitForAuthRedirect] Original error:`, error instanceof Error ? error.message : String(error));
+    console.error(
+      `[waitForAuthRedirect] Original error:`,
+      error instanceof Error ? error.message : String(error),
+    );
 
     // Add more context to the error
     const enhancedError = new Error(

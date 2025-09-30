@@ -26,7 +26,9 @@ export class DesktopApi {
         next_cursor: string | null;
       }>(`/v1/feeds/fetch/cursor?${params.toString()}`, 10);
 
-      const transformedFeeds = (response.data || []).map((item) => sanitizeFeed(item as BackendFeedItem));
+      const transformedFeeds = (response.data || []).map((item) =>
+        sanitizeFeed(item as BackendFeedItem),
+      );
 
       return {
         feeds: transformedFeeds,

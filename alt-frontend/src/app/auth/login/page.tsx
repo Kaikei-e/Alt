@@ -14,7 +14,8 @@ export default async function Page({
 
   if (!flow) {
     // flow がない場合は、return_toパラメータまたはデフォルトURLを使用
-    const currentUrl = returnTo || `${process.env.NEXT_PUBLIC_APP_ORIGIN}/auth/login`;
+    const currentUrl =
+      returnTo || `${process.env.NEXT_PUBLIC_APP_ORIGIN}/auth/login`;
     redirect(
       `${process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL}/self-service/login/browser?return_to=${encodeURIComponent(currentUrl)}`,
     );

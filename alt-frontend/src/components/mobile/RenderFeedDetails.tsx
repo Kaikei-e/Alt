@@ -1,5 +1,8 @@
 import { HStack, Text, Box, Flex } from "@chakra-ui/react";
-import type { FeedContentOnTheFlyResponse, FetchArticleSummaryResponse } from "@/schema/feed";
+import type {
+  FeedContentOnTheFlyResponse,
+  FetchArticleSummaryResponse,
+} from "@/schema/feed";
 import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
 import DOMPurify from "isomorphic-dompurify";
 
@@ -11,7 +14,9 @@ if (!(globalThis as any).__ALT_DOMPURIFY_HOOKS__) {
 
     if (nodeName === "a") {
       const href = node.getAttribute("href") || "";
-      const isAllowedHref = /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i.test(href);
+      const isAllowedHref = /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i.test(
+        href,
+      );
       if (!isAllowedHref) {
         node.removeAttribute("href");
       }
@@ -28,7 +33,10 @@ if (!(globalThis as any).__ALT_DOMPURIFY_HOOKS__) {
     if (nodeName === "img") {
       const src = node.getAttribute("src") || "";
       // Allow only http(s), relative, or specific data:image formats (exclude SVG for safety)
-      const isAllowedImgSrc = /^(?:(?:https?):|\/(?!\/)|data:image\/(?:png|jpeg|jpg|gif|webp);base64,)/i.test(src);
+      const isAllowedImgSrc =
+        /^(?:(?:https?):|\/(?!\/)|data:image\/(?:png|jpeg|jpg|gif|webp);base64,)/i.test(
+          src,
+        );
       if (!isAllowedImgSrc) {
         node.removeAttribute("src");
       }
@@ -43,7 +51,9 @@ if (!(globalThis as any).__ALT_DOMPURIFY_HOOKS__) {
 }
 
 // Union type for feedDetails
-type RenderFeedDetailsProps = FeedContentOnTheFlyResponse | FetchArticleSummaryResponse;
+type RenderFeedDetailsProps =
+  | FeedContentOnTheFlyResponse
+  | FetchArticleSummaryResponse;
 
 interface RenderFeedDetailsComponentProps {
   feedDetails?: RenderFeedDetailsProps | null;
@@ -51,7 +61,11 @@ interface RenderFeedDetailsComponentProps {
   error?: string | null;
 }
 
-const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsComponentProps) => {
+const RenderFeedDetails = ({
+  feedDetails,
+  isLoading,
+  error,
+}: RenderFeedDetailsComponentProps) => {
   // Loading state
   if (isLoading) {
     return (
@@ -96,7 +110,11 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
 
   // FetchArticleSummaryResponse (has matched_articles property) - Rich article display
   // Check this first to prioritize Inoreader summary when available
-  if ('matched_articles' in feedDetails && feedDetails.matched_articles && feedDetails.matched_articles.length > 0) {
+  if (
+    "matched_articles" in feedDetails &&
+    feedDetails.matched_articles &&
+    feedDetails.matched_articles.length > 0
+  ) {
     const article = feedDetails.matched_articles[0];
 
     return (
@@ -119,14 +137,8 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
             {article.title}
           </Text>
 
-          <HStack
-            gap={3}
-            fontSize="sm"
-            color="var(--alt-text-secondary)"
-          >
-            {article.author && (
-              <Text>By {article.author}</Text>
-            )}
+          <HStack gap={3} fontSize="sm" color="var(--alt-text-secondary)">
+            {article.author && <Text>By {article.author}</Text>}
 
             <Text>
               {new Date(article.published_at).toLocaleDateString("ja-JP", {
@@ -173,34 +185,86 @@ const RenderFeedDetails = ({ feedDetails, isLoading, error }: RenderFeedDetailsC
 
   // FeedContentOnTheFlyResponse (has content property) - Simple content display
   // This is the fallback when Inoreader summary is not available
-  if ('content' in feedDetails) {
+  if ("content" in feedDetails) {
     return (
       <Box px={4} py={4}>
-        <Text
-          color="var(--text-primary)"
-          lineHeight="1.6"
-          fontSize="md"
-        >
+        <Text color="var(--text-primary)" lineHeight="1.6" fontSize="md">
           <Flex>
             {/* content wrapped in quotes to transform it into a html string by secure DOMPurify*/}
-            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(feedDetails.content, {
-              ALLOWED_TAGS: [
-                "p", "br", "strong", "b", "em", "i", "u", "a", "img",
-                "h1", "h2", "h3", "h4", "h5", "h6",
-                "ul", "ol", "li",
-                "blockquote", "pre", "code",
-                "table", "thead", "tbody", "tr", "td", "th",
-                "div", "span"
-              ],
-              ALLOWED_ATTR: ["href", "src", "alt", "title", "target", "rel"],
-              FORBID_ATTR: ["onclick", "onload", "onerror", "onmouseover", "onmouseout", "onfocus", "onblur", "style"],
-              FORBID_TAGS: ["script", "object", "embed", "form", "input", "textarea", "button", "select", "option", "iframe", "svg", "math"],
-              // Disallow dangerous URL schemes; allow https, http, relative, mailto, tel, anchors
-              ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i,
-              KEEP_CONTENT: true,
-              SAFE_FOR_TEMPLATES: true,
-              RETURN_TRUSTED_TYPE: false,
-            }) }} />
+            <div
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(feedDetails.content, {
+                  ALLOWED_TAGS: [
+                    "p",
+                    "br",
+                    "strong",
+                    "b",
+                    "em",
+                    "i",
+                    "u",
+                    "a",
+                    "img",
+                    "h1",
+                    "h2",
+                    "h3",
+                    "h4",
+                    "h5",
+                    "h6",
+                    "ul",
+                    "ol",
+                    "li",
+                    "blockquote",
+                    "pre",
+                    "code",
+                    "table",
+                    "thead",
+                    "tbody",
+                    "tr",
+                    "td",
+                    "th",
+                    "div",
+                    "span",
+                  ],
+                  ALLOWED_ATTR: [
+                    "href",
+                    "src",
+                    "alt",
+                    "title",
+                    "target",
+                    "rel",
+                  ],
+                  FORBID_ATTR: [
+                    "onclick",
+                    "onload",
+                    "onerror",
+                    "onmouseover",
+                    "onmouseout",
+                    "onfocus",
+                    "onblur",
+                    "style",
+                  ],
+                  FORBID_TAGS: [
+                    "script",
+                    "object",
+                    "embed",
+                    "form",
+                    "input",
+                    "textarea",
+                    "button",
+                    "select",
+                    "option",
+                    "iframe",
+                    "svg",
+                    "math",
+                  ],
+                  // Disallow dangerous URL schemes; allow https, http, relative, mailto, tel, anchors
+                  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i,
+                  KEEP_CONTENT: true,
+                  SAFE_FOR_TEMPLATES: true,
+                  RETURN_TRUSTED_TYPE: false,
+                }),
+              }}
+            />
           </Flex>
         </Text>
       </Box>

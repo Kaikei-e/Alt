@@ -1,27 +1,39 @@
 import { HStack, Text, Box, Button } from "@chakra-ui/react";
 import { useState, useEffect, useCallback } from "react";
-import { X, Star } from "lucide-react";
-import { FetchArticleSummaryResponse, FeedContentOnTheFlyResponse } from "@/schema/feed";
+import { X, Star, Archive } from "lucide-react";
+import {
+  FetchArticleSummaryResponse,
+  FeedContentOnTheFlyResponse,
+} from "@/schema/feed";
 import { feedsApi } from "@/lib/api";
 import RenderFeedDetails from "./RenderFeedDetails";
 
 interface FeedDetailsProps {
   feedURL?: string;
+  feedTitle?: string;
   initialData?: FetchArticleSummaryResponse | FeedContentOnTheFlyResponse;
 }
 
-export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
+export const FeedDetails = ({
+  feedURL,
+  feedTitle,
+  initialData,
+}: FeedDetailsProps) => {
   const [articleSummary, setArticleSummary] =
     useState<FetchArticleSummaryResponse | null>(
-      initialData && 'matched_articles' in initialData ? initialData : null
+      initialData && "matched_articles" in initialData ? initialData : null,
     );
-  const [feedDetails, setFeedDetails] = useState<FeedContentOnTheFlyResponse | null>(
-    initialData && 'content' in initialData ? initialData : null
-  );
+  const [feedDetails, setFeedDetails] =
+    useState<FeedContentOnTheFlyResponse | null>(
+      initialData && "content" in initialData ? initialData : null,
+    );
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFavoriting, setIsFavoriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [isArchived, setIsArchived] = useState(false);
 
   const handleHideDetails = useCallback(() => {
     setIsOpen(false);
@@ -66,23 +78,40 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
       return null;
     });
 
-    const detailsPromise = feedsApi.getFeedContentOnTheFly({
-      feed_url: feedURL,
-    }).catch((err) => {
-      console.error("Error fetching article content:", err);
-      return null;
-    });
+    const detailsPromise = feedsApi
+      .getFeedContentOnTheFly({
+        feed_url: feedURL,
+      })
+      .catch((err) => {
+        console.error("Error fetching article content:", err);
+        return null;
+      });
+
+    const archivePromise = feedsApi
+      .archiveContent(feedURL, feedTitle)
+      .catch((err) => {
+        console.error("Error archiving feed:", err);
+        return null;
+      });
 
     try {
-      const [summary, details] = await Promise.all([summaryPromise, detailsPromise]);
+      const [summary, details] = await Promise.all([
+        summaryPromise,
+        detailsPromise,
+      ]);
+      const archiveResult = await archivePromise;
 
       console.log("Summary response:", summary);
       console.log("Details response:", details);
 
       // Check if summary has valid content
-      const hasValidSummary = summary && summary.matched_articles && summary.matched_articles.length > 0;
+      const hasValidSummary =
+        summary &&
+        summary.matched_articles &&
+        summary.matched_articles.length > 0;
       // Check if details has valid content
-      const hasValidDetails = details && details.content && details.content.trim() !== "";
+      const hasValidDetails =
+        details && details.content && details.content.trim() !== "";
 
       if (hasValidSummary) {
         setArticleSummary(summary);
@@ -98,6 +127,10 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
       if (!hasValidSummary && !hasValidDetails) {
         setError("Unable to fetch article content");
         console.log("No valid content from either API");
+      }
+
+      if (archiveResult) {
+        setIsArchived(true);
       }
     } catch (err) {
       console.error("Unexpected error:", err);
@@ -313,6 +346,7 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
                     try {
                       setIsFavoriting(true);
                       await feedsApi.registerFavoriteFeed(feedURL);
+                      setIsBookmarked(true);
                     } catch (e) {
                       console.error("Failed to favorite feed", e);
                     } finally {
@@ -329,10 +363,32 @@ export const FeedDetails = ({ feedURL, initialData }: FeedDetailsProps) => {
                   minWidth="80px"
                   fontSize="sm"
                   border="1px solid rgba(255, 255, 255, 0.2)"
-                  disabled={isFavoriting}
+                  disabled={isFavoriting || isBookmarked}
                 >
                   <Star size={16} style={{ marginRight: 4 }} />
                   {isFavoriting ? "Saving" : "Fave"}
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!feedURL) return;
+                    try {
+                      setIsArchiving(true);
+                      await feedsApi.archiveContent(feedURL, feedTitle);
+                      setIsArchived(true);
+                    } catch (e) {
+                      console.error("Error archiving feed:", e);
+                    } finally {
+                      setIsArchiving(false);
+                    }
+                  }}
+                  disabled={isArchiving || isArchived}
+                >
+                  <Archive size={16} style={{ marginRight: 4 }} />
+                  {isArchiving
+                    ? "Archiving"
+                    : isArchived
+                      ? "Archived"
+                      : "Archive"}
                 </Button>
                 <Button
                   onClick={handleHideDetails}

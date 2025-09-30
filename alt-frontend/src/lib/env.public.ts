@@ -59,7 +59,9 @@ function assertPublicUrl(
   }
 
   if (!allowPath && parsed.pathname !== "/") {
-    throw new Error(`${name} must not include a path component (got: ${value})`);
+    throw new Error(
+      `${name} must not include a path component (got: ${value})`,
+    );
   }
 
   const sanitizedPath = allowPath

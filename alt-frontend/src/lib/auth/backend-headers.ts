@@ -40,4 +40,3 @@ export const buildBackendIdentityHeaders = (
 
   return headers;
 };
-

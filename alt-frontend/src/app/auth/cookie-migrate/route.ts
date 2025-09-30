@@ -9,7 +9,8 @@ export async function GET(request: Request) {
   let protocol = "https";
   try {
     protocol =
-      request.headers.get("x-forwarded-proto") || new URL(request.url).protocol.replace(":", "");
+      request.headers.get("x-forwarded-proto") ||
+      new URL(request.url).protocol.replace(":", "");
   } catch {
     protocol = "https";
   }

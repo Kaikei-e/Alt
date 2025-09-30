@@ -35,13 +35,16 @@ export async function middleware(req: NextRequest) {
   // No session cookie: redirect to login
   // Prevent redirect loop: if already coming from login flow, allow through
   const referer = req.headers.get("referer");
-  if (referer && (referer.includes("/auth/login") || referer.includes("/ory/self-service/login"))) {
+  if (
+    referer &&
+    (referer.includes("/auth/login") ||
+      referer.includes("/ory/self-service/login"))
+  ) {
     return NextResponse.next();
   }
 
   // Following Ory pattern: direct redirect to Kratos login flow
-  const appOrigin =
-    process.env.NEXT_PUBLIC_APP_ORIGIN || req.nextUrl.origin;
+  const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN || req.nextUrl.origin;
   const kratosUrl =
     process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL || `${appOrigin}/ory`;
 

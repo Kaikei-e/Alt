@@ -11,8 +11,8 @@ export interface ApiConfig {
 export const defaultApiConfig: ApiConfig = {
   baseUrl:
     typeof window === "undefined"
-      ? process.env.API_URL || "http://localhost:8080"  // SSR: 内向き
-      : "/api/backend",  // Client: 外向き（Nginx書き換え）
+      ? process.env.API_URL || "http://localhost:8080" // SSR: 内向き
+      : "/api/backend", // Client: 外向き（Nginx書き換え）
   requestTimeout: 120000, // 2 minutes
 };
 
@@ -243,7 +243,9 @@ export class ApiClient {
         return (await authAPI.getSessionHeaders()) ?? {};
       }
 
-      const { getServerSessionHeaders } = await import("../../auth/server-headers");
+      const { getServerSessionHeaders } = await import(
+        "../../auth/server-headers"
+      );
       return (await getServerSessionHeaders()) ?? {};
     } catch (error) {
       // 本番環境ではログを出力しない（セキュリティ上の理由）

@@ -162,7 +162,22 @@ export class FeedsApi {
     }
   }
 
-  async getFeedContentOnTheFly(payload: FeedURLPayload): Promise<FeedContentOnTheFlyResponse> {
+  async archiveContent(
+    feedUrl: string,
+    title?: string,
+  ): Promise<MessageResponse> {
+    const trimmedTitle = title?.trim();
+    const payload: Record<string, unknown> = { feed_url: feedUrl };
+    if (trimmedTitle) {
+      payload.title = trimmedTitle;
+    }
+
+    return this.apiClient.post("/v1/articles/archive", payload);
+  }
+
+  async getFeedContentOnTheFly(
+    payload: FeedURLPayload,
+  ): Promise<FeedContentOnTheFlyResponse> {
     const encodedUrl = encodeURIComponent(payload.feed_url);
     return this.apiClient.get<FeedContentOnTheFlyResponse>(
       `/v1/articles/fetch/content?url=${encodedUrl}`,

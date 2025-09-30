@@ -18,5 +18,3 @@ export default [
   // Next.js recommended + Core Web Vitals（TypeScript対応込み）
   ...next("core-web-vitals"),
 ];
-
-

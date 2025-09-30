@@ -50,7 +50,10 @@ setup("authenticate", async ({ page }) => {
       break;
     } catch (error) {
       retryCount++;
-      console.log(`[AUTH-SETUP] Attempt ${retryCount} failed:`, error instanceof Error ? error.message : String(error));
+      console.log(
+        `[AUTH-SETUP] Attempt ${retryCount} failed:`,
+        error instanceof Error ? error.message : String(error),
+      );
 
       if (retryCount >= maxRetries) {
         console.log("[AUTH-SETUP] All retry attempts failed");

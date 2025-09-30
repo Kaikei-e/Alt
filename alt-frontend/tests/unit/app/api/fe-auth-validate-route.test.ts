@@ -119,9 +119,7 @@ describe("GET /api/fe-auth/validate", () => {
     });
 
     const { FrontendApi } = await import("@ory/client");
-    const mockToSession = vi
-      .fn()
-      .mockRejectedValue(new Error("Network error"));
+    const mockToSession = vi.fn().mockRejectedValue(new Error("Network error"));
     vi.mocked(FrontendApi).mockImplementation(
       () =>
         ({

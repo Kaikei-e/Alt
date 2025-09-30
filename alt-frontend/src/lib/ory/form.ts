@@ -4,7 +4,9 @@ export const normalizeMethod = (value: string | null | undefined): string => {
   return head;
 };
 
-export const formDataToSubmission = (formData: FormData): Record<string, string> => {
+export const formDataToSubmission = (
+  formData: FormData,
+): Record<string, string> => {
   const result: Record<string, string> = {};
   formData.forEach((value, key) => {
     if (typeof value === "string") {

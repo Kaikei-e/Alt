@@ -87,7 +87,9 @@ describe("middleware", () => {
 
   describe("unauthenticated access without guard cookie", () => {
     it("should redirect to Kratos login flow with return_to parameter", async () => {
-      const request = new NextRequest("https://curionoah.com/desktop/home?test=123");
+      const request = new NextRequest(
+        "https://curionoah.com/desktop/home?test=123",
+      );
 
       const response = await middleware(request);
 
@@ -116,7 +118,10 @@ describe("middleware", () => {
 
     it("should not redirect when coming from login flow (prevent redirect loop)", async () => {
       const request = new NextRequest("https://curionoah.com/home");
-      request.headers.set("referer", "https://curionoah.com/auth/login?flow=abc123");
+      request.headers.set(
+        "referer",
+        "https://curionoah.com/auth/login?flow=abc123",
+      );
 
       const response = await middleware(request);
 

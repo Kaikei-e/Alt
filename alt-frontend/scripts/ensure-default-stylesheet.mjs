@@ -40,4 +40,3 @@ const destinations = [
 for (const destination of destinations) {
   writeStylesheet(destination, stylesheetContents);
 }
-

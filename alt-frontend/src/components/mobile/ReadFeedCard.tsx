@@ -80,7 +80,7 @@ const ReadFeedCard = memo(function ReadFeedCard({ feed }: ReadFeedCardProps) {
               </Text>
             </Box>
 
-            <FeedDetails feedURL={feed.link} />
+            <FeedDetails feedURL={feed.link} feedTitle={feed.title} />
           </Flex>
         </Flex>
       </Box>

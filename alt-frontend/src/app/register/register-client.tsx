@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  Box,
-  Flex,
-  Stack,
-  Text,
-} from "@chakra-ui/react";
+import { Box, Flex, Stack, Text } from "@chakra-ui/react";
 import { useOryFlow } from "@/lib/ory/use-flow";
 import { OryFlowForm } from "@/components/ory/OryFlowForm";
 
@@ -14,7 +9,10 @@ interface RegisterClientProps {
   returnUrl?: string;
 }
 
-export default function RegisterClient({ flowId, returnUrl }: RegisterClientProps) {
+export default function RegisterClient({
+  flowId,
+  returnUrl,
+}: RegisterClientProps) {
   const { flow, isLoading, isSubmitting, error, handleSubmit } = useOryFlow({
     type: "registration",
     flowId,
@@ -55,7 +53,11 @@ export default function RegisterClient({ flowId, returnUrl }: RegisterClientProp
             >
               Alt
             </Text>
-            <Text fontSize="lg" fontWeight="semibold" color="var(--text-primary)">
+            <Text
+              fontSize="lg"
+              fontWeight="semibold"
+              color="var(--text-primary)"
+            >
               新規登録
             </Text>
           </Stack>
