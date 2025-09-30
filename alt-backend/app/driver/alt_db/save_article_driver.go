@@ -4,8 +4,20 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
+
+const upsertArticleQuery = `
+	INSERT INTO articles (title, content, url)
+	VALUES ($1, $2, $3)
+	ON CONFLICT (url) DO UPDATE
+	SET title = EXCLUDED.title,
+		content = EXCLUDED.content
+	RETURNING id
+`
 
 // SaveArticle stores or updates article content keyed by URL.
 func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content string) error {
@@ -27,11 +39,13 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		cleanTitle = cleanURL
 	}
 
-	if err := r.SaveArticle(ctx, cleanURL, cleanTitle, content); err != nil {
+	var articleID uuid.UUID
+	if err := r.pool.QueryRow(ctx, upsertArticleQuery, cleanTitle, content, cleanURL).Scan(&articleID); err != nil {
+		err = fmt.Errorf("upsert article content: %w", err)
 		logger.SafeError("failed to save article", "url", cleanURL, "error", err)
 		return err
 	}
 
-	logger.SafeInfo("article content saved", "url", cleanURL)
+	logger.SafeInfo("article content saved", "url", cleanURL, "article_id", articleID.String())
 	return nil
 }

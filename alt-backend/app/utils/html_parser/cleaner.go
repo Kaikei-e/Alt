@@ -7,6 +7,64 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+// ExtractArticleText converts raw article HTML into plain text paragraphs.
+// It removes non-content elements (script/style/navigation) and normalizes
+// whitespace so the returned string contains only readable sentences.
+func ExtractArticleText(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+
+	// Short-circuit if the payload is already plain text.
+	if !strings.Contains(trimmed, "<") {
+		return normalizeWhitespace(trimmed)
+	}
+
+	// Parse HTML and fall back to simple stripping on failure.
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(trimmed))
+	if err != nil {
+		return normalizeWhitespace(StripTags(trimmed))
+	}
+
+	// Remove elements that are unlikely to be part of the readable body.
+	doc.Find("script, style, nav, header, footer, aside, form, iframe, noscript").Remove()
+
+	collect := func(selection *goquery.Selection) []string {
+		var parts []string
+		selection.Each(func(_ int, s *goquery.Selection) {
+			text := normalizeWhitespace(strings.TrimSpace(s.Text()))
+			if text == "" {
+				return
+			}
+			if len(parts) == 0 || parts[len(parts)-1] != text {
+				parts = append(parts, text)
+			}
+		})
+		return parts
+	}
+
+	paragraphs := collect(doc.Find("article p, main p, section p, div p, p"))
+	if len(paragraphs) == 0 {
+		paragraphs = collect(doc.Find("li, blockquote"))
+	}
+	if len(paragraphs) == 0 {
+		paragraphs = collect(doc.Find("h1, h2, h3, h4, h5, h6"))
+	}
+	if len(paragraphs) == 0 {
+		fallback := normalizeWhitespace(strings.TrimSpace(doc.Text()))
+		if fallback != "" {
+			paragraphs = append(paragraphs, fallback)
+		}
+	}
+
+	if len(paragraphs) == 0 {
+		return ""
+	}
+
+	return strings.TrimSpace(strings.Join(paragraphs, "\n\n"))
+}
+
 // Clean search results using goquery for better HTML handling
 func CleanSearchResultsWithGoquery(feeds []*domain.FeedItem) []*domain.FeedItem {
 	for _, feed := range feeds {

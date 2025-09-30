@@ -3,6 +3,7 @@ package archive_article_usecase
 import (
 	"alt/port/archive_article_port"
 	"alt/port/fetch_article_port"
+	"alt/utils/html_parser"
 	"context"
 	"errors"
 	"fmt"
@@ -51,6 +52,11 @@ func (u *ArchiveArticleUsecase) Execute(ctx context.Context, input ArchiveArticl
 		return errors.New("fetched article content is empty")
 	}
 
+	textOnly := html_parser.ExtractArticleText(*content)
+	if textOnly == "" {
+		return errors.New("extracted article text is empty")
+	}
+
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
 		title = cleanURL
@@ -59,7 +65,7 @@ func (u *ArchiveArticleUsecase) Execute(ctx context.Context, input ArchiveArticl
 	record := archive_article_port.ArticleRecord{
 		URL:     cleanURL,
 		Title:   title,
-		Content: *content,
+		Content: textOnly,
 	}
 
 	if err := u.saver.SaveArticle(ctx, record); err != nil {

@@ -39,6 +39,7 @@ func TestArchiveArticleUsecase_Execute_Success(t *testing.T) {
 		Title: "Example Article",
 	}
 	content := "<p>article body</p>"
+	expected := "article body"
 
 	fetcher.EXPECT().FetchArticleContents(gomock.Any(), input.URL).Return(&content, nil)
 
@@ -56,8 +57,31 @@ func TestArchiveArticleUsecase_Execute_Success(t *testing.T) {
 	if saver.lastRecord.Title != input.Title {
 		t.Fatalf("expected Title %q, got %q", input.Title, saver.lastRecord.Title)
 	}
-	if saver.lastRecord.Content != content {
-		t.Fatalf("expected Content %q, got %q", content, saver.lastRecord.Content)
+	if saver.lastRecord.Content != expected {
+		t.Fatalf("expected Content %q, got %q", expected, saver.lastRecord.Content)
+	}
+}
+
+func TestArchiveArticleUsecase_Execute_StripsNonTextContent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	fetcher := mocks.NewMockFetchArticlePort(ctrl)
+	saver := &recordingSaver{t: t}
+	usecase := NewArchiveArticleUsecase(fetcher, saver)
+
+	input := ArchiveArticleInput{URL: "https://example.com/article"}
+	raw := `<html><head><title>Ignored</title><script>alert('x')</script></head><body><p>Hello</p><p>World</p></body></html>`
+
+	fetcher.EXPECT().FetchArticleContents(gomock.Any(), input.URL).Return(&raw, nil)
+
+	err := usecase.Execute(context.Background(), input)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if saver.lastRecord.Content != "Hello\n\nWorld" {
+		t.Fatalf("expected sanitized paragraphs, got %q", saver.lastRecord.Content)
 	}
 }
 
@@ -130,6 +154,28 @@ func TestArchiveArticleUsecase_Execute_SaveError(t *testing.T) {
 	}
 	if !saver.called {
 		t.Fatal("expected saver to be called")
+	}
+}
+
+func TestArchiveArticleUsecase_Execute_EmptyAfterExtraction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	fetcher := mocks.NewMockFetchArticlePort(ctrl)
+	saver := &recordingSaver{t: t}
+	usecase := NewArchiveArticleUsecase(fetcher, saver)
+
+	input := ArchiveArticleInput{URL: "https://example.com"}
+	raw := "<script>alert('x')</script>"
+
+	fetcher.EXPECT().FetchArticleContents(gomock.Any(), input.URL).Return(&raw, nil)
+
+	err := usecase.Execute(context.Background(), input)
+	if err == nil {
+		t.Fatal("expected error when extraction yields empty text")
+	}
+	if saver.called {
+		t.Fatal("saver should not be invoked when extracted content is empty")
 	}
 }
 
