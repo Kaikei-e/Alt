@@ -714,3 +714,33 @@ services:
     networks:
       - alt-network
 
+  auth-hub:
+    build:
+      context: ./auth-hub
+      dockerfile: Dockerfile
+    environment:
+      - KRATOS_URL=http://kratos:4433
+      - PORT=8888
+      - CACHE_TTL=5m
+    depends_on:
+      kratos:
+        condition: service_healthy
+    # Note: Health check will be performed by Nginx via auth_request
+    # No internal health check needed as the service is only accessed internally
+    restart: unless-stopped
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    labels:
+      - rask.group=alt-auth
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
