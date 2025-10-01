@@ -60,6 +60,8 @@ services:
         condition: service_healthy
       kratos:
         condition: service_healthy
+      auth-hub:
+        condition: service_started
     networks:
       - alt-network
     # Resource limits for better performance
@@ -725,8 +727,6 @@ services:
     depends_on:
       kratos:
         condition: service_healthy
-    # Note: Health check will be performed by Nginx via auth_request
-    # No internal health check needed as the service is only accessed internally
     restart: unless-stopped
     networks:
       - alt-network
