@@ -4,6 +4,7 @@ import { render, screen, within, cleanup } from "@testing-library/react";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { VirtualFeedListCore } from "@/components/mobile/VirtualFeedListCore";
 import { Feed } from "@/schema/feed";
+import "./test-env";
 
 // Mock FeedCard component
 vi.mock("@/components/mobile/FeedCard", () => ({

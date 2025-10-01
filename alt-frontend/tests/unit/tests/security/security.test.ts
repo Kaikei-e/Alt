@@ -1,6 +1,64 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AuthAPIClient } from "@/lib/api/auth-client";
 
+type MockHeaders = {
+  entries: () => IterableIterator<[string, string]>;
+};
+
+interface MockFetchResponse<T = unknown> {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json: () => Promise<T>;
+  headers: MockHeaders;
+}
+
+const toIterator = <T>(input: T[]): IterableIterator<T> =>
+  input[Symbol.iterator]() as IterableIterator<T>;
+
+const createMockHeaders = (data: Record<string, string> = {}): MockHeaders => ({
+  entries: () => toIterator(Object.entries(data)),
+});
+
+const createMockResponse = <T = unknown>(
+  overrides: Partial<MockFetchResponse<T>> = {},
+): MockFetchResponse<T> => ({
+  ok: overrides.ok ?? true,
+  status: overrides.status ?? 200,
+  statusText: overrides.statusText ?? "OK",
+  json: overrides.json ?? (() => Promise.resolve({} as T)),
+  headers: overrides.headers ?? createMockHeaders(),
+});
+
+const originalLocation = window.location;
+
+const restoreWindowLocation = () => {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    enumerable: true,
+    value: originalLocation,
+    writable: true,
+  });
+};
+
+const stubWindowLocation = (overrides: Partial<Location> = {}) => {
+  const origin = overrides.origin ?? "https://app.test.local";
+  const href = overrides.href ?? origin;
+
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    enumerable: true,
+    value: {
+      origin,
+      href,
+      assign: overrides.assign ?? (() => undefined),
+      replace: overrides.replace ?? (() => undefined),
+      reload: overrides.reload ?? (() => undefined),
+    } as Location,
+    writable: true,
+  });
+};
+
 // Mock fetch for security tests
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -10,27 +68,32 @@ describe("Security Tests", () => {
 
   beforeEach(() => {
     authClient = new AuthAPIClient();
-    mockFetch.mockClear();
+    mockFetch.mockReset();
+    restoreWindowLocation();
   });
 
   afterEach(() => {
+    mockFetch.mockReset();
     vi.clearAllMocks();
+    restoreWindowLocation();
   });
 
   describe("CSRF Protection", () => {
     it("should include CSRF token in unsafe HTTP methods", async () => {
       // Mock CSRF token retrieval
       mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({ data: { csrf_token: "test-csrf-token" } }),
-        })
+        .mockResolvedValueOnce(
+          createMockResponse({
+            json: () =>
+              Promise.resolve({ data: { csrf_token: "test-csrf-token" } }),
+          }),
+        )
         // Mock actual request
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({}),
-        });
+        .mockResolvedValueOnce(
+          createMockResponse({
+            json: () => Promise.resolve({}),
+          }),
+        );
 
       await authClient.logout();
 
@@ -52,10 +115,11 @@ describe("Security Tests", () => {
     });
 
     it("should not include CSRF token for safe HTTP methods", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ data: {} }),
-      });
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          json: () => Promise.resolve({ data: {} }),
+        }),
+      );
 
       await authClient.getCurrentUser();
 
@@ -79,15 +143,19 @@ describe("Security Tests", () => {
     it("should proceed without CSRF token if retrieval fails", async () => {
       // Mock CSRF token failure
       mockFetch
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-        })
+        .mockResolvedValueOnce(
+          createMockResponse({
+            ok: false,
+            status: 500,
+            statusText: "Internal Server Error",
+          }),
+        )
         // Mock actual request succeeds anyway
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({}),
-        });
+        .mockResolvedValueOnce(
+          createMockResponse({
+            json: () => Promise.resolve({}),
+          }),
+        );
 
       await authClient.logout();
 
@@ -111,10 +179,7 @@ describe("Security Tests", () => {
       ];
 
       // Mock window.location for test environment
-      Object.defineProperty(window, "location", {
-        value: { href: "" },
-        writable: true,
-      });
+      stubWindowLocation();
 
       for (const payload of xssPayloads) {
         // Test with XSS payload in email field - should throw redirect error
@@ -134,10 +199,7 @@ describe("Security Tests", () => {
       ];
 
       // Mock window.location for test environment
-      Object.defineProperty(window, "location", {
-        value: { href: "" },
-        writable: true,
-      });
+      stubWindowLocation();
 
       for (const payload of sqlPayloads) {
         // Test with SQL injection payload in email field - should throw redirect error
@@ -152,10 +214,7 @@ describe("Security Tests", () => {
       const oversizedInput = "a".repeat(10000);
 
       // Mock window.location for test environment
-      Object.defineProperty(window, "location", {
-        value: { href: "" },
-        writable: true,
-      });
+      stubWindowLocation();
 
       await expect(
         authClient.completeLogin("flow-123", oversizedInput, "password123"),
@@ -165,10 +224,11 @@ describe("Security Tests", () => {
 
   describe("Session Security", () => {
     it("should include credentials in all auth requests", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ data: {} }),
-      });
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          json: () => Promise.resolve({ data: {} }),
+        }),
+      );
 
       await authClient.getCurrentUser();
 
@@ -182,11 +242,13 @@ describe("Security Tests", () => {
 
     it("should handle session timeout gracefully", async () => {
       // Mock session timeout (401 response)
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        statusText: "Unauthorized",
-      });
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          ok: false,
+          status: 401,
+          statusText: "Unauthorized",
+        }),
+      );
 
       const result = await authClient.getCurrentUser();
 
@@ -229,10 +291,11 @@ describe("Security Tests", () => {
 
       const testClient = new AuthAPIClient();
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ data: {} }),
-      });
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          json: () => Promise.resolve({ data: {} }),
+        }),
+      );
 
       await testClient.getCurrentUser();
 
@@ -279,16 +342,19 @@ describe("Security Tests", () => {
 
     it("should provide user-friendly error messages", async () => {
       mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({ data: { csrf_token: "test-csrf-token" } }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-          statusText: "Internal Server Error",
-        });
+        .mockResolvedValueOnce(
+          createMockResponse({
+            json: () =>
+              Promise.resolve({ data: { csrf_token: "test-csrf-token" } }),
+          }),
+        )
+        .mockResolvedValueOnce(
+          createMockResponse({
+            ok: false,
+            status: 500,
+            statusText: "Internal Server Error",
+          }),
+        );
 
       await expect(authClient.logout()).rejects.toThrow("POST /logout");
     });
@@ -297,10 +363,7 @@ describe("Security Tests", () => {
   describe("Request Integrity", () => {
     it("should handle redirect in completeLogin (current implementation)", async () => {
       // Mock window.location for test environment
-      Object.defineProperty(window, "location", {
-        value: { href: "" },
-        writable: true,
-      });
+      stubWindowLocation();
 
       await expect(
         authClient.completeLogin("flow-123", "test@example.com", "password123"),
@@ -309,10 +372,7 @@ describe("Security Tests", () => {
 
     it("should properly serialize request bodies", async () => {
       // Mock window.location for test environment
-      Object.defineProperty(window, "location", {
-        value: { href: "" },
-        writable: true,
-      });
+      stubWindowLocation();
 
       await expect(
         authClient.completeLogin("flow-123", "test@example.com", "password123"),

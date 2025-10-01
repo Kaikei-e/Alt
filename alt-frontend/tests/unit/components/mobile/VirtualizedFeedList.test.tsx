@@ -10,6 +10,7 @@ import {
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { VirtualizedFeedList } from "@/components/mobile/VirtualizedFeedList";
 import { Feed } from "@/schema/feed";
+import "./test-env";
 
 // Mock the SimpleFeedList component
 vi.mock("@/components/mobile/SimpleFeedList", () => ({

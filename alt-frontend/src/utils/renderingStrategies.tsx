@@ -100,46 +100,29 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   }
 
   /**
-   * Decode HTML entities with DOMPurify sanitization
-   * SECURITY FIX: Use DOMPurify to remove dangerous content first, then decode entities safely
+   * Decode HTML entities while stripping unsafe markup first.
    */
   public decodeHtmlEntities(str: string): string {
-    // Input validation for security
     if (!str || typeof str !== "string") {
       return "";
     }
 
     try {
-      // SECURITY FIX: Use DOMPurify to sanitize and remove dangerous HTML elements
-      const sanitized = DOMPurify.sanitize(str, {
-        ALLOWED_TAGS: [], // Remove all HTML tags
-        KEEP_CONTENT: true, // Keep text content of removed tags
-      });
+      const fragment = DOMPurify.sanitize(str, {
+        ALLOWED_TAGS: [],
+        KEEP_CONTENT: true,
+        RETURN_DOM_FRAGMENT: true,
+      }) as DocumentFragment | string;
 
-      // Now safely decode HTML entities with correct order (ampersand last)
-      return sanitized
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&copy;/g, "©")
-        .replace(/&reg;/g, "®")
-        .replace(/&trade;/g, "™")
-        .replace(/&amp;/g, "&"); // CRITICAL: Decode &amp; LAST to prevent double-decoding
+      const sanitizedText =
+        typeof fragment === "string"
+          ? fragment
+          : fragment.textContent ?? "";
+
+      return this.decodeEntitiesSafely(sanitizedText);
     } catch (error) {
-      // Fallback: If DOMPurify fails, use safe manual decoding with correct order
-      console.warn("DOMPurify decoding failed:", error);
-      return str
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&copy;/g, "©")
-        .replace(/&reg;/g, "®")
-        .replace(/&trade;/g, "™")
-        .replace(/&amp;/g, "&"); // CRITICAL: Decode &amp; LAST to prevent double-decoding
+      console.warn("DOMPurify decoding fallback:", error);
+      return this.decodeEntitiesSafely(str);
     }
   }
 
@@ -330,6 +313,34 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
   // Static cache for external domains (class-level)
   private static externalDomainsCache: string[] | null = null;
 
+  private decodeEntitiesSafely(value: string): string {
+    if (!value) {
+      return "";
+    }
+
+    if (typeof document !== "undefined") {
+      const textarea = document.createElement("textarea");
+      textarea.innerHTML = value;
+      return textarea.value;
+    }
+
+    return this.decodeHtmlEntitiesManually(value);
+  }
+
+  private decodeHtmlEntitiesManually(str: string): string {
+    return str
+      .replace(/&nbsp;/g, " ")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&copy;/g, "©")
+      .replace(/&reg;/g, "®")
+      .replace(/&trade;/g, "™")
+      .replace(/&amp;/g, "&");
+  }
+
   /**
    * Escape HTML to prevent XSS in data attributes
    * @param str - String to escape
@@ -374,93 +385,42 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       return ""; // Block URLs containing suspicious JavaScript patterns
     }
 
-    // SECURITY FIX: Use DOMPurify to sanitize before decoding
-    const sanitized = DOMPurify.sanitize(url, {
-      ALLOWED_TAGS: [], // No HTML tags allowed in URLs
-      KEEP_CONTENT: true, // Keep text content
-      FORBID_ATTR: ["onclick", "onload", "onerror", "onmouseover", "onfocus"], // Block event handlers
-    });
-
-    // Use secure HTML entity decoding with SSR compatibility
     try {
-      let decoded: string;
+      const sanitized = DOMPurify.sanitize(url, {
+        ALLOWED_TAGS: [],
+        KEEP_CONTENT: true,
+        FORBID_ATTR: ["onclick", "onload", "onerror", "onmouseover", "onfocus"],
+      });
 
-      // Check if we're in a browser environment
-      if (typeof document !== "undefined") {
-        // Browser environment: Use DOM for safe decoding
-        const textarea = document.createElement("textarea");
-        textarea.innerHTML = sanitized;
-        decoded = textarea.value;
-      } else {
-        // Server environment: Use a more comprehensive but safe decoding approach
-        // First, handle numeric entities that could be used for obfuscation
-        let temp = sanitized;
+      const decoded = this.decodeEntitiesSafely(sanitized);
 
-        // SECURITY: Check if the string contains patterns that could form dangerous schemes when decoded
-        const potentiallyDangerous =
-          /&#(106|106;|97|97;|118|118;|115|115;|99|99;|114|114;|105|105;|112|112;|116|116;|58|58;)/i.test(
-            temp,
-          ) || /&#x(6[aA]|61|76|73|63|72|69|70|74|3[aA])/i.test(temp);
+      const normalized = DOMPurify.sanitize(decoded, {
+        ALLOWED_TAGS: [],
+        KEEP_CONTENT: true,
+      }).trim();
 
-        if (potentiallyDangerous) {
-          // Don't decode numeric entities that could spell out dangerous schemes
-          // Just decode basic named entities
-          decoded = temp
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/&amp;/g, "&");
-        } else {
-          // Safe to decode numeric entities
-          // Decode common numeric entities safely (limited set for security)
-          temp = temp.replace(/&#([0-9]+);/g, (match, charCode) => {
-            const code = parseInt(charCode, 10);
-            // Only decode safe ASCII characters (32-126) to prevent unicode attacks
-            if (code >= 32 && code <= 126) {
-              return String.fromCharCode(code);
-            }
-            return match; // Keep original if outside safe range
-          });
-
-          // Decode hexadecimal entities safely
-          temp = temp.replace(/&#x([0-9a-fA-F]+);/g, (match, hexCode) => {
-            const code = parseInt(hexCode, 16);
-            // Only decode safe ASCII characters to prevent unicode attacks
-            if (code >= 32 && code <= 126) {
-              return String.fromCharCode(code);
-            }
-            return match; // Keep original if outside safe range
-          });
-
-          // Decode named entities
-          decoded = temp
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/&amp;/g, "&"); // Decode & last to prevent double-decoding
-        }
+      if (!normalized) {
+        return "";
       }
 
-      // Final validation: check again for dangerous schemes after decoding
-      const decodedTrimmed = decoded.trim();
       if (
-        dangerousSchemes.test(decodedTrimmed) ||
-        decodedTrimmed.startsWith("data:text/html,")
+        dangerousSchemes.test(normalized) ||
+        normalized.startsWith("data:text/html,")
       ) {
-        return ""; // Block if dangerous scheme appears after decoding
+        return "";
       }
 
-      // Additional validation: block if malicious patterns appear
       const maliciousPatterns = /<script|<iframe|onerror=|onload=|javascript:/i;
-      if (maliciousPatterns.test(decoded)) {
-        return ""; // Block malicious patterns
+      if (maliciousPatterns.test(normalized) || suspiciousPatterns.test(normalized)) {
+        return "";
       }
 
-      return decoded;
+      if (/<[a-z]/i.test(normalized)) {
+        return "";
+      }
+
+      return normalized;
     } catch (error) {
-      // If any error occurs during decoding, return empty string for security
       console.warn(
         "Security warning: URL decoding failed, returning empty string",
         error,

@@ -2,6 +2,23 @@
 import { defineConfig, mergeConfig } from "vitest/config";
 import viteConfig from "./vite.config";
 
+const resolvePool = (value?: string) => {
+  const normalized = (value ?? "threads").toLowerCase();
+  return normalized === "forks" ? "forks" : "threads";
+};
+
+const parsePositiveInteger = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+};
+
+const selectedPool = resolvePool(process.env.VITEST_POOL);
+const maxWorkers = parsePositiveInteger(process.env.VITEST_MAX_WORKERS, 1);
+const maxConcurrency = parsePositiveInteger(
+  process.env.VITEST_MAX_CONCURRENCY,
+  maxWorkers,
+);
+
 export default mergeConfig(
   viteConfig,
   defineConfig({
@@ -33,22 +50,27 @@ export default mergeConfig(
       hookTimeout: 10000,
       teardownTimeout: 10000,
 
-      // Force single-threaded execution for stability
-      pool: "forks",
+      // Configurable worker pool for Vitest
+      pool: selectedPool,
       poolOptions: {
+        threads: {
+          maxThreads: maxWorkers,
+          minThreads: 1,
+          singleThread: maxWorkers === 1,
+        },
         forks: {
-          singleFork: true,
-          maxForks: 1,
+          maxForks: maxWorkers,
           minForks: 1,
+          singleFork: maxWorkers === 1,
         },
       },
 
-      // Sequential test execution
+      // Sequential test execution (overridable via env)
       fileParallelism: false,
       isolate: false,
       logHeapUsage: true,
-      maxWorkers: 1,
-      maxConcurrency: 1,
+      maxWorkers,
+      maxConcurrency,
 
       // Memory management
       sequence: {

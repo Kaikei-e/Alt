@@ -39,10 +39,7 @@ export class AuthAPIClient {
     this.requestId = 0;
     // TODO.md要件: Kratos 公開URL直接アクセス用（必須・ハードコード禁止）
     const envIdpOrigin = IDP_ORIGIN;
-    const runtimeOrigin =
-      typeof window !== "undefined"
-        ? window.location.origin
-        : process.env.NEXT_PUBLIC_APP_ORIGIN || envIdpOrigin;
+    const runtimeOrigin = this.resolveAppOrigin() || envIdpOrigin;
 
     const isLocal = (value: string) => {
       try {
@@ -69,16 +66,13 @@ export class AuthAPIClient {
     this.inflightSessionPromise = null;
 
     // TODO.md 手順0: 配信中のバンドルの値を確認
-    console.log("[AUTH-CLIENT] NEXT_PUBLIC_IDP_ORIGIN =", this.idpOrigin);
+    this.debugLog("[AUTH-CLIENT] NEXT_PUBLIC_IDP_ORIGIN =", this.idpOrigin);
   }
 
   // 接続テスト機能追加 (X1.md 1.3.2 実装)
   async testConnection(): Promise<boolean> {
     try {
-      const url = new URL(
-        this.baseURL,
-        window.location?.origin || "http://localhost:3000",
-      ).toString();
+      const url = new URL(this.baseURL, this.resolveAppOrigin()).toString();
       const response = await fetch(url, {
         method: "GET",
         signal: AbortSignal.timeout(5000),
@@ -123,10 +117,7 @@ export class AuthAPIClient {
   async getCurrentUser(): Promise<User | null> {
     try {
       // Use FE route handler to validate with Kratos whoami via same-origin cookie
-      const origin =
-        typeof window !== "undefined"
-          ? window.location?.origin
-          : process.env.NEXT_PUBLIC_APP_ORIGIN || "http://localhost:3000";
+      const origin = this.resolveAppOrigin();
       const url = new URL(`/api/fe-auth/validate`, origin).toString();
       const response = await fetch(url, {
         method: "GET",
@@ -240,7 +231,7 @@ export class AuthAPIClient {
   ): Promise<{ data: unknown }> {
     const url = new URL(
       `${this.baseURL}${endpoint}`,
-      window.location?.origin || "http://localhost:3000",
+      this.resolveAppOrigin(),
     ).toString();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -307,10 +298,7 @@ export class AuthAPIClient {
     try {
       // 🚀 X29 FIX: Use nginx direct route for CSRF token requests
       // This bypasses the frontend proxy and goes directly through nginx to auth-service
-      const url = new URL(
-        "/api/auth/csrf",
-        window.location?.origin || "http://localhost:3000",
-      ).toString();
+      const url = new URL("/api/auth/csrf", this.resolveAppOrigin()).toString();
 
       // 🚀 X26 Phase 2: Enhanced CSRF request with proper headers for direct auth-service routing
       const response = await fetch(url, {
@@ -343,7 +331,7 @@ export class AuthAPIClient {
       const token = data.data?.csrf_token || data.csrf_token || null;
 
       if (token) {
-        console.log(
+        this.debugLog(
           "✅ CSRF token retrieved successfully via direct auth-service route",
         );
       } else {
@@ -440,6 +428,38 @@ export class AuthAPIClient {
     this.currentSessionId = null;
     this.sessionHeaders = null;
     this.inflightSessionPromise = null;
+  }
+
+  private resolveAppOrigin(): string {
+    if (typeof window !== "undefined" && window.location?.origin) {
+      try {
+        const origin = window.location.origin;
+        if (origin) {
+          return origin;
+        }
+      } catch {
+        // Jsdom can throw when accessing location during manipulation; fallback below.
+      }
+    }
+
+    const envOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN?.trim();
+    if (envOrigin) {
+      return envOrigin;
+    }
+
+    const legacyEnvOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim();
+    if (legacyEnvOrigin) {
+      return legacyEnvOrigin;
+    }
+
+    return "http://localhost:3000";
+  }
+
+  private debugLog(message: string, ...args: unknown[]) {
+    if (process.env.NODE_ENV === "test") {
+      return;
+    }
+    console.log(message, ...args);
   }
 
   private getMethodDescription(method: string, endpoint: string): string {

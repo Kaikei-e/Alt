@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import "./test-env";
 import { userEvent } from "@testing-library/user-event";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
@@ -21,6 +22,10 @@ const renderWithProvider = (component: React.ReactElement) => {
 };
 
 describe("EmptyFeedState", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("should render empty state message", () => {
     renderWithProvider(<EmptyFeedState />);
 

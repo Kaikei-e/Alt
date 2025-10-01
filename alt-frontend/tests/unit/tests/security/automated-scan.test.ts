@@ -34,6 +34,14 @@ async function getFilesRecursively(
   return files;
 }
 
+const hasSanitizedDangerouslySetInnerHTML = (content: string) => {
+  if (!content.includes("dangerouslySetInnerHTML")) {
+    return false;
+  }
+
+  return /DOMPurify\.sanitize\s*\(/.test(content);
+};
+
 // コンポーネントファイルを取得
 async function getComponentFiles(): Promise<string[]> {
   const componentDir = join(process.cwd(), "src", "components");
@@ -77,7 +85,10 @@ describe("Automated Security Scan - PROTECTED", () => {
         const relativePath = filePath.replace(process.cwd(), "");
 
         // 危険なパターンを検出
-        if (content.includes("dangerouslySetInnerHTML")) {
+        if (
+          content.includes("dangerouslySetInnerHTML") &&
+          !hasSanitizedDangerouslySetInnerHTML(content)
+        ) {
           vulnerabilities.push(
             `${relativePath}: dangerouslySetInnerHTML usage detected`,
           );

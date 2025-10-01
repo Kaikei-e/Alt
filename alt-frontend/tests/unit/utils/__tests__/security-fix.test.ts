@@ -91,6 +91,24 @@ describe("Security Fix Tests - TDD", () => {
         expect(result).not.toContain("alert"); // Should not contain any suspicious content
         expect(result).not.toContain("<script"); // Should not contain any script tags
       });
+
+      it("should decode safe URL entities exactly once", () => {
+        const renderer = new HTMLRenderingStrategy();
+        const encodedUrl = "https://example.com/feed?query=react&amp;lang=en";
+
+        const result = renderer.decodeHtmlEntitiesFromUrl(encodedUrl);
+
+        expect(result).toBe("https://example.com/feed?query=react&lang=en");
+      });
+
+      it("should allow relative URLs after sanitization", () => {
+        const renderer = new HTMLRenderingStrategy();
+        const relativeUrl = "/feeds/latest?tag=web&amp;view=cards";
+
+        const result = renderer.decodeHtmlEntitiesFromUrl(relativeUrl);
+
+        expect(result).toBe("/feeds/latest?tag=web&view=cards");
+      });
     });
   });
 });
