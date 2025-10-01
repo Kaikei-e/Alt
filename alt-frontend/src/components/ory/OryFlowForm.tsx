@@ -153,16 +153,27 @@ const renderInputNode = (
   const defaultValue =
     typeof attrs.value === "string" ? attrs.value : undefined;
   const label = attrs.label?.text ?? node.meta?.label?.text ?? attrs.name;
+  const inputId = `ory-input-${attrs.name}-${index}`;
 
   return (
     <Box key={`input-${index}-${attrs.name}`} width="100%">
-      <Text fontSize="sm" color="var(--text-muted)" mb={1}>
+      <label
+        htmlFor={inputId}
+        style={{
+          fontSize: '14px',
+          color: 'var(--text-muted)',
+          marginBottom: '4px',
+          display: 'block'
+        }}
+      >
         {label}
-      </Text>
+      </label>
       <Input
+        id={inputId}
         name={attrs.name}
         type={attrs.type === "11184809" ? "text" : attrs.type}
         placeholder={label}
+        aria-label={label}
         defaultValue={defaultValue}
         required={attrs.required}
         autoComplete={attrs.autocomplete ?? undefined}
@@ -218,6 +229,24 @@ export const OryFlowForm = ({
   }
 
   if (!flow) {
+    if (error) {
+      return (
+        <Box>
+          <Box
+            p={3}
+            border="1px solid"
+            borderColor="red.300"
+            bg="red.100"
+            borderRadius="md"
+          >
+            <Text fontSize="sm" color="red.700">
+              {error}
+            </Text>
+          </Box>
+        </Box>
+      );
+    }
+
     return <Box>{emptyState ?? <Text>フローが見つかりません。</Text>}</Box>;
   }
 

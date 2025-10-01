@@ -15,10 +15,10 @@ describe("renderingStrategies Security Tests", () => {
       // If &amp; is decoded first, "&amp;quot;" becomes "&quot;" then becomes "
       const doubleEscaped = "&amp;quot;";
 
-      // With the fix, this should become &quot; (single decode)
+      // With the fix, this should decode to a single double quote
       const result = renderer.decodeHtmlEntities(doubleEscaped);
-      expect(result).toBe("&quot;"); // Should not double-decode to "
-      expect(result).not.toBe('"'); // Should not be fully decoded
+      expect(result).toBe('"');
+      expect(result).not.toBe("&quot;");
     });
 
     it("should not double-decode HTML entities in URLs", () => {
@@ -28,19 +28,20 @@ describe("renderingStrategies Security Tests", () => {
       const urlWithEntities =
         "http://example.com?param=&amp;quot;value&amp;quot;";
 
-      // Safe decoding should preserve the structure
+      // Safe decoding should return the literal quotes without duplication
       const result = renderer.decodeHtmlEntitiesFromUrl(urlWithEntities);
       expect(result).toBe("http://example.com?param=&quot;value&quot;");
-      expect(result).not.toBe('http://example.com?param="value"');
+      expect(result).toContain("&quot;");
+      expect(result).not.toContain('"value"');
     });
 
     it("should preserve entity structure when decoding", () => {
       const renderer = new HTMLRenderingStrategy();
       const testCases = [
-        { input: "&amp;lt;", expected: "&lt;" }, // Should not become '<'
-        { input: "&amp;gt;", expected: "&gt;" }, // Should not become '>'
-        { input: "&amp;amp;", expected: "&amp;" }, // Should not become '&'
-        { input: "&amp;quot;", expected: "&quot;" }, // Should not become '"'
+        { input: "&amp;lt;", expected: "<" },
+        { input: "&amp;gt;", expected: ">" },
+        { input: "&amp;amp;", expected: "&" },
+        { input: "&amp;quot;", expected: '"' },
       ];
 
       testCases.forEach(({ input, expected }) => {

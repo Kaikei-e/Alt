@@ -1,10 +1,11 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LoginForm from "../../../../../src/app/auth/login/LoginForm";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 // Oryクライアントのモック
 vi.mock("@ory/client", () => {
@@ -26,6 +27,9 @@ vi.mock("@ory/client", () => {
 Object.defineProperty(window, "location", {
   value: {
     href: "http://localhost:3000",
+    replace: vi.fn(),
+    assign: vi.fn(),
+    reload: vi.fn(),
   },
   writable: true,
 });
@@ -44,6 +48,58 @@ const getMocks = async () => {
   };
 };
 
+const renderWithProviders = (ui: React.ReactElement) =>
+  render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
+
+const LOADING_TEXT = "フローを読み込んでいます…";
+const NETWORK_ERROR_TEXT =
+  "ネットワークエラーが発生しました。ページを再読み込みしてください。";
+const IDENTIFIER_LABEL = "メールアドレス";
+const PASSWORD_LABEL = "パスワード";
+const SUBMIT_LABEL = "ログイン";
+const KRATOS_PUBLIC_URL = (
+  process.env.NEXT_PUBLIC_KRATOS_PUBLIC_URL ?? "https://id.test.example.com"
+).replace(/\/$/, "");
+const KRATOS_LOGIN_FLOW_URL = `${KRATOS_PUBLIC_URL}/self-service/login/browser`;
+
+const createUiText = (text: string) => ({ id: 0, text, type: "info" });
+
+const createIdentifierNode = () => ({
+  type: "input",
+  attributes: {
+    name: "identifier",
+    type: "email",
+    required: true,
+    label: createUiText(IDENTIFIER_LABEL),
+  },
+  messages: [],
+  meta: { label: createUiText(IDENTIFIER_LABEL) },
+});
+
+const createPasswordNode = () => ({
+  type: "input",
+  attributes: {
+    name: "password",
+    type: "password",
+    required: true,
+    label: createUiText(PASSWORD_LABEL),
+  },
+  messages: [],
+  meta: { label: createUiText(PASSWORD_LABEL) },
+});
+
+const createSubmitNode = () => ({
+  type: "input",
+  attributes: {
+    name: "method",
+    type: "submit",
+    value: "password",
+    label: createUiText(SUBMIT_LABEL),
+  },
+  messages: [],
+  meta: { label: createUiText(SUBMIT_LABEL) },
+});
+
 describe("LoginForm", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -52,10 +108,14 @@ describe("LoginForm", () => {
     mockGetLoginFlow.mockImplementation(() => new Promise(() => {})); // pending promise
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   describe("初期状態", () => {
     it("ローディング状態が表示される", () => {
-      render(<LoginForm flowId="test-flow-id" />);
-      expect(screen.getByText(/loading/i)).toBeInTheDocument();
+      renderWithProviders(<LoginForm flowId="test-flow-id" />);
+      expect(screen.getByText(LOADING_TEXT)).toBeInTheDocument();
     });
 
     it("フローが正常に読み込まれてフォームが表示される", async () => {
@@ -64,28 +124,16 @@ describe("LoginForm", () => {
       const mockFlow = {
         id: "test-flow-id",
         ui: {
-          nodes: [
-            {
-              type: "input",
-              attributes: {
-                name: "identifier",
-                type: "email",
-                required: true,
-              },
-              messages: [],
-            },
-          ],
+          nodes: [createIdentifierNode()],
         },
       };
 
       mockGetLoginFlow.mockResolvedValue({ data: mockFlow });
 
-      render(<LoginForm flowId="test-flow-id" />);
+      renderWithProviders(<LoginForm flowId="test-flow-id" />);
 
       await waitFor(() => {
-        expect(
-          screen.getByRole("textbox", { name: /email/i }),
-        ).toBeInTheDocument();
+        expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
       });
     });
   });
@@ -97,35 +145,20 @@ describe("LoginForm", () => {
         id: "test-flow-id",
         ui: {
           nodes: [
-            {
-              type: "input",
-              attributes: {
-                name: "identifier",
-                type: "email",
-                required: true,
-              },
-              messages: [],
-            },
-            {
-              type: "input",
-              attributes: {
-                name: "password",
-                type: "password",
-                required: true,
-              },
-              messages: [],
-            },
+            createIdentifierNode(),
+            createPasswordNode(),
+            createSubmitNode(),
           ],
         },
       };
 
       mockGetLoginFlow.mockResolvedValue({ data: mockFlow });
 
-      render(<LoginForm flowId="test-flow-id" />);
+      renderWithProviders(<LoginForm flowId="test-flow-id" />);
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-        expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
+        expect(screen.getByLabelText(PASSWORD_LABEL)).toBeInTheDocument();
       });
     });
 
@@ -133,12 +166,10 @@ describe("LoginForm", () => {
       const { mockGetLoginFlow } = await getMocks();
       mockGetLoginFlow.mockRejectedValue(new Error("Network error"));
 
-      render(<LoginForm flowId="test-flow-id" />);
+      renderWithProviders(<LoginForm flowId="test-flow-id" />);
 
       await waitFor(() => {
-        expect(
-          screen.getByText(/Failed to load login form. Please try again./i),
-        ).toBeInTheDocument();
+        expect(screen.getByText(NETWORK_ERROR_TEXT)).toBeInTheDocument();
       });
     });
   });
@@ -149,28 +180,14 @@ describe("LoginForm", () => {
       const user = userEvent.setup();
       const mockFlow = {
         id: "test-flow-id",
+        return_to: "https://curionoah.com/",
         ui: {
           action: "/self-service/login",
           method: "POST",
           nodes: [
-            {
-              type: "input",
-              attributes: {
-                name: "identifier",
-                type: "email",
-                required: true,
-              },
-              messages: [],
-            },
-            {
-              type: "input",
-              attributes: {
-                name: "password",
-                type: "password",
-                required: true,
-              },
-              messages: [],
-            },
+            createIdentifierNode(),
+            createPasswordNode(),
+            createSubmitNode(),
           ],
         },
       };
@@ -186,24 +203,31 @@ describe("LoginForm", () => {
       mockUpdateLoginFlow.mockResolvedValue(mockResponse);
 
       // window.location.href のモック
-      const mockLocation = { href: "" };
+      const mockLocation = {
+        href: "",
+        replace: vi.fn(),
+        assign: vi.fn(),
+        reload: vi.fn(),
+      };
       Object.defineProperty(window, "location", {
         value: mockLocation,
         writable: true,
       });
 
-      render(<LoginForm flowId="test-flow-id" />);
+      renderWithProviders(<LoginForm flowId="test-flow-id" />);
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
       });
 
-      await user.type(screen.getByLabelText(/email/i), "test@example.com");
-      await user.type(screen.getByLabelText(/password/i), "password123");
-      await user.click(screen.getByRole("button", { name: /sign in/i }));
+      await user.type(screen.getByLabelText(IDENTIFIER_LABEL), "test@example.com");
+      await user.type(screen.getByLabelText(PASSWORD_LABEL), "password123");
+      await user.click(screen.getByRole("button", { name: SUBMIT_LABEL }));
 
       await waitFor(() => {
-        expect(window.location.href).toBe("https://curionoah.com/");
+        expect(mockLocation.replace).toHaveBeenCalledWith(
+          "https://curionoah.com/",
+        );
       });
     });
 
@@ -212,28 +236,14 @@ describe("LoginForm", () => {
       const user = userEvent.setup();
       const mockFlow = {
         id: "test-flow-id",
+        return_to: "https://curionoah.com/",
         ui: {
           action: "/self-service/login",
           method: "POST",
           nodes: [
-            {
-              type: "input",
-              attributes: {
-                name: "identifier",
-                type: "email",
-                required: true,
-              },
-              messages: [],
-            },
-            {
-              type: "input",
-              attributes: {
-                name: "password",
-                type: "password",
-                required: true,
-              },
-              messages: [],
-            },
+            createIdentifierNode(),
+            createPasswordNode(),
+            createSubmitNode(),
           ],
         },
       };
@@ -258,20 +268,26 @@ describe("LoginForm", () => {
       mockGetLoginFlow.mockResolvedValue({ data: mockFlow });
       mockUpdateLoginFlow.mockRejectedValue(errorResponse);
 
-      render(<LoginForm flowId="test-flow-id" />);
+      renderWithProviders(<LoginForm flowId="test-flow-id" />);
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
       });
 
-      await user.type(screen.getByLabelText(/email/i), "wrong@example.com");
-      await user.type(screen.getByLabelText(/password/i), "wrongpassword");
-      await user.click(screen.getByRole("button", { name: /sign in/i }));
+      await user.type(
+        screen.getByLabelText(IDENTIFIER_LABEL),
+        "wrong@example.com",
+      );
+      await user.type(
+        screen.getByLabelText(PASSWORD_LABEL),
+        "wrongpassword",
+      );
+      await user.click(screen.getByRole("button", { name: SUBMIT_LABEL }));
 
       await waitFor(() => {
         // ログインが失敗した場合、ボタンは再度有効になる
         expect(
-          screen.getByRole("button", { name: /sign in/i }),
+          screen.getByRole("button", { name: SUBMIT_LABEL }),
         ).not.toBeDisabled();
       });
     });
@@ -296,27 +312,27 @@ describe("LoginForm", () => {
 
       mockGetLoginFlow.mockRejectedValue(error410);
 
-      // Mock window.location.href
-      const mockLocation = { href: "" };
+      const mockLocation = {
+        href: "",
+        replace: vi.fn(),
+        assign: vi.fn(),
+        reload: vi.fn(),
+      };
       Object.defineProperty(window, "location", {
         value: mockLocation,
         writable: true,
       });
 
-      // Mock current URL with trusted origin
-      Object.defineProperty(window, "location", {
-        value: {
-          ...mockLocation,
-          href: "https://curionoah.com/auth/login?flow=expired-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome",
-        },
-        writable: true,
-      });
+      mockLocation.href =
+        "https://curionoah.com/auth/login?flow=expired-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fhome";
 
-      render(<LoginForm flowId="expired-flow-id" />);
+      renderWithProviders(<LoginForm flowId="expired-flow-id" />);
 
       await waitFor(() => {
-        // With safeRedirect, it should redirect to trusted IDP origin
-        expect(window.location.href).toContain("curionoah.com");
+        expect(mockLocation.replace).toHaveBeenCalled();
+        expect(mockLocation.replace.mock.calls[0][0]).toBe(
+          KRATOS_LOGIN_FLOW_URL,
+        );
       });
     });
 
@@ -325,28 +341,14 @@ describe("LoginForm", () => {
       const user = userEvent.setup();
       const mockFlow = {
         id: "test-flow-id",
+        return_to: "https://curionoah.com/",
         ui: {
           action: "/self-service/login",
           method: "POST",
           nodes: [
-            {
-              type: "input",
-              attributes: {
-                name: "identifier",
-                type: "email",
-                required: true,
-              },
-              messages: [],
-            },
-            {
-              type: "input",
-              attributes: {
-                name: "password",
-                type: "password",
-                required: true,
-              },
-              messages: [],
-            },
+            createIdentifierNode(),
+            createPasswordNode(),
+            createSubmitNode(),
           ],
         },
       };
@@ -366,29 +368,35 @@ describe("LoginForm", () => {
       mockUpdateLoginFlow.mockRejectedValue(error410);
 
       // Mock window.location.href with trusted origin
-      const mockLocation = { href: "" };
+      const mockLocation = {
+        href: "https://curionoah.com/auth/login?flow=test-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings",
+        replace: vi.fn(),
+        assign: vi.fn(),
+        reload: vi.fn(),
+      };
       Object.defineProperty(window, "location", {
-        value: {
-          ...mockLocation,
-          href: "https://curionoah.com/auth/login?flow=test-flow&return_to=https%3A%2F%2Fcurionoah.com%2Fdesktop%2Fsettings",
-        },
+        value: mockLocation,
         writable: true,
       });
 
-      render(<LoginForm flowId="test-flow-id" />);
+      renderWithProviders(<LoginForm flowId="test-flow-id" />);
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
       });
 
-      await user.type(screen.getByLabelText(/email/i), "test@example.com");
-      await user.type(screen.getByLabelText(/password/i), "password123");
-      await user.click(screen.getByRole("button", { name: /sign in/i }));
+      await user.type(screen.getByLabelText(IDENTIFIER_LABEL), "test@example.com");
+      await user.type(
+        screen.getByLabelText(PASSWORD_LABEL),
+        "password123",
+      );
+      await user.click(screen.getByRole("button", { name: SUBMIT_LABEL }));
 
       await waitFor(() => {
-        // Since safeRedirect validates the URL and /ory/self-service/login/browser... is a relative URL
-        // it will fall back to the default URL
-        expect(window.location.href).toBe("https://curionoah.com/");
+        expect(mockLocation.replace).toHaveBeenCalled();
+        expect(mockLocation.replace.mock.calls[0][0]).toBe(
+          KRATOS_LOGIN_FLOW_URL,
+        );
       });
     });
 
@@ -403,19 +411,24 @@ describe("LoginForm", () => {
       mockGetLoginFlow.mockRejectedValue(error410);
 
       // Mock window.location.href without return_to but with trusted origin
-      const mockLocation = { href: "" };
+      const mockLocation = {
+        href: "https://curionoah.com/auth/login?flow=expired-flow",
+        replace: vi.fn(),
+        assign: vi.fn(),
+        reload: vi.fn(),
+      };
       Object.defineProperty(window, "location", {
-        value: {
-          ...mockLocation,
-          href: "https://curionoah.com/auth/login?flow=expired-flow",
-        },
+        value: mockLocation,
         writable: true,
       });
 
-      render(<LoginForm flowId="expired-flow-id" />);
+      renderWithProviders(<LoginForm flowId="expired-flow-id" />);
 
       await waitFor(() => {
-        expect(window.location.href).toContain("curionoah.com");
+        expect(mockLocation.replace).toHaveBeenCalled();
+        expect(mockLocation.replace.mock.calls[0][0]).toBe(
+          KRATOS_LOGIN_FLOW_URL,
+        );
       });
     });
   });

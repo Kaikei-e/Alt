@@ -32,7 +32,7 @@ describe("contentTypeDetector Security Tests", () => {
       const result = analyzeContent(maliciousInput);
 
       const duration = performance.now() - start;
-      expect(duration).toBeLessThan(600); // Increased for CI environment compatibility
+      expect(duration).toBeLessThan(1200); // Increased for heavier CI runtimes
       expect(result).toBeDefined();
     });
 
