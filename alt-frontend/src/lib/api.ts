@@ -57,6 +57,7 @@ export const feedsApi = {
   getArticleSummary: feedsApiInstance.getArticleSummary.bind(feedsApiInstance),
   getFeedDetails: feedsApiInstance.getFeedDetails.bind(feedsApiInstance),
   archiveContent: feedsApiInstance.archiveContent.bind(feedsApiInstance),
+  summarizeArticle: feedsApiInstance.summarizeArticle.bind(feedsApiInstance),
 
   // Feed content on the fly
   getFeedContentOnTheFly:

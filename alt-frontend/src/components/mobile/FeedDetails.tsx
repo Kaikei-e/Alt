@@ -52,6 +52,8 @@ export const FeedDetails = ({
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
 
   const handleHideDetails = useCallback(() => {
     setIsOpen(false);
@@ -317,9 +319,42 @@ export const FeedDetails = ({
                   isLoading={isLoading}
                   error={error}
                 />
+
+                {/* Display Japanese Summary */}
+                {summary && (
+                  <Box
+                    mt={4}
+                    px={4}
+                    py={4}
+                    bg="rgba(255, 255, 255, 0.03)"
+                    borderRadius="12px"
+                    border="1px solid rgba(255, 255, 255, 0.1)"
+                    mx={4}
+                    mb={4}
+                  >
+                    <Text
+                      fontSize="xs"
+                      color="var(--text-secondary)"
+                      fontWeight="bold"
+                      mb={2}
+                      textTransform="uppercase"
+                      letterSpacing="1px"
+                    >
+                      日本語要約 / Japanese Summary
+                    </Text>
+                    <Text
+                      fontSize="sm"
+                      color="var(--text-primary)"
+                      lineHeight="1.7"
+                      whiteSpace="pre-wrap"
+                    >
+                      {summary}
+                    </Text>
+                  </Box>
+                )}
               </Box>
 
-              {/* Modal Footer with Fave and Hide Details buttons */}
+              {/* Modal Footer with action buttons */}
               <Box
                 position="sticky"
                 bottom="0"
@@ -327,13 +362,14 @@ export const FeedDetails = ({
                 bg="rgba(255, 255, 255, 0.05)"
                 backdropFilter="blur(20px)"
                 borderTop="1px solid rgba(255, 255, 255, 0.1)"
-                px={4}
+                px={3}
                 py={3}
                 borderBottomRadius="16px"
                 display="flex"
                 alignItems="center"
                 justifyContent="space-between"
                 minHeight="60px"
+                gap={2}
               >
                 <Button
                   onClick={async () => {
@@ -353,15 +389,15 @@ export const FeedDetails = ({
                   bg="var(--alt-primary)"
                   color="var(--text-primary)"
                   fontWeight="bold"
-                  px={4}
+                  p={2}
                   minHeight="36px"
-                  minWidth="80px"
+                  minWidth="36px"
                   fontSize="sm"
                   border="1px solid rgba(255, 255, 255, 0.2)"
                   disabled={isFavoriting || isBookmarked}
+                  title="Favorite"
                 >
-                  <Star size={16} style={{ marginRight: 4 }} />
-                  {isFavoriting ? "Saving" : "Fave"}
+                  <Star size={16} />
                 </Button>
               <Button
                 onClick={async () => {
@@ -381,19 +417,52 @@ export const FeedDetails = ({
                   bg="var(--alt-primary)"
                   color="var(--text-primary)"
                   fontWeight="bold"
-                  px={4}
+                  px={3}
                   minHeight="36px"
-                  minWidth="80px"
-                  fontSize="sm"
+                  minWidth="auto"
+                  fontSize="xs"
                   border="1px solid rgba(255, 255, 255, 0.2)"
                   disabled={isArchiving || isArchived}
+                  title="Archive"
                 >
-                  <Archive size={16} style={{ marginRight: 4 }} />
+                  <Archive size={14} style={{ marginRight: 4 }} />
                   {isArchiving
-                    ? "Archiving"
+                    ? "..."
                     : isArchived
-                      ? "Archived"
+                      ? "✓"
                       : "Archive"}
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!feedURL) return;
+                    try {
+                      setIsSummarizing(true);
+                      const result = await feedsApi.summarizeArticle(feedURL);
+                      setSummary(result.summary);
+                    } catch (e) {
+                      console.error("Failed to summarize article", e);
+                      setSummary("要約の生成に失敗しました。");
+                    } finally {
+                      setIsSummarizing(false);
+                    }
+                  }}
+                  size="sm"
+                  borderRadius="full"
+                  bg="var(--alt-secondary)"
+                  color="var(--text-primary)"
+                  fontWeight="bold"
+                  px={3}
+                  minHeight="36px"
+                  minWidth="auto"
+                  fontSize="xs"
+                  border="1px solid rgba(255, 255, 255, 0.2)"
+                  disabled={isSummarizing || !!summary}
+                  title="Summarize to Japanese"
+                  _hover={{
+                    filter: "brightness(1.1)",
+                  }}
+                >
+                  {isSummarizing ? "要約中..." : summary ? "✓ 要約済" : "要約"}
                 </Button>
                 <Button
                   onClick={handleHideDetails}

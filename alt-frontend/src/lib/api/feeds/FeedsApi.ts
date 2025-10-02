@@ -175,6 +175,13 @@ export class FeedsApi {
     return this.apiClient.post("/v1/articles/archive", payload);
   }
 
+  // Article summarization
+  async summarizeArticle(
+    feedUrl: string,
+  ): Promise<{ success: boolean; summary: string; article_id: string }> {
+    return this.apiClient.post("/v1/feeds/summarize", { feed_url: feedUrl });
+  }
+
   async getFeedContentOnTheFly(
     payload: FeedURLPayload,
   ): Promise<FeedContentOnTheFlyResponse> {
