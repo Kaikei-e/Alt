@@ -45,6 +45,9 @@ func registerFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	feeds.POST("/tags", handleFetchFeedTags(container))
 	feeds.POST("/fetch/summary/provided", handleFetchInoreaderSummary(container))
 
+	// Article summarization endpoint
+	feeds.POST("/summarize", handleSummarizeFeed(container, cfg))
+
 	// RSS feed registration (require auth) - 認証ミドルウェア付きでグループ作成
 	rss := v1.Group("/rss-feed-link", authMiddleware.RequireAuth())
 	rss.POST("/register", handleRegisterRSSFeed(container))
@@ -728,5 +731,61 @@ func handleFetchInoreaderSummary(container *di.ApplicationComponents) echo.Handl
 		c.Response().Header().Set("Content-Type", "application/json")
 
 		return c.JSON(http.StatusOK, finalResponse)
+	}
+}
+
+// handleSummarizeFeed handles article summarization requests by proxying to pre-processor
+func handleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		// Parse request
+		var req struct {
+			FeedURL string `json:"feed_url" validate:"required"`
+		}
+
+		if err := c.Bind(&req); err != nil {
+			logger.Logger.Error("Failed to bind summarize request", "error", err)
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
+		}
+
+		// Validate feed URL
+		if req.FeedURL == "" {
+			logger.Logger.Warn("Empty feed_url provided for summarization")
+			return echo.NewHTTPError(http.StatusBadRequest, "feed_url is required")
+		}
+
+		// Validate URL format
+		if _, err := url.Parse(req.FeedURL); err != nil {
+			logger.Logger.Error("Invalid feed_url format", "error", err, "url", req.FeedURL)
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid feed_url format")
+		}
+
+		logger.Logger.Info("Processing summarization request", "feed_url", req.FeedURL)
+
+		// Fetch article content (you might need to fetch from DB or URL)
+		// For now, we'll create a simple implementation that fetches the content
+		articleContent, articleID, err := fetchArticleContent(c.Request().Context(), req.FeedURL, container)
+		if err != nil {
+			logger.Logger.Error("Failed to fetch article content", "error", err, "url", req.FeedURL)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
+		}
+
+		// Call pre-processor summarization API
+		summary, err := callPreProcessorSummarize(c.Request().Context(), articleContent, articleID, cfg.PreProcessor.URL)
+		if err != nil {
+			logger.Logger.Error("Failed to summarize article", "error", err, "url", req.FeedURL)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate summary")
+		}
+
+		logger.Logger.Info("Article summarized successfully", "feed_url", req.FeedURL)
+
+		// Return response
+		response := map[string]interface{}{
+			"success":    true,
+			"summary":    summary,
+			"article_id": articleID,
+			"feed_url":   req.FeedURL,
+		}
+
+		return c.JSON(http.StatusOK, response)
 	}
 }

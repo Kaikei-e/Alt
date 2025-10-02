@@ -1,13 +1,21 @@
 package rest
 
 import (
+	"alt/di"
 	"alt/domain"
 	"alt/utils/errors"
 	"alt/utils/logger"
+	"bytes"
+	"context"
+	"encoding/json"
 	stderrors "errors"
+	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -221,4 +229,110 @@ func getCacheAgeForLimit(limit int) int {
 	default:
 		return 1800 // 30 minutes for large requests
 	}
+}
+
+// fetchArticleContent fetches article content from the given URL
+func fetchArticleContent(ctx context.Context, feedURL string, container *di.ApplicationComponents) (string, string, error) {
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set user agent
+	req.Header.Set("User-Agent", "Alt-RSS-Reader/1.0")
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to fetch article: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Read body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Generate article ID from URL (simple hash or URL-based ID)
+	articleID := generateArticleID(feedURL)
+
+	return string(body), articleID, nil
+}
+
+// generateArticleID generates a simple article ID from URL
+func generateArticleID(feedURL string) string {
+	// Simple implementation - you might want to use a hash function or UUID
+	return fmt.Sprintf("article_%s", strings.ReplaceAll(feedURL, "/", "_"))
+}
+
+// callPreProcessorSummarize calls the pre-processor summarization API
+func callPreProcessorSummarize(ctx context.Context, content string, articleID string, preProcessorURL string) (string, error) {
+	// Prepare request
+	requestBody := map[string]interface{}{
+		"content":    content,
+		"article_id": articleID,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 60 * time.Second, // Summarization can take time
+	}
+
+	// Build API URL
+	apiURL := fmt.Sprintf("%s/api/v1/summarize", preProcessorURL)
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call pre-processor: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("pre-processor returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Parse response
+	var response struct {
+		Success   bool   `json:"success"`
+		Summary   string `json:"summary"`
+		ArticleID string `json:"article_id"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if !response.Success {
+		return "", fmt.Errorf("summarization failed")
+	}
+
+	return response.Summary, nil
 }

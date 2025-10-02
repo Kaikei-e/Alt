@@ -23,7 +23,8 @@ type Config struct {
 }
 
 type PreProcessorConfig struct {
-	Enabled bool `json:"enabled" env:"PRE_PROCESSOR_ENABLED" default:"true"`
+	Enabled bool   `json:"enabled" env:"PRE_PROCESSOR_ENABLED" default:"true"`
+	URL     string `json:"url" env:"PRE_PROCESSOR_URL" default:"http://pre-processor:9200"`
 }
 
 type ServerConfig struct {
