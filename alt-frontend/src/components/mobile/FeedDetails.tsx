@@ -53,6 +53,7 @@ export const FeedDetails = ({
   const [isArchiving, setIsArchiving] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
 
   const handleHideDetails = useCallback(() => {
@@ -352,6 +353,37 @@ export const FeedDetails = ({
                     </Text>
                   </Box>
                 )}
+
+                {summaryError && (
+                  <Box
+                    mt={summary ? 0 : 4}
+                    px={4}
+                    py={4}
+                    bg="rgba(255, 99, 71, 0.12)"
+                    borderRadius="12px"
+                    border="1px solid rgba(255, 255, 255, 0.1)"
+                    mx={4}
+                    mb={4}
+                  >
+                    <Text
+                      fontSize="xs"
+                      color="var(--text-secondary)"
+                      fontWeight="bold"
+                      mb={2}
+                      textTransform="uppercase"
+                      letterSpacing="1px"
+                    >
+                      要約エラー / Summary Error
+                    </Text>
+                    <Text
+                      fontSize="sm"
+                      color="var(--text-primary)"
+                      lineHeight="1.7"
+                    >
+                      {summaryError}
+                    </Text>
+                  </Box>
+                )}
               </Box>
 
               {/* Modal Footer with action buttons */}
@@ -435,13 +467,23 @@ export const FeedDetails = ({
                 <Button
                   onClick={async () => {
                     if (!feedURL) return;
+                    setIsSummarizing(true);
+                    setSummaryError(null);
                     try {
-                      setIsSummarizing(true);
                       const result = await feedsApi.summarizeArticle(feedURL);
-                      setSummary(result.summary);
+                      const trimmedSummary = result.summary?.trim();
+
+                      if (trimmedSummary) {
+                        setSummary(trimmedSummary);
+                        setSummaryError(null); // 成功時はエラーをクリア
+                      } else {
+                        setSummaryError("要約を取得できませんでした。");
+                      }
                     } catch (e) {
                       console.error("Failed to summarize article", e);
-                      setSummary("要約の生成に失敗しました。");
+                      setSummaryError(
+                        "要約の生成に失敗しました。もう一度お試しください。",
+                      );
                     } finally {
                       setIsSummarizing(false);
                     }
@@ -456,13 +498,13 @@ export const FeedDetails = ({
                   minWidth="auto"
                   fontSize="xs"
                   border="1px solid rgba(255, 255, 255, 0.2)"
-                  disabled={isSummarizing || !!summary}
+                  disabled={isSummarizing}
                   title="Summarize to Japanese"
                   _hover={{
                     filter: "brightness(1.1)",
                   }}
                 >
-                  {isSummarizing ? "要約中..." : summary ? "✓ 要約済" : "要約"}
+                  {isSummarizing ? "要約中..." : "要約"}
                 </Button>
                 <Button
                   onClick={handleHideDetails}
