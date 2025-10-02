@@ -90,7 +90,7 @@ type MetricsConfig struct {
 
 type NewsCreatorConfig struct {
 	Host    string        `json:"host" env:"NEWS_CREATOR_HOST" default:"http://news-creator:11434"`
-	APIPath string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/generate"`
+	APIPath string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/v1/summarize"`
 	Model   string        `json:"model" env:"NEWS_CREATOR_MODEL" default:"gemma3:4b"`
 	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"60s"`
 }
@@ -492,7 +492,7 @@ func loadFromEnv(config *Config) error {
 	if apiPath := os.Getenv("NEWS_CREATOR_API_PATH"); apiPath != "" {
 		config.NewsCreator.APIPath = apiPath
 	} else {
-		config.NewsCreator.APIPath = "/api/generate"
+		config.NewsCreator.APIPath = "/api/v1/summarize"
 	}
 
 	if model := os.Getenv("NEWS_CREATOR_MODEL"); model != "" {

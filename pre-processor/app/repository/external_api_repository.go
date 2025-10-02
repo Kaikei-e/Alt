@@ -94,7 +94,7 @@ func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL stri
 	r.logger.Info("checking service health", "url", serviceURL)
 
 	// GREEN PHASE: Basic health check implementation
-	healthEndpoint := parsedURL.String() + "/api/tags"
+	healthEndpoint := parsedURL.String() + "/health"
 
 	req, err := http.NewRequestWithContext(ctx, "GET", healthEndpoint, http.NoBody)
 	if err != nil {

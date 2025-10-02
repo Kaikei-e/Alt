@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"pre-processor/config"
@@ -53,10 +54,14 @@ func NewHealthCheckerServiceWithFactory(cfg *config.Config, newsCreatorURL strin
 func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error {
 	s.logger.Debug("checking news creator health", "url", s.newsCreatorURL)
 
-	// IMPROVED: Check if models are actually loaded, not just if service is up
-	healthURL := s.newsCreatorURL + "/api/tags"
+	// IMPROVED: Check if FastAPI service is healthy
+	healthURL, err := url.Parse(s.newsCreatorURL + "/health")
+	if err != nil {
+		s.logger.Error("failed to parse news creator health URL", "error", err)
+		return fmt.Errorf("failed to parse news creator health URL: %w", err)
+	}
 
-	resp, err := s.client.Get(healthURL)
+	resp, err := s.client.Get(healthURL.String())
 	if err != nil {
 		s.logger.Error("failed to check news creator health", "error", err)
 		return fmt.Errorf("health check failed: %w", err)

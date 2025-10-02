@@ -21,53 +21,22 @@ type SummarizedContent struct {
 	SummaryJapanese string `json:"summary_japanese"`
 }
 
-type payloadModel struct {
-	Model       string       `json:"model"`
-	Prompt      string       `json:"prompt"`
-	Options     optionsModel `json:"options"`
-	KeepAlive   int          `json:"keep_alive"`
-	MaxWaitTime int          `json:"max_wait_time"`
-	Stream      bool         `json:"stream"`
+// SummarizeRequest represents the request to news-creator /api/v1/summarize endpoint
+type SummarizeRequest struct {
+	ArticleID string `json:"article_id"`
+	Content   string `json:"content"`
 }
 
-type optionsModel struct {
-	Stop          []string `json:"stop"`
-	Temperature   float64  `json:"temperature"`
-	TopP          float64  `json:"top_p"`
-	NumPredict    int      `json:"num_predict"`
-	RepeatPenalty float64  `json:"repeat_penalty"`
-	NumCtx        int      `json:"num_ctx"`
+// SummarizeResponse represents the response from news-creator /api/v1/summarize endpoint
+type SummarizeResponse struct {
+	Success           bool    `json:"success"`
+	ArticleID         string  `json:"article_id"`
+	Summary           string  `json:"summary"`
+	Model             string  `json:"model"`
+	PromptTokens      *int    `json:"prompt_tokens,omitempty"`
+	CompletionTokens  *int    `json:"completion_tokens,omitempty"`
+	TotalDurationMs   *float64 `json:"total_duration_ms,omitempty"`
 }
-
-type OllamaResponse struct {
-	Model      string `json:"model"`
-	Response   string `json:"response"`
-	DoneReason string `json:"done_reason"`
-	Done       bool   `json:"done"`
-}
-
-const (
-	// Refined prompt template optimized for gemma3:4b.
-	promptTemplate = `<start_of_turn>user
-You are an expert multilingual journalist specializing in Japanese news summarization. Your task is to analyze English articles and create comprehensive Japanese summaries that capture the essence while being culturally appropriate for Japanese audiences.
-
-GUIDELINES:
-- Output in natural, professional Japanese (新聞記事スタイル)
-- Maximum 1500 Japanese characters
-- Focus on key facts, context, and implications
-- Maintain journalistic objectivity
-- Use appropriate honorifics and formal language where needed
-
-ARTICLE TO SUMMARIZE:
----
-%s
----
-
-Create a flowing Japanese summary that reads naturally to native speakers. Begin directly with the summary without any preamble.
-<end_of_turn>
-<start_of_turn>model
-`
-)
 
 var (
 	// Global rate-limited HTTP client with circuit breaker
@@ -92,24 +61,13 @@ func getHTTPClient() *utils.RateLimitedHTTPClient {
 }
 
 func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cfg *config.Config, logger *slog.Logger) (*SummarizedContent, error) {
-	prompt := fmt.Sprintf(promptTemplate, article.Content)
-
 	// Construct API URL from config
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
 
-	payload := payloadModel{
-		Model:     cfg.NewsCreator.Model,
-		Prompt:    prompt,
-		Stream:    false,
-		KeepAlive: -1,
-		Options: optionsModel{
-			Temperature:   0.0,
-			TopP:          0.9,
-			NumPredict:    500,
-			RepeatPenalty: 1.00,
-			NumCtx:        8192,
-			Stop:          []string{"<|user|>", "<|system|>"},
-		},
+	// Prepare request payload for /api/v1/summarize endpoint
+	payload := SummarizeRequest{
+		ArticleID: article.ID,
+		Content:   article.Content,
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -134,7 +92,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 
 	logger.Debug("Making request to news-creator API",
 		"api_url", apiURL,
-		"model", cfg.NewsCreator.Model,
+		"article_id", article.ID,
 		"timeout", cfg.NewsCreator.Timeout)
 
 	req.Header.Set("Content-Type", "application/json")
@@ -166,8 +124,8 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 	logger.Info("Response received", "status", resp.Status)
 	logger.Debug("Response body", "body", string(body))
 
-	// Parse the Ollama API response
-	var apiResponse OllamaResponse
+	// Parse the news-creator /api/v1/summarize response
+	var apiResponse SummarizeResponse
 
 	err = json.Unmarshal(body, &apiResponse)
 	if err != nil {
@@ -175,56 +133,22 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 		return nil, fmt.Errorf("failed to parse API response: %w", err)
 	}
 
-	// Check if response is complete
-	if !apiResponse.Done {
-		logger.Warn("Received incomplete response from API")
+	// Check if summarization was successful
+	if !apiResponse.Success {
+		logger.Error("Summarization failed", "article_id", article.ID)
+		return nil, fmt.Errorf("news-creator returned success=false for article %s", article.ID)
 	}
 
-	cleanedSummary := cleanSummarizedContent(apiResponse.Response)
-
+	// Summary is already cleaned by news-creator, no need for additional cleaning
 	summarizedContent := &SummarizedContent{
-		ArticleID:       article.ID,
-		SummaryJapanese: cleanedSummary,
+		ArticleID:       apiResponse.ArticleID,
+		SummaryJapanese: apiResponse.Summary,
 	}
 
 	logger.Info("Summary generated successfully",
 		"article_id", article.ID,
-		"summary_length", len(cleanedSummary))
+		"summary_length", len(apiResponse.Summary),
+		"model", apiResponse.Model)
 
 	return summarizedContent, nil
-}
-
-func cleanSummarizedContent(content string) string {
-	// Remove any system tags that might leak through
-	content = strings.ReplaceAll(content, "<|system|>", "")
-	content = strings.ReplaceAll(content, "<|user|>", "")
-	content = strings.ReplaceAll(content, "<|assistant|>", "")
-
-	// Remove potential thinking tags
-	if startIdx := strings.Index(content, "<think>"); startIdx != -1 {
-		if endIdx := strings.Index(content, "</think>"); endIdx != -1 {
-			content = content[:startIdx] + content[endIdx+8:]
-		}
-	}
-
-	// Basic cleanup: trim whitespace and remove empty lines
-	lines := strings.Split(content, "\n")
-
-	var cleanLines []string
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" &&
-			!strings.HasPrefix(trimmed, "---") &&
-			!strings.HasPrefix(trimmed, "**") &&
-			!strings.Contains(trimmed, "Summary:") &&
-			!strings.Contains(trimmed, "要約:") {
-			cleanLines = append(cleanLines, trimmed)
-		}
-	}
-
-	// Join lines with space and return final cleaned content
-	result := strings.Join(cleanLines, " ")
-
-	return strings.TrimSpace(result)
 }
