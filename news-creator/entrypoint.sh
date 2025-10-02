@@ -14,12 +14,15 @@ if [ "$(id -u)" -eq 0 ] && [ "${OLLAMA_ENTRYPOINT_RERUN:-0}" != "1" ]; then
   exec su -p "$TARGET_USER" -c "/usr/local/bin/entrypoint.sh"
 fi
 
-# Ollama environment configuration
-export OLLAMA_HOST=0.0.0.0:11434
+# Ollama environment configuration (bind to localhost only, FastAPI will proxy)
+export OLLAMA_HOST=127.0.0.1:11435
 export OLLAMA_ORIGINS="*"
 export OLLAMA_KEEP_ALIVE=24h
 export OLLAMA_NUM_PARALLEL=4
 export OLLAMA_MAX_LOADED_MODELS=1
+
+# FastAPI should connect to Ollama's internal port
+export LLM_SERVICE_URL=http://localhost:11435
 
 # Suppress verbose logs
 export OLLAMA_LOG_LEVEL=ERROR
@@ -33,8 +36,9 @@ export OLLAMA_MODELS="$OLLAMA_HOME"
 mkdir -p "$OLLAMA_HOME"
 
 echo "Starting Ollama server with configuration:"
-echo "  OLLAMA_HOST: $OLLAMA_HOST"
+echo "  OLLAMA_HOST: $OLLAMA_HOST (internal)"
 echo "  OLLAMA_HOME: $OLLAMA_HOME"
+echo "  FastAPI will be exposed on port 11434"
 
 # Start Ollama server in background for initial setup
 ollama serve &
@@ -42,7 +46,7 @@ SERVER_PID=$!
 
 echo "Waiting for Ollama server to start..."
 for i in {1..30}; do
-  if curl -fs http://localhost:11434/api/tags >/dev/null 2>&1; then
+  if curl -fs http://localhost:11435/api/tags >/dev/null 2>&1; then
     echo "  Server is up after $i seconds"
     break
   fi
@@ -51,7 +55,7 @@ for i in {1..30}; do
 done
 
 # Check if server started
-if ! curl -fs http://localhost:11434/api/tags >/dev/null 2>&1; then
+if ! curl -fs http://localhost:11435/api/tags >/dev/null 2>&1; then
   echo "Error: Ollama server did not start in time"
   exit 1
 fi
@@ -67,12 +71,22 @@ fi
 
 # Preload the model
 echo "Preloading gemma3:4b model..."
-curl -X POST http://localhost:11434/api/chat \
+curl -X POST http://localhost:11435/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"model":"gemma3:4b","messages":[{"role":"user","content":"Hello"}],"stream":false}' \
   >/dev/null 2>&1 || echo "Warning: Failed to preload model"
 
 echo "Ollama server is ready with gemma3:4b model!"
 
-# Keep the server running in foreground
-wait $SERVER_PID
+# Start FastAPI application (public-facing on port 11434)
+echo "Starting FastAPI application on port 11434..."
+cd /home/ollama-user/app
+export OLLAMA_BASE_URL=http://localhost:11435
+python3 -m uvicorn main:app --host 0.0.0.0 --port 11434 --log-level info &
+FASTAPI_PID=$!
+
+echo "FastAPI application started (PID: $FASTAPI_PID)"
+
+# Wait for both processes
+trap "kill $SERVER_PID $FASTAPI_PID 2>/dev/null" SIGTERM SIGINT
+wait $SERVER_PID $FASTAPI_PID
