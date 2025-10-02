@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"pre-processor/config"
 	"pre-processor/driver"
@@ -12,11 +15,15 @@ import (
 	"pre-processor/repository"
 	"pre-processor/service"
 	logger "pre-processor/utils/logger"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 const (
 	BATCH_SIZE       = 40
 	NEWS_CREATOR_URL = "http://news-creator:11434"
+	HTTP_PORT        = "9200" // Default HTTP port for API
 )
 
 func main() {
@@ -103,7 +110,42 @@ func main() {
 		logger.Logger,
 	)
 
+	// Initialize summarize handler for REST API
+	summarizeHandler := handler.NewSummarizeHandler(
+		apiRepo,
+		logger.Logger,
+	)
+
 	jobScheduler := handler.NewJobScheduler(logger.Logger)
+
+	// Initialize Echo HTTP server
+	e := echo.New()
+	e.HideBanner = true
+
+	// Middleware
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+	e.Use(middleware.CORS())
+
+	// API routes
+	api := e.Group("/api/v1")
+	api.POST("/summarize", summarizeHandler.HandleSummarize)
+	api.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
+	})
+
+	// Start HTTP server in goroutine
+	go func() {
+		port := os.Getenv("HTTP_PORT")
+		if port == "" {
+			port = HTTP_PORT
+		}
+		addr := fmt.Sprintf(":%s", port)
+		logger.Logger.Info("Starting HTTP server", "port", port)
+		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
+			logger.Logger.Error("HTTP server error", "error", err)
+		}
+	}()
 
 	// Start jobs
 	logger.Logger.Info("Starting background jobs")
@@ -146,6 +188,15 @@ func main() {
 
 	<-quit
 	logger.Logger.Info("Shutting down pre-processor service")
+
+	// Graceful shutdown with timeout
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Stop HTTP server
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		logger.Logger.Error("Error shutting down HTTP server", "error", err)
+	}
 
 	// Stop all jobs
 	if err := jobHandler.Stop(); err != nil {

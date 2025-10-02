@@ -175,32 +175,31 @@ func (h *jobHandler) processFeedsBatch() {
 
 	// Feed processing temporarily disabled for ethical compliance
 	h.logger.Info("Feed processing temporarily disabled for ethical compliance")
-	return
 
 	/*
-	h.logger.Info("Starting feed processing batch", "batch_size", h.batchSize)
+		h.logger.Info("Starting feed processing batch", "batch_size", h.batchSize)
 
-	result, err := h.feedProcessor.ProcessFeeds(h.ctx, h.batchSize)
-	if err != nil {
-		h.logger.Error("feed processing failed", "error", err)
-		return
-	}
-
-	h.logger.Info("feed processing completed",
-		"processed", result.ProcessedCount,
-		"success", result.SuccessCount,
-		"errors", result.ErrorCount,
-		"has_more", result.HasMore)
-
-	// Only reset pagination if we actually processed feeds and reached the end
-	// Don't reset if there were simply no feeds to process (ProcessedCount == 0)
-	if !result.HasMore && result.ProcessedCount > 0 {
-		h.logger.Info("reached end of feeds, resetting pagination cursor")
-
-		if err := h.feedProcessor.ResetPagination(); err != nil {
-			h.logger.Error("failed to reset feed processor pagination", "error", err)
+		result, err := h.feedProcessor.ProcessFeeds(h.ctx, h.batchSize)
+		if err != nil {
+			h.logger.Error("feed processing failed", "error", err)
+			return
 		}
-	}
+
+		h.logger.Info("feed processing completed",
+			"processed", result.ProcessedCount,
+			"success", result.SuccessCount,
+			"errors", result.ErrorCount,
+			"has_more", result.HasMore)
+
+		// Only reset pagination if we actually processed feeds and reached the end
+		// Don't reset if there were simply no feeds to process (ProcessedCount == 0)
+		if !result.HasMore && result.ProcessedCount > 0 {
+			h.logger.Info("reached end of feeds, resetting pagination cursor")
+
+			if err := h.feedProcessor.ResetPagination(); err != nil {
+				h.logger.Error("failed to reset feed processor pagination", "error", err)
+			}
+		}
 	*/
 }
 
