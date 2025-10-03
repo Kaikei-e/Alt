@@ -195,6 +195,13 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - OLLAMA_HOME=/home/ollama-user/.ollama
       - OLLAMA_MODELS=/home/ollama-user/.ollama
+      - LLM_SERVICE_URL=${LLM_SERVICE_URL:-http://127.0.0.1:11435}
+      - SERVICE_SECRET=${SERVICE_SECRET}
+      - LLM_MODEL=${LLM_MODEL:-gemma3:4b}
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-180}
+      - LLM_NUM_CTX=${LLM_NUM_CTX:-16384}
+      - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
+      - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-500}
     volumes:
       - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped
