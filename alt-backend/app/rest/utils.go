@@ -231,44 +231,61 @@ func getCacheAgeForLimit(limit int) int {
 	}
 }
 
-// fetchArticleContent fetches article content from the given URL
+// fetchArticleContent fetches article content, first from DB, then from URL if not found
 func fetchArticleContent(ctx context.Context, feedURL string, container *di.ApplicationComponents) (string, string, error) {
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	logger.Logger.Info("Fetching article content", "url", feedURL)
 
-	// Create request with context
-	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	// First, try to fetch from database
+	article, err := container.AltDBRepository.FetchArticleByURL(ctx, feedURL)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create request: %w", err)
+		logger.Logger.Error("Failed to query article from database", "error", err, "url", feedURL)
+		return "", "", fmt.Errorf("failed to query article from database: %w", err)
 	}
 
-	// Set user agent
-	req.Header.Set("User-Agent", "Alt-RSS-Reader/1.0")
+	// If article exists in DB, return it
+	if article != nil {
+		logger.Logger.Info("Article found in database", "url", feedURL, "content_length", len(article.Content))
+		return article.Content, article.ID, nil
+	}
 
-	// Execute request
-	resp, err := client.Do(req)
+	// Article not in DB, fetch from URL and extract clean text
+	logger.Logger.Info("Article not in database, fetching from URL", "url", feedURL)
+
+	// Use ArticleUsecase which fetches HTML and extracts clean text
+	cleanTextPtr, err := container.ArticleUsecase.Execute(ctx, feedURL)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to fetch article: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check status code
-	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		logger.Logger.Error("Failed to fetch and extract article", "error", err, "url", feedURL)
+		return "", "", fmt.Errorf("failed to fetch and extract article: %w", err)
 	}
 
-	// Read body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to read response body: %w", err)
+	if cleanTextPtr == nil || strings.TrimSpace(*cleanTextPtr) == "" {
+		logger.Logger.Error("Extracted article text is empty", "url", feedURL)
+		return "", "", fmt.Errorf("extracted article text is empty")
 	}
 
-	// Generate article ID from URL (simple hash or URL-based ID)
-	articleID := generateArticleID(feedURL)
+	cleanText := *cleanTextPtr
+	logger.Logger.Info("Article content extracted", "url", feedURL, "clean_text_length", len(cleanText))
 
-	return string(body), articleID, nil
+	// Save to database for future use
+	// Use URL as title if we don't have a better one
+	title := feedURL
+	if err := container.AltDBRepository.SaveArticle(ctx, feedURL, title, cleanText); err != nil {
+		// Log error but don't fail the request
+		logger.Logger.Warn("Failed to save article to database", "error", err, "url", feedURL)
+	} else {
+		logger.Logger.Info("Article saved to database", "url", feedURL)
+	}
+
+	// Fetch the saved article to get its ID
+	savedArticle, err := container.AltDBRepository.FetchArticleByURL(ctx, feedURL)
+	if err != nil || savedArticle == nil {
+		// Fall back to generated ID if fetch fails
+		articleID := generateArticleID(feedURL)
+		logger.Logger.Warn("Failed to fetch saved article, using generated ID", "url", feedURL, "generated_id", articleID)
+		return cleanText, articleID, nil
+	}
+
+	return cleanText, savedArticle.ID, nil
 }
 
 // generateArticleID generates a simple article ID from URL
@@ -291,8 +308,9 @@ func callPreProcessorSummarize(ctx context.Context, content string, articleID st
 	}
 
 	// Create HTTP client with timeout
+	// Extended timeout for LLM-based summarization (news-creator processing time)
 	client := &http.Client{
-		Timeout: 60 * time.Second, // Summarization can take time
+		Timeout: 180 * time.Second, // LLM processing can take 60-120 seconds
 	}
 
 	// Build API URL

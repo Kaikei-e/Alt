@@ -43,19 +43,46 @@ func (r *TenantAwareRepository) withTenantContext(ctx context.Context, tenantID 
 	return context.WithValue(ctx, tenantTxKey, tx), tx, nil
 }
 
-// GetUserFeeds はユーザーのフィード一覧を取得（テナント分離）
-func (r *TenantAwareRepository) GetUserFeeds(ctx context.Context, userID uuid.UUID) ([]domain.Feed, error) {
+// withTenantConnection は読み取り専用操作用のテナントコンテキストを作成
+func (r *TenantAwareRepository) withTenantConnection(ctx context.Context, tenantID uuid.UUID) (context.Context, *pgxpool.Conn, error) {
+	// コネクションを取得
+	conn, err := r.pool.Acquire(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to acquire connection: %w", err)
+	}
+
+	// セッションレベルでテナントIDを設定
+	_, err = conn.Exec(ctx, "SELECT set_current_tenant($1)", tenantID)
+	if err != nil {
+		conn.Release()
+		return nil, nil, fmt.Errorf("failed to set tenant context: %w", err)
+	}
+
+	return ctx, conn, nil
+}
+
+// getTenantFromContext はコンテキストからテナント情報を取得するヘルパー関数
+func (r *TenantAwareRepository) getTenantFromContext(ctx context.Context) (*domain.Tenant, error) {
 	tenant, err := domain.GetTenantFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("tenant context required: %w", err)
 	}
+	return tenant, nil
+}
 
-	// テナントコンテキスト設定
-	tenantCtx, tx, err := r.withTenantContext(ctx, tenant.ID)
+// GetUserFeeds はユーザーのフィード一覧を取得（テナント分離）
+func (r *TenantAwareRepository) GetUserFeeds(ctx context.Context, userID uuid.UUID) ([]domain.Feed, error) {
+	tenant, err := r.getTenantFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(tenantCtx) // 読み取り専用なのでロールバック
+
+	// 読み取り専用操作用のコネクションを使用
+	tenantCtx, conn, err := r.withTenantConnection(ctx, tenant.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
 
 	// RLSにより自動的にテナント分離されたクエリ
 	query := `
@@ -66,7 +93,7 @@ func (r *TenantAwareRepository) GetUserFeeds(ctx context.Context, userID uuid.UU
 		ORDER BY f.updated_at DESC
 	`
 
-	rows, err := tx.Query(tenantCtx, query, userID)
+	rows, err := conn.Query(tenantCtx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query feeds: %w", err)
 	}
@@ -90,17 +117,17 @@ func (r *TenantAwareRepository) GetUserFeeds(ctx context.Context, userID uuid.UU
 
 // GetUserArticles はユーザーの記事一覧を取得（テナント分離）
 func (r *TenantAwareRepository) GetUserArticles(ctx context.Context, userID uuid.UUID, limit, offset int) ([]domain.Article, error) {
-	tenant, err := domain.GetTenantFromContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("tenant context required: %w", err)
-	}
-
-	// テナントコンテキスト設定
-	tenantCtx, tx, err := r.withTenantContext(ctx, tenant.ID)
+	tenant, err := r.getTenantFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(tenantCtx)
+
+	// 読み取り専用操作用のコネクションを使用
+	tenantCtx, conn, err := r.withTenantConnection(ctx, tenant.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
 
 	// RLSによりテナント分離されたクエリ
 	query := `
@@ -115,7 +142,7 @@ func (r *TenantAwareRepository) GetUserArticles(ctx context.Context, userID uuid
 		LIMIT $2 OFFSET $3
 	`
 
-	rows, err := tx.Query(tenantCtx, query, userID, limit, offset)
+	rows, err := conn.Query(tenantCtx, query, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query articles: %w", err)
 	}
@@ -142,9 +169,9 @@ func (r *TenantAwareRepository) GetUserArticles(ctx context.Context, userID uuid
 
 // CreateFeed はフィードを作成（テナント分離）
 func (r *TenantAwareRepository) CreateFeed(ctx context.Context, feed *domain.Feed) error {
-	tenant, err := domain.GetTenantFromContext(ctx)
+	tenant, err := r.getTenantFromContext(ctx)
 	if err != nil {
-		return fmt.Errorf("tenant context required: %w", err)
+		return err
 	}
 
 	// テナントコンテキスト設定
@@ -178,9 +205,9 @@ func (r *TenantAwareRepository) CreateFeed(ctx context.Context, feed *domain.Fee
 
 // UpdateFeed はフィードを更新（テナント分離）
 func (r *TenantAwareRepository) UpdateFeed(ctx context.Context, feedID uuid.UUID, updates map[string]interface{}) error {
-	tenant, err := domain.GetTenantFromContext(ctx)
+	tenant, err := r.getTenantFromContext(ctx)
 	if err != nil {
-		return fmt.Errorf("tenant context required: %w", err)
+		return err
 	}
 
 	// テナントコンテキスト設定
@@ -207,9 +234,9 @@ func (r *TenantAwareRepository) UpdateFeed(ctx context.Context, feedID uuid.UUID
 
 // DeleteFeed はフィードを削除（テナント分離）
 func (r *TenantAwareRepository) DeleteFeed(ctx context.Context, feedID uuid.UUID) error {
-	tenant, err := domain.GetTenantFromContext(ctx)
+	tenant, err := r.getTenantFromContext(ctx)
 	if err != nil {
-		return fmt.Errorf("tenant context required: %w", err)
+		return err
 	}
 
 	// テナントコンテキスト設定
@@ -239,17 +266,17 @@ func (r *TenantAwareRepository) DeleteFeed(ctx context.Context, feedID uuid.UUID
 
 // ValidateTenantIsolation はテナント分離が正しく動作しているかを検証
 func (r *TenantAwareRepository) ValidateTenantIsolation(ctx context.Context, tenantID uuid.UUID) error {
-	// テナントコンテキスト設定
-	tenantCtx, tx, err := r.withTenantContext(ctx, tenantID)
+	// 読み取り専用操作用のコネクションを使用
+	tenantCtx, conn, err := r.withTenantConnection(ctx, tenantID)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(tenantCtx)
+	defer conn.Release()
 
 	// テナントの分離を確認
 	var count int
 	query := `SELECT COUNT(*) FROM feeds WHERE tenant_id != $1`
-	err = tx.QueryRow(tenantCtx, query, tenantID).Scan(&count)
+	err = conn.QueryRow(tenantCtx, query, tenantID).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to query validation: %w", err)
 	}
