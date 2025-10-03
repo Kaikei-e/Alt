@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Box, Flex, Spinner, Stack, Text } from "@chakra-ui/react";
 import { useOryFlow } from "@/lib/ory/use-flow";
 import { OryFlowForm } from "@/components/ory/OryFlowForm";
