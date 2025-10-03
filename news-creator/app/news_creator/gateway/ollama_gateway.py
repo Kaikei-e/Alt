@@ -105,3 +105,22 @@ class OllamaGateway(LLMProviderPort):
             eval_count=response_data.get("eval_count"),
             total_duration=response_data.get("total_duration"),
         )
+
+    async def list_models(self) -> list[Dict[str, Any]]:
+        """
+        List available Ollama models.
+
+        Returns:
+            List of model dictionaries with name and metadata
+
+        Raises:
+            RuntimeError: If Ollama service fails
+        """
+        try:
+            tags_response = await self.driver.list_tags()
+            models = tags_response.get("models", [])
+            logger.debug(f"Found {len(models)} models in Ollama", extra={"count": len(models)})
+            return models
+        except Exception as err:
+            logger.error("Failed to list Ollama models", extra={"error": str(err)})
+            raise RuntimeError(f"Failed to list Ollama models: {err}") from err

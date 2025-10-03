@@ -22,7 +22,7 @@ from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.handler import (
     create_summarize_router,
     create_generate_router,
-    health_router,
+    create_health_router,
 )
 
 # Configure logging
@@ -88,7 +88,7 @@ app.include_router(
     tags=["generation"]
 )
 app.include_router(
-    health_router,
+    create_health_router(container.ollama_gateway),
     tags=["health"]
 )
 

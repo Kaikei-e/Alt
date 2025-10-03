@@ -1,7 +1,7 @@
 """Summarize usecase - business logic for article summarization."""
 
 import logging
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, Optional
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.prompts import SUMMARY_PROMPT_TEMPLATE
@@ -134,7 +134,3 @@ class SummarizeUsecase:
             return value / 1_000_000
         except TypeError:
             return None
-
-
-# Type hint for Optional import
-from typing import Optional  # noqa: E402

@@ -29,11 +29,13 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages -r /home/ollam
 COPY --chown=ollama-user:ollama-user app/ /home/ollama-user/app/
 
 # ---- Environment configuration -------------------------------------------
-ENV OLLAMA_HOST=0.0.0.0:11434
+ENV OLLAMA_HOST=127.0.0.1:11435
 ENV OLLAMA_ORIGINS=*
 ENV OLLAMA_KEEP_ALIVE=24h
-ENV OLLAMA_NUM_PARALLEL=4
+ENV OLLAMA_NUM_PARALLEL=1
 ENV OLLAMA_MAX_LOADED_MODELS=1
+ENV OLLAMA_LOAD_TIMEOUT=10m
+ENV LLM_TIMEOUT_SECONDS=180
 ENV HOME=/home/ollama-user
 ENV OLLAMA_HOME=/home/ollama-user/.ollama
 

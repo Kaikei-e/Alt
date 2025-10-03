@@ -28,4 +28,4 @@ def test_summary_prompt_template_contains_requirements():
     """Test that summary prompt template includes key requirements."""
     # Should include requirements about length, style, etc.
     assert "5W1H" in SUMMARY_PROMPT_TEMPLATE or "600" in SUMMARY_PROMPT_TEMPLATE
-    assert "REQUIREMENTS" in SUMMARY_PROMPT_TEMPLATE or "要求" in SUMMARY_PROMPT_TEMPLATE
+    assert "RULES AND CONSTRAINTS" in SUMMARY_PROMPT_TEMPLATE or "CONSTRAINTS" in SUMMARY_PROMPT_TEMPLATE

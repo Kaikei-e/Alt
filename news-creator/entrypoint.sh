@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# If we start as root (first invocation), fix permissions then re-exec as ollama-user
+# --- privilege drop ----------------------------------------------------------
+# root で起動された場合は所有権を直してから ollama-user で再実行
 if [ "$(id -u)" -eq 0 ] && [ "${OLLAMA_ENTRYPOINT_RERUN:-0}" != "1" ]; then
   TARGET_USER="ollama-user"
   USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
@@ -14,23 +15,29 @@ if [ "$(id -u)" -eq 0 ] && [ "${OLLAMA_ENTRYPOINT_RERUN:-0}" != "1" ]; then
   exec su -p "$TARGET_USER" -c "/usr/local/bin/entrypoint.sh"
 fi
 
-# Ollama environment configuration (bind to localhost only, FastAPI will proxy)
-export OLLAMA_HOST=127.0.0.1:11435
-export OLLAMA_ORIGINS="*"
-export OLLAMA_KEEP_ALIVE=24h
-export OLLAMA_NUM_PARALLEL=4
-export OLLAMA_MAX_LOADED_MODELS=1
+# --- Ollama server configuration --------------------------------------------
+# 4060/8GB 前提：実効 16k 文脈・並列 1・FA/KV量子化を既定化
+export OLLAMA_HOST="${OLLAMA_HOST:-127.0.0.1:11435}"   # 明示的にポート11435を指定
+export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-16384}" # 既定 2048 を拡張
+export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"         # 8GB では並列 1 が安定
+export OLLAMA_MAX_LOADED_MODELS="${OLLAMA_MAX_LOADED_MODELS:-1}"
+export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-24h}"
+export OLLAMA_ORIGINS="${OLLAMA_ORIGINS:-*}"
+export OLLAMA_LOAD_TIMEOUT="${OLLAMA_LOAD_TIMEOUT:-10m}"       # モデル読み込みタイムアウト
+export OLLAMA_NUM_THREAD="${OLLAMA_NUM_THREAD:-8}"              # CPUスレッド数
 
-# FastAPI should connect to Ollama's internal port
-export LLM_SERVICE_URL=http://localhost:11435
+# 速度とメモリ効率：Flash Attention + KV キャッシュ量子化
+export OLLAMA_FLASH_ATTENTION="${OLLAMA_FLASH_ATTENTION:-1}"   # 有効化                  :contentReference[oaicite:3]{index=3}
+export OLLAMA_KV_CACHE_TYPE="${OLLAMA_KV_CACHE_TYPE:-q8_0}"    # q8_0（必要なら q4_0）   :contentReference[oaicite:4]{index=4}
 
-# Suppress verbose logs
-export OLLAMA_LOG_LEVEL=ERROR
-export LLAMA_LOG_LEVEL=0
-export LLAMA_LOG_VERBOSITY=0
+# ログ抑制（Ollama は OLLAMA_DEBUG を使う）
+export OLLAMA_DEBUG="${OLLAMA_DEBUG:-ERROR}"                    # 例: DEBUG/INFO/WARN/ERROR  :contentReference[oaicite:5]{index=5}
 
-# Ensure HOME points to the current user's actual home directory and configure model cache
-export HOME="$(getent passwd $(id -u) | cut -d: -f6)"
+# FastAPI → Ollama 内部URL
+export LLM_SERVICE_URL="${LLM_SERVICE_URL:-http://127.0.0.1:11435}"
+
+# HOME / キャッシュ
+export HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
 export OLLAMA_HOME="${OLLAMA_HOME:-${HOME}/.ollama}"
 export OLLAMA_MODELS="$OLLAMA_HOME"
 mkdir -p "$OLLAMA_HOME"
@@ -38,15 +45,20 @@ mkdir -p "$OLLAMA_HOME"
 echo "Starting Ollama server with configuration:"
 echo "  OLLAMA_HOST: $OLLAMA_HOST (internal)"
 echo "  OLLAMA_HOME: $OLLAMA_HOME"
+echo "  OLLAMA_CONTEXT_LENGTH: $OLLAMA_CONTEXT_LENGTH"
+echo "  OLLAMA_NUM_PARALLEL: $OLLAMA_NUM_PARALLEL"
+echo "  OLLAMA_FLASH_ATTENTION: $OLLAMA_FLASH_ATTENTION"
+echo "  OLLAMA_KV_CACHE_TYPE: $OLLAMA_KV_CACHE_TYPE"
 echo "  FastAPI will be exposed on port 11434"
 
-# Start Ollama server in background for initial setup
+# --- start Ollama in background ---------------------------------------------
 ollama serve &
 SERVER_PID=$!
 
+# 待機（/api/tags が 200 を返すまで）
 echo "Waiting for Ollama server to start..."
-for i in {1..30}; do
-  if curl -fs http://localhost:11435/api/tags >/dev/null 2>&1; then
+for i in $(seq 1 30); do
+  if curl -fs "http://$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
     echo "  Server is up after $i seconds"
     break
   fi
@@ -54,39 +66,42 @@ for i in {1..30}; do
   sleep 1
 done
 
-# Check if server started
-if ! curl -fs http://localhost:11435/api/tags >/dev/null 2>&1; then
+if ! curl -fs "http://$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
   echo "Error: Ollama server did not start in time"
+  kill "$SERVER_PID" 2>/dev/null || true
   exit 1
 fi
 
-# Pull gemma3:4b model if not exists
+# --- ensure model ------------------------------------------------------------
 echo "Checking for gemma3:4b model..."
 if ! ollama list 2>/dev/null | grep -q "gemma3:4b"; then
   echo "Pulling gemma3:4b model (this may take a few minutes)..."
-  ollama pull gemma3:4b || echo "Warning: Failed to pull model"
+  if ! ollama pull gemma3:4b; then
+    echo "Warning: Failed to pull model"
+  fi
 else
   echo "  Model gemma3:4b already exists"
 fi
 
-# Preload the model
+# 事前ロード（/api/chat 推奨。テンプレ適用＆将来の呼び出しに近い）  :contentReference[oaicite:6]{index=6}
 echo "Preloading gemma3:4b model..."
-curl -X POST http://localhost:11435/api/chat \
+curl -sS -X POST "http://$OLLAMA_HOST/api/chat" \
   -H 'Content-Type: application/json' \
   -d '{"model":"gemma3:4b","messages":[{"role":"user","content":"Hello"}],"stream":false}' \
   >/dev/null 2>&1 || echo "Warning: Failed to preload model"
 
 echo "Ollama server is ready with gemma3:4b model!"
 
-# Start FastAPI application (public-facing on port 11434)
+# --- start FastAPI (public) --------------------------------------------------
 echo "Starting FastAPI application on port 11434..."
 cd /home/ollama-user/app
-export OLLAMA_BASE_URL=http://localhost:11435
+export OLLAMA_BASE_URL="$LLM_SERVICE_URL"
 python3 -m uvicorn main:app --host 0.0.0.0 --port 11434 --log-level info &
 FASTAPI_PID=$!
-
 echo "FastAPI application started (PID: $FASTAPI_PID)"
 
-# Wait for both processes
-trap "kill $SERVER_PID $FASTAPI_PID 2>/dev/null" SIGTERM SIGINT
-wait $SERVER_PID $FASTAPI_PID
+# --- signal handling & wait --------------------------------------------------
+trap 'kill $SERVER_PID $FASTAPI_PID 2>/dev/null || true' SIGTERM SIGINT
+wait -n "$SERVER_PID" "$FASTAPI_PID" || true
+kill $SERVER_PID $FASTAPI_PID 2>/dev/null || true
+wait || true

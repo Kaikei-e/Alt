@@ -12,7 +12,7 @@ def test_config_loads_defaults():
 
     config = NewsCreatorConfig()
 
-    assert config.llm_service_url == "http://localhost:11434"
+    assert config.llm_service_url == "http://localhost:11435"
     assert config.model_name == "gemma3:4b"
 
 
@@ -45,8 +45,8 @@ def test_config_handles_invalid_numeric_values():
     config = NewsCreatorConfig()
 
     # Should fall back to defaults
-    assert config.llm_timeout_seconds == 60
-    assert config.llm_temperature == 0.0
+    assert config.llm_timeout_seconds == 180
+    assert config.llm_temperature == 0.2
 
     # Cleanup
     del os.environ["LLM_TIMEOUT_SECONDS"]
