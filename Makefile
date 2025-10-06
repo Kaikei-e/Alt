@@ -116,4 +116,22 @@ dev-clean-ssl:
 	@rm -rf docker/postgres/ssl/
 	@echo "SSL certificates removed."
 
-.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl
+# Migration management targets
+migrate-hash:
+	@echo "Regenerating atlas.sum checksum file..."
+	@docker run --rm \
+		-v $(PWD)/migrations-atlas/migrations:/migrations:rw \
+		--user 0:0 \
+		--entrypoint /scripts/hash.sh \
+		alt-migrate
+	@echo "atlas.sum regenerated successfully. You can now run 'make up' or 'docker compose up migrate'."
+
+migrate-validate:
+	@echo "Validating migration files (offline check)..."
+	@docker compose run --rm --no-deps migrate syntax-check
+
+migrate-status:
+	@echo "Checking migration status..."
+	@docker compose run --rm migrate status
+
+.PHONY: all up up-fresh up-clean build down down-volumes clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status
