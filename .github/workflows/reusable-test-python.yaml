@@ -151,4 +151,11 @@ jobs:
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: |
           rm -rf .venv .pytest_cache .coverage coverage.xml bandit-report.json
-          uv cache clean
+          if command -v uv >/dev/null 2>&1; then
+            UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}"
+            if ! uv cache clean; then
+              echo "uv cache clean failed; removing cache directory manually to avoid CI flakes."
+              rm -rf "$UV_CACHE_DIR"
+              mkdir -p "$UV_CACHE_DIR"
+            fi
+          fi
