@@ -155,7 +155,27 @@ jobs:
             UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}"
             if ! uv cache clean; then
               echo "uv cache clean failed; removing cache directory manually to avoid CI flakes."
-              rm -rf "$UV_CACHE_DIR"
-              mkdir -p "$UV_CACHE_DIR"
-            fi
-          fi
+              if ! rm -rf "$UV_CACHE_DIR"; then
+                echo "rm -rf \"$UV_CACHE_DIR\" failed; falling back to Python cleanup."
+                if command -v python3 >/dev/null 2>&1; then
+                  python3 - <<'PY'
+          import os
+          import pathlib
+          import shutil
+
+          cache_dir = pathlib.Path(os.environ.get("UV_CACHE_DIR", pathlib.Path.home() / ".cache" / "uv"))
+          cache_dir = cache_dir.expanduser()
+          if cache_dir.exists():
+              shutil.rmtree(cache_dir, ignore_errors=True)
+          PY
+                          else
+                            echo "python3 not available; attempting directory purge with find."
+                            if [ -d "$UV_CACHE_DIR" ]; then
+                              find "$UV_CACHE_DIR" -mindepth 1 -delete 2>/dev/null || true
+                              rmdir "$UV_CACHE_DIR" 2>/dev/null || true
+                            fi
+                          fi
+                        fi
+                        mkdir -p "$UV_CACHE_DIR"
+                      fi
+                    fi
