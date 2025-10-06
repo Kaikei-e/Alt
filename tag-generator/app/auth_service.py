@@ -3,18 +3,18 @@ Authentication service integration for tag-generator.
 Implements user-specific tag generation with tenant isolation.
 """
 
-import os
 import inspect
+import os
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Tuple
+from typing import Any
 
 import structlog
 
-from contextlib import asynccontextmanager
-
 try:  # Prefer shared auth client when available
     from alt_auth.client import AuthClient, AuthConfig, UserContext, require_auth  # type: ignore
+
     _ALT_AUTH_AVAILABLE = True
 except ModuleNotFoundError:
     _ALT_AUTH_AVAILABLE = False
@@ -30,7 +30,7 @@ except ModuleNotFoundError:
     class UserContext:
         user_id: str = "anonymous"
         tenant_id: str = "public"
-        roles: Tuple[str, ...] = ()
+        roles: tuple[str, ...] = ()
         metadata: dict[str, Any] | None = None
 
     class AuthClient:
@@ -47,9 +47,7 @@ except ModuleNotFoundError:
 
     def _default_user_context() -> UserContext:
         roles_env = os.getenv("DEFAULT_USER_ROLES", "")
-        roles: Tuple[str, ...] = tuple(
-            role.strip() for role in roles_env.split(",") if role.strip()
-        )
+        roles: tuple[str, ...] = tuple(role.strip() for role in roles_env.split(",") if role.strip())
         return UserContext(
             user_id=os.getenv("DEFAULT_USER_ID", "anonymous"),
             tenant_id=os.getenv("DEFAULT_TENANT_ID", "public"),
@@ -77,6 +75,7 @@ except ModuleNotFoundError:
             return sync_wrapper
 
         return decorator
+
 
 from fastapi import FastAPI, HTTPException
 
