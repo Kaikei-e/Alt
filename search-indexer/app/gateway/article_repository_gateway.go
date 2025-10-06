@@ -62,5 +62,6 @@ func (g *ArticleRepositoryGateway) convertToDomain(driverArticle *driver.Article
 		driverArticle.Content,
 		tags,
 		driverArticle.CreatedAt,
+		driverArticle.UserID,
 	)
 }

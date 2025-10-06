@@ -13,6 +13,7 @@ func TestArticle_NewArticle(t *testing.T) {
 		content   string
 		tags      []string
 		createdAt time.Time
+		userID    string
 		wantErr   bool
 	}{
 		{
@@ -22,6 +23,17 @@ func TestArticle_NewArticle(t *testing.T) {
 			content:   "This is test content",
 			tags:      []string{"tag1", "tag2"},
 			createdAt: time.Now(),
+			userID:    "user-123",
+			wantErr:   false,
+		},
+		{
+			name:      "valid article with empty userID",
+			id:        "article-2",
+			title:     "Test Article",
+			content:   "This is test content",
+			tags:      []string{"tag1"},
+			createdAt: time.Now(),
+			userID:    "",
 			wantErr:   false,
 		},
 		{
@@ -31,6 +43,7 @@ func TestArticle_NewArticle(t *testing.T) {
 			content:   "This is test content",
 			tags:      []string{"tag1"},
 			createdAt: time.Now(),
+			userID:    "user-123",
 			wantErr:   true,
 		},
 		{
@@ -40,13 +53,14 @@ func TestArticle_NewArticle(t *testing.T) {
 			content:   "This is test content",
 			tags:      []string{"tag1"},
 			createdAt: time.Now(),
+			userID:    "user-123",
 			wantErr:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			article, err := NewArticle(tt.id, tt.title, tt.content, tt.tags, tt.createdAt)
+			article, err := NewArticle(tt.id, tt.title, tt.content, tt.tags, tt.createdAt, tt.userID)
 
 			if tt.wantErr {
 				if err == nil {
@@ -69,12 +83,15 @@ func TestArticle_NewArticle(t *testing.T) {
 			if article.Content() != tt.content {
 				t.Errorf("Article.Content() = %v, want %v", article.Content(), tt.content)
 			}
+			if article.UserID() != tt.userID {
+				t.Errorf("Article.UserID() = %v, want %v", article.UserID(), tt.userID)
+			}
 		})
 	}
 }
 
 func TestArticle_HasTag(t *testing.T) {
-	article, err := NewArticle("1", "Test", "Content", []string{"tag1", "tag2"}, time.Now())
+	article, err := NewArticle("1", "Test", "Content", []string{"tag1", "tag2"}, time.Now(), "user-123")
 	if err != nil {
 		t.Fatalf("NewArticle() error = %v", err)
 	}

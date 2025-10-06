@@ -93,16 +93,26 @@ func SearchArticles(
 	idx meilisearch.IndexManager,
 ) {
 	query := r.URL.Query().Get("q") // クエリキーを 'q' に統一
+	userID := r.URL.Query().Get("user_id") // user_idパラメータ
 
 	if query == "" {
 		logger.Logger.Error("query is empty")
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, "query parameter required", http.StatusBadRequest)
 		return
 	}
 
-	raw, err := search_engine.SearchArticles(idx, query)
+	if userID == "" {
+		logger.Logger.Error("user_id is empty")
+		http.Error(w, "user_id parameter required", http.StatusBadRequest)
+		return
+	}
+
+	// Build filter for user_id using secure escaping
+	filter := fmt.Sprintf("user_id = \"%s\"", search_engine.EscapeMeilisearchValue(userID))
+
+	raw, err := search_engine.SearchArticlesWithFilter(idx, query, filter)
 	if err != nil {
-		logger.Logger.Error("search failed", "err", err)
+		logger.Logger.Error("search failed", "err", err, "user_id", userID)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -121,7 +131,7 @@ func SearchArticles(
 		resp.Hits = append(resp.Hits, hit)
 	}
 
-	logger.Logger.Info("search ok", "query", query, "count", len(resp.Hits))
+	logger.Logger.Info("search ok", "query", query, "user_id", userID, "count", len(resp.Hits))
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

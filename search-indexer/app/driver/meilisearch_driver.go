@@ -146,8 +146,8 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		}
 	}
 
-	// Set filterable attributes for tags
-	filterableAttrs := []interface{}{"tags"}
+	// Set filterable attributes for tags and user_id
+	filterableAttrs := []interface{}{"tags", "user_id"}
 	_, err = d.index.UpdateFilterableAttributes(&filterableAttrs)
 	if err != nil {
 		return &DriverError{

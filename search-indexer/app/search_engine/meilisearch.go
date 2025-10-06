@@ -29,6 +29,22 @@ func SearchArticles(idxArticles meilisearch.IndexManager, query string) (*meilis
 	return results, nil
 }
 
+// SearchArticlesWithFilter searches articles with a filter (e.g., user_id filter)
+func SearchArticlesWithFilter(idxArticles meilisearch.IndexManager, query string, filter string) (*meilisearch.SearchResponse, error) {
+	const LIMIT = 20
+
+	results, err := idxArticles.Search(query, &meilisearch.SearchRequest{
+		Limit:  LIMIT,
+		Filter: filter,
+	})
+	if err != nil {
+		logger.Logger.Error("Failed to search articles with filter", "error", err, "filter", filter)
+		return nil, err
+	}
+
+	return results, nil
+}
+
 // maybe use this later
 func makeSearchFilter(tags []string) string {
 	filter := ""

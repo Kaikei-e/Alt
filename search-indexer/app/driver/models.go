@@ -9,6 +9,7 @@ type ArticleWithTags struct {
 	Content   string
 	Tags      []TagModel
 	CreatedAt time.Time
+	UserID    string
 }
 
 // TagModel represents a tag from the database
@@ -22,6 +23,7 @@ type SearchDocumentDriver struct {
 	Title   string   `json:"title"`
 	Content string   `json:"content"`
 	Tags    []string `json:"tags"`
+	UserID  string   `json:"user_id"`
 }
 
 // DriverError represents an error from the driver layer

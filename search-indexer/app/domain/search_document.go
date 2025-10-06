@@ -5,6 +5,7 @@ type SearchDocument struct {
 	Title   string   `json:"title"`
 	Content string   `json:"content"`
 	Tags    []string `json:"tags"`
+	UserID  string   `json:"user_id"`
 }
 
 func NewSearchDocument(article *Article) SearchDocument {
@@ -13,5 +14,6 @@ func NewSearchDocument(article *Article) SearchDocument {
 		Title:   article.Title(),
 		Content: article.Content(),
 		Tags:    article.Tags(),
+		UserID:  article.UserID(),
 	}
 }

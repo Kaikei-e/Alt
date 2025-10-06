@@ -11,9 +11,10 @@ type Article struct {
 	content   string
 	tags      []string
 	createdAt time.Time
+	userID    string
 }
 
-func NewArticle(id, title, content string, tags []string, createdAt time.Time) (*Article, error) {
+func NewArticle(id, title, content string, tags []string, createdAt time.Time, userID string) (*Article, error) {
 	if id == "" {
 		return nil, errors.New("article ID cannot be empty")
 	}
@@ -27,6 +28,7 @@ func NewArticle(id, title, content string, tags []string, createdAt time.Time) (
 		content:   content,
 		tags:      tags,
 		createdAt: createdAt,
+		userID:    userID,
 	}, nil
 }
 
@@ -48,6 +50,10 @@ func (a *Article) Tags() []string {
 
 func (a *Article) CreatedAt() time.Time {
 	return a.createdAt
+}
+
+func (a *Article) UserID() string {
+	return a.userID
 }
 
 func (a *Article) HasTag(tag string) bool {

@@ -37,6 +37,7 @@ func (g *SearchEngineGateway) IndexDocuments(ctx context.Context, docs []domain.
 			Title:   domainDoc.Title,
 			Content: domainDoc.Content,
 			Tags:    domainDoc.Tags,
+			UserID:  domainDoc.UserID,
 		}
 	}
 
@@ -67,6 +68,7 @@ func (g *SearchEngineGateway) Search(ctx context.Context, query string, limit in
 			Title:   driverDoc.Title,
 			Content: driverDoc.Content,
 			Tags:    driverDoc.Tags,
+			UserID:  driverDoc.UserID,
 		}
 	}
 
@@ -87,8 +89,9 @@ func (g *SearchEngineGateway) SearchWithFilters(ctx context.Context, query strin
 		domainResults[i] = domain.SearchDocument{
 			ID:      driverDoc.ID,
 			Title:   driverDoc.Title,
-			Content: driverDoc.Content,
+			Content:  driverDoc.Content,
 			Tags:    driverDoc.Tags,
+			UserID:  driverDoc.UserID,
 		}
 	}
 
