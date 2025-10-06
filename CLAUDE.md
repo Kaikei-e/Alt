@@ -1,62 +1,129 @@
 # CLAUDE.md - The Alt Project
 
-## About This Project
+## Current Posture (October 2025)
 
-This document provides a high-level overview of the Alt RSS reader project, a mobile-first application built with a modern, performance-oriented microservice architecture. The entire project is developed with a strict **Test-Driven Development (TDD)** first methodology.
+Alt now runs primarily on Docker Compose using the root `compose.yaml`. Kubernetes and Skaffold manifests remain in the repo for future redeployments but are no longer part of day-to-day development. Unless a platform maintainer explicitly requests otherwise, treat Docker Compose (plus the provided Make targets) as the source of truth for local orchestration.
 
-For detailed, service-specific documentation, please refer to the `CLAUDE.md` file located in the root directory of each microservice.
+## Overview
 
-## Core Development Principles
+Alt is an AI-augmented RSS knowledge platform composed of multiple services:
 
-Across all services, we adhere to a set of core principles to ensure quality, maintainability, and performance.
+- **Frontend**: `alt-frontend` (Next.js 15 App Router, React 19, TypeScript 5.9)
+- **Backend & APIs**: `alt-backend` (Go 1.24, Clean Architecture)
+- **Processing & AI**: `pre-processor`, `tag-generator` (Python 3.13), `news-creator` (Ollama runtime)
+- **Search**: `search-indexer` (Go) + Meilisearch 1.15.2
+- **Observability**: `rask-log-forwarder` & `rask-log-aggregator` (Rust 1.87) + ClickHouse 25.6
+- **Identity**: Kratos services (`kratos`, `kratos-db`, `auth-hub`)
+- **Storage**: PostgreSQL 16, Meilisearch, ClickHouse
 
-### 1. Test-Driven Development (TDD) First
+Every service adheres to TDD-first workflows, explicit contracts, and strict linting/formatting.
 
-TDD is the foundation of our development process. All new features and bug fixes must begin with a failing test. This ensures that our code is testable by design and that we have a comprehensive test suite.
+## Orchestration & Tooling
 
--   **Go**: We use `gomock` for mocking and `testify` for assertions.
--   **TypeScript/React**: We use `vitest` for unit testing and `React Testing Library` for component testing.
--   **Python**: We use `pytest` with `pytest-mock` for mocking.
--   **Rust**: We use `mockall` for mocking and framework-specific testing libraries like `axum-test`.
+| Tooling | Purpose |
+| --- | --- |
+| `compose.yaml` | Defines the full multi-service stack, including optional profiles (`ollama`, `logging`) |
+| `Makefile` | Idempotent wrappers (`make up`, `make down`, `make build`, SSL helpers, GoMock generation) |
+| `.env.template` | Baseline environment variables; copied automatically when `make up` runs |
+| `scripts/check-env.js` | Guards Next.js builds by ensuring required env vars are defined |
 
-### 2. Clean Architecture
+### Compose Profiles
 
-Most of our services follow a five-layer variant of Clean Architecture, ensuring a clear separation of concerns and making our services easier to test and maintain.
+- **Default**: Frontend, backend, Postgres, Meilisearch, search indexer, tag generator, Kratos stack, ClickHouse, log aggregator
+- **`--profile ollama`**: Adds GPU-enabled `news-creator`, its volume init job, and the `pre-processor`
+- **`--profile logging`**: Launches Rust log forwarders that stream container logs to the aggregator
 
-**Layers**: `REST Handler` → `Usecase` → `Port` → `Gateway (ACL)` → `Driver`
+Combine profiles via `docker compose --profile ollama --profile logging up --build` when you need both AI and observability pipelines.
 
-### 3. Performance and Resilience by Design
+### Daily Workflow
 
--   **High-Performance Code**: We use performance-oriented languages and libraries, such as Rust with zero-copy parsing for our logging pipeline.
--   **Resilience Patterns**: We use circuit breakers, rate limiting, and exponential backoff to ensure our services are resilient to failure.
+1. Ensure Docker Desktop (or compatible runtime) is running.
+2. Seed configuration if needed: `cp .env.template .env` (or simply run `make up`).
+3. Bring the core stack online: `make up` (builds images, starts containers, runs migrations).
+4. Optionally enable profiles: `docker compose --profile ollama up -d`, etc.
+5. Install project dependencies as needed (`pnpm -C alt-frontend install`, `go mod tidy`, `uv sync`).
+6. Develop with TDD (see below); run targeted tests before pushing changes.
+7. Shut down with `make down` (keep state) or `make down-volumes` (reset state).
 
-### 4. Secure by Design
+Health checks and diagnostics:
 
--   **OWASP Top 10**: We test for common vulnerabilities, including the OWASP Top 10 for LLM Applications.
--   **Secure Logging**: We have a strict policy of never logging sensitive information, such as tokens or PII.
+- Frontend: `curl http://localhost:3000/api/health`
+- Backend: `curl http://localhost:9000/v1/health`
+- Meilisearch: `curl http://localhost:7700/health`
+- Database readiness: `docker compose exec db pg_isready -U ${POSTGRES_USER}`
+- Container insights: `docker compose logs -f <service>` and `docker compose ps --status=running`
 
-## Tech Stack Overview
+## Development Principles
 
--   **Go**: Backend services (`alt-backend`, `auth-service`, `pre-processor`, `search-indexer`).
--   **TypeScript/Next.js**: Frontend application (`alt-frontend`).
--   **Python**: ML and data services (`tag-generator`, `news-creator`).
--   **Rust**: High-performance infrastructure (`rask-log-aggregator`, `rask-log-forwarder`).
--   **Databases**: PostgreSQL, Meilisearch, ClickHouse.
--   **Deployment**: Docker, Kubernetes, Skaffold.
+### Test-Driven Development
 
-## Service-Specific Documentation
+TDD is mandatory across services.
 
-For detailed information on each service, including its architecture, TDD guidelines, and best practices, please refer to its `CLAUDE.md` file:
+- **Go**: `go test ./...` (add `-race -cover` where appropriate); GoMock via `make generate-mocks`
+- **TypeScript**: `pnpm -C alt-frontend test`, watch mode via `test:watch`, Playwright E2E via `test:e2e`
+- **Python**: `uv run pytest` in service directories (e.g., `tag-generator/app`)
+- **Rust**: `cargo test` inside log services; keep unsafe blocks out of production code
 
--   `alt-backend`: `alt-backend/app/CLAUDE.md`
--   `alt-backend/sidecar-proxy`: `alt-backend/sidecar-proxy/CLAUDE.md`
--   `auth-service`: `auth-service/app/CLAUDE.md`
--   `alt-frontend`: `alt-frontend/CLAUDE.md`
--   `pre-processor`: `pre-processor/app/CLAUDE.md`
--   `pre-processor-sidecar`: `pre-processor-sidecar/app/CLAUDE.md`
--   `search-indexer`: `search-indexer/app/CLAUDE.md`
--   `tag-generator`: `tag-generator/app/CLAUDE.md`
--   `news-creator`: `news-creator/app/CLAUDE.md`
--   `auth-token-manager`: `auth-token-manager/CLAUDE.md`
--   `rask-log-aggregator`: `rask-log-aggregator/app/CLAUDE.md`
--   `rask-log-forwarder`: `rask-log-forwarder/app/CLAUDE.md`
+Typical loop: write failing test → minimal implementation → refactor → run targeted tests → run lint/format.
+
+### Clean Architecture & Contracts
+
+Most Go services follow `REST` → `Usecase` → `Port` → `Gateway` → `Driver`. Ports define stable interfaces; gateways handle external systems. Maintain strict boundaries when adding features. Update mocks alongside interface changes.
+
+### Security & Observability
+
+- Secrets live in `.env` (never commit real credentials); update `.env.template` with non-sensitive defaults only.
+- Generate dev SSL material via `make dev-ssl-setup`; validate with `make dev-ssl-test`.
+- Logging defaults to JSON; enable the `logging` profile when you need ClickHouse-backed analytics.
+- Respect PII-handling guidelines—no tokens or email addresses in logs.
+
+## Testing Matrix
+
+| Area | Command |
+| --- | --- |
+| Frontend unit/component | `pnpm -C alt-frontend test` |
+| Frontend lint/format | `pnpm -C alt-frontend lint` / `fmt` |
+| Frontend E2E | `pnpm -C alt-frontend test:e2e` (stack must be running) |
+| Backend Go tests | `cd alt-backend/app && go test ./...` |
+| Search indexer | `cd search-indexer && go test ./...` |
+| Tag generator | `cd tag-generator && uv run pytest` |
+| Rust log services | `cd rask-log-aggregator && cargo test` (and similar for forwarder) |
+
+Run only the suites relevant to your changes plus any dependent smoke tests.
+
+## Service-Level Documentation
+
+Each service maintains its own `CLAUDE.md` with details:
+
+- `alt-backend/app/CLAUDE.md`
+- `alt-frontend/CLAUDE.md`
+- `auth-hub/CLAUDE.md`
+- `pre-processor/app/CLAUDE.md`
+- `pre-processor-sidecar/app/CLAUDE.md`
+- `search-indexer/app/CLAUDE.md`
+- `tag-generator/app/CLAUDE.md`
+- `news-creator/app/CLAUDE.md`
+- `rask-log-aggregator/app/CLAUDE.md`
+- `rask-log-forwarder/app/CLAUDE.md`
+- `auth-token-manager/CLAUDE.md`
+
+If you add a new service, scaffold its doc with architecture notes, env vars, test commands, and integration points.
+
+## When to Touch Kubernetes/Skaffold
+
+- Keep manifests in `stopped-using-k8s/` untouched unless explicitly asked.
+- Production planning: coordinate with platform leads before editing `skaffold/` or Helm values.
+- Any change to share: document the Compose equivalent first, then mirror to Kubernetes if required later.
+
+## Quick Reference
+
+- Start stack: `make up`
+- Stop stack: `make down`
+- Tear down state: `make down-volumes`
+- Rebuild everything: `make build`
+- Run backend tests: `cd alt-backend/app && go test ./...`
+- Run frontend dev server: `pnpm -C alt-frontend dev`
+- Enable AI pipeline: `docker compose --profile ollama up -d`
+- Enable log forwarders: `docker compose --profile logging up -d`
+
+Stay aligned with the Compose-first workflow, keep tests green, and avoid modifying deprecated Kubernetes assets unless requested.
