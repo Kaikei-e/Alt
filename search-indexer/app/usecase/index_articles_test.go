@@ -65,8 +65,8 @@ func (m *mockSearchEngineForIndexing) RegisterSynonyms(ctx context.Context, syno
 
 func TestIndexArticlesUsecase_Execute(t *testing.T) {
 	now := time.Now()
-	article1, _ := domain.NewArticle("1", "Title 1", "Content 1", []string{"tag1"}, now)
-	article2, _ := domain.NewArticle("2", "Title 2", "Content 2", []string{"tag2"}, now.Add(time.Minute))
+	article1, _ := domain.NewArticle("1", "Title 1", "Content 1", []string{"tag1"}, now, "user1")
+	article2, _ := domain.NewArticle("2", "Title 2", "Content 2", []string{"tag2"}, now.Add(time.Minute), "user2")
 
 	tests := []struct {
 		name         string

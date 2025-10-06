@@ -43,7 +43,7 @@ func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[st
 
 func TestSearchArticlesUsecase_Execute(t *testing.T) {
 	now := time.Now()
-	article, _ := domain.NewArticle("1", "Test Title", "Test Content", []string{"tag1"}, now)
+	article, _ := domain.NewArticle("1", "Test Title", "Test Content", []string{"tag1"}, now, "user1")
 	doc := domain.NewSearchDocument(article)
 
 	tests := []struct {

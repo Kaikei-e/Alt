@@ -25,7 +25,7 @@ func TestCompilation(t *testing.T) {
 	}
 
 	// Test domain objects
-	article, err := domain.NewArticle("1", "Test Title", "Test Content", []string{"tag1"}, time.Now())
+	article, err := domain.NewArticle("1", "Test Title", "Test Content", []string{"tag1"}, time.Now(), "user1")
 	if err != nil {
 		t.Log("Article creation error:", err)
 	}

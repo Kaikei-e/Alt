@@ -56,7 +56,7 @@ func (m *mockSearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[st
 
 func TestSearchEngineGateway_IndexDocuments(t *testing.T) {
 	now := time.Now()
-	article, _ := domain.NewArticle("1", "Test Title", "Test Content", []string{"tag1", "tag2"}, now)
+	article, _ := domain.NewArticle("1", "Test Title", "Test Content", []string{"tag1", "tag2"}, now, "user1")
 	domainDoc := domain.NewSearchDocument(article)
 
 	tests := []struct {
