@@ -8,27 +8,27 @@
 
 # Alt - AI-Powered RSS Knowledge Pipeline
 
-> A mobile-first RSS reader built with microservices architecture, featuring AI-powered content enhancement, high-performance logging, and intelligent content discovery.
+> October 2025 update: Alt now runs locally on Docker Compose (`compose.yaml`). Kubernetes manifests remain in the repo for future redeployment but are no longer the primary development path.
 
 ## Executive Summary
 
-**Alt** is a sophisticated RSS reader platform that transforms traditional feed consumption into an intelligent knowledge discovery system. Built with a modern microservices architecture, Alt combines the simplicity of RSS with the power of artificial intelligence to deliver personalized, enhanced content experiences.
+**Alt** transforms a traditional RSS reader into an intelligent knowledge discovery platform. The system blends microservices, AI enrichment, and a polished frontend to deliver curated content across devices.
 
 ### Key Capabilities
 
-- **📱 Mobile-First Design**: Optimized TypeScript/React frontend with responsive glassmorphism UI
-- **🤖 AI Content Enhancement**: ML-powered automatic tagging and LLM-based article summarization
-- **⚡ High-Performance Processing**: Go-based backend with Clean Architecture and TDD practices
-- **🔍 Intelligent Search**: Meilisearch-powered full-text search with relevance scoring
-- **📊 Advanced Analytics**: Rust-based high-performance logging with real-time metrics
-- **☁️ Cloud-Native**: Kubernetes-ready with SSL/TLS, auto-scaling, and observability
+- **📱 Mobile-First Design**: Responsive TypeScript/React frontend with glassmorphism UI
+- **🤖 AI Content Enhancement**: Automatic tagging and LLM-powered summarisation
+- **⚡ High-Performance Processing**: Go-based backend with Clean Architecture and TDD
+- **🔍 Intelligent Search**: Meilisearch-backed full-text and semantic discovery
+- **📊 Observability-Ready**: Rust logging pipeline into ClickHouse with optional sidecars
+- **🧱 Docker Compose-First**: Single-command local stack with optional `ollama` and `logging` profiles; Kubernetes manifests are maintained only for future production rollout
 
 ### Target Audience
 
 - **Knowledge Workers**: Professionals who need to stay informed across multiple domains
 - **Researchers**: Academic and industry researchers tracking developments in their fields
 - **Content Creators**: Writers, bloggers, and journalists seeking inspiration and trends
-- **Technology Enthusiasts**: Developers interested in modern microservices architecture
+- **Platform Engineers**: Developers exploring multi-service stacks with Compose orchestration
 
 ---
 
@@ -62,7 +62,7 @@
 #### 🚀 Performance & Scalability
 - **High Throughput**: 100K+ logs/second processing capability
 - **Low Latency**: Sub-5ms response times for critical operations
-- **Horizontal Scaling**: Kubernetes-native auto-scaling based on demand
+- **Profile-Based Scaling**: Optional Docker Compose profiles isolate heavy services from the baseline stack
 - **Efficient Resource Usage**: Optimized memory and CPU consumption
 
 #### 🔒 Security & Reliability
@@ -147,7 +147,7 @@ sequenceDiagram
     User->>Frontend: Subscribe to RSS feed
     Frontend->>Backend: POST /api/feeds
     Backend->>Database: Store feed URL
-    Backend->>Preprocessor: Trigger processing
+    Backend->>Preprocessor: Trigger processing (requires `--profile ollama`)
 
     Preprocessor->>Preprocessor: Fetch RSS content
     Preprocessor->>Preprocessor: Clean HTML, detect language
@@ -400,153 +400,142 @@ graph TB
 
 ## Deployment Architecture
 
-### Kubernetes Architecture
+### Docker Compose Runtime
 
 ```mermaid
-graph TB
-    subgraph "Ingress Layer"
-        ING[NGINX Ingress Controller]
-        ING_EXT[External NGINX Ingress]
+flowchart TB
+    subgraph Default
+        NGX[nginx\n:80]
+        FE[alt-frontend\n:3000]
+        BE[alt-backend\n:9000]
+        MIGRATE[migrate (Atlas)\ninit job]
+        DB[(postgres\n:5432)]
+        SEARCHIDX[search-indexer\n:9300]
+        TAGGER[tag-generator\n:9400]
+        MEILI[meilisearch\n:7700]
+        LOGAGG[rask-log-aggregator\n:9600]
+        CLICK[(clickhouse\n:8123/:9009)]
+        KRATOSDB[(kratos-db\n:5433)]
+        KRATOS[kratos\n:4433/:4434]
+        AUTH[auth-hub\n:8888]
     end
 
-    subgraph "alt-apps Namespace"
-        subgraph "Frontend Services"
-            FE_POD[alt-frontend Pods]
-            FE_SVC[Frontend Service]
-        end
-
-        subgraph "Backend Services"
-            BE_POD[alt-backend Pods]
-            BE_SVC[Backend Service]
-        end
-
-        subgraph "Processing Services"
-            PREP_POD[pre-processor Pods]
-            TAG_POD[tag-generator Pods]
-            NEWS_POD[news-creator Pods]
-            SEARCH_POD[search-indexer Pods]
-        end
+    subgraph Profile_Ollama [Optional profile: ollama]
+        OLLAMA_INIT[news-creator-volume-init]
+        NEWS[news-creator\n:11434]
+        PREPROC[pre-processor\n:9200]
     end
 
-    subgraph "alt-database Namespace"
-        PG_STS[PostgreSQL StatefulSet]
-        PG_SVC[PostgreSQL Service]
-        PG_PVC[Persistent Volume]
+    subgraph Profile_Logging [Optional profile: logging]
+        LOGFWD[log forwarder sidecars\n(nginx, backend, db, etc.)]
     end
 
-    subgraph "alt-search Namespace"
-        MEILI_STS[Meilisearch StatefulSet]
-        MEILI_SVC[Meilisearch Service]
-        MEILI_PVC[Search Volume]
-    end
-
-    subgraph "alt-observability Namespace"
-        LOG_AGG[rask-log-aggregator]
-        CLICK_STS[ClickHouse StatefulSet]
-        LOG_FORWARDERS[Log Forwarder Sidecars]
-    end
-
-    ING --> FE_SVC
-    ING --> BE_SVC
-    FE_SVC --> FE_POD
-    BE_SVC --> BE_POD
-
-    BE_POD --> PG_SVC
-    PREP_POD --> PG_SVC
-    TAG_POD --> PG_SVC
-    SEARCH_POD --> PG_SVC
-    SEARCH_POD --> MEILI_SVC
-
-    PG_SVC --> PG_STS
-    PG_STS --> PG_PVC
-    MEILI_SVC --> MEILI_STS
-    MEILI_STS --> MEILI_PVC
-
-    LOG_FORWARDERS -.-> LOG_AGG
-    LOG_AGG --> CLICK_STS
-
-    classDef ingress fill:#e1f5fe
-    classDef app fill:#f3e5f5
-    classDef data fill:#e8f5e8
-    classDef observability fill:#fff3e0
-
-    class ING,ING_EXT ingress
-    class FE_POD,BE_POD,PREP_POD,TAG_POD,NEWS_POD,SEARCH_POD app
-    class PG_STS,MEILI_STS,PG_PVC,MEILI_PVC data
-    class LOG_AGG,CLICK_STS,LOG_FORWARDERS observability
+    NGX --> FE
+    NGX --> BE
+    BE --> DB
+    BE --> MEILI
+    SEARCHIDX --> DB
+    SEARCHIDX --> MEILI
+    TAGGER --> DB
+    LOGAGG --> CLICK
+    LOGFWD -.-> LOGAGG
+    PREPROC --> DB
+    PREPROC --> NEWS
+    NEWS -.-> OLLAMA_INIT
+    AUTH --> KRATOS
+    KRATOS --> KRATOSDB
 ```
 
-### Docker Compose Services
+### Docker Compose Profiles
 
-```mermaid
-graph TB
-    subgraph "Load Balancer"
-        NGINX[nginx:latest<br/>Port 80]
-    end
+- **Baseline (default)**: Frontend, backend, PostgreSQL, Meilisearch, tagging, indexing, identity (Kratos), analytics (ClickHouse + log aggregator).
+- **`--profile ollama`**: Adds GPU-enabled `news-creator`, its volume initialiser, and the `pre-processor` ingestion service.
+- **`--profile logging`**: Starts Rust log forwarders that tail Docker logs and ship them to `rask-log-aggregator`.
 
-    subgraph "Frontend"
-        FRONTEND[alt-frontend<br/>Next.js:3000]
-    end
+Profiles can be combined, e.g. `docker compose --profile ollama --profile logging up --build`.
 
-    subgraph "Backend Services"
-        BACKEND[alt-backend<br/>Go:9000]
-        PREPROCESSOR[pre-processor<br/>Go:9200]
-        TAGGER[tag-generator<br/>Python:9400]
-        CREATOR[news-creator<br/>Ollama:11434]
-        INDEXER[search-indexer<br/>Go:9300]
-    end
+## Service Catalog (compose.yaml)
 
-    subgraph "Data Stores"
-        POSTGRES[(PostgreSQL 16<br/>Port 5432)]
-        MEILISEARCH[(Meilisearch<br/>Port 7700)]
-        CLICKHOUSE[(ClickHouse<br/>Port 8123)]
-    end
+| Service | Language / Image | Ports (host) | Compose profile | Purpose |
+|---------|------------------|--------------|-----------------|---------|
+| `nginx` | nginx:latest | 80 | default | Reverse proxy for frontend (`/`) and backend (`/api`) with health gating |
+| `alt-frontend` | Next.js 15 (./alt-frontend) | 3000 | default | Serves the web UI; exposes `/api/health` |
+| `alt-backend` | Go 1.24 (./alt-backend) | 9000 | default | Clean Architecture API with `/v1/health` |
+| `migrate` | Atlas CLI (./migrations-atlas) | – (one-shot) | default | Applies schema migrations before backend starts |
+| `db` | postgres:16-alpine | 5432 | default | Primary relational database seeded from `db/init` |
+| `meilisearch` | getmeili/meilisearch:v1.15.2 | 7700 | default | Full-text search engine |
+| `search-indexer` | Go (./search-indexer) | 9300 | default | Syncs Postgres records into Meilisearch |
+| `tag-generator` | Python 3.13 (./tag-generator) | 9400 | default | ML-driven keyword extraction |
+| `rask-log-aggregator` | Rust (./rask-log-aggregator) | 9600 | default | Collects structured logs into ClickHouse |
+| `clickhouse` | clickhouse/clickhouse-server:25.6 | 8123, 9009 | default | Analytics warehouse backing observability |
+| `kratos-db` | postgres:16-alpine | 5433 | default | Identity database for Kratos |
+| `kratos-migrate` | oryd/kratos:v1.2.0 | – (one-shot) | default | Runs Kratos SQL migrations |
+| `kratos` | oryd/kratos:v1.2.0 | 4433, 4434 | default | Identity & self-service flows surfaced in UI |
+| `auth-hub` | Go (./auth-hub) | 8888 | default | Auth facade aggregating Kratos flows |
+| `news-creator` | Ollama runtime (./news-creator) | 11434 | `ollama` | LLM summarisation service (GPU-enabled) |
+| `pre-processor` | Go (./pre-processor) | 9200 | `ollama` | RSS ingestion orchestrator feeding news-creator |
+| `news-creator-volume-init` | Ollama image | – (one-shot) | `ollama` | Fixes ownership for shared model volume |
+| `*-logs` forwarders | Rust (./rask-log-forwarder/app) | – | `logging` | Tail Docker logs per service and push to aggregator |
 
-    subgraph "Logging (Optional Profile)"
-        AGGREGATOR[rask-log-aggregator<br/>Rust:9600]
-        FE_LOGS[alt-frontend-logs<br/>Sidecar]
-        BE_LOGS[alt-backend-logs<br/>Sidecar]
-        PREP_LOGS[pre-processor-logs<br/>Sidecar]
-        TAG_LOGS[tag-generator-logs<br/>Sidecar]
-        NEWS_LOGS[news-creator-logs<br/>Sidecar]
-        SEARCH_LOGS[search-indexer-logs<br/>Sidecar]
-        MEILI_LOGS[meilisearch-logs<br/>Sidecar]
-        DB_LOGS[db-logs<br/>Sidecar]
-    end
+Persistent volumes: `db_data`, `kratos_db_data`, `meili_data`, `clickhouse_data`, `news_creator_models`, `rask_log_aggregator_data`.
 
-    NGINX --> FRONTEND
-    NGINX --> BACKEND
+---
 
-    BACKEND --> POSTGRES
-    BACKEND --> MEILISEARCH
-    PREPROCESSOR --> POSTGRES
-    PREPROCESSOR --> CREATOR
-    TAGGER --> POSTGRES
-    INDEXER --> POSTGRES
-    INDEXER --> MEILISEARCH
+## Local Development Workflow
 
-    FE_LOGS -.-> AGGREGATOR
-    BE_LOGS -.-> AGGREGATOR
-    PREP_LOGS -.-> AGGREGATOR
-    TAG_LOGS -.-> AGGREGATOR
-    NEWS_LOGS -.-> AGGREGATOR
-    SEARCH_LOGS -.-> AGGREGATOR
-    MEILI_LOGS -.-> AGGREGATOR
-    DB_LOGS -.-> AGGREGATOR
-    AGGREGATOR --> CLICKHOUSE
+1. **Install prerequisites**: Docker Desktop (or compatible engine) and Node.js 24 with pnpm 10 (`corepack enable pnpm`).
+2. **Create environment file**: `cp .env.template .env` (or let `make up` create it automatically).
+3. **Start the stack**: `make up` → builds images and launches the baseline services.
+4. **Enable optional profiles** as needed:
+   - AI services: `docker compose --profile ollama up -d`
+   - Log forwarders: `docker compose --profile logging up -d`
+5. **Run the frontend locally**: `pnpm -C alt-frontend install` then `pnpm -C alt-frontend dev`.
+6. **Shut down**: `make down` (keep data) or `make down-volumes` (reset everything).
 
-    classDef proxy fill:#e1f5fe
-    classDef frontend fill:#e8f5e8
-    classDef backend fill:#f3e5f5
-    classDef data fill:#fff3e0
-    classDef logging fill:#fce4ec
+### Helpful Commands
 
-    class NGINX proxy
-    class FRONTEND frontend
-    class BACKEND,PREPROCESSOR,TAGGER,CREATOR,INDEXER backend
-    class POSTGRES,MEILISEARCH,CLICKHOUSE data
-    class AGGREGATOR,FE_LOGS,BE_LOGS,PREP_LOGS,TAG_LOGS,NEWS_LOGS,SEARCH_LOGS,MEILI_LOGS,DB_LOGS logging
-```
+| Command | Description |
+|---------|-------------|
+| `make build` | Force rebuild of all images |
+| `make up-clean-frontend` | Rebuild the frontend image without cache before starting |
+| `make up-with-news-creator` | Rebuild AI image then start the stack |
+| `make dev-ssl-setup` / `make dev-ssl-test` | Generate and verify PostgreSQL SSL certificates |
+| `docker compose logs -f <service>` | Stream logs from a specific container |
+| `docker compose ps --status=running` | Check which services (and profiles) are online |
+| `docker compose exec db psql ...` | Connect to the Postgres shell |
+
+### Environment Notes
+
+- `scripts/check-env.js` validates required variables during `next build`. Keep `.env.template`, `.env`, and compose `env_file` entries in sync.
+- Frontend defaults: `NEXT_PUBLIC_API_BASE_URL=/api`, `API_URL=http://alt-backend:9000`. When running `pnpm dev` outside Docker, set `NEXT_PUBLIC_API_BASE_URL=http://localhost/api`.
+- Identity routes rely on Kratos URLs (`NEXT_PUBLIC_KRATOS_PUBLIC_URL`, `KRATOS_PUBLIC_URL`, `KRATOS_INTERNAL_URL`) injected via compose build args.
+
+### Troubleshooting Quick Checks
+
+- `curl http://localhost:3000/api/health` → frontend container health
+- `curl http://localhost:9000/v1/health` → backend availability
+- `curl http://localhost:7700/health` → Meilisearch readiness
+- `docker compose logs -f <service>` → targeted diagnostics (all services share the `alt-network` bridge)
+- `docker compose exec db pg_isready -U ${POSTGRES_USER}` → Postgres connectivity
+
+---
+
+## Testing & Quality Gates
+
+| Area | Command | Notes |
+|------|---------|-------|
+| Frontend unit tests | `pnpm -C alt-frontend test` | Vitest + React Testing Library |
+| Frontend watch mode | `pnpm -C alt-frontend test:watch` | Red/Green/Refactor loop |
+| Frontend coverage | `pnpm -C alt-frontend test:coverage` | Istanbul output |
+| Frontend E2E | `pnpm -C alt-frontend test:e2e` | Requires stack running; Playwright projects cover auth + content |
+| Frontend lint | `pnpm -C alt-frontend lint` | ESLint 9 with Next plugin |
+| Frontend format | `pnpm -C alt-frontend fmt` | Prettier |
+| Backend tests | `cd alt-backend/app && go test ./...` | Add `-race -cover` as needed |
+| Backend mocks | `make generate-mocks` | GoMock against `alt-backend/app/port` interfaces |
+| Search indexer | `cd search-indexer && go test ./...` | Validates index sync logic |
+| Tag generator | `cd tag-generator && uv run pytest` | Python tests (requires UV/venv) |
+
+CI pipelines mirror these commands (see badges above).
 
 ---
 
@@ -556,10 +545,10 @@ graph TB
 
 | Language | Version | Usage | Key Features |
 |----------|---------|--------|--------------|
-| **Go** | 1.23+ | Backend services, processing | Generics, improved performance, structured logging |
-| **TypeScript** | Latest | Frontend development | Type safety, modern ES features |
-| **Python** | 3.13 | ML/AI services | Modern async, improved performance |
-| **Rust** | 1.87+ (2024 edition) | High-performance logging | SIMD, zero-cost abstractions |
+| **Go** | 1.24 | Backend services, processing, auth hub | Clean Architecture, generics, structured logging |
+| **TypeScript** | 5.9 | Frontend development | Strict typing, modern Next.js features |
+| **Python** | 3.13 | ML/AI services | UV package management, async-ready |
+| **Rust** | 1.87 | Logging pipeline | SIMD JSON parsing, zero-copy abstractions |
 
 ### Frameworks & Libraries
 
@@ -571,9 +560,9 @@ graph TB
 - **testify**: Testing assertions and suites
 
 #### Frontend (TypeScript)
-- **Next.js**: React framework with Pages Router
-- **React**: UI library with hooks
-- **Chakra UI**: Component library with theming
+- **Next.js 15 (App Router)**: React framework with server/client component support
+- **React 19**: Hooks-first UI layer with Suspense-ready primitives
+- **Chakra UI**: Component library with theme tokens and responsive props
 - **Playwright**: End-to-end testing
 - **Vitest**: Unit testing framework
 
@@ -599,16 +588,17 @@ graph TB
 - **ClickHouse 25.6**: Analytics database for logs
 
 #### Container & Orchestration
-- **Docker**: Containerization with multi-stage builds
-- **Docker Compose**: Local development environment
-- **Kubernetes**: Production orchestration
-- **Kustomize**: Configuration management
+- **Docker**: Multi-stage builds for every service
+- **Docker Compose**: Primary orchestration with optional profiles (`compose.yaml`)
+- **Makefile**: Idempotent helpers for builds, environment setup, SSL, and mock generation
+- **Skaffold / Kubernetes**: Legacy manifests retained for future redeployment (not part of the default workflow)
 
 #### Networking & Security
 - **NGINX**: Reverse proxy and load balancer
 - **SSL/TLS**: End-to-end encryption
 - **Let's Encrypt**: Automated certificate management
 - **CORS**: Cross-origin resource sharing
+- **Docker network (`alt-network`)**: Isolated bridge network shared by all services
 
 ### Development Tools & Practices
 
@@ -623,7 +613,7 @@ graph TB
 - **Git**: Version control with conventional commits
 - **GitHub Actions**: Continuous integration
 - **Docker Registry**: Container image storage
-- **Kubernetes**: Automated deployment and scaling
+- **Docker Compose**: Declarative local runtime shared across contributors
 
 #### Monitoring & Observability
 - **Structured Logging**: JSON logs across all services
@@ -802,9 +792,9 @@ graph LR
 - **Content Security Policy**: Strict CSP headers
 
 #### Infrastructure Security
-- **TLS Everywhere**: All communications encrypted
+- **TLS Everywhere**: Dev certificates generated via `make dev-ssl-setup`; production TLS handled by NGINX
 - **Secret Management**: Environment variables, no hardcoded secrets
-- **Network Segmentation**: Kubernetes network policies
+- **Network Segmentation**: Docker `alt-network` bridge isolates services; optional profiles add no extra host ports
 - **Minimal Attack Surface**: Alpine-based container images
 
 #### Operational Security
@@ -824,27 +814,27 @@ graph LR
 - [ ] Export functionality (OPML, JSON)
 - [ ] Webhook notifications
 - [ ] GraphQL API option
-- [ ] Kubernetes deployment manifests
+- [ ] Reintroduce Kubernetes deployment manifests once Compose-first workflow stabilises
 
 ### Performance Goals
-- Sub-100ms API response times
-- Support for 10,000+ feeds
-- Real-time updates via WebSocket
-- Horizontal scaling capabilities
+- Maintain sub-100 ms API response times on commodity hardware
+- Support for 10,000+ subscribed feeds
+- Real-time updates via WebSocket (future)
+- Horizontal scale-out plan via optional Kubernetes profile
 
 ## 📄 License
 
-This project is licensed under the Apache 2.0 License - see the LICENSE file for details.
+Apache 2.0 — see `LICENSE` for full text.
 
 ## 🙏 Acknowledgments
 
 - Built with inspiration from Clean Architecture principles by Robert C. Martin
-- Powered by amazing open-source projects: Go, Rust, TypeScriptm, Echo, React, Next.js, PostgreSQL, Meilisearch, ClickHouse, Ollama
+- Powered by Go, Rust, TypeScript, Python, React, Next.js, PostgreSQL, Meilisearch, ClickHouse, Ollama, and countless OSS contributors
 - Special thanks to the RSS community for keeping web feeds alive
 
 ---
 
-For more detailed documentation, visit our [Wiki](https://github.com/yourusername/alt/wiki) or check the `docs/` directory.
+For additional deep dives, check the Wiki or the `docs/` directory.
 ```mermaid
 graph TB
     %% Style definitions
