@@ -27,7 +27,7 @@ type ServerConfig struct {
 	Port            int           `json:"port" env:"SERVER_PORT" default:"9200"`
 	ShutdownTimeout time.Duration `json:"shutdown_timeout" env:"SERVER_SHUTDOWN_TIMEOUT" default:"30s"`
 	ReadTimeout     time.Duration `json:"read_timeout" env:"SERVER_READ_TIMEOUT" default:"10s"`
-	WriteTimeout    time.Duration `json:"write_timeout" env:"SERVER_WRITE_TIMEOUT" default:"10s"`
+	WriteTimeout    time.Duration `json:"write_timeout" env:"SERVER_WRITE_TIMEOUT" default:"300s"` // Extended to allow LLM processing
 }
 
 type HTTPConfig struct {
@@ -92,7 +92,7 @@ type NewsCreatorConfig struct {
 	Host    string        `json:"host" env:"NEWS_CREATOR_HOST" default:"http://news-creator:11434"`
 	APIPath string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/v1/summarize"`
 	Model   string        `json:"model" env:"NEWS_CREATOR_MODEL" default:"gemma3:4b"`
-	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"60s"`
+	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"240s"` // Extended for LLM processing (16-19s typical, 240s for safety)
 }
 
 func LoadConfig() (*Config, error) {
@@ -150,7 +150,7 @@ func loadFromEnv(config *Config) error {
 			return fmt.Errorf("invalid SERVER_WRITE_TIMEOUT: %s", timeout)
 		}
 	} else {
-		config.Server.WriteTimeout = 10 * time.Second
+		config.Server.WriteTimeout = 300 * time.Second // Extended to allow LLM processing
 	}
 
 	// HTTP config
@@ -508,7 +508,7 @@ func loadFromEnv(config *Config) error {
 			return fmt.Errorf("invalid NEWS_CREATOR_TIMEOUT: %s", timeout)
 		}
 	} else {
-		config.NewsCreator.Timeout = 60 * time.Second
+		config.NewsCreator.Timeout = 240 * time.Second // Extended for LLM processing (16-19s typical, 240s for safety)
 	}
 
 	return nil

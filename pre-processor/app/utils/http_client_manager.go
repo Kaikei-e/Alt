@@ -39,7 +39,7 @@ func NewHTTPClientManager() *HTTPClientManager {
 
 func (m *HTTPClientManager) init() {
 	m.defaultClient = m.createOptimizedClient(30 * time.Second)
-	m.summaryClient = m.createOptimizedClient(60 * time.Second)
+	m.summaryClient = m.createOptimizedClient(300 * time.Second) // Extended for LLM processing
 	m.feedClient = m.createOptimizedClient(15 * time.Second)
 }
 

@@ -67,7 +67,7 @@ func TestHTTPClientManager_GetSummaryClient(t *testing.T) {
 			want: struct {
 				timeout time.Duration
 			}{
-				timeout: 60 * time.Second,
+				timeout: 300 * time.Second, // Extended for LLM processing
 			},
 		},
 	}
