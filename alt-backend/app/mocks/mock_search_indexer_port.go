@@ -42,16 +42,16 @@ func (m *MockSearchIndexerPort) EXPECT() *MockSearchIndexerPortMockRecorder {
 }
 
 // SearchArticles mocks base method.
-func (m *MockSearchIndexerPort) SearchArticles(ctx context.Context, query string) ([]domain.SearchIndexerArticleHit, error) {
+func (m *MockSearchIndexerPort) SearchArticles(ctx context.Context, query string, userID string) ([]domain.SearchIndexerArticleHit, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SearchArticles", ctx, query)
+	ret := m.ctrl.Call(m, "SearchArticles", ctx, query, userID)
 	ret0, _ := ret[0].([]domain.SearchIndexerArticleHit)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SearchArticles indicates an expected call of SearchArticles.
-func (mr *MockSearchIndexerPortMockRecorder) SearchArticles(ctx, query any) *gomock.Call {
+func (mr *MockSearchIndexerPortMockRecorder) SearchArticles(ctx, query, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchArticles", reflect.TypeOf((*MockSearchIndexerPort)(nil).SearchArticles), ctx, query)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchArticles", reflect.TypeOf((*MockSearchIndexerPort)(nil).SearchArticles), ctx, query, userID)
 }

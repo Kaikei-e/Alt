@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/mock/gomock"
 )
 
@@ -17,8 +19,6 @@ func TestSearchFeedMeilisearchGateway_SearchFeeds(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-
-	ctx := context.Background()
 
 	tests := []struct {
 		name          string
@@ -85,7 +85,19 @@ func TestSearchFeedMeilisearchGateway_SearchFeeds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockDriver := mocks.NewMockSearchIndexerPort(ctrl)
-			mockDriver.EXPECT().SearchArticles(ctx, tt.query).Return(tt.driverHits, tt.driverError)
+
+			userID := uuid.New()
+			ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+				UserID:    userID,
+				Email:     "user@example.com",
+				Role:      domain.UserRoleUser,
+				TenantID:  uuid.New(),
+				SessionID: "session-123",
+				LoginAt:   time.Now().Add(-time.Minute),
+				ExpiresAt: time.Now().Add(time.Hour),
+			})
+
+			mockDriver.EXPECT().SearchArticles(ctx, tt.query, userID.String()).Return(tt.driverHits, tt.driverError)
 
 			gateway := NewSearchFeedMeilisearchGateway(mockDriver)
 			results, err := gateway.SearchFeeds(ctx, tt.query)
@@ -128,10 +140,19 @@ func TestSearchFeedMeilisearchGateway_SearchFeeds_EmptyQuery(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	ctx := context.Background()
+	userID := uuid.New()
+	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    userID,
+		Email:     "user@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  uuid.New(),
+		SessionID: "session-456",
+		LoginAt:   time.Now().Add(-time.Minute),
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
 
 	mockDriver := mocks.NewMockSearchIndexerPort(ctrl)
-	mockDriver.EXPECT().SearchArticles(ctx, "").Return([]domain.SearchIndexerArticleHit{}, nil)
+	mockDriver.EXPECT().SearchArticles(ctx, "", userID.String()).Return([]domain.SearchIndexerArticleHit{}, nil)
 
 	gateway := NewSearchFeedMeilisearchGateway(mockDriver)
 	results, err := gateway.SearchFeeds(ctx, "")
