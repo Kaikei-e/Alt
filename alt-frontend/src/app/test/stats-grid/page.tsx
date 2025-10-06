@@ -1,65 +1,48 @@
 "use client";
 
 import { Box, Text } from "@chakra-ui/react";
-import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import { Rss, FileText, Zap } from "lucide-react";
+import { TrendingUp, Zap, Bookmark } from "lucide-react";
 import StatsGrid from "@/components/desktop/home/StatsGrid";
 
-function StatsGridTestContent() {
-  const searchParams = useSearchParams();
-  if (!searchParams) {
-    return <Text>No search params</Text>;
-  }
-
-  const isLoading = searchParams.get("loading") === "true";
-  const hasError = searchParams.get("error") === "true";
-
+export default function StatsGridTest() {
   const mockStats = [
     {
-      id: "total-feeds",
-      icon: Rss,
-      label: "Total Feeds",
-      value: 42,
+      id: "1",
+      icon: TrendingUp,
+      label: "Weekly Reads",
+      value: 156,
       trend: "+12%",
       trendLabel: "from last week",
       color: "primary" as const,
     },
     {
-      id: "ai-processed",
+      id: "2",
       icon: Zap,
       label: "AI Processed",
-      value: 156,
-      trend: "+89%",
-      trendLabel: "efficiency boost",
+      value: 78,
+      trend: "+5%",
+      trendLabel: "this week",
       color: "secondary" as const,
     },
     {
-      id: "unread-articles",
-      icon: FileText,
-      label: "Unread Articles",
-      value: 23,
-      trend: "+5%",
-      trendLabel: "new today",
+      id: "3",
+      icon: Bookmark,
+      label: "Bookmarks",
+      value: 42,
+      trend: "-3%",
+      trendLabel: "from last week",
       color: "tertiary" as const,
     },
   ];
 
   return (
-    <Box p={8} minH="100vh" bg="var(--app-bg)">
-      <StatsGrid
-        stats={mockStats}
-        isLoading={isLoading}
-        error={hasError ? "Test error message" : null}
-      />
+    <Box p={8} bg="var(--app-bg)" minH="100vh">
+      <Text fontSize="2xl" mb={6} textAlign="center">
+        StatsGrid Component Test
+      </Text>
+      <Box maxW="800px" mx="auto">
+        <StatsGrid stats={mockStats} />
+      </Box>
     </Box>
-  );
-}
-
-export default function StatsGridTestPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <StatsGridTestContent />
-    </Suspense>
   );
 }

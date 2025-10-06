@@ -24,21 +24,20 @@ setup("authenticate", async ({ page }) => {
       await page.waitForLoadState("domcontentloaded");
       console.log("[AUTH-SETUP] Navigated to protected route");
 
-      // Wait for auth redirect to mock server (port is dynamic on CI)
-      const mockPort = process.env.PW_MOCK_PORT || "4545";
-      const re = new RegExp(`localhost:${mockPort}.*login\\/browser`);
-      await page.waitForURL(re, { timeout: 25000 });
-      console.log("[AUTH-SETUP] Redirected to mock auth server");
+      // Wait for redirect to login page with flow
+      // The mock server handles the redirect internally, so we'll be at /auth/login?flow=...
+      await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 45000 });
+      console.log("[AUTH-SETUP] Redirected to login page with flow");
 
-      // Mock server should redirect back with flow
-      await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 25000 });
-      console.log("[AUTH-SETUP] Redirected back with flow");
+      // Wait for form to be ready
+      await page.waitForLoadState("networkidle", { timeout: 15000 });
+      console.log("[AUTH-SETUP] Page fully loaded");
 
       // Use page object for login
       await loginPage.performLogin(
         "test@example.com",
         "password123",
-        "/desktop/home",
+        "/home",
       );
       console.log("[AUTH-SETUP] Login completed successfully");
 

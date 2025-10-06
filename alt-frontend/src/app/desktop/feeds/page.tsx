@@ -4,7 +4,7 @@ export const fetchCache = "force-no-store"; // 念のため
 export const revalidate = 0;
 
 import React, { Suspense } from "react";
-import { Box, Text } from "@chakra-ui/react";
+import { Box, Text, Spinner } from "@chakra-ui/react";
 import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeline";
 import LazyRightPanel from "@/components/desktop/analytics/LazyRightPanel";
@@ -27,16 +27,10 @@ const LoadingFallback = () => (
       borderRadius="var(--radius-xl)"
       textAlign="center"
     >
-      <div
-        style={{
-          width: "32px",
-          height: "32px",
-          border: "3px solid var(--surface-border)",
-          borderTop: "3px solid var(--accent-primary)",
-          borderRadius: "50%",
-          animation: "spin 1s linear infinite",
-          margin: "0 auto 16px",
-        }}
+      <Spinner
+        size="lg"
+        color="var(--accent-primary)"
+        mb={4}
       />
       <Text color="var(--text-primary)" fontSize="lg">
         Loading Alt Feeds...

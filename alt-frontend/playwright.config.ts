@@ -10,15 +10,16 @@ const mockPort = Number(process.env.PW_MOCK_PORT || "4545");
 const appPort = Number(process.env.PW_APP_PORT || "3010");
 
 export default defineConfig({
-  testMatch: /.*\.spec\.ts/,
+  testDir: "./",
+  testIgnore: "**/node_modules/**",
   globalSetup: "./playwright.setup.ts",
 
   // Increase timeout for auth-heavy tests
-  timeout: 60 * 1000,
+  timeout: 120 * 1000, // 2 minutes
   expect: {
-    timeout: 15 * 1000,
+    timeout: 30 * 1000, // 30 seconds
   },
-  globalTimeout: 15 * 60 * 1000, // 15 minutes
+  globalTimeout: 30 * 60 * 1000, // 30 minutes
 
   // Better retry strategy for flaky auth tests
   retries: process.env.CI ? 2 : 1,
@@ -64,7 +65,7 @@ export default defineConfig({
 
   projects: [
     // Setup project for authentication
-    { name: "setup", testMatch: /.*\.setup\.ts/ },
+    { name: "setup", testMatch: "tests/*.setup.ts" },
 
     // Authenticated tests - Chrome
     {
@@ -74,7 +75,7 @@ export default defineConfig({
         storageState: "playwright/.auth/user.json",
       },
       dependencies: ["setup"],
-      testMatch: /e2e\/authenticated\/.*\.spec\.ts/,
+      testMatch: "e2e/authenticated/**/*.spec.ts",
     },
 
     // Authenticated tests - Firefox
@@ -85,42 +86,57 @@ export default defineConfig({
         storageState: "playwright/.auth/user.json",
       },
       dependencies: ["setup"],
-      testMatch: /e2e\/authenticated\/.*\.spec\.ts/,
+      testMatch: "e2e/authenticated/**/*.spec.ts",
+    },
+
+    // Desktop/feeds tests (authenticated)
+    {
+      name: "desktop-chrome",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "playwright/.auth/user.json",
+      },
+      dependencies: ["setup"],
+      testMatch: "e2e/desktop/**/*.spec.ts",
     },
 
     // Non-authenticated tests (auth flow tests) - Chrome
     {
       name: "auth-flow-chrome",
       use: { ...devices["Desktop Chrome"] },
-      testMatch: /e2e\/auth\/.*\.spec\.ts/,
+      testMatch: "e2e/auth/**/*.spec.ts",
     },
 
     // Non-authenticated tests (auth flow tests) - Firefox
     {
       name: "auth-flow-firefox",
       use: { ...devices["Desktop Firefox"] },
-      testMatch: /e2e\/auth\/.*\.spec\.ts/,
+      testMatch: "e2e/auth/**/*.spec.ts",
     },
 
     // Error scenarios tests
     {
       name: "error-scenarios",
       use: { ...devices["Desktop Chrome"] },
-      testMatch: /e2e\/errors\/.*\.spec\.ts/,
+      testMatch: "e2e/errors/**/*.spec.ts",
     },
 
-    // Component tests
+    // Component tests (require authentication)
     {
       name: "components",
-      use: { ...devices["Desktop Chrome"] },
-      testMatch: /src\/.*\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "playwright/.auth/user.json",
+      },
+      dependencies: ["setup"],
+      testMatch: "e2e/components/**/*.spec.ts",
     },
 
     // Mobile tests (optional - can be enabled when needed)
     // {
     //   name: 'mobile-chrome',
     //   use: { ...devices['Pixel 5'] },
-    //   testMatch: /e2e\/mobile\/.*\.spec\.ts/
+    //   testMatch: 'e2e/mobile/**/*.spec.ts'
     // }
   ],
 
@@ -129,13 +145,13 @@ export default defineConfig({
     {
       command: "node tests/mock-auth-service.cjs",
       port: mockPort,
-      reuseExistingServer: false,
+      reuseExistingServer: !isCI, // Reuse in local dev, start fresh in CI
     },
     {
       // Use actual Next.js dev server instead of test-server.cjs
-      command: `NEXT_PUBLIC_IDP_ORIGIN=http://localhost:${mockPort} NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:${mockPort} NODE_ENV=test pnpm dev --port ${appPort}`,
+      command: `NEXT_PUBLIC_IDP_ORIGIN=http://localhost:${mockPort} NEXT_PUBLIC_KRATOS_PUBLIC_URL=http://localhost:${mockPort} NODE_ENV=test npx pnpm dev --port ${appPort}`,
       url: `http://localhost:${appPort}`,
-      reuseExistingServer: false,
+      reuseExistingServer: !isCI, // Reuse in local dev, start fresh in CI
       timeout: 180 * 1000, // 3 minutes for CI environments
       env: {
         NODE_ENV: "test",

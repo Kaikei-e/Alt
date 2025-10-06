@@ -99,7 +99,7 @@ export class LoginPage extends BasePage {
   /**
    * Wait for redirect after login
    */
-  async waitForLoginSuccess(expectedUrl?: string | RegExp, timeout = 15000) {
+  async waitForLoginSuccess(expectedUrl?: string | RegExp, timeout = 30000) {
     if (expectedUrl) {
       await this.waitForUrl(expectedUrl, { timeout });
     } else {

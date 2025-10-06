@@ -1,21 +1,30 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
 function resolveStylesheet() {
-  const candidate = require("jsdom/lib/jsdom/browser/default-stylesheet.js");
-  if (typeof candidate === "string" && candidate.length > 0) {
-    return candidate;
+  try {
+    const jsdomPath = require.resolve("jsdom");
+    const jsdomDir = dirname(jsdomPath);
+    const stylesheetPath = join(
+      jsdomDir,
+      "jsdom",
+      "browser",
+      "default-stylesheet.css",
+    );
+    const contents = readFileSync(stylesheetPath, "utf8");
+    if (typeof contents === "string" && contents.length > 0) {
+      return contents;
+    }
+    throw new Error("Stylesheet file is empty.");
+  } catch (error) {
+    throw new Error(
+      `Could not resolve jsdom default stylesheet: ${error.message}`,
+    );
   }
-  if (candidate && typeof candidate.default === "string") {
-    return candidate.default;
-  }
-  throw new Error(
-    "Could not resolve jsdom default stylesheet contents as string.",
-  );
 }
 
 function writeStylesheet(dest, contents) {

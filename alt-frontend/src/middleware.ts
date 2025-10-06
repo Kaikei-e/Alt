@@ -10,6 +10,7 @@ const PUBLIC_ROUTES = [
   /^\/ory(\/|$)/,
   /^\/static(\/|$)/,
   /^\/favicon\.ico$/,
+  /^\/test(\/|$)/, // Allow test pages for E2E testing
 ];
 
 export async function middleware(req: NextRequest) {

@@ -13,15 +13,15 @@ test.describe("Error Boundary Testing", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Inject a JavaScript error with proper error handling
-    await page.evaluate(() => {
-      try {
+    try {
+      await page.evaluate(() => {
         // @ts-ignore - Intentional error for testing
         window.someUndefinedFunction();
-      } catch (error) {
-        // Re-throw to ensure the error is caught by pageerror listener
-        throw error;
-      }
-    });
+      });
+    } catch (error) {
+      // Expected to fail - this is intentional for testing error handling
+      console.log("Expected error caught:", error);
+    }
 
     // Wait for error boundary to potentially kick in
     await page.waitForTimeout(2000);

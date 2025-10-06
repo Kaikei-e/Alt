@@ -5,7 +5,7 @@ FROM node:24-alpine AS deps
 WORKDIR /app
 
 # pnpm を corepack で有効化（公式推奨）
-RUN corepack enable && corepack prepare pnpm@latest --activate \
+RUN corepack enable && corepack prepare pnpm@10.16.0 --activate \
   && apk add --no-cache libc6-compat      # glibc 依存モジュール回避
 
 COPY package.json pnpm-lock.yaml ./
@@ -16,7 +16,7 @@ FROM node:24-alpine AS build
 WORKDIR /app
 
 # pnpm を corepack で有効化（build stage でも必要）
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.16.0 --activate
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -54,7 +54,7 @@ RUN node scripts/ensure-default-stylesheet.mjs
 FROM node:24-alpine AS runner-deps
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate \
+RUN corepack enable && corepack prepare pnpm@10.16.0 --activate \
   && apk add --no-cache libc6-compat
 
 COPY package.json pnpm-lock.yaml ./
