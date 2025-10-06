@@ -1,100 +1,233 @@
-# CLAUDE.md - Tag Generator Service
+# tag-generator/CLAUDE.md
 
-## About this Service
+<!-- Model Configuration -->
+<!-- ALWAYS use claude-4-sonnet for this project -->
+<!-- Use 'think' for basic analysis, 'ultrathink' for complex architectural decisions -->
 
-The **tag-generator** is a Python-based ML microservice that automatically generates relevant tags for RSS feed articles. It is built with a focus on testability, maintainability, and performance.
+## About tag-generator
 
-- **Language**: Python 3.13+
-- **Package Manager**: `uv`
-- **Frameworks**: FastAPI, Pydantic
-- **Testing**: `pytest` with a TDD-first approach
+This is the **tag generation service** of the Alt RSS reader platform, built with **Python 3.13+** and **FastAPI**. The service automatically generates relevant tags for RSS feed articles using machine learning models.
 
-## TDD and Testing Philosophy
+**Critical Guidelines:**
+- **TDD First:** Always write failing tests BEFORE implementation
+- **ML Quality:** Ensure high-quality tag generation with proper validation
+- **Performance:** Optimize for batch processing and memory efficiency
+- **Structured Logging:** Use structured logging for all operations
+- **Type Safety:** Use Python type hints throughout the codebase
 
-**Test-Driven Development (TDD) is mandatory.** It is the foundation of our development process, ensuring that every component is testable and that our application logic is decoupled from the non-deterministic nature of ML models.
+## Architecture Overview
 
-### The TDD Cycle: Red-Green-Refactor
-
-1.  **Red**: Write a failing test that defines the desired functionality.
-2.  **Green**: Write the absolute minimum amount of code to make the test pass.
-3.  **Refactor**: Improve the code's design and readability while keeping all tests green.
-
-## Testing Strategy
-
-### 1. Unit Testing
-
-#### Testing FastAPI Endpoints
-
-Use FastAPI's `TestClient` to test your endpoints. Use dependency injection to provide mock services to your endpoints, allowing you to test the API layer in isolation.
-
-```python
-# tests/unit/test_api.py
-from fastapi.testclient import TestClient
-from unittest.mock import Mock
-from app.main import app, get_tag_generator_service
-
-# Mock the service dependency
-mock_service = Mock()
-mock_service.generate_tags.return_value = [{"tag": "test", "confidence": 0.9}]
-
-# Override the dependency in the app
-def override_get_tag_generator_service():
-    return mock_service
-
-app.dependency_overrides[get_tag_generator_service] = override_get_tag_generator_service
-
-client = TestClient(app)
-
-def test_generate_tags_endpoint():
-    response = client.post("/tags/", json={"content": "some text"})
-    assert response.status_code == 200
-    assert response.json() == [{"tag": "test", "confidence": 0.9}]
-    mock_service.generate_tags.assert_called_once()
+### Service Architecture
+```
+Main Service → Tag Extractor → Article Fetcher → Tag Inserter
 ```
 
-#### Testing Pydantic Models
+**Component Responsibilities:**
+- **Main Service**: Orchestrates the tag generation pipeline
+- **Tag Extractor**: ML model for extracting tags from content
+- **Article Fetcher**: Retrieves articles from database
+- **Tag Inserter**: Stores generated tags back to database
 
-Focus on testing your custom validation logic, not Pydantic's built-in features.
-
-```python
-# tests/unit/test_models.py
-import pytest
-from pydantic import ValidationError
-from app.models import Article
-
-def test_article_with_short_content():
-    with pytest.raises(ValidationError) as excinfo:
-        Article(title="A", content="short") # Assumes a validator checks for min length
-    assert "Content must be at least 10 characters" in str(excinfo.value)
+### Directory Structure
+```
+/tag-generator/app/
+├─ main.py                    # Application entry point
+├─ tag_extractor/             # ML model components
+│  ├─ extract.py             # Tag extraction logic
+│  └─ models/                # ML model files
+├─ article_fetcher/           # Database access
+│  └─ fetch.py               # Article retrieval
+├─ tag_inserter/              # Database operations
+│  └─ upsert_tags.py         # Tag storage
+├─ tag_generator/             # Main service logic
+│  └─ logging_config.py      # Logging configuration
+├─ auth_service.py            # Authentication service
+├─ tests/                     # Test suite
+│  ├─ unit/                  # Unit tests
+│  ├─ integration/           # Integration tests
+│  └─ fixtures/              # Test fixtures
+├─ pyproject.toml            # Project configuration
+└─ CLAUDE.md                 # This file
 ```
 
-### 2. Testing ML Components
+## TDD and Testing Strategy
 
-#### Testing the Model's Integration
+### Test-Driven Development (TDD)
+All development follows the Red-Green-Refactor cycle:
 
-For unit and component tests, use a small, deterministic, pre-trained model. The goal is to test that your application correctly preprocesses data, calls the model, and handles its output, not to test the model's predictive accuracy.
+1. **Red**: Write a failing test
+2. **Green**: Write minimal code to pass
+3. **Refactor**: Improve code quality
 
-#### Testing for Model Quality (Advanced)
+### Testing Layers
 
-Beyond functional testing, ML models require a specialized testing approach:
--   **Bias and Fairness**: Write tests to ensure your model does not produce biased results for different demographic groups.
--   **Robustness**: Test the model's performance against adversarial inputs (e.g., text with typos, irrelevant information).
--   **Performance**: Benchmark the model's inference speed and memory usage to ensure it meets performance requirements.
+#### Unit Tests
+```python
+# Test tag extraction
+def test_extract_tags_success():
+    extractor = TagExtractor()
+    content = "This is about machine learning and artificial intelligence"
 
-These tests are often part of a separate model evaluation pipeline, but it's important to consider them as part of the overall quality assurance process.
+    tags = extractor.extract_tags(content)
 
-### 3. Integration Testing
+    assert len(tags) > 0
+    assert any("machine learning" in tag.lower() for tag in tags)
+```
 
-Integration tests should verify the interactions between your service and its external dependencies, such as a database or other APIs. Use containerized versions of these dependencies to ensure a consistent and isolated testing environment.
+#### Integration Tests
+```python
+# Test full pipeline
+def test_tag_generation_pipeline():
+    service = TagGeneratorService()
+    article_id = "test-article-123"
 
-## Development with `uv`
+    result = service.generate_tags_for_article(article_id)
 
--   **Dependencies**: Manage all dependencies with `uv add` and `pyproject.toml`.
--   **Testing**: Use `uv run pytest` to execute tests.
--   **Code Quality**: Use `uv run ruff check` for linting, `uv run ruff format` for formatting, and `uv run mypy src/` for type checking.
+    assert result.success is True
+    assert len(result.tags) > 0
+    assert result.article_id == article_id
+```
+
+#### ML Model Testing
+```python
+# Test model quality
+def test_model_bias_detection():
+    extractor = TagExtractor()
+
+    # Test with diverse content
+    content1 = "Technology news about AI"
+    content2 = "Sports news about football"
+
+    tags1 = extractor.extract_tags(content1)
+    tags2 = extractor.extract_tags(content2)
+
+    # Ensure different content produces different tags
+    assert set(tags1) != set(tags2)
+```
+
+## Machine Learning Components
+
+### Tag Extraction
+- **Model**: Pre-trained NLP model for tag extraction
+- **Preprocessing**: Text cleaning and normalization
+- **Postprocessing**: Tag validation and filtering
+- **Confidence Scoring**: Assign confidence scores to generated tags
+
+### Quality Assurance
+- **Bias Detection**: Test for demographic bias in tag generation
+- **Robustness Testing**: Validate against adversarial inputs
+- **Performance Benchmarking**: Monitor inference speed and memory usage
+
+## Configuration
+
+### Environment Variables
+```bash
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=alt_db
+DB_TAG_GENERATOR_USER=tag_generator
+DB_TAG_GENERATOR_PASSWORD=password
+
+# Processing
+PROCESSING_INTERVAL=60
+BATCH_LIMIT=75
+PROGRESS_LOG_INTERVAL=10
+MEMORY_CLEANUP_INTERVAL=25
+
+# Health Monitoring
+HEALTH_CHECK_INTERVAL=10
+MAX_CONSECUTIVE_EMPTY_CYCLES=20
+```
+
+## Performance Optimization
+
+### Memory Management
+- **Garbage Collection**: Manual GC after processing batches
+- **Memory Monitoring**: Track memory usage during processing
+- **Batch Processing**: Process articles in optimal batch sizes
+
+### Database Optimization
+- **Connection Pooling**: Reuse database connections
+- **Query Optimization**: Use efficient queries for article retrieval
+- **Batch Operations**: Use batch inserts for tag storage
+
+## Development Workflow
+
+### Running Tests
+```bash
+# Unit tests
+uv run pytest tests/unit/
+
+# Integration tests
+uv run pytest tests/integration/
+
+# All tests
+uv run pytest
+
+# Coverage
+uv run pytest --cov=tag_generator
+
+# Type checking
+uv run mypy src/
+```
+
+### Code Quality
+```bash
+# Linting
+uv run ruff check
+
+# Formatting
+uv run ruff format
+
+# Security check
+uv run bandit -r src/
+```
+
+### Running the Service
+```bash
+# Development
+uv run python main.py
+
+# Production
+uv run python main.py --config production
+```
+
+## API Endpoints
+
+### Tag Generation
+- **POST /api/v1/generate-tags**: Generate tags for specific article
+- **POST /api/v1/batch-generate**: Generate tags for multiple articles
+
+### Health and Monitoring
+- **GET /health**: Service health status
+- **GET /metrics**: Performance metrics
+
+## Troubleshooting
+
+### Common Issues
+- **Memory Leaks**: Check garbage collection and memory cleanup
+- **Database Connection**: Verify PostgreSQL connectivity
+- **ML Model Loading**: Ensure model files are accessible
+- **Performance Issues**: Monitor batch sizes and processing intervals
+
+### Debug Commands
+```bash
+# Check service health
+curl http://localhost:8000/health
+
+# Test tag generation
+curl -X POST http://localhost:8000/api/v1/generate-tags \
+  -H "Content-Type: application/json" \
+  -d '{"article_id": "test-123", "content": "Test content"}'
+
+# View logs
+docker logs tag-generator -f
+```
 
 ## References
 
--   [Testing FastAPI Applications](https://fastapi.tiangolo.com/tutorial/testing/)
--   [Testing in Python with `pytest`](https://realpython.com/pytest-python-testing/)
--   [Testing Machine Learning Systems](https://www.eugeneyan.com/writing/testing-ml/)
+- [FastAPI Testing](https://fastapi.tiangolo.com/tutorial/testing/)
+- [Pytest Documentation](https://docs.pytest.org/)
+- [Testing ML Systems](https://www.eugeneyan.com/writing/testing-ml/)
+- [Python Type Hints](https://docs.python.org/3/library/typing.html)

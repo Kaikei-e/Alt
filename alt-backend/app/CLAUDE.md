@@ -6,13 +6,14 @@
 
 ## About alt-backend
 
-This is the **core backend service** of the RSS reader microservice architecture, built with **Go 1.23+**, **Echo framework**, and **Clean Architecture** principles. The service follows Test-Driven Development (TDD) and implements a five-layer clean architecture pattern.
+This is the **core backend service** of the Alt RSS reader microservice architecture, built with **Go 1.24+**, **Echo framework**, and **Clean Architecture** principles. The service follows Test-Driven Development (TDD) and implements a five-layer clean architecture pattern.
 
 **Critical Guidelines:**
 - **TDD First:** Always write failing tests BEFORE implementation
 - **Quality Over Speed:** Prevent regressions and maintain code quality
 - **Rate Limiting:** External API calls must have minimum 5-second intervals
 - **Clean Architecture:** Strict layer dependencies and separation of concerns
+- **Structured Logging:** Use `log/slog` with context for all logging operations
 
 ## Architecture Overview
 
@@ -30,39 +31,49 @@ REST Handler → Usecase → Port → Gateway (ACL) → Driver
 
 ### Directory Structure
 ```
-/alt-backend/
-├─ main.go        # Application entry point
-├─ rest/          # HTTP handlers & Echo routers
-│  ├─ handler.go
-│  └─ schema.go
-├─ usecase/       # Business logic orchestration
-│  ├─ fetch_feed_usecase/
-│  ├─ search_feed_usecase/
-│  └─ register_feed_usecase/
-├─ port/          # Interface definitions
-│  ├─ fetch_feed_port/
-│  ├─ feed_search_port/
-│  └─ register_feed_port/
-├─ gateway/       # Anti-corruption layer
-│  ├─ fetch_feed_gateway/
-│  ├─ feed_search_gateway/
-│  └─ register_feed_gateway/
-├─ driver/        # External integrations
-│  ├─ alt_db/     # Database drivers
-│  ├─ models/     # Data models
-│  └─ search_indexer/
-├─ domain/        # Core entities & value objects
-│  ├─ rss_feed.go
-│  ├─ feed_summary.go
-│  └─ feed_reading_status.go
-├─ di/            # Dependency injection
-│  └─ container.go
-├─ job/           # Background jobs
-├─ mocks/         # Generated mocks (gomock)
-├─ utils/         # Cross-cutting concerns
-│  ├─ logger/
-│  └─ html_parser/
-└─ CLAUDE.md      # This file
+/alt-backend/app/
+├─ main.go                    # Application entry point with graceful shutdown
+├─ rest/                      # HTTP handlers & Echo routers
+│  ├─ routes.go              # Route registration and middleware setup
+│  ├─ article_handlers.go    # Article-related endpoints
+│  └─ schema.go              # Request/response schemas
+├─ usecase/                   # Business logic orchestration
+│  ├─ fetch_feed_usecase/    # Feed fetching business logic
+│  ├─ search_feed_usecase/   # Search functionality
+│  ├─ register_feed_usecase/ # Feed registration
+│  ├─ fetch_article_usecase/ # Article fetching
+│  └─ archive_article_usecase/ # Article archiving
+├─ port/                      # Interface definitions (contracts)
+│  ├─ fetch_feed_port/       # Feed fetching interfaces
+│  ├─ feed_search_port/      # Search interfaces
+│  └─ register_feed_port/    # Registration interfaces
+├─ gateway/                   # Anti-corruption layer
+│  ├─ fetch_feed_gateway/    # Feed fetching implementations
+│  ├─ feed_search_gateway/   # Search implementations
+│  └─ register_feed_gateway/ # Registration implementations
+├─ driver/                    # External integrations
+│  ├─ alt_db/                # Database drivers
+│  ├─ models/                # Data models
+│  └─ search_indexer/        # Search indexer integration
+├─ domain/                    # Core entities & value objects
+│  ├─ rss_feed.go           # RSS feed domain model
+│  ├─ feed_summary.go       # Feed summary domain model
+│  └─ feed_reading_status.go # Reading status domain model
+├─ di/                        # Dependency injection
+│  └─ container.go           # Application components container
+├─ job/                       # Background jobs
+│  └─ hourly_job.go         # Hourly feed processing job
+├─ middleware/                # Custom middleware
+│  ├─ tenant_middleware.go   # Tenant isolation
+│  └─ rate_limiter.go        # Rate limiting
+├─ mocks/                     # Generated mocks (gomock)
+├─ utils/                     # Cross-cutting concerns
+│  ├─ logger/                # Structured logging utilities
+│  ├─ html_parser/           # HTML parsing utilities
+│  └─ secure_http_client.go  # Secure HTTP client
+├─ config/                    # Configuration management
+│  └─ config.go              # Environment-based configuration
+└─ CLAUDE.md                 # This file
 ```
 
 ## Go 1.24+ Best Practices
@@ -71,11 +82,18 @@ REST Handler → Usecase → Port → Gateway (ACL) → Driver
 - **Structured Logging:** Always use `log/slog` with context for machine-readable logs.
 - **Error Handling:** Wrap errors with `fmt.Errorf("operation failed: %w", err)` to preserve context.
 - **Dependency Injection:** Use the constructor pattern for explicit dependency injection.
+- **Context Propagation:** Always pass context through the call chain for cancellation and timeouts.
 
 ### Go 1.24+ Testing Enhancements
 - **`testing/synctest`**: Use this experimental package to test concurrent code with a fake clock, making tests more deterministic.
 - **`t.Chdir()`**: Use this function to change the working directory for the duration of a test, useful for file-based operations.
 - **`testing.B.Loop`**: A faster way to write benchmarks.
+- **`testing.B.ResetTimer()`**: Use this to exclude setup time from benchmark measurements.
+
+### Configuration Management
+- **Environment Variables:** Use `config.NewConfig()` for centralized configuration loading
+- **Validation:** Validate all configuration values at startup
+- **Defaults:** Provide sensible defaults for all optional settings
 
 ### Code Quality
 ```go
@@ -85,13 +103,20 @@ slog.Info("processing request",
     "user_id", userID,
     "feed_url", feedURL)
 
-// Error wrapping
+// Error wrapping with context
 if err != nil {
     return fmt.Errorf("failed to fetch feed %s: %w", url, err)
 }
 
 // Rate limiting for external calls
-time.Sleep(5 * time.Second) // Minimum interval between API calls
+rateLimiter.Wait(ctx) // Use rate limiter instead of sleep
+
+// Context propagation
+func (s *Service) ProcessFeed(ctx context.Context, url string) error {
+    ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+    defer cancel()
+    // ... implementation
+}
 ```
 
 ### Naming Conventions
@@ -134,7 +159,7 @@ Here is a more detailed workflow for testing an Echo handler:
 
         // 3. Execution: Create handler and call it
         h := handler.NewUserHandler(mockUsecase)
-        
+
         // This will fail because the handler doesn't exist yet
         err := h.CreateUser(c)
 
@@ -316,6 +341,17 @@ func (g *HTTPFeedGateway) FetchFeed(ctx context.Context, url string) (*domain.Fe
 2. **Fix:** Minimal change to make test pass
 3. **Verify:** No regression in existing tests
 4. **Refactor:** Improve surrounding code if needed
+
+### Background Jobs
+- **Hourly Job:** Processes feeds every hour using `job.HourlyJobRunner`
+- **Graceful Shutdown:** All jobs respect context cancellation
+- **Error Handling:** Failed jobs are logged but don't crash the service
+
+### API Endpoints
+- **Health Check:** `GET /v1/health`
+- **Feed Management:** `POST /v1/feeds`, `GET /v1/feeds`
+- **Article Operations:** `GET /v1/articles`, `POST /v1/articles/archive`
+- **Search:** `GET /v1/search`
 
 ### Code Review Checklist
 - [ ] Tests written before implementation (TDD)

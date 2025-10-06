@@ -1,143 +1,300 @@
-# CLAUDE.md - Alt Frontend
+# alt-frontend/CLAUDE.md
 
-## About This Application
+<!-- Model Configuration -->
+<!-- ALWAYS use claude-4-sonnet for this project -->
+<!-- Use 'think' for basic analysis, 'ultrathink' for complex architectural decisions -->
 
-The Alt frontend is a modern, mobile-first web application built with **Next.js 15** and **TypeScript**. It leverages the App Router for routing and state management and is designed to provide a responsive, accessible, and performant user experience. The project adheres to a strict **Test-Driven Development (TDD)** methodology.
+## About alt-frontend
 
-- **Framework**: Next.js 15 (App Router)
-- **Language**: TypeScript
-- **Package Manager**: pnpm
-- **Testing**: Vitest, React Testing Library, Playwright (for E2E)
-- **State Management**: React Hooks + Context API
-- **Styling**: CSS variables and a responsive design approach
+This is the **frontend service** of the Alt RSS reader platform, built with **Next.js 15**, **React 19**, **TypeScript 5.9**, and **Chakra UI**. The service follows Test-Driven Development (TDD) and implements modern React patterns with server-side rendering capabilities.
 
-## Test-Driven Development (TDD) First
+**Critical Guidelines:**
+- **TDD First:** Always write failing tests BEFORE implementation
+- **Type Safety:** Use TypeScript strictly, avoid `any` types
+- **Performance:** Optimize for Core Web Vitals and user experience
+- **Accessibility:** Follow WCAG 2.1 AA guidelines
+- **Responsive Design:** Mobile-first approach with Chakra UI
 
-TDD is not optional; it is the core of our development process. All new features and bug fixes must start with a failing test.
+## Architecture Overview
 
-### The TDD Cycle: Red-Green-Refactor
-
-1.  **Red**: Write a failing test that defines the desired functionality. This test will fail because the implementation does not yet exist.
-2.  **Green**: Write the **minimum** amount of code necessary to make the test pass.
-3.  **Refactor**: Improve the code's structure and readability without changing its external behavior. All tests must continue to pass.
-
-### TDD Workflow in Action
-
-**1. RED: Write a failing test for a new component.**
-
-```tsx
-// src/components/Button/Button.test.tsx
-import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
-import Button from "./Button"; // This import will fail
-
-describe("Button", () => {
-  it("should render with children", () => {
-    render(<Button>Click Me</Button>);
-    expect(
-      screen.getByRole("button", { name: /click me/i }),
-    ).toBeInTheDocument();
-  });
-});
+### Next.js 15 App Router Architecture
+```
+app/
+├─ layout.tsx          # Root layout with providers
+├─ page.tsx           # Root page (redirects to /home)
+├─ home/              # Main dashboard
+├─ desktop/           # Desktop-specific pages
+├─ public/            # Public landing pages
+├─ api/               # API routes
+└─ (auth)/            # Auth-protected routes
 ```
 
-**2. GREEN: Write the minimal component code to pass the test.**
+### Component Architecture
+```
+src/
+├─ components/        # Reusable UI components
+│  ├─ desktop/       # Desktop-specific components
+│  ├─ forms/         # Form components
+│  └─ layout/        # Layout components
+├─ contexts/         # React contexts
+├─ hooks/           # Custom hooks
+├─ utils/           # Utility functions
+├─ providers/       # Context providers
+└─ middleware.ts    # Next.js middleware
+```
 
-```tsx
-// src/components/Button/Button.tsx
-import React from "react";
+## Technology Stack
 
-export default function Button({ children }: { children: React.ReactNode }) {
-  return <button>{children}</button>;
+### Core Technologies
+- **Next.js 15**: App Router, Server Components, Streaming
+- **React 19**: Latest React features, concurrent rendering
+- **TypeScript 5.9**: Strict type checking, latest language features
+- **Chakra UI**: Component library with custom theme system
+- **Vitest**: Unit testing framework
+- **Playwright**: End-to-end testing
+
+### Theme System
+The application uses a custom three-theme system:
+- **Vaporwave**: Neon colors for modern aesthetic
+- **Liquid-Beige**: Earthy luxury theme
+- **Alt-Paper**: Newspaper-inspired theme
+
+### Development Tools
+- **ESLint**: Code linting with strict rules
+- **Prettier**: Code formatting
+- **TypeScript**: Type checking
+- **Husky**: Git hooks for quality gates
+
+## TDD and Testing Strategy
+
+### Test-Driven Development (TDD)
+All development follows the Red-Green-Refactor cycle:
+
+1. **Red**: Write a failing test
+2. **Green**: Write minimal code to pass
+3. **Refactor**: Improve code quality
+
+### Testing Layers
+
+#### Unit Tests (Vitest)
+```typescript
+// Example component test
+import { render, screen } from '@testing-library/react'
+import { FeedCard } from './FeedCard'
+
+describe('FeedCard', () => {
+  it('renders feed title and description', () => {
+    const feed = { title: 'Test Feed', description: 'Test Description' }
+    render(<FeedCard feed={feed} />)
+
+    expect(screen.getByText('Test Feed')).toBeInTheDocument()
+    expect(screen.getByText('Test Description')).toBeInTheDocument()
+  })
+})
+```
+
+#### Integration Tests (Vitest)
+```typescript
+// Example API route test
+import { createMocks } from 'node-mocks-http'
+import handler from '../api/feeds'
+
+describe('/api/feeds', () => {
+  it('returns feeds for authenticated user', async () => {
+    const { req, res } = createMocks({
+      method: 'GET',
+      headers: { authorization: 'Bearer valid-token' }
+    })
+
+    await handler(req, res)
+
+    expect(res._getStatusCode()).toBe(200)
+    expect(JSON.parse(res._getData())).toHaveProperty('feeds')
+  })
+})
+```
+
+#### End-to-End Tests (Playwright)
+```typescript
+// Example E2E test
+import { test, expect } from '@playwright/test'
+
+test('user can add a new feed', async ({ page }) => {
+  await page.goto('/home')
+  await page.click('[data-testid="add-feed-button"]')
+  await page.fill('[data-testid="feed-url-input"]', 'https://example.com/rss')
+  await page.click('[data-testid="submit-button"]')
+
+  await expect(page.locator('[data-testid="feed-list"]')).toContainText('Example Feed')
+})
+```
+
+### Development Workflow
+
+1. **Start Development Server**: `pnpm dev`
+2. **Run Tests**: `pnpm test` (unit), `pnpm test:e2e` (E2E)
+3. **Lint and Format**: `pnpm lint`, `pnpm fmt`
+4. **Type Check**: `pnpm type-check`
+5. **Build**: `pnpm build`
+
+## Component Patterns
+
+### React 19 Patterns
+- **Server Components**: Use for data fetching and static content
+- **Client Components**: Use for interactivity and state management
+- **Custom Hooks**: Extract reusable logic into custom hooks
+- **Context API**: Use for global state management
+
+### Chakra UI Best Practices
+- **Theme System**: Use theme tokens for consistent styling
+- **Responsive Design**: Use Chakra's responsive props
+- **Accessibility**: Leverage Chakra's built-in accessibility features
+- **Custom Components**: Extend Chakra components when needed
+
+### TypeScript Patterns
+```typescript
+// Strict typing for API responses
+interface FeedResponse {
+  id: string
+  title: string
+  description: string
+  url: string
+  lastUpdated: string
+}
+
+// Generic API hook
+function useApi<T>(endpoint: string): {
+  data: T | null
+  loading: boolean
+  error: string | null
+} {
+  // Implementation
+}
+
+// Component props with strict typing
+interface FeedCardProps {
+  feed: FeedResponse
+  onSelect: (feed: FeedResponse) => void
+  isSelected?: boolean
 }
 ```
 
-**3. REFACTOR: Improve the component's implementation.**
+## Performance Optimization
 
-```tsx
-// src/components/Button/Button.tsx
-import React from "react";
+### Core Web Vitals
+- **LCP**: Optimize images and critical resources
+- **FID**: Minimize JavaScript execution time
+- **CLS**: Prevent layout shifts with proper sizing
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  children: React.ReactNode;
-}
+### Next.js Optimizations
+- **Image Optimization**: Use `next/image` for automatic optimization
+- **Code Splitting**: Leverage dynamic imports for route-based splitting
+- **Caching**: Implement proper caching strategies
+- **Streaming**: Use Suspense for progressive loading
 
-export default function Button({ children, ...props }: ButtonProps) {
-  const baseStyle =
-    "px-4 py-2 font-semibold text-white bg-blue-500 rounded hover:bg-blue-600";
-  return (
-    <button className={baseStyle} {...props}>
-      {children}
-    </button>
-  );
+## Security Considerations
+
+### Authentication
+- **Middleware**: Use Next.js middleware for route protection
+- **Session Management**: Integrate with auth-hub for session validation
+- **CSRF Protection**: Implement CSRF tokens for state-changing operations
+
+### Data Protection
+- **Input Validation**: Validate all user inputs
+- **XSS Prevention**: Use React's built-in XSS protection
+- **Content Security Policy**: Implement CSP headers
+
+## API Integration
+
+### Backend Communication
+- **Base URL**: `http://localhost:9000` (development)
+- **Authentication**: Session-based via auth-hub
+- **Error Handling**: Centralized error handling with user-friendly messages
+
+### API Routes
+```typescript
+// Example API route
+export async function GET(request: Request) {
+  try {
+    const response = await fetch(`${process.env.BACKEND_URL}/v1/feeds`, {
+      headers: {
+        'Authorization': `Bearer ${getToken(request)}`,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch feeds')
+    }
+
+    const data = await response.json()
+    return Response.json(data)
+  } catch (error) {
+    return Response.json({ error: 'Internal server error' }, { status: 500 })
+  }
 }
 ```
 
-## Testing Strategy
+## Environment Configuration
 
-### Component Testing
-
-- **Client Components & Hooks**: Test these with `vitest` and `React Testing Library`. Use `user-event` to simulate user interactions. Test custom hooks with `renderHook`.
-- **Server Components (Async)**: Due to limitations in `jsdom`, async Server Components should be tested with **E2E tests** (Playwright) to ensure they render correctly in a real browser environment.
-- **UI Components**: Focus on testing behavior from a user's perspective. Assert that the component renders correctly and responds to user interactions as expected.
-
-### API Route Handlers
-
-Test API routes (Route Handlers) in a Node.js environment. You can call the exported functions directly with a mocked `Request` object.
-
-```tsx
-// app/api/items/route.test.ts
-/**
- * @vitest-environment node
- */
-import { GET } from "./route";
-import { describe, it, expect } from "vitest";
-
-describe("GET /api/items", () => {
-  it("should return a list of items", async () => {
-    const response = await GET();
-    const body = await response.json();
-    expect(response.status).toBe(200);
-    expect(body).toEqual([{ id: 1, name: "Item 1" }]);
-  });
-});
-```
-
-### Mocking Dependencies
-
-- **`next/navigation`**: Mock the `useRouter` and `usePathname` hooks when testing components that use them.
-- **API Calls**: Mock `fetch` or your data-fetching library to provide consistent responses and avoid actual network requests in tests.
-
-## Development Environment
-
-### Setup
-
-1.  **Install Dependencies**: `pnpm install`
-2.  **Configure Vitest**: Create a `vitest.config.ts` file.
-3.  **Test Setup**: Create a `src/tests/setup.ts` file to import global test utilities like `@testing-library/jest-dom`.
-
-### Common Commands
-
+### Required Environment Variables
 ```bash
-# Run unit tests
+# Backend API
+NEXT_PUBLIC_BACKEND_URL=http://localhost:9000
+
+# Authentication
+NEXT_PUBLIC_AUTH_URL=http://localhost:8888
+
+# Feature Flags
+NEXT_PUBLIC_ENABLE_AI=true
+NEXT_PUBLIC_ENABLE_ANALYTICS=false
+```
+
+## Deployment
+
+### Docker Configuration
+- **Base Image**: Node.js 20 Alpine
+- **Port**: 3000
+- **Health Check**: `/api/health`
+- **Build**: Multi-stage build for optimization
+
+### Production Considerations
+- **Static Generation**: Use static generation where possible
+- **CDN**: Configure CDN for static assets
+- **Monitoring**: Integrate with observability stack
+- **Security Headers**: Implement security headers
+
+## Troubleshooting
+
+### Common Issues
+- **Build Failures**: Check TypeScript errors and dependencies
+- **Runtime Errors**: Check browser console and server logs
+- **Performance Issues**: Use Next.js built-in analytics
+- **Authentication Issues**: Verify auth-hub integration
+
+### Debug Commands
+```bash
+# Development server
+pnpm dev
+
+# Type checking
+pnpm type-check
+
+# Linting
+pnpm lint
+
+# Testing
 pnpm test
-
-# Run unit tests in watch mode
-pnpm test:watch
-
-# Run E2E tests
 pnpm test:e2e
 
-# Lint and format code
-pnpm lint && pnpm fmt
-
-# Start the development server
-pnpm dev
+# Build
+pnpm build
 ```
 
 ## References
 
-- [Next.js Testing Documentation](https://nextjs.org/docs/testing)
-- [Vitest Documentation](https://vitest.dev/)
-- [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/)
-- [Playwright Documentation](https://playwright.dev/docs/intro)
+- [Next.js 15 Documentation](https://nextjs.org/docs)
+- [React 19 Documentation](https://react.dev)
+- [Chakra UI Documentation](https://chakra-ui.com)
+- [Vitest Documentation](https://vitest.dev)
+- [Playwright Documentation](https://playwright.dev)
