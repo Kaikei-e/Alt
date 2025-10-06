@@ -15,7 +15,8 @@ COPY migrations/ ./
 RUN mkdir -p /scripts
 
 # Copy migration execution scripts from docker/scripts directory
-COPY docker/scripts/ /scripts/
+COPY docker/scripts/migrate.sh /scripts/
+COPY docker/scripts/hash.sh /scripts/
 
 # Set permissions
 RUN chmod +x /scripts/*.sh

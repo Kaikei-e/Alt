@@ -184,6 +184,9 @@ apply_migrations() {
 validate_migrations() {
     log_info "Validating migration files..."
 
+    # Ensure hash file exists or regenerate it
+    ensure_hash_file
+
     atlas migrate validate \
         --dir "file://$MIGRATION_DIR" || {
             log_error "Migration validation failed"
