@@ -6,5 +6,5 @@ import (
 )
 
 type SearchIndexerPort interface {
-	SearchArticles(ctx context.Context, query string) ([]domain.SearchIndexerArticleHit, error)
+	SearchArticles(ctx context.Context, query string, userID string) ([]domain.SearchIndexerArticleHit, error)
 }

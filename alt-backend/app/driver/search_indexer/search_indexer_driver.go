@@ -12,8 +12,8 @@ func NewHTTPSearchIndexerDriver() search_indexer_port.SearchIndexerPort {
 	return &HTTPSearchIndexerDriver{}
 }
 
-func (d *HTTPSearchIndexerDriver) SearchArticles(ctx context.Context, query string) ([]domain.SearchIndexerArticleHit, error) {
-	hits, err := SearchArticles(query)
+func (d *HTTPSearchIndexerDriver) SearchArticles(ctx context.Context, query string, userID string) ([]domain.SearchIndexerArticleHit, error) {
+	hits, err := SearchArticlesWithUserID(query, userID)
 	if err != nil {
 		return nil, err
 	}

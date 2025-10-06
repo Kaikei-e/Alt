@@ -2,7 +2,7 @@ package rest
 
 import (
 	"alt/di"
-	"alt/driver/search_indexer"
+	"alt/domain"
 	middleware_custom "alt/middleware"
 	"alt/usecase/archive_article_usecase"
 	"alt/utils/logger"
@@ -106,13 +106,25 @@ func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents) 
 
 func handleSearchArticles(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		query := c.QueryParam("q")
-		if query == "" {
-			logger.Logger.Error("Search query must not be empty")
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Search query must not be empty"})
+		// Verify user authentication from context
+		_, err := domain.GetUserFromContext(c.Request().Context())
+		if err != nil {
+			logger.Logger.Error("user context not found", "error", err)
+			return c.JSON(http.StatusUnauthorized, map[string]string{
+				"error": "authentication required",
+			})
 		}
 
-		results, err := search_indexer.SearchArticles(query)
+		query := c.QueryParam("q")
+		if query == "" {
+			logger.Logger.Error("search query must not be empty")
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "search query must not be empty",
+			})
+		}
+
+		// Use FeedSearchUsecase which now handles user_id filtering
+		results, err := container.FeedSearchUsecase.Execute(c.Request().Context(), query)
 		if err != nil {
 			return handleError(c, err, "search_articles")
 		}
