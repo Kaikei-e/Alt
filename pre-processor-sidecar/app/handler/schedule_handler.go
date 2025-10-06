@@ -573,6 +573,8 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 			"total_subscriptions": statsBefore.TotalSubscriptions,
 			"batch_size":          BATCH_SIZE,
 			"processed_count":     0,
+			"api_calls_made":      false,
+			"reason":             "daily_limit_reached",
 		}
 		return nil
 	}
@@ -586,6 +588,8 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 			"status":         "no_subscriptions_available",
 			"batch_size":     BATCH_SIZE,
 			"processed_count": 0,
+			"api_calls_made": false,
+			"reason":        "no_work_available",
 		}
 		return nil
 	}
@@ -629,7 +633,20 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 	statsAfter := h.articleFetchService.GetRotationStats()
 
 	// Update result with batch processing details
+	apiCallsMade := len(batch) > 0
+	status := "processed"
+	reason := "api_calls_made"
+	
+	if successCount == 0 && len(processingErrors) > 0 {
+		status = "all_failed"
+		reason = "all_api_calls_failed"
+	} else if len(processingErrors) > 0 {
+		status = "partial_failure"
+		reason = "some_api_calls_failed"
+	}
+	
 	result.Details = map[string]interface{}{
+		"status":               status,
 		"batch_size":           BATCH_SIZE,
 		"processed_count":      len(batch),
 		"successful_count":     successCount,
@@ -641,6 +658,8 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 		"estimated_completion": statsAfter.EstimatedCompletionTime.Format("15:04:05"),
 		"current_index":        statsAfter.CurrentIndex,
 		"processing_errors":    processingErrors,
+		"api_calls_made":       apiCallsMade,
+		"reason":              reason,
 	}
 
 	h.logger.Info("Batch rotation processing completed",

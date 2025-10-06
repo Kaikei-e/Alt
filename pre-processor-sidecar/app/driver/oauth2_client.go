@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"pre-processor-sidecar/models"
@@ -43,16 +46,33 @@ type OAuth2ErrorResponse struct {
 
 // OAuth2Client handles OAuth2 authentication with Inoreader API
 type OAuth2Client struct {
-	clientID     string
-	clientSecret string
-	baseURL      string      // OAuth2 base URL
-	apiBaseURL   string      // API base URL
-	httpClient   *http.Client
-	logger       *slog.Logger
+	clientID      string
+	clientSecret  string
+	baseURL       string      // OAuth2 base URL
+	apiBaseURL    string      // API base URL
+	httpClient    *http.Client
+	fallbackClient *http.Client // Client for fallback direct connection
+	logger        *slog.Logger
+	useFallback   bool        // Whether to use fallback on failure
 }
 
-// NewOAuth2Client creates a new OAuth2 client for Inoreader API
+// NewOAuth2Client creates a new OAuth2 client for Inoreader API without proxy
 func NewOAuth2Client(clientID, clientSecret, baseURL string, logger *slog.Logger) *OAuth2Client {
+	return newOAuth2ClientWithConfig(clientID, clientSecret, baseURL, logger, false, false)
+}
+
+// NewOAuth2ClientWithProxy creates a new OAuth2 client for Inoreader API with proxy support
+func NewOAuth2ClientWithProxy(clientID, clientSecret, baseURL string, logger *slog.Logger) *OAuth2Client {
+	return newOAuth2ClientWithConfig(clientID, clientSecret, baseURL, logger, true, false)
+}
+
+// NewOAuth2ClientWithFallback creates a new OAuth2 client with fallback to direct connection
+func NewOAuth2ClientWithFallback(clientID, clientSecret, baseURL string, logger *slog.Logger) *OAuth2Client {
+	return newOAuth2ClientWithConfig(clientID, clientSecret, baseURL, logger, true, true)
+}
+
+// newOAuth2ClientWithConfig creates a new OAuth2 client with configurable proxy and fallback settings
+func newOAuth2ClientWithConfig(clientID, clientSecret, baseURL string, logger *slog.Logger, useProxy, fallback bool) *OAuth2Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -64,36 +84,105 @@ func NewOAuth2Client(clientID, clientSecret, baseURL string, logger *slog.Logger
 		apiBaseURL = baseURL
 	}
 
-	// Create HTTP transport without proxy for OAuth2 token requests
+	// Configure timeouts from environment variables with reasonable defaults
+	clientTimeout := getTimeoutFromEnv("HTTP_CLIENT_TIMEOUT", 120*time.Second) // Extended to 120 seconds
+	tlsTimeout := getTimeoutFromEnv("TLS_HANDSHAKE_TIMEOUT", 15*time.Second)   // Extended to 15 seconds
+	responseTimeout := getTimeoutFromEnv("RESPONSE_HEADER_TIMEOUT", 60*time.Second) // Extended to 60 seconds
+
+	logger.Info("OAuth2 client timeout configuration",
+		"client_timeout", clientTimeout,
+		"tls_handshake_timeout", tlsTimeout,
+		"response_header_timeout", responseTimeout)
+
+	// Create HTTP transport with configurable proxy settings and extended timeouts
 	transport := &http.Transport{
-		Proxy:                 nil, // Explicitly disable proxy for OAuth2 token requests
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
+		TLSHandshakeTimeout:   tlsTimeout,
+		ResponseHeaderTimeout: responseTimeout,
 		IdleConnTimeout:       90 * time.Second,
 		MaxIdleConns:          10,
 		MaxIdleConnsPerHost:   2,
 	}
 
-	logger.Info("OAuth2 client configured without proxy for token refresh",
-		"oauth2_base_url", baseURL,
-		"api_base_url", apiBaseURL,
-		"proxy_disabled", true)
+	if useProxy {
+		// Use system proxy configuration (respects HTTPS_PROXY env var)
+		transport.Proxy = http.ProxyFromEnvironment
+		logger.Info("OAuth2 client configured with proxy support",
+			"oauth2_base_url", baseURL,
+			"api_base_url", apiBaseURL,
+			"proxy_enabled", true,
+			"fallback_enabled", fallback)
+	} else {
+		// Explicitly disable proxy for OAuth2 token requests
+		transport.Proxy = nil
+		logger.Info("OAuth2 client configured without proxy for token refresh",
+			"oauth2_base_url", baseURL,
+			"api_base_url", apiBaseURL,
+			"proxy_disabled", true)
+	}
 
-	return &OAuth2Client{
+	client := &OAuth2Client{
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		baseURL:      baseURL,      // OAuth2 base URL
 		apiBaseURL:   apiBaseURL,   // API base URL
 		logger:       logger,
+		useFallback:  fallback,
 		httpClient: &http.Client{
-			Timeout:   60 * time.Second, // 60秒タイムアウト
+			Timeout:   clientTimeout, // Configurable timeout from environment
 			Transport: transport,
 		},
 	}
+
+	// Create fallback client if needed (direct connection without proxy)
+	if fallback {
+		fallbackTransport := &http.Transport{
+			Proxy:                 nil, // Explicitly disable proxy for fallback
+			TLSHandshakeTimeout:   tlsTimeout,
+			ResponseHeaderTimeout: responseTimeout,
+			IdleConnTimeout:       90 * time.Second,
+			MaxIdleConns:          10,
+			MaxIdleConnsPerHost:   2,
+		}
+		client.fallbackClient = &http.Client{
+			Timeout:   clientTimeout, // Same timeout configuration as primary client
+			Transport: fallbackTransport,
+		}
+		logger.Info("Fallback client configured for direct connection",
+			"fallback_enabled", true)
+	}
+
+	return client
 }
 
 // RefreshToken exchanges a refresh token for a new access token
 func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*models.InoreaderTokenResponse, error) {
+	// Try with primary client first
+	result, err := c.attemptRefreshToken(ctx, refreshToken, c.httpClient, "primary")
+	
+	// If fallback is enabled and primary failed with network error, try fallback
+	if err != nil && c.useFallback && c.fallbackClient != nil && isNetworkError(err) {
+		c.logger.Info("Primary connection failed, attempting fallback to direct connection",
+			"primary_error", err.Error())
+		
+		result, fallbackErr := c.attemptRefreshToken(ctx, refreshToken, c.fallbackClient, "fallback")
+		if fallbackErr != nil {
+			// Both failed, return the original error
+			c.logger.Error("Both primary and fallback connections failed",
+				"primary_error", err.Error(),
+				"fallback_error", fallbackErr.Error())
+			return nil, err
+		}
+		
+		c.logger.Info("Falling back to direct connection",
+			"fallback_success", true)
+		return result, nil
+	}
+	
+	return result, err
+}
+
+// attemptRefreshToken performs the actual token refresh with the given client
+func (c *OAuth2Client) attemptRefreshToken(ctx context.Context, refreshToken string, client *http.Client, clientType string) (*models.InoreaderTokenResponse, error) {
 	// Prepare form data for OAuth2 refresh token request
 	data := url.Values{
 		"grant_type":    {"refresh_token"},
@@ -112,18 +201,26 @@ func (c *OAuth2Client) RefreshToken(ctx context.Context, refreshToken string) (*
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "pre-processor-sidecar/1.0")
 
+	// Determine if this client uses proxy
+	proxyDisabled := true
+	if transport, ok := client.Transport.(*http.Transport); ok {
+		proxyDisabled = transport.Proxy == nil
+	}
+
 	c.logger.Debug("Executing OAuth2 token refresh",
 		"url", tokenURL,
-		"proxy_disabled", true,
-		"timeout", c.httpClient.Timeout)
+		"client_type", clientType,
+		"proxy_disabled", proxyDisabled,
+		"timeout", client.Timeout)
 
 	// Execute request
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		c.logger.Error("OAuth2 token refresh request failed",
 			"url", tokenURL,
+			"client_type", clientType,
 			"error", err,
-			"proxy_disabled", true)
+			"proxy_disabled", proxyDisabled)
 		return nil, fmt.Errorf("failed to execute refresh token request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -446,4 +543,90 @@ func (c *OAuth2Client) DebugDirectRequest(ctx context.Context, accessToken, endp
 	}
 	
 	return fmt.Errorf("direct debug request failed with status %d", resp.StatusCode)
+}
+
+// isNetworkError determines if the error is a network-related error that warrants fallback
+func isNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for common network errors that indicate connectivity issues
+	errorStr := err.Error()
+	
+	// Context deadline exceeded (timeout)
+	if strings.Contains(errorStr, "context deadline exceeded") {
+		return true
+	}
+	
+	// Connection refused
+	if strings.Contains(errorStr, "connection refused") {
+		return true
+	}
+	
+	// No route to host
+	if strings.Contains(errorStr, "no route to host") {
+		return true
+	}
+	
+	// Network unreachable
+	if strings.Contains(errorStr, "network is unreachable") {
+		return true
+	}
+	
+	// Check for specific network error types
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		// Timeout or temporary network errors
+		if netErr.Timeout() || netErr.Temporary() {
+			return true
+		}
+	}
+	
+	// Check for syscall errors
+	var syscallErr *net.OpError
+	if errors.As(err, &syscallErr) {
+		if syscallErr.Op == "dial" || syscallErr.Op == "read" || syscallErr.Op == "write" {
+			return true
+		}
+		
+		// Check underlying syscall error
+		if errno, ok := syscallErr.Err.(syscall.Errno); ok {
+			switch errno {
+			case syscall.ECONNREFUSED, syscall.EHOSTUNREACH, syscall.ENETUNREACH:
+				return true
+			}
+		}
+	}
+	
+	// DNS resolution errors
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	
+	return false
+}
+
+// getTimeoutFromEnv reads timeout configuration from environment variable with fallback to default
+func getTimeoutFromEnv(envVar string, defaultTimeout time.Duration) time.Duration {
+	envValue := os.Getenv(envVar)
+	if envValue == "" {
+		return defaultTimeout
+	}
+
+	// Try parsing as duration string first (e.g., "30s", "2m")
+	if duration, err := time.ParseDuration(envValue); err == nil {
+		if duration > 0 && duration <= 10*time.Minute {
+			return duration
+		}
+	}
+
+	// Try parsing as seconds (for backward compatibility)
+	if seconds, err := strconv.Atoi(envValue); err == nil && seconds > 0 && seconds <= 600 {
+		return time.Duration(seconds) * time.Second
+	}
+
+	// Invalid value, return default
+	return defaultTimeout
 }

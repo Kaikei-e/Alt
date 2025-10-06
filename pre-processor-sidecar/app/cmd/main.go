@@ -167,9 +167,8 @@ func main() {
 }
 
 func performHealthCheck() {
-	// Simple health check for scheduler
-	fmt.Println("OK")
-	os.Exit(0)
+	// Comprehensive health check for scheduler
+	performHealthCheckWithOutput()
 }
 
 func performOAuth2Initialization(cfg *config.Config, logger *slog.Logger) {
