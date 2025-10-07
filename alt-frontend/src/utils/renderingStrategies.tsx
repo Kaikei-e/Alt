@@ -6,17 +6,7 @@
 import React from "react";
 import { ReactNode } from "react";
 import { ContentType, analyzeContent } from "./contentTypeDetector";
-import DOMPurify from "isomorphic-dompurify";
-
-// DOMPurify config interface for type safety
-interface DOMPurifyConfig {
-  ALLOWED_TAGS?: string[];
-  ALLOWED_ATTR?: string[];
-  ALLOW_DATA_ATTR?: boolean;
-  ALLOWED_URI_REGEXP?: RegExp;
-  ADD_TAGS?: string[];
-  ADD_ATTR?: string[];
-}
+import sanitizeHtml from "sanitize-html";
 
 export interface RenderingStrategy {
   render(content: string): ReactNode;
@@ -38,9 +28,9 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     // Step 1: Decode HTML entities BEFORE sanitization (XPLAN11 solution)
     const decodedHTML = this.decodeHtmlEntities(content);
 
-    // Step 2: Sanitize with isomorphic-dompurify (SSR-safe)
-    const sanitizedHTML = DOMPurify.sanitize(decodedHTML, {
-      ALLOWED_TAGS: [
+    // Step 2: Sanitize with sanitize-html (SSR-safe)
+    const sanitizedHTML = sanitizeHtml(decodedHTML, {
+      allowedTags: [
         "p",
         "br",
         "strong",
@@ -71,25 +61,16 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
         "td",
         "th",
       ],
-      ALLOWED_ATTR: [
-        "href",
-        "target",
-        "rel",
-        "src",
-        "alt",
-        "title",
-        "class",
-        "id",
-        "style",
-        "width",
-        "height",
-        "loading",
-        "data-proxy-url",
-        "onload",
-        "onerror", // Allow proxy attributes
-      ],
-      ALLOW_DATA_ATTR: true, // Enable data attributes for proxy functionality
-      ALLOWED_URI_REGEXP: /^(https?:\/\/|data:)/i, // Allow data URLs
+      allowedAttributes: {
+        '*': ["class", "id", "style", "data-*"],
+        a: ["href", "target", "rel", "title"],
+        img: ["src", "alt", "title", "width", "height", "loading", "data-proxy-url", "onload", "onerror"],
+      },
+      allowedSchemes: ["http", "https", "data"],
+      allowedSchemesByTag: {
+        img: ["http", "https", "data"],
+      },
+      allowProtocolRelative: false,
     });
 
     // Step 3: Enhanced HTML with custom CSS for images and links
@@ -108,18 +89,15 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     }
 
     try {
-      const fragment = DOMPurify.sanitize(str, {
-        ALLOWED_TAGS: [],
-        KEEP_CONTENT: true,
-        RETURN_DOM_FRAGMENT: true,
-      }) as DocumentFragment | string;
-
-      const sanitizedText =
-        typeof fragment === "string" ? fragment : (fragment.textContent ?? "");
+      // Strip all HTML tags, keeping only text content
+      const sanitizedText = sanitizeHtml(str, {
+        allowedTags: [],
+        allowedAttributes: {},
+      });
 
       return this.decodeEntitiesSafely(sanitizedText);
     } catch (error) {
-      console.warn("DOMPurify decoding fallback:", error);
+      console.warn("sanitize-html decoding fallback:", error);
       return this.decodeEntitiesSafely(str);
     }
   }
@@ -384,17 +362,16 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     }
 
     try {
-      const sanitized = DOMPurify.sanitize(url, {
-        ALLOWED_TAGS: [],
-        KEEP_CONTENT: true,
-        FORBID_ATTR: ["onclick", "onload", "onerror", "onmouseover", "onfocus"],
+      const sanitized = sanitizeHtml(url, {
+        allowedTags: [],
+        allowedAttributes: {},
       });
 
       const decoded = this.decodeEntitiesSafely(sanitized);
 
-      const normalized = DOMPurify.sanitize(decoded, {
-        ALLOWED_TAGS: [],
-        KEEP_CONTENT: true,
+      const normalized = sanitizeHtml(decoded, {
+        allowedTags: [],
+        allowedAttributes: {},
       }).trim();
 
       if (!normalized) {
@@ -495,10 +472,14 @@ export class MarkdownRenderingStrategy implements RenderingStrategy {
       // Line breaks
       .replace(/\n/g, "<br />");
 
-    // Sanitize the converted HTML with isomorphic-dompurify
-    const sanitizedHTML = DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ["h1", "h2", "h3", "strong", "em", "a", "br", "p"],
-      ALLOWED_ATTR: ["href", "target", "rel"],
+    // Sanitize the converted HTML with sanitize-html
+    const sanitizedHTML = sanitizeHtml(html, {
+      allowedTags: ["h1", "h2", "h3", "strong", "em", "a", "br", "p"],
+      allowedAttributes: {
+        a: ["href", "target", "rel"],
+      },
+      allowedSchemes: ["http", "https", "mailto"],
+      allowProtocolRelative: false,
     });
 
     return (
@@ -664,8 +645,8 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
 
   // SECURITY FIX: Sanitize HTML before using dangerouslySetInnerHTML
   const sanitizedHtml = React.useMemo(() => {
-    return DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: [
+    return sanitizeHtml(html, {
+      allowedTags: [
         "p",
         "br",
         "strong",
@@ -688,27 +669,13 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
         "code",
         "pre",
       ],
-      ALLOWED_ATTR: ["href", "src", "alt", "title", "target", "rel"],
-      FORBID_ATTR: [
-        "onclick",
-        "onload",
-        "onerror",
-        "onmouseover",
-        "onmouseout",
-        "onfocus",
-        "onblur",
-      ],
-      FORBID_TAGS: [
-        "script",
-        "object",
-        "embed",
-        "form",
-        "input",
-        "textarea",
-        "button",
-        "select",
-        "option",
-      ],
+      allowedAttributes: {
+        a: ["href", "title", "target", "rel"],
+        img: ["src", "alt", "title"],
+      },
+      allowedSchemes: ["http", "https", "mailto"],
+      allowProtocolRelative: false,
+      disallowedTagsMode: "discard",
     });
   }, [html]);
 

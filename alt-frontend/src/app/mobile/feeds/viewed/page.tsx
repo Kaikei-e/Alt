@@ -4,13 +4,52 @@ import { Flex, Text, Box } from "@chakra-ui/react";
 import { Feed } from "@/schema/feed";
 import ReadFeedCard from "@/components/mobile/ReadFeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, Component, ErrorInfo, ReactNode } from "react";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import { useReadFeeds } from "@/hooks/useReadFeeds";
 import ErrorState from "../_components/ErrorState";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
-export default function ReadFeedsPage() {
+// Error boundary to catch React errors
+class ViewedFeedsErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("[ViewedFeeds] Error caught by boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Box p={5}>
+          <Text color="red.500" fontSize="lg" fontWeight="bold">
+            エラーが発生しました
+          </Text>
+          <Text color="red.400" fontSize="sm" mt={2}>
+            {this.state.error?.message || "Unknown error"}
+          </Text>
+          <Text color="gray.500" fontSize="xs" mt={4}>
+            {this.state.error?.stack}
+          </Text>
+        </Box>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function ReadFeedsPageContent() {
   const [liveRegionMessage, setLiveRegionMessage] = useState<string>("");
   const [isRetrying, setIsRetrying] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -202,5 +241,13 @@ export default function ReadFeedsPage() {
 
       <FloatingMenu />
     </Box>
+  );
+}
+
+export default function ReadFeedsPage() {
+  return (
+    <ViewedFeedsErrorBoundary>
+      <ReadFeedsPageContent />
+    </ViewedFeedsErrorBoundary>
   );
 }

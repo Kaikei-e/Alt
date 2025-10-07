@@ -5,40 +5,7 @@ import type {
   FetchArticleSummaryResponse,
 } from "@/schema/feed";
 import { SmartContentRenderer } from "@/components/common/SmartContentRenderer";
-import DOMPurify from "isomorphic-dompurify";
-
-// Harden DOMPurify: enforce safe link handling and URL schemes
-// Guard to avoid duplicate hook registration on HMR/SSR
-if (!(globalThis as any).__ALT_DOMPURIFY_HOOKS__) {
-  DOMPurify.addHook("afterSanitizeAttributes", (node: Element) => {
-    const nodeName = node.nodeName ? node.nodeName.toLowerCase() : "";
-
-    if (nodeName === "a") {
-      const href = node.getAttribute("href") || "";
-      const isAllowedHref = /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i.test(
-        href,
-      );
-      if (!isAllowedHref) {
-        node.removeAttribute("href");
-      }
-      // Force safe target and rel on external links
-      const target = node.getAttribute("target");
-      if (target && target.toLowerCase() === "_blank") {
-        node.setAttribute("target", "_blank");
-      } else {
-        node.removeAttribute("target");
-      }
-      node.setAttribute("rel", "noopener noreferrer nofollow ugc");
-    }
-
-    // Images are now forbidden - remove any that slip through
-    if (nodeName === "img") {
-      node.remove();
-    }
-  });
-
-  (globalThis as any).__ALT_DOMPURIFY_HOOKS__ = true;
-}
+import sanitizeHtml from "sanitize-html";
 
 const fallbackContentStyles: CSSObject = {
   "& table": {
@@ -207,7 +174,7 @@ const RenderFeedDetails = ({
           wordBreak="break-word"
           css={fallbackContentStyles}
         >
-          {/* content wrapped in quotes to transform it into a html string by secure DOMPurify*/}
+          {/* content sanitized with sanitize-html */}
           <Box
             as="div"
             display="block"
@@ -215,8 +182,8 @@ const RenderFeedDetails = ({
             wordBreak="break-word"
             overflowWrap="anywhere"
             dangerouslySetInnerHTML={{
-              __html: DOMPurify.sanitize(feedDetails.content, {
-                ALLOWED_TAGS: [
+              __html: sanitizeHtml(feedDetails.content, {
+                allowedTags: [
                   "p",
                   "br",
                   "strong",
@@ -246,39 +213,32 @@ const RenderFeedDetails = ({
                   "div",
                   "span",
                 ],
-                ALLOWED_ATTR: ["href", "title", "target", "rel"],
-                FORBID_ATTR: [
-                  "onclick",
-                  "onload",
-                  "onerror",
-                  "onmouseover",
-                  "onmouseout",
-                  "onfocus",
-                  "onblur",
-                  "style",
-                  "src",
-                  "alt",
-                ],
-                FORBID_TAGS: [
-                  "script",
-                  "object",
-                  "embed",
-                  "form",
-                  "input",
-                  "textarea",
-                  "button",
-                  "select",
-                  "option",
-                  "iframe",
-                  "svg",
-                  "math",
-                  "img",
-                ],
-                // Disallow dangerous URL schemes; allow https, http, relative, mailto, tel, anchors
-                ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i,
-                KEEP_CONTENT: true,
-                SAFE_FOR_TEMPLATES: true,
-                RETURN_TRUSTED_TYPE: false,
+                allowedAttributes: {
+                  a: ["href", "title", "target", "rel"],
+                },
+                allowedSchemes: ["http", "https", "mailto", "tel"],
+                allowProtocolRelative: false,
+                disallowedTagsMode: "discard",
+                transformTags: {
+                  a: (tagName, attribs) => {
+                    const href = attribs.href || "";
+                    // Only allow safe URL schemes
+                    if (!/^(?:(?:https?|mailto|tel):|\/(?!\/)|#)/i.test(href)) {
+                      // Remove href attribute for unsafe URLs
+                      const safeAttribs = { ...attribs };
+                      delete safeAttribs.href;
+                      return { tagName, attribs: safeAttribs };
+                    }
+                    // Force safe attributes on links
+                    return {
+                      tagName,
+                      attribs: {
+                        ...attribs,
+                        rel: "noopener noreferrer nofollow ugc",
+                      },
+                    };
+                  },
+                },
               }),
             }}
           />

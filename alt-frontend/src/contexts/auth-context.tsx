@@ -578,31 +578,48 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // X24 Phase 1: Conditional session check - only call API if session indicators exist
   useEffect(() => {
-    trackPerformanceMetric("totalRequest");
+    let isMounted = true;
 
-    if (hasSessionIndicators()) {
-      console.info(
-        "[AUTH-CONTEXT] Session indicators found, checking auth status",
-      );
-      checkAuthStatus();
-    } else {
-      console.info(
-        "[AUTH-CONTEXT] No session indicators found, setting unauthenticated state",
-      );
-      trackPerformanceMetric("apiAvoided");
-      // No session indicators - set unauthenticated state without API call
-      setAuthState((prev) => ({
-        ...prev,
-        isAuthenticated: false,
-        user: null,
-        isLoading: false,
-        error: null,
-      }));
-    }
+    const initAuth = async () => {
+      trackPerformanceMetric("totalRequest");
 
-    // 🚀 X24 Phase 3: Initial security check
-    performSecurityCheck();
-  }, [hasSessionIndicators, trackPerformanceMetric, performSecurityCheck]);
+      if (hasSessionIndicators()) {
+        console.info(
+          "[AUTH-CONTEXT] Session indicators found, checking auth status",
+        );
+        if (isMounted) {
+          await checkAuthStatus();
+        }
+      } else {
+        console.info(
+          "[AUTH-CONTEXT] No session indicators found, setting unauthenticated state",
+        );
+        trackPerformanceMetric("apiAvoided");
+        // No session indicators - set unauthenticated state without API call
+        if (isMounted) {
+          setAuthState((prev) => ({
+            ...prev,
+            isAuthenticated: false,
+            user: null,
+            isLoading: false,
+            error: null,
+          }));
+        }
+      }
+
+      // 🚀 X24 Phase 3: Initial security check
+      if (isMounted) {
+        performSecurityCheck();
+      }
+    };
+
+    initAuth();
+
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run once on mount
 
   // 🚀 X24 Phase 3: Enhanced session monitoring with security checks
   useEffect(() => {

@@ -159,6 +159,19 @@ export class AuthAPIClient {
       this.sessionHeaders =
         buildBackendIdentityHeaders(user, this.currentSessionId) ?? null;
 
+      if (this.debugMode) {
+        if (this.sessionHeaders) {
+          console.log("[AuthAPI] Built identity headers:", {
+            userId: user.id,
+            tenantId: user.tenantId,
+            hasEmail: !!user.email,
+            role: user.role,
+          });
+        } else {
+          console.warn("[AuthAPI] Failed to build identity headers from user:", user);
+        }
+      }
+
       return user;
     } catch (error: unknown) {
       if (
@@ -183,12 +196,22 @@ export class AuthAPIClient {
     }
 
     if (!refresh && this.sessionHeaders) {
+      if (this.debugMode) {
+        console.log("[AuthAPI] Returning cached session headers");
+      }
       return this.sessionHeaders;
     }
 
     if (this.inflightSessionPromise) {
+      if (this.debugMode) {
+        console.log("[AuthAPI] Waiting for inflight session promise");
+      }
       await this.inflightSessionPromise;
       return this.sessionHeaders;
+    }
+
+    if (this.debugMode) {
+      console.log("[AuthAPI] Fetching fresh session headers");
     }
 
     const loader = this.getCurrentUser().finally(() => {
@@ -197,6 +220,15 @@ export class AuthAPIClient {
 
     this.inflightSessionPromise = loader;
     await loader;
+
+    if (this.debugMode) {
+      if (this.sessionHeaders) {
+        console.log("[AuthAPI] Session headers obtained successfully");
+      } else {
+        console.warn("[AuthAPI] Failed to obtain session headers - user may not be authenticated");
+      }
+    }
+
     return this.sessionHeaders;
   }
 

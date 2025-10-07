@@ -4,7 +4,7 @@
  */
 
 import { sanitizeContent } from "./contentSanitizer";
-import DOMPurify from "isomorphic-dompurify";
+import sanitizeHtml from "sanitize-html";
 
 export enum ContentType {
   HTML = "html",
@@ -166,8 +166,8 @@ function safeStripHtml(content: string): string {
 }
 
 /**
- * Checks if content contains potentially unsafe HTML using DOMPurify
- * SECURITY FIX: Replace regex-based detection with battle-tested DOMPurify
+ * Checks if content contains potentially unsafe HTML using sanitize-html
+ * SECURITY FIX: Replace regex-based detection with battle-tested sanitize-html
  * @param content - Content to check
  * @returns True if content needs sanitization
  */
@@ -177,10 +177,10 @@ export const needsSanitization = (content: string): boolean => {
   }
 
   try {
-    // Use DOMPurify to sanitize content and compare with original
+    // Use sanitize-html to sanitize content and compare with original
     // If they differ, the content contained dangerous elements
-    const sanitized = DOMPurify.sanitize(content, {
-      ALLOWED_TAGS: [
+    const sanitized = sanitizeHtml(content, {
+      allowedTags: [
         "p",
         "br",
         "strong",
@@ -198,15 +198,18 @@ export const needsSanitization = (content: string): boolean => {
         "h5",
         "h6",
       ],
-      ALLOWED_ATTR: ["href", "title"],
-      KEEP_CONTENT: true,
+      allowedAttributes: {
+        a: ["href", "title"],
+      },
+      allowedSchemes: ["http", "https", "mailto"],
+      allowProtocolRelative: false,
     });
 
-    // Content needs sanitization if DOMPurify modified it
+    // Content needs sanitization if sanitize-html modified it
     return content !== sanitized;
   } catch (error) {
-    // If DOMPurify fails, assume content needs sanitization for safety
-    console.warn("DOMPurify sanitization failed:", error);
+    // If sanitize-html fails, assume content needs sanitization for safety
+    console.warn("sanitize-html sanitization failed:", error);
     return true;
   }
 };

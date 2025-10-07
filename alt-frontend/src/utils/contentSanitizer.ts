@@ -31,51 +31,27 @@ export function sanitizeContent(
 ): string {
   if (!content) return "";
 
-  const { maxLength } = { ...DEFAULT_OPTIONS, ...options };
+  const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
+  const { maxLength, allowedTags, allowedAttributes } = mergedOptions;
 
   // Truncate content if too long
-  let sanitized = content.slice(0, maxLength);
+  const truncated = content.slice(0, maxLength);
 
-  // Remove dangerous tags
-  sanitized = removeDangerousTags(sanitized);
-
-  // Remove dangerous attributes
-  sanitized = removeDangerousAttributes(sanitized);
-
-  // Remove XSS attack patterns
-  sanitized = removeXssPatterns(sanitized);
+  // Sanitize using sanitize-html with proper configuration
+  const sanitized = sanitizeHtml(truncated, {
+    allowedTags,
+    allowedAttributes,
+    // Disallow dangerous protocols
+    allowedSchemes: ["http", "https", "mailto"],
+    // Remove script-related content
+    disallowedTagsMode: "discard",
+    // Prevent self-closing script tags
+    selfClosing: [],
+    // Allow only safe URL protocols
+    allowProtocolRelative: false,
+  });
 
   return sanitized.trim();
-}
-
-/**
- * Remove HTML tags not in the allowed list
- * @param html - HTML content
- * @param allowedTags - List of allowed HTML tags
- * @returns HTML with only allowed tags
- */
-function removeDangerousTags(html: string): string {
-  return sanitizeHtml(html);
-}
-
-/**
- * Remove dangerous attributes from HTML elements
- * @param html - HTML content
- * @param allowedAttributes - Map of allowed attributes per tag
- * @returns HTML with dangerous attributes removed
- */
-function removeDangerousAttributes(html: string): string {
-  // Remove event handlers and dangerous attributes
-  return sanitizeHtml(html);
-}
-
-/**
- * Remove known XSS attack patterns
- * @param html - HTML content
- * @returns HTML with XSS patterns removed
- */
-function removeXssPatterns(html: string): string {
-  return sanitizeHtml(html);
 }
 
 /**

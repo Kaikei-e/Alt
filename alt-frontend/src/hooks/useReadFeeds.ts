@@ -157,17 +157,30 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         setIsLoading(true);
         setError(null);
 
+        console.log("[useReadFeeds] Initial load started", {
+          isAuthenticated,
+          initialLimit,
+        });
+
         // Only fetch if authenticated to prevent 401 retry loops
         if (!isAuthenticated) {
+          console.warn(
+            "[useReadFeeds] User not authenticated, skipping fetch",
+          );
           setFeeds([]);
           setHasMore(false);
           return;
         }
 
+        console.log("[useReadFeeds] Calling getReadFeedsWithCursor");
         const response = await feedsApi.getReadFeedsWithCursor(
           undefined,
           initialLimit,
         );
+        console.log("[useReadFeeds] Response received:", {
+          dataLength: response.data.length,
+          hasNextCursor: !!response.next_cursor,
+        });
         setFeeds(response.data);
         setCursor(response.next_cursor || undefined);
         setHasMore(response.next_cursor !== null);

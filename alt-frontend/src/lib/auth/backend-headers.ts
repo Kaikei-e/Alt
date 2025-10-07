@@ -13,11 +13,24 @@ export const buildBackendIdentityHeaders = (
   user: User | null | undefined,
   sessionId: string | null | undefined,
 ): BackendIdentityHeaders | null => {
-  if (!user) return null;
+  if (!user) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[buildBackendIdentityHeaders] User is null or undefined");
+    }
+    return null;
+  }
 
   const { id, tenantId, email, role } = user;
 
   if (!isUuid(id) || !isUuid(tenantId)) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[buildBackendIdentityHeaders] Invalid UUIDs:", {
+        userId: id,
+        tenantId: tenantId,
+        isValidUserId: isUuid(id),
+        isValidTenantId: isUuid(tenantId),
+      });
+    }
     return null;
   }
 
