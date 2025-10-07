@@ -16,13 +16,14 @@ interface SearchResultItemProps {
 const SearchResultItem = ({ result }: SearchResultItemProps) => {
   return (
     <Box
-      bg="rgba(255, 255, 255, 0.03)"
+      bg="var(--surface-bg)"
       p={4}
-      borderRadius="md"
-      border="1px solid rgba(255, 255, 255, 0.1)"
+      borderRadius="0"
+      border="2px solid var(--surface-border)"
       _hover={{
-        bg: "rgba(255, 255, 255, 0.08)",
-        transform: "translateY(-1px)",
+        bg: "var(--surface-hover)",
+        borderColor: "var(--alt-primary)",
+        boxShadow: "var(--shadow-md)",
       }}
       transition="all 0.2s ease"
       role="article"
@@ -37,25 +38,27 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
           <Heading
             as="h3"
             size="md"
-            color="#ff006e"
-            fontWeight="bold"
+            color="var(--alt-primary)"
+            fontWeight="700"
             _hover={{
               textDecoration: "underline",
-              color: "#e6005c",
+              color: "var(--alt-secondary)",
+              textDecorationThickness: "2px",
             }}
             lineHeight="1.3"
+            letterSpacing="-0.025em"
           >
             {result.title}
           </Heading>
         </Link>
 
         {result.description && (
-          <Text color="rgba(255, 255, 255, 0.8)" fontSize="sm" lineHeight="1.4">
+          <Text color="var(--text-secondary)" fontSize="sm" lineHeight="1.7">
             {result.description}
           </Text>
         )}
 
-        <HStack gap={2} fontSize="xs" color="rgba(255, 255, 255, 0.6)">
+        <HStack gap={2} fontSize="xs" color="var(--text-muted)">
           {result.published && (
             <Text>
               {new Date(result.published).toLocaleDateString("en-US", {
@@ -79,36 +82,38 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
 
 const LoadingState = () => (
   <Box
-    bg="rgba(255, 255, 255, 0.05)"
-    borderRadius="lg"
-    border="1px solid rgba(255, 255, 255, 0.1)"
+    bg="var(--surface-bg)"
+    borderRadius="0"
+    border="2px solid var(--surface-border)"
     p={8}
     textAlign="center"
+    boxShadow="var(--shadow-sm)"
   >
     <VStack gap={4}>
-      <Spinner size="lg" color="#ff006e" />
-      <Text color="rgba(255, 255, 255, 0.8)">Searching feeds...</Text>
+      <Spinner size="lg" color="var(--alt-primary)" />
+      <Text color="var(--text-secondary)">Searching feeds...</Text>
     </VStack>
   </Box>
 );
 
 const EmptyState = ({ searchQuery }: { searchQuery: string }) => (
   <Box
-    bg="rgba(255, 255, 255, 0.05)"
-    borderRadius="lg"
-    border="1px solid rgba(255, 255, 255, 0.1)"
+    bg="var(--surface-bg)"
+    borderRadius="0"
+    border="2px solid var(--surface-border)"
     p={8}
     textAlign="center"
+    boxShadow="var(--shadow-sm)"
   >
     <VStack gap={3}>
-      <Text fontSize="2xl" color="rgba(255, 255, 255, 0.5)">
+      <Text fontSize="2xl" color="var(--text-muted)">
         🔍
       </Text>
-      <Text color="rgba(255, 255, 255, 0.8)" fontWeight="medium">
+      <Text color="var(--text-secondary)" fontWeight="medium">
         No results found
       </Text>
       {searchQuery && (
-        <Text color="rgba(255, 255, 255, 0.6)" fontSize="sm">
+        <Text color="var(--text-muted)" fontSize="sm">
           No feeds match &quot;{searchQuery}&quot;. Try different keywords.
         </Text>
       )}
@@ -124,11 +129,11 @@ const SearchStats = ({
   searchTime?: number;
 }) => (
   <HStack justify="space-between" align="center" mb={4}>
-    <Text color="#ff006e" fontWeight="bold" fontSize="lg">
+    <Text color="var(--alt-primary)" fontWeight="700" fontSize="lg">
       Search Results ({count})
     </Text>
     {searchTime && (
-      <Text color="rgba(255, 255, 255, 0.6)" fontSize="sm">
+      <Text color="var(--text-muted)" fontSize="sm">
         Found in {searchTime}ms
       </Text>
     )}
@@ -155,10 +160,11 @@ export const SearchResults = ({
 
   return (
     <Box
-      bg="rgba(255, 255, 255, 0.05)"
-      borderRadius="lg"
-      border="1px solid rgba(255, 255, 255, 0.1)"
+      bg="var(--surface-bg)"
+      borderRadius="0"
+      border="2px solid var(--surface-border)"
       p={4}
+      boxShadow="var(--shadow-sm)"
     >
       <SearchStats count={results.length} searchTime={searchTime} />
 

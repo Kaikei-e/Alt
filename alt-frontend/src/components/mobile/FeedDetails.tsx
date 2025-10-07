@@ -144,7 +144,6 @@ export const FeedDetails = ({
         setError("Unable to fetch article content");
         console.log("No valid content from either API");
       }
-
     } catch (err) {
       console.error("Unexpected error:", err);
       setError("Unexpected error occurred");
@@ -431,16 +430,16 @@ export const FeedDetails = ({
                 >
                   <Star size={16} />
                 </Button>
-              <Button
-                onClick={async () => {
-                  if (!feedURL) return;
-                  try {
-                    setIsArchiving(true);
-                    await feedsApi.archiveContent(feedURL, feedTitle);
-                    setIsArchived(true);
-                  } catch (e) {
-                    console.error("Error archiving feed:", e);
-                  } finally {
+                <Button
+                  onClick={async () => {
+                    if (!feedURL) return;
+                    try {
+                      setIsArchiving(true);
+                      await feedsApi.archiveContent(feedURL, feedTitle);
+                      setIsArchived(true);
+                    } catch (e) {
+                      console.error("Error archiving feed:", e);
+                    } finally {
                       setIsArchiving(false);
                     }
                   }}
@@ -458,11 +457,7 @@ export const FeedDetails = ({
                   title="Archive"
                 >
                   <Archive size={14} style={{ marginRight: 4 }} />
-                  {isArchiving
-                    ? "..."
-                    : isArchived
-                      ? "✓"
-                      : "Archive"}
+                  {isArchiving ? "..." : isArchived ? "✓" : "Archive"}
                 </Button>
                 <Button
                   onClick={async () => {

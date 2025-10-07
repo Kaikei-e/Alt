@@ -114,7 +114,7 @@ const SearchWindow = ({
         <VStack gap={4}>
           <Box width="full">
             <Text
-              color="rgba(255, 255, 255, 0.9)"
+              color="var(--text-secondary)"
               mb={2}
               fontSize="sm"
               fontWeight="medium"
@@ -140,12 +140,19 @@ const SearchWindow = ({
               }}
               onKeyDown={handleKeyPress}
               bg="var(--surface-bg)"
-              border={`1px solid ${validationError ? "#f87171" : "var(--alt-primary)"}`}
+              border={`2px solid ${validationError ? "#dc2626" : "var(--surface-border)"}`}
               color="var(--text-primary)"
+              borderRadius="0"
               _placeholder={{ color: "var(--text-muted)" }}
               _focus={{
-                borderColor: validationError ? "#f87171" : "var(--alt-primary)",
-                boxShadow: `0 0 0 1px ${validationError ? "#f87171" : "var(--alt-primary)"}`,
+                borderColor: validationError ? "#dc2626" : "var(--alt-primary)",
+                boxShadow: "var(--shadow-sm)",
+                outline: "none",
+              }}
+              _hover={{
+                borderColor: validationError
+                  ? "#dc2626"
+                  : "var(--alt-secondary)",
               }}
             />
           </Box>
@@ -153,31 +160,34 @@ const SearchWindow = ({
           <Button
             type="submit"
             loading={isLoading}
-            bg="linear-gradient(45deg, #ff006e, #8338ec)"
-            color="white"
-            fontWeight="bold"
+            bg="var(--surface-bg)"
+            color="var(--text-primary)"
+            fontWeight="700"
             px={8}
             py={6}
-            borderRadius="full"
+            borderRadius="0"
+            border="2px solid var(--alt-primary)"
             _hover={{
-              bg: "linear-gradient(45deg, #e6005c, #7129d4)",
-              transform: "translateY(-2px)",
+              bg: "var(--alt-primary)",
+              color: "#ffffff",
+              boxShadow: "var(--shadow-md)",
             }}
             _active={{
-              transform: "translateY(0px)",
+              bg: "var(--alt-secondary)",
+              borderColor: "var(--alt-secondary)",
             }}
             transition="all 0.2s ease"
-            border="1px solid rgba(255, 255, 255, 0.2)"
             width="full"
             disabled={isLoading || !!validationError}
             opacity={validationError ? 0.6 : 1}
+            letterSpacing="0.025em"
           >
             {isLoading ? "Searching..." : "Search"}
           </Button>
 
           {validationError && (
             <Text
-              color="#f87171"
+              color="#dc2626"
               textAlign="center"
               fontSize="sm"
               fontWeight="medium"
@@ -188,7 +198,7 @@ const SearchWindow = ({
 
           {error && (
             <Text
-              color="#f87171"
+              color="#dc2626"
               textAlign="center"
               fontSize="sm"
               fontWeight="medium"

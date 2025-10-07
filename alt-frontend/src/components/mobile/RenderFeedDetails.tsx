@@ -246,12 +246,7 @@ const RenderFeedDetails = ({
                   "div",
                   "span",
                 ],
-                ALLOWED_ATTR: [
-                  "href",
-                  "title",
-                  "target",
-                  "rel",
-                ],
+                ALLOWED_ATTR: ["href", "title", "target", "rel"],
                 FORBID_ATTR: [
                   "onclick",
                   "onload",

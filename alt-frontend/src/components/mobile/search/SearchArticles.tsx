@@ -176,15 +176,6 @@ export const SearchArticles = ({
       <form onSubmit={handleFormSubmit}>
         <VStack gap={4}>
           <Box width="full">
-            <Text
-              color="var(--alt-primary)"
-              mb={2}
-              fontSize="2xl"
-              fontWeight="bold"
-              textAlign="center"
-            >
-              Search Articles
-            </Text>
             <Input
               type="text"
               placeholder="Search for articles..."
@@ -192,15 +183,21 @@ export const SearchArticles = ({
               value={query}
               onChange={handleInputChange}
               onKeyDown={handleKeyPress}
-              bg="rgba(255, 255, 255, 0.1)"
-              border={`1px solid ${validationError ? "#f87171" : "rgba(255, 255, 255, 0.2)"}`}
-              color="white"
-              _placeholder={{ color: "rgba(255, 255, 255, 0.5)" }}
+              bg="var(--surface-bg)"
+              border={`2px solid ${validationError ? "#dc2626" : "var(--surface-border)"}`}
+              color="var(--text-primary)"
+              _placeholder={{ color: "var(--text-muted)" }}
               _focus={{
-                borderColor: validationError ? "#f87171" : "#ff006e",
-                boxShadow: `0 0 0 1px ${validationError ? "#f87171" : "#ff006e"}`,
+                borderColor: validationError ? "#dc2626" : "var(--alt-primary)",
+                boxShadow: "var(--shadow-sm)",
+                outline: "none",
               }}
-              borderRadius="15px"
+              _hover={{
+                borderColor: validationError
+                  ? "#dc2626"
+                  : "var(--alt-secondary)",
+              }}
+              borderRadius="0"
               p={4}
               data-testid="search-input"
             />
@@ -213,31 +210,34 @@ export const SearchArticles = ({
             onClick={handleButtonClick}
             style={{
               background: isButtonDisabled
-                ? "rgba(255, 255, 255, 0.3)"
-                : "linear-gradient(45deg, #ff006e, #8338ec)",
-              color: "white",
-              fontWeight: "bold",
+                ? "var(--surface-bg)"
+                : "var(--surface-bg)",
+              color: isButtonDisabled
+                ? "var(--text-muted)"
+                : "var(--text-primary)",
+              fontWeight: "700",
               padding: "16px 32px",
-              borderRadius: "9999px",
-              border: "1px solid rgba(255, 255, 255, 0.2)",
+              borderRadius: "0",
+              border: `2px solid ${isButtonDisabled ? "var(--surface-border)" : "var(--alt-primary)"}`,
               width: "100%",
               cursor: isButtonDisabled ? "not-allowed" : "pointer",
               opacity: isButtonDisabled ? 0.6 : 1,
               transition: "all 0.2s ease",
               fontSize: "16px",
+              letterSpacing: "0.025em",
             }}
             onMouseEnter={(e) => {
               if (!isButtonDisabled) {
-                e.currentTarget.style.background =
-                  "linear-gradient(45deg, #e6005c, #7129d4)";
-                e.currentTarget.style.transform = "translateY(-2px)";
+                e.currentTarget.style.background = "var(--alt-primary)";
+                e.currentTarget.style.color = "#ffffff";
+                e.currentTarget.style.boxShadow = "var(--shadow-md)";
               }
             }}
             onMouseLeave={(e) => {
               if (!isButtonDisabled) {
-                e.currentTarget.style.background =
-                  "linear-gradient(45deg, #ff006e, #8338ec)";
-                e.currentTarget.style.transform = "translateY(0px)";
+                e.currentTarget.style.background = "var(--surface-bg)";
+                e.currentTarget.style.color = "var(--text-primary)";
+                e.currentTarget.style.boxShadow = "none";
               }
             }}
           >
@@ -247,7 +247,7 @@ export const SearchArticles = ({
           {/* Always show validation error when present */}
           {validationError && (
             <Text
-              color="#f87171"
+              color="#dc2626"
               textAlign="center"
               fontSize="sm"
               fontWeight="medium"
@@ -260,7 +260,7 @@ export const SearchArticles = ({
           {/* Show API error when present */}
           {error && !validationError && (
             <Text
-              color="#f87171"
+              color="#dc2626"
               textAlign="center"
               fontSize="sm"
               fontWeight="medium"
