@@ -408,7 +408,7 @@ flowchart TB
         NGX[nginx\n:80]
         FE[alt-frontend\n:3000]
         BE[alt-backend\n:9000]
-        MIGRATE[migrate (Atlas)\ninit job]
+        MIGRATE[migrate Atlas init job]
         DB[(postgres\n:5432)]
         SEARCHIDX[search-indexer\n:9300]
         TAGGER[tag-generator\n:9400]
