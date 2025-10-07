@@ -141,7 +141,7 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 	if lastCreatedAt == nil || lastCreatedAt.IsZero() {
 		// First query - no cursor constraint
 		query = `
-			SELECT a.id, a.title, a.content, a.created_at,
+			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
 				   COALESCE(
 					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
 					   '{}'
@@ -149,7 +149,7 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 			FROM articles a
 			LEFT JOIN article_tags at ON a.id = at.article_id
 			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
-			GROUP BY a.id, a.title, a.content, a.created_at
+			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
 			ORDER BY a.created_at DESC, a.id DESC
 			LIMIT $1
 		`
@@ -157,7 +157,7 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 	} else {
 		// Subsequent queries - use efficient keyset pagination
 		query = `
-			SELECT a.id, a.title, a.content, a.created_at,
+			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
 				   COALESCE(
 					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
 					   '{}'
@@ -166,7 +166,7 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 			LEFT JOIN article_tags at ON a.id = at.article_id
 			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
 			WHERE (a.created_at, a.id) < ($1, $2)
-			GROUP BY a.id, a.title, a.content, a.created_at
+			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
 			ORDER BY a.created_at DESC, a.id DESC
 			LIMIT $3
 		`
@@ -183,7 +183,7 @@ func (d *DatabaseDriver) GetArticlesWithTags(ctx context.Context, lastCreatedAt 
 		var article ArticleWithTags
 		var tagNames []string
 
-		err = rows.Scan(&article.ID, &article.Title, &article.Content, &article.CreatedAt, &tagNames)
+		err = rows.Scan(&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &tagNames)
 		if err != nil {
 			return nil, nil, "", err
 		}

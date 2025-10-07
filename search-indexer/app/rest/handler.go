@@ -35,56 +35,49 @@ type SearchArticlesResponse struct {
 	Hits  []SearchArticlesHit `json:"hits"`
 }
 
-// safeExtractSearchHit safely extracts SearchArticlesHit from interface{}
-func safeExtractSearchHit(hit interface{}) (SearchArticlesHit, error) {
-	hitMap, ok := hit.(map[string]interface{})
-	if !ok {
-		return SearchArticlesHit{}, fmt.Errorf("invalid hit format: expected map[string]interface{}, got %T", hit)
-	}
+// safeExtractSearchHit safely extracts SearchArticlesHit from meilisearch.Hit
+func safeExtractSearchHit(hit meilisearch.Hit) (SearchArticlesHit, error) {
+	// meilisearch.Hit is map[string]json.RawMessage, need to unmarshal each field
+	var result SearchArticlesHit
 
-	// Extract and validate ID
-	idRaw, exists := hitMap["id"]
-	if !exists {
+	// Extract ID
+	if idBytes, exists := hit["id"]; exists {
+		if err := json.Unmarshal(idBytes, &result.ID); err != nil {
+			return SearchArticlesHit{}, fmt.Errorf("failed to unmarshal id: %w", err)
+		}
+	} else {
 		return SearchArticlesHit{}, fmt.Errorf("missing required field: id")
 	}
-	id, ok := idRaw.(string)
-	if !ok {
-		return SearchArticlesHit{}, fmt.Errorf("invalid id type: expected string, got %T", idRaw)
-	}
 
-	// Extract and validate Title
-	titleRaw, exists := hitMap["title"]
-	if !exists {
+	// Extract Title
+	if titleBytes, exists := hit["title"]; exists {
+		if err := json.Unmarshal(titleBytes, &result.Title); err != nil {
+			return SearchArticlesHit{}, fmt.Errorf("failed to unmarshal title: %w", err)
+		}
+	} else {
 		return SearchArticlesHit{}, fmt.Errorf("missing required field: title")
 	}
-	title, ok := titleRaw.(string)
-	if !ok {
-		return SearchArticlesHit{}, fmt.Errorf("invalid title type: expected string, got %T", titleRaw)
-	}
 
-	// Extract and validate Content
-	contentRaw, exists := hitMap["content"]
-	if !exists {
+	// Extract Content
+	if contentBytes, exists := hit["content"]; exists {
+		if err := json.Unmarshal(contentBytes, &result.Content); err != nil {
+			return SearchArticlesHit{}, fmt.Errorf("failed to unmarshal content: %w", err)
+		}
+	} else {
 		return SearchArticlesHit{}, fmt.Errorf("missing required field: content")
 	}
-	content, ok := contentRaw.(string)
-	if !ok {
-		return SearchArticlesHit{}, fmt.Errorf("invalid content type: expected string, got %T", contentRaw)
+
+	// Extract Tags (optional)
+	if tagsBytes, exists := hit["tags"]; exists {
+		if err := json.Unmarshal(tagsBytes, &result.Tags); err != nil {
+			// Tags is optional, so just set empty array on error
+			result.Tags = []string{}
+		}
+	} else {
+		result.Tags = []string{}
 	}
 
-	// Extract tags (optional field, use existing toStringSlice function)
-	tagsRaw, exists := hitMap["tags"]
-	var tags []string
-	if exists {
-		tags = toStringSlice(tagsRaw)
-	}
-
-	return SearchArticlesHit{
-		ID:      id,
-		Title:   title,
-		Content: content,
-		Tags:    tags,
-	}, nil
+	return result, nil
 }
 
 func SearchArticles(
