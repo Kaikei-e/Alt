@@ -62,8 +62,13 @@ func ProcessTagToSynonyms(tokenizer *tokenizer.Tokenizer, tags []string) map[str
 	}
 
 	if len(synonyms) == 0 {
+		nonJapaneseTags := processTagWithoutSynonyms(tags)
+		if len(nonJapaneseTags) == 0 {
+			// No tags to process, return empty map
+			return map[string][]string{}
+		}
 		return map[string][]string{
-			processTagWithoutSynonyms(tags)[0]: processTagWithoutSynonyms(tags),
+			nonJapaneseTags[0]: nonJapaneseTags,
 		}
 	}
 
