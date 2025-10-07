@@ -427,7 +427,7 @@ flowchart TB
     end
 
     subgraph Profile_Logging [Optional profile: logging]
-        LOGFWD[log forwarder sidecars\n(nginx, backend, db, etc.)]
+        LOGFWD[log forwarder sidecars nginx backend db etc]
     end
 
     NGX --> FE
