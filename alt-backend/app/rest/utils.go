@@ -232,20 +232,21 @@ func getCacheAgeForLimit(limit int) int {
 }
 
 // fetchArticleContent fetches article content, first from DB, then from URL if not found
-func fetchArticleContent(ctx context.Context, feedURL string, container *di.ApplicationComponents) (string, string, error) {
+// Returns: content, articleID, articleTitle, error
+func fetchArticleContent(ctx context.Context, feedURL string, container *di.ApplicationComponents) (string, string, string, error) {
 	logger.Logger.Info("Fetching article content", "url", feedURL)
 
 	// First, try to fetch from database
 	article, err := container.AltDBRepository.FetchArticleByURL(ctx, feedURL)
 	if err != nil {
 		logger.Logger.Error("Failed to query article from database", "error", err, "url", feedURL)
-		return "", "", fmt.Errorf("failed to query article from database: %w", err)
+		return "", "", "", fmt.Errorf("failed to query article from database: %w", err)
 	}
 
 	// If article exists in DB, return it
 	if article != nil {
 		logger.Logger.Info("Article found in database", "url", feedURL, "content_length", len(article.Content))
-		return article.Content, article.ID, nil
+		return article.Content, article.ID, article.Title, nil
 	}
 
 	// Article not in DB, fetch from URL and extract clean text
@@ -255,12 +256,12 @@ func fetchArticleContent(ctx context.Context, feedURL string, container *di.Appl
 	cleanTextPtr, err := container.ArticleUsecase.Execute(ctx, feedURL)
 	if err != nil {
 		logger.Logger.Error("Failed to fetch and extract article", "error", err, "url", feedURL)
-		return "", "", fmt.Errorf("failed to fetch and extract article: %w", err)
+		return "", "", "", fmt.Errorf("failed to fetch and extract article: %w", err)
 	}
 
 	if cleanTextPtr == nil || strings.TrimSpace(*cleanTextPtr) == "" {
 		logger.Logger.Error("Extracted article text is empty", "url", feedURL)
-		return "", "", fmt.Errorf("extracted article text is empty")
+		return "", "", "", fmt.Errorf("extracted article text is empty")
 	}
 
 	cleanText := *cleanTextPtr
@@ -276,16 +277,16 @@ func fetchArticleContent(ctx context.Context, feedURL string, container *di.Appl
 		logger.Logger.Info("Article saved to database", "url", feedURL)
 	}
 
-	// Fetch the saved article to get its ID
+	// Fetch the saved article to get its ID and title
 	savedArticle, err := container.AltDBRepository.FetchArticleByURL(ctx, feedURL)
 	if err != nil || savedArticle == nil {
-		// Fall back to generated ID if fetch fails
+		// Fall back to generated ID and URL as title if fetch fails
 		articleID := generateArticleID(feedURL)
-		logger.Logger.Warn("Failed to fetch saved article, using generated ID", "url", feedURL, "generated_id", articleID)
-		return cleanText, articleID, nil
+		logger.Logger.Warn("Failed to fetch saved article, using generated ID and URL as title", "url", feedURL, "generated_id", articleID)
+		return cleanText, articleID, title, nil
 	}
 
-	return cleanText, savedArticle.ID, nil
+	return cleanText, savedArticle.ID, savedArticle.Title, nil
 }
 
 // generateArticleID generates a simple article ID from URL
@@ -295,11 +296,12 @@ func generateArticleID(feedURL string) string {
 }
 
 // callPreProcessorSummarize calls the pre-processor summarization API
-func callPreProcessorSummarize(ctx context.Context, content string, articleID string, preProcessorURL string) (string, error) {
+func callPreProcessorSummarize(ctx context.Context, content string, articleID string, articleTitle string, preProcessorURL string) (string, error) {
 	// Prepare request
 	requestBody := map[string]interface{}{
 		"content":    content,
 		"article_id": articleID,
+		"title":      articleTitle,
 	}
 
 	jsonData, err := json.Marshal(requestBody)

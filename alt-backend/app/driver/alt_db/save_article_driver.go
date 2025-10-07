@@ -1,6 +1,7 @@
 package alt_db
 
 import (
+	"alt/domain"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -11,11 +12,12 @@ import (
 )
 
 const upsertArticleQuery = `
-	INSERT INTO articles (title, content, url)
-	VALUES ($1, $2, $3)
+	INSERT INTO articles (title, content, url, user_id)
+	VALUES ($1, $2, $3, $4)
 	ON CONFLICT (url) DO UPDATE
 	SET title = EXCLUDED.title,
-		content = EXCLUDED.content
+		content = EXCLUDED.content,
+		user_id = EXCLUDED.user_id
 	RETURNING id
 `
 
@@ -39,13 +41,19 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		cleanTitle = cleanURL
 	}
 
+	// Extract user_id from context
+	userContext, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("user context required: %w", err)
+	}
+
 	var articleID uuid.UUID
-	if err := r.pool.QueryRow(ctx, upsertArticleQuery, cleanTitle, content, cleanURL).Scan(&articleID); err != nil {
+	if err := r.pool.QueryRow(ctx, upsertArticleQuery, cleanTitle, content, cleanURL, userContext.UserID).Scan(&articleID); err != nil {
 		err = fmt.Errorf("upsert article content: %w", err)
 		logger.SafeError("failed to save article", "url", cleanURL, "error", err)
 		return err
 	}
 
-	logger.SafeInfo("article content saved", "url", cleanURL, "article_id", articleID.String())
+	logger.SafeInfo("article content saved", "url", cleanURL, "article_id", articleID.String(), "user_id", userContext.UserID)
 	return nil
 }

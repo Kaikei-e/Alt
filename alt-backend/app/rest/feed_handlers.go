@@ -763,14 +763,14 @@ func handleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Config
 
 		// Fetch article content (you might need to fetch from DB or URL)
 		// For now, we'll create a simple implementation that fetches the content
-		articleContent, articleID, err := fetchArticleContent(c.Request().Context(), req.FeedURL, container)
+		articleContent, articleID, articleTitle, err := fetchArticleContent(c.Request().Context(), req.FeedURL, container)
 		if err != nil {
 			logger.Logger.Error("Failed to fetch article content", "error", err, "url", req.FeedURL)
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch article content")
 		}
 
 		// Call pre-processor summarization API
-		summary, err := callPreProcessorSummarize(c.Request().Context(), articleContent, articleID, cfg.PreProcessor.URL)
+		summary, err := callPreProcessorSummarize(c.Request().Context(), articleContent, articleID, articleTitle, cfg.PreProcessor.URL)
 		if err != nil {
 			logger.Logger.Error("Failed to summarize article", "error", err, "url", req.FeedURL)
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate summary")
