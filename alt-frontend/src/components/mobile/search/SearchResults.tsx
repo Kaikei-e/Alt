@@ -26,6 +26,17 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
   const [summary, setSummary] = useState<FetchArticleSummaryResponse | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+
+  // Check if description is long enough to need truncation
+  const descriptionText = result.description || "";
+  const shouldTruncateDescription = descriptionText.length > 200;
+  const displayDescription = isDescriptionExpanded
+    ? descriptionText
+    : shouldTruncateDescription
+      ? descriptionText.slice(0, 200) + "..."
+      : descriptionText;
 
   const handleToggleSummary = async () => {
     if (!isExpanded && !summary && result.link) {
@@ -43,6 +54,45 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
       }
     }
     setIsExpanded(!isExpanded);
+  };
+
+  const handleSummarizeNow = async () => {
+    if (!result.link) return;
+
+    setIsSummarizing(true);
+    setSummaryError(null);
+
+    try {
+      // Call the summarize API - it returns the summary directly
+      const summarizeResponse = await feedsApi.summarizeArticle(result.link);
+
+      if (summarizeResponse.success && summarizeResponse.summary) {
+        // Create a FetchArticleSummaryResponse from the summarize response
+        const summaryData: FetchArticleSummaryResponse = {
+          matched_articles: [{
+            article_url: result.link || "",
+            title: result.title,
+            author: result.author?.name || result.authors?.[0]?.name,
+            content: summarizeResponse.summary,
+            content_type: "summary",
+            published_at: result.published || new Date().toISOString(),
+            fetched_at: new Date().toISOString(),
+            source_id: summarizeResponse.article_id,
+          }],
+          total_matched: 1,
+          requested_count: 1,
+        };
+        setSummary(summaryData);
+        setSummaryError(null);
+      } else {
+        setSummaryError("要約の生成に失敗しました");
+      }
+    } catch (error) {
+      console.error("Error summarizing article:", error);
+      setSummaryError("要約の生成中にエラーが発生しました");
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
   return (
@@ -86,16 +136,35 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
           </Heading>
         </Link>
 
-        {result.description && (
-          <Text
-            color="var(--text-secondary)"
-            fontSize="sm"
-            lineHeight="1.7"
-            wordBreak="break-word"
-            overflowWrap="anywhere"
-          >
-            {result.description}
-          </Text>
+        {descriptionText && (
+          <VStack align="start" gap={2} width="100%">
+            <Text
+              color="var(--text-secondary)"
+              fontSize="sm"
+              lineHeight="1.7"
+              wordBreak="break-word"
+              overflowWrap="anywhere"
+            >
+              {displayDescription}
+            </Text>
+            {shouldTruncateDescription && (
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsDescriptionExpanded(!isDescriptionExpanded);
+                }}
+                color="var(--alt-primary)"
+                _hover={{
+                  bg: "rgba(255, 255, 255, 0.05)",
+                }}
+                alignSelf="flex-start"
+              >
+                {isDescriptionExpanded ? "折りたたむ" : "続きを読む"}
+              </Button>
+            )}
+          </VStack>
         )}
 
         <HStack gap={2} fontSize="xs" color="var(--text-muted)" flexWrap="wrap">
@@ -147,10 +216,39 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
                   要約を読み込み中...
                 </Text>
               </HStack>
+            ) : isSummarizing ? (
+              <VStack gap={3} py={4}>
+                <HStack justify="center">
+                  <Spinner size="sm" color="var(--alt-primary)" />
+                  <Text color="var(--text-secondary)" fontSize="sm">
+                    要約を生成中...
+                  </Text>
+                </HStack>
+                <Text color="var(--text-muted)" fontSize="xs" textAlign="center">
+                  これには数秒かかる場合があります
+                </Text>
+              </VStack>
             ) : summaryError ? (
-              <Text color="var(--text-secondary)" fontSize="sm" textAlign="center">
-                {summaryError}
-              </Text>
+              <VStack gap={3} width="100%">
+                <Text color="var(--text-secondary)" fontSize="sm" textAlign="center">
+                  {summaryError}
+                </Text>
+                {summaryError === "要約を取得できませんでした" && (
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    onClick={handleSummarizeNow}
+                    width="full"
+                    bg="var(--alt-primary)"
+                    color="#ffffff"
+                    _hover={{
+                      bg: "var(--alt-secondary)",
+                    }}
+                  >
+                    ✨ Summarize Immediately
+                  </Button>
+                )}
+              </VStack>
             ) : summary?.matched_articles && summary.matched_articles.length > 0 ? (
               <VStack align="start" gap={2} width="100%">
                 <Text
@@ -174,9 +272,24 @@ const SearchResultItem = ({ result }: SearchResultItemProps) => {
                 </Text>
               </VStack>
             ) : (
-              <Text color="var(--text-secondary)" fontSize="sm" textAlign="center">
-                この記事の要約はまだありません
-              </Text>
+              <VStack gap={3} width="100%">
+                <Text color="var(--text-secondary)" fontSize="sm" textAlign="center">
+                  この記事の要約はまだありません
+                </Text>
+                <Button
+                  size="sm"
+                  colorScheme="blue"
+                  onClick={handleSummarizeNow}
+                  width="full"
+                  bg="var(--alt-primary)"
+                  color="#ffffff"
+                  _hover={{
+                    bg: "var(--alt-secondary)",
+                  }}
+                >
+                  ✨ Summarize Immediately
+                </Button>
+              </VStack>
             )}
           </Box>
         )}
