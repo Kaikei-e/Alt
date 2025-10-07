@@ -19,9 +19,17 @@ RUN uv sync --locked
 # Install project dependencies to system Python  
 RUN uv pip install --system --no-cache-dir -e .
 
-# Optional: pre‑cache the SBERT model
+# Optional: pre‑cache the SBERT model and download NLTK data
 RUN python - <<'PY'
+import nltk
 from sentence_transformers import SentenceTransformer
+
+# Download NLTK data
+nltk.download('punkt_tab', quiet=True)
+nltk.download('stopwords', quiet=True)
+print('✅ NLTK data downloaded')
+
+# Cache SBERT model
 SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu')
 print('✅ SBERT model cached')
 PY
