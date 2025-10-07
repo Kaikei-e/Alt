@@ -69,7 +69,8 @@ export default function FeedsPage() {
   // Memoize visible feeds to prevent unnecessary recalculations
   // Canonicalize feed.link to match the canonicalized keys in readFeeds Set
   const visibleFeeds = useMemo(
-    () => feeds?.filter((feed) => !readFeeds.has(canonicalize(feed.link))) || [],
+    () =>
+      feeds?.filter((feed) => !readFeeds.has(canonicalize(feed.link))) || [],
     [feeds, readFeeds],
   );
 
