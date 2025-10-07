@@ -9,7 +9,7 @@ TASK:
 
 RULES AND CONSTRAINTS:
 - Style: 常体（〜だ／である）、見出しなし、箇条書き禁止、本文のみ
-- Length: 400–800字（max 1000）, adjust the length based on the fluency of the summary.
+- Length: 300–600字（max 800）, adjust the length based on the fluency of the summary.
 - Must include: 5W1H／数値≥2（日時・金額・件数・比率など）／固有名詞（初出は英語併記）／経緯／影響／見通し
 - If info missing: 「未提示」と明記。重要発言は20字以内で1引用まで
 - 数字は半角。日付は「YYYY年M月D日」
