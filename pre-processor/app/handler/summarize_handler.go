@@ -14,6 +14,7 @@ import (
 type SummarizeRequest struct {
 	Content   string `json:"content" validate:"required"`
 	ArticleID string `json:"article_id" validate:"required"`
+	Title     string `json:"title"`
 }
 
 // SummarizeResponse represents the response for article summarization
@@ -25,15 +26,17 @@ type SummarizeResponse struct {
 
 // SummarizeHandler handles on-demand article summarization requests
 type SummarizeHandler struct {
-	apiRepo repository.ExternalAPIRepository
-	logger  *slog.Logger
+	apiRepo     repository.ExternalAPIRepository
+	summaryRepo repository.SummaryRepository
+	logger      *slog.Logger
 }
 
 // NewSummarizeHandler creates a new summarize handler
-func NewSummarizeHandler(apiRepo repository.ExternalAPIRepository, logger *slog.Logger) *SummarizeHandler {
+func NewSummarizeHandler(apiRepo repository.ExternalAPIRepository, summaryRepo repository.SummaryRepository, logger *slog.Logger) *SummarizeHandler {
 	return &SummarizeHandler{
-		apiRepo: apiRepo,
-		logger:  logger,
+		apiRepo:     apiRepo,
+		summaryRepo: summaryRepo,
+		logger:      logger,
 	}
 }
 
@@ -75,6 +78,27 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 	}
 
 	h.logger.Info("article summarized successfully", "article_id", req.ArticleID)
+
+	// Save summary to database
+	articleTitle := req.Title
+	if articleTitle == "" {
+		articleTitle = "Untitled" // Fallback if no title provided
+	}
+
+	articleSummary := &models.ArticleSummary{
+		ArticleID:       req.ArticleID,
+		ArticleTitle:    articleTitle,
+		SummaryJapanese: summarized.SummaryJapanese,
+	}
+
+	if err := h.summaryRepo.Create(ctx, articleSummary); err != nil {
+		h.logger.Error("failed to save summary to database", "error", err, "article_id", req.ArticleID)
+		// Don't fail the request if DB save fails - still return the summary
+		// This ensures the user gets the summary even if DB has issues
+		h.logger.Warn("continuing despite DB save failure", "article_id", req.ArticleID)
+	} else {
+		h.logger.Info("summary saved to database successfully", "article_id", req.ArticleID)
+	}
 
 	// Return response
 	response := SummarizeResponse{

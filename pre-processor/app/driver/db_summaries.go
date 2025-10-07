@@ -31,7 +31,9 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 	query := `
 		INSERT INTO article_summaries (article_id, article_title, summary_japanese)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (article_id) DO NOTHING
+		ON CONFLICT (article_id) DO UPDATE
+		SET article_title = EXCLUDED.article_title,
+		    summary_japanese = EXCLUDED.summary_japanese
 		RETURNING id, created_at
 	`
 

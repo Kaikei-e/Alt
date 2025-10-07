@@ -113,6 +113,7 @@ func main() {
 	// Initialize summarize handler for REST API
 	summarizeHandler := handler.NewSummarizeHandler(
 		apiRepo,
+		summaryRepo,
 		logger.Logger,
 	)
 
@@ -154,10 +155,10 @@ func main() {
 	// Article collection temporarily suspended for ethical reasons
 	logger.Logger.Info("Feed processing job disabled for ethical compliance")
 	/*
-	if err := jobHandler.StartFeedProcessingJob(ctx); err != nil {
-		logger.Logger.Error("Failed to start feed processing job", "error", err)
-		panic(err)
-	}
+		if err := jobHandler.StartFeedProcessingJob(ctx); err != nil {
+			logger.Logger.Error("Failed to start feed processing job", "error", err)
+			panic(err)
+		}
 	*/
 
 	// Start summarization job
