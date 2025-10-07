@@ -94,6 +94,7 @@ func (i *Indexer) convertToDocuments(articles []*driver.ArticleWithTags) []drive
 			Title:   art.Title,
 			Content: art.Content,
 			Tags:    tags,
+			UserID:  art.UserID,
 		})
 	}
 

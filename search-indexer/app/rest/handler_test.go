@@ -1,13 +1,28 @@
 package rest
 
 import (
+	"encoding/json"
 	"testing"
+
+	"github.com/meilisearch/meilisearch-go"
 )
+
+// convertToMeilisearchHit converts map[string]interface{} to meilisearch.Hit
+func convertToMeilisearchHit(data map[string]interface{}) meilisearch.Hit {
+	hit := make(meilisearch.Hit)
+	for k, v := range data {
+		if v != nil {
+			jsonBytes, _ := json.Marshal(v)
+			hit[k] = jsonBytes
+		}
+	}
+	return hit
+}
 
 func TestSafeExtractSearchHit(t *testing.T) {
 	tests := []struct {
 		name    string
-		hit     interface{}
+		hit     map[string]interface{}
 		want    SearchArticlesHit
 		wantErr bool
 	}{
@@ -91,14 +106,7 @@ func TestSafeExtractSearchHit(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "hit is not map",
-			hit:     "invalid",
-			want:    SearchArticlesHit{},
-			wantErr: true,
-		},
-		{
 			name:    "hit is nil",
-			hit:     nil,
 			want:    SearchArticlesHit{},
 			wantErr: true,
 		},
@@ -153,7 +161,12 @@ func TestSafeExtractSearchHit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := safeExtractSearchHit(tt.hit)
+			var meilisearchHit meilisearch.Hit
+			if tt.hit != nil {
+				meilisearchHit = convertToMeilisearchHit(tt.hit)
+			}
+
+			got, err := safeExtractSearchHit(meilisearchHit)
 
 			if tt.wantErr {
 				if err == nil {
