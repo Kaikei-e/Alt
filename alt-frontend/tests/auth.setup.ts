@@ -34,11 +34,7 @@ setup("authenticate", async ({ page }) => {
       console.log("[AUTH-SETUP] Page fully loaded");
 
       // Use page object for login
-      await loginPage.performLogin(
-        "test@example.com",
-        "password123",
-        "/home",
-      );
+      await loginPage.performLogin("test@example.com", "password123", "/home");
       console.log("[AUTH-SETUP] Login completed successfully");
 
       // Save authentication state

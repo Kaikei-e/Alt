@@ -160,10 +160,10 @@ const renderInputNode = (
       <label
         htmlFor={inputId}
         style={{
-          fontSize: '14px',
-          color: 'var(--text-muted)',
-          marginBottom: '4px',
-          display: 'block'
+          fontSize: "14px",
+          color: "var(--text-muted)",
+          marginBottom: "4px",
+          display: "block",
         }}
       >
         {label}

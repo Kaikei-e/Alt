@@ -220,7 +220,10 @@ describe("LoginForm", () => {
         expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
       });
 
-      await user.type(screen.getByLabelText(IDENTIFIER_LABEL), "test@example.com");
+      await user.type(
+        screen.getByLabelText(IDENTIFIER_LABEL),
+        "test@example.com",
+      );
       await user.type(screen.getByLabelText(PASSWORD_LABEL), "password123");
       await user.click(screen.getByRole("button", { name: SUBMIT_LABEL }));
 
@@ -278,10 +281,7 @@ describe("LoginForm", () => {
         screen.getByLabelText(IDENTIFIER_LABEL),
         "wrong@example.com",
       );
-      await user.type(
-        screen.getByLabelText(PASSWORD_LABEL),
-        "wrongpassword",
-      );
+      await user.type(screen.getByLabelText(PASSWORD_LABEL), "wrongpassword");
       await user.click(screen.getByRole("button", { name: SUBMIT_LABEL }));
 
       await waitFor(() => {
@@ -385,11 +385,11 @@ describe("LoginForm", () => {
         expect(screen.getByLabelText(IDENTIFIER_LABEL)).toBeInTheDocument();
       });
 
-      await user.type(screen.getByLabelText(IDENTIFIER_LABEL), "test@example.com");
       await user.type(
-        screen.getByLabelText(PASSWORD_LABEL),
-        "password123",
+        screen.getByLabelText(IDENTIFIER_LABEL),
+        "test@example.com",
       );
+      await user.type(screen.getByLabelText(PASSWORD_LABEL), "password123");
       await user.click(screen.getByRole("button", { name: SUBMIT_LABEL }));
 
       await waitFor(() => {

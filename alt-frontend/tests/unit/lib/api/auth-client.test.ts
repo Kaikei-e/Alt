@@ -508,7 +508,8 @@ describe("AuthAPIClient", () => {
       mockFetch
         .mockResolvedValueOnce(
           createMockResponse({
-            json: () => Promise.resolve({ data: { csrf_token: mockCSRFToken } }),
+            json: () =>
+              Promise.resolve({ data: { csrf_token: mockCSRFToken } }),
           }),
         )
         // Mock actual request

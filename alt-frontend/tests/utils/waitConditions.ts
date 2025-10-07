@@ -155,7 +155,9 @@ export async function waitForFormReady(
   await form.waitFor({ state: "visible", timeout });
 
   // Wait for all visible form inputs to be ready (exclude hidden inputs like CSRF tokens)
-  const inputs = form.locator("input:not([type='hidden']), select, textarea, button");
+  const inputs = form.locator(
+    "input:not([type='hidden']), select, textarea, button",
+  );
   const inputCount = await inputs.count();
 
   for (let i = 0; i < inputCount; i++) {

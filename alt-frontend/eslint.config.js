@@ -16,11 +16,19 @@ const resolveFromNextConfig = (request) =>
 
 const js = requireModule(resolveFromEslint("@eslint/js"));
 const globals = requireModule(resolveFromNextConfig("globals"));
-const tsPlugin = requireModule(resolveFromNextConfig("@typescript-eslint/eslint-plugin"));
-const tsParser = requireModule(resolveFromNextConfig("@typescript-eslint/parser"));
+const tsPlugin = requireModule(
+  resolveFromNextConfig("@typescript-eslint/eslint-plugin"),
+);
+const tsParser = requireModule(
+  resolveFromNextConfig("@typescript-eslint/parser"),
+);
 const reactPlugin = requireModule(resolveFromNextConfig("eslint-plugin-react"));
-const importPlugin = requireModule(resolveFromNextConfig("eslint-plugin-import-x"));
-const jsxA11yPlugin = requireModule(resolveFromNextConfig("eslint-plugin-jsx-a11y"));
+const importPlugin = requireModule(
+  resolveFromNextConfig("eslint-plugin-import-x"),
+);
+const jsxA11yPlugin = requireModule(
+  resolveFromNextConfig("eslint-plugin-jsx-a11y"),
+);
 
 const reactRecommended = reactPlugin.configs.flat.recommended;
 const tsRecommended = tsPlugin.configs["flat/recommended-type-checked"];

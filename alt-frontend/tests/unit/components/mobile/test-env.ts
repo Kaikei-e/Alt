@@ -16,9 +16,11 @@ const intersectionObserverMock = vi.fn(() => createObserverStub());
 const resizeObserverMock = vi.fn(() => createObserverStub());
 
 const originalIntersectionObserver = globalThis.IntersectionObserver;
-const originalResizeObserver = (globalThis as typeof globalThis & {
-  ResizeObserver?: typeof ResizeObserver;
-}).ResizeObserver;
+const originalResizeObserver = (
+  globalThis as typeof globalThis & {
+    ResizeObserver?: typeof ResizeObserver;
+  }
+).ResizeObserver;
 
 beforeAll(() => {
   Object.defineProperty(globalThis, "IntersectionObserver", {

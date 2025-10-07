@@ -111,7 +111,10 @@ export class ApiClient {
       if (csrfToken) {
         headers["X-CSRF-Token"] = csrfToken;
       } else if (process.env.NODE_ENV === "development") {
-        console.warn("[ApiClient] CSRF token not available for POST request to", endpoint);
+        console.warn(
+          "[ApiClient] CSRF token not available for POST request to",
+          endpoint,
+        );
       }
 
       const response = await this.makeRequest(

@@ -115,9 +115,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       }) as DocumentFragment | string;
 
       const sanitizedText =
-        typeof fragment === "string"
-          ? fragment
-          : fragment.textContent ?? "";
+        typeof fragment === "string" ? fragment : (fragment.textContent ?? "");
 
       return this.decodeEntitiesSafely(sanitizedText);
     } catch (error) {
@@ -411,7 +409,10 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       }
 
       const maliciousPatterns = /<script|<iframe|onerror=|onload=|javascript:/i;
-      if (maliciousPatterns.test(normalized) || suspiciousPatterns.test(normalized)) {
+      if (
+        maliciousPatterns.test(normalized) ||
+        suspiciousPatterns.test(normalized)
+      ) {
         return "";
       }
 
