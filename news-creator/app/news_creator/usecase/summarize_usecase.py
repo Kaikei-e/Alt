@@ -62,8 +62,8 @@ class SummarizeUsecase:
         if not cleaned_summary:
             raise RuntimeError("LLM returned an empty summary")
 
-        # Enforce 1500 character max as per prompt guidance
-        truncated_summary = cleaned_summary[:1500]
+        # Enforce 500 character max as per prompt guidance
+        truncated_summary = cleaned_summary[:600]
 
         # Build metadata
         metadata = {

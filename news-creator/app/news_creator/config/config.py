@@ -50,7 +50,7 @@ class NewsCreatorConfig:
             self.llm_stop_tokens = ["<end_of_turn>"]
 
         # Summary-specific settings
-        self.summary_num_predict = self._get_int("SUMMARY_NUM_PREDICT", 500)
+        self.summary_num_predict = self._get_int("SUMMARY_NUM_PREDICT", 300)
 
         logger.info(
             "News creator configuration initialized",
