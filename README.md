@@ -405,25 +405,25 @@ graph TB
 ```mermaid
 flowchart TB
     subgraph Default
-        NGX[nginx\n:80]
-        FE[alt-frontend\n:3000]
-        BE[alt-backend\n:9000]
+        NGX[nginx :80]
+        FE[alt-frontend :3000]
+        BE[alt-backend :9000]
         MIGRATE[migrate Atlas init job]
-        DB[(postgres\n:5432)]
-        SEARCHIDX[search-indexer\n:9300]
-        TAGGER[tag-generator\n:9400]
-        MEILI[meilisearch\n:7700]
-        LOGAGG[rask-log-aggregator\n:9600]
-        CLICK[(clickhouse\n:8123/:9009)]
-        KRATOSDB[(kratos-db\n:5433)]
-        KRATOS[kratos\n:4433/:4434]
-        AUTH[auth-hub\n:8888]
+        DB[(postgres :5432)]
+        SEARCHIDX[search-indexer :9300]
+        TAGGER[tag-generator :9400]
+        MEILI[meilisearch :7700]
+        LOGAGG[rask-log-aggregator :9600]
+        CLICK[(clickhouse :8123/:9009)]
+        KRATOSDB[(kratos-db :5433)]
+        KRATOS[kratos :4433/:4434]
+        AUTH[auth-hub :8888]
     end
 
     subgraph Profile_Ollama [Optional profile: ollama]
         OLLAMA_INIT[news-creator-volume-init]
-        NEWS[news-creator\n:11434]
-        PREPROC[pre-processor\n:9200]
+        NEWS[news-creator :11434]
+        PREPROC[pre-processor :9200]
     end
 
     subgraph Profile_Logging [Optional profile: logging]
