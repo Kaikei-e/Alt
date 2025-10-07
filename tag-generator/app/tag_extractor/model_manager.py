@@ -109,26 +109,54 @@ class ModelManager:
     def _load_models(self, config: ModelConfig) -> None:
         """Load ML models (called within lock)."""
         try:
+            # Check if ML dependencies are available
             if SentenceTransformer is None:
-                raise ImportError("SentenceTransformer not available")
+                logger.error(
+                    "SentenceTransformer not available",
+                    help="Install with: pip install sentence-transformers",
+                    check_import="Try: python -c 'import sentence_transformers'"
+                )
+                raise ImportError(
+                    "SentenceTransformer not available. "
+                    "Install with: pip install sentence-transformers"
+                )
             if KeyBERT is None:
-                raise ImportError("KeyBERT not available")
+                logger.error(
+                    "KeyBERT not available",
+                    help="Install with: pip install keybert"
+                )
+                raise ImportError("KeyBERT not available. Install with: pip install keybert")
             if Tagger is None:
-                raise ImportError("Tagger not available")
+                logger.error(
+                    "Tagger (fugashi) not available",
+                    help="Install with: pip install fugashi[unidic-lite]"
+                )
+                raise ImportError("Tagger not available. Install with: pip install fugashi[unidic-lite]")
 
             logger.info("Loading SentenceTransformer model", model_name=config.model_name)
             self._embedder = SentenceTransformer(config.model_name, device=config.device)
+            logger.info("SentenceTransformer loaded successfully")
 
             logger.info("Loading KeyBERT model")
             self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType]
+            logger.info("KeyBERT loaded successfully")
 
             logger.info("Loading Japanese tagger")
             self._ja_tagger = Tagger()
+            logger.info("Japanese tagger loaded successfully")
 
-            logger.info("Models loaded successfully")
+            logger.info("All models loaded successfully")
 
+        except ImportError as e:
+            logger.error("Import error while loading models", error=str(e))
+            # Reset to None so we can retry
+            self._embedder = None
+            self._keybert = None
+            self._ja_tagger = None
+            # Re-raise the original exception
+            raise
         except Exception as e:
-            logger.error("Failed to load models", error=e)
+            logger.error("Unexpected error while loading models", error=str(e), error_type=type(e).__name__)
             # Reset to None so we can retry
             self._embedder = None
             self._keybert = None

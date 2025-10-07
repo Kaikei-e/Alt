@@ -65,8 +65,9 @@ dev = [
     "langdetect>=1.0.9"
 ]
 
-# ML dependencies for testing (not included in production builds)
-test-ml = [
+# ML dependencies for production and testing
+# These are installed separately in Dockerfile to control installation order
+ml = [
     "sentence-transformers>=3.3.0",
     "keybert>=0.8.5",
     "transformers>=4.40.0",
@@ -74,8 +75,9 @@ test-ml = [
     "scikit-learn>=1.5.2"
 ]
 
-# NOTE: ML dependencies removed from core dependencies to prevent inclusion in lock file
-# If needed, install separately: pip install keybert sentence-transformers transformers
+# NOTE: ML dependencies are in a separate group to allow flexible installation
+# In Dockerfile: Install PyTorch from custom index first, then other ML deps
+# For development: uv sync --group ml
 
 [tool.setuptools.packages]
 find = { include = ["tag_generator", "tag_generator.*", "article_fetcher", "article_fetcher.*", "tag_extractor", "tag_extractor.*", "tag_inserter", "tag_inserter.*"] }

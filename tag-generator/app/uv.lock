@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.13"
 
 [[package]]
@@ -1362,7 +1362,7 @@ dev = [
     { name = "ruff" },
     { name = "types-psycopg2" },
 ]
-test-ml = [
+ml = [
     { name = "keybert" },
     { name = "scikit-learn" },
     { name = "sentence-transformers" },
@@ -1398,7 +1398,7 @@ dev = [
     { name = "ruff", specifier = ">=0.12.1" },
     { name = "types-psycopg2", specifier = ">=2.9.21.20250516" },
 ]
-test-ml = [
+ml = [
     { name = "keybert", specifier = ">=0.8.5" },
     { name = "scikit-learn", specifier = ">=1.5.2" },
     { name = "sentence-transformers", specifier = ">=3.3.0" },
