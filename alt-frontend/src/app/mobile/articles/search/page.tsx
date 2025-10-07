@@ -14,25 +14,25 @@ export default function SearchPage() {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Box minHeight="100vh" bg="var(--alt-gradient-bg)" color="white" p={4}>
+    <Box minHeight="100vh" bg="var(--app-bg)" color="var(--foreground)" p={4}>
       <VStack gap={6} align="stretch" maxWidth="600px" mx="auto">
         {/* Header Section */}
         <VStack gap={3} mt={8} mb={2}>
           <Text
             fontSize="3xl"
-            fontWeight="bold"
+            fontWeight="700"
             textAlign="center"
             color="var(--text-primary)"
-            bgGradient="var(--accent-gradient)"
-            bgClip="text"
+            letterSpacing="-0.025em"
           >
             Search Articles
           </Text>
           <Text
             textAlign="center"
-            color="var(--alt-text-secondary)"
+            color="var(--text-secondary)"
             fontSize="md"
             maxWidth="400px"
+            lineHeight="1.7"
           >
             Explore articles from your subscribed feeds
           </Text>
@@ -40,11 +40,11 @@ export default function SearchPage() {
 
         {/* Search Input Section */}
         <Box
-          bg="var(--alt-glass)"
+          bg="var(--surface-bg)"
           p={6}
-          borderRadius="xl"
-          border="1px solid var(--alt-glass-border)"
-          boxShadow="0 8px 32px var(--alt-glass-shadow)"
+          borderRadius="0"
+          border="2px solid var(--surface-border)"
+          boxShadow="var(--shadow-sm)"
         >
           <Suspense fallback={<CircularProgress isIndeterminate />}>
             <SearchArticles
@@ -68,15 +68,17 @@ export default function SearchPage() {
         ) : (
           !error && (
             <Box
-              bg="var(--alt-glass)"
+              bg="var(--surface-bg)"
               p={4}
-              borderRadius="lg"
-              border="1px solid var(--alt-glass-border)"
+              borderRadius="0"
+              border="2px solid var(--surface-border)"
+              boxShadow="var(--shadow-sm)"
             >
               <Text
-                color="var(--alt-text-secondary)"
+                color="var(--text-secondary)"
                 fontSize="sm"
                 textAlign="center"
+                lineHeight="1.7"
               >
                 {query
                   ? `No articles match "${query}". Try different keywords.`
