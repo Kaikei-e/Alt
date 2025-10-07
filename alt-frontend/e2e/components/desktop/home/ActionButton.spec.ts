@@ -12,8 +12,8 @@ test.describe("ActionButton Component - PROTECTED", () => {
       '[data-testid="action-button"]',
       'button:has-text("Add Feed")',
       'a:has-text("Add Feed")',
-      'button',
-      'a[href*="feeds"]'
+      "button",
+      'a[href*="feeds"]',
     ];
 
     let found = false;
@@ -40,8 +40,8 @@ test.describe("ActionButton Component - PROTECTED", () => {
       '[data-testid="action-button"]',
       'button:has-text("Add Feed")',
       'a:has-text("Add Feed")',
-      'button',
-      'a[href*="feeds"]'
+      "button",
+      'a[href*="feeds"]',
     ];
 
     let actionButton = null;
@@ -70,8 +70,8 @@ test.describe("ActionButton Component - PROTECTED", () => {
       '[data-testid="action-button"]',
       'button:has-text("Add Feed")',
       'a:has-text("Add Feed")',
-      'button',
-      'a[href*="feeds"]'
+      "button",
+      'a[href*="feeds"]',
     ];
 
     let actionButton = null;
@@ -94,7 +94,7 @@ test.describe("ActionButton Component - PROTECTED", () => {
 
     // Check if button contains the label text
     const hasLabel = await actionButton.textContent();
-    const hasIcon = await icon.count() > 0;
+    const hasIcon = (await icon.count()) > 0;
 
     // At least one of icon or label should be present
     expect(hasIcon || (hasLabel && hasLabel.includes("Add Feed"))).toBe(true);
@@ -106,8 +106,8 @@ test.describe("ActionButton Component - PROTECTED", () => {
       '[data-testid="action-button"]',
       'button:has-text("Add Feed")',
       'a:has-text("Add Feed")',
-      'button',
-      'a[href*="feeds"]'
+      "button",
+      'a[href*="feeds"]',
     ];
 
     let actionButton = null;

@@ -12,7 +12,7 @@ test.describe("ActivityFeed Component - PROTECTED", () => {
       '[data-testid="activity-feed"]',
       'text="Recent Activity"',
       'text="Activity"',
-      'div:has-text("Activity")'
+      'div:has-text("Activity")',
     ];
 
     let found = false;
@@ -39,7 +39,7 @@ test.describe("ActivityFeed Component - PROTECTED", () => {
       '[data-testid="activity-feed"]',
       'text="Recent Activity"',
       'text="Activity"',
-      'div:has-text("Activity")'
+      'div:has-text("Activity")',
     ];
 
     let activityFeed = null;
