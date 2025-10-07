@@ -162,16 +162,6 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
           initialLimit,
         });
 
-        // Only fetch if authenticated to prevent 401 retry loops
-        if (!isAuthenticated) {
-          console.warn(
-            "[useReadFeeds] User not authenticated, skipping fetch",
-          );
-          setFeeds([]);
-          setHasMore(false);
-          return;
-        }
-
         console.log("[useReadFeeds] Calling getReadFeedsWithCursor");
         const response = await feedsApi.getReadFeedsWithCursor(
           undefined,
@@ -192,9 +182,21 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
           }, 500);
         }
       } catch (err) {
-        setError(err as Error);
-        setHasMore(false);
-        setFeeds([]);
+        const error = err as Error;
+        console.error("[useReadFeeds] Error loading feeds:", error);
+
+        // Handle 404 as empty dataset (no feeds yet) instead of error
+        if (error.message?.includes('404') || error.message?.includes('Not Found')) {
+          console.log("[useReadFeeds] Treating 404 as empty dataset");
+          setFeeds([]);
+          setCursor(undefined);
+          setHasMore(false);
+          setError(null); // Don't show error for empty state
+        } else {
+          setError(error);
+          setHasMore(false);
+          setFeeds([]);
+        }
       } finally {
         setIsLoading(false);
       }

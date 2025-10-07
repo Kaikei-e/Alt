@@ -1,14 +1,16 @@
 "use client";
 
-import { Flex, Text, Box } from "@chakra-ui/react";
+import { Flex, Text, Box, Button } from "@chakra-ui/react";
 import { feedsApi } from "@/lib/api";
 import { Feed } from "@/schema/feed";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import VirtualFeedList from "@/components/mobile/VirtualFeedList";
 import { useRef, useState, useCallback, useMemo, startTransition } from "react";
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
+import { useAuth } from "@/contexts/auth-context";
 import ErrorState from "./_components/ErrorState";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
@@ -36,6 +38,8 @@ const canonicalize = (url: string) => {
 };
 
 export default function FeedsPage() {
+  const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [liveRegionMessage, setLiveRegionMessage] = useState<string>("");
   const [isRetrying, setIsRetrying] = useState(false);
@@ -127,6 +131,67 @@ export default function FeedsPage() {
     rootMargin: "100px 0px", // Trigger loading a bit earlier
     threshold: 0.1,
   });
+
+  // Show auth loading state
+  if (authLoading) {
+    return (
+      <Box minH="100vh" position="relative">
+        <Box
+          p={5}
+          maxW="container.sm"
+          mx="auto"
+          height="100vh"
+          data-testid="feeds-auth-loading"
+        >
+          <Flex direction="column" gap={4}>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <SkeletonFeedCard key={`skeleton-${index}`} />
+            ))}
+          </Flex>
+        </Box>
+        <FloatingMenu />
+      </Box>
+    );
+  }
+
+  // Show authentication required state
+  if (!isAuthenticated) {
+    return (
+      <Box minH="100vh" position="relative">
+        <Flex
+          direction="column"
+          justify="center"
+          align="center"
+          minH="100vh"
+          p={5}
+        >
+          <Box className="glass" p={8} borderRadius="18px" textAlign="center" maxW="400px">
+            <Text fontSize="xl" fontWeight="bold" color="var(--alt-primary)" mb={4}>
+              ログインが必要です
+            </Text>
+            <Text color="var(--alt-text-secondary)" mb={6}>
+              フィードを閲覧するにはログインしてください
+            </Text>
+            <Button
+              onClick={() => router.push('/login')}
+              px={6}
+              py={3}
+              bg="var(--accent-primary)"
+              color="white"
+              borderRadius="full"
+              fontWeight="bold"
+              _hover={{ opacity: 0.9 }}
+              transition="opacity 0.2s"
+              size="lg"
+            >
+              ログイン
+            </Button>
+          </Box>
+        </Flex>
+        <FloatingMenu />
+      </Box>
+    );
+  }
 
   // Show skeleton loading state for immediate visual feedback
   if (isInitialLoading) {
