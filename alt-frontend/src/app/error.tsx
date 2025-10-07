@@ -19,10 +19,7 @@ export default function Error({
       <p className="error-message">
         アプリケーションでエラーが発生しました。もう一度お試しください。
       </p>
-      <button
-        onClick={handleReset}
-        className="error-button"
-      >
+      <button onClick={handleReset} className="error-button">
         もう一度試す
       </button>
       <style jsx>{`

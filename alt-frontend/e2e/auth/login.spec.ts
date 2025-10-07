@@ -20,7 +20,9 @@ test.describe("Login Flow", () => {
     // Verify login form elements are present
     await expect(page.getByLabel("Email")).toBeVisible({ timeout: 10000 });
     await expect(page.getByLabel("Password")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible({
+      timeout: 10000,
+    });
 
     // Perform login using page object
     await loginPage.performLogin(
@@ -51,10 +53,10 @@ test.describe("Login Flow", () => {
     // Check for error message - try multiple selectors
     const errorSelectors = [
       '[data-testid="error-message"]',
-      '.error-message',
+      ".error-message",
       '[role="alert"]',
-      '.text-red-500',
-      '.text-red-600'
+      ".text-red-500",
+      ".text-red-600",
     ];
 
     let errorText = null;

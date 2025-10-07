@@ -27,11 +27,7 @@ const LoadingFallback = () => (
       borderRadius="var(--radius-xl)"
       textAlign="center"
     >
-      <Spinner
-        size="lg"
-        color="var(--accent-primary)"
-        mb={4}
-      />
+      <Spinner size="lg" color="var(--accent-primary)" mb={4} />
       <Text color="var(--text-primary)" fontSize="lg">
         Loading Alt Feeds...
       </Text>

@@ -22,18 +22,13 @@ export default function GlobalError({
         <div className="global-error-container">
           <h1>エラーが発生しました。</h1>
           <p>再試行してください。</p>
-          <button
-            onClick={handleReset}
-            className="global-error-button"
-          >
+          <button onClick={handleReset} className="global-error-button">
             再試行
           </button>
           {process.env.NODE_ENV === "development" && (
             <details className="global-error-details">
               <summary>エラー詳細 (開発環境のみ)</summary>
-              <pre className="global-error-pre">
-                {error.stack}
-              </pre>
+              <pre className="global-error-pre">{error.stack}</pre>
             </details>
           )}
         </div>
