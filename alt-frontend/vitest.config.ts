@@ -38,6 +38,7 @@ export default mergeConfig(
       ],
       setupFiles: ["./vitest.setup.ts"],
       env: {
+        NODE_OPTIONS: "--experimental-global-webcrypto",
         NEXT_PUBLIC_API_BASE_URL: "http://localhost/api",
         NEXT_PUBLIC_IDP_ORIGIN: "https://id.test.example.com",
         NEXT_PUBLIC_KRATOS_PUBLIC_URL: "https://id.test.example.com",
