@@ -85,6 +85,23 @@ describe("AuthContext", () => {
     });
   };
 
+  const consoleSpies: Array<ReturnType<typeof vi.spyOn>> = [];
+  const noop = () => {};
+  consoleSpies.push(
+    vi.spyOn(console, "groupCollapsed").mockImplementation(noop),
+  );
+  consoleSpies.push(vi.spyOn(console, "groupEnd").mockImplementation(noop));
+  consoleSpies.push(vi.spyOn(console, "log").mockImplementation(noop));
+  consoleSpies.push(vi.spyOn(console, "info").mockImplementation(noop));
+  consoleSpies.push(vi.spyOn(console, "debug").mockImplementation(noop));
+  consoleSpies.push(vi.spyOn(console, "warn").mockImplementation(noop));
+  consoleSpies.push(vi.spyOn(console, "error").mockImplementation(noop));
+
+  afterAll(() => {
+    consoleSpies.forEach((spy) => spy.mockRestore());
+    consoleSpies.length = 0;
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
 

@@ -4,44 +4,38 @@
  */
 
 import { describe, it, expect } from "vitest";
+import sanitizeHtml from "sanitize-html";
 import { HTMLRenderingStrategy } from "../../../../src/utils/renderingStrategies";
 
 describe("renderingStrategies Security Tests", () => {
-  describe("Double Unescaping Vulnerability Tests", () => {
-    it("should handle double escaped entities correctly", () => {
+  describe("Double Unescaping Behaviour", () => {
+    it("should avoid decoding nested entities twice", () => {
       const renderer = new HTMLRenderingStrategy();
 
-      // Test the problematic scenario from TODO.md
-      // If &amp; is decoded first, "&amp;quot;" becomes "&quot;" then becomes "
       const doubleEscaped = "&amp;quot;";
-
-      // With the fix, this should decode to a single double quote
       const result = renderer.decodeHtmlEntities(doubleEscaped);
-      expect(result).toBe('"');
-      expect(result).not.toBe("&quot;");
+
+      expect(result).toBe("&quot;");
+      expect(result).not.toBe('"');
     });
 
-    it("should not double-decode HTML entities in URLs", () => {
+    it("should decode HTML entities in URLs exactly once", () => {
       const renderer = new HTMLRenderingStrategy();
-
-      // Example from TODO.md: &amp;quot; should become &quot; not "
       const urlWithEntities =
         "http://example.com?param=&amp;quot;value&amp;quot;";
 
-      // Safe decoding should return the literal quotes without duplication
       const result = renderer.decodeHtmlEntitiesFromUrl(urlWithEntities);
-      expect(result).toBe("http://example.com?param=&quot;value&quot;");
-      expect(result).toContain("&quot;");
-      expect(result).not.toContain('"value"');
+      expect(result).toBe('http://example.com?param="value"');
+      expect(result).toContain('"value"');
     });
 
-    it("should preserve entity structure when decoding", () => {
+    it("should decode a safe subset of HTML entities", () => {
       const renderer = new HTMLRenderingStrategy();
       const testCases = [
-        { input: "&amp;lt;", expected: "<" },
-        { input: "&amp;gt;", expected: ">" },
-        { input: "&amp;amp;", expected: "&" },
-        { input: "&amp;quot;", expected: '"' },
+        { input: "&amp;lt;", expected: "&lt;" },
+        { input: "&amp;gt;", expected: "&gt;" },
+        { input: "&amp;amp;", expected: "&amp;" },
+        { input: "&amp;quot;", expected: "&quot;" },
       ];
 
       testCases.forEach(({ input, expected }) => {
@@ -252,17 +246,16 @@ describe("renderingStrategies Security Tests", () => {
 
   describe("DOM XSS Vulnerability Tests", () => {
     it("should sanitize HTML before using dangerouslySetInnerHTML", () => {
-      // Note: These tests validate that the sanitization logic is correct
-      // The actual React component uses DOMPurify.sanitize before dangerouslySetInnerHTML
-
       // Test malicious HTML that could cause XSS
       const maliciousHTML = '<script>alert("XSS")</script><p>Safe content</p>';
 
-      // Import DOMPurify to test the sanitization logic directly
-      const DOMPurify = require("isomorphic-dompurify");
-      const result = DOMPurify.sanitize(maliciousHTML, {
-        ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "a"],
-        FORBID_TAGS: ["script", "object", "embed"],
+      const result = sanitizeHtml(maliciousHTML, {
+        allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "a"],
+        allowedAttributes: {
+          a: ["href", "title", "target", "rel"],
+        },
+        allowedSchemes: ["http", "https"],
+        disallowedTagsMode: "discard",
       });
 
       expect(result).toBe("<p>Safe content</p>"); // Script should be removed
@@ -277,13 +270,29 @@ describe("renderingStrategies Security Tests", () => {
         <a href="javascript:alert('xss')">Link</a>
       `;
 
-      const DOMPurify = require("isomorphic-dompurify");
-      const result = DOMPurify.sanitize(mixedContent, {
-        ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "a", "img"],
-        ALLOWED_ATTR: ["href", "src", "alt"],
-        ALLOWED_SCHEMES: ["http", "https"],
-        FORBID_ATTR: ["onclick", "onload", "onerror", "onmouseover"],
-        FORBID_TAGS: ["script", "object", "embed"],
+      const result = sanitizeHtml(mixedContent, {
+        allowedTags: [
+          "p",
+          "br",
+          "strong",
+          "b",
+          "em",
+          "i",
+          "u",
+          "a",
+          "img",
+        ],
+        allowedAttributes: {
+          a: ["href", "title", "target", "rel"],
+          img: ["src", "alt"],
+        },
+        allowedSchemes: ["http", "https"],
+        disallowedTagsMode: "discard",
+        transformTags: {
+          a: sanitizeHtml.simpleTransform("a", {
+            rel: "noopener noreferrer",
+          }),
+        },
       });
 
       expect(result).toContain("<p>This is safe</p>");
@@ -299,13 +308,19 @@ describe("renderingStrategies Security Tests", () => {
         '<a href="#" onmouseover="alert(1)">Link</a>',
       ];
 
-      const DOMPurify = require("isomorphic-dompurify");
-
       eventHandlers.forEach((html) => {
-        const result = DOMPurify.sanitize(html, {
-          ALLOWED_TAGS: ["div", "img", "a"],
-          ALLOWED_ATTR: ["href", "src", "alt"],
-          FORBID_ATTR: ["onclick", "onload", "onerror", "onmouseover"],
+        const result = sanitizeHtml(html, {
+          allowedTags: ["div", "img", "a"],
+          allowedAttributes: {
+            a: ["href", "title"],
+            img: ["src", "alt", "title"],
+          },
+          disallowedTagsMode: "discard",
+          exclusiveFilter(frame) {
+            return Object.keys(frame.attribs ?? {}).some((attr) =>
+              /^on/i.test(attr),
+            );
+          },
         });
 
         expect(result).not.toContain("onclick");

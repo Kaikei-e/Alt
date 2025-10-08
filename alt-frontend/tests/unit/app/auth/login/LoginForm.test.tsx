@@ -101,15 +101,22 @@ const createSubmitNode = () => ({
 });
 
 describe("LoginForm", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn> | null = null;
+
   beforeEach(async () => {
     vi.clearAllMocks();
     // デフォルトのモック動作を設定
     const { mockGetLoginFlow } = await getMocks();
     mockGetLoginFlow.mockImplementation(() => new Promise(() => {})); // pending promise
+
+    // ネットワークエラー時の console.error をテスト出力に混ぜない
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     cleanup();
+    consoleErrorSpy?.mockRestore();
+    consoleErrorSpy = null;
   });
 
   describe("初期状態", () => {

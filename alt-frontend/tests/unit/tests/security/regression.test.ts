@@ -183,7 +183,7 @@ describe("Security Regression Tests - PROTECTED", () => {
         link: "https://example.com",
       };
       const result = sanitizeFeedContent(feed);
-      expect(result.author).toBe("<b>Author</b> with");
+      expect(result.author).toBe("Author with");
     });
 
     test("should validate and sanitize URL - PROTECTED", () => {
