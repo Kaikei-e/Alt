@@ -57,3 +57,4 @@ migrations-atlas/migrations/atlas.sum
 auth-service/deployments/k8s/base/kratos-secrets.yaml
 .serena/
 alt-frontend/playwright-report/index.html
+kratos/kratos.yml
