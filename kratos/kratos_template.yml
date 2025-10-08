@@ -1,0 +1,152 @@
+version: v1.2.0
+
+dsn: ${DSN}
+
+serve:
+  public:
+    base_url: https://example.com/ory
+    # Trust X-Forwarded-* headers from Nginx reverse proxy
+    request_log:
+      disable_for_health: true
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost
+        - http://localhost:3000
+        - https://example.com
+      allowed_methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+      allowed_headers: [Authorization, Content-Type, Accept, Cookie, X-Csrf-Token, X-Session-Token, X-Requested-With]
+      allow_credentials: true
+      exposed_headers: [Content-Type, Set-Cookie, X-Session-Token]
+      # Allow credentials is critical for cookie-based authentication
+      max_age: 3600
+
+  admin:
+    base_url: http://kratos-admin:4434/
+
+selfservice:
+  default_browser_return_url: https://example.com/
+  allowed_return_urls:
+    - https://example.com/
+    - https://example.com/home
+    - https://example.com/desktop/home
+    - https://example.com/auth/login
+    - http://localhost/
+    - http://localhost/home
+    - http://localhost/desktop/home
+    - http://localhost/auth/login
+
+  methods:
+    password:
+      enabled: true
+      config:
+        haveibeenpwned_enabled: false
+        max_breaches: 0
+        min_password_length: 6
+        identifier_similarity_check_enabled: false
+
+    totp:
+      config:
+        issuer: Alt RSS Reader
+      enabled: true
+
+    lookup_secret:
+      enabled: true
+
+    link:
+      enabled: true
+      config:
+        lifespan: 1h
+
+    code:
+      enabled: true
+      config:
+        lifespan: 15m
+
+  flows:
+    error:
+      ui_url: https://example.com/auth/error
+
+    settings:
+      ui_url: https://example.com/auth/settings
+      privileged_session_max_age: 10m
+      required_aal: highest_available
+
+    recovery:
+      enabled: true
+      ui_url: https://example.com/auth/recovery
+      use: code
+
+    verification:
+      enabled: true
+      ui_url: https://example.com/auth/verification
+      use: code
+      after:
+        default_browser_return_url: https://example.com/
+
+    logout:
+      after:
+        default_browser_return_url: https://example.com/
+
+    login:
+      ui_url: https://example.com/auth/login
+      lifespan: 30m
+      after:
+        default_browser_return_url: https://example.com/
+
+    registration:
+      enabled: true
+      lifespan: 30m
+      ui_url: https://example.com/auth/register
+      after:
+        default_browser_return_url: https://example.com/
+        password:
+          hooks:
+            - hook: show_verification_ui
+
+log:
+  level: info
+  format: json
+  leak_sensitive_values: false
+  # Enable detailed logging for debugging authentication issues
+  redaction_text: "***REDACTED***"
+
+secrets:
+  cookie:
+    - 0123456789abcdef0123456789abcdef
+  cipher:
+    - fedcba9876543210fedcba9876543210
+
+ciphers:
+  algorithm: xchacha20-poly1305
+
+hashers:
+  algorithm: bcrypt
+  bcrypt:
+    cost: 12
+
+identity:
+  default_schema_id: default
+  schemas:
+    - id: default
+      url: file:///etc/config/kratos/identity.schema.json
+
+courier:
+  smtp:
+    connection_uri: smtps://kratos@alt.example.com:smtp_password_here@smtp.alt.example.com:587/?skip_ssl_verify=false
+    from_address: noreply@alt.example.com
+    from_name: Alt RSS Reader
+
+session:
+  lifespan: 720h
+  cookie:
+    domain: .example.com  # Dot prefix allows cookies on all subdomains
+    persistent: true
+    same_site: Lax
+    path: /
+    # Note: Kratos v1.2.0 automatically sets Secure flag based on X-Forwarded-Proto header
+    # When X-Forwarded-Proto is 'https', cookies will have Secure flag set
+  whoami:
+    required_aal: aal1
+  # Ensure sessions survive page reloads
+  earliest_possible_extend: 1h
