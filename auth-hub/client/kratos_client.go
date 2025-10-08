@@ -11,8 +11,9 @@ import (
 
 // Identity represents user identity information from Kratos
 type Identity struct {
-	ID    string
-	Email string
+	ID        string
+	Email     string
+	CreatedAt time.Time
 }
 
 // KratosClient handles communication with Ory Kratos
@@ -29,8 +30,9 @@ type kratosSessionResponse struct {
 }
 
 type kratosIdentity struct {
-	ID     string         `json:"id"`
-	Traits map[string]any `json:"traits"`
+	ID        string         `json:"id"`
+	Traits    map[string]any `json:"traits"`
+	CreatedAt time.Time      `json:"created_at"`
 }
 
 // NewKratosClient creates a new Kratos API client
@@ -105,7 +107,8 @@ func (c *KratosClient) Whoami(ctx context.Context, cookie string) (*Identity, er
 	}
 
 	return &Identity{
-		ID:    sessionResp.Identity.ID,
-		Email: email,
+		ID:        sessionResp.Identity.ID,
+		Email:     email,
+		CreatedAt: sessionResp.Identity.CreatedAt,
 	}, nil
 }
