@@ -676,24 +676,16 @@ const useEnhancedInfiniteScroll = (
       const scrollContainer = scrollContainerRef.current;
 
       if (!sentinelElement) {
-        console.log("🔍 Sentinel element not found, retrying...");
         setTimeout(setupObserver, 100);
         return;
       }
 
-      console.log("🚀 Setting up IntersectionObserver for infinite scroll");
 
       observer = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
-            console.log("👀 Intersection observed:", {
-              isIntersecting: entry.isIntersecting,
-              intersectionRatio: entry.intersectionRatio,
-              boundingClientRect: entry.boundingClientRect,
-            });
 
             if (entry.isIntersecting) {
-              console.log("✅ Sentinel is visible, triggering callback");
               callback();
             }
           });
@@ -706,7 +698,6 @@ const useEnhancedInfiniteScroll = (
       );
 
       observer.observe(sentinelElement);
-      console.log("👁️ Observer started watching sentinel element");
     };
 
     setupObserver();
@@ -714,7 +705,6 @@ const useEnhancedInfiniteScroll = (
     return () => {
       if (observer) {
         observer.disconnect();
-        console.log("🛑 IntersectionObserver disconnected");
       }
     };
   }, [callback, sentinelRef, scrollContainerRef, resetKey]);
@@ -779,16 +769,9 @@ export default function DesktopTimeline() {
 
   // Handle infinite scroll
   const handleLoadMore = useCallback(() => {
-    console.log("🔄 Load more triggered:", {
-      hasMore,
-      isLoading,
-      feedCount: feeds?.length,
-    });
     if (hasMore && !isLoading) {
-      console.log("✅ Conditions met, calling loadMore");
       loadMore();
     } else {
-      console.log("❌ Conditions not met:", { hasMore, isLoading });
     }
   }, [hasMore, isLoading, loadMore, feeds?.length]);
 
@@ -802,13 +785,6 @@ export default function DesktopTimeline() {
 
   // Debug effect
   useEffect(() => {
-    console.log("📊 Timeline state:", {
-      feedsCount: feeds?.length || 0,
-      visibleFeedsCount: visibleFeeds.length,
-      hasMore,
-      isLoading,
-      isInitialLoading,
-    });
   }, [
     feeds?.length,
     visibleFeeds.length,

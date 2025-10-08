@@ -121,7 +121,6 @@ function safeRegexTest(content: string, patterns: RegExp[]): boolean {
 
       // If regex takes too long (potential ReDoS), assume no match
       if (duration > 10) {
-        console.warn(`Regex took too long: ${duration}ms`);
         return false;
       }
 
@@ -209,7 +208,6 @@ export const needsSanitization = (content: string): boolean => {
     return content !== sanitized;
   } catch (error) {
     // If sanitize-html fails, assume content needs sanitization for safety
-    console.warn("sanitize-html sanitization failed:", error);
     return true;
   }
 };

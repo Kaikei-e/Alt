@@ -20,7 +20,6 @@ export default async function Page({
 
   if (sessionCookie && !flow) {
     // User is already logged in, redirect to return_to
-    console.log("[LoginPage] User already has session cookie, redirecting to:", returnTo);
     redirect(returnTo);
   }
 

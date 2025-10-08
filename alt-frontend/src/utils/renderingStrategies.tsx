@@ -97,7 +97,6 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 
       return this.decodeEntitiesSafely(sanitizedText);
     } catch (error) {
-      console.warn("sanitize-html decoding fallback:", error);
       return this.decodeEntitiesSafely(str);
     }
   }
@@ -183,7 +182,6 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
         // Performance: Add URL validation for common image formats
         const validImagePath = this.isValidImagePath(url.pathname);
         if (!validImagePath) {
-          console.debug("Skipping proxy for non-image URL:", imageUrl);
           return imageUrl;
         }
 
@@ -194,11 +192,6 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 
         // Debug logging in development
         if (process.env.NODE_ENV === "development") {
-          console.debug("Converting image URL to POST API proxy:", {
-            original: imageUrl,
-            proxy: proxyImageUrl,
-            domain: url.hostname,
-          });
         }
 
         return proxyImageUrl;
@@ -209,13 +202,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
     } catch (error) {
       // Enhanced error handling with different error types
       if (error instanceof TypeError && error.message.includes("Invalid URL")) {
-        console.warn("Invalid URL format for proxy conversion:", imageUrl);
       } else {
-        console.warn(
-          "Failed to parse image URL for proxy conversion:",
-          imageUrl,
-          error,
-        );
       }
       return imageUrl;
     }
@@ -399,10 +386,6 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
 
       return normalized;
     } catch (error) {
-      console.warn(
-        "Security warning: URL decoding failed, returning empty string",
-        error,
-      );
       return "";
     }
   }
@@ -581,10 +564,6 @@ const HTMLContentRenderer: React.FC<HTMLContentRendererProps> = ({ html }) => {
 
       // Error handler with fallback
       const handleImageError = () => {
-        console.warn(
-          "Proxy image load failed, falling back to original URL:",
-          originalUrl,
-        );
         if (fallbackSrc) {
           img.src = fallbackSrc;
         }
@@ -743,11 +722,6 @@ async function loadProxyImage(
 
     // Debug logging in development
     if (process.env.NODE_ENV === "development") {
-      console.debug("Successfully loaded proxy image:", {
-        original: originalUrl,
-        size: imageBlob.size,
-        type: imageBlob.type,
-      });
     }
 
     // Set up cleanup for object URL (CSP compliant)

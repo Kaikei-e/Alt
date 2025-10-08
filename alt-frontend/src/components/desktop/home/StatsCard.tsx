@@ -41,7 +41,6 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   const colorVar = getColorVariable(color);
 
   // Debug logging
-  console.log("StatsCard props:", { trend, trendLabel, isLoading });
 
   return (
     <Box

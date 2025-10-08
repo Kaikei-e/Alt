@@ -157,20 +157,11 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
         setIsLoading(true);
         setError(null);
 
-        console.log("[useReadFeeds] Initial load started", {
-          isAuthenticated,
-          initialLimit,
-        });
 
-        console.log("[useReadFeeds] Calling getReadFeedsWithCursor");
         const response = await feedsApi.getReadFeedsWithCursor(
           undefined,
           initialLimit,
         );
-        console.log("[useReadFeeds] Response received:", {
-          dataLength: response.data.length,
-          hasNextCursor: !!response.next_cursor,
-        });
         setFeeds(response.data);
         setCursor(response.next_cursor || undefined);
         setHasMore(response.next_cursor !== null);
@@ -187,7 +178,6 @@ export const useReadFeeds = (initialLimit: number = 20): UseReadFeedsResult => {
 
         // Handle 404 as empty dataset (no feeds yet) instead of error
         if (error.message?.includes('404') || error.message?.includes('Not Found')) {
-          console.log("[useReadFeeds] Treating 404 as empty dataset");
           setFeeds([]);
           setCursor(undefined);
           setHasMore(false);

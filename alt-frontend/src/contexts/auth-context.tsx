@@ -436,13 +436,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // Return cached result if still valid
       if (sessionCache && now - sessionCache.timestamp < CACHE_DURATION) {
-        console.info("[AUTH-CONTEXT] Returning cached session data");
         trackPerformanceMetric("cacheHit");
         return sessionCache.user;
       }
 
       // Fetch fresh data
-      console.info("[AUTH-CONTEXT] Fetching fresh session data");
       const user = await authAPI.getCurrentUser();
       sessionCache = { user, timestamp: now };
 
@@ -507,9 +505,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
               updated.totalRequests) *
             100
           ).toFixed(1);
-          console.info(
-            `🚀 [AUTH-CONTEXT] Performance: ${avoidanceRate}% API calls avoided (${updated.apiCallsAvoided + updated.cacheHits}/${updated.totalRequests})`,
-          );
         }
 
         return updated;
@@ -521,7 +516,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // 🧹 X24: Enhanced session management utilities
   const clearSessionCache = useCallback(() => {
     sessionCache = null;
-    console.info("[AUTH-CONTEXT] Session cache cleared");
   }, []);
 
   // 🚀 X24 Phase 3: 2025 Security integrity check
@@ -542,10 +536,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }));
 
       securityCheckRef.current = now;
-      console.info("[AUTH-CONTEXT] Security check completed", {
-        sessionIntegrity: hasValidSession === authState.isAuthenticated,
-        timestamp: now.toISOString(),
-      });
     }
   }, [hasSessionIndicators, authState.isAuthenticated]);
 
@@ -557,16 +547,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       trackPerformanceMetric("totalRequest");
 
       if (hasSessionIndicators()) {
-        console.info(
-          "[AUTH-CONTEXT] Session indicators found, checking auth status",
-        );
         if (isMounted) {
           await checkAuthStatus();
         }
       } else {
-        console.info(
-          "[AUTH-CONTEXT] No session indicators found, setting unauthenticated state",
-        );
         trackPerformanceMetric("apiAvoided");
         // No session indicators - set unauthenticated state without API call
         if (isMounted) {
@@ -605,7 +589,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         );
 
         if (minutesSinceLastActivity >= authState.sessionTimeout) {
-          console.warn("[AUTH-CONTEXT] Session timeout detected, logging out");
           logout();
         } else {
           // Perform periodic security check
@@ -633,11 +616,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const isExpiring = timeToExpiry < 5 * 60 * 1000; // 5分以内に期限切れ
 
         if (isExpiring && !flowState.isExpired) {
-          console.warn("🔄 [FLOW-MANAGER] Registration flow expiring soon:", {
-            flowId: flowState.registrationFlow.id,
-            expiresAt: flowState.expiresAt.toISOString(),
-            timeToExpiry: `${Math.round(timeToExpiry / 1000)}s`,
-          });
 
           setFlowState((prev) => ({ ...prev, isExpired: true }));
         }
@@ -649,11 +627,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const isExpiring = timeToExpiry < 5 * 60 * 1000; // 5分以内に期限切れ
 
         if (isExpiring && !flowState.isExpired) {
-          console.warn("🔄 [FLOW-MANAGER] Login flow expiring soon:", {
-            flowId: flowState.loginFlow.id,
-            expiresAt: flowState.expiresAt.toISOString(),
-            timeToExpiry: `${Math.round(timeToExpiry / 1000)}s`,
-          });
 
           setFlowState((prev) => ({ ...prev, isExpired: true }));
         }
@@ -689,10 +662,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const isFlowValid = useCallback(
     (flow: RegistrationFlow | LoginFlow | null): boolean => {
       if (!flow || !flow.expiresAt) {
-        console.log(
-          "🔍 [FLOW-MANAGER] Flow invalid: missing flow or expiresAt",
-          { flow: !!flow, expiresAt: flow?.expiresAt },
-        );
         return false;
       }
 
@@ -700,13 +669,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const expiresAt = new Date(flow.expiresAt);
       const isValid = expiresAt > now;
 
-      console.log("🔍 [FLOW-MANAGER] Flow validity check:", {
-        flowId: flow.id,
-        expiresAt: expiresAt.toISOString(),
-        now: now.toISOString(),
-        isValid,
-        timeToExpiry: `${Math.round((expiresAt.getTime() - now.getTime()) / 1000)}s`,
-      });
 
       return isValid;
     },
@@ -717,28 +679,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const ensureValidRegistrationFlow =
     useCallback(async (): Promise<RegistrationFlow> => {
       const flowManagerId = `REG-FLOW-${Date.now()}`;
-      console.log(
-        `🔄 [FLOW-MANAGER] Ensuring valid registration flow - ${flowManagerId}`,
-      );
 
       // 既存フローの有効性チェック
       if (
         flowState.registrationFlow &&
         isFlowValid(flowState.registrationFlow)
       ) {
-        console.log(
-          `✅ [FLOW-MANAGER] Current registration flow is valid - ${flowManagerId}`,
-          {
-            flowId: flowState.registrationFlow.id,
-            expiresAt: flowState.registrationFlow.expiresAt,
-          },
-        );
         return flowState.registrationFlow;
       }
 
-      console.log(
-        `🔄 [FLOW-MANAGER] Registration flow expired or invalid, regenerating... - ${flowManagerId}`,
-      );
 
       try {
         const newFlow = await authAPI.initiateRegistration();
@@ -751,14 +700,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
           lastRefreshTime: new Date(),
         }));
 
-        console.log(
-          `✅ [FLOW-MANAGER] New registration flow created - ${flowManagerId}`,
-          {
-            flowId: newFlow.id,
-            expiresAt: newFlow.expiresAt,
-            timeToExpiry: `${Math.round((new Date(newFlow.expiresAt).getTime() - Date.now()) / 1000)}s`,
-          },
-        );
 
         return newFlow;
       } catch (error) {
@@ -773,25 +714,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // 🔄 Phase 3: 有効なログインフロー確保
   const ensureValidLoginFlow = useCallback(async (): Promise<LoginFlow> => {
     const flowManagerId = `LOGIN-FLOW-${Date.now()}`;
-    console.log(
-      `🔄 [FLOW-MANAGER] Ensuring valid login flow - ${flowManagerId}`,
-    );
 
     // 既存フローの有効性チェック
     if (flowState.loginFlow && isFlowValid(flowState.loginFlow)) {
-      console.log(
-        `✅ [FLOW-MANAGER] Current login flow is valid - ${flowManagerId}`,
-        {
-          flowId: flowState.loginFlow.id,
-          expiresAt: flowState.loginFlow.expiresAt,
-        },
-      );
       return flowState.loginFlow;
     }
 
-    console.log(
-      `🔄 [FLOW-MANAGER] Login flow expired or invalid, regenerating... - ${flowManagerId}`,
-    );
 
     try {
       const newFlow = await authAPI.initiateLogin();
@@ -804,14 +732,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         lastRefreshTime: new Date(),
       }));
 
-      console.log(
-        `✅ [FLOW-MANAGER] New login flow created - ${flowManagerId}`,
-        {
-          flowId: newFlow.id,
-          expiresAt: newFlow.expiresAt,
-          timeToExpiry: `${Math.round((new Date(newFlow.expiresAt).getTime() - Date.now()) / 1000)}s`,
-        },
-      );
 
       return newFlow;
     } catch (error) {
@@ -865,9 +785,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
             error.message.includes("Unauthorized")));
 
       if (is401Error) {
-        console.warn(
-          "[AUTH-CONTEXT] 401/Unauthorized detected in checkAuthStatus - middleware will handle redirect",
-        );
       }
 
       // 再試行可能なエラーで再試行回数が3回未満の場合は再試行
@@ -906,11 +823,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         throw new Error("Login flow initialization failed: missing flow ID");
       }
 
-      console.log("[AUTH-CONTEXT] Using valid login flow:", {
-        flowId: loginFlow.id,
-        expiresAt: loginFlow.expiresAt,
-        timestamp: new Date().toISOString(),
-      });
 
       // Complete login with credentials
       const user = await authAPI.completeLogin(loginFlow.id, email, password);
@@ -929,10 +841,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         lastActivity: new Date(),
       }));
 
-      console.log("[AUTH-CONTEXT] Login successful:", {
-        userId: user.id,
-        timestamp: new Date().toISOString(),
-      });
 
       // 🚀 X24 Phase 3: Security check after successful login
       performSecurityCheck();
@@ -967,11 +875,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         );
       }
 
-      console.log("[AUTH-CONTEXT] Using valid registration flow:", {
-        flowId: registrationFlow.id,
-        expiresAt: registrationFlow.expiresAt,
-        timestamp: new Date().toISOString(),
-      });
 
       // 🚀 X24 Phase 3: Enhanced data sanitization for security
       const sanitizedEmail = email.trim().toLowerCase();
@@ -999,10 +902,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         lastActivity: new Date(),
       }));
 
-      console.log("[AUTH-CONTEXT] Registration successful:", {
-        userId: user.id,
-        timestamp: new Date().toISOString(),
-      });
 
       // 🚀 X24 Phase 3: Security check after successful registration
       performSecurityCheck();
@@ -1092,7 +991,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         error: null,
         lastActivity: null,
       }));
-      console.warn("Logout API failed, but local state cleared:", error);
     }
   };
 
@@ -1143,10 +1041,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const debugDiagnoseRegistrationFlow = async (): Promise<any> => {
     const diagnosticId = `DIAG-CTX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    console.groupCollapsed(
-      `🔬 [AUTH-CONTEXT-DIAGNOSTIC] Full System Diagnosis ${diagnosticId}`,
-    );
-    console.log("🚀 Starting comprehensive registration flow diagnosis...");
 
     try {
       // システム状態の診断
@@ -1174,7 +1068,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         lastAction: lastAction || null,
       };
 
-      console.log("📊 Current System State:", systemState);
 
       // バックエンド診断の実行 (mock for development)
       const backendDiagnostic = {
@@ -1182,7 +1075,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         flowTest: { testStatus: "SUCCESS" },
         databaseTest: { isConnected: true },
       };
-      console.log("🔧 Backend Diagnostic Results (mock):", backendDiagnostic);
 
       // 統合診断結果
       const fullDiagnostic = {
@@ -1196,26 +1088,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
         ),
       };
 
-      console.log("🎯 Complete Diagnostic Results:", fullDiagnostic);
-      console.groupEnd();
 
       return fullDiagnostic;
     } catch (error) {
       console.error("❌ Diagnostic failed:", error);
-      console.groupEnd();
       throw error;
     }
   };
 
   const debugCaptureNextRequest = (enable: boolean) => {
     setDebugCaptureEnabled(enable);
-    console.log(`🎥 Request capture ${enable ? "ENABLED" : "DISABLED"}`);
 
     if (enable) {
-      console.log("🔍 Next registration request will be fully captured");
-      console.log(
-        "💡 Use authAPI.captureKratosResponse() directly for manual capture",
-      );
     }
   };
 

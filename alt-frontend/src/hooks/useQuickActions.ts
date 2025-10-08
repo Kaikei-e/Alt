@@ -12,7 +12,6 @@ export const useQuickActions = () => {
         color: "var(--accent-primary)",
         action: () => {
           // フィルターを未読に設定
-          console.log("Show unread feeds");
         },
       },
       {
@@ -23,7 +22,6 @@ export const useQuickActions = () => {
         color: "var(--accent-secondary)",
         action: () => {
           // ブックマーク画面に移動
-          console.log("Show bookmarks");
         },
       },
       {
@@ -34,7 +32,6 @@ export const useQuickActions = () => {
         color: "var(--accent-tertiary)",
         action: () => {
           // 読書キューを表示
-          console.log("Show reading queue");
         },
       },
       {
@@ -44,7 +41,6 @@ export const useQuickActions = () => {
         color: "var(--alt-success)",
         action: () => {
           // 全て既読にマーク
-          console.log("Mark all as read");
         },
       },
     ],

@@ -40,13 +40,9 @@ export class AuthInterceptor {
       return response;
     }
 
-    console.warn("[AUTH] 401 Unauthorized detected");
 
     // Server-side execution check (critical for Next.js App Directory compatibility)
     if (typeof window === "undefined") {
-      console.warn(
-        "[AUTH] Server-side 401 detected, letting error propagate for SSR",
-      );
       return response;
     }
 
@@ -61,7 +57,6 @@ export class AuthInterceptor {
         });
 
         if (recheckResponse.ok) {
-          console.log("[AUTH] Recheck succeeded, retrying original request");
           // ノイズ401ならリトライ - retry the original request
           return fetch(originalUrl, {
             ...originalOptions,
@@ -69,12 +64,10 @@ export class AuthInterceptor {
           });
         }
       } catch (recheckError) {
-        console.warn("[AUTH] Recheck failed:", recheckError);
       }
     }
 
     // ここで即遷移しない。ページ上部に「再ログインしてね」バナーを出すだけ。
-    console.log("[AUTH] Showing login banner instead of redirecting");
     this.config.onAuthRequired();
 
     // Return a special response to indicate authentication issue without redirect

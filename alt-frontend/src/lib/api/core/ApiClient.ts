@@ -41,14 +41,12 @@ export class ApiClient {
     const cacheKey = this.cacheManager.getCacheKey(endpoint);
 
     if (process.env.NODE_ENV === "development") {
-      console.log(`[ApiClient] GET request to: ${endpoint}`);
     }
 
     // Check cache first
     const cachedData = this.cacheManager.get<T>(cacheKey);
     if (cachedData) {
       if (process.env.NODE_ENV === "development") {
-        console.log(`[ApiClient] Cache HIT for: ${endpoint}`);
       }
       return cachedData;
     }
@@ -56,13 +54,11 @@ export class ApiClient {
     // Check for pending request to avoid duplicate calls
     if (this.pendingRequests.has(cacheKey)) {
       if (process.env.NODE_ENV === "development") {
-        console.log(`[ApiClient] Pending request found for: ${endpoint}`);
       }
       return this.pendingRequests.get(cacheKey);
     }
 
     if (process.env.NODE_ENV === "development") {
-      console.log(`[ApiClient] Making fresh request to: ${endpoint}`);
     }
 
     try {
@@ -125,10 +121,6 @@ export class ApiClient {
       if (csrfToken) {
         headers["X-CSRF-Token"] = csrfToken;
       } else if (process.env.NODE_ENV === "development") {
-        console.warn(
-          "[ApiClient] CSRF token not available for POST request to",
-          endpoint,
-        );
       }
 
       const response = await this.makeRequest(
@@ -282,13 +274,7 @@ export class ApiClient {
       // Development logging to help debug authentication issues
       if (process.env.NODE_ENV === "development") {
         if (Object.keys(headers).length > 0) {
-          console.log("[ApiClient] Identity headers resolved:", {
-            hasUserId: !!headers["X-Alt-User-Id"],
-            hasTenantId: !!headers["X-Alt-Tenant-Id"],
-            headerCount: Object.keys(headers).length,
-          });
         } else {
-          console.warn("[ApiClient] No identity headers available - user may not be authenticated");
         }
       }
 

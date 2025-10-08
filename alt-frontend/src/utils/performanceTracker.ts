@@ -27,7 +27,6 @@ export class SimplePerformanceTracker {
 
     // 開発環境でのみログ出力
     if (process.env.NODE_ENV === "development") {
-      console.log("Performance metrics:", fullMetrics);
     }
   }
 

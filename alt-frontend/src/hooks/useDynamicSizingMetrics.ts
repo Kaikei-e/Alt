@@ -43,19 +43,10 @@ export const useDynamicSizingMetrics = (
       const metrics = metricsRef.current;
 
       if (process.env.NODE_ENV === "development") {
-        console.log("Dynamic Sizing Metrics:", {
-          ...metrics,
-          itemCount,
-          averageLayoutShiftPerItem: metrics.layoutShiftCount / itemCount,
-        });
       }
 
       // 本番環境での監視（内部ログのみ）
       if (process.env.NODE_ENV === "production") {
-        console.log("Dynamic Sizing Metrics:", {
-          ...metrics,
-          itemCount,
-        });
       }
     }, 30000); // 30秒ごと
 

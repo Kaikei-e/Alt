@@ -151,7 +151,6 @@ export const useURLFilters = (
     } else {
       // Fallback: copy to clipboard
       navigator.clipboard?.writeText(currentURL).then(() => {
-        console.log("URL copied to clipboard");
       });
     }
   }, []);

@@ -117,8 +117,6 @@ export const FeedDetails = ({
         detailsPromise,
       ]);
 
-      console.log("Summary response:", summary);
-      console.log("Details response:", details);
 
       // Check if summary has valid content
       const hasValidSummary =
@@ -131,18 +129,15 @@ export const FeedDetails = ({
 
       if (hasValidSummary) {
         setArticleSummary(summary);
-        console.log("Setting article summary:", summary);
       }
 
       if (hasValidDetails) {
         setFeedDetails(details);
-        console.log("Setting feed details:", details);
       }
 
       // If neither API call succeeded with valid content, show error
       if (!hasValidSummary && !hasValidDetails) {
         setError("Unable to fetch article content");
-        console.log("No valid content from either API");
       }
     } catch (err) {
       console.error("Unexpected error:", err);

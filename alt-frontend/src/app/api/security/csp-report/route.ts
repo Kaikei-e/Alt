@@ -5,15 +5,6 @@ export async function POST(request: NextRequest) {
     const report = await request.json();
 
     // CSP違反をログに記録
-    console.warn("CSP Violation Report:", {
-      timestamp: new Date().toISOString(),
-      report: report,
-      userAgent: request.headers.get("user-agent"),
-      ip:
-        request.headers.get("x-forwarded-for") ||
-        request.headers.get("x-real-ip") ||
-        "unknown",
-    });
 
     // 本番環境では外部監視サービスに送信
     if (process.env.NODE_ENV === "production") {

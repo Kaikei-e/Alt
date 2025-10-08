@@ -141,9 +141,6 @@ export function useAuthNavigation(currentPathname?: string): NavigationState {
       // Check role requirement
       if (requiredRole && (!user || user.role !== requiredRole)) {
         // Show access denied message or redirect
-        console.warn(
-          `Access denied. Required role: ${requiredRole}, User role: ${user?.role}`,
-        );
         return;
       }
 
@@ -331,7 +328,6 @@ export function useNavigationBadges() {
   const updateBadge = useCallback((itemId: string, count: number) => {
     // Update badge count for specific navigation item
     // This would typically update global state or send to API
-    console.log(`Updating badge for ${itemId}: ${count}`);
   }, []);
 
   const clearBadge = useCallback(

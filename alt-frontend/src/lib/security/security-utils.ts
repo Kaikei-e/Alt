@@ -204,7 +204,6 @@ export class SecureStorage {
       const storageValue = encrypt ? this.encrypt(value) : value;
       localStorage.setItem(storageKey, storageValue);
     } catch (error) {
-      console.warn("Failed to store item securely:", error);
     }
   }
 
@@ -215,7 +214,6 @@ export class SecureStorage {
       if (!value) return null;
       return decrypt ? this.decrypt(value) : value;
     } catch (error) {
-      console.warn("Failed to retrieve item securely:", error);
       return null;
     }
   }
@@ -225,7 +223,6 @@ export class SecureStorage {
       const storageKey = this.prefix + key;
       localStorage.removeItem(storageKey);
     } catch (error) {
-      console.warn("Failed to remove item securely:", error);
     }
   }
 
@@ -240,7 +237,6 @@ export class SecureStorage {
       }
       keysToRemove.forEach((key) => localStorage.removeItem(key));
     } catch (error) {
-      console.warn("Failed to clear secure storage:", error);
     }
   }
 

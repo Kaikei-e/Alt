@@ -49,12 +49,6 @@ export default function FeedsPage() {
   // Additional debug logging for auth state
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
-      console.log("[FeedsPage] Auth state:", {
-        isAuthenticated,
-        authLoading,
-        hasUser: !!user,
-        userId: user?.id,
-      });
     }
   }, [isAuthenticated, authLoading, user]);
 

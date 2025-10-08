@@ -35,7 +35,6 @@ export const useVirtualizationMetrics = (
 
     // Log metrics in development
     if (process.env.NODE_ENV === "development") {
-      console.log("Virtualization Metrics:", metricsRef.current);
     }
   }, [enabled, itemCount]);
 

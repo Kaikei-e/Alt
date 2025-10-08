@@ -47,9 +47,6 @@ export const getSafeElement = (
   } catch (error) {
     const elements = document.querySelectorAll(`[data-testid="${testId}"]`);
     if (elements.length > 1) {
-      console.warn(
-        `Found ${elements.length} elements with testId "${testId}". Using first one.`,
-      );
       return elements[0] as HTMLElement;
     }
     throw error;

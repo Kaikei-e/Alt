@@ -161,14 +161,7 @@ export class AuthAPIClient {
 
       if (this.debugMode) {
         if (this.sessionHeaders) {
-          console.log("[AuthAPI] Built identity headers:", {
-            userId: user.id,
-            tenantId: user.tenantId,
-            hasEmail: !!user.email,
-            role: user.role,
-          });
         } else {
-          console.warn("[AuthAPI] Failed to build identity headers from user:", user);
         }
       }
 
@@ -197,21 +190,18 @@ export class AuthAPIClient {
 
     if (!refresh && this.sessionHeaders) {
       if (this.debugMode) {
-        console.log("[AuthAPI] Returning cached session headers");
       }
       return this.sessionHeaders;
     }
 
     if (this.inflightSessionPromise) {
       if (this.debugMode) {
-        console.log("[AuthAPI] Waiting for inflight session promise");
       }
       await this.inflightSessionPromise;
       return this.sessionHeaders;
     }
 
     if (this.debugMode) {
-      console.log("[AuthAPI] Fetching fresh session headers");
     }
 
     const loader = this.getCurrentUser().finally(() => {
@@ -223,9 +213,7 @@ export class AuthAPIClient {
 
     if (this.debugMode) {
       if (this.sessionHeaders) {
-        console.log("[AuthAPI] Session headers obtained successfully");
       } else {
-        console.warn("[AuthAPI] Failed to obtain session headers - user may not be authenticated");
       }
     }
 
@@ -237,7 +225,6 @@ export class AuthAPIClient {
       // 🚀 X29 FIX: Use direct nginx route for CSRF token instead of frontend proxy
       return await this.getCSRFTokenInternal();
     } catch (error: unknown) {
-      console.warn("Failed to get CSRF token:", error);
       return null;
     }
   }
@@ -293,9 +280,6 @@ export class AuthAPIClient {
 
     // 🚀 X29 FIX: CSRF requests should use nginx direct route, not frontend proxy
     if (isCsrfEndpoint) {
-      console.warn(
-        "⚠️ DEPRECATED: makeRequest() called for CSRF endpoint. Use getCSRFTokenInternal() instead for nginx direct route.",
-      );
       headers["X-Auth-Flow"] = "csrf-request";
       headers["X-Internal-Request"] = "true";
     }
@@ -367,7 +351,6 @@ export class AuthAPIClient {
           "✅ CSRF token retrieved successfully via direct auth-service route",
         );
       } else {
-        console.warn("⚠️ CSRF response received but no token found:", data);
       }
 
       return token;
@@ -491,7 +474,6 @@ export class AuthAPIClient {
     if (process.env.NODE_ENV === "test") {
       return;
     }
-    console.log(message, ...args);
   }
 
   private getMethodDescription(method: string, endpoint: string): string {

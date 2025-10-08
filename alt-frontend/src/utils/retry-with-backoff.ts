@@ -48,10 +48,6 @@ export class RetryWithBackoff {
         // Don't wait after the last attempt
         if (attempt < this.maxRetries) {
           const delay = this.calculateDelay(attempt);
-          console.warn(
-            `[RETRY] Attempt ${attempt + 1} failed, retrying in ${delay}ms:`,
-            error,
-          );
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }

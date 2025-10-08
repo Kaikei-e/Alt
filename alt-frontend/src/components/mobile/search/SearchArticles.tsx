@@ -58,11 +58,9 @@ export const SearchArticles = ({
             });
         } else {
           // 無効なURLクエリの場合は警告を記録し、無視
-          console.warn("Invalid URL query parameter detected:", urlQuery);
           setValidationError("Invalid search query from URL");
         }
       } catch (error) {
-        console.warn("Error processing URL query parameter:", error);
         setValidationError("Invalid search query from URL");
       }
     }

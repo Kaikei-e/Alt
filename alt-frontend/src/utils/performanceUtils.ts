@@ -48,7 +48,6 @@ export function measurePerformance<T>(operation: () => T, label?: string): T {
   const endTime = performance.now();
 
   if (label) {
-    console.log(`${label} took ${endTime - startTime} milliseconds`);
   }
 
   return result;
@@ -94,7 +93,6 @@ export function memoize<T extends (...args: unknown[]) => unknown>(
 // Clear memoization cache when needed
 export function clearMemoCache() {
   // This would clear any global caches if implemented
-  console.log("Memoization caches cleared");
 }
 
 // TASK1: Performance Threshold Analysis for Virtualization

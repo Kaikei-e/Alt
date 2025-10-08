@@ -47,23 +47,11 @@ export const usePerformanceMonitor = (itemCount: number) => {
 
     // Log performance data in development mode
     if (process.env.NODE_ENV === "development") {
-      console.log("Performance Monitor:", {
-        ...performanceDataResult,
-        memoryUsageMB: Math.round(memoryUsage / 1024 / 1024),
-        domNodeCount,
-        renderTimeSeconds: renderTime / 1000,
-      });
     }
 
     // Performance monitoring without external analytics
     if (process.env.NODE_ENV === "production") {
       // Log performance data for internal monitoring only
-      console.log("Performance Data:", {
-        itemCount,
-        renderTime,
-        memoryUsageMB: Math.round(memoryUsage / 1024 / 1024),
-        shouldVirtualize,
-      });
     }
   }, [itemCount, renderStartTime]);
 

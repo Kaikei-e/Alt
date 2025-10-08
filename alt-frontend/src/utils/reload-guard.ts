@@ -6,14 +6,10 @@ export function reloadOnce(key = "alt:reload-once") {
   if (typeof window === "undefined") return;
 
   if (sessionStorage.getItem(key)) {
-    console.warn(
-      "[ReloadGuard] リロードは既に実行されています。無限ループを防ぐため、再リロードをスキップします。",
-    );
     return;
   }
 
   sessionStorage.setItem(key, "1");
-  console.log("[ReloadGuard] ページをリロードします（一回限り）");
   location.reload();
 }
 
@@ -44,16 +40,12 @@ export function setupErrorHandling() {
 
   window.addEventListener("error", (event) => {
     if (isChunkLoadError(event)) {
-      console.warn("[ReloadGuard] ChunkLoadErrorを検出しました");
       reloadOnce();
     }
   });
 
   window.addEventListener("unhandledrejection", (event) => {
     if (event.reason && isChunkLoadError(event.reason)) {
-      console.warn(
-        "[ReloadGuard] ChunkLoadError (Promise rejection)を検出しました",
-      );
       reloadOnce();
     }
   });

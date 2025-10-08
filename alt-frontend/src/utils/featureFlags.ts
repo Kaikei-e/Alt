@@ -59,10 +59,6 @@ export class FeatureFlagManager {
         try {
           return { ...envFlags, ...JSON.parse(localFlags) };
         } catch (error) {
-          console.warn(
-            "Failed to parse feature flags from localStorage:",
-            error,
-          );
         }
       }
     }
@@ -82,7 +78,6 @@ export class FeatureFlagManager {
       try {
         localStorage.setItem("featureFlags", JSON.stringify(updates));
       } catch (error) {
-        console.warn("Failed to save feature flags to localStorage:", error);
       }
     }
   }

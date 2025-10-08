@@ -15,7 +15,6 @@ export const buildBackendIdentityHeaders = (
 ): BackendIdentityHeaders | null => {
   if (!user) {
     if (process.env.NODE_ENV === "development") {
-      console.warn("[buildBackendIdentityHeaders] User is null or undefined");
     }
     return null;
   }
