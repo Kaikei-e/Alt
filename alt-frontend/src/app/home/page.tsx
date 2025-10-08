@@ -1,6 +1,4 @@
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-export const revalidate = 0;
+"use client";
 
 import {
   Box,
@@ -10,12 +8,22 @@ import {
   Button,
   Heading,
   Grid,
-  Link as ChakraLink,
 } from "@chakra-ui/react";
 import NextLink from "next/link";
 import { LogOut, Settings, Rss, Users, BarChart3 } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function HomePage() {
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      window.location.href = "/public/landing";
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
   return (
     <Box
       minH="100vh"
@@ -49,20 +57,19 @@ export default function HomePage() {
                 </HStack>
               </Button>
             </NextLink>
-            <a href="/api/auth/logout" style={{ textDecoration: "none" }}>
-              <Button
-                variant="outline"
-                size="md"
-                borderColor="var(--alt-primary)"
-                color="var(--alt-primary)"
-                _hover={{ bg: "var(--alt-glass)" }}
-              >
-                <HStack gap={2}>
-                  <LogOut size={18} />
-                  ログアウト
-                </HStack>
-              </Button>
-            </a>
+            <Button
+              variant="outline"
+              size="md"
+              borderColor="var(--alt-primary)"
+              color="var(--alt-primary)"
+              _hover={{ bg: "var(--alt-glass)" }}
+              onClick={handleLogout}
+            >
+              <HStack gap={2}>
+                <LogOut size={18} />
+                ログアウト
+              </HStack>
+            </Button>
           </HStack>
         </HStack>
 

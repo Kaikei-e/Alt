@@ -1,5 +1,6 @@
-// app/auth/login/page.tsx（骨子）
+// app/auth/login/page.tsx
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import LoginForm from "./LoginForm";
 
 export default async function Page({
@@ -11,6 +12,17 @@ export default async function Page({
   const flow = params?.flow;
   const returnTo =
     params?.return_to ?? `${process.env.NEXT_PUBLIC_APP_ORIGIN}/`;
+
+  // 🚨 FIX: Check if user is already logged in to prevent infinite loop
+  // If session cookie exists, redirect to return_to instead of initiating login
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("ory_kratos_session") || cookieStore.get("ory-kratos-session");
+
+  if (sessionCookie && !flow) {
+    // User is already logged in, redirect to return_to
+    console.log("[LoginPage] User already has session cookie, redirecting to:", returnTo);
+    redirect(returnTo);
+  }
 
   if (!flow) {
     // flow がない場合は、return_toパラメータまたはデフォルトURLを使用

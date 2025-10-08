@@ -39,12 +39,24 @@ const canonicalize = (url: string) => {
 
 export default function FeedsPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [readFeeds, setReadFeeds] = useState<Set<string>>(new Set());
   const [liveRegionMessage, setLiveRegionMessage] = useState<string>("");
   const [isRetrying, setIsRetrying] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Additional debug logging for auth state
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      console.log("[FeedsPage] Auth state:", {
+        isAuthenticated,
+        authLoading,
+        hasUser: !!user,
+        userId: user?.id,
+      });
+    }
+  }, [isAuthenticated, authLoading, user]);
 
   // Ensure we start at the top of the list on first render (some mobile browsers
   // restore scroll position across navigations, which can leave us mid-way in
@@ -154,44 +166,19 @@ export default function FeedsPage() {
     );
   }
 
-  // Show authentication required state
-  if (!isAuthenticated) {
-    return (
-      <Box minH="100vh" position="relative">
-        <Flex
-          direction="column"
-          justify="center"
-          align="center"
-          minH="100vh"
-          p={5}
-        >
-          <Box className="glass" p={8} borderRadius="18px" textAlign="center" maxW="400px">
-            <Text fontSize="xl" fontWeight="bold" color="var(--alt-primary)" mb={4}>
-              ログインが必要です
-            </Text>
-            <Text color="var(--alt-text-secondary)" mb={6}>
-              フィードを閲覧するにはログインしてください
-            </Text>
-            <Button
-              onClick={() => router.push('/login')}
-              px={6}
-              py={3}
-              bg="var(--accent-primary)"
-              color="white"
-              borderRadius="full"
-              fontWeight="bold"
-              _hover={{ opacity: 0.9 }}
-              transition="opacity 0.2s"
-              size="lg"
-            >
-              ログイン
-            </Button>
-          </Box>
-        </Flex>
-        <FloatingMenu />
-      </Box>
-    );
-  }
+  // 🚨 REMOVED: Client-side authentication check
+  // Middleware (middleware.ts) already handles session validation and redirects
+  // to /public/landing if the user is not authenticated. If this component
+  // renders, we know the user has a valid session.
+  //
+  // The previous client-side check was causing infinite redirect loops because:
+  // 1. Kratos session cookies may be HttpOnly (not readable by client JS)
+  // 2. Client-side useAuth.isAuthenticated was false even with valid session
+  // 3. This caused repeated renders of the "login required" UI
+  // 4. Next.js RSC repeatedly fetched /auth/login (_rsc parameter)
+  // 5. Loop: /mobile/feeds → /auth/login → /ory/... → /mobile/feeds
+  //
+  // Trust the middleware. If we're here, the user is authenticated.
 
   // Show skeleton loading state for immediate visual feedback
   if (isInitialLoading) {

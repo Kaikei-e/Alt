@@ -444,7 +444,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const cookieString = document.cookie;
     const sessionCookies = [
-      "ory_kratos_session",
+      "ory_kratos_session",      // underscore variant
+      "ory-kratos-session",      // hyphen variant (Kratos may set this)
       "kratos-session",
       "auth-session",
       "_session",
@@ -880,27 +881,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error: unknown) {
       const authError = mapErrorToAuthError(error, retryCount);
 
-      // Enhanced 401 Unauthorized handling - redirect to login (2025 best practice)
+      // 🚨 FIX: Removed automatic client-side redirect to /auth/login
+      // Middleware (middleware.ts) already handles session validation and redirects
+      // Duplicate client-side redirects cause infinite loops
+
+      // Log 401/Unauthorized errors for debugging, but don't redirect
       const is401Error =
         authError.type === "INVALID_CREDENTIALS" ||
         (error instanceof Error &&
           (error.message.includes("401") ||
             error.message.includes("Unauthorized")));
 
-      if (is401Error && typeof window !== "undefined") {
+      if (is401Error) {
         console.warn(
-          "[AUTH-CONTEXT] 401/Unauthorized detected in checkAuthStatus, redirecting to login",
+          "[AUTH-CONTEXT] 401/Unauthorized detected in checkAuthStatus - middleware will handle redirect",
         );
-
-        // Session expired or invalid, redirect to browser login flow with absolute return URL
-        const currentUrl = window.location.href;
-        const loginUrl = `/auth/login?return_to=${encodeURIComponent(currentUrl)}`;
-
-        console.log("[AUTH-CONTEXT] Redirecting to login:", loginUrl);
-
-        // Use replace for cleaner navigation history
-        window.location.replace(loginUrl);
-        return;
       }
 
       // 再試行可能なエラーで再試行回数が3回未満の場合は再試行
