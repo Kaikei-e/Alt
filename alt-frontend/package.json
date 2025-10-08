@@ -24,16 +24,11 @@
     "test:e2e:firefox": "npx playwright test --project=auth-flow-firefox --project=authenticated-firefox",
     "test:e2e:errors": "npx playwright test --project=error-scenarios",
     "test": "NODE_OPTIONS='--max-old-space-size=4096' vitest run",
+    "test:unit": "vitest run",
     "test:all": "npm run test:e2e && npm run test",
     "test:ui": "vitest --ui",
     "test:run": "NODE_OPTIONS='--max-old-space-size=16384' vitest run",
-    "test:ci": "NODE_OPTIONS='--max-old-space-size=4096 --expose-gc' vitest run --reporter=verbose --no-coverage",
-    "test:middleware": "NODE_OPTIONS='--max-old-space-size=2048' vitest run --config vitest.config.middleware.ts",
-    "test:components": "NODE_OPTIONS='--max-old-space-size=4096 --expose-gc' vitest run --reporter=verbose --no-coverage",
-    "test:watch": "vitest watch",
-    "test:coverage": "vitest run --coverage",
-    "test:memory": "NODE_OPTIONS='--max-old-space-size=6144 --expose-gc' vitest run --reporter=verbose",
-    "test:debug": "NODE_OPTIONS='--max-old-space-size=4096 --inspect' vitest run"
+    "test:ci": "NODE_OPTIONS='--max-old-space-size=4096 --expose-gc' vitest run --reporter=verbose --no-coverage"
   },
   "dependencies": {
     "@chakra-ui/accordion": "^2.3.1",
