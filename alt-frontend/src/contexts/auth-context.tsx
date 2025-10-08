@@ -95,23 +95,11 @@ interface AuthProviderProps {
 
 // エラーマッピング関数 - 詳細診断ログ付き
 const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
-  // 詳細診断ログ
-  console.groupCollapsed("[AUTH-CONTEXT] 🔍 Error Mapping Analysis");
-  console.log("Input error:", error);
-  console.log("Error type:", typeof error);
-  console.log("Retry count:", retryCount);
-
   if (error instanceof Error) {
-    console.log("Error message:", error.message);
-    console.log("Error name:", error.name);
-
-    // 🔄 Phase 4: バックエンドからの詳細エラー情報を抽出
     const extractDetailedErrorInfo = (errorMessage: string) => {
-      // "[ERROR_TYPE]: message" パターンをチェック
       const detailedErrorMatch = errorMessage.match(/\[([A-Z_]+)\]: (.+)/);
       if (detailedErrorMatch) {
         const [, errorType, message] = detailedErrorMatch;
-        console.log("🎯 Detailed error detected:", { errorType, message });
         return { errorType, message };
       }
       return null;
@@ -119,19 +107,16 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
 
     const detailedInfo = extractDetailedErrorInfo(error.message);
 
-    // 🔄 Phase 4: 詳細エラー情報がある場合の処理
     if (detailedInfo) {
-      console.log("✅ Using detailed error info for mapping");
       const baseError: AuthError = {
         type: detailedInfo.errorType as AuthErrorType,
         message: detailedInfo.message,
-        isRetryable: true, // デフォルト値、後で調整
+        isRetryable: true,
         retryCount,
         technicalInfo: `Backend error: ${detailedInfo.errorType}`,
         errorCode: detailedInfo.errorType,
       };
 
-      // 詳細エラータイプ別の調整
       switch (detailedInfo.errorType) {
         case "MISSING_EMAIL_FIELD":
           baseError.type = "DATA_FORMAT_ERROR";
@@ -168,11 +153,9 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
           baseError.isRetryable = true;
       }
 
-      console.groupEnd();
       return baseError;
     }
 
-    // 🚨 FIX: 404 エラーの正確な処理（認証サービス利用不可）
     if (error.message.includes("404") || error.message.includes("Not Found")) {
       return {
         type: "KRATOS_SERVICE_ERROR",
@@ -188,12 +171,11 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
       };
     }
 
-    // ネットワークエラーの検出
     if (
       error.message.includes("Failed to fetch") ||
       error.message.includes("Network request failed")
     ) {
-      const networkError: AuthError = {
+      return {
         type: "NETWORK_ERROR",
         message: "ネットワーク接続を確認してください",
         isRetryable: true,
@@ -204,8 +186,6 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
           "再試行してください",
         ],
       };
-      console.groupEnd();
-      return networkError;
     }
 
     // 認証エラーの検出 - より精密な分類
@@ -356,28 +336,20 @@ const mapErrorToAuthError = (error: unknown, retryCount = 0): AuthError => {
       };
     }
 
-    const mappedError = {
+    return {
       type: "UNKNOWN_ERROR" as AuthErrorType,
       message: error.message || "予期しないエラーが発生しました",
       isRetryable: true,
       retryCount,
     };
-
-    console.log("🎯 Final Mapped Error:", mappedError);
-    console.groupEnd();
-    return mappedError;
   }
 
-  const mappedError = {
+  return {
     type: "UNKNOWN_ERROR" as AuthErrorType,
     message: "予期しないエラーが発生しました",
     isRetryable: true,
     retryCount,
   };
-
-  console.log("🎯 Final Mapped Error:", mappedError);
-  console.groupEnd();
-  return mappedError;
 };
 
 export function AuthProvider({ children }: AuthProviderProps) {

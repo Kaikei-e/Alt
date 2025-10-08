@@ -34,14 +34,6 @@ export async function middleware(req: NextRequest) {
   // Also check for cookie with underscore variant (Kratos may set both)
   const altSessionCookie = req.cookies.get("ory-kratos-session");
 
-  // デバッグログ: クッキーの状態を確認
-  if (process.env.NODE_ENV === "development") {
-    console.log("[Middleware] Path:", pathname);
-    console.log("[Middleware] Session cookie:", sessionCookie?.value ? "present" : "missing");
-    console.log("[Middleware] Alt session cookie:", altSessionCookie?.value ? "present" : "missing");
-    console.log("[Middleware] All cookies:", req.cookies.getAll().map(c => `${c.name}=${c.value.substring(0, 10)}...`));
-  }
-
   const effectiveSessionCookie = sessionCookie || altSessionCookie;
 
   if (!effectiveSessionCookie?.value) {
@@ -49,10 +41,6 @@ export async function middleware(req: NextRequest) {
     const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN || req.nextUrl.origin;
     const returnUrl = encodeURIComponent(`${pathname}${search}`);
     const landingUrl = `${appOrigin}/public/landing?return_to=${returnUrl}`;
-
-    if (process.env.NODE_ENV === "development") {
-      console.log("[Middleware] No session cookie found, redirecting to:", landingUrl);
-    }
 
     return NextResponse.redirect(landingUrl, 303);
   }
@@ -64,10 +52,6 @@ export async function middleware(req: NextRequest) {
 
     // Pass the actual cookie value, preserving the original cookie name
     const cookieHeader = `ory_kratos_session=${effectiveSessionCookie.value}`;
-
-    if (process.env.NODE_ENV === "development") {
-      console.log("[Middleware] Validating session with auth-hub:", authHubUrl);
-    }
 
     const response = await fetch(`${authHubUrl}/session`, {
       headers: {
@@ -82,17 +66,10 @@ export async function middleware(req: NextRequest) {
 
     if (response.ok) {
       // Session is valid
-      if (process.env.NODE_ENV === "development") {
-        console.log("[Middleware] Session valid, allowing access");
-      }
       return NextResponse.next();
     }
 
     // Session invalid or expired: redirect to landing
-    if (process.env.NODE_ENV === "development") {
-      console.log("[Middleware] Session invalid (status:", response.status, "), redirecting");
-    }
-
     const appOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN || req.nextUrl.origin;
     const returnUrl = encodeURIComponent(`${pathname}${search}`);
     const landingUrl = `${appOrigin}/public/landing?return_to=${returnUrl}`;

@@ -56,7 +56,6 @@ export class SizeMeasurementManager {
         return null;
       }
 
-      console.warn("Size measurement failed:", error);
       return null;
     }
   }
