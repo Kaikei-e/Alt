@@ -12,9 +12,6 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
 
     await page.goto("/desktop/feeds");
     await page.waitForLoadState("domcontentloaded");
-
-    // Wait for components to load
-    await page.waitForTimeout(2000);
   });
 
   test("should render feeds page with all components (PROTECTED)", async ({
@@ -22,7 +19,6 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
   }) => {
     // Wait for the page to fully load and render
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(1000);
 
     // Verify main layout components are present with increased timeout
     await expect(
@@ -87,7 +83,6 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
   }) => {
     // Wait for the page to fully load
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(1000);
 
     // Mock API to provide enough content for scrolling
     await page.route("**/v1/feeds/fetch/cursor*", async (route) => {
@@ -124,7 +119,6 @@ test.describe("Desktop Feeds Page - PROTECTED", () => {
       // Try to scroll within the timeline container
       await timelineContainer.hover();
       await page.mouse.wheel(0, 500);
-      await page.waitForTimeout(500);
 
       // Verify the container is still visible after scrolling
       await expect(timelineContainer).toBeVisible();

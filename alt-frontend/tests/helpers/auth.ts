@@ -42,8 +42,6 @@ export async function quickLogin(
  */
 export async function waitForAuthState(page: Page) {
   await page.waitForLoadState("networkidle");
-  // Additional wait for authentication to settle
-  await page.waitForTimeout(1000);
 }
 
 /**

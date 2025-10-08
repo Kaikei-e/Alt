@@ -25,7 +25,7 @@ test.describe("Network Failure Scenarios", () => {
   test("should handle slow network responses", async ({ page, loginPage }) => {
     // Add delay to auth service responses
     await page.route("**/localhost:4545/**", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Reduced from 5000ms
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Reduced from 2000ms
       await route.continue();
     });
 
@@ -35,8 +35,8 @@ test.describe("Network Failure Scenarios", () => {
 
     // Should eventually redirect to auth
     await page.waitForURL(
-      /localhost:4545.*login\/browser|\/auth\/login\?flow=/,
-      { timeout: 35000 },
+      /\/auth\/login\?flow=/,
+      { timeout: 15000 },
     );
   });
 
@@ -142,12 +142,12 @@ test.describe("Network Failure Scenarios", () => {
       // Both should redirect to auth flow
       await Promise.all([
         page1.waitForURL(
-          /localhost:4545.*login\/browser|\/auth\/login\?flow=/,
-          { timeout: 25000 },
+          /\/auth\/login\?flow=/,
+          { timeout: 15000 },
         ),
         page2.waitForURL(
-          /localhost:4545.*login\/browser|\/auth\/login\?flow=/,
-          { timeout: 25000 },
+          /\/auth\/login\?flow=/,
+          { timeout: 15000 },
         ),
       ]);
 

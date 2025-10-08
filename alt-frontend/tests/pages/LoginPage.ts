@@ -19,13 +19,14 @@ export class LoginPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.emailInput = this.page.getByLabel("Email");
-    this.passwordInput = this.page.getByLabel("Password");
-    this.signInButton = this.page.getByRole("button", { name: /sign in/i });
+    // Use actual Kratos form field names
+    this.emailInput = this.page.locator('input[name="identifier"]');
+    this.passwordInput = this.page.locator('input[name="password"]');
+    this.signInButton = this.page.locator('button[type="submit"]');
     this.errorMessage = this.page.locator(
-      '[data-testid="error-message"], .error-message',
+      '[data-testid="error-message"], .error-message, [role="alert"]',
     );
-    this.loadingIndicator = this.page.getByText(/loading/i);
+    this.loadingIndicator = this.page.getByText(/loading|準備しています/i);
   }
 
   /**
@@ -104,7 +105,7 @@ export class LoginPage extends BasePage {
       await this.waitForUrl(expectedUrl, { timeout });
     } else {
       // Wait for redirect away from auth pages
-      await this.waitForUrl(/^http:\/\/localhost:3010\/(?!auth)/, { timeout });
+      await this.waitForUrl(/\/(desktop\/home|home|mobile)/, { timeout });
     }
   }
 

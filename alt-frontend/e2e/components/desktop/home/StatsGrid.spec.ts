@@ -6,7 +6,6 @@ test.describe("StatsGrid Component - PROTECTED", () => {
     // Navigate to a test page that renders the StatsGrid component
     await page.goto("/test/stats-grid");
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(1000);
   });
 
   test("should render grid layout with all stats cards (PROTECTED)", async ({

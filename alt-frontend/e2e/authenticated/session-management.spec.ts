@@ -12,20 +12,21 @@ test.describe("Session Management", () => {
 
   test("should maintain session after browser refresh", async ({ page }) => {
     // Navigate to a protected page (should be authenticated via setup)
-    await desktopPage.navigateToHome();
-    await desktopPage.verifyOnDesktopPage("home");
+    await page.goto("/home");
+    await page.waitForURL(/\/home/);
 
     // Refresh the page
     await page.reload();
 
     // Should still be on the same page, not redirected to login
-    await desktopPage.verifyOnDesktopPage("home");
-    await desktopPage.waitForAuthenticated();
+    await page.waitForURL(/\/home/);
+    await expect(page).not.toHaveURL(/\/auth\/login/);
   });
 
   test("should handle session cookies correctly", async ({ page }) => {
     // Navigate to authenticated page (should be authenticated via setup)
-    await desktopPage.navigateToHome();
+    await page.goto("/home");
+    await page.waitForURL(/\/home/);
 
     // Check that session cookie is set
     const cookies = await page.context().cookies();
@@ -36,56 +37,90 @@ test.describe("Session Management", () => {
     expect(sessionCookie?.httpOnly).toBe(true);
   });
 
-  test("should handle invalid session gracefully", async ({ page }) => {
-    // Set an invalid session cookie
-    await page.context().addCookies([
-      {
-        name: "ory_kratos_session",
-        value: "invalid-session-id",
-        domain: "localhost",
-        path: "/",
-        httpOnly: true,
-        secure: false,
-        sameSite: "Lax",
-      },
-    ]);
+  test("should handle invalid session gracefully", async ({ browser }) => {
+    // Create a new context without authentication
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
-    // Try to access a protected page
-    await desktopPage.verifyProtectedRouteRedirect("/desktop/home");
+    try {
+      // Set an invalid session cookie
+      await context.addCookies([
+        {
+          name: "ory_kratos_session",
+          value: "invalid-session-id",
+          domain: "localhost",
+          path: "/",
+          httpOnly: true,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+
+      // Try to access a protected page - should redirect to login
+      await page.goto("/desktop/home");
+      await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 10000 });
+    } finally {
+      await context.close();
+    }
   });
 
-  test("should protect all desktop routes", async ({ page }) => {
-    const protectedRoutes = [
-      "/desktop/home",
-      "/desktop/feeds",
-      "/desktop/articles",
-      "/desktop/settings",
-      "/desktop/feeds/register",
-      "/desktop/articles/search",
-    ];
+  test("should protect all desktop routes", async ({ browser }) => {
+    // Create a new context without authentication
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
-    for (const route of protectedRoutes) {
-      await desktopPage.verifyProtectedRouteRedirect(route);
+    try {
+      const protectedRoutes = [
+        "/desktop/home",
+        "/desktop/feeds",
+        "/desktop/articles",
+        "/desktop/settings",
+        "/desktop/feeds/register",
+        "/desktop/articles/search",
+      ];
+
+      for (const route of protectedRoutes) {
+        await page.goto(route);
+        await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 10000 });
+      }
+    } finally {
+      await context.close();
     }
   });
 
   test("should preserve return_to parameter for protected routes", async ({
-    page,
+    browser,
   }) => {
-    // Try to access a protected page directly
-    await page.goto("/desktop/settings");
+    // Create a new context without authentication
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
-    // Should redirect to login with return_to parameter
-    await page.waitForURL(
-      /\/auth\/login\?flow=.*return_to=.*desktop%2Fsettings/,
-    );
+    try {
+      const newLoginPage = new LoginPage(page);
 
-    // Now log in using page object
-    await loginPage.performLogin(
-      "test@example.com",
-      "password123",
-      "/desktop/settings",
-    );
+      // Try to access a protected page directly
+      await page.goto("/desktop/settings");
+
+      // Should redirect to login with return_to parameter
+      await page.waitForURL(
+        /\/auth\/login\?flow=/,
+        { timeout: 15000 }
+      );
+
+      // Verify return_to is in the URL
+      const url = page.url();
+      expect(url).toContain("return_to");
+      expect(url).toContain("desktop%2Fsettings");
+
+      // Now log in using page object
+      await newLoginPage.performLogin(
+        "test@example.com",
+        "password123",
+        "/desktop/settings",
+      );
+    } finally {
+      await context.close();
+    }
   });
 
   test("should handle concurrent sessions correctly", async ({ browser }) => {

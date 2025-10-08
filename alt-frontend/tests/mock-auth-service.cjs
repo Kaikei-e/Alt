@@ -11,12 +11,12 @@ const sessions = new Map();
 
 // Configuration
 const config = {
-  // Reduce response delay for faster tests
-  responseDelay: process.env.NODE_ENV === "test" ? 5 : 0, // 5ms delay in tests (reduced from 10ms)
-  // Enable detailed logging
-  verbose: process.env.DEBUG_MOCK_AUTH === "true",
-  // Flow expiration time (longer for stability)
-  flowExpiration: 15 * 60 * 1000, // 15 minutes
+  // No response delay for maximum speed
+  responseDelay: 0, // Instant response (reduced from 5ms)
+  // Enable detailed logging only when needed
+  verbose: false, // Set to true for debugging
+  // Flow expiration time (5 minutes for test efficiency)
+  flowExpiration: 5 * 60 * 1000, // 5 minutes (reduced from 15)
 };
 
 // Generate mock IDs using cryptographically secure randomness
@@ -372,17 +372,32 @@ const server = http.createServer(async (req, res) => {
 
         sessions.set(sessionId, session);
 
-        // Set session cookie
+        // Set session cookie with Domain=localhost to share across ports
         res.setHeader(
           "Set-Cookie",
-          `ory_kratos_session=${sessionId}; HttpOnly; Path=/; SameSite=Lax`,
+          `ory_kratos_session=${sessionId}; Domain=localhost; HttpOnly; Path=/; SameSite=Lax`,
         );
         res.statusCode = 200;
         res.setHeader("Content-Type", "application/json");
+
+        // Return response in Kratos SuccessfulNativeLogin format
         res.end(
           JSON.stringify({
             session,
-            redirect_to: flowData.flow.return_to || "http://localhost:3010/",
+            // Kratos uses continue_with array with redirect_browser_to
+            continue_with: [
+              {
+                action: "show_verification_ui",
+                flow: {
+                  id: flowId,
+                  verifiable_address: identifier,
+                },
+              },
+              {
+                action: "redirect_browser_to",
+                redirect_browser_to: flowData.flow.return_to || "http://localhost:3010/",
+              },
+            ],
           }),
         );
       });

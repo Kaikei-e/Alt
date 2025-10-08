@@ -6,7 +6,6 @@ test.describe("ActionButton Component - PROTECTED", () => {
     // Navigate to a test page that renders the ActionButton component
     await page.goto("/test/action-button");
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(3000);
     // Ensure component is rendered - try multiple selectors
     const selectors = [
       '[data-testid="action-button"]',
@@ -130,9 +129,6 @@ test.describe("ActionButton Component - PROTECTED", () => {
 
     // Hover and check transform is applied
     await actionButton.hover();
-
-    // Wait for hover animation to apply
-    await page.waitForTimeout(100);
 
     // Check if hover state is maintained - verify button is still visible
     if (actionButton) {

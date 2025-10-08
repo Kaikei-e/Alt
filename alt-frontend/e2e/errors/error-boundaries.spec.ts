@@ -23,9 +23,6 @@ test.describe("Error Boundary Testing", () => {
       console.log("Expected error caught:", error);
     }
 
-    // Wait for error boundary to potentially kick in
-    await page.waitForTimeout(2000);
-
     // Verify error was caught and is in errors array
     expect(errors.length).toBeGreaterThan(0);
     expect(errors[0]).toContain("someUndefinedFunction");
@@ -46,8 +43,6 @@ test.describe("Error Boundary Testing", () => {
         reactElement.innerHTML = "";
       }
     });
-
-    await page.waitForTimeout(1000);
 
     // Should handle the error gracefully
     // This depends on your error boundary implementation
@@ -98,61 +93,11 @@ test.describe("Error Boundary Testing", () => {
 
     // Should handle API failures gracefully
     // Look for error messages or fallback content
-    await page.waitForTimeout(2000);
 
     // Page should still be usable
     await expect(page).toHaveTitle(/Alt/);
   });
 
-  test("should handle memory exhaustion gracefully", async ({ page }) => {
-    // This is a potentially dangerous test - use with caution
-    await page.goto("/desktop/home");
-
-    // Try to create memory pressure (but not too much)
-    await page.evaluate(() => {
-      const arrays = [];
-      try {
-        for (let i = 0; i < 1000; i++) {
-          arrays.push(new Array(10000).fill("memory-test"));
-        }
-      } catch (e) {
-        console.log("Memory limit reached:", e);
-      }
-    });
-
-    // Should still be responsive
-    await page.waitForTimeout(1000);
-    await expect(page).toHaveTitle(/Alt/);
-  });
-
-  test("should handle infinite loops prevention", async ({ page }) => {
-    await page.goto("/desktop/home");
-
-    // Set a timeout to prevent actual infinite loops
-    page.setDefaultTimeout(5000);
-
-    try {
-      // Try to create a controlled infinite loop scenario
-      await page.evaluate(() => {
-        let counter = 0;
-        const maxIterations = 100000;
-
-        // Simulate a loop that could become infinite
-        while (counter < maxIterations) {
-          counter++;
-          if (counter % 10000 === 0) {
-            // Break occasionally to prevent browser freeze
-            return counter;
-          }
-        }
-        return counter;
-      });
-    } catch (error) {
-      // Should handle timeout gracefully
-      console.log("Infinite loop prevention worked:", error);
-    }
-
-    // Page should still be responsive
-    await expect(page).toHaveTitle(/Alt/);
-  });
+  // ❌ Removed: "should handle memory exhaustion gracefully" - システムを危険にさらす
+  // ❌ Removed: "should handle infinite loops prevention" - 実装されていない機能
 });
