@@ -79,6 +79,21 @@ test.describe('Auth Error Page', () => {
     // Simulate a failed login that redirects to error page
     await page.goto('/auth/login');
 
+    // Wait for Kratos flow to initialize (form is rendered dynamically)
+    await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 15000 });
+    await page.waitForSelector('input[name="identifier"]', {
+      state: 'visible',
+      timeout: 15000,
+    });
+    await page.waitForSelector('input[name="password"]', {
+      state: 'visible',
+      timeout: 15000,
+    });
+    await page.waitForSelector('button[type="submit"]', {
+      state: 'visible',
+      timeout: 15000,
+    });
+
     // Mock an authentication error
     await page.route('**/auth/**', route => {
       route.fulfill({
@@ -88,9 +103,9 @@ test.describe('Auth Error Page', () => {
     });
 
     // Fill and submit login form
-    await page.getByLabel(/email/i).fill('test@example.com');
-    await page.getByLabel(/password/i).fill('password123');
-    await page.getByRole('button', { name: /log in|login/i }).click();
+    await page.fill('input[name="identifier"]', 'test@example.com');
+    await page.fill('input[name="password"]', 'password123');
+    await page.click('button[type="submit"]');
 
     // Might redirect to error page or show inline error
     // This depends on implementation
