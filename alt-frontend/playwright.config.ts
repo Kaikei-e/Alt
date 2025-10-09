@@ -14,15 +14,15 @@ export default defineConfig({
   testIgnore: "**/node_modules/**",
   globalSetup: "./playwright.setup.ts",
 
-  // Optimized timeouts for API-based auth
-  timeout: 30 * 1000, // 30 seconds (reduced from 120s)
+  // Optimized timeouts - unified to 20 seconds
+  timeout: 20 * 1000, // 20 seconds (user requested)
   expect: {
-    timeout: 10 * 1000, // 10 seconds (reduced from 30s)
+    timeout: 10 * 1000, // 10 seconds
   },
-  globalTimeout: 15 * 60 * 1000, // 15 minutes (reduced from 30m)
+  globalTimeout: 15 * 60 * 1000, // 15 minutes for full test suite
 
-  // Optimized retry strategy
-  retries: process.env.CI ? 2 : 1,
+  // Optimized retry strategy with better local dev experience
+  retries: process.env.CI ? 2 : 2, // Increased local retries for flaky tests
   forbidOnly: isCI,
 
   // Enable parallel execution for better performance
@@ -41,8 +41,8 @@ export default defineConfig({
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${appPort}`,
     headless: true,
-    actionTimeout: 10 * 1000, // 10 seconds (reduced from 30s)
-    navigationTimeout: 15 * 1000, // 15 seconds (reduced from 30s)
+    actionTimeout: 10 * 1000, // 10 seconds
+    navigationTimeout: 20 * 1000, // 20 seconds (user requested)
 
     // Enhanced debugging for test failures
     trace: "retain-on-failure",

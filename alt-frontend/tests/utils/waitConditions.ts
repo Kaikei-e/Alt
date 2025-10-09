@@ -340,3 +340,63 @@ export async function waitForAuthComplete(
     );
   }
 }
+
+/**
+ * Wait for specific API response with timeout and retry
+ */
+export async function waitForApiResponse(
+  page: Page,
+  urlPattern: string | RegExp,
+  options: {
+    timeout?: number;
+    status?: number;
+    method?: string;
+  } = {},
+): Promise<any> {
+  const { timeout = 15000, status = 200, method } = options;
+
+  return await page.waitForResponse(
+    (response) => {
+      const matchesUrl =
+        typeof urlPattern === "string"
+          ? response.url().includes(urlPattern)
+          : urlPattern.test(response.url());
+
+      const matchesStatus = response.status() === status;
+      const matchesMethod = method ? response.request().method() === method : true;
+
+      return matchesUrl && matchesStatus && matchesMethod;
+    },
+    { timeout },
+  );
+}
+
+/**
+ * Wait for navigation with better error handling
+ */
+export async function waitForNavigation(
+  page: Page,
+  urlPattern: string | RegExp,
+  options: {
+    timeout?: number;
+    waitUntil?: "load" | "domcontentloaded" | "networkidle";
+  } = {},
+): Promise<void> {
+  const { timeout = 30000, waitUntil = "domcontentloaded" } = options;
+
+  try {
+    // Wait for URL pattern
+    await page.waitForURL(urlPattern, { timeout: timeout / 2 });
+
+    // Wait for page to be in expected state
+    await page.waitForLoadState(waitUntil, { timeout: timeout / 2 });
+
+    // Small buffer for JavaScript to execute
+    await page.waitForTimeout(500);
+  } catch (error) {
+    const currentUrl = page.url();
+    throw new Error(
+      `Navigation failed: Expected ${urlPattern}, got ${currentUrl}. ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}

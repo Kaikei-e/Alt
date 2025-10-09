@@ -75,4 +75,20 @@ export class BasePage {
   getByTestId(testId: string): Locator {
     return this.page.getByTestId(testId);
   }
+
+  /**
+   * Scroll to bottom of page
+   */
+  async scrollToBottom() {
+    await this.page.evaluate(() =>
+      window.scrollTo(0, document.body.scrollHeight),
+    );
+  }
+
+  /**
+   * Wait for a specific amount of time (use sparingly)
+   */
+  async wait(milliseconds: number) {
+    await this.page.waitForTimeout(milliseconds);
+  }
 }
