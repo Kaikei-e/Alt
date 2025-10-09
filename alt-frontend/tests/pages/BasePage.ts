@@ -11,7 +11,7 @@ export class BasePage {
    */
   async goto(url: string, options?: { timeout?: number }) {
     await this.page.goto(url, options);
-    await this.page.waitForLoadState("networkidle");
+    await this.page.waitForLoadState("domcontentloaded");
   }
 
   /**
@@ -59,7 +59,7 @@ export class BasePage {
    * Wait for network to be idle
    */
   async waitForNetwork() {
-    await this.page.waitForLoadState("networkidle");
+    await this.page.waitForLoadState("domcontentloaded");
   }
 
   /**

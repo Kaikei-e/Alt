@@ -144,7 +144,10 @@ export const DesktopHomePage: React.FC = () => {
 
   return (
     <DesktopLayout sidebarProps={sidebarProps}>
-      <div className="flex flex-col gap-8" data-testid="desktop-home-container">
+      <div
+        className="flex flex-col gap-8"
+        data-testid="desktop-home-container"
+      >
         <PageHeader
           title="Dashboard Overview"
           description="Monitor your RSS feeds and AI-powered content insights"

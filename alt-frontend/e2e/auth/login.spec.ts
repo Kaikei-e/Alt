@@ -10,7 +10,9 @@ test.describe("Login Flow", () => {
     await page.goto("/desktop/home");
     await page.waitForLoadState("domcontentloaded");
 
-    // Should redirect to mock auth server and then back to app with flow
+    // Should redirect to landing page first
+    await page.waitForURL(/\/public\/landing/, { timeout: 10000 });
+    await page.click('a[href="/auth/login"]');
     await page.waitForURL(/\/auth\/login\?flow=/);
 
     // Wait for login form to be ready
@@ -37,7 +39,9 @@ test.describe("Login Flow", () => {
     await page.context().clearCookies();
     await page.goto("/desktop/home");
 
-    // Wait for redirect to login page
+    // Wait for redirect to landing page, then click login
+    await page.waitForURL(/\/public\/landing/, { timeout: 10000 });
+    await page.click('a[href="/auth/login"]');
     await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 15000 });
 
     // Wait for login form to be ready

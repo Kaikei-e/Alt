@@ -56,9 +56,9 @@ test.describe("Session Management", () => {
         },
       ]);
 
-      // Try to access a protected page - should redirect to login
+      // Try to access a protected page - should redirect to landing
       await page.goto("/desktop/home");
-      await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 10000 });
+      await page.waitForURL(/\/public\/landing/, { timeout: 10000 });
     } finally {
       await context.close();
     }
@@ -81,7 +81,7 @@ test.describe("Session Management", () => {
 
       for (const route of protectedRoutes) {
         await page.goto(route);
-        await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 10000 });
+        await page.waitForURL(/\/public\/landing/, { timeout: 10000 });
       }
     } finally {
       await context.close();
@@ -101,16 +101,17 @@ test.describe("Session Management", () => {
       // Try to access a protected page directly
       await page.goto("/desktop/settings");
 
-      // Should redirect to login with return_to parameter
-      await page.waitForURL(
-        /\/auth\/login\?flow=/,
-        { timeout: 15000 }
-      );
+      // Should redirect to landing with return_to parameter
+      await page.waitForURL(/\/public\/landing/, { timeout: 15000 });
 
       // Verify return_to is in the URL
       const url = page.url();
       expect(url).toContain("return_to");
       expect(url).toContain("desktop%2Fsettings");
+
+      // Click login button to go to auth/login
+      await page.click('a[href="/auth/login"]');
+      await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 15000 });
 
       // Now log in using page object
       await newLoginPage.performLogin(
@@ -139,6 +140,8 @@ test.describe("Session Management", () => {
 
       // Log in on first page
       await page1.goto("/desktop/home");
+      await page1.waitForURL(/\/public\/landing/);
+      await page1.click('a[href="/auth/login"]');
       await page1.waitForURL(/\/auth\/login\?flow=/);
       await loginPage1.performLogin(
         "test@example.com",

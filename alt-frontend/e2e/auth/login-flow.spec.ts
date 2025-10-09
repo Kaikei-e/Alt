@@ -10,9 +10,13 @@ test.describe("Login Flow Integration", () => {
     // Navigate to protected route
     await page.goto("/home");
 
-    // Should be redirected to login page
-    await expect(page).toHaveURL(/\/auth\/login/);
+    // Should be redirected to landing page
+    await expect(page).toHaveURL(/\/public\/landing/);
     await expect(page.locator("text=ログイン")).toBeVisible();
+
+    // Click login button to go to auth/login
+    await page.click('a[href="/auth/login"]');
+    await expect(page).toHaveURL(/\/auth\/login/);
   });
 
   test("should handle Kratos flow initialization correctly", async ({
@@ -36,7 +40,9 @@ test.describe("Login Flow Integration", () => {
     // Navigate to protected page to trigger auth flow
     await page.goto("/home");
 
-    // Wait for redirect to login page
+    // Wait for redirect to landing page, then click login
+    await page.waitForURL(/\/public\/landing/, { timeout: 10000 });
+    await page.click('a[href="/auth/login"]');
     await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 15000 });
 
     // Wait for login form

@@ -462,7 +462,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       </Box>
 
       {/* Navigation */}
-      <VStack gap={2} align="stretch" flex="1" aria-label="Main navigation">
+      <VStack
+        gap={2}
+        align="stretch"
+        flex="1"
+        aria-label="Main navigation"
+        data-testid="desktop-navigation-list"
+      >
         {navItems.map((item) => (
           <ChakraLink
             key={item.id}
@@ -470,6 +476,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             href={item.href}
             textDecoration="none"
             _hover={{ textDecoration: "none" }}
+            data-testid={`desktop-nav-link-${item.label.toLowerCase()}`}
           >
             <Flex
               align="center"

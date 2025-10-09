@@ -11,24 +11,26 @@ test.describe("Authenticated Desktop Navigation", () => {
   });
 
   test("should access desktop home page after login", async ({ page }) => {
-    // Use page object for navigation
-    await desktopPage.navigateToHome();
-    await page.waitForLoadState("domcontentloaded");
+    await page.goto("/desktop/home");
+    await desktopPage.waitForAuthenticated();
     await desktopPage.verifyOnDesktopPage("home");
   });
 
   test("should access feeds page after login", async ({ page }) => {
-    await desktopPage.navigateToFeeds();
+    await page.goto("/desktop/feeds");
+    await desktopPage.waitForAuthenticated();
     await desktopPage.verifyOnDesktopPage("feeds");
   });
 
   test("should access articles page after login", async ({ page }) => {
-    await desktopPage.navigateToArticles();
+    await page.goto("/desktop/articles");
+    await desktopPage.waitForAuthenticated();
     await desktopPage.verifyOnDesktopPage("articles");
   });
 
   test("should access settings page after login", async ({ page }) => {
-    await desktopPage.navigateToSettings();
+    await page.goto("/desktop/settings");
+    await desktopPage.waitForAuthenticated();
     await desktopPage.verifyOnDesktopPage("settings");
   });
 
@@ -47,10 +49,8 @@ test.describe("Authenticated Desktop Navigation", () => {
     page,
   }) => {
     // Test direct navigation with browser address bar simulation
-    await desktopPage.navigateToFeedsRegister();
-    await expect(page).toHaveURL("/desktop/feeds/register");
-
-    // Should not redirect to login since user is authenticated
+    await page.goto("/desktop/feeds/register");
     await desktopPage.waitForAuthenticated();
+    await expect(page).toHaveURL("/desktop/feeds/register");
   });
 });

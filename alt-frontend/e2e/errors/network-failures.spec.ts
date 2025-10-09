@@ -33,9 +33,9 @@ test.describe("Network Failure Scenarios", () => {
     await page.goto("/desktop/home");
     await page.waitForLoadState("domcontentloaded");
 
-    // Should eventually redirect to auth
+    // Should eventually redirect to landing
     await page.waitForURL(
-      /\/auth\/login\?flow=/,
+      /\/public\/landing/,
       { timeout: 15000 },
     );
   });
@@ -82,8 +82,8 @@ test.describe("Network Failure Scenarios", () => {
     await page.goto("/desktop/settings");
     await page.waitForLoadState("domcontentloaded");
 
-    // Should redirect to login due to expired session
-    await page.waitForURL(/\/auth\/login\?flow=/, { timeout: 20000 });
+    // Should redirect to landing due to expired session
+    await page.waitForURL(/\/public\/landing/, { timeout: 20000 });
   });
 
   test("should handle CSRF token mismatch", async ({ page, loginPage }) => {
@@ -139,14 +139,14 @@ test.describe("Network Failure Scenarios", () => {
         })(),
       ]);
 
-      // Both should redirect to auth flow
+      // Both should redirect to landing page
       await Promise.all([
         page1.waitForURL(
-          /\/auth\/login\?flow=/,
+          /\/public\/landing/,
           { timeout: 15000 },
         ),
         page2.waitForURL(
-          /\/auth\/login\?flow=/,
+          /\/public\/landing/,
           { timeout: 15000 },
         ),
       ]);

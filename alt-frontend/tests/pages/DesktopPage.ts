@@ -1,32 +1,12 @@
-import { Page, Locator, expect } from "@playwright/test";
+import { Page, expect } from "@playwright/test";
 import { BasePage } from "./BasePage";
 
 /**
  * Desktop page object model for navigation and common desktop elements
  */
 export class DesktopPage extends BasePage {
-  private readonly navigationMenu: Locator;
-  private readonly homeLink: Locator;
-  private readonly feedsLink: Locator;
-  private readonly articlesLink: Locator;
-  private readonly settingsLink: Locator;
-  private readonly userMenu: Locator;
-  private readonly logoutButton: Locator;
-
   constructor(page: Page) {
     super(page);
-    // Navigation elements - adjust selectors based on actual implementation
-    this.navigationMenu = this.page.locator(
-      '[data-testid="navigation-menu"], nav',
-    );
-    this.homeLink = this.page.getByRole("link", { name: /home/i });
-    this.feedsLink = this.page.getByRole("link", { name: /feeds/i });
-    this.articlesLink = this.page.getByRole("link", { name: /articles/i });
-    this.settingsLink = this.page.getByRole("link", { name: /settings/i });
-    this.userMenu = this.page.locator('[data-testid="user-menu"]');
-    this.logoutButton = this.page.getByRole("button", {
-      name: /logout|sign out/i,
-    });
   }
 
   /**
@@ -75,45 +55,52 @@ export class DesktopPage extends BasePage {
    * Click navigation link by name
    */
   async clickNavLink(linkName: "home" | "feeds" | "articles" | "settings") {
-    switch (linkName) {
-      case "home":
-        await this.homeLink.click();
-        break;
-      case "feeds":
-        await this.feedsLink.click();
-        break;
-      case "articles":
-        await this.articlesLink.click();
-        break;
-      case "settings":
-        await this.settingsLink.click();
-        break;
-    }
-    await this.waitForNetwork();
+    const testId = `desktop-nav-link-${linkName}`;
+    const link = this.page.getByTestId(testId);
+
+    await expect(link).toBeVisible({ timeout: 5000 });
+    await link.click();
+    await this.page.waitForLoadState("domcontentloaded");
   }
 
   /**
    * Verify we are on the correct desktop page
    */
   async verifyOnDesktopPage(pageName: string) {
-    await expect(this.page).toHaveURL(`/desktop/${pageName}`);
-    await expect(this.page).toHaveTitle(/Alt/);
+    const pattern =
+      pageName === "home"
+        ? /\/desktop\/(home|dashboard)/
+        : new RegExp(`/desktop/${pageName}`);
+
+    await expect(this.page).toHaveURL(pattern);
+
+    const container =
+      pageName === "home"
+        ? this.page.getByTestId("desktop-home-container")
+        : this.page.locator(`[data-testid="desktop-${pageName}"]`).first();
+
+    await expect(container).toBeVisible({ timeout: 7000 });
   }
 
   /**
    * Verify navigation menu is visible
    */
   async verifyNavigationVisible() {
-    if (await this.elementExists('[data-testid="navigation-menu"]')) {
-      await expect(this.navigationMenu).toBeVisible();
-    }
+    const navigation = this.page.locator(
+      '[data-testid="desktop-navigation"], nav[aria-label="Main navigation"], [aria-label="Main navigation"]',
+    );
+    await expect(navigation.first()).toBeVisible({ timeout: 7000 });
   }
 
   /**
-   * Wait for page to be authenticated (not redirected to login)
+   * Wait for page to be authenticated (not redirected to landing/login)
    */
   async waitForAuthenticated() {
+    await expect(this.page).not.toHaveURL(/\/public\/landing/);
     await expect(this.page).not.toHaveURL(/\/auth\/login/);
+    await expect(this.page.getByTestId("desktop-shell")).toBeVisible({
+      timeout: 7000,
+    });
   }
 
   /**
@@ -122,15 +109,16 @@ export class DesktopPage extends BasePage {
   async isLoggedIn(): Promise<boolean> {
     try {
       if (await this.elementExists('[data-testid="user-menu"]')) {
-        await expect(this.userMenu).toBeVisible({ timeout: 2000 });
+        await expect(
+          this.page.locator('[data-testid="user-menu"]'),
+        ).toBeVisible({ timeout: 2000 });
         return true;
       }
-      if (
-        await this.elementExists(
-          '[role="button"][name*="logout"], [role="button"][name*="sign out"]',
-        )
-      ) {
-        await expect(this.logoutButton).toBeVisible({ timeout: 2000 });
+      const logoutButton = this.page.getByRole("button", {
+        name: /logout|ログアウト|sign out/i,
+      });
+      if ((await logoutButton.count()) > 0) {
+        await expect(logoutButton).toBeVisible({ timeout: 2000 });
         return true;
       }
       return false;
@@ -143,22 +131,22 @@ export class DesktopPage extends BasePage {
    * Perform logout if logout button exists
    */
   async logout() {
-    if (
-      await this.elementExists(
-        '[role="button"][name*="logout"], [role="button"][name*="sign out"]',
-      )
-    ) {
-      await this.logoutButton.click();
-      await this.waitForUrl(/\/auth\/login/, { timeout: 10000 });
+    const logoutButton = this.page.getByRole("button", {
+      name: /logout|ログアウト|sign out/i,
+    });
+
+    if ((await logoutButton.count()) > 0) {
+      await logoutButton.click();
+      await this.waitForUrl(/\/public\/landing/, { timeout: 10000 });
     }
   }
 
   /**
-   * Verify protected route redirects to login when not authenticated
+   * Verify protected route redirects to landing when not authenticated
    */
   async verifyProtectedRouteRedirect(route: string) {
     await this.goto(route);
-    await this.waitForUrl(/\/auth\/login\?flow=/, { timeout: 10000 });
+    await this.waitForUrl(/\/public\/landing/, { timeout: 10000 });
   }
 
   /**

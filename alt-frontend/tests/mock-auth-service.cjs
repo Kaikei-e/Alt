@@ -434,6 +434,41 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Handle session validation (auth-hub compatible endpoint)
+    if (req.method === "GET" && path === "/session") {
+      const cookies = req.headers.cookie || "";
+      const sessionMatch = cookies.match(/ory_kratos_session=([^;]+)/);
+
+      log(`Session validation request, cookies: ${cookies}`);
+
+      if (!sessionMatch) {
+        log("No session cookie found");
+        res.statusCode = 401;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({ error: { message: "No active session found" } }),
+        );
+        return;
+      }
+
+      const sessionId = sessionMatch[1];
+      const session = sessions.get(sessionId);
+
+      if (!session) {
+        log(`Invalid session ID: ${sessionId}`);
+        res.statusCode = 401;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: { message: "Invalid session" } }));
+        return;
+      }
+
+      log(`Valid session found: ${sessionId}`);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(session));
+      return;
+    }
+
     // Mock backend API endpoints for feed stats
     if (req.method === "GET" && path === "/v1/feeds/stats") {
       const mockStats = {
