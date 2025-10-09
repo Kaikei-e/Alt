@@ -1,6 +1,7 @@
 "use client";
 
-import { Box, Flex, Stack, Text } from "@chakra-ui/react";
+import { Box, Flex, Link, Stack, Text } from "@chakra-ui/react";
+import NextLink from "next/link";
 import { useOryFlow } from "@/lib/ory/use-flow";
 import { OryFlowForm } from "@/components/ory/OryFlowForm";
 
@@ -79,6 +80,19 @@ export default function RegisterClient({
               onSubmit={handleSubmit}
             />
           </Box>
+
+          <Text textAlign="center" fontSize="sm" color="var(--text-muted)">
+            既にアカウントをお持ちですか？{' '}
+            <Link
+              as={NextLink}
+              href="/auth/login"
+              color="var(--alt-primary)"
+              fontWeight="semibold"
+              _hover={{ textDecoration: 'underline' }}
+            >
+              ログイン
+            </Link>
+          </Text>
         </Stack>
       </Flex>
     </Box>

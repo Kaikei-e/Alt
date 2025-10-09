@@ -824,6 +824,7 @@ export default function DesktopTimeline() {
           justifyContent="center"
           h="100%"
           p={4}
+          data-testid="error-state"
         >
           <Box
             className="glass"
@@ -835,7 +836,7 @@ export default function DesktopTimeline() {
             <Text fontSize="2xl" mb={3}>
               ⚠️
             </Text>
-            <Text color="var(--text-primary)" fontSize="lg" mb={3}>
+            <Text color="var(--text-primary)" fontSize="lg" mb={3} data-testid="error-message">
               Failed to load feeds
             </Text>
             <Text color="var(--text-secondary)" fontSize="sm" mb={4}>
@@ -844,6 +845,7 @@ export default function DesktopTimeline() {
             <button
               onClick={retryFetch}
               disabled={isRetrying}
+              data-testid="retry-button"
               style={{
                 padding: "10px 20px",
                 borderRadius: "var(--radius-md)",
@@ -985,6 +987,7 @@ export default function DesktopTimeline() {
               p={6}
               borderRadius="var(--radius-lg)"
               textAlign="center"
+              data-testid="empty-state"
             >
               <Text fontSize="2xl" mb={3}>
                 📰

@@ -74,6 +74,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
           flex="1"
           ml={showSidebar ? "250px" : "0"}
           mr={showRightPanel ? "400px" : "0"}
+          data-testid="main-content"
         >
           {children}
         </Box>
@@ -93,6 +94,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
             bg="var(--surface-bg)"
             backdropFilter="blur(var(--surface-blur))"
             overflowY="auto"
+            data-testid="right-panel"
           >
             {rightPanel}
           </Box>
