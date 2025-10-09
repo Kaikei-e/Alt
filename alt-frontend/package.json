@@ -67,6 +67,8 @@
     "@types/sanitize-html": "^2.16.0",
     "@vitejs/plugin-react": "^5.0.4",
     "@vitest/browser": "^3.2.3",
+    "axe-core": "^4.10.3",
+    "axe-playwright": "^2.2.2",
     "dotenv": "^17.2.3",
     "eslint": "^9.37.0",
     "eslint-config-next": "15.5.4",

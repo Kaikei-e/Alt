@@ -27,7 +27,7 @@ export default defineConfig({
 
   // Enable parallel execution for better performance
   fullyParallel: !process.env.CI, // Full parallel locally only
-  workers: process.env.CI ? 2 : 10, // Use 10 workers locally (reduced from 20 for stability)
+  workers: process.env.CI ? 2 : 20,
 
   // Enhanced reporting configuration
   reporter: process.env.CI
@@ -101,21 +101,21 @@ export default defineConfig({
         storageState: "playwright/.auth/user.json",
       },
       dependencies: ["setup"],
-      testMatch: "e2e/desktop/**/*.spec.ts",
+      testMatch: ["e2e/desktop/**/*.spec.ts", "e2e/specs/desktop/**/*.spec.ts"],
     },
 
     // Non-authenticated tests (auth flow tests) - Chrome
     {
       name: "auth-flow-chrome",
       use: { ...devices["Desktop Chrome"] },
-      testMatch: "e2e/auth/**/*.spec.ts",
+      testMatch: ["e2e/auth/**/*.spec.ts", "e2e/specs/auth/**/*.spec.ts"],
     },
 
     // Non-authenticated tests (auth flow tests) - Firefox
     {
       name: "auth-flow-firefox",
       use: { ...devices["Desktop Firefox"] },
-      testMatch: "e2e/auth/**/*.spec.ts",
+      testMatch: ["e2e/auth/**/*.spec.ts", "e2e/specs/auth/**/*.spec.ts"],
     },
 
     // Error scenarios tests
@@ -136,12 +136,33 @@ export default defineConfig({
       testMatch: "e2e/components/**/*.spec.ts",
     },
 
-    // Mobile tests (optional - can be enabled when needed)
-    // {
-    //   name: 'mobile-chrome',
-    //   use: { ...devices['Pixel 5'] },
-    //   testMatch: 'e2e/mobile/**/*.spec.ts'
-    // }
+    // Public pages tests (no authentication required)
+    {
+      name: "public-pages",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: "e2e/specs/public/**/*.spec.ts",
+    },
+
+    // Mobile pages tests (authenticated)
+    {
+      name: "mobile-pages",
+      use: {
+        ...devices["iPhone 13"],
+        storageState: "playwright/.auth/user.json",
+      },
+      dependencies: ["setup"],
+      testMatch: "e2e/specs/mobile/**/*.spec.ts",
+    },
+
+    // E2E user flow tests
+    {
+      name: "e2e-flows",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      testMatch: "e2e/specs/e2e-flows/**/*.spec.ts",
+      fullyParallel: false, // Run sequentially for flow tests
+    },
   ],
 
   // WebServerの設定
