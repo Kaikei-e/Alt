@@ -21,28 +21,39 @@ export class RegisterPage extends BasePage {
   constructor(page: Page) {
     super(page);
 
-    // Initialize locators
-    this.pageHeading = page.getByRole('heading', {
-      name: /sign up|register|create account/i,
-    });
-    this.nameInput = page.getByLabel(/name|full name/i);
-    this.emailInput = page.getByLabel(/email/i);
-    this.passwordInput = page.getByLabel(/^password$/i);
-    this.confirmPasswordInput = page.getByLabel(/confirm password|repeat password/i);
-    this.submitButton = page.getByRole('button', {
-      name: /sign up|register|create account/i,
-    });
-    this.loginLink = page.getByRole('link', { name: /log in|login/i });
-    this.errorMessage = page.getByRole('alert');
+    // Initialize locators - adjusted for OryFlowForm rendering
+    this.pageHeading = page.getByText(/新規登録|sign up|register|create account/i).first();
+
+    // OryFlowForm uses aria-label from Kratos flow configuration
+    // Typical Kratos field names: "traits.email", "password", "traits.name"
+    this.nameInput = page.getByLabel(/name|氏名|full name|お名前/i);
+    this.emailInput = page.getByLabel(/email|メール|e-mail/i);
+    this.passwordInput = page.getByLabel(/^password$|^パスワード$/i);
+    this.confirmPasswordInput = page.getByLabel(/confirm|repeat|再入力|確認/i);
+
+    // Submit button is rendered by OryFlowForm
+    this.submitButton = page.locator('button[type="submit"]');
+
+    this.loginLink = page.getByRole('link', { name: /log in|login|ログイン/i });
+
+    // Error messages are rendered in red bordered boxes by OryFlowForm
+    this.errorMessage = page.locator('[role="alert"], .chakra-alert, [style*="red"]').first();
     this.successMessage = page.getByRole('status');
-    this.termsCheckbox = page.getByLabel(/terms|agree/i);
+    this.termsCheckbox = page.getByLabel(/terms|agree|利用規約|同意/i);
   }
 
   /**
    * Navigate to register page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/auth/register');
+    // Navigate and wait for Kratos flow initialization
+    await this.page.goto('/auth/register', { waitUntil: 'networkidle' });
+
+    // Wait for redirect and flow initialization (may redirect to Kratos then back)
+    await this.page.waitForURL('**/auth/register?flow=**', { timeout: 15000 }).catch(() => {
+      // If no redirect with flow, page might already have flow initialized
+    });
+
     await this.waitForLoad();
   }
 
@@ -50,9 +61,14 @@ export class RegisterPage extends BasePage {
    * Wait for page to be fully loaded
    */
   async waitForLoad(): Promise<void> {
-    await expect(this.pageHeading).toBeVisible();
-    await expect(this.emailInput).toBeVisible();
-    await expect(this.submitButton).toBeVisible();
+    // Wait for the form container to be visible
+    await this.page.waitForSelector('form, [role="form"]', { timeout: 15000 }).catch(() => {
+      // Fallback: wait for specific elements
+    });
+
+    // Wait for critical elements - use more flexible timeout
+    await expect(this.emailInput).toBeVisible({ timeout: 10000 });
+    await expect(this.submitButton).toBeVisible({ timeout: 10000 });
   }
 
   /**

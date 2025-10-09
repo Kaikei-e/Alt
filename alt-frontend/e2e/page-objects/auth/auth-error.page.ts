@@ -17,19 +17,15 @@ export class AuthErrorPage extends BasePage {
   constructor(page: Page) {
     super(page);
 
-    // Initialize locators
+    // Initialize locators - use data-testid for reliable selection
     this.pageHeading = page.getByRole('heading', {
-      name: /error|something went wrong/i,
+      name: /error|エラー|認証|something went wrong/i,
     });
-    this.errorMessage = page.getByRole('alert').or(
-      page.getByText(/error|failed|something went wrong/i).first()
-    );
+    this.errorMessage = page.locator('[data-testid="error-message"]');
     this.errorDetails = page.locator('[data-testid="error-details"]');
-    this.retryButton = page.getByRole('button', { name: /retry|try again/i });
-    this.backToLoginButton = page.getByRole('link', {
-      name: /back to login|login/i,
-    });
-    this.homeButton = page.getByRole('link', { name: /home|back home/i });
+    this.retryButton = page.getByRole('button', { name: /retry|try again|再試行/i });
+    this.backToLoginButton = page.locator('[data-testid="back-to-login-button"]');
+    this.homeButton = page.getByRole('link', { name: /home|back home|ホーム/i });
   }
 
   /**
