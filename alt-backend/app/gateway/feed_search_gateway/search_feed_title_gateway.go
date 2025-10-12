@@ -5,6 +5,7 @@ import (
 
 	"alt/domain"
 	"alt/driver/alt_db"
+	"alt/utils/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,22 +18,24 @@ func NewSearchByTitleGateway(pool *pgxpool.Pool) *SearchByTitleGateway {
 	return &SearchByTitleGateway{alt_db: alt_db.NewAltDBRepositoryWithPool(pool)}
 }
 
-func (g *SearchByTitleGateway) SearchByTitle(ctx context.Context, query string) ([]*domain.FeedItem, error) {
-	feeds, err := g.alt_db.SearchByTitle(ctx, query)
+func (g *SearchByTitleGateway) SearchFeedsByTitle(ctx context.Context, query string, userID string) ([]*domain.FeedItem, error) {
+	logger.GlobalContext.WithContext(ctx).Info("gateway: searching feeds by title",
+		"query", query,
+		"user_id", userID)
+
+	feeds, err := g.alt_db.SearchFeedsByTitle(ctx, query, userID)
 	if err != nil {
+		logger.GlobalContext.WithContext(ctx).Error("gateway: failed to search feeds by title",
+			"error", err,
+			"query", query,
+			"user_id", userID)
 		return nil, err
 	}
 
-	items := make([]*domain.FeedItem, 0)
-	for _, feed := range feeds {
-		items = append(items, &domain.FeedItem{
-			Title:           feed.Title,
-			Link:            feed.Link,
-			Description:     feed.Description,
-			Published:       feed.Published,
-			PublishedParsed: feed.PublishedParsed,
-		})
-	}
+	logger.GlobalContext.WithContext(ctx).Info("gateway: feed search completed",
+		"query", query,
+		"user_id", userID,
+		"results_count", len(feeds))
 
-	return items, nil
+	return feeds, nil
 }

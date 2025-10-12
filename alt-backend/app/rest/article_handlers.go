@@ -123,8 +123,8 @@ func handleSearchArticles(container *di.ApplicationComponents) echo.HandlerFunc 
 			})
 		}
 
-		// Use FeedSearchUsecase which now handles user_id filtering
-		results, err := container.FeedSearchUsecase.Execute(c.Request().Context(), query)
+		// Use ArticleSearchUsecase which searches via Meilisearch with user_id filtering
+		results, err := container.ArticleSearchUsecase.Execute(c.Request().Context(), query)
 		if err != nil {
 			return handleError(c, err, "search_articles")
 		}

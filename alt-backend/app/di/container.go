@@ -4,14 +4,12 @@ import (
 	"alt/config"
 	"alt/driver/alt_db"
 	"alt/driver/csrf_token_driver"
-	"alt/driver/search_indexer"
 	"alt/gateway/archive_article_gateway"
 	"alt/gateway/config_gateway"
 	"alt/gateway/csrf_token_gateway"
 	"alt/gateway/error_handler_gateway"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
-	"alt/gateway/feed_url_link_gateway"
 	"alt/gateway/feed_url_to_id_gateway"
 	"alt/gateway/fetch_article_gateway"
 	"alt/gateway/fetch_feed_detail_gateway"
@@ -23,6 +21,7 @@ import (
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/update_feed_status_gateway"
+	"alt/driver/search_indexer"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/rate_limiter_port"
@@ -38,6 +37,7 @@ import (
 	"alt/usecase/reading_status"
 	"alt/usecase/register_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
+	"alt/usecase/search_article_usecase"
 	"alt/usecase/search_feed_usecase"
 	"alt/utils"
 	"alt/utils/rate_limiter"
@@ -72,7 +72,8 @@ type ApplicationComponents struct {
 	SummarizedArticlesCountUsecase      *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
 	TotalArticlesCountUsecase           *fetch_feed_stats_usecase.TotalArticlesCountUsecase
 	TodayUnreadArticlesCountUsecase     *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
-	FeedSearchUsecase                   *search_feed_usecase.SearchFeedMeilisearchUsecase
+	FeedSearchUsecase                   *search_feed_usecase.SearchFeedByTitleUsecase
+	ArticleSearchUsecase                *search_article_usecase.SearchArticleUsecase
 	FetchFeedTagsUsecase                *fetch_feed_tags_usecase.FetchFeedTagsUsecase
 	FetchInoreaderSummaryUsecase        fetch_inoreader_summary_usecase.FetchInoreaderSummaryUsecase
 	ImageFetchUsecase                   image_fetch_usecase.ImageFetchUsecaseInterface
@@ -138,10 +139,13 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	todayUnreadArticlesCountGatewayImpl := feed_stats_gateway.NewTodayUnreadArticlesCountGateway(pool)
 	todayUnreadArticlesCountUsecase := fetch_feed_stats_usecase.NewTodayUnreadArticlesCountUsecase(todayUnreadArticlesCountGatewayImpl)
 
-	searchIndexerDriverImpl := search_indexer.NewHTTPSearchIndexerDriver()
-	feedSearchMeilisearchGatewayImpl := feed_search_gateway.NewSearchFeedMeilisearchGateway(searchIndexerDriverImpl)
-	feedURLLinkGatewayImpl := feed_url_link_gateway.NewFeedURLLinkGateway(altDBRepository)
-	feedSearchUsecase := search_feed_usecase.NewSearchFeedMeilisearchUsecase(feedSearchMeilisearchGatewayImpl, feedURLLinkGatewayImpl)
+	// Feed search by title (PostgreSQL-based)
+	searchByTitleGatewayImpl := feed_search_gateway.NewSearchByTitleGateway(pool)
+	feedSearchUsecase := search_feed_usecase.NewSearchFeedByTitleUsecase(searchByTitleGatewayImpl)
+
+	// Article search (Meilisearch-based via search-indexer)
+	searchIndexerDriver := search_indexer.NewHTTPSearchIndexerDriver()
+	articleSearchUsecase := search_article_usecase.NewSearchArticleUsecase(searchIndexerDriver)
 
 	feedURLToIDGatewayImpl := feed_url_to_id_gateway.NewFeedURLToIDGateway(altDBRepository)
 	fetchFeedTagsGatewayImpl := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDBRepository)
@@ -194,6 +198,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		TotalArticlesCountUsecase:           totalArticlesCountUsecase,
 		TodayUnreadArticlesCountUsecase:     todayUnreadArticlesCountUsecase,
 		FeedSearchUsecase:                   feedSearchUsecase,
+		ArticleSearchUsecase:                articleSearchUsecase,
 		FetchFeedTagsUsecase:                fetchFeedTagsUsecase,
 		FetchInoreaderSummaryUsecase:        fetchInoreaderSummaryUsecase,
 		ImageFetchUsecase:                   imageFetchUsecase,

@@ -6,7 +6,7 @@ import (
 )
 
 type SearchByTitlePort interface {
-	SearchByTitle(ctx context.Context, query string) ([]*domain.FeedItem, error)
+	SearchFeedsByTitle(ctx context.Context, query string, userID string) ([]*domain.FeedItem, error)
 }
 
 type SearchFeedPort interface {
