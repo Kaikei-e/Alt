@@ -100,7 +100,7 @@ setup("authenticate via API", async ({ request, context }) => {
       path: "/",
       httpOnly: true,
       secure: false,
-      sameSite: "Lax",
+      sameSite: "Lax" as const,
     };
 
     await context.addCookies([sessionCookie]);
