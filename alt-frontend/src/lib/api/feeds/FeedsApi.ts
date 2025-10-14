@@ -11,7 +11,7 @@ import {
   FeedContentOnTheFlyResponse,
 } from "@/schema/feed";
 import { FeedSearchResult } from "@/schema/search";
-import { Article, ArticleBackendResponse } from "@/schema/article";
+import { Article } from "@/schema/article";
 import { FeedStatsSummary } from "@/schema/feedStats";
 import { UnreadCount } from "@/schema/unread";
 import { MessageResponse } from "@/schema/common";
@@ -194,16 +194,12 @@ export class FeedsApi {
 
   // Search
   async searchArticles(query: string): Promise<Article[]> {
-    const backendResponse = await this.apiClient.get<ArticleBackendResponse[]>(
+    const backendResponse = await this.apiClient.get<Article[]>(
       `/v1/articles/search?q=${query}`,
     );
 
-    // Transform backend response (capitalized fields) to frontend format (lowercase)
-    return backendResponse.map((item) => ({
-      id: item.ID,
-      title: item.Title,
-      content: item.Content,
-    }));
+    // Backend already returns lowercase fields, no transformation needed
+    return backendResponse;
   }
 
   async searchFeeds(query: string): Promise<FeedSearchResult> {

@@ -2,8 +2,8 @@
 
 import { Box, VStack, Text } from "@chakra-ui/react";
 import { ArticleCard } from "@/components/mobile/ArticleCard";
-import { Article } from "@/schema/article";
 import { CircularProgress } from "@chakra-ui/progress";
+import { Article } from "@/schema/article";
 
 interface ArticleSearchResultsProps {
   results: Article[];

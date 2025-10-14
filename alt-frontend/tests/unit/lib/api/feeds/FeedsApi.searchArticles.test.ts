@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { FeedsApi } from "../../../../../src/lib/api/feeds/FeedsApi";
-import type { ArticleBackendResponse } from "../../../../../src/schema/article";
+import type { Article } from "../../../../../src/schema/article";
 
 describe("FeedsApi.searchArticles", () => {
   let mockApiClient: any;
@@ -16,17 +16,17 @@ describe("FeedsApi.searchArticles", () => {
     feedsApi = new FeedsApi(mockApiClient);
   });
 
-  it("should transform backend response with capitalized fields to lowercase fields", async () => {
-    const mockBackendResponse: ArticleBackendResponse[] = [
+  it("should return backend response with lowercase fields directly", async () => {
+    const mockBackendResponse: Article[] = [
       {
-        ID: "article-1",
-        Title: "Test Article 1",
-        Content: "This is test content 1",
+        id: "article-1",
+        title: "Test Article 1",
+        content: "This is test content 1",
       },
       {
-        ID: "article-2",
-        Title: "Test Article 2",
-        Content: "This is test content 2",
+        id: "article-2",
+        title: "Test Article 2",
+        content: "This is test content 2",
       },
     ];
 
@@ -61,11 +61,11 @@ describe("FeedsApi.searchArticles", () => {
   });
 
   it("should handle single result", async () => {
-    const mockBackendResponse: ArticleBackendResponse[] = [
+    const mockBackendResponse: Article[] = [
       {
-        ID: "single-article",
-        Title: "Single Article",
-        Content: "Single content",
+        id: "single-article",
+        title: "Single Article",
+        content: "Single content",
       },
     ];
 
@@ -100,12 +100,12 @@ describe("FeedsApi.searchArticles", () => {
     );
   });
 
-  it("should correctly map all fields from backend to frontend format", async () => {
-    const mockBackendResponse: ArticleBackendResponse[] = [
+  it("should correctly pass through all fields from backend response", async () => {
+    const mockBackendResponse: Article[] = [
       {
-        ID: "test-id-123",
-        Title: "Article Title with Special Chars: !@#$%",
-        Content: "Content with\nmultiple\nlines",
+        id: "test-id-123",
+        title: "Article Title with Special Chars: !@#$%",
+        content: "Content with\nmultiple\nlines",
       },
     ];
 
