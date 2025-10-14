@@ -3,6 +3,7 @@ package rest
 import (
 	"alt/di"
 	"alt/domain"
+	"alt/usecase/archive_article_usecase"
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"bytes"
@@ -252,41 +253,30 @@ func fetchArticleContent(ctx context.Context, feedURL string, container *di.Appl
 	// Article not in DB, fetch from URL and extract clean text
 	logger.Logger.Info("Article not in database, fetching from URL", "url", feedURL)
 
-	// Use ArticleUsecase which fetches HTML and extracts clean text
-	cleanTextPtr, err := container.ArticleUsecase.Execute(ctx, feedURL)
+	// Use ArchiveArticleUsecase which fetches HTML, extracts title and content, and saves to DB
+	// Pass empty title so it will be extracted from HTML
+	archiveInput := archive_article_usecase.ArchiveArticleInput{
+		URL:   feedURL,
+		Title: "", // Let the usecase extract title from HTML
+	}
+	err = container.ArchiveArticleUsecase.Execute(ctx, archiveInput)
 	if err != nil {
-		logger.Logger.Error("Failed to fetch and extract article", "error", err, "url", feedURL)
-		return "", "", "", fmt.Errorf("failed to fetch and extract article: %w", err)
+		logger.Logger.Error("Failed to archive article", "error", err, "url", feedURL)
+		return "", "", "", fmt.Errorf("failed to archive article: %w", err)
 	}
 
-	if cleanTextPtr == nil || strings.TrimSpace(*cleanTextPtr) == "" {
-		logger.Logger.Error("Extracted article text is empty", "url", feedURL)
-		return "", "", "", fmt.Errorf("extracted article text is empty")
-	}
+	logger.Logger.Info("Article archived successfully", "url", feedURL)
 
-	cleanText := *cleanTextPtr
-	logger.Logger.Info("Article content extracted", "url", feedURL, "clean_text_length", len(cleanText))
-
-	// Save to database for future use
-	// Use URL as title if we don't have a better one
-	title := feedURL
-	if err := container.AltDBRepository.SaveArticle(ctx, feedURL, title, cleanText); err != nil {
-		// Log error but don't fail the request
-		logger.Logger.Warn("Failed to save article to database", "error", err, "url", feedURL)
-	} else {
-		logger.Logger.Info("Article saved to database", "url", feedURL)
-	}
-
-	// Fetch the saved article to get its ID and title
+	// Fetch the saved article to get its ID, title, and content
 	savedArticle, err := container.AltDBRepository.FetchArticleByURL(ctx, feedURL)
 	if err != nil || savedArticle == nil {
-		// Fall back to generated ID and URL as title if fetch fails
+		// Fall back to generated ID and fallback title if fetch fails
 		articleID := generateArticleID(feedURL)
-		logger.Logger.Warn("Failed to fetch saved article, using generated ID and URL as title", "url", feedURL, "generated_id", articleID)
-		return cleanText, articleID, title, nil
+		logger.Logger.Warn("Failed to fetch saved article, using generated ID and fallback title", "url", feedURL, "generated_id", articleID)
+		return "", articleID, feedURL, fmt.Errorf("failed to fetch saved article after archiving")
 	}
 
-	return cleanText, savedArticle.ID, savedArticle.Title, nil
+	return savedArticle.Content, savedArticle.ID, savedArticle.Title, nil
 }
 
 // generateArticleID generates a simple article ID from URL

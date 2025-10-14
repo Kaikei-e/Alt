@@ -41,6 +41,11 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		cleanTitle = cleanURL
 	}
 
+	// Validate that title is not a URL (this would indicate a bug)
+	if strings.HasPrefix(cleanTitle, "http://") || strings.HasPrefix(cleanTitle, "https://") {
+		logger.SafeWarn("article title appears to be a URL, this may indicate a bug", "url", cleanURL, "title", cleanTitle)
+	}
+
 	// Extract user_id from context
 	userContext, err := domain.GetUserFromContext(ctx)
 	if err != nil {

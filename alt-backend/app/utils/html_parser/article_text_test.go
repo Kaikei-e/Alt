@@ -30,3 +30,52 @@ func TestExtractArticleText_RemovesScripts(t *testing.T) {
 		t.Fatalf("expected script to be removed, got %q", got)
 	}
 }
+
+func TestExtractTitle_ExtractsFromTitleTag(t *testing.T) {
+	raw := `<html><head><title>Article Title</title></head><body><p>Content</p></body></html>`
+	expected := "Article Title"
+
+	got := ExtractTitle(raw)
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestExtractTitle_FallsBackToFirstH1(t *testing.T) {
+	raw := `<html><body><h1>Main Heading</h1><p>Content</p></body></html>`
+	expected := "Main Heading"
+
+	got := ExtractTitle(raw)
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestExtractTitle_ReturnsEmptyWhenNoTitle(t *testing.T) {
+	raw := `<html><body><p>Just content</p></body></html>`
+
+	got := ExtractTitle(raw)
+	if got != "" {
+		t.Fatalf("expected empty string, got %q", got)
+	}
+}
+
+func TestExtractTitle_TrimsWhitespace(t *testing.T) {
+	raw := `<html><head><title>  Article Title  </title></head><body><p>Content</p></body></html>`
+	expected := "Article Title"
+
+	got := ExtractTitle(raw)
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestExtractTitle_HandlesOGTitle(t *testing.T) {
+	raw := `<html><head><meta property="og:title" content="OG Title"/></head><body><p>Content</p></body></html>`
+	expected := "OG Title"
+
+	got := ExtractTitle(raw)
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}

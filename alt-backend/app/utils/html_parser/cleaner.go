@@ -155,3 +155,40 @@ func truncateText(s string) string {
 
 	return s[:maxLength] + "..."
 }
+
+// ExtractTitle extracts the article title from HTML content.
+// Priority order: <title> tag, og:title meta tag, first <h1> tag.
+// Returns empty string if no title found.
+func ExtractTitle(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+
+	// Parse HTML
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(trimmed))
+	if err != nil {
+		return ""
+	}
+
+	// 1. Try <title> tag first
+	title := strings.TrimSpace(doc.Find("title").First().Text())
+	if title != "" {
+		return title
+	}
+
+	// 2. Try Open Graph title meta tag
+	ogTitle, exists := doc.Find("meta[property='og:title']").First().Attr("content")
+	if exists && strings.TrimSpace(ogTitle) != "" {
+		return strings.TrimSpace(ogTitle)
+	}
+
+	// 3. Fall back to first <h1> tag
+	h1Title := strings.TrimSpace(doc.Find("h1").First().Text())
+	if h1Title != "" {
+		return h1Title
+	}
+
+	// No title found
+	return ""
+}

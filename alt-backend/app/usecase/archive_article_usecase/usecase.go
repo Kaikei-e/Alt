@@ -52,14 +52,24 @@ func (u *ArchiveArticleUsecase) Execute(ctx context.Context, input ArchiveArticl
 		return errors.New("fetched article content is empty")
 	}
 
-	textOnly := html_parser.ExtractArticleText(*content)
-	if textOnly == "" {
-		return errors.New("extracted article text is empty")
-	}
+	rawHTML := *content
 
+	// Extract title from HTML if not provided
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
-		title = cleanURL
+		// Try to extract title from HTML
+		extractedTitle := html_parser.ExtractTitle(rawHTML)
+		if extractedTitle != "" && !strings.HasPrefix(extractedTitle, "http://") && !strings.HasPrefix(extractedTitle, "https://") {
+			title = extractedTitle
+		} else {
+			// Fallback to URL if title extraction failed or title is a URL
+			title = cleanURL
+		}
+	}
+
+	textOnly := html_parser.ExtractArticleText(rawHTML)
+	if textOnly == "" {
+		return errors.New("extracted article text is empty")
 	}
 
 	record := archive_article_port.ArticleRecord{
