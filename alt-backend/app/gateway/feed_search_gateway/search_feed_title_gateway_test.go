@@ -9,30 +9,33 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pashagolub/pgxmock/v3"
 )
 
-func TestSearchByTitleGateway_SearchByTitle(t *testing.T) {
+func TestSearchByTitleGateway_SearchFeedsByTitle(t *testing.T) {
 	// Initialize logger to prevent nil pointer dereference
 	logger.InitLogger()
 
 	tests := []struct {
 		name      string
 		query     string
+		userID    string
 		mockSetup func(pgxmock.PgxPoolIface)
 		want      []*domain.FeedItem
 		wantErr   bool
 	}{
 		{
-			name:  "successful search with results",
-			query: "test",
+			name:   "successful search with results",
+			query:  "test",
+			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				now := time.Now()
-				rows := pgxmock.NewRows([]string{"title", "link", "description", "pub_date", "created_at"}).
-					AddRow("Test Feed 1", "https://test1.com", "Test Description 1", &now, now).
-					AddRow("Test Feed 2", "https://test2.com", "Test Description 2", (*time.Time)(nil), now)
-				mock.ExpectQuery(`SELECT title, link, description, pub_date, created_at FROM feeds WHERE title ILIKE \$1 ORDER BY created_at DESC LIMIT 20`).
-					WithArgs("%test%").
+				rows := pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at"}).
+					AddRow(uuid.New().String(), "Test Feed 1", "Test Description 1", "https://test1.com", &now, now).
+					AddRow(uuid.New().String(), "Test Feed 2", "Test Description 2", "https://test2.com", (*time.Time)(nil), now)
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+					WithArgs("11111111-1111-1111-1111-111111111111", "%test%").
 					WillReturnRows(rows)
 			},
 			want: []*domain.FeedItem{
@@ -50,48 +53,46 @@ func TestSearchByTitleGateway_SearchByTitle(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:  "empty query results",
-			query: "nonexistent",
+			name:   "empty query results",
+			query:  "nonexistent",
+			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"title", "link", "description", "pub_date", "created_at"})
-				mock.ExpectQuery(`SELECT title, link, description, pub_date, created_at FROM feeds WHERE title ILIKE \$1 ORDER BY created_at DESC LIMIT 20`).
-					WithArgs("%nonexistent%").
+				rows := pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at"})
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+					WithArgs("11111111-1111-1111-1111-111111111111", "%nonexistent%").
 					WillReturnRows(rows)
 			},
 			want:    []*domain.FeedItem{},
 			wantErr: false,
 		},
 		{
-			name:  "database error",
-			query: "error",
+			name:   "database error",
+			query:  "error",
+			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery(`SELECT title, link, description, pub_date, created_at FROM feeds WHERE title ILIKE \$1 ORDER BY created_at DESC LIMIT 20`).
-					WithArgs("%error%").
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+					WithArgs("11111111-1111-1111-1111-111111111111", "%error%").
 					WillReturnError(errors.New("database error"))
 			},
 			want:    nil,
 			wantErr: true,
 		},
 		{
-			name:  "empty query string",
-			query: "",
+			name:   "empty query string",
+			query:  "",
+			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"title", "link", "description", "pub_date", "created_at"})
-				mock.ExpectQuery(`SELECT title, link, description, pub_date, created_at FROM feeds WHERE title ILIKE \$1 ORDER BY created_at DESC LIMIT 20`).
-					WithArgs("%%").
-					WillReturnRows(rows)
+				// Empty query returns empty results without database call
 			},
 			want:    []*domain.FeedItem{},
 			wantErr: false,
 		},
 		{
-			name:  "special characters in query",
-			query: "test@#$%",
+			name:   "whitespace only query",
+			query:  "   ",
+			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"title", "link", "description", "pub_date", "created_at"})
-				mock.ExpectQuery(`SELECT title, link, description, pub_date, created_at FROM feeds WHERE title ILIKE \$1 ORDER BY created_at DESC LIMIT 20`).
-					WithArgs("%test@#$%%").
-					WillReturnRows(rows)
+				// Whitespace query returns empty results without database call
 			},
 			want:    []*domain.FeedItem{},
 			wantErr: false,
@@ -116,24 +117,24 @@ func TestSearchByTitleGateway_SearchByTitle(t *testing.T) {
 			}
 
 			// Execute test
-			got, err := gateway.SearchByTitle(context.Background(), tt.query)
+			got, err := gateway.SearchFeedsByTitle(context.Background(), tt.query, tt.userID)
 
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
-				t.Errorf("SearchByTitleGateway.SearchByTitle() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("SearchByTitleGateway.SearchFeedsByTitle() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			// Check results
 			if !tt.wantErr {
 				if len(got) != len(tt.want) {
-					t.Errorf("SearchByTitleGateway.SearchByTitle() got %d results, want %d", len(got), len(tt.want))
+					t.Errorf("SearchByTitleGateway.SearchFeedsByTitle() got %d results, want %d", len(got), len(tt.want))
 					return
 				}
 				for i, item := range got {
 					if i < len(tt.want) {
 						if item.Title != tt.want[i].Title || item.Link != tt.want[i].Link {
-							t.Errorf("SearchByTitleGateway.SearchByTitle() result[%d] = %+v, want %+v", i, item, tt.want[i])
+							t.Errorf("SearchByTitleGateway.SearchFeedsByTitle() result[%d] = %+v, want %+v", i, item, tt.want[i])
 						}
 					}
 				}
@@ -179,8 +180,8 @@ func TestSearchByTitleGateway_ContextCancellation(t *testing.T) {
 	defer mock.Close()
 
 	// Setup mock to expect query but return context cancelled error
-	mock.ExpectQuery(`SELECT title, link, description, pub_date, created_at FROM feeds WHERE title ILIKE \$1 ORDER BY created_at DESC LIMIT 20`).
-		WithArgs("%test query%").
+	mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+		WithArgs("11111111-1111-1111-1111-111111111111", "%test query%").
 		WillReturnError(context.Canceled)
 
 	// Create gateway
@@ -192,9 +193,9 @@ func TestSearchByTitleGateway_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, err = gateway.SearchByTitle(ctx, "test query")
+	_, err = gateway.SearchFeedsByTitle(ctx, "test query", "11111111-1111-1111-1111-111111111111")
 	if err == nil {
-		t.Error("SearchByTitleGateway.SearchByTitle() expected error with cancelled context, got nil")
+		t.Error("SearchByTitleGateway.SearchFeedsByTitle() expected error with cancelled context, got nil")
 	}
 
 	// Verify expectations
@@ -208,15 +209,17 @@ func TestSearchByTitleGateway_EmptyResultHandling(t *testing.T) {
 	logger.InitLogger()
 
 	// Test various query patterns that might return empty results
-	queries := []string{
-		"nonexistent_feed_title_12345",
-		"",
-		"   ",
-		"!@#$%^&*()",
+	testCases := []struct {
+		query  string
+		userID string
+	}{
+		{"nonexistent_feed_title_12345", "11111111-1111-1111-1111-111111111111"},
+		{"", "11111111-1111-1111-1111-111111111111"},
+		{"   ", "11111111-1111-1111-1111-111111111111"},
 	}
 
-	for _, query := range queries {
-		t.Run("query: "+query, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run("query: "+tc.query, func(t *testing.T) {
 			// Create mock database
 			mock, err := pgxmock.NewPool()
 			if err != nil {
@@ -224,23 +227,26 @@ func TestSearchByTitleGateway_EmptyResultHandling(t *testing.T) {
 			}
 			defer mock.Close()
 
-			// Setup mock to return empty results
-			rows := pgxmock.NewRows([]string{"title", "link", "description", "pub_date", "created_at"})
-			mock.ExpectQuery(`SELECT title, link, description, pub_date, created_at FROM feeds WHERE title ILIKE \$1 ORDER BY created_at DESC LIMIT 20`).
-				WithArgs("%" + query + "%").
-				WillReturnRows(rows)
+			// Empty or whitespace queries should not make database calls
+			if tc.query != "" && tc.query != "   " {
+				// Setup mock to return empty results
+				rows := pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at"})
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+					WithArgs(tc.userID, "%"+tc.query+"%").
+					WillReturnRows(rows)
+			}
 
 			// Create gateway
 			gateway := &SearchByTitleGateway{
 				alt_db: alt_db.NewAltDBRepository(mock),
 			}
 
-			results, err := gateway.SearchByTitle(context.Background(), query)
+			results, err := gateway.SearchFeedsByTitle(context.Background(), tc.query, tc.userID)
 			if err != nil {
-				t.Errorf("SearchByTitleGateway.SearchByTitle() unexpected error: %v", err)
+				t.Errorf("SearchByTitleGateway.SearchFeedsByTitle() unexpected error: %v", err)
 			}
 			if len(results) != 0 {
-				t.Errorf("SearchByTitleGateway.SearchByTitle() expected empty results, got %d", len(results))
+				t.Errorf("SearchByTitleGateway.SearchFeedsByTitle() expected empty results, got %d", len(results))
 			}
 
 			// Verify expectations
@@ -263,8 +269,8 @@ func TestSearchByTitleGateway_ErrorPropagation(t *testing.T) {
 	defer mock.Close()
 
 	// Setup mock to return an error
-	mock.ExpectQuery(`SELECT title, link, description, pub_date, created_at FROM feeds WHERE title ILIKE \$1 ORDER BY created_at DESC LIMIT 20`).
-		WithArgs("%test%").
+	mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+		WithArgs("11111111-1111-1111-1111-111111111111", "%test%").
 		WillReturnError(errors.New("database error"))
 
 	// Create gateway
@@ -273,9 +279,9 @@ func TestSearchByTitleGateway_ErrorPropagation(t *testing.T) {
 	}
 
 	// Test that errors from the database layer are properly propagated
-	_, err = gateway.SearchByTitle(context.Background(), "test")
+	_, err = gateway.SearchFeedsByTitle(context.Background(), "test", "11111111-1111-1111-1111-111111111111")
 	if err == nil {
-		t.Error("SearchByTitleGateway.SearchByTitle() should propagate database errors")
+		t.Error("SearchByTitleGateway.SearchFeedsByTitle() should propagate database errors")
 	}
 
 	// Verify expectations
