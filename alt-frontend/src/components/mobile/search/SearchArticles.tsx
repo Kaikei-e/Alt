@@ -16,6 +16,9 @@ interface SearchArticlesProps {
   setQuery: (query: string) => void;
   error: string | null;
   setError: (error: string | null) => void;
+  isLoading: boolean;
+  setIsLoading: (isLoading: boolean) => void;
+  setSearchTime: (searchTime: number) => void;
 }
 
 export const SearchArticles = ({
@@ -24,8 +27,10 @@ export const SearchArticles = ({
   setQuery,
   error,
   setError,
+  isLoading,
+  setIsLoading,
+  setSearchTime,
 }: SearchArticlesProps) => {
-  const [isLoading, setIsLoading] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const searchParams = useSearchParams();
 

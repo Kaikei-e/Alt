@@ -24,19 +24,19 @@ function validateEnvironment() {
   const requiredEnvVars = [
     "NEXT_PUBLIC_APP_ORIGIN",
     "NEXT_PUBLIC_KRATOS_PUBLIC_URL",
-    "NEXT_PUBLIC_IDP_ORIGIN",
+    "NEXT_PUBLIC_IDP_ORIGIN"
   ];
 
   const missing = requiredEnvVars.filter((envVar) => !process.env[envVar]);
 
   if (missing.length > 0) {
-    console.log("⚠️  Missing environment variables:", missing);
-    console.log("💡 Make sure .env.test is loaded");
-  } else {
-    console.log("✅ Environment variables are set");
+    console.log("❌ Missing required environment variables:", missing);
+    console.log("💡 Create or update .env.test so that all required variables are defined.");
+    process.exit(1);
   }
 
-  return missing.length === 0;
+  console.log("✅ Environment variables are set");
+  return true;
 }
 
 function checkDependencies() {

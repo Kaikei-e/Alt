@@ -51,17 +51,16 @@ export abstract class BasePage {
   async checkA11y(options?: {
     detailedReport?: boolean;
     detailedReportOptions?: { html?: boolean };
+    rules?: Record<string, { enabled: boolean }>;
   }): Promise<void> {
-    try {
-      await injectAxe(this.page);
-      await checkA11y(this.page, undefined, {
-        detailedReport: options?.detailedReport ?? false,
-        detailedReportOptions: options?.detailedReportOptions,
-      });
-    } catch (error) {
-      console.error('Accessibility check failed:', error);
-      throw error;
-    }
+    await injectAxe(this.page);
+    await checkA11y(this.page, undefined, {
+      detailedReport: options?.detailedReport ?? false,
+      detailedReportOptions: options?.detailedReportOptions,
+      axeOptions: {
+        rules: options?.rules || {},
+      },
+    });
   }
 
   /**

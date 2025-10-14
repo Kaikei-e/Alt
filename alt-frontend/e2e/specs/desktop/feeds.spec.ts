@@ -59,14 +59,18 @@ test.describe('Desktop Feeds Page', () => {
   test('should display page with correct layout', async ({ page }) => {
     await mockFeedsApi(page, 10);
     await feedsPage.navigateToFeeds();
+    await feedsPage.waitForLoad();
 
     // Check main timeline container is visible (always present)
-    await expect(feedsPage.feedsList).toBeVisible();
+    await expect(feedsPage.feedsList).toBeVisible({ timeout: 10000 });
 
     // Sidebar and right panel are rendered by DesktopLayout
     // They should be visible if the page loaded correctly
-    expect(await feedsPage.isSidebarVisible()).toBeTruthy();
-    expect(await feedsPage.isRightPanelVisible()).toBeTruthy();
+    const sidebarVisible = await feedsPage.isSidebarVisible();
+    const rightPanelVisible = await feedsPage.isRightPanelVisible();
+
+    expect(sidebarVisible).toBe(true);
+    expect(rightPanelVisible).toBe(true);
   });
 
   test('should load and display feeds', async ({ page }) => {
@@ -106,42 +110,49 @@ test.describe('Desktop Feeds Page', () => {
     const mockFeed = createMockFeed({ title: 'Test Feed' });
     await mockFeedsApi(page, [mockFeed]);
     await feedsPage.navigateToFeeds();
+    await feedsPage.waitForLoad();
 
+    // Verify feed card is visible and can be selected
     await feedsPage.selectFeedByIndex(0);
 
-    // Should navigate or show feed details
-    // Exact behavior depends on implementation
+    // Verify at least one feed is displayed
+    const count = await feedsPage.getFeedCount();
+    expect(count).toBeGreaterThan(0);
   });
 
   test('should handle empty state gracefully', async ({ page }) => {
     await mockEmptyFeeds(page);
     await feedsPage.navigateToFeeds();
+    await feedsPage.waitForLoad();
 
-    // Check empty state message
+    // Wait longer for empty state to render
+    await page.waitForTimeout(3000);
     const hasEmptyState = await feedsPage.hasEmptyState();
-    expect(hasEmptyState).toBeTruthy();
+    expect(hasEmptyState).toBe(true);
   });
 
   test('should handle API errors gracefully', async ({ page }) => {
     await mockApiError(page, '**/v1/feeds**', 500);
     await feedsPage.navigateToFeeds();
+    await feedsPage.waitForLoad();
 
-    // Check error message and retry button
+    // Wait longer for error state to render
+    await page.waitForTimeout(3000);
     const hasError = await feedsPage.hasError();
-    expect(hasError).toBeTruthy();
+    expect(hasError).toBe(true);
   });
 
   test('should retry loading on error', async ({ page }) => {
     // First request fails
     await mockApiError(page, '**/v1/feeds**', 500);
     await feedsPage.navigateToFeeds();
+    await feedsPage.waitForLoad();
 
-    await page.waitForTimeout(2000); // Wait for error to show
-
-    // Check error is shown or empty state
+    // Wait longer for error/empty state to render
+    await page.waitForTimeout(3000);
     const hasError = await feedsPage.hasError();
     const hasEmpty = await feedsPage.hasEmptyState();
-    expect(hasError || hasEmpty).toBeTruthy();
+    expect(hasError || hasEmpty).toBe(true);
   });
 
   test('should be accessible', async ({ page }) => {

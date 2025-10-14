@@ -75,8 +75,9 @@ export default async function PublicLandingPage() {
 
         {/* Authentication Buttons */}
         <HStack gap={4} flexWrap="wrap" justifyContent="center">
-          <NextLink href="/auth/login" prefetch={false}>
+          <NextLink href="/auth/login" prefetch={false} passHref>
             <Button
+              as="a"
               bg="var(--alt-primary)"
               color="white"
               size="lg"
@@ -84,6 +85,7 @@ export default async function PublicLandingPage() {
               py={6}
               borderRadius="full"
               fontWeight="semibold"
+              aria-label="ログインページへ移動"
               _hover={{
                 bg: "var(--alt-primary)",
                 transform: "translateY(-2px)",
@@ -95,13 +97,14 @@ export default async function PublicLandingPage() {
               transition="all 0.2s ease"
             >
               <HStack gap={2}>
-                <LogIn size={18} />
-                ログイン
+                <LogIn size={18} aria-hidden="true" />
+                <span>ログイン</span>
               </HStack>
             </Button>
           </NextLink>
-          <NextLink href="/api/auth/register" prefetch={false}>
+          <NextLink href="/api/auth/register" prefetch={false} passHref>
             <Button
+              as="a"
               variant="outline"
               borderColor="var(--alt-primary)"
               color="var(--alt-primary)"
@@ -110,6 +113,7 @@ export default async function PublicLandingPage() {
               py={6}
               borderRadius="full"
               fontWeight="semibold"
+              aria-label="新規登録ページへ移動"
               _hover={{
                 bg: "var(--alt-glass)",
                 transform: "translateY(-2px)",
@@ -121,8 +125,8 @@ export default async function PublicLandingPage() {
               transition="all 0.2s ease"
             >
               <HStack gap={2}>
-                <UserPlus size={18} />
-                新規登録
+                <UserPlus size={18} aria-hidden="true" />
+                <span>新規登録</span>
               </HStack>
             </Button>
           </NextLink>
