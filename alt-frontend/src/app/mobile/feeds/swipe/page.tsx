@@ -8,6 +8,7 @@ import {
   VStack,
   HStack,
   Link,
+  Spinner,
 } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
@@ -23,7 +24,6 @@ import {
 } from "react";
 import { feedsApi } from "@/lib/api";
 import { Sparkles, SquareArrowOutUpRight, BookOpen, BotMessageSquare } from "lucide-react";
-import { Spinner } from "@chakra-ui/react";
 import { CursorResponse } from "@/schema/common";
 import { Feed } from "@/schema/feed";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
