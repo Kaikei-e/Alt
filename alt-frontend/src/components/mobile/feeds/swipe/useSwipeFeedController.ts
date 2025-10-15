@@ -92,10 +92,11 @@ const scheduleTimeout = (
 export const useSwipeFeedController = () => {
   const [liveRegionMessage, setLiveRegionMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeFeedId, setActiveFeedId] = useState<string | null>(null);
 
   const liveRegionTimeoutRef = useRef<number | null>(null);
   const prefetchCursorRef = useRef<string | null>(null);
+  const lastDismissedIdRef = useRef<string | null>(null);
 
   const { data, error, isLoading, isValidating, setSize, mutate } =
     useSWRInfinite(getKey, fetchPage, {
@@ -111,6 +112,19 @@ export const useSwipeFeedController = () => {
     }
     return data.flatMap((page) => page?.data ?? []);
   }, [data]);
+
+  const activeIndex = useMemo(() => {
+    if (feeds.length === 0) {
+      return 0;
+    }
+
+    if (!activeFeedId) {
+      return 0;
+    }
+
+    const index = feeds.findIndex((feed) => feed.id === activeFeedId);
+    return index === -1 ? 0 : index;
+  }, [activeFeedId, feeds]);
 
   const activeFeed = feeds[activeIndex] ?? null;
   const lastPage = data?.[data.length - 1] ?? null;
@@ -141,10 +155,36 @@ export const useSwipeFeedController = () => {
   }, []);
 
   useEffect(() => {
-    if (feeds.length === 0 && activeIndex !== 0) {
-      setActiveIndex(0);
+    if (feeds.length === 0) {
+      if (activeFeedId !== null) {
+        setActiveFeedId(null);
+      }
+      lastDismissedIdRef.current = null;
+      return;
     }
-  }, [feeds.length, activeIndex]);
+
+    const hasActiveFeed =
+      activeFeedId !== null && feeds.some((feed) => feed.id === activeFeedId);
+
+    if (hasActiveFeed) {
+      if (
+        lastDismissedIdRef.current &&
+        feeds.every((feed) => feed.id !== lastDismissedIdRef.current)
+      ) {
+        lastDismissedIdRef.current = null;
+      }
+      return;
+    }
+
+    if (
+      lastDismissedIdRef.current &&
+      feeds.some((feed) => feed.id === lastDismissedIdRef.current)
+    ) {
+      return;
+    }
+
+    setActiveFeedId(feeds[0].id);
+  }, [activeFeedId, feeds]);
 
   const announce = useCallback(
     (message: string, duration: number) => {
@@ -183,12 +223,27 @@ export const useSwipeFeedController = () => {
 
   const dismissActiveFeed = useCallback(
     async (_direction: number) => {
-      const current = feeds[activeIndex];
+      const currentIndex =
+        activeFeedId !== null
+          ? feeds.findIndex((feed) => feed.id === activeFeedId)
+          : 0;
+      const resolvedIndex = currentIndex === -1 ? 0 : currentIndex;
+      const current = feeds[resolvedIndex];
+
       if (!current) {
         return;
       }
 
-      setActiveIndex((prev) => prev + 1);
+      const nextFeed = feeds[resolvedIndex + 1] ?? null;
+      lastDismissedIdRef.current = null;
+
+      if (nextFeed) {
+        setActiveFeedId(nextFeed.id);
+      } else {
+        lastDismissedIdRef.current = current.id;
+        setActiveFeedId(null);
+      }
+
       setStatusMessage("Feed marked as read");
       announce("Feed marked as read", 1000);
 
@@ -198,13 +253,14 @@ export const useSwipeFeedController = () => {
         await mutate();
       } catch (err) {
         console.error("Failed to mark feed as read", err);
-        setActiveIndex((prev) => Math.max(prev - 1, 0));
+        setActiveFeedId(current.id);
+        lastDismissedIdRef.current = null;
         setStatusMessage("Failed to mark feed as read");
         announce("Failed to mark feed as read", 1500);
         throw err;
       }
     },
-    [activeIndex, announce, feeds, mutate],
+    [activeFeedId, announce, feeds, mutate],
   );
 
   const retry = useCallback(async () => {
