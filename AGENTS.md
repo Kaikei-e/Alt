@@ -1,174 +1,115 @@
-# AGENTS Guide
+# AGENTS Playbook
 
-This document is the operational handbook for AI coding agents and humans collaborating via Codex CLI in this repository. It explains how to work safely, predictably, and fast within the project’s constraints.
+## Mission & Scope
+- Keep Alt's Compose-first stack healthy while accelerating developer workflows.
+- Document the guardrails for AI coding agents and human collaborators working inside this monorepo.
+- Treat Kubernetes assets in `stopped-using-k8s/` as historical only—do not modify them unless specifically asked.
 
-## Audience & Purpose
-- Agents: Use this as your canonical workflow and rules of engagement.
-- Humans: Use this to understand how agents operate and what to expect.
+## Operating Constraints (October 2025)
+- Filesystem access: `workspace-write`; touch only the workspace and declared writable roots.
+- Network access: restricted. Never run commands that require outbound traffic without approval.
+- Approvals: `on-request`. Ask for escalation only when essential; otherwise work within the sandbox.
+- Default tools: prefer `rg` for search and `sed -n` for focused reads; keep command output under 250 lines.
+- Patching: use `apply_patch` for code and doc edits. Group related changes, avoid unrelated refactors.
+- Planning: maintain a live plan with `update_plan`, exactly one step `in_progress` at a time.
+- TDD First: every service expects Red → Green → Refactor before shipping implementation work.
 
-## Quick Start (Agents)
-- Confirm constraints: Filesystem `workspace-write`, network `restricted`, approvals `on-request` unless stated otherwise.
-- Explore first: Prefer `rg` and targeted `sed -n` reads. Avoid large dumps (>250 lines).
-- Create a plan: Use `update_plan` with short steps, one `in_progress` at a time.
-- Patch surgically: Use `apply_patch` with minimal, scoped changes; don’t re-read files you just wrote unless needed.
-- Test what you touch: Run narrow tests/builds related to the change; avoid unrelated fixes.
-- Format/lint locally: Use repo-provided scripts; do not introduce new formatters.
-- Never commit unless asked: Leave commits/branches to maintainers unless explicitly requested.
-- Summarize clearly: Final messages should be concise, actionable, and list next steps if any.
+## Baseline Workflow for Agents
+1. **Confirm context** – Read this playbook plus relevant service `CLAUDE.md` files before touching code.
+2. **Explore lightly** – Skim directories with `rg --files` and targeted `sed -n` reads. Avoid dumping large files.
+3. **Plan** – Announce a concise multi-step plan via `update_plan` and keep it current.
+4. **Implement surgically** – Edit only what the task requires; use tight diff scopes with `apply_patch`.
+5. **Verify** – Run the smallest meaningful test or build command for the affected area.
+6. **Communicate** – Summarize changes, list tests, surface risks, and suggest next actions.
 
-## Monorepo Layout
-- `alt-frontend/`: Next.js app (TypeScript) with Vitest and Playwright. Source under `src/`; tests in `tests/` and co‑located `*.test.ts(x)`.
-- `alt-backend/app/`: Go 1.24 service (Clean Architecture). Domains under `domain/`, use cases under `usecase/`, adapters in `gateway/` and `driver/`. HTTP in `rest/`. Tests beside code; mocks in `mocks/`.
-- `compose.yaml` and `Makefile`: Local orchestration and common tasks.
-- Other services: `pre-processor/`, `search-indexer/`, `tag-generator/`, `auth-service/`.
-- Infra & assets: `docker/`, `scripts/`, `db/`, `nginx/`, `.github/`, root `tests/`.
+## Repository Map
+- `alt-frontend/` – Next.js 15 + React 19 client (Chakra UI, Vitest, Playwright).
+- `alt-backend/app/` – Go 1.24 HTTP API in Clean Architecture layers.
+- `alt-backend/sidecar-proxy/` – Go egress proxy enforcing outbound policy.
+- `pre-processor/app/` – Go feed and summarization worker with circuit breakers.
+- `pre-processor-sidecar/app/` – Go scheduler for Inoreader ingestion (CronJob/deployment).
+- `news-creator/app/` – FastAPI LLM service using Ollama via Clean Architecture.
+- `tag-generator/app/` – FastAPI + Python 3.13 tag pipeline with ML components.
+- `search-indexer/app/` – Go Meilisearch indexer and search API.
+- `auth-hub/` – Go IAP service bridging Nginx and Ory Kratos.
+- `auth-token-manager/` – Deno OAuth2 token refresher for Inoreader.
+- `rask-log-forwarder/` & `rask-log-aggregator/` – Rust log pipeline (forwarder + ClickHouse aggregator).
+- Support assets: `compose.yaml`, `Makefile`, `scripts/`, `docker/`, `db/`, `.github/`, root `tests/`.
 
-## Core Commands
-- Stack up: `make up` (creates `.env` from `.env.template` if missing; builds and starts Docker Compose)
-- Stack down/clean: `make down` | `make down-volumes` | `make clean`
-- Frontend dev: `pnpm -C alt-frontend dev` (Next.js dev server)
-- Frontend build: `pnpm -C alt-frontend build`
-- Frontend tests: `pnpm -C alt-frontend test` | coverage `pnpm -C alt-frontend test:coverage` | E2E `pnpm -C alt-frontend test:e2e`
-- Backend tests: `cd alt-backend/app && go test ./...` (add `-race -cover` as needed)
-- Generate mocks: `make generate-mocks`
-- Dev DB SSL: setup `make dev-ssl-setup` | verify `make dev-ssl-test` | clean `make dev-clean-ssl`
+## Core Tooling & Commands
+- **Stack orchestration**
+  - `make up` – Copies `.env.template` → `.env` if needed, builds images, starts Docker Compose (default profile).
+  - `make down` / `make down-volumes` – Stop stack (keep vs. drop volumes).
+  - Compose profiles: add `--profile ollama` for LLM pipeline, `--profile logging` for Rust log services.
+- **Frontend (Next.js)**
+  - Dev server: `pnpm -C alt-frontend dev`
+  - Build: `pnpm -C alt-frontend build`
+  - Tests: `pnpm -C alt-frontend test` (unit), `pnpm -C alt-frontend test:e2e` (requires stack), coverage via `test:coverage`
+  - Quality gates: `pnpm -C alt-frontend fmt`, `pnpm -C alt-frontend lint`
+- **Backend & Go services**
+  - Go tests: `cd <service> && go test ./...` (add `-race -cover` when appropriate)
+  - Formatting: `gofmt`, linting via `go vet`
+  - Mock generation: `make generate-mocks`
+- **Python services (news-creator, tag-generator)**
+  - Tests: `SERVICE_SECRET=test-secret pytest` (news-creator), `uv run pytest` (tag-generator)
+  - Type/lint: `uv run mypy`, `uv run ruff check`, `uv run ruff format`
+- **Rust services (rask-*)**
+  - Unit/integration: `cargo test`
+  - Benchmarks: `cargo bench` (when explicitly required)
+- **Deno (auth-token-manager)**
+  - Tests: `deno test`
+- **Health checks**
+  - Frontend: `curl http://localhost:3000/api/health`
+  - Backend: `curl http://localhost:9000/v1/health`
+  - Meilisearch: `curl http://localhost:7700/health`
+  - Auth Hub: `curl http://localhost:8888/health`
 
-## Codex CLI Operating Rules
-- Preambles: Before tool calls, briefly state what you’re about to do (1–2 sentences).
-- Planning: Maintain a live plan via `update_plan`; exactly one step `in_progress` until complete.
-- Shell usage: Prefer `rg` for search and `sed -n` to read specific ranges; keep outputs under 250 lines.
-- Escalations: If a command needs network or broader filesystem access, request with justification; only when necessary.
-- Patching: Use `apply_patch` exclusively for file changes. Group related edits; avoid unrelated refactors.
-- Testing: Start specific (the changed package) then broaden only if useful. Do not fix unrelated failing tests.
-- Formatting: Use existing project scripts (`pnpm -C alt-frontend fmt`, `lint`; Go uses `gofmt`/`go vet`).
-- No commits by default: Do not run `git commit` or create branches unless explicitly asked.
+## Language Playbooks
+- **Go 1.24** – Enforce Clean Architecture boundaries, use `log/slog`, wrap errors with context, propagate `context.Context`, throttle external calls (≥5 s between repeat host hits), prefer table-driven tests and GoMock fakes.
+- **TypeScript/React** – Strict TypeScript (`noImplicitAny`), App Router patterns, Chakra UI theme system, React 19 concurrent features, use Vitest + Testing Library with `userEvent` and `waitFor`.
+- **Python (FastAPI)** – Dependency injection via containers, async handlers, pytest + `pytest-asyncio`, maintain golden datasets for LLM prompt regressions, sanitize LLM outputs.
+- **Rust 2024** – Favor `async fn` in traits, zero-copy parsing, lock-free data structures, test with `axum-test`, benchmark critical code paths with `criterion`.
+- **Deno TypeScript** – Use `@std/testing` BDD utilities, stub global fetch for token refresh tests, never log secrets.
 
-## Style & Conventions
-- TypeScript/React
-  - Indent 2 spaces. Components PascalCase; hooks named `useX`; tests `*.test.ts(x)`.
-  - Run `pnpm -C alt-frontend fmt` and `pnpm -C alt-frontend lint` before handing off.
-- Go
-  - Use `gofmt` defaults; `go vet` clean. Package names lower-case; exported types/functions PascalCase; file names snake_case where idiomatic.
-- Configuration
-  - Base envs on `.env.template`; never commit secrets or local logs.
+## Service Capsules
+- **alt-frontend** – App Router, Chakra themes (Vaporwave, Liquid-Beige, Alt-Paper). Tests via Vitest; Playwright E2E uses page objects. Lint/format before hand-off.
+- **alt-backend** – Echo handlers → Usecase → Port → Gateway → Driver. Respect rate limiting (5 s external API gap). Use `log/slog` and structured error wrapping.
+- **Sidecar Proxy** – Go reverse proxy enforcing outbound allowlists, shared timeouts, header normalization. Test with `net/http/httptest` triad (client → proxy → mock backend).
+- **auth-hub** – Kratos session validator with 5-minute TTL cache. Exposes `/validate` and `/health`; ensure identity headers (`X-Alt-*`) are authoritative.
+- **pre-processor** – Feed processing, summarization, quality gates. Uses circuit breakers (`mercari/go-circuitbreaker`), rate limits, structured logging per operation.
+- **pre-processor-sidecar** – Scheduler for Inoreader OAuth2 ingestion. Runs as CronJob (Forbid concurrency). Uses `singleflight` for token refresh and pluggable clocks for testing.
+- **news-creator** – FastAPI LLM orchestrator with Clean Architecture layers. Summaries produced via Ollama gateway. Tests mock ports, evaluate prompts via golden datasets and `DeepEval` where applicable.
+- **tag-generator** – FastAPI ML service generating article tags. Emphasizes batch processing, memory hygiene, ML quality checks, and bias detection tests.
+- **search-indexer** – Go service indexing to Meilisearch. Batch size 200, configures searchable/filterable attributes on startup. Integration tests require real Meilisearch.
+- **auth-token-manager** – Deno service refreshing Inoreader tokens. Tests stub `fetch`, refactors only after Red/Green.
+- **rask-log-forwarder** – Rust sidecar tailing Docker logs with SIMD parsing, lock-free buffers, disk fallback. Tests cover parsers, collectors, full pipeline with `wiremock`.
+- **rask-log-aggregator** – Rust Axum API ingesting logs into ClickHouse. Uses mock traits for unit tests, `axum-test` for handlers, `criterion` for hot paths.
 
-## Testing Guidance
-- Frontend
-  - Unit: Vitest + Testing Library. Prefer units for speed and coverage.
-  - E2E: Playwright. Bring the stack up (`make up`) before running `pnpm -C alt-frontend test:e2e`.
-- Backend
-  - Use Go `testing` with table-driven cases. Place tests next to code.
-  - Use gomock fakes in `alt-backend/app/mocks`; generate via `make generate-mocks`.
-- Coverage
-  - Frontend: `pnpm -C alt-frontend test:coverage`
-  - Backend: `go test -cover ./...` (from `alt-backend/app`)
-
-## Service Playbooks
-
-### Frontend (Next.js)
-- Add a component
-  - Create under `alt-frontend/src/components/ComponentName/` or appropriate feature folder.
-  - Export via an `index.ts` if used across modules.
-  - Add unit tests next to the component or under `tests/` with `*.test.tsx`.
-  - Run `pnpm -C alt-frontend test` and lint/format scripts.
-- Add a page/route
-  - Follow Next.js routing conventions under `src/app` or `src/pages` (depending on setup).
-  - Co-locate tests and minimal integration tests where helpful.
-
-### Backend (Go Clean Architecture)
-- Add a domain type
-  - Add types/interfaces in `alt-backend/app/domain/...`; keep domain free of infra concerns.
-  - Add focused unit tests alongside.
-- Add a use case
-  - Implement in `alt-backend/app/usecase/...`; depend on domain interfaces.
-  - Provide table-driven tests; mock gateways via gomock.
-- Add an adapter or gateway
-  - Outbound/inbound adapters in `gateway/` or `driver/` as appropriate.
-  - Keep `rest/` for HTTP handlers; wire dependencies via constructors.
-  - Add handler tests and happy-path + edge-case coverage.
-
-### Other Services
-- Follow the same principles: keep core logic testable, infra concerns isolated, and tests close to code.
-
-## Local Dev & Docker
-- Environment
-  - `make up` auto-creates `.env` from `.env.template` if missing.
-  - Use `make down`/`make down-volumes` to clean; beware destructive actions.
-- SSL for local DB
-  - Use the provided make targets to set up and verify. Clean SSL artifacts with `make dev-clean-ssl` when done.
-
-## Skaffold & Kubernetes
-- Overview
-  - Multi-layer Skaffold setup lives under `skaffold/` with an orchestrator at `skaffold/skaffold.yaml` using `requires` to chain layers.
-  - Layers: `01-foundation` (cert-manager, config, secrets, network policies), `02-infrastructure` (Postgres, ClickHouse, Meilisearch), `04-core-services` (backend, proxies), `05-auth-platform` (Kratos, auth-service), `06-application` (frontend, ingress), `07-processing` (jobs/cron services), `08-operations` (monitoring, backups).
-  - Profiles: `dev`, `staging`, `prod` (activate with `-p <name>`). Some layers only define `prod`.
-
-- Common Commands
-  - Orchestrated dev (all required layers): `skaffold dev -p dev -f skaffold/skaffold.yaml`
-  - Orchestrated deploy once: `skaffold run -p dev -f skaffold/skaffold.yaml`
-  - Specific layer deploy (e.g., infrastructure): `skaffold run -p dev -f skaffold/02-infrastructure/skaffold.yaml`
-  - Rebuild + redeploy a service (watch): use `skaffold dev` in the layer that builds that image.
-
-- Local Cluster Assumptions
-  - Optimized for kind/minikube with local images (many profiles set `image.pullPolicy: Never`).
-  - Ensure Docker sees the same daemon as your cluster. For kind: load images via Skaffold or `kind load docker-image` if needed.
-  - Cert-manager CRDs and namespaces are created by `01-foundation` in `dev`.
-
-- Namespaces & Components
-  - `alt-config`, `alt-apps`, `alt-auth`, `alt-database`, `alt-search`, `alt-analytics`, `alt-processing`, `alt-ingress`, `cert-manager`.
-  - Examples: backend in `alt-apps`; Postgres in `alt-database`; Meilisearch in `alt-search`; ClickHouse in `alt-analytics`; auth stack in `alt-auth`.
-
-- Profiles & Images
-  - Image templates derive from Skaffold variables like `{{.IMAGE_REPO_*}}` and `{{.IMAGE_TAG_*}}` per artifact; dev profiles favor local repositories.
-  - `06-application` `dev` builds `alt-frontend` locally; `prod` references `kaikei/alt-frontend` with prod-specific env args.
-  - `02-infrastructure` wires Atlas migration image into the Postgres chart via `setValueTemplates`.
-
-- Verification
-  - Pods: `kubectl get pods -A --field-selector=status.phase!=Succeeded`
-  - Status: `kubectl get deploy,statefulset,job -A -o wide`
-  - Logs: `kubectl logs -n <ns> <pod> --tail=100`
-  - Events: `kubectl get events -A --sort-by=.lastTimestamp | tail -50`
-  - Rollouts: `kubectl rollout status deploy/<name> -n <ns>`
-
-- Troubleshooting
-  - Pull policy Never: If images aren’t found, ensure Skaffold built them or switch to a profile that pushes to a registry the cluster can pull from.
-  - CRDs missing: Re-run `skaffold run -p dev -f skaffold/01-foundation/skaffold.yaml` to install cert-manager and configs.
-  - Helm waits/timeouts: Orchestrator uses `--atomic --wait --timeout`; check `kubectl describe` for blocking conditions (PVCs, Webhooks, PSS).
-  - Security/PSS: Orchestrator prints Pod Security labels and warnings; fix violations or use appropriate namespaces.
-
-- Argo CD
-  - Repo includes `argocd/` as a placeholder for GitOps configs; not wired into Skaffold. If adopting Argo CD, mirror charts/releases there and keep values in sync.
+## Testing Matrix
+- Frontend unit/component – `pnpm -C alt-frontend test`
+- Frontend lint/format – `pnpm -C alt-frontend lint`, `pnpm -C alt-frontend fmt`
+- Frontend E2E – `pnpm -C alt-frontend test:e2e` (requires `make up`)
+- Backend Go suites – `cd alt-backend/app && go test ./...`
+- Go side services – `go test ./...` in respective directories (add `-tags=integration` when noted)
+- Python services – `pytest` (with required env), `uv run pytest`, `uv run mypy`, `uv run ruff check`
+- Rust services – `cargo test` (optionally `cargo bench`/`criterion`)
+- Deno service – `deno test`
 
 ## Security & Secrets
-- Never commit secrets, tokens, or local logs.
-- Keep `.env` local; base it on `.env.template`.
-- Treat sample credentials as placeholders only.
+- Never commit real credentials. Base env files on `.env.template` and keep `.env` local.
+- auth-hub, pre-processor, and news-creator rely on structured JSON logs—preserve redaction helpers.
+- Sanitize LLM outputs; test against prompt-injection vectors (OWASP Top 10 for LLMs).
+- Use provided SSL helpers (`make dev-ssl-setup`, `make dev-ssl-test`, `make dev-clean-ssl`) when working with local TLS.
 
-## Commit & PR Guidance
-- Commits (for humans): Imperative mood, concise scope first line (e.g., `Fix: …`, `Refactor: …`); group related changes.
-- PRs: Include description, linked issues, reproduction steps, and screenshots for UI changes. Ensure CI (Go + frontend units/E2E + quality gates) is green.
-- Agents: Do not commit by default; offer to prepare a commit if requested.
+## Delivery Checklist
+- Plan updated; all steps completed or clearly marked.
+- Changes minimal, relevant, and formatted with project tools (`pnpm fmt`, `gofmt`, `ruff`, etc.).
+- Appropriate tests executed and reported.
+- No Compose/Kubernetes drift—legacy assets under `stopped-using-k8s/` untouched.
+- Final message includes short rationale, file references, test evidence, and suggested next steps when applicable.
 
-## Troubleshooting
-- Compose fails to start
-  - Ensure Docker is running, `.env` exists, and ports are free.
-  - Rebuild images if needed (`make clean` then `make up`).
-- Frontend E2E issues
-  - Ensure services are up via `make up` and that Playwright has the required browsers installed locally.
-- Backend test flakes
-  - Run with `-race -count=1`; isolate packages to find offenders.
-- SSL errors
-  - Re-run `make dev-ssl-setup` and verify with `make dev-ssl-test`.
-
-## Agent Checklist (Before Hand-off)
-- Plan updated; all steps either completed or clearly marked.
-- Changes minimal and scoped; no unrelated refactors included.
-- Code compiles; relevant tests pass locally.
-- Formatting/linting run on affected parts.
-- Final message summarizes changes and proposes optional next steps.
-
-## Glossary
-- Domain: Business entities and rules; infra-agnostic.
-- Use Case: Application-specific orchestration of domain logic.
-- Adapter/Gateway: Integration with external systems or inbound interfaces.
-- Driver: Framework/IO side initiating calls into the application.
+## Quick References
+- Root context: `CLAUDE.md`
+- Service deep dives: individual `CLAUDE.md` files in each service directory.
+- Observability: enable `logging` profile to run `rask` services and inspect logs via ClickHouse.
+- Health probes: `docker compose ps`, `docker compose logs -f <service>`, `kubectl` commands only when explicitly requested.
