@@ -133,6 +133,13 @@ export const FeedDetails = ({
 
       if (hasValidDetails) {
         setFeedDetails(details);
+
+        // Auto-archive article when displaying content
+        // This ensures the article exists in DB before summarization
+        feedsApi.archiveContent(feedURL, feedTitle).catch((err) => {
+          console.warn("Failed to auto-archive article:", err);
+          // Don't block UI on archive failure
+        });
       }
 
       // If neither API call succeeded with valid content, show error
