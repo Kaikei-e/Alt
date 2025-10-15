@@ -317,7 +317,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
           boxShadow:
             "0 12px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)",
           borderRadius: "1rem",
-          padding: "1.5rem",
+          padding: "1rem",
           backdropFilter: "blur(20px)",
         }}
         initial={{ scale: 0.98, opacity: 0.96 }}
@@ -332,8 +332,8 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
             bg="rgba(255, 255, 255, 0.03)"
             backdropFilter="blur(20px)"
             borderBottom="1px solid var(--alt-glass-border)"
-            px={4}
-            py={3}
+            px={2}
+            py={2}
             borderTopRadius="1rem"
           >
             <Text
@@ -385,8 +385,8 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
           <Box
             flex="1"
             overflow="auto"
-            px={4}
-            py={4}
+            px={2}
+            py={2}
             bg="transparent"
             scrollBehavior="smooth"
             overscrollBehavior="contain"

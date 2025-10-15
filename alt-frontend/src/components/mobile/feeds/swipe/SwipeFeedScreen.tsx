@@ -64,19 +64,19 @@ const SwipeFeedScreen = () => {
     return <ErrorState error={error} onRetry={retry} isLoading={isValidating} />;
   }
 
-  const isOutOfFeeds = !activeFeed || activeIndex >= feeds.length;
+  const isOutOfFeeds = !activeFeed && !hasMore && !isValidating;
 
   if (isOutOfFeeds) {
-    if (hasMore || isValidating) {
-      return <SwipeFeedSkeleton />;
-    }
-
     return (
       <Box minH="100vh" position="relative">
         <EmptyFeedState />
         <FloatingMenu />
       </Box>
     );
+  }
+
+  if (!activeFeed) {
+    return <SwipeFeedSkeleton />;
   }
 
   return (
