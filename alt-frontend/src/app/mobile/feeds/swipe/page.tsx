@@ -94,6 +94,10 @@ export default function SwipeFeedsPage(): JSX.Element {
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [isContentExpanded, setIsContentExpanded] = useState(false);
+  const [fullContent, setFullContent] = useState<string | null>(null);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
 
   const x = useMotionValue(0);
   const animationInFlightRef = useRef(false);
@@ -208,10 +212,13 @@ export default function SwipeFeedsPage(): JSX.Element {
       await playDismissAnimation(direction === 0 ? 1 : direction);
 
       setActiveIndex((prev) => prev + 1);
-      // Reset summary state when moving to next card
+      // Reset summary and content state when moving to next card
       setIsSummaryExpanded(false);
       setSummary(null);
       setSummaryError(null);
+      setIsContentExpanded(false);
+      setFullContent(null);
+      setContentError(null);
 
       const canonicalLink = canonicalize(current.link);
       setLiveRegionMessage("Feed marked as read");
@@ -244,6 +251,38 @@ export default function SwipeFeedsPage(): JSX.Element {
     },
     [activeIndex, feeds, mutate, playDismissAnimation, resetPosition],
   );
+
+  const handleToggleContent = useCallback(async () => {
+    if (!activeFeed?.link) return;
+
+    if (!isContentExpanded && !fullContent) {
+      setIsLoadingContent(true);
+      setContentError(null);
+
+      try {
+        const contentResponse = await feedsApi.getFeedContentOnTheFly({
+          feed_url: activeFeed.link,
+        });
+        if (contentResponse.content) {
+          setFullContent(contentResponse.content);
+
+          // Auto-archive article when displaying content
+          feedsApi.archiveContent(activeFeed.link, activeFeed.title).catch((err) => {
+            console.warn("Failed to auto-archive article:", err);
+            // Don't block UI on archive failure
+          });
+        } else {
+          setContentError("記事全文を取得できませんでした");
+        }
+      } catch (error) {
+        console.error("Error fetching content:", error);
+        setContentError("記事全文を取得できませんでした");
+      } finally {
+        setIsLoadingContent(false);
+      }
+    }
+    setIsContentExpanded(!isContentExpanded);
+  }, [activeFeed, isContentExpanded, fullContent]);
 
   const handleToggleSummary = useCallback(async () => {
     if (!activeFeed?.link) return;
@@ -366,7 +405,31 @@ export default function SwipeFeedsPage(): JSX.Element {
     return <ErrorState error={error} onRetry={retry} isLoading={isValidating} />;
   }
 
+  // Show empty state only when all feeds are consumed AND no more available
   if (!activeFeed) {
+    // If there are more pages to load, show loading state instead of empty
+    if (hasMore || isValidating) {
+      return (
+        <Box minH="100vh" position="relative">
+          <Box
+            p={5}
+            maxW="container.sm"
+            mx="auto"
+            height="100vh"
+            data-testid="swipe-skeleton-container"
+          >
+            <Flex direction="column" gap={4}>
+              {Array.from({ length: 5 }).map((_, index) => (
+                <SkeletonFeedCard key={`swipe-skeleton-loading-${index}`} />
+              ))}
+            </Flex>
+          </Box>
+          <FloatingMenu />
+        </Box>
+      );
+    }
+
+    // Only show empty state when truly no feeds available
     return (
       <Box minH="100vh" position="relative">
         <EmptyFeedState />
@@ -414,8 +477,8 @@ export default function SwipeFeedsPage(): JSX.Element {
                 height: "85dvh",
                 background: "var(--alt-glass)",
                 color: "var(--alt-text-primary)",
-                border: "1px solid var(--alt-glass-border)",
-                boxShadow: "0 8px 25px var(--alt-glass-shadow)",
+                border: "2px solid var(--alt-glass-border)",
+                boxShadow: "0 12px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)",
                 borderRadius: "1rem",
                 padding: "1.5rem",
                 backdropFilter: "blur(20px)",
@@ -461,6 +524,79 @@ export default function SwipeFeedsPage(): JSX.Element {
                     {activeFeed.description || "No description available."}
                   </Text>
                 </Box>
+
+                {/* Full Article Content Toggle Button */}
+                <Button
+                  type="button"
+                  onClick={handleToggleContent}
+                  size="sm"
+                  w="100%"
+                  borderRadius="12px"
+                  variant="outline"
+                  color="var(--alt-text-primary)"
+                  borderColor="var(--alt-glass-border)"
+                  _hover={{
+                    bg: "rgba(255, 255, 255, 0.05)",
+                    borderColor: "var(--alt-primary)",
+                  }}
+                >
+                  {isContentExpanded ? "記事全文を閉じる" : "記事全文を取得"}
+                </Button>
+
+                {/* Full Article Content Display */}
+                {isContentExpanded && (
+                  <Box
+                    p={4}
+                    bg="rgba(255, 255, 255, 0.03)"
+                    borderRadius="12px"
+                    border="1px solid var(--alt-glass-border)"
+                    maxH="300px"
+                    overflowY="auto"
+                    style={{
+                      scrollbarWidth: "thin",
+                    }}
+                  >
+                    {isLoadingContent ? (
+                      <HStack justify="center" py={4}>
+                        <Spinner size="sm" color="var(--alt-primary)" />
+                        <Text color="var(--alt-text-secondary)" fontSize="sm">
+                          記事全文を読み込み中...
+                        </Text>
+                      </HStack>
+                    ) : contentError ? (
+                      <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
+                        {contentError}
+                      </Text>
+                    ) : fullContent ? (
+                      <Box
+                        fontSize="sm"
+                        color="var(--alt-text-primary)"
+                        lineHeight="1.7"
+                        dangerouslySetInnerHTML={{ __html: fullContent }}
+                        css={{
+                          "& img": {
+                            maxWidth: "100%",
+                            height: "auto",
+                            borderRadius: "8px",
+                            margin: "0.5rem 0",
+                          },
+                          "& a": {
+                            color: "var(--alt-primary)",
+                            textDecoration: "underline",
+                          },
+                          "& p": {
+                            marginBottom: "0.5rem",
+                          },
+                          "& h1, & h2, & h3, & h4, & h5, & h6": {
+                            fontWeight: "bold",
+                            marginTop: "0.75rem",
+                            marginBottom: "0.5rem",
+                          },
+                        }}
+                      />
+                    ) : null}
+                  </Box>
+                )}
 
                 {/* Summary Toggle Button */}
                 <Button
