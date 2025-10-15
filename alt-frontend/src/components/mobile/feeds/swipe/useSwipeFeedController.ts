@@ -195,7 +195,7 @@ export const useSwipeFeedController = () => {
       try {
         const canonicalLink = canonicalize(current.link);
         await feedsApi.updateFeedReadStatus(canonicalLink);
-        await mutate(undefined, { revalidate: false });
+        await mutate();
       } catch (err) {
         console.error("Failed to mark feed as read", err);
         setActiveIndex((prev) => Math.max(prev - 1, 0));
