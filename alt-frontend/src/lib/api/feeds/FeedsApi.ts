@@ -178,7 +178,7 @@ export class FeedsApi {
   // Article summarization
   async summarizeArticle(
     feedUrl: string,
-  ): Promise<{ success: boolean; summary: string; article_id: string }> {
+  ): Promise<{ success: boolean; summary: string; article_id: string; feed_url: string }> {
     return this.apiClient.post("/v1/feeds/summarize", { feed_url: feedUrl });
   }
 

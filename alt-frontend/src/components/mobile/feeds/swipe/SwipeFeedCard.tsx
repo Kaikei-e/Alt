@@ -220,14 +220,18 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
 
     try {
       const summarizeResponse = await feedsApi.summarizeArticle(feed.link);
+      console.log("[SwipeFeedCard] Summarize response:", summarizeResponse);
+
       if (summarizeResponse.success && summarizeResponse.summary) {
+        console.log("[SwipeFeedCard] Summary received, length:", summarizeResponse.summary.length);
         setSummary(summarizeResponse.summary);
         setSummaryError(null);
       } else {
+        console.error("[SwipeFeedCard] Invalid response structure:", summarizeResponse);
         setSummaryError("要約の生成に失敗しました");
       }
     } catch (error) {
-      console.error("Error summarizing article:", error);
+      console.error("[SwipeFeedCard] Error summarizing article:", error);
       setSummaryError("要約の生成中にエラーが発生しました");
     } finally {
       setIsSummarizing(false);
@@ -369,10 +373,10 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
                 }}
               >
                 <SquareArrowOutUpRight color="var(--alt-primary)" size={20} />
+                <Text as="h2" fontSize="xl" fontWeight="bold" flex="1">
+                  {feed.title}
+                </Text>
               </Link>
-              <Text as="h2" fontSize="xl" fontWeight="bold" flex="1">
-                {feed.title}
-              </Text>
             </Flex>
 
             {publishedLabel && (
