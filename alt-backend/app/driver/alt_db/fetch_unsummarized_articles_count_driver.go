@@ -7,18 +7,24 @@ import (
 )
 
 func (r *AltDBRepository) FetchUnsummarizedArticlesCount(ctx context.Context) (int, error) {
+	if r == nil || r.pool == nil {
+		return 0, errors.New("database connection not available")
+	}
+
 	query := `
-		SELECT COUNT(*) - (SELECT COUNT(*) FROM article_summaries)
-		FROM articles
+		SELECT COUNT(*)
+		FROM articles a
+		LEFT JOIN article_summaries s ON a.id = s.article_id
+		WHERE s.article_id IS NULL
 	`
 
 	var count int
 	err := r.pool.QueryRow(ctx, query).Scan(&count)
 	if err != nil {
-		logger.SafeError("failed to fetch unsummarized feeds count", "error", err)
-		return 0, errors.New("failed to fetch unsummarized feeds count")
+		logger.SafeError("failed to fetch unsummarized articles count", "error", err)
+		return 0, errors.New("failed to fetch unsummarized articles count")
 	}
 
-	logger.SafeInfo("unsummarized feeds count fetched successfully", "count", count)
+	logger.SafeInfo("unsummarized articles count fetched successfully", "count", count)
 	return count, nil
 }

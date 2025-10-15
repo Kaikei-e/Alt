@@ -110,6 +110,7 @@ func TestAltDBRepository_SearchFeedsByTitle(t *testing.T) {
 
 			if tt.expectedError {
 				assert.Error(t, err)
+				
 			} else {
 				assert.NoError(t, err)
 				assert.Len(t, results, tt.expectedCount)
