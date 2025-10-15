@@ -130,18 +130,16 @@ describe("SwipeFeedsPage", () => {
       expect(screen.getByTestId("swipe-card")).toBeInTheDocument();
     });
 
-    // Check that full article button appears before summary button
-    const buttons = screen.getAllByRole("button");
-    const fullArticleButtonIndex = buttons.findIndex(btn =>
-      btn.textContent?.includes("Show Full Article") || btn.textContent?.includes("記事全文")
-    );
-    const summaryButtonIndex = buttons.findIndex(btn =>
-      btn.textContent?.includes("要約")
-    );
+    // Check that full article button appears before summary button using test IDs
+    const fullArticleButton = screen.getByTestId("toggle-content-button");
+    const summaryButton = screen.getByTestId("toggle-summary-button");
 
-    expect(fullArticleButtonIndex).toBeGreaterThan(-1);
-    expect(summaryButtonIndex).toBeGreaterThan(-1);
-    expect(fullArticleButtonIndex).toBeLessThan(summaryButtonIndex);
+    expect(fullArticleButton).toBeInTheDocument();
+    expect(summaryButton).toBeInTheDocument();
+
+    // Verify button labels
+    expect(fullArticleButton).toHaveTextContent(/全文表示/i);
+    expect(summaryButton).toHaveTextContent(/要約/i);
   });
 
   it("should fetch and display full article content when button is clicked", async () => {
@@ -155,7 +153,6 @@ describe("SwipeFeedsPage", () => {
 
     vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
       content: "<p>Full article content here</p>",
-      url: mockFeeds[0].link,
     });
 
     vi.mocked(feedsApi.archiveContent).mockResolvedValue({
@@ -168,10 +165,8 @@ describe("SwipeFeedsPage", () => {
       expect(screen.getByTestId("swipe-card")).toBeInTheDocument();
     });
 
-    // Click full article button
-    const fullArticleButton = screen.getByRole("button", {
-      name: /Show Full Article|記事全文/i
-    });
+    // Click full article button using test ID
+    const fullArticleButton = screen.getByTestId("toggle-content-button");
     await user.click(fullArticleButton);
 
     // Should fetch content

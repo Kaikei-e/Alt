@@ -7,7 +7,9 @@ import {
   Text,
   VStack,
   HStack,
+  Link,
 } from "@chakra-ui/react";
+import type { CSSObject } from "@emotion/react";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { useDrag } from "@use-gesture/react";
 import useSWRInfinite from "swr/infinite";
@@ -20,7 +22,7 @@ import {
   JSX,
 } from "react";
 import { feedsApi } from "@/lib/api";
-import { Sparkles } from "lucide-react";
+import { Sparkles, SquareArrowOutUpRight, BookOpen, BotMessageSquare } from "lucide-react";
 import { Spinner } from "@chakra-ui/react";
 import { CursorResponse } from "@/schema/common";
 import { Feed } from "@/schema/feed";
@@ -38,6 +40,23 @@ const DISMISS_DELAY = 140;
 const INITIAL_PAGE_COUNT = 3;
 
 const MotionBox = motion.div;
+
+const scrollAreaStyles: CSSObject = {
+  "&::-webkit-scrollbar": {
+    width: "4px",
+  },
+  "&::-webkit-scrollbar-track": {
+    background: "transparent",
+    borderRadius: "2px",
+  },
+  "&::-webkit-scrollbar-thumb": {
+    background: "rgba(255, 255, 255, 0.2)",
+    borderRadius: "2px",
+  },
+  "&::-webkit-scrollbar-thumb:hover": {
+    background: "rgba(255, 255, 255, 0.3)",
+  },
+};
 
 type SwrKey = readonly ["mobile-feed-swipe", string | undefined, number];
 
@@ -267,6 +286,7 @@ export default function SwipeFeedsPage(): JSX.Element {
           setFullContent(contentResponse.content);
 
           // Auto-archive article when displaying content
+          // This ensures the article exists in DB before summarization
           feedsApi.archiveContent(activeFeed.link, activeFeed.title).catch((err) => {
             console.warn("Failed to auto-archive article:", err);
             // Don't block UI on archive failure
@@ -406,7 +426,7 @@ export default function SwipeFeedsPage(): JSX.Element {
   }
 
   // Show empty state only when all feeds are consumed AND no more available
-  if (!activeFeed) {
+  if (!activeFeed || activeIndex >= feeds.length) {
     // If there are more pages to load, show loading state instead of empty
     if (hasMore || isValidating) {
       return (
@@ -474,7 +494,7 @@ export default function SwipeFeedsPage(): JSX.Element {
                 position: "relative",
                 width: "100%",
                 maxWidth: "30rem",
-                height: "85dvh",
+                height: "92dvh",
                 background: "var(--alt-glass)",
                 color: "var(--alt-text-primary)",
                 border: "2px solid var(--alt-glass-border)",
@@ -488,8 +508,18 @@ export default function SwipeFeedsPage(): JSX.Element {
               exit={{ opacity: 0 }}
               data-testid="swipe-card"
             >
-              <VStack align="stretch" gap={4} h="100%">
-                <Box>
+              <VStack align="stretch" gap={0} h="100%">
+                {/* Fixed Header */}
+                <Box
+                  position="relative"
+                  zIndex="2"
+                  bg="rgba(255, 255, 255, 0.03)"
+                  backdropFilter="blur(20px)"
+                  borderBottom="1px solid var(--alt-glass-border)"
+                  px={4}
+                  py={3}
+                  borderTopRadius="1rem"
+                >
                   <Text
                     fontSize="sm"
                     color="var(--alt-text-secondary)"
@@ -502,9 +532,34 @@ export default function SwipeFeedsPage(): JSX.Element {
                   >
                     Swipe to mark as read
                   </Text>
-                  <Text as="h2" fontSize="xl" fontWeight="bold">
-                    {activeFeed.title}
-                  </Text>
+
+                  {/* Title with External Link */}
+                  <Flex align="center" gap={2}>
+                    <Link
+                      href={activeFeed.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Open article in new tab"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      color="var(--alt-text-primary)"
+                      borderColor="var(--alt-glass-border)"
+                      border="1px solid"
+                      borderRadius="md"
+                      p={2}
+                      _hover={{
+                        bg: "rgba(255, 255, 255, 0.05)",
+                        borderColor: "var(--alt-primary)",
+                      }}
+                    >
+                      <SquareArrowOutUpRight color="var(--alt-primary)" size={20} />
+                    </Link>
+                    <Text as="h2" fontSize="xl" fontWeight="bold" flex="1">
+                      {activeFeed.title}
+                    </Text>
+                  </Flex>
+
                   {activeFeed.published && (
                     <Text color="var(--alt-text-secondary)" fontSize="sm" mt={2}>
                       {new Date(activeFeed.published).toLocaleString()}
@@ -512,148 +567,179 @@ export default function SwipeFeedsPage(): JSX.Element {
                   )}
                 </Box>
 
+                {/* Unified Scroll Area */}
                 <Box
                   flex="1"
-                  overflowY="auto"
-                  pe={2}
-                   style={{
-                     scrollbarWidth: "thin",
-                   }}
+                  overflow="auto"
+                  px={4}
+                  py={4}
+                  bg="transparent"
+                  scrollBehavior="smooth"
+                  overscrollBehavior="contain"
+                  css={scrollAreaStyles}
+                  data-testid="unified-scroll-area"
                 >
-                  <Text color="var(--alt-text-primary)" whiteSpace="pre-wrap">
-                    {activeFeed.description || "No description available."}
-                  </Text>
-                </Box>
-
-                {/* Full Article Content Toggle Button */}
-                <Button
-                  type="button"
-                  onClick={handleToggleContent}
-                  size="sm"
-                  w="100%"
-                  borderRadius="12px"
-                  variant="outline"
-                  color="var(--alt-text-primary)"
-                  borderColor="var(--alt-glass-border)"
-                  _hover={{
-                    bg: "rgba(255, 255, 255, 0.05)",
-                    borderColor: "var(--alt-primary)",
-                  }}
-                >
-                  {isContentExpanded ? "記事全文を閉じる" : "記事全文を取得"}
-                </Button>
-
-                {/* Full Article Content Display */}
-                {isContentExpanded && (
-                  <Box
-                    p={4}
-                    bg="rgba(255, 255, 255, 0.03)"
-                    borderRadius="12px"
-                    border="1px solid var(--alt-glass-border)"
-                    maxH="300px"
-                    overflowY="auto"
-                    style={{
-                      scrollbarWidth: "thin",
-                    }}
-                  >
-                    {isLoadingContent ? (
-                      <HStack justify="center" py={4}>
-                        <Spinner size="sm" color="var(--alt-primary)" />
-                        <Text color="var(--alt-text-secondary)" fontSize="sm">
-                          記事全文を読み込み中...
-                        </Text>
-                      </HStack>
-                    ) : contentError ? (
-                      <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
-                        {contentError}
+                  {/* 1. Lead Text (Description) - Always visible */}
+                  {activeFeed.description && (
+                    <Box mb={4}>
+                      <Text
+                        fontSize="xs"
+                        color="var(--alt-text-secondary)"
+                        fontWeight="bold"
+                        mb={2}
+                        textTransform="uppercase"
+                        letterSpacing="1px"
+                      >
+                        概要 / Summary
                       </Text>
-                    ) : fullContent ? (
-                      <Box
+                      <Text
                         fontSize="sm"
                         color="var(--alt-text-primary)"
                         lineHeight="1.7"
-                        dangerouslySetInnerHTML={{ __html: fullContent }}
-                        css={{
-                          "& img": {
-                            maxWidth: "100%",
-                            height: "auto",
-                            borderRadius: "8px",
-                            margin: "0.5rem 0",
-                          },
-                          "& a": {
-                            color: "var(--alt-primary)",
-                            textDecoration: "underline",
-                          },
-                          "& p": {
-                            marginBottom: "0.5rem",
-                          },
-                          "& h1, & h2, & h3, & h4, & h5, & h6": {
-                            fontWeight: "bold",
-                            marginTop: "0.75rem",
-                            marginBottom: "0.5rem",
-                          },
-                        }}
-                      />
-                    ) : null}
-                  </Box>
-                )}
+                      >
+                        {activeFeed.description}
+                      </Text>
+                    </Box>
+                  )}
 
-                {/* Summary Toggle Button */}
-                <Button
-                  type="button"
-                  onClick={handleToggleSummary}
-                  size="sm"
-                  w="100%"
-                  borderRadius="12px"
-                  variant="outline"
-                  color="var(--alt-text-primary)"
-                  borderColor="var(--alt-glass-border)"
-                  _hover={{
-                    bg: "rgba(255, 255, 255, 0.05)",
-                    borderColor: "var(--alt-primary)",
-                  }}
-                >
-                  {isSummaryExpanded ? "要約を閉じる" : "要約を表示"}
-                </Button>
-
-                {/* Summary Content */}
-                {isSummaryExpanded && (
-                  <Box
-                    p={4}
-                    bg="rgba(255, 255, 255, 0.03)"
-                    borderRadius="12px"
-                    border="1px solid var(--alt-glass-border)"
-                    maxH="200px"
-                    overflowY="auto"
-                   style={{
-                     scrollbarWidth: "thin",
-                   }}
-                  >
-                    {isLoadingSummary ? (
-                      <HStack justify="center" py={4}>
-                        <Spinner size="sm" color="var(--alt-primary)" />
-                        <Text color="var(--alt-text-secondary)" fontSize="sm">
-                          要約を読み込み中...
-                        </Text>
-                      </HStack>
-                    ) : isSummarizing ? (
-                      <VStack gap={3} py={4}>
-                        <HStack justify="center">
+                  {/* 2. Full Article Content - When expanded */}
+                  {isContentExpanded && (
+                    <Box
+                      mb={4}
+                      p={4}
+                      bg="rgba(255, 255, 255, 0.03)"
+                      borderRadius="12px"
+                      border="1px solid var(--alt-glass-border)"
+                    >
+                      <Text
+                        fontSize="xs"
+                        color="var(--alt-text-secondary)"
+                        fontWeight="bold"
+                        mb={2}
+                        textTransform="uppercase"
+                        letterSpacing="1px"
+                      >
+                        記事全文 / Full Article
+                      </Text>
+                      {isLoadingContent ? (
+                        <HStack justify="center" py={4}>
                           <Spinner size="sm" color="var(--alt-primary)" />
                           <Text color="var(--alt-text-secondary)" fontSize="sm">
-                            要約を生成中...
+                            記事全文を読み込み中...
                           </Text>
                         </HStack>
-                        <Text color="var(--alt-text-secondary)" fontSize="xs" textAlign="center">
-                          これには数秒かかる場合があります
-                        </Text>
-                      </VStack>
-                    ) : summaryError ? (
-                      <VStack gap={3} w="100%">
+                      ) : contentError ? (
                         <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
-                          {summaryError}
+                          {contentError}
                         </Text>
-                        {summaryError === "要約を取得できませんでした" && (
+                      ) : fullContent ? (
+                        <Box
+                          fontSize="sm"
+                          color="var(--alt-text-primary)"
+                          lineHeight="1.7"
+                          dangerouslySetInnerHTML={{ __html: fullContent }}
+                          css={{
+                            "& img": {
+                              maxWidth: "100%",
+                              height: "auto",
+                              borderRadius: "8px",
+                              margin: "0.5rem 0",
+                            },
+                            "& a": {
+                              color: "var(--alt-primary)",
+                              textDecoration: "underline",
+                            },
+                            "& p": {
+                              marginBottom: "0.5rem",
+                            },
+                            "& h1, & h2, & h3, & h4, & h5, & h6": {
+                              fontWeight: "bold",
+                              marginTop: "0.75rem",
+                              marginBottom: "0.5rem",
+                            },
+                          }}
+                        />
+                      ) : null}
+                    </Box>
+                  )}
+
+                  {/* 3. Summary - When expanded */}
+                  {isSummaryExpanded && (
+                    <Box
+                      p={4}
+                      bg="rgba(255, 255, 255, 0.03)"
+                      borderRadius="12px"
+                      border="1px solid var(--alt-glass-border)"
+                    >
+                      <Text
+                        fontSize="xs"
+                        color="var(--alt-text-secondary)"
+                        fontWeight="bold"
+                        mb={2}
+                        textTransform="uppercase"
+                        letterSpacing="1px"
+                      >
+                        日本語要約 / Japanese Summary
+                      </Text>
+                      {isLoadingSummary ? (
+                        <HStack justify="center" py={4}>
+                          <Spinner size="sm" color="var(--alt-primary)" />
+                          <Text color="var(--alt-text-secondary)" fontSize="sm">
+                            要約を読み込み中...
+                          </Text>
+                        </HStack>
+                      ) : isSummarizing ? (
+                        <VStack gap={3} py={4}>
+                          <HStack justify="center">
+                            <Spinner size="sm" color="var(--alt-primary)" />
+                            <Text color="var(--alt-text-secondary)" fontSize="sm">
+                              要約を生成中...
+                            </Text>
+                          </HStack>
+                          <Text color="var(--alt-text-secondary)" fontSize="xs" textAlign="center">
+                            これには数秒かかる場合があります
+                          </Text>
+                        </VStack>
+                      ) : summaryError ? (
+                        <VStack gap={3} w="100%">
+                          <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
+                            {summaryError}
+                          </Text>
+                          {summaryError === "要約を取得できませんでした" && (
+                            <Button
+                              size="sm"
+                              onClick={handleSummarizeNow}
+                              w="100%"
+                              borderRadius="12px"
+                              bg="var(--alt-primary)"
+                              color="white"
+                              _hover={{
+                                bg: "var(--alt-secondary)",
+                                transform: "translateY(-1px)",
+                              }}
+                              data-testid="summarize-now-button"
+                            >
+                              <Flex align="center" gap={2}>
+                                <Sparkles size={16} />
+                                <Text>今すぐ要約</Text>
+                              </Flex>
+                            </Button>
+                          )}
+                        </VStack>
+                      ) : summary ? (
+                        <Text
+                          fontSize="sm"
+                          color="var(--alt-text-primary)"
+                          lineHeight="1.7"
+                          whiteSpace="pre-wrap"
+                        >
+                          {summary}
+                        </Text>
+                      ) : (
+                        <VStack gap={3} w="100%">
+                          <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
+                            この記事の要約はまだありません
+                          </Text>
                           <Button
                             size="sm"
                             onClick={handleSummarizeNow}
@@ -665,81 +751,120 @@ export default function SwipeFeedsPage(): JSX.Element {
                               bg: "var(--alt-secondary)",
                               transform: "translateY(-1px)",
                             }}
+                            data-testid="summarize-now-button"
                           >
                             <Flex align="center" gap={2}>
                               <Sparkles size={16} />
-                              <Text>Summarize Immediately</Text>
+                              <Text>今すぐ要約</Text>
                             </Flex>
                           </Button>
-                        )}
-                      </VStack>
-                    ) : summary ? (
-                      <Text
-                        fontSize="sm"
-                        color="var(--alt-text-primary)"
-                        lineHeight="1.7"
-                        whiteSpace="pre-wrap"
-                      >
-                        {summary}
-                      </Text>
-                    ) : (
-                      <VStack gap={3} w="100%">
-                        <Text color="var(--alt-text-secondary)" fontSize="sm" textAlign="center">
-                          この記事の要約はまだありません
-                        </Text>
-                        <Button
-                          size="sm"
-                          onClick={handleSummarizeNow}
-                          w="100%"
-                          borderRadius="12px"
-                          bg="var(--alt-primary)"
-                          color="white"
-                          _hover={{
-                            bg: "var(--alt-secondary)",
-                            transform: "translateY(-1px)",
-                          }}
-                        >
-                          <Flex align="center" gap={2}>
-                            <Sparkles size={16} />
-                            <Text>Summarize Immediately</Text>
-                          </Flex>
-                        </Button>
-                      </VStack>
-                    )}
-                  </Box>
-                )}
+                        </VStack>
+                      )}
+                    </Box>
+                  )}
+                </Box>
 
-                <Button
-                  type="button"
-                  onClick={() => dismissCurrentFeed(1)}
-                  size="lg"
-                  w="100%"
-                  borderRadius="16px"
-                  bgGradient="linear(to-r, #FF416C, #FF4B2B)"
-                  color="white"
-                  fontWeight="bold"
-                  _hover={{
-                    transform: "translateY(-2px)",
-                    boxShadow: "0 8px 25px rgba(255, 65, 108, 0.4)",
-                  }}
-                  _active={{
-                    transform: "translateY(0)",
-                  }}
-                  transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                  data-testid="swipe-card-button"
+                {/* Fixed Footer with Action Buttons */}
+                <Box
+                  position="relative"
+                  zIndex="2"
+                  bg="rgba(255, 255, 255, 0.05)"
+                  backdropFilter="blur(20px)"
+                  borderTop="1px solid var(--alt-glass-border)"
+                  px={3}
+                  py={3}
+                  borderBottomRadius="1rem"
+                  data-testid="action-footer"
                 >
-                  Mark current feed as read
-                </Button>
+                  <HStack gap={2} w="100%" justify="space-between">
+                    <Button
+                      onClick={handleToggleContent}
+                      size="sm"
+                      flex="1"
+                      borderRadius="12px"
+                      bg={isContentExpanded ? "var(--alt-secondary)" : "var(--alt-primary)"}
+                      color="white"
+                      fontWeight="bold"
+                      _hover={{
+                        filter: "brightness(1.1)",
+                        transform: "translateY(-1px)",
+                      }}
+                      _active={{
+                        transform: "translateY(0)",
+                      }}
+                      transition="all 0.2s ease"
+                      disabled={isLoadingContent}
+                      data-testid="toggle-content-button"
+                    >
+                      <Flex align="center" gap={2}>
+                        <BookOpen size={16} />
+                        <Text fontSize="xs">
+                          {isLoadingContent ? "読込中..." : isContentExpanded ? "全文非表示" : "全文表示"}
+                        </Text>
+                      </Flex>
+                    </Button>
 
-                {statusMessage && (
-                  <Text
-                    fontSize="sm"
-                    color="var(--alt-text-secondary)"
-                    textAlign="center"
-                  >
-                    {statusMessage}
-                  </Text>
-                )}
+                    <Button
+                      onClick={handleToggleSummary}
+                      size="sm"
+                      flex="1"
+                      borderRadius="12px"
+                      bg={isSummaryExpanded ? "var(--alt-secondary)" : "var(--alt-primary)"}
+                      color="white"
+                      fontWeight="bold"
+                      _hover={{
+                        filter: "brightness(1.1)",
+                        transform: "translateY(-1px)",
+                      }}
+                      _active={{
+                        transform: "translateY(0)",
+                      }}
+                      transition="all 0.2s ease"
+                      disabled={isLoadingSummary}
+                      data-testid="toggle-summary-button"
+                    >
+                      <Flex align="center" gap={2}>
+                        <BotMessageSquare size={16} />
+                        <Text fontSize="xs">
+                          {isLoadingSummary ? "読込中..." : isSummaryExpanded ? "要約非表示" : "要約"}
+                        </Text>
+                      </Flex>
+                    </Button>
+
+                    <Button
+                      type="button"
+                      onClick={() => dismissCurrentFeed(1)}
+                      size="sm"
+                      flex="1"
+                      borderRadius="12px"
+                      bgGradient="linear(to-r, #FF416C, #FF4B2B)"
+                      color="white"
+                      fontWeight="bold"
+                      _hover={{
+                        transform: "translateY(-1px)",
+                        boxShadow: "0 4px 12px rgba(255, 65, 108, 0.3)",
+                      }}
+                      _active={{
+                        transform: "translateY(0)",
+                      }}
+                      transition="all 0.2s ease"
+                      data-testid="swipe-card-button"
+                    >
+                      <Text fontSize="xs">既読</Text>
+                    </Button>
+                  </HStack>
+
+                  {statusMessage && (
+                    <Text
+                      fontSize="xs"
+                      color="var(--alt-text-secondary)"
+                      textAlign="center"
+                      mt={2}
+                    >
+                      {statusMessage}
+                    </Text>
+                  )}
+                </Box>
               </VStack>
             </MotionBox>
           )}
