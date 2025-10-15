@@ -86,21 +86,57 @@ All development follows the Red-Green-Refactor cycle:
 
 #### Unit Tests (Vitest)
 
+Unit tests are located in `tests/unit/` and follow these patterns:
+
 ```typescript
-// Example component test
-import { render, screen } from '@testing-library/react'
-import { FeedCard } from './FeedCard'
+// Example component test with mocked API
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
+import { FeedDetails } from '@/components/mobile/FeedDetails'
+import { feedsApi } from '@/lib/api'
 
-describe('FeedCard', () => {
-  it('renders feed title and description', () => {
-    const feed = { title: 'Test Feed', description: 'Test Description' }
-    render(<FeedCard feed={feed} />)
+vi.mock('@/lib/api', () => ({
+  feedsApi: {
+    getFeedContentOnTheFly: vi.fn(),
+    archiveContent: vi.fn(),
+  },
+}))
 
-    expect(screen.getByText('Test Feed')).toBeInTheDocument()
-    expect(screen.getByText('Test Description')).toBeInTheDocument()
+describe('FeedDetails', () => {
+  it('auto-archives article when displaying content', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
+      content: 'Article content',
+      url: 'https://example.com',
+    })
+
+    vi.mocked(feedsApi.archiveContent).mockResolvedValue({
+      message: 'article archived',
+    })
+
+    render(<FeedDetails feedURL="https://example.com" feedTitle="Test" />)
+
+    await user.click(screen.getByText('Show Details'))
+
+    await waitFor(() => {
+      expect(feedsApi.archiveContent).toHaveBeenCalledWith(
+        'https://example.com',
+        'Test',
+      )
+    })
   })
 })
 ```
+
+**Unit Test Guidelines:**
+
+- Use `vi.mock()` for API and external dependencies
+- Use `userEvent` for realistic user interactions
+- Use `waitFor()` for async operations
+- Test both success and failure paths
+- Ensure non-blocking error handling doesn't affect UX
 
 #### Integration Tests (Vitest)
 
@@ -126,21 +162,55 @@ describe("/api/feeds", () => {
 
 #### End-to-End Tests (Playwright)
 
+E2E tests use the **Page Object Model (POM)** pattern for maintainability. Page Objects are located in `tests/pages/`.
+
 ```typescript
-// Example E2E test
+// Page Object Model (tests/pages/HomePage.ts)
+import { Page, Locator } from "@playwright/test";
+import { BasePage } from "./BasePage";
+
+export class HomePage extends BasePage {
+  readonly addFeedButton: Locator;
+  readonly feedUrlInput: Locator;
+  readonly submitButton: Locator;
+  readonly feedList: Locator;
+
+  constructor(page: Page) {
+    super(page);
+    // IMPORTANT: Always reference actual data-testid from implementation
+    this.addFeedButton = page.getByTestId("add-feed-button");
+    this.feedUrlInput = page.getByTestId("feed-url-input");
+    this.submitButton = page.getByTestId("submit-button");
+    this.feedList = page.getByTestId("feed-list");
+  }
+
+  async addFeed(url: string) {
+    await this.addFeedButton.click();
+    await this.feedUrlInput.fill(url);
+    await this.submitButton.click();
+  }
+}
+
+// E2E Test (tests/e2e/feeds.spec.ts)
 import { test, expect } from "@playwright/test";
+import { HomePage } from "../pages/HomePage";
 
 test("user can add a new feed", async ({ page }) => {
-  await page.goto("/home");
-  await page.click('[data-testid="add-feed-button"]');
-  await page.fill('[data-testid="feed-url-input"]', "https://example.com/rss");
-  await page.click('[data-testid="submit-button"]');
+  const homePage = new HomePage(page);
+  await homePage.goto("/home");
+  await homePage.addFeed("https://example.com/rss");
 
-  await expect(page.locator('[data-testid="feed-list"]')).toContainText(
-    "Example Feed",
-  );
+  await expect(homePage.feedList).toContainText("Example Feed");
 });
 ```
+
+**E2E Test Guidelines:**
+
+- **Always use POM**: Create Page Objects in `tests/pages/` for all E2E tests
+- **Verify Selectors**: Check actual `data-testid` values in component implementation before writing POM
+- **Document Sources**: Add comments with file paths and line numbers for selectors
+- **Extend BasePage**: Inherit from `BasePage` for common functionality
+- **No Direct Selectors in Tests**: Use Page Object methods instead of raw selectors
 
 ### Development Workflow
 
@@ -158,6 +228,39 @@ test("user can add a new feed", async ({ page }) => {
 - **Client Components**: Use for interactivity and state management
 - **Custom Hooks**: Extract reusable logic into custom hooks
 - **Context API**: Use for global state management
+
+### Article Management Patterns
+
+#### Auto-Archive on Display
+
+The `FeedDetails` component implements automatic article archiving when content is displayed:
+
+```typescript
+// When article content is successfully fetched and displayed
+if (hasValidDetails) {
+  setFeedDetails(details);
+
+  // Auto-archive article to ensure DB persistence before summarization
+  feedsApi.archiveContent(feedURL, feedTitle).catch((err) => {
+    console.warn("Failed to auto-archive article:", err);
+    // Don't block UI on archive failure
+  });
+}
+```
+
+**Key Design Decisions:**
+
+1. **Timing**: Articles are archived immediately when displayed (not on user click)
+2. **Non-blocking**: Archive failures are logged but don't prevent UI display
+3. **Idempotency**: Backend handles duplicate archive requests gracefully
+4. **Purpose**: Ensures articles exist in DB before AI summarization
+
+**Why This Matters:**
+
+- The `pre-processor` service requires articles to exist in the database before creating summaries
+- The SQL query uses `WHERE EXISTS (SELECT 1 FROM articles WHERE id = $1)`
+- Auto-archiving guarantees this precondition is met when users click "要約" (Summarize)
+- Improves accuracy of "未要約記事数" (unsummarized article count) metrics
 
 ### Chakra UI Best Practices
 
