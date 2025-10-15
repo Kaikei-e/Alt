@@ -31,6 +31,7 @@ import {
   Star,
   Menu,
   X,
+  Infinity,
 } from "lucide-react";
 import { ThemeToggle } from "../../ThemeToggle";
 
@@ -104,6 +105,13 @@ export const FloatingMenu = () => {
       category: "feeds",
       icon: <Rss size={18} />,
       description: "Browse all RSS feeds",
+    },
+    {
+      label: "Swipe Mode",
+      href: "/mobile/feeds/swipe",
+      category: "feeds",
+      icon: <Infinity size={18} />,
+      description: "Swipe through feeds",
     },
     {
       label: "Viewed Feeds",

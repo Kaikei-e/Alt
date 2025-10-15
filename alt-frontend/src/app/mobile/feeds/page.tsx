@@ -14,6 +14,8 @@ import { useAuth } from "@/contexts/auth-context";
 import ErrorState from "./_components/ErrorState";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
+import Link from "next/link";
+import { Infinity } from "lucide-react";
 
 const PAGE_SIZE = 20;
 
@@ -284,6 +286,64 @@ export default function FeedsPage() {
           </div>
         )}
       </Box>
+
+      {/* Swipe Mode Button */}
+      <Link href="/mobile/feeds/swipe">
+        <Box position="fixed" bottom={6} right={20} zIndex={1000}>
+          <Button
+            data-testid="swipe-mode-button"
+            size="md"
+            borderRadius="full"
+            bg="var(--alt-primary)"
+            color="var(--text-primary)"
+            p={0}
+            w="48px"
+            h="48px"
+            border="2px solid rgba(255, 255, 255, 0.2)"
+            _hover={{
+              transform: "scale(1.05) rotate(90deg)",
+              shadow: "0 6px 20px var(--alt-primary)",
+              bg: "var(--alt-primary)",
+            }}
+            _active={{
+              transform: "scale(0.95) rotate(90deg)",
+            }}
+            transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+            tabIndex={0}
+            role="button"
+            aria-label="Open swipe mode"
+            position="relative"
+            overflow="hidden"
+          >
+            {/* Animated background pulse */}
+            <Box
+              position="absolute"
+              top="50%"
+              left="50%"
+              transform="translate(-50%, -50%)"
+              w="120%"
+              h="120%"
+              bg="var(--alt-primary)"
+              borderRadius="full"
+              opacity="0.3"
+              css={{
+                "@keyframes pulse": {
+                  "0%, 100%": {
+                    opacity: 0.6,
+                    transform: "translate(-50%, -50%) scale(1)",
+                  },
+                  "50%": {
+                    opacity: 0.8,
+                    transform: "translate(-50%, -50%) scale(1.1)",
+                  },
+                },
+                animation: "pulse 2s ease-in-out infinite",
+              }}
+            />
+            <Infinity size={20} style={{ position: "relative", zIndex: 1 }} />
+          </Button>
+        </Box>
+      </Link>
 
       <FloatingMenu />
     </Box>
