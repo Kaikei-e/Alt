@@ -39,21 +39,21 @@ type HTTPConfig struct {
 	ExpectContinueTimeout time.Duration `json:"expect_continue_timeout" env:"HTTP_EXPECT_CONTINUE_TIMEOUT" default:"1s"`
 	UserAgent             string        `json:"user_agent" env:"HTTP_USER_AGENT" default:"Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)"`
 	// User-Agent rotation configuration
-	UserAgentRotation     bool          `json:"user_agent_rotation" env:"HTTP_USER_AGENT_ROTATION" default:"true"`
-	UserAgents            []string      `json:"user_agents" env:"HTTP_USER_AGENTS"`
-	// Request headers configuration  
-	EnableBrowserHeaders  bool          `json:"enable_browser_headers" env:"HTTP_ENABLE_BROWSER_HEADERS" default:"true"`
+	UserAgentRotation bool     `json:"user_agent_rotation" env:"HTTP_USER_AGENT_ROTATION" default:"true"`
+	UserAgents        []string `json:"user_agents" env:"HTTP_USER_AGENTS"`
+	// Request headers configuration
+	EnableBrowserHeaders bool `json:"enable_browser_headers" env:"HTTP_ENABLE_BROWSER_HEADERS" default:"true"`
 	// HTTP error handling configuration
-	SkipErrorResponses    bool          `json:"skip_error_responses" env:"HTTP_SKIP_ERROR_RESPONSES" default:"true"`
-	MinContentLength      int           `json:"min_content_length" env:"HTTP_MIN_CONTENT_LENGTH" default:"500"`
+	SkipErrorResponses bool `json:"skip_error_responses" env:"HTTP_SKIP_ERROR_RESPONSES" default:"true"`
+	MinContentLength   int  `json:"min_content_length" env:"HTTP_MIN_CONTENT_LENGTH" default:"500"`
 	// Redirect handling configuration
-	MaxRedirects          int           `json:"max_redirects" env:"HTTP_MAX_REDIRECTS" default:"5"`
-	FollowRedirects       bool          `json:"follow_redirects" env:"HTTP_FOLLOW_REDIRECTS" default:"true"`
+	MaxRedirects    int  `json:"max_redirects" env:"HTTP_MAX_REDIRECTS" default:"5"`
+	FollowRedirects bool `json:"follow_redirects" env:"HTTP_FOLLOW_REDIRECTS" default:"true"`
 	// Envoy Proxy Configuration
-	UseEnvoyProxy         bool          `json:"use_envoy_proxy" env:"USE_ENVOY_PROXY" default:"false"`
-	EnvoyProxyURL         string        `json:"envoy_proxy_url" env:"ENVOY_PROXY_URL" default:"http://envoy-proxy.alt-apps.svc.cluster.local:8080"`
-	EnvoyProxyPath        string        `json:"envoy_proxy_path" env:"ENVOY_PROXY_PATH" default:"/proxy/https://"`
-	EnvoyTimeout          time.Duration `json:"envoy_timeout" env:"ENVOY_TIMEOUT" default:"300s"`
+	UseEnvoyProxy  bool          `json:"use_envoy_proxy" env:"USE_ENVOY_PROXY" default:"false"`
+	EnvoyProxyURL  string        `json:"envoy_proxy_url" env:"ENVOY_PROXY_URL" default:"http://envoy-proxy.alt-apps.svc.cluster.local:8080"`
+	EnvoyProxyPath string        `json:"envoy_proxy_path" env:"ENVOY_PROXY_PATH" default:"/proxy/https://"`
+	EnvoyTimeout   time.Duration `json:"envoy_timeout" env:"ENVOY_TIMEOUT" default:"300s"`
 }
 
 type RetryConfig struct {
@@ -242,7 +242,7 @@ func loadFromEnv(config *Config) error {
 		// Default User-Agent list for rotation
 		config.HTTP.UserAgents = []string{
 			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 			"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
 			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0",
@@ -654,7 +654,7 @@ func (uar *UserAgentRotator) GetUserAgent() string {
 
 	userAgent := uar.config.UserAgents[uar.index]
 	uar.index = (uar.index + 1) % len(uar.config.UserAgents)
-	
+
 	return userAgent
 }
 
@@ -666,10 +666,10 @@ func (uar *UserAgentRotator) GetRandomUserAgent() string {
 
 	// Initialize random seed if not already done
 	rand.Seed(time.Now().UnixNano())
-	
+
 	uar.mu.Lock()
 	defer uar.mu.Unlock()
-	
+
 	index := rand.Intn(len(uar.config.UserAgents))
 	return uar.config.UserAgents[index]
 }
@@ -683,12 +683,12 @@ func (config *HTTPConfig) GetBrowserHeaders(userAgent string) map[string]string 
 	}
 
 	headers := map[string]string{
-		"User-Agent":      userAgent,
-		"Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-		"Accept-Language": "en-US,en;q=0.9",
-		"Accept-Encoding": "gzip, deflate, br",
-		"DNT":             "1",
-		"Connection":      "keep-alive",
+		"User-Agent":                userAgent,
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+		"Accept-Language":           "en-US,en;q=0.9",
+		"Accept-Encoding":           "gzip, deflate, br",
+		"DNT":                       "1",
+		"Connection":                "keep-alive",
 		"Upgrade-Insecure-Requests": "1",
 	}
 

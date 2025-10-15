@@ -101,7 +101,8 @@ func TestNewHealthCheckerServiceWithFactory(t *testing.T) {
 func TestHealthCheckerFactory_Integration(t *testing.T) {
 	// Create mock news creator service
 	mockNewsCreator := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
+		// Health checker calls /health endpoint
+		if r.URL.Path == "/health" {
 			// Mock healthy response with models
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -209,7 +210,8 @@ func TestHealthCheckerFactory_WaitForHealthy(t *testing.T) {
 	callCount := 0
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
-		if r.URL.Path == "/api/tags" {
+		// Health checker calls /health endpoint
+		if r.URL.Path == "/health" {
 			if callCount >= 2 { // Become healthy after second call
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)

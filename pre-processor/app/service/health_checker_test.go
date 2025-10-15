@@ -40,9 +40,11 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 	}{
 		"should handle healthy service": {
 			mockResponse: func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/api/tags" {
+				// Health checker calls /health endpoint
+				if r.URL.Path == "/health" {
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{"status":"healthy"}`))
+					// Implementation expects models array
+					w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`))
 				} else {
 					w.WriteHeader(http.StatusNotFound)
 				}
@@ -124,9 +126,11 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 	t.Run("should return when service becomes healthy", func(t *testing.T) {
 		// Create mock server that responds healthy
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/api/tags" {
+			// Health checker calls /health endpoint
+			if r.URL.Path == "/health" {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"status":"healthy"}`))
+				// Implementation expects models array
+				w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`))
 			}
 		}))
 		defer server.Close()

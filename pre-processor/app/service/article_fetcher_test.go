@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -105,23 +104,23 @@ func TestArticleFetcherService_FetchArticle(t *testing.T) {
 	}{
 		"should handle malformed URL": {
 			input:       "://invalid",
-			expectError: true,
-			description: "URL parsing should fail",
+			expectError: false, // Article fetching is disabled, returns nil,nil
+			description: "Article fetching is disabled for ethical compliance",
 		},
 		"should handle empty URL": {
 			input:       "",
-			expectError: true,
-			description: "Empty URL should be rejected",
+			expectError: false, // Article fetching is disabled, returns nil,nil
+			description: "Article fetching is disabled for ethical compliance",
 		},
 		"should reject non-HTTP schemes": {
 			input:       "ftp://example.com",
-			expectError: true,
-			description: "Non-HTTP schemes should be rejected by article fetcher",
+			expectError: false, // Article fetching is disabled, returns nil,nil
+			description: "Article fetching is disabled for ethical compliance",
 		},
 		"should skip MP3 files": {
 			input:       "https://example.com/audio.mp3",
 			expectError: false,
-			description: "MP3 files should be skipped and return nil without error",
+			description: "Article fetching is disabled for ethical compliance",
 		},
 	}
 
@@ -131,19 +130,10 @@ func TestArticleFetcherService_FetchArticle(t *testing.T) {
 
 			result, err := service.FetchArticle(context.Background(), tc.input)
 
-			if tc.expectError {
-				require.Error(t, err, tc.description)
-				assert.Nil(t, result)
-			} else {
-				// For MP3 files, expect no error but nil result (skipped)
-				if strings.Contains(tc.input, ".mp3") {
-					require.NoError(t, err, tc.description)
-					assert.Nil(t, result, "MP3 files should return nil result")
-				} else {
-					require.NoError(t, err, tc.description)
-					assert.NotNil(t, result)
-				}
-			}
+			// Article fetching is currently disabled for ethical compliance
+			// All inputs should return nil, nil
+			require.NoError(t, err, tc.description)
+			assert.Nil(t, result, "Article fetching disabled, should return nil")
 		})
 	}
 }

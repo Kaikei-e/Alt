@@ -152,7 +152,7 @@ func (c *Client) parseUserToken(tokenString string) (*UserContext, error) {
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		userID, _ := uuid.Parse(claims["user_id"].(string))
 		tenantID, _ := uuid.Parse(claims["tenant_id"].(string))
-		
+
 		return &UserContext{
 			UserID:    userID,
 			TenantID:  tenantID,

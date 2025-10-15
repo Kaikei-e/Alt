@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/labstack/echo/v4"
 	"pre-processor/internal/auth"
+
+	"github.com/labstack/echo/v4"
 )
 
 type AuthMiddleware struct {

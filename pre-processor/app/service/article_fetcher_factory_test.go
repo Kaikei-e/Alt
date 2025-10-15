@@ -216,9 +216,9 @@ func TestArticleFetcherFactory_Integration(t *testing.T) {
 					UserAgent:     "test-integration",
 				},
 			},
-			targetURL:   mockServer.URL, // This will be 127.0.0.1, which should be blocked
-			expectError: true,
-			description: "Private network access should be blocked by SSRF protection",
+			targetURL:   mockServer.URL, // This will be 127.0.0.1
+			expectError: false,          // Article fetching is disabled, returns nil,nil
+			description: "Article fetching is disabled for ethical compliance",
 		},
 		"envoy_config_error": {
 			config: &config.Config{
@@ -229,8 +229,8 @@ func TestArticleFetcherFactory_Integration(t *testing.T) {
 				},
 			},
 			targetURL:   "https://example.com",
-			expectError: true,
-			description: "Invalid Envoy config should return error",
+			expectError: false, // Article fetching is disabled, returns nil,nil
+			description: "Article fetching is disabled for ethical compliance",
 		},
 		"invalid_url": {
 			config: &config.Config{
@@ -241,8 +241,8 @@ func TestArticleFetcherFactory_Integration(t *testing.T) {
 				},
 			},
 			targetURL:   "invalid-url-format",
-			expectError: true,
-			description: "Invalid URL format should return error",
+			expectError: false, // Article fetching is disabled, returns nil,nil
+			description: "Article fetching is disabled for ethical compliance",
 		},
 	}
 
@@ -257,37 +257,19 @@ func TestArticleFetcherFactory_Integration(t *testing.T) {
 			ctx := context.Background()
 			article, err := service.FetchArticle(ctx, tc.targetURL)
 
-			if tc.expectError {
-				if err == nil {
-					t.Errorf("%s: expected error but got none", tc.description)
-				}
-				return
-			}
-
+			// Article fetching is currently disabled for ethical compliance
+			// All requests should return nil, nil regardless of configuration
 			if err != nil {
-				if !tc.expectError {
-					t.Errorf("%s: unexpected error: %v", tc.description, err)
-				} else {
-					t.Logf("%s: got expected error: %v", tc.description, err)
-				}
+				t.Errorf("%s: unexpected error (article fetching disabled): %v", tc.description, err)
 				return
 			}
 
-			if article == nil {
-				t.Errorf("%s: expected article but got nil", tc.description)
+			if article != nil {
+				t.Errorf("%s: expected nil article (fetching disabled) but got: %+v", tc.description, article)
 				return
 			}
 
-			if article.Title == "" {
-				t.Errorf("%s: expected article title but got empty string", tc.description)
-			}
-
-			if article.Content == "" {
-				t.Errorf("%s: expected article content but got empty string", tc.description)
-			}
-
-			t.Logf("%s: successfully fetched article: title='%s', content_length=%d",
-				tc.description, article.Title, len(article.Content))
+			t.Logf("%s: article fetching disabled, returned nil as expected", tc.description)
 		})
 	}
 }

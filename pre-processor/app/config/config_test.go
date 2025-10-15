@@ -25,7 +25,7 @@ func TestLoadConfig(t *testing.T) {
 				assert.Equal(t, 30*time.Second, c.HTTP.Timeout)
 				assert.Equal(t, 3, c.Retry.MaxAttempts)
 				assert.Equal(t, 5*time.Second, c.RateLimit.DefaultInterval)
-				assert.Equal(t, "pre-processor/1.0 (+https://alt.example.com/bot)", c.HTTP.UserAgent)
+				assert.Equal(t, "Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)", c.HTTP.UserAgent)
 				assert.Equal(t, true, c.Metrics.Enabled)
 			},
 		},

@@ -29,13 +29,13 @@ type SummarizeRequest struct {
 
 // SummarizeResponse represents the response from news-creator /api/v1/summarize endpoint
 type SummarizeResponse struct {
-	Success           bool    `json:"success"`
-	ArticleID         string  `json:"article_id"`
-	Summary           string  `json:"summary"`
-	Model             string  `json:"model"`
-	PromptTokens      *int    `json:"prompt_tokens,omitempty"`
-	CompletionTokens  *int    `json:"completion_tokens,omitempty"`
-	TotalDurationMs   *float64 `json:"total_duration_ms,omitempty"`
+	Success          bool     `json:"success"`
+	ArticleID        string   `json:"article_id"`
+	Summary          string   `json:"summary"`
+	Model            string   `json:"model"`
+	PromptTokens     *int     `json:"prompt_tokens,omitempty"`
+	CompletionTokens *int     `json:"completion_tokens,omitempty"`
+	TotalDurationMs  *float64 `json:"total_duration_ms,omitempty"`
 }
 
 var (

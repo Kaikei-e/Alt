@@ -20,7 +20,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const (
+var (
+	// qualityCheckerAPIURL can be overridden in tests
 	qualityCheckerAPIURL = "http://news-creator:11434/api/generate"
 	modelName            = "gemma3:4b"
 	lowScoreThreshold    = 24 // 30点満点の80% (24/30)
@@ -54,20 +55,26 @@ type Score struct {
 
 const JudgeTemplate = `
 <start_of_turn>user
-**FORBIDDEN: Any text except the score pattern**
-**REQUIRED THIS SCORE PATTERN: <score>X</score> LIKE THIS <score>15</score>**
-**X is an integer between 0 and 30 (inclusive), calculated as coherence + relevancy + fluency, each scored 0-10.**
+You are a strict grader. Read the Article and the Summary, then rate the Summary’s writing quality as a single integer from 1 to 10 (10 = best).
 
-**DO NOT write "Okay" or any explanation.**
-**ONLY output the score pattern.**
+Hard rules:
+- Output exactly one XML tag: <score>X</score>
+- X must be an integer 1-10 (no decimals)
+- Do not output anything else: no explanations, no quotes, no extra tags
+- No leading/trailing spaces or newlines
+- Do not output control tokens (e.g., <end_of_turn>)
 
-Article: %s
-Summary: %s
+Article:
+%s
 
-OUTPUT ONLY THIS:
+Summary:
+%s
+
+Respond with only:
 <score>X</score>
 <end_of_turn>
 <start_of_turn>model
+
 `
 
 func scoreSummary(ctx context.Context, prompt string) (*Score, error) {

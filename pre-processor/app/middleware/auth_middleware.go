@@ -8,8 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"log/slog"
+
+	"github.com/labstack/echo/v4"
 
 	"pre-processor/internal/auth"
 	"pre-processor/internal/auth/middleware"
