@@ -18,8 +18,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tests:
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'pre-processor/app'
+      go-version: '1.24'
+      coverage-flags: 'pre-processor'
+      sparse-checkout: 'pre-processor'
+      upload-coverage: true
+    permissions:
+      contents: read
+
   quality-gates:
     uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    needs: tests
     with:
       working-directory: 'pre-processor/app'
       go-version: '1.24'
