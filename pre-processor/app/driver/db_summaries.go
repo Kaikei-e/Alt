@@ -30,7 +30,8 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 
 	query := `
 		INSERT INTO article_summaries (article_id, article_title, summary_japanese)
-		VALUES ($1, $2, $3)
+		SELECT $1, $2, $3
+		WHERE EXISTS (SELECT 1 FROM articles WHERE id = $1)
 		ON CONFLICT (article_id) DO UPDATE
 		SET article_title = EXCLUDED.article_title,
 		    summary_japanese = EXCLUDED.summary_japanese
@@ -49,12 +50,18 @@ func CreateArticleSummary(ctx context.Context, db *pgxpool.Pool, articleSummary 
 		&articleSummary.ID, &articleSummary.CreatedAt,
 	)
 	if err != nil {
-		err = tx.Rollback(ctx)
-		if err != nil {
-			logger.Logger.Error("Failed to rollback transaction", "error", err)
+		rollbackErr := tx.Rollback(ctx)
+		if rollbackErr != nil {
+			logger.Logger.Error("Failed to rollback transaction", "error", rollbackErr)
 		}
-		logger.Logger.Error("Failed to create article summary", "error", err)
 
+		// Check if it's because the article doesn't exist (no rows returned)
+		if err == pgx.ErrNoRows {
+			logger.Logger.Error("Article does not exist, cannot create summary", "article_id", articleSummary.ArticleID)
+			return fmt.Errorf("article with ID %s does not exist", articleSummary.ArticleID)
+		}
+
+		logger.Logger.Error("Failed to create article summary", "error", err)
 		return err
 	}
 
