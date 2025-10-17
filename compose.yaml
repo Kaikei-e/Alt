@@ -150,6 +150,7 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_NAME=${POSTGRES_DB}
       - DB_SSL_MODE=prefer
+      - CSRF_SECRET=${CSRF_SECRET:-development-csrf-secret-change-in-production}
     depends_on:
       db:
         condition: service_healthy
@@ -732,6 +733,7 @@ services:
       - KRATOS_URL=http://kratos:4433
       - PORT=8888
       - CACHE_TTL=5m
+      - CSRF_SECRET=${CSRF_SECRET:-development-csrf-secret-change-in-production}
     depends_on:
       kratos:
         condition: service_healthy
