@@ -13,12 +13,20 @@ import {
   Portal,
 } from "@chakra-ui/react";
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
-import { Heart, Bookmark, Clock, ExternalLink, Eye } from "lucide-react";
+import {
+  Heart,
+  Bookmark,
+  Clock,
+  ExternalLink,
+  Eye,
+  BookOpen,
+} from "lucide-react";
 import { feedsApi } from "@/lib/api";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 import { Feed } from "@/schema/feed";
 import { DesktopFeed } from "@/types/desktop-feed";
 import { FeedTag } from "@/types/feed-tags";
+import { DesktopFeedDetailsModal } from "./DesktopFeedDetailsModal";
 const PAGE_SIZE = 20;
 
 // Transform Feed to DesktopFeed
@@ -90,6 +98,7 @@ const DesktopStyledFeedCard = ({
   const [showAllTags, setShowAllTags] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [isOpenSummary, setIsOpenSummary] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -355,6 +364,25 @@ const DesktopStyledFeedCard = ({
           </HStack>
 
           <HStack gap={2}>
+            <IconButton
+              aria-label="Open feed details"
+              size="sm"
+              variant="outline"
+              color="var(--text-primary)"
+              borderColor="rgba(255, 255, 255, 0.2)"
+              borderRadius="var(--radius-full)"
+              bg="rgba(255, 255, 255, 0.04)"
+              data-testid={`desktop-feed-details-trigger-${feed.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDetailsOpen(true);
+              }}
+              _hover={{
+                bg: "rgba(255, 255, 255, 0.12)",
+              }}
+            >
+              <BookOpen size={16} />
+            </IconButton>
             {!isRead && (
               <Button
                 size="md"
@@ -431,6 +459,13 @@ const DesktopStyledFeedCard = ({
           onClose={() => setIsOpenSummary(false)}
           feedTitle={feed.title}
           summary={aiSummary || "Loading summary..."}
+        />
+        <DesktopFeedDetailsModal
+          isOpen={isDetailsOpen}
+          onClose={() => setIsDetailsOpen(false)}
+          feedId={feed.id}
+          feedLink={feed.link}
+          feedTitle={feed.title}
         />
       </VStack>
     </Box>
