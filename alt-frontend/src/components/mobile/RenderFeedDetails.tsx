@@ -105,7 +105,7 @@ const RenderFeedDetails = ({
           border="1px solid rgba(255, 255, 255, 0.1)"
         >
           <Text
-            fontSize="lg"
+            fontSize="xl"
             fontWeight="bold"
             color="var(--text-primary)"
             mb={2}
@@ -114,7 +114,7 @@ const RenderFeedDetails = ({
             {article.title}
           </Text>
 
-          <HStack gap={3} fontSize="sm" color="var(--alt-text-secondary)">
+          <HStack gap={3} fontSize="md" color="var(--alt-text-secondary)">
             {article.author && <Text>By {article.author}</Text>}
 
             <Text>

@@ -223,9 +223,13 @@ export const DesktopFeedDetailsModal = ({
           bg="rgba(5, 10, 25, 0.65)"
           backdropFilter="blur(14px)"
         />
-        <Dialog.Positioner>
+        <Dialog.Positioner
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
           <Dialog.Content
-            maxW="720px"
+            maxW="900px"
             w="94vw"
             bg="var(--app-bg)"
             borderRadius="var(--radius-xl)"
@@ -234,7 +238,7 @@ export const DesktopFeedDetailsModal = ({
             overflow="hidden"
             data-testid={`desktop-feed-details-modal-${feedId}`}
           >
-            <Dialog.Header px={6} py={4} borderBottom="1px solid rgba(255, 255, 255, 0.06)">
+            <Dialog.Header px={6} py={5} borderBottom="1px solid rgba(255, 255, 255, 0.06)">
               <Flex align="center" justify="space-between" gap={4}>
                 <Link
                   href={feedLink}
@@ -255,7 +259,7 @@ export const DesktopFeedDetailsModal = ({
                 >
                   <HStack
                     fontWeight="semibold"
-                    fontSize="lg"
+                    fontSize="xl"
                     gap={2}
                   >
                   <ExternalLink size={18} />
@@ -286,8 +290,8 @@ export const DesktopFeedDetailsModal = ({
             <Dialog.Body px={0} py={0}>
               <Box
                 px={6}
-                py={5}
-                maxH="60vh"
+                py={7}
+                maxH="75vh"
                 overflowY="auto"
                 css={scrollAreaStyles}
                 data-testid={`desktop-feed-details-scroll-${feedId}`}
@@ -319,7 +323,7 @@ export const DesktopFeedDetailsModal = ({
                     >
                       AI Summary
                     </Text>
-                    <Text color="var(--text-primary)" lineHeight="1.7">
+                    <Text color="var(--text-primary)" fontSize="md" lineHeight="1.8">
                       {summary}
                     </Text>
                   </Box>
@@ -344,7 +348,7 @@ export const DesktopFeedDetailsModal = ({
 
             <Dialog.Footer
               px={6}
-              py={4}
+              py={5}
               borderTop="1px solid rgba(255, 255, 255, 0.06)"
             >
               <HStack gap={3} w="100%">
