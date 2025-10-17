@@ -24,6 +24,11 @@ func (m *MockCSRFTokenGateway) ValidateToken(ctx context.Context, token string) 
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *MockCSRFTokenGateway) ValidateHMACToken(ctx context.Context, token string, sessionID string, secret string) (bool, error) {
+	args := m.Called(ctx, token, sessionID, secret)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *MockCSRFTokenGateway) InvalidateToken(ctx context.Context, token string) error {
 	args := m.Called(ctx, token)
 	return args.Error(0)

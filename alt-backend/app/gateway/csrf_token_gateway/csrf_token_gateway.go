@@ -2,6 +2,9 @@ package csrf_token_gateway
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
@@ -84,4 +87,38 @@ func (g *CSRFTokenGateway) InvalidateToken(ctx context.Context, token string) er
 	}
 
 	return nil
+}
+
+// GenerateHMACToken generates a CSRF token from session ID using HMAC-SHA256
+// This is a public method to allow testing and reuse across the application
+func (g *CSRFTokenGateway) GenerateHMACToken(sessionID string, secret string) string {
+	if sessionID == "" || secret == "" {
+		return ""
+	}
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(sessionID))
+	hash := mac.Sum(nil)
+
+	// Return base64 URL-encoded HMAC
+	return base64.URLEncoding.EncodeToString(hash)
+}
+
+// ValidateHMACToken validates a CSRF token using HMAC-SHA256 with session ID
+// Uses constant-time comparison to prevent timing attacks
+func (g *CSRFTokenGateway) ValidateHMACToken(ctx context.Context, token string, sessionID string, secret string) (bool, error) {
+	// Reject empty inputs
+	if sessionID == "" || token == "" {
+		return false, nil
+	}
+
+	// Generate expected token from session ID
+	expectedToken := g.GenerateHMACToken(sessionID, secret)
+	if expectedToken == "" {
+		return false, nil
+	}
+
+	// Use constant-time comparison to prevent timing attacks
+	// hmac.Equal uses crypto/subtle.ConstantTimeCompare internally
+	return hmac.Equal([]byte(token), []byte(expectedToken)), nil
 }
