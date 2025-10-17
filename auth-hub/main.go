@@ -44,6 +44,7 @@ func main() {
 	// Initialize handlers
 	validateHandler := handler.NewValidateHandler(kratosClient, sessionCache)
 	sessionHandler := handler.NewSessionHandler(kratosClient, sessionCache)
+	csrfHandler := handler.NewCSRFHandler(kratosClient)
 	healthHandler := handler.NewHealthHandler()
 
 	// Setup Echo server
@@ -83,6 +84,7 @@ func main() {
 	// Register routes
 	e.GET("/validate", validateHandler.Handle)
 	e.GET("/session", sessionHandler.Handle)
+	e.POST("/csrf", csrfHandler.Handle)
 	e.GET("/health", healthHandler.Handle)
 
 	// Start server
