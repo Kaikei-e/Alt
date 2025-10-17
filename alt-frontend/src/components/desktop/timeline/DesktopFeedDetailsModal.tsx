@@ -13,7 +13,7 @@ import {
 import type { CSSObject } from "@emotion/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, ExternalLink, Sparkles, Star, X } from "lucide-react";
+import { Archive, ExternalLink, Sparkles, X } from "lucide-react";
 import { feedsApi } from "@/lib/api";
 import RenderFeedDetails from "@/components/mobile/RenderFeedDetails";
 import type {
@@ -67,8 +67,6 @@ export const DesktopFeedDetailsModal = ({
   const [error, setError] = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
 
-  const [isFavoriting, setIsFavoriting] = useState(false);
-  const [favoriteApplied, setFavoriteApplied] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -81,7 +79,6 @@ export const DesktopFeedDetailsModal = ({
     setError(null);
     setSummary(null);
     setSummaryError(null);
-    setFavoriteApplied(false);
     setIsArchived(false);
     setHasFetched(false);
   }, [feedLink, feedTitle]);
@@ -162,22 +159,6 @@ export const DesktopFeedDetailsModal = ({
     };
   }, [feedLink, feedTitle, hasFetched, isOpen]);
 
-  const handleFavorite = useCallback(async () => {
-    if (isFavoriting || favoriteApplied) {
-      return;
-    }
-    setIsFavoriting(true);
-
-    try {
-      await feedsApi.registerFavoriteFeed(feedLink);
-      setFavoriteApplied(true);
-    } catch (err) {
-      console.error("Failed to favorite feed:", err);
-    } finally {
-      setIsFavoriting(false);
-    }
-  }, [feedLink, favoriteApplied, isFavoriting]);
-
   const handleArchive = useCallback(async () => {
     if (isArchiving) {
       return;
@@ -255,23 +236,39 @@ export const DesktopFeedDetailsModal = ({
           >
             <Dialog.Header px={6} py={4} borderBottom="1px solid rgba(255, 255, 255, 0.06)">
               <Flex align="center" justify="space-between" gap={4}>
-                <HStack
-                  as={Link}
+                <Link
                   href={feedLink}
                   target="_blank"
                   rel="noopener noreferrer"
                   color="var(--text-primary)"
-                  _hover={{ color: "var(--accent-primary)" }}
-                  fontWeight="semibold"
-                  fontSize="lg"
-                  gap={2}
                   data-testid={`desktop-feed-details-link-${feedId}`}
+                  style={{
+                    textDecoration: 'none',
+                    transition: 'color 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = 'var(--accent-primary)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = 'var(--text-primary)';
+                  }}
                 >
+                  <HStack
+                    fontWeight="semibold"
+                    fontSize="lg"
+                    gap={2}
+                  >
                   <ExternalLink size={18} />
-                  <Text as="span" noOfLines={2}>
+                  <Text as="span" style={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden'
+                  }}>
                     {feedTitle}
                   </Text>
-                </HStack>
+                  </HStack>
+                </Link>
                 <Dialog.CloseTrigger asChild>
                   <IconButton
                     aria-label="Close feed details"
@@ -296,8 +293,11 @@ export const DesktopFeedDetailsModal = ({
                 data-testid={`desktop-feed-details-scroll-${feedId}`}
               >
                 {isLoading && !activeFeedDetails ? (
-                  <Flex align="center" justify="center" minH="180px">
+                  <Flex align="center" justify="center" minH="180px" direction="column" gap={3}>
                     <Spinner color="var(--accent-primary)" size="lg" />
+                    <Text color="var(--text-secondary)" fontSize="sm">
+                      Fetching article...
+                    </Text>
                   </Flex>
                 ) : (
                   <RenderFeedDetails
@@ -347,77 +347,88 @@ export const DesktopFeedDetailsModal = ({
               py={4}
               borderTop="1px solid rgba(255, 255, 255, 0.06)"
             >
-              <HStack spacing={4}>
-                <IconButton
-                  aria-label="Favorite feed"
-                  size="sm"
-                  borderRadius="full"
+              <HStack gap={3} w="100%">
+                <Box
+                  as="button"
+                  flex="1"
+                  onClick={isArchiving ? undefined : handleArchive}
+                  px={4}
+                  py={3}
+                  borderRadius="md"
                   border="1px solid rgba(255, 255, 255, 0.35)"
-                  bg={
-                    favoriteApplied
-                      ? "rgba(255, 255, 255, 0.18)"
-                      : "rgba(255, 255, 255, 0.08)"
-                  }
-                  color={
-                    favoriteApplied
-                      ? "var(--accent-primary)"
-                      : "rgba(255, 255, 255, 0.9)"
-                  }
-                  onClick={handleFavorite}
-                  disabled={isFavoriting || favoriteApplied}
-                  data-testid={`desktop-feed-details-favorite-${feedId}`}
-                  _hover={{
-                    bg: "rgba(255, 255, 255, 0.22)",
-                  }}
-                >
-                  <Star size={18} />
-                </IconButton>
-
-                <IconButton
-                  aria-label="Archive feed"
-                  size="sm"
-                  borderRadius="full"
-                  border="1px solid rgba(255, 255, 255, 0.35)"
-                  bg={
-                    isArchived
-                      ? "rgba(255, 255, 255, 0.18)"
-                      : "rgba(255, 255, 255, 0.08)"
-                  }
-                  color={
-                    isArchived
-                      ? "var(--accent-secondary)"
-                      : "rgba(255, 255, 255, 0.9)"
-                  }
-                  onClick={handleArchive}
-                  disabled={isArchiving}
+                  bg={isArchived ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.08)"}
+                  color={isArchived ? "var(--accent-secondary)" : "rgba(255, 255, 255, 0.9)"}
+                  cursor={isArchiving ? "not-allowed" : "pointer"}
+                  opacity={isArchiving ? 0.6 : 1}
+                  transition="all 0.2s ease"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  gap={2}
                   data-testid={`desktop-feed-details-archive-${feedId}`}
                   _hover={{
-                    bg: "rgba(255, 255, 255, 0.22)",
+                    bg: isArchiving ? undefined : "rgba(255, 255, 255, 0.22)",
+                    transform: isArchiving ? undefined : "translateY(-1px)",
+                  }}
+                  _active={{
+                    transform: isArchiving ? undefined : "translateY(0)",
                   }}
                 >
                   <Archive size={18} />
-                </IconButton>
+                  <Text fontSize="sm" fontWeight="medium">
+                    {isArchiving ? "Archiving..." : isArchived ? "Archived" : "Archive"}
+                  </Text>
+                </Box>
 
-                <IconButton
-                  aria-label="Generate AI summary"
-                  size="sm"
-                  borderRadius="full"
+                <Box
+                  as="button"
+                  flex="1"
+                  onClick={(isSummarizing || !!summary) ? undefined : handleSummarize}
+                  px={4}
+                  py={3}
+                  borderRadius="md"
                   border="1px solid rgba(255, 255, 255, 0.35)"
-                  bg="rgba(255, 255, 255, 0.08)"
-                  color="rgba(255, 255, 255, 0.9)"
-                  onClick={handleSummarize}
-                  disabled={isSummarizing}
+                  bg={summary ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.08)"}
+                  color={summary ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.9)"}
+                  cursor={isSummarizing || summary ? "not-allowed" : "pointer"}
+                  opacity={isSummarizing ? 0.6 : 1}
+                  transition="all 0.2s ease"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  gap={2}
                   data-testid={`desktop-feed-details-ai-${feedId}`}
                   _hover={{
-                    bg: "rgba(255, 255, 255, 0.22)",
+                    bg: (isSummarizing || summary) ? undefined : "rgba(255, 255, 255, 0.22)",
+                    transform: (isSummarizing || summary) ? undefined : "translateY(-1px)",
+                  }}
+                  _active={{
+                    transform: (isSummarizing || summary) ? undefined : "translateY(0)",
                   }}
                 >
                   {isSummarizing ? (
-                    <Spinner size="sm" color="var(--accent-primary)" />
+                    <>
+                      <Spinner size="sm" color="var(--accent-primary)" />
+                      <Text fontSize="sm" fontWeight="medium">
+                        Generating...
+                      </Text>
+                    </>
+                  ) : summary ? (
+                    <>
+                      <Sparkles size={18} />
+                      <Text fontSize="sm" fontWeight="medium">
+                        Summary Ready
+                      </Text>
+                    </>
                   ) : (
-                    <Sparkles size={18} />
+                    <>
+                      <Sparkles size={18} />
+                      <Text fontSize="sm" fontWeight="medium">
+                        Summarize
+                      </Text>
+                    </>
                   )}
-                </IconButton>
+                </Box>
               </HStack>
             </Dialog.Footer>
           </Dialog.Content>

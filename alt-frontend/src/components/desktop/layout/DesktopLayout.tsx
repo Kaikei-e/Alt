@@ -73,7 +73,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
         <Box
           flex="1"
           ml={showSidebar ? "250px" : "0"}
-          mr={showRightPanel ? "360px" : "0"}
+          mr={showRightPanel ? "330px" : "0"}
           data-testid="main-content"
         >
           {children}
@@ -82,7 +82,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
         {/* Right Panel */}
         {showRightPanel && rightPanel && (
           <Box
-            w="360px"
+            w="330px"
             minH="100vh"
             p={6}
             className="glass"

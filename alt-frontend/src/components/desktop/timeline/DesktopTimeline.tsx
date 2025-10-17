@@ -438,18 +438,6 @@ const DesktopStyledFeedCard = ({
                 AI Summary
               </Text>
             </Button>
-            <IconButton
-              aria-label="Open article"
-              size="sm"
-              variant="ghost"
-              color="var(--text-secondary)"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleViewArticle();
-              }}
-            >
-              <ExternalLink size={16} />
-            </IconButton>
           </HStack>
         </HStack>
 
