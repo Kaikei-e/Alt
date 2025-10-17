@@ -19,7 +19,7 @@ import {
   useMotionValue,
 } from "framer-motion";
 import { useDrag } from "@use-gesture/react";
-import { Sparkles, SquareArrowOutUpRight, BookOpen, BotMessageSquare } from "lucide-react";
+import { Sparkles, SquareArrowOutUpRight, BookOpen, BotMessageSquare, Archive } from "lucide-react";
 import { feedsApi } from "@/lib/api";
 import { Feed } from "@/schema/feed";
 
@@ -94,6 +94,9 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
 
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [isArchived, setIsArchived] = useState(false);
+
   const x = useMotionValue(0);
   const xRef = useRef(x);
   const animationInFlightRef = useRef(false);
@@ -108,6 +111,8 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
     setContentError(null);
     setIsLoadingContent(false);
     setIsLoadingSummary(false);
+    setIsArchiving(false);
+    setIsArchived(false);
     xRef.current.set(0);
     animationInFlightRef.current = false;
   }, [feed.id]);
@@ -314,7 +319,7 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
           position: "relative",
           width: "100%",
           maxWidth: "30rem",
-          height: "92dvh",
+          height: "95dvh",
           background: "var(--alt-glass)",
           color: "var(--alt-text-primary)",
           border: "2px solid var(--alt-glass-border)",
@@ -664,24 +669,43 @@ const SwipeFeedCard = ({ feed, statusMessage, onDismiss }: SwipeFeedCardProps) =
 
               <Button
                 type="button"
-                onClick={() => void handleDismiss(1)}
+                onClick={async () => {
+                  if (!feed.link) return;
+                  try {
+                    setIsArchiving(true);
+                    await feedsApi.archiveContent(feed.link, feed.title);
+                    setIsArchived(true);
+                  } catch (e) {
+                    console.error("Error archiving feed:", e);
+                  } finally {
+                    setIsArchiving(false);
+                  }
+                }}
                 size="sm"
                 flex="1"
                 borderRadius="12px"
-                bgGradient="linear(to-r, #FF416C, #FF4B2B)"
-                color="white"
+                bg="var(--alt-primary)"
+                color="var(--text-primary)"
                 fontWeight="bold"
+                border="1px solid rgba(255, 255, 255, 0.2)"
                 _hover={{
+                  filter: "brightness(1.1)",
                   transform: "translateY(-1px)",
-                  boxShadow: "0 4px 12px rgba(255, 65, 108, 0.3)",
                 }}
                 _active={{
                   transform: "translateY(0)",
                 }}
                 transition="all 0.2s ease"
-                data-testid="swipe-card-button"
+                disabled={isArchiving || isArchived}
+                title="Archive"
+                data-testid="archive-button"
               >
-                <Text fontSize="xs">既読</Text>
+                <Flex align="center" gap={1}>
+                  <Archive size={14} />
+                  <Text fontSize="xs">
+                    {isArchiving ? "..." : isArchived ? "✓" : "Archive"}
+                  </Text>
+                </Flex>
               </Button>
             </HStack>
 
