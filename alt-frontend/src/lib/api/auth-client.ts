@@ -331,6 +331,15 @@ export class AuthAPIClient {
         },
       });
 
+      // Handle authentication required (401)
+      if (response.status === 401) {
+        if (this.debugMode) {
+          console.warn("⚠️ CSRF token requires authentication");
+        }
+        return null; // User not logged in - this is expected
+      }
+
+      // Handle server errors
       if (!response.ok) {
         console.error("🚨 CSRF token request failed:", {
           status: response.status,
@@ -346,11 +355,14 @@ export class AuthAPIClient {
       const data = await response.json();
       const token = data.data?.csrf_token || data.csrf_token || null;
 
-      if (token) {
-        this.debugLog(
-          "✅ CSRF token retrieved successfully via direct auth-service route",
-        );
-      } else {
+      // Validate token is not empty
+      if (!token || token === "") {
+        console.error("🚨 CSRF token is empty in response");
+        return null;
+      }
+
+      if (this.debugMode) {
+        console.log("✅ CSRF token retrieved successfully");
       }
 
       return token;

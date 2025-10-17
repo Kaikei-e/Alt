@@ -123,7 +123,16 @@ const DesktopStyledFeedCard = ({
     [feed.link],
   );
 
-  const handleOpenSummary = useCallback(async (link: string) => {
+  const handleOpenSummary = useCallback(async (link: string, title: string) => {
+    try {
+      // Auto-archive article to ensure DB persistence before summarization
+      // Matches the pattern from mobile FeedDetails component
+      await feedsApi.archiveContent(link, title);
+    } catch (err) {
+      console.warn("Failed to auto-archive article:", err);
+      // Don't block UI on archive failure
+    }
+
     const res = await feedsApi.getFeedDetails({
       feed_url: link,
     });
@@ -388,7 +397,7 @@ const DesktopStyledFeedCard = ({
               onClick={async (e) => {
                 e.stopPropagation();
                 if (!aiSummary) {
-                  await handleOpenSummary(feed.link);
+                  await handleOpenSummary(feed.link, feed.title);
                 }
                 setIsOpenSummary(true);
               }}
