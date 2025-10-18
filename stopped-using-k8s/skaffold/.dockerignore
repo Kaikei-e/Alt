@@ -1,9 +1,0 @@
-# .dockerignore を必ず追加
-.venv
-__pycache__
-*.pyc
-*.pyo
-*.whl
-target
-node_modules
-.git

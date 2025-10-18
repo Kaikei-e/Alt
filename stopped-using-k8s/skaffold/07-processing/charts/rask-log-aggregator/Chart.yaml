@@ -1,6 +1,0 @@
-apiVersion: v2
-name: rask-log-aggregator
-description: A Helm chart for Alt Log Aggregator service
-type: application
-version: 0.1.0
-appVersion: "production"
