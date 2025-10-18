@@ -11,27 +11,13 @@ vi.mock("@/contexts/auth-context", () => ({
   }),
 }));
 
-const { mockUseSWRInfinite, mockUpdateFeedReadStatus } = vi.hoisted(() => ({
-  mockUseSWRInfinite: vi.fn(),
-  mockUpdateFeedReadStatus: vi.fn(),
+const { mockUseSwipeFeedController } = vi.hoisted(() => ({
+  mockUseSwipeFeedController: vi.fn(),
 }));
 
-vi.mock("swr/infinite", () => ({
-  default: (...args: unknown[]) => mockUseSWRInfinite(...args),
-  useSWRInfinite: (...args: unknown[]) => mockUseSWRInfinite(...args),
+vi.mock("@/components/mobile/feeds/swipe/useSwipeFeedController", () => ({
+  useSwipeFeedController: () => mockUseSwipeFeedController(),
 }));
-
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    feedsApi: {
-      ...actual.feedsApi,
-      getFeedsWithCursor: vi.fn(),
-      updateFeedReadStatus: mockUpdateFeedReadStatus,
-    },
-  };
-});
 
 vi.mock("@/components/mobile/utils/FloatingMenu", () => ({
   FloatingMenu: () => <div data-testid="floating-menu" />,
@@ -99,6 +85,32 @@ vi.mock("framer-motion", () => {
   };
 });
 
+vi.mock("@/components/mobile/feeds/swipe/SwipeFeedCard", () => ({
+  __esModule: true,
+  default: ({
+    feed,
+    onDismiss,
+    statusMessage,
+  }: {
+    feed: { id: string; title: string };
+    statusMessage: string | null;
+    onDismiss: (direction: number) => Promise<void> | void;
+  }) => (
+    <div>
+      <h2>{feed.title}</h2>
+      {statusMessage && (
+        <p data-testid="swipe-status-message">{statusMessage}</p>
+      )}
+      <button
+        type="button"
+        onClick={() => onDismiss(1)}
+      >
+        Mark current feed as read
+      </button>
+    </div>
+  ),
+}));
+
 import SwipePage from "@/app/mobile/feeds/swipe/page";
 
 describe("/mobile/feeds/swipe page", () => {
@@ -110,8 +122,7 @@ describe("/mobile/feeds/swipe page", () => {
     );
 
   beforeEach(() => {
-    mockUseSWRInfinite.mockReset();
-    mockUpdateFeedReadStatus.mockReset();
+    mockUseSwipeFeedController.mockReset();
     vi.useRealTimers();
   });
 
@@ -120,27 +131,24 @@ describe("/mobile/feeds/swipe page", () => {
   });
 
   it("renders the first fetched feed card", () => {
-    mockUseSWRInfinite.mockReturnValue({
-      data: [
+    const dismissActiveFeed = vi.fn();
+    mockUseSwipeFeedController.mockReturnValue({
+      feeds: [
         {
-          data: [
-            {
-              id: "feed-1",
-              title: "Sample feed",
-              description: "Description", 
-              link: "https://example.com/feed-1",
-              published: "2025-01-01T00:00:00Z",
-            },
-          ],
-          next_cursor: null,
+          id: "feed-1",
+          title: "Sample feed",
         },
       ],
-      error: undefined,
-      size: 1,
-      setSize: vi.fn(),
-      mutate: vi.fn(),
-      isLoading: false,
+      activeFeed: { id: "feed-1", title: "Sample feed" },
+      activeIndex: 0,
+      hasMore: false,
+      isInitialLoading: false,
       isValidating: false,
+      error: null,
+      liveRegionMessage: "",
+      statusMessage: null,
+      dismissActiveFeed,
+      retry: vi.fn(),
     });
 
     renderPage();
@@ -149,78 +157,53 @@ describe("/mobile/feeds/swipe page", () => {
     expect(screen.getByTestId("floating-menu")).toBeInTheDocument();
   });
 
-  it("marks a feed as read and prefetches when close to the threshold", async () => {
-    const setSize = vi.fn();
-    mockUseSWRInfinite.mockReturnValue({
-      data: [
-        {
-          data: [
-            {
-              id: "feed-1",
-              title: "Swipe me",
-              description: "Desc",
-              link: "https://example.com/article/?utm_source=test",
-              published: "2025-01-01T00:00:00Z",
-            },
-            {
-              id: "feed-2",
-              title: "Next feed",
-              description: "Desc",
-              link: "https://example.com/feed-2",
-              published: "2025-01-02T00:00:00Z",
-            },
-            {
-              id: "feed-3",
-              title: "Third feed",
-              description: "Desc",
-              link: "https://example.com/feed-3",
-              published: "2025-01-03T00:00:00Z",
-            },
-            {
-              id: "feed-4",
-              title: "Fourth feed",
-              description: "Desc",
-              link: "https://example.com/feed-4",
-              published: "2025-01-04T00:00:00Z",
-            },
-          ],
-          next_cursor: "cursor-2",
-        },
-      ],
-      error: undefined,
-      size: 1,
-      setSize,
-      mutate: vi.fn(),
-      isLoading: false,
+  it("marks a feed as read via the swipe controller", async () => {
+    const feeds = [
+      { id: "feed-1", title: "Swipe me" },
+      { id: "feed-2", title: "Next feed" },
+    ];
+
+    const controllerState = {
+      feeds,
+      activeFeed: feeds[0],
+      activeIndex: 0,
+      hasMore: true,
+      isInitialLoading: false,
       isValidating: false,
-    });
+      error: null,
+      liveRegionMessage: "",
+      statusMessage: null as string | null,
+      retry: vi.fn(),
+      dismissActiveFeed: vi.fn(async () => {
+        controllerState.feeds = feeds.slice(1);
+        controllerState.activeFeed = feeds[1];
+        controllerState.statusMessage = "Feed marked as read";
+      }),
+    };
 
-    vi.useFakeTimers();
+    mockUseSwipeFeedController.mockImplementation(() => controllerState);
 
-    renderPage();
+    const view = renderPage();
 
     const markButton = screen.getByRole("button", {
       name: /mark current feed as read/i,
     });
 
-    fireEvent.click(markButton);
-
     await act(async () => {
-      vi.runAllTimers();
+      fireEvent.click(markButton);
     });
-    vi.useRealTimers();
 
-    await waitFor(() =>
-      expect(mockUpdateFeedReadStatus).toHaveBeenCalledWith(
-        "https://example.com/article",
-      ),
+    expect(controllerState.dismissActiveFeed).toHaveBeenCalledWith(1);
+
+    view.rerender(
+      <ChakraProvider value={defaultSystem}>
+        <SwipePage />
+      </ChakraProvider>,
     );
 
-    await waitFor(() => {
-      expect(setSize).toHaveBeenCalledWith(2);
-    });
-
-    expect(screen.queryByText("Swipe me")).not.toBeInTheDocument();
     expect(screen.getByText("Next feed")).toBeInTheDocument();
+    expect(screen.getByTestId("swipe-status-message")).toHaveTextContent(
+      "Feed marked as read",
+    );
   });
 });

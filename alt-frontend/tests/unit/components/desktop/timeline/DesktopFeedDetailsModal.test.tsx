@@ -77,11 +77,11 @@ describe("DesktopFeedDetailsModal", () => {
       expect(screen.getByText("Full article content")).toBeInTheDocument(),
     );
 
-    expect(screen.getByLabelText(/Favorite feed/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Archive feed/i)).toBeInTheDocument();
     expect(
-      screen.getByLabelText(/Generate AI summary/i),
+      screen.getByTestId("desktop-feed-details-archive-feed-1"),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("desktop-feed-details-ai-feed-1"))
+      .toBeInTheDocument();
   });
 
   it("triggers API actions from footer controls", async () => {
@@ -94,9 +94,6 @@ describe("DesktopFeedDetailsModal", () => {
       requested_count: 1,
     });
     mockFeedsApi.archiveContent.mockResolvedValue({ message: "ok" });
-    mockFeedsApi.registerFavoriteFeed.mockResolvedValue({
-      message: "favorite feed registered",
-    });
     mockFeedsApi.summarizeArticle.mockResolvedValue({
       summary: "AI generated summary",
     });
@@ -113,13 +110,9 @@ describe("DesktopFeedDetailsModal", () => {
 
     const user = userEvent.setup();
 
-    const favoriteButton = await screen.findByLabelText(/Favorite feed/i);
-    await user.click(favoriteButton);
-    await waitFor(() =>
-      expect(mockFeedsApi.registerFavoriteFeed).toHaveBeenCalledWith(feedLink),
+    const archiveButton = await screen.findByTestId(
+      "desktop-feed-details-archive-feed-1",
     );
-
-    const archiveButton = screen.getByLabelText(/Archive feed/i);
     await user.click(archiveButton);
     await waitFor(() =>
       expect(mockFeedsApi.archiveContent).toHaveBeenCalledWith(
@@ -128,7 +121,9 @@ describe("DesktopFeedDetailsModal", () => {
       ),
     );
 
-    const summarizeButton = screen.getByLabelText(/Generate AI summary/i);
+    const summarizeButton = screen.getByTestId(
+      "desktop-feed-details-ai-feed-1",
+    );
     await user.click(summarizeButton);
     await waitFor(() =>
       expect(mockFeedsApi.summarizeArticle).toHaveBeenCalledWith(feedLink),

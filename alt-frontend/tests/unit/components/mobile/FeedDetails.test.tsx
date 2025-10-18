@@ -1,8 +1,10 @@
+import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { FeedDetails } from "@/components/mobile/FeedDetails";
 import { feedsApi } from "@/lib/api";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 // Mock the feedsApi
 vi.mock("@/lib/api", () => ({
@@ -14,6 +16,9 @@ vi.mock("@/lib/api", () => ({
     summarizeArticle: vi.fn(),
   },
 }));
+
+const renderWithProviders = (ui: React.ReactElement) =>
+  render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
 
 describe("FeedDetails", () => {
   const mockFeedURL = "https://example.com/feed";
@@ -41,7 +46,9 @@ describe("FeedDetails", () => {
         message: "article archived",
       });
 
-      render(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -76,7 +83,9 @@ describe("FeedDetails", () => {
         url: mockFeedURL,
       });
 
-      render(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -110,7 +119,9 @@ describe("FeedDetails", () => {
 
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation();
 
-      render(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -156,7 +167,9 @@ describe("FeedDetails", () => {
         message: "article archived",
       });
 
-      render(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details" button
       const showButton = screen.getByText("Show Details");
@@ -201,7 +214,9 @@ describe("FeedDetails", () => {
         article_id: "test-article-id",
       });
 
-      render(<FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />);
+      renderWithProviders(
+        <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
+      );
 
       // Click "Show Details"
       const showButton = screen.getByText("Show Details");

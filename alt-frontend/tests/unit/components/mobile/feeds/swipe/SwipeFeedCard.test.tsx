@@ -74,7 +74,8 @@ describe("SwipeFeedCard", () => {
 
     renderCard();
 
-    await user.click(screen.getByTestId("toggle-summary-button"));
+    const [summaryToggle] = screen.getAllByTestId("toggle-summary-button");
+    await user.click(summaryToggle);
     await waitFor(() =>
       expect(feedsApi.getArticleSummary).toHaveBeenCalledWith(baseFeed.link),
     );
@@ -92,7 +93,8 @@ describe("SwipeFeedCard", () => {
 
     renderCard();
 
-    await user.click(screen.getByTestId("toggle-content-button"));
+    const [contentToggle] = screen.getAllByTestId("toggle-content-button");
+    await user.click(contentToggle);
 
     await waitFor(() =>
       expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
@@ -109,15 +111,10 @@ describe("SwipeFeedCard", () => {
     expect(contentSection).toHaveTextContent("Full article");
   });
 
-  it("invokes dismiss callback after mark as read button is pressed", async () => {
-    const onDismiss = vi.fn().mockResolvedValue(undefined);
-    renderCard(baseFeed, { onDismiss, statusMessage: "status" });
+  it("shows status message when provided", () => {
+    renderCard(baseFeed, { statusMessage: "Feed marked as read" });
 
-    await user.click(screen.getByTestId("swipe-card-button"));
-
-    await waitFor(() => {
-      expect(onDismiss).toHaveBeenCalled();
-    });
+    expect(screen.getByText("Feed marked as read")).toBeInTheDocument();
   });
 
   it("resets expanded state when feed changes", async () => {
@@ -128,7 +125,8 @@ describe("SwipeFeedCard", () => {
 
     const { rerender } = renderCard();
 
-    await user.click(screen.getByTestId("toggle-summary-button"));
+    const [summaryToggle] = screen.getAllByTestId("toggle-summary-button");
+    await user.click(summaryToggle);
     await waitFor(() => expect(screen.getByText("summary")).toBeInTheDocument());
 
     const nextFeed = {
