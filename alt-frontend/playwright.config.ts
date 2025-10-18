@@ -31,7 +31,8 @@ export default defineConfig({
   // Enhanced reporting configuration
   reporter: process.env.CI
     ? [
-        ["blob"],
+        ["html"],
+        ["json", { outputFile: "test-results/results.json" }],
         ["./tests/reporters/custom-reporter.ts"],
         ["github"], // For GitHub Actions annotations
       ]
