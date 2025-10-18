@@ -1,216 +1,139 @@
+import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import SwipeFeedsPage from "@/app/mobile/feeds/swipe/page";
-import { Feed } from "@/schema/feed";
+import { render, screen } from "@testing-library/react";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import SwipeFeedsPage from "@/app/mobile/feeds/swipe/page";
+import type { Feed } from "@/schema/feed";
 
-// Mock dependencies
-vi.mock("@/lib/api", () => ({
-  feedsApi: {
-    getFeedsWithCursor: vi.fn(),
-    updateFeedReadStatus: vi.fn(),
-    getFeedContentOnTheFly: vi.fn(),
-    archiveContent: vi.fn(),
-    getArticleSummary: vi.fn(),
-    summarizeArticle: vi.fn(),
-  },
+const { mockUseSwipeFeedController } = vi.hoisted(() => ({
+  mockUseSwipeFeedController: vi.fn(),
+}));
+
+vi.mock("@/components/mobile/feeds/swipe/useSwipeFeedController", () => ({
+  useSwipeFeedController: () => mockUseSwipeFeedController(),
+}));
+
+vi.mock("@/components/mobile/feeds/swipe/SwipeFeedCard", () => ({
+  __esModule: true,
+  default: ({
+    feed,
+    statusMessage,
+  }: {
+    feed: Feed;
+    statusMessage: string | null;
+  }) => (
+    <div data-testid="mock-swipe-card">
+      <h3>{feed.title}</h3>
+      {statusMessage ? <span>{statusMessage}</span> : null}
+    </div>
+  ),
+}));
+
+vi.mock("@/components/mobile/SkeletonFeedCard", () => ({
+  __esModule: true,
+  default: () => <div data-testid="mock-skeleton-card" />,
+}));
+
+vi.mock("@/components/mobile/EmptyFeedState", () => ({
+  __esModule: true,
+  default: () => <div data-testid="mock-empty-state">No feeds yet</div>,
+}));
+
+vi.mock("@/app/mobile/feeds/_components/ErrorState", () => ({
+  __esModule: true,
+  default: ({ error }: { error: Error }) => (
+    <div data-testid="mock-error-state">{error.message}</div>
+  ),
 }));
 
 vi.mock("@/components/mobile/utils/FloatingMenu", () => ({
   FloatingMenu: () => <div data-testid="floating-menu">FloatingMenu</div>,
 }));
 
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
-  },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-  useMotionValue: () => ({ set: vi.fn(), get: () => 0 }),
-  animate: vi.fn(),
-}));
+const renderWithProviders = (ui: React.ReactElement) =>
+  render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
 
-vi.mock("@use-gesture/react", () => ({
-  useDrag: () => () => ({}),
-}));
-
-const mockFeeds: Feed[] = Array.from({ length: 60 }, (_, i) => ({
-  id: `feed-${i}`,
-  title: `Feed ${i}`,
-  link: `https://example.com/feed-${i}`,
-  description: `Description for feed ${i}`,
-  published: new Date().toISOString(),
-  feed_url: `https://example.com/feed-${i}`,
-}));
-
-const renderWithProviders = (component: React.ReactElement) => {
-  return render(
-    <ChakraProvider value={defaultSystem}>
-      {component}
-    </ChakraProvider>
-  );
-};
+const baseState = () => ({
+  feeds: [] as Feed[],
+  activeFeed: null as Feed | null,
+  activeIndex: 0,
+  hasMore: false,
+  isInitialLoading: false,
+  isValidating: false,
+  error: null as Error | null,
+  liveRegionMessage: "",
+  statusMessage: null as string | null,
+  dismissActiveFeed: vi.fn(),
+  retry: vi.fn(),
+});
 
 describe("SwipeFeedsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("should load multiple pages initially", async () => {
-    const { feedsApi } = await import("@/lib/api");
+  it("renders skeleton while initial data is loading", () => {
+    mockUseSwipeFeedController.mockReturnValue({
+      ...baseState(),
+      isInitialLoading: true,
+      hasMore: true,
+    });
 
-    // Mock returns 20 feeds per page with cursor
-    vi.mocked(feedsApi.getFeedsWithCursor).mockImplementation(
-      async (cursor?: string) => {
-        const start = cursor ? parseInt(cursor) : 0;
-        return {
-          data: mockFeeds.slice(start, start + 20),
-          next_cursor: start + 20 < mockFeeds.length ? `${start + 20}` : null,
-        };
-      },
+    renderWithProviders(<SwipeFeedsPage />);
+
+    expect(screen.getByTestId("mock-skeleton-card")).toBeInTheDocument();
+  });
+
+  it("renders swipe card when an active feed is available", () => {
+    const feed: Feed = {
+      id: "feed-1",
+      title: "Feed One",
+      link: "#",
+      published: "",
+      description: "",
+      feed_url: "#",
+    };
+
+    mockUseSwipeFeedController.mockReturnValue({
+      ...baseState(),
+      feeds: [feed],
+      activeFeed: feed,
+      statusMessage: "Ready",
+      hasMore: true,
+    });
+
+    renderWithProviders(<SwipeFeedsPage />);
+
+    expect(screen.getByTestId("mock-swipe-card")).toHaveTextContent("Feed One");
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.getByTestId("floating-menu")).toBeInTheDocument();
+  });
+
+  it("renders empty state when no feeds remain and there is no more data", () => {
+    mockUseSwipeFeedController.mockReturnValue({
+      ...baseState(),
+      feeds: [],
+      activeFeed: null,
+      hasMore: false,
+      isValidating: false,
+    });
+
+    renderWithProviders(<SwipeFeedsPage />);
+
+    expect(screen.getByTestId("mock-empty-state")).toBeInTheDocument();
+  });
+
+  it("renders error state when hook reports an error", () => {
+    mockUseSwipeFeedController.mockReturnValue({
+      ...baseState(),
+      error: new Error("Failed to load"),
+      isValidating: false,
+    });
+
+    renderWithProviders(<SwipeFeedsPage />);
+
+    expect(screen.getByTestId("mock-error-state")).toHaveTextContent(
+      "Failed to load",
     );
-
-    renderWithProviders(<SwipeFeedsPage />);
-
-    // Wait for initial load
-    await waitFor(() => {
-      expect(feedsApi.getFeedsWithCursor).toHaveBeenCalled();
-    });
-
-    // Should call API multiple times for initial pages (initialSize = 3)
-    await waitFor(
-      () => {
-        expect(feedsApi.getFeedsWithCursor).toHaveBeenCalledTimes(3);
-      },
-      { timeout: 3000 },
-    );
   });
-
-  it("should display swipe card when feeds are loaded", async () => {
-    const { feedsApi } = await import("@/lib/api");
-
-    vi.mocked(feedsApi.getFeedsWithCursor).mockResolvedValue({
-      data: mockFeeds.slice(0, 20),
-      next_cursor: "20",
-    });
-
-    renderWithProviders(<SwipeFeedsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("swipe-card")).toBeInTheDocument();
-    });
-  });
-
-  it("should show FloatingMenu", async () => {
-    const { feedsApi } = await import("@/lib/api");
-
-    vi.mocked(feedsApi.getFeedsWithCursor).mockResolvedValue({
-      data: mockFeeds.slice(0, 20),
-      next_cursor: "20",
-    });
-
-    renderWithProviders(<SwipeFeedsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("floating-menu")).toBeInTheDocument();
-    });
-  });
-
-  it("should display full article content button before summary button", async () => {
-    const { feedsApi } = await import("@/lib/api");
-
-    vi.mocked(feedsApi.getFeedsWithCursor).mockResolvedValue({
-      data: mockFeeds.slice(0, 20),
-      next_cursor: "20",
-    });
-
-    renderWithProviders(<SwipeFeedsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("swipe-card")).toBeInTheDocument();
-    });
-
-    // Check that full article button appears before summary button using test IDs
-    const fullArticleButton = screen.getByTestId("toggle-content-button");
-    const summaryButton = screen.getByTestId("toggle-summary-button");
-
-    expect(fullArticleButton).toBeInTheDocument();
-    expect(summaryButton).toBeInTheDocument();
-
-    // Verify button labels
-    expect(fullArticleButton).toHaveTextContent(/全文表示/i);
-    expect(summaryButton).toHaveTextContent(/要約/i);
-  });
-
-  it("should fetch and display full article content when button is clicked", async () => {
-    const user = userEvent.setup();
-    const { feedsApi } = await import("@/lib/api");
-
-    vi.mocked(feedsApi.getFeedsWithCursor).mockResolvedValue({
-      data: mockFeeds.slice(0, 20),
-      next_cursor: "20",
-    });
-
-    vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
-      content: "<p>Full article content here</p>",
-    });
-
-    vi.mocked(feedsApi.archiveContent).mockResolvedValue({
-      message: "article archived",
-    });
-
-    renderWithProviders(<SwipeFeedsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("swipe-card")).toBeInTheDocument();
-    });
-
-    // Click full article button using test ID
-    const fullArticleButton = screen.getByTestId("toggle-content-button");
-    await user.click(fullArticleButton);
-
-    // Should fetch content
-    await waitFor(() => {
-      expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
-        feed_url: mockFeeds[0].link,
-      });
-    });
-
-    // Should auto-archive
-    await waitFor(() => {
-      expect(feedsApi.archiveContent).toHaveBeenCalledWith(
-        mockFeeds[0].link,
-        mockFeeds[0].title
-      );
-    });
-
-    // Should display content
-    await waitFor(() => {
-      expect(screen.getByText(/Full article content here/i)).toBeInTheDocument();
-    });
-  });
-
-  it("should not show empty state prematurely when more pages exist", async () => {
-    const { feedsApi } = await import("@/lib/api");
-
-    // Return small batch of feeds with cursor indicating more exist
-    vi.mocked(feedsApi.getFeedsWithCursor).mockResolvedValue({
-      data: mockFeeds.slice(0, 3),
-      next_cursor: "3",
-    });
-
-    renderWithProviders(<SwipeFeedsPage />);
-
-    // Should show feeds, not empty state
-    await waitFor(() => {
-      expect(screen.getByTestId("swipe-card")).toBeInTheDocument();
-    });
-
-    // Should not show empty state
-    expect(screen.queryByText(/No Feeds Yet/i)).not.toBeInTheDocument();
-  });
-
-  // Note: Empty state test removed due to SWR cache interference in unit tests
-  // The empty state logic is tested through E2E tests and verified manually
-  // Implementation correctly shows empty state only when hasMore=false AND no activeFeed
 });

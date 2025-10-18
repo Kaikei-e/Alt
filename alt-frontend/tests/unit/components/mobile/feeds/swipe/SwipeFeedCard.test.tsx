@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
 import { Feed } from "@/schema/feed";
@@ -55,10 +54,7 @@ const renderCard = (
 };
 
 describe("SwipeFeedCard", () => {
-  let user: ReturnType<typeof userEvent.setup>;
-
   beforeEach(() => {
-    user = userEvent.setup();
     vi.clearAllMocks();
   });
 
@@ -74,8 +70,8 @@ describe("SwipeFeedCard", () => {
 
     renderCard();
 
-    const [summaryToggle] = screen.getAllByTestId("toggle-summary-button");
-    await user.click(summaryToggle);
+    const summaryToggle = await screen.findByRole("button", { name: /要約/ });
+    fireEvent.click(summaryToggle);
     await waitFor(() =>
       expect(feedsApi.getArticleSummary).toHaveBeenCalledWith(baseFeed.link),
     );
@@ -93,8 +89,8 @@ describe("SwipeFeedCard", () => {
 
     renderCard();
 
-    const [contentToggle] = screen.getAllByTestId("toggle-content-button");
-    await user.click(contentToggle);
+    const contentToggle = await screen.findByRole("button", { name: /全文表示/ });
+    fireEvent.click(contentToggle);
 
     await waitFor(() =>
       expect(feedsApi.getFeedContentOnTheFly).toHaveBeenCalledWith({
@@ -125,8 +121,8 @@ describe("SwipeFeedCard", () => {
 
     const { rerender } = renderCard();
 
-    const [summaryToggle] = screen.getAllByTestId("toggle-summary-button");
-    await user.click(summaryToggle);
+    const summaryToggle = await screen.findByRole("button", { name: /要約/ });
+    fireEvent.click(summaryToggle);
     await waitFor(() => expect(screen.getByText("summary")).toBeInTheDocument());
 
     const nextFeed = {

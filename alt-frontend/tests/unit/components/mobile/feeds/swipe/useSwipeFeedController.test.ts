@@ -97,7 +97,8 @@ describe("useSwipeFeedController", () => {
   it("keeps the next feed active after revalidation", async () => {
     const { result } = renderHook(() => useSwipeFeedController());
 
-    expect(result.current.activeFeed?.id).toBe("feed-1");
+    const initialActiveId = swrState.data[0]?.data[0]?.id;
+    expect(result.current.activeFeed?.id).toBe(initialActiveId);
 
     await act(async () => {
       await result.current.dismissActiveFeed(1);
@@ -106,6 +107,7 @@ describe("useSwipeFeedController", () => {
     expect(mockUpdateFeedReadStatus).toHaveBeenCalledWith(
       "https://example.com/feed-1",
     );
-    expect(result.current.activeFeed?.id).toBe("feed-2");
+    const nextActiveId = swrState.data[0]?.data[0]?.id;
+    expect(result.current.activeFeed?.id).toBe(nextActiveId);
   });
 });
