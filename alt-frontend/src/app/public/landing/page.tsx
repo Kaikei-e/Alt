@@ -75,7 +75,7 @@ export default async function PublicLandingPage() {
 
         {/* Authentication Buttons */}
         <HStack gap={4} flexWrap="wrap" justifyContent="center">
-          <NextLink href="/auth/login" prefetch={false} passHref>
+          <NextLink href="/auth/login" prefetch={false} passHref legacyBehavior>
             <Button
               as="a"
               bg="var(--alt-primary)"
@@ -85,7 +85,6 @@ export default async function PublicLandingPage() {
               py={6}
               borderRadius="full"
               fontWeight="semibold"
-              aria-label="ログインページへ移動"
               _hover={{
                 bg: "var(--alt-primary)",
                 transform: "translateY(-2px)",
@@ -102,7 +101,7 @@ export default async function PublicLandingPage() {
               </HStack>
             </Button>
           </NextLink>
-          <NextLink href="/api/auth/register" prefetch={false} passHref>
+          <NextLink href="/api/auth/register" prefetch={false} passHref legacyBehavior>
             <Button
               as="a"
               variant="outline"
@@ -113,7 +112,6 @@ export default async function PublicLandingPage() {
               py={6}
               borderRadius="full"
               fontWeight="semibold"
-              aria-label="新規登録ページへ移動"
               _hover={{
                 bg: "var(--alt-glass)",
                 transform: "translateY(-2px)",
