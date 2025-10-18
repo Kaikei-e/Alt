@@ -5,7 +5,6 @@ import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.test" });
 
 const isCI = !!process.env.CI;
-const shardIndex = Number(process.env.PW_SHARD_INDEX || "1");
 const mockPort = Number(process.env.PW_MOCK_PORT || "4545");
 const appPort = Number(process.env.PW_APP_PORT || "3010");
 

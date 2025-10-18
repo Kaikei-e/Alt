@@ -59,7 +59,7 @@ export class LandingPage extends BasePage {
     await this.registerButton.click();
     // Register redirects to API endpoint, then to auth flow
     // Wait for URL change or navigation
-    await this.page.waitForTimeout(1000);
+    await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
   }
 
   /**

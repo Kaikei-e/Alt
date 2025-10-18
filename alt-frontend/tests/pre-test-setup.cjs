@@ -7,6 +7,10 @@
 const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const dotenv = require("dotenv");
+
+// Load test environment variables
+dotenv.config({ path: path.join(__dirname, "..", ".env.test") });
 
 function checkPortAvailable(port) {
   return new Promise((resolve) => {

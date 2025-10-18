@@ -72,8 +72,11 @@ export class DesktopFeedsPage extends BasePage {
     // Wait for URL to be correct
     await this.page.waitForURL(/\/desktop\/feeds/, { timeout: 10000 });
 
-    // Small buffer
-    await this.page.waitForTimeout(500);
+    // Wait for feed list or loading indicator to be visible
+    await Promise.race([
+      this.feedsList.waitFor({ state: 'attached', timeout: 5000 }),
+      this.loadingIndicator.waitFor({ state: 'visible', timeout: 5000 })
+    ]).catch(() => {});
   }
 
   /**
@@ -81,23 +84,15 @@ export class DesktopFeedsPage extends BasePage {
    */
   async getFeedCount(): Promise<number> {
     try {
-      // Wait a bit for feeds to potentially load
-      await this.page.waitForTimeout(1000);
+      // Wait for either feed cards to appear or loading to finish
+      await Promise.race([
+        this.page.locator('[data-testid^="desktop-feed-card-"]').first().waitFor({ state: 'attached', timeout: 3000 }),
+        this.loadingIndicator.waitFor({ state: 'hidden', timeout: 3000 }),
+        this.page.waitForLoadState('networkidle', { timeout: 3000 })
+      ]).catch(() => {});
 
       // Feed cards have data-testid="desktop-feed-card-{id}"
       const items = await this.page.locator('[data-testid^="desktop-feed-card-"]').count();
-
-      // If no feed cards, check if we're in loading or error state
-      if (items === 0) {
-        const isLoading = await this.loadingIndicator.isVisible().catch(() => false);
-        const hasError = await this.errorMessage.isVisible().catch(() => false);
-
-        if (!isLoading && !hasError) {
-          // Wait a bit more in case feeds are still loading
-          await this.page.waitForTimeout(2000);
-          return await this.page.locator('[data-testid^="desktop-feed-card-"]').count();
-        }
-      }
 
       return items;
     } catch {
