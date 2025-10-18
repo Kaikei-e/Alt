@@ -52,6 +52,9 @@ jobs:
       run:
         shell: bash
 
+    env:
+      UV_NO_CACHE_PRUNE: 1
+
     steps:
       - name: Configure logging (mask)
         if: runner.environment == 'self-hosted'
@@ -153,29 +156,16 @@ jobs:
           rm -rf .venv .pytest_cache .coverage coverage.xml bandit-report.json
           if command -v uv >/dev/null 2>&1; then
             UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}"
-            if ! uv cache clean; then
-              echo "uv cache clean failed; removing cache directory manually to avoid CI flakes."
-              if ! rm -rf "$UV_CACHE_DIR"; then
-                echo "rm -rf \"$UV_CACHE_DIR\" failed; falling back to Python cleanup."
-                if command -v python3 >/dev/null 2>&1; then
-                  python3 - <<'PY'
-          import os
-          import pathlib
-          import shutil
-
-          cache_dir = pathlib.Path(os.environ.get("UV_CACHE_DIR", pathlib.Path.home() / ".cache" / "uv"))
-          cache_dir = cache_dir.expanduser()
-          if cache_dir.exists():
-              shutil.rmtree(cache_dir, ignore_errors=True)
-          PY
-                          else
-                            echo "python3 not available; attempting directory purge with find."
-                            if [ -d "$UV_CACHE_DIR" ]; then
-                              find "$UV_CACHE_DIR" -mindepth 1 -delete 2>/dev/null || true
-                              rmdir "$UV_CACHE_DIR" 2>/dev/null || true
-                            fi
-                          fi
-                        fi
-                        mkdir -p "$UV_CACHE_DIR"
-                      fi
-                    fi
+            # Disable automatic cache pruning to avoid "No such file or directory" errors
+            export UV_NO_CACHE_PRUNE=1
+            # Use safer cache cleanup method
+            if [ -d "$UV_CACHE_DIR" ]; then
+              echo "Cleaning uv cache directory: $UV_CACHE_DIR"
+              # Remove only specific problematic subdirectories if they exist
+              rm -rf "$UV_CACHE_DIR/sdists-v9" 2>/dev/null || true
+              rm -rf "$UV_CACHE_DIR/wheels-v9" 2>/dev/null || true
+              # Clean other cache contents safely
+              find "$UV_CACHE_DIR" -type f -name "*.tmp" -delete 2>/dev/null || true
+              find "$UV_CACHE_DIR" -type d -empty -delete 2>/dev/null || true
+            fi
+          fi
