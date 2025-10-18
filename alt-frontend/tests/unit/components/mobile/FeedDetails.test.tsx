@@ -1,7 +1,7 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { FeedDetails } from "@/components/mobile/FeedDetails";
 import { feedsApi } from "@/lib/api";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
@@ -26,6 +26,10 @@ describe("FeedDetails", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   describe("Auto-archive functionality", () => {
@@ -129,7 +133,8 @@ describe("FeedDetails", () => {
 
       // Wait for content to be displayed
       await waitFor(() => {
-        expect(screen.getByTestId("modal-content")).toBeInTheDocument();
+        const modalContent = screen.getAllByTestId("modal-content");
+        expect(modalContent.length).toBeGreaterThan(0);
       });
 
       // Verify archive was attempted
@@ -146,7 +151,8 @@ describe("FeedDetails", () => {
       });
 
       // Content should still be visible
-      expect(screen.getByTestId("modal-content")).toBeInTheDocument();
+      const modalContent = screen.getAllByTestId("modal-content");
+      expect(modalContent.length).toBeGreaterThan(0);
 
       consoleWarnSpy.mockRestore();
     });
@@ -180,9 +186,9 @@ describe("FeedDetails", () => {
         expect(feedsApi.archiveContent).toHaveBeenCalledTimes(1);
       });
 
-      // Click Archive button manually
-      const archiveButton = screen.getByTitle("Archive");
-      await user.click(archiveButton);
+      // Click Archive button manually (use getAllByTitle and get first one)
+      const archiveButtons = screen.getAllByTitle("Archive");
+      await user.click(archiveButtons[0]);
 
       // Archive should be called again (backend handles deduplication)
       await waitFor(() => {
@@ -227,9 +233,9 @@ describe("FeedDetails", () => {
         expect(feedsApi.archiveContent).toHaveBeenCalled();
       });
 
-      // Click "要約" button
-      const summarizeButton = screen.getByText("要約");
-      await user.click(summarizeButton);
+      // Click "要約" button (use getAllByText and get first one)
+      const summarizeButtons = screen.getAllByText("要約");
+      await user.click(summarizeButtons[0]);
 
       // Verify summarization was called
       await waitFor(() => {

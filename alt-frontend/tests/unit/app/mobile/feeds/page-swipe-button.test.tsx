@@ -68,19 +68,16 @@ describe("FeedsPage - Swipe Button", () => {
   it("should render swipe mode button with infinity icon", async () => {
     renderWithProviders(<FeedsPage />);
 
-    await waitFor(() => {
-      const button = screen.getByTestId("swipe-mode-button");
-      expect(button).toBeInTheDocument();
-      expect(button).toHaveAttribute("aria-label", "Open swipe mode");
-    });
+    const [button] = await screen.findAllByTestId("swipe-mode-button");
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveAttribute("aria-label", "Open swipe mode");
   });
 
   it("should have correct link to swipe mode", async () => {
     renderWithProviders(<FeedsPage />);
 
-    await waitFor(() => {
-      const link = screen.getByTestId("swipe-mode-button").closest("a");
-      expect(link).toHaveAttribute("href", "/mobile/feeds/swipe");
-    });
+    const [button] = await screen.findAllByTestId("swipe-mode-button");
+    const link = button.closest("a");
+    expect(link).toHaveAttribute("href", "/mobile/feeds/swipe");
   });
 });

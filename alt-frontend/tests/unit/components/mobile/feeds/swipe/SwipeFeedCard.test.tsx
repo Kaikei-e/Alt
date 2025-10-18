@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { act } from "react";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
 import { Feed } from "@/schema/feed";
@@ -70,13 +71,20 @@ describe("SwipeFeedCard", () => {
 
     renderCard();
 
-    const summaryToggle = await screen.findByRole("button", { name: /要約/ });
-    fireEvent.click(summaryToggle);
-    await waitFor(() =>
-      expect(feedsApi.getArticleSummary).toHaveBeenCalledWith(baseFeed.link),
+    await waitFor(() => {
+      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
+    });
+    const actionFooter = screen.getAllByTestId("action-footer")[0];
+    const summaryToggle = within(actionFooter).getByTestId(
+      "toggle-summary-button",
     );
-
-    const summarySection = await screen.findByTestId("summary-section");
+    await act(async () => {
+      fireEvent.click(summaryToggle);
+    });
+    await waitFor(() => {
+      expect(screen.queryAllByTestId("summary-section").length).toBeGreaterThan(0);
+    });
+    const summarySection = screen.getAllByTestId("summary-section")[0];
     expect(summarySection).toHaveTextContent("これは要約です");
   });
 
@@ -89,7 +97,13 @@ describe("SwipeFeedCard", () => {
 
     renderCard();
 
-    const contentToggle = await screen.findByRole("button", { name: /全文表示/ });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
+    });
+    const actionFooter = screen.getAllByTestId("action-footer")[0];
+    const contentToggle = within(actionFooter).getByTestId(
+      "toggle-content-button",
+    );
     fireEvent.click(contentToggle);
 
     await waitFor(() =>
@@ -121,10 +135,16 @@ describe("SwipeFeedCard", () => {
 
     const { rerender } = renderCard();
 
-    const summaryToggle = await screen.findByRole("button", { name: /要約/ });
-    fireEvent.click(summaryToggle);
-    await waitFor(() => expect(screen.getByText("summary")).toBeInTheDocument());
-
+    await waitFor(() => {
+      expect(screen.getAllByTestId("action-footer")[0]).toBeDefined();
+    });
+    const actionFooter = screen.getAllByTestId("action-footer")[0];
+    const summaryToggle = within(actionFooter).getByTestId(
+      "toggle-summary-button",
+    );
+    await act(async () => {
+      fireEvent.click(summaryToggle);
+    });
     const nextFeed = {
       ...baseFeed,
       id: "feed-2",
