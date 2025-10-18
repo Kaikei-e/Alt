@@ -49,18 +49,9 @@ jobs:
     runs-on: [self-hosted, linux, X64]
     timeout-minutes: 60
 
-    strategy:
-      matrix:
-        shardIndex: [1, 2, 3]
-        shardTotal: [3]
-      fail-fast: false
-
-    # Working directory will be set per step to avoid conflicts
-
     env:
       CI: true
       FORCE_COLOR: "1"
-      # ブラウザをキャッシュ可能な場所へ（Linux: ~/.cache/ms-playwright でもOK）
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/playwright-browsers
 
     steps:
@@ -68,28 +59,13 @@ jobs:
 
       - name: Mask sensitive paths
         run: |
-          # Dynamically get and mask the home directory
           echo "::add-mask::$HOME"
           echo "::add-mask::$(whoami)"
-
-          # Mask runner-specific paths
           RUNNER_BASE=$(pwd | cut -d'/' -f1-5)
           echo "::add-mask::$RUNNER_BASE"
-
-          # Mask workspace path
           WORKSPACE_PATH=$(pwd | sed 's|/alt-frontend||')
           echo "::add-mask::$WORKSPACE_PATH"
-
-          # Mask common runner directory patterns
           echo "::add-mask::$(echo $HOME | cut -d'/' -f1-3)"
-
-      - name: Verify working directory
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Looking for package.json in current directory:"
-          ls -la package.json || echo "package.json not found in current directory"
-          echo "Contents of current directory:"
-          ls -la
 
       - name: Enable pnpm via Corepack
         run: |
@@ -106,7 +82,6 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: pnpm install --frozen-lockfile
 
-      # ブラウザバイナリをキャッシュ（Playwrightは“積極推奨ではない”が、自己ホスト環境なら有効なこと多い）
       - name: Cache Playwright browsers
         uses: actions/cache@v3
         with:
@@ -118,14 +93,12 @@ jobs:
       - name: Install Playwright browsers
         working-directory: ${{ inputs.working-directory }}
         run: |
-          # Wait for any existing package manager processes to finish
           echo "Waiting for package manager locks to be released..."
           while sudo lsof /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || sudo lsof /var/lib/apt/lists/lock >/dev/null 2>&1; do
             echo "Lock detected, waiting 10 seconds..."
             sleep 10
           done
 
-          # Install Playwright browsers with retry logic
           for attempt in 1 2 3; do
             echo "Attempt $attempt to install Playwright browsers..."
             if pnpm exec playwright install --with-deps; then
@@ -141,49 +114,26 @@ jobs:
             fi
           done
 
-      # シャーディングで高速化（要: playwright.config.ts で CI 時 reporter を 'blob' に）
-      - name: Run Playwright (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+      - name: Run Playwright tests
         working-directory: ${{ inputs.working-directory }}
         run: |
-          export PW_SHARD_INDEX=${{ matrix.shardIndex }}
-          export PW_MOCK_PORT=$((4544 + ${{ matrix.shardIndex }}))
-          export PW_APP_PORT=$((3009 + ${{ matrix.shardIndex }}))
-          echo "Using mock port: $PW_MOCK_PORT, app port: $PW_APP_PORT"
-          pnpm exec playwright test \
-            --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+          echo "Running Playwright E2E tests..."
+          pnpm exec playwright test --reporter=html,json,list
 
-      - name: Upload shard blob report
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pw-blob-${{ matrix.shardIndex }}
-          path: blob-report
-          if-no-files-found: ignore
-          retention-days: 2
-
-  merge-playwright-reports:
-    needs: e2e
-    runs-on: [self-hosted, linux, X64]
-
-    steps:
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ inputs.node-version }}
-
-      - uses: actions/download-artifact@v4
-        with:
-          path: all-blob-reports
-          pattern: pw-blob-*
-          merge-multiple: true
-
-      # blob を統合して HTML レポート生成（Playwright 公式の merge-reports）
-      - name: Merge blob reports -> HTML
-        run: pnpm exec playwright merge-reports --reporter html ./all-blob-reports
-
-      - name: Upload merged HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: playwright-report
+          name: playwright-report-${{ github.run_id }}
+          path: ${{ inputs.working-directory }}/playwright-report
           retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-${{ github.run_id }}
+          path: ${{ inputs.working-directory }}/test-results
+          retention-days: 3
+          if-no-files-found: ignore

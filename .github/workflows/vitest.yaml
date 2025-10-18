@@ -47,55 +47,31 @@ permissions:
 jobs:
   vitest:
     runs-on: [self-hosted, linux, X64]
-    timeout-minutes: 45
-
-    # まずは3シャード並列。環境に合わせて 2〜6 に増減してOK
-    strategy:
-      matrix:
-        shardIndex: [1, 2, 3]
-        shardTotal: [3]
-      fail-fast: false
-
-    # Working directory will be set per step to avoid conflicts
+    timeout-minutes: 30
 
     env:
       CI: true
       FORCE_COLOR: "1"
+      NODE_OPTIONS: "--max-old-space-size=4096"
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Mask sensitive paths
         run: |
-          # Dynamically get and mask the home directory
           echo "::add-mask::$HOME"
           echo "::add-mask::$(whoami)"
-
-          # Mask runner-specific paths
           RUNNER_BASE=$(pwd | cut -d'/' -f1-5)
           echo "::add-mask::$RUNNER_BASE"
-
-          # Mask workspace path
           WORKSPACE_PATH=$(pwd | sed 's|/alt-frontend||')
           echo "::add-mask::$WORKSPACE_PATH"
-
-          # Mask common runner directory patterns
           echo "::add-mask::$(echo $HOME | cut -d'/' -f1-3)"
-
-      - name: Verify working directory
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Looking for package.json in current directory:"
-          ls -la package.json || echo "package.json not found in current directory"
-          echo "Contents of current directory:"
-          ls -la
 
       - name: Enable pnpm via Corepack
         run: |
           corepack enable
           corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
 
-      # Node + pnpm キャッシュ（ロックファイルの場所を明示：モノレポ対策）
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
@@ -104,91 +80,19 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
-        run: |
-          NODE_OPTIONS="--max-old-space-size=3072" pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
-      # Vitest をシャーディングで高速化。blob レポートを後段でマージ
-      - name: Run Vitest (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+      - name: Run Vitest
         working-directory: ${{ inputs.working-directory }}
-        continue-on-error: true
         run: |
-          echo "Running Vitest tests..."
-          echo "Shard: ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}"
-          echo "Working directory: $(pwd)"
+          echo "Running Vitest unit tests..."
+          pnpm test
 
-          # Run with verbose output to capture errors
-          NODE_OPTIONS="--max-old-space-size=3072" pnpm exec vitest run \
-            --pool=threads \
-            --maxWorkers=3 \
-            --reporter=verbose \
-            --reporter=blob \
-            --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
-
-          exit_code=$?
-          echo "Vitest completed with exit code: $exit_code"
-
-          if [ $exit_code -ne 0 ]; then
-            echo "Some tests failed, but continuing to generate report..."
-            echo "Checking if blob report was created..."
-            ls -la .vitest-reports/ || echo "No .vitest-reports directory found"
-          fi
-
-          mkdir -p .vitest-reports
-          echo "$exit_code" > .vitest-reports/exit-code.txt
-
-      - name: Upload shard blob report
+      - name: Upload coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: vitest-blob-${{ matrix.shardIndex }}
-          path: .vitest-reports
-          if-no-files-found: ignore
-          retention-days: 3
-
-      - name: Fail shard if Vitest failed
-        if: always()
-        run: |
-          code=$(cat .vitest-reports/exit-code.txt 2>/dev/null || echo 0)
-          if [ "$code" -ne 0 ]; then
-            echo "Vitest failed with exit code $code"
-            exit "$code"
-          fi
-
-  merge-vitest-reports:
-    needs: vitest
-    runs-on: [self-hosted, linux, X64]
-    if: always()
-
-    steps:
-      - name: Mask workspace base path (above Alt)
-        run: |
-          echo "::add-mask::$(dirname \"$GITHUB_WORKSPACE\")"
-          echo "::add-mask::$GITHUB_WORKSPACE"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ inputs.node-version }}
-
-      - uses: actions/download-artifact@v4
-        with:
-          path: .vitest-reports
-          pattern: vitest-blob-*
-          merge-multiple: true
-
-      # blob を集約 → 通常レポータ（default）を生成
-      - name: Merge blob reports
-        run: |
-          mkdir -p .vitest-reports
-          if [ -z "$(ls -A .vitest-reports 2>/dev/null)" ]; then
-            echo "No vitest blob reports found. Skipping merge."
-            exit 0
-          fi
-          pnpm dlx vitest --merge-reports --reporter=default
-
-      - name: Upload merged report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vitest-merged-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .vitest-reports
+          name: vitest-coverage-${{ github.run_id }}
+          path: ${{ inputs.working-directory }}/coverage
           retention-days: 7
+          if-no-files-found: ignore
