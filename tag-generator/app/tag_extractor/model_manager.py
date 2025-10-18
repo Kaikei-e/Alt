@@ -114,7 +114,7 @@ class ModelManager:
                 logger.error(
                     "SentenceTransformer not available",
                     help="Install with: pip install sentence-transformers",
-                    check_import="Try: python -c 'import sentence_transformers'"
+                    check_import="Try: python -c 'import sentence_transformers'",
                 )
                 raise ImportError(
                     "SentenceTransformer not available. "
@@ -122,16 +122,19 @@ class ModelManager:
                 )
             if KeyBERT is None:
                 logger.error(
-                    "KeyBERT not available",
-                    help="Install with: pip install keybert"
+                    "KeyBERT not available", help="Install with: pip install keybert"
                 )
-                raise ImportError("KeyBERT not available. Install with: pip install keybert")
+                raise ImportError(
+                    "KeyBERT not available. Install with: pip install keybert"
+                )
             if Tagger is None:
                 logger.error(
                     "Tagger (fugashi) not available",
-                    help="Install with: pip install fugashi[unidic-lite]"
+                    help="Install with: pip install fugashi[unidic-lite]",
                 )
-                raise ImportError("Tagger not available. Install with: pip install fugashi[unidic-lite]")
+                raise ImportError(
+                    "Tagger not available. Install with: pip install fugashi[unidic-lite]"
+                )
 
             logger.info("Loading SentenceTransformer model", model_name=config.model_name)
             self._embedder = SentenceTransformer(config.model_name, device=config.device)
@@ -156,7 +159,11 @@ class ModelManager:
             # Re-raise the original exception
             raise
         except Exception as e:
-            logger.error("Unexpected error while loading models", error=str(e), error_type=type(e).__name__)
+            logger.error(
+                "Unexpected error while loading models",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             # Reset to None so we can retry
             self._embedder = None
             self._keybert = None
@@ -203,7 +210,11 @@ class ModelManager:
     def is_loaded(self) -> bool:
         """Check if models are loaded."""
         with self._models_lock:
-            return self._embedder is not None and self._keybert is not None and self._ja_tagger is not None
+            return (
+                self._embedder is not None
+                and self._keybert is not None
+                and self._ja_tagger is not None
+            )
 
     def clear_models(self) -> None:
         """Clear loaded models (for testing)."""
