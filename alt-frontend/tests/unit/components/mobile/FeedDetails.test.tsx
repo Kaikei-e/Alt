@@ -39,11 +39,12 @@ describe("FeedDetails", () => {
       // Mock successful content fetch
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
+        total_matched: 0,
+        requested_count: 0,
       });
 
       vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "This is the article content",
-        url: mockFeedURL,
       });
 
       vi.mocked(feedsApi.archiveContent).mockResolvedValue({
@@ -80,11 +81,12 @@ describe("FeedDetails", () => {
       // Mock failed content fetch
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
+        total_matched: 0,
+        requested_count: 0,
       });
 
       vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "",
-        url: mockFeedURL,
       });
 
       renderWithProviders(
@@ -110,18 +112,19 @@ describe("FeedDetails", () => {
       // Mock successful content fetch but failed archive
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
+        total_matched: 0,
+        requested_count: 0,
       });
 
       vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "This is the article content",
-        url: mockFeedURL,
       });
 
       vi.mocked(feedsApi.archiveContent).mockRejectedValue(
         new Error("Archive failed"),
       );
 
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation();
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       renderWithProviders(
         <FeedDetails feedURL={mockFeedURL} feedTitle={mockFeedTitle} />,
@@ -162,11 +165,12 @@ describe("FeedDetails", () => {
 
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
+        total_matched: 0,
+        requested_count: 0,
       });
 
       vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "This is the article content",
-        url: mockFeedURL,
       });
 
       vi.mocked(feedsApi.archiveContent).mockResolvedValue({
@@ -203,11 +207,12 @@ describe("FeedDetails", () => {
 
       vi.mocked(feedsApi.getArticleSummary).mockResolvedValue({
         matched_articles: [],
+        total_matched: 0,
+        requested_count: 0,
       });
 
       vi.mocked(feedsApi.getFeedContentOnTheFly).mockResolvedValue({
         content: "This is the article content",
-        url: mockFeedURL,
       });
 
       vi.mocked(feedsApi.archiveContent).mockResolvedValue({
@@ -218,6 +223,7 @@ describe("FeedDetails", () => {
         success: true,
         summary: "これは記事の要約です",
         article_id: "test-article-id",
+        feed_url: mockFeedURL,
       });
 
       renderWithProviders(
