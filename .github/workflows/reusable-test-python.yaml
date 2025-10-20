@@ -85,21 +85,22 @@ jobs:
       - name: Install uv (Rust-based tool)
         uses: astral-sh/setup-uv@v6
         with:
-          enable-cache: true
-          cache-dependency-glob: "${{ inputs.working-directory }}/uv.lock"
-          cache-local-path: "${{ runner.temp }}/uv-cache-${{ inputs.job-type }}-${{ github.run_id }}"
+          enable-cache: false
 
       - name: Set up Python with uv
         run: uv python install ${{ inputs.python-version }}
 
       # ===== キャッシュ戦略 =====
       # 1) ローカル永続キャッシュ（sudo不要でHOME配下に固定）
+      # ジョブ固有のキャッシュディレクトリを使用して並行実行時の競合を回避
       - name: Configure local persistent caches (HOME)
         if: ${{ inputs.use-local-persistent-cache }}
         run: |
-          mkdir -p "$HOME/.cache/uv" "$HOME/.local/share/uv"
-          echo "UV_CACHE_DIR=$HOME/.cache/uv" >> "$GITHUB_ENV"
-          echo "UV_TOOL_DIR=$HOME/.local/share/uv" >> "$GITHUB_ENV"
+          CACHE_BASE="$HOME/.cache/uv-${{ inputs.job-type }}-${{ github.run_id }}"
+          TOOL_BASE="$HOME/.local/share/uv-${{ inputs.job-type }}-${{ github.run_id }}"
+          mkdir -p "$CACHE_BASE" "$TOOL_BASE"
+          echo "UV_CACHE_DIR=$CACHE_BASE" >> "$GITHUB_ENV"
+          echo "UV_TOOL_DIR=$TOOL_BASE" >> "$GITHUB_ENV"
 
       # 2) ランナーがエフェメラル等でHOME永続化できない場合は、GitHub Cacheを併用
       - name: Restore uv cache (GitHub Cache)
@@ -107,11 +108,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/uv
-            ~/.local/share/uv
-          key: uv-${{ runner.os }}-${{ hashFiles(format('{0}/uv.lock', inputs.working-directory)) }}
+            ~/.cache/uv-${{ inputs.job-type }}
+            ~/.local/share/uv-${{ inputs.job-type }}
+          key: uv-${{ runner.os }}-${{ inputs.job-type }}-${{ hashFiles(format('{0}/uv.lock', inputs.working-directory)) }}
           restore-keys: |
-            uv-${{ runner.os }}-
+            uv-${{ runner.os }}-${{ inputs.job-type }}-
+
+      - name: Configure uv cache (GitHub Cache mode)
+        if: ${{ !inputs.use-local-persistent-cache }}
+        run: |
+          echo "UV_CACHE_DIR=$HOME/.cache/uv-${{ inputs.job-type }}" >> "$GITHUB_ENV"
+          echo "UV_TOOL_DIR=$HOME/.local/share/uv-${{ inputs.job-type }}" >> "$GITHUB_ENV"
 
       - name: Sync project dependencies
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
@@ -155,18 +162,12 @@ jobs:
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: |
           rm -rf .venv .pytest_cache .coverage coverage.xml bandit-report.json
-          if command -v uv >/dev/null 2>&1; then
-            UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}"
-            # Disable automatic cache pruning to avoid "No such file or directory" errors
-            export UV_NO_CACHE_PRUNE=1
-            # Use safer cache cleanup method
-            if [ -d "$UV_CACHE_DIR" ]; then
-              echo "Cleaning uv cache directory: $UV_CACHE_DIR"
-              # Remove only specific problematic subdirectories if they exist
-              rm -rf "$UV_CACHE_DIR/sdists-v9" 2>/dev/null || true
-              rm -rf "$UV_CACHE_DIR/wheels-v9" 2>/dev/null || true
-              # Clean other cache contents safely
-              find "$UV_CACHE_DIR" -type f -name "*.tmp" -delete 2>/dev/null || true
-              find "$UV_CACHE_DIR" -type d -empty -delete 2>/dev/null || true
-            fi
+          # Clean job-specific uv cache directory
+          if [ -n "$UV_CACHE_DIR" ] && [ -d "$UV_CACHE_DIR" ]; then
+            echo "Removing job-specific uv cache: $UV_CACHE_DIR"
+            rm -rf "$UV_CACHE_DIR" 2>/dev/null || true
+          fi
+          if [ -n "$UV_TOOL_DIR" ] && [ -d "$UV_TOOL_DIR" ]; then
+            echo "Removing job-specific uv tool directory: $UV_TOOL_DIR"
+            rm -rf "$UV_TOOL_DIR" 2>/dev/null || true
           fi
