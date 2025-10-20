@@ -232,26 +232,27 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 
 	if cursor == nil {
 		// Initial fetch: INNER JOIN for performance optimization
+		// Order by read_at to show most recently read feeds first
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
 			AND rs.user_id = $2
-			ORDER BY f.created_at DESC, f.id DESC
+			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $1
 		`
 		args = []interface{}{limit, user.UserID}
 	} else {
-		// Subsequent pages: cursor-based pagination
+		// Subsequent pages: cursor-based pagination using read_at
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
 			AND rs.user_id = $3
-			AND f.created_at < $1
-			ORDER BY f.created_at DESC, f.id DESC
+			AND rs.read_at < $1
+			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $2
 		`
 		args = []interface{}{cursor, limit, user.UserID}
