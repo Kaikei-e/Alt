@@ -22,7 +22,6 @@ on:
 permissions:
   contents: read                         # checkout 用
   security-events: write                 # SARIF を Code Scanning にアップロードするのに必須
-  id-token: write                        # OIDC を使うツールがある場合に備えて（将来拡張）
 
 jobs:
   quality:
