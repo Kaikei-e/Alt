@@ -87,6 +87,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: "${{ inputs.working-directory }}/uv.lock"
+          cache-local-path: "${{ runner.temp }}/uv-cache-${{ inputs.job-type }}-${{ github.run_id }}"
 
       - name: Set up Python with uv
         run: uv python install ${{ inputs.python-version }}
