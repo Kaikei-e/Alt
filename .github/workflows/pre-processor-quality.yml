@@ -35,8 +35,6 @@ jobs:
     with:
       working-directory: 'pre-processor/app'
       go-version: '1.24'
-      build-artifact-name: 'pre-processor-binary'
-      build-artifact-path: 'pre-processor/app/bin/pre-processor'
     permissions:
       contents: read
       security-events: write
